@@ -140,12 +140,16 @@ class WikiStorage:
     def append_to_index(self, slug: str, title: str) -> None:
         """Append a newly created page entry to wiki/index.md under 'Recently Added'.
 
-        No-ops silently if index.md does not exist.
+        No-ops silently if index.md does not exist or if the slug is already
+        referenced anywhere in the file (prevents duplicates after re-ingest).
         """
         index_path = self._root / "index.md"
         if not index_path.exists():
             return
         raw = index_path.read_text(encoding="utf-8")
+        # Skip if this slug is already linked anywhere in the index
+        if f"[[{slug}]]" in raw or f"[[{slug}|" in raw:
+            return
         entry = f"- [[{slug}]] — {title}"
         if "## Recently Added" in raw:
             raw = raw.rstrip() + f"\n{entry}\n"

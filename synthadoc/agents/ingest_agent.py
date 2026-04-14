@@ -422,8 +422,7 @@ class IngestAgent:
                     with self._store.page_lock(slug):
                         self._store.write_page(slug, new_page)
                     result.pages_created.append(slug)
-                    # New pages are orphans until manually linked — no auto-append to index.md.
-                    # The dashboard.md "Orphan pages" Dataview table surfaces them for review.
+                    self._store.append_to_index(slug, new_page.title)
 
         if result.pages_created or result.pages_updated:
             await self._update_overview()
