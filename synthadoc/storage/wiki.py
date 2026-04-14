@@ -11,7 +11,7 @@ from typing import Optional
 import yaml
 from filelock import FileLock
 
-_FRONTMATTER_FIELDS = ("title", "tags", "status", "confidence", "created", "sources", "orphan")
+_FRONTMATTER_FIELDS = ("title", "tags", "status", "confidence", "created", "sources", "orphan", "categories")
 
 
 @dataclass
@@ -32,6 +32,7 @@ class WikiPage:
     sources: list[SourceRef]
     created: Optional[str] = None
     orphan: bool = False
+    categories: list[str] = field(default_factory=list)
 
 
 def _sources_to_dicts(sources: list[SourceRef]) -> list[dict]:
@@ -93,6 +94,8 @@ class WikiStorage:
                 "sources": _sources_to_dicts(page.sources),
                 "orphan": page.orphan,
             }
+            if page.categories:
+                fm["categories"] = page.categories
             body = page.content
         else:
             fm = frontmatter or {}
@@ -120,6 +123,8 @@ class WikiStorage:
                 body = parts[2].lstrip("\n")
 
         sources = _sources_from_dicts(fm.get("sources", []))
+        raw_cats = fm.get("categories", [])
+        categories = raw_cats if isinstance(raw_cats, list) else [raw_cats] if raw_cats else []
         return WikiPage(
             title=fm.get("title", ""),
             tags=fm.get("tags", []),
@@ -129,6 +134,7 @@ class WikiStorage:
             sources=sources,
             created=fm.get("created"),
             orphan=bool(fm.get("orphan", False)),
+            categories=categories,
         )
 
     def page_exists(self, slug: str) -> bool:
@@ -142,6 +148,7 @@ class WikiStorage:
 
         No-ops silently if index.md does not exist or if the slug is already
         referenced anywhere in the file (prevents duplicates after re-ingest).
+        Also stamps categories: [Recently Added] on the page's own frontmatter.
         """
         index_path = self._root / "index.md"
         if not index_path.exists():
@@ -156,6 +163,27 @@ class WikiStorage:
         else:
             raw = raw.rstrip() + f"\n\n## Recently Added\n{entry}\n"
         index_path.write_text(raw, encoding="utf-8")
+        # Stamp the page itself so it's queryable by category
+        self._add_category(slug, "Recently Added")
+
+    def set_page_categories(self, slug: str, categories: list[str]) -> None:
+        """Replace the categories list on a page's frontmatter (idempotent)."""
+        page = self.read_page(slug)
+        if page is None:
+            return
+        page.categories = categories
+        with self.page_lock(slug):
+            self.write_page(slug, page)
+
+    def _add_category(self, slug: str, category: str) -> None:
+        """Add a single category to a page without removing existing ones."""
+        page = self.read_page(slug)
+        if page is None:
+            return
+        if category not in page.categories:
+            page.categories = page.categories + [category]
+            with self.page_lock(slug):
+                self.write_page(slug, page)
 
     def _get_thread_lock(self, slug: str) -> threading.Lock:
         with self._locks_meta:
