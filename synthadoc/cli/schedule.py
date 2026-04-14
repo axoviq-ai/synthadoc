@@ -2,15 +2,35 @@
 # Copyright (C) 2026 Paul Chen / axoviq.com
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 import typer
 
 from synthadoc.cli.main import app
 from synthadoc.cli.install import resolve_wiki_path
+from synthadoc import errors as E
 
 schedule_app = typer.Typer(help="Manage recurring scheduled operations.")
 app.add_typer(schedule_app, name="schedule")
+
+
+def _resolve_and_validate(wiki: Optional[str]) -> Path:
+    """Resolve wiki name to path and fail early if it is not installed."""
+    if wiki is None:
+        E.cli_error(
+            E.WIKI_NOT_FOUND,
+            "--wiki / -w is required for schedule commands.",
+            "Provide a registered wiki name: synthadoc schedule <cmd> -w <name>",
+        )
+    root = resolve_wiki_path(wiki)
+    if not (root / ".synthadoc" / "config.toml").exists():
+        E.cli_error(
+            E.WIKI_NOT_REGISTERED,
+            f"Wiki '{wiki}' is not installed.",
+            f"Make sure wiki '{wiki}' was installed with 'synthadoc install'.",
+        )
+    return root
 
 
 @schedule_app.command("add")
@@ -21,9 +41,8 @@ def add_cmd(
 ):
     """Register a recurring operation with the OS scheduler."""
     from synthadoc.core.scheduler import Scheduler
-    from pathlib import Path
-    root = resolve_wiki_path(wiki) if wiki else Path(".")
-    sched = Scheduler(wiki=wiki or "default", wiki_root=str(root))
+    root = _resolve_and_validate(wiki)
+    sched = Scheduler(wiki=wiki, wiki_root=str(root))
     entry_id = sched.add(op=op, cron=cron)
     typer.echo(f"Scheduled: {entry_id}")
 
@@ -32,9 +51,8 @@ def add_cmd(
 def list_cmd(wiki: Optional[str] = typer.Option(None, "--wiki", "-w")):
     """List all synthadoc-registered scheduled jobs."""
     from synthadoc.core.scheduler import Scheduler
-    from pathlib import Path
-    root = resolve_wiki_path(wiki) if wiki else Path(".")
-    sched = Scheduler(wiki=wiki or "default", wiki_root=str(root))
+    root = _resolve_and_validate(wiki)
+    sched = Scheduler(wiki=wiki, wiki_root=str(root))
     for e in sched.list():
         typer.echo(f"{e.id}  {e.cron}  {e.op}")
 
@@ -46,9 +64,8 @@ def remove_cmd(
 ):
     """Remove a scheduled job by ID."""
     from synthadoc.core.scheduler import Scheduler
-    from pathlib import Path
-    root = resolve_wiki_path(wiki) if wiki else Path(".")
-    sched = Scheduler(wiki=wiki or "default", wiki_root=str(root))
+    root = _resolve_and_validate(wiki)
+    sched = Scheduler(wiki=wiki, wiki_root=str(root))
     sched.remove(entry_id)
     typer.echo(f"Removed: {entry_id}")
 
@@ -58,11 +75,10 @@ def apply_cmd(wiki: Optional[str] = typer.Option(None, "--wiki", "-w")):
     """Register all jobs declared in [schedule] in the project config."""
     from synthadoc.config import load_config
     from synthadoc.core.scheduler import Scheduler, ScheduleEntry
-    from pathlib import Path
-    root = resolve_wiki_path(wiki) if wiki else Path(".")
+    root = _resolve_and_validate(wiki)
     cfg = load_config(project_config=root / ".synthadoc" / "config.toml")
-    sched = Scheduler(wiki=wiki or "default", wiki_root=str(root))
-    ids = sched.apply([ScheduleEntry(op=j.op, cron=j.cron, wiki=wiki or "default")
+    sched = Scheduler(wiki=wiki, wiki_root=str(root))
+    ids = sched.apply([ScheduleEntry(op=j.op, cron=j.cron, wiki=wiki)
                        for j in cfg.schedule.jobs])
     for entry_id in ids:
         typer.echo(f"Registered: {entry_id}")
