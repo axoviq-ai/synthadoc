@@ -46,27 +46,57 @@ class UrlSkill(BaseSkill):
                                 source_path=source, metadata={"url": source})
 
     def _extract_pdf_response(self, content: bytes, source: str) -> ExtractedContent:
-        """Write PDF bytes to a temp file and extract text via pypdf."""
+        """Write PDF bytes to a temp file and extract text via pypdf with pdfminer fallback.
+
+        Truncated or malformed PDFs (PdfStreamError) are handled gracefully:
+        pypdf is tried first; on failure pdfminer.six is tried; if both fail
+        an empty ExtractedContent is returned so the job completes as 'skipped'
+        rather than dying after 3 retries.
+        """
         import logging
+        import os
         import pypdf
-        # pypdf logs benign structural warnings at WARNING level for many real-world PDFs;
-        # suppress them so they don't pollute the server console.
+
         logging.getLogger("pypdf").setLevel(logging.ERROR)
+        logger = logging.getLogger(__name__)
+
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
             tmp.write(content)
             tmp_path = tmp.name
+
         try:
-            parts = []
-            with open(tmp_path, "rb") as f:
-                reader = pypdf.PdfReader(f)
-                num_pages = len(reader.pages)
-                for page in reader.pages:
-                    t = page.extract_text()
-                    if t:
-                        parts.append(t)
-            text = "\n".join(parts)
+            # --- pypdf attempt ---
+            try:
+                parts = []
+                with open(tmp_path, "rb") as f:
+                    reader = pypdf.PdfReader(f)
+                    num_pages = len(reader.pages)
+                    for page in reader.pages:
+                        t = page.extract_text()
+                        if t:
+                            parts.append(t)
+                text = "\n".join(parts)
+                if text.strip():
+                    return ExtractedContent(text=text, source_path=source,
+                                            metadata={"url": source, "pages": num_pages})
+                # Empty yield — fall through to pdfminer
+            except Exception as pypdf_err:
+                logger.warning("pypdf failed for %s (%s) — trying pdfminer fallback", source, pypdf_err)
+
+            # --- pdfminer fallback ---
+            try:
+                from pdfminer.high_level import extract_text as pdfminer_extract
+                text = pdfminer_extract(tmp_path)
+                num_pages = 0  # pdfminer doesn't report page count cheaply
+                if text.strip():
+                    return ExtractedContent(text=text, source_path=source,
+                                            metadata={"url": source, "pages": num_pages})
+            except Exception as pm_err:
+                logger.warning("pdfminer fallback also failed for %s (%s)", source, pm_err)
+
+            # Both extractors failed — return empty so IngestAgent skips gracefully
+            logger.warning("PDF at %s could not be extracted (truncated or malformed) — skipping", source)
+            return ExtractedContent(text="", source_path=source,
+                                    metadata={"url": source, "pages": 0})
         finally:
-            import os
             os.unlink(tmp_path)
-        return ExtractedContent(text=text, source_path=source,
-                                metadata={"url": source, "pages": num_pages})
