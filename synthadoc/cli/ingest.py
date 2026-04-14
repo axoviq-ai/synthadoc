@@ -81,7 +81,11 @@ def ingest_cmd(
         s = s.strip()
         if not s or s.startswith("#"):
             continue
-        abs_source = s if s.startswith(("http://", "https://")) else str(Path(s).resolve())
+        lower_s = s.lower()
+        if s.startswith(("http://", "https://")) or any(lower_s.startswith(p) for p in _INTENT_PREFIXES):
+            abs_source = s  # URLs and intent phrases are passed as-is to the server
+        else:
+            abs_source = str(Path(s).resolve())
         if analyse_only:
             import json as _json
             result = post(wiki, "/analyse", {"source": abs_source})

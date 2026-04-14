@@ -15,6 +15,37 @@ from synthadoc import errors as E
 _WIKILINK_RE = re.compile(r"\[\[([^\]|#]+?)(?:\|[^\]]*)?\]\]")
 
 
+def _apply_categories(dest: Path, index_md: str) -> int:
+    """Parse index.md section headings and stamp categories on each linked page.
+
+    A page linked under multiple headings gets all of them in its categories list.
+    Returns the number of pages updated.
+    """
+    from synthadoc.storage.wiki import WikiStorage
+    store = WikiStorage(dest / "wiki")
+    # Build slug → [categories] map from the index markdown
+    slug_cats: dict[str, list[str]] = {}
+    current_section: str | None = None
+    for line in index_md.splitlines():
+        h2 = re.match(r"^## (.+)", line)
+        if h2:
+            current_section = h2.group(1).strip()
+            continue
+        if current_section:
+            for m in _WIKILINK_RE.finditer(line):
+                slug = m.group(1).strip()
+                slug_cats.setdefault(slug, [])
+                if current_section not in slug_cats[slug]:
+                    slug_cats[slug].append(current_section)
+
+    updated = 0
+    for slug, cats in slug_cats.items():
+        if store.page_exists(slug):
+            store.set_page_categories(slug, cats)
+            updated += 1
+    return updated
+
+
 def _protected_slugs(wiki_dir: Path) -> list[str]:
     """Return slugs linked from index.md that have a corresponding wiki page."""
     index_path = wiki_dir / "wiki" / "index.md"
@@ -123,7 +154,10 @@ def scaffold_cmd(
     (dest / "AGENTS.md").write_text(result.agents_md, encoding="utf-8", newline="\n")
     (dest / "wiki" / "purpose.md").write_text(result.purpose_md, encoding="utf-8", newline="\n")
 
+    updated = _apply_categories(dest, result.index_md)
+
     typer.echo("Scaffold complete.")
     typer.echo(f"  index.md    updated")
     typer.echo(f"  AGENTS.md   updated")
     typer.echo(f"  purpose.md  updated")
+    typer.echo(f"  categories  stamped on {updated} page(s)")
