@@ -13,6 +13,31 @@ from synthadoc.cli._http import get, post
 _SUPPORTED = {".md", ".txt", ".pdf", ".docx", ".xlsx", ".csv",
               ".png", ".jpg", ".jpeg", ".webp", ".gif", ".tiff"}
 
+# Intent-phrase prefixes that are valid non-file sources (matched case-insensitively)
+_INTENT_PREFIXES = (
+    "search for:", "find on the web:", "look up:", "web search:", "browse:",
+    "fetch url:", "web page:", "website:",
+)
+
+
+def _validate_source(source: str) -> None:
+    """Fail early if source is not a URL, an intent phrase, or an existing file path."""
+    from synthadoc import errors as E
+    s = source.strip()
+    if s.startswith(("http://", "https://")):
+        return  # URL — valid
+    lower = s.lower()
+    if any(lower.startswith(p) for p in _INTENT_PREFIXES):
+        return  # Intent phrase — valid
+    p = Path(s)
+    if not (p if p.is_absolute() else p.resolve()).exists():
+        E.cli_error(
+            E.INGEST_NOT_FOUND,
+            f"Source not found: '{s}'",
+            "Provide a valid file path, a URL (https://…), or an intent phrase "
+            "(e.g. 'search for: Bank of Canada rate outlook 2025').",
+        )
+
 
 @app.command("ingest")
 def ingest_cmd(
@@ -46,6 +71,7 @@ def ingest_cmd(
     elif file:
         sources = Path(file).read_text().splitlines()
     elif source:
+        _validate_source(source)
         sources = [source]
     else:
         typer.echo("Provide a source file, --batch <dir>, or --file <manifest>.", err=True)

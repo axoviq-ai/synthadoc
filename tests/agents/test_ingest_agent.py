@@ -165,8 +165,8 @@ async def test_force_busts_cache(tmp_wiki, mock_provider):
 
 
 @pytest.mark.asyncio
-async def test_new_page_is_orphan(tmp_wiki, mock_provider):
-    """New pages created by ingest must NOT be added to index.md (they start as orphans)."""
+async def test_new_page_appended_to_index(tmp_wiki, mock_provider):
+    """New pages created by ingest must be appended to index.md under 'Recently Added'."""
     store = WikiStorage(tmp_wiki / "wiki")
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
@@ -191,8 +191,9 @@ async def test_new_page_is_orphan(tmp_wiki, mock_provider):
     assert result.pages_created
     index_text = (tmp_wiki / "wiki" / "index.md").read_text(encoding="utf-8")
     slug = result.pages_created[0]
-    # New page must NOT appear in index.md — it is an orphan until manually linked
-    assert f"[[{slug}]]" not in index_text
+    # New page must appear in index.md under 'Recently Added'
+    assert f"[[{slug}]]" in index_text
+    assert "## Recently Added" in index_text
 
 
 @pytest.mark.asyncio
