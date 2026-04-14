@@ -28,7 +28,11 @@ Set up a knowledge wiki for the domain: {domain}
 Return ONLY valid JSON:
 {{
   "categories": [
-    {{"heading": "Category Name", "description": "what pages go in this category"}},
+    {{
+      "heading": "Category Name",
+      "description": "what pages go in this category",
+      "slugs": ["slug-one", "slug-two"]
+    }},
     ...
   ],
   "agents_guidelines": "2-4 bullet points of domain-specific ingest and query guidelines (plain text, not markdown list syntax)",
@@ -36,6 +40,9 @@ Return ONLY valid JSON:
   "purpose_exclude": "one sentence: what topics to exclude",
   "dashboard_intro": "one sentence describing what this wiki tracks"
 }}
+
+The "slugs" array must contain the kebab-case page slugs that belong in each category.
+{slugs_instruction}If a category has no known pages yet, use an empty array.
 """
 
 _INDEX_FRONTMATTER = """\
@@ -92,16 +99,21 @@ class ScaffoldAgent:
         protected_slugs: Optional[list[str]] = None,
     ) -> ScaffoldResult:
         protected_section = ""
+        slugs_instruction = ""
         if protected_slugs:
             slugs_list = ", ".join(protected_slugs)
             protected_section = (
-                f"IMPORTANT: The following page slugs already exist in the wiki — "
-                f"preserve their categories, do not remove them: {slugs_list}\n\n"
+                f"IMPORTANT: The following page slugs already exist in the wiki: {slugs_list}\n\n"
+            )
+            slugs_instruction = (
+                "Assign each of the existing slugs listed above into the most appropriate "
+                'category\'s "slugs" array. Every protected slug must appear in exactly one category. '
             )
 
         prompt = _SCAFFOLD_PROMPT.format(
             domain=domain,
             protected_section=protected_section,
+            slugs_instruction=slugs_instruction,
         )
 
         resp = await self._provider.complete(
@@ -138,9 +150,15 @@ class ScaffoldAgent:
         for cat in data.get("categories", []):
             heading = cat.get("heading", "General")
             desc = cat.get("description", "")
+            slugs = cat.get("slugs", [])
             lines.append(f"\n## {heading}")
             if desc:
                 lines.append(f"*{desc}*\n")
+            for slug in slugs:
+                if slug:
+                    lines.append(f"- [[{slug}]]")
+            if slugs:
+                lines.append("")
         lines.append("")
         return "\n".join(lines)
 

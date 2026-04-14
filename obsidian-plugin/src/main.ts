@@ -490,6 +490,20 @@ class QueryModal extends Modal {
         const out = contentEl.createEl("div");
         out.style.cssText = "max-height:60vh;overflow-y:auto;padding:4px 0";
 
+        // Handle internal [[wikilinks]] rendered by MarkdownRenderer inside the modal.
+        // Obsidian's normal link handler doesn't fire inside modals, so we intercept
+        // clicks here, open the file via the workspace API, then close the modal.
+        out.addEventListener("click", (e) => {
+            const link = (e.target as HTMLElement).closest("a");
+            if (!link) return;
+            const href = link.getAttribute("data-href") || link.getAttribute("href") || "";
+            if (!href || href.startsWith("http://") || href.startsWith("https://")) return;
+            e.preventDefault();
+            e.stopPropagation();
+            this.app.workspace.openLinkText(href, "", false);
+            this.close();
+        });
+
         const submit = async () => {
             if (!input.value.trim()) return;
             btn.disabled = true;

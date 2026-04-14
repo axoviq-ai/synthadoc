@@ -99,18 +99,31 @@ class Orchestrator:
             await self._queue.fail_permanent(job_id, str(e))
         except Exception as e:
             import httpx
+            import logging
             from synthadoc.errors import DomainBlockedException
             if isinstance(e, DomainBlockedException):
                 await self._auto_block_domain(e)
                 await self._queue.skip(job_id, str(e))
             elif isinstance(e, (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.PoolTimeout)):
-                # Transient network timeout fetching the source URL — retry with backoff.
-                # Log at WARN (not ERROR) and do not re-raise so the worker loop stays clean.
-                import logging
+                # Transient network timeout — retry with backoff, no traceback.
                 logging.getLogger(__name__).warning(
                     "URL fetch timed out for job %s (%s) — will retry", job_id, source
                 )
                 await self._queue.fail(job_id, f"ReadTimeout: {source}")
+            elif isinstance(e, httpx.HTTPStatusError):
+                status = e.response.status_code
+                if 400 <= status < 500:
+                    # Permanent client error (404, 410, 451, etc.) — skip, no retry, no traceback.
+                    logging.getLogger(__name__).warning(
+                        "HTTP %s fetching %s — skipping job %s", status, source, job_id
+                    )
+                    await self._queue.skip(job_id, f"HTTP {status}: {source}")
+                else:
+                    # 5xx server error — transient, retry with backoff, no traceback.
+                    logging.getLogger(__name__).warning(
+                        "HTTP %s fetching %s — will retry job %s", status, source, job_id
+                    )
+                    await self._queue.fail(job_id, f"HTTP {status}: {source}")
             else:
                 await self._queue.fail(job_id, str(e))
                 raise

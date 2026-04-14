@@ -20,8 +20,8 @@ def _make_provider(json_payload: dict) -> AsyncMock:
 
 _VALID_RESPONSE = {
     "categories": [
-        {"heading": "Key Concepts", "description": "Fundamental ideas in the domain"},
-        {"heading": "People", "description": "Notable figures"},
+        {"heading": "Key Concepts", "description": "Fundamental ideas in the domain", "slugs": ["neural-networks", "backpropagation"]},
+        {"heading": "People", "description": "Notable figures", "slugs": []},
     ],
     "agents_guidelines": "Summarize claims. Use [[wikilinks]].",
     "purpose_include": "Topics directly related to Machine Learning.",
@@ -65,6 +65,28 @@ async def test_scaffold_protected_slugs_appear_in_prompt():
     prompt_text = " ".join(m.content for m in call_messages)
     assert "neural-networks" in prompt_text
     assert "transformers" in prompt_text
+
+
+@pytest.mark.asyncio
+async def test_scaffold_index_md_has_wikilinks():
+    """index.md must include [[slug]] wikilinks for slugs returned by the LLM."""
+    provider = _make_provider(_VALID_RESPONSE)
+    agent = ScaffoldAgent(provider=provider)
+    result = await agent.scaffold(domain="Machine Learning")
+    assert "- [[neural-networks]]" in result.index_md
+    assert "- [[backpropagation]]" in result.index_md
+
+
+@pytest.mark.asyncio
+async def test_scaffold_protected_slugs_instruction_in_prompt():
+    """Protected slugs must trigger assignment instruction in the LLM prompt."""
+    provider = _make_provider(_VALID_RESPONSE)
+    agent = ScaffoldAgent(provider=provider)
+    await agent.scaffold(domain="ML", protected_slugs=["neural-networks", "transformers"])
+    call_kwargs = provider.complete.call_args.kwargs
+    call_messages = call_kwargs.get("messages") or provider.complete.call_args[0][0]
+    prompt_text = " ".join(m.content for m in call_messages)
+    assert "every protected slug must appear in exactly one category" in prompt_text.lower()
 
 
 @pytest.mark.asyncio
