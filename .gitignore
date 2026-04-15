@@ -16,6 +16,7 @@ obsidian-plugin/node_modules/
 # synthadoc operational — never commit
 .synthadoc/
 docs/plans/
+docs/*.docx
 synthadoc/demos/*/log.md
 
 # diagram sources — export to PNG/SVG and commit the image instead
