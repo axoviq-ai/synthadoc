@@ -18,6 +18,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e ".[dev]"
+      - run: python scripts/update_badges.py --check
       - run: pytest --cov=synthadoc --cov-report=term-missing -v
 
   build-plugin:

@@ -19,6 +19,14 @@
   Domain-agnostic LLM wiki engine
 ```
 
+[![CI](https://github.com/william-Johnason/synthadoc/actions/workflows/ci.yml/badge.svg)](https://github.com/william-Johnason/synthadoc/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://github.com/william-Johnason/synthadoc/blob/main/LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-yellow.svg)](https://www.python.org/)
+[![Skills](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fwilliam-Johnason%2Fsynthadoc%2Fmain%2Fdocs%2Fbadges.json&query=%24.skills&label=Skills&color=purple)](https://github.com/william-Johnason/synthadoc/tree/main/synthadoc/skills)
+[![CLI](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fwilliam-Johnason%2Fsynthadoc%2Fmain%2Fdocs%2Fbadges.json&query=%24.cli_commands&label=CLI%20commands&color=darkblue)](https://github.com/william-Johnason/synthadoc)
+[![Obsidian](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fwilliam-Johnason%2Fsynthadoc%2Fmain%2Fdocs%2Fbadges.json&query=%24.obsidian_commands&label=Obsidian%20commands&color=blueviolet)](https://github.com/william-Johnason/synthadoc/tree/main/obsidian-plugin)
+[![Version](https://img.shields.io/badge/Community%20Edition-v0.1.0-lightgrey.svg)](https://github.com/william-Johnason/synthadoc/releases/tag/v0.1.0)
+
 **Engineered for solo users and enterprises alike, providing a domain-specific knowledge base that scales seamlessly while maintaining accuracy through autonomous self-optimization.**
 
 > Built for individuals, small teams, and large organizations who need a knowledge base that stays accurate as documents accumulate.
@@ -969,20 +977,6 @@ Target: week of 2026-04-25.
 | **Larger corpus support** | Sharded index, incremental embedding updates, streaming ingest for very large documents |
 | **Obsidian plugin: web search live view** | Watch pages appear as results stream in — job polling and live result panel (basic modal already in v0.1) |
 | **Mistral + Bedrock providers** | Additional OpenAI-compatible and AWS-native LLM backends |
-
----
-
-## Licensing
-
-| Component | Licence |
-|-----------|---------|
-| Core server and all other source files | [AGPL-3.0-or-later](LICENSE) |
-| `synthadoc/skills/base.py` | Apache-2.0 — extend freely, any licence |
-| `synthadoc/providers/base.py` | Apache-2.0 — extend freely, any licence |
-
-Copyright (C) 2026 Paul Chen / axoviq.com
-
-Contributions require signing a CLA before a PR can be merged. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
