@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Copyright (C) 2026 Paul Chen / axoviq.com
+# Copyright (C) 2026 William Johnason / axoviq.com
 """
 Count CLI commands, Obsidian plugin commands, and skills, then write docs/badges.json.
 

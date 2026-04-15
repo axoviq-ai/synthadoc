@@ -980,20 +980,6 @@ Target: week of 2026-04-25.
 
 ---
 
-## Licensing
-
-| Component | Licence |
-|-----------|---------|
-| Core server and all other source files | [AGPL-3.0-or-later](LICENSE) |
-| `synthadoc/skills/base.py` | Apache-2.0 — extend freely, any licence |
-| `synthadoc/providers/base.py` | Apache-2.0 — extend freely, any licence |
-
-Copyright (C) 2026 Paul Chen / axoviq.com
-
-Contributions require signing a CLA before a PR can be merged. See [CONTRIBUTING.md](CONTRIBUTING.md).
-
----
-
 ## Links
 
 - Design document: [docs/design.md](docs/design.md)
