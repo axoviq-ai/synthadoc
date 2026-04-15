@@ -19,13 +19,13 @@
   Domain-agnostic LLM wiki engine
 ```
 
-[![CI](https://github.com/axoviq-ai/synthadoc/actions/workflows/ci.yml/badge.svg)](https://github.com/axoviq-ai/synthadoc/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://github.com/axoviq-ai/synthadoc/blob/main/LICENSE)
+[![CI](https://github.com/william-Johnason/synthadoc/actions/workflows/ci.yml/badge.svg)](https://github.com/william-Johnason/synthadoc/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://github.com/william-Johnason/synthadoc/blob/main/LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-yellow.svg)](https://www.python.org/)
-[![Skills](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fmain%2Fdocs%2Fbadges.json&query=%24.skills&label=Skills&color=purple)](https://github.com/axoviq-ai/synthadoc/tree/main/synthadoc/skills)
-[![CLI](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fmain%2Fdocs%2Fbadges.json&query=%24.cli_commands&label=CLI%20commands&color=darkblue)](https://github.com/axoviq-ai/synthadoc)
-[![Obsidian](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fmain%2Fdocs%2Fbadges.json&query=%24.obsidian_commands&label=Obsidian%20commands&color=blueviolet)](https://github.com/axoviq-ai/synthadoc/tree/main/obsidian-plugin)
-[![Version](https://img.shields.io/badge/Community%20Edition-v0.1.0-lightgrey.svg)](https://github.com/axoviq-ai/synthadoc/releases/tag/v0.1.0)
+[![Skills](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fwilliam-Johnason%2Fsynthadoc%2Fmain%2Fdocs%2Fbadges.json&query=%24.skills&label=Skills&color=purple)](https://github.com/william-Johnason/synthadoc/tree/main/synthadoc/skills)
+[![CLI](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fwilliam-Johnason%2Fsynthadoc%2Fmain%2Fdocs%2Fbadges.json&query=%24.cli_commands&label=CLI%20commands&color=darkblue)](https://github.com/william-Johnason/synthadoc)
+[![Obsidian](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fwilliam-Johnason%2Fsynthadoc%2Fmain%2Fdocs%2Fbadges.json&query=%24.obsidian_commands&label=Obsidian%20commands&color=blueviolet)](https://github.com/william-Johnason/synthadoc/tree/main/obsidian-plugin)
+[![Version](https://img.shields.io/badge/Community%20Edition-v0.1.0-lightgrey.svg)](https://github.com/william-Johnason/synthadoc/releases/tag/v0.1.0)
 
 **Engineered for solo users and enterprises alike, providing a domain-specific knowledge base that scales seamlessly while maintaining accuracy through autonomous self-optimization.**
 
