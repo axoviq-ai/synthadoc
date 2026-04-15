@@ -14,51 +14,34 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
-import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
 
 
-def _parse_commands(help_output: str) -> list[str]:
-    """Extract command names from a Typer --help output table."""
-    commands = []
-    in_commands = False
-    for line in help_output.splitlines():
-        if "+- Commands" in line:
-            in_commands = True
-            continue
-        if in_commands:
-            if line.startswith("+--"):
-                break
-            # Match lines like: "| cmdname    Description..."
-            m = re.match(r"^\| ([a-z][a-z0-9_-]+)\s", line)
-            if m:
-                commands.append(m.group(1))
-    return commands
-
-
 def count_cli_commands() -> int:
-    """Count all executable CLI entry points (top-level leaf commands + subcommands)."""
-    top_help = subprocess.run(
-        [sys.executable, "-m", "synthadoc", "--help"],
-        capture_output=True, text=True
-    ).stdout
-    top_level = _parse_commands(top_help)
+    """Count all executable CLI entry points by introspecting the Typer app directly.
+
+    Counts leaf top-level commands (no subcommands) plus all subcommands of
+    grouped commands. Avoids subprocess calls which can fail on CI due to
+    terminal width or PATH differences.
+    """
+    # Ensure the package root is importable
+    sys.path.insert(0, str(ROOT))
+
+    # Import the fully-registered app (all sub-modules register on import)
+    from synthadoc.cli.main import app  # noqa: PLC0415
 
     total = 0
-    for cmd in top_level:
-        sub_help = subprocess.run(
-            [sys.executable, "-m", "synthadoc", cmd, "--help"],
-            capture_output=True, text=True
-        ).stdout
-        subcommands = _parse_commands(sub_help)
-        if subcommands:
-            total += len(subcommands)
-        else:
-            total += 1  # leaf command with no subcommands
+    for group in app.registered_groups:
+        # Each registered group is a sub-Typer (e.g. audit, jobs, lint, schedule)
+        sub_app = group.typer_instance
+        total += len(sub_app.registered_commands)
+
+    # Leaf commands registered directly on the top-level app
+    total += len(app.registered_commands)
+
     return total
 
 
