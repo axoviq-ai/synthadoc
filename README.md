@@ -19,6 +19,15 @@
   Domain-agnostic LLM wiki engine
 ```
 
+[![CI](https://github.com/axoviq-ai/synthadoc/actions/workflows/ci.yml/badge.svg)](https://github.com/axoviq-ai/synthadoc/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://github.com/axoviq-ai/synthadoc/blob/main/LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-yellow.svg)](https://www.python.org/)
+[![Skills](https://img.shields.io/badge/Skills-8-purple.svg)](https://github.com/axoviq-ai/synthadoc/tree/main/synthadoc/skills)
+[![CLI](https://img.shields.io/badge/CLI-14%20commands-darkblue.svg)](https://github.com/axoviq-ai/synthadoc)
+[![Obsidian](https://img.shields.io/badge/Obsidian-9%20commands-blueviolet.svg)](https://github.com/axoviq-ai/synthadoc/tree/main/obsidian-plugin)
+[![Powered by](https://img.shields.io/badge/Powered%20by-Claude%20Code-orange.svg)](https://claude.ai/code)
+[![Version](https://img.shields.io/badge/Community%20Edition-v0.1.0-lightgrey.svg)](https://github.com/axoviq-ai/synthadoc/releases/tag/v0.1.0)
+
 **Engineered for solo users and enterprises alike, providing a domain-specific knowledge base that scales seamlessly while maintaining accuracy through autonomous self-optimization.**
 
 > Built for individuals, small teams, and large organizations who need a knowledge base that stays accurate as documents accumulate.
