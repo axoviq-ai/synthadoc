@@ -145,26 +145,9 @@ For full architecture details, data models, API reference, and plugin developmen
 
 ---
 
-## What's Included in v0.1
+## What's Included
 
-- **3 agents** — IngestAgent (two-step cached synthesis), QueryAgent (BM25 + LLM), LintAgent (contradiction + orphan detection + auto-resolution)
-- **8 built-in skills** — PDF, URL, Markdown/TXT, DOCX, PPTX, XLSX/CSV, Image (vision), **Web search (Tavily — fully live)**
-- **Folder-based skill system** — each skill is a self-contained folder with a `SKILL.md` manifest; intent-based dispatch alongside extension matching; drop a folder in `skills/` to add a new format without touching core code
-- **2 access surfaces** — CLI (thin HTTP client), HTTP REST API
-- **Obsidian plugin** — ingest (with file picker when no note is active), query (responsive modal, stays open), lint report, jobs list — all from the command palette; ribbon shows engine health + page count
-- **5 LLM providers** — Anthropic, OpenAI, **Gemini** (free tier), **Groq** (free tier), Ollama (local); switch with one config line
-- **Two-step ingest** — `_analyse()` caches entity extraction + summary; decision prompt uses summary instead of full text; reduces cost on large documents
-- **purpose.md scope filtering** — define what belongs in your wiki; the LLM skips out-of-scope sources cleanly
-- **overview.md auto-summary** — 2-paragraph wiki overview regenerated automatically after every ingest that creates or updates pages
-- **Audit CLI** — `synthadoc audit history / cost / events` query `audit.db` without needing direct access; `--analyse-only` flag previews ingest analysis before writing pages
-- **3-layer cache** — embedding cache, LLM response cache, provider prompt cache
-- **Cost guards** — configurable soft-warn and hard-gate USD thresholds
-- **Hook system** — shell commands on `on_ingest_complete` and `on_lint_complete` lifecycle events; blocking or background; context passed as JSON on stdin; community hook library in [`hooks/`](hooks/)
-- **Job queue** — SQLite-backed, persistent, retry with exponential backoff; non-retryable errors (`failed`) distinguished from exhausted-retry errors (`dead`)
-- **Startup banner** — ASCII logo with version, port, wiki, and PID on `synthadoc serve`; plain-text version served at `GET /`; `--background` flag detaches the server and returns the shell immediately (logs → file only)
-- **Multi-wiki** — unlimited isolated wikis, each on its own port
-- **OpenTelemetry** — traces, metrics, structured logs; OTLP export optional
-- **Cross-platform** — Windows, Linux, macOS
+See [docs/design.md — Appendix A: Release Feature Index](docs/design.md#appendix-a--release-feature-index) for a full feature list by version.
 
 ---
 
