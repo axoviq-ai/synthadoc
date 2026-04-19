@@ -1,6 +1,6 @@
 # Synthadoc — Design Document
 
-**Version:** 0.1 (updated 2026-04-12)  
+**Version:** 0.2.0 (in progress — not yet released; updated 2026-04-18)  
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -26,7 +26,7 @@
 15. [Observability and Logging](#15-observability-and-logging)
 16. [Security](#16-security)
 17. [Plugin Development Guide](#17-plugin-development-guide)
-18. [v0.2 Roadmap](#18-v02-roadmap)
+18. [v0.2.0 — In Progress](#18-v020--in-progress)
 19. [New in v0.1 — Feature Reference](#19-new-in-v01--feature-reference)
 
 **Appendices**
@@ -371,6 +371,17 @@ SQLite. Two key tables:
 | `event` | TEXT | e.g. `contradiction_found`, `auto_resolved`, `cost_gate_triggered` |
 | `details` | TEXT | JSON |
 | `recorded_at` | TEXT | UTC ISO-8601 |
+
+**`queries`** _(added in v0.2.0)_
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | INTEGER PK | |
+| `question` | TEXT | Original question text |
+| `sub_questions_count` | INTEGER | Number of sub-questions decomposed (1 for simple questions) |
+| `tokens` | INTEGER | Answer call token usage |
+| `cost_usd` | REAL | Approximate cost (answer tokens × rate) |
+| `queried_at` | TEXT | UTC ISO-8601 |
 
 ### jobs.db — Job queue
 
@@ -891,7 +902,7 @@ Enforces per-operation budget limits. Evaluated before every LLM call.
 | `soft_warn_usd` | $0.50 | Log warning; auto-continue |
 | `hard_gate_usd` | $2.00 | Prompt user `Proceed? [y/N]`; block if N; skip prompt if `auto_confirm=True` or `--yes` flag |
 
-> **v0.1 note — cost thresholds are inactive.** Token counts are tracked accurately and stored in `audit.db`, but `cost_usd` is always `$0.0000` because no per-model pricing table is implemented yet. As a result, `soft_warn_usd` and `hard_gate_usd` never trigger. `auto_resolve_confidence_threshold` is unaffected — it uses LLM confidence scores, not cost. Per-model pricing and active cost gating are planned for v0.2.
+> **Cost tracking note.** In v0.1, `cost_usd` for ingest was always `$0.0000` — no per-model pricing table was implemented. In v0.2, query costs are estimated using an approximate per-token rate; ingest cost tracking remains approximate. Per-model pricing tables are planned for a future release. Token counts are always accurate. As a result, `soft_warn_usd` and `hard_gate_usd` do not yet trigger reliably. `auto_resolve_confidence_threshold` is unaffected — it uses LLM confidence scores, not cost.
 
 ### API
 
@@ -1170,9 +1181,21 @@ echo "Event $event fired on wiki $wiki" | mail -s "Synthadoc notification" you@e
 
 ---
 
-## 18. v0.2 Roadmap
+## 18. v0.2.0 — In Progress
 
 Target: week of 2026-04-25.
+
+### Delivered in v0.2.0
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **Query decomposition** | ✅ v0.2.0 | Replaces term-extraction with dynamic sub-question decomposition; parallel BM25 retrieval per sub-question; fence-stripping for cross-model JSON robustness |
+| **Query audit trail** | ✅ v0.2.0 | `queries` table in `audit.db`; `record_query()`, `list_queries()`; `cost_summary()` unions ingest + query; HTTP + CLI + Obsidian surfaces |
+| **BM25 corpus caching** | ✅ v0.2.0 | In-memory corpus cache in `HybridSearch`; invalidated on write; eliminates redundant disk reads on decomposed queries |
+| **OpenAIProvider contract tests** | ✅ v0.2.0 | Covers OpenAI, Gemini, Groq, Ollama (all share `OpenAIProvider`) |
+| **HTTP 502 on LLM failure** | ✅ v0.2.0 | `/query` GET and POST return 502 Bad Gateway (not raw 500) when the LLM provider is unreachable |
+
+### Planned
 
 | Feature | Motivation |
 |---------|-----------|
@@ -1278,4 +1301,9 @@ synthadoc schedule add --op "scaffold" --cron "0 4 * * 0" -w my-wiki
 
 ### v0.2.0 (in progress)
 
-_New features will be listed here as they ship._
+- **Query decomposition** — `QueryAgent.decompose()` breaks complex questions into 1–N focused sub-questions (cap=4); parallel BM25 search per sub-question; merged and deduplicated by highest score; graceful fallback on LLM error; markdown fence stripping for cross-model robustness
+- **Query audit trail** — `queries` table in `audit.db`; every query recorded with question text, sub-question count, tokens, cost, timestamp; `cost_summary()` now aggregates ingest + query spend; exposed via `GET /audit/queries`, `synthadoc audit queries`, and Obsidian "Audit: query history..." command
+- **BM25 in-memory corpus cache** — `HybridSearch._cached_corpus` built once per session, invalidated via `invalidate_index()` after each page write; eliminates N×disk reads on decomposed queries
+- **OpenAIProvider contract tests** — 4 tests covering happy path, system message, null content, and custom `base_url` forwarding; applies to OpenAI, Gemini, Groq, and Ollama (all use `OpenAIProvider`)
+- **HTTP 502 on LLM failure** — `/query` GET and POST return 502 Bad Gateway (not raw 500) when the LLM provider is unreachable
+- **Obsidian plugin: 15 commands** — added `Audit: query history...` command with `QueryHistoryModal`

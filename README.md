@@ -14,7 +14,7 @@
       '-+###############+-'
 
        S Y N T H A D O C
-    Community Edition  v0.1.0
+    Community Edition  v0.2.0
   ────────────────────────────────
   Domain-agnostic LLM wiki engine
 ```
@@ -25,7 +25,9 @@
 [![Skills](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fmain%2Fdocs%2Fbadges.json&query=%24.skills&label=Skills&color=purple)](https://github.com/axoviq-ai/synthadoc/tree/main/synthadoc/skills)
 [![CLI](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fmain%2Fdocs%2Fbadges.json&query=%24.cli_commands&label=CLI%20commands&color=darkblue)](https://github.com/axoviq-ai/synthadoc)
 [![Obsidian](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fmain%2Fdocs%2Fbadges.json&query=%24.obsidian_commands&label=Obsidian%20commands&color=blueviolet)](https://github.com/axoviq-ai/synthadoc/tree/main/obsidian-plugin)
-[![Version](https://img.shields.io/badge/Community%20Edition-v0.1.0-lightgrey.svg)](https://github.com/axoviq-ai/synthadoc/releases/tag/v0.1.0)
+[![Version](https://img.shields.io/badge/Community%20Edition-v0.2.0--dev-orange.svg)](https://github.com/axoviq-ai/synthadoc)
+
+**Document version: v0.2.0 (in progress — not yet released)**
 
 **Engineered for solo users and enterprises alike, providing a domain-specific knowledge base that scales seamlessly while maintaining accuracy through autonomous self-optimization.**
 
@@ -707,7 +709,7 @@ synthadoc audit events -w my-wiki           # table: timestamp, job_id, event ty
 synthadoc audit events --json -w my-wiki    # raw JSON
 ```
 
-> **Note:** `cost_usd` is always `$0.0000` in v0.1 — per-model pricing is not yet implemented. Token counts are accurate.
+> **Note:** In v0.1, `cost_usd` for ingest was always `$0.0000`. In v0.2, query costs are tracked using an approximate rate. Per-model pricing tables are planned for a future release — token counts are always accurate.
 
 ### Cache management
 
@@ -950,18 +952,12 @@ Edit `<wiki-root>/AGENTS.md` to give the LLM domain-specific instructions — wh
 
 ---
 
-## What's Coming in v0.2
-
-Target: week of 2026-04-25.
+## What's New in v0.2.0
 
 | Feature | Notes |
 |---------|-------|
-| **Web UI** | Browser-based dashboard — view pages, run jobs, inspect contradictions and orphans without Obsidian |
-| **Vector search + re-ranking** | Hybrid BM25 + `fastembed` local vectors; better recall on semantically related queries |
-| **Graph-aware retrieval** | Multi-hop wikilink traversal for queries like "What connects Turing to von Neumann?" |
-| **Larger corpus support** | Sharded index, incremental embedding updates, streaming ingest for very large documents |
-| **Obsidian plugin: web search live view** | Watch pages appear as results stream in — job polling and live result panel (basic modal already in v0.1) |
-| **Mistral + Bedrock providers** | Additional OpenAI-compatible and AWS-native LLM backends |
+| **Query decomposition** | Complex questions automatically split into focused sub-queries, each retrieved independently then synthesised — compound and comparative questions answered correctly |
+| **Query audit trail** | Every query recorded in `audit.db`; `synthadoc audit queries` and `GET /audit/queries` show question history, sub-question counts, and token costs; `audit cost` now aggregates both ingest and query spend |
 
 ---
 
