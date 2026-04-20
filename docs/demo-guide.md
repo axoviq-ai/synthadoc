@@ -95,7 +95,7 @@ plus a human-readable Markdown body for documentation.
 If you followed the README, you should already have:
 
 - **Demo wiki installed** — `synthadoc install history-of-computing --target ... --demo`
-- **LLM API key set** — at least one of `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`
+- **LLM API key set** — `GEMINI_API_KEY` (default, free) or `GROQ_API_KEY` / `ANTHROPIC_API_KEY`
 - **Engine running** — `synthadoc serve -w history-of-computing`
 
 If any of these are missing, complete [README Steps 4–6](../README.md#step-4--set-your-api-keys) first, then come back here.
@@ -105,7 +105,7 @@ If any of these are missing, complete [README Steps 4–6](../README.md#step-4--
 > required when you ingest new sources or run lint. Web search (Step 9) additionally
 > requires `TAVILY_API_KEY` — see [Appendix — Tavily web search key](#appendix--tavily-web-search-key).
 >
-> Want to use a different LLM provider (e.g. free-tier Gemini Flash)? See
+> Want to use a different LLM provider (e.g. Groq or Anthropic)? See
 > [Appendix — Switching LLM providers](#appendix--switching-llm-providers) at the bottom
 > of this guide.
 
@@ -406,7 +406,7 @@ If the wiki doesn't cover a topic yet, Synthadoc detects the gap automatically a
 > After ingesting, re-run your query to get a richer answer.
 ```
 
-The gap is triggered when fewer than 3 pages are retrieved OR the best BM25 match scores below the configured threshold (`gap_score_threshold = 2.0` in `synthadoc.toml`). The suggested search strings are generated automatically by `SearchDecomposeAgent`.
+The gap is triggered when fewer than 3 pages are retrieved OR the best BM25 match scores below the configured threshold (`gap_score_threshold = 2.0` in `.synthadoc/config.toml`). The suggested search strings are generated automatically by `SearchDecomposeAgent`.
 
 ---
 
@@ -935,21 +935,22 @@ The directory and registry entry are both removed. There is no `--yes` flag — 
 
 ## Appendix — Switching LLM providers
 
-Synthadoc supports five LLM providers. The demo uses Anthropic by default, but
-**Gemini Flash is a great free-tier alternative** — 15 requests per minute and 1 million
-tokens per day at no cost, which is more than enough for demos and personal wikis.
-
-You can switch at any time by changing the `provider` line in
+Synthadoc supports five LLM providers and defaults to **Gemini Flash** — free, no credit
+card, and 1 million tokens per day. You can switch at any time by editing
 `<wiki-root>/.synthadoc/config.toml` and restarting the server. The wiki, cache, and
-audit trail are provider-agnostic — switching does not require re-ingesting anything.
+audit trail are provider-agnostic — switching never requires re-ingesting anything.
 
 | Provider    | Key env var         | Free tier                  |
 | ----------- | ------------------- | -------------------------- |
-| `anthropic` | `ANTHROPIC_API_KEY` | No                         |
-| `openai`    | `OPENAI_API_KEY`    | No                         |
-| `gemini`    | `GEMINI_API_KEY`    | Yes (15 RPM, 1M tok/day)   |
-| `groq`      | `GROQ_API_KEY`      | Yes (Llama/Mixtral models) |
-| `ollama`    | _(none)_            | Yes (fully local)          |
+| `gemini`    | `GEMINI_API_KEY`    | **Yes — default** · 15 RPM / 1M tokens per day              |
+| `groq`      | `GROQ_API_KEY`      | Yes — fast Llama models, 100K tokens/day                    |
+| `ollama`    | _(none)_            | Yes — fully local, no rate limits                           |
+| `anthropic` | `ANTHROPIC_API_KEY` | No — pay-per-token, highest quality                         |
+| `openai`    | `OPENAI_API_KEY`    | No — pay-per-token                                          |
+
+> **Hit a quota limit?** Gemini free tier enforces a 15 RPM per-minute cap that can be
+> exhausted during a long ingest session. If you see a `429 RateLimitError`, either wait
+> a minute and retry, or switch to Groq (Option C below) as a fallback.
 
 ### Option A — Anthropic (Claude)
 
@@ -975,7 +976,18 @@ setx ANTHROPIC_API_KEY sk-ant-your-key-here
 export ANTHROPIC_API_KEY="sk-ant-your-key-here"
 ```
 
-### Option B — Google Gemini (free tier)
+3. Update the wiki config:
+
+Open `<wiki-root>/.synthadoc/config.toml` and set:
+
+```toml
+[agents]
+default = { provider = "anthropic", model = "claude-sonnet-4-6" }
+```
+
+Restart `synthadoc serve`. The banner will confirm `LLM: anthropic/claude-sonnet-4-6`.
+
+### Option B — Google Gemini (free tier, default)
 
 1. Go to **aistudio.google.com/app/apikey** → create a key (free, no credit card)
 2. Set the key:
@@ -1002,6 +1014,54 @@ default = { provider = "gemini", model = "gemini-2.0-flash" }
 ```
 
 Restart `synthadoc serve` to pick up the change.
+
+> **Gemini free tier limits:** 15 requests per minute and 1 million input tokens per day.
+> A long batch ingest can exhaust the per-minute cap — if you see a `429` error, wait
+> 60 seconds and retry. For higher burst throughput, switch to Groq (Option C).
+
+### Option C — Groq (free tier, fast inference)
+
+Groq offers free API access to Llama 3 models with fast inference speeds — a good
+fallback when Gemini's per-minute rate limit is exhausted.
+
+1. Go to **console.groq.com** → sign up (no credit card needed) → **API Keys** → create a key
+2. Set the key:
+
+**Windows (cmd.exe — current session):**
+
+```cmd
+set GROQ_API_KEY=gsk_your-key-here
+```
+
+**Windows (cmd.exe — permanent, survives reboot):**
+
+```cmd
+setx GROQ_API_KEY gsk_your-key-here
+```
+
+> After `setx`, open a new cmd window for the variable to take effect.
+
+**Linux / macOS:**
+
+```bash
+export GROQ_API_KEY="gsk_your-key-here"
+```
+
+3. Update the wiki config:
+
+Open `<wiki-root>/.synthadoc/config.toml` and set:
+
+```toml
+[agents]
+default = { provider = "groq", model = "llama-3.3-70b-versatile" }
+```
+
+Restart `synthadoc serve`. The banner will confirm `LLM: groq/llama-3.3-70b-versatile`.
+
+> **Groq free tier limits:** 100,000 tokens per day for `llama-3.3-70b-versatile`. A
+> web search ingest fans out to ~20 URLs, each costing ~1,200 tokens — four web searches
+> can exhaust the daily quota. For heavier sustained use, switch back to Gemini (1M
+> tokens/day). The server backs off automatically when the quota is hit.
 
 ---
 

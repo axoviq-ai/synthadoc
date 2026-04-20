@@ -44,7 +44,7 @@ def get(wiki: str, path: str, **params) -> dict:
         )
     except httpx.HTTPStatusError as e:
         E.cli_error(E.SRV_HTTP_ERROR,
-                    f"Server returned {e.response.status_code}: {e.response.text.strip()}")
+                    f"Server returned {e.response.status_code}: {_detail(e.response)}")
 
 
 def post(wiki: str, path: str, body: dict) -> dict:
@@ -63,7 +63,7 @@ def post(wiki: str, path: str, body: dict) -> dict:
         )
     except httpx.HTTPStatusError as e:
         E.cli_error(E.SRV_HTTP_ERROR,
-                    f"Server returned {e.response.status_code}: {e.response.text.strip()}")
+                    f"Server returned {e.response.status_code}: {_detail(e.response)}")
 
 
 def delete(wiki: str, path: str) -> dict:
@@ -76,7 +76,15 @@ def delete(wiki: str, path: str) -> dict:
         _no_server(wiki)
     except httpx.HTTPStatusError as e:
         E.cli_error(E.SRV_HTTP_ERROR,
-                    f"Server returned {e.response.status_code}: {e.response.text.strip()}")
+                    f"Server returned {e.response.status_code}: {_detail(e.response)}")
+
+
+def _detail(response: httpx.Response) -> str:
+    """Extract FastAPI's detail string from a JSON error response, or return raw text."""
+    try:
+        return response.json()["detail"]
+    except Exception:
+        return response.text.strip()
 
 
 def _no_server(wiki: str) -> None:

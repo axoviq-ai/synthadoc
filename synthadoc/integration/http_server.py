@@ -16,6 +16,40 @@ import re
 logger = logging.getLogger(__name__)
 
 _MAX_BODY_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+def _classify_llm_error(exc: Exception) -> "HTTPException | None":
+    """Return a meaningful HTTPException for known LLM API error codes, or None."""
+    # openai/anthropic SDKs set status_code directly on the exception;
+    # httpx.HTTPStatusError (used by OllamaProvider) stores it on exc.response.
+    code = getattr(exc, "status_code", None)
+    if code is None:
+        resp = getattr(exc, "response", None)
+        code = getattr(resp, "status_code", None)
+
+    if code == 429:
+        msg = str(exc)
+        _SWITCH = "Switch to another provider by editing [agents] in .synthadoc/config.toml and restarting the server (options: groq, gemini, anthropic, openai, ollama)."
+        if "generativelanguage.googleapis.com" in msg or "gemini" in msg.lower():
+            hint = f"Gemini free-tier quota exhausted. Wait for the daily reset or switch providers. {_SWITCH}"
+        elif "groq" in msg.lower():
+            hint = f"Groq rate limit hit. Wait for the retry window or switch providers. {_SWITCH}"
+        elif "anthropic" in msg.lower():
+            hint = f"Anthropic rate limit hit. Wait a moment or switch providers. {_SWITCH}"
+        elif "openai" in msg.lower():
+            hint = f"OpenAI rate limit hit. Wait a moment or switch providers. {_SWITCH}"
+        else:
+            hint = f"LLM provider rate limit hit. Wait a moment or switch providers. {_SWITCH}"
+        return HTTPException(
+            status_code=429,
+            detail=f"LLM quota exceeded (429). {hint}",
+        )
+    if code == 529:
+        return HTTPException(
+            status_code=503,
+            detail="LLM provider temporarily overloaded (529). Retry in a moment.",
+        )
+    return None
 _WORKER_POLL_SECONDS = 2
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 _FM_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
@@ -80,12 +114,22 @@ class AnalyseRequest(BaseModel):
         return v
 
 
+def _parse_retry_after(exc: Exception, default: float = 60.0) -> float:
+    """Parse 'Please try again in Xm Y.Zs' from a rate-limit error message."""
+    import re
+    m = re.search(r"Please try again in (?:(\d+)m\s*)?(\d+(?:\.\d+)?)s", str(exc))
+    if m:
+        return float(m.group(1) or 0) * 60 + float(m.group(2))
+    return default
+
+
 async def _worker_loop(orch) -> None:
     """Background task: poll jobs.db and execute pending jobs."""
-    from synthadoc.core.queue import JobStatus
+    sleep_secs = _WORKER_POLL_SECONDS
     while True:
         try:
             job = await orch.queue.dequeue()
+            sleep_secs = _WORKER_POLL_SECONDS  # reset after a successful dequeue
             if job:
                 if job.operation == "ingest":
                     source = job.payload.get("source", "")
@@ -98,10 +142,22 @@ async def _worker_loop(orch) -> None:
                 elif job.operation == "scaffold":
                     domain = job.payload.get("domain", "")
                     await orch._run_scaffold(job.id, domain=domain)
-        except Exception:
-            logger.exception("Worker loop error — job recorded in jobs.db; continuing")
+        except Exception as exc:
+            known = _classify_llm_error(exc)
+            if known and known.status_code == 429:
+                sleep_secs = _parse_retry_after(exc)
+                logger.warning(
+                    "Rate limit hit in worker — pausing %.0f s before next job. "
+                    "(%d pending jobs will wait.) %s",
+                    sleep_secs,
+                    len([j for j in asyncio.all_tasks() if not j.done()]),
+                    known.detail,
+                )
+            else:
+                logger.exception("Worker loop error — job recorded in jobs.db; continuing")
+                sleep_secs = _WORKER_POLL_SECONDS
 
-        await asyncio.sleep(_WORKER_POLL_SECONDS)
+        await asyncio.sleep(sleep_secs)
 
 
 def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAPI:
@@ -177,6 +233,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         try:
             result = await app.state.orch.query(q)
         except Exception as exc:
+            known = _classify_llm_error(exc)
+            if known:
+                logger.warning("LLM rate limit during query: %s", exc)
+                raise known from exc
             logger.exception("Query failed")
             raise HTTPException(status_code=502, detail="LLM provider unavailable") from exc
         return {
@@ -191,6 +251,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         try:
             result = await app.state.orch.query(req.question)
         except Exception as exc:
+            known = _classify_llm_error(exc)
+            if known:
+                logger.warning("LLM rate limit during query: %s", exc)
+                raise known from exc
             logger.exception("Query failed")
             raise HTTPException(status_code=502, detail="LLM provider unavailable") from exc
         return {

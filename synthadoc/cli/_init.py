@@ -27,8 +27,11 @@ domain = "{domain}"
 port = {port}  # change this if running multiple wikis simultaneously
 
 [agents]
-# default = {{ provider = "anthropic", model = "claude-opus-4-6" }}
-# lint    = {{ model = "claude-haiku-4-5" }}
+default = {{ provider = "gemini", model = "gemini-2.0-flash" }}
+# Alternatives (uncomment and restart to switch):
+# default = {{ provider = "groq",      model = "llama-3.3-70b-versatile" }} # free tier, 100K tokens/day
+# default = {{ provider = "anthropic", model = "claude-sonnet-4-6" }}       # paid, highest quality
+# default = {{ provider = "ollama",    model = "llama3.2" }}                 # fully local
 
 [ingest]
 max_pages_per_ingest = 15

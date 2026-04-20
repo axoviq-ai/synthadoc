@@ -147,17 +147,24 @@ class QueryAgent:
             if len(w) > 4 and w.lower().rstrip("s?!.,") not in _STOPWORDS
         }
 
-        # Signal 3: pick the RAREST key term among the retrieved pages as the
-        # discriminating signal.  Generic terms ("spring", "canadian") appear in
-        # almost every page of a topic-specific wiki and inflate the count; the
-        # rarest term (e.g. "vegetable" in a flower-heavy wiki) tells us whether
-        # the wiki actually has DEDICATED content on the question's main topic.
+        # Signal 3: check whether retrieved pages contain dedicated coverage of the
+        # query's specific topic words.
         #
-        # A page "covers" the topic if the discriminating term appears ≥ 3 times —
-        # a single mention in a bullet list is different from a dedicated section.
-        _MIN_TERM_FREQ = 3
+        # Generic corpus terms ("canadian", "spring", "plant") appear in nearly
+        # every page and would make every page look on-topic.  We filter them out
+        # by excluding terms whose document frequency exceeds 60% of the candidates.
+        # From the remaining "specific" terms we check whether at least 2 candidates
+        # contain ANY of them with meaningful frequency (≥ 2 occurrences).
+        #
+        # Using ANY rather than a single rarest term handles multi-aspect queries
+        # correctly: a page about "full shade" plants is on-topic for a query about
+        # "sun, partial shade, and full shade" even if it lacks the word "partial".
+        #
+        # Zero-freq terms (synonyms like "backyard" vs "garden") are excluded;
+        # they reflect vocabulary mismatch, not missing content.
+        _MIN_TERM_FREQ = 2
         if _key_terms and candidates:
-            # Count how many candidates contain each key term at all (doc frequency).
+            # Count how many candidates contain each key term (doc frequency).
             _term_doc_freq = {
                 t: sum(
                     1 for r in candidates
@@ -165,21 +172,34 @@ class QueryAgent:
                 )
                 for t in _key_terms
             }
-            # Prefer the rarest term that appears in at least one page.
-            # Zero-freq terms are often synonym mismatches (e.g. "backyard" vs "garden")
-            # rather than evidence of missing content.  Only fall back to a zero-freq
-            # term when ALL key terms are absent — that is an unambiguous content gap.
             _covered = {t: f for t, f in _term_doc_freq.items() if f > 0}
-            if _covered:
+
+            # Drop hyper-generic terms that appear in >80% of candidates.
+            # Using 80% (not 60%) so moderately-common topic words like "partial"
+            # (present in ~60-70% of pages in a shade-focused wiki) are kept as
+            # discriminators rather than being wrongly discarded as generic.
+            _n_cands = len(candidates)
+            _specific = {t: f for t, f in _covered.items() if f <= _n_cands * 0.8}
+            if not _specific:
+                _specific = _covered  # all terms are corpus-generic; use full covered set
+            # If every term in _specific appears in only one page it is too rare to
+            # discriminate topic coverage — expand to include all covered terms.
+            elif max(_specific.values()) <= 1:
+                _specific = _covered
+
+            # Log the rarest specific term as a representative discriminator.
+            if _specific:
+                _discriminating_term = min(_specific, key=lambda t: _specific[t])
+            elif _covered:
                 _discriminating_term = min(_covered, key=lambda t: _covered[t])
             else:
                 _discriminating_term = min(_term_doc_freq, key=lambda t: _term_doc_freq[t])
 
-            # Count pages where the discriminating term appears with meaningful frequency.
+            # A page is on-topic if it mentions ANY specific term with sufficient freq.
             _pages_with_overlap = sum(
                 1 for r in candidates
                 if (p := self._store.read_page(r.slug)) and
-                   p.content.lower().count(_discriminating_term) >= _MIN_TERM_FREQ
+                   any(p.content.lower().count(t) >= _MIN_TERM_FREQ for t in _specific)
             )
         else:
             _discriminating_term = ""

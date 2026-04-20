@@ -886,6 +886,61 @@ async def test_gap_signal3_boundary_one_on_topic_page(tmp_wiki):
                        gap_score_threshold=0.01)
     with patch.object(agent._search, "bm25_search", return_value=_fake_results(all_slugs)):
         result = await agent.query("What orchid plants grow well indoors?")
-    # "orchid" is the discriminating term; only 1 page has it ≥ 3 times → 1 < 2 → gap.
+    # "orchid" is the discriminating term; only 1 page has it ≥ 2 times → 1 < 2 → gap.
     assert result.knowledge_gap is True
     assert len(result.suggested_searches) >= 1
+
+
+@pytest.mark.asyncio
+async def test_no_gap_multi_aspect_query_with_generic_corpus_term(tmp_wiki):
+    """Signal 3 must not fire for a multi-aspect query when the wiki covers the topic
+    well but the corpus-dominant term ('shade') is filtered as hyper-generic.
+
+    Real-world regression: query asks about 'full sun, partial shade, and full shade'.
+    The wiki has many shade pages.  'shade' and 'plant' appear in every page (>60%
+    coverage) so they are filtered as generic.  'partial' is the rarest specific term.
+    Pages that mention 'partial' at least twice count as on-topic — if ≥ 2 pages pass,
+    no gap fires even though 'shade' was excluded from the specific-term check.
+
+    bm25_search is mocked to return the shade pages directly.
+    """
+    store = WikiStorage(tmp_wiki / "wiki")
+    # 4 pages cover partial shade explicitly; 2 are full-shade only.
+    for i in range(4):
+        store.write_page(f"partial-shade-{i}", WikiPage(
+            title=f"Partial Shade Plants {i}", tags=["shade"],
+            content=(
+                "Best plants for partial shade in Canadian gardens. "
+                "Partial shade perennials thrive under dappled light. "
+                "These shade-tolerant plants suit partial shade conditions. "
+                "Plant selection for partial shade and full shade areas."
+            ),
+            status="active", confidence="high", sources=[],
+        ))
+    for i in range(2):
+        store.write_page(f"full-shade-{i}", WikiPage(
+            title=f"Full Shade Plants {i}", tags=["shade"],
+            content=(
+                "Best plants for full shade. Hostas thrive in shade. "
+                "Shade plants for Canadian gardens. Deep shade perennials."
+            ),
+            status="active", confidence="high", sources=[],
+        ))
+    all_slugs = [f"partial-shade-{i}" for i in range(4)] + [f"full-shade-{i}" for i in range(2)]
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["best plants for full sun partial shade and full shade Canada"]',
+                           input_tokens=5, output_tokens=5),
+        CompletionResponse(text="Here are plants for each light level...",
+                           input_tokens=200, output_tokens=60),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search,
+                       gap_score_threshold=0.01)  # signal 2 disabled; only signal 3 can fire
+    with patch.object(agent._search, "bm25_search", return_value=_fake_results(all_slugs)):
+        result = await agent.query(
+            "What are the best plants for full sun, partial shade, and full shade in a Canadian backyard?"
+        )
+    # 4 pages mention "partial" ≥ 2 times → on_topic_pages = 4 ≥ 2 → no gap.
+    assert result.knowledge_gap is False
+    assert result.suggested_searches == []
