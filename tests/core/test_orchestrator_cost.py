@@ -176,3 +176,49 @@ async def test_orchestrator_ingest_unknown_model_uses_fallback_nonzero(tmp_wiki)
     cost = await _run_and_capture_ingest_cost(orch, input_tokens=1000, output_tokens=500)
     assert cost is not None
     assert cost > 0.0, "Unknown model must use fallback rate, not $0.00"
+
+
+# ── Permanent failure handling ────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_run_ingest_file_not_found_marks_job_permanently_failed(tmp_wiki):
+    """FileNotFoundError must mark a job dead immediately with no retry.
+
+    A missing or corrupted source path can never succeed — retrying wastes
+    quota and fills logs.  fail_permanent() must be called instead of fail().
+    """
+    cfg = _cfg()
+    orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
+    await orch.init()
+
+    mock_provider = MagicMock()
+    with patch("synthadoc.core.orchestrator.make_provider", return_value=mock_provider):
+        with patch("synthadoc.agents.ingest_agent.IngestAgent.ingest",
+                   new=AsyncMock(side_effect=FileNotFoundError("Source not found: /bad/path"))):
+            with patch.object(orch._queue, "fail_permanent", new=AsyncMock()) as mock_perm:
+                with patch.object(orch._queue, "fail", new=AsyncMock()) as mock_fail:
+                    await orch._run_ingest("job-1", "/bad/path", auto_confirm=True)
+
+    mock_perm.assert_awaited_once()
+    mock_fail.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_ingest_transient_error_uses_retryable_fail(tmp_wiki):
+    """Network timeouts must use fail() (retryable), not fail_permanent()."""
+    import httpx
+    cfg = _cfg()
+    orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
+    await orch.init()
+
+    mock_provider = MagicMock()
+    timeout_exc = httpx.ReadTimeout("timed out", request=MagicMock())
+    with patch("synthadoc.core.orchestrator.make_provider", return_value=mock_provider):
+        with patch("synthadoc.agents.ingest_agent.IngestAgent.ingest",
+                   new=AsyncMock(side_effect=timeout_exc)):
+            with patch.object(orch._queue, "fail_permanent", new=AsyncMock()) as mock_perm:
+                with patch.object(orch._queue, "fail", new=AsyncMock()) as mock_fail:
+                    await orch._run_ingest("job-2", "https://example.com", auto_confirm=True)
+
+    mock_perm.assert_not_awaited()
+    mock_fail.assert_awaited_once()

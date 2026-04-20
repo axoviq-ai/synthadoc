@@ -4,8 +4,24 @@ from __future__ import annotations
 
 import importlib.util
 import logging
+import re
 from pathlib import Path
 from typing import Optional
+
+_BACKSLASH_URL_RE = re.compile(r'^(https?:)[/\\]{1,2}', re.IGNORECASE)
+
+
+def _normalize_url(source: str) -> str:
+    """Reconstruct a proper URL from Windows-pasted forms with backslashes.
+
+    https:\\example.com\\path  →  https://example.com/path
+    https:\\example.com\\path  →  https://example.com/path
+    https://example.com/path   →  unchanged
+    """
+    m = _BACKSLASH_URL_RE.match(source)
+    if m:
+        return m.group(1) + "//" + source[m.end():].replace("\\", "/")
+    return source
 
 from synthadoc.skills.base import BaseSkill, ExtractedContent, SkillMeta
 from synthadoc.skills.registry import build_registry_cache, parse_skill_md, SkillManifestError
@@ -113,7 +129,7 @@ class SkillAgent:
         return list(self._registry.values())
 
     def detect_skill(self, source: str) -> SkillMeta:
-        s = source.lower()
+        s = _normalize_url(source).lower()
         is_url = s.startswith("http://") or s.startswith("https://")
         # Pass 1: extension/prefix match — takes priority over intent matching.
         # For HTTP/HTTPS sources only startswith is checked so that the url skill
@@ -169,7 +185,9 @@ class SkillAgent:
         intent phrase (e.g. 'search for', '搜索', 'browse').  Adding new
         intents to a SKILL.md automatically applies here with no code changes.
         """
-        s = source.lower()
+        # Normalise backslash URLs so Windows-pasted forms (e.g. "https:\example.com\path")
+        # are not mistakenly resolved as local filesystem paths.
+        s = _normalize_url(source).lower()
         if s.startswith(("http://", "https://")):
             return False
         try:

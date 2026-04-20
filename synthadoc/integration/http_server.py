@@ -291,6 +291,12 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         from pathlib import Path as _Path
         from synthadoc.agents.skill_agent import SkillAgent
         source = req.source
+        # Normalise backslash URLs so Windows-pasted forms (e.g. "https:\example.com\path")
+        # are stored as proper URLs and are not mistakenly path-resolved.
+        from synthadoc.agents.skill_agent import _normalize_url
+        _normalised = _normalize_url(source)
+        if _normalised.lower().startswith(("http://", "https://")):
+            source = _normalised
         if SkillAgent().needs_path_resolution(source):
             p = _Path(source)
             if not p.is_absolute():

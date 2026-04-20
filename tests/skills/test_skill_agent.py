@@ -123,3 +123,34 @@ def test_pip_entry_point_skill_loaded(tmp_wiki):
                return_value=[skill_dir]):
         agent = SkillAgent(wiki_root=tmp_wiki)
     assert "_pip_skill_standalone" in [s.name for s in agent.list_skills()]
+
+
+# ── Backslash URL handling ────────────────────────────────────────────────────
+# Windows users sometimes paste URLs with backslashes (https:\example.com\path).
+# Both detect_skill and needs_path_resolution must handle these correctly so the
+# source is routed to the URL skill, not mistakenly treated as a local file path.
+
+def test_detect_skill_handles_backslash_urls(tmp_wiki):
+    """URLs with backslashes must be routed to the url skill, not treated as files."""
+    from synthadoc.agents.skill_agent import SkillAgent
+    agent = SkillAgent(wiki_root=tmp_wiki)
+    assert agent.detect_skill(r"https:\example.com\page").name == "url"
+    assert agent.detect_skill(r"http:\example.com\page").name == "url"
+    assert agent.detect_skill(r"https:\example.com\path\to\article").name == "url"
+
+
+def test_needs_path_resolution_returns_false_for_backslash_urls(tmp_wiki):
+    """URLs with backslashes must not be resolved as local filesystem paths."""
+    from synthadoc.agents.skill_agent import SkillAgent
+    agent = SkillAgent(wiki_root=tmp_wiki)
+    assert agent.needs_path_resolution(r"https:\example.com\page") is False
+    assert agent.needs_path_resolution(r"http:\example.com\path") is False
+
+
+def test_needs_path_resolution_returns_true_for_relative_paths(tmp_wiki):
+    """Relative paths with no URL prefix must be flagged for path resolution."""
+    from synthadoc.agents.skill_agent import SkillAgent
+    agent = SkillAgent(wiki_root=tmp_wiki)
+    # Use paths with no extension and no skill intent keywords in the string.
+    assert agent.needs_path_resolution("raw_sources/my-transcript") is True
+    assert agent.needs_path_resolution("uploads/batch-001") is True

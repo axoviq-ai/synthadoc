@@ -85,6 +85,25 @@ def test_ingest_url_not_mangled_to_file_path(tmp_wiki):
     assert str(tmp_wiki) not in queued_source
 
 
+def test_ingest_backslash_url_is_normalised_not_path_resolved(tmp_wiki):
+    """POST /jobs/ingest with a Windows backslash URL must store a clean https:// URL.
+
+    Users sometimes paste URLs as https:\\example.com\\path (backslashes).
+    The endpoint must normalise these to forward slashes and NOT prepend the
+    wiki root — otherwise the stored source becomes an unresolvable local path.
+    """
+    from synthadoc.integration.http_server import create_app
+    backslash_url = r"https:\example.com\collections\page"
+    with patch("synthadoc.core.queue.JobQueue.enqueue",
+               new=AsyncMock(return_value="job-bs")) as mock_enqueue:
+        with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+            resp = client.post("/jobs/ingest", json={"source": backslash_url})
+    assert resp.status_code == 200
+    queued_source = mock_enqueue.call_args[0][1]["source"]
+    assert queued_source == "https://example.com/collections/page"
+    assert str(tmp_wiki) not in queued_source
+
+
 def test_retry_job_endpoint(tmp_wiki):
     """POST /jobs/{id}/retry resets the job to pending."""
     from synthadoc.integration.http_server import create_app
