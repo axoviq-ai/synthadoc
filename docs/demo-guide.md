@@ -671,14 +671,22 @@ synthadoc ingest "search for: quantum computing IBM Google" --analyse-only -w hi
 # → {"entities": ["IBM", "Google", "quantum computing"], "tags": [...], "summary": "..."}
 ```
 
-**Via Obsidian plugin — dedicated web search modal:**
+**Via Obsidian plugin — live polling web search modal:**
 
 1. Open the command palette (`Ctrl+P` / `Cmd+P`)
-2. Run **Synthadoc: Web search...**
+2. Run **Synthadoc: Ingest: web search...**
 3. Type a topic — e.g. `Linus Torvalds Linux kernel creation 1991`
-4. Press **Enter** or click **Search**
-5. You'll see: `Queued — job abc123. Pages will appear in your wiki as results are ingested.`
-6. Switch to the **Synthadoc: List jobs...** modal to watch the fan-out jobs complete
+4. Optionally set **Max results** (default: 20, range 1–50) — limits how many URLs are enqueued in total; useful to control scope and cost for broad topics
+5. Optionally adjust the **Poll interval** (default: 2000 ms, range 500–10000 ms) — this controls how often the modal refreshes
+6. Press `Ctrl/Cmd+Enter` or click **Search**
+7. The modal transitions to a live view:
+   - **Searching the web…** — while Tavily fetches results
+   - **Found N URLs — ingesting…** — as fan-out jobs are created
+   - **Ingesting N URLs… (M done)** — counting completed child jobs
+   - A **Pages** list grows as each URL ingest completes and creates or updates wiki pages
+   - Any **Errors** (blocked domains, 404s) appear below in red
+   - **Done — N page(s) written.** when all jobs settle
+8. The modal stays open so you can review the page list — close it manually when done
 
 The modal prepends `search for:` automatically — just type the topic, no prefix needed.
 
@@ -1099,7 +1107,7 @@ Commands are grouped by prefix for easy navigation.
 | `Synthadoc: Ingest: current file` | Ingest the active note | Ingests the currently open note as a source. If no file is open, shows a file picker filtered to the configured raw sources folder. |
 | `Synthadoc: Ingest: all sources in folder` | Batch-ingest raw sources folder | Scans the `raw_sources` folder and queues every supported file (md, txt, pdf, docx, xlsx, csv, images) for ingestion. |
 | `Synthadoc: Ingest: from URL...` | Ingest a web page by URL | Opens a modal — paste any URL and queue it for fetch and ingestion. |
-| `Synthadoc: Ingest: web search...` | Search the web and ingest results | Prompt for a topic; Synthadoc decomposes it into focused keyword sub-queries, fires parallel Tavily searches, deduplicates URLs, and ingests each as a separate wiki page. `Ctrl/Cmd+Enter` to submit. |
+| `Synthadoc: Ingest: web search...` | Search the web and ingest results | Prompt for a topic; set **Max results** (1–50, default 20) to cap total URLs ingested; Synthadoc decomposes into focused keyword sub-queries, fires parallel Tavily searches, deduplicates URLs, and ingests each as a separate wiki page. `Ctrl/Cmd+Enter` to submit. |
 
 ### Query
 
@@ -1122,6 +1130,8 @@ Commands are grouped by prefix for easy navigation.
 | `Synthadoc: Jobs: list...` | View all jobs | Opens a job table showing all ingest/lint/scaffold operations with status, source, and timestamps. Filterable by status: `pending`, `in_progress`, `completed`, `failed`, `skipped`, `dead`. |
 | `Synthadoc: Jobs: retry dead job...` | Retry a failed job | Lists all dead jobs and provides a Retry button per job to re-queue it with a fresh retry counter. |
 | `Synthadoc: Jobs: purge old completed/dead...` | Clean up old job history | Removes completed and dead jobs older than a specified number of days (default: 7). |
+
+> **Tip — cancelling a bad batch:** If a web search queued far more jobs than expected, cancel them all from the CLI: `synthadoc jobs cancel -w <wiki> --yes`. This marks every pending job as `skipped` immediately, without affecting in-progress or completed jobs. Follow up with `synthadoc jobs purge` to remove the skipped records.
 
 ### Wiki
 

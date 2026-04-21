@@ -85,6 +85,7 @@ class QueryRequest(BaseModel):
 class IngestRequest(BaseModel):
     source: str
     force: bool = False
+    max_results: int | None = None
 
 
 class LintRequest(BaseModel):
@@ -134,7 +135,9 @@ async def _worker_loop(orch) -> None:
                 if job.operation == "ingest":
                     source = job.payload.get("source", "")
                     force = job.payload.get("force", False)
-                    await orch._run_ingest(job.id, source, auto_confirm=True, force=force)
+                    max_results = job.payload.get("max_results")
+                    await orch._run_ingest(job.id, source, auto_confirm=True, force=force,
+                                           max_results=max_results)
                 elif job.operation == "lint":
                     scope = job.payload.get("scope", "all")
                     auto_resolve = job.payload.get("auto_resolve", False)
@@ -303,9 +306,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                 # Resolve vault-relative paths (e.g. "raw_sources/file.pdf") against
                 # wiki root so they work regardless of server working directory.
                 source = str((wiki_root / source).resolve())
-        job_id = await app.state.orch.queue.enqueue(
-            "ingest", {"source": source, "force": req.force}
-        )
+        payload: dict = {"source": source, "force": req.force}
+        if req.max_results is not None:
+            payload["max_results"] = req.max_results
+        job_id = await app.state.orch.queue.enqueue("ingest", payload)
         return {"job_id": job_id}
 
     @app.post("/jobs/lint")
@@ -377,7 +381,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         jobs = await app.state.orch.queue.list_jobs(status=job_status)
         return [{"id": j.id, "status": j.status, "operation": j.operation,
                  "created_at": str(j.created_at), "payload": j.payload,
-                 "error": j.error, "result": j.result} for j in jobs]
+                 "error": j.error, "result": j.result, "progress": j.progress} for j in jobs]
 
     @app.get("/jobs/{job_id}")
     async def get_job(job_id: str):
@@ -386,7 +390,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             if j.id == job_id:
                 return {"id": j.id, "status": j.status, "operation": j.operation,
                         "created_at": str(j.created_at), "error": j.error,
-                        "result": j.result}
+                        "result": j.result, "progress": j.progress}
         raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found")
 
     @app.delete("/jobs/{job_id}")
@@ -401,6 +405,11 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found")
         await app.state.orch.queue.retry(job_id)
         return {"retried": job_id}
+
+    @app.post("/jobs/cancel-pending")
+    async def cancel_pending_jobs():
+        count = await app.state.orch.queue.cancel_pending()
+        return {"cancelled": count}
 
     @app.delete("/jobs")
     async def purge_jobs(older_than: int = 7):

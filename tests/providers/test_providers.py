@@ -141,6 +141,7 @@ def test_make_provider_gemini_uses_openai_provider_with_base_url(monkeypatch):
     provider = make_provider("ingest", _make_cfg("gemini", "gemini-2.0-flash"))
     assert isinstance(provider, OpenAIProvider)
     assert "generativelanguage" in str(provider._client.base_url)
+    assert provider.supports_vision is True
 
 
 def test_make_provider_groq_uses_openai_provider_with_base_url(monkeypatch):
@@ -150,6 +151,7 @@ def test_make_provider_groq_uses_openai_provider_with_base_url(monkeypatch):
     provider = make_provider("ingest", _make_cfg("groq", "llama-3.3-70b-versatile"))
     assert isinstance(provider, OpenAIProvider)
     assert "groq" in str(provider._client.base_url)
+    assert provider.supports_vision is False
 
 
 def test_unknown_provider_raises_value_error(capsys):
@@ -262,3 +264,71 @@ async def test_openai_provider_uses_custom_base_url():
     mock_client_cls.assert_called_once_with(
         api_key="test-key", base_url="https://api.groq.com/openai/v1"
     )
+
+
+def test_to_openai_content_converts_anthropic_image_block():
+    """Anthropic base64 image block must be converted to OpenAI image_url format."""
+    block = {"type": "image", "source": {
+        "type": "base64", "media_type": "image/png", "data": "abc123"
+    }}
+    result = OpenAIProvider._to_openai_content([block])
+    assert result == [{"type": "image_url",
+                       "image_url": {"url": "data:image/png;base64,abc123"}}]
+
+
+def test_to_openai_content_passes_text_block_through():
+    """Text content blocks must be forwarded unchanged."""
+    block = {"type": "text", "text": "hello world"}
+    result = OpenAIProvider._to_openai_content([block])
+    assert result == [block]
+
+
+def test_to_openai_content_mixed_blocks():
+    """Mixed image + text blocks — image converted, text unchanged."""
+    blocks = [
+        {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": "xyz"}},
+        {"type": "text", "text": "Describe this image."},
+    ]
+    result = OpenAIProvider._to_openai_content(blocks)
+    assert result[0] == {"type": "image_url",
+                         "image_url": {"url": "data:image/jpeg;base64,xyz"}}
+    assert result[1] == {"type": "text", "text": "Describe this image."}
+
+
+def test_to_openai_content_string_passthrough():
+    """Plain string content must be returned unchanged (no list wrapping)."""
+    assert OpenAIProvider._to_openai_content("hello") == "hello"
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_vision_call_uses_image_url_format():
+    """Vision messages from IngestAgent (Anthropic format) must be converted before sending."""
+    from synthadoc.providers.base import Message
+    cfg = AgentConfig(provider="gemini", model="gemini-2.0-flash",
+                      base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
+    provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = "A diagram showing X."
+    mock_resp = MagicMock()
+    mock_resp.choices = [mock_choice]
+    mock_resp.usage.prompt_tokens = 20
+    mock_resp.usage.completion_tokens = 10
+
+    captured: dict = {}
+
+    async def capture(*args, **kwargs):
+        captured["messages"] = kwargs.get("messages", [])
+        return mock_resp
+
+    anthropic_content = [
+        {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AAAA"}},
+        {"type": "text", "text": "What is in this image?"},
+    ]
+    with patch.object(provider._client.chat.completions, "create", side_effect=capture):
+        await provider.complete(messages=[Message(role="user", content=anthropic_content)])
+
+    sent_content = captured["messages"][0]["content"]
+    assert sent_content[0]["type"] == "image_url"
+    assert sent_content[0]["image_url"]["url"] == "data:image/png;base64,AAAA"
+    assert sent_content[1] == {"type": "text", "text": "What is in this image?"}

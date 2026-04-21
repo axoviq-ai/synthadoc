@@ -94,6 +94,19 @@ def jobs_delete(
     typer.echo(f"Deleted: {job_id}")
 
 
+@jobs_app.command("cancel")
+def jobs_cancel(
+    wiki: str = typer.Option(".", "--wiki", "-w"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+):
+    """Cancel all pending jobs (marks them as skipped)."""
+    from synthadoc.cli._http import post as http_post
+    if not yes:
+        typer.confirm("Cancel all pending jobs?", abort=True)
+    r = http_post(wiki, "/jobs/cancel-pending", {})
+    typer.echo(f"Cancelled {r['cancelled']} pending job(s).")
+
+
 @jobs_app.command("purge")
 def jobs_purge(
     older_than: int = typer.Option(30, "--older-than"),

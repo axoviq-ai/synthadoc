@@ -75,3 +75,104 @@ async def test_run_ingest_http_5xx_retries_job(tmp_wiki):
     skipped_jobs = await orch._queue.list_jobs(status=JobStatus.SKIPPED)
     assert any(j.id == job_id for j in pending_jobs), "5xx job should be re-queued for retry"
     assert not any(j.id == job_id for j in skipped_jobs), "5xx job must not be skipped"
+
+
+@pytest.mark.asyncio
+async def test_vector_migration_embeds_existing_pages(tmp_wiki):
+    """_run_vector_migration must embed all pages not yet in embeddings.db."""
+    from unittest.mock import patch, AsyncMock
+    from synthadoc.core.orchestrator import Orchestrator
+    from synthadoc.config import Config, AgentsConfig, AgentConfig, SearchConfig
+    from synthadoc.storage.search import VectorStore
+
+    wiki_dir = tmp_wiki / "wiki"
+    wiki_dir.mkdir(parents=True, exist_ok=True)
+    (wiki_dir / "test-page.md").write_text(
+        "---\ntitle: Test\ntags: []\nstatus: active\n"
+        "confidence: high\ncreated: '2026-01-01'\nsources: []\n---\nContent here.",
+        encoding="utf-8",
+    )
+
+    cfg = Config(
+        agents=AgentsConfig(default=AgentConfig(provider="gemini", model="gemini-2.0-flash")),
+        search=SearchConfig(vector=True),
+    )
+    orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
+    with patch.dict("sys.modules", {"fastembed": MagicMock()}):
+        await orch._search.init_vector()
+
+    with patch.object(orch._search, "_embed_text", return_value=[0.1, 0.2, 0.3, 0.4]):
+        await orch._run_vector_migration()
+
+    vs = VectorStore(tmp_wiki / ".synthadoc" / "embeddings.db")
+    slugs = await vs.list_slugs()
+    assert "test-page" in slugs
+
+
+@pytest.mark.asyncio
+async def test_vector_migration_skips_already_embedded(tmp_wiki):
+    """_run_vector_migration must skip pages already in embeddings.db."""
+    from unittest.mock import patch
+    from synthadoc.core.orchestrator import Orchestrator
+    from synthadoc.config import Config, AgentsConfig, AgentConfig, SearchConfig
+    from synthadoc.storage.search import VectorStore
+
+    wiki_dir = tmp_wiki / "wiki"
+    wiki_dir.mkdir(parents=True, exist_ok=True)
+    (wiki_dir / "existing.md").write_text(
+        "---\ntitle: Existing\ntags: []\nstatus: active\n"
+        "confidence: high\ncreated: '2026-01-01'\nsources: []\n---\nContent.",
+        encoding="utf-8",
+    )
+
+    cfg = Config(
+        agents=AgentsConfig(default=AgentConfig(provider="gemini", model="gemini-2.0-flash")),
+        search=SearchConfig(vector=True),
+    )
+    orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
+    with patch.dict("sys.modules", {"fastembed": MagicMock()}):
+        await orch._search.init_vector()
+
+    # Pre-populate embeddings
+    vs = VectorStore(tmp_wiki / ".synthadoc" / "embeddings.db")
+    await vs.upsert("existing", [0.9, 0.1, 0.0, 0.0])
+
+    embed_calls = []
+    original = orch._search._embed_text
+    def fake_embed(text):
+        embed_calls.append(text)
+        return [0.1, 0.2, 0.3, 0.4]
+
+    with patch.object(orch._search, "_embed_text", side_effect=fake_embed):
+        await orch._run_vector_migration()
+
+    # Already embedded — should not be re-embedded
+    assert len(embed_calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_vector_migration_noop_when_vector_disabled(tmp_wiki):
+    """_run_vector_migration must be a no-op when search.vector=False."""
+    from unittest.mock import patch
+    from synthadoc.core.orchestrator import Orchestrator
+    from synthadoc.config import Config, AgentsConfig, AgentConfig, SearchConfig
+
+    wiki_dir = tmp_wiki / "wiki"
+    wiki_dir.mkdir(parents=True, exist_ok=True)
+    (wiki_dir / "page.md").write_text(
+        "---\ntitle: Page\ntags: []\nstatus: active\n"
+        "confidence: high\ncreated: '2026-01-01'\nsources: []\n---\nContent.",
+        encoding="utf-8",
+    )
+
+    cfg = Config(
+        agents=AgentsConfig(default=AgentConfig(provider="gemini", model="gemini-2.0-flash")),
+        search=SearchConfig(vector=False),
+    )
+    orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
+
+    embed_calls = []
+    with patch.object(orch._search, "_embed_text", side_effect=lambda t: embed_calls.append(t) or [0.1]):
+        await orch._run_vector_migration()
+
+    assert embed_calls == []

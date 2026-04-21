@@ -463,6 +463,9 @@ class IngestUrlModal extends Modal {
 }
 
 class WebSearchModal extends Modal {
+    private _pollTimer: number | null = null;
+    private _pollInterval = 2000;
+
     onOpen() {
         const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
         if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
@@ -477,31 +480,162 @@ class WebSearchModal extends Modal {
         const input = contentEl.createEl("textarea", { placeholder: "e.g. Bank of Canada rate outlook 2025\nOntario housing market trends" });
         input.style.cssText = "width:100%;min-height:80px;padding:6px 8px;resize:vertical;margin-bottom:8px;box-sizing:border-box";
 
-        const row = contentEl.createEl("div");
-        row.style.cssText = "display:flex;justify-content:flex-end;margin-bottom:12px";
-        const btn = row.createEl("button", { text: "Search" });
+        const settingsRow = contentEl.createEl("div");
+        settingsRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px";
+        settingsRow.createEl("label", { text: "Max results:" });
+        const maxResultsInput = settingsRow.createEl("input", { type: "number" }) as HTMLInputElement;
+        maxResultsInput.value = "20";
+        maxResultsInput.min = "1";
+        maxResultsInput.max = "50";
+        maxResultsInput.step = "1";
+        maxResultsInput.style.cssText = "width:60px;padding:4px 6px";
+        settingsRow.createEl("span", { text: "URLs" }).style.marginRight = "16px";
+        settingsRow.createEl("label", { text: "Poll interval:" });
+        const intervalInput = settingsRow.createEl("input", { type: "number" }) as HTMLInputElement;
+        intervalInput.value = "2000";
+        intervalInput.min = "500";
+        intervalInput.max = "10000";
+        intervalInput.step = "500";
+        intervalInput.style.cssText = "width:70px;padding:4px 6px";
+        settingsRow.createEl("span", { text: "ms" });
 
-        const out = contentEl.createEl("p");
+        const btnRow = contentEl.createEl("div");
+        btnRow.style.cssText = "display:flex;justify-content:flex-end;margin-bottom:12px";
+        const btn = btnRow.createEl("button", { text: "Search" });
+
+        const statusEl = contentEl.createEl("p");
+        statusEl.style.cssText = "font-size:12px;min-height:20px;margin-bottom:4px";
+
+        const pagesEl = contentEl.createEl("div");
+        const errorsEl = contentEl.createEl("div");
 
         const submit = async () => {
             const topic = input.value.trim();
             if (!topic) return;
             btn.disabled = true;
-            out.setText("Queuing web search…");
+            input.disabled = true;
+            this._pollInterval = Math.min(10000, Math.max(500, parseInt(intervalInput.value) || 2000));
+            const maxResults = Math.min(50, Math.max(1, parseInt(maxResultsInput.value) || 20));
+            statusEl.setText("Queuing web search…");
+            pagesEl.empty();
+            errorsEl.empty();
             try {
-                const r = await api.ingest(`search for: ${topic}`) as any;
-                out.setText(`Queued — job ${r.job_id}. Pages will appear in your wiki as results are ingested.`);
-                new Notice(`Synthadoc: web search queued (job ${r.job_id})`);
+                const r = await api.ingest(`search for: ${topic}`, maxResults) as any;
+                const jobId: string = r.job_id;
+                new Notice(`Synthadoc: web search queued (job ${jobId})`);
+                this._startPolling(jobId, statusEl, pagesEl, errorsEl);
             } catch {
-                out.setText("Error: is synthadoc serve running?");
-            } finally { btn.disabled = false; }
+                statusEl.setText("Error: is synthadoc serve running?");
+                btn.disabled = false;
+                input.disabled = false;
+            }
         };
 
         btn.onclick = submit;
         input.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) submit(); });
         setTimeout(() => input.focus(), 50);
     }
-    onClose() { this.contentEl.empty(); }
+
+    private _startPolling(
+        jobId: string,
+        statusEl: HTMLElement,
+        pagesEl: HTMLElement,
+        errorsEl: HTMLElement,
+    ) {
+        const pages = new Set<string>();
+        const errors: string[] = [];
+        let childJobIds: string[] = [];
+        let childDone = 0;
+
+        const poll = async () => {
+            try {
+                const job = await api.job(jobId) as any;
+                const phase = job.progress?.phase;
+                const isDone = ["completed", "failed", "dead", "skipped"].includes(job.status);
+
+                if (job.result?.child_job_ids?.length && childJobIds.length === 0) {
+                    childJobIds = job.result.child_job_ids;
+                }
+
+                // Phase status — only shown while parent is still running
+                if (!isDone) {
+                    if (phase === "searching") {
+                        statusEl.setText("Searching the web…");
+                    } else if (phase === "found_urls") {
+                        const total = job.progress?.total ?? 0;
+                        statusEl.setText(`Found ${total} URL${total !== 1 ? "s" : ""} — ingesting…`);
+                    }
+                }
+
+                if (childJobIds.length > 0) {
+                    const allJobs = await api.jobs() as any[];
+                    childDone = 0;
+                    for (const cj of allJobs) {
+                        if (!childJobIds.includes(cj.id)) continue;
+                        if (cj.status === "completed") {
+                            childDone++;
+                            for (const s of (cj.result?.pages_created ?? [])) pages.add(s);
+                            for (const s of (cj.result?.pages_updated ?? [])) pages.add(s);
+                        } else if (["failed", "dead", "skipped"].includes(cj.status) && cj.error) {
+                            const src = cj.payload?.source ?? cj.id;
+                            const msg = `${src}: ${cj.error}`;
+                            if (!errors.includes(msg)) errors.push(msg);
+                        }
+                    }
+                    // Always show ingesting progress once child jobs are known
+                    const settled = childDone + errors.length;
+                    if (settled < childJobIds.length) {
+                        statusEl.setText(`Ingesting ${childJobIds.length} URL${childJobIds.length !== 1 ? "s" : ""}… (${settled} done)`);
+                    }
+                }
+
+                if (pages.size > 0) {
+                    pagesEl.empty();
+                    pagesEl.createEl("p", { text: `Pages (${pages.size}):` }).style.cssText = "font-size:12px;font-weight:bold;margin-bottom:2px";
+                    const ul = pagesEl.createEl("ul");
+                    ul.style.cssText = "font-size:12px;margin:0;padding-left:18px";
+                    for (const slug of pages) ul.createEl("li", { text: slug });
+                }
+
+                if (errors.length > 0) {
+                    errorsEl.empty();
+                    errorsEl.createEl("p", { text: `Errors (${errors.length}):` }).style.cssText = "font-size:12px;font-weight:bold;margin-bottom:2px;color:var(--text-error)";
+                    const ul = errorsEl.createEl("ul");
+                    ul.style.cssText = "font-size:12px;margin:0;padding-left:18px;color:var(--text-error)";
+                    for (const err of errors) ul.createEl("li", { text: err });
+                }
+
+                const allChildrenSettled = childJobIds.length > 0 && (childDone + errors.length) >= childJobIds.length;
+                if (isDone && (childJobIds.length === 0 || allChildrenSettled)) {
+                    this._stopPolling();
+                    if (job.status === "completed" || allChildrenSettled) {
+                        statusEl.setText(`Done — ${pages.size} page(s) written.`);
+                        new Notice(`Synthadoc: web search complete — ${pages.size} page(s)`);
+                    } else {
+                        statusEl.setText(`Search ${job.status}${job.error ? `: ${job.error}` : ""}`);
+                    }
+                    return;
+                }
+            } catch {
+                // Server unreachable — keep polling silently
+            }
+            this._pollTimer = window.setTimeout(poll, this._pollInterval);
+        };
+
+        this._pollTimer = window.setTimeout(poll, this._pollInterval);
+    }
+
+    private _stopPolling() {
+        if (this._pollTimer !== null) {
+            window.clearTimeout(this._pollTimer);
+            this._pollTimer = null;
+        }
+    }
+
+    onClose() {
+        this._stopPolling();
+        this.contentEl.empty();
+    }
 }
 
 class RetryJobModal extends Modal {

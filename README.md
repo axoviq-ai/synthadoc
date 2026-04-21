@@ -390,6 +390,32 @@ synthadoc ingest "search for: yard gardening in Canadian climate zones" -w my-ga
 
 Both features fall back gracefully — if the LLM decomposition call fails, the original input is used as-is.
 
+### Semantic re-ranking (vector search)
+
+By default Synthadoc uses BM25 keyword search. For better recall on conceptually related queries, enable the optional vector search layer — it re-ranks BM25 candidates using `BAAI/bge-small-en-v1.5` cosine similarity.
+
+**Requires:** `pip install fastembed`. On Python 3.12/3.13 this installs from a pre-built wheel. On Python 3.14+, pre-built wheels are not yet available — install will succeed once `fastembed` publishes Python 3.14 wheels, or if your environment allows Rust compilation from source.
+
+```bash
+pip install fastembed
+```
+
+Then enable in config:
+
+```toml
+# .synthadoc/config.toml
+[search]
+vector = true                # downloads ~130 MB model once on first enable
+vector_top_candidates = 20  # BM25 pool size; re-ranked down to top_n (default 8)
+```
+
+On first server start with `vector = true`:
+- The model is downloaded from Hugging Face to your local cache
+- All existing wiki pages are embedded in the background — BM25 continues serving during migration
+- New and updated pages are embedded automatically after each ingest
+
+If `fastembed` is not installed the server starts normally with a warning and falls back to BM25. BM25 is always used when vector search is disabled (the default). Vector search is purely additive — you can toggle it at any time.
+
 ### Knowledge gap workflow
 
 When a query returns a thin or empty answer, the wiki doesn't yet cover that topic. Use the gap-filling workflow:
@@ -508,6 +534,11 @@ hard_gate_usd = 2.00
 provider    = "tavily"
 max_results = 20
 
+# Optional: enable semantic re-ranking (downloads ~130 MB model once)
+# [search]
+# vector = true
+# vector_top_candidates = 20   # BM25 candidate pool before cosine re-rank
+
 [hooks]
 on_ingest_complete = "python git-auto-commit.py"
 ```
@@ -605,6 +636,9 @@ synthadoc ingest --force report.pdf -w my-wiki
 synthadoc ingest "search for: Bank of Canada interest rate decisions 2024" -w my-wiki
 synthadoc ingest "find on the web: unemployment trends Ontario Q1 2025" -w my-wiki
 
+# Limit how many URLs are enqueued (default 20, overrides [web_search] max_results)
+synthadoc ingest "search for: quantum computing basics" --max-results 5 -w my-wiki
+
 # Multiple web searches at once via a manifest file
 # web-searches.txt:
 #   search for: Bank of Canada interest rate decisions 2024
@@ -655,6 +689,10 @@ synthadoc jobs status <job-id> -w my-wiki
 
 # Retry a dead job
 synthadoc jobs retry <job-id> -w my-wiki
+
+# Cancel all pending jobs at once (e.g. after a bad batch ingest)
+synthadoc jobs cancel -w my-wiki        # prompts for confirmation
+synthadoc jobs cancel --yes -w my-wiki  # skip confirmation
 
 # Remove old records
 synthadoc jobs purge --older-than 30 -w my-wiki
@@ -1024,17 +1062,6 @@ on_ingest_complete = { cmd = "python hooks/auto_commit.py", blocking = true }
 ### Per-wiki AGENTS.md
 
 Edit `<wiki-root>/AGENTS.md` to give the LLM domain-specific instructions — what to emphasize, how to name pages, what to cross-reference. This is the highest-priority instruction source for every agent run against this wiki.
-
----
-
-## What's New in v0.2.0
-
-| Feature | Notes |
-|---------|-------|
-| **Query decomposition** | Complex questions automatically split into focused sub-queries, each retrieved independently then synthesised — compound and comparative questions answered correctly |
-| **Query audit trail** | Every query recorded in `audit.db`; `synthadoc audit queries` and `GET /audit/queries` show question history, sub-question counts, and token costs; `audit cost` now aggregates both ingest and query spend |
-| **Web search decomposition** | `synthadoc ingest "search for: <topic>"` automatically decomposes the topic into focused keyword sub-queries (up to 4), fires parallel Tavily searches, and deduplicates URLs — richer, more targeted pages from a single command |
-| **Knowledge gap detection** | When a query finds too few relevant pages, Synthadoc automatically suggests targeted `synthadoc ingest "search for: ..."` commands to enrich the wiki — shown as an Obsidian callout in both CLI and plugin |
 
 ---
 

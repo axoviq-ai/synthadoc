@@ -99,3 +99,22 @@ def test_query_config_can_be_set_from_toml():
         assert cfg.query.gap_score_threshold == 1.5
     finally:
         os.unlink(path)
+
+
+def test_search_config_defaults_to_vector_false(tmp_path):
+    from synthadoc.config import load_config
+    cfg = load_config()
+    assert cfg.search.vector is False
+    assert cfg.search.vector_top_candidates == 20
+
+def test_search_config_vector_true_parsed(tmp_path):
+    from synthadoc.config import load_config
+    toml = tmp_path / "config.toml"
+    toml.write_text(
+        '[agents]\ndefault = {provider = "gemini", model = "gemini-2.0-flash"}\n'
+        '[search]\nvector = true\nvector_top_candidates = 30\n',
+        encoding="utf-8",
+    )
+    cfg = load_config(project_config=toml)
+    assert cfg.search.vector is True
+    assert cfg.search.vector_top_candidates == 30

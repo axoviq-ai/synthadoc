@@ -102,7 +102,7 @@ class QueryAgent:
         sub_questions = await self.decompose(question)
 
         async def _search_one(sub_q: str):
-            return self._search.bm25_search(sub_q.lower().split(), top_n=self._top_n)
+            return await self._search.hybrid_search(sub_q.lower().split(), top_n=self._top_n)
 
         results_per_sub = await asyncio.gather(*[_search_one(q) for q in sub_questions])
 

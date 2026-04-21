@@ -38,7 +38,10 @@ class Orchestrator:
         self._audit  = AuditDB(sd / "audit.db")
         self._cache  = CacheManager(sd / "cache.db")
         self._store  = WikiStorage(wiki_root / "wiki")
-        self._search = HybridSearch(self._store, sd / "embeddings.db")
+        self._search = HybridSearch(
+            self._store, sd / "embeddings.db",
+            search_cfg=self._cfg.search,
+        )
         self._log    = LogWriter(wiki_root / "log.md")
         self._cost   = CostGuard(self._cfg.cost)
         self._hooks  = HookExecutor(self._cfg.hooks)
@@ -49,6 +52,46 @@ class Orchestrator:
         await self._audit.init()
         await self._cache.init()
         self._log_agent_config()
+        if self._cfg.search.vector:
+            logger.info("Vector search: enabled (model: BAAI/bge-small-en-v1.5) — initialising…")
+            try:
+                await self._search.init_vector()
+                asyncio.create_task(self._run_vector_migration())
+            except ImportError:
+                logger.warning(
+                    "Vector search requires 'fastembed' which is not installed. "
+                    "Run: pip install fastembed  then restart the server. "
+                    "Falling back to BM25 search."
+                )
+
+    async def _run_vector_migration(self) -> None:
+        """Embed all existing wiki pages not yet in embeddings.db (background task)."""
+        import time
+        if not self._cfg.search.vector or self._search._vector_store is None:
+            return
+        slugs = self._store.list_pages()
+        embedded = set(await self._search._vector_store.list_slugs())
+        to_embed = [s for s in slugs if s not in embedded]
+        if not to_embed:
+            logger.info("Vector search: all %d page(s) already embedded — ready", len(embedded))
+            return
+        logger.info(
+            "Vector search: %d page(s) to embed (%d already done) — running background migration, BM25 active meanwhile",
+            len(to_embed), len(embedded),
+        )
+        start = time.monotonic()
+        for i, slug in enumerate(to_embed, 1):
+            page = self._store.read_page(slug)
+            if page:
+                text = f"{page.title} {' '.join(page.tags)} {page.content}"
+                await self._search.embed_page(slug, text)
+            if i % 50 == 0:
+                logger.info("Vector migration: %d/%d pages embedded…", i, len(to_embed))
+            await asyncio.sleep(0)
+        logger.info(
+            "Vector migration complete — %d pages, %.0fs",
+            len(to_embed), time.monotonic() - start,
+        )
 
     def _log_agent_config(self) -> None:
         """Log the effective provider/model for each named agent slot at startup."""
@@ -78,11 +121,15 @@ class Orchestrator:
         return len(jobs)
 
     async def _run_ingest(self, job_id: str, source: str, auto_confirm: bool,
-                          force: bool = False) -> None:
+                          force: bool = False, max_results: int | None = None) -> None:
         # auto_confirm is reserved for when cost gate is wired to the ingest flow (v0.2+).
         # Cost tracking returns $0.0000 in v0.1, so cost_guard.check() is not called here yet.
         from synthadoc.agents.ingest_agent import IngestAgent
+        from synthadoc.skills.web_search.scripts.main import _INTENT_RE as _WEB_SEARCH_RE
         try:
+            _is_web_search = bool(_WEB_SEARCH_RE.match(source))
+            if _is_web_search:
+                await self._queue.update_progress(job_id, {"phase": "searching"})
             agent = IngestAgent(
                 provider=make_provider("ingest", self._cfg),
                 store=self._store, search=self._search,
@@ -98,21 +145,38 @@ class Orchestrator:
                 result.output_tokens,
                 is_local=(_agent_cfg.provider == "ollama"),
             )
+            if max_results is not None and result.child_sources:
+                result.child_sources = result.child_sources[:max_results]
+            if _is_web_search and result.child_sources:
+                await self._queue.update_progress(job_id, {
+                    "phase": "found_urls",
+                    "total": len(result.child_sources),
+                })
             # Fan out web search child sources — batch insert in one transaction
             if result.child_sources:
-                await self._queue.enqueue_many(
+                child_ids = await self._queue.enqueue_many(
                     "ingest",
                     [{"source": s, "force": False} for s in result.child_sources],
                 )
+            else:
+                child_ids = []
 
             await self._queue.complete(job_id, result={
                 "pages_created": result.pages_created,
                 "pages_updated": result.pages_updated,
                 "pages_flagged": result.pages_flagged,
                 "child_sources_enqueued": len(result.child_sources),
+                "child_job_ids": child_ids,
                 "tokens_used": result.tokens_used,
                 "cost_usd": result.cost_usd,
             })
+            # Embed newly written pages for vector search
+            if self._cfg.search.vector:
+                for slug in result.pages_created + result.pages_updated:
+                    page = self._store.read_page(slug)
+                    if page:
+                        text = f"{page.title} {' '.join(page.tags)} {page.content}"
+                        await self._search.embed_page(slug, text)
             self._hooks.fire("on_ingest_complete", {
                 "event": "on_ingest_complete", "wiki": str(self._root),
                 "source": source,
@@ -129,7 +193,17 @@ class Orchestrator:
             import httpx
             import logging
             from synthadoc.errors import DomainBlockedException
-            if isinstance(e, DomainBlockedException):
+            # Check for LLM rate limits (openai SDK used by Groq/Gemini, and Anthropic SDK)
+            _status = getattr(e, "status_code", None) or getattr(
+                getattr(e, "response", None), "status_code", None)
+            if _status == 429:
+                # Rate limit — requeue without burning a retry; worker will sleep
+                logging.getLogger(__name__).warning(
+                    "LLM rate limit for job %s — requeued without retry penalty", job_id
+                )
+                await self._queue.requeue(job_id, f"rate_limit: {e}")
+                raise
+            elif isinstance(e, DomainBlockedException):
                 await self._auto_block_domain(e)
                 await self._queue.skip(job_id, str(e))
             elif isinstance(e, (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.PoolTimeout)):

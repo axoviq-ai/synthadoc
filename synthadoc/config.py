@@ -125,6 +125,12 @@ class WikiConfig:
     domain: str = "General"
 
 
+@dataclass
+class SearchConfig:
+    vector: bool = False
+    vector_top_candidates: int = 20
+
+
 # ---------------------------------------------------------------------------
 # Root config
 # ---------------------------------------------------------------------------
@@ -143,6 +149,7 @@ class Config:
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
     web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
     wiki: WikiConfig = field(default_factory=WikiConfig)
+    search: SearchConfig = field(default_factory=SearchConfig)
     hooks: dict = field(default_factory=dict)
     wikis: dict = field(default_factory=dict)
 
@@ -307,6 +314,13 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
     # --- wikis ---
     wikis = raw.get("wikis", {})
 
+    # --- search ---
+    sr = raw.get("search", {})
+    search = SearchConfig(
+        vector=bool(sr.get("vector", False)),
+        vector_top_candidates=int(sr.get("vector_top_candidates", 20)),
+    )
+
     return Config(
         agents=agents,
         cache=cache,
@@ -319,6 +333,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         schedule=schedule,
         web_search=web_search,
         wiki=wiki,
+        search=search,
         hooks=hooks,
         wikis=wikis,
     )
@@ -375,10 +390,9 @@ def load_config(
     # (no agents section required).
     if not any_file_loaded:
         return Config(
-            agents=AgentsConfig(
-                default=AgentConfig(provider="gemini", model="gemini-2.0-flash")
-            ),
+            agents=AgentsConfig(default=AgentConfig(provider="gemini", model="gemini-2.0-flash")),
             web_search=WebSearchConfig(),
+            search=SearchConfig(),
         )
 
     # A global_config was provided — it must define agents.default.

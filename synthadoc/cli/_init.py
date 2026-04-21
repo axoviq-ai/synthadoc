@@ -51,6 +51,10 @@ level = "INFO"
 #                e.g. 5 MB × 5 = ~25 MB maximum on disk
 max_file_mb  = 5
 backup_count = 5
+
+[search]
+vector = false             # set to true to enable semantic re-ranking (downloads ~130 MB model once)
+vector_top_candidates = 20
 """
 
 _GITIGNORE = ".synthadoc/\n__pycache__/\n*.pyc\n.env\n"

@@ -28,6 +28,7 @@ class Job:
     error: Optional[str]
     created_at: Optional[str] = None
     result: Optional[dict] = None
+    progress: Optional[dict] = None
 
 
 class JobQueue:
@@ -55,6 +56,13 @@ class JobQueue:
                 await db.execute("ALTER TABLE jobs ADD COLUMN result TEXT")
             except Exception:
                 pass  # column already exists
+            # Migrate existing DBs that predate the progress column
+            try:
+                await db.execute("ALTER TABLE jobs ADD COLUMN progress TEXT")
+            except Exception:
+                pass  # column already exists
+            # Reset any jobs left in_progress from a previous crashed session
+            await db.execute("UPDATE jobs SET status='pending' WHERE status='in_progress'")
             await db.commit()
 
     async def enqueue(self, operation: str, payload: dict) -> str:
@@ -95,13 +103,22 @@ class JobQueue:
                            status=JobStatus.IN_PROGRESS,
                            retries=row["retries"], error=row["error"],
                            created_at=row["created_at"],
-                           result=json.loads(row["result"]) if row["result"] else None)
+                           result=json.loads(row["result"]) if row["result"] else None,
+                           progress=json.loads(row["progress"]) if row["progress"] else None)
 
     async def complete(self, job_id: str, result: Optional[dict] = None) -> None:
         async with aiosqlite.connect(self._path) as db:
             await db.execute(
                 "UPDATE jobs SET status='completed', result=? WHERE id=?",
                 (json.dumps(result) if result else None, job_id),
+            )
+            await db.commit()
+
+    async def update_progress(self, job_id: str, data: dict) -> None:
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute(
+                "UPDATE jobs SET progress=? WHERE id=?",
+                (json.dumps(data), job_id),
             )
             await db.commit()
 
@@ -115,6 +132,19 @@ class JobQueue:
             await db.execute(
                 "UPDATE jobs SET status=?,retries=?,error=? WHERE id=?",
                 (new_status, retries, error, job_id),
+            )
+            await db.commit()
+
+    async def requeue(self, job_id: str, error: str = "") -> None:
+        """Reset a job to pending without incrementing the retry counter.
+
+        Used for transient infrastructure errors (rate limits, server overload)
+        that should not count against the job's retry budget.
+        """
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute(
+                "UPDATE jobs SET status='pending', error=? WHERE id=?",
+                (error or None, job_id),
             )
             await db.commit()
 
@@ -150,6 +180,17 @@ class JobQueue:
             )
             await db.commit()
 
+    async def cancel_pending(self) -> int:
+        """Mark all pending jobs as skipped. Returns the number of jobs cancelled."""
+        async with aiosqlite.connect(self._path) as db:
+            async with db.execute("SELECT COUNT(*) FROM jobs WHERE status='pending'") as cur:
+                count = (await cur.fetchone())[0]
+            await db.execute(
+                "UPDATE jobs SET status='skipped', error='cancelled by user' WHERE status='pending'"
+            )
+            await db.commit()
+        return count
+
     async def purge(self, older_than_days: int) -> int:
         async with aiosqlite.connect(self._path) as db:
             async with db.execute(
@@ -180,4 +221,5 @@ class JobQueue:
                         retries=r["retries"], error=r["error"],
                         created_at=r["created_at"],
                         result=json.loads(r["result"]) if r["result"] else None,
+                        progress=json.loads(r["progress"]) if r["progress"] else None,
                         ) for r in rows]

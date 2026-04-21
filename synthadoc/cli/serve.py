@@ -231,7 +231,7 @@ def serve_cmd(
         from synthadoc.integration.http_server import create_app
         http_app = create_app(wiki_root=root)
         uvicorn.run(http_app, host="127.0.0.1", port=effective_port,
-                    log_level="warning")
+                    log_level="warning", log_config=None)
     else:
         from synthadoc.integration.mcp_server import create_mcp_server
         mcp = create_mcp_server(wiki_root=root)

@@ -465,7 +465,9 @@ See [Section 12 — Cache System](#12-cache-system).
 
 ### embeddings.db — Search index
 
-BM25 index over all wiki pages. Tokenizer handles ASCII and CJK:
+BM25 + optional vector index over all wiki pages. When vector search is disabled (default), only the BM25 index is used. When `[search] vector = true`, the same SQLite file also stores a `embeddings` table holding `float32` embedding vectors alongside the BM25 entries.
+
+**BM25 tokenizer** handles ASCII and CJK:
 
 ```python
 @staticmethod
@@ -516,10 +518,13 @@ Note: BM25 IDF requires a minimum of 3 documents in the corpus for non-zero scor
   "operation": "ingest",
   "created_at": "2026-04-10T14:32:01Z",
   "payload": {"source": "report.pdf"},
-  "result": {"pages_created": ["alan-turing"], "cost_usd": 0.0},
+  "result": {"pages_created": ["alan-turing"], "cost_usd": 0.0, "child_job_ids": []},
+  "progress": {"phase": "found_urls", "total": 5},
   "error": null
 }
 ```
+
+The `progress` field is updated in real time during execution (e.g. `{"phase": "searching"}` before Tavily call, `{"phase": "found_urls", "total": N}` after URLs are returned). It is `null` for jobs that do not emit progress. Web search jobs additionally store `child_job_ids` in `result` so callers can track the fan-out URL ingest jobs.
 
 **LintReport object:**
 
@@ -575,7 +580,7 @@ Reload the plugin (toggle off/on) after copying — a full Obsidian restart is n
 | `Synthadoc: Run lint` | Queues a lint job; shows a notice with contradiction + orphan counts when complete |
 | `Synthadoc: Run lint with auto-resolve` | Same as above but passes `auto_resolve: true` — LLM resolves contradictions automatically when confidence ≥ threshold |
 | `Synthadoc: List jobs...` | Modal with status-filter dropdown, results table, error details |
-| `Synthadoc: Web search...` | Modal — type a plain topic, engine prepends `search for:` and enqueues an ingest job; returns job ID |
+| `Synthadoc: Web search...` | Live-polling modal — type a plain topic; set max results (1–50, default 20) and poll interval (500–10000 ms, default 2000 ms); shows phase text, pages list, and URL errors in real time as fan-out jobs complete |
 
 ### Ribbon icon
 
@@ -615,7 +620,7 @@ synthadoc
 ├── scaffold [-w wiki]
 ├── demo list
 ├── serve [-w wiki] [--port N] [--background] [--mcp-only] [--http-only] [--verbose]
-├── ingest <source> [-w wiki] [--batch] [--file manifest] [--force] [--analyse-only]
+├── ingest <source> [-w wiki] [--batch] [--file manifest] [--force] [--analyse-only] [--max-results N]
 ├── query "<question>" [-w wiki] [--save]
 ├── lint
 │   ├── run [-w wiki] [--scope contradictions|orphans|all] [--auto-resolve]
@@ -625,6 +630,7 @@ synthadoc
 │   ├── status <id> [-w wiki]
 │   ├── retry <id> [-w wiki]
 │   ├── delete <id> [-w wiki]
+│   ├── cancel [-w wiki] [--yes]
 │   └── purge --older-than <days> [-w wiki]
 ├── audit
 │   ├── history [-w wiki] [--limit N] [--json]   — ingest records: timestamp, source, page, tokens, cost
@@ -837,6 +843,8 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 | `logs.backup_count` | int | `5` | Rotated files to keep |
 | `web_search.provider` | str | `"tavily"` | Web search provider (currently only `tavily` supported) |
 | `web_search.max_results` | int | `20` | Maximum results fetched per web search query |
+| `search.vector` | bool | `false` | Enable semantic re-ranking; downloads `BAAI/bge-small-en-v1.5` (~130 MB) once on first enable |
+| `search.vector_top_candidates` | int | `20` | BM25 candidate pool size when vector re-ranking is active |
 
 ---
 
@@ -1301,21 +1309,29 @@ Target: week of 2026-04-25.
 |---------|--------|-------|
 | **Query decomposition** | ✅ v0.2.0 | Replaces term-extraction with dynamic sub-question decomposition; parallel BM25 retrieval per sub-question; fence-stripping for cross-model JSON robustness |
 | **Query audit trail** | ✅ v0.2.0 | `queries` table in `audit.db`; `record_query()`, `list_queries()`; `cost_summary()` unions ingest + query; HTTP + CLI + Obsidian surfaces |
+| **Per-model cost tracking** | ✅ v0.2.0 | Per-token rate table covers all 5 providers; cost calculated for both ingest and query operations; stored in `audit.db`; `audit cost` CLI and `GET /audit/costs` aggregate across operation types; Ollama records no API cost (local model) |
+| **Knowledge gap detection** | ✅ v0.2.0 | Three-signal scoring (page count, max BM25 score, content overlap); query result carries a gap flag and targeted ingest suggestions when the wiki lacks relevant coverage; shown as an Obsidian callout in plugin and CLI |
 | **BM25 corpus caching** | ✅ v0.2.0 | In-memory corpus cache in `HybridSearch`; invalidated on write; eliminates redundant disk reads on decomposed queries |
 | **OpenAIProvider contract tests** | ✅ v0.2.0 | Covers OpenAI, Gemini, Groq, Ollama (all share `OpenAIProvider`) |
 | **HTTP 502 on LLM failure** | ✅ v0.2.0 | `/query` GET and POST return 502 Bad Gateway (not raw 500) when the LLM provider is unreachable |
 | **Web search decomposition** | ✅ v0.2.0 | `SearchDecomposeAgent` decomposes search intent into N keyword search strings; parallel Tavily API calls via `asyncio.gather`; URL deduplication across results; fallback to single query on LLM error |
+| **New Obsidian commands (8)** | ✅ v0.2.0 | `Lint: run`, `Lint: run with auto-resolve`, `Jobs: retry dead job...`, `Jobs: purge old completed/dead...`, `Wiki: regenerate scaffold...`, `Audit: ingest history...`, `Audit: cost summary...`, `Audit: query history...` — plugin now has 15 commands total (7 in v0.1) |
+| **Vector search + semantic re-ranking** | ✅ v0.2.0 | Opt-in hybrid BM25 + local vector search; `BAAI/bge-small-en-v1.5` model via `fastembed` (~130 MB, downloaded once); BM25 fetches `vector_top_candidates` (default 20) candidates, cosine similarity re-ranks to `top_n` (default 8); one-time background migration at server start embeds all existing pages; BM25 serves during migration; enable with `vector = true` in `[search]` config; requires `pip install fastembed` (pre-built wheels available for Python 3.12/3.13; Python 3.14 wheels not yet published as of v0.2.0 — install will work once `fastembed` catches up); server falls back to BM25 with a warning if `fastembed` is not installed |
+| **Obsidian web search live view** | ✅ v0.2.0 | `WebSearchModal` replaced with live-polling panel; shows phase text ("Searching the web…", "Found N URLs — ingesting…"), live pages list, and URL errors as child jobs complete; configurable poll interval (500–10000 ms, default 2000 ms); modal stays open until done |
+| **Web search URL cap (`--max-results`)** | ✅ v0.2.0 | `synthadoc ingest "search for: …" --max-results N` limits total URLs enqueued (default 20, config: `[web_search] max_results`); Obsidian modal exposes the same control as a numeric input (range 1–50); cap applied after sub-query dedup, so N is the true total |
+| **Image ingest for OpenAI-compatible providers** | ✅ v0.2.0 | `OpenAIProvider` converts Anthropic base64 image blocks to OpenAI `image_url` format before sending; Groq declared non-vision via `supports_vision = False`; image sources routed to Groq receive `fail_permanent` with a clear error message |
+| **Job crash recovery** | ✅ v0.2.0 | `in_progress` jobs left by a crashed server session are reset to `pending` on the next `init()` call, so they are picked up automatically after a restart |
+| **Rate-limit requeue (no retry burn)** | ✅ v0.2.0 | HTTP 429 responses from any LLM provider are detected via `status_code` attribute; the job is requeued via `requeue()` (retry counter unchanged) rather than `fail()`, preserving the retry budget for real errors |
+| **Bulk cancel pending jobs** | ✅ v0.2.0 | `synthadoc jobs cancel [-w wiki] [--yes]` marks all pending jobs as `skipped` in one operation; also exposed as `POST /jobs/cancel-pending`; returns cancelled count |
 
 ### Planned
 
 | Feature | Motivation |
 |---------|-----------|
 | **Web UI** | Browser-based dashboard — pages, jobs, contradictions, orphans — without requiring Obsidian |
-| **Vector search + re-ranking** | Hybrid BM25 + `fastembed` local vectors; better recall on semantically related queries; `fastembed` already an optional dependency |
 | **Graph-aware retrieval** | Traverse wikilink adjacency for multi-hop queries (e.g. "What connects Turing to von Neumann?") |
 | **Larger corpus support** | Sharded BM25 index; incremental embedding updates; streaming ingest for very large documents |
 | **Mistral + Bedrock providers** | Additional OpenAI-compatible endpoints; Bedrock for AWS-native deployments |
-| **Obsidian plugin: web search live view** | Job polling + live result panel — watch pages appear as fan-out jobs complete (basic modal already in v0.1) |
 
 ---
 
@@ -1414,8 +1430,17 @@ synthadoc schedule add --op "scaffold" --cron "0 4 * * 0" -w my-wiki
 
 - **Query decomposition** — `QueryAgent.decompose()` breaks complex questions into 1–N focused sub-questions (cap=4); parallel BM25 search per sub-question; merged and deduplicated by highest score; graceful fallback on LLM error; markdown fence stripping for cross-model robustness
 - **Query audit trail** — `queries` table in `audit.db`; every query recorded with question text, sub-question count, tokens, cost, timestamp; `cost_summary()` now aggregates ingest + query spend; exposed via `GET /audit/queries`, `synthadoc audit queries`, and Obsidian "Audit: query history..." command
+- **Per-model cost tracking** — per-token rate table covers all 5 providers; cost calculated for both ingest and query operations and stored in `audit.db`; Ollama records no API cost (local model); unknown models use a conservative fallback rate; exposed via `audit cost` CLI and `GET /audit/costs`
+- **Knowledge gap detection** — three independent signals (too few pages, low BM25 max score, low content-overlap page count); query result carries a gap flag and targeted ingest suggestions when the wiki lacks relevant coverage; displayed as an Obsidian callout block in the plugin and CLI output
 - **BM25 in-memory corpus cache** — `HybridSearch._cached_corpus` built once per session, invalidated via `invalidate_index()` after each page write; eliminates N×disk reads on decomposed queries
 - **OpenAIProvider contract tests** — 4 tests covering happy path, system message, null content, and custom `base_url` forwarding; applies to OpenAI, Gemini, Groq, and Ollama (all use `OpenAIProvider`)
 - **HTTP 502 on LLM failure** — `/query` GET and POST return 502 Bad Gateway (not raw 500) when the LLM provider is unreachable
-- **Obsidian plugin: 15 commands** — added `Audit: query history...` command with `QueryHistoryModal`
 - **Web search decomposition** — `SearchDecomposeAgent` breaks a web search intent into 1–4 focused keyword search strings (separate prompt from query decomposition); parallel Tavily searches; URL deduplication; graceful fallback on LLM error; integrated into `IngestAgent` at the web search fan-out point
+- **New Obsidian commands (8 added, 15 total)** — `Lint: run`, `Lint: run with auto-resolve`, `Jobs: retry dead job...`, `Jobs: purge old completed/dead...`, `Wiki: regenerate scaffold...`, `Audit: ingest history...`, `Audit: cost summary...`, `Audit: query history...`
+- **Vector search + semantic re-ranking** — opt-in hybrid BM25 + local vector search using `BAAI/bge-small-en-v1.5` via `fastembed`; one-time background migration embeds existing pages; BM25 serves during migration; enable with `[search] vector = true`
+- **Obsidian web search live view** — `WebSearchModal` replaced with live-polling panel that shows phase text, pages list, and URL errors in real time; configurable poll interval; modal stays open until all fan-out URL jobs settle; job progress tracked via new `progress` column in `jobs.db`
+- **Web search URL cap** — `synthadoc ingest "search for: …" --max-results N` limits total URLs enqueued across all sub-queries; Obsidian modal exposes the same as a numeric input (1–50, default 20); cap applied after dedup
+- **Image ingest for OpenAI-compatible providers** — `OpenAIProvider` auto-converts Anthropic image blocks to OpenAI `image_url` format; Groq flagged as non-vision (`supports_vision = False`); image jobs routed to Groq get `fail_permanent` with a clear message
+- **Job crash recovery** — `in_progress` jobs are reset to `pending` on server `init()`, so all pending work resumes automatically after a restart
+- **Rate-limit requeue** — HTTP 429 responses from any LLM provider are detected and requeued via `requeue()` (retry counter unchanged), preserving the retry budget for real errors
+- **Bulk cancel (`jobs cancel`)** — `synthadoc jobs cancel [-w wiki] [--yes]` marks all pending jobs as `skipped` in one operation; also `POST /jobs/cancel-pending`
