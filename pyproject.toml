@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "synthadoc"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Domain-agnostic LLM knowledge compilation engine"
 requires-python = ">=3.11"
 dependencies = [
@@ -55,5 +55,12 @@ synthadoc = "synthadoc.cli.main:app"
 asyncio_mode = "auto"
 testpaths = ["tests"]
 
+[tool.hatch.version]
+# Reads __version__ from synthadoc/__init__.py, which in turn reads the repo-root VERSION file.
+# To release: update VERSION, then run scripts/bump_version.py to sync all derived files.
+source = "code"
+path = "synthadoc/__init__.py"
+
 [tool.hatch.build.targets.wheel]
 packages = ["synthadoc"]
+artifacts = ["VERSION"]

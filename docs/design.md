@@ -1,6 +1,6 @@
 # Synthadoc — Design Document
 
-**Version:** 0.2.0 (in progress — not yet released; updated 2026-04-18)  
+**Version:** 0.2.0 (released 2026-04-25)  
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -26,8 +26,7 @@
 15. [Observability and Logging](#15-observability-and-logging)
 16. [Security](#16-security)
 17. [Plugin Development Guide](#17-plugin-development-guide)
-18. [v0.2.0 — In Progress](#18-v020--in-progress)
-19. [New in v0.1 — Feature Reference](#19-new-in-v01--feature-reference)
+18. [v0.2.0 — What's New](#18-v020--whats-new)
 
 **Appendices**
 - [Appendix A — Release Feature Index](#appendix-a--release-feature-index)
@@ -132,7 +131,7 @@ The filename without extension, derived from the page title. ASCII-safe and CJK-
 
 ### Component Map
 
-![Synthadoc Architecture](architecture.png)
+![Synthadoc Architecture](png/architecture.png)
 
 ### Request lifecycle (ingest via CLI)
 
@@ -560,7 +559,7 @@ The HTTP server runs a background task that polls `jobs.db` every 2 seconds and 
 
 **Package:** `synthadoc-obsidian` (TypeScript)  
 **Location:** `obsidian-plugin/` in the repo  
-**Version:** 0.1.0
+**Version:** 0.2.0
 
 Each vault configures its server URL in plugin settings (default `http://127.0.0.1:7070`).
 
@@ -1299,30 +1298,9 @@ echo "Event $event fired on wiki $wiki" | mail -s "Synthadoc notification" you@e
 
 ---
 
-## 18. v0.2.0 — In Progress
+## 18. v0.2.0 — What's New
 
-Target: week of 2026-04-25.
-
-### Delivered in v0.2.0
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| **Query decomposition** | ✅ v0.2.0 | Replaces term-extraction with dynamic sub-question decomposition; parallel BM25 retrieval per sub-question; fence-stripping for cross-model JSON robustness |
-| **Query audit trail** | ✅ v0.2.0 | `queries` table in `audit.db`; `record_query()`, `list_queries()`; `cost_summary()` unions ingest + query; HTTP + CLI + Obsidian surfaces |
-| **Per-model cost tracking** | ✅ v0.2.0 | Per-token rate table covers all 5 providers; cost calculated for both ingest and query operations; stored in `audit.db`; `audit cost` CLI and `GET /audit/costs` aggregate across operation types; Ollama records no API cost (local model) |
-| **Knowledge gap detection** | ✅ v0.2.0 | Three-signal scoring (page count, max BM25 score, content overlap); query result carries a gap flag and targeted ingest suggestions when the wiki lacks relevant coverage; shown as an Obsidian callout in plugin and CLI |
-| **BM25 corpus caching** | ✅ v0.2.0 | In-memory corpus cache in `HybridSearch`; invalidated on write; eliminates redundant disk reads on decomposed queries |
-| **OpenAIProvider contract tests** | ✅ v0.2.0 | Covers OpenAI, Gemini, Groq, Ollama (all share `OpenAIProvider`) |
-| **HTTP 502 on LLM failure** | ✅ v0.2.0 | `/query` GET and POST return 502 Bad Gateway (not raw 500) when the LLM provider is unreachable |
-| **Web search decomposition** | ✅ v0.2.0 | `SearchDecomposeAgent` decomposes search intent into N keyword search strings; parallel Tavily API calls via `asyncio.gather`; URL deduplication across results; fallback to single query on LLM error |
-| **New Obsidian commands (8)** | ✅ v0.2.0 | `Lint: run`, `Lint: run with auto-resolve`, `Jobs: retry dead job...`, `Jobs: purge old completed/dead...`, `Wiki: regenerate scaffold...`, `Audit: ingest history...`, `Audit: cost summary...`, `Audit: query history...` — plugin now has 15 commands total (7 in v0.1) |
-| **Vector search + semantic re-ranking** | ✅ v0.2.0 | Opt-in hybrid BM25 + local vector search; `BAAI/bge-small-en-v1.5` model via `fastembed` (~130 MB, downloaded once); BM25 fetches `vector_top_candidates` (default 20) candidates, cosine similarity re-ranks to `top_n` (default 8); one-time background migration at server start embeds all existing pages; BM25 serves during migration; enable with `vector = true` in `[search]` config; requires `pip install fastembed` (pre-built wheels available for Python 3.12/3.13; Python 3.14 wheels not yet published as of v0.2.0 — install will work once `fastembed` catches up); server falls back to BM25 with a warning if `fastembed` is not installed |
-| **Obsidian web search live view** | ✅ v0.2.0 | `WebSearchModal` replaced with live-polling panel; shows phase text ("Searching the web…", "Found N URLs — ingesting…"), live pages list, and URL errors as child jobs complete; configurable poll interval (500–10000 ms, default 2000 ms); modal stays open until done |
-| **Web search URL cap (`--max-results`)** | ✅ v0.2.0 | `synthadoc ingest "search for: …" --max-results N` limits total URLs enqueued (default 20, config: `[web_search] max_results`); Obsidian modal exposes the same control as a numeric input (range 1–50); cap applied after sub-query dedup, so N is the true total |
-| **Image ingest for OpenAI-compatible providers** | ✅ v0.2.0 | `OpenAIProvider` converts Anthropic base64 image blocks to OpenAI `image_url` format before sending; Groq declared non-vision via `supports_vision = False`; image sources routed to Groq receive `fail_permanent` with a clear error message |
-| **Job crash recovery** | ✅ v0.2.0 | `in_progress` jobs left by a crashed server session are reset to `pending` on the next `init()` call, so they are picked up automatically after a restart |
-| **Rate-limit requeue (no retry burn)** | ✅ v0.2.0 | HTTP 429 responses from any LLM provider are detected via `status_code` attribute; the job is requeued via `requeue()` (retry counter unchanged) rather than `fail()`, preserving the retry budget for real errors |
-| **Bulk cancel pending jobs** | ✅ v0.2.0 | `synthadoc jobs cancel [-w wiki] [--yes]` marks all pending jobs as `skipped` in one operation; also exposed as `POST /jobs/cancel-pending`; returns cancelled count |
+See [Appendix A — Release Feature Index](#appendix-a--release-feature-index) for a full list of delivered v0.2.0 features.
 
 ### Planned
 
@@ -1332,75 +1310,6 @@ Target: week of 2026-04-25.
 | **Graph-aware retrieval** | Traverse wikilink adjacency for multi-hop queries (e.g. "What connects Turing to von Neumann?") |
 | **Larger corpus support** | Sharded BM25 index; incremental embedding updates; streaming ingest for very large documents |
 | **Mistral + Bedrock providers** | Additional OpenAI-compatible endpoints; Bedrock for AWS-native deployments |
-
----
-
-## 19. New in v0.1 — Feature Reference
-
-These features were added to v0.1 after the original scope was set.
-
-### Two-step ingest with cached analysis
-
-The original four-pass pipeline is replaced by a two-step design. Step 1 (`_analyse()`) extracts entities, tags, and a 3-sentence summary and caches the result in `cache.db`. Step 2 (decision) reads the **summary** instead of the full text, which reduces prompt size and LLM cost on large documents. The cache key is `sha256(text)` + operation `"analyse-v1"` — repeat ingests of the same source hit the cache at both steps.
-
-The `POST /analyse` HTTP endpoint and `--analyse-only` CLI flag expose Step 1 standalone for debugging and source preview.
-
-### purpose.md scope filtering
-
-`wiki/purpose.md` lets you define what belongs in the wiki. IngestAgent reads it at init and prepends its content to the decision prompt. The LLM can respond `action="skip"` for out-of-scope sources without creating a failed job — the result is a clean skip with a `skip_reason` field in the job result. Create `purpose.md` via `synthadoc install` (template auto-generated) or write it manually.
-
-### overview.md auto-maintenance
-
-`wiki/overview.md` is a 2-paragraph LLM-generated summary of the entire wiki, regenerated automatically after any ingest that creates or updates pages. It reads the 10 most-recently-modified pages for context. The page carries `status: auto` frontmatter and is excluded from contradiction detection and orphan checks.
-
-### Tavily web search skill
-
-`web_search` skill is fully implemented (no longer a stub). Trigger with any intent phrase: `search for:`, `find on the web:`, `look up`, `browse`. The skill calls the Tavily search API and returns top result URLs as `child_sources`. The Orchestrator enqueues each URL as a separate ingest job. `max_results` (default 20) is configurable in `[web_search]` config. Requires `TAVILY_API_KEY` (free tier: 1,000 searches/month at tavily.com).
-
-### Multi-provider LLM support
-
-Five providers supported: `anthropic`, `openai`, `gemini`, `groq`, `ollama`. Gemini and Groq use the existing `OpenAIProvider` with a `base_url` override — no new provider class. Switch by changing one line in config and setting the corresponding API key. Gemini Flash and several Groq-hosted models have free tiers suitable for personal and small-team use.
-
-### Audit CLI commands
-
-`synthadoc audit history / cost / events` query `audit.db` directly without needing `sqlite3`. See [Section 9 — CLI](#9-cli) for full usage.
-
-### Obsidian plugin: web search modal
-
-`Synthadoc: Web search...` command palette entry opens a modal where the user types a plain topic. The modal prepends `search for:` and calls `POST /jobs/ingest`. Returns a job ID immediately; pages appear in the wiki as fan-out URL jobs complete. Live result streaming (watching pages appear as they land) is planned for v0.2.
-
-### Web search intent matching
-
-All five intent phrases (`search for`, `find on the web`, `look up`, `web search`, `browse`) are now matched by a single compiled regex (`_INTENT_RE`) that strips the prefix from the query sent to Tavily. The colon after the phrase is optional — `search for quantum computing` and `search for: quantum computing` are both handled correctly.
-
-### Error code system
-
-Every user-facing error now carries a stable code in the format `[ERR-<CATEGORY>-<NNN>]` (e.g. `[ERR-SRV-001]`). The central registry lives in `synthadoc/errors.py`. CLI errors go through the `cli_error()` helper; agent and skill errors embed the code in the exception message so it surfaces in the job `error` field. See [Section 9 — CLI](#9-cli) for the full code table.
-
-### Smart install scaffold
-
-`synthadoc install` now includes two enhancements:
-
-**Port auto-detection:** If the default port (7070) is already in use, the installer scans upward (7071, 7072 …) and prompts the user to confirm the alternative port. The chosen port is written into `<wiki-root>/.synthadoc/config.toml` under `[server] port`. Use `--port N` to skip auto-detection and specify a port directly.
-
-**LLM scaffold at install time:** For fresh (non-demo) wikis, the installer calls `ScaffoldAgent` after creating the directory tree. The agent makes a single LLM call and returns domain-specific content for four files:
-
-| File | What is generated |
-|------|------------------|
-| `wiki/index.md` | Category headings with `<!-- description -->` comments (5–8 domain categories) |
-| `AGENTS.md` | Domain-specific ingest and query guidelines as a bullet list |
-| `wiki/purpose.md` | Include/exclude scope definition for the domain |
-| `wiki/dashboard.md` | Dashboard intro sentence injected below the heading |
-
-If no LLM API key is set at install time, the installer falls back to static template files and prints a tip to run `synthadoc scaffold -w <name>` later.
-
-**`synthadoc scaffold` refresh command:** Re-runs the LLM scaffold on an existing wiki at any time. Protected slugs — `[[wikilinks]]` in `index.md` that point to existing `wiki/<slug>.md` files — are detected automatically and passed to the LLM so those categories are preserved. Only `index.md`, `AGENTS.md`, and `purpose.md` are rewritten; `config.toml` and `dashboard.md` are never touched by `scaffold`.
-
-```bash
-synthadoc scaffold -w my-wiki
-# Can be scheduled:
-synthadoc schedule add --op "scaffold" --cron "0 4 * * 0" -w my-wiki
-```
 
 ---
 
@@ -1426,7 +1335,7 @@ synthadoc schedule add --op "scaffold" --cron "0 4 * * 0" -w my-wiki
 - **OpenTelemetry** — traces, metrics, structured logs; OTLP export optional
 - **Cross-platform** — Windows, Linux, macOS
 
-### v0.2.0 (in progress)
+### v0.2.0
 
 - **Query decomposition** — `QueryAgent.decompose()` breaks complex questions into 1–N focused sub-questions (cap=4); parallel BM25 search per sub-question; merged and deduplicated by highest score; graceful fallback on LLM error; markdown fence stripping for cross-model robustness
 - **Query audit trail** — `queries` table in `audit.db`; every query recorded with question text, sub-question count, tokens, cost, timestamp; `cost_summary()` now aggregates ingest + query spend; exposed via `GET /audit/queries`, `synthadoc audit queries`, and Obsidian "Audit: query history..." command

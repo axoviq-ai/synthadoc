@@ -29,9 +29,15 @@ class LintAgent:
         self._log = log_writer
         self._threshold = confidence_threshold
 
+    # Auto-generated pages whose wikilinks should not count as "real" references.
+    # A page linked only from overview.md is still an orphan in the human graph.
+    _REFERENCE_EXCLUDED = frozenset({"overview", "index", "dashboard", "log", "purpose"})
+
     def _find_orphans(self, slugs: list[str]) -> list[str]:
         referenced: set[str] = set()
         for slug in slugs:
+            if slug in self._REFERENCE_EXCLUDED:
+                continue
             page = self._store.read_page(slug)
             if page:
                 for link in _WIKILINK_RE.findall(page.content):
@@ -39,7 +45,7 @@ class LintAgent:
                     slug_part = link.split("|")[0].strip()
                     referenced.add(slug_part.lower().replace(" ", "-"))
         return [s for s in slugs if s not in referenced
-                and s not in ("index", "dashboard", "log", "purpose")]
+                and s not in ("index", "dashboard", "log", "purpose", "overview")]
 
     async def lint(self, scope: str = "all", auto_resolve: bool = False) -> LintReport:
         report = LintReport()

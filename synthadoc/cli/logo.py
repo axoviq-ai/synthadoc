@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 
 # ──────────────────────────────────────────────
 #  ASCII art — open book inside a circular badge
@@ -83,7 +84,7 @@ def print_banner(
         "",
         _c(_WHITE,          f"  Mode:  {mode}", use_color),
         _c(_WHITE,          f"  Port:  {port}", use_color),
-        _c(_WHITE,          f"  Wiki:  {wiki}", use_color),
+        _c(_WHITE,          f"  Wiki:  {Path(wiki).name}", use_color),
         _c(_WHITE,          f"  LLM:   {llm_label}", use_color),
         _c(_WHITE,          f"  PID:   {os.getpid()}", use_color),
         "",
