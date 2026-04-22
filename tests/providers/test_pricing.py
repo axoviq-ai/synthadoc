@@ -32,7 +32,33 @@ def test_zero_tokens_returns_zero():
     assert cost == 0.0
 
 
-def test_gemini_flash_rates():
-    """gemini-2.0-flash: $0.30/M input, $2.50/M output."""
+def test_gemini_20_flash_rates():
+    """gemini-2.0-flash (deprecated Jun 2026): $0.10/M input, $0.40/M output."""
     cost = estimate_cost("gemini-2.0-flash", input_tokens=1_000_000, output_tokens=1_000_000)
+    assert abs(cost - 0.50) < 0.001  # $0.10 + $0.40
+
+
+def test_gemini_25_flash_rates():
+    """gemini-2.5-flash (default): $0.30/M input, $2.50/M output."""
+    cost = estimate_cost("gemini-2.5-flash", input_tokens=1_000_000, output_tokens=1_000_000)
     assert abs(cost - 2.80) < 0.001  # $0.30 + $2.50
+
+
+def test_minimax_m25_rates():
+    """MiniMax-M2.5: $0.15/M input, $1.20/M output."""
+    cost = estimate_cost("MiniMax-M2.5", input_tokens=1_000_000, output_tokens=1_000_000)
+    assert abs(cost - 1.35) < 0.001  # $0.15 + $1.20
+
+
+def test_minimax_m27_rates():
+    """MiniMax-M2.7: $0.30/M input, $1.20/M output."""
+    cost = estimate_cost("MiniMax-M2.7", input_tokens=1_000_000, output_tokens=1_000_000)
+    assert abs(cost - 1.50) < 0.001  # $0.30 + $1.20
+
+
+def test_minimax_highspeed_same_rates_as_standard():
+    """MiniMax highspeed variants share the same pricing as their standard counterparts."""
+    assert estimate_cost("MiniMax-M2.5-highspeed", 1_000_000, 1_000_000) == \
+           estimate_cost("MiniMax-M2.5", 1_000_000, 1_000_000)
+    assert estimate_cost("MiniMax-M2.7-highspeed", 1_000_000, 1_000_000) == \
+           estimate_cost("MiniMax-M2.7", 1_000_000, 1_000_000)

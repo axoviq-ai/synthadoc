@@ -751,23 +751,24 @@ otlp_endpoint = "http://localhost:4317"   # used when exporter = "otlp"
 
 ### Provider switching
 
-All five supported providers (`anthropic`, `openai`, `gemini`, `groq`, `ollama`) share the same config key. Gemini and Groq use OpenAI-compatible endpoints internally, so no custom provider class is needed — just set the provider name and supply the corresponding API key:
+All six supported providers (`anthropic`, `openai`, `gemini`, `groq`, `minimax`, `ollama`) share the same config key. Gemini, Groq, and MiniMax use OpenAI-compatible endpoints internally, so no custom provider class is needed — just set the provider name and supply the corresponding API key:
 
 ```toml
 # Switch from Claude to Gemini Flash (free tier available)
 [agents]
-default = { provider = "gemini", model = "gemini-2.0-flash" }
+default = { provider = "gemini", model = "gemini-2.5-flash" }
 ```
 
 Required environment variables per provider:
 
-| Provider | Env var | Free tier |
-|----------|---------|-----------|
-| `anthropic` | `ANTHROPIC_API_KEY` | No (pay-per-token) |
-| `openai` | `OPENAI_API_KEY` | No (pay-per-token) |
-| `gemini` | `GEMINI_API_KEY` | **Yes** — 15 RPM / 1M tokens/day on Flash |
-| `groq` | `GROQ_API_KEY` | **Yes** — generous free tier on Llama/Mixtral models |
-| `ollama` | _(none)_ | **Yes** — fully local |
+| Provider | Env var | Free tier | Vision |
+|----------|---------|-----------|--------|
+| `anthropic` | `ANTHROPIC_API_KEY` | No (pay-per-token) | Yes |
+| `openai` | `OPENAI_API_KEY` | No (pay-per-token) | Yes |
+| `gemini` | `GEMINI_API_KEY` | **Yes** — 15 RPM / 1M tokens/day on Flash | Yes |
+| `groq` | `GROQ_API_KEY` | **Yes** — generous free tier on Llama/Mixtral models | No |
+| `minimax` | `MINIMAX_API_KEY` | No (pay-per-token) | No (text only) |
+| `ollama` | _(none)_ | **Yes** — fully local | Model-dependent |
 
 ### Per-project config — `<wiki-root>/.synthadoc/config.toml`
 
@@ -824,7 +825,7 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `agents.default.provider` | str | `"anthropic"` | LLM provider: `anthropic`, `openai`, `gemini`, `groq`, `ollama` |
+| `agents.default.provider` | str | `"gemini"` | LLM provider: `anthropic`, `openai`, `gemini`, `groq`, `minimax`, `ollama` |
 | `agents.default.model` | str | `"claude-opus-4-6"` | Model ID |
 | `server.port` | int | `7070` | HTTP listen port |
 | `queue.max_parallel_ingest` | int | `4` | Max concurrent ingest agents |
@@ -1005,8 +1006,10 @@ Separate input and output rates reflect real-world API pricing (output tokens co
 | Anthropic | claude-haiku-4-5-20251001 | $0.000001 | $0.000005 |
 | Anthropic | claude-sonnet-4-6 | $0.000003 | $0.000015 |
 | OpenAI | gpt-4o-mini | $0.00000015 | $0.0000006 |
-| Gemini | gemini-2.0-flash | $0.0000003 | $0.0000025 |
+| Gemini | gemini-2.5-flash | $0.0000003 | $0.0000025 |
 | Groq | llama-3.3-70b-versatile | $0.00000059 | $0.00000079 |
+| MiniMax | MiniMax-M2.5 | $0.00000015 | $0.0000012 |
+| MiniMax | MiniMax-M2.7 | $0.0000003 | $0.0000012 |
 
 **Special cases:**
 - **Ollama (local inference):** Always `$0.00` regardless of token count — `is_local=True` short-circuits the calculation.
@@ -1251,7 +1254,7 @@ class SlackExportSkill(BaseSkill):
 
 ### Writing a provider
 
-Built-in providers: `anthropic`, `openai`, `gemini`, `groq`, `ollama`. For any provider that exposes an OpenAI-compatible API, no custom class is needed — the built-in `openai` provider with a custom `base_url` is sufficient.
+Built-in providers: `anthropic`, `openai`, `gemini`, `groq`, `minimax`, `ollama`. For any provider that exposes an OpenAI-compatible API, no custom class is needed — the built-in `openai` provider with a custom `base_url` is sufficient.
 
 For a fully proprietary API, subclass `LLMProvider`:
 
@@ -1322,7 +1325,7 @@ See [Appendix A — Release Feature Index](#appendix-a--release-feature-index) f
 - **Folder-based skill system** — each skill is a self-contained folder with a `SKILL.md` manifest; intent-based dispatch alongside extension matching; drop a folder in `skills/` to add a new format without touching core code
 - **2 access surfaces** — CLI (thin HTTP client), HTTP REST API
 - **Obsidian plugin** — ingest (file picker, URL, all sources, web search), query modal, lint report, jobs list — all from the command palette; ribbon shows engine health + page count
-- **5 LLM providers** — Anthropic, OpenAI, Gemini (free tier), Groq (free tier), Ollama (local); switch with one config line
+- **6 LLM providers** — Anthropic, OpenAI, Gemini (free tier), Groq (free tier), MiniMax (paid, cheapest text), Ollama (local); switch with one config line
 - **Two-step ingest** — `_analyse()` caches entity extraction + summary; decision prompt uses summary instead of full text; reduces cost on large documents
 - **purpose.md scope filtering** — define what belongs in your wiki; the LLM skips out-of-scope sources cleanly
 - **overview.md auto-summary** — 2-paragraph wiki overview regenerated automatically after every ingest

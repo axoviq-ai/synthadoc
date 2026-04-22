@@ -42,11 +42,12 @@ Synthadoc reads your raw source documents — PDFs, spreadsheets, web pages, ima
 
 Synthadoc scales from a single researcher to a company-wide knowledge platform:
 
-| Team size | Typical use case |
-|-----------|-----------------|
-| **Solo / 1–2 people** | Personal research wiki, freelance knowledge base, indie hacker documentation - run it free on Gemini Flash or a local Ollama model with zero ongoing cost |
-| **Small team (3–20)** | Centralized internal knowledge base for startups and departments that aggregates diverse individual data sources into a unified, high-integrity wiki. The system automatically resolves contradictions and scales autonomously, ensuring organizational intelligence grows in tandem with your team |
-| **Medium / enterprise** | Compliance-sensitive knowledge bases that must stay local; per-department wikis on separate ports; audit trail for every ingest and cost event; hook system for CI/CD integration; OpenTelemetry for ops dashboards |
+
+| Team size               | Typical use case                                                                                                                                                                                                                                                                                    |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Solo / 1–2 people**  | Personal research wiki, freelance knowledge base, indie hacker documentation - run it free on Gemini Flash or a local Ollama model with zero ongoing cost                                                                                                                                           |
+| **Small team (3–20)**  | Centralized internal knowledge base for startups and departments that aggregates diverse individual data sources into a unified, high-integrity wiki. The system automatically resolves contradictions and scales autonomously, ensuring organizational intelligence grows in tandem with your team |
+| **Medium / enterprise** | Compliance-sensitive knowledge bases that must stay local; per-department wikis on separate ports; audit trail for every ingest and cost event; hook system for CI/CD integration; OpenTelemetry for ops dashboards                                                                                 |
 
 No cloud account. No vendor lock-in. The wiki is plain Markdown — open it in any editor, back it up with git, sync it with any cloud drive.
 
@@ -61,14 +62,15 @@ Most knowledge-management tools retrieve and summarize at query time. Synthadoc 
 
 **Long-term alignment:**
 
-| Direction | How Synthadoc moves there |
-|-----------|--------------------------|
-| Agent orchestration | Orchestrator dispatches parallel IngestAgent, QueryAgent, LintAgent sub-agents with cost guards and retry backoff |
+
+| Direction                | How Synthadoc moves there                                                                                                                                                                                     |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Agent orchestration      | Orchestrator dispatches parallel IngestAgent, QueryAgent, LintAgent sub-agents with cost guards and retry backoff                                                                                             |
 | Sub-agent skills/plugins | Featuring a 3-tier lazy-load capability system, the platform allows for the injection of custom skills and hooks via a plug-and-play interface, ensuring core stability is never compromised during extension |
-| LLM wiki vs. RAG | Pre-compiled structured knowledge beats query-time synthesis for contradiction detection, graph traversal, and offline access |
-| CLI / HTTP | A unified interface via CLI and RESTful endpoints, the system streamlines full-spectrum integration: from data ingestion and querying to automated linting, security auditing, and job orchestration |
-| Local-first | All data stays on your machine; localhost-only network binding; no cloud dependency except the LLM API itself |
-| Provider choice | LLM backends including free-tier Gemini and Groq — no single-vendor dependency |
+| LLM wiki vs. RAG         | Pre-compiled structured knowledge beats query-time synthesis for contradiction detection, graph traversal, and offline access                                                                                 |
+| CLI / HTTP               | A unified interface via CLI and RESTful endpoints, the system streamlines full-spectrum integration: from data ingestion and querying to automated linting, security auditing, and job orchestration          |
+| Local-first              | All data stays on your machine; localhost-only network binding; no cloud dependency except the LLM API itself                                                                                                 |
+| Provider choice          | LLM backends including free-tier Gemini and Groq, plus MiniMax for cheapest paid text rates — no single-vendor dependency                                                                                    |
 
 ---
 
@@ -100,13 +102,14 @@ As the wiki accumulates pages the `index.md` table of contents, domain scope (`p
 
 ### Business values
 
-| Value | How |
-|-------|-----|
-| **Faster onboarding** | New team members query the wiki instead of digging through documents |
-| **Audit trail** | Every ingest recorded in `audit.db` with source hash, token count, and timestamp |
-| **Cost control** | Configurable soft-warn and hard-gate thresholds; 3-layer cache reduces repeat spend |
-| **Compliance** | Local-first — source documents and compiled knowledge never leave your machine |
-| **Extensibility** | Hooks fire on every event; custom skills load without a server restart |
+
+| Value                 | How                                                                                 |
+| --------------------- | ----------------------------------------------------------------------------------- |
+| **Faster onboarding** | New team members query the wiki instead of digging through documents                |
+| **Audit trail**       | Every ingest recorded in`audit.db` with source hash, token count, and timestamp     |
+| **Cost control**      | Configurable soft-warn and hard-gate thresholds; 3-layer cache reduces repeat spend |
+| **Compliance**        | Local-first — source documents and compiled knowledge never leave your machine     |
+| **Extensibility**     | Hooks fire on every event; custom skills load without a server restart              |
 
 ---
 
@@ -114,28 +117,29 @@ As the wiki accumulates pages the `index.md` table of contents, domain scope (`p
 
 ### Competitive advantages
 
-| Capability | Synthadoc | Typical RAG | NotebookLM | Notion AI |
-|------------|-----------|-------------|------------|-----------|
-| Ingest-time synthesis | **Yes** | No | Partial | No |
-| Contradiction detection | **Yes** | No | No | No |
-| Orphan page detection | **Yes** | No | No | No |
-| Persistent wikilink graph | **Yes** | No | No | No |
-| Local-first (no cloud data) | **Yes** | Varies | No | No |
-| Custom skill plugins | **Yes** | Limited | No | No |
-| Obsidian integration | **Yes** | No | No | No |
-| Cost guard + audit trail | **Yes** | No | No | No |
-| Hook / CI integration | **Yes** (2 events) | No | No | No |
-| Offline browsable artifact | **Yes** | No | No | No |
-| Multi-wiki isolation | **Yes** | No | No | No |
-| Web search → wiki pages | **Yes** | No | No | No |
-| Free LLM tier support | **Yes** (Gemini, Groq) | No | No | No |
-| Auto wiki overview page | **Yes** | No | No | No |
-| Resumable job queue + retry | **Yes** | No | No | No |
-| Query decomposition | **Yes** (parallel sub-queries) | No | No | No |
-| Knowledge gap detection | **Yes** | No | No | No |
-| Web search decomposition | **Yes** (parallel Tavily) | No | No | No |
-| Semantic re-ranking (vector) | **Yes** (optional fastembed) | Varies | No | No |
-| Scaffold automation | **Yes** | No | No | No |
+
+| Capability                   | Synthadoc                                   | Typical RAG | NotebookLM | Notion AI |
+| ---------------------------- | ------------------------------------------- | ----------- | ---------- | --------- |
+| Ingest-time synthesis        | **Yes**                                     | No          | Partial    | No        |
+| Contradiction detection      | **Yes**                                     | No          | No         | No        |
+| Orphan page detection        | **Yes**                                     | No          | No         | No        |
+| Persistent wikilink graph    | **Yes**                                     | No          | No         | No        |
+| Local-first (no cloud data)  | **Yes**                                     | Varies      | No         | No        |
+| Custom skill plugins         | **Yes**                                     | Limited     | No         | No        |
+| Obsidian integration         | **Yes**                                     | No          | No         | No        |
+| Cost guard + audit trail     | **Yes**                                     | No          | No         | No        |
+| Hook / CI integration        | **Yes** (2 events)                          | No          | No         | No        |
+| Offline browsable artifact   | **Yes**                                     | No          | No         | No        |
+| Multi-wiki isolation         | **Yes**                                     | No          | No         | No        |
+| Web search → wiki pages     | **Yes**                                     | No          | No         | No        |
+| Multiple LLMs support       | **Yes** (MiniMax, Gemini, Groq, Anthropic) | No          | No         | No        |
+| Auto wiki overview page      | **Yes**                                     | No          | No         | No        |
+| Resumable job queue + retry  | **Yes**                                     | No          | No         | No        |
+| Query decomposition          | **Yes** (parallel sub-queries)              | No          | No         | No        |
+| Knowledge gap detection      | **Yes**                                     | No          | No         | No        |
+| Web search decomposition     | **Yes** (parallel Tavily)                   | No          | No         | No        |
+| Semantic re-ranking (vector) | **Yes** (optional fastembed)                | Varies      | No         | No        |
+| Scaffold automation          | **Yes**                                     | No          | No         | No        |
 
 ### Key differentiators vs. RAG
 
@@ -167,23 +171,26 @@ See [docs/design.md — Appendix A: Release Feature Index](docs/design.md#append
 
 ### Prerequisites
 
-| Requirement | Version | Notes |
-|-------------|---------|-------|
-| Python | 3.11+ | |
-| Node.js | 18+ | Obsidian plugin build only |
-| Git | any | |
-| LLM API key | — | At least one required (see below) |
-| Tavily API key | — | Optional — web search feature only |
+
+| Requirement    | Version | Notes                               |
+| -------------- | ------- | ----------------------------------- |
+| Python         | 3.11+   |                                     |
+| Node.js        | 18+     | Obsidian plugin build only          |
+| Git            | any     |                                     |
+| LLM API key    | —      | At least one required (see below)   |
+| Tavily API key | —      | Optional — web search feature only |
 
 **LLM API key — at least one required:**
 
-| Provider | Free tier | Get key |
-|----------|-----------|---------|
-| **Gemini Flash** | Yes — 15 RPM / 1M tokens/day, no credit card | [aistudio.google.com](https://aistudio.google.com/app/apikey) |
-| Groq | Yes — rate-limited | [console.groq.com](https://console.groq.com/keys) |
-| Ollama | Yes — runs locally, no key | [ollama.com](https://ollama.com) |
-| Anthropic | No | [console.anthropic.com](https://console.anthropic.com/) |
-| OpenAI | No | [platform.openai.com](https://platform.openai.com/api-keys) |
+
+| Provider         | Free tier                                     | Vision          | Get key                                                       |
+| ---------------- | --------------------------------------------- | --------------- | ------------------------------------------------------------- |
+| **Gemini Flash** | Yes — 15 RPM / 1M tokens/day, no credit card | Yes             | [aistudio.google.com](https://aistudio.google.com/app/apikey) |
+| Groq             | Yes — rate-limited                           | No              | [console.groq.com](https://console.groq.com/keys)             |
+| Ollama           | Yes — runs locally, no key                   | Model-dependent | [ollama.com](https://ollama.com)                              |
+| MiniMax          | No — pay-per-token (cheapest text rates)     | No              | [platform.minimax.io](https://platform.minimax.io/)           |
+| Anthropic        | No                                            | Yes             | [console.anthropic.com](https://console.anthropic.com/)       |
+| OpenAI           | No                                            | Yes             | [platform.openai.com](https://platform.openai.com/api-keys)   |
 
 **Tavily API key (optional — enables web search):**
 Get a free key at [tavily.com](https://tavily.com). Without it, web search jobs will fail but all other features work normally.
@@ -225,6 +232,8 @@ npm test         # runs Vitest unit tests
 
 ### Step 4 — Set your API keys
 
+**At least one LLM API key is required** — Synthadoc will not start without one.
+
 Synthadoc defaults to **Gemini Flash** as the LLM provider — it's free, requires no
 credit card, and offers 1 million tokens per day. Get a key at
 **aistudio.google.com/app/apikey** (click "Create API key").
@@ -236,15 +245,22 @@ Web search uses **Tavily** (`TAVILY_API_KEY`) — optional, only needed for
 # macOS / Linux — add to ~/.bashrc or ~/.zshrc to persist
 export GEMINI_API_KEY=AIza…          # default — free tier, 1M tokens/day
 export GROQ_API_KEY=gsk_…            # alternative free tier — 100K tokens/day
-export ANTHROPIC_API_KEY=sk-ant-…    # paid alternative — highest quality
+export ANTHROPIC_API_KEY=sk-ant-…    # paid — highest quality
+export MINIMAX_API_KEY=…             # paid — cheapest text rates (no image support)
 export TAVILY_API_KEY=tvly-…         # web search (optional)
 
 # Windows cmd — current session only
 set GEMINI_API_KEY=AIza…
+set GROQ_API_KEY=gsk_…
+set ANTHROPIC_API_KEY=sk-ant-…
+set MINIMAX_API_KEY=…
 set TAVILY_API_KEY=tvly-…
 
 # Windows cmd — permanent (open a new cmd window after running)
 setx GEMINI_API_KEY AIza…
+setx GROQ_API_KEY=gsk_…
+setx ANTHROPIC_API_KEY=sk-ant-…
+setx MINIMAX_API_KEY …
 setx TAVILY_API_KEY tvly-…
 ```
 
@@ -301,11 +317,12 @@ The PID is printed when the background server starts and saved to `<wiki-root>/.
 
 ## Quick-Start Guide
 
-The **History of Computing** demo includes 10 pre-built pages, raw source files covering clean-merge, contradiction, and orphan scenarios, and a full walkthrough of key Synthadoc feature.
+The **History of Computing** demo includes 13 pre-built pages, raw source files covering clean-merge, contradiction, and orphan scenarios, and a full walkthrough of key Synthadoc feature.
 
 **Full step-by-step walkthrough: [docs/user-quick-start-guide.md](docs/user-quick-start-guide.md)**
 
 The guide covers:
+
 1. Verify the demo server started (banner, health check)
 2. Install Dataview in Obsidian
 3. Install the Synthadoc plugin and open the vault
@@ -332,12 +349,13 @@ synthadoc serve -w market-condition-canada
 
 `--domain` is a free-text description of the subject area — the LLM uses it to generate four domain-aware starter files via scaffold:
 
-| File | Purpose |
-|---|---|
-| `wiki/index.md` | Table of contents — domain-relevant categories with `[[wikilinks]]` |
-| `wiki/purpose.md` | Scope declaration — tells the ingest agent what belongs and what to ignore |
-| `AGENTS.md` | LLM behaviour guidelines — tone, terminology, and synthesis style |
-| `wiki/dashboard.md` | Live Dataview dashboard — orphan pages, contradictions, page count |
+
+| File                | Purpose                                                                     |
+| ------------------- | --------------------------------------------------------------------------- |
+| `wiki/index.md`     | Table of contents — domain-relevant categories with`[[wikilinks]]`         |
+| `wiki/purpose.md`   | Scope declaration — tells the ingest agent what belongs and what to ignore |
+| `AGENTS.md`         | LLM behaviour guidelines — tone, terminology, and synthesis style          |
+| `wiki/dashboard.md` | Live Dataview dashboard — orphan pages, contradictions, page count         |
 
 Open the wiki folder in Obsidian as a new vault and install both the Dataview and Synthadoc plugins (required once per wiki). The Quick-Start Guide covers this setup in detail — see [docs/user-quick-start-guide.md](docs/user-quick-start-guide.md).
 
@@ -626,6 +644,7 @@ curl http://127.0.0.1:7070/health
 ```
 
 Expected `status` output:
+
 ```
 Wiki:         /home/user/wikis/my-wiki
 Pages:        34
@@ -637,11 +656,12 @@ Jobs total:   12
 
 Synthadoc writes three log artefacts per wiki:
 
-| File | Location | Format | Use |
-|------|----------|--------|-----|
-| `log.md` | `<wiki-root>/log.md` | Human-readable Markdown | Read inside Obsidian; shows every ingest, contradiction, lint event |
-| `synthadoc.log` | `<wiki-root>/.synthadoc/logs/` | JSON lines (rotating) | Structured debug/ops log; grep or pipe to jq |
-| `audit.db` | `<wiki-root>/.synthadoc/audit.db` | SQLite (append-only) | Source hashes, cost records, job history |
+
+| File            | Location                          | Format                  | Use                                                                 |
+| --------------- | --------------------------------- | ----------------------- | ------------------------------------------------------------------- |
+| `log.md`        | `<wiki-root>/log.md`              | Human-readable Markdown | Read inside Obsidian; shows every ingest, contradiction, lint event |
+| `synthadoc.log` | `<wiki-root>/.synthadoc/logs/`    | JSON lines (rotating)   | Structured debug/ops log; grep or pipe to jq                        |
+| `audit.db`      | `<wiki-root>/.synthadoc/audit.db` | SQLite (append-only)    | Source hashes, cost records, job history                            |
 
 **Tailing the JSON log:**
 
@@ -687,6 +707,7 @@ synthadoc cache clear -w my-wiki
 ```
 
 Cache invalidation happens automatically when:
+
 - A source file's SHA-256 hash changes (content changed)
 - `CACHE_VERSION` is bumped in `core/cache.py` (after prompt template edits)
 - `--force` is passed to ingest

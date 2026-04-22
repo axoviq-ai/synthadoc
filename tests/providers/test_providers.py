@@ -134,6 +134,28 @@ def test_make_provider_missing_groq_key_exits(monkeypatch, capsys):
     assert "console.groq.com" in err
 
 
+def test_make_provider_missing_minimax_key_exits(monkeypatch, capsys):
+    import click
+    from synthadoc.providers import make_provider
+    monkeypatch.setenv("MINIMAX_API_KEY", "")
+    with pytest.raises(click.exceptions.Exit) as exc_info:
+        make_provider("ingest", _make_cfg("minimax", "MiniMax-M2.5"))
+    assert exc_info.value.exit_code == 1
+    err = capsys.readouterr().err
+    assert "MINIMAX_API_KEY" in err
+    assert "platform.minimax.io" in err
+
+
+def test_make_provider_minimax_uses_openai_provider_with_base_url(monkeypatch):
+    from synthadoc.providers import make_provider
+    from synthadoc.providers.openai import OpenAIProvider
+    monkeypatch.setenv("MINIMAX_API_KEY", "test-minimax-key")
+    provider = make_provider("ingest", _make_cfg("minimax", "MiniMax-M2.5"))
+    assert isinstance(provider, OpenAIProvider)
+    assert "minimax.io" in str(provider._client.base_url)
+    assert provider.supports_vision is False
+
+
 def test_make_provider_gemini_uses_openai_provider_with_base_url(monkeypatch):
     from synthadoc.providers import make_provider
     from synthadoc.providers.openai import OpenAIProvider
@@ -235,15 +257,71 @@ async def test_openai_provider_includes_system_message():
 
 @pytest.mark.asyncio
 async def test_openai_provider_empty_content_returns_empty_string():
-    """If the model returns None content, CompletionResponse.text must be empty string, not None."""
+    """If the model returns None content with no reasoning fallback, text must be empty string."""
     cfg = AgentConfig(provider="openai", model="gpt-4o-mini")
     provider = OpenAIProvider(api_key="test-key", config=cfg)
 
     mock_choice = MagicMock()
     mock_choice.message.content = None
+    mock_choice.message.model_extra = {}
     mock_resp = MagicMock()
     mock_resp.choices = [mock_choice]
     mock_resp.usage.prompt_tokens = 5
+    mock_resp.usage.completion_tokens = 0
+
+    with patch.object(provider._client.chat.completions, "create",
+                      new=AsyncMock(return_value=mock_resp)):
+        result = await provider.complete(
+            messages=[Message(role="user", content="hi")]
+        )
+    assert result.text == ""
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_extracts_json_from_reasoning_content():
+    """MiniMax-style reasoning models return content=null with JSON in reasoning_content.
+    The provider must extract the last JSON array from reasoning_content as a fallback."""
+    cfg = AgentConfig(provider="minimax", model="MiniMax-M2.5",
+                      base_url="https://api.minimax.io/v1")
+    provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = None
+    mock_choice.message.model_extra = {
+        "reasoning_content": (
+            'I need to break this into sub-questions. '
+            'Here are the relevant aspects to cover: '
+            '["What is X?", "How does X work?", "What are X applications?"]'
+        )
+    }
+    mock_resp = MagicMock()
+    mock_resp.choices = [mock_choice]
+    mock_resp.usage.prompt_tokens = 20
+    mock_resp.usage.completion_tokens = 0
+
+    with patch.object(provider._client.chat.completions, "create",
+                      new=AsyncMock(return_value=mock_resp)):
+        result = await provider.complete(
+            messages=[Message(role="user", content="Tell me about X")]
+        )
+    assert result.text == '["What is X?", "How does X work?", "What are X applications?"]'
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_reasoning_content_no_json_returns_empty():
+    """If reasoning_content has no JSON array, text must still be empty string (not crash)."""
+    cfg = AgentConfig(provider="minimax", model="MiniMax-M2.5",
+                      base_url="https://api.minimax.io/v1")
+    provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = None
+    mock_choice.message.model_extra = {
+        "reasoning_content": "I am thinking about this question at length..."
+    }
+    mock_resp = MagicMock()
+    mock_resp.choices = [mock_choice]
+    mock_resp.usage.prompt_tokens = 10
     mock_resp.usage.completion_tokens = 0
 
     with patch.object(provider._client.chat.completions, "create",

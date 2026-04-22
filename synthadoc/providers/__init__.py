@@ -54,8 +54,16 @@ def make_provider(agent_name: str, config: Config) -> LLMProvider:
             base_url="https://api.groq.com/openai/v1",
         )
         return OpenAIProvider(api_key=key, config=cfg_with_url)
+    if name == "minimax":
+        from synthadoc.providers.openai import OpenAIProvider
+        key = _require_env("MINIMAX_API_KEY", "MiniMax", "https://platform.minimax.io/")
+        cfg_with_url = AgentConfig(
+            provider="minimax", model=agent_cfg.model,
+            base_url="https://api.minimax.io/v1",
+        )
+        return OpenAIProvider(api_key=key, config=cfg_with_url)
     if name == "ollama":
         from synthadoc.providers.ollama import OllamaProvider
         return OllamaProvider(config=agent_cfg)
     E.cli_error(E.CFG_UNKNOWN_PROVIDER, f"Unknown provider: {name!r}",
-                "Supported providers: anthropic, openai, gemini, groq, ollama")
+                "Supported providers: anthropic, openai, gemini, groq, minimax, ollama")

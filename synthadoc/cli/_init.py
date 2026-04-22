@@ -27,11 +27,12 @@ domain = "{domain}"
 port = {port}  # change this if running multiple wikis simultaneously
 
 [agents]
-default = {{ provider = "gemini", model = "gemini-2.0-flash" }}
+default = {{ provider = "gemini", model = "gemini-2.5-flash" }}
 # Alternatives (uncomment and restart to switch):
+# default = {{ provider = "minimax",   model = "MiniMax-M2.5" }}            # paid, cheapest text-only ($0.15/M in)
 # default = {{ provider = "groq",      model = "llama-3.3-70b-versatile" }} # free tier, 100K tokens/day
 # default = {{ provider = "anthropic", model = "claude-sonnet-4-6" }}       # paid, highest quality
-# default = {{ provider = "ollama",    model = "llama3.2" }}                 # fully local
+# default = {{ provider = "ollama",    model = "llama3.2" }}                 # fully local, no API key
 
 [ingest]
 max_pages_per_ingest = 15

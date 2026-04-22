@@ -28,6 +28,7 @@ major engine feature. No setup beyond following the steps below is required.
 12. [Scheduling recurring operations](#step-12--scheduling-recurring-operations)
 
 **Appendices**
+
 - [Appendix A — Obsidian Plugin Command Reference](#appendix-a--obsidian-plugin-command-reference)
 - [Appendix B — Hooks: auto-commit wiki to git](#appendix-b--hooks-auto-commit-wiki-to-git)
 - [Appendix C — Switching LLM providers](#appendix-c--switching-llm-providers)
@@ -194,13 +195,14 @@ history-of-computing/
 
 **Open these files in Obsidian now:**
 
-| File | What to look at |
-|------|-----------------|
-| `wiki/index.md` | Pre-generated category structure with `[[wikilinks]]` to each page |
-| `wiki/dashboard.md` | Live Dataview tables — will populate after Steps 6–8 |
-| `wiki/alan-turing.md` | YAML frontmatter: `status`, `confidence`, `tags`, `sources[]` |
-| `AGENTS.md` | Domain-specific guidelines the LLM reads on every ingest |
-| `wiki/purpose.md` | In-scope / out-of-scope definition for History of Computing |
+
+| File                  | What to look at                                                   |
+| --------------------- | ----------------------------------------------------------------- |
+| `wiki/index.md`       | Pre-generated category structure with`[[wikilinks]]` to each page |
+| `wiki/dashboard.md`   | Live Dataview tables — will populate after Steps 6–8            |
+| `wiki/alan-turing.md` | YAML frontmatter:`status`, `confidence`, `tags`, `sources[]`      |
+| `AGENTS.md`           | Domain-specific guidelines the LLM reads on every ingest          |
+| `wiki/purpose.md`     | In-scope / out-of-scope definition for History of Computing       |
 
 **Graph view** (`Ctrl/Cmd+G`): the 10 pre-built pages should appear as interconnected
 nodes. `index` and `dashboard` connect to everything; topic pages cluster by cross-links.
@@ -213,7 +215,7 @@ nodes. `index` and `dashboard` connect to everything; topic pages cluster by cro
 
 ### CLI queries
 
-The wiki already has 10 pages on computing history — query them before ingesting anything:
+The wiki already has 13 pages on computing history — query them before ingesting anything:
 
 ```bash
 synthadoc query "How did Alan Turing influence modern computers?" -w history-of-computing
@@ -285,14 +287,15 @@ clickable `[[wikilinks]]`.
 
 The six source files in `raw_sources/` are designed to demonstrate every ingest scenario:
 
-| File | Skill | Scenario |
-|------|-------|----------|
-| `turing-enigma-decryption.pdf` | `pdf` | **A — Clean merge**: enriches `alan-turing` with Bletchley Park and Bombe detail |
-| `computing-pioneers-timeline.xlsx` | `xlsx` | **A — Clean merge**: structured two-sheet timeline; enriches multiple pages |
-| `cs-milestones-overview.pptx` | `pptx` | **A — Clean merge + new pages**: 6-slide deck; creates `eniac`, `transistor-and-moores-law`, `internet-history`; enriches `ada-lovelace`, `alan-turing`, `grace-hopper` |
-| `first-compiler-controversy.pdf` | `pdf` | **B — Conflict**: contradicts `grace-hopper` (A-0 vs FORTRAN dispute) |
-| `quantum-computing-primer.png` | `image` | **A — New page**: vision LLM extracts key concepts; creates `quantum-computing` |
-| `konrad-zuse-z3-computer.md` | `markdown` | **C — Orphan**: specific niche topic; creates `konrad-zuse` with no inbound links |
+
+| File                               | Skill      | Scenario                                                                                                                                                                 |
+| ---------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `turing-enigma-decryption.pdf`     | `pdf`      | **A — Clean merge**: enriches `alan-turing` with Bletchley Park and Bombe detail                                                                                        |
+| `computing-pioneers-timeline.xlsx` | `xlsx`     | **A — Clean merge**: structured two-sheet timeline; enriches multiple pages                                                                                             |
+| `cs-milestones-overview.pptx`      | `pptx`     | **A — Clean merge + new pages**: 6-slide deck; creates `eniac`, `transistor-and-moores-law`, `internet-history`; enriches `ada-lovelace`, `alan-turing`, `grace-hopper` |
+| `first-compiler-controversy.pdf`   | `pdf`      | **B — Conflict**: contradicts `grace-hopper` (A-0 vs FORTRAN dispute)                                                                                                   |
+| `quantum-computing-primer.png`     | `image`    | **A — New page**: vision LLM extracts key concepts; creates `quantum-computing`                                                                                         |
+| `konrad-zuse-z3-computer.md`       | `markdown` | **C — Orphan**: specific niche topic; creates `konrad-zuse` with no inbound links                                                                                       |
 
 ### Run batch ingest
 
@@ -423,7 +426,6 @@ Dataview table.
 > connected. Synthadoc defines an orphan as having **no inbound links** — always use
 > `synthadoc lint report` as the authoritative check.
 
-
 ### Option 1 — Link it (recommended)
 
 Open `wiki/programming-languages-overview.md` and add a reference:
@@ -531,6 +533,7 @@ Open the Command Palette → `Synthadoc: Ingest: web search...`:
 4. Press `Ctrl/Cmd+Enter` or click **Search**
 
 The modal transitions to a live view:
+
 - **Searching the web…** — while Tavily fetches
 - **Found N URLs — ingesting…** — as fan-out jobs are created
 - **Ingesting N URLs… (M done)** — counting completed child jobs
@@ -573,7 +576,6 @@ wiki/purpose.md updated
 Open `wiki/index.md` in Obsidian — it now has richer category headings that reflect the
 full post-ingest wiki (e.g. **Pioneers and Visionaries**, **Hardware Milestones**,
 **Software and Languages**, **European Computing**, **Emerging Technology**).
-
 
 ### Re-run scaffold at any time
 
@@ -719,6 +721,7 @@ ready to build a wiki for your own domain:
 - **[README — Creating Your Own Wiki](../README.md#creating-your-own-wiki)** — two commands and you're running
 
 Key differences from the demo:
+
 - `synthadoc install <name> --target <dir> --domain "<your domain>"` generates LLM
   scaffold for your domain at install time (index categories, AGENTS.md, purpose.md)
 - Drop your own source files into `raw_sources/` and run batch ingest
@@ -733,34 +736,38 @@ All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synt
 
 ### Ingest
 
-| Command | What it does |
-|---------|--------------|
-| `Synthadoc: Ingest: current file` | Ingests the active note. If no file is open, shows a file picker scoped to `raw_sources/`. |
-| `Synthadoc: Ingest: all sources in folder` | Scans the `raw_sources` folder and queues every supported file for ingestion. |
-| `Synthadoc: Ingest: from URL...` | Modal — paste any URL and queue it for fetch and ingestion. |
-| `Synthadoc: Ingest: web search...` | Live-polling modal — type a topic, set max results (1–50, default 20) and poll interval (500–10000 ms, default 2000 ms). Shows phase text, live pages list, and URL errors as fan-out jobs complete. `Ctrl/Cmd+Enter` to submit. |
+
+| Command                                    | What it does                                                                                                                                                                                                                       |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Synthadoc: Ingest: current file`          | Ingests the active note. If no file is open, shows a file picker scoped to`raw_sources/`.                                                                                                                                          |
+| `Synthadoc: Ingest: all sources in folder` | Scans the`raw_sources` folder and queues every supported file for ingestion.                                                                                                                                                       |
+| `Synthadoc: Ingest: from URL...`           | Modal — paste any URL and queue it for fetch and ingestion.                                                                                                                                                                       |
+| `Synthadoc: Ingest: web search...`         | Live-polling modal — type a topic, set max results (1–50, default 20) and poll interval (500–10000 ms, default 2000 ms). Shows phase text, live pages list, and URL errors as fan-out jobs complete.`Ctrl/Cmd+Enter` to submit. |
 
 ### Query
 
-| Command | What it does |
-|---------|--------------|
-| `Synthadoc: Query: ask the wiki...` | Responsive modal — ask a natural-language question, get a markdown answer with clickable `[[wikilinks]]` to source pages. `Ctrl/Cmd+Enter` to submit. If a knowledge gap is detected, shows a callout with suggested `search for:` commands. |
+
+| Command                             | What it does                                                                                                                                                                                                                                 |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Synthadoc: Query: ask the wiki...` | Responsive modal — ask a natural-language question, get a markdown answer with clickable`[[wikilinks]]` to source pages. `Ctrl/Cmd+Enter` to submit. If a knowledge gap is detected, shows a callout with suggested `search for:` commands. |
 
 ### Lint
 
-| Command | What it does |
-|---------|--------------|
-| `Synthadoc: Lint: run` | Runs lint in the background; notification shows contradiction + orphan counts when complete. |
-| `Synthadoc: Lint: run with auto-resolve` | Same as above but resolves contradictions ≥ 85% confidence automatically. |
-| `Synthadoc: Lint: report` | Full lint report — contradicted pages and orphans with suggested index entries. |
+
+| Command                                  | What it does                                                                                 |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `Synthadoc: Lint: run`                   | Runs lint in the background; notification shows contradiction + orphan counts when complete. |
+| `Synthadoc: Lint: run with auto-resolve` | Same as above but resolves contradictions ≥ 85% confidence automatically.                   |
+| `Synthadoc: Lint: report`                | Full lint report — contradicted pages and orphans with suggested index entries.             |
 
 ### Jobs
 
-| Command | What it does |
-|---------|--------------|
-| `Synthadoc: Jobs: list...` | Job table with status-filter dropdown (pending, in_progress, completed, failed, skipped, dead). |
-| `Synthadoc: Jobs: retry dead job...` | Lists all dead jobs with a **Retry** button per job. |
-| `Synthadoc: Jobs: purge old completed/dead...` | Removes completed and dead jobs older than N days (default: 7). |
+
+| Command                                        | What it does                                                                                    |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `Synthadoc: Jobs: list...`                     | Job table with status-filter dropdown (pending, in_progress, completed, failed, skipped, dead). |
+| `Synthadoc: Jobs: retry dead job...`           | Lists all dead jobs with a**Retry** button per job.                                             |
+| `Synthadoc: Jobs: purge old completed/dead...` | Removes completed and dead jobs older than N days (default: 7).                                 |
 
 > **Tip — cancelling a bad batch:** `synthadoc jobs cancel -w <wiki> --yes` marks every
 > pending job as `skipped` immediately. Follow up with `synthadoc jobs purge` to remove
@@ -768,17 +775,19 @@ All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synt
 
 ### Wiki
 
-| Command | What it does |
-|---------|--------------|
-| `Synthadoc: Wiki: regenerate scaffold...` | Rewrites `index.md`, `AGENTS.md`, and `purpose.md` using the LLM. All existing wiki pages are preserved. |
+
+| Command                                   | What it does                                                                                            |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `Synthadoc: Wiki: regenerate scaffold...` | Rewrites`index.md`, `AGENTS.md`, and `purpose.md` using the LLM. All existing wiki pages are preserved. |
 
 ### Audit
 
-| Command | What it does |
-|---------|--------------|
+
+| Command                               | What it does                                                                              |
+| ------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `Synthadoc: Audit: ingest history...` | Table of recent ingest records — source, pages created/updated, tokens, cost, timestamp. |
-| `Synthadoc: Audit: cost summary...` | Token totals + USD cost with daily breakdown for the last N days. |
-| `Synthadoc: Audit: query history...` | Recent questions, sub-question counts, token usage, cost per query. |
+| `Synthadoc: Audit: cost summary...`   | Token totals + USD cost with daily breakdown for the last N days.                         |
+| `Synthadoc: Audit: query history...`  | Recent questions, sub-question counts, token usage, cost per query.                       |
 
 ### Ribbon icon
 
@@ -842,13 +851,15 @@ d9e4c81 wiki: ingest turing-enigma-decryption.pdf → updated alan-turing
 Synthadoc defaults to **Gemini Flash** — free, no credit card, 1 million tokens per day.
 Switch by editing `<wiki-root>/.synthadoc/config.toml` and restarting the server.
 
-| Provider | Env var | Free tier |
-|----------|---------|-----------|
-| `gemini` | `GEMINI_API_KEY` | **Yes — default** · 15 RPM / 1M tokens/day |
-| `groq` | `GROQ_API_KEY` | Yes — fast Llama, 100K tokens/day |
-| `ollama` | _(none)_ | Yes — fully local, no rate limits |
-| `anthropic` | `ANTHROPIC_API_KEY` | No — highest quality, pay-per-token |
-| `openai` | `OPENAI_API_KEY` | No — pay-per-token |
+
+| Provider    | Env var             | Free tier                                    | Vision |
+| ----------- | ------------------- | -------------------------------------------- | ------ |
+| `gemini`    | `GEMINI_API_KEY`    | **Yes — default** · 15 RPM / 1M tokens/day | Yes    |
+| `groq`      | `GROQ_API_KEY`      | Yes — fast Llama, 100K tokens/day           | No     |
+| `ollama`    | _(none)_            | Yes — fully local, no rate limits           | Model-dependent |
+| `minimax`   | `MINIMAX_API_KEY`   | No — cheapest paid text rates               | No     |
+| `anthropic` | `ANTHROPIC_API_KEY` | No — highest quality, pay-per-token         | Yes    |
+| `openai`    | `OPENAI_API_KEY`    | No — pay-per-token                          | Yes    |
 
 **Change the provider** — edit `.synthadoc/config.toml`:
 
@@ -859,18 +870,24 @@ default = { provider = "anthropic", model = "claude-sonnet-4-6" }
 
 # Gemini Flash (default)
 [agents]
-default = { provider = "gemini", model = "gemini-2.0-flash" }
+default = { provider = "gemini", model = "gemini-2.5-flash" }
 
 # Groq (fast free tier)
 [agents]
 default = { provider = "groq", model = "llama-3.3-70b-versatile" }
+
+# MiniMax (cheapest paid text — no vision/image support)
+[agents]
+default = { provider = "minimax", model = "MiniMax-M2.5" }
 ```
 
 Restart `synthadoc serve`. The startup banner confirms `LLM: <provider>/<model>`.
 
 > **Rate limit tips:**
-> - **Gemini** free tier: 15 RPM. If you see `429 RateLimitError` during a long ingest, wait 60 s and retry, or switch to Groq.
+>
+> - **Gemini** free tier: 15 RPM. If you see `429 RateLimitError` during a long ingest, wait 60 s and retry, or switch to Groq or MiniMax.
 > - **Groq** free tier: 100K tokens/day — adequate for short demo sessions; heavy web search ingest can exhaust it.
+> - **MiniMax:** no free tier, but M2.5 input is ~$0.15/M tokens — roughly half the cost of Gemini 2.5 Flash. Text-only; image ingestion will fall back to text extraction.
 > - **Ollama:** fully local, no rate limits. Install from [ollama.com](https://ollama.com); no API key needed.
 
 ---
@@ -922,7 +939,7 @@ Neither file is required. If both are absent, the built-in defaults take effect.
 
 ```toml
 [agents]
-default = { provider = "gemini", model = "gemini-2.0-flash" }  # free tier
+default = { provider = "gemini", model = "gemini-2.5-flash" }  # free tier
 lint    = { provider = "groq",   model = "llama-3.3-70b-versatile" }  # cheaper for lint
 
 [wikis]

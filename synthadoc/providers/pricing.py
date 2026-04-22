@@ -3,15 +3,16 @@
 """Per-model LLM pricing table.
 
 Refresh at each major release. Update _LAST_UPDATED and the rates below.
-Sources (checked 2026-04-18):
+Sources (checked 2026-04-22):
   Anthropic — https://docs.anthropic.com/en/docs/about-claude/pricing
   OpenAI    — https://openai.com/api/pricing/
   Gemini    — https://ai.google.dev/gemini-api/docs/pricing
   Groq      — https://groq.com/pricing
+  MiniMax   — https://platform.minimax.io/docs/pricing/overview
 """
 from __future__ import annotations
 
-_LAST_UPDATED = "2026-04-18"
+_LAST_UPDATED = "2026-04-22"
 
 # (input_usd_per_token, output_usd_per_token)
 _PRICING: dict[str, tuple[float, float]] = {
@@ -23,8 +24,14 @@ _PRICING: dict[str, tuple[float, float]] = {
     "gpt-4o":                                (2.50e-6, 10.00e-6),
     "gpt-4o-mini":                           (0.15e-6,  0.60e-6),
     # Gemini (via OpenAI-compatible endpoint)
-    "gemini-2.0-flash":                      (0.30e-6,  2.50e-6),
+    "gemini-2.5-flash":                      (0.30e-6,  2.50e-6),
+    "gemini-2.0-flash":                      (0.10e-6,  0.40e-6),  # deprecated Jun 1 2026
     "gemini-1.5-pro":                        (2.50e-6, 10.00e-6),
+    # MiniMax (via OpenAI-compatible endpoint) — text-only, no vision
+    "MiniMax-M2.5":                          (0.15e-6,  1.20e-6),
+    "MiniMax-M2.5-highspeed":               (0.15e-6,  1.20e-6),
+    "MiniMax-M2.7":                          (0.30e-6,  1.20e-6),
+    "MiniMax-M2.7-highspeed":               (0.30e-6,  1.20e-6),
     # Groq
     "llama-3.3-70b-versatile":               (0.59e-6,  0.79e-6),
     "llama4-scout-17b-16e-instruct":         (0.11e-6,  0.34e-6),

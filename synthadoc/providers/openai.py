@@ -1,13 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
 from __future__ import annotations
+import logging
+import re
 from typing import Optional
 from openai import AsyncOpenAI
 from synthadoc.config import AgentConfig
 from synthadoc.providers.base import CompletionResponse, LLMProvider, Message
 
+logger = logging.getLogger(__name__)
 
-_NO_VISION_HOSTS = ("groq.com",)
+# Providers whose chat endpoint does not support image inputs
+_NO_VISION_HOSTS = ("groq.com", "minimax.io")
 
 
 class OpenAIProvider(LLMProvider):
@@ -50,6 +54,22 @@ class OpenAIProvider(LLMProvider):
             temperature=temperature, max_tokens=max_tokens,
         )
         choice = resp.choices[0]
-        return CompletionResponse(text=choice.message.content or "",
+        text = choice.message.content or ""
+        if not text:
+            # Reasoning models (e.g. MiniMax M2.x) return content=null and put their
+            # chain-of-thought in a non-standard reasoning_content field. Try to extract
+            # the last JSON-like block from it so structured callers still get a result.
+            extra = getattr(choice.message, "model_extra", None) or {}
+            reasoning = (extra.get("reasoning_content") or "").strip()
+            if reasoning:
+                last_close = reasoning.rfind("]")
+                if last_close >= 0:
+                    last_open = reasoning.rfind("[", 0, last_close)
+                    if last_open >= 0:
+                        text = reasoning[last_open: last_close + 1]
+                        logger.debug(
+                            "OpenAI provider: content=null — extracted JSON from reasoning_content"
+                        )
+        return CompletionResponse(text=text,
                                   input_tokens=resp.usage.prompt_tokens,
                                   output_tokens=resp.usage.completion_tokens)
