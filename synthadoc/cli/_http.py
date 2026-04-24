@@ -27,10 +27,10 @@ def server_url(wiki: str) -> str:
     return f"http://127.0.0.1:{port}"
 
 
-def get(wiki: str, path: str, **params) -> dict:
+def get(wiki: str, path: str, timeout: int = 60, **params) -> dict:
     url = server_url(wiki)
     try:
-        resp = httpx.get(f"{url}{path}", params=params, timeout=30)
+        resp = httpx.get(f"{url}{path}", params=params, timeout=timeout)
         resp.raise_for_status()
         return resp.json()
     except httpx.ConnectError:
@@ -38,19 +38,19 @@ def get(wiki: str, path: str, **params) -> dict:
     except httpx.ReadTimeout:
         E.cli_error(
             E.QUERY_TIMEOUT,
-            "The query timed out waiting for the LLM to respond (30 s).",
+            f"The query timed out waiting for the LLM to respond ({timeout} s).",
             "The wiki server is still running. Try again — if the wiki is large, "
-            "reduce your question scope or increase the timeout.",
+            "reduce your question scope or pass --timeout 120 to allow more time.",
         )
     except httpx.HTTPStatusError as e:
         E.cli_error(E.SRV_HTTP_ERROR,
                     f"Server returned {e.response.status_code}: {_detail(e.response)}")
 
 
-def post(wiki: str, path: str, body: dict) -> dict:
+def post(wiki: str, path: str, body: dict, timeout: int = 60) -> dict:
     url = server_url(wiki)
     try:
-        resp = httpx.post(f"{url}{path}", json=body, timeout=30)
+        resp = httpx.post(f"{url}{path}", json=body, timeout=timeout)
         resp.raise_for_status()
         return resp.json()
     except httpx.ConnectError:
@@ -58,7 +58,7 @@ def post(wiki: str, path: str, body: dict) -> dict:
     except httpx.ReadTimeout:
         E.cli_error(
             E.QUERY_TIMEOUT,
-            "The request timed out waiting for the server to respond (30 s).",
+            f"The request timed out waiting for the server to respond ({timeout} s).",
             "The wiki server is still running. Try again.",
         )
     except httpx.HTTPStatusError as e:

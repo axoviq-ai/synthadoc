@@ -26,8 +26,6 @@
 15. [Observability and Logging](#15-observability-and-logging)
 16. [Security](#16-security)
 17. [Plugin Development Guide](#17-plugin-development-guide)
-18. [v0.2.0 — What's New](#18-v020--whats-new)
-
 **Appendices**
 - [Appendix A — Release Feature Index](#appendix-a--release-feature-index)
 
@@ -620,7 +618,7 @@ synthadoc
 ├── demo list
 ├── serve [-w wiki] [--port N] [--background] [--mcp-only] [--http-only] [--verbose]
 ├── ingest <source> [-w wiki] [--batch] [--file manifest] [--force] [--analyse-only] [--max-results N]
-├── query "<question>" [-w wiki] [--save]
+├── query "<question>" [-w wiki] [--save] [--timeout N]
 ├── lint
 │   ├── run [-w wiki] [--scope contradictions|orphans|all] [--auto-resolve]
 │   └── report [-w wiki]
@@ -643,6 +641,13 @@ synthadoc
     ├── remove <id> [-w wiki]
     └── apply [-w wiki]
 ```
+
+### `query` options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--save` | off | Save the answer as a new wiki page |
+| `--timeout N` | `60` | Seconds to wait for the LLM response. Increase for slower providers (e.g. `--timeout 120` for MiniMax reasoning models) |
 
 ### `ingest --analyse-only`
 
@@ -767,7 +772,7 @@ Required environment variables per provider:
 | `openai` | `OPENAI_API_KEY` | No (pay-per-token) | Yes |
 | `gemini` | `GEMINI_API_KEY` | **Yes** — 15 RPM / 1M tokens/day on Flash | Yes |
 | `groq` | `GROQ_API_KEY` | **Yes** — generous free tier on Llama/Mixtral models | No |
-| `minimax` | `MINIMAX_API_KEY` | No (pay-per-token) | No (text only) |
+| `minimax` | `MINIMAX_API_KEY` | No (pay-per-token) | Yes (M2.5 / M2.7 natively multimodal) |
 | `ollama` | _(none)_ | **Yes** — fully local | Model-dependent |
 
 ### Per-project config — `<wiki-root>/.synthadoc/config.toml`
@@ -1298,21 +1303,6 @@ event=$(echo "$context" | jq -r '.event')
 wiki=$(echo "$context" | jq -r '.wiki')
 echo "Event $event fired on wiki $wiki" | mail -s "Synthadoc notification" you@example.com
 ```
-
----
-
-## 18. v0.2.0 — What's New
-
-See [Appendix A — Release Feature Index](#appendix-a--release-feature-index) for a full list of delivered v0.2.0 features.
-
-### Planned
-
-| Feature | Motivation |
-|---------|-----------|
-| **Web UI** | Browser-based dashboard — pages, jobs, contradictions, orphans — without requiring Obsidian |
-| **Graph-aware retrieval** | Traverse wikilink adjacency for multi-hop queries (e.g. "What connects Turing to von Neumann?") |
-| **Larger corpus support** | Sharded BM25 index; incremental embedding updates; streaming ingest for very large documents |
-| **Mistral + Bedrock providers** | Additional OpenAI-compatible endpoints; Bedrock for AWS-native deployments |
 
 ---
 

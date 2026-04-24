@@ -65,8 +65,9 @@ def _make_wiki(tmp_path, pages: dict[str, str]):
 def test_lint_report_all_clear(tmp_path, monkeypatch):
     import synthadoc.cli.install as install_mod
     wiki_dir, root = _make_wiki(tmp_path, {
-        "index": "# Index\n\n[[topic-a]]",
-        "topic-a": "---\nstatus: active\n---\n\n# Topic A",
+        "index":   "# Index\n",
+        "topic-a": "---\nstatus: active\n---\n\n# Topic A\n\nSee also [[topic-b]].",
+        "topic-b": "---\nstatus: active\n---\n\n# Topic B\n\nRelated to [[topic-a]].",
     })
     monkeypatch.setattr(install_mod, "_REGISTRY",
                         tmp_path / "wikis.json")
@@ -103,6 +104,26 @@ def test_lint_report_orphan(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert "orphan-page" in result.output
     assert "orphan" in result.output.lower()
+
+
+def test_lint_report_overview_links_do_not_mask_orphans(tmp_path, monkeypatch):
+    """overview.md is auto-generated and links to every page — its links must not
+    count as real inbound references. A page linked only from overview.md is still an orphan."""
+    import synthadoc.cli.install as install_mod
+    wiki_dir, root = _make_wiki(tmp_path, {
+        "index":    "# Index\n",
+        "overview": "# Overview\n\n[[orphan-page]] [[linked-page]]",
+        "orphan-page": "---\nstatus: active\n---\n# Orphan",
+        "linked-page": "---\nstatus: active\n---\n# Linked\n\n[[orphan-page]]",
+    })
+    monkeypatch.setattr(install_mod, "_read_registry",
+                        lambda: {"mywiki": {"path": str(tmp_path)}})
+    result = runner.invoke(app, ["lint", "report", "-w", "mywiki"])
+    assert result.exit_code == 0, result.output
+    # linked-page references orphan-page → not an orphan
+    assert "orphan-page" not in result.output
+    # linked-page is only referenced by overview.md (excluded) → IS an orphan
+    assert "linked-page" in result.output
 
 
 def test_lint_report_missing_wiki_dir(tmp_path, monkeypatch):

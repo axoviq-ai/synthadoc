@@ -13,6 +13,13 @@ def _mock_get(response: dict):
     return patch("synthadoc.cli.query.get", return_value=response)
 
 
+def _capture_get(response: dict):
+    """Patch get and capture the kwargs it was called with."""
+    from unittest.mock import MagicMock
+    mock = MagicMock(return_value=response)
+    return patch("synthadoc.cli.query.get", mock), mock
+
+
 def test_query_cli_no_gap_shows_only_answer():
     """When knowledge_gap=False, no callout must appear in output."""
     with _mock_get({"answer": "AI is great.", "citations": ["ai-page"],
@@ -59,6 +66,24 @@ def test_query_cli_gap_includes_command_palette_hint():
         result = runner.invoke(app, ["query", "Something?", "-w", "my-wiki"])
     assert "Command Palette" in result.output
     assert "Synthadoc: Ingest: web search" in result.output
+
+
+def test_query_cli_default_timeout_is_60():
+    """Without --timeout, get() must be called with timeout=60."""
+    ctx, mock = _capture_get({"answer": "ok", "citations": [], "knowledge_gap": False})
+    with ctx:
+        runner.invoke(app, ["query", "What is AI?", "-w", "."])
+    _, kwargs = mock.call_args
+    assert kwargs.get("timeout") == 60
+
+
+def test_query_cli_custom_timeout_forwarded():
+    """--timeout N must be forwarded to get() as timeout=N."""
+    ctx, mock = _capture_get({"answer": "ok", "citations": [], "knowledge_gap": False})
+    with ctx:
+        runner.invoke(app, ["query", "What is AI?", "-w", ".", "--timeout", "120"])
+    _, kwargs = mock.call_args
+    assert kwargs.get("timeout") == 120
 
 
 def test_query_cli_gap_includes_requery_hint():

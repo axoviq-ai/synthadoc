@@ -104,14 +104,12 @@ Open each one, resolve the conflict, then change `status` to `active`.*
 ```dataview
 TABLE status, created
 FROM "wiki"
-WHERE length(file.inlinks) = 0
-AND file.name != "index"
-AND file.name != "dashboard"
-AND file.name != "purpose"
+WHERE orphan = true
 SORT created DESC
 ```
 
 *These pages exist but nothing links to them.
+Orphan status is set by `synthadoc lint run` — run it first to populate this list.
 Add `[[page-name]]` to a related page or to [[index]].*
 
 ---

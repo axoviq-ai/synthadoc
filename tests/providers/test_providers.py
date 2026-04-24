@@ -71,6 +71,59 @@ async def test_provider_raises_after_max_retries():
             await provider.complete(messages=[Message(role="user", content="hi")])
 
 
+@pytest.mark.asyncio
+async def test_openai_provider_retries_once_on_rate_limit_then_succeeds():
+    """A single 429 is retried; the second attempt succeeds and returns a result."""
+    import openai
+    from synthadoc.providers.openai import OpenAIProvider
+    cfg = AgentConfig(provider="gemini", model="gemini-2.5-flash",
+                      base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
+    provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    ok_resp = MagicMock()
+    ok_resp.choices = [MagicMock()]
+    ok_resp.choices[0].message.content = "hello"
+    ok_resp.usage.prompt_tokens = 10
+    ok_resp.usage.completion_tokens = 5
+
+    rate_limit_exc = openai.RateLimitError(
+        message="rate limit", response=MagicMock(status_code=429), body={})
+    call_count = 0
+
+    async def flaky(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise rate_limit_exc
+        return ok_resp
+
+    with patch.object(provider._client.chat.completions, "create", side_effect=flaky):
+        with patch("asyncio.sleep", new=AsyncMock()):
+            result = await provider.complete(messages=[Message(role="user", content="hi")])
+
+    assert result.text == "hello"
+    assert call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_raises_after_all_retries_exhausted():
+    """When 429s persist across all retries, RateLimitError is re-raised."""
+    import openai
+    from synthadoc.providers.openai import OpenAIProvider
+    cfg = AgentConfig(provider="gemini", model="gemini-2.5-flash",
+                      base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
+    provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    rate_limit_exc = openai.RateLimitError(
+        message="rate limit", response=MagicMock(status_code=429), body={})
+
+    with patch.object(provider._client.chat.completions, "create",
+                      side_effect=rate_limit_exc):
+        with patch("asyncio.sleep", new=AsyncMock()):
+            with pytest.raises(openai.RateLimitError):
+                await provider.complete(messages=[Message(role="user", content="hi")])
+
+
 def _make_cfg(provider: str, model: str) -> "Config":
     from synthadoc.config import Config, AgentsConfig, AgentConfig
     return Config(agents=AgentsConfig(default=AgentConfig(provider=provider, model=model)))
@@ -153,7 +206,7 @@ def test_make_provider_minimax_uses_openai_provider_with_base_url(monkeypatch):
     provider = make_provider("ingest", _make_cfg("minimax", "MiniMax-M2.5"))
     assert isinstance(provider, OpenAIProvider)
     assert "minimax.io" in str(provider._client.base_url)
-    assert provider.supports_vision is False
+    assert provider.supports_vision is True   # M2.5 is natively multimodal
 
 
 def test_make_provider_gemini_uses_openai_provider_with_base_url(monkeypatch):
@@ -275,6 +328,30 @@ async def test_openai_provider_empty_content_returns_empty_string():
             messages=[Message(role="user", content="hi")]
         )
     assert result.text == ""
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_strips_think_tags_from_content():
+    """Reasoning models (e.g. MiniMax M2.x) prefix content with <think>...</think>.
+    The provider must strip those tags so callers receive clean text."""
+    cfg = AgentConfig(provider="minimax", model="MiniMax-M2.5",
+                      base_url="https://api.minimax.io/v1")
+    provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = '<think>Let me break this down...</think>["What is X?", "How does X work?"]'
+    mock_choice.message.model_extra = {}
+    mock_resp = MagicMock()
+    mock_resp.choices = [mock_choice]
+    mock_resp.usage.prompt_tokens = 20
+    mock_resp.usage.completion_tokens = 15
+
+    with patch.object(provider._client.chat.completions, "create",
+                      new=AsyncMock(return_value=mock_resp)):
+        result = await provider.complete(
+            messages=[Message(role="user", content="Tell me about X")]
+        )
+    assert result.text == '["What is X?", "How does X work?"]'
 
 
 @pytest.mark.asyncio
