@@ -496,11 +496,20 @@ synthadoc ingest "search for: Dennis Ritchie C programming language Bell Labs hi
 synthadoc ingest "search for: ENIAC first general purpose electronic computer history" -w history-of-computing
 ```
 
-Each command fans out to up to 20 URL ingest jobs. Watch them:
+Each command fans out to up to 20 URL ingest jobs. The commands return immediately —
+all processing happens in the background. Watch progress with:
 
 ```bash
 synthadoc jobs list -w history-of-computing
 ```
+
+> **How long does it take?**
+> - **Free-tier Gemini (15 RPM) or Groq:** Two searches produce ~20–40 LLM calls. The
+>   server retries automatically when the rate limit is hit (you will see
+>   `Rate limit (429) — waiting 60 s` in the server log — this is normal). Expect
+>   **3–8 minutes** for both searches to fully complete.
+> - **Paid tier (Gemini paid, MiniMax, Anthropic, OpenAI):** No rate-limit retries.
+>   Both searches typically finish in **under 2 minutes**.
 
 Pages such as `dennis-ritchie`, `eniac-history`, and related topics will be created or
 enriched. The `wiki/overview.md` page is regenerated automatically after each batch

@@ -98,7 +98,7 @@ async def test_openai_provider_retries_once_on_rate_limit_then_succeeds():
         return ok_resp
 
     with patch.object(provider._client.chat.completions, "create", side_effect=flaky):
-        with patch("asyncio.sleep", new=AsyncMock()):
+        with patch("synthadoc.providers.openai._sleep", new=AsyncMock()):
             result = await provider.complete(messages=[Message(role="user", content="hi")])
 
     assert result.text == "hello"
@@ -119,7 +119,7 @@ async def test_openai_provider_raises_after_all_retries_exhausted():
 
     with patch.object(provider._client.chat.completions, "create",
                       side_effect=rate_limit_exc):
-        with patch("asyncio.sleep", new=AsyncMock()):
+        with patch("synthadoc.providers.openai._sleep", new=AsyncMock()):
             with pytest.raises(openai.RateLimitError):
                 await provider.complete(messages=[Message(role="user", content="hi")])
 

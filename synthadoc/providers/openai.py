@@ -32,6 +32,10 @@ _NO_VISION_HOSTS = ("groq.com",)
 # it is harmless.
 _RATE_LIMIT_RETRY_DELAYS_S: tuple[int, ...] = (60, 60, 60)
 
+# Module-level alias so tests can patch precisely:
+#   patch("synthadoc.providers.openai._sleep", new=AsyncMock())
+_sleep = asyncio.sleep
+
 
 class OpenAIProvider(LLMProvider):
     def __init__(self, api_key: str, config: AgentConfig) -> None:
@@ -77,7 +81,7 @@ class OpenAIProvider(LLMProvider):
                     self._config.provider, wait,
                     attempt, len(_RATE_LIMIT_RETRY_DELAYS_S),
                 )
-                await asyncio.sleep(wait)
+                await _sleep(wait)
             try:
                 return await self._client.chat.completions.create(
                     model=self._config.model, messages=msgs,
