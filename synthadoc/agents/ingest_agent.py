@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-or-later
+﻿# SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
 from __future__ import annotations
 
@@ -23,11 +23,8 @@ from synthadoc.storage.wiki import WikiPage, WikiStorage
 
 logger = logging.getLogger(__name__)
 
-import re as _re
-_WEB_INTENT_RE = _re.compile(
-    r"^(search\s+for|find\s+on\s+the\s+web|look\s+up|web\s+search|browse):?\s*",
-    _re.IGNORECASE,
-)
+from synthadoc.skills.web_search.scripts.main import _INTENT_RE as _WEB_INTENT_RE
+from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
 
 
 @dataclass
@@ -99,6 +96,9 @@ _VISION_PROMPT = (
     "Extract all text and key information from this image. "
     "Return plain text only, preserving the structure and content faithfully."
 )
+
+
+_SLUG_BLACKLIST = frozenset({"wikilinks", "wikilink", "wiki", "obsidian", "dataview"})
 
 
 def _coerce_str_list(lst: object) -> list[str]:
@@ -367,7 +367,7 @@ class IngestAgent:
         if not entities:
             # English: capitalized noun phrases
             english = re.findall(r'\b[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*\b', text[:2000])
-            # CJK: consecutive CJK characters as candidate terms (2–6 chars)
+            # CJK: 2–6 consecutive chars — shorter is too granular, longer risks full sentences
             cjk = re.findall(
                 r'[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]{2,6}',
                 text[:2000],
@@ -430,7 +430,7 @@ class IngestAgent:
         page_content = decisions.get("page_content", "")
         title = p.stem.replace("-", " ").replace("_", " ").title()
 
-        if action == "flag" and target and self._store.page_exists(target):
+        if action == "flag" and target and target not in LINT_SKIP_SLUGS and self._store.page_exists(target):
             with self._store.page_lock(target):
                 page = self._store.read_page(target)
                 if page:
@@ -457,7 +457,6 @@ class IngestAgent:
                 result.skipped = True
             else:
                 # Reject slugs that look like wiki syntax artifacts rather than real topics
-                _SLUG_BLACKLIST = {"wikilinks", "wikilink", "wiki", "obsidian", "dataview"}
                 raw_slug = _slugify(new_slug or title)
                 slug = raw_slug if raw_slug not in _SLUG_BLACKLIST else _slugify(title)
 

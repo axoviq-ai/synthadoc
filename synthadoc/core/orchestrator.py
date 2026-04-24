@@ -122,8 +122,8 @@ class Orchestrator:
 
     async def _run_ingest(self, job_id: str, source: str, auto_confirm: bool,
                           force: bool = False, max_results: int | None = None) -> None:
-        # auto_confirm is reserved for when cost gate is wired to the ingest flow (v0.2+).
-        # Cost tracking returns $0.0000 in v0.1, so cost_guard.check() is not called here yet.
+        # auto_confirm is reserved for when user-facing confirmation prompts are added.
+        # Cost tracking is live in v0.2 but cost_guard.check() is not yet enforced here.
         from synthadoc.agents.ingest_agent import IngestAgent
         from synthadoc.skills.web_search.scripts.main import _INTENT_RE as _WEB_SEARCH_RE
         try:
@@ -266,12 +266,12 @@ class Orchestrator:
 
     async def query(self, question: str):
         from synthadoc.agents.query_agent import QueryAgent
+        _provider = make_provider("query", self._cfg)
         result = await QueryAgent(
-            provider=make_provider("query", self._cfg),
+            provider=_provider,
             store=self._store, search=self._search,
             gap_score_threshold=self._cfg.query.gap_score_threshold,
         ).query(question)
-        _provider = make_provider("query", self._cfg)
         _model = self._cfg.agents.resolve("query").model
         cost_usd = estimate_cost(
             _model,
@@ -281,7 +281,7 @@ class Orchestrator:
         )
         await self._audit.record_query(
             question=question,
-            sub_questions_count=len(result.citations) or 1,
+            sub_questions_count=result.sub_questions_count or 1,
             tokens=result.tokens_used,
             cost_usd=cost_usd,
         )

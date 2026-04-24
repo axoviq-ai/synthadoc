@@ -34,6 +34,36 @@ def _index_suggestion(slug: str, fm: dict) -> str:
         hint = title
     return f"- [[{slug}]] — {hint}"
 
+def _sync_orphan_frontmatter(
+    wiki_dir: Path,
+    page_texts: dict[str, str],
+    orphan_set: set[str],
+) -> None:
+    """Write orphan: true/false into page frontmatter so the Obsidian dashboard
+    (WHERE orphan = true) stays in sync with what lint report just computed."""
+    from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
+    for slug, text in page_texts.items():
+        if slug in LINT_SKIP_SLUGS:
+            continue
+        fm = _parse_frontmatter(text)
+        desired = slug in orphan_set
+        if fm.get("orphan", False) == desired:
+            continue  # already correct — skip to avoid unnecessary disk write
+        # Rewrite only the orphan key in the frontmatter block
+        path = wiki_dir / f"{slug}.md"
+        m = _FRONTMATTER_RE.match(text)
+        if not m:
+            continue
+        try:
+            fm_data = yaml.safe_load(m.group(1)) or {}
+        except yaml.YAMLError:
+            continue
+        fm_data["orphan"] = desired
+        new_fm = yaml.dump(fm_data, default_flow_style=False, allow_unicode=True).rstrip()
+        new_text = f"---\n{new_fm}\n---" + text[m.end():]
+        path.write_text(new_text, encoding="utf-8")
+
+
 lint_app = typer.Typer(help="Lint the wiki for contradictions and orphans.")
 app.add_typer(lint_app, name="lint")
 
@@ -78,11 +108,19 @@ def lint_report(
     ]
 
     # --- Orphans ---
-    orphans = find_orphan_slugs(page_texts)
+    # Strip frontmatter before scanning so CLI and server-side LintAgent use the
+    # same definition: only wikilinks in the page body count as real references.
+    page_bodies: dict[str, str] = {
+        slug: (text[m.end():] if (m := _FRONTMATTER_RE.match(text)) else text)
+        for slug, text in page_texts.items()
+    }
+    orphans = find_orphan_slugs(page_bodies)
 
     # --- Report ---
     has_issues = contradicted or orphans
     if not has_issues:
+        # Still sync frontmatter to clear stale orphan: true flags from previous runs.
+        _sync_orphan_frontmatter(wiki_dir, page_texts, set())
         typer.echo("All clear — no contradictions or orphan pages found.")
         return
 
@@ -101,6 +139,10 @@ def lint_report(
             typer.echo(f"  {slug}")
             typer.echo(f"    -> Add [[{slug}]] to a related page, or add to wiki/index.md:")
             typer.echo(f"         {suggestion}")
+
+    # Sync orphan: true/false frontmatter so the Obsidian dashboard Dataview
+    # query (WHERE orphan = true) reflects the same result as this report.
+    _sync_orphan_frontmatter(wiki_dir, page_texts, set(orphans))
 
     typer.echo(
         f"\n{len(contradicted)} contradiction(s), {len(orphans)} orphan(s) found."

@@ -90,3 +90,30 @@ def test_find_orphan_slugs_skip_slugs_never_reported():
     orphans = find_orphan_slugs(page_texts)
     for slug in LINT_SKIP_SLUGS:
         assert slug not in orphans
+
+
+def test_find_orphan_slugs_self_link_does_not_prevent_orphan():
+    """A page that links only to itself must still be reported as an orphan."""
+    page_texts = {
+        "lonely": "See also [[lonely]] for more.",  # self-link
+        "hub":    "Links to [[real-page]].",
+        "real-page": "No outbound links.",
+    }
+    orphans = find_orphan_slugs(page_texts)
+    assert "lonely" in orphans       # self-link must not count as an inbound reference
+    assert "real-page" not in orphans  # hub links to real-page → not an orphan
+    assert "hub" in orphans            # nothing links to hub
+
+
+@pytest.mark.asyncio
+async def test_lint_skip_slugs_not_counted_as_contradictions(tmp_wiki):
+    """index, dashboard, and other auto-generated pages must never appear in contradiction reports."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    for slug in LINT_SKIP_SLUGS:
+        store.write_page(slug, WikiPage(title=slug.title(), tags=[],
+            content="auto-generated", status="contradicted",
+            confidence="low", sources=[]))
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log)
+    report = await agent.lint(scope="contradictions")
+    assert report.contradictions_found == 0

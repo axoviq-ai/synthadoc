@@ -41,6 +41,7 @@ class QueryResult:
     output_tokens: int = 0
     knowledge_gap: bool = False
     suggested_searches: list[str] = field(default_factory=list)
+    sub_questions_count: int = 0
 
 
 class QueryAgent:
@@ -246,4 +247,5 @@ class QueryAgent:
             output_tokens=resp2.output_tokens,
             knowledge_gap=_gap,
             suggested_searches=_suggested,
+            sub_questions_count=len(sub_questions),
         )

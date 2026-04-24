@@ -10,7 +10,7 @@ import typer
 from synthadoc.cli.main import app
 from synthadoc.cli._http import get, post
 
-_SUPPORTED = {".md", ".txt", ".pdf", ".docx", ".xlsx", ".csv",
+_SUPPORTED = {".md", ".txt", ".pdf", ".docx", ".pptx", ".xlsx", ".csv",
               ".png", ".jpg", ".jpeg", ".webp", ".gif", ".tiff"}
 
 # Intent-phrase prefixes that are valid non-file sources (matched case-insensitively)

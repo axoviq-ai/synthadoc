@@ -34,7 +34,7 @@
 
 > Built for individuals, small teams, and large organizations who need a knowledge base that stays accurate as documents accumulate.
 
-Synthadoc reads your raw source documents — PDFs, spreadsheets, web pages, images, Word files — and uses an LLM to synthesize them into a persistent, structured wiki. Cross-references are built automatically, contradictions are detected and surfaced, orphan pages are flagged, and every answer cites its sources. Outputs are stored as local Markdown files, ensuring seamless integration and autonomous management within [Obsidian](https://obsidian.md) or any wiki-compliant ecosystem.
+Synthadoc reads your raw source documents — PDFs, spreadsheets, PPTs, web pages, images, Word files, TXTs — and uses an LLM to synthesize them into a persistent, structured wiki. Cross-references are built automatically, contradictions are detected and surfaced, orphan pages are flagged, and every answer cites its sources. Outputs are stored as local Markdown files, ensuring seamless integration and autonomous management within [Obsidian](https://obsidian.md) or any wiki-compliant ecosystem.
 
 ---
 
@@ -70,7 +70,7 @@ Most knowledge-management tools retrieve and summarize at query time. Synthadoc 
 | LLM wiki vs. RAG         | Pre-compiled structured knowledge beats query-time synthesis for contradiction detection, graph traversal, and offline access                                                                                 |
 | CLI / HTTP               | A unified interface via CLI and RESTful endpoints, the system streamlines full-spectrum integration: from data ingestion and querying to automated linting, security auditing, and job orchestration          |
 | Local-first              | All data stays on your machine; localhost-only network binding; no cloud dependency except the LLM API itself                                                                                                 |
-| Provider choice          | LLM backends including free-tier Gemini and Groq, plus MiniMax (cheapest paid, natively multimodal) — no single-vendor dependency                                                                           |
+| Provider choice          | LLM backends including free-tier Gemini and Groq, plus MiniMax for cheapest paid text rates — no single-vendor dependency                                                                                    |
 
 ---
 
@@ -118,28 +118,28 @@ As the wiki accumulates pages the `index.md` table of contents, domain scope (`p
 ### Competitive advantages
 
 
-| Capability                   | Synthadoc                                   | Typical RAG | NotebookLM | Notion AI |
-| ---------------------------- | ------------------------------------------- | ----------- | ---------- | --------- |
-| Ingest-time synthesis        | **Yes**                                     | No          | Partial    | No        |
-| Contradiction detection      | **Yes**                                     | No          | No         | No        |
-| Orphan page detection        | **Yes**                                     | No          | No         | No        |
-| Persistent wikilink graph    | **Yes**                                     | No          | No         | No        |
-| Local-first (no cloud data)  | **Yes**                                     | Varies      | No         | No        |
-| Custom skill plugins         | **Yes**                                     | Limited     | No         | No        |
-| Obsidian integration         | **Yes**                                     | No          | No         | No        |
-| Cost guard + audit trail     | **Yes**                                     | No          | No         | No        |
-| Hook / CI integration        | **Yes** (2 events)                          | No          | No         | No        |
-| Offline browsable artifact   | **Yes**                                     | No          | No         | No        |
-| Multi-wiki isolation         | **Yes**                                     | No          | No         | No        |
-| Web search → wiki pages     | **Yes**                                     | No          | No         | No        |
-| Multiple LLMs support       | **Yes** (MiniMax, Gemini, Groq, Anthropic) | No          | No         | No        |
-| Auto wiki overview page      | **Yes**                                     | No          | No         | No        |
-| Resumable job queue + retry  | **Yes**                                     | No          | No         | No        |
-| Query decomposition          | **Yes** (parallel sub-queries)              | No          | No         | No        |
-| Knowledge gap detection      | **Yes**                                     | No          | No         | No        |
-| Web search decomposition     | **Yes** (parallel Tavily)                   | No          | No         | No        |
-| Semantic re-ranking (vector) | **Yes** (optional fastembed)                | Varies      | No         | No        |
-| Scaffold automation          | **Yes**                                     | No          | No         | No        |
+| Capability                   | Synthadoc                                           | Typical RAG | NotebookLM | Notion AI |
+| ---------------------------- | --------------------------------------------------- | ----------- | ---------- | --------- |
+| Ingest-time synthesis        | **Yes**                                             | No          | Partial    | No        |
+| Contradiction detection      | **Yes**                                             | No          | No         | No        |
+| Orphan page detection        | **Yes**                                             | No          | No         | No        |
+| Persistent wikilink graph    | **Yes**                                             | No          | No         | No        |
+| Local-first (no cloud data)  | **Yes**                                             | Varies      | No         | No        |
+| Custom skill plugins         | **Yes**                                             | Limited     | No         | No        |
+| Obsidian integration         | **Yes**                                             | No          | No         | No        |
+| Cost guard + audit trail     | **Yes**                                             | No          | No         | No        |
+| Hook / CI integration        | **Yes** (2 events)                                  | No          | No         | No        |
+| Offline browsable artifact   | **Yes**                                             | No          | No         | No        |
+| Multi-wiki isolation         | **Yes**                                             | No          | No         | No        |
+| Web search → wiki pages     | **Yes**                                             | No          | No         | No        |
+| Multiple LLMs support       | **Yes** (MiniMax, Gemini, Groq, Anthropic, Ollama) | No          | No         | No        |
+| Auto wiki overview page      | **Yes**                                             | No          | No         | No        |
+| Resumable job queue + retry  | **Yes**                                             | No          | No         | No        |
+| Query decomposition          | **Yes** (parallel sub-queries)                      | No          | No         | No        |
+| Knowledge gap detection      | **Yes**                                             | No          | No         | No        |
+| Web search decomposition     | **Yes** (parallel Tavily)                           | No          | No         | No        |
+| Semantic re-ranking (vector) | **Yes** (optional fastembed)                        | Varies      | No         | No        |
+| Scaffold automation          | **Yes**                                             | No          | No         | No        |
 
 ### Key differentiators vs. RAG
 
@@ -188,7 +188,7 @@ See [docs/design.md — Appendix A: Release Feature Index](docs/design.md#append
 | **Gemini Flash** | Yes — 15 RPM / 1M tokens/day, no credit card | Yes             | [aistudio.google.com](https://aistudio.google.com/app/apikey) |
 | Groq             | Yes — rate-limited                           | No              | [console.groq.com](https://console.groq.com/keys)             |
 | Ollama           | Yes — runs locally, no key                   | Model-dependent | [ollama.com](https://ollama.com)                              |
-| MiniMax          | No — pay-per-token (cheapest text rates)     | Yes (M2.5/M2.7) | [platform.minimax.io](https://platform.minimax.io/)           |
+| MiniMax          | No — pay-per-token (cheapest text rates)     | No              | [platform.minimax.io](https://platform.minimax.io/)           |
 | Anthropic        | No                                            | Yes             | [console.anthropic.com](https://console.anthropic.com/)       |
 | OpenAI           | No                                            | Yes             | [platform.openai.com](https://platform.openai.com/api-keys)   |
 
@@ -275,7 +275,7 @@ synthadoc --version
 
 ### Step 6 — Install a demo wiki, then start the engine
 
-A **wiki** is a self-contained, structured knowledge base — a folder of Markdown pages linked by topic, maintained and cross-referenced automatically by Synthadoc. Think of it as a living document that grows smarter with every source you feed it: each ingest pass adds new pages, updates existing ones, and flags contradictions. For your own work, you can build and grow a domain-specific wiki — whether that's market research, a technical knowledge base, or a team handbook — and query it in plain English at any time.
+A **wiki** is a self-contained, structured knowledge base — a folder of Markdown pages linked by topic, maintained and cross-referenced automatically by Synthadoc. Think of it as a living document that grows smarter with every source you feed it: each ingest pass adds new pages, updates existing ones, and flags contradictions. For your own work, you can build and grow a domain-specific wiki — whether that's market research, a technical knowledge base, or a team handbook — and query it in plain English or other languages at any time.
 
 A wiki must be installed before the engine can serve it. The fastest way to get started is the **History of Computing** demo, which ships with 10 pre-built pages and sample source files — no LLM API key required to browse it.
 
@@ -400,7 +400,18 @@ See [docs/design.md — Query decomposition and web search decomposition](docs/d
 
 ### Semantic re-ranking (vector search)
 
-BM25 keyword search is the default. Optional vector re-ranking (`BAAI/bge-small-en-v1.5` cosine similarity) improves recall on conceptually related queries — enable it by installing `fastembed` and setting `[search] vector = true` in config. The ~130 MB model is downloaded once; BM25 stays active as fallback.
+BM25 keyword search is the default. Optional vector re-ranking (`BAAI/bge-small-en-v1.5` cosine similarity) improves recall on conceptually related queries. The ~130 MB model is downloaded once on first enable; BM25 stays active as fallback.
+
+```bash
+pip install fastembed
+```
+
+Then enable in your wiki's `.synthadoc/config.toml`:
+
+```toml
+[search]
+vector = true
+```
 
 See [docs/design.md — Semantic re-ranking](docs/design.md#semantic-re-ranking) for configuration options and performance notes.
 

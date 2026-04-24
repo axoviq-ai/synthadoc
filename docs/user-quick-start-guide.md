@@ -624,7 +624,7 @@ synthadoc audit history -w history-of-computing
 ```
 
 Shows the last 50 ingest records: timestamp, source file, wiki pages created/updated,
-token count, and cost. Use `-n N` for more records and `--json` for machine-readable output.
+token count, and cost. Use `--limit N` (or `-n N`) for more records and `--json` for machine-readable output.
 
 ![synthadoc audit history output](png/synthadoc-audit-history.png)
 

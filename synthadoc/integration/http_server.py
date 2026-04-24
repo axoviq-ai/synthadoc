@@ -117,7 +117,6 @@ class AnalyseRequest(BaseModel):
 
 def _parse_retry_after(exc: Exception, default: float = 60.0) -> float:
     """Parse 'Please try again in Xm Y.Zs' from a rate-limit error message."""
-    import re
     m = re.search(r"Please try again in (?:(\d+)m\s*)?(\d+(?:\.\d+)?)s", str(exc))
     if m:
         return float(m.group(1) or 0) * 60 + float(m.group(2))
@@ -165,6 +164,7 @@ async def _worker_loop(orch) -> None:
 
 def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAPI:
     import os
+    import synthadoc
     from synthadoc.config import load_config
     from synthadoc.core.orchestrator import Orchestrator
 
@@ -182,7 +182,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         yield
         worker.cancel()
 
-    app = FastAPI(title="synthadoc", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="synthadoc", version=synthadoc.__version__, lifespan=lifespan)
     app.add_middleware(ContentSizeLimitMiddleware, max_bytes=max_body_bytes)
 
     from fastapi.middleware.cors import CORSMiddleware
@@ -229,12 +229,9 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             "jobs_total": len(jobs),
         }
 
-    @app.get("/query")
-    async def query(q: str):
-        if not q.strip():
-            raise HTTPException(status_code=400, detail="q must not be empty")
+    async def _run_query(question: str) -> dict:
         try:
-            result = await app.state.orch.query(q)
+            result = await app.state.orch.query(question)
         except Exception as exc:
             known = _classify_llm_error(exc)
             if known:
@@ -249,23 +246,15 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             "suggested_searches": result.suggested_searches,
         }
 
+    @app.get("/query")
+    async def query(q: str):
+        if not q.strip():
+            raise HTTPException(status_code=400, detail="q must not be empty")
+        return await _run_query(q)
+
     @app.post("/query")
     async def query_post(req: QueryRequest):
-        try:
-            result = await app.state.orch.query(req.question)
-        except Exception as exc:
-            known = _classify_llm_error(exc)
-            if known:
-                logger.warning("LLM rate limit during query: %s", exc)
-                raise known from exc
-            logger.exception("Query failed")
-            raise HTTPException(status_code=502, detail="LLM provider unavailable") from exc
-        return {
-            "answer": result.answer,
-            "citations": result.citations,
-            "knowledge_gap": result.knowledge_gap,
-            "suggested_searches": result.suggested_searches,
-        }
+        return await _run_query(req.question)
 
     @app.post("/analyse")
     async def analyse_source(req: AnalyseRequest):
@@ -376,6 +365,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
 
     @app.get("/jobs/{job_id}")
     async def get_job(job_id: str):
+        # O(n) scan — acceptable for typical queue sizes (< 1000 active jobs); add an index if needed
         jobs = await app.state.orch.queue.list_jobs()
         for j in jobs:
             if j.id == job_id:

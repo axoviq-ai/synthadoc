@@ -239,6 +239,48 @@ async def test_ingest_flags_contradiction(tmp_wiki):
 
 
 @pytest.mark.asyncio
+async def test_ingest_flag_ignores_skip_slugs(tmp_wiki):
+    """LLM targeting a skip slug (e.g. 'index') with action='flag' must be silently ignored."""
+    from unittest.mock import AsyncMock
+    import itertools
+    from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
+    from synthadoc.storage.wiki import WikiPage
+    p = AsyncMock()
+    _entity = CompletionResponse(
+        text='{"entities":["index"],"concepts":[],"tags":[]}',
+        input_tokens=100, output_tokens=50,
+    )
+    _decision = CompletionResponse(
+        text='{"action":"flag","target":"index","new_slug":"","update_content":""}',
+        input_tokens=100, output_tokens=50,
+    )
+    p.complete.side_effect = itertools.cycle([_entity, _decision])
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("index", WikiPage(
+        title="Index", tags=[], content="# Index\n\nWiki root.",
+        status="active", confidence="high", sources=[],
+    ))
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
+    await cache.init()
+
+    source = tmp_wiki / "raw_sources" / "rewrite.md"
+    source.write_text("Completely different index content.", encoding="utf-8")
+
+    agent = IngestAgent(provider=p, store=store, search=search,
+                        log_writer=log, audit_db=audit, cache=cache, max_pages=15)
+    result = await agent.ingest(str(source))
+
+    assert "index" not in result.pages_flagged
+    page = store.read_page("index")
+    assert page.status == "active", "skip slugs must never be set to contradicted"
+
+
+@pytest.mark.asyncio
 async def test_ingest_updates_existing_page(tmp_wiki):
     """When LLM returns action='update', content is appended to the target page."""
     from unittest.mock import AsyncMock
@@ -676,3 +718,113 @@ async def test_analyse_coerces_dict_entities_to_strings(tmp_wiki):
         f"tags must all be strings, got: {result['tags']}"
     assert "Canada" in result["entities"]
     assert "plants" in result["tags"]
+
+
+@pytest.mark.asyncio
+async def test_ingest_vision_path_extracts_text_from_image(tmp_wiki):
+    """When extracted.metadata['is_image'] is True, the provider is called with image content."""
+    import itertools
+    import base64
+    from unittest.mock import AsyncMock, patch, MagicMock
+    from synthadoc.providers.base import CompletionResponse
+
+    provider = AsyncMock()
+    vision_resp = CompletionResponse(
+        text="A diagram showing a CPU architecture.", input_tokens=30, output_tokens=15)
+    entity_resp = CompletionResponse(
+        text='{"entities":["CPU","architecture"],"tags":["hardware"],"summary":"CPU diagram.","relevant":true}',
+        input_tokens=40, output_tokens=20)
+    decision_resp = CompletionResponse(
+        text='{"action":"create","target":"","new_slug":"cpu-architecture","update_content":""}',
+        input_tokens=50, output_tokens=25)
+    provider.complete = AsyncMock(side_effect=itertools.cycle(
+        [vision_resp, entity_resp, decision_resp]))
+    provider.supports_vision = True
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
+    await cache.init()
+
+    # Fake image source: write a dummy PNG-like file
+    img_path = tmp_wiki / "raw_sources" / "diagram.png"
+    img_path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
+
+    from synthadoc.skills.base import ExtractedContent
+    fake_extracted = ExtractedContent(
+        text="",
+        source_path=str(img_path),
+        metadata={
+            "is_image": True,
+            "base64": base64.b64encode(img_path.read_bytes()).decode(),
+            "media_type": "image/png",
+        },
+    )
+
+    agent = IngestAgent(provider=provider, store=store, search=search,
+                        log_writer=log, audit_db=audit, cache=cache,
+                        max_pages=15, wiki_root=tmp_wiki)
+
+    with patch.object(agent._skill_agent, "extract", AsyncMock(return_value=fake_extracted)):
+        with patch.object(IngestAgent, "_update_overview", AsyncMock()):
+            result = await agent.ingest(str(img_path))
+
+    # Vision call must be the first LLM call (multimodal message)
+    first_call_args = provider.complete.call_args_list[0]
+    messages = first_call_args[1].get("messages") or first_call_args[0][0]
+    content = messages[0].content
+    assert isinstance(content, list), "Vision call must use a list content (multimodal)"
+    assert any(block.get("type") == "image" for block in content if isinstance(block, dict))
+
+    assert not result.skipped
+    assert result.pages_created
+
+
+@pytest.mark.asyncio
+async def test_ingest_slug_collision_appends_as_update(tmp_wiki):
+    """When the target slug already exists for a 'create' action, content is appended instead."""
+    import itertools
+    from unittest.mock import AsyncMock, patch
+    from synthadoc.providers.base import CompletionResponse
+    from synthadoc.storage.wiki import WikiPage
+
+    provider = AsyncMock()
+    entity_resp = CompletionResponse(
+        text='{"entities":["Turing"],"tags":["history"],"summary":"About Turing.","relevant":true}',
+        input_tokens=50, output_tokens=20)
+    # LLM tries to create "alan-turing" but that slug already exists
+    decision_resp = CompletionResponse(
+        text='{"action":"create","target":"","new_slug":"alan-turing","update_content":"","page_content":"# Alan Turing\\n\\nExtra facts."}',
+        input_tokens=50, output_tokens=25)
+    provider.complete = AsyncMock(side_effect=itertools.cycle([entity_resp, decision_resp]))
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("alan-turing", WikiPage(
+        title="Alan Turing", tags=["biography"],
+        content="# Alan Turing\n\nOriginal content.",
+        status="active", confidence="high", sources=[], created="2026-01-01",
+    ))
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
+    await cache.init()
+
+    source = tmp_wiki / "raw_sources" / "turing2.md"
+    source.write_text("More facts about Alan Turing.", encoding="utf-8")
+
+    agent = IngestAgent(provider=provider, store=store, search=search,
+                        log_writer=log, audit_db=audit, cache=cache,
+                        max_pages=15, wiki_root=tmp_wiki)
+    with patch.object(IngestAgent, "_update_overview", AsyncMock()):
+        result = await agent.ingest(str(source))
+
+    # Must be recorded as an update, not a new creation (original content preserved)
+    assert "alan-turing" in result.pages_updated
+    assert "alan-turing" not in result.pages_created
+    page = store.read_page("alan-turing")
+    assert "Original content." in page.content

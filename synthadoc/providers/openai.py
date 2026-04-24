@@ -17,20 +17,17 @@ _NO_VISION_HOSTS = ("groq.com",)
 
 # Retry delays (seconds) after an HTTP 429 rate-limit response.
 #
-# Free-tier providers reset their per-minute window after ~60 s, so waiting
-# that long is the minimum that reliably avoids a second 429.  The openai SDK
-# already retries transient blips with short back-off; by the time a
-# RateLimitError reaches our code the SDK has already given up, meaning we
-# really have saturated the window and need to wait it out.
+# One retry after 65 s covers the most common cause: a per-minute quota window
+# that resets after 60 s (the extra 5 s is buffer).  If the second attempt
+# also fails, the provider's hourly or daily quota is exhausted — no number of
+# additional retries will help.  Failing fast lets the orchestrator requeue the
+# job and move on; the worker-level pause (also ~60 s) provides the inter-job
+# breathing room.
 #
-# Three retries × 60 s = up to 3 extra minutes.  Batch web-search ingest
-# fans out ~10 child URLs (30 LLM calls total); at 15 RPM that requires
-# roughly 1–2 window resets, so 3 retries is sufficient without being wasteful.
-#
-# Paid tiers (Gemini paid, Anthropic, OpenAI) have high enough quotas that
-# they will rarely trigger a 429.  If they do, the same wait still applies —
-# it is harmless.
-_RATE_LIMIT_RETRY_DELAYS_S: tuple[int, ...] = (60, 60, 60)
+# Paid tiers rarely trigger 429.  Free-tier Gemini (15 RPM) and Groq are the
+# common cases; a single retry is the right trade-off between recovery and
+# wasted wall-clock time.
+_RATE_LIMIT_RETRY_DELAYS_S: tuple[int, ...] = (65,)
 
 # Module-level alias so tests can patch precisely:
 #   patch("synthadoc.providers.openai._sleep", new=AsyncMock())
@@ -75,11 +72,11 @@ class OpenAIProvider(LLMProvider):
         for attempt, wait in enumerate([0] + list(_RATE_LIMIT_RETRY_DELAYS_S)):
             if wait:
                 logger.warning(
-                    "Rate limit (429) from %s — waiting %d s then retrying "
-                    "(attempt %d/%d). Expected on free-tier Gemini (15 RPM) or "
-                    "Groq during batch ingest fan-outs.",
+                    "Rate limit (429) from %s — waiting %d s then retrying once "
+                    "(per-minute window reset). If this retry also fails, the "
+                    "hourly/daily quota is likely exhausted — check your provider "
+                    "dashboard or switch providers.",
                     self._config.provider, wait,
-                    attempt, len(_RATE_LIMIT_RETRY_DELAYS_S),
                 )
                 await _sleep(wait)
             try:

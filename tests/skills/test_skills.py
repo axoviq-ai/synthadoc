@@ -87,6 +87,97 @@ async def test_url_skill_raises_on_connection_error():
             await UrlSkill().extract("https://unreachable.example/")
 
 
+@pytest.mark.asyncio
+async def test_url_skill_raises_domain_blocked_on_403():
+    """403/401/429 responses must raise DomainBlockedException, not HTTPStatusError."""
+    import respx, httpx
+    from synthadoc.skills.url.scripts.main import UrlSkill
+    from synthadoc.errors import DomainBlockedException
+    with respx.mock:
+        respx.get("https://blocked.example/page").mock(return_value=httpx.Response(403))
+        with pytest.raises(DomainBlockedException) as exc_info:
+            await UrlSkill().extract("https://blocked.example/page")
+    assert exc_info.value.domain == "blocked.example"
+    assert exc_info.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_url_skill_extracts_pdf_via_content_type():
+    """URLs served with application/pdf content-type route to PDF extraction."""
+    import respx, httpx
+    from unittest.mock import MagicMock, patch
+    from synthadoc.skills.url.scripts.main import UrlSkill
+    from synthadoc.skills.base import ExtractedContent
+
+    pdf_bytes = b"%PDF-1.4 fake"
+    with respx.mock:
+        respx.get("https://example.com/doc.pdf").mock(
+            return_value=httpx.Response(200, content=pdf_bytes,
+                headers={"content-type": "application/pdf"})
+        )
+        fake_result = ExtractedContent(text="PDF text here", source_path="https://example.com/doc.pdf",
+                                       metadata={"url": "https://example.com/doc.pdf", "pages": 1})
+        with patch.object(UrlSkill, "_extract_pdf_response", return_value=fake_result):
+            result = await UrlSkill().extract("https://example.com/doc.pdf")
+    assert result.text == "PDF text here"
+
+
+def test_url_skill_extract_pdf_response_pypdf_success(tmp_path):
+    """_extract_pdf_response returns pypdf text when pypdf succeeds."""
+    from unittest.mock import MagicMock, patch
+    from synthadoc.skills.url.scripts.main import UrlSkill
+
+    skill = UrlSkill()
+    pdf_bytes = b"%PDF-1.4 content"
+
+    mock_page = MagicMock()
+    mock_page.extract_text.return_value = "Extracted PDF text from page."
+    mock_reader = MagicMock()
+    mock_reader.pages = [mock_page]
+
+    with patch("pypdf.PdfReader", return_value=mock_reader):
+        result = skill._extract_pdf_response(pdf_bytes, "https://example.com/test.pdf")
+
+    assert "Extracted PDF text from page." in result.text
+    assert result.metadata["pages"] == 1
+
+
+def test_url_skill_extract_pdf_response_pypdf_empty_falls_back_to_pdfminer(tmp_path):
+    """When pypdf yields no text, _extract_pdf_response falls back to pdfminer."""
+    from unittest.mock import MagicMock, patch
+    from synthadoc.skills.url.scripts.main import UrlSkill
+
+    skill = UrlSkill()
+    pdf_bytes = b"%PDF-1.4 empty"
+
+    mock_page = MagicMock()
+    mock_page.extract_text.return_value = ""  # pypdf gives nothing
+    mock_reader = MagicMock()
+    mock_reader.pages = [mock_page]
+
+    with patch("pypdf.PdfReader", return_value=mock_reader), \
+         patch("pdfminer.high_level.extract_text", return_value="pdfminer extracted text"):
+        result = skill._extract_pdf_response(pdf_bytes, "https://example.com/test.pdf")
+
+    assert "pdfminer extracted text" in result.text
+
+
+def test_url_skill_extract_pdf_response_both_fail_returns_empty(tmp_path):
+    """When both pypdf and pdfminer fail, _extract_pdf_response returns empty ExtractedContent."""
+    from unittest.mock import patch
+    from synthadoc.skills.url.scripts.main import UrlSkill
+
+    skill = UrlSkill()
+    pdf_bytes = b"%PDF-1.4 broken"
+
+    with patch("pypdf.PdfReader", side_effect=RuntimeError("corrupt")), \
+         patch("pdfminer.high_level.extract_text", side_effect=RuntimeError("also broken")):
+        result = skill._extract_pdf_response(pdf_bytes, "https://example.com/bad.pdf")
+
+    assert result.text == ""
+    assert result.metadata.get("pages") == 0
+
+
 def test_pip_skills_loaded_from_entry_points(tmp_wiki):
     """Skills registered via entry_points('synthadoc.skills') are auto-discovered."""
     import yaml
@@ -491,3 +582,43 @@ async def test_pdf_skill_pdfminer_exception_returns_empty():
     with patch("pdfminer.high_level.extract_text", side_effect=RuntimeError("boom")):
         result = skill._extract_pdfminer("dummy.pdf")
     assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_xlsx_skill_extracts_sheets(tmp_path):
+    """XlsxSkill reads sheet names and row data from a real xlsx file."""
+    import openpyxl
+    from synthadoc.skills.xlsx.scripts.main import XlsxSkill
+
+    path = tmp_path / "data.xlsx"
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Report"
+    ws.append(["Name", "Score"])
+    ws.append(["Alice", 95])
+    ws.append(["Bob", 87])
+    wb.save(str(path))
+
+    result = await XlsxSkill().extract(str(path))
+    assert "Report" in result.text
+    assert "Alice" in result.text
+    assert "Bob" in result.text
+    assert result.metadata["sheets"] == 1
+
+
+@pytest.mark.asyncio
+async def test_docx_skill_extracts_paragraphs(tmp_path):
+    """DocxSkill returns paragraph text from a real docx file."""
+    from docx import Document
+    from synthadoc.skills.docx.scripts.main import DocxSkill
+
+    path = tmp_path / "report.docx"
+    doc = Document()
+    doc.add_paragraph("Introduction paragraph.")
+    doc.add_paragraph("Second paragraph with details.")
+    doc.save(str(path))
+
+    result = await DocxSkill().extract(str(path))
+    assert "Introduction paragraph." in result.text
+    assert "Second paragraph" in result.text
+    assert result.metadata["paragraphs"] >= 2

@@ -26,4 +26,4 @@ class OllamaProvider(LLMProvider):
         data = resp.json()
         return CompletionResponse(text=data.get("message", {}).get("content", ""),
                                   input_tokens=data.get("prompt_eval_count", 0),
-                                  output_tokens=0)
+                                  output_tokens=data.get("eval_count", 0))

@@ -48,6 +48,71 @@ async def test_anthropic_provider_propagates_rate_limit_immediately():
 
 
 @pytest.mark.asyncio
+async def test_anthropic_provider_includes_system_message():
+    """System prompt must be forwarded in the kwargs to the Anthropic client."""
+    cfg = AgentConfig(provider="anthropic", model="claude-haiku-4-5-20251001")
+    provider = AnthropicProvider(api_key="test-key", config=cfg)
+    captured: dict = {}
+
+    async def capture(**kwargs):
+        captured.update(kwargs)
+        mock = MagicMock()
+        mock.content = [MagicMock(text="ok")]
+        mock.usage = MagicMock(input_tokens=5, output_tokens=2)
+        return mock
+
+    with patch.object(provider._client.messages, "create", side_effect=capture):
+        await provider.complete(
+            messages=[Message(role="user", content="hello")],
+            system="You are a helpful assistant.",
+        )
+    assert captured.get("system") == "You are a helpful assistant."
+
+
+@pytest.mark.asyncio
+async def test_anthropic_provider_retries_on_internal_server_error():
+    """InternalServerError is retried; a subsequent success must be returned."""
+    import anthropic
+    cfg = AgentConfig(provider="anthropic", model="claude-haiku-4-5-20251001")
+    provider = AnthropicProvider(api_key="test-key", config=cfg)
+    call_count = 0
+
+    async def flaky(**kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise anthropic.InternalServerError(
+                response=MagicMock(status_code=500), body={}, message="server error")
+        m = MagicMock()
+        m.content = [MagicMock(text="recovered")]
+        m.usage = MagicMock(input_tokens=8, output_tokens=3)
+        return m
+
+    with patch.object(provider._client.messages, "create", side_effect=flaky):
+        with patch("asyncio.sleep", new=AsyncMock()):
+            result = await provider.complete(messages=[Message(role="user", content="hi")])
+
+    assert result.text == "recovered"
+    assert call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_anthropic_provider_raises_after_all_internal_server_retries():
+    """InternalServerError raised on every attempt must propagate after all retries."""
+    import anthropic
+    cfg = AgentConfig(provider="anthropic", model="claude-haiku-4-5-20251001")
+    provider = AnthropicProvider(api_key="test-key", config=cfg)
+
+    exc = anthropic.InternalServerError(
+        response=MagicMock(status_code=500), body={}, message="always down")
+
+    with patch.object(provider._client.messages, "create", side_effect=exc):
+        with patch("asyncio.sleep", new=AsyncMock()):
+            with pytest.raises(anthropic.InternalServerError):
+                await provider.complete(messages=[Message(role="user", content="hi")])
+
+
+@pytest.mark.asyncio
 async def test_anthropic_provider_raises_on_bad_api_key():
     import anthropic
     cfg = AgentConfig(provider="anthropic", model="claude-haiku-4-5-20251001")
@@ -487,3 +552,29 @@ async def test_openai_provider_vision_call_uses_image_url_format():
     assert sent_content[0]["type"] == "image_url"
     assert sent_content[0]["image_url"]["url"] == "data:image/png;base64,AAAA"
     assert sent_content[1] == {"type": "text", "text": "What is in this image?"}
+
+
+@pytest.mark.asyncio
+async def test_ollama_provider_uses_eval_count_for_output_tokens():
+    """OllamaProvider must read eval_count from the response for output_tokens."""
+    from synthadoc.providers.ollama import OllamaProvider
+    cfg = AgentConfig(provider="ollama", model="llama3")
+    provider = OllamaProvider(config=cfg)
+
+    fake_response = {
+        "message": {"content": "The answer is 42."},
+        "prompt_eval_count": 12,
+        "eval_count": 7,
+    }
+
+    with patch("httpx.AsyncClient.post", new=AsyncMock(return_value=MagicMock(
+        status_code=200,
+        raise_for_status=MagicMock(),
+        json=MagicMock(return_value=fake_response),
+    ))):
+        result = await provider.complete(messages=[Message(role="user", content="hi")])
+
+    assert result.text == "The answer is 42."
+    assert result.input_tokens == 12
+    assert result.output_tokens == 7
+    assert result.total_tokens == 19

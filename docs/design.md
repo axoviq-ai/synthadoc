@@ -153,15 +153,16 @@ All agents are async Python classes. They receive a job context, write results t
 
 ### IngestAgent
 
-Two-step pipeline (replaces the original four-pass design):
+Five-pass pipeline:
 
-| Step | Model | Purpose |
+| Pass | Model | Purpose |
 |------|-------|---------|
+| 0 — Vision (optional) | Default | Extract text from image sources (`is_image=True`); requires a vision-capable provider |
 | 1 — Analysis (`_analyse()`) | Default | Extract entities, tags, and a 3-sentence summary from raw text. Result cached under key `analyse-v1` keyed by SHA-256 of the text. |
-| — Candidate search | None (BM25) | Find existing wiki pages related to extracted entities |
-| 2 — Decision | Default | LLM reads summary (not full text) + BM25 candidates + `purpose.md` scope. Outputs per-page action: `create`, `update`, `flag_contradiction`, `skip` |
-| — Write | None | Apply actions; update frontmatter; write `[[wikilinks]]`; fire hooks |
-| — Overview | Default | Regenerate `wiki/overview.md` if any pages were created or updated |
+| 2 — Candidate search | None (BM25) | Find existing wiki pages related to extracted entities |
+| 3 — Decision | Default | LLM reads summary (not full text) + BM25 candidates + `purpose.md` scope. Outputs per-page action: `create`, `update`, `flag`, `skip` |
+| 4 — Write | None | Apply actions; update frontmatter; write `[[wikilinks]]`; fire hooks |
+| 5 — Overview | Default | Regenerate `wiki/overview.md` if any pages were created or updated |
 
 **Analysis caching:** The analysis step is expensive (full text read + LLM call). Results are cached in `cache.db` by text SHA-256. Subsequent ingests of the same source (e.g. after a `--force` that hits the decision cache miss) re-use the analysis result without a new LLM call.
 
@@ -191,7 +192,9 @@ def _slugify(title: str) -> str:
 
 ### QueryAgent
 
-**Pipeline (v0.2.0 — query decomposition):**
+#### Query Decomposition
+
+**Pipeline:**
 
 ```
 Question
@@ -219,9 +222,15 @@ query decomposed into 2 sub-question(s): "Who invented FORTRAN?" | "What was the
 
 **BM25 corpus cache:** `HybridSearch` builds the BM25 corpus once per server session and caches it in memory (`_cached_corpus`). The cache is invalidated by `invalidate_index()` after every `write_page()` call in IngestAgent, so queries always see current wiki content without redundant disk reads.
 
-**Knowledge gap detection:**
+#### Knowledge Gap Workflow
 
-After the BM25 merge step, if `len(candidates) < 3` OR `max_score < gap_score_threshold` (default: `2.0`, configurable via `[query] gap_score_threshold` in `synthadoc.toml`), a knowledge gap is detected:
+After the BM25 merge step, a knowledge gap is detected when ANY of three independent signals fire (gap is skipped when `gap_score_threshold = 0`):
+
+1. `len(candidates) < 3` — wiki has almost nothing on the topic
+2. `max_score < gap_score_threshold` (default: `2.0`, configurable via `[query] gap_score_threshold` in `synthadoc.toml`) — low keyword overlap
+3. Fewer than 2 candidates contain any key noun from the question with sufficient frequency — corpus-relative BM25 scores can be inflated by shared vocabulary; this content-overlap check catches off-topic matches
+
+When a gap fires:
 
 1. `SearchDecomposeAgent.decompose(question)` is called to generate 1–4 focused keyword search strings
 2. `QueryResult.knowledge_gap = True` and `QueryResult.suggested_searches = [...]` are set
@@ -268,6 +277,50 @@ web search is simple — no decomposition (1 query)
 web search decomposed into 3 queries: "Canada hardiness zones map" | "frost dates Canadian cities" | "planting guide by province Canada"
 ```
 
+### Semantic Re-ranking
+
+> **Opt-in.** BM25 is the default and works without any additional dependencies.
+
+**Installation:**
+
+```bash
+pip install fastembed
+```
+
+**Enable in config:**
+
+```toml
+[search]
+vector = true
+vector_top_candidates = 20   # BM25 candidate pool; top_n returned after re-ranking
+```
+
+**Embedding model:** `BAAI/bge-small-en-v1.5` (~130 MB), managed by `fastembed`. Downloaded once on the first server start with `vector = true`; cached at `~/.cache/fastembed/` thereafter.
+
+**On first enable**, the server prints and logs:
+
+```
+Vector search enabled — downloading embedding model BAAI/bge-small-en-v1.5 (~130 MB)
+to ~/.cache/fastembed/. This is a one-time download.
+```
+
+**Search flow (when `vector = true`):**
+
+1. BM25 retrieves top `vector_top_candidates` (default 20) candidates
+2. The query is embedded; cosine similarity is computed against each candidate's stored vector
+3. Results are re-ranked by vector score; top `top_n` (default 8) are returned to the caller
+
+**Migration:** On first enable, a background task embeds all existing wiki pages into `embeddings.db`. BM25 continues to serve all queries during migration — no downtime. Progress is logged every 50 pages. New pages are embedded immediately on write.
+
+**Fallback:** If `embeddings.db` is empty, the model is unavailable, or `fastembed` is not installed, BM25 ranking is used automatically with no error.
+
+**Performance notes:**
+- First enable on a large wiki may take several minutes to embed all pages. Subsequent server starts are instant (model and embeddings already cached).
+- The re-ranking step is CPU-only and adds single-digit milliseconds per query after migration.
+- Set `vector = false` to revert to BM25-only at any time. Existing embeddings are not deleted.
+
+---
+
 ### LintAgent
 
 Runs against the entire wiki or a scoped subset:
@@ -282,6 +335,10 @@ Runs against the entire wiki or a scoped subset:
 **Auto-resolution:** For contradictions, LintAgent asks the LLM to propose a resolution with a confidence score. If score ≥ `auto_resolve_confidence_threshold` (default 0.85), applies automatically. Below threshold, queues for human review.
 
 **Index suggestion:** For orphan pages, LintAgent reads the page frontmatter and generates a ready-to-paste `wiki/index.md` entry: `- [[slug]] — tag1, tag2, tag3`.
+
+**Orphan frontmatter sync:** After computing orphans, both `LintAgent.lint()` (server-side, via `POST /jobs/lint`) and `synthadoc lint report` (CLI, offline) write `orphan: true` or `orphan: false` to each eligible page's YAML frontmatter. This keeps the Obsidian Dataview query (`WHERE orphan = true`) in sync with the computed orphan state without requiring the server to be running after `lint report`.
+
+**Auto-generated page exclusions:** The pages `index`, `dashboard`, `overview`, `log`, and `purpose` are excluded from both orphan detection and contradiction checking. Links from these pages do not count as real inbound references — a page linked only from `overview.md` is still reported as an orphan. These pages are also never flagged as contradicted by the ingest pipeline.
 
 ### SkillAgent
 
@@ -499,7 +556,7 @@ Note: BM25 IDF requires a minimum of 3 documents in the corpus for non-zero scor
 | `POST` | `/jobs/lint` | `{scope?: str}` | `{job_id: str}` |
 | `GET` | `/jobs` | `?status=<filter>` | `[Job]` |
 | `GET` | `/jobs/{id}` | — | `Job` |
-| `DELETE` | `/jobs/{id}` | — | `{deleted: bool}` |
+| `DELETE` | `/jobs/{id}` | — | `{deleted: job_id}` |
 | `GET` | `/query` | `?q=<question>` | `{answer: str, citations: [str]}` |
 | `POST` | `/query` | `{question: str, save?: bool}` | `{answer: str, citations: [str], slug?: str}` |
 | `GET` | `/status` | — | `WikiStatus` |
@@ -831,14 +888,14 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `agents.default.provider` | str | `"gemini"` | LLM provider: `anthropic`, `openai`, `gemini`, `groq`, `minimax`, `ollama` |
-| `agents.default.model` | str | `"claude-opus-4-6"` | Model ID |
+| `agents.default.model` | str | `"gemini-2.5-flash"` | Model ID |
 | `server.port` | int | `7070` | HTTP listen port |
 | `queue.max_parallel_ingest` | int | `4` | Max concurrent ingest agents |
 | `queue.max_retries` | int | `3` | Retries before job → dead |
 | `queue.backoff_base_seconds` | int | `5` | Exponential backoff base (±20% jitter) |
 | `cache.version` | str | `"4"` | Bump to invalidate all cached LLM responses without touching source code |
-| `cost.soft_warn_usd` | float | `0.50` | Log warning, continue _(inactive in v0.1 — see note below)_ |
-| `cost.hard_gate_usd` | float | `2.00` | Require explicit confirmation _(inactive in v0.1 — see note below)_ |
+| `cost.soft_warn_usd` | float | `0.50` | Log warning, continue _(configured but not yet enforced — cost_guard is wired to the config but check() is not called in the ingest path)_ |
+| `cost.hard_gate_usd` | float | `2.00` | Require explicit confirmation _(configured but not yet enforced — see above)_ |
 | `cost.auto_resolve_confidence_threshold` | float | `0.85` | Auto-apply lint resolutions above this score |
 | `ingest.max_pages_per_ingest` | int | `15` | Max pages one ingest may update |
 | `ingest.chunk_size` | int | `1500` | Text chunk size (characters) |
