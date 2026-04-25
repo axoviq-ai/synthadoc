@@ -24,9 +24,11 @@ _NO_VISION_HOSTS = ("groq.com",)
 # job and move on; the worker-level pause (also ~60 s) provides the inter-job
 # breathing room.
 #
-# Paid tiers rarely trigger 429.  Free-tier Gemini (15 RPM) and Groq are the
-# common cases; a single retry is the right trade-off between recovery and
-# wasted wall-clock time.
+# NOTE: daily quota exhaustion is detected separately (_is_daily_quota_error) and
+# raises immediately without any sleep — sleeping 65 s then retrying would waste
+# time and burn one more precious daily request on a call that will always fail.
+#
+# Default demo model is Gemini 2.5 Flash-Lite: 30 RPM / 1,000 RPD.  Groq has similar caps.
 _RATE_LIMIT_RETRY_DELAYS_S: tuple[int, ...] = (65,)
 
 # Module-level alias so tests can patch precisely:
@@ -62,11 +64,29 @@ class OpenAIProvider(LLMProvider):
             result.append(block)
         return result
 
+    @staticmethod
+    def _is_daily_quota_error(exc: _openai.RateLimitError) -> bool:
+        """Return True when this 429 is a per-day (not per-minute) quota exhaustion.
+
+        Gemini's daily-quota response includes a QuotaFailure detail with a
+        quotaId containing 'PerDay'.  For Groq, OpenAI, and other providers
+        the body won't match and we return False, preserving the 65 s retry.
+        """
+        body = exc.body if isinstance(exc.body, dict) else {}
+        for detail in body.get("error", {}).get("details", []):
+            for violation in detail.get("violations", []):
+                if "PerDay" in violation.get("quotaId", ""):
+                    return True
+        text = str(exc).lower()
+        return "perday" in text or "requests_per_day" in text or "daily quota" in text
+
     async def _call_with_retry(self, msgs: list, temperature: float,
                                max_tokens: int):
-        """Call the completions API, retrying on 429 rate-limit responses.
+        """Call the completions API, retrying once on per-minute 429 rate-limit.
 
-        See _RATE_LIMIT_RETRY_DELAYS_S for the rationale and expected wait times.
+        Daily quota exhaustion raises immediately (no sleep, no retry) — sleeping
+        65 s and retrying would waste time and consume another scarce daily request.
+        See _RATE_LIMIT_RETRY_DELAYS_S for per-minute retry rationale.
         """
         last_exc: Exception | None = None
         for attempt, wait in enumerate([0] + list(_RATE_LIMIT_RETRY_DELAYS_S)):
@@ -85,6 +105,16 @@ class OpenAIProvider(LLMProvider):
                     temperature=temperature, max_tokens=max_tokens,
                 )
             except _openai.RateLimitError as exc:
+                if self._is_daily_quota_error(exc):
+                    logger.error(
+                        "Daily quota exhausted for %s — no retry possible until "
+                        "quota resets (typically midnight UTC). Free-tier providers "
+                        "cap daily usage; upgrade to a paid API key or switch "
+                        "providers.",
+                        self._config.provider,
+                    )
+                    from synthadoc.errors import DailyQuotaExhaustedException
+                    raise DailyQuotaExhaustedException(self._config.provider) from exc
                 last_exc = exc
         raise last_exc  # type: ignore[misc]
 

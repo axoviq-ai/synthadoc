@@ -59,6 +59,26 @@ class DomainBlockedException(Exception):
             f"site blocked automated access. Future URLs from this domain will be skipped."
         )
 
+# ── Provider ──────────────────────────────────────────────────────────────────
+PROVIDER_DAILY_QUOTA = "ERR-PROV-001"  # Daily API quota exhausted for today
+
+
+class DailyQuotaExhaustedException(Exception):
+    """Raised when a provider's daily request quota is exhausted.
+
+    Unlike per-minute rate limits, daily quotas do not reset for hours.
+    The orchestrator catches this and permanently fails the job rather than
+    requeuing it — retrying today is futile.
+    """
+    def __init__(self, provider: str) -> None:
+        self.provider = provider
+        super().__init__(
+            f"[{PROVIDER_DAILY_QUOTA}] Daily quota exhausted for {provider} — "
+            f"no retry possible until quota resets (typically midnight UTC). "
+            f"Upgrade to a paid API key or switch providers."
+        )
+
+
 # ── Ingest ────────────────────────────────────────────────────────────────────
 INGEST_NOT_FOUND  = "ERR-INGEST-001"  # Source file or directory not found
 INGEST_EMPTY      = "ERR-INGEST-002"  # Source file exists but is empty

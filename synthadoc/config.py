@@ -392,7 +392,7 @@ def load_config(
     # (no agents section required).
     if not any_file_loaded:
         return Config(
-            agents=AgentsConfig(default=AgentConfig(provider="gemini", model="gemini-2.5-flash")),
+            agents=AgentsConfig(default=AgentConfig(provider="gemini", model="gemini-2.5-flash-lite")),
             web_search=WebSearchConfig(),
             search=SearchConfig(),
         )
@@ -410,7 +410,7 @@ def load_config(
     if "agents" not in raw or "default" not in raw.get("agents", {}):
         raw.setdefault("agents", {})["default"] = {
             "provider": "gemini",
-            "model": "gemini-2.5-flash",
+            "model": "gemini-2.5-flash-lite",
         }
 
     return _raw_to_config(raw, source_has_agents=True)

@@ -21,7 +21,7 @@ The earliest computers were programmed in binary machine code tied directly to t
 
 ## Second Generation: FORTRAN and COBOL (1957–1960)
 
-John Backus at IBM developed FORTRAN (1957), the first widely used high-level language, targeting scientific computation. COBOL (1959), shaped by Grace Hopper, targeted business data processing and introduced English-like syntax.
+John Backus at IBM developed FORTRAN (1957), the first widely used high-level language, targeting scientific computation. COBOL (1959), shaped by [[grace-hopper|Grace Hopper]], targeted business data processing and introduced English-like syntax.
 
 ## Third Generation: Structured Programming (1960s–1970s)
 

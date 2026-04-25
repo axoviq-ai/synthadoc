@@ -193,12 +193,22 @@ class Orchestrator:
         except Exception as e:
             import httpx
             import logging
-            from synthadoc.errors import DomainBlockedException
+            from synthadoc.errors import DomainBlockedException, DailyQuotaExhaustedException
             # Check for LLM rate limits (openai SDK used by Groq/Gemini, and Anthropic SDK)
             _status = getattr(e, "status_code", None) or getattr(
                 getattr(e, "response", None), "status_code", None)
-            if _status == 429:
-                # Rate limit — requeue without burning a retry; worker will sleep
+            if isinstance(e, DailyQuotaExhaustedException):
+                # Daily quota exhaustion is permanent for the rest of the day —
+                # permanently fail the job so the worker does NOT sleep-and-retry.
+                logging.getLogger(__name__).error(
+                    "Daily quota exhausted — permanently failing job %s "
+                    "(quota resets at midnight UTC)", job_id
+                )
+                await self._queue.fail_permanent(job_id, str(e))
+                # Do NOT raise: letting the worker continue drains the pending
+                # queue quickly rather than looping every 60 s.
+            elif _status == 429:
+                # Per-minute rate limit — requeue without burning a retry; worker will sleep
                 logging.getLogger(__name__).warning(
                     "LLM rate limit for job %s — requeued without retry penalty", job_id
                 )

@@ -29,7 +29,7 @@ The University of California, Berkeley produced the Berkeley Software Distributi
 
 ## Linux
 
-In 1991, Linus Torvalds released Linux, a Unix-like kernel written from scratch. Combined with GNU tools, Linux became the dominant server and cloud operating system.
+In 1991, Linus Torvalds released Linux, a Unix-like kernel written from scratch. Combined with GNU tools, Linux became the dominant server and cloud operating system. The GNU/Linux ecosystem became the foundation of the [[open-source-movement]].
 
 ## Legacy
 

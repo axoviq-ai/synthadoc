@@ -24,7 +24,9 @@ _PRICING: dict[str, tuple[float, float]] = {
     "gpt-4o":                                (2.50e-6, 10.00e-6),
     "gpt-4o-mini":                           (0.15e-6,  0.60e-6),
     # Gemini (via OpenAI-compatible endpoint)
-    "gemini-2.5-flash":                      (0.30e-6,  2.50e-6),
+    "gemini-2.5-flash-lite":                 (0.075e-6, 0.30e-6),  # default; free: 30 RPM / 1,000 RPD
+    "gemini-2.5-flash":                      (0.30e-6,  2.50e-6),  # free: 10 RPM / 250 RPD
+    "gemini-1.5-flash":                      (0.075e-6, 0.30e-6),  # free: 15 RPM / 1,500 RPD
     "gemini-2.0-flash":                      (0.10e-6,  0.40e-6),  # deprecated Jun 1 2026
     "gemini-1.5-pro":                        (2.50e-6, 10.00e-6),
     # MiniMax (via OpenAI-compatible endpoint) — text-only, no vision

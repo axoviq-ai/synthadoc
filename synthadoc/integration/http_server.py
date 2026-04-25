@@ -20,6 +20,14 @@ _MAX_BODY_BYTES = 10 * 1024 * 1024  # 10 MB
 
 def _classify_llm_error(exc: Exception) -> "HTTPException | None":
     """Return a meaningful HTTPException for known LLM API error codes, or None."""
+    from synthadoc.errors import DailyQuotaExhaustedException
+    _SWITCH = "Switch to another provider by editing [agents] in .synthadoc/config.toml and restarting the server (options: groq, gemini, anthropic, openai, ollama)."
+    if isinstance(exc, DailyQuotaExhaustedException):
+        return HTTPException(
+            status_code=503,
+            detail=f"Daily quota exhausted for {exc.provider} — no requests possible until midnight UTC. {_SWITCH}",
+        )
+
     # openai/anthropic SDKs set status_code directly on the exception;
     # httpx.HTTPStatusError (used by OllamaProvider) stores it on exc.response.
     code = getattr(exc, "status_code", None)
@@ -146,7 +154,14 @@ async def _worker_loop(orch) -> None:
                     await orch._run_scaffold(job.id, domain=domain)
         except Exception as exc:
             known = _classify_llm_error(exc)
-            if known and known.status_code == 429:
+            if known and known.status_code == 503 and "Daily quota" in (known.detail or ""):
+                # Daily quota is exhausted for the rest of the day — no point
+                # sleeping and retrying. The orchestrator already permanently
+                # failed the job; just continue polling without a sleep penalty.
+                logger.error("Daily quota exhausted — jobs will fail until midnight UTC. %s",
+                             known.detail)
+                sleep_secs = _WORKER_POLL_SECONDS
+            elif known and known.status_code == 429:
                 sleep_secs = _parse_retry_after(exc)
                 logger.warning(
                     "Rate limit hit in worker — pausing %.0f s before next job. "

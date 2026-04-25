@@ -189,6 +189,74 @@ async def test_openai_provider_raises_after_all_retries_exhausted():
                 await provider.complete(messages=[Message(role="user", content="hi")])
 
 
+def test_is_daily_quota_error_detects_gemini_body():
+    """_is_daily_quota_error must return True for a Gemini per-day quota body."""
+    import openai
+    from synthadoc.providers.openai import OpenAIProvider
+    gemini_body = {
+        "error": {
+            "code": 429,
+            "details": [{
+                "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+                "violations": [{
+                    "quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+                    "quotaValue": "20",
+                }]
+            }]
+        }
+    }
+    exc = openai.RateLimitError(
+        message="quota exceeded", response=MagicMock(status_code=429), body=gemini_body)
+    assert OpenAIProvider._is_daily_quota_error(exc) is True
+
+
+def test_is_daily_quota_error_returns_false_for_per_minute():
+    """_is_daily_quota_error must return False for a plain per-minute rate limit."""
+    import openai
+    from synthadoc.providers.openai import OpenAIProvider
+    exc = openai.RateLimitError(
+        message="rate limited, please retry", response=MagicMock(status_code=429), body={})
+    assert OpenAIProvider._is_daily_quota_error(exc) is False
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_daily_quota_raises_immediately_without_retry():
+    """A Gemini daily-quota 429 must raise DailyQuotaExhaustedException immediately —
+    no sleep, no retry, to avoid wasting 65 s and burning one more scarce daily request."""
+    import openai
+    from synthadoc.providers.openai import OpenAIProvider
+    from synthadoc.errors import DailyQuotaExhaustedException
+    cfg = AgentConfig(provider="gemini", model="gemini-2.5-flash-lite",
+                      base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
+    provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    gemini_body = {
+        "error": {
+            "details": [{
+                "violations": [{"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier"}]
+            }]
+        }
+    }
+    daily_exc = openai.RateLimitError(
+        message="daily quota", response=MagicMock(status_code=429), body=gemini_body)
+
+    call_count = 0
+    sleep_mock = AsyncMock()
+
+    async def flaky(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        raise daily_exc
+
+    with patch.object(provider._client.chat.completions, "create", side_effect=flaky):
+        with patch("synthadoc.providers.openai._sleep", new=sleep_mock):
+            with pytest.raises(DailyQuotaExhaustedException):
+                await provider.complete(messages=[Message(role="user", content="hi")])
+
+    assert call_count == 1, "daily quota must not be retried"
+    sleep_mock.assert_not_called()
+
+
 def _make_cfg(provider: str, model: str) -> "Config":
     from synthadoc.config import Config, AgentsConfig, AgentConfig
     return Config(agents=AgentsConfig(default=AgentConfig(provider=provider, model=model)))

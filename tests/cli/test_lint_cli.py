@@ -212,6 +212,24 @@ def test_lint_report_all_clear_clears_stale_orphan_flags(tmp_path, monkeypatch):
         "stale orphan: true must be cleared on All clear"
 
 
+def test_lint_report_index_links_do_not_rescue_from_orphan(tmp_path, monkeypatch):
+    """Adding [[slug]] to index.md must NOT rescue from orphan — only content-page
+    links count. index.md is a directory; a page must be linked from a real content
+    page to be considered integrated into the knowledge graph."""
+    import synthadoc.cli.install as install_mod
+    wiki_dir, root = _make_wiki(tmp_path, {
+        "index":        "# Index\n\n[[page-a]]\n",
+        "page-a":       "---\nstatus: active\n---\n# Page A\n",
+        "page-b":       "---\nstatus: active\n---\n# Page B\n",
+    })
+    monkeypatch.setattr(install_mod, "_read_registry",
+                        lambda: {"mywiki": {"path": str(tmp_path)}})
+    result = runner.invoke(app, ["lint", "report", "-w", "mywiki"])
+    assert result.exit_code == 0, result.output
+    assert "page-a" in result.output   # index link doesn't count → still orphan
+    assert "page-b" in result.output   # nothing links to page-b → also orphan
+
+
 def test_lint_report_self_link_does_not_rescue_from_orphan(tmp_path, monkeypatch):
     """A page that links only to itself must still be reported as an orphan."""
     import synthadoc.cli.install as install_mod

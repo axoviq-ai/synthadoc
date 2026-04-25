@@ -27,12 +27,14 @@ domain = "{domain}"
 port = {port}  # change this if running multiple wikis simultaneously
 
 [agents]
-default = {{ provider = "gemini", model = "gemini-2.5-flash" }}
+default = {{ provider = "gemini", model = "gemini-2.5-flash-lite" }}
 # Alternatives (uncomment and restart to switch):
-# default = {{ provider = "minimax",   model = "MiniMax-M2.5" }}            # paid, cheapest text-only ($0.15/M in)
-# default = {{ provider = "groq",      model = "llama-3.3-70b-versatile" }} # free tier, 100K tokens/day
-# default = {{ provider = "anthropic", model = "claude-sonnet-4-6" }}       # paid, highest quality
-# default = {{ provider = "ollama",    model = "llama3.2" }}                 # fully local, no API key
+# default = {{ provider = "gemini",    model = "gemini-2.5-flash" }}         # free tier: 10 RPM / 250 RPD
+# default = {{ provider = "gemini",    model = "gemini-1.5-flash" }}         # free tier: 15 RPM / 1,500 RPD
+# default = {{ provider = "minimax",   model = "MiniMax-M2.5" }}             # paid, cheapest text-only ($0.15/M in)
+# default = {{ provider = "groq",      model = "llama-3.3-70b-versatile" }}  # free tier, 100K tokens/day
+# default = {{ provider = "anthropic", model = "claude-sonnet-4-6" }}        # paid, highest quality
+# default = {{ provider = "ollama",    model = "llama3.2" }}                  # fully local, no API key
 
 [ingest]
 max_pages_per_ingest = 15
@@ -110,7 +112,7 @@ SORT created DESC
 
 *These pages exist but nothing links to them.
 Orphan status is set by `synthadoc lint run` — run it first to populate this list.
-Add `[[page-name]]` to a related page or to [[index]].*
+Add `[[page-name]]` to a related content page to integrate it into the graph.*
 
 ---
 
@@ -132,6 +134,10 @@ def init_wiki(root: Path, domain: str = "General", port: int = 7070) -> None:
     (root / "raw_sources").mkdir(exist_ok=True)
     (root / "hooks").mkdir(exist_ok=True)
     (root / ".synthadoc" / "logs").mkdir(parents=True, exist_ok=True)
+    (root / ".obsidian").mkdir(exist_ok=True)
+    (root / ".obsidian" / "app.json").write_text(
+        '{\n  "userIgnoreFilters": [\n    "raw_sources"\n  ]\n}\n',
+        encoding="utf-8", newline="\n")
     (root / "AGENTS.md").write_text(
         _AGENTS_MD.format(domain=domain), encoding="utf-8", newline="\n")
     (root / "wiki" / "index.md").write_text(
