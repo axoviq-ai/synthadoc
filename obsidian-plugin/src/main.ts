@@ -387,7 +387,7 @@ class JobsModal extends Modal {
         table.style.cssText = "width:100%;border-collapse:collapse;font-size:13px";
 
         const hrow = table.createEl("thead").createEl("tr");
-        for (const h of ["Status", "Operation", "Source", "Created"]) {
+        for (const h of ["Job ID", "Status", "Operation", "Source", "Created"]) {
             const th = hrow.createEl("th", { text: h });
             th.style.cssText = "text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border)";
         }
@@ -403,6 +403,13 @@ class JobsModal extends Modal {
                 ? new Date(job.created_at.replace(" ", "T") + "+00:00").toLocaleString()
                 : "—";
             const icon = STATUS_EMOJI[job.status] ?? "";
+
+            // Job ID cell — monospace, muted, truncated to 8 chars for readability
+            const idTd = tr.createEl("td");
+            idTd.style.cssText = "padding:4px 8px;border-bottom:1px solid var(--background-modifier-border-subtle);font-family:monospace;font-size:11px;color:var(--text-muted)";
+            idTd.setText(job.id?.slice(0, 8) ?? "—");
+            idTd.title = job.id ?? "";
+
             for (const text of [`${icon} ${job.status}`, job.operation, source, created]) {
                 const td = tr.createEl("td", { text });
                 td.style.cssText = "padding:4px 8px;border-bottom:1px solid var(--background-modifier-border-subtle)";
@@ -415,13 +422,13 @@ class JobsModal extends Modal {
                 if (r.pages_flagged?.length) detail.push(`flagged: ${r.pages_flagged.join(", ")}`);
                 if (detail.length) {
                     const dtd = tbody.createEl("tr").createEl("td", { text: detail.join(" · ") });
-                    dtd.colSpan = 4;
+                    dtd.colSpan = 5;
                     dtd.style.cssText = "padding:2px 8px 6px 8px;font-size:11px;color:var(--text-muted)";
                 }
             }
             if (job.status === "failed" && job.error) {
                 const etd = tbody.createEl("tr").createEl("td", { text: `Error: ${job.error}` });
-                etd.colSpan = 4;
+                etd.colSpan = 5;
                 etd.style.cssText = "padding:2px 8px 6px 8px;font-size:11px;color:var(--text-error)";
             }
         }
