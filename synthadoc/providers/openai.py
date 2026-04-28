@@ -37,12 +37,13 @@ _sleep = asyncio.sleep
 
 
 class OpenAIProvider(LLMProvider):
-    def __init__(self, api_key: str, config: AgentConfig) -> None:
+    def __init__(self, api_key: str, config: AgentConfig, timeout: int = 0) -> None:
         kwargs: dict = {"api_key": api_key}
         if config.base_url:
             kwargs["base_url"] = config.base_url
         self._client = AsyncOpenAI(**kwargs)
         self._config = config
+        self._timeout: int | None = timeout if timeout > 0 else None
         base = str(config.base_url or "")
         self.supports_vision = not any(host in base for host in _NO_VISION_HOSTS)
 
@@ -103,7 +104,16 @@ class OpenAIProvider(LLMProvider):
                 return await self._client.chat.completions.create(
                     model=self._config.model, messages=msgs,
                     temperature=temperature, max_tokens=max_tokens,
+                    timeout=self._timeout,
                 )
+            except _openai.APITimeoutError:
+                logger.error(
+                    "LLM call to %s timed out after %d s. "
+                    "Increase [agents] llm_timeout_seconds in .synthadoc/config.toml "
+                    "or switch to a faster model.",
+                    self._config.provider, self._timeout,
+                )
+                raise
             except _openai.RateLimitError as exc:
                 if self._is_daily_quota_error(exc):
                     logger.error(
@@ -126,25 +136,51 @@ class OpenAIProvider(LLMProvider):
         msgs.extend({"role": m.role, "content": self._to_openai_content(m.content)}
                     for m in messages)
         resp = await self._call_with_retry(msgs, temperature, max_tokens)
+        if not resp.choices:
+            # Some providers (e.g. MiniMax) return choices=null when the model
+            # exceeds its internal generation budget. Extract any error details.
+            extra = getattr(resp, "model_extra", None) or {}
+            base_resp = extra.get("base_resp") or {}
+            err_code = base_resp.get("status_code", "unknown")
+            err_msg  = base_resp.get("status_msg",  "no details")
+            logger.error(
+                "OpenAI provider: %s returned choices=null (code=%s, msg=%r). "
+                "The model likely timed out internally. Set "
+                "[agents] llm_timeout_seconds in .synthadoc/config.toml "
+                "(e.g. llm_timeout_seconds = 90) to fail fast, or switch to "
+                "a lighter model.",
+                self._config.provider, err_code, err_msg,
+            )
+            raise RuntimeError(
+                f"{self._config.provider} returned choices=null "
+                f"(code={err_code}): {err_msg}"
+            )
         choice = resp.choices[0]
         text = choice.message.content or ""
         # Strip <think>...</think> blocks that reasoning models prepend to their output
         text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
         if not text:
             # Reasoning models (e.g. MiniMax M2.x) return content=null and put their
-            # chain-of-thought in a non-standard reasoning_content field. Try to extract
-            # the last JSON-like block from it so structured callers still get a result.
+            # answer in a non-standard reasoning_content field.  For structured callers
+            # (e.g. decompose) we extract the last JSON array; for prose callers
+            # (e.g. query synthesis) we fall back to the full cleaned text.
             extra = getattr(choice.message, "model_extra", None) or {}
             reasoning = (extra.get("reasoning_content") or "").strip()
             if reasoning:
-                last_close = reasoning.rfind("]")
+                clean = re.sub(r"<think>.*?</think>", "", reasoning, flags=re.DOTALL).strip()
+                last_close = clean.rfind("]")
                 if last_close >= 0:
-                    last_open = reasoning.rfind("[", 0, last_close)
+                    last_open = clean.rfind("[", 0, last_close)
                     if last_open >= 0:
-                        text = reasoning[last_open: last_close + 1]
+                        text = clean[last_open: last_close + 1]
                         logger.debug(
                             "OpenAI provider: content=null — extracted JSON from reasoning_content"
                         )
+                if not text:
+                    text = clean
+                    logger.debug(
+                        "OpenAI provider: content=null — using full reasoning_content as prose answer"
+                    )
         return CompletionResponse(text=text,
                                   input_tokens=resp.usage.prompt_tokens,
                                   output_tokens=resp.usage.completion_tokens)

@@ -518,8 +518,8 @@ async def test_openai_provider_extracts_json_from_reasoning_content():
 
 
 @pytest.mark.asyncio
-async def test_openai_provider_reasoning_content_no_json_returns_empty():
-    """If reasoning_content has no JSON array, text must still be empty string (not crash)."""
+async def test_openai_provider_reasoning_content_no_json_returns_prose():
+    """If reasoning_content has no JSON array, the prose text is returned as-is (prose answer fallback)."""
     cfg = AgentConfig(provider="minimax", model="MiniMax-M2.5",
                       base_url="https://api.minimax.io/v1")
     provider = OpenAIProvider(api_key="test-key", config=cfg)
@@ -539,7 +539,109 @@ async def test_openai_provider_reasoning_content_no_json_returns_empty():
         result = await provider.complete(
             messages=[Message(role="user", content="hi")]
         )
-    assert result.text == ""
+    assert result.text == "I am thinking about this question at length..."
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_reasoning_content_strips_think_tags_then_returns_prose():
+    """Think tags are stripped from reasoning_content before returning prose answer."""
+    cfg = AgentConfig(provider="minimax", model="MiniMax-M2.5",
+                      base_url="https://api.minimax.io/v1")
+    provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = None
+    mock_choice.message.model_extra = {
+        "reasoning_content": "<think>internal reasoning here</think>Moore's Law states that transistor counts double roughly every two years."
+    }
+    mock_resp = MagicMock()
+    mock_resp.choices = [mock_choice]
+    mock_resp.usage.prompt_tokens = 10
+    mock_resp.usage.completion_tokens = 0
+
+    with patch.object(provider._client.chat.completions, "create",
+                      new=AsyncMock(return_value=mock_resp)):
+        result = await provider.complete(
+            messages=[Message(role="user", content="What is Moore's Law?")]
+        )
+    assert result.text == "Moore's Law states that transistor counts double roughly every two years."
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_raises_on_null_choices():
+    """choices=null from providers like MiniMax must raise RuntimeError, not TypeError."""
+    cfg = AgentConfig(provider="minimax", model="MiniMax-M2.5",
+                      base_url="https://api.minimax.io/v1")
+    provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    mock_resp = MagicMock()
+    mock_resp.choices = None
+    mock_resp.model_extra = {"base_resp": {"status_code": 1000, "status_msg": "timeout"}}
+
+    with patch.object(provider._client.chat.completions, "create",
+                      new=AsyncMock(return_value=mock_resp)):
+        with pytest.raises(RuntimeError, match="choices=null"):
+            await provider.complete(messages=[Message(role="user", content="hi")])
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_passes_timeout_to_create():
+    """timeout > 0 is forwarded to chat.completions.create()."""
+    cfg = AgentConfig(provider="minimax", model="MiniMax-M2.5",
+                      base_url="https://api.minimax.io/v1")
+    provider = OpenAIProvider(api_key="test-key", config=cfg, timeout=90)
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = "answer"
+    mock_choice.message.model_extra = {}
+    mock_resp = MagicMock()
+    mock_resp.choices = [mock_choice]
+    mock_resp.usage.prompt_tokens = 10
+    mock_resp.usage.completion_tokens = 5
+
+    mock_create = AsyncMock(return_value=mock_resp)
+    with patch.object(provider._client.chat.completions, "create", new=mock_create):
+        await provider.complete(messages=[Message(role="user", content="hi")])
+
+    _, kwargs = mock_create.call_args
+    assert kwargs.get("timeout") == 90
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_passes_none_timeout_when_zero():
+    """timeout=0 (no limit) sends timeout=None to create() so the SDK uses its default."""
+    cfg = AgentConfig(provider="gemini", model="gemini-2.5-flash-lite",
+                      base_url="https://generativelanguage.googleapis.com/v1beta/openai/")
+    provider = OpenAIProvider(api_key="test-key", config=cfg, timeout=0)
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = "answer"
+    mock_choice.message.model_extra = {}
+    mock_resp = MagicMock()
+    mock_resp.choices = [mock_choice]
+    mock_resp.usage.prompt_tokens = 10
+    mock_resp.usage.completion_tokens = 5
+
+    mock_create = AsyncMock(return_value=mock_resp)
+    with patch.object(provider._client.chat.completions, "create", new=mock_create):
+        await provider.complete(messages=[Message(role="user", content="hi")])
+
+    _, kwargs = mock_create.call_args
+    assert kwargs.get("timeout") is None
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_api_timeout_error_is_logged_and_raised():
+    """APITimeoutError is logged with config hint and re-raised."""
+    import openai
+    cfg = AgentConfig(provider="minimax", model="MiniMax-M2.5",
+                      base_url="https://api.minimax.io/v1")
+    provider = OpenAIProvider(api_key="test-key", config=cfg, timeout=90)
+
+    with patch.object(provider._client.chat.completions, "create",
+                      new=AsyncMock(side_effect=openai.APITimeoutError(request=MagicMock()))):
+        with pytest.raises(openai.APITimeoutError):
+            await provider.complete(messages=[Message(role="user", content="hi")])
 
 
 @pytest.mark.asyncio
