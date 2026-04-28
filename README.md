@@ -303,21 +303,23 @@ The server binds to `http://127.0.0.1:7070` by default (port is set in `<wiki-ro
 
 ### Skip typing -w on every command
 
-After installing a wiki, set it as your active context once:
+Set the demo wiki as your active context once — you won't need `-w` for the rest of the walkthrough:
 
 ```bash
-synthadoc use my-wiki
+synthadoc use history-of-computing
 ```
 
-All subsequent commands in any terminal run against `my-wiki` by default.
-Pass `-w <other>` to override for a single command.
+All subsequent commands in any terminal run against `history-of-computing` by default.
 
-**Multiple wikis:** switch instantly with `synthadoc use <other-wiki>`.
-**See current active wiki:** `synthadoc use` (no arguments).
-**Shell prompt integration** — add to `~/.bashrc` or `~/.zshrc`:
-```bash
-export PS1='(${SYNTHADOC_WIKI:-no-wiki}) \$ '
-```
+### Working with multiple wikis
+
+| Goal | How |
+|------|-----|
+| Set a persistent default | `synthadoc use wiki1` |
+| One-off command against wiki2 | `synthadoc query "..." -w wiki2` |
+| Dedicate a terminal session to wiki2 | `export SYNTHADOC_WIKI=wiki2` in that window |
+
+`synthadoc use wiki1` saves to `~/.synthadoc/default_wiki` — persistent across all terminal windows. For occasional cross-wiki commands, pass `-w wiki2` directly without switching your default. To work with two wikis in parallel across separate windows, set `SYNTHADOC_WIKI` as an environment variable in each window — it takes priority over the saved default.
 
 **Automation / pipelines:** all wiki-context messages go to stderr; stdout is always
 machine-readable so `synthadoc jobs list | jq` works without filtering.
@@ -365,8 +367,11 @@ Unlike the demo (which ships with pre-built pages), your own wiki starts from a 
 
 ```bash
 synthadoc install market-condition-canada --target ~/wikis --domain "Market conditions and trends in Canada"
-synthadoc serve -w market-condition-canada
+synthadoc use market-condition-canada
+synthadoc serve
 ```
+
+Set the wiki as your active context right after install — all subsequent commands skip the `-w` flag.
 
 `--domain` is a free-text description of the subject area — the LLM uses it to generate four domain-aware starter files via scaffold:
 
@@ -385,9 +390,9 @@ Open the wiki folder in Obsidian as a new vault and install both the Dataview an
 **1. Seed with web searches** — pull in real content for the topics you care about:
 
 ```bash
-synthadoc ingest "search for: Economy, employment and labour market analysis in Toronto GTA" -w market-condition-canada
-synthadoc ingest "search for: Bank of Canada interest rate outlook 2025" -w market-condition-canada
-synthadoc jobs list -w market-condition-canada   # watch progress
+synthadoc ingest "search for: Economy, employment and labour market analysis in Toronto GTA"
+synthadoc ingest "search for: Bank of Canada interest rate outlook 2025"
+synthadoc jobs list   # watch progress
 ```
 
 Each search fans out into up to 20 parallel URL ingest jobs. Query decomposition and web search decomposition (see below) make broad topics yield much richer results than a single search.
@@ -395,22 +400,22 @@ Each search fans out into up to 20 parallel URL ingest jobs. Query decomposition
 **2. Lint and query** — check for contradictions and verify the wiki answers your questions:
 
 ```bash
-synthadoc lint run -w market-condition-canada
-synthadoc lint report -w market-condition-canada
-synthadoc query "What are the current employment trends in the Toronto GTA?" -w market-condition-canada
+synthadoc lint run
+synthadoc lint report
+synthadoc query "What are the current employment trends in the Toronto GTA?"
 ```
 
 **3. Re-run scaffold** — after pages accumulate, scaffold regenerates a richer index that reflects actual content. Pages already linked in `index.md` are never overwritten:
 
 ```bash
-synthadoc scaffold -w market-condition-canada
+synthadoc scaffold
 ```
 
 **4. Schedule recurring updates** — keep the wiki fresh automatically:
 
 ```bash
-synthadoc schedule add --op "ingest" --source "search for: Toronto GTA economic indicators latest" --cron "0 2 * * *" -w market-condition-canada
-synthadoc schedule add --op "scaffold" --cron "0 4 * * 0" -w market-condition-canada
+synthadoc schedule add --op "ingest" --source "search for: Toronto GTA economic indicators latest" --cron "0 2 * * *"
+synthadoc schedule add --op "scaffold" --cron "0 4 * * 0"
 ```
 
 ### How decomposition works

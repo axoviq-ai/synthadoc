@@ -1,4 +1,4 @@
-# Synthadoc User Quick-Start Guide
+﻿# Synthadoc User Quick-Start Guide
 
 **Version: v0.2.0 (Community Edition)**
 
@@ -89,9 +89,7 @@ override if needed.
 synthadoc use history-of-computing
 ```
 
-From this point on, every command in this guide works **without** the
-`-w history-of-computing` suffix. The guide still shows `-w` in examples
-for clarity — but it is now optional.
+From this point on, every command in this guide omits `-w history-of-computing` — the active wiki is resolved automatically.
 
 To see which wiki is active at any time:
 ```bash
@@ -233,9 +231,9 @@ nodes. `index` and `dashboard` connect to everything; topic pages cluster by cro
 The wiki already has 13 pages on computing history — query them before ingesting anything:
 
 ```bash
-synthadoc query "How did Alan Turing influence modern computers?" -w history-of-computing
-synthadoc query "What is Moore's Law and why does it matter?" -w history-of-computing
-synthadoc query "How did Unix influence the open-source movement?" -w history-of-computing
+synthadoc query "How did Alan Turing influence modern computers?"
+synthadoc query "What is Moore's Law and why does it matter?"
+synthadoc query "How did Unix influence the open-source movement?"
 ```
 
 Each answer cites `[[wikilinks]]` pointing to the source pages.
@@ -247,10 +245,10 @@ pages for each part in parallel, then synthesises a single merged answer:
 
 ```bash
 # Two-part question — decomposes into two independent BM25 searches
-synthadoc query "Compare Alan Turing's theoretical contributions with Von Neumann's architectural contributions." -w history-of-computing
+synthadoc query "Compare Alan Turing's theoretical contributions with Von Neumann's architectural contributions."
 
 # Multi-hop causal question — automatically decomposed
-synthadoc query "How did Moore's Law shape both hardware design and software expectations over time?" -w history-of-computing
+synthadoc query "How did Moore's Law shape both hardware design and software expectations over time?"
 ```
 
 The server log shows the decomposition:
@@ -266,7 +264,7 @@ a direct query — no extra LLM cost.
 > **Slow provider?** Reasoning models (e.g. MiniMax M2.x) can take longer to respond.
 > If you see a timeout error, pass `--timeout 120`:
 > ```bash
-> synthadoc query "How did Moore's Law shape hardware design?" -w history-of-computing --timeout 120
+> synthadoc query "How did Moore's Law shape hardware design?" --timeout 120
 > ```
 
 ### Knowledge gap detection
@@ -274,7 +272,7 @@ a direct query — no extra LLM cost.
 If the wiki does not cover a topic, Synthadoc detects the gap automatically:
 
 ```bash
-synthadoc query "What is quantum error correction?" -w history-of-computing
+synthadoc query "What is quantum error correction?"
 ```
 
 Expected output (example):
@@ -285,8 +283,8 @@ No relevant pages found on this topic.
 [!tip] Knowledge Gap Detected
 Your wiki doesn't have enough on this topic yet. Enrich it with a web search:
 
-  synthadoc ingest "search for: quantum error correction methods" -w history-of-computing
-  synthadoc ingest "search for: quantum computing hardware qubits" -w history-of-computing
+  synthadoc ingest "search for: quantum error correction methods"
+  synthadoc ingest "search for: quantum computing hardware qubits"
 ```
 
 The suggested search strings are generated automatically. Run one of the suggestions
@@ -323,7 +321,7 @@ The six source files in `raw_sources/` are designed to demonstrate every ingest 
 **CLI:**
 
 ```bash
-synthadoc ingest --batch raw_sources/ -w history-of-computing
+synthadoc ingest --batch raw_sources/
 ```
 
 **Obsidian:** Command Palette → `Synthadoc: Ingest: all sources in folder`
@@ -331,7 +329,7 @@ synthadoc ingest --batch raw_sources/ -w history-of-computing
 Both enqueue one job per file. Watch them:
 
 ```bash
-synthadoc jobs list -w history-of-computing
+synthadoc jobs list
 ```
 
 ![synthadoc jobs list terminal output](png/job-list-terminal.png)
@@ -339,8 +337,8 @@ synthadoc jobs list -w history-of-computing
 Wait until all six show `completed`. Filter by status if needed:
 
 ```bash
-synthadoc jobs list --status pending -w history-of-computing
-synthadoc jobs list --status completed -w history-of-computing
+synthadoc jobs list --status pending
+synthadoc jobs list --status completed
 ```
 
 Or from Obsidian: Command Palette → `Synthadoc: Jobs: list...` → use the filter dropdown.
@@ -355,9 +353,9 @@ ingested topics and link into the existing graph.
 Run a few queries that use the new content:
 
 ```bash
-synthadoc query "What was the Bombe machine and who built it?" -w history-of-computing
-synthadoc query "Who invented FORTRAN and when?" -w history-of-computing
-synthadoc query "What did Konrad Zuse contribute to computing history?" -w history-of-computing
+synthadoc query "What was the Bombe machine and who built it?"
+synthadoc query "Who invented FORTRAN and when?"
+synthadoc query "What did Konrad Zuse contribute to computing history?"
 ```
 
 ---
@@ -376,7 +374,7 @@ The PDF argues that Hopper's A-0 was a loader rather than a compiler, and that F
 **Check via CLI:**
 
 ```bash
-synthadoc lint report -w history-of-computing
+synthadoc lint report
 ```
 
 ```
@@ -384,7 +382,7 @@ Contradicted pages (1) - need review:
 
   grace-hopper
     -> Open wiki/grace-hopper.md, resolve the conflict, then set status: active
-    -> Or re-run: synthadoc lint run -w history-of-computing --auto-resolve
+    -> Or re-run: synthadoc lint run --auto-resolve
 ```
 
 **In Obsidian:** open `wiki/dashboard.md` — `grace-hopper` appears in the
@@ -403,8 +401,8 @@ Contradicted pages (1) - need review:
 ### Option 2 — LLM auto-resolve
 
 ```bash
-synthadoc lint run -w history-of-computing --auto-resolve
-synthadoc jobs status <job-id> -w history-of-computing
+synthadoc lint run --auto-resolve
+synthadoc jobs status <job-id>
 ```
 
 The LLM proposes a resolution, appends it as a `**Resolution:**` block, and sets
@@ -428,7 +426,7 @@ inbound `[[wikilinks]]`.
 **Check via CLI:**
 
 ```bash
-synthadoc lint report -w history-of-computing
+synthadoc lint report
 ```
 
 ```
@@ -474,7 +472,7 @@ If the page content quality is poor, delete `wiki/konrad-zuse.md` from Obsidian 
 re-ingest with a better source document:
 
 ```bash
-synthadoc ingest raw_sources/konrad-zuse-z3-computer.md --force -w history-of-computing
+synthadoc ingest raw_sources/konrad-zuse-z3-computer.md --force
 ```
 
 ---
@@ -507,15 +505,15 @@ a single query and the ingest always completes.
 ### Run a web search ingest
 
 ```bash
-synthadoc ingest "search for: Dennis Ritchie C programming language Bell Labs history" -w history-of-computing
-synthadoc ingest "search for: ENIAC first general purpose electronic computer history" -w history-of-computing
+synthadoc ingest "search for: Dennis Ritchie C programming language Bell Labs history"
+synthadoc ingest "search for: ENIAC first general purpose electronic computer history"
 ```
 
 Each command fans out to up to 20 URL ingest jobs. The commands return immediately —
 all processing happens in the background. Watch progress with:
 
 ```bash
-synthadoc jobs list -w history-of-computing
+synthadoc jobs list
 ```
 
 > **How long does it take?**
@@ -535,7 +533,7 @@ completes.
 Limit how many URLs are enqueued (default: 20):
 
 ```bash
-synthadoc ingest "search for: quantum computing IBM Google" --max-results 5 -w history-of-computing
+synthadoc ingest "search for: quantum computing IBM Google" --max-results 5
 ```
 
 **Batch via manifest file:** create `raw_sources/web-searches.txt`:
@@ -550,7 +548,7 @@ look up: history of ARPANET and internet origins
 Then ingest all at once:
 
 ```bash
-synthadoc ingest --file raw_sources/web-searches.txt -w history-of-computing
+synthadoc ingest --file raw_sources/web-searches.txt
 ```
 
 ### Web search from Obsidian — live view
@@ -588,7 +586,7 @@ actually become. Existing pages that are already linked in `index.md` are detect
 ### Run scaffold
 
 ```bash
-synthadoc scaffold -w history-of-computing
+synthadoc scaffold
 ```
 
 Expected output:
@@ -612,7 +610,7 @@ full post-ingest wiki (e.g. **Pioneers and Visionaries**, **Hardware Milestones*
 As the wiki grows, re-running scaffold keeps the index structure current:
 
 ```bash
-synthadoc scaffold -w history-of-computing
+synthadoc scaffold
 ```
 
 `config.toml` and `dashboard.md` are **never touched** by scaffold.
@@ -623,7 +621,7 @@ To keep the index fresh without manual intervention:
 
 ```bash
 # Weekly scaffold refresh — every Sunday at 4 AM
-synthadoc schedule add --op "scaffold" --cron "0 4 * * 0" -w history-of-computing
+synthadoc schedule add --op "scaffold" --cron "0 4 * * 0"
 ```
 
 ---
@@ -635,7 +633,7 @@ The `synthadoc audit` commands query the append-only `audit.db` — no `sqlite3`
 ### Ingest history
 
 ```bash
-synthadoc audit history -w history-of-computing
+synthadoc audit history
 ```
 
 Shows the last 50 ingest records: timestamp, source file, wiki pages created/updated,
@@ -646,7 +644,7 @@ token count, and cost. Use `--limit N` (or `-n N`) for more records and `--json`
 ### Cost summary
 
 ```bash
-synthadoc audit cost -w history-of-computing
+synthadoc audit cost
 ```
 
 Expected output:
@@ -666,7 +664,7 @@ Pass `--days 7` for a weekly view. Per-model cost tracking is fully live in v0.2
 ### Query history
 
 ```bash
-synthadoc audit queries -w history-of-computing
+synthadoc audit queries
 ```
 
 Shows recent questions asked, how many sub-questions each was decomposed into, token
@@ -675,7 +673,7 @@ usage, and per-query cost. Especially useful after running the compound queries 
 ### Audit events
 
 ```bash
-synthadoc audit events -w history-of-computing
+synthadoc audit events
 ```
 
 Expected after Steps 6–8:
@@ -700,7 +698,7 @@ it proactively triggers operations on a timer, keeping the wiki fresh automatica
 synthadoc schedule add \
   --op "ingest --batch raw_sources/" \
   --cron "0 2 * * *" \
-  -w history-of-computing
+ 
 ```
 
 This registers a 2 AM daily ingest directly with the OS scheduler (`crontab` on
@@ -709,22 +707,22 @@ macOS/Linux, Task Scheduler on Windows). No background daemon required.
 ### Register a weekly lint pass + weekly scaffold refresh
 
 ```bash
-synthadoc schedule add --op "lint run" --cron "0 3 * * 0" -w history-of-computing
-synthadoc schedule add --op "scaffold" --cron "0 4 * * 0" -w history-of-computing
+synthadoc schedule add --op "lint run" --cron "0 3 * * 0"
+synthadoc schedule add --op "scaffold" --cron "0 4 * * 0"
 ```
 
 ### Verify
 
 ```bash
-synthadoc schedule list -w history-of-computing
+synthadoc schedule list
 ```
 
 Expected:
 
 ```
-sched-a3f1b2c4  0 2 * * *  ingest --batch raw_sources/ -w history-of-computing
-sched-b7e9d012  0 3 * * 0  lint run -w history-of-computing
-sched-c9f3e201  0 4 * * 0  scaffold -w history-of-computing
+sched-a3f1b2c4  0 2 * * *  ingest --batch raw_sources/
+sched-b7e9d012  0 3 * * 0  lint run
+sched-c9f3e201  0 4 * * 0  scaffold
 ```
 
 ### Clean up (demo only)
@@ -732,9 +730,9 @@ sched-c9f3e201  0 4 * * 0  scaffold -w history-of-computing
 Remove the scheduled jobs so they do not run after the demo:
 
 ```bash
-synthadoc schedule remove sched-a3f1b2c4 -w history-of-computing
-synthadoc schedule remove sched-b7e9d012 -w history-of-computing
-synthadoc schedule remove sched-c9f3e201 -w history-of-computing
+synthadoc schedule remove sched-a3f1b2c4
+synthadoc schedule remove sched-b7e9d012
+synthadoc schedule remove sched-c9f3e201
 ```
 
 > **Production use:** for always-on scheduling, run `synthadoc serve` as a background
