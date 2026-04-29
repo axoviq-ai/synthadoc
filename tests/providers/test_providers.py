@@ -724,6 +724,122 @@ async def test_openai_provider_vision_call_uses_image_url_format():
     assert sent_content[1] == {"type": "text", "text": "What is in this image?"}
 
 
+def test_make_provider_missing_deepseek_key_exits(monkeypatch, capsys):
+    import click
+    from synthadoc.providers import make_provider
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "")
+    with pytest.raises(click.exceptions.Exit) as exc_info:
+        make_provider("ingest", _make_cfg("deepseek", "deepseek-chat"))
+    assert exc_info.value.exit_code == 1
+    err = capsys.readouterr().err
+    assert "DEEPSEEK_API_KEY" in err
+    assert "platform.deepseek.com" in err
+
+
+def test_make_provider_deepseek_uses_openai_provider_with_base_url(monkeypatch):
+    from synthadoc.providers import make_provider
+    from synthadoc.providers.openai import OpenAIProvider
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-deepseek-key")
+    provider = make_provider("ingest", _make_cfg("deepseek", "deepseek-chat"))
+    assert isinstance(provider, OpenAIProvider)
+    assert "api.deepseek.com" in str(provider._client.base_url)
+    assert provider.supports_vision is False  # DeepSeek is text-only
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_deepseek_r1_think_tags_stripped():
+    """DeepSeek-R1 embeds <think>...</think> in the content field; they must be stripped."""
+    cfg = AgentConfig(provider="deepseek", model="deepseek-reasoner",
+                      base_url="https://api.deepseek.com/v1")
+    provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = (
+        "<think>Let me reason step by step about this.</think>"
+        "The capital of France is Paris."
+    )
+    mock_choice.message.model_extra = {}
+    mock_resp = MagicMock()
+    mock_resp.choices = [mock_choice]
+    mock_resp.usage.prompt_tokens = 12
+    mock_resp.usage.completion_tokens = 8
+
+    with patch.object(provider._client.chat.completions, "create",
+                      new=AsyncMock(return_value=mock_resp)):
+        result = await provider.complete(
+            messages=[Message(role="user", content="What is the capital of France?")]
+        )
+    assert result.text == "The capital of France is Paris."
+    assert "<think>" not in result.text
+
+
+def test_classify_llm_error_returns_401_for_auth_error():
+    """AuthenticationError (401) must return a 401 HTTPException, not fall through to 502."""
+    import openai
+    from synthadoc.integration.http_server import _classify_llm_error
+    exc = openai.AuthenticationError(
+        message="Authentication Fails, Your api key is invalid",
+        response=MagicMock(status_code=401),
+        body={"error": {"message": "Authentication Fails, Your api key: ****2YES is invalid",
+                        "type": "authentication_error"}},
+    )
+    result = _classify_llm_error(exc)
+    assert result is not None
+    assert result.status_code == 401
+    assert "401" in result.detail
+
+
+def test_classify_llm_error_names_deepseek_key_in_401():
+    """A DeepSeek 401 must name DEEPSEEK_API_KEY in the error detail."""
+    import openai
+    from synthadoc.integration.http_server import _classify_llm_error
+    exc = openai.AuthenticationError(
+        message="Authentication Fails from api.deepseek.com",
+        response=MagicMock(status_code=401),
+        body={},
+    )
+    result = _classify_llm_error(exc)
+    assert result is not None
+    assert "DEEPSEEK_API_KEY" in result.detail
+
+
+def test_classify_llm_error_names_gemini_key_in_401():
+    """A Gemini 401 must name GEMINI_API_KEY in the error detail."""
+    import openai
+    from synthadoc.integration.http_server import _classify_llm_error
+    exc = openai.AuthenticationError(
+        message="Invalid key for generativelanguage.googleapis.com",
+        response=MagicMock(status_code=401),
+        body={},
+    )
+    result = _classify_llm_error(exc)
+    assert result is not None
+    assert "GEMINI_API_KEY" in result.detail
+
+
+def test_classify_llm_error_returns_402_for_insufficient_balance():
+    """A 402 Insufficient Balance must return a 402 HTTPException, not 502."""
+    import openai
+    from synthadoc.integration.http_server import _classify_llm_error
+    exc = openai.APIStatusError(
+        message="Insufficient Balance",
+        response=MagicMock(status_code=402),
+        body={"error": {"message": "Insufficient Balance", "type": "unknown_error"}},
+    )
+    result = _classify_llm_error(exc)
+    assert result is not None
+    assert result.status_code == 402
+    assert "Insufficient Balance" in result.detail
+    assert "billing" in result.detail.lower()
+
+
+def test_classify_llm_error_returns_none_for_unrecognised():
+    """Unrecognised exception (no status_code, not DailyQuota) returns None → caller emits 502."""
+    from synthadoc.integration.http_server import _classify_llm_error
+    result = _classify_llm_error(ValueError("something unexpected"))
+    assert result is None
+
+
 @pytest.mark.asyncio
 async def test_ollama_provider_uses_eval_count_for_output_tokens():
     """OllamaProvider must read eval_count from the response for output_tokens."""
