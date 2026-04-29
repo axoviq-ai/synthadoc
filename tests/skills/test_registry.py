@@ -106,3 +106,70 @@ def test_deleted_skill_removed(tmp_path):
     shutil.rmtree(tmp_path / "skills" / "zeta")
     registry = build_registry_cache([tmp_path / "skills"], cache_path)
     assert "zeta" not in registry and "eta" in registry
+
+
+# ── parse_skill_md error paths ────────────────────────────────────────────────
+
+def test_parse_skill_md_raises_on_unterminated_frontmatter(tmp_path):
+    """SKILL.md with only one --- delimiter raises SkillManifestError."""
+    from synthadoc.skills.registry import parse_skill_md, SkillManifestError
+    skill_dir = tmp_path / "broken"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text("---\nname: broken\n", encoding="utf-8")
+    with pytest.raises(SkillManifestError, match="unterminated"):
+        parse_skill_md(skill_dir)
+
+
+def test_parse_skill_md_raises_on_invalid_yaml(tmp_path):
+    """SKILL.md with malformed YAML in frontmatter raises SkillManifestError."""
+    from synthadoc.skills.registry import parse_skill_md, SkillManifestError
+    skill_dir = tmp_path / "bad_yaml"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text(
+        "---\n: invalid: yaml: {[\n---\n", encoding="utf-8"
+    )
+    with pytest.raises(SkillManifestError, match="invalid YAML"):
+        parse_skill_md(skill_dir)
+
+
+# ── _load_cache error paths ───────────────────────────────────────────────────
+
+def test_load_cache_returns_empty_on_version_mismatch(tmp_path):
+    """Cache file with wrong version number is ignored and returns empty dict."""
+    import json
+    from synthadoc.skills.registry import _load_cache
+    cache_path = tmp_path / "skill_registry.json"
+    cache_path.write_text(
+        json.dumps({"version": 9999, "entries": {"pdf": {"name": "pdf"}}}),
+        encoding="utf-8",
+    )
+    assert _load_cache(cache_path) == {}
+
+
+def test_load_cache_returns_empty_on_invalid_json(tmp_path):
+    """Cache file with invalid JSON is silently ignored and returns empty dict."""
+    from synthadoc.skills.registry import _load_cache
+    cache_path = tmp_path / "skill_registry.json"
+    cache_path.write_text("this is not json {{", encoding="utf-8")
+    assert _load_cache(cache_path) == {}
+
+
+# ── build_registry_cache deserialisation fallback ────────────────────────────
+
+def test_build_registry_cache_falls_back_on_corrupt_cache_entry(tmp_path):
+    """When a cached entry cannot be deserialised, the skill is re-parsed fresh."""
+    import json
+    from synthadoc.skills.registry import build_registry_cache, _CACHE_VERSION
+    skill_dir = _make_skill_dir(tmp_path / "skills", "theta", extensions=[".tht"])
+    cache_path = tmp_path / "skill_registry.json"
+    # Write a cache entry that matches the skill_dir and mtime but is missing required fields
+    mtime = (skill_dir / "SKILL.md").stat().st_mtime
+    cache_path.write_text(json.dumps({
+        "version": _CACHE_VERSION,
+        "entries": {
+            "theta": {"skill_dir": str(skill_dir), "skill_md_mtime": mtime}
+            # "name", "entry", "triggers" etc. intentionally missing
+        }
+    }), encoding="utf-8")
+    registry = build_registry_cache([tmp_path / "skills"], cache_path)
+    assert "theta" in registry

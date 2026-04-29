@@ -23,9 +23,10 @@ major engine feature. No setup beyond following the steps below is required.
 7. [Resolve a contradiction](#step-7--resolve-a-contradiction)
 8. [Fix an orphan page](#step-8--fix-an-orphan-page)
 9. [Web search ingestion](#step-9--web-search-ingestion)
-10. [Enrich the wiki with scaffold](#step-10--enrich-the-wiki-with-scaffold)
-11. [Audit features](#step-11--audit-features)
-12. [Scheduling recurring operations](#step-12--scheduling-recurring-operations)
+10. [Ingest a YouTube video](#step-10--ingest-a-youtube-video)
+11. [Enrich the wiki with scaffold](#step-11--enrich-the-wiki-with-scaffold)
+12. [Audit features](#step-12--audit-features)
+13. [Scheduling recurring operations](#step-13--scheduling-recurring-operations)
 
 **Appendices**
 
@@ -456,23 +457,13 @@ design of a high-level programming language, in Germany during World War II.
 
 Save — the orphan disappears from the dashboard immediately.
 
-### Option 2 — Add to index
-
-The lint report prints a ready-to-paste suggested entry. Copy it, open `wiki/index.md`,
-add a section heading if needed, and paste:
-
-```markdown
-## European Computing Pioneers
-- [[konrad-zuse]] — computer history, Germany, Z3, Plankalkül
-```
-
-### Option 3 — Delete and re-ingest later
+### Option 2 — Delete and re-ingest later
 
 If the page content quality is poor, delete `wiki/konrad-zuse.md` from Obsidian and
 re-ingest with a better source document:
 
 ```bash
-synthadoc ingest raw_sources/konrad-zuse-z3-computer.md --force
+synthadoc ingest raw_sources/konrad-zuse-z3-computer.md
 ```
 
 ---
@@ -575,7 +566,47 @@ The modal prepends `search for:` automatically — just type the topic, no prefi
 
 ---
 
-## Step 10 — Enrich the wiki with scaffold
+## Step 10 — Ingest a YouTube video
+
+Pass any YouTube URL directly — the transcript is extracted automatically from the
+YouTube caption system (no API key, no audio download):
+
+```bash
+synthadoc ingest "https://www.youtube.com/watch?v=O5nskjZ_GoI"
+```
+
+This ingests *Early Computing: Crash Course Computer Science #1*, which covers Hollerith,
+Babbage, Lovelace, and the first programmable machines — a natural fit for the demo wiki.
+
+The demo wiki also ships a `sources.txt` manifest. Run the whole file at once:
+
+```bash
+synthadoc ingest --file raw_sources/sources.txt
+```
+
+The wiki page opens with an **executive summary** — a brief description of what the video
+covers, the main topics as bullet points, and the key takeaway — so you can assess
+relevance at a glance. The full timestamped transcript follows for precise cross-referencing.
+
+> **Captions required** — the video must have captions (auto-generated or manually added).
+> Check by opening the video on YouTube → `...` → **Show transcript**. If no transcript
+> panel appears, the source is skipped with a warning and ingestion continues.
+
+> **Short vs. long videos** — short videos produce a single wiki page. Long videos are
+> chunked automatically by the existing `max_pages_per_ingest` limit.
+
+Watch progress:
+
+```bash
+synthadoc jobs list
+```
+
+> **Tavily search + YouTube** — if Tavily returns YouTube URLs as web search results, they
+> are automatically routed to the YouTube transcript skill. No extra steps needed.
+
+---
+
+## Step 11 — Enrich the wiki with scaffold
 
 After batch ingest, the wiki has grown from 10 pre-built pages to 12 or more. **Scaffold**
 reads the current wiki state and uses the LLM to regenerate the structure files —
@@ -626,7 +657,7 @@ synthadoc schedule add --op "scaffold" --cron "0 4 * * 0"
 
 ---
 
-## Step 11 — Audit features
+## Step 12 — Audit features
 
 The `synthadoc audit` commands query the append-only `audit.db` — no `sqlite3` required.
 
@@ -687,7 +718,7 @@ Records every contradiction detection, auto-resolution, and cost gate trigger.
 
 ---
 
-## Step 12 — Scheduling recurring operations
+## Step 13 — Scheduling recurring operations
 
 Hooks react to events that already happened. The scheduler goes the other direction —
 it proactively triggers operations on a timer, keeping the wiki fresh automatically.

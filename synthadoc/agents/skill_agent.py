@@ -134,18 +134,20 @@ class SkillAgent:
         s = _normalize_url(source).lower()
         is_url = s.startswith("http://") or s.startswith("https://")
         # Pass 1: extension/prefix match — takes priority over intent matching.
-        # For HTTP/HTTPS sources only startswith is checked so that the url skill
-        # (prefix "https://") always wins over extension-based skills (e.g. pdf,
-        # docx) — a URL ending in ".pdf" must be fetched first, not opened as a
-        # local file. Non-URL sources use both endswith and startswith as before.
+        # For URL sources, longest prefix wins so that specific skills
+        # (e.g. youtube prefix "https://www.youtube.com/") beat the generic url
+        # skill (prefix "https://"). Non-URL sources use first-match as before.
+        best_url: tuple[int, SkillMeta] | None = None
         for meta in self._registry.values():
             for ext in meta.triggers.extensions:
                 if is_url:
-                    if s.startswith(ext):
-                        return meta
+                    if s.startswith(ext) and (best_url is None or len(ext) > best_url[0]):
+                        best_url = (len(ext), meta)
                 else:
                     if s.endswith(ext) or s.startswith(ext):
                         return meta
+        if best_url:
+            return best_url[1]
         # Pass 2: intent match
         for meta in self._registry.values():
             for intent in meta.triggers.intents:

@@ -400,6 +400,8 @@ This means importing 20 skills costs essentially zero memory until they are need
 
 `detect_skill(source)` matches against `triggers.extensions` (file suffix or URL prefix) **and** `triggers.intents` (substring match on lowercased source string). This enables purely intent-driven skills with no file extension — e.g., `web_search` triggers on `"search for"`, `"look up"`, `"find on the web"`, etc.
 
+For URL sources, **longest prefix wins**: the matched extension string length determines priority. A skill with prefix `https://www.youtube.com/` (28 chars) takes priority over the generic URL skill prefix `https://` (8 chars). This makes Tavily web search results that happen to be YouTube links automatically routed to the YouTube skill without any special-case logic.
+
 ### Built-in Skills
 
 | Skill | Extensions | Intent phrases | Notes |
@@ -412,6 +414,7 @@ This means importing 20 skills costs essentially zero memory until they are need
 | `xlsx` | `.xlsx`, `.csv` | `spreadsheet`, `excel`, `csv` | openpyxl |
 | `image` | `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.tiff` | `image`, `screenshot`, `diagram`, `photo` | Base64 + vision LLM |
 | `web_search` | _(none)_ | `search for`, `find on the web`, `look up`, `web search`, `browse` | Calls Tavily API; returns top result URLs as child sources enqueued individually. Requires `TAVILY_API_KEY`. |
+| `youtube` | `https://www.youtube.com/`, `https://youtu.be/` | `youtube video`, `youtube lecture`, `youtube talk` | Extracts captions via YouTube caption system; no API key or audio download needed. Generates an executive summary (what the video covers, main topics, key takeaway) followed by the full timestamped transcript. Skips gracefully when no captions are available. |
 
 ### Custom Skill Locations
 
@@ -1391,7 +1394,7 @@ echo "Event $event fired on wiki $wiki" | mail -s "Synthadoc notification" you@e
 ### v0.1.0 (Community Edition)
 
 - **3 agents** — IngestAgent (two-step cached synthesis), QueryAgent (BM25 + LLM), LintAgent (contradiction + orphan detection + auto-resolution)
-- **8 built-in skills** — PDF, URL, Markdown/TXT, DOCX, PPTX, XLSX/CSV, Image (vision), Web search (Tavily)
+- **9 built-in skills** — PDF, URL, Markdown/TXT, DOCX, PPTX, XLSX/CSV, Image (vision), Web search (Tavily), YouTube transcript
 - **Folder-based skill system** — each skill is a self-contained folder with a `SKILL.md` manifest; intent-based dispatch alongside extension matching; drop a folder in `skills/` to add a new format without touching core code
 - **2 access surfaces** — CLI (thin HTTP client), HTTP REST API
 - **Obsidian plugin** — ingest (file picker, URL, all sources, web search), query modal, lint report, jobs list — all from the command palette; ribbon shows engine health + page count
@@ -1434,4 +1437,6 @@ echo "Event $event fired on wiki $wiki" | mail -s "Synthadoc notification" you@e
 - **Configurable LLM call timeout (`agents.llm_timeout_seconds`)** — new `[agents]` key (default `0` = no limit); passed as `timeout` to every OpenAI-compatible `create()` call; `APITimeoutError` logs an actionable message naming the exact config key; config.toml template ships the key commented out with a 5-line explanation of when to enable it
 - **`parse_json_string_array` utility** — extracted shared fence-strip + JSON-parse + filter logic from `QueryAgent.decompose()` and `SearchDecomposeAgent.decompose()` into `synthadoc/agents/_utils.py`; 16 unit tests; LLM call failures and JSON-parse failures now log separate, distinct messages
 - **DeepSeek provider** — `deepseek` added as an eighth provider; routes through `OpenAIProvider` with `base_url="https://api.deepseek.com/v1"` and `DEEPSEEK_API_KEY`; vision disabled (`_NO_VISION_HOSTS`); DeepSeek-R1 `<think>` tags in the `content` field are stripped by the existing regex; config.toml template ships a commented-out example for `deepseek-chat`
+- **YouTube transcript skill** — `synthadoc ingest "https://www.youtube.com/watch?v=..."` extracts captions via the YouTube caption system (no API key, no audio download) and feeds the transcript through the existing IngestAgent pipeline. Short videos produce one wiki page; long videos chunk automatically. Graceful skip when no captions are available or the video is private. Tavily web search results that are YouTube URLs are routed automatically via the longest-prefix routing fix in `detect_skill`.
+- **Longest-prefix URL routing** — `detect_skill` now selects the skill whose trigger prefix is the longest match, rather than the first match. This makes YouTube URLs reliably route to the YouTube skill ahead of the generic URL skill, and will correctly handle any future URL-specific skills without priority fields.
 - **v0.2.0 gap fixes** — Ollama `eval_count` mapped to `output_tokens` (was always 0); `_SLUG_BLACKLIST` moved to module-level `frozenset`; synthetic URL fields in ingest_agent commented; four test-coverage gaps closed (no-text guard, orphan flag inversion, `/analyse` endpoint, hybrid-search partial-miss fallback)

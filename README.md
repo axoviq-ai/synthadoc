@@ -522,7 +522,21 @@ synthadoc ingest "search for: quantum computing basics" --max-results 5 -w my-wi
 #   find on the web: unemployment trends Ontario Q1 2025
 #   look up: Toronto housing market affordability index
 synthadoc ingest --file web-searches.txt -w my-wiki
+
+# YouTube video — transcript extracted automatically, no API key needed.
+# The video must have captions (auto-generated or manual).
+# Check: open the video on YouTube → ... → Show transcript.
+synthadoc ingest "https://www.youtube.com/watch?v=O5nskjZ_GoI" -w my-wiki
+synthadoc ingest "https://youtu.be/O5nskjZ_GoI" -w my-wiki
+
+# YouTube URLs returned by web search are also routed automatically:
+# if Tavily returns a YouTube URL, the transcript is ingested instead of the page HTML.
+synthadoc ingest "search for: history of computing lecture" -w my-wiki
 ```
+
+Each YouTube wiki page opens with an **executive summary** — what the video is about,
+the main topics covered, and the key takeaway — followed by the full timestamped transcript
+for precise citation.
 
 ### Querying
 

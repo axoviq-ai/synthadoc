@@ -4,8 +4,16 @@
 from __future__ import annotations
 
 
-async def search_tavily(query: str, max_results: int, api_key: str) -> dict:
+async def search_tavily(
+    query: str,
+    max_results: int,
+    api_key: str,
+    include_domains: list[str] | None = None,
+) -> dict:
     """Call Tavily search API and return raw response dict."""
     from tavily import AsyncTavilyClient
     client = AsyncTavilyClient(api_key=api_key)
-    return await client.search(query, max_results=max_results)
+    kwargs: dict = {"max_results": max_results}
+    if include_domains:
+        kwargs["include_domains"] = include_domains
+    return await client.search(query, **kwargs)

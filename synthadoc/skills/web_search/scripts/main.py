@@ -10,11 +10,31 @@ from urllib.parse import urlparse
 
 from synthadoc.skills.base import BaseSkill, ExtractedContent
 
-# Matches all intents declared in SKILL.md; colon and leading whitespace optional
+# Matches all generic intents declared in SKILL.md; colon and leading whitespace optional
 _INTENT_RE = re.compile(
     r"^(search\s+for|find\s+on\s+the\s+web|look\s+up|web\s+search|browse):?\s*",
     re.IGNORECASE,
 )
+
+# Matches YouTube-specific intent prefixes.  All of these should search YouTube only.
+#   "youtube Moore's Law"
+#   "youtube video on transistors"
+#   "youtube kids: Sesame Street"
+#   "search for youtube: history of computing"
+#   "search youtube: Moore's Law"
+#   "youtube search: lectures on transformers"
+_YOUTUBE_INTENT_RE = re.compile(
+    r"""^(?:
+        search\s+(?:for\s+)?youtube(?:\s+for)?   # search for youtube / search youtube / search youtube for
+        | youtube\s+search                         # youtube search
+        | youtube(?:\s+(?:video|kids|lecture|talk|channel|for))?  # youtube / youtube video / youtube kids …
+    )\s*:?\s*""",
+    re.IGNORECASE | re.VERBOSE,
+)
+
+# Domains passed to Tavily when a YouTube-specific search is detected
+_YOUTUBE_DOMAINS = ["youtube.com", "youtu.be"]
+
 _DEFAULT_MAX_RESULTS = 20
 
 # Domains that block automated HTTP clients (Cloudflare, login walls, etc.).
@@ -66,21 +86,26 @@ class WebSearchSkill(BaseSkill):
         max_results = int(
             os.environ.get("SYNTHADOC_WEB_SEARCH_MAX_RESULTS", _DEFAULT_MAX_RESULTS)
         )
-        query = _INTENT_RE.sub("", source).strip() or source
+
+        youtube_match = _YOUTUBE_INTENT_RE.match(source)
+        if youtube_match:
+            query = source[youtube_match.end():].strip() or source
+            include_domains: list[str] | None = _YOUTUBE_DOMAINS
+        else:
+            query = _INTENT_RE.sub("", source).strip() or source
+            include_domains = None
 
         from synthadoc.skills.web_search.scripts.fetcher import search_tavily
-        response = await search_tavily(query, max_results=max_results, api_key=api_key)
+        response = await search_tavily(
+            query, max_results=max_results, api_key=api_key,
+            include_domains=include_domains,
+        )
 
         all_blocked = _BLOCKED_DOMAINS | _load_dynamic_blocked()
 
         def _allowed(url: str) -> bool:
-            try:
-                host = urlparse(url).hostname or ""
-                return not any(
-                    host == d or host.endswith("." + d) for d in all_blocked
-                )
-            except Exception:
-                return True
+            host = urlparse(url).hostname or ""
+            return not any(host == d or host.endswith("." + d) for d in all_blocked)
 
         child_sources = [
             r["url"] for r in response.get("results", [])

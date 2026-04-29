@@ -75,7 +75,7 @@ _DECISION_PROMPT = (
     "-> action='update', target=slug of page to extend,\n"
     "   update_content=new ## section(s) to append (use [[slug]] links to related pages)\n\n"
     "RULE 3 — CREATE: ONLY if the source covers a subject not in any existing page.\n"
-    "-> action='create', new_slug=snake_case_slug,\n"
+    "-> action='create', new_slug=meaningful_topic_slug (e.g. 'history-of-computing', NOT 'watch' or URL path segments),\n"
     "   page_content=full synthesized Markdown body (# Title + paragraphs with [[slug]] links)\n\n"
     'Return: {{"reasoning":"...","action":"...","target":"","new_slug":"","update_content":"","page_content":""}}\n\n'
     "Existing wiki pages (top matches):\n{pages}\n\n"
@@ -98,7 +98,11 @@ _VISION_PROMPT = (
 )
 
 
-_SLUG_BLACKLIST = frozenset({"wikilinks", "wikilink", "wiki", "obsidian", "dataview"})
+_SLUG_BLACKLIST = frozenset({
+    "wikilinks", "wikilink", "wiki", "obsidian", "dataview",
+    # URL path segments that are never meaningful topic names
+    "watch", "embed", "video", "index", "page", "post", "article", "content",
+})
 
 
 def _coerce_str_list(lst: object) -> list[str]:
@@ -175,7 +179,10 @@ class IngestAgent:
         self._max_pages = max_pages
         self._wiki_root = Path(wiki_root) if wiki_root is not None else None
         self._cache_version = cache_version
-        self._skill_agent = SkillAgent(skill_kwargs={"url": {"fetch_timeout": fetch_timeout}})
+        self._skill_agent = SkillAgent(skill_kwargs={
+            "url": {"fetch_timeout": fetch_timeout},
+            "youtube": {"provider": self._provider},
+        })
         self._purpose = self._load_purpose()
 
     async def _analyse(self, text: str, bust_cache: bool = False) -> dict:
@@ -248,6 +255,14 @@ class IngestAgent:
         """Return True when source must exist as a local file before ingestion."""
         return self._skill_agent.needs_path_resolution(source)
 
+    async def _already_ingested(self, src_hash: str, src_size: int) -> bool:
+        """Return True only if this source was ingested AND its wiki page still exists."""
+        existing = await self._audit.find_by_hash(src_hash, src_size)
+        if not existing:
+            return False
+        wiki_page = existing.get("wiki_page", "")
+        return not wiki_page or self._store.page_exists(wiki_page)
+
     async def ingest(self, source: str, force: bool = False, bust_cache: bool = False) -> IngestResult:
         result = IngestResult(source=source)
 
@@ -281,7 +296,7 @@ class IngestAgent:
                         "(existing=%d, current=%d). Treating as new source.",
                         src_hash, existing["size"], src_size
                     )
-                elif await self._audit.find_by_hash(src_hash, src_size):
+                elif await self._already_ingested(src_hash, src_size):
                     result.skipped = True
                     result.skip_reason = "already ingested"
                     return result
@@ -292,6 +307,10 @@ class IngestAgent:
             p = Path(source.split("?")[0].rstrip("/").split("/")[-1] or "url-source")
             src_hash = hashlib.sha256(source.encode()).hexdigest()
             src_size = len(source.encode())
+            if not force and await self._already_ingested(src_hash, src_size):
+                result.skipped = True
+                result.skip_reason = "already ingested"
+                return result
 
         # Web search decomposition: detect intent, decompose into keyword sub-queries,
         # fire N parallel Tavily searches, deduplicate URLs across results.
@@ -466,13 +485,21 @@ class IngestAgent:
                     with self._store.page_lock(slug):
                         page = self._store.read_page(slug)
                         if page:
-                            section = f"## From {p.name}\n\n{text[:1500]}"
+                            if extracted.metadata.get("has_summary"):
+                                section = extracted.text
+                            else:
+                                section = f"## From {p.name}\n\n{text[:1500]}"
                             page.content = page.content.rstrip() + f"\n\n{section}"
                             self._store.write_page(slug, page)
                             self._search.invalidate_index()
                     result.pages_updated.append(slug)
                 else:
-                    body = page_content.strip() if page_content.strip() else f"# {title}\n\n{text[:4000]}"
+                    if extracted.metadata.get("has_summary"):
+                        body = extracted.text
+                    elif page_content.strip():
+                        body = page_content.strip()
+                    else:
+                        body = f"# {title}\n\n{text[:4000]}"
                     new_page = WikiPage(
                         title=title, tags=tags,
                         content=body,

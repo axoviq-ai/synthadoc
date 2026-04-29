@@ -408,3 +408,68 @@ async def test_hybrid_search_partial_embeddings(tmp_wiki):
     assert "no-emb" in slugs, "page without embedding must not be dropped — fallback score 0.0"
     assert slugs.index("with-emb") < slugs.index("no-emb"), \
         "page with matching embedding must rank above page with fallback score 0.0"
+
+
+# ── vector path gaps ──────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_init_vector_returns_early_when_vector_disabled(tmp_wiki):
+    """init_vector() is a no-op when vector search is not enabled."""
+    from synthadoc.storage.search import HybridSearch
+    from synthadoc.config import SearchConfig
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db",
+                          search_cfg=SearchConfig(vector=False))
+    await search.init_vector()  # must not raise and must not create a VectorStore
+    assert search._vector_store is None
+
+
+@pytest.mark.asyncio
+async def test_init_vector_raises_when_fastembed_not_installed(tmp_wiki):
+    """init_vector() raises ImportError when fastembed is not available."""
+    from unittest.mock import patch
+    from synthadoc.storage.search import HybridSearch
+    from synthadoc.config import SearchConfig
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db",
+                          search_cfg=SearchConfig(vector=True))
+    with patch.dict("sys.modules", {"fastembed": None}):
+        with pytest.raises(ImportError, match="fastembed"):
+            await search.init_vector()
+
+
+def test_get_embed_model_creates_and_caches_model(tmp_wiki):
+    """_get_embed_model() constructs the TextEmbedding model once and caches it."""
+    from unittest.mock import MagicMock, patch
+    from synthadoc.storage.search import HybridSearch
+    from synthadoc.config import SearchConfig
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db",
+                          search_cfg=SearchConfig(vector=True))
+    mock_model = MagicMock()
+    mock_te_cls = MagicMock(return_value=mock_model)
+    with patch.dict("sys.modules", {"fastembed": MagicMock(TextEmbedding=mock_te_cls)}):
+        model_first = search._get_embed_model()
+        model_second = search._get_embed_model()
+    assert model_first is mock_model
+    assert model_second is mock_model
+    mock_te_cls.assert_called_once()  # constructed only once
+
+
+def test_embed_text_returns_float_list(tmp_wiki):
+    """_embed_text() calls model.embed and returns a flat list of floats."""
+    from unittest.mock import MagicMock, patch
+    import numpy as np
+    from synthadoc.storage.search import HybridSearch
+    from synthadoc.config import SearchConfig
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db",
+                          search_cfg=SearchConfig(vector=True))
+    fake_embedding = np.array([0.1, 0.2, 0.3], dtype=np.float32)
+    mock_model = MagicMock()
+    mock_model.embed.return_value = [fake_embedding]
+    with patch.object(search, "_get_embed_model", return_value=mock_model):
+        result = search._embed_text("test text")
+    assert isinstance(result, list)
+    assert len(result) == 3
+    assert abs(result[0] - 0.1) < 1e-5

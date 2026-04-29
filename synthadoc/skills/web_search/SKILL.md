@@ -13,6 +13,7 @@ triggers:
     - "look up"
     - "web search"
     - "browse"
+    - "youtube"
     - "查找"
     - "搜索"
     - "网络搜索"
