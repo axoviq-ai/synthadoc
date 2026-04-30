@@ -445,6 +445,19 @@ synthadoc install history-of-computing --target ~/wikis --demo
 synthadoc demo list
 ```
 
+### Switching the active wiki
+
+```bash
+# Set a wiki as the default so -w is not required for any subsequent command
+synthadoc use my-wiki
+
+# Check which wiki is currently active
+synthadoc use
+
+# Clear the saved default (revert to requiring -w on every command)
+synthadoc use --clear
+```
+
 ### Refreshing wiki scaffold
 
 After install, you can re-run the LLM scaffold at any time to regenerate domain-specific content (index categories, AGENTS.md guidelines, purpose.md scope). Pages already linked in `index.md` are protected and preserved.
