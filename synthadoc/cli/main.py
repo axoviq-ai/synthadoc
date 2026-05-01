@@ -11,6 +11,7 @@ import typer
 from synthadoc import __version__
 from synthadoc.cli._wiki import (
     ENV_VAR as _WIKI_ENV_VAR,
+    _normalise_wiki_name,
     _read_default_wiki,
     _write_default_wiki,
 )
@@ -80,6 +81,7 @@ def use_cmd(
             )
         return
 
+    wiki = _normalise_wiki_name(wiki)
     # Validate the wiki exists
     path = _resolve_wiki_path(wiki)
     if not (path / ".synthadoc" / "config.toml").exists():

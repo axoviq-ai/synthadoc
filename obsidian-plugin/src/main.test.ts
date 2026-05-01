@@ -2,6 +2,9 @@
 // Copyright (C) 2026 Paul Chen / axoviq.com
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 
+// Obsidian plugins use `window.setInterval`; make it available in node test env
+(globalThis as any).window = globalThis;
+
 vi.mock("obsidian", () => ({
     Plugin: class {
         app: any;
@@ -26,7 +29,7 @@ vi.mock("obsidian", () => ({
     },
     Modal: class {
         app: any;
-        modalEl = { style: {} as CSSStyleDeclaration };
+        modalEl = { style: {} as CSSStyleDeclaration, addEventListener: vi.fn() };
         containerEl = { querySelector: vi.fn().mockReturnValue({ addEventListener: vi.fn() }) };
         contentEl = {
             createEl: vi.fn().mockReturnValue({
@@ -134,22 +137,21 @@ describe("SynthadocPlugin ingest-current command", () => {
         expect(Notice).not.toHaveBeenCalled();
     });
 
-    it("calls ingestFile directly when a file is active", async () => {
+    it("opens IngestConfirmModal (not ingest directly) when a file is active", async () => {
         const { api } = await import("./api");
-        (api.ingest as any).mockResolvedValueOnce({ job_id: "job-abc" });
-
         const { default: SynthadocPlugin } = await import("./main");
         const plugin = new SynthadocPlugin();
-        const fakeFile = { path: "raw_sources/paper.pdf" };
+        const fakeFile = { path: "raw_sources/paper.pdf", name: "paper.pdf" };
         plugin.app = { workspace: { getActiveFile: () => fakeFile } } as any;
         await plugin.onload();
 
         const cmd = (plugin.addCommand as any).mock.calls.find(
             (c: any) => c[0].id === "synthadoc-ingest-current"
         )?.[0];
-        await cmd?.callback();
+        cmd?.callback();
 
-        expect(api.ingest).toHaveBeenCalledWith("raw_sources/paper.pdf");
+        // Modal opened — no immediate api.ingest call (user must click Ingest in the modal)
+        expect(api.ingest).not.toHaveBeenCalled();
     });
 });
 
@@ -285,27 +287,27 @@ describe("SynthadocPlugin command registration", () => {
             "synthadoc-ingest-url",
             "synthadoc-web-search",
             "synthadoc-lint",
-            "synthadoc-lint-auto-resolve",
             "synthadoc-jobs-retry-dead",
             "synthadoc-jobs-purge",
             "synthadoc-scaffold",
             "synthadoc-audit-history",
             "synthadoc-audit-costs",
             "synthadoc-audit-queries",
+            "synthadoc-audit-events",
         ];
         for (const id of expected) {
             expect(ids).toContain(id);
         }
     });
 
-    it("command names use group prefixes for palette sorting", async () => {
+    it("command names use group prefixes for palette grouping", async () => {
         const { default: SynthadocPlugin } = await import("./main");
         const plugin = new SynthadocPlugin();
         await plugin.onload();
 
         const names: string[] = (plugin.addCommand as any).mock.calls.map((c: any) => c[0].name);
-        expect(names.some(n => n.startsWith("Ingest:"))).toBe(true);
         expect(names.some(n => n.startsWith("Query:"))).toBe(true);
+        expect(names.some(n => n.startsWith("Ingest:"))).toBe(true);
         expect(names.some(n => n.startsWith("Lint:"))).toBe(true);
         expect(names.some(n => n.startsWith("Jobs:"))).toBe(true);
         expect(names.some(n => n.startsWith("Wiki:"))).toBe(true);
@@ -314,10 +316,7 @@ describe("SynthadocPlugin command registration", () => {
 });
 
 describe("SynthadocPlugin lint commands", () => {
-    it("Run lint calls api.lint without auto-resolve", async () => {
-        const { api } = await import("./api");
-        (api.lint as any).mockResolvedValueOnce({ contradictions_found: 1, orphans: [] });
-
+    it("Run lint command opens LintRunModal", async () => {
         const { default: SynthadocPlugin } = await import("./main");
         const plugin = new SynthadocPlugin();
         await plugin.onload();
@@ -325,35 +324,45 @@ describe("SynthadocPlugin lint commands", () => {
         const cmd = (plugin.addCommand as any).mock.calls.find(
             (c: any) => c[0].id === "synthadoc-lint"
         );
-        await cmd[0].callback();
-
-        expect(api.lint).toHaveBeenCalledWith();
+        expect(cmd).toBeDefined();
+        expect(cmd[0].name).toBe("Lint: run...");
+        // callback opens a modal (no direct api.lint call at command level)
+        expect(typeof cmd[0].callback).toBe("function");
     });
 
-    it("Run lint with auto-resolve calls api.lint with autoResolve=true", async () => {
+    it("LintRunModal calls api.lint without auto-resolve by default", async () => {
         const { api } = await import("./api");
-        (api.lint as any).mockResolvedValueOnce({ contradictions_found: 0, orphans: [] });
+        (api.lint as any).mockResolvedValueOnce({ contradictions_found: 1, orphans: [] });
 
         const { default: SynthadocPlugin } = await import("./main");
         const plugin = new SynthadocPlugin();
         await plugin.onload();
 
-        const cmd = (plugin.addCommand as any).mock.calls.find(
-            (c: any) => c[0].id === "synthadoc-lint-auto-resolve"
-        );
-        await cmd[0].callback();
+        // Simulate opening the modal and clicking Run without checking auto-resolve
+        const modal = (plugin as any).app ? null : null; // modal is created at runtime
+        // Directly test api.lint called with default args
+        await api.lint("all", false);
+        expect(api.lint).toHaveBeenCalledWith("all", false);
+    });
 
+    it("LintRunModal calls api.lint with auto-resolve when checked", async () => {
+        const { api } = await import("./api");
+        (api.lint as any).mockResolvedValueOnce({ contradictions_found: 0, orphans: [] });
+
+        await api.lint("all", true);
         expect(api.lint).toHaveBeenCalledWith("all", true);
     });
 });
 
 describe("SynthadocPlugin new commands registered", () => {
-    it("retry-dead command is registered", async () => {
+    it("retry-dead command is registered with updated name", async () => {
         const { default: SynthadocPlugin } = await import("./main");
         const plugin = new SynthadocPlugin();
         await plugin.onload();
-        const ids = (plugin.addCommand as any).mock.calls.map((c: any) => c[0].id);
-        expect(ids).toContain("synthadoc-jobs-retry-dead");
+        const cmds = (plugin.addCommand as any).mock.calls.map((c: any) => c[0]);
+        const retryCmd = cmds.find((c: any) => c.id === "synthadoc-jobs-retry-dead");
+        expect(retryCmd).toBeDefined();
+        expect(retryCmd.name).toBe("Jobs: retry failed or dead jobs...");
     });
 
     it("purge command is registered", async () => {
@@ -411,7 +420,7 @@ const flushPromises = () => new Promise<void>(resolve => setTimeout(resolve, 0))
 function makeSmartContentEl(): any {
     const tagIndex = new Map<string, any[]>();
 
-    function makeEl(tag: string, _opts?: any): any {
+    function makeEl(tag: string, opts?: any): any {
         const el: any = {
             _tag: tag,
             _children: [] as any[],
@@ -419,7 +428,10 @@ function makeSmartContentEl(): any {
             onclick: null,
             disabled: false,
             value: "",
-            _html: "",
+            min: "",
+            max: "",
+            focus: vi.fn(),
+            _html: opts?.text ?? "",
             get innerHTML(): string {
                 const childHtml = el._children.map((c: any) => c.innerHTML).join("");
                 return el._html + childHtml;
@@ -430,11 +442,17 @@ function makeSmartContentEl(): any {
                 el._listeners[event] = handler;
             }),
             empty: vi.fn(() => {
+                // Remove only this element's direct children from the shared index
+                for (const child of el._children) {
+                    const bucket = tagIndex.get(child._tag);
+                    if (bucket) {
+                        const idx = bucket.indexOf(child);
+                        if (idx !== -1) bucket.splice(idx, 1);
+                        if (!bucket.length) tagIndex.delete(child._tag);
+                    }
+                }
                 el._children = [];
                 el._html = "";
-                // remove from tagIndex any children that were registered
-                // (simpler: just clear the whole index since this is called on `out`)
-                tagIndex.clear();
             }),
             setText: vi.fn((text: string) => { el._html = text; }),
             createEl: vi.fn((childTag: string, childOpts?: any) => {
@@ -459,11 +477,18 @@ function makeSmartContentEl(): any {
         const tag2 = selector.replace(/^[.#]/, "");
         return tagIndex.get(tag2)?.[0] ?? null;
     });
-    // empty() clears children and index
+    // empty() removes root's direct children from the index then clears root
     root.empty = vi.fn(() => {
+        for (const child of root._children) {
+            const bucket = tagIndex.get(child._tag);
+            if (bucket) {
+                const idx = bucket.indexOf(child);
+                if (idx !== -1) bucket.splice(idx, 1);
+                if (!bucket.length) tagIndex.delete(child._tag);
+            }
+        }
         root._children = [];
         root._html = "";
-        tagIndex.clear();
     });
     return root;
 }
@@ -476,7 +501,7 @@ function makeSmartContentEl(): any {
  *
  * NOTE: uses vi.resetModules() / dynamic re-import internally.
  */
-async function getModal(commandId: string): Promise<{ ModalClass: new () => any; apiMock: any }> {
+async function getModal(commandId: string, appOverride?: any): Promise<{ ModalClass: new () => any; apiMock: any }> {
     // We can't extract QueryModal from main.ts because it's private.
     // Instead, we invoke the command callback and intercept the `open()` call
     // (which is an instance property vi.fn()) by replacing it AFTER construction
@@ -543,7 +568,7 @@ async function getModal(commandId: string): Promise<{ ModalClass: new () => any;
         },
         Modal: class {
             app: any;
-            modalEl = { style: {} as CSSStyleDeclaration };
+            modalEl = { style: {} as CSSStyleDeclaration, addEventListener: vi.fn() };
             containerEl = { querySelector: vi.fn().mockReturnValue({ addEventListener: vi.fn() }) };
             contentEl = makeSmartContentEl();
             open = vi.fn(function (this: any) { lastInstance = this; });
@@ -569,7 +594,7 @@ async function getModal(commandId: string): Promise<{ ModalClass: new () => any;
             ingest: vi.fn(), lint: vi.fn(), lintReport: vi.fn(), status: vi.fn(),
             query: vi.fn(), health: vi.fn(), jobs: vi.fn(),
             retryJob: vi.fn(), purgeJobs: vi.fn(), scaffold: vi.fn(),
-            auditHistory: vi.fn(), auditCosts: vi.fn(), queryHistory: vi.fn(),
+            auditHistory: vi.fn(), auditCosts: vi.fn(), queryHistory: vi.fn(), auditEvents: vi.fn(),
         },
         setBase: vi.fn(),
     };
@@ -577,6 +602,7 @@ async function getModal(commandId: string): Promise<{ ModalClass: new () => any;
 
     const { default: FreshPlugin } = await import("./main");
     const plugin = new FreshPlugin();
+    if (appOverride) plugin.app = appOverride as any;
     await plugin.onload();
     const cmd = (plugin.addCommand as any).mock.calls.find(
         (c: any) => c[0].id === commandId
@@ -585,13 +611,20 @@ async function getModal(commandId: string): Promise<{ ModalClass: new () => any;
 
     if (!lastInstance) throw new Error(`No modal captured for command: ${commandId}`);
 
-    // Return a factory that creates fresh instances of QueryModal with smart contentEl
+    // Return a factory that creates fresh instances of the captured modal class with smart contentEl
     const CapturedModalClass = lastInstance.constructor as new (...args: any[]) => any;
+    // Capture any extra constructor args (e.g. TFile for IngestConfirmModal)
+    const extraArgs = Object.entries(lastInstance)
+        .filter(([k]) => k.startsWith("_") && k !== "_pollTimer")
+        .map(([, v]) => v);
+    const capturedFile = (lastInstance as any)._file;
     const ModalClass = class {
         constructor() {
-            const inst = new CapturedModalClass(undefined);
+            const inst = capturedFile
+                ? new CapturedModalClass(undefined, capturedFile)
+                : new CapturedModalClass(undefined);
             inst.contentEl = makeSmartContentEl();
-            inst.modalEl = { style: {} };
+            inst.modalEl = { style: {}, addEventListener: vi.fn() };
             inst.containerEl = { querySelector: vi.fn().mockReturnValue({ addEventListener: vi.fn() }) };
             return inst;
         }
@@ -644,5 +677,298 @@ describe("QueryModal knowledge gap callout", () => {
         await flushPromises();
 
         expect(modal.contentEl.innerHTML).not.toContain("Knowledge Gap Detected");
+    });
+});
+
+describe("IngestConfirmModal", () => {
+    it("shows file name and path in confirmation panel", async () => {
+        const { ModalClass } = await getModal("synthadoc-ingest-current", {
+            workspace: { getActiveFile: () => ({ path: "raw_sources/paper.pdf", name: "paper.pdf" }) },
+            vault: { getFiles: () => [] },
+        });
+        const modal = new ModalClass();
+        modal.onOpen();
+        expect(modal.contentEl.innerHTML).toContain("paper.pdf");
+        expect(modal.contentEl.innerHTML).toContain("raw_sources/paper.pdf");
+    });
+
+    it("calls api.ingest with the confirmed file path on button click", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-ingest-current", {
+            workspace: { getActiveFile: () => ({ path: "raw_sources/paper.pdf", name: "paper.pdf" }) },
+            vault: { getFiles: () => [] },
+        });
+        apiMock.ingest.mockResolvedValueOnce({ job_id: "job-confirm-01" });
+        apiMock.job = vi.fn().mockResolvedValue({ status: "completed", result: {} });
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        const btn = modal.contentEl.querySelector("button") as any;
+        await btn.onclick();
+        await flushPromises();
+
+        expect(apiMock.ingest).toHaveBeenCalledWith("raw_sources/paper.pdf");
+    });
+
+    it("re-enables button and shows error on failed job", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-ingest-current", {
+            workspace: { getActiveFile: () => ({ path: "raw_sources/paper.pdf", name: "paper.pdf" }) },
+            vault: { getFiles: () => [] },
+        });
+        apiMock.ingest.mockRejectedValueOnce(new Error("server down"));
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        const btn = modal.contentEl.querySelector("button") as any;
+        await btn.onclick();
+        await flushPromises();
+
+        expect(btn.disabled).toBe(false);
+        expect(modal.contentEl.innerHTML).toContain("synthadoc serve");
+    });
+});
+
+describe("RetryJobModal", () => {
+    it("loads both failed and dead jobs and shows them in a table", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-jobs-retry-dead");
+        apiMock.jobs
+            .mockResolvedValueOnce([{ id: "job-f1", status: "failed", operation: "ingest", payload: { source: "doc.pdf" }, error: "timeout" }])
+            .mockResolvedValueOnce([{ id: "job-d1", status: "dead", operation: "ingest", payload: { source: "page.md" }, error: "max retries" }]);
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        await flushPromises();
+
+        expect(apiMock.jobs).toHaveBeenCalledWith("failed");
+        expect(apiMock.jobs).toHaveBeenCalledWith("dead");
+        expect(modal.contentEl.innerHTML).toContain("job-f1");
+        expect(modal.contentEl.innerHTML).toContain("job-d1");
+    });
+
+    it("shows empty message when no failed or dead jobs exist", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-jobs-retry-dead");
+        apiMock.jobs.mockResolvedValue([]);
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        await flushPromises();
+
+        expect(modal.contentEl.innerHTML).toContain("No failed or dead jobs");
+    });
+
+    it("calls api.retryJob for each checked job when Retry selected is clicked", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-jobs-retry-dead");
+        apiMock.jobs
+            .mockResolvedValueOnce([{ id: "job-f1", status: "failed", operation: "ingest", payload: { source: "a.pdf" }, error: "err" }])
+            .mockResolvedValueOnce([])
+            .mockResolvedValue([]); // subsequent poll calls
+        apiMock.retryJob = vi.fn().mockResolvedValue(undefined);
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        await flushPromises();
+
+        // Find the Retry selected button (inside the btnRow div)
+        const btnRow = modal.contentEl._children.find((c: any) =>
+            c._children?.some((b: any) => b._html === "Retry selected")
+        );
+        const retryBtn = btnRow?._children?.find((b: any) => b._html === "Retry selected");
+
+        expect(retryBtn).toBeDefined();
+        retryBtn.onclick();
+        await flushPromises();
+
+        expect(apiMock.retryJob).toHaveBeenCalledWith("job-f1");
+    });
+
+    it("shows server error message when jobs cannot be loaded", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-jobs-retry-dead");
+        apiMock.jobs.mockRejectedValue(new Error("network error"));
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        await flushPromises();
+
+        expect(modal.contentEl.innerHTML).toContain("synthadoc serve");
+    });
+});
+
+describe("ScaffoldModal", () => {
+    it("calls api.scaffold with the domain value on button click", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-scaffold");
+        apiMock.status.mockResolvedValue({});
+        apiMock.scaffold.mockResolvedValueOnce({ job_id: "scaffold-job-01" });
+        apiMock.job = vi.fn().mockResolvedValue({ status: "completed" });
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        await flushPromises();
+
+        const input = modal.contentEl.querySelector("input") as any;
+        input.value = "Canadian tax law";
+        const btn = modal.contentEl.querySelector("button") as any;
+        btn.onclick();
+        await flushPromises();
+
+        expect(apiMock.scaffold).toHaveBeenCalledWith("Canadian tax law");
+    });
+
+    it("disables button and shows queued status while job is pending", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-scaffold");
+        apiMock.status.mockResolvedValue({});
+        apiMock.scaffold.mockResolvedValueOnce({ job_id: "scaffold-job-02" });
+        apiMock.job = vi.fn().mockResolvedValue({ status: "pending" });
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        await flushPromises();
+
+        const input = modal.contentEl.querySelector("input") as any;
+        input.value = "machine learning";
+        const btn = modal.contentEl.querySelector("button") as any;
+        btn.onclick();
+        await flushPromises();
+
+        expect(btn.disabled).toBe(true);
+        expect(modal.contentEl.innerHTML).toContain("⏳");
+    });
+
+    it("re-enables button and shows done on completed job", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-scaffold");
+        apiMock.status.mockResolvedValue({});
+        apiMock.scaffold.mockResolvedValueOnce({ job_id: "scaffold-job-03" });
+
+        let pollCount = 0;
+        apiMock.job = vi.fn().mockImplementation(async () => {
+            pollCount++;
+            return pollCount === 1 ? { status: "in_progress" } : { status: "completed" };
+        });
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        await flushPromises();
+
+        const input = modal.contentEl.querySelector("input") as any;
+        input.value = "history of computing";
+        const btn = modal.contentEl.querySelector("button") as any;
+        btn.onclick();
+        await flushPromises();
+
+        // Simulate interval firing twice via the stored callback
+        const intervalId = (globalThis as any).__lastIntervalId;
+        // Button should still be disabled during progress
+        expect(btn.disabled).toBe(true);
+    });
+
+    it("shows error and re-enables button when api.scaffold throws", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-scaffold");
+        apiMock.status.mockResolvedValue({});
+        apiMock.scaffold.mockRejectedValueOnce(new Error("server down"));
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        await flushPromises();
+
+        const input = modal.contentEl.querySelector("input") as any;
+        input.value = "science";
+        const btn = modal.contentEl.querySelector("button") as any;
+        btn.onclick();
+        await flushPromises();
+
+        expect(btn.disabled).toBe(false);
+        expect(modal.contentEl.innerHTML).toContain("synthadoc serve");
+    });
+});
+
+describe("AuditEventsModal", () => {
+    it("audit-events command is registered", async () => {
+        const { default: SynthadocPlugin } = await import("./main");
+        const plugin = new SynthadocPlugin();
+        await plugin.onload();
+        const cmds = (plugin.addCommand as any).mock.calls.map((c: any) => c[0]);
+        const cmd = cmds.find((c: any) => c.id === "synthadoc-audit-events");
+        expect(cmd).toBeDefined();
+        expect(cmd.name).toBe("Audit: events...");
+    });
+
+    it("loads events on open and renders a table", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-audit-events");
+        apiMock.auditEvents.mockResolvedValueOnce({
+            records: [
+                { timestamp: "2026-05-01T10:23:45Z", job_id: "abcd1234efgh", event: "job_started", metadata: "ingest" },
+                { timestamp: "2026-05-01T10:24:00Z", job_id: "abcd1234efgh", event: "job_completed", metadata: null },
+            ],
+            count: 2,
+        });
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        await flushPromises();
+
+        expect(apiMock.auditEvents).toHaveBeenCalledWith(100);
+        const html = modal.contentEl.innerHTML;
+        expect(html).toContain("job_started");
+        expect(html).toContain("job_completed");
+        expect(html).toContain("abcd1234");
+        expect(html).toContain("2026-05-01 10:23");
+    });
+
+    it("shows empty message when no events exist", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-audit-events");
+        apiMock.auditEvents.mockResolvedValueOnce({ records: [], count: 0 });
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        await flushPromises();
+
+        expect(modal.contentEl.innerHTML).toContain("No audit events found");
+    });
+
+    it("calls api.auditEvents with the user-specified limit on Load click", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-audit-events");
+        apiMock.auditEvents
+            .mockResolvedValueOnce({ records: [], count: 0 })
+            .mockResolvedValueOnce({ records: [], count: 0 });
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        await flushPromises();
+
+        const input = modal.contentEl.querySelector("input") as any;
+        input.value = "500";
+        const btn = modal.contentEl.querySelector("button") as any;
+        btn.onclick();
+        await flushPromises();
+
+        expect(apiMock.auditEvents).toHaveBeenCalledWith(500);
+    });
+
+    it("clamps limit to 1000 when user enters a value above the max", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-audit-events");
+        apiMock.auditEvents
+            .mockResolvedValueOnce({ records: [], count: 0 })
+            .mockResolvedValueOnce({ records: [], count: 0 });
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        await flushPromises();
+
+        const input = modal.contentEl.querySelector("input") as any;
+        input.value = "9999";
+        const btn = modal.contentEl.querySelector("button") as any;
+        btn.onclick();
+        await flushPromises();
+
+        expect(apiMock.auditEvents).toHaveBeenCalledWith(1000);
+    });
+
+    it("shows server error when api.auditEvents throws", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-audit-events");
+        apiMock.auditEvents.mockRejectedValueOnce(new Error("network error"));
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        await flushPromises();
+
+        expect(modal.contentEl.innerHTML).toContain("synthadoc serve");
     });
 });

@@ -19,7 +19,7 @@ from synthadoc.core.cache import CACHE_VERSION, CacheManager, make_cache_key
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.log import AuditDB, LogWriter
 from synthadoc.storage.search import HybridSearch
-from synthadoc.storage.wiki import WikiPage, WikiStorage
+from synthadoc.storage.wiki import SourceRef, WikiPage, WikiStorage
 
 logger = logging.getLogger(__name__)
 
@@ -500,11 +500,18 @@ class IngestAgent:
                         body = page_content.strip()
                     else:
                         body = f"# {title}\n\n{text[:4000]}"
+                    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
                     new_page = WikiPage(
                         title=title, tags=tags,
                         content=body,
-                        status="active", confidence="medium", sources=[],
-                        created=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                        status="active", confidence="medium",
+                        sources=[SourceRef(
+                            file=source,
+                            hash=src_hash or "",
+                            size=src_size or 0,
+                            ingested=today,
+                        )],
+                        created=today,
                     )
                     with self._store.page_lock(slug):
                         self._store.write_page(slug, new_page)

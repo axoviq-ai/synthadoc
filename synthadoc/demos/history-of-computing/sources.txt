@@ -1,8 +1,14 @@
-# Demo sources — ingest these to see YouTube transcript ingestion in action.
+# Demo sources — ingest these to see batch ingestion with mixed source types.
 # Each line is a URL or file path; blank lines and # comments are ignored.
-# Run: synthadoc ingest --file raw_sources/sources.txt
+# Run: synthadoc ingest --file sources.txt
 
 # YouTube: "Early Computing: Crash Course Computer Science #1" (PBS Digital Studios)
 # Covers Hollerith, Babbage, Lovelace, and early programmable machines.
 # Auto-generated captions are available — confirmed stable since 2017.
 https://www.youtube.com/watch?v=O5nskjZ_GoI
+
+# YouTube Short: computing history clip
+https://www.youtube.com/shorts/1P6yISuVgmA
+
+# PDF: arxiv paper (demonstrates URL-based PDF ingestion)
+https://arxiv.org/pdf/1903.12221

@@ -581,10 +581,13 @@ synthadoc ingest "https://www.youtube.com/watch?v=O5nskjZ_GoI"
 This ingests *Early Computing: Crash Course Computer Science #1*, which covers Hollerith,
 Babbage, Lovelace, and the first programmable machines — a natural fit for the demo wiki.
 
-The demo wiki also ships a `sources.txt` manifest. Run the whole file at once:
+The demo wiki also ships a `sources.txt` manifest at the project root (outside
+`raw_sources/` — files in that folder are batch-ingested as documents, so a `.txt`
+there would be treated as a text file rather than a URL list). The manifest mixes
+source types to show what batch ingestion can handle in one pass:
 
 ```bash
-synthadoc ingest --file raw_sources/sources.txt
+synthadoc ingest --file sources.txt
 ```
 
 The wiki page opens with an **executive summary** — a brief description of what the video

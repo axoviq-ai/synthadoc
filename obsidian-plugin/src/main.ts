@@ -27,46 +27,9 @@ export default class SynthadocPlugin extends Plugin {
         this.addSettingTab(new SynthadocSettingTab(this.app, this));
 
         this.addCommand({
-            id: "synthadoc-ingest-current",
-            name: "Ingest: current file",
-            callback: () => {
-                const file = this.app.workspace.getActiveFile();
-                if (file) {
-                    this.ingestFile(file);
-                } else {
-                    new IngestPickerModal(this.app, this).open();
-                }
-            },
-        });
-
-        this.addCommand({
-            id: "synthadoc-ingest-all",
-            name: "Ingest: all sources in folder",
-            callback: () => this.ingestAllSources(),
-        });
-
-        this.addCommand({
             id: "synthadoc-query",
             name: "Query: ask the wiki...",
             callback: () => new QueryModal(this.app).open(),
-        });
-
-        this.addCommand({
-            id: "synthadoc-jobs",
-            name: "Jobs: list...",
-            callback: () => new JobsModal(this.app).open(),
-        });
-
-        this.addCommand({
-            id: "synthadoc-lint-report",
-            name: "Lint: report",
-            callback: () => new LintReportModal(this.app).open(),
-        });
-
-        this.addCommand({
-            id: "synthadoc-ingest-url",
-            name: "Ingest: from URL...",
-            callback: () => new IngestUrlModal(this.app).open(),
         });
 
         this.addCommand({
@@ -76,32 +39,39 @@ export default class SynthadocPlugin extends Plugin {
         });
 
         this.addCommand({
-            id: "synthadoc-lint",
-            name: "Lint: run",
-            callback: async () => {
-                new Notice("Synthadoc: running lint...");
-                try {
-                    const r = await api.lint() as any;
-                    new Notice(`Synthadoc: lint done — ${r.contradictions_found} contradictions, ${r.orphans?.length ?? 0} orphans`);
-                } catch { new Notice("Synthadoc: server not running — run 'synthadoc serve'"); }
+            id: "synthadoc-ingest-all",
+            name: "Ingest: all sources in folder",
+            callback: () => this.ingestAllSources(),
+        });
+
+        this.addCommand({
+            id: "synthadoc-ingest-url",
+            name: "Ingest: from URL...",
+            callback: () => new IngestUrlModal(this.app).open(),
+        });
+
+        this.addCommand({
+            id: "synthadoc-ingest-current",
+            name: "Ingest: current file",
+            callback: () => {
+                const file = this.app.workspace.getActiveFile();
+                if (file) {
+                    new IngestConfirmModal(this.app, file).open();
+                } else {
+                    new IngestPickerModal(this.app, this).open();
+                }
             },
         });
 
         this.addCommand({
-            id: "synthadoc-lint-auto-resolve",
-            name: "Lint: run with auto-resolve",
-            callback: async () => {
-                new Notice("Synthadoc: running lint with auto-resolve...");
-                try {
-                    const r = await api.lint("all", true) as any;
-                    new Notice(`Synthadoc: lint done — ${r.contradictions_found} contradictions, ${r.orphans?.length ?? 0} orphans`);
-                } catch { new Notice("Synthadoc: server not running — run 'synthadoc serve'"); }
-            },
+            id: "synthadoc-jobs",
+            name: "Jobs: list...",
+            callback: () => new JobsModal(this.app).open(),
         });
 
         this.addCommand({
             id: "synthadoc-jobs-retry-dead",
-            name: "Jobs: retry dead job...",
+            name: "Jobs: retry failed or dead jobs...",
             callback: () => new RetryJobModal(this.app).open(),
         });
 
@@ -112,15 +82,21 @@ export default class SynthadocPlugin extends Plugin {
         });
 
         this.addCommand({
-            id: "synthadoc-scaffold",
-            name: "Wiki: regenerate scaffold...",
-            callback: () => new ScaffoldModal(this.app).open(),
+            id: "synthadoc-lint-report",
+            name: "Lint: report",
+            callback: () => new LintReportModal(this.app).open(),
         });
 
         this.addCommand({
-            id: "synthadoc-audit-history",
-            name: "Audit: ingest history...",
-            callback: () => new AuditHistoryModal(this.app).open(),
+            id: "synthadoc-lint",
+            name: "Lint: run...",
+            callback: () => new LintRunModal(this.app).open(),
+        });
+
+        this.addCommand({
+            id: "synthadoc-scaffold",
+            name: "Wiki: regenerate scaffold...",
+            callback: () => new ScaffoldModal(this.app).open(),
         });
 
         this.addCommand({
@@ -133,6 +109,18 @@ export default class SynthadocPlugin extends Plugin {
             id: "synthadoc-audit-queries",
             name: "Audit: query history...",
             callback: () => new QueryHistoryModal(this.app).open(),
+        });
+
+        this.addCommand({
+            id: "synthadoc-audit-events",
+            name: "Audit: events...",
+            callback: () => new AuditEventsModal(this.app).open(),
+        });
+
+        this.addCommand({
+            id: "synthadoc-audit-history",
+            name: "Audit: ingest history...",
+            callback: () => new AuditHistoryModal(this.app).open(),
         });
 
         this.addRibbonIcon("book-open", "Synthadoc status", async () => {
@@ -194,6 +182,93 @@ export default class SynthadocPlugin extends Plugin {
     }
 }
 
+class IngestConfirmModal extends Modal {
+    private _file: TFile;
+    private _pollTimer: number | null = null;
+
+    constructor(app: App, file: TFile) {
+        super(app);
+        this._file = file;
+    }
+
+    onOpen() {
+        const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
+        if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
+        const { contentEl } = this;
+        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Ingest file" });
+        makeDraggable(this.modalEl, titleEl);
+
+        const infoEl = contentEl.createEl("div");
+        infoEl.style.cssText = "margin-bottom:16px;padding:8px 10px;background:var(--background-secondary);border-radius:4px;-webkit-user-select:text;user-select:text";
+        infoEl.createEl("div", { text: this._file.name }).style.cssText = "font-weight:bold;font-size:13px";
+        infoEl.createEl("div", { text: this._file.path }).style.cssText = "font-size:11px;color:var(--text-muted);margin-top:2px";
+
+        const btnRow = contentEl.createEl("div");
+        btnRow.style.cssText = "display:flex;justify-content:flex-end";
+        const btn = btnRow.createEl("button", { text: "Ingest" });
+
+        const out = contentEl.createEl("div");
+        out.style.cssText = "margin-top:12px;-webkit-user-select:text;user-select:text";
+
+        const setStatus = (text: string, color?: string) => {
+            out.empty();
+            const p = out.createEl("p", { text });
+            if (color) p.style.cssText = `color:${color}`;
+        };
+
+        btn.onclick = async () => {
+            btn.disabled = true;
+            setStatus("⏳ Queuing…");
+            try {
+                const r = await api.ingest(this._file.path) as any;
+                const jobId: string = r.job_id;
+                setStatus(`⏳ Queued — job ${jobId.slice(0, 8)}`);
+
+                this._pollTimer = window.setInterval(async () => {
+                    try {
+                        const job = await api.job(jobId) as any;
+                        const status: string = job.status;
+
+                        if (status === "pending") { setStatus(`⏳ Queued — job ${jobId.slice(0, 8)}`); return; }
+                        if (status === "in_progress") { setStatus(`⏳ Ingesting… (job ${jobId.slice(0, 8)})`); return; }
+
+                        window.clearInterval(this._pollTimer!);
+                        this._pollTimer = null;
+                        btn.disabled = false;
+
+                        if (status === "completed") {
+                            const res = job.result ?? {};
+                            const parts: string[] = [];
+                            if (res.pages_created?.length) parts.push(`created: ${res.pages_created.join(", ")}`);
+                            if (res.pages_updated?.length) parts.push(`updated: ${res.pages_updated.join(", ")}`);
+                            if (res.pages_flagged?.length) parts.push(`flagged: ${res.pages_flagged.join(", ")}`);
+                            out.empty();
+                            out.createEl("p", { text: "✅ Done." }).style.cssText = "font-weight:bold;margin-bottom:4px";
+                            if (parts.length) out.createEl("p", { text: parts.join(" · ") }).style.cssText = "font-size:12px;color:var(--text-muted)";
+                            new Notice(`Synthadoc: ingest done — ${this._file.name}`);
+                        } else if (status === "skipped") {
+                            setStatus("⏭️ Skipped — already ingested.", "var(--text-muted)");
+                        } else {
+                            setStatus(`❌ ${status}${job.error ? `: ${job.error}` : ""}`, "var(--text-error)");
+                        }
+                    } catch { /* server unreachable — keep polling */ }
+                }, 2000);
+            } catch {
+                setStatus("❌ Error: is synthadoc serve running?", "var(--text-error)");
+                btn.disabled = false;
+            }
+        };
+    }
+
+    onClose() {
+        if (this._pollTimer !== null) {
+            window.clearInterval(this._pollTimer);
+            this._pollTimer = null;
+        }
+        this.contentEl.empty();
+    }
+}
+
 class IngestPickerModal extends SuggestModal<TFile> {
     private plugin: SynthadocPlugin;
 
@@ -220,7 +295,7 @@ class IngestPickerModal extends SuggestModal<TFile> {
     }
 
     onChooseSuggestion(file: TFile): void {
-        this.plugin.ingestFile(file);
+        new IngestConfirmModal(this.app, file).open();
     }
 }
 
@@ -263,14 +338,63 @@ class SynthadocSettingTab extends PluginSettingTab {
 }
 
 const STATUS_EMOJI: Record<string, string> = {
-    pending:   "⏳",
-    running:   "▶",
-    completed: "✅",
-    failed:    "❌",
-    dead:      "💀",
+    pending:     "🕐",
+    in_progress: "⏳",
+    completed:   "✅",
+    failed:      "❌",
+    skipped:     "⏭️",
+    dead:        "💀",
 };
 
 const STATUS_FILTER_OPTIONS = ["pending", "in_progress", "completed", "failed", "skipped", "dead"] as const;
+
+function makeDraggable(modalEl: HTMLElement, handle: HTMLElement): void {
+    if (typeof document === "undefined" || typeof handle.addEventListener !== "function") return;
+    modalEl.style.position = "fixed";
+    handle.style.cursor = "grab";
+    let dragging = false;
+    let startX = 0, startY = 0, origLeft = 0, origTop = 0;
+
+    const startDrag = (e: MouseEvent) => {
+        dragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        const rect = modalEl.getBoundingClientRect();
+        origLeft = rect.left;
+        origTop = rect.top;
+        modalEl.style.transform = "none";
+        modalEl.style.left = origLeft + "px";
+        modalEl.style.top = origTop + "px";
+        modalEl.style.margin = "0";
+        handle.style.cursor = "grabbing";
+        e.preventDefault();
+    };
+
+    // Drag from the title bar
+    handle.addEventListener("mousedown", startDrag);
+
+    // Also drag from the modal frame/padding — but not from inside the content area
+    modalEl.addEventListener("mousedown", (e: MouseEvent) => {
+        if (handle.contains(e.target as Node)) return; // already handled above
+        if (handle.parentElement && handle.parentElement.contains(e.target as Node)) return; // inside content
+        startDrag(e);
+    });
+
+    document.addEventListener("mousemove", (e: MouseEvent) => {
+        if (!dragging) return;
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        modalEl.style.left = (origLeft + dx) + "px";
+        modalEl.style.top  = (origTop  + dy) + "px";
+    });
+
+    document.addEventListener("mouseup", () => {
+        if (dragging) {
+            dragging = false;
+            handle.style.cursor = "grab";
+        }
+    });
+}
 
 class JobsModal extends Modal {
     private _selected: Set<string> = new Set(["pending", "in_progress"]);
@@ -284,9 +408,9 @@ class JobsModal extends Modal {
         this.modalEl.style.width = "clamp(560px, 65vw, 900px)";
         const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
         if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
-
         const { contentEl } = this;
-        contentEl.createEl("h3", { text: "Synthadoc: Jobs" });
+        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Jobs" });
+        makeDraggable(this.modalEl, titleEl);
 
         // Status checkboxes
         const filterRow = contentEl.createEl("div");
@@ -384,7 +508,7 @@ class JobsModal extends Modal {
         }
 
         const table = this._tableEl.createEl("table");
-        table.style.cssText = "width:100%;border-collapse:collapse;font-size:13px";
+        table.style.cssText = "width:100%;border-collapse:collapse;font-size:13px;-webkit-user-select:text;user-select:text";
 
         const hrow = table.createEl("thead").createEl("tr");
         for (const h of ["Job ID", "Status", "Operation", "Source", "Created"]) {
@@ -404,11 +528,10 @@ class JobsModal extends Modal {
                 : "—";
             const icon = STATUS_EMOJI[job.status] ?? "";
 
-            // Job ID cell — monospace, muted, truncated to 8 chars for readability
+            // Job ID cell — monospace, full ID visible and selectable for copy
             const idTd = tr.createEl("td");
             idTd.style.cssText = "padding:4px 8px;border-bottom:1px solid var(--background-modifier-border-subtle);font-family:monospace;font-size:11px;color:var(--text-muted)";
-            idTd.setText(job.id?.slice(0, 8) ?? "—");
-            idTd.title = job.id ?? "";
+            idTd.setText(job.id ?? "—");
 
             for (const text of [`${icon} ${job.status}`, job.operation, source, created]) {
                 const td = tr.createEl("td", { text });
@@ -440,14 +563,121 @@ class JobsModal extends Modal {
     }
 }
 
+class LintRunModal extends Modal {
+    private _pollTimer: number | null = null;
+
+    onOpen() {
+        const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
+        if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
+        const { contentEl } = this;
+        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Run lint" });
+        makeDraggable(this.modalEl, titleEl);
+
+        const optRow = contentEl.createEl("div");
+        optRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:8px";
+        const cb = optRow.createEl("input", { type: "checkbox" }) as HTMLInputElement;
+        cb.id = "lint-auto-resolve";
+        const lbl = optRow.createEl("label", { text: "Auto-resolve contradictions" });
+        lbl.htmlFor = "lint-auto-resolve";
+        lbl.style.cssText = "font-size:13px;cursor:pointer";
+
+        const hint = contentEl.createEl("p", {
+            text: "Auto-resolve rewrites contradicted pages to reconcile conflicts automatically. Leave unchecked to review the report first.",
+        });
+        hint.style.cssText = "font-size:11px;color:var(--text-muted);margin-bottom:16px;-webkit-user-select:text;user-select:text";
+
+        const btnRow = contentEl.createEl("div");
+        btnRow.style.cssText = "display:flex;justify-content:flex-end";
+        const btn = btnRow.createEl("button", { text: "Run lint" });
+
+        const out = contentEl.createEl("div");
+        out.style.cssText = "margin-top:12px;-webkit-user-select:text;user-select:text";
+
+        btn.onclick = async () => {
+            const autoResolve = cb.checked;
+            btn.disabled = true;
+            cb.disabled = true;
+            out.empty();
+            out.createEl("p", { text: autoResolve ? "⏳ Enqueueing lint with auto-resolve…" : "⏳ Enqueueing lint…" });
+            try {
+                const r = await api.lint("all", autoResolve) as any;
+                const jobId: string = r.job_id;
+                out.empty();
+                out.createEl("p", { text: `⏳ Lint running… (job ${jobId.slice(0, 8)})` });
+
+                this._pollTimer = window.setInterval(async () => {
+                    try {
+                        const job = await api.job(jobId) as any;
+                        const status: string = job.status;
+
+                        if (status === "in_progress" || status === "pending") {
+                            out.empty();
+                            out.createEl("p", { text: `⏳ Lint ${status === "pending" ? "queued" : "running"}… (job ${jobId.slice(0, 8)})` });
+                            return;
+                        }
+
+                        // Job settled — stop polling
+                        window.clearInterval(this._pollTimer!);
+                        this._pollTimer = null;
+
+                        if (status === "completed") {
+                            // Fetch the actual lint report for contradiction/orphan counts
+                            try {
+                                const report = await api.lintReport() as any;
+                                const contradictions: string[] = report.contradictions ?? [];
+                                const orphans: string[] = report.orphans ?? [];
+                                out.empty();
+                                const summary = out.createEl("p");
+                                summary.style.cssText = "font-weight:bold;margin-bottom:6px";
+                                summary.setText(`✅ Done — ${contradictions.length} contradiction(s), ${orphans.length} orphan(s).`);
+                                if (contradictions.length > 0) {
+                                    out.createEl("p", { text: `Contradictions: ${contradictions.join(", ")}` }).style.cssText = "font-size:12px;color:var(--text-error)";
+                                }
+                                if (orphans.length > 0) {
+                                    out.createEl("p", { text: `Orphans: ${orphans.join(", ")}` }).style.cssText = "font-size:12px;color:var(--text-muted)";
+                                }
+                                new Notice(`Synthadoc: lint done — ${contradictions.length} contradictions, ${orphans.length} orphans`);
+                            } catch {
+                                out.empty();
+                                out.createEl("p", { text: "✅ Lint complete. Could not load report." });
+                            }
+                        } else {
+                            out.empty();
+                            out.createEl("p", { text: `❌ Lint ${status}${job.error ? `: ${job.error}` : ""}` }).style.cssText = "color:var(--text-error)";
+                        }
+                        btn.disabled = false;
+                        cb.disabled = false;
+                    } catch {
+                        // server unreachable — keep polling silently
+                    }
+                }, 2000);
+            } catch {
+                out.empty();
+                out.createEl("p", { text: "❌ Error: is synthadoc serve running?" });
+                btn.disabled = false;
+                cb.disabled = false;
+            }
+        };
+    }
+
+    onClose() {
+        if (this._pollTimer !== null) {
+            window.clearInterval(this._pollTimer);
+            this._pollTimer = null;
+        }
+        this.contentEl.empty();
+    }
+}
+
 class LintReportModal extends Modal {
     onOpen() {
         const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
         if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
-
         const { contentEl } = this;
-        contentEl.createEl("h3", { text: "Synthadoc: Lint report" });
+        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Lint report" });
+        makeDraggable(this.modalEl, titleEl);
         const out = contentEl.createEl("div");
+        out.style.cssText = "-webkit-user-select:text;user-select:text";
         out.createEl("p", { text: "Loading…", cls: "synthadoc-muted" });
 
         api.lintReport().then((r: any) => {
@@ -493,12 +723,14 @@ class LintReportModal extends Modal {
 }
 
 class IngestUrlModal extends Modal {
+    private _pollTimer: number | null = null;
+
     onOpen() {
         const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
         if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
-
         const { contentEl } = this;
-        contentEl.createEl("h3", { text: "Synthadoc: Ingest from URL" });
+        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Ingest from URL" });
+        makeDraggable(this.modalEl, titleEl);
 
         const row = contentEl.createEl("div");
         row.style.cssText = "display:flex;gap:8px;margin-bottom:12px";
@@ -506,26 +738,86 @@ class IngestUrlModal extends Modal {
         input.style.cssText = "flex:1;padding:4px 8px";
         const btn = row.createEl("button", { text: "Ingest" });
 
-        const out = contentEl.createEl("p");
+        const out = contentEl.createEl("div");
+        out.style.cssText = "margin-top:4px;-webkit-user-select:text;user-select:text";
+
+        const setStatus = (text: string, color?: string) => {
+            out.empty();
+            const p = out.createEl("p", { text });
+            if (color) p.style.cssText = `color:${color}`;
+        };
+
+        const startPolling = (jobId: string) => {
+            this._pollTimer = window.setInterval(async () => {
+                try {
+                    const job = await api.job(jobId) as any;
+                    const status: string = job.status;
+
+                    if (status === "pending") {
+                        setStatus(`⏳ Queued — job ${jobId.slice(0, 8)}`);
+                        return;
+                    }
+                    if (status === "in_progress") {
+                        setStatus(`⏳ Ingesting… (job ${jobId.slice(0, 8)})`);
+                        return;
+                    }
+
+                    // Settled
+                    window.clearInterval(this._pollTimer!);
+                    this._pollTimer = null;
+                    btn.disabled = false;
+                    input.disabled = false;
+
+                    if (status === "completed") {
+                        const r = job.result ?? {};
+                        const parts: string[] = [];
+                        if (r.pages_created?.length) parts.push(`created: ${r.pages_created.join(", ")}`);
+                        if (r.pages_updated?.length) parts.push(`updated: ${r.pages_updated.join(", ")}`);
+                        if (r.pages_flagged?.length) parts.push(`flagged: ${r.pages_flagged.join(", ")}`);
+                        out.empty();
+                        out.createEl("p", { text: "✅ Done." }).style.cssText = "font-weight:bold;margin-bottom:4px";
+                        if (parts.length) out.createEl("p", { text: parts.join(" · ") }).style.cssText = "font-size:12px;color:var(--text-muted)";
+                        new Notice(`Synthadoc: ingest done (job ${jobId.slice(0, 8)})`);
+                    } else if (status === "skipped") {
+                        setStatus(`⏭️ Skipped — already ingested.`, "var(--text-muted)");
+                    } else {
+                        setStatus(`❌ ${status}${job.error ? `: ${job.error}` : ""}`, "var(--text-error)");
+                    }
+                } catch {
+                    // server unreachable — keep polling silently
+                }
+            }, 2000);
+        };
 
         const submit = async () => {
             const url = input.value.trim();
             if (!url) return;
             btn.disabled = true;
-            out.setText("Queuing…");
+            input.disabled = true;
+            setStatus("⏳ Queuing…");
             try {
                 const r = await api.ingest(url) as any;
-                out.setText(`Queued — job ${r.job_id}`);
-                new Notice(`Synthadoc: ingest queued (job ${r.job_id})`);
+                const jobId: string = r.job_id;
+                setStatus(`⏳ Queued — job ${jobId.slice(0, 8)}`);
+                startPolling(jobId);
             } catch {
-                out.setText("Error: is synthadoc serve running?");
-            } finally { btn.disabled = false; }
+                setStatus("❌ Error: is synthadoc serve running?", "var(--text-error)");
+                btn.disabled = false;
+                input.disabled = false;
+            }
         };
 
         btn.onclick = submit;
         input.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
     }
-    onClose() { this.contentEl.empty(); }
+
+    onClose() {
+        if (this._pollTimer !== null) {
+            window.clearInterval(this._pollTimer);
+            this._pollTimer = null;
+        }
+        this.contentEl.empty();
+    }
 }
 
 class WebSearchModal extends Modal {
@@ -535,9 +827,9 @@ class WebSearchModal extends Modal {
     onOpen() {
         const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
         if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
-
         const { contentEl } = this;
-        contentEl.createEl("h3", { text: "Synthadoc: Web search" });
+        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Web search" });
+        makeDraggable(this.modalEl, titleEl);
         contentEl.createEl("p", {
             text: "Type a topic — Synthadoc will search the web and compile results into your wiki.",
             cls: "synthadoc-muted",
@@ -661,7 +953,7 @@ class WebSearchModal extends Modal {
                     pagesEl.empty();
                     pagesEl.createEl("p", { text: `Pages (${pages.size}):` }).style.cssText = "font-size:12px;font-weight:bold;margin-bottom:2px";
                     const ul = pagesEl.createEl("ul");
-                    ul.style.cssText = "font-size:12px;margin:0;padding-left:18px";
+                    ul.style.cssText = "font-size:12px;margin:0;padding-left:18px;-webkit-user-select:text;user-select:text";
                     for (const slug of pages) ul.createEl("li", { text: slug });
                 }
 
@@ -669,7 +961,7 @@ class WebSearchModal extends Modal {
                     errorsEl.empty();
                     errorsEl.createEl("p", { text: `Errors (${errors.length}):` }).style.cssText = "font-size:12px;font-weight:bold;margin-bottom:2px;color:var(--text-error)";
                     const ul = errorsEl.createEl("ul");
-                    ul.style.cssText = "font-size:12px;margin:0;padding-left:18px;color:var(--text-error)";
+                    ul.style.cssText = "font-size:12px;margin:0;padding-left:18px;color:var(--text-error);-webkit-user-select:text;user-select:text";
                     for (const err of errors) ul.createEl("li", { text: err });
                 }
 
@@ -707,71 +999,157 @@ class WebSearchModal extends Modal {
 }
 
 class RetryJobModal extends Modal {
+    private _pollTimer: number | null = null;
+
     onOpen() {
+        this.modalEl.style.width = "clamp(560px, 70vw, 960px)";
         const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
         if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
-
         const { contentEl } = this;
-        contentEl.createEl("h3", { text: "Synthadoc: Retry dead job" });
+        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Retry failed or dead jobs" });
+        makeDraggable(this.modalEl, titleEl);
 
-        const out = contentEl.createEl("div");
-        out.createEl("p", { text: "Loading dead jobs…", cls: "synthadoc-muted" });
+        const listEl = contentEl.createEl("div");
+        listEl.style.cssText = "max-height:40vh;overflow-y:auto;margin-bottom:12px";
 
-        api.jobs("dead").then((jobs: any[]) => {
-            out.empty();
-            if (!jobs.length) {
-                out.createEl("p", { text: "No dead jobs." });
+        const statusEl = contentEl.createEl("p");
+        statusEl.style.cssText = "font-size:12px;min-height:18px;margin-bottom:8px;-webkit-user-select:text;user-select:text";
+
+        const btnRow = contentEl.createEl("div");
+        btnRow.style.cssText = "display:flex;gap:8px;justify-content:flex-end";
+        const retryBtn = btnRow.createEl("button", { text: "Retry selected" });
+        const refreshBtn = btnRow.createEl("button", { text: "Refresh" });
+
+        // Track checkboxes: jobId → checkbox element
+        const checkboxMap = new Map<string, HTMLInputElement>();
+
+        const load = async () => {
+            listEl.empty();
+            checkboxMap.clear();
+            statusEl.setText("Loading…");
+            try {
+                const [failed, dead] = await Promise.all([
+                    api.jobs("failed") as Promise<any[]>,
+                    api.jobs("dead") as Promise<any[]>,
+                ]);
+                const jobs = [...failed, ...dead];
+                statusEl.setText("");
+
+                if (!jobs.length) {
+                    listEl.createEl("p", { text: "No failed or dead jobs." }).style.cssText = "color:var(--text-muted);font-size:13px";
+                    retryBtn.disabled = true;
+                    return;
+                }
+
+                retryBtn.disabled = false;
+                const table = listEl.createEl("table");
+                table.style.cssText = "width:100%;border-collapse:collapse;font-size:13px;-webkit-user-select:text;user-select:text";
+                const hrow = table.createEl("thead").createEl("tr");
+                for (const h of ["", "Status", "Job ID", "Operation", "Source", "Error"]) {
+                    const th = hrow.createEl("th", { text: h });
+                    th.style.cssText = "text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border)";
+                }
+                const tbody = table.createEl("tbody");
+                for (const job of jobs) {
+                    const tr = tbody.createEl("tr");
+                    const source = job.payload?.source
+                        ? job.payload.source.split(/[\\/]/).pop()
+                        : job.operation;
+                    const icon = STATUS_EMOJI[job.status] ?? "";
+
+                    // Checkbox
+                    const cbTd = tr.createEl("td");
+                    cbTd.style.cssText = "padding:4px 8px;border-bottom:1px solid var(--background-modifier-border-subtle)";
+                    const cb = cbTd.createEl("input", { type: "checkbox" }) as HTMLInputElement;
+                    cb.checked = true;
+                    checkboxMap.set(job.id, cb);
+
+                    for (const text of [`${icon} ${job.status}`, job.id, job.operation, source, job.error ?? "—"]) {
+                        const td = tr.createEl("td", { text });
+                        td.style.cssText = "padding:4px 8px;border-bottom:1px solid var(--background-modifier-border-subtle);font-size:12px";
+                    }
+                }
+            } catch {
+                listEl.empty();
+                listEl.createEl("p", { text: "Error: is synthadoc serve running?" }).style.cssText = "color:var(--text-error)";
+                retryBtn.disabled = true;
+            }
+        };
+
+        refreshBtn.onclick = load;
+
+        retryBtn.onclick = async () => {
+            const selected = [...checkboxMap.entries()]
+                .filter(([, cb]) => cb.checked)
+                .map(([id]) => id);
+            if (!selected.length) {
+                statusEl.setText("No jobs selected.");
                 return;
             }
-            const table = out.createEl("table");
-            table.style.cssText = "width:100%;border-collapse:collapse;font-size:13px";
-            const hrow = table.createEl("thead").createEl("tr");
-            for (const h of ["Job ID", "Operation", "Source", "Error", ""]) {
-                const th = hrow.createEl("th", { text: h });
-                th.style.cssText = "text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border)";
+
+            retryBtn.disabled = true;
+            refreshBtn.disabled = true;
+            statusEl.setText(`⏳ Re-queuing ${selected.length} job(s)…`);
+
+            // Re-queue all selected
+            let queued = 0;
+            for (const jobId of selected) {
+                try {
+                    await api.retryJob(jobId);
+                    queued++;
+                } catch { /* ignore individual failures — status will show */ }
             }
-            const tbody = table.createEl("tbody");
-            for (const job of jobs) {
-                const tr = tbody.createEl("tr");
-                const source = job.payload?.source
-                    ? job.payload.source.split(/[\\/]/).pop()
-                    : job.operation;
-                for (const text of [job.id, job.operation, source, job.error ?? "—"]) {
-                    const td = tr.createEl("td", { text });
-                    td.style.cssText = "padding:4px 8px;border-bottom:1px solid var(--background-modifier-border-subtle)";
-                }
-                const btnTd = tr.createEl("td");
-                btnTd.style.cssText = "padding:4px 8px;border-bottom:1px solid var(--background-modifier-border-subtle)";
-                const btn = btnTd.createEl("button", { text: "Retry" });
-                btn.onclick = async () => {
-                    btn.disabled = true;
-                    btn.setText("…");
-                    try {
-                        await api.retryJob(job.id);
-                        new Notice(`Synthadoc: job ${job.id} re-queued`);
-                        tr.remove();
-                    } catch {
-                        new Notice("Synthadoc: retry failed — is the server running?");
-                        btn.disabled = false;
-                        btn.setText("Retry");
+            statusEl.setText(`⏳ ${queued} job(s) re-queued — monitoring progress…`);
+
+            // Poll until all re-queued jobs have settled
+            const pending = new Set(selected);
+            this._pollTimer = window.setInterval(async () => {
+                try {
+                    const allJobs = await api.jobs() as any[];
+                    let inProgress = 0;
+                    let done = 0;
+                    for (const jobId of [...pending]) {
+                        const job = allJobs.find((j: any) => j.id === jobId);
+                        if (!job) { pending.delete(jobId); done++; continue; }
+                        if (["completed", "failed", "dead", "skipped"].includes(job.status)) {
+                            pending.delete(jobId);
+                            done++;
+                        } else {
+                            inProgress++;
+                        }
                     }
-                };
-            }
-        }).catch(() => {
-            out.empty();
-            out.createEl("p", { text: "Error: is synthadoc serve running?" });
-        });
+                    statusEl.setText(`⏳ ${inProgress} running, ${done} settled of ${selected.length}…`);
+                    if (pending.size === 0) {
+                        window.clearInterval(this._pollTimer!);
+                        this._pollTimer = null;
+                        statusEl.setText(`✅ All ${selected.length} job(s) settled. Refreshing list…`);
+                        retryBtn.disabled = false;
+                        refreshBtn.disabled = false;
+                        await load();
+                    }
+                } catch { /* server unreachable — keep polling */ }
+            }, 2000);
+        };
+
+        load();
     }
-    onClose() { this.contentEl.empty(); }
+
+    onClose() {
+        if (this._pollTimer !== null) {
+            window.clearInterval(this._pollTimer);
+            this._pollTimer = null;
+        }
+        this.contentEl.empty();
+    }
 }
 
 class PurgeJobsModal extends Modal {
     onOpen() {
         const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
         if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
-
         const { contentEl } = this;
-        contentEl.createEl("h3", { text: "Synthadoc: Purge old jobs" });
+        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Purge old jobs" });
+        makeDraggable(this.modalEl, titleEl);
         contentEl.createEl("p", {
             text: "Removes completed and dead jobs older than the specified number of days.",
             cls: "synthadoc-muted",
@@ -804,12 +1182,14 @@ class PurgeJobsModal extends Modal {
 }
 
 class ScaffoldModal extends Modal {
+    private _pollTimer: number | null = null;
+
     onOpen() {
         const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
         if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
-
         const { contentEl } = this;
-        contentEl.createEl("h3", { text: "Synthadoc: Regenerate scaffold" });
+        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Regenerate scaffold" });
+        makeDraggable(this.modalEl, titleEl);
         contentEl.createEl("p", {
             text: "Rewrites index.md, AGENTS.md, and purpose.md for your wiki domain using the LLM. Existing wiki pages are preserved.",
             cls: "synthadoc-muted",
@@ -822,6 +1202,7 @@ class ScaffoldModal extends Modal {
         const btn = row.createEl("button", { text: "Scaffold" });
 
         const out = contentEl.createEl("p");
+        out.style.cssText = "font-size:12px;min-height:18px;-webkit-user-select:text;user-select:text";
 
         // Pre-fill domain from status if available
         api.status().then((s: any) => {
@@ -835,21 +1216,56 @@ class ScaffoldModal extends Modal {
             const domain = input.value.trim();
             if (!domain) return;
             btn.disabled = true;
-            out.setText("Queuing scaffold job…");
+            input.disabled = true;
+            out.setText("⏳ Queuing scaffold job…");
             try {
                 const r = await api.scaffold(domain) as any;
-                out.setText(`Queued — job ${r.job_id}. index.md, AGENTS.md, and purpose.md will be updated shortly.`);
-                new Notice(`Synthadoc: scaffold queued (job ${r.job_id})`);
+                const jobId: string = r.job_id;
+                out.setText(`⏳ Queued — job ${jobId.slice(0, 8)}…`);
+                new Notice(`Synthadoc: scaffold queued (job ${jobId})`);
+
+                this._pollTimer = window.setInterval(async () => {
+                    try {
+                        const job = await api.job(jobId) as any;
+                        const status: string = job.status;
+
+                        if (status === "pending") { out.setText(`⏳ Queued — job ${jobId.slice(0, 8)}…`); return; }
+                        if (status === "in_progress") { out.setText(`⏳ Generating scaffold… (job ${jobId.slice(0, 8)})`); return; }
+
+                        window.clearInterval(this._pollTimer!);
+                        this._pollTimer = null;
+                        btn.disabled = false;
+                        input.disabled = false;
+
+                        if (status === "completed") {
+                            out.setText("✅ Done — index.md, AGENTS.md, and purpose.md updated.");
+                            new Notice("Synthadoc: scaffold complete");
+                        } else if (status === "skipped") {
+                            out.setText("⏭️ Skipped — already up to date.");
+                        } else {
+                            out.setText(`❌ ${status}${job.error ? `: ${job.error}` : ""}`);
+                        }
+                    } catch { /* server unreachable — keep polling */ }
+                }, 2000);
             } catch {
-                out.setText("Error: is synthadoc serve running?");
-            } finally { btn.disabled = false; }
+                out.setText("❌ Error: is synthadoc serve running?");
+                btn.disabled = false;
+                input.disabled = false;
+            }
         };
 
         btn.onclick = submit;
         input.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
         setTimeout(() => input.focus(), 50);
     }
-    onClose() { this.contentEl.empty(); }
+
+    onClose() {
+        if (this._pollTimer !== null) {
+            window.clearInterval(this._pollTimer);
+            this._pollTimer = null;
+        }
+        this.contentEl.empty();
+    }
 }
 
 class AuditHistoryModal extends Modal {
@@ -857,9 +1273,9 @@ class AuditHistoryModal extends Modal {
         this.modalEl.style.width = "clamp(520px, 65vw, 900px)";
         const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
         if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
-
         const { contentEl } = this;
-        contentEl.createEl("h3", { text: "Synthadoc: Ingest history" });
+        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Ingest history" });
+        makeDraggable(this.modalEl, titleEl);
 
         const row = contentEl.createEl("div");
         row.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:12px";
@@ -883,7 +1299,7 @@ class AuditHistoryModal extends Modal {
                     return;
                 }
                 const table = tableEl.createEl("table");
-                table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px";
+                table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px;-webkit-user-select:text;user-select:text";
                 const hrow = table.createEl("thead").createEl("tr");
                 for (const h of ["Source", "Wiki page", "Tokens", "Cost (USD)", "Ingested at"]) {
                     const th = hrow.createEl("th", { text: h });
@@ -922,9 +1338,9 @@ class AuditCostsModal extends Modal {
     onOpen() {
         const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
         if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
-
         const { contentEl } = this;
-        contentEl.createEl("h3", { text: "Synthadoc: Cost summary" });
+        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Cost summary" });
+        makeDraggable(this.modalEl, titleEl);
 
         const row = contentEl.createEl("div");
         row.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:12px";
@@ -948,11 +1364,11 @@ class AuditCostsModal extends Modal {
                 summary.style.cssText = "margin-bottom:16px";
                 summary.createEl("p", {
                     text: `Total: ${(r.total_tokens ?? 0).toLocaleString()} tokens · $${(r.total_cost_usd ?? 0).toFixed(4)} USD`,
-                }).style.cssText = "font-weight:bold";
+                }).style.cssText = "font-weight:bold;-webkit-user-select:text;user-select:text";
 
                 if (r.daily?.length) {
                     const table = out.createEl("table");
-                    table.style.cssText = "width:100%;border-collapse:collapse;font-size:13px";
+                    table.style.cssText = "width:100%;border-collapse:collapse;font-size:13px;-webkit-user-select:text;user-select:text";
                     const hrow = table.createEl("thead").createEl("tr");
                     for (const h of ["Day", "Cost (USD)"]) {
                         const th = hrow.createEl("th", { text: h });
@@ -985,9 +1401,9 @@ class QueryHistoryModal extends Modal {
         this.modalEl.style.width = "clamp(520px, 65vw, 900px)";
         const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
         if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
-
         const { contentEl } = this;
-        contentEl.createEl("h3", { text: "Synthadoc: Query history" });
+        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Query history" });
+        makeDraggable(this.modalEl, titleEl);
 
         const row = contentEl.createEl("div");
         row.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:12px";
@@ -1011,7 +1427,7 @@ class QueryHistoryModal extends Modal {
                     return;
                 }
                 const table = tableEl.createEl("table");
-                table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px";
+                table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px;-webkit-user-select:text;user-select:text";
                 const hrow = table.createEl("thead").createEl("tr");
                 for (const h of ["Question", "Sub-Qs", "Tokens", "Cost (USD)", "Asked at"]) {
                     const th = hrow.createEl("th", { text: h });
@@ -1045,6 +1461,71 @@ class QueryHistoryModal extends Modal {
     onClose() { this.contentEl.empty(); }
 }
 
+class AuditEventsModal extends Modal {
+    onOpen() {
+        this.modalEl.style.width = "clamp(560px, 70vw, 960px)";
+        const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
+        if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
+        const { contentEl } = this;
+        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Audit events" });
+        makeDraggable(this.modalEl, titleEl);
+
+        const row = contentEl.createEl("div");
+        row.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:12px";
+        row.createEl("label", { text: "Last" });
+        const input = row.createEl("input", { type: "number" }) as HTMLInputElement;
+        input.value = "100";
+        input.min = "1";
+        input.max = "1000";
+        input.style.cssText = "width:70px;padding:4px 8px";
+        row.createEl("span", { text: "events (max 1000)" });
+        const btn = row.createEl("button", { text: "Load" });
+
+        const tableEl = contentEl.createEl("div");
+        tableEl.style.cssText = "max-height:60vh;overflow-y:auto";
+
+        const load = async () => {
+            let limit = parseInt(input.value) || 100;
+            if (limit < 1) limit = 1;
+            if (limit > 1000) limit = 1000;
+            input.value = String(limit);
+            tableEl.setText("Loading…");
+            try {
+                const r = await api.auditEvents(limit) as any;
+                tableEl.empty();
+                if (!r.records.length) {
+                    tableEl.createEl("p", { text: "No audit events found." });
+                    return;
+                }
+                const table = tableEl.createEl("table");
+                table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px;-webkit-user-select:text;user-select:text";
+                const hrow = table.createEl("thead").createEl("tr");
+                for (const h of ["Timestamp", "Job ID", "Event", "Metadata"]) {
+                    const th = hrow.createEl("th", { text: h });
+                    th.style.cssText = "text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border);white-space:nowrap";
+                }
+                const tbody = table.createEl("tbody");
+                for (const rec of r.records) {
+                    const tr = tbody.createEl("tr");
+                    const ts = rec.timestamp ? rec.timestamp.slice(0, 16).replace("T", " ") : "—";
+                    const jobId = rec.job_id ? rec.job_id.slice(0, 8) : "—";
+                    for (const text of [ts, jobId, rec.event ?? "—", rec.metadata ?? "—"]) {
+                        const td = tr.createEl("td", { text });
+                        td.style.cssText = "padding:4px 8px;border-bottom:1px solid var(--background-modifier-border-subtle);font-size:11px";
+                    }
+                }
+            } catch {
+                tableEl.setText("Error: is synthadoc serve running?");
+            }
+        };
+
+        btn.onclick = load;
+        input.addEventListener("keydown", (e) => { if (e.key === "Enter") load(); });
+        load();
+    }
+    onClose() { this.contentEl.empty(); }
+}
+
 class QueryModal extends Modal {
     onOpen() {
         // Scale with viewport: min 520px, 60% of screen width, max 860px
@@ -1053,9 +1534,9 @@ class QueryModal extends Modal {
         // Block the backdrop's built-in click-to-close so the user must close explicitly
         const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
         if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
-
         const { contentEl } = this;
-        contentEl.createEl("h3", { text: "Synthadoc: Query your wiki" });
+        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Query your wiki" });
+        makeDraggable(this.modalEl, titleEl);
 
         const input = contentEl.createEl("textarea", { placeholder: "Ask a question…\n(Ctrl+Enter or Cmd+Enter to submit)" });
         input.style.cssText = "width:100%;min-height:72px;padding:6px 8px;resize:vertical;margin-bottom:8px;box-sizing:border-box";
