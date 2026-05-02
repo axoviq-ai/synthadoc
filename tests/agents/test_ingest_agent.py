@@ -6,7 +6,7 @@ import aiosqlite
 from unittest.mock import AsyncMock
 from synthadoc.agents.ingest_agent import IngestAgent, IngestResult, _slugify, _coerce_str_list
 from synthadoc.providers.base import CompletionResponse
-from synthadoc.storage.wiki import WikiStorage
+from synthadoc.storage.wiki import WikiStorage, WikiPage
 from synthadoc.storage.search import HybridSearch
 from synthadoc.storage.log import LogWriter, AuditDB
 from synthadoc.core.cache import CacheManager
@@ -1019,3 +1019,121 @@ async def test_youtube_rerun_allowed_after_page_deleted(tmp_wiki, mock_provider)
         third = await agent.ingest(url)
 
     assert not third.skipped, "re-ingest after page deletion must not be skipped"
+
+
+# ── CJK (Chinese / Japanese / Korean) coverage ───────────────────────────────
+
+@pytest.mark.asyncio
+async def test_ingest_cjk_source_creates_page(tmp_wiki):
+    """Source file with Chinese content → page created with CJK slug and content preserved."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
+    await cache.init()
+
+    source = tmp_wiki / "raw_sources" / "量子计算.md"
+    source.write_text(
+        "# 量子计算\n量子计算是利用量子力学原理进行信息处理的技术。量子比特可以同时处于0和1的叠加态。",
+        encoding="utf-8",
+    )
+    import itertools
+    provider = AsyncMock()
+    provider.complete.side_effect = itertools.cycle([
+        CompletionResponse(
+            text='{"entities":["量子计算","量子比特"],"concepts":["量子叠加"],"tags":["量子计算","技术"]}',
+            input_tokens=100, output_tokens=50,
+        ),
+        CompletionResponse(
+            text='{"reasoning":"新主题","action":"create","target":"","new_slug":"量子计算","update_content":"","page_content":""}',
+            input_tokens=100, output_tokens=50,
+        ),
+    ])
+    agent = IngestAgent(provider=provider, store=store, search=search,
+                        log_writer=log, audit_db=audit, cache=cache, max_pages=15)
+    result = await agent.ingest(str(source))
+
+    assert not result.skipped
+    assert result.pages_created
+    page = store.read_page("量子计算")
+    assert page is not None
+    assert "量子" in page.content
+    assert "量子计算" in page.title or "量子计算" in result.pages_created[0]
+
+
+@pytest.mark.asyncio
+async def test_ingest_cjk_page_update_appends_content(tmp_wiki):
+    """Ingest with action=update appends a CJK section to an existing CJK page."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("人工智能", WikiPage(
+        title="人工智能", tags=["技术"],
+        content="# 人工智能\n人工智能是模拟人类思维的技术。",
+        status="active", confidence="medium", sources=[],
+    ))
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
+    await cache.init()
+
+    source = tmp_wiki / "raw_sources" / "ml-update.md"
+    source.write_text("机器学习是人工智能的重要子领域。", encoding="utf-8")
+
+    import itertools
+    provider = AsyncMock()
+    provider.complete.side_effect = itertools.cycle([
+        CompletionResponse(
+            text='{"entities":["机器学习","人工智能"],"concepts":["监督学习"],"tags":["人工智能"]}',
+            input_tokens=100, output_tokens=50,
+        ),
+        CompletionResponse(
+            text='{"reasoning":"补充信息","action":"update","target":"人工智能","new_slug":"","update_content":"## 机器学习\\n机器学习是人工智能的重要分支，包括监督学习和无监督学习。","page_content":""}',
+            input_tokens=100, output_tokens=50,
+        ),
+    ])
+    agent = IngestAgent(provider=provider, store=store, search=search,
+                        log_writer=log, audit_db=audit, cache=cache, max_pages=15)
+    result = await agent.ingest(str(source))
+
+    assert "人工智能" in result.pages_updated
+    page = store.read_page("人工智能")
+    assert "机器学习" in page.content
+    assert "人工智能" in page.content   # original content preserved
+
+
+@pytest.mark.asyncio
+async def test_ingest_cjk_tags_stored_in_page(tmp_wiki):
+    """CJK tags from the entity extraction response are stored in the created WikiPage."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
+    await cache.init()
+
+    source = tmp_wiki / "raw_sources" / "深度学习.md"
+    source.write_text("深度学习通过多层神经网络学习数据特征。", encoding="utf-8")
+
+    import itertools
+    provider = AsyncMock()
+    provider.complete.side_effect = itertools.cycle([
+        CompletionResponse(
+            text='{"entities":["深度学习","神经网络"],"concepts":["反向传播"],"tags":["深度学习","机器学习","人工智能"]}',
+            input_tokens=100, output_tokens=50,
+        ),
+        CompletionResponse(
+            text='{"reasoning":"新主题","action":"create","target":"","new_slug":"深度学习","update_content":"","page_content":""}',
+            input_tokens=100, output_tokens=50,
+        ),
+    ])
+    agent = IngestAgent(provider=provider, store=store, search=search,
+                        log_writer=log, audit_db=audit, cache=cache, max_pages=15)
+    await agent.ingest(str(source))
+
+    page = store.read_page("深度学习")
+    assert page is not None
+    assert "深度学习" in page.tags or "机器学习" in page.tags

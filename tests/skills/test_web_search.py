@@ -404,3 +404,27 @@ def test_load_dynamic_blocked_returns_empty_on_invalid_json(tmp_path, monkeypatc
     monkeypatch.setenv("SYNTHADOC_WIKI_ROOT", str(tmp_path))
     from synthadoc.skills.web_search.scripts.main import _load_dynamic_blocked
     assert _load_dynamic_blocked() == set()
+
+
+# ── CJK (Chinese / Japanese / Korean) coverage ───────────────────────────────
+
+def test_web_search_pure_cjk_intent_not_matched():
+    """A pure CJK intent prefix ('搜索：量子计算') is NOT matched as a web search intent.
+
+    Only English prefixes (search for:, look up:, browse:, etc.) are supported.
+    This test documents the current limitation so the behaviour cannot silently regress:
+    if CJK intent support is added later, this test must be updated alongside it.
+    """
+    from synthadoc.skills.web_search.scripts.main import _INTENT_RE
+
+    pure_cjk_intents = [
+        "搜索：量子计算",          # Chinese "search for: quantum computing"
+        "查找：图灵机",             # Chinese "look up: Turing machine"
+        "ウェブ検索：機械学習",     # Japanese "web search: machine learning"
+        "웹 검색: 딥러닝",          # Korean "web search: deep learning"
+    ]
+    for source in pure_cjk_intents:
+        assert not _INTENT_RE.match(source), (
+            f"CJK intent prefix unexpectedly matched: {source!r}. "
+            "If CJK intent support was intentionally added, update this test."
+        )

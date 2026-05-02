@@ -112,3 +112,44 @@ async def test_scaffold_raises_on_invalid_json():
     agent = ScaffoldAgent(provider=provider)
     with pytest.raises(ValueError, match="scaffold"):
         await agent.scaffold(domain="ML")
+
+
+# ── CJK (Chinese / Japanese / Korean) coverage ───────────────────────────────
+
+_CJK_VALID_RESPONSE = {
+    "categories": [
+        {"heading": "核心概念", "description": "人工智能的基本原理", "slugs": ["神经网络", "机器学习"]},
+        {"heading": "应用领域", "description": "实际应用场景", "slugs": ["自然语言处理"]},
+    ],
+    "agents_guidelines": "总结关键主张。使用[[维基链接]]交叉引用相关页面。",
+    "purpose_include": "与人工智能直接相关的主题。",
+    "purpose_exclude": "与人工智能无关的领域，例如烹饪。",
+    "dashboard_intro": "跟踪人工智能知识库领域知识的维基百科。",
+}
+
+
+@pytest.mark.asyncio
+async def test_scaffold_cjk_domain_name_in_all_outputs():
+    """Scaffold with a CJK domain name → all output documents contain the CJK domain string."""
+    provider = _make_provider(_CJK_VALID_RESPONSE)
+    agent = ScaffoldAgent(provider=provider)
+    result = await agent.scaffold(domain="人工智能知识库")
+
+    assert isinstance(result, ScaffoldResult)
+    assert "人工智能知识库" in result.agents_md
+    assert "人工智能知识库" in result.purpose_md
+    assert "人工智能知识库" in result.dashboard_intro
+
+
+@pytest.mark.asyncio
+async def test_scaffold_cjk_categories_produce_wikilinks():
+    """LLM returns CJK category headings and CJK slugs → index.md contains CJK [[wikilinks]]."""
+    provider = _make_provider(_CJK_VALID_RESPONSE)
+    agent = ScaffoldAgent(provider=provider)
+    result = await agent.scaffold(domain="人工智能知识库")
+
+    assert "核心概念" in result.index_md
+    assert "应用领域" in result.index_md
+    assert "- [[神经网络]]" in result.index_md
+    assert "- [[机器学习]]" in result.index_md
+    assert "- [[自然语言处理]]" in result.index_md

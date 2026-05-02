@@ -152,3 +152,64 @@ async def test_orphan_flag_cleared_when_inbound_link_added(tmp_wiki):
     await agent.lint(scope="orphans")
 
     assert store.read_page("page-a").orphan is False
+
+
+# ── CJK (Chinese / Japanese / Korean) coverage ───────────────────────────────
+
+def test_find_orphan_slugs_cjk_wikilinks():
+    """[[量子计算]] wikilinks with CJK targets are parsed correctly by the orphan detector."""
+    page_texts = {
+        "人工智能":  "人工智能是一个广泛的领域，包括[[机器学习]]和[[量子计算]]。",
+        "机器学习":  "机器学习是人工智能的子领域。",
+        "量子计算":  "量子计算利用量子力学原理。",
+        "深度学习":  "深度学习是机器学习的一种方法。没有人链接到这里。",
+    }
+    orphans = find_orphan_slugs(page_texts)
+
+    assert "机器学习" not in orphans      # linked from 人工智能
+    assert "量子计算" not in orphans      # linked from 人工智能
+    assert "深度学习" in orphans          # no inbound links
+    assert "人工智能" in orphans          # nothing links to 人工智能
+
+
+@pytest.mark.asyncio
+async def test_lint_cjk_orphan_detection(tmp_wiki):
+    """Full async lint correctly identifies orphans among CJK-slugged pages."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("人工智能", WikiPage(title="人工智能", tags=[],
+        content="参见[[机器学习]]了解更多。",
+        status="active", confidence="medium", sources=[]))
+    store.write_page("机器学习", WikiPage(title="机器学习", tags=[],
+        content="机器学习是一种技术。",
+        status="active", confidence="medium", sources=[]))
+    store.write_page("量子计算", WikiPage(title="量子计算", tags=[],
+        content="量子计算尚未在本维基中建立链接。",
+        status="active", confidence="medium", sources=[]))
+
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log)
+    report = await agent.lint(scope="orphans")
+
+    assert "量子计算" in report.orphan_slugs    # no inbound link
+    assert "机器学习" not in report.orphan_slugs  # linked from 人工智能
+
+
+@pytest.mark.asyncio
+async def test_lint_cjk_contradiction_detected(tmp_wiki):
+    """CJK page with contradicted status is found and included in the contradiction report."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("量子纠错", WikiPage(title="量子纠错", tags=[],
+        content="⚠ 此页面存在矛盾内容。量子纠错需要大量量子比特。",
+        status="contradicted", confidence="low", sources=[]))
+    store.write_page("人工智能", WikiPage(title="人工智能", tags=[],
+        content="正常内容，没有矛盾。",
+        status="active", confidence="high", sources=[]))
+
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    provider = AsyncMock()
+    provider.complete.return_value = CompletionResponse(
+        text="矛盾已解决。", input_tokens=50, output_tokens=10)
+    agent = LintAgent(provider=provider, store=store, log_writer=log)
+    report = await agent.lint(scope="contradictions")
+
+    assert report.contradictions_found == 1

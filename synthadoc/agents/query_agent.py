@@ -136,7 +136,20 @@ class QueryAgent:
         # "indoors" → "indoor"). Stripping 2 chars was too aggressive — it turned
         # "Canadian" into "canadi", which still matched every page in a Canada-focused
         # wiki and made the check useless as a discriminator.
-        _key_terms = {
+        #
+        # CJK scripts (Chinese, Japanese, Korean) do not use whitespace word
+        # boundaries, so split() either yields the whole sentence as one token
+        # (doc_freq=0 in any page → spurious signal 4 gap) or tiny 1-2 char
+        # fragments that all fail the len>4 guard.  Skip key-term extraction
+        # entirely for CJK input; signals 1 and 2 remain active and are
+        # language-agnostic.
+        _contains_cjk = any(
+            '぀' <= c <= 'ヿ'    # Japanese kana (hiragana + katakana)
+            or '一' <= c <= '鿿' # CJK Unified Ideographs (Chinese/Japanese/Korean)
+            or '가' <= c <= '힯' # Korean Hangul syllables
+            for c in question
+        )
+        _key_terms = set() if _contains_cjk else {
             w.lower().rstrip("s?!.,")        # strip plural/punctuation only
             for w in question.split()
             if len(w) > 4 and w.lower().rstrip("s?!.,") not in _STOPWORDS
