@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -16,6 +17,30 @@ import re
 logger = logging.getLogger(__name__)
 
 _MAX_BODY_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+def _install_win32_conn_reset_filter() -> None:
+    """Downgrade spurious ConnectionResetError noise from asyncio on Windows.
+
+    When a client abruptly closes a TCP connection (RST instead of FIN),
+    Windows IOCP raises ConnectionResetError inside the cleanup callback
+    _ProactorBasePipeTransport._call_connection_lost.  Python's asyncio logs
+    this at ERROR level even though no request is dropped and nothing is wrong.
+    We install a tight exception handler that downgrades only this specific case
+    to DEBUG (still visible via --verbose / log file) and forwards everything
+    else to the default handler unchanged.
+    """
+    loop = asyncio.get_event_loop()
+    _prev = loop.get_exception_handler()
+
+    def _handler(loop, context):
+        exc = context.get("exception")
+        if isinstance(exc, ConnectionResetError) and "_call_connection_lost" in context.get("message", ""):
+            logger.debug("win32 socket closed by remote host (WinError 10054) — harmless")
+            return
+        (_prev or loop.default_exception_handler)(loop, context)
+
+    loop.set_exception_handler(_handler)
 
 
 def _classify_llm_error(exc: Exception) -> "HTTPException | None":
@@ -220,6 +245,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        if sys.platform == "win32":
+            _install_win32_conn_reset_filter()
         orch = Orchestrator(wiki_root=wiki_root, config=cfg)
         await orch.init()
         app.state.orch = orch

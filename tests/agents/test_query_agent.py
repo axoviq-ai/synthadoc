@@ -944,3 +944,83 @@ async def test_no_gap_multi_aspect_query_with_generic_corpus_term(tmp_wiki):
     # 4 pages mention "partial" ≥ 2 times → on_topic_pages = 4 ≥ 2 → no gap.
     assert result.knowledge_gap is False
     assert result.suggested_searches == []
+
+
+@pytest.mark.asyncio
+async def test_gap_signal5_defining_term_barely_present(tmp_wiki):
+    """Signal 5: gap triggers when at least one specific key term never appears ≥ 2
+    times in any single candidate page, even though it exists in the wiki (freq > 0
+    across pages) so signal 4 does not fire.
+
+    Real-world case: "quantum error correction" in a history-of-computing wiki.
+    "quantum" is present in 2 candidate pages but only once per page (passing mention).
+    "error" and "correction" each appear ≥ 2 times in dedicated Bombe pages.
+
+    Signal breakdown for this test:
+    - Signal 1: 8 candidates ≥ 3 → no fire
+    - Signal 2: gap_score_threshold=0.01 → no fire
+    - Signal 3: 2 pages have error/correction ≥ 2 → on_topic_pages=2 ≥ 2 → no fire
+    - Signal 4: all 3 terms have doc_freq > 0 → no zero-freq → no fire
+    - Signal 5: quantum_qualifying_pages=0 (never ≥ 2 in any page) →
+                min(quantum=0, error=2, correction=2)=0 → gap=True ✓
+
+    bm25_search is mocked so BM25 IDF behaviour does not affect this test.
+    """
+    store = WikiStorage(tmp_wiki / "wiki")
+
+    # 2 pages where "error" and "correction" appear ≥ 2 times (Bombe incidental matches).
+    for i in range(2):
+        store.write_page(f"bombe-page-{i}", WikiPage(
+            title=f"The Bombe Machine {i}", tags=["history"],
+            content=(
+                "The Bombe detected incorrect Enigma settings by finding contradictions. "
+                "Each error in the assumed settings triggered a correction cycle. "
+                "The machine applied error correction logic to narrow down Enigma keys. "
+                "Finding an error led to rejecting that key and applying a correction."
+            ),
+            status="active", confidence="high", sources=[],
+        ))
+    # 2 pages that each mention "quantum" exactly once — present but not covered.
+    for i in range(2):
+        store.write_page(f"quantum-mention-{i}", WikiPage(
+            title=f"Computing Frontiers {i}", tags=["history"],
+            content=(
+                "Transistors replaced vacuum tubes in the 1950s, paving the way for "
+                "integrated circuits. Researchers have since explored quantum computing "
+                "as the next frontier, but this wiki does not yet cover that topic."
+            ),
+            status="active", confidence="high", sources=[],
+        ))
+    # 4 filler pages with none of the key terms.
+    for i in range(4):
+        store.write_page(f"other-page-{i}", WikiPage(
+            title=f"Computing History {i}", tags=["history"],
+            content=(
+                "Alan Turing proposed the Turing machine as a theoretical model of computation. "
+                "John von Neumann designed the stored-program architecture."
+            ),
+            status="active", confidence="high", sources=[],
+        ))
+
+    all_slugs = (
+        [f"bombe-page-{i}" for i in range(2)]
+        + [f"quantum-mention-{i}" for i in range(2)]
+        + [f"other-page-{i}" for i in range(4)]
+    )
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["What is quantum error correction?"]',
+                           input_tokens=5, output_tokens=5),
+        # SearchDecomposeAgent call for suggestions (gap triggered):
+        CompletionResponse(text='["quantum error correction explained", "qubit error rates"]',
+                           input_tokens=8, output_tokens=8),
+        CompletionResponse(text="No quantum info found.", input_tokens=80, output_tokens=15),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search,
+                       gap_score_threshold=0.01)  # signal 2 disabled
+    with patch.object(agent._search, "bm25_search", return_value=_fake_results(all_slugs)):
+        result = await agent.query("What is quantum error correction?")
+    # "quantum" never appears ≥ 2 times in any candidate → min_qualifying=0 → signal 5.
+    assert result.knowledge_gap is True
+    assert len(result.suggested_searches) >= 1

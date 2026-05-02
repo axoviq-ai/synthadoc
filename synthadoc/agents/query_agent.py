@@ -158,6 +158,8 @@ class QueryAgent:
         # Zero-freq terms (synonyms like "backyard" vs "garden") are excluded;
         # they reflect vocabulary mismatch, not missing content.
         _MIN_TERM_FREQ = 2
+        _any_term_missing = False   # signal 4 default
+        _defining_term_absent = False  # signal 5 default
         if _key_terms and candidates:
             # Count how many candidates contain each key term (doc frequency).
             _term_doc_freq = {
@@ -169,6 +171,24 @@ class QueryAgent:
             }
             _covered = {t: f for t, f in _term_doc_freq.items() if f > 0}
 
+            # Signal 4: a defining concept word is entirely absent from the wiki.
+            # When a query has ≥ 2 key terms and at least one appears in zero
+            # retrieved pages, the topic's core vocabulary is missing — not a
+            # synonym/vocabulary mismatch.  E.g. "quantum error correction" in a
+            # history-of-computing wiki: "error" and "correction" hit Bombe pages
+            # (high BM25 score, signal 3 passes), but "quantum" has zero coverage,
+            # definitively flagging the topic as absent.
+            #
+            # Coverage guard: if non-zero terms appear in >80% of candidates they
+            # are generic corpus words ("plant", "garden"), not topic discriminators.
+            # In that case the zero-freq term is a synonym mismatch, not a true gap.
+            _any_term_missing = (
+                bool(_covered)
+                and len(_term_doc_freq) >= 2
+                and any(f == 0 for f in _term_doc_freq.values())
+                and max(_covered.values()) / len(candidates) <= 0.8
+            )
+
             # Drop hyper-generic terms that appear in >80% of candidates.
             # Using 80% (not 60%) so moderately-common topic words like "partial"
             # (present in ~60-70% of pages in a shade-focused wiki) are kept as
@@ -179,7 +199,7 @@ class QueryAgent:
                 _specific = _covered  # all terms are corpus-generic; use full covered set
             # If every term in _specific appears in only one page it is too rare to
             # discriminate topic coverage — expand to include all covered terms.
-            elif max(_specific.values()) <= 1:
+            elif max(_specific.values(), default=0) <= 1:
                 _specific = _covered
 
             # Log the rarest specific term as a representative discriminator.
@@ -190,27 +210,66 @@ class QueryAgent:
             else:
                 _discriminating_term = min(_term_doc_freq, key=lambda t: _term_doc_freq[t])
 
-            # A page is on-topic if it mentions ANY specific term with sufficient freq.
-            _pages_with_overlap = sum(
-                1 for r in candidates
-                if (p := self._store.read_page(r.slug)) and
-                   any(p.content.lower().count(t) >= _MIN_TERM_FREQ for t in _specific)
+            # Single pass: compute both signal 3 (any specific term ≥ freq) and
+            # per-term qualifying page counts (needed for signal 5).
+            _term_qualifying_pages: dict[str, int] = {t: 0 for t in _specific}
+            _pages_with_overlap = 0
+            for _r in candidates:
+                _p = self._store.read_page(_r.slug)
+                if not _p:
+                    continue
+                _content = _p.content.lower()
+                _page_on_topic = False
+                for _t in _specific:
+                    if _content.count(_t) >= _MIN_TERM_FREQ:
+                        _term_qualifying_pages[_t] += 1
+                        _page_on_topic = True
+                if _page_on_topic:
+                    _pages_with_overlap += 1
+
+            # Signal 5: at least one specific topic term never appears with meaningful
+            # frequency (≥ MIN_TERM_FREQ) in any single candidate page.
+            #
+            # A term that appears scattered (once per page across many pages) is
+            # incidentally present — the wiki touches the vocabulary but lacks a page
+            # that actually discusses the concept.
+            #
+            # "quantum error correction": "quantum" and "correction" each appear in
+            # 1 page with ≥ 2 occurrences (transistor and bombe respectively), but
+            # "error" appears only once each in 2 separate pages (never ≥ 2 in any
+            # one page) — min qualifying = 0 → gap.
+            #
+            # "unix open-source movement": every specific term ("open-source",
+            # "movement", "influence") has at least 1 page where it appears ≥ 2 times
+            # — min qualifying ≥ 1 → no gap.
+            _min_specific_qualifying = (
+                min(_term_qualifying_pages.values())
+                if _term_qualifying_pages else 0
+            )
+            _defining_term_absent = (
+                bool(_specific)
+                and len(_term_doc_freq) >= 2
+                and _min_specific_qualifying == 0
             )
         else:
             _discriminating_term = ""
             _pages_with_overlap = len(candidates)   # no key terms → skip check
+            _min_specific_qualifying = len(candidates)
 
         _gap = self._gap_score_threshold > 0 and (
             len(candidates) < 3                          # signal 1: too few pages
             or _max_score < self._gap_score_threshold    # signal 2: low BM25 scores
             or _pages_with_overlap < 2                   # signal 3: no dedicated coverage
+            or _any_term_missing                         # signal 4: defining concept absent
+            or _defining_term_absent                     # signal 5: defining term barely present
         )
 
         # Always log retrieval quality so operators can tune gap_score_threshold.
         logger.info(
             "query retrieval — pages=%d, max_score=%.2f, "
-            "discriminating_term=%r, on_topic_pages=%d, gap=%s",
-            len(candidates), _max_score, _discriminating_term, _pages_with_overlap, _gap,
+            "discriminating_term=%r, on_topic_pages=%d, min_qualifying=%d, gap=%s",
+            len(candidates), _max_score, _discriminating_term,
+            _pages_with_overlap, _min_specific_qualifying, _gap,
         )
         if _gap:
             _suggested = await SearchDecomposeAgent(self._provider).decompose(question)
@@ -224,10 +283,22 @@ class QueryAgent:
             if (p := self._store.read_page(r.slug))
         ) or "No relevant pages found."
 
+        if _gap:
+            synthesis_prompt = (
+                f"The wiki does not yet have a page on this topic. "
+                f"Answer the question using your general knowledge, then note in one sentence "
+                f"that the wiki does not currently cover this topic and suggest the user enriches it.\n\n"
+                f"Question: {question}\n\n"
+                f"Wiki pages available (unrelated to this question):\n{context}"
+            )
+        else:
+            synthesis_prompt = (
+                f"Answer using ONLY these wiki pages. Cite with [[PageTitle]].\n\n"
+                f"Question: {question}\n\nPages:\n{context}"
+            )
+
         resp2 = await self._provider.complete(
-            messages=[Message(role="user",
-                content=f"Answer using ONLY these wiki pages. Cite with [[PageTitle]].\n\n"
-                        f"Question: {question}\n\nPages:\n{context}")],
+            messages=[Message(role="user", content=synthesis_prompt)],
             temperature=0.0,
         )
         logger.info("query answered — %d page(s) cited, %d tokens",
