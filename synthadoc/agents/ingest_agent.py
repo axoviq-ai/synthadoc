@@ -92,8 +92,6 @@ _OVERVIEW_PROMPT = (
     "Pages:\n{pages}"
 )
 
-
-
 _SLUG_BLACKLIST = frozenset({
     "wikilinks", "wikilink", "wiki", "obsidian", "dataview",
     # URL path segments that are never meaningful topic names
