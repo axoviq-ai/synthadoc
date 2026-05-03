@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 from synthadoc.agents.lint_agent import LintAgent, LintReport, find_orphan_slugs, LINT_SKIP_SLUGS, LINT_SKIP_SOURCE_SLUGS
 from synthadoc.providers.base import CompletionResponse
 from synthadoc.storage.wiki import WikiStorage, WikiPage
-from synthadoc.storage.log import LogWriter
+from synthadoc.storage.log import LogWriter, AuditDB
 
 
 @pytest.mark.asyncio
@@ -213,3 +213,31 @@ async def test_lint_cjk_contradiction_detected(tmp_wiki):
     report = await agent.lint(scope="contradictions")
 
     assert report.contradictions_found == 1
+
+
+@pytest.mark.asyncio
+async def test_lint_records_contradiction_found_audit_event(tmp_wiki):
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("p1", WikiPage(title="P1", tags=[], content="⚠ conflict",
+        status="contradicted", confidence="low", sources=[]))
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    audit = AsyncMock(spec=AuditDB)
+    agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log, audit_db=audit)
+    await agent.lint(scope="contradictions", job_id="job-123")
+    audit.record_audit_event.assert_awaited_once_with("job-123", "contradiction_found", {"slug": "p1"})
+
+
+@pytest.mark.asyncio
+async def test_lint_records_auto_resolved_audit_event(tmp_wiki):
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("p1", WikiPage(title="P1", tags=[], content="⚠ conflict",
+        status="contradicted", confidence="low", sources=[]))
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    audit = AsyncMock(spec=AuditDB)
+    provider = AsyncMock()
+    provider.complete.return_value = CompletionResponse(text="Resolved.", input_tokens=10, output_tokens=5)
+    agent = LintAgent(provider=provider, store=store, log_writer=log, audit_db=audit)
+    await agent.lint(scope="contradictions", auto_resolve=True, job_id="job-456")
+    calls = [c.args for c in audit.record_audit_event.await_args_list]
+    assert ("job-456", "contradiction_found", {"slug": "p1"}) in calls
+    assert ("job-456", "auto_resolved", {"slug": "p1"}) in calls

@@ -14,7 +14,7 @@
       '-+###############+-'
 
        S Y N T H A D O C
-    Community Edition  v0.2.0
+    Community Edition  v0.3.0
   ────────────────────────────────
   Domain-agnostic LLM wiki engine
 ```
@@ -24,17 +24,18 @@
 [![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://github.com/axoviq-ai/synthadoc/blob/main/LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-yellow.svg)](https://www.python.org/)
 [![Skills](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fmain%2Fdocs%2Fbadges.json&query=%24.skills&label=Skills&color=purple)](https://github.com/axoviq-ai/synthadoc/tree/main/synthadoc/skills)
+[![Hooks](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fmain%2Fdocs%2Fbadges.json&query=%24.hooks&label=Hook%20events&color=teal)](https://github.com/axoviq-ai/synthadoc/tree/main/hooks)
 [![CLI](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fmain%2Fdocs%2Fbadges.json&query=%24.cli_commands&label=CLI%20commands&color=darkblue)](https://github.com/axoviq-ai/synthadoc)
 [![Obsidian](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fmain%2Fdocs%2Fbadges.json&query=%24.obsidian_commands&label=Obsidian%20commands&color=blueviolet)](https://github.com/axoviq-ai/synthadoc/tree/main/obsidian-plugin)
-[![Version](https://img.shields.io/badge/Community%20Edition-v0.2.0-orange.svg)](https://github.com/axoviq-ai/synthadoc)
+[![Version](https://img.shields.io/badge/Community%20Edition-v0.3.0-orange.svg)](https://github.com/axoviq-ai/synthadoc)
 
-**Document version: v0.2.0**
+**Document version: v0.3.0**
 
 **Engineered for solo users and enterprises alike, providing a domain-specific knowledge base that scales seamlessly while maintaining accuracy through autonomous self-optimization.**
 
 > Built for individuals, small teams, and large organizations who need a knowledge base that stays accurate as documents accumulate.
 
-Synthadoc reads your raw source documents — PDFs, spreadsheets, PPTs, web pages, images, Word files, TXTs — and uses an LLM to synthesize them into a persistent, structured wiki. Cross-references are built automatically, contradictions are detected and surfaced, orphan pages are flagged, and every answer cites its sources. Outputs are stored as local Markdown files, ensuring seamless integration and autonomous management within [Obsidian](https://obsidian.md) or any wiki-compliant ecosystem.
+Synthadoc reads your raw source documents — PDFs, spreadsheets, PPTs, web pages, images, videos, Word files, TXTs — and uses an LLM to synthesize them into a persistent, structured wiki. Cross-references are built automatically, contradictions are detected and surfaced, orphan pages are flagged, and every answer cites its sources. Outputs are stored as local Markdown files, ensuring seamless integration and autonomous management within [Obsidian](https://obsidian.md) or any wiki-compliant ecosystem.
 
 ---
 
@@ -70,7 +71,7 @@ Most knowledge-management tools retrieve and summarize at query time. Synthadoc 
 | LLM wiki vs. RAG         | Pre-compiled structured knowledge beats query-time synthesis for contradiction detection, graph traversal, and offline access                                                                                 |
 | CLI / HTTP               | A unified interface via CLI and RESTful endpoints, the system streamlines full-spectrum integration: from data ingestion and querying to automated linting, security auditing, and job orchestration          |
 | Local-first              | All data stays on your machine; localhost-only network binding; no cloud dependency except the LLM API itself                                                                                                 |
-| Provider choice          | LLM backends including free-tier Gemini and Groq, plus DeepSeek and MiniMax for cheapest paid text rates — no single-vendor dependency                                                                                    |
+| Provider choice          | LLM backends including free-tier Gemini and Groq, paid Anthropic/OpenAI/DeepSeek/MiniMax, local Ollama, and coding-tool CLI providers (Claude Code, Opencode) — no API key required if you already have a subscription |
 
 ---
 
@@ -140,6 +141,9 @@ As the wiki accumulates pages the `index.md` table of contents, domain scope (`p
 | Web search decomposition     | **Yes** (parallel Tavily)                                      | No          | No         | No        |
 | Semantic re-ranking (vector) | **Yes** (optional fastembed)                                   | Varies      | No         | No        |
 | Scaffold automation          | **Yes**                                                        | No          | No         | No        |
+| Coding tool as LLM provider  | **Yes** (Claude Code, Opencode — no API key)                   | No          | No         | No        |
+| YouTube transcript ingest    | **Yes** (standard + Shorts, no API key, timestamped)           | No          | No         | No        |
+| Multilingual / CJK queries   | **Yes** (Chinese, Japanese, Korean — no false gaps)            | Limited     | No         | No        |
 
 ### Key differentiators vs. RAG
 
@@ -177,10 +181,10 @@ See [docs/design.md — Appendix A: Release Feature Index](docs/design.md#append
 | Python         | 3.11+   |                                     |
 | Node.js        | 18+     | Obsidian plugin build only          |
 | Git            | any     |                                     |
-| LLM API key    | —      | At least one required (see below)   |
+| LLM API key    | —      | At least one required — unless using Claude Code or Opencode (see below) |
 | Tavily API key | —      | Optional — web search feature only |
 
-**LLM API key — at least one required:**
+**LLM API key — at least one required** (unless using Claude Code or Opencode — see the last two rows below):
 
 
 | Provider         | Free tier                                     | Vision          | Get key                                                       |
@@ -192,6 +196,8 @@ See [docs/design.md — Appendix A: Release Feature Index](docs/design.md#append
 | DeepSeek         | No — pay-per-token (very cheap text rates)   | No              | [platform.deepseek.com](https://platform.deepseek.com/api_keys) |
 | Anthropic        | No                                            | Yes             | [console.anthropic.com](https://console.anthropic.com/)       |
 | OpenAI           | No                                            | Yes             | [platform.openai.com](https://platform.openai.com/api-keys)   |
+| **Claude Code**  | Included with subscription — no API key      | No              | Set `provider = "claude-code"` in config.toml                 |
+| **Opencode**     | Included with subscription — no API key      | No              | Set `provider = "opencode"` in config.toml                    |
 
 **Tavily API key (optional — enables web search):**
 Get a free key at [tavily.com](https://tavily.com). Without it, web search jobs will fail but all other features work normally.
@@ -233,7 +239,7 @@ npm test         # runs Vitest unit tests
 
 ### Step 4 — Set your API keys
 
-**At least one LLM API key is required** — Synthadoc will not start without one.
+**At least one LLM API key is required** — unless you use Claude Code or Opencode as your provider, in which case no separate API key is needed (see [Coding tool CLI providers](docs/design.md#provider-switching)).
 
 Synthadoc defaults to **Gemini Flash** as the LLM provider — it's free, requires no
 credit card, and offers 1 million tokens per day. Get a key at
@@ -281,7 +287,7 @@ synthadoc --version
 
 A **wiki** is a self-contained, structured knowledge base — a folder of Markdown pages linked by topic, maintained and cross-referenced automatically by Synthadoc. Think of it as a living document that grows smarter with every source you feed it: each ingest pass adds new pages, updates existing ones, and flags contradictions. For your own work, you can build and grow a domain-specific wiki — whether that's market research, a technical knowledge base, or a team handbook — and query it in plain English or other languages at any time.
 
-A wiki must be installed before the engine can serve it. The fastest way to get started is the **History of Computing** demo, which ships with 10 pre-built pages and sample source files — no LLM API key required to browse it.
+A wiki must be installed before the engine can serve it. The fastest way to get started is the **History of Computing** demo, which ships with 13 pre-built pages and sample source files — no LLM API key required to browse it.
 
 **Install the demo wiki:**
 
@@ -336,9 +342,10 @@ The guide covers:
 7. Resolve a contradiction
 8. Fix an orphan page
 9. Web search ingestion with automatic decomposition
-10. Enrich the wiki with scaffold (regenerate/update index, purpose, AGENTS.md)
-11. Audit features (token cost, history, events)
-12. Schedule recurring operations
+10. Ingest a YouTube video
+11. Enrich the wiki with scaffold (regenerate/update index, purpose, AGENTS.md)
+12. Audit features (token cost, history, events)
+13. Schedule recurring operations
 
 ---
 
@@ -728,7 +735,7 @@ synthadoc audit events -w my-wiki           # table: timestamp, job_id, event ty
 synthadoc audit events --json -w my-wiki    # raw JSON
 ```
 
-> **Note:** In v0.1, `cost_usd` for ingest was always `$0.0000`. In v0.2, query costs are tracked using an approximate rate. Per-model pricing tables are planned for a future release — token counts are always accurate.
+> **Note:** Per-model cost tracking is live from v0.2.0 — pricing tables cover all 7 API providers. Token counts and USD cost are recorded for every ingest and query operation in `audit.db`.
 
 ### Cache management
 

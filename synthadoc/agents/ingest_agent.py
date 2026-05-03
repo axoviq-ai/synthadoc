@@ -9,7 +9,7 @@ import logging
 import re
 import unicodedata
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -20,11 +20,10 @@ from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.log import AuditDB, LogWriter
 from synthadoc.storage.search import HybridSearch
 from synthadoc.storage.wiki import SourceRef, WikiPage, WikiStorage
-
-logger = logging.getLogger(__name__)
-
 from synthadoc.skills.web_search.scripts.main import _INTENT_RE as _WEB_INTENT_RE
 from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -225,10 +224,9 @@ class IngestAgent:
             temperature=0.3,
             max_tokens=512,
         )
-        from datetime import date as _date
         content = (
             f"---\ntitle: Wiki Overview\nstatus: auto\n"
-            f"updated: {_date.today().isoformat()}\n---\n\n"
+            f"updated: {date.today().isoformat()}\n---\n\n"
             f"# Wiki Overview\n\n{resp.text.strip()}\n"
         )
         (wiki_dir / "overview.md").write_text(content, encoding="utf-8", newline="\n")
@@ -477,7 +475,7 @@ class IngestAgent:
                         body = page_content.strip()
                     else:
                         body = f"# {title}\n\n{text[:4000]}"
-                    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                    today = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
                     new_page = WikiPage(
                         title=title, tags=tags,
                         content=body,

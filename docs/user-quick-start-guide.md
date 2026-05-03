@@ -1,6 +1,6 @@
 ﻿# Synthadoc User Quick-Start Guide
 
-**Version: v0.2.0 (Community Edition)**
+**Version: v0.3.0 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 10 pre-built pages and six raw source files that cover every
@@ -476,6 +476,14 @@ synthadoc ingest raw_sources/konrad-zuse-z3-computer.md
 > **Requires `TAVILY_API_KEY`** — see [Appendix D](#appendix-d--tavily-web-search-key).
 > Without it, web search jobs fail with `[ERR-SKILL-004]`. All other features work normally.
 
+### What's new in v0.3.0
+
+- **Coding tool CLI providers** — set `provider = "claude-code"` or `provider = "opencode"` in `config.toml` to run all agents using your existing Claude Code or Opencode subscription, with no separate API key required. See [Appendix G](#appendix-g--using-claude-code-or-opencode-as-llm-provider) for setup.
+- **YouTube transcript ingest** — ingest any YouTube video (standard or Shorts) by URL. Captions are extracted automatically with no API key, and each page opens with an LLM-generated executive summary followed by a timestamped transcript.
+- **Knowledge gap detection** — improved reliability across multi-aspect queries; CJK (Chinese, Japanese, Korean) queries no longer produce false gap reports.
+- **Session wiki resolution** — `synthadoc use <name>` saves your active wiki so `-w` is optional on every subsequent command.
+- **DeepSeek provider** — eighth LLM provider added; very low text-only rates.
+
 ### What's new in v0.2.0
 
 Synthadoc now **decomposes web search topics** into multiple focused keyword sub-queries
@@ -572,10 +580,12 @@ The modal prepends `search for:` automatically — just type the topic, no prefi
 ## Step 10 — Ingest a YouTube video
 
 Pass any YouTube URL directly — the transcript is extracted automatically from the
-YouTube caption system (no API key, no audio download):
+YouTube caption system (no API key, no audio download). Standard videos and **YouTube
+Shorts** (`https://www.youtube.com/shorts/...`) are both supported:
 
 ```bash
 synthadoc ingest "https://www.youtube.com/watch?v=O5nskjZ_GoI"
+synthadoc ingest "https://youtu.be/O5nskjZ_GoI"              # short-link form
 ```
 
 This ingests *Early Computing: Crash Course Computer Science #1*, which covers Hollerith,
@@ -722,6 +732,8 @@ Expected after Steps 6–8:
 
 Records every contradiction detection, auto-resolution, and cost gate trigger.
 
+![synthadoc audit events output](png/synthadoc-audit-events.png)
+
 ---
 
 ## Step 13 — Scheduling recurring operations
@@ -802,37 +814,36 @@ All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synt
 ### Ingest
 
 
-| Command                                    | What it does                                                                                                                                                                                                                       |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Synthadoc: Ingest: current file`          | Ingests the active note. If no file is open, shows a file picker scoped to`raw_sources/`.                                                                                                                                          |
-| `Synthadoc: Ingest: all sources in folder` | Scans the`raw_sources` folder and queues every supported file for ingestion.                                                                                                                                                       |
-| `Synthadoc: Ingest: from URL...`           | Modal — paste any URL and queue it for fetch and ingestion.                                                                                                                                                                       |
-| `Synthadoc: Ingest: web search...`         | Live-polling modal — type a topic, set max results (1–50, default 20) and poll interval (500–10000 ms, default 2000 ms). Shows phase text, live pages list, and URL errors as fan-out jobs complete.`Ctrl/Cmd+Enter` to submit. |
+| Command                                    | What it does                                                                                                                                                                                                                              |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Synthadoc: Ingest: current file`          | Ingests the active note with live progress polling. If no file is open, shows a file picker scoped to `raw_sources/`.                                                                                                                     |
+| `Synthadoc: Ingest: all sources in folder` | Scans the `raw_sources` folder and queues every supported file for ingestion.                                                                                                                                                             |
+| `Synthadoc: Ingest: from URL...`           | Modal — paste any URL and queue it for fetch and ingestion. Polls job status live and shows progress until the job settles.                                                                                                               |
+| `Synthadoc: Ingest: web search...`         | Live-polling modal — type a topic, set max results (1–50, default 20) and poll interval (500–10000 ms, default 2000 ms). Shows phase text, live pages list, and URL errors as fan-out jobs complete. `Ctrl/Cmd+Enter` to submit. |
 
 ### Query
 
 
 | Command                             | What it does                                                                                                                                                                                                                                 |
 | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Synthadoc: Query: ask the wiki...` | Responsive modal — ask a natural-language question, get a markdown answer with clickable`[[wikilinks]]` to source pages. `Ctrl/Cmd+Enter` to submit. If a knowledge gap is detected, shows a callout with suggested `search for:` commands. |
+| `Synthadoc: Query: ask the wiki...` | Responsive modal — ask a natural-language question, get a markdown answer with clickable `[[wikilinks]]` to source pages. `Ctrl/Cmd+Enter` to submit. If a knowledge gap is detected, shows a callout with suggested `search for:` commands. |
 
 ### Lint
 
 
-| Command                                  | What it does                                                                                 |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `Synthadoc: Lint: run`                   | Runs lint in the background; notification shows contradiction + orphan counts when complete. |
-| `Synthadoc: Lint: run with auto-resolve` | Same as above but resolves contradictions ≥ 85% confidence automatically.                   |
-| `Synthadoc: Lint: report`                | Full lint report — contradicted pages and orphans with suggested index entries.             |
+| Command                   | What it does                                                                                                                                              |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Synthadoc: Lint: run...` | Modal with **Auto-resolve** checkbox. Runs a full lint pass; polls progress live and reports contradiction + orphan counts when complete. Tick the checkbox to automatically resolve contradictions at ≥ 85% confidence. |
+| `Synthadoc: Lint: report` | Full lint report — contradicted pages and orphans with suggested index entries.                                                                           |
 
 ### Jobs
 
 
-| Command                                        | What it does                                                                                    |
-| ---------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `Synthadoc: Jobs: list...`                     | Job table with status-filter dropdown (pending, in_progress, completed, failed, skipped, dead). |
-| `Synthadoc: Jobs: retry dead job...`           | Lists all dead jobs with a**Retry** button per job.                                             |
-| `Synthadoc: Jobs: purge old completed/dead...` | Removes completed and dead jobs older than N days (default: 7).                                 |
+| Command                                           | What it does                                                                                             |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `Synthadoc: Jobs: list...`                        | Job table with status-filter dropdown (pending, in_progress, completed, failed, skipped, dead).          |
+| `Synthadoc: Jobs: retry failed or dead jobs...`   | Multi-select table of all failed and dead jobs; all checkboxes pre-ticked. Polls progress live until all selected jobs settle. |
+| `Synthadoc: Jobs: purge old completed/dead...`    | Removes completed and dead jobs older than N days (default: 7).                                          |
 
 > **Tip — cancelling a bad batch:** `synthadoc jobs cancel -w <wiki> --yes` marks every
 > pending job as `skipped` immediately. Follow up with `synthadoc jobs purge` to remove
@@ -841,18 +852,30 @@ All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synt
 ### Wiki
 
 
-| Command                                   | What it does                                                                                            |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `Synthadoc: Wiki: regenerate scaffold...` | Rewrites`index.md`, `AGENTS.md`, and `purpose.md` using the LLM. All existing wiki pages are preserved. |
+| Command                                   | What it does                                                                                                                          |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `Synthadoc: Wiki: regenerate scaffold...` | Rewrites `index.md`, `AGENTS.md`, and `purpose.md` using the LLM. Polls job status live. All existing wiki pages are preserved. |
 
 ### Audit
 
 
-| Command                               | What it does                                                                              |
-| ------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `Synthadoc: Audit: ingest history...` | Table of recent ingest records — source, pages created/updated, tokens, cost, timestamp. |
-| `Synthadoc: Audit: cost summary...`   | Token totals + USD cost with daily breakdown for the last N days.                         |
-| `Synthadoc: Audit: query history...`  | Recent questions, sub-question counts, token usage, cost per query.                       |
+| Command                               | What it does                                                                                       |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `Synthadoc: Audit: ingest history...` | Table of recent ingest records — source, pages created/updated, tokens, cost, timestamp.          |
+| `Synthadoc: Audit: cost summary...`   | Token totals + USD cost with daily breakdown for the last N days.                                  |
+| `Synthadoc: Audit: query history...`  | Recent questions, sub-question counts, token usage, cost per query.                                |
+| `Synthadoc: Audit: events...`         | Table of system events — contradictions found, auto-resolutions, cost gate triggers. Customisable limit (default 100, max 1000). |
+
+**Supported event types:**
+
+| Event | When it is recorded |
+| ---------------------- | -------------------------------------------------------------------- |
+| `contradiction_found`  | Lint detected a page with contradicted status.                       |
+| `auto_resolved`        | Lint resolved a contradiction via `--auto-resolve`.                  |
+| `domain_auto_blocked`  | A domain was auto-blocked after repeated HTTP errors during ingest.  |
+| `job_deleted`          | A job was explicitly deleted by the user from the Jobs list.         |
+
+> **UX note:** All modals are draggable and support full text selection and copy-paste.
 
 ### Ribbon icon
 

@@ -123,7 +123,6 @@ class Orchestrator:
     async def _run_ingest(self, job_id: str, source: str, auto_confirm: bool,
                           force: bool = False, max_results: int | None = None) -> None:
         # auto_confirm is reserved for when user-facing confirmation prompts are added.
-        # Cost tracking is live in v0.2 but cost_guard.check() is not yet enforced here.
         from synthadoc.agents.ingest_agent import IngestAgent
         from synthadoc.skills.web_search.scripts.main import _INTENT_RE as _WEB_SEARCH_RE
         try:
@@ -352,7 +351,8 @@ class Orchestrator:
                 provider=make_provider("lint", self._cfg),
                 store=self._store, log_writer=self._log,
                 confidence_threshold=self._cfg.cost.auto_resolve_confidence_threshold,
-            ).lint(scope=scope, auto_resolve=auto_resolve)
+                audit_db=self._audit,
+            ).lint(scope=scope, auto_resolve=auto_resolve, job_id=job_id)
             await self._queue.complete(job_id)
             self._hooks.fire("on_lint_complete", {
                 "event": "on_lint_complete", "wiki": str(self._root),

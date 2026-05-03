@@ -1,6 +1,6 @@
 # Synthadoc — Design Document
 
-**Version:** 0.2.0 (released 2026-04-25)  
+**Version:** 0.3.0 (released 2026-05-02)  
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -1142,17 +1142,19 @@ The HTTP server always passes `auto_confirm=True` (no interactive terminal avail
 
 ```
 pending → in_progress → completed
-                      → failed    (non-retryable error; permanent, no retry)
-                      → pending   (retryable error; retries < max_retries, after backoff)
-                      → dead      (retryable error; retries == max_retries)
-                      → skipped   (deliberately not retried; e.g. auto-blocked domain)
+                      → failed     (non-retryable error; permanent, no retry)
+                      → pending    (retryable error; retries < max_retries, after backoff)
+                      → dead       (retryable error; retries == max_retries)
+                      → skipped    (system-initiated skip; e.g. auto-blocked domain)
+pending → cancelled   (user-initiated cancel via `synthadoc jobs cancel`)
 ```
 
 | Status | Meaning | Action |
 |--------|---------|--------|
 | `failed` | Non-retryable error (e.g. stub skill, bad source) | Inspect error; fix source; enqueue again |
 | `dead` | Retryable error exhausted max retries | `synthadoc jobs retry <id>` to reset to pending |
-| `skipped` | Permanently skipped without retry (e.g. domain auto-blocked after 403) | No action needed; remove from blocked list to re-enable |
+| `skipped` | System-initiated permanent skip (e.g. domain auto-blocked after repeated 403s) | No action needed; remove domain from blocked list to re-enable |
+| `cancelled` | Pending job cancelled by user via `synthadoc jobs cancel` | Re-enqueue manually if cancelled in error |
 
 **Backoff formula:** `backoff_base_seconds × 2^(retry_count) × jitter`  
 where `jitter ∈ [0.8, 1.2]` (±20% random). Applied only to retryable errors (LLM API timeouts, 5xx responses).
@@ -1441,3 +1443,8 @@ echo "Event $event fired on wiki $wiki" | mail -s "Synthadoc notification" you@e
 - **Longest-prefix URL routing** — `detect_skill` now selects the skill whose trigger prefix is the longest match, rather than the first match. This makes YouTube URLs reliably route to the YouTube skill ahead of the generic URL skill, and will correctly handle any future URL-specific skills without priority fields.
 - **v0.2.0 gap fixes** — Ollama `eval_count` mapped to `output_tokens` (was always 0); `_SLUG_BLACKLIST` moved to module-level `frozenset`; synthetic URL fields in ingest_agent commented; four test-coverage gaps closed (no-text guard, orphan flag inversion, `/analyse` endpoint, hybrid-search partial-miss fallback)
 - **Coding tool CLI providers (`claude-code`, `opencode`)** — users with a Claude Code or Opencode subscription can set `provider = "claude-code"` (or `"opencode"`) in `config.toml` and run all three agents (ingest, query, lint) without a separate API key. `CodingToolCLIProvider` abstract base handles subprocess mechanics (stdin prompt passing, timeout, exit code, stderr capture); `ClaudeCodeCLIProvider` and `OpencodeProvider` each implement `_build_command()`, `_parse_output()`, and `_is_quota_exhausted()`. Quota exhaustion raises `CodingToolQuotaExhaustedException` and permanently fails the job with a clear retry message. `synthadoc serve --provider <name>` overrides `config.toml` for the lifetime of the server process. Vector search falls back to BM25-only (CLI providers do not support `embed()`). Codex support planned for v0.4.0.
+- **Knowledge gap detection hardening** — signal 5 redesigned from single-discriminating-term check to `min(qualifying_pages per specific term) == 0`, making multi-aspect queries deterministic; Windows asyncio `ConnectionResetError` (WinError 10054) downgraded from ERROR to DEBUG via a scoped exception handler; `aiosqlite` and `asyncio` noisy DEBUG output silenced.
+- **CJK multilingual query support** — Chinese, Japanese, and Korean queries no longer trigger false knowledge-gap reports. `QueryAgent._key_terms` now detects CJK character ranges and skips whitespace-based tokenization (which produces whole-sentence tokens with doc_freq=0), leaving signals 1 and 2 (page count and BM25 score) active for language-agnostic coverage assessment.
+- **ImageSkill standalone refactor** — `ImageSkill` now accepts `provider=` and performs the vision LLM call itself, returning populated text and token counts in `ExtractedContent`. `IngestAgent` injects its provider via `skill_kwargs` (same pattern as `YoutubeSkill`) and no longer contains a special `is_image` branch. The skill is now usable independently of the Synthadoc pipeline.
+- **YouTube executive summary** — each ingested YouTube video page opens with an LLM-generated executive summary (what the video is about, main topics, key takeaway) followed by the full timestamped transcript. Summary is generated once and cached; CJK transcripts receive a higher word-limit for the summary. YouTube Shorts are fully supported alongside standard-length videos.
+- **Obsidian UX improvements** — all modals are draggable and support full text selection and copy-paste; `Lint: run...` consolidates lint and auto-resolve into a single modal with an auto-resolve checkbox; `Jobs: retry failed or dead jobs...` shows a multi-select table with all checkboxes pre-ticked and polls progress live; `Synthadoc: Audit: events...` command added (table of system events with configurable limit); `Ingest: from URL...`, `Ingest: current file`, and `Wiki: regenerate scaffold...` modals all poll job status live.
