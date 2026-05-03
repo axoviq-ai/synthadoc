@@ -123,8 +123,8 @@ class QueryAgent:
         #      use words like "spring", "planting", "Canada").  This check
         #      counts how many retrieved pages actually contain at least one
         #      key noun from the question.  Key terms = question words longer
-        #      than 4 chars that are not in _STOPWORDS, stem-truncated by 2
-        #      chars for basic suffix matching (vegetable → vegetabl).
+        #      than 4 chars that are not in _STOPWORDS, with trailing
+        #      plural/punctuation stripped for basic suffix matching.
         #      If fewer than 2 pages pass this test, the wiki lacks on-topic
         #      content regardless of BM25 scores.
         #
