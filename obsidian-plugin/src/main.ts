@@ -342,10 +342,7 @@ class IngestConfirmModal extends Modal {
 
                         if (status === "completed") {
                             const res = job.result ?? {};
-                            const parts: string[] = [];
-                            if (res.pages_created?.length) parts.push(`created: ${res.pages_created.join(", ")}`);
-                            if (res.pages_updated?.length) parts.push(`updated: ${res.pages_updated.join(", ")}`);
-                            if (res.pages_flagged?.length) parts.push(`flagged: ${res.pages_flagged.join(", ")}`);
+                            const parts = jobResultSummary(res);
                             out.empty();
                             out.createEl("p", { text: "✅ Done." }).style.cssText = "font-weight:bold;margin-bottom:4px";
                             if (parts.length) out.createEl("p", { text: parts.join(" · ") }).style.cssText = "font-size:12px;color:var(--text-muted)";
@@ -452,6 +449,15 @@ const STATUS_EMOJI: Record<string, string> = {
 };
 
 const STATUS_FILTER_OPTIONS = ["pending", "in_progress", "completed", "failed", "skipped", "dead", "cancelled"] as const;
+
+function jobResultSummary(r: Record<string, any>): string[] {
+    const parts: string[] = [];
+    if (r.pages_created?.length) parts.push(`created: ${r.pages_created.join(", ")}`);
+    if (r.pages_updated?.length) parts.push(`updated: ${r.pages_updated.join(", ")}`);
+    if (r.pages_flagged?.length) parts.push(`flagged: ${r.pages_flagged.join(", ")}`);
+    if (r.skip_reason) parts.push(`skipped: ${r.skip_reason}`);
+    return parts;
+}
 
 function makeDraggable(modalEl: HTMLElement, handle: HTMLElement): void {
     if (typeof document === "undefined" || typeof handle.addEventListener !== "function") return;
@@ -709,11 +715,7 @@ class JobsModal extends Modal {
                 td.style.cssText = "padding:4px 8px;border-bottom:1px solid var(--background-modifier-border-subtle)";
             }
             if (job.status === "completed" && job.result) {
-                const r = job.result;
-                const detail: string[] = [];
-                if (r.pages_created?.length) detail.push(`created: ${r.pages_created.join(", ")}`);
-                if (r.pages_updated?.length) detail.push(`updated: ${r.pages_updated.join(", ")}`);
-                if (r.pages_flagged?.length) detail.push(`flagged: ${r.pages_flagged.join(", ")}`);
+                const detail = jobResultSummary(job.result);
                 if (detail.length) {
                     const dtd = tbody.createEl("tr").createEl("td", { text: detail.join(" · ") });
                     dtd.colSpan = 6;
@@ -982,11 +984,7 @@ class IngestUrlModal extends Modal {
                     input.disabled = false;
 
                     if (status === "completed") {
-                        const r = job.result ?? {};
-                        const parts: string[] = [];
-                        if (r.pages_created?.length) parts.push(`created: ${r.pages_created.join(", ")}`);
-                        if (r.pages_updated?.length) parts.push(`updated: ${r.pages_updated.join(", ")}`);
-                        if (r.pages_flagged?.length) parts.push(`flagged: ${r.pages_flagged.join(", ")}`);
+                        const parts = jobResultSummary(job.result ?? {});
                         out.empty();
                         out.createEl("p", { text: "✅ Done." }).style.cssText = "font-weight:bold;margin-bottom:4px";
                         if (parts.length) out.createEl("p", { text: parts.join(" · ") }).style.cssText = "font-size:12px;color:var(--text-muted)";

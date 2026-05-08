@@ -65,6 +65,8 @@ def jobs_status(
         typer.echo(f"Updated:   {', '.join(r['pages_updated'])}")
     if r.get("pages_flagged"):
         typer.echo(f"Flagged:   {', '.join(r['pages_flagged'])}")
+    if r.get("skip_reason"):
+        typer.echo(f"Skipped:   {r['skip_reason']}")
     if r.get("tokens_used"):
         typer.echo(f"Tokens:    {r['tokens_used']}")
 
