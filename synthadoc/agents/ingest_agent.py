@@ -356,8 +356,9 @@ class IngestAgent:
         # Provide safe defaults so the audit call at the end always succeeds.
         if not self._needs_file_check(source):
             p = Path(source.split("?")[0].rstrip("/").split("/")[-1] or "url-source")
-            src_hash = hashlib.sha256(source.encode()).hexdigest()
-            src_size = len(source.encode())
+            _canonical = _canonical_source(source)
+            src_hash = hashlib.sha256(_canonical.encode()).hexdigest()
+            src_size = len(_canonical.encode())
             if not force and await self._already_ingested(src_hash, src_size):
                 result.skipped = True
                 result.skip_reason = "already ingested"
@@ -458,7 +459,9 @@ class IngestAgent:
                     "Educational overviews, introductory content, and tangential sources that touch "
                     "on the wiki's domain should be ingested — the wiki's own directive is "
                     "'when in doubt, ingest and review', so prefer action=\"create\" over action=\"skip\" "
-                    "whenever there is any plausible connection to the scope.\n\n"
+                    "whenever there is any plausible connection to the scope. "
+                    "IMPORTANT: never skip based on source format — a YouTube video, podcast transcript, "
+                    "or introductory lecture about an in-scope topic must be ingested, not skipped.\n\n"
                 )
                 decision_prompt = purpose_block + _DECISION_PROMPT
             resp2 = await self._provider.complete(
@@ -515,18 +518,32 @@ class IngestAgent:
             result.pages_flagged.append(target)
 
         elif action == "update" and target and self._store.page_exists(target):
-            policy = self._staging_policy()
-            with self._store.page_lock(target):
-                page = self._store.read_page(target)
-                if page:
-                    section = update_content or f"## From {p.name}\n\n{text[:1000]}"
-                    page.content = page.content.rstrip() + f"\n\n{section}"
-                    staged = self._write_or_stage(target, page, policy)
-            if staged:
-                logger.info("ingest: staged update to candidates slug=%s source=%s", target, source[:80])
+            if not text and not update_content:
+                logger.warning(
+                    "ingest: update skipped for slug=%s — no extractable content from %s",
+                    target, source[:80]
+                )
+                result.skipped = True
+                result.skip_reason = "no extractable text"
             else:
-                logger.info("ingest: updated page slug=%s source=%s", target, source[:80])
-            result.pages_updated.append(target)
+                policy = self._staging_policy()
+                staged = False
+                with self._store.page_lock(target):
+                    page = self._store.read_page(target)
+                    if page:
+                        if extracted.metadata.get("has_summary"):
+                            section = extracted.text
+                        elif update_content:
+                            section = update_content
+                        else:
+                            section = f"## From {p.name}\n\n{text[:1000]}"
+                        page.content = page.content.rstrip() + f"\n\n{section}"
+                        staged = self._write_or_stage(target, page, policy)
+                if staged:
+                    logger.info("ingest: staged update to candidates slug=%s source=%s", target, source[:80])
+                else:
+                    logger.info("ingest: updated page slug=%s source=%s", target, source[:80])
+                result.pages_updated.append(target)
 
         else:  # "create" or fallback
             # Don't create a page if there's no content to put in it
