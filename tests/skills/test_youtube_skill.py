@@ -256,8 +256,8 @@ async def test_extract_summary_llm_failure_falls_back():
 
 
 @pytest.mark.asyncio
-async def test_summary_uses_limit_200_for_latin():
-    """Latin transcript → prompt must contain '200 words'."""
+async def test_summary_uses_limit_1000_for_latin():
+    """Latin transcript → prompt must contain '1000 words'."""
     from synthadoc.providers.base import CompletionResponse
     from synthadoc.skills.youtube.scripts.main import YoutubeSkill
 
@@ -273,12 +273,12 @@ async def test_summary_uses_limit_200_for_latin():
     with patch("synthadoc.skills.youtube.scripts.main.asyncio.to_thread",
                new=AsyncMock(return_value=_fake_transcript())):
         await skill.extract("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
-    assert "200 words" in captured_prompt[0]
+    assert "1000 words" in captured_prompt[0]
 
 
 @pytest.mark.asyncio
-async def test_summary_uses_limit_400_for_cjk():
-    """CJK transcript → prompt must contain '400 words'."""
+async def test_summary_uses_limit_2000_for_cjk():
+    """CJK transcript → prompt must contain '2000 words'."""
     from types import SimpleNamespace
     from synthadoc.providers.base import CompletionResponse
     from synthadoc.skills.youtube.scripts.main import YoutubeSkill
@@ -300,4 +300,4 @@ async def test_summary_uses_limit_400_for_cjk():
     with patch("synthadoc.skills.youtube.scripts.main.asyncio.to_thread",
                new=AsyncMock(return_value=cjk_snippets)):
         await skill.extract("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
-    assert "400 words" in captured_prompt[0]
+    assert "2000 words" in captured_prompt[0]

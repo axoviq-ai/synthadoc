@@ -27,6 +27,9 @@ major engine feature. No setup beyond following the steps below is required.
 11. [Enrich the wiki with scaffold](#step-11--enrich-the-wiki-with-scaffold)
 12. [Audit features](#step-12--audit-features)
 13. [Scheduling recurring operations](#step-13--scheduling-recurring-operations)
+14. [Set up ROUTING.md — scoped search](#step-14--set-up-routingmd--scoped-search)
+15. [Configure candidates staging](#step-15--configure-candidates-staging)
+16. [Build a context pack](#step-16--build-a-context-pack)
 
 **Appendices**
 
@@ -36,6 +39,7 @@ major engine feature. No setup beyond following the steps below is required.
 - [Appendix D — Tavily web search key](#appendix-d--tavily-web-search-key)
 - [Appendix E — Configuration](#appendix-e--configuration)
 - [Appendix G — Using a Coding Tool as Your LLM Provider](#appendix-g--using-a-coding-tool-as-your-llm-provider)
+- [Appendix H — BM25 Routing Performance Benchmarks](#appendix-h--bm25-routing-performance-benchmarks)
 
 ---
 
@@ -545,7 +549,7 @@ Limit how many URLs are enqueued (default: 20):
 synthadoc ingest "search for: quantum computing IBM Google" --max-results 5
 ```
 
-**Batch via manifest file:** create `raw_sources/web-searches.txt`:
+**Batch via manifest file:** the demo wiki ships a `sources.txt` at the wiki root (outside `raw_sources/` — a `.txt` inside that folder would be treated as a text document rather than a manifest). It already contains these web search entries alongside YouTube and PDF sources:
 
 ```
 search for: Dennis Ritchie C programming language Bell Labs history
@@ -554,10 +558,10 @@ search for: Ada Lovelace first programmer Analytical Engine Babbage
 look up: history of ARPANET and internet origins
 ```
 
-Then ingest all at once:
+Ingest all sources at once:
 
 ```bash
-synthadoc ingest --file raw_sources/web-searches.txt
+synthadoc ingest --file sources.txt
 ```
 
 ### Web search from Obsidian — live view
@@ -597,15 +601,8 @@ synthadoc ingest "https://youtu.be/O5nskjZ_GoI"              # short-link form
 
 This ingests *Early Computing: Crash Course Computer Science #1*, which covers Hollerith,
 Babbage, Lovelace, and the first programmable machines — a natural fit for the demo wiki.
-
-The demo wiki also ships a `sources.txt` manifest at the project root (outside
-`raw_sources/` — files in that folder are batch-ingested as documents, so a `.txt`
-there would be treated as a text file rather than a URL list). The manifest mixes
-source types to show what batch ingestion can handle in one pass:
-
-```bash
-synthadoc ingest --file sources.txt
-```
+The YouTube entries in `sources.txt` (see Step 9) include this video, so running
+`synthadoc ingest --file sources.txt` handles it alongside the web searches.
 
 The wiki page opens with an **executive summary** — a brief description of what the video
 covers, the main topics as bullet points, and the key takeaway — so you can assess
@@ -677,6 +674,25 @@ To keep the index fresh without manual intervention:
 # Weekly scaffold refresh — every Sunday at 4 AM
 synthadoc schedule add --op "scaffold" --cron "0 4 * * 0"
 ```
+
+### Protect custom content with the scaffold marker
+
+By default, re-running scaffold rewrites the entire `index.md`. If you want to add your own
+intro text, notes, or links that survive future scaffold runs, add the marker on its own line:
+
+```markdown
+My custom wiki intro — maintained by hand.
+
+<!-- synthadoc:scaffold -->
+
+## Pioneers and Visionaries
+- [[alan-turing]]
+...
+```
+
+Everything **above** the marker is your protected zone — scaffold never touches it.
+Everything **below** is rewritten each time. If the marker is absent, scaffold rewrites
+the whole file as before.
 
 ---
 
@@ -794,6 +810,212 @@ synthadoc schedule remove sched-c9f3e201
 > **Production use:** for always-on scheduling, run `synthadoc serve` as a background
 > service (systemd, launchd, or Windows Service) so the server is available when the OS
 > fires the scheduled task.
+
+---
+
+## Step 14 — Set up ROUTING.md — scoped search
+
+As your wiki grows, BM25 searches the full corpus for every query. **ROUTING.md** groups pages
+into named topic branches so queries only search the most relevant slice — reducing noise,
+improving retrieval precision, and significantly cutting search latency on large wikis (see
+[Appendix H](#appendix-h--bm25-routing-performance-benchmarks) for measured results).
+
+### Generate ROUTING.md from your current index
+
+```bash
+synthadoc routing init
+```
+
+This reads the `## Section` headings in `wiki/index.md` and writes `ROUTING.md` at the wiki
+root. Example output:
+
+```
+ROUTING.md created — 5 branches, 12 slugs.
+```
+
+Open `ROUTING.md` — it looks like this:
+
+```markdown
+## Pioneers and Visionaries
+- [[alan-turing]]
+- [[grace-hopper]]
+- [[ada-lovelace]]
+
+## Hardware Milestones
+- [[eniac]]
+- [[von-neumann-architecture]]
+```
+
+### Edit and extend
+
+Add new branches or move slugs by hand. ROUTING.md is just a Markdown file — the format is
+`## BranchName` headings with `- [[slug]]` entries. Each slug should appear in exactly one branch.
+
+If you accidentally list the same slug under two branches, the search result is still correct — `bm25_search` converts the scoped slug list to a set before scoring, so the page is never double-counted. However, the branch assignment becomes ambiguous: a query that picks either branch will find the page regardless of which one was intended. Use `routing validate` to catch these duplicates before they cause confusion.
+
+### Validate and clean
+
+After deleting wiki pages, some slugs in ROUTING.md may dangle. `routing validate` also reports slugs that appear in more than one branch:
+
+```bash
+synthadoc routing validate   # report dangling slugs and cross-branch duplicates (dry run)
+synthadoc routing clean      # remove dangling slugs
+```
+
+Example output when a duplicate is found:
+
+```
+Issues in ROUTING.md (1):
+  [Hardware]  [[alan-turing]] (duplicate — also in 'People')
+```
+
+Fix by removing the entry from the branch where it does not belong, then re-run `validate` to confirm.
+
+### How it works at query time
+
+When the server receives a query it asks the LLM to pick the 1-2 most relevant branches,
+then restricts BM25 to only those slugs. If no branch is clearly relevant it falls back to
+full-corpus search automatically.
+
+New pages created by ingest are auto-placed into the most appropriate branch.
+
+---
+
+## Step 15 — Configure candidates staging
+
+By default, every ingested source that produces a new page writes it directly to `wiki/`.
+**Candidates staging** lets you review new pages before they influence queries and lint.
+
+### Enable staging
+
+```bash
+synthadoc staging policy threshold
+```
+
+With `threshold` policy, pages whose confidence is below the minimum go to
+`wiki/candidates/` instead of `wiki/`. The default minimum is `high`:
+
+```bash
+# Lower the bar — medium-confidence pages also go to candidates/
+synthadoc staging policy threshold --min-confidence medium
+```
+
+Or stage everything for full manual review:
+
+```bash
+synthadoc staging policy all
+```
+
+Changes take effect on the next ingest job — no server restart needed.
+
+### Review candidates after an ingest run
+
+```bash
+synthadoc candidates list
+```
+
+Example output:
+
+```
+Candidates (3):
+  early-internet-history           confidence: medium   ingested: 2026-05-06T14:22:11
+  punch-card-era                   confidence: low      ingested: 2026-05-06T14:22:45
+  vacuum-tube-computers            confidence: medium   ingested: 2026-05-06T14:23:01
+```
+
+### Promote or discard
+
+```bash
+synthadoc candidates promote early-internet-history   # move to wiki/
+synthadoc candidates discard punch-card-era           # delete
+synthadoc candidates promote --all                    # promote everything
+```
+
+### Turn staging off
+
+```bash
+synthadoc staging policy off
+```
+
+---
+
+## Step 16 — Build a context pack
+
+A **context pack** is a token-bounded evidence bundle assembled from the wiki. It decomposes your goal into sub-questions, runs parallel BM25 searches across the wiki, and packs the highest-scoring excerpts into a single cited Markdown document within a token budget.
+
+### Build a pack from the CLI
+
+```bash
+synthadoc context build "early computing pioneers"
+```
+
+Output is Markdown printed to the terminal:
+
+```markdown
+# Context Pack: early computing pioneers
+Generated: 2026-05-07T09:14:22
+Token budget: 4000 | Used: 1823
+
+---
+
+## [[alan-turing]] — relevance: 3.42
+> Alan Turing developed the theoretical basis of modern computation through his 1936 paper
+> on computable numbers. He proposed the concept of a universal machine capable of simulating
+> any algorithm...
+Source: `wiki/alan-turing.md` | Confidence: high | Tags: mathematics, computation
+
+## [[grace-hopper]] — relevance: 2.91
+> Grace Hopper pioneered compiler development and coined the term debugging after finding
+> a moth in a relay. Her work on COBOL brought programming to business users...
+Source: `wiki/grace-hopper.md` | Confidence: high | Tags: programming, navy
+
+## [[ada-lovelace]] — relevance: 2.44
+> Ada Lovelace wrote what is considered the first algorithm intended for a mechanical
+> computer, the Analytical Engine designed by Charles Babbage...
+Source: `wiki/ada-lovelace.md` | Confidence: high | Tags: mathematics, history
+
+---
+
+## Omitted — token budget exceeded
+- [[charles-babbage]] — ~420 tokens
+- [[john-von-neumann]] — ~390 tokens
+```
+
+Each entry is cited with its source page, confidence, and tags. Pages that did not fit within the budget are listed in the omitted section.
+
+### Use cases
+
+**Feed into an external LLM prompt** — paste the terminal output directly into Claude.ai, ChatGPT, or any other chat interface as grounded context before asking a question:
+
+```bash
+synthadoc context build "transistor history and Moore's Law" | pbcopy   # macOS — copies to clipboard
+```
+
+**Save next to a document you are writing** — keep the evidence bundle alongside your draft:
+
+```bash
+synthadoc context build "early computing pioneers" --output ~/drafts/computing-brief.md
+```
+
+**Pipe into another CLI tool** — chain with any tool that reads from stdin:
+
+```bash
+synthadoc context build "Von Neumann architecture" --output /tmp/ctx.md
+llm -f /tmp/ctx.md "write a 500-word article based on this"
+```
+
+### Adjust the token budget
+
+```bash
+synthadoc context build "early computing pioneers" --tokens 2000
+```
+
+Set a permanent default in `config.toml`:
+
+```toml
+[query]
+context_token_budget = 6000
+```
 
 ---
 
@@ -1192,3 +1414,39 @@ Install and authenticate the coding tool first:
 
 - Claude Code: [claude.ai/code](https://claude.ai/code)
 - Opencode: [opencode.ai](https://opencode.ai)
+
+---
+
+## Appendix H — BM25 Routing Performance Benchmarks
+
+Measured on Windows 11, Python 3.14, pytest-benchmark 5.2.3 (`time.perf_counter`).
+Synthetic wiki with 10 branches; scoped tests search 2 branches (~20% of corpus).
+Each result is the median of 5 rounds.
+
+> **What these numbers measure:** The BM25 corpus is built from disk on the first query and then cached in memory for the lifetime of the server process. The reported medians reflect **warm-cache latency** — rounds 2–5 of each benchmark run, where all page content is already in memory. Cold-start latency (the very first query after server start, or immediately after a page write that invalidates the cache) will be higher, proportional to page count and local disk speed. On a running server handling real traffic, warm-cache numbers are representative of typical query latency.
+
+### Scoped search (2 of 10 branches)
+
+| Pages | Median | Min   | Max   |
+|------:|-------:|------:|------:|
+|   100 |  14 ms |  5 ms | 36 ms |
+|   500 |  16 ms |  7 ms | 19 ms |
+|  1000 |   9 ms |  8 ms | 12 ms |
+| 10000 |  41 ms | 39 ms | 50 ms |
+
+Routing keeps latency nearly flat across corpus sizes — the search is bounded by branch size, not total page count.
+
+### Full-corpus search (no routing)
+
+| Pages | Median | Min   | Max    |
+|------:|-------:|------:|-------:|
+|   100 |   7 ms |  6 ms |  32 ms |
+|   500 |  14 ms | 14 ms |  16 ms |
+|  1000 |  22 ms | 21 ms |  31 ms |
+| 10000 | 191 ms |184 ms | 210 ms |
+
+Full-corpus BM25 scales roughly linearly with page count. At 10000 pages the median is 191 ms — comfortably within a 500 ms interactive budget.
+
+### Takeaway
+
+For wikis under ~1000 pages the difference between scoped and full-corpus is negligible (both under 25 ms). At 10000 pages routing delivers a **4–5× speedup** (41 ms vs. 191 ms). Enable ROUTING.md ([Step 14](#step-14--set-up-routingmd--scoped-search)) once your wiki exceeds a few hundred pages.

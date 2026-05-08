@@ -961,8 +961,9 @@ async def test_gap_signal5_defining_term_barely_present(tmp_wiki):
     - Signal 2: gap_score_threshold=0.01 → no fire
     - Signal 3: 2 pages have error/correction ≥ 2 → on_topic_pages=2 ≥ 2 → no fire
     - Signal 4: all 3 terms have doc_freq > 0 → no zero-freq → no fire
-    - Signal 5: quantum_qualifying_pages=0 (never ≥ 2 in any page) →
-                min(quantum=0, error=2, correction=2)=0 → gap=True ✓
+    - Signal 5: guard A: on_topic_pages=2 < n_cands//2=4 → coverage is thin;
+                guard B: "quantum" doc_freq=2 < threshold(3) → genuinely absent;
+                → gap=True ✓
 
     bm25_search is mocked so BM25 IDF behaviour does not affect this test.
     """
@@ -1021,9 +1022,276 @@ async def test_gap_signal5_defining_term_barely_present(tmp_wiki):
                        gap_score_threshold=0.01)  # signal 2 disabled
     with patch.object(agent._search, "bm25_search", return_value=_fake_results(all_slugs)):
         result = await agent.query("What is quantum error correction?")
-    # "quantum" never appears ≥ 2 times in any candidate → min_qualifying=0 → signal 5.
+    # "quantum": doc_freq=2 < threshold(3), qualifying=0 → signal 5 fires.
     assert result.knowledge_gap is True
     assert len(result.suggested_searches) >= 1
+
+
+# ── Relational-verb stopwords ─────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_gap_relational_verb_in_query_does_not_trigger_false_gap(tmp_wiki):
+    """Relational verbs like 'shape' in a query must not trigger a false gap when
+    the wiki has relevant content.
+
+    'How did Moore's Law shape hardware design?' — 'shape' is a relational verb,
+    not a content noun. Wiki pages use "shaped" at most once in passing; they never
+    repeat 'shape' ≥ 2 times as a dedicated concept. With the old code, 'shape'
+    enters _key_terms (doc_freq > 0 via "shaped"), gets qualifying_pages=0 (never
+    appears ≥ 2 times in any page), sets min_qualifying=0, and fires signal 5 →
+    false gap.
+
+    After adding 'shape' to _STOPWORDS it is excluded from key_terms and signal 5
+    only evaluates genuine topic words (moore', hardware, design, software) — all of
+    which appear ≥ 2 times in the pages → min_qualifying > 0 → no gap.
+    """
+    store = WikiStorage(tmp_wiki / "wiki")
+    # Each page mentions "shaped" exactly once (doc_freq("shape") > 0, but count < 2)
+    # and repeats all genuine topic words multiple times.
+    moores_content = (
+        "Moore's Law predicts that transistor density doubles every two years. "
+        "Moore's Law proved accurate for decades and shaped the computing industry. "
+        "Hardware engineers designed chips with hardware performance in mind. "
+        "Hardware improvements drove hardware design decisions for every generation. "
+        "Software developers could write more complex software knowing hardware "
+        "would keep up. Software complexity grew alongside Moore's Law improvements."
+    )
+    for i in range(5):
+        store.write_page(f"moores-law-{i}", WikiPage(
+            title=f"Moore's Law {i}", tags=["hardware"],
+            content=moores_content,
+            status="active", confidence="high", sources=[],
+        ))
+
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.return_value = CompletionResponse(
+        text='["What is Moore\'s Law?", "How did Moore\'s Law influence hardware design?"]',
+        input_tokens=10, output_tokens=5,
+    )
+
+    agent = QueryAgent(provider=provider, store=store, search=search,
+                       gap_score_threshold=0.01)
+    with patch.object(agent._search, "bm25_search",
+                      return_value=_fake_results([f"moores-law-{i}" for i in range(5)], score=9.0)):
+        result = await agent.query(
+            "How did Moore's Law shape both hardware design and software expectations over time?"
+        )
+
+    # 'shape' is in _STOPWORDS → excluded from key_terms → signal 5 does not fire.
+    # Remaining terms (moore, hardware, design, software) all have qualifying_pages > 0.
+    assert result.knowledge_gap is False
+
+
+@pytest.mark.asyncio
+async def test_gap_influence_verb_in_query_does_not_trigger_false_gap(tmp_wiki):
+    """'influence' in a query like 'How did Unix influence the open-source movement?'
+    is a relational verb, not a content noun.  Wiki pages discuss Unix and open-source
+    without repeating the word 'influence' ≥ 2 times in a single page.
+
+    After adding 'influence' to _STOPWORDS it is excluded from key_terms, and only
+    genuine topic words ('open-source', 'movement') are evaluated — both of which
+    appear ≥ 2 times in the dedicated wiki page → no gap.
+    """
+    store = WikiStorage(tmp_wiki / "wiki")
+    unix_content = (
+        "The Unix operating system, developed at Bell Labs in the late 1960s, "
+        "became a cornerstone of the open-source movement through its open design. "
+        "The open-source movement drew heavily from Unix philosophy and principles. "
+        "Unix tools and the open-source movement share core values of collaboration "
+        "and open access to source code. The Unix movement predated but directly "
+        "enabled the modern open-source movement and free software communities."
+    )
+    for i in range(5):
+        store.write_page(f"unix-os-{i}", WikiPage(
+            title=f"Unix History {i}", tags=["unix", "open-source"],
+            content=unix_content,
+            status="active", confidence="high", sources=[],
+        ))
+
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.return_value = CompletionResponse(
+        text='["How did Unix relate to open-source?", "What is the open-source movement?"]',
+        input_tokens=10, output_tokens=5,
+    )
+
+    agent = QueryAgent(provider=provider, store=store, search=search,
+                       gap_score_threshold=0.01)
+    with patch.object(agent._search, "bm25_search",
+                      return_value=_fake_results([f"unix-os-{i}" for i in range(5)], score=8.0)):
+        result = await agent.query(
+            "How did Unix influence the open-source movement?"
+        )
+
+    # 'influence' is in _STOPWORDS → excluded from key_terms.
+    # 'open-source' and 'movement' appear ≥ 2 times per page → no gap.
+    assert result.knowledge_gap is False
+
+
+@pytest.mark.asyncio
+async def test_gap_hyphen_normalisation_open_source_two_word_content(tmp_wiki):
+    """Query uses 'open-source' (hyphenated) but wiki pages write 'open source'
+    (two words).  Without hyphen normalisation, count('open-source') in content
+    that only contains 'open source' returns 0 → on_topic_pages=0 → signal 3 gap.
+
+    With hyphen normalisation (hyphens → spaces in both key terms and content),
+    the key term becomes 'open source' and matches wiki content correctly.
+    """
+    store = WikiStorage(tmp_wiki / "wiki")
+    # Pages use "open source" (two words), NOT "open-source" (hyphenated).
+    two_word_content = (
+        "Unix was a foundational influence on the open source movement in computing. "
+        "The open source movement grew from Unix philosophy and the GNU project. "
+        "Open source software licensing models trace their roots to Unix sharing. "
+        "The open source community adopted Unix tools as core infrastructure. "
+        "Unix principles shaped open source development practices for decades."
+    )
+    for i in range(5):
+        store.write_page(f"unix-2w-{i}", WikiPage(
+            title=f"Unix Open Source {i}", tags=["unix"],
+            content=two_word_content,
+            status="active", confidence="high", sources=[],
+        ))
+
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.return_value = CompletionResponse(
+        text='["What is the open-source movement?", "How did Unix relate to it?"]',
+        input_tokens=10, output_tokens=5,
+    )
+
+    agent = QueryAgent(provider=provider, store=store, search=search,
+                       gap_score_threshold=0.01)
+    with patch.object(agent._search, "bm25_search",
+                      return_value=_fake_results([f"unix-2w-{i}" for i in range(5)], score=9.0)):
+        result = await agent.query(
+            "How did Unix influence the open-source movement?"
+        )
+
+    # key term 'open source' (normalised from 'open-source') matches 'open source'
+    # in page content (≥ 5 occurrences per page) → on_topic_pages=5 → no gap.
+    assert result.knowledge_gap is False
+
+
+@pytest.mark.asyncio
+async def test_gap_possessive_query_term_matches_bare_and_possessive_forms(tmp_wiki):
+    """'Moore's' in a query must produce key term 'moore' (not 'moore\\'') so that
+    pages referencing Moore in any form — 'Gordon Moore', 'Moore's Law', 'Moores' —
+    all count toward coverage.
+
+    Old rstrip("s?!.,") left the apostrophe: "Moore's" → "moore'", a substring
+    present only in possessive forms.  A page saying "Gordon Moore observed that
+    transistors..." has count("moore'")=0 even though it is clearly on-topic.  When
+    every page mentions "Moore's Law" exactly once (as a header) and also says "Gordon
+    Moore" once, count("moore'")=1 per page, qualifying_pages=0 → signal 5 fires.
+
+    New rstrip("s'?!.,") strips both s and apostrophe: "Moore's" → "moore".
+    count("moore") counts both "Moore's" and "Moore" occurrences, so the same page
+    reaches count≥2 → qualifying_pages>0 → no gap.
+    """
+    store = WikiStorage(tmp_wiki / "wiki")
+    # Each page mentions "Moore's Law" once and "Gordon Moore" once.
+    # Old key term "moore'": count=1 in each page (only the possessive form matches).
+    # New key term "moore":  count=2 in each page ("Moore's" + "Gordon Moore" both match).
+    possessive_content = (
+        "Moore's Law is a prediction originally made by Gordon Moore in 1965. "
+        "Transistor density in integrated circuits doubles approximately every two years. "
+        "Hardware designers relied on this computing trend for decades of chip development. "
+        "Hardware roadmaps across the computing industry used this trajectory as a baseline."
+    )
+    for i in range(5):
+        store.write_page(f"moore-hist-{i}", WikiPage(
+            title=f"Moore History {i}", tags=["hardware"],
+            content=possessive_content,
+            status="active", confidence="high", sources=[],
+        ))
+
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.return_value = CompletionResponse(
+        text='["What is Moore\'s Law?", "How did Moore\'s Law influence hardware?"]',
+        input_tokens=10, output_tokens=5,
+    )
+
+    agent = QueryAgent(provider=provider, store=store, search=search,
+                       gap_score_threshold=0.01)
+    with patch.object(agent._search, "bm25_search",
+                      return_value=_fake_results([f"moore-hist-{i}" for i in range(5)],
+                                                 score=9.0)):
+        result = await agent.query(
+            "How did Moore's Law affect computing hardware over time?"
+        )
+
+    # New: "moore" matches both possessive and bare form → count≥2 per page → no gap.
+    assert result.knowledge_gap is False
+
+
+@pytest.mark.asyncio
+async def test_gap_signal5_high_docfreq_reference_term_does_not_fire(tmp_wiki):
+    """Signal 5 must NOT fire when the zero-qualifying term has high doc_freq.
+
+    'moore' appears in 4 of 8 pages (≥ threshold=3), each time as a single passing
+    reference — count("moore")=1 < 2 per page → qualifying_pages("moore")=0.
+    Old signal 5 would fire (min_qualifying=0).  New signal 5 only fires when the
+    zero-qualifying term also has low doc_freq: 4 ≥ threshold(3) → no fire.
+
+    Guard A (on_topic): 4 of 8 pages qualify → _pages_with_overlap=4 == n_cands//2=4,
+    so 4 < 4 is False → signal 5 blocked.  Guard B (doc_freq): "moore" doc_freq=4 ≥
+    threshold(3) → also blocked.  The 4 filler pages contain none of the query's key
+    terms, keeping hardware/design/software at 50% doc_freq (below 80% threshold) so
+    they remain as specific discriminating terms rather than being filtered as generic.
+    """
+    store = WikiStorage(tmp_wiki / "wiki")
+    # 4 pages: "moore" appears exactly once (passing reference), but hardware/design/
+    # software each appear >= 2 times (dedicated coverage).
+    reference_content = (
+        "Moore's Law predicted that hardware transistor density would double each year. "
+        "Hardware engineers planned hardware design based on this transistor observation. "
+        "Hardware design decisions drove hardware development across computing generations. "
+        "Software teams adapted their software complexity alongside hardware advances."
+    )
+    for i in range(4):
+        store.write_page(f"hardware-pg-{i}", WikiPage(
+            title=f"Hardware History {i}", tags=["hardware"],
+            content=reference_content,
+            status="active", confidence="high", sources=[],
+        ))
+    # 4 filler pages about theoretical computing -- none of the query key terms
+    # (moore, hardware, design, software, development) appear here, so those
+    # terms stay at 50% doc_freq and are not filtered as corpus-generic.
+    filler_content = (
+        "Alan Turing formulated the theoretical basis for computation and logic. "
+        "John von Neumann contributed to early computing through his stored-program concept. "
+        "Claude Shannon established information theory as a mathematical framework. "
+        "Alonzo Church developed lambda calculus as a formal system for computability."
+    )
+    for i in range(4):
+        store.write_page(f"theory-pg-{i}", WikiPage(
+            title=f"Theory History {i}", tags=["theory"],
+            content=filler_content,
+            status="active", confidence="high", sources=[],
+        ))
+
+    all_slugs = [f"hardware-pg-{i}" for i in range(4)] + [f"theory-pg-{i}" for i in range(4)]
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.return_value = CompletionResponse(
+        text='["What is Moore\'s Law?", "How did it affect hardware design?"]',
+        input_tokens=10, output_tokens=5,
+    )
+
+    agent = QueryAgent(provider=provider, store=store, search=search,
+                       gap_score_threshold=0.01)
+    with patch.object(agent._search, "bm25_search",
+                      return_value=_fake_results(all_slugs, score=8.0)):
+        result = await agent.query(
+            "How did Moore's Law shape hardware design and software development?"
+        )
+
+    # "moore": doc_freq=4 >= threshold(3), qualifying=0 -> signal 5 does NOT fire.
+    # hardware/design/software all have qualifying_pages=4 -> signal 3 passes -> no gap.
+    assert result.knowledge_gap is False
 
 
 # ── CJK (Chinese / Japanese / Korean) coverage ───────────────────────────────
@@ -1117,3 +1385,55 @@ async def test_cjk_query_no_false_gap(tmp_wiki):
     # CJK input → key-term extraction skipped → signals 3–5 disabled.
     # Signals 1 (5 pages ≥ 3) and 2 (score 5.0 ≥ 0.01) both pass → no gap.
     assert result.knowledge_gap is False
+
+
+# ── alias expansion ───────────────────────────────────────────────────────────
+
+def _page_with_aliases(aliases: list[str]) -> WikiPage:
+    return WikiPage(title="spatula", tags=[], content="content",
+                    status="active", confidence="high", sources=[], aliases=aliases)
+
+
+def test_expand_aliases_replaces_known_term(tmp_wiki):
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("spatula", _page_with_aliases(["flat flippy thing", "flipper"]))
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    from unittest.mock import AsyncMock as _AsyncMock
+    provider = _AsyncMock()
+    qa = QueryAgent(provider=provider, store=store, search=search)
+    result = qa._expand_aliases("tell me about the flat flippy thing")
+    assert "spatula" in result
+
+
+def test_expand_aliases_no_match_returns_original(tmp_wiki):
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("spatula", _page_with_aliases(["flipper"]))
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    from unittest.mock import AsyncMock as _AsyncMock
+    provider = _AsyncMock()
+    qa = QueryAgent(provider=provider, store=store, search=search)
+    result = qa._expand_aliases("what is a spoon?")
+    assert result == "what is a spoon?"
+
+
+def test_expand_aliases_empty_wiki_returns_original(tmp_wiki):
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    from unittest.mock import AsyncMock as _AsyncMock
+    provider = _AsyncMock()
+    qa = QueryAgent(provider=provider, store=store, search=search)
+    result = qa._expand_aliases("what is a spatula?")
+    assert result == "what is a spatula?"
+
+
+def test_expand_aliases_longer_alias_replaced_first(tmp_wiki):
+    """Longer aliases take priority to avoid partial substring replacement."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("spatula", _page_with_aliases(["flat flippy thing", "flat"]))
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    from unittest.mock import AsyncMock as _AsyncMock
+    provider = _AsyncMock()
+    qa = QueryAgent(provider=provider, store=store, search=search)
+    result = qa._expand_aliases("the flat flippy thing is useful")
+    assert "spatula" in result
+    assert "flippy thing" not in result
