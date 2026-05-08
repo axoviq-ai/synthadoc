@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from synthadoc.agents._utils import parse_json_string_array
 from synthadoc.agents.search_decompose_agent import SearchDecomposeAgent
@@ -28,6 +29,17 @@ _STOPWORDS = frozenset({
     "about", "after", "before", "between", "during", "through",
     "these", "those", "each", "both", "your", "mine", "ours",
     "start", "grow", "good", "best", "make", "need", "want",
+    # Relational verbs/nouns used in queries to describe how topics connect
+    # ("how did X shape Y?", "what drove Z?", "Unix's influence on...") but
+    # never recurring content words in wiki pages — spurious signal gaps result.
+    # CJK queries bypass key-term extraction entirely, so these are English-only.
+    "shape", "drive", "change", "enable", "allow", "improve", "evolve",
+    "influence", "affect", "impact", "cause", "result", "matter", "relate",
+    "connect", "involve", "emerge", "remain",
+    # Contribution/achievement verbs common in biographical queries
+    # ("What did X contribute to Y?", "What did X achieve?") — wiki pages
+    # describe actions with specific verbs ("invented", "built") instead.
+    "contribute", "achieve", "accomplish", "pioneer", "introduce",
 })
 
 
@@ -47,12 +59,42 @@ class QueryResult:
 class QueryAgent:
     def __init__(self, provider: LLMProvider, store: WikiStorage,
                  search: HybridSearch, top_n: int = 8,
-                 gap_score_threshold: float = 2.0) -> None:
+                 gap_score_threshold: float = 2.0,
+                 routing_path: Path | None = None) -> None:
         self._provider = provider
         self._store = store
         self._search = search
         self._top_n = top_n
         self._gap_score_threshold = gap_score_threshold
+        self._routing = None
+        if routing_path:
+            from synthadoc.core.routing import RoutingIndex
+            self._routing = RoutingIndex.parse(routing_path)
+
+    async def _routing_branch_pick(self, question: str) -> list[str]:
+        """Ask LLM to select top 1-2 branch names from ROUTING.md relevant to question."""
+        if not self._routing or not self._routing.branches:
+            return []
+        from synthadoc.agents._routing import pick_routing_branches
+        return await pick_routing_branches(
+            self._provider, self._routing.branches,
+            f"Question: {question}", multi=True,
+        )
+
+    def _expand_aliases(self, question: str) -> str:
+        """Replace alias matches in question with canonical slug names."""
+        alias_map: dict[str, str] = {}
+        for slug in self._store.list_pages():
+            page = self._store.read_page(slug)
+            if page and page.aliases:
+                for alias in page.aliases:
+                    alias_map[alias.lower()] = slug
+        if not alias_map:
+            return question
+        q = question
+        for alias, slug in sorted(alias_map.items(), key=lambda x: -len(x[0])):
+            q = q.replace(alias, slug)
+        return q
 
     async def decompose(self, question: str) -> list[str]:
         """Break a question into focused sub-questions for independent retrieval.
@@ -94,10 +136,19 @@ class QueryAgent:
         return [question]
 
     async def query(self, question: str) -> QueryResult:
+        question = self._expand_aliases(question)
         sub_questions = await self.decompose(question)
 
+        scoped_slugs: list[str] | None = None
+        if self._routing:
+            branches = await self._routing_branch_pick(question)
+            if branches:
+                scoped_slugs = self._routing.slugs_for_branches(branches)
+
         async def _search_one(sub_q: str):
-            return await self._search.hybrid_search(sub_q.lower().split(), top_n=self._top_n)
+            return await self._search.hybrid_search(
+                sub_q.lower().split(), top_n=self._top_n, scoped_slugs=scoped_slugs
+            )
 
         results_per_sub = await asyncio.gather(*[_search_one(q) for q in sub_questions])
 
@@ -132,10 +183,16 @@ class QueryAgent:
         _max_score = max((r.score for r in candidates), default=0.0)
 
         # Extract meaningful content words from the question for the overlap check.
-        # Strip 1 char for basic plural/suffix matching ("vegetables" → "vegetable",
-        # "indoors" → "indoor"). Stripping 2 chars was too aggressive — it turned
-        # "Canadian" into "canadi", which still matched every page in a Canada-focused
-        # wiki and made the check useless as a discriminator.
+        # Strip trailing plural-s, possessive-apostrophe, and punctuation so that
+        # "Moore's" → "moore", "vegetables" → "vegetable", "indoors" → "indoor".
+        # Stripping 2 chars was too aggressive — it turned "Canadian" into "canadi",
+        # which still matched every page in a Canada-focused wiki and made the check
+        # useless as a discriminator.  Including "'" in the strip set is safe: it
+        # handles possessives ("Moore's" → "moore") and plural-possessives
+        # ("computers'" → "computer") without over-stripping ordinary words.
+        # Hyphens are normalised to spaces so that compound terms like "open-source"
+        # match wiki pages that write "open source" (and vice-versa).  The same
+        # normalisation is applied to page content during the overlap check.
         #
         # CJK scripts (Chinese, Japanese, Korean) do not use whitespace word
         # boundaries, so split() either yields the whole sentence as one token
@@ -150,9 +207,9 @@ class QueryAgent:
             for c in question
         )
         _key_terms = set() if _contains_cjk else {
-            w.lower().rstrip("s?!.,")        # strip plural/punctuation only
+            w.lower().rstrip("s'?!.,").replace("-", " ")  # normalize compound terms
             for w in question.split()
-            if len(w) > 4 and w.lower().rstrip("s?!.,") not in _STOPWORDS
+            if len(w) > 4 and w.lower().rstrip("s'?!.,").replace("-", " ") not in _STOPWORDS
         }
 
         # Signal 3: check whether retrieved pages contain dedicated coverage of the
@@ -175,32 +232,16 @@ class QueryAgent:
         _defining_term_absent = False  # signal 5 default
         if _key_terms and candidates:
             # Count how many candidates contain each key term (doc frequency).
+            # Content is hyphen-normalised to match both "open-source" and "open source".
             _term_doc_freq = {
                 t: sum(
                     1 for r in candidates
-                    if (p := self._store.read_page(r.slug)) and t in p.content.lower()
+                    if (p := self._store.read_page(r.slug))
+                    and t in p.content.lower().replace("-", " ")
                 )
                 for t in _key_terms
             }
             _covered = {t: f for t, f in _term_doc_freq.items() if f > 0}
-
-            # Signal 4: a defining concept word is entirely absent from the wiki.
-            # When a query has ≥ 2 key terms and at least one appears in zero
-            # retrieved pages, the topic's core vocabulary is missing — not a
-            # synonym/vocabulary mismatch.  E.g. "quantum error correction" in a
-            # history-of-computing wiki: "error" and "correction" hit Bombe pages
-            # (high BM25 score, signal 3 passes), but "quantum" has zero coverage,
-            # definitively flagging the topic as absent.
-            #
-            # Coverage guard: if non-zero terms appear in >80% of candidates they
-            # are generic corpus words ("plant", "garden"), not topic discriminators.
-            # In that case the zero-freq term is a synonym mismatch, not a true gap.
-            _any_term_missing = (
-                bool(_covered)
-                and len(_term_doc_freq) >= 2
-                and any(f == 0 for f in _term_doc_freq.values())
-                and max(_covered.values()) / len(candidates) <= 0.8
-            )
 
             # Drop hyper-generic terms that appear in >80% of candidates.
             # Using 80% (not 60%) so moderately-common topic words like "partial"
@@ -224,14 +265,14 @@ class QueryAgent:
                 _discriminating_term = min(_term_doc_freq, key=lambda t: _term_doc_freq[t])
 
             # Single pass: compute both signal 3 (any specific term ≥ freq) and
-            # per-term qualifying page counts (needed for signal 5).
+            # per-term qualifying page counts (needed for signals 4 and 5).
             _term_qualifying_pages: dict[str, int] = {t: 0 for t in _specific}
             _pages_with_overlap = 0
             for _r in candidates:
                 _p = self._store.read_page(_r.slug)
                 if not _p:
                     continue
-                _content = _p.content.lower()
+                _content = _p.content.lower().replace("-", " ")
                 _page_on_topic = False
                 for _t in _specific:
                     if _content.count(_t) >= _MIN_TERM_FREQ:
@@ -240,29 +281,66 @@ class QueryAgent:
                 if _page_on_topic:
                     _pages_with_overlap += 1
 
-            # Signal 5: at least one specific topic term never appears with meaningful
-            # frequency (≥ MIN_TERM_FREQ) in any single candidate page.
+            # Signals 4 and 5 share a common guard: if ≥ half the candidates have
+            # dedicated on-topic coverage, the wiki covers the domain well enough
+            # that vocabulary mismatches ("expectation" absent when the wiki says
+            # "assumptions") or shallow references ("moore" mentioned once per page)
+            # should not override the positive signal from signal 3.
+            _signals_45_active = _pages_with_overlap < _n_cands // 2
+
+            # Signal 4: a defining concept word is entirely absent from the wiki.
+            # When a query has ≥ 2 key terms and at least one appears in zero
+            # retrieved pages, the topic's core vocabulary is missing — not a
+            # synonym/vocabulary mismatch.  E.g. "quantum error correction" in a
+            # history-of-computing wiki: "error" and "correction" hit Bombe pages
+            # (high BM25 score, signal 3 passes), but "quantum" has zero coverage,
+            # definitively flagging the topic as absent.
             #
-            # A term that appears scattered (once per page across many pages) is
-            # incidentally present — the wiki touches the vocabulary but lacks a page
-            # that actually discusses the concept.
+            # Coverage guard: if non-zero terms appear in >80% of candidates they
+            # are generic corpus words, not topic discriminators — the zero-freq term
+            # is a synonym mismatch, not a true gap.
             #
-            # "quantum error correction": "quantum" and "correction" each appear in
-            # 1 page with ≥ 2 occurrences (transistor and bombe respectively), but
-            # "error" appears only once each in 2 separate pages (never ≥ 2 in any
-            # one page) — min qualifying = 0 → gap.
+            # On-topic guard: shared with signal 5 — if coverage is already good
+            # (≥ n_cands//2 pages), vocabulary mismatches in the query do not
+            # indicate a knowledge gap.
+            _any_term_missing = (
+                _signals_45_active
+                and bool(_covered)
+                and len(_term_doc_freq) >= 2
+                and any(f == 0 for f in _term_doc_freq.values())
+                and max(_covered.values()) / len(candidates) <= 0.8
+            )
+
+            # Signal 5: a genuinely sparse topic term never appears with meaningful
+            # frequency (≥ MIN_TERM_FREQ) in any single candidate page — AND the
+            # overall dedicated coverage is thin (fewer than half the candidates
+            # are on-topic).
             #
-            # "unix open-source movement": every specific term ("open-source",
-            # "movement", "influence") has at least 1 page where it appears ≥ 2 times
-            # — min qualifying ≥ 1 → no gap.
+            # Guard A — on_topic_pages (shared _signals_45_active): see above.
+            #
+            # Guard B — doc_freq cap: a term appearing in ≥ ⌈n_cands/3⌉ candidates
+            # is a reference term (present in the domain), not an absent concept.
+            # Low doc_freq + qualifying_pages=0 is the fingerprint of a genuine gap.
+            #
+            # "quantum error correction" (gap): on_topic_pages=2/8 (guard A passes),
+            # "quantum" doc_freq=1–2 < threshold (guard B passes) → gap=True ✓
+            #
+            # "Moore's Law" in history-of-computing (no gap): on_topic_pages=4/8
+            # ≥ n_cands//2=4 → guard A blocks both signal 4 and signal 5 ✓
             _min_specific_qualifying = (
                 min(_term_qualifying_pages.values())
                 if _term_qualifying_pages else 0
             )
+            _signal5_doc_freq_cap = max(2, (_n_cands + 2) // 3)
             _defining_term_absent = (
-                bool(_specific)
+                _signals_45_active
+                and bool(_specific)
                 and len(_term_doc_freq) >= 2
-                and _min_specific_qualifying == 0
+                and any(
+                    _term_qualifying_pages[t] == 0
+                    and _specific[t] < _signal5_doc_freq_cap      # guard B
+                    for t in _term_qualifying_pages
+                )
             )
         else:
             _discriminating_term = ""

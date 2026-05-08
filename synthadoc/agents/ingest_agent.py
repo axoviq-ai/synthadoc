@@ -91,11 +91,35 @@ _OVERVIEW_PROMPT = (
     "Pages:\n{pages}"
 )
 
+_CONFIDENCE_RANK = {"high": 3, "medium": 2, "low": 1}
+
+
+def _confidence_passes_threshold(confidence: str, min_confidence: str) -> bool:
+    return _CONFIDENCE_RANK.get(confidence, 0) >= _CONFIDENCE_RANK.get(min_confidence, 0)
+
+
 _SLUG_BLACKLIST = frozenset({
     "wikilinks", "wikilink", "wiki", "obsidian", "dataview",
     # URL path segments that are never meaningful topic names
     "watch", "embed", "video", "index", "page", "post", "article", "content",
 })
+
+# Matches any YouTube URL form and captures the 11-char video ID.
+_YOUTUBE_ID_RE = re.compile(
+    r"(?:youtube\.com/(?:watch\?v=|shorts/|live/|embed/|v/)|youtu\.be/)([A-Za-z0-9_-]{11})"
+)
+
+
+def _canonical_source(source: str) -> str:
+    """Normalise YouTube URL variants to a single canonical form.
+
+    youtu.be/<id>, /shorts/, /live/, /embed/ all become
+    https://www.youtube.com/watch?v=<id> so dedup hashes are consistent.
+    """
+    m = _YOUTUBE_ID_RE.search(source)
+    if m:
+        return f"https://www.youtube.com/watch?v={m.group(1)}"
+    return source
 
 
 def _coerce_str_list(lst: object) -> list[str]:
@@ -162,7 +186,9 @@ class IngestAgent:
                  log_writer: LogWriter, audit_db: AuditDB, cache: CacheManager,
                  max_pages: int = 15, wiki_root: Optional[Path] = None,
                  cache_version: str = CACHE_VERSION,
-                 fetch_timeout: int = 30) -> None:
+                 fetch_timeout: int = 30,
+                 routing_path: Optional[Path] = None,
+                 cfg=None) -> None:
         self._provider = provider
         self._store = store
         self._search = search
@@ -171,6 +197,8 @@ class IngestAgent:
         self._cache = cache
         self._max_pages = max_pages
         self._wiki_root = Path(wiki_root) if wiki_root is not None else None
+        self._routing_path = Path(routing_path) if routing_path is not None else None
+        self._cfg = cfg
         self._cache_version = cache_version
         self._skill_agent = SkillAgent(skill_kwargs={
             "url": {"fetch_timeout": fetch_timeout},
@@ -178,6 +206,15 @@ class IngestAgent:
             "image": {"provider": self._provider},
         })
         self._purpose = self._load_purpose()
+
+    async def _pick_routing_branch(self, slug: str, page: WikiPage, ri) -> str:
+        """Ask LLM to select the best ROUTING.md branch for a newly created page."""
+        from synthadoc.agents._routing import pick_routing_branches
+        context = f"New page slug: {slug}\nTitle: {page.title}\nTags: {', '.join(page.tags)}"
+        result = await pick_routing_branches(
+            self._provider, ri.branches, context, multi=False
+        )
+        return result[0] if result else next(iter(ri.branches))
 
     async def _analyse(self, text: str, bust_cache: bool = False) -> dict:
         """Step 1 — analysis pass: entity extraction + summary. Cached by content hash."""
@@ -231,6 +268,22 @@ class IngestAgent:
         )
         (wiki_dir / "overview.md").write_text(content, encoding="utf-8", newline="\n")
 
+    def _staging_policy(self) -> str:
+        return self._cfg.ingest.staging_policy if self._cfg else "off"
+
+    def _write_or_stage(self, slug: str, page: "WikiPage", policy: str) -> bool:
+        """Write page directly to wiki/ or to candidates/ when policy requires it.
+        Returns True if staged, False if written directly."""
+        if policy == "all" and self._wiki_root:
+            from synthadoc.storage.wiki import WikiStorage as _WS
+            cand_dir = self._wiki_root / "wiki" / "candidates"
+            cand_dir.mkdir(exist_ok=True)
+            _WS(cand_dir).write_page(slug, page)
+            return True
+        self._store.write_page(slug, page)
+        self._search.invalidate_index()
+        return False
+
     def _load_purpose(self) -> str:
         """Load wiki/purpose.md for scope filtering. Returns '' if absent."""
         if self._wiki_root is None:
@@ -257,6 +310,7 @@ class IngestAgent:
         return not wiki_page or self._store.page_exists(wiki_page)
 
     async def ingest(self, source: str, force: bool = False, bust_cache: bool = False) -> IngestResult:
+        source = _canonical_source(source)
         result = IngestResult(source=source)
 
         if self._needs_file_check(source):
@@ -293,6 +347,10 @@ class IngestAgent:
                     result.skipped = True
                     result.skip_reason = "already ingested"
                     return result
+
+            # Normalise to absolute path so the skill always receives an OS path,
+            # not whatever vault-relative or CWD-relative string the caller passed in.
+            source = str(p)
 
         # For URL / non-file sources p, src_hash, src_size are not set above.
         # Provide safe defaults so the audit call at the end always succeeds.
@@ -395,7 +453,12 @@ class IngestAgent:
             if self._purpose:
                 purpose_block = (
                     f"Wiki scope (from purpose.md):\n{self._purpose}\n\n"
-                    "If the source is clearly outside this scope, respond with action=\"skip\".\n\n"
+                    "Use action=\"skip\" ONLY when the source is completely unrelated to this scope "
+                    "(e.g. medical receipts, unrelated e-commerce, spam). "
+                    "Educational overviews, introductory content, and tangential sources that touch "
+                    "on the wiki's domain should be ingested — the wiki's own directive is "
+                    "'when in doubt, ingest and review', so prefer action=\"create\" over action=\"skip\" "
+                    "whenever there is any plausible connection to the scope.\n\n"
                 )
                 decision_prompt = purpose_block + _DECISION_PROMPT
             resp2 = await self._provider.complete(
@@ -414,8 +477,19 @@ class IngestAgent:
 
         # Pass 4: writes based on action
         action = decisions.get("action", "create")
+        logger.info(
+            "ingest decision: source=%s action=%s target=%s new_slug=%s | %s",
+            source[:80], action,
+            decisions.get("target", "") or "-",
+            decisions.get("new_slug", "") or "-",
+            (decisions.get("reasoning", "") or "")[:200],
+        )
 
         if action == "skip":
+            logger.warning(
+                "ingest skip: source=%s — LLM deemed out of scope. reasoning=%s",
+                source[:80], (decisions.get("reasoning", "") or "")[:300],
+            )
             result.skipped = True
             result.skip_reason = "out of scope (purpose.md)"
             return result
@@ -441,13 +515,17 @@ class IngestAgent:
             result.pages_flagged.append(target)
 
         elif action == "update" and target and self._store.page_exists(target):
+            policy = self._staging_policy()
             with self._store.page_lock(target):
                 page = self._store.read_page(target)
                 if page:
                     section = update_content or f"## From {p.name}\n\n{text[:1000]}"
                     page.content = page.content.rstrip() + f"\n\n{section}"
-                    self._store.write_page(target, page)
-                    self._search.invalidate_index()
+                    staged = self._write_or_stage(target, page, policy)
+            if staged:
+                logger.info("ingest: staged update to candidates slug=%s source=%s", target, source[:80])
+            else:
+                logger.info("ingest: updated page slug=%s source=%s", target, source[:80])
             result.pages_updated.append(target)
 
         else:  # "create" or fallback
@@ -460,9 +538,18 @@ class IngestAgent:
                 # Reject slugs that look like wiki syntax artifacts rather than real topics
                 raw_slug = _slugify(new_slug or title)
                 slug = raw_slug if raw_slug not in _SLUG_BLACKLIST else _slugify(title)
+                # If title-based fallback is also blacklisted (e.g. URL path "watch"),
+                # use the skill's suggested_slug or a hash-based ID rather than writing
+                # a page with a generic, meaningless slug.
+                if slug in _SLUG_BLACKLIST:
+                    suggested = _slugify(extracted.metadata.get("suggested_slug", ""))
+                    slug = suggested if suggested and suggested not in _SLUG_BLACKLIST \
+                        else f"source-{src_hash[:12]}"
 
                 if self._store.page_exists(slug):
                     # Slug already exists — never overwrite; append as update instead
+                    policy = self._staging_policy()
+                    staged = False
                     with self._store.page_lock(slug):
                         page = self._store.read_page(slug)
                         if page:
@@ -471,8 +558,11 @@ class IngestAgent:
                             else:
                                 section = f"## From {p.name}\n\n{text[:1500]}"
                             page.content = page.content.rstrip() + f"\n\n{section}"
-                            self._store.write_page(slug, page)
-                            self._search.invalidate_index()
+                            staged = self._write_or_stage(slug, page, policy)
+                    if staged:
+                        logger.info("ingest: staged update to candidates slug=%s source=%s", slug, source[:80])
+                    else:
+                        logger.info("ingest: updated existing page slug=%s source=%s", slug, source[:80])
                     result.pages_updated.append(slug)
                 else:
                     if extracted.metadata.get("has_summary"):
@@ -494,11 +584,39 @@ class IngestAgent:
                         )],
                         created=today,
                     )
-                    with self._store.page_lock(slug):
-                        self._store.write_page(slug, new_page)
-                        self._search.invalidate_index()
-                    result.pages_created.append(slug)
-                    self._store.append_to_index(slug, new_page.title)
+
+                    # Staging fork: route to candidates/ based on policy
+                    policy = self._staging_policy()
+                    go_to_candidates = (policy == "all") or (
+                        policy == "threshold"
+                        and self._cfg is not None
+                        and not _confidence_passes_threshold(
+                            new_page.confidence,
+                            self._cfg.ingest.staging_confidence_min,
+                        )
+                    )
+
+                    if go_to_candidates and self._wiki_root:
+                        from synthadoc.storage.wiki import WikiStorage as _WS
+                        cand_dir = self._wiki_root / "wiki" / "candidates"
+                        cand_dir.mkdir(exist_ok=True)
+                        _WS(cand_dir).write_page(slug, new_page)
+                        logger.info("ingest: staged to candidates slug=%s source=%s", slug, source[:80])
+                        result.pages_created.append(slug)
+                    else:
+                        with self._store.page_lock(slug):
+                            self._store.write_page(slug, new_page)
+                            self._search.invalidate_index()
+                        logger.info("ingest: created page slug=%s source=%s", slug, source[:80])
+                        result.pages_created.append(slug)
+                        self._store.append_to_index(slug, new_page.title)
+                        if self._routing_path:
+                            from synthadoc.core.routing import RoutingIndex
+                            ri = RoutingIndex.parse(self._routing_path)
+                            if ri.branches:
+                                branch = await self._pick_routing_branch(slug, new_page, ri)
+                                ri.add_slug(slug, branch)
+                                ri.save(self._routing_path)
 
         if result.pages_created or result.pages_updated:
             await self._update_overview()

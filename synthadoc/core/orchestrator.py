@@ -126,19 +126,27 @@ class Orchestrator:
         from synthadoc.agents.ingest_agent import IngestAgent
         from synthadoc.skills.web_search.scripts.main import _INTENT_RE as _WEB_SEARCH_RE
         try:
+            # Reload config from disk so staging_policy and other runtime settings
+            # take effect without a server restart.
+            _cfg_path = self._root / ".synthadoc" / "config.toml"
+            cfg = load_config(project_config=_cfg_path) if _cfg_path.exists() else self._cfg
             _is_web_search = bool(_WEB_SEARCH_RE.match(source))
             if _is_web_search:
                 await self._queue.update_progress(job_id, {"phase": "searching"})
+            _routing_path = self._root / "ROUTING.md"
             agent = IngestAgent(
-                provider=make_provider("ingest", self._cfg),
+                provider=make_provider("ingest", cfg),
                 store=self._store, search=self._search,
                 log_writer=self._log, audit_db=self._audit,
-                cache=self._cache, max_pages=self._cfg.ingest.max_pages_per_ingest,
-                cache_version=self._cfg.cache.version,
-                fetch_timeout=self._cfg.ingest.fetch_timeout_seconds,
+                cache=self._cache, max_pages=cfg.ingest.max_pages_per_ingest,
+                cache_version=cfg.cache.version,
+                fetch_timeout=cfg.ingest.fetch_timeout_seconds,
+                wiki_root=self._root,
+                routing_path=_routing_path if _routing_path.exists() else None,
+                cfg=cfg,
             )
             result = await agent.ingest(source, force=force, bust_cache=force)
-            _agent_cfg = self._cfg.agents.resolve("ingest")
+            _agent_cfg = cfg.agents.resolve("ingest")
             result.cost_usd = estimate_cost(
                 _agent_cfg.model,
                 result.input_tokens,

@@ -107,6 +107,11 @@ def _classify_llm_error(exc: Exception) -> "HTTPException | None":
             status_code=429,
             detail=f"LLM quota exceeded (429). {hint}",
         )
+    if code == 503:
+        return HTTPException(
+            status_code=503,
+            detail="LLM provider temporarily overloaded (503). Retry in a moment.",
+        )
     if code == 529:
         return HTTPException(
             status_code=503,
@@ -165,6 +170,11 @@ class ScaffoldRequest(BaseModel):
         if not v.strip():
             raise ValueError("domain must not be empty")
         return v
+
+
+class ContextBuildRequest(BaseModel):
+    goal: str
+    token_budget: int | None = None   # falls back to cfg.query.context_token_budget
 
 
 class AnalyseRequest(BaseModel):
@@ -409,7 +419,11 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                     "unresolved_note": fm.get("unresolved_note") or None,
                 })
 
-        orphan_slugs = find_orphan_slugs(page_texts)
+        page_bodies: dict[str, str] = {
+            slug: (text[m.end():] if (m := _FM_RE.match(text)) else text)
+            for slug, text in page_texts.items()
+        }
+        orphan_slugs = find_orphan_slugs(page_bodies)
 
         orphan_details = []
         for slug in orphan_slugs:
@@ -516,5 +530,21 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
     async def audit_events(limit: int = 100):
         records = await app.state.orch._audit.list_events(limit=limit)
         return {"records": records, "count": len(records)}
+
+    @app.post("/context/build")
+    async def context_build(req: ContextBuildRequest):
+        from synthadoc.agents.context_agent import ContextAgent
+        from synthadoc.providers import make_provider
+        orch = app.state.orch
+        budget = req.token_budget if req.token_budget is not None \
+            else orch._cfg.query.context_token_budget
+        agent = ContextAgent(
+            provider=make_provider("query", orch._cfg),
+            store=orch._store,
+            search=orch._search,
+            token_budget=budget,
+        )
+        pack = await agent.build(req.goal, token_budget=budget)
+        return pack.to_dict()
 
     return app

@@ -147,7 +147,8 @@ export default class SynthadocPlugin extends Plugin {
 
     async ingestFile(file: TFile) {
         try {
-            const r = await api.ingest(file.path) as any;
+            const absPath = (this.app.vault.adapter as any).getFullPath(file.path);
+            const r = await api.ingest(absPath) as any;
             new Notice(`Synthadoc: ingest queued (job ${r.job_id})`);
         } catch { new Notice("Synthadoc: ingest failed — is the server running?"); }
     }
@@ -224,7 +225,8 @@ class IngestAllModal extends Modal {
             let queueFailed = 0;
             for (const file of files) {
                 try {
-                    const r = await api.ingest(file.path) as any;
+                    const absPath = (this.app.vault.adapter as any).getFullPath(file.path);
+                    const r = await api.ingest(absPath) as any;
                     if (r?.job_id) jobIds.push(r.job_id);
                 } catch {
                     queueFailed++;
@@ -321,7 +323,8 @@ class IngestConfirmModal extends Modal {
             btn.disabled = true;
             setStatus("⏳ Queuing…");
             try {
-                const r = await api.ingest(this._file.path) as any;
+                const absPath = (this.app.vault.adapter as any).getFullPath(this._file.path);
+                const r = await api.ingest(absPath) as any;
                 const jobId: string = r.job_id;
                 setStatus(`⏳ Queued — job ${jobId.slice(0, 8)}`);
 
@@ -1093,7 +1096,7 @@ class WebSearchModal extends Modal {
                 const r = await api.ingest(`search for: ${topic}`, maxResults) as any;
                 const jobId: string = r.job_id;
                 new Notice(`Synthadoc: web search queued (job ${jobId})`);
-                this._startPolling(jobId, statusEl, pagesEl, errorsEl);
+                this._startPolling(jobId, statusEl, pagesEl, errorsEl, btn, input);
             } catch {
                 statusEl.setText("Error: is synthadoc serve running?");
                 btn.disabled = false;
@@ -1111,11 +1114,16 @@ class WebSearchModal extends Modal {
         statusEl: HTMLElement,
         pagesEl: HTMLElement,
         errorsEl: HTMLElement,
+        btn: HTMLButtonElement,
+        input: HTMLTextAreaElement,
     ) {
         const pages = new Set<string>();
         const errors: string[] = [];
         let childJobIds: string[] = [];
-        let childDone = 0;
+        // Persistent settled set — survives jobs dropping off api.jobs() between polls
+        const settledChildren = new Set<string>();
+
+        const _TERMINAL = ["completed", "failed", "dead", "skipped", "cancelled"];
 
         const poll = async () => {
             try {
@@ -1139,23 +1147,29 @@ class WebSearchModal extends Modal {
 
                 if (childJobIds.length > 0) {
                     const allJobs = await api.jobs() as any[];
-                    childDone = 0;
                     for (const cj of allJobs) {
                         if (!childJobIds.includes(cj.id)) continue;
+                        if (!_TERMINAL.includes(cj.status)) continue;
+                        if (settledChildren.has(cj.id)) continue;
+                        settledChildren.add(cj.id);
                         if (cj.status === "completed") {
-                            childDone++;
                             for (const s of (cj.result?.pages_created ?? [])) pages.add(s);
                             for (const s of (cj.result?.pages_updated ?? [])) pages.add(s);
-                        } else if (["failed", "dead", "skipped"].includes(cj.status) && cj.error) {
+                        } else if (cj.error) {
                             const src = cj.payload?.source ?? cj.id;
                             const msg = `${src}: ${cj.error}`;
                             if (!errors.includes(msg)) errors.push(msg);
                         }
                     }
-                    // Always show ingesting progress once child jobs are known
-                    const settled = childDone + errors.length;
-                    if (settled < childJobIds.length) {
-                        statusEl.setText(`Ingesting ${childJobIds.length} URL${childJobIds.length !== 1 ? "s" : ""}… (${settled} done)`);
+                    const childSettled = settledChildren.size;
+                    // Show progress; when parent is done clarify that work is still ongoing
+                    if (childSettled < childJobIds.length) {
+                        const remaining = childJobIds.length - childSettled;
+                        if (isDone) {
+                            statusEl.setText(`Wrapping up — ${remaining} ingest${remaining !== 1 ? "s" : ""} still running…`);
+                        } else {
+                            statusEl.setText(`Ingesting ${childJobIds.length} URL${childJobIds.length !== 1 ? "s" : ""}… (${childSettled} done)`);
+                        }
                     }
                 }
 
@@ -1175,12 +1189,13 @@ class WebSearchModal extends Modal {
                     for (const err of errors) ul.createEl("li", { text: err });
                 }
 
-                const allChildrenSettled = childJobIds.length > 0 && (childDone + errors.length) >= childJobIds.length;
+                const allChildrenSettled = childJobIds.length > 0 && settledChildren.size >= childJobIds.length;
                 if (isDone && (childJobIds.length === 0 || allChildrenSettled)) {
                     this._stopPolling();
                     btn.disabled = false;
                     input.disabled = false;
                     if (job.status === "completed" || allChildrenSettled) {
+                        statusEl.style.cssText += ";font-weight:bold;color:var(--text-success)";
                         statusEl.setText(`Done — ${pages.size} page(s) written.`);
                         new Notice(`Synthadoc: web search complete — ${pages.size} page(s)`);
                     } else {

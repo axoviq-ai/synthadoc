@@ -1,8 +1,8 @@
 {
-  "cli_commands": 27,
+  "cli_commands": 35,
   "obsidian_commands": 15,
   "skills": 9,
   "hooks": 2,
-  "coverage": 86,
+  "coverage": 85,
   "coverage_color": "brightgreen"
 }
