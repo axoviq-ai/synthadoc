@@ -148,24 +148,23 @@ contradicted pages and orphans in real time.
 
 ### Install the Synthadoc plugin
 
-The plugin ships pre-built as `obsidian-plugin/main.js` — no build step required.
-
-From the `obsidian-plugin/` folder inside your cloned Synthadoc repo:
-
-**Linux / macOS:**
+The plugin ships pre-built — no build step required. One command copies it into the
+correct Obsidian plugins folder for your wiki:
 
 ```bash
-vault=~/wikis/history-of-computing
-mkdir -p "$vault/.obsidian/plugins/synthadoc"
-cp main.js manifest.json "$vault/.obsidian/plugins/synthadoc/"
+synthadoc plugin install history-of-computing
 ```
 
-**Windows (cmd.exe):**
+> **Note:** The wiki must be registered first via `synthadoc install` before running
+> this command — the installer looks up the wiki's path from the registry to know
+> where to copy the plugin files.
 
-```cmd
-mkdir "%USERPROFILE%\wikis\history-of-computing\.obsidian\plugins\synthadoc"
-copy main.js "%USERPROFILE%\wikis\history-of-computing\.obsidian\plugins\synthadoc\"
-copy manifest.json "%USERPROFILE%\wikis\history-of-computing\.obsidian\plugins\synthadoc\"
+The command creates `<wiki-root>/.obsidian/plugins/synthadoc/` if needed, then copies
+`main.js` and `manifest.json` into it. To install the plugin for your own wiki, replace
+the name:
+
+```bash
+synthadoc plugin install my-wiki-name
 ```
 
 ### Enable and configure the plugin

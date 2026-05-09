@@ -375,7 +375,13 @@ synthadoc serve
 | `AGENTS.md`         | LLM behaviour guidelines — tone, terminology, and synthesis style          |
 | `wiki/dashboard.md` | Live Dataview dashboard — orphan pages, contradictions, page count         |
 
-Open the wiki folder in Obsidian as a new vault and install both the Dataview and Synthadoc plugins (required once per wiki). The Quick-Start Guide covers this setup in detail — see [docs/user-quick-start-guide.md](docs/user-quick-start-guide.md).
+Then open the wiki folder in Obsidian as a new vault, install the Dataview community plugin, and copy the Synthadoc plugin files with one command (requires the wiki to be registered via `synthadoc install` first):
+
+```bash
+synthadoc plugin install market-condition-canada
+```
+
+The Quick-Start Guide covers the full Obsidian setup in detail — see [docs/user-quick-start-guide.md](docs/user-quick-start-guide.md).
 
 **Recommended growth loop:**
 

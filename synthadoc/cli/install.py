@@ -19,6 +19,7 @@ _REGISTRY = Path.home() / ".synthadoc" / "wikis.json"
 
 _DEMOS = {
     "history-of-computing": Path(__file__).parent.parent / "demos" / "history-of-computing",
+    "ai-research": Path(__file__).parent.parent / "demos" / "ai-research",
 }
 
 
@@ -142,7 +143,7 @@ def install_cmd(
                 f"No demo template named '{name}'.",
                 f"Available demos: {', '.join(_DEMOS)}",
             )
-        shutil.copytree(_DEMOS[name], dest)
+        shutil.copytree(_DEMOS[name], dest, ignore=shutil.ignore_patterns("_*", "__pycache__"))
         # Ensure operational directories exist — the demo template may not include
         # empty dirs (git doesn't track them) and shutil.copytree won't create them.
         (dest / ".synthadoc" / "logs").mkdir(parents=True, exist_ok=True)
