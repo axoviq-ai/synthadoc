@@ -57,6 +57,29 @@ async def test_run_ingest_http_404_skips_job(tmp_wiki):
 
 
 @pytest.mark.asyncio
+async def test_run_ingest_llm_skip_marks_job_skipped(tmp_wiki):
+    """When IngestAgent returns result.skipped=True the job must be SKIPPED, not COMPLETED."""
+    from synthadoc.agents.ingest_agent import IngestResult
+
+    orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
+    await orch.init()
+    job_id = await orch._queue.enqueue("ingest", {"source": "https://example.com/oos", "force": False})
+
+    skipped_result = IngestResult(source="https://example.com/oos", skipped=True, skip_reason="out of scope (purpose.md)")
+    mock_agent = MagicMock()
+    mock_agent.ingest = AsyncMock(return_value=skipped_result)
+    with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
+         patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
+        await orch._run_ingest(job_id, "https://example.com/oos", auto_confirm=True)
+
+    from synthadoc.core.queue import JobStatus
+    skipped = await orch._queue.list_jobs(status=JobStatus.SKIPPED)
+    completed = await orch._queue.list_jobs(status=JobStatus.COMPLETED)
+    assert any(j.id == job_id for j in skipped), "LLM-skipped job must have SKIPPED status"
+    assert not any(j.id == job_id for j in completed), "LLM-skipped job must not be COMPLETED"
+
+
+@pytest.mark.asyncio
 async def test_run_ingest_http_5xx_retries_job(tmp_wiki):
     """A 5xx response must re-queue the job for retry (PENDING), not skip it."""
     orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())

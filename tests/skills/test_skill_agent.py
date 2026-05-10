@@ -156,6 +156,27 @@ def test_needs_path_resolution_returns_true_for_relative_paths(tmp_wiki):
     assert agent.needs_path_resolution("uploads/batch-001") is True
 
 
+def test_needs_path_resolution_returns_false_for_web_search_intent(tmp_wiki):
+    """Web search intent strings must never be resolved as local file paths."""
+    from synthadoc.agents.skill_agent import SkillAgent
+    agent = SkillAgent(wiki_root=tmp_wiki)
+    assert agent.needs_path_resolution("search for: quantum computing qubits") is False
+    assert agent.needs_path_resolution("search for: photonic quantum computing qubits") is False
+    assert agent.needs_path_resolution("browse: latest AI papers") is False
+
+
+def test_needs_path_resolution_fallback_when_detect_skill_raises(tmp_wiki):
+    """If detect_skill raises, the intent fallback scan must still return False
+    for intent-driven sources so they are never treated as file paths."""
+    from unittest.mock import patch
+    from synthadoc.agents.skill_agent import SkillAgent, SkillNotFoundError
+    agent = SkillAgent(wiki_root=tmp_wiki)
+    with patch.object(agent, "detect_skill", side_effect=SkillNotFoundError("search for: q")):
+        assert agent.needs_path_resolution("search for: quantum computing qubits") is False
+    with patch.object(agent, "detect_skill", side_effect=RuntimeError("registry error")):
+        assert agent.needs_path_resolution("search for: photonic qubits") is False
+
+
 # ── YouTube URL routing ───────────────────────────────────────────────────────
 
 def test_youtube_url_routes_to_youtube_skill(tmp_wiki):

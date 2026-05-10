@@ -200,5 +200,10 @@ class SkillAgent:
             if any(intent in s for intent in meta.triggers.intents):
                 return False
         except Exception:
-            pass
+            # detect_skill raised (e.g. SkillNotFoundError on registry miss).
+            # Fall back to a direct intent scan so intent-driven sources like
+            # "search for: ..." are never misclassified as local file paths.
+            for m in self._registry.values():
+                if any(intent in s for intent in m.triggers.intents):
+                    return False
         return True
