@@ -1437,3 +1437,19 @@ def test_expand_aliases_longer_alias_replaced_first(tmp_wiki):
     result = qa._expand_aliases("the flat flippy thing is useful")
     assert "spatula" in result
     assert "flippy thing" not in result
+
+
+def test_expand_aliases_case_insensitive(tmp_wiki):
+    """Alias stored as lowercase must match mixed-case query terms."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("alan-turing", _page_with_aliases(["Ada", "Lady Lovelace"]))
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    from unittest.mock import AsyncMock as _AsyncMock
+    provider = _AsyncMock()
+    qa = QueryAgent(provider=provider, store=store, search=search)
+    # Mixed-case in query must match alias stored as "ada" in the map
+    result = qa._expand_aliases("What did Ada contribute to computing?")
+    assert "alan-turing" in result
+    # Full capitalised alias
+    result2 = qa._expand_aliases("What did LADY LOVELACE achieve?")
+    assert "alan-turing" in result2

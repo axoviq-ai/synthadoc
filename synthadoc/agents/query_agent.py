@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -93,7 +94,7 @@ class QueryAgent:
             return question
         q = question
         for alias, slug in sorted(alias_map.items(), key=lambda x: -len(x[0])):
-            q = q.replace(alias, slug)
+            q = re.sub(re.escape(alias), slug, q, flags=re.IGNORECASE)
         return q
 
     async def decompose(self, question: str) -> list[str]:

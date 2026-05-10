@@ -178,25 +178,26 @@ class Orchestrator:
                 "tokens_used": result.tokens_used,
                 "cost_usd": result.cost_usd,
             }
-            if result.skip_reason:
-                job_result["skip_reason"] = result.skip_reason
-            await self._queue.complete(job_id, result=job_result)
-            # Embed newly written pages for vector search
-            if self._cfg.search.vector:
-                for slug in result.pages_created + result.pages_updated:
-                    page = self._store.read_page(slug)
-                    if page:
-                        text = f"{page.title} {' '.join(page.tags)} {page.content}"
-                        await self._search.embed_page(slug, text)
-            self._hooks.fire("on_ingest_complete", {
-                "event": "on_ingest_complete", "wiki": str(self._root),
-                "source": source,
-                "pages_created": result.pages_created,
-                "pages_updated": result.pages_updated,
-                "pages_flagged": result.pages_flagged,
-                "tokens_used": result.tokens_used,
-                "cost_usd": result.cost_usd,
-            })
+            if result.skipped:
+                await self._queue.skip(job_id, result.skip_reason or "skipped")
+            else:
+                await self._queue.complete(job_id, result=job_result)
+                # Embed newly written pages for vector search
+                if self._cfg.search.vector:
+                    for slug in result.pages_created + result.pages_updated:
+                        page = self._store.read_page(slug)
+                        if page:
+                            text = f"{page.title} {' '.join(page.tags)} {page.content}"
+                            await self._search.embed_page(slug, text)
+                self._hooks.fire("on_ingest_complete", {
+                    "event": "on_ingest_complete", "wiki": str(self._root),
+                    "source": source,
+                    "pages_created": result.pages_created,
+                    "pages_updated": result.pages_updated,
+                    "pages_flagged": result.pages_flagged,
+                    "tokens_used": result.tokens_used,
+                    "cost_usd": result.cost_usd,
+                })
         except (NotImplementedError, FileNotFoundError) as e:
             # Permanent failures — source is invalid, retry can never help
             await self._queue.fail_permanent(job_id, str(e))
