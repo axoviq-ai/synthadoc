@@ -11,7 +11,6 @@ sources:
     ingested: '2026-05-09'
 orphan: false
 aliases: []
-aliases: []
 ---
 
 # Geoffrey Hinton

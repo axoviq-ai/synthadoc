@@ -26,6 +26,10 @@
 15. [Observability and Logging](#15-observability-and-logging)
 16. [Security](#16-security)
 17. [Plugin Development Guide](#17-plugin-development-guide)
+18. [Routing](#18-routing)
+19. [Candidates Staging](#19-candidates-staging)
+20. [Context Packs](#20-context-packs)
+
 **Appendices**
 - [Appendix A — Release Feature Index](#appendix-a--release-feature-index)
 
