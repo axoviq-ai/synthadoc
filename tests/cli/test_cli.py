@@ -29,7 +29,7 @@ def test_install_creates_fresh_wiki(tmp_path, monkeypatch):
     """install creates wiki structure and registers the path."""
     import synthadoc.cli.install as install_mod
     monkeypatch.setattr(install_mod, "_REGISTRY", tmp_path / "wikis.json")
-    monkeypatch.setattr(install_mod, "_find_free_port", lambda start=7070, max_scan=20: 7070)
+    monkeypatch.setattr(install_mod, "_assign_wiki_port", lambda reserved, start=7070: 7070)
     # Prevent a real LLM call: _run_scaffold checks for API keys in the environment
     # and will call the provider if one is set (e.g. GEMINI_API_KEY on a dev machine).
     monkeypatch.setattr(install_mod, "_run_scaffold", lambda dest, domain: None)
@@ -58,7 +58,7 @@ def test_install_demo_copies_template(tmp_path, monkeypatch):
     (source / "wiki" / "index.md").write_text("# Index")
     monkeypatch.setattr(install_mod, "_DEMOS", {"my-demo": source})
     monkeypatch.setattr(install_mod, "_REGISTRY", tmp_path / "wikis.json")
-    monkeypatch.setattr(install_mod, "_find_free_port", lambda start=7070, max_scan=20: 7070)
+    monkeypatch.setattr(install_mod, "_assign_wiki_port", lambda reserved, start=7070: 7070)
 
     result = runner.invoke(app, ["install", "my-demo", "--target", str(tmp_path), "--demo"])
     assert result.exit_code == 0, result.output
@@ -109,7 +109,7 @@ def test_install_output_instructs_parent_dir(tmp_path, monkeypatch):
     """install output must confirm installation and show the serve command."""
     import synthadoc.cli.install as install_mod
     monkeypatch.setattr(install_mod, "_REGISTRY", tmp_path / "wikis.json")
-    monkeypatch.setattr(install_mod, "_find_free_port", lambda start=7070, max_scan=20: 7070)
+    monkeypatch.setattr(install_mod, "_assign_wiki_port", lambda reserved, start=7070: 7070)
     monkeypatch.setattr(install_mod, "_run_scaffold", lambda dest, domain: None)
 
     result = runner.invoke(app, ["install", "my-research", "--target", str(tmp_path)])

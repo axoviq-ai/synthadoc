@@ -26,13 +26,78 @@ _PROVIDER_HOSTS = {
     "groq":      ("api.groq.com", 443),
 }
 
+# Loopback addresses — the Obsidian plugin always connects via 127.0.0.1 for these.
+_LOOPBACK_ADDRS: frozenset[str] = frozenset({"127.0.0.1", "::1", "localhost"})
+# "All interfaces" binds — plugin still reaches the server via 127.0.0.1 locally.
+_ANY_IFACE_ADDRS: frozenset[str] = frozenset({"0.0.0.0", "::"})
 
-def _check_port(port: int) -> None:
-    """Fail early if the port is already bound by another process."""
+
+def _plugin_url(host: str, port: int) -> str:
+    """Return the URL the Obsidian plugin should use to reach the server.
+
+    When the server binds to a loopback or any-interface address, the plugin
+    always runs on the same machine, so 127.0.0.1 works.  When bound to a
+    specific external address, use that address directly so remote vaults
+    can connect.
+    """
+    if host in _LOOPBACK_ADDRS or host in _ANY_IFACE_ADDRS:
+        return f"http://127.0.0.1:{port}"
+    return f"http://{host}:{port}"
+
+
+def _sync_plugin_config(wiki_root: Path, host: str, port: int) -> None:
+    """Update the Obsidian plugin data.json if its serverUrl differs from the served address.
+
+    Called at startup so that manual config.toml edits are automatically
+    reflected in the plugin — the user only needs to reload Obsidian.
+    Silently no-ops if the plugin is not installed in this vault.
+    """
+    import json
+    data_json = wiki_root / ".obsidian" / "plugins" / "synthadoc" / "data.json"
+    if not data_json.exists():
+        return
+    try:
+        data = json.loads(data_json.read_text(encoding="utf-8"))
+        expected_url = _plugin_url(host, port)
+        if data.get("serverUrl") != expected_url:
+            old_url = data.get("serverUrl", "(none)")
+            data["serverUrl"] = expected_url
+            data_json.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            typer.echo(
+                f"Notice: plugin server URL updated {old_url!r} → {expected_url!r}.\n"
+                f"Reload Obsidian (Cmd+R / Ctrl+R) if it is already open."
+            )
+    except Exception:
+        pass  # never block startup due to a plugin config issue
+
+
+def _sync_registry_port(wiki_name: str, port: int) -> None:
+    """Update the registry port for a wiki when it differs (e.g. config.toml edited manually)."""
+    from synthadoc.cli.install import _read_registry, _write_registry
+    try:
+        registry = _read_registry()
+        if wiki_name in registry and registry[wiki_name].get("port") != port:
+            registry[wiki_name]["port"] = port
+            _write_registry(registry)
+    except Exception:
+        pass
+
+
+def _check_port(port: int, host: str = "127.0.0.1") -> None:
+    """Fail early if the port is already bound by another process on the target host."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if sys.platform == "win32":
+            # SO_REUSEADDR on Windows lets any socket bind to an occupied port —
+            # the opposite of what we want here.  SO_EXCLUSIVEADDRUSE correctly
+            # fails the bind if anything else already holds the port.
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        else:
+            # On POSIX, SO_REUSEADDR lets the check succeed on a TIME_WAIT port
+            # (so a quick restart doesn't false-alarm) while still failing when
+            # the port is actively held in LISTEN state by another process.
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
-            s.bind(("127.0.0.1", port))
+            s.bind((host, port))
         except OSError:
             E.cli_error(
                 E.SRV_PORT_IN_USE,
@@ -203,6 +268,19 @@ def serve_cmd(
 
     provider = cfg.agents.resolve("ingest").provider
 
+    # Warn when binding to an external interface — synthadoc has no built-in auth.
+    if cfg.server.host not in _LOOPBACK_ADDRS:
+        typer.echo(
+            f"Warning: binding to {cfg.server.host!r} — server reachable from the network.\n"
+            "synthadoc has no built-in authentication. Restrict access via firewall\n"
+            "or network controls before exposing to untrusted networks.",
+            err=True,
+        )
+
+    # Keep registry and plugin in sync if config.toml port was manually changed
+    _sync_registry_port(wiki or "", effective_port)
+    _sync_plugin_config(root, cfg.server.host, effective_port)
+
     # Pre-flight checks — run before binding the port or starting workers
     _check_wiki(root, wiki_arg=wiki or "")
 
@@ -235,7 +313,7 @@ def serve_cmd(
         )
 
     if not mcp_only:
-        _check_port(effective_port)
+        _check_port(effective_port, host=cfg.server.host)
 
     _check_network(provider)
 
@@ -260,7 +338,7 @@ def serve_cmd(
     if not mcp_only:
         from synthadoc.integration.http_server import create_app
         http_app = create_app(wiki_root=root)
-        uvicorn.run(http_app, host="127.0.0.1", port=effective_port,
+        uvicorn.run(http_app, host=cfg.server.host, port=effective_port,
                     log_level="warning", log_config=None)
     else:
         from synthadoc.integration.mcp_server import create_mcp_server

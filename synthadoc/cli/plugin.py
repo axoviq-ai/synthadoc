@@ -2,6 +2,7 @@
 # Copyright (C) 2026 William Johnason / axoviq.com
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 from typing import Optional
@@ -19,6 +20,49 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _PLUGIN_SRC = _REPO_ROOT / "obsidian-plugin"
 _PLUGIN_FILES = ("main.js", "manifest.json", "styles.css")
 _PLUGIN_ID = "synthadoc"
+
+
+_LOOPBACK_ADDRS = frozenset({"127.0.0.1", "::1", "localhost"})
+_ANY_IFACE_ADDRS = frozenset({"0.0.0.0", "::"})
+
+
+def _write_plugin_data(wiki_path: Path, plugin_dir: Path) -> None:
+    """Write (or update) data.json with the wiki's server URL.
+
+    Reads host and port from the wiki's config.toml.  If data.json already
+    exists (e.g. the user has customised other settings), only ``serverUrl``
+    is updated — all other keys are preserved.
+    """
+    import tomllib
+    host = "127.0.0.1"
+    port = 7070
+    config_path = wiki_path / ".synthadoc" / "config.toml"
+    if config_path.exists():
+        try:
+            cfg = tomllib.loads(config_path.read_text(encoding="utf-8"))
+            srv = cfg.get("server", {})
+            host = srv.get("host", "127.0.0.1")
+            port = srv.get("port", 7070)
+        except Exception:
+            pass
+
+    # Loopback and any-interface binds → plugin connects via 127.0.0.1 locally.
+    # Specific external address → use it directly for remote vault support.
+    if host in _LOOPBACK_ADDRS or host in _ANY_IFACE_ADDRS:
+        server_url = f"http://127.0.0.1:{port}"
+    else:
+        server_url = f"http://{host}:{port}"
+
+    data_json = plugin_dir / "data.json"
+    existing: dict = {}
+    if data_json.exists():
+        try:
+            existing = json.loads(data_json.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    existing["serverUrl"] = server_url
+    data_json.write_text(json.dumps(existing, indent=2), encoding="utf-8")
 
 
 @plugin_app.command("install")
@@ -71,9 +115,11 @@ def plugin_install_cmd(
         )
         raise typer.Exit(1)
 
+    _write_plugin_data(wiki_path, dest_dir)
+
     typer.echo(f"Plugin installed into: {dest_dir}")
     for f in copied:
         typer.echo(f"  copied  {f}")
+    typer.echo(f"  wrote   data.json (server URL configured automatically)")
     typer.echo()
     typer.echo("Open Obsidian, go to Settings > Community Plugins, and enable 'Synthadoc'.")
-    typer.echo("Set the server URL to match your wiki's configured port.")

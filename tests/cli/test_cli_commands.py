@@ -161,7 +161,7 @@ def test_install_fresh_wiki_calls_scaffold_agent(tmp_path):
     )
 
     with patch("synthadoc.cli.install._run_scaffold", return_value=mock_result) as mock_scaffold, \
-         patch("synthadoc.cli.install._find_free_port", return_value=7070):
+         patch("synthadoc.cli.install._assign_wiki_port", return_value=7070):
         with patch.object(install_mod, "_REGISTRY", tmp_path / "wikis.json"):
             result = runner.invoke(app, [
                 "install", "test-wiki",
@@ -238,7 +238,7 @@ def test_install_fresh_wiki_falls_back_when_no_api_key(tmp_path):
     import synthadoc.cli.install as install_mod
 
     with patch("synthadoc.cli.install._run_scaffold", return_value=None), \
-         patch("synthadoc.cli.install._find_free_port", return_value=7070):
+         patch("synthadoc.cli.install._assign_wiki_port", return_value=7070):
         with patch.object(install_mod, "_REGISTRY", tmp_path / "wikis.json"):
             result = runner.invoke(app, [
                 "install", "test-wiki2",
