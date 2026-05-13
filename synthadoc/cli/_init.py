@@ -25,6 +25,7 @@ domain = "{domain}"
 
 [server]
 port = {port}  # change this if running multiple wikis simultaneously
+# host = "0.0.0.0"  # bind to all interfaces — no built-in auth, restrict via firewall
 
 [agents]
 default = {{ provider = "gemini", model = "gemini-2.5-flash-lite" }}

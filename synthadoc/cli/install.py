@@ -11,7 +11,7 @@ from typing import Optional
 import typer
 
 from synthadoc.cli.main import app
-from synthadoc.cli._port import find_free_port as _find_free_port, _DEFAULT_PORT
+from synthadoc.cli._port import assign_wiki_port as _assign_wiki_port, _DEFAULT_PORT
 from synthadoc.cli._wiki import _normalise_wiki_name
 from synthadoc import errors as E
 
@@ -32,6 +32,32 @@ def _read_registry() -> dict:
 def _write_registry(data: dict) -> None:
     _REGISTRY.parent.mkdir(parents=True, exist_ok=True)
     _REGISTRY.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def _get_reserved_ports() -> set[int]:
+    """Return all ports currently assigned to registered wikis.
+
+    Reads the ``port`` field from each registry entry when present. Falls back
+    to parsing ``.synthadoc/config.toml`` for older entries that pre-date port
+    tracking.  Missing wikis or unreadable configs are silently skipped.
+    """
+    import tomllib
+    registry = _read_registry()
+    ports: set[int] = set()
+    for entry in registry.values():
+        if "port" in entry:
+            ports.add(int(entry["port"]))
+            continue
+        config_path = Path(entry.get("path", "")) / ".synthadoc" / "config.toml"
+        if config_path.exists():
+            try:
+                data = tomllib.loads(config_path.read_text(encoding="utf-8"))
+                p = data.get("server", {}).get("port")
+                if p:
+                    ports.add(int(p))
+            except Exception:
+                pass
+    return ports
 
 
 def _run_scaffold(dest: Path, domain: str):
@@ -126,15 +152,13 @@ def install_cmd(
     if port is not None:
         effective_port = port
     else:
-        effective_port = _find_free_port(_DEFAULT_PORT)
+        effective_port = _assign_wiki_port(_get_reserved_ports(), _DEFAULT_PORT)
         if effective_port != _DEFAULT_PORT:
-            confirmed = typer.confirm(
-                f"Port {_DEFAULT_PORT} is already in use. "
-                f"Install '{name}' on port {effective_port} instead?"
+            typer.echo(
+                f"Port {_DEFAULT_PORT} is already assigned or in use. "
+                f"Using port {effective_port} for '{name}'.\n"
+                f"Tip: use --port <N> to override."
             )
-            if not confirmed:
-                typer.echo("Tip: use --port <N> to specify a port manually.", err=True)
-                raise typer.Exit(1)
 
     if demo:
         if name not in _DEMOS:
@@ -189,6 +213,7 @@ def install_cmd(
         "path": str(dest),
         "demo": name if demo else None,
         "installed": date.today().isoformat(),
+        "port": effective_port,
     }
     _write_registry(registry)
 
@@ -207,7 +232,8 @@ def list_cmd():
     for name, entry in registry.items():
         demo_tag = f"  [demo]" if entry.get("demo") else ""
         installed = entry.get("installed", "")
-        typer.echo(f"{name:<30}  installed: {installed}{demo_tag}")
+        port_str = f"  port: {entry['port']}" if entry.get("port") else ""
+        typer.echo(f"{name:<30}  installed: {installed}{port_str}{demo_tag}")
 
 
 @app.command("uninstall")

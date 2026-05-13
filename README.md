@@ -332,7 +332,7 @@ synthadoc serve -w history-of-computing
 synthadoc serve -w history-of-computing --background
 ```
 
-The server binds to `http://127.0.0.1:7070` by default (port is set in `<wiki-root>/.synthadoc/config.toml`). Leave it running while you work — the Obsidian plugin, CLI ingest commands, and query commands all talk to it.
+The server binds to `http://127.0.0.1:7070` by default (port is set in `<wiki-root>/.synthadoc/config.toml`). The server is **localhost-only** — it never binds to an external network interface. Leave it running while you work — the Obsidian plugin, CLI ingest commands, and query commands all talk to it.
 
 To stop a background server:
 
@@ -400,6 +400,8 @@ Then open the wiki folder in Obsidian as a new vault, install the Dataview commu
 ```bash
 synthadoc plugin install market-condition-canada
 ```
+
+This automatically writes the correct server URL into the plugin's `data.json` — no manual configuration in Obsidian settings is needed.
 
 The Quick-Start Guide covers the full Obsidian setup in detail — see [docs/user-quick-start-guide.md](docs/user-quick-start-guide.md).
 
@@ -506,7 +508,10 @@ For the full configuration reference — layer precedence, global vs. per-projec
 # Create a new empty wiki (LLM scaffold runs automatically if API key is set)
 synthadoc install my-wiki --target ~/wikis --domain "Machine Learning"
 
-# Create a wiki on a specific port (useful when running multiple wikis)
+# Port is auto-assigned (checks all existing wikis to avoid conflicts, even when stopped)
+synthadoc install my-wiki --target ~/wikis --domain "Machine Learning"
+
+# Or pin a specific port manually
 synthadoc install my-wiki --target ~/wikis --domain "Machine Learning" --port 7071
 
 # Install the demo (includes pre-built pages and raw sources — no LLM call needed)
