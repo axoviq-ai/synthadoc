@@ -643,6 +643,7 @@ Reload the plugin (toggle off/on) after copying — a full Obsidian restart is n
 | `Synthadoc: Run lint with auto-resolve` | Same as above but passes `auto_resolve: true` — LLM resolves contradictions automatically when confidence ≥ threshold |
 | `Synthadoc: List jobs...` | Modal with status-filter dropdown, results table, error details |
 | `Synthadoc: Web search...` | Live-polling modal — type a plain topic; set max results (1–50, default 20) and poll interval (500–10000 ms, default 2000 ms); shows phase text, pages list, and URL errors in real time as fan-out jobs complete |
+| `Synthadoc: Routing: manage ROUTING.md...` | Modal panel with three buttons. **Init** creates ROUTING.md from the current index.md branch structure (enabled only when ROUTING.md does not exist). **Validate** reports dangling slugs — pages listed in ROUTING.md that no longer exist in the wiki (enabled only when ROUTING.md exists). **Clean** removes dangling slugs from ROUTING.md (enabled only when ROUTING.md exists). After each action the result appears inline with per-entry `[Branch] [[slug]]` detail rows. |
 
 ### Ribbon icon
 
@@ -1498,6 +1499,18 @@ Pages may carry an `aliases:` list in YAML frontmatter. `QueryAgent._expand_alia
 | `synthadoc routing clean` | Remove dangling slugs from ROUTING.md |
 
 All commands accept `--wiki-root <path>`.
+
+### Obsidian plugin
+
+The `Routing: manage ROUTING.md...` command opens a `RoutingModal`. On open it calls `GET /routing/status` and enables or disables the three buttons accordingly:
+
+| State | Init | Validate | Clean |
+|---|---|---|---|
+| ROUTING.md absent | enabled | disabled | disabled |
+| ROUTING.md present | disabled | enabled | enabled |
+| Server unreachable | disabled | disabled | disabled |
+
+After each action the result appears in an inline result area with per-entry `[Branch] [[slug]]` detail rows. The ROUTING.md preview box (max-height 120 px, scrollable) is shown/refreshed by Init and Clean operations.
 
 ---
 

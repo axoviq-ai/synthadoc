@@ -1117,6 +1117,13 @@ All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synt
 | `Synthadoc: Audit: query history...`  | Recent questions, sub-question counts, token usage, cost per query.                                                               |
 | `Synthadoc: Audit: events...`         | Table of system events — contradictions found, auto-resolutions, cost gate triggers. Customisable limit (default 100, max 1000). |
 
+### Routing
+
+
+| Command                                    | What it does                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Synthadoc: Routing: manage ROUTING.md...` | Modal panel with three buttons. **Init** creates `ROUTING.md` from your current `index.md` branch structure (enabled only when `ROUTING.md` does not exist). **Validate** reports dangling slugs — pages listed in `ROUTING.md` that no longer exist — as a dry-run with no changes made (enabled only when `ROUTING.md` exists). **Clean** removes dangling slugs from `ROUTING.md` and refreshes the preview (enabled only when `ROUTING.md` exists). Results show per-entry `[Branch] [[slug]]` detail rows inline. |
+
 > **UX note:** All modals are draggable and support full text selection and copy-paste.
 
 ### Ribbon icon
