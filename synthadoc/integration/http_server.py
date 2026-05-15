@@ -45,12 +45,17 @@ def _install_win32_conn_reset_filter() -> None:
 
 def _classify_llm_error(exc: Exception) -> "HTTPException | None":
     """Return a meaningful HTTPException for known LLM API error codes, or None."""
-    from synthadoc.errors import DailyQuotaExhaustedException
+    from synthadoc.errors import DailyQuotaExhaustedException, CodingToolQuotaExhaustedException
     _SWITCH = "Switch to another provider by editing [agents] in .synthadoc/config.toml and restarting the server (options: anthropic, openai, gemini, groq, minimax, deepseek, ollama)."
     if isinstance(exc, DailyQuotaExhaustedException):
         return HTTPException(
             status_code=503,
             detail=f"Daily quota exhausted for {exc.provider} — no requests possible until midnight UTC. {_SWITCH}",
+        )
+    if isinstance(exc, CodingToolQuotaExhaustedException):
+        return HTTPException(
+            status_code=503,
+            detail=f"Coding tool quota exhausted — {exc}. {_SWITCH}",
         )
 
     # openai/anthropic SDKs set status_code directly on the exception;
@@ -188,6 +193,11 @@ class AnalyseRequest(BaseModel):
         return v
 
 
+class StagingPolicyRequest(BaseModel):
+    policy: str
+    confidence_min: str | None = None
+
+
 def _parse_retry_after(exc: Exception, default: float = 60.0) -> float:
     """Parse 'Please try again in Xm Y.Zs' from a rate-limit error message."""
     m = re.search(r"Please try again in (?:(\d+)m\s*)?(\d+(?:\.\d+)?)s", str(exc))
@@ -219,12 +229,12 @@ async def _worker_loop(orch) -> None:
                     await orch._run_scaffold(job.id, domain=domain)
         except Exception as exc:
             known = _classify_llm_error(exc)
-            if known and known.status_code == 503 and "Daily quota" in (known.detail or ""):
-                # Daily quota is exhausted for the rest of the day — no point
-                # sleeping and retrying. The orchestrator already permanently
-                # failed the job; just continue polling without a sleep penalty.
-                logger.error("Daily quota exhausted — jobs will fail until midnight UTC. %s",
-                             known.detail)
+            if known and known.status_code == 503 and (
+                "Daily quota" in (known.detail or "") or "Coding tool quota" in (known.detail or "")
+            ):
+                # Quota exhausted — no point retrying pending jobs until the user
+                # tops up credits or waits for the reset. Log once and keep polling.
+                logger.error("Quota exhausted — pending jobs will fail. %s", known.detail)
                 sleep_secs = _WORKER_POLL_SECONDS
             elif known and known.status_code == 429:
                 sleep_secs = _parse_retry_after(exc)
@@ -611,5 +621,124 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             "removed": [{"branch": b, "slug": s} for b, s in removed],
             "content": content,
         }
+
+    # ── Staging policy ────────────────────────────────────────────────────────
+    def _staging_cfg_path() -> Path:
+        return app.state.orch._root / ".synthadoc" / "config.toml"
+
+    @app.get("/staging/policy")
+    async def staging_policy_get():
+        import tomllib as _tomllib
+        cfg_path = _staging_cfg_path()
+        raw = _tomllib.loads(cfg_path.read_text(encoding="utf-8")) if cfg_path.exists() else {}
+        ig = raw.get("ingest", {})
+        return {
+            "policy": ig.get("staging_policy", "off"),
+            "confidence_min": ig.get("staging_confidence_min", "high"),
+        }
+
+    @app.post("/staging/policy")
+    async def staging_policy_set(req: StagingPolicyRequest):
+        import tomllib as _tomllib
+        from synthadoc.cli.candidates import _patch_toml as _cand_patch_toml
+        if req.policy not in ("off", "all", "threshold"):
+            raise HTTPException(400, "policy must be off, all, or threshold")
+        if req.confidence_min and req.confidence_min not in ("high", "medium", "low"):
+            raise HTTPException(400, "confidence_min must be high, medium, or low")
+        cfg_path = _staging_cfg_path()
+        cfg_path.parent.mkdir(parents=True, exist_ok=True)
+        updates: dict = {"staging_policy": req.policy}
+        if req.confidence_min:
+            updates["staging_confidence_min"] = req.confidence_min
+        _cand_patch_toml(cfg_path, "ingest", updates)
+        raw = _tomllib.loads(cfg_path.read_text(encoding="utf-8"))
+        ig = raw.get("ingest", {})
+        return {
+            "policy": ig.get("staging_policy", "off"),
+            "confidence_min": ig.get("staging_confidence_min", "high"),
+        }
+
+    # ── Candidates ────────────────────────────────────────────────────────────
+    def _cand_dir() -> Path:
+        return app.state.orch._root / "wiki" / "candidates"
+
+    def _wiki_dir() -> Path:
+        return app.state.orch._root / "wiki"
+
+    @app.get("/candidates")
+    async def candidates_list():
+        from synthadoc.cli.candidates import _read_frontmatter as _cand_read_fm
+        cd = _cand_dir()
+        pages = sorted(cd.glob("*.md")) if cd.exists() else []
+        result = []
+        for p in pages:
+            fm = _cand_read_fm(p)
+            result.append({
+                "slug": p.stem,
+                "title": fm.get("title") or p.stem.replace("-", " ").title(),
+                "confidence": fm.get("confidence", ""),
+                "created": fm.get("created", ""),
+            })
+        return result
+
+    @app.post("/candidates/promote-all")
+    async def candidates_promote_all():
+        from synthadoc.cli.candidates import _read_frontmatter as _cand_read_fm
+        from synthadoc.cli.candidates import _add_to_index as _cand_add_to_index
+        from synthadoc.cli.candidates import _page_title as _cand_page_title
+        import shutil as _shutil
+        cd = _cand_dir()
+        wd = _wiki_dir()
+        pages = sorted(cd.glob("*.md")) if cd.exists() else []
+        promoted = []
+        new_pages = []  # only pages that didn't already exist in wiki/
+        for src in pages:
+            dest = wd / src.name
+            is_new = not dest.exists()
+            title = _cand_page_title(src)
+            _shutil.move(str(src), str(dest))
+            promoted.append((src.stem, title))
+            if is_new:
+                new_pages.append((src.stem, title))
+        if new_pages:
+            _cand_add_to_index(wd, new_pages)
+        return {"promoted": [s for s, _ in promoted], "count": len(promoted)}
+
+    @app.post("/candidates/discard-all")
+    async def candidates_discard_all():
+        cd = _cand_dir()
+        pages = sorted(cd.glob("*.md")) if cd.exists() else []
+        discarded = []
+        for src in pages:
+            src.unlink(missing_ok=True)
+            discarded.append(src.stem)
+        return {"discarded": discarded, "count": len(discarded)}
+
+    @app.post("/candidates/{slug}/promote")
+    async def candidates_promote_one(slug: str):
+        import shutil as _shutil
+        from synthadoc.cli.candidates import _add_to_index as _cand_add_to_index
+        from synthadoc.cli.candidates import _page_title as _cand_page_title
+        cd = _cand_dir()
+        wd = _wiki_dir()
+        src = cd / f"{slug}.md"
+        if not src.exists():
+            raise HTTPException(404, f"Candidate '{slug}' not found.")
+        dest = wd / src.name
+        is_new = not dest.exists()
+        title = _cand_page_title(src)
+        _shutil.move(str(src), str(dest))
+        if is_new:
+            _cand_add_to_index(wd, [(slug, title)])
+        return {"slug": slug, "promoted": True, "updated": not is_new}
+
+    @app.post("/candidates/{slug}/discard")
+    async def candidates_discard_one(slug: str):
+        cd = _cand_dir()
+        src = cd / f"{slug}.md"
+        if not src.exists():
+            raise HTTPException(404, f"Candidate '{slug}' not found.")
+        src.unlink()
+        return {"slug": slug, "discarded": True}
 
     return app
