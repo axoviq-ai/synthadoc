@@ -531,6 +531,7 @@ function makeDraggable(modalEl: HTMLElement, handle: HTMLElement): void {
 }
 
 const TERMINAL_STATUSES = new Set(["completed", "failed", "skipped", "dead", "cancelled"]);
+const JOBS_PAGE_SIZE = 25;
 
 class JobsModal extends Modal {
     private _selected: Set<string> = new Set(["pending", "in_progress"]);
@@ -541,9 +542,15 @@ class JobsModal extends Modal {
     private _countdownEl: HTMLElement | null = null;
     private _deleteBtn: HTMLButtonElement | null = null;
     private _checkedIds: Set<string> = new Set();
+    private _page = 0;
+    private _filteredJobs: any[] = [];
+    private _prevBtn: HTMLButtonElement | null = null;
+    private _nextBtn: HTMLButtonElement | null = null;
+    private _pageLabel: HTMLElement | null = null;
+    private _pageRow: HTMLElement | null = null;
 
     onOpen() {
-        this.modalEl.style.width = "clamp(560px, 65vw, 900px)";
+        this.modalEl.style.width = "clamp(760px, 80vw, 1100px)";
         const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
         if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
         const { contentEl } = this;
@@ -565,6 +572,7 @@ class JobsModal extends Modal {
             cb.onchange = () => {
                 if (cb.checked) this._selected.add(status);
                 else this._selected.delete(status);
+                this._page = 0;
                 this._resetAndLoad();
             };
         }
@@ -596,7 +604,16 @@ class JobsModal extends Modal {
 
         // Table
         this._tableEl = contentEl.createEl("div");
-        this._tableEl.style.cssText = "-webkit-user-select:text;user-select:text";
+        this._tableEl.style.cssText = "overflow-y:auto;max-height:50vh;-webkit-user-select:text;user-select:text";
+
+        // Pagination row — hidden when all results fit on one page
+        this._pageRow = contentEl.createEl("div");
+        this._pageRow.style.cssText = "display:none;gap:8px;align-items:center;margin-top:8px;font-size:12px;color:var(--text-muted);";
+        this._prevBtn = this._pageRow.createEl("button", { text: "← Prev" }) as HTMLButtonElement;
+        this._pageLabel = this._pageRow.createEl("span");
+        this._nextBtn = this._pageRow.createEl("button", { text: "Next →" }) as HTMLButtonElement;
+        this._prevBtn.onclick = () => { this._page--; this._renderTable(); };
+        this._nextBtn.onclick = () => { this._page++; this._renderTable(); };
 
         this._resetAndLoad();
     }
@@ -633,10 +650,10 @@ class JobsModal extends Modal {
         if (!this._tableEl) return;
         try {
             const allJobs = await api.jobs() as any[];
-            const filtered = this._selected.size === 0
+            this._filteredJobs = this._selected.size === 0
                 ? allJobs
                 : allJobs.filter((j: any) => this._selected.has(j.status));
-            this._renderTable(filtered);
+            this._renderTable();
         } catch {
             if (this._tableEl) this._tableEl.setText("Error: is synthadoc serve running?");
         }
@@ -655,18 +672,29 @@ class JobsModal extends Modal {
         this._load();
     }
 
-    private _renderTable(jobs: any[]) {
+    private _renderTable() {
         if (!this._tableEl) return;
         this._tableEl.empty();
 
-        // Remove stale checked IDs that are no longer visible
-        const visibleIds = new Set(jobs.map((j: any) => j.id));
+        const total = this._filteredJobs.length;
+        const totalPages = Math.max(1, Math.ceil(total / JOBS_PAGE_SIZE));
+        this._page = Math.min(this._page, totalPages - 1);
+        const jobs = this._filteredJobs.slice(this._page * JOBS_PAGE_SIZE, (this._page + 1) * JOBS_PAGE_SIZE);
+
+        // Update pagination controls
+        if (this._prevBtn) this._prevBtn.disabled = this._page === 0;
+        if (this._nextBtn) this._nextBtn.disabled = this._page >= totalPages - 1;
+        if (this._pageRow) this._pageRow.style.display = totalPages > 1 ? "flex" : "none";
+        if (this._pageLabel) this._pageLabel.textContent = `Page ${this._page + 1} of ${totalPages} (${total} total)`;
+
+        // Remove stale checked IDs no longer in the filtered list (handles deletions / filter changes)
+        const allFilteredIds = new Set(this._filteredJobs.map((j: any) => j.id));
         for (const id of this._checkedIds) {
-            if (!visibleIds.has(id)) this._checkedIds.delete(id);
+            if (!allFilteredIds.has(id)) this._checkedIds.delete(id);
         }
         this._updateDeleteBtn();
 
-        if (jobs.length === 0) {
+        if (total === 0) {
             this._tableEl.createEl("p", { text: "No jobs match the selected filters.", cls: "synthadoc-muted" });
             return;
         }
