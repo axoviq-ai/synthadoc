@@ -1502,6 +1502,98 @@ describe("JobsModal", () => {
         expect(modal.contentEl.innerHTML).toContain("job-ddd444");
         expect(modal.contentEl.innerHTML).toContain("🕐"); // pending emoji
     });
+
+    it("hides pagination row when job count is within one page", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-jobs");
+        apiMock.jobs.mockResolvedValueOnce(
+            Array.from({ length: 5 }, (_, i) => ({
+                id: `job-${String(i + 1).padStart(3, "0")}`,
+                status: "pending", operation: "ingest",
+                payload: { source: `doc-${i}.pdf` }, created_at: null,
+            })),
+        );
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        await flushPromises();
+
+        // pageRow is contentEl._children[4]; display must be "none" for ≤ JOBS_PAGE_SIZE jobs
+        const pageRow = modal.contentEl._children[4];
+        expect(pageRow.style.display).toBe("none");
+    });
+
+    it("shows pagination row and renders only first page when job count exceeds JOBS_PAGE_SIZE", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-jobs");
+        // 26 pending jobs — default filter shows pending/in_progress, so all 26 pass through
+        const jobs = Array.from({ length: 26 }, (_, i) => ({
+            id: `job-${String(i + 1).padStart(3, "0")}`,
+            status: "pending", operation: "ingest",
+            payload: { source: `doc-${i}.pdf` }, created_at: null,
+        }));
+        apiMock.jobs.mockResolvedValueOnce(jobs);
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        await flushPromises();
+
+        // pageRow visible; label says Page 1 of 2; 26th job not yet rendered
+        const pageRow = modal.contentEl._children[4];
+        expect(pageRow.style.display).toBe("flex");
+        expect(pageRow._children[1].textContent).toContain("Page 1 of 2");
+        expect(pageRow._children[1].textContent).toContain("26 total");
+        expect(modal.contentEl.innerHTML).toContain("job-001");
+        expect(modal.contentEl.innerHTML).not.toContain("job-026");
+    });
+
+    it("next button advances to page 2 showing the last job", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-jobs");
+        const jobs = Array.from({ length: 26 }, (_, i) => ({
+            id: `job-${String(i + 1).padStart(3, "0")}`,
+            status: "pending", operation: "ingest",
+            payload: { source: `doc-${i}.pdf` }, created_at: null,
+        }));
+        apiMock.jobs.mockResolvedValueOnce(jobs);
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        await flushPromises();
+
+        // Click Next →  (pageRow._children[2])
+        const nextBtn = modal.contentEl._children[4]._children[2];
+        nextBtn.onclick();
+
+        expect(modal.contentEl.innerHTML).toContain("job-026");
+        expect(modal.contentEl.innerHTML).not.toContain("job-001");
+
+        const pageRow = modal.contentEl._children[4];
+        expect(pageRow._children[1].textContent).toContain("Page 2 of 2");
+    });
+
+    it("prev button is disabled on page 1 and next button is disabled on last page", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-jobs");
+        const jobs = Array.from({ length: 26 }, (_, i) => ({
+            id: `job-${String(i + 1).padStart(3, "0")}`,
+            status: "pending", operation: "ingest",
+            payload: { source: `doc-${i}.pdf` }, created_at: null,
+        }));
+        apiMock.jobs.mockResolvedValueOnce(jobs);
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        await flushPromises();
+
+        const prevBtn = modal.contentEl._children[4]._children[0];
+        const nextBtn = modal.contentEl._children[4]._children[2];
+
+        // Page 1: prev disabled, next enabled
+        expect(prevBtn.disabled).toBe(true);
+        expect(nextBtn.disabled).toBe(false);
+
+        // Advance to page 2 (last page)
+        nextBtn.onclick();
+        expect(prevBtn.disabled).toBe(false);
+        expect(nextBtn.disabled).toBe(true);
+    });
 });
 
 // ── LintReportModal ───────────────────────────────────────────────────────────
