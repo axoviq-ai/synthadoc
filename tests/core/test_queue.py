@@ -369,3 +369,50 @@ async def test_cancel_pending_returns_zero_when_nothing_pending(tmp_wiki):
     await q.init()
     count = await q.cancel_pending()
     assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_list_jobs_sort_by_operation_asc(tmp_wiki):
+    """list_jobs(sort_by='operation', order='asc') must return jobs in alphabetical operation order."""
+    import asyncio
+    q = JobQueue(tmp_wiki / ".synthadoc" / "jobs.db")
+    await q.init()
+    await q.enqueue("lint", {"source": "a.md"})
+    await asyncio.sleep(0.01)
+    await q.enqueue("ingest", {"source": "b.pdf"})
+    jobs = await q.list_jobs(sort_by="operation", order="asc")
+    ops = [j.operation for j in jobs]
+    assert ops == sorted(ops)
+
+
+@pytest.mark.asyncio
+async def test_list_jobs_sort_order_desc(tmp_wiki):
+    """list_jobs(order='desc') must return newest jobs first."""
+    import aiosqlite, json, uuid
+    db_path = tmp_wiki / ".synthadoc" / "jobs.db"
+    q = JobQueue(db_path)
+    await q.init()
+    # Insert with distinct created_at so sort order is deterministic
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(
+            "INSERT INTO jobs (id,operation,payload,status,created_at) VALUES (?,?,?,'pending',?)",
+            (str(uuid.uuid4())[:8], "ingest", json.dumps({"source": "first.pdf"}), "2026-01-01 00:00:00"),
+        )
+        await db.execute(
+            "INSERT INTO jobs (id,operation,payload,status,created_at) VALUES (?,?,?,'pending',?)",
+            (str(uuid.uuid4())[:8], "ingest", json.dumps({"source": "second.pdf"}), "2026-01-02 00:00:00"),
+        )
+        await db.commit()
+    jobs = await q.list_jobs(sort_by="created_at", order="desc")
+    assert jobs[0].payload["source"] == "second.pdf"
+    assert jobs[1].payload["source"] == "first.pdf"
+
+
+@pytest.mark.asyncio
+async def test_list_jobs_invalid_sort_column_falls_back_to_created_at(tmp_wiki):
+    """An unrecognised sort_by value must not raise and must fall back to created_at."""
+    q = JobQueue(tmp_wiki / ".synthadoc" / "jobs.db")
+    await q.init()
+    await q.enqueue("ingest", {"source": "x.pdf"})
+    jobs = await q.list_jobs(sort_by="__injected__; DROP TABLE jobs--", order="asc")
+    assert len(jobs) == 1

@@ -331,6 +331,27 @@ def test_list_jobs_includes_progress_field(tmp_wiki):
         assert "progress" in job
 
 
+def test_list_jobs_sort_params_forwarded_to_queue(tmp_wiki):
+    """GET /jobs?sort=operation&order=desc must pass sort_by and order to queue.list_jobs."""
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.core.queue import Job, JobStatus
+    fake_job = Job(id="job-s1", operation="lint", payload={},
+                   status=JobStatus.PENDING, retries=0, error=None)
+    captured = {}
+
+    async def mock_list_jobs(self, status=None, sort_by="created_at", order="asc"):
+        captured["sort_by"] = sort_by
+        captured["order"] = order
+        return [fake_job]
+
+    with patch("synthadoc.core.queue.JobQueue.list_jobs", new=mock_list_jobs):
+        with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+            resp = client.get("/jobs?sort=operation&order=desc")
+    assert resp.status_code == 200
+    assert captured["sort_by"] == "operation"
+    assert captured["order"] == "desc"
+
+
 def test_analyse_endpoint_returns_structure(tmp_wiki):
     """POST /analyse returns source and analysis keys."""
     from synthadoc.integration.http_server import create_app

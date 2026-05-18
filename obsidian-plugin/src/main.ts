@@ -1,11 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Paul Chen / axoviq.com
-import { App, MarkdownRenderer, Modal, Notice, Plugin, PluginSettingTab, Setting, SuggestModal, TFile } from "obsidian";
+import { App, MarkdownRenderer, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile } from "obsidian";
 import { api, setBase } from "./api";
 
 const SUPPORTED_EXTENSIONS = new Set([
     "md", "txt", "pdf", "docx", "xlsx", "csv",
     "png", "jpg", "jpeg", "webp", "gif", "tiff",
+]);
+
+// Filenames excluded from Pick-files scan: generated wiki output and known system/config files.
+const PICK_FILES_EXCLUDED_NAMES = new Set([
+    "log.md", "routing.md", "agents.md", "readme.md",
+    "dashboard.md", "index.md", "overview.md", "claude.md",
 ]);
 
 interface SynthadocSettings {
@@ -39,28 +45,9 @@ export default class SynthadocPlugin extends Plugin {
         });
 
         this.addCommand({
-            id: "synthadoc-ingest-all",
-            name: "Ingest: all sources in folder",
-            callback: () => new IngestAllModal(this.app, this.settings.rawSourcesFolder).open(),
-        });
-
-        this.addCommand({
-            id: "synthadoc-ingest-url",
-            name: "Ingest: from URL...",
-            callback: () => new IngestUrlModal(this.app).open(),
-        });
-
-        this.addCommand({
-            id: "synthadoc-ingest-current",
-            name: "Ingest: current file",
-            callback: () => {
-                const file = this.app.workspace.getActiveFile();
-                if (file) {
-                    new IngestConfirmModal(this.app, file).open();
-                } else {
-                    new IngestPickerModal(this.app, this).open();
-                }
-            },
+            id: "synthadoc-ingest",
+            name: "Ingest...",
+            callback: () => new IngestModal(this.app, this.settings.rawSourcesFolder).open(),
         });
 
         this.addCommand({
@@ -178,42 +165,307 @@ export default class SynthadocPlugin extends Plugin {
 
 }
 
-class IngestAllModal extends Modal {
-    private _folder: string;
+class IngestModal extends Modal {
+    private _rawSourcesFolder: string;
     private _pollTimer: number | null = null;
+    private _wsPollTimer: number | null = null;
 
-    constructor(app: App, folder: string) {
+    constructor(app: App, rawSourcesFolder?: string) {
         super(app);
-        this._folder = folder.replace(/\/$/, "") || "raw_sources";
+        this._rawSourcesFolder = (rawSourcesFolder ?? "raw_sources").replace(/\/$/, "") || "raw_sources";
     }
 
     onOpen() {
-        this.modalEl.style.width = "clamp(460px, 55vw, 720px)";
+        this.modalEl.style.width = "clamp(480px, 60vw, 820px)";
         const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
         if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
         const { contentEl } = this;
-        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Ingest all sources in folder" });
+        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Ingest" });
         makeDraggable(this.modalEl, titleEl);
 
-        // Folder input row
-        const folderRow = contentEl.createEl("div");
-        folderRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:16px";
-        folderRow.createEl("label", { text: "Folder" }).style.cssText = "white-space:nowrap;font-size:13px";
-        const folderInput = folderRow.createEl("input", { type: "text" }) as HTMLInputElement;
-        folderInput.value = this._folder;
-        folderInput.style.cssText = "flex:1;padding:4px 8px;font-size:13px";
+        // Tab bar
+        const tabBar = contentEl.createEl("div");
+        tabBar.style.cssText = "display:flex;gap:0;margin-bottom:16px;border-bottom:1px solid var(--background-modifier-border)";
 
-        // Status area
-        const statusEl = contentEl.createEl("div");
+        type TabName = "Web search" | "URL" | "All raw_sources" | "Pick files";
+        const tabNames: TabName[] = ["Web search", "URL", "All raw_sources", "Pick files"];
+        const panels: Record<TabName, HTMLElement> = {} as any;
+        const tabBtns: Record<TabName, HTMLElement> = {} as any;
+
+        tabNames.forEach(name => {
+            const btn = tabBar.createEl("div", { text: name });
+            btn.style.cssText = "padding:6px 14px;cursor:pointer;font-size:13px;border-bottom:2px solid transparent;margin-bottom:-1px;color:var(--text-muted)";
+            tabBtns[name] = btn;
+            const panel = contentEl.createEl("div");
+            panel.style.display = "none";
+            panels[name] = panel;
+        });
+
+        const switchTab = (name: TabName) => {
+            tabNames.forEach(t => {
+                panels[t].style.display = "none";
+                tabBtns[t].style.borderBottomColor = "transparent";
+                tabBtns[t].style.color = "var(--text-muted)";
+            });
+            panels[name].style.display = "";
+            tabBtns[name].style.borderBottomColor = "var(--interactive-accent)";
+            tabBtns[name].style.color = "var(--text-normal)";
+        };
+
+        tabNames.forEach(name => { tabBtns[name].onclick = () => switchTab(name); });
+
+        this._buildWebSearchTab(panels["Web search"]);
+        this._buildUrlTab(panels["URL"]);
+        this._buildAllSourcesTab(panels["All raw_sources"]);
+        this._buildPickFilesTab(panels["Pick files"]);
+        switchTab("Web search");
+    }
+
+    private _forceRow(panel: HTMLElement): () => boolean {
+        const row = panel.createEl("div");
+        row.style.cssText = "display:flex;align-items:center;gap:6px;margin-bottom:10px;font-size:12px;color:var(--text-muted)";
+        const cb = row.createEl("input", { type: "checkbox" }) as HTMLInputElement;
+        const lbl = row.createEl("label", { text: "Force re-ingest (skip duplicate check)" });
+        lbl.style.cssText = "cursor:pointer";
+        lbl.onclick = () => { cb.checked = !cb.checked; };
+        return () => !!cb.checked;
+    }
+
+    private _buildWebSearchTab(panel: HTMLElement) {
+        panel.createEl("p", {
+            text: "Type a topic — Synthadoc will search the web and compile results into your wiki.",
+        }).style.cssText = "font-size:12px;margin-bottom:10px;color:var(--text-muted)";
+
+        const textarea = panel.createEl("textarea", { placeholder: "e.g. Bank of Canada rate outlook 2025\nOntario housing market trends" }) as HTMLTextAreaElement;
+        textarea.style.cssText = "width:100%;min-height:72px;padding:6px 8px;resize:vertical;margin-bottom:8px;box-sizing:border-box";
+
+        const settingsRow = panel.createEl("div");
+        settingsRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px";
+        settingsRow.createEl("label", { text: "Max results:" });
+        const maxResultsInput = settingsRow.createEl("input", { type: "number" }) as HTMLInputElement;
+        maxResultsInput.value = "20";
+        maxResultsInput.min = "1";
+        maxResultsInput.max = "50";
+        maxResultsInput.step = "1";
+        maxResultsInput.style.cssText = "width:60px;padding:4px 6px";
+        settingsRow.createEl("span", { text: "URLs" }).style.marginRight = "16px";
+        settingsRow.createEl("label", { text: "Poll interval:" });
+        const intervalInput = settingsRow.createEl("input", { type: "number" }) as HTMLInputElement;
+        intervalInput.value = "2000";
+        intervalInput.min = "500";
+        intervalInput.max = "10000";
+        intervalInput.step = "500";
+        intervalInput.style.cssText = "width:70px;padding:4px 6px";
+        settingsRow.createEl("span", { text: "ms" });
+
+        const isForced = this._forceRow(panel);
+
+        const btnRow = panel.createEl("div");
+        btnRow.style.cssText = "display:flex;justify-content:flex-end;margin-bottom:10px";
+        const btn = btnRow.createEl("button", { text: "Search" }) as HTMLButtonElement;
+
+        const statusEl = panel.createEl("p");
+        statusEl.style.cssText = "font-size:12px;min-height:20px;margin-bottom:4px;-webkit-user-select:text;user-select:text";
+        const pagesEl = panel.createEl("div");
+        pagesEl.style.cssText = "-webkit-user-select:text;user-select:text";
+        const errorsEl = panel.createEl("div");
+        errorsEl.style.cssText = "-webkit-user-select:text;user-select:text";
+
+        const stopPolling = () => {
+            if (this._wsPollTimer !== null) { window.clearTimeout(this._wsPollTimer); this._wsPollTimer = null; }
+        };
+
+        const startPolling = (jobId: string, pollInterval: number) => {
+            const pages = new Set<string>();
+            const errors: string[] = [];
+            let childJobIds: string[] = [];
+            const settledChildren = new Set<string>();
+            const TERMINAL = ["completed", "failed", "dead", "skipped", "cancelled"];
+
+            const poll = async () => {
+                try {
+                    const job = await api.job(jobId) as any;
+                    const phase = job.progress?.phase;
+                    const isDone = ["completed", "failed", "dead", "skipped"].includes(job.status);
+                    if (job.result?.child_job_ids?.length && childJobIds.length === 0) childJobIds = job.result.child_job_ids;
+                    if (!isDone) {
+                        if (phase === "searching") statusEl.setText("Searching the web…");
+                        else if (phase === "found_urls") {
+                            const total = job.progress?.total ?? 0;
+                            statusEl.setText(`Found ${total} URL${total !== 1 ? "s" : ""} — ingesting…`);
+                        } else if (job.status === "pending") {
+                            statusEl.setText("⏳ Queued — waiting for worker (other jobs are running)…");
+                        } else if (job.status === "in_progress") {
+                            statusEl.setText("⏳ Starting web search…");
+                        }
+                    }
+                    if (childJobIds.length > 0) {
+                        const allJobs = await api.jobs() as any[];
+                        for (const cj of allJobs) {
+                            if (!childJobIds.includes(cj.id) || !TERMINAL.includes(cj.status) || settledChildren.has(cj.id)) continue;
+                            settledChildren.add(cj.id);
+                            if (cj.status === "completed") {
+                                for (const s of (cj.result?.pages_created ?? [])) pages.add(s);
+                                for (const s of (cj.result?.pages_updated ?? [])) pages.add(s);
+                            } else if (cj.error) {
+                                const msg = `${cj.payload?.source ?? cj.id}: ${cj.error}`;
+                                if (!errors.includes(msg)) errors.push(msg);
+                            }
+                        }
+                        const remaining = childJobIds.length - settledChildren.size;
+                        if (remaining > 0) statusEl.setText(isDone ? `Wrapping up — ${remaining} ingest${remaining !== 1 ? "s" : ""} still running…` : `Ingesting ${childJobIds.length} URL${childJobIds.length !== 1 ? "s" : ""}… (${settledChildren.size} done)`);
+                    }
+                    if (pages.size > 0) {
+                        pagesEl.empty();
+                        pagesEl.createEl("p", { text: `Pages (${pages.size}):` }).style.cssText = "font-size:12px;font-weight:bold;margin-bottom:2px";
+                        const ul = pagesEl.createEl("ul");
+                        ul.style.cssText = "font-size:12px;margin:0;padding-left:18px";
+                        for (const s of pages) ul.createEl("li", { text: s });
+                    }
+                    if (errors.length > 0) {
+                        errorsEl.empty();
+                        errorsEl.createEl("p", { text: `Errors (${errors.length}):` }).style.cssText = "font-size:12px;font-weight:bold;margin-bottom:2px;color:var(--text-error)";
+                        const ul = errorsEl.createEl("ul");
+                        ul.style.cssText = "font-size:12px;margin:0;padding-left:18px;color:var(--text-error)";
+                        for (const e of errors) ul.createEl("li", { text: e });
+                    }
+                    const allChildrenSettled = childJobIds.length > 0 && settledChildren.size >= childJobIds.length;
+                    if (isDone && (childJobIds.length === 0 || allChildrenSettled)) {
+                        stopPolling();
+                        btn.disabled = false;
+                        textarea.disabled = false;
+                        if (job.status === "completed" || allChildrenSettled) {
+                            statusEl.style.cssText += ";font-weight:bold;color:var(--text-success)";
+                            statusEl.setText(`Done — ${pages.size} page(s) written.`);
+                            new Notice(`Synthadoc: web search complete — ${pages.size} page(s)`);
+                        } else {
+                            statusEl.setText(`Search ${job.status}${job.error ? `: ${job.error}` : ""}`);
+                        }
+                        return;
+                    }
+                } catch { /* server unreachable — keep polling */ }
+                this._wsPollTimer = window.setTimeout(poll, pollInterval);
+            };
+            this._wsPollTimer = window.setTimeout(poll, pollInterval);
+        };
+
+        const submit = async () => {
+            const topic = textarea.value.trim();
+            if (!topic) return;
+            btn.disabled = true;
+            textarea.disabled = true;
+            const pollInterval = Math.min(10000, Math.max(500, parseInt(intervalInput.value) || 2000));
+            const maxResults = Math.min(50, Math.max(1, parseInt(maxResultsInput.value) || 20));
+            statusEl.setText("Queuing web search…");
+            pagesEl.empty();
+            errorsEl.empty();
+            try {
+                const r = await api.ingest(`search for: ${topic}`, maxResults, isForced()) as any;
+                new Notice(`Synthadoc: web search queued (job ${r.job_id})`);
+                startPolling(r.job_id, pollInterval);
+            } catch {
+                statusEl.setText("Error: is synthadoc serve running?");
+                btn.disabled = false;
+                textarea.disabled = false;
+            }
+        };
+
+        btn.onclick = submit;
+        textarea.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) submit(); });
+    }
+
+    private _buildUrlTab(panel: HTMLElement) {
+        panel.createEl("p", {
+            text: "Paste a URL — Synthadoc will fetch, parse, and convert it into a wiki article. Supports web pages, PDFs, and YouTube videos.",
+        }).style.cssText = "font-size:12px;margin-bottom:10px;color:var(--text-muted)";
+
+        const row = panel.createEl("div");
+        row.style.cssText = "display:flex;gap:8px;margin-bottom:10px";
+        const input = row.createEl("input", { type: "url", placeholder: "https://..." }) as HTMLInputElement;
+        input.style.cssText = "flex:1;padding:4px 8px";
+        const btn = row.createEl("button", { text: "Ingest" }) as HTMLButtonElement;
+
+        const isForced = this._forceRow(panel);
+
+        const out = panel.createEl("div");
+        out.style.cssText = "margin-top:4px;-webkit-user-select:text;user-select:text";
+
+        const setStatus = (text: string, color?: string) => {
+            out.empty();
+            const p = out.createEl("p", { text });
+            if (color) p.style.cssText = `color:${color}`;
+        };
+
+        const startPolling = (jobId: string) => {
+            this._pollTimer = window.setInterval(async () => {
+                try {
+                    const job = await api.job(jobId) as any;
+                    const status: string = job.status;
+                    if (status === "pending") { setStatus(`⏳ Queued — job ${jobId.slice(0, 8)}`); return; }
+                    if (status === "in_progress") { setStatus(`⏳ Ingesting… (job ${jobId.slice(0, 8)})`); return; }
+                    window.clearInterval(this._pollTimer!);
+                    this._pollTimer = null;
+                    btn.disabled = false;
+                    input.disabled = false;
+                    if (status === "completed") {
+                        const parts = jobResultSummary(job.result ?? {});
+                        out.empty();
+                        out.createEl("p", { text: "✅ Done." }).style.cssText = "font-weight:bold;margin-bottom:4px";
+                        if (parts.length) out.createEl("p", { text: parts.join(" · ") }).style.cssText = "font-size:12px;color:var(--text-muted)";
+                        new Notice(`Synthadoc: ingest done (job ${jobId.slice(0, 8)})`);
+                    } else if (status === "skipped") {
+                        setStatus("⏭️ Skipped — already ingested.", "var(--text-muted)");
+                    } else {
+                        setStatus(`❌ ${status}${job.error ? `: ${job.error}` : ""}`, "var(--text-error)");
+                    }
+                } catch { /* server unreachable — keep polling silently */ }
+            }, 2000);
+        };
+
+        const submit = async () => {
+            const url = input.value.trim();
+            if (!url) return;
+            btn.disabled = true;
+            input.disabled = true;
+            setStatus("⏳ Queuing…");
+            try {
+                const r = await api.ingest(url, undefined, isForced()) as any;
+                const jobId: string = r.job_id;
+                setStatus(`⏳ Queued — job ${jobId.slice(0, 8)}`);
+                startPolling(jobId);
+            } catch {
+                setStatus("❌ Error: is synthadoc serve running?", "var(--text-error)");
+                btn.disabled = false;
+                input.disabled = false;
+            }
+        };
+
+        btn.onclick = submit;
+        input.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+    }
+
+    private _buildAllSourcesTab(panel: HTMLElement) {
+        panel.createEl("p", {
+            text: "Ingest every supported file in your configured raw sources folder in one click. Files already ingested are skipped unless Force re-ingest is checked.",
+        }).style.cssText = "font-size:12px;margin-bottom:10px;color:var(--text-muted)";
+
+        const folderRow = panel.createEl("div");
+        folderRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:12px";
+        folderRow.createEl("label", { text: "Folder" }).style.cssText = "white-space:nowrap;font-size:13px;color:var(--text-muted)";
+        const folderDisplay = folderRow.createEl("span");
+        folderDisplay.style.cssText = "flex:1;padding:4px 8px;font-size:13px;color:var(--text-muted);background:var(--background-secondary);border-radius:4px;-webkit-user-select:text;user-select:text";
+        folderDisplay.textContent = this._rawSourcesFolder;
+
+        const statusEl = panel.createEl("div");
         statusEl.style.cssText = "min-height:40px;margin-bottom:12px;font-size:13px;-webkit-user-select:text;user-select:text";
 
-        // Button row
-        const btnRow = contentEl.createEl("div");
+        const isForced = this._forceRow(panel);
+
+        const btnRow = panel.createEl("div");
         btnRow.style.cssText = "display:flex;gap:8px;justify-content:flex-end;align-items:center";
-        const ingestBtn = btnRow.createEl("button", { text: "Ingest" });
+        const ingestBtn = btnRow.createEl("button", { text: "Ingest all" }) as HTMLButtonElement;
         ingestBtn.style.cssText = "font-weight:bold";
 
-        // Jobs list link — hidden until ingest completes
         const jobsLink = btnRow.createEl("a", { text: "View jobs list →" });
         jobsLink.style.cssText = "display:none;font-size:12px;cursor:pointer;color:var(--link-color)";
         jobsLink.onclick = () => {
@@ -224,13 +476,11 @@ class IngestAllModal extends Modal {
         const setStatus = (html: string) => { statusEl.innerHTML = html; };
 
         ingestBtn.onclick = async () => {
-            const folder = folderInput.value.trim().replace(/\/$/, "");
-            if (!folder) return;
+            const folder = this._rawSourcesFolder;
 
             const files = (this.app.vault.getFiles() as any[]).filter((f: any) => {
                 if (!f.path.startsWith(folder + "/")) return false;
-                const ext = (f.extension ?? "").toLowerCase();
-                return SUPPORTED_EXTENSIONS.has(ext);
+                return SUPPORTED_EXTENSIONS.has((f.extension ?? "").toLowerCase());
             });
 
             if (!files.length) {
@@ -239,33 +489,28 @@ class IngestAllModal extends Modal {
             }
 
             ingestBtn.disabled = true;
-            folderInput.disabled = true;
             jobsLink.style.display = "none";
             setStatus(`⏳ Queuing ${files.length} file(s)…`);
 
-            // Enqueue all files and collect job IDs
+            const force = isForced();
             const jobIds: string[] = [];
             let queueFailed = 0;
             for (const file of files) {
                 try {
                     const absPath = (this.app.vault.adapter as any).getFullPath(file.path);
-                    const r = await api.ingest(absPath) as any;
+                    const r = await api.ingest(absPath, undefined, force) as any;
                     if (r?.job_id) jobIds.push(r.job_id);
-                } catch {
-                    queueFailed++;
-                }
+                } catch { queueFailed++; }
             }
 
             if (!jobIds.length) {
                 setStatus(`<span style="color:var(--text-error)">❌ All ${files.length} file(s) failed to queue — is synthadoc serve running?</span>`);
                 ingestBtn.disabled = false;
-                folderInput.disabled = false;
                 return;
             }
 
             setStatus(`⏳ Queued ${jobIds.length} job(s)${queueFailed ? ` (${queueFailed} failed to queue)` : ""}. Monitoring progress…`);
 
-            // Poll until all queued jobs have settled
             const pending = new Set(jobIds);
             let done = 0;
 
@@ -280,18 +525,219 @@ class IngestAllModal extends Modal {
                             done++;
                         }
                     }
-                    const running = jobIds.length - done;
-                    setStatus(`⏳ ${running} running, ${done} of ${jobIds.length} settled…`);
+                    setStatus(`⏳ ${jobIds.length - done} running, ${done} of ${jobIds.length} settled…`);
 
                     if (pending.size === 0) {
                         window.clearInterval(this._pollTimer!);
                         this._pollTimer = null;
-                        setStatus(
-                            `✅ All ${jobIds.length} job(s) complete.` +
-                            (queueFailed ? ` (${queueFailed} file(s) failed to queue.)` : "")
-                        );
+                        setStatus(`✅ All ${jobIds.length} job(s) complete.${queueFailed ? ` (${queueFailed} file(s) failed to queue.)` : ""}`);
                         ingestBtn.disabled = false;
-                        folderInput.disabled = false;
+                        jobsLink.style.display = "";
+                    }
+                } catch { /* server unreachable — keep polling */ }
+            }, 2000);
+        };
+    }
+
+    private _buildPickFilesTab(panel: HTMLElement) {
+        panel.createEl("p", {
+            text: "Browse to any folder, scan for supported files, then select which ones to ingest. Great for one-off ingestion from a custom location.",
+        }).style.cssText = "font-size:12px;margin-bottom:10px;color:var(--text-muted)";
+
+        const folderRow = panel.createEl("div");
+        folderRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:8px";
+        folderRow.createEl("label", { text: "Folder" }).style.cssText = "white-space:nowrap;font-size:13px";
+        let selectedFolder = "";   // vault-relative (or "" for vault root)
+        let selectedAbsPath = "";  // full OS path — shown in display and used as guard
+        const folderDisplay = folderRow.createEl("input") as HTMLInputElement;
+        folderDisplay.type = "text";
+        folderDisplay.readOnly = true;
+        folderDisplay.placeholder = "Click Browse… to select a folder";
+        folderDisplay.style.cssText = "flex:1;min-width:0;padding:4px 8px;font-size:13px;color:var(--text-muted);background:var(--background-secondary);border:1px solid transparent;border-radius:4px;cursor:default;outline:none";
+
+        const browseBtn = folderRow.createEl("button", { text: "Browse…" }) as HTMLButtonElement;
+        browseBtn.onclick = async () => {
+            try {
+                const remote = (window as any).require?.("@electron/remote")
+                    ?? (window as any).require?.("electron")?.remote;
+                if (!remote?.dialog) { new Notice("Folder picker unavailable in this environment"); return; }
+                const result = await remote.dialog.showOpenDialog({ properties: ["openDirectory"], title: "Select source folder" });
+                if (!result.canceled && result.filePaths?.[0]) {
+                    const absPath: string = result.filePaths[0];
+                    const basePath: string = (this.app.vault.adapter as any).getBasePath?.() ?? "";
+                    const rel = (basePath && absPath.toLowerCase().startsWith(basePath.toLowerCase()))
+                        ? absPath.slice(basePath.length).replace(/^[/\\]+/, "").replace(/\\/g, "/")
+                        : absPath.replace(/\\/g, "/");
+                    selectedAbsPath = absPath;
+                    selectedFolder = rel;          // may be "" when vault root is selected
+                    folderDisplay.value = absPath; // always show the full OS path
+                    folderDisplay.style.color = "var(--text-normal)";
+                    scanBtn.disabled = false;
+                }
+            } catch { new Notice("Could not open folder picker"); }
+        };
+
+        const scanBtn = folderRow.createEl("button", { text: "Scan" }) as HTMLButtonElement;
+        scanBtn.disabled = true;
+
+        const selectRow = panel.createEl("div");
+        selectRow.style.cssText = "display:flex;gap:8px;align-items:center;margin-bottom:4px;font-size:12px";
+        const selAllBtn = selectRow.createEl("button", { text: "Select all" }) as HTMLButtonElement;
+        const deselAllBtn = selectRow.createEl("button", { text: "Deselect all" }) as HTMLButtonElement;
+        const countLabel = selectRow.createEl("span");
+        countLabel.style.cssText = "font-size:12px;color:var(--text-muted);margin-left:auto";
+
+        const listEl = panel.createEl("div");
+        listEl.style.cssText = "overflow-y:auto;max-height:180px;border:1px solid var(--background-modifier-border);border-radius:4px;padding:4px;margin-bottom:8px;font-size:12px";
+        listEl.createEl("span", { text: "Click Browse… to select a folder, then click Scan." }).style.cssText = "color:var(--text-muted);padding:4px;display:block";
+
+        const statusEl = panel.createEl("div");
+        statusEl.style.cssText = "min-height:28px;margin-bottom:8px;font-size:13px;-webkit-user-select:text;user-select:text";
+
+        const isForced = this._forceRow(panel);
+
+        const btnRow = panel.createEl("div");
+        btnRow.style.cssText = "display:flex;gap:8px;justify-content:flex-end;align-items:center";
+        const ingestBtn = btnRow.createEl("button", { text: "Ingest selected" }) as HTMLButtonElement;
+        ingestBtn.style.cssText = "font-weight:bold";
+        ingestBtn.disabled = true;
+
+        const jobsLink = btnRow.createEl("a", { text: "View jobs list →" });
+        jobsLink.style.cssText = "display:none;font-size:12px;cursor:pointer;color:var(--link-color)";
+        jobsLink.onclick = () => {
+            this.close();
+            setTimeout(() => (this.app as any).commands?.executeCommandById("synthadoc:synthadoc-jobs"), 150);
+        };
+
+        let scannedFiles: any[] = [];
+        let checkboxRefs: HTMLInputElement[] = [];
+
+        const updateCount = () => {
+            countLabel.textContent = checkboxRefs.length ? `${checkboxRefs.filter(c => c.checked).length} / ${checkboxRefs.length} selected` : "";
+            ingestBtn.disabled = checkboxRefs.filter(c => c.checked).length === 0;
+        };
+
+        const renderFiles = (files: any[]) => {
+            scannedFiles = files;
+            checkboxRefs = [];
+            listEl.empty();
+            if (!files.length) {
+                listEl.createEl("span", { text: "No supported files found." }).style.cssText = "color:var(--text-muted);padding:4px;display:block";
+                updateCount();
+                return;
+            }
+            files.forEach(f => {
+                const row = listEl.createEl("div");
+                row.style.cssText = "display:flex;align-items:center;gap:6px;padding:2px 4px;border-radius:3px";
+                const cb = row.createEl("input", { type: "checkbox" }) as HTMLInputElement;
+                checkboxRefs.push(cb);
+                cb.checked = true;
+                cb.addEventListener("change", updateCount);
+                const lbl = row.createEl("label");
+                lbl.style.cssText = "cursor:pointer;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+                lbl.createEl("span", { text: f.name }).style.fontWeight = "500";
+                lbl.createEl("span", { text: "  " + f.path }).style.cssText = "color:var(--text-muted);font-size:11px";
+                lbl.onclick = () => { cb.checked = !cb.checked; updateCount(); };
+            });
+            updateCount();
+        };
+
+        const scan = () => {
+            if (!selectedAbsPath) return;  // Browse has not been used yet
+            const folder = selectedFolder.trim().replace(/\/$/, "");
+            // folder is "" when the vault root itself was selected — matches all vault files
+            let wikiExcluded = 0;
+            let systemExcluded = 0;
+            const files = (this.app.vault.getFiles() as any[]).filter((f: any) => {
+                if (folder && !f.path.startsWith(folder + "/")) return false;
+                if (!SUPPORTED_EXTENSIONS.has((f.extension ?? "").toLowerCase())) return false;
+                // Exclude files inside any wiki/ subfolder (those are generated wiki pages)
+                const relative = folder ? f.path.slice(folder.length + 1) : f.path;
+                if (relative.startsWith("wiki/") || relative.includes("/wiki/")) {
+                    wikiExcluded++;
+                    return false;
+                }
+                // Exclude known system / config filenames
+                if (PICK_FILES_EXCLUDED_NAMES.has((f.name ?? "").toLowerCase())) {
+                    systemExcluded++;
+                    return false;
+                }
+                return true;
+            });
+            renderFiles(files);
+            const parts: string[] = [];
+            if (wikiExcluded > 0) parts.push(`${wikiExcluded} wiki page${wikiExcluded !== 1 ? "s" : ""}`);
+            if (systemExcluded > 0) parts.push(`${systemExcluded} system file${systemExcluded !== 1 ? "s" : ""}`);
+            if (parts.length > 0) {
+                statusEl.innerHTML = `<span style="color:var(--text-muted);font-size:12px">ℹ Excluded ${parts.join(" and ")} — not source files</span>`;
+            } else {
+                statusEl.innerHTML = "";
+            }
+            jobsLink.style.display = "none";
+        };
+
+        scanBtn.onclick = scan;
+        selAllBtn.onclick = () => { checkboxRefs.forEach(c => { c.checked = true; }); updateCount(); };
+        deselAllBtn.onclick = () => { checkboxRefs.forEach(c => { c.checked = false; }); updateCount(); };
+
+        const setStatus = (html: string) => { statusEl.innerHTML = html; };
+
+        ingestBtn.onclick = async () => {
+            const selectedFiles = scannedFiles.filter((_, i) => checkboxRefs[i]?.checked);
+            if (!selectedFiles.length) return;
+
+            ingestBtn.disabled = true;
+            scanBtn.disabled = true;
+            browseBtn.disabled = true;
+            jobsLink.style.display = "none";
+            setStatus(`⏳ Queuing ${selectedFiles.length} file(s)…`);
+
+            const force = isForced();
+            const jobIds: string[] = [];
+            let queueFailed = 0;
+            for (const file of selectedFiles) {
+                try {
+                    const absPath = (this.app.vault.adapter as any).getFullPath(file.path);
+                    const r = await api.ingest(absPath, undefined, force) as any;
+                    if (r?.job_id) jobIds.push(r.job_id);
+                } catch { queueFailed++; }
+            }
+
+            if (!jobIds.length) {
+                setStatus(`<span style="color:var(--text-error)">❌ All ${selectedFiles.length} file(s) failed to queue — is synthadoc serve running?</span>`);
+                ingestBtn.disabled = false;
+                scanBtn.disabled = false;
+                browseBtn.disabled = false;
+                updateCount();
+                return;
+            }
+
+            setStatus(`⏳ Queued ${jobIds.length} job(s)${queueFailed ? ` (${queueFailed} failed to queue)` : ""}. Monitoring…`);
+
+            const pending = new Set(jobIds);
+            let done = 0;
+
+            this._pollTimer = window.setInterval(async () => {
+                try {
+                    const allJobs = await api.jobs() as any[];
+                    for (const jobId of [...pending]) {
+                        const job = allJobs.find((j: any) => j.id === jobId);
+                        if (!job) { pending.delete(jobId); done++; continue; }
+                        if (["completed", "failed", "dead", "skipped"].includes(job.status)) {
+                            pending.delete(jobId);
+                            done++;
+                        }
+                    }
+                    setStatus(`⏳ ${jobIds.length - done} running, ${done} of ${jobIds.length} settled…`);
+
+                    if (pending.size === 0) {
+                        window.clearInterval(this._pollTimer!);
+                        this._pollTimer = null;
+                        setStatus(`✅ All ${jobIds.length} job(s) complete.${queueFailed ? ` (${queueFailed} file(s) failed to queue.)` : ""}`);
+                        ingestBtn.disabled = false;
+                        scanBtn.disabled = false;
+                        browseBtn.disabled = false;
+                        updateCount();
                         jobsLink.style.display = "";
                     }
                 } catch { /* server unreachable — keep polling */ }
@@ -300,126 +746,9 @@ class IngestAllModal extends Modal {
     }
 
     onClose() {
-        if (this._pollTimer !== null) {
-            window.clearInterval(this._pollTimer);
-            this._pollTimer = null;
-        }
+        if (this._pollTimer !== null) { window.clearInterval(this._pollTimer); this._pollTimer = null; }
+        if (this._wsPollTimer !== null) { window.clearTimeout(this._wsPollTimer); this._wsPollTimer = null; }
         this.contentEl.empty();
-    }
-}
-
-class IngestConfirmModal extends Modal {
-    private _file: TFile;
-    private _pollTimer: number | null = null;
-
-    constructor(app: App, file: TFile) {
-        super(app);
-        this._file = file;
-    }
-
-    onOpen() {
-        const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
-        if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
-        const { contentEl } = this;
-        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Ingest file" });
-        makeDraggable(this.modalEl, titleEl);
-
-        const infoEl = contentEl.createEl("div");
-        infoEl.style.cssText = "margin-bottom:16px;padding:8px 10px;background:var(--background-secondary);border-radius:4px;-webkit-user-select:text;user-select:text";
-        infoEl.createEl("div", { text: this._file.name }).style.cssText = "font-weight:bold;font-size:13px";
-        infoEl.createEl("div", { text: this._file.path }).style.cssText = "font-size:11px;color:var(--text-muted);margin-top:2px";
-
-        const btnRow = contentEl.createEl("div");
-        btnRow.style.cssText = "display:flex;justify-content:flex-end";
-        const btn = btnRow.createEl("button", { text: "Ingest" });
-
-        const out = contentEl.createEl("div");
-        out.style.cssText = "margin-top:12px;-webkit-user-select:text;user-select:text";
-
-        const setStatus = (text: string, color?: string) => {
-            out.empty();
-            const p = out.createEl("p", { text });
-            if (color) p.style.cssText = `color:${color}`;
-        };
-
-        btn.onclick = async () => {
-            btn.disabled = true;
-            setStatus("⏳ Queuing…");
-            try {
-                const absPath = (this.app.vault.adapter as any).getFullPath(this._file.path);
-                const r = await api.ingest(absPath) as any;
-                const jobId: string = r.job_id;
-                setStatus(`⏳ Queued — job ${jobId.slice(0, 8)}`);
-
-                this._pollTimer = window.setInterval(async () => {
-                    try {
-                        const job = await api.job(jobId) as any;
-                        const status: string = job.status;
-
-                        if (status === "pending") { setStatus(`⏳ Queued — job ${jobId.slice(0, 8)}`); return; }
-                        if (status === "in_progress") { setStatus(`⏳ Ingesting… (job ${jobId.slice(0, 8)})`); return; }
-
-                        window.clearInterval(this._pollTimer!);
-                        this._pollTimer = null;
-                        btn.disabled = false;
-
-                        if (status === "completed") {
-                            const res = job.result ?? {};
-                            const parts = jobResultSummary(res);
-                            out.empty();
-                            out.createEl("p", { text: "✅ Done." }).style.cssText = "font-weight:bold;margin-bottom:4px";
-                            if (parts.length) out.createEl("p", { text: parts.join(" · ") }).style.cssText = "font-size:12px;color:var(--text-muted)";
-                            new Notice(`Synthadoc: ingest done — ${this._file.name}`);
-                        } else if (status === "skipped") {
-                            setStatus("⏭️ Skipped — already ingested.", "var(--text-muted)");
-                        } else {
-                            setStatus(`❌ ${status}${job.error ? `: ${job.error}` : ""}`, "var(--text-error)");
-                        }
-                    } catch { /* server unreachable — keep polling */ }
-                }, 2000);
-            } catch {
-                setStatus("❌ Error: is synthadoc serve running?", "var(--text-error)");
-                btn.disabled = false;
-            }
-        };
-    }
-
-    onClose() {
-        if (this._pollTimer !== null) {
-            window.clearInterval(this._pollTimer);
-            this._pollTimer = null;
-        }
-        this.contentEl.empty();
-    }
-}
-
-class IngestPickerModal extends SuggestModal<TFile> {
-    private plugin: SynthadocPlugin;
-
-    constructor(app: App, plugin: SynthadocPlugin) {
-        super(app);
-        this.plugin = plugin;
-        this.setPlaceholder("Select a source file to ingest…");
-    }
-
-    getSuggestions(query: string): TFile[] {
-        const folder = this.plugin.settings.rawSourcesFolder.replace(/\/$/, "");
-        const q = query.toLowerCase();
-        return this.app.vault.getFiles().filter(f => {
-            if (!f.path.startsWith(folder + "/")) return false;
-            const ext = f.extension?.toLowerCase() ?? "";
-            if (!SUPPORTED_EXTENSIONS.has(ext)) return false;
-            return q ? f.name.toLowerCase().includes(q) : true;
-        });
-    }
-
-    renderSuggestion(file: TFile, el: HTMLElement): void {
-        el.createEl("div", { text: file.name });
-        el.createEl("div", { text: file.path, cls: "synthadoc-muted" }).style.fontSize = "11px";
-    }
-
-    onChooseSuggestion(file: TFile): void {
-        new IngestConfirmModal(this.app, file).open();
     }
 }
 
@@ -548,6 +877,8 @@ class JobsModal extends Modal {
     private _nextBtn: HTMLButtonElement | null = null;
     private _pageLabel: HTMLElement | null = null;
     private _pageRow: HTMLElement | null = null;
+    private _sortBy: "created_at" | "status" | "operation" = "created_at";
+    private _sortOrder: "asc" | "desc" = "desc";
 
     onOpen() {
         this.modalEl.style.width = "clamp(760px, 80vw, 1100px)";
@@ -672,14 +1003,25 @@ class JobsModal extends Modal {
         this._load();
     }
 
+    private _sortedJobs(): any[] {
+        const col = this._sortBy;
+        const dir = this._sortOrder === "asc" ? 1 : -1;
+        return [...this._filteredJobs].sort((a, b) => {
+            const av: string = a[col] ?? "";
+            const bv: string = b[col] ?? "";
+            return av < bv ? -dir : av > bv ? dir : 0;
+        });
+    }
+
     private _renderTable() {
         if (!this._tableEl) return;
         this._tableEl.empty();
 
-        const total = this._filteredJobs.length;
+        const sorted = this._sortedJobs();
+        const total = sorted.length;
         const totalPages = Math.max(1, Math.ceil(total / JOBS_PAGE_SIZE));
         this._page = Math.min(this._page, totalPages - 1);
-        const jobs = this._filteredJobs.slice(this._page * JOBS_PAGE_SIZE, (this._page + 1) * JOBS_PAGE_SIZE);
+        const jobs = sorted.slice(this._page * JOBS_PAGE_SIZE, (this._page + 1) * JOBS_PAGE_SIZE);
 
         // Update pagination controls
         if (this._prevBtn) this._prevBtn.disabled = this._page === 0;
@@ -718,9 +1060,34 @@ class JobsModal extends Modal {
             selectAllCb.indeterminate = !selectAllCb.checked && terminalJobs.some((j: any) => this._checkedIds.has(j.id));
         }
 
-        for (const h of ["Job ID", "Status", "Operation", "Source", "Created"]) {
-            const th = hrow.createEl("th", { text: h });
+        const SORT_HEADERS: { label: string; col: "status" | "operation" | "created_at" | null }[] = [
+            { label: "Job ID", col: null },
+            { label: "Status", col: "status" },
+            { label: "Operation", col: "operation" },
+            { label: "Source", col: null },
+            { label: "Created", col: "created_at" },
+        ];
+        for (const { label, col } of SORT_HEADERS) {
+            const th = hrow.createEl("th");
             th.style.cssText = "text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border)";
+            if (col) {
+                const indicator = this._sortBy === col ? (this._sortOrder === "asc" ? " ▲" : " ▼") : " ⇅";
+                th.setText(label + indicator);
+                th.style.cursor = "pointer";
+                th.title = `Sort by ${label}`;
+                th.onclick = () => {
+                    if (this._sortBy === col) {
+                        this._sortOrder = this._sortOrder === "asc" ? "desc" : "asc";
+                    } else {
+                        this._sortBy = col;
+                        this._sortOrder = "asc";
+                    }
+                    this._page = 0;
+                    this._renderTable();
+                };
+            } else {
+                th.setText(label);
+            }
         }
 
         const rowCheckboxes: HTMLInputElement[] = [];
@@ -986,100 +1353,6 @@ class LintReportModal extends Modal {
         });
     }
     onClose() { this.contentEl.empty(); }
-}
-
-class IngestUrlModal extends Modal {
-    private _pollTimer: number | null = null;
-
-    onOpen() {
-        const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
-        if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
-        const { contentEl } = this;
-        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Ingest from URL" });
-        makeDraggable(this.modalEl, titleEl);
-
-        const row = contentEl.createEl("div");
-        row.style.cssText = "display:flex;gap:8px;margin-bottom:12px";
-        const input = row.createEl("input", { type: "url", placeholder: "https://..." });
-        input.style.cssText = "flex:1;padding:4px 8px";
-        const btn = row.createEl("button", { text: "Ingest" });
-
-        const out = contentEl.createEl("div");
-        out.style.cssText = "margin-top:4px;-webkit-user-select:text;user-select:text";
-
-        const setStatus = (text: string, color?: string) => {
-            out.empty();
-            const p = out.createEl("p", { text });
-            if (color) p.style.cssText = `color:${color}`;
-        };
-
-        const startPolling = (jobId: string) => {
-            this._pollTimer = window.setInterval(async () => {
-                try {
-                    const job = await api.job(jobId) as any;
-                    const status: string = job.status;
-
-                    if (status === "pending") {
-                        setStatus(`⏳ Queued — job ${jobId.slice(0, 8)}`);
-                        return;
-                    }
-                    if (status === "in_progress") {
-                        setStatus(`⏳ Ingesting… (job ${jobId.slice(0, 8)})`);
-                        return;
-                    }
-
-                    // Settled
-                    window.clearInterval(this._pollTimer!);
-                    this._pollTimer = null;
-                    btn.disabled = false;
-                    input.disabled = false;
-
-                    if (status === "completed") {
-                        const parts = jobResultSummary(job.result ?? {});
-                        out.empty();
-                        out.createEl("p", { text: "✅ Done." }).style.cssText = "font-weight:bold;margin-bottom:4px";
-                        if (parts.length) out.createEl("p", { text: parts.join(" · ") }).style.cssText = "font-size:12px;color:var(--text-muted)";
-                        new Notice(`Synthadoc: ingest done (job ${jobId.slice(0, 8)})`);
-                    } else if (status === "skipped") {
-                        setStatus(`⏭️ Skipped — already ingested.`, "var(--text-muted)");
-                    } else {
-                        setStatus(`❌ ${status}${job.error ? `: ${job.error}` : ""}`, "var(--text-error)");
-                    }
-                } catch {
-                    // server unreachable — keep polling silently
-                }
-            }, 2000);
-        };
-
-        const submit = async () => {
-            const url = input.value.trim();
-            if (!url) return;
-            btn.disabled = true;
-            input.disabled = true;
-            setStatus("⏳ Queuing…");
-            try {
-                const r = await api.ingest(url) as any;
-                const jobId: string = r.job_id;
-                setStatus(`⏳ Queued — job ${jobId.slice(0, 8)}`);
-                startPolling(jobId);
-            } catch {
-                setStatus("❌ Error: is synthadoc serve running?", "var(--text-error)");
-                btn.disabled = false;
-                input.disabled = false;
-            }
-        };
-
-        btn.onclick = submit;
-        input.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
-    }
-
-    onClose() {
-        if (this._pollTimer !== null) {
-            window.clearInterval(this._pollTimer);
-            this._pollTimer = null;
-        }
-        this.contentEl.empty();
-    }
 }
 
 class WebSearchModal extends Modal {
