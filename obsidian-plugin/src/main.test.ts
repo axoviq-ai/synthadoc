@@ -123,43 +123,6 @@ describe("SynthadocPlugin ribbon icon", () => {
     });
 });
 
-describe("SynthadocPlugin ingest-current command", () => {
-    it("opens IngestPickerModal when no file is active (does not ingest directly)", async () => {
-        const { api } = await import("./api");
-        const { Notice } = await import("obsidian");
-        const { default: SynthadocPlugin } = await import("./main");
-        const plugin = new SynthadocPlugin();
-        plugin.app = { workspace: { getActiveFile: () => null }, vault: { getFiles: () => [] } } as any;
-        await plugin.onload();
-
-        const cmd = (plugin.addCommand as any).mock.calls.find(
-            (c: any) => c[0].id === "synthadoc-ingest-current"
-        )?.[0];
-        cmd?.callback();
-
-        // Picker opened — no direct ingest call and no error notice
-        expect(api.ingest).not.toHaveBeenCalled();
-        expect(Notice).not.toHaveBeenCalled();
-    });
-
-    it("opens IngestConfirmModal (not ingest directly) when a file is active", async () => {
-        const { api } = await import("./api");
-        const { default: SynthadocPlugin } = await import("./main");
-        const plugin = new SynthadocPlugin();
-        const fakeFile = { path: "raw_sources/paper.pdf", name: "paper.pdf" };
-        plugin.app = { workspace: { getActiveFile: () => fakeFile } } as any;
-        await plugin.onload();
-
-        const cmd = (plugin.addCommand as any).mock.calls.find(
-            (c: any) => c[0].id === "synthadoc-ingest-current"
-        )?.[0];
-        cmd?.callback();
-
-        // Modal opened — no immediate api.ingest call (user must click Ingest in the modal)
-        expect(api.ingest).not.toHaveBeenCalled();
-    });
-});
-
 describe("SynthadocPlugin.ingestFile", () => {
     it("calls api.ingest with absolute path and shows Notice with job_id", async () => {
         const { api } = await import("./api");
@@ -216,7 +179,7 @@ describe("SynthadocPlugin web search command", () => {
     });
 });
 
-describe("IngestAllModal", () => {
+describe("IngestModal All-sources tab", () => {
     const makeVault = (files: { path: string; extension: string }[]) => ({
         workspace: { getActiveFile: () => null },
         vault: {
@@ -225,18 +188,27 @@ describe("IngestAllModal", () => {
         },
     });
 
-    it("pre-fills the folder input with the plugin's rawSourcesFolder setting", async () => {
-        const { ModalClass } = await getModal("synthadoc-ingest-all",
+    // contentEl children: [0]=h3, [1]=tabBar, [2]=WS panel, [3]=URL panel, [4]=All-sources panel, [5]=Pick-files panel
+    // All-sources panel: [0]=desc, [1]=folderRow([0]=label,[1]=folderDisplay), [2]=statusEl, [3]=forceRow, [4]=btnRow([0]=ingestBtn)
+    const getAllSources = (modal: any) => {
+        const panel = modal.contentEl._children[4];
+        return {
+            folderDisplay: panel._children[1]._children[1] as any,
+            ingestBtn:     panel._children[4]._children[0] as any,
+        };
+    };
+
+    it("shows rawSourcesFolder as read-only folder display", async () => {
+        const { ModalClass } = await getModal("synthadoc-ingest",
             makeVault([{ path: "raw_sources/a.pdf", extension: "pdf" }])
         );
         const modal = new ModalClass();
         modal.onOpen();
-        const input = modal.contentEl.querySelector("input") as any;
-        expect(input.value).toBe("raw_sources");
+        expect(getAllSources(modal).folderDisplay.textContent).toBe("raw_sources");
     });
 
-    it("calls api.ingest for each supported file in the folder on Ingest click", async () => {
-        const { ModalClass, apiMock } = await getModal("synthadoc-ingest-all",
+    it("calls api.ingest for each supported file in the folder on Ingest all click", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-ingest",
             makeVault([
                 { path: "raw_sources/file-a.pdf", extension: "pdf" },
                 { path: "raw_sources/file-b.png", extension: "png" },
@@ -254,17 +226,16 @@ describe("IngestAllModal", () => {
 
         const modal = new ModalClass();
         modal.onOpen();
-        const btn = modal.contentEl.querySelector("button") as any;
-        btn.onclick();
+        getAllSources(modal).ingestBtn.onclick();
         await flushPromises();
 
         expect(apiMock.ingest).toHaveBeenCalledTimes(2);
-        expect(apiMock.ingest).toHaveBeenCalledWith("/abs/raw_sources/file-a.pdf");
-        expect(apiMock.ingest).toHaveBeenCalledWith("/abs/raw_sources/file-b.png");
+        expect(apiMock.ingest).toHaveBeenCalledWith("/abs/raw_sources/file-a.pdf", undefined, false);
+        expect(apiMock.ingest).toHaveBeenCalledWith("/abs/raw_sources/file-b.png", undefined, false);
     });
 
-    it("disables the Ingest button while jobs are in flight", async () => {
-        const { ModalClass, apiMock } = await getModal("synthadoc-ingest-all",
+    it("disables Ingest all button while jobs are in flight", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-ingest",
             makeVault([{ path: "raw_sources/a.pdf", extension: "pdf" }])
         );
         apiMock.ingest.mockResolvedValueOnce({ job_id: "job-1" });
@@ -272,23 +243,22 @@ describe("IngestAllModal", () => {
 
         const modal = new ModalClass();
         modal.onOpen();
-        const btn = modal.contentEl.querySelector("button") as any;
-        btn.onclick();
+        const { ingestBtn } = getAllSources(modal);
+        ingestBtn.onclick();
         await flushPromises();
 
-        expect(btn.disabled).toBe(true);
+        expect(ingestBtn.disabled).toBe(true);
     });
 
     it("shows empty-folder message when no supported files found", async () => {
-        const { ModalClass, apiMock } = await getModal("synthadoc-ingest-all",
+        const { ModalClass, apiMock } = await getModal("synthadoc-ingest",
             makeVault([{ path: "wiki/page.md", extension: "md" }])
         );
         apiMock.ingest.mockResolvedValue({ job_id: "job-1" });
 
         const modal = new ModalClass();
         modal.onOpen();
-        const btn = modal.contentEl.querySelector("button") as any;
-        btn.onclick();
+        getAllSources(modal).ingestBtn.onclick();
         await flushPromises();
 
         expect(apiMock.ingest).not.toHaveBeenCalled();
@@ -296,36 +266,34 @@ describe("IngestAllModal", () => {
     });
 
     it("shows error and re-enables button when all queuing fails", async () => {
-        const { ModalClass, apiMock } = await getModal("synthadoc-ingest-all",
+        const { ModalClass, apiMock } = await getModal("synthadoc-ingest",
             makeVault([{ path: "raw_sources/a.pdf", extension: "pdf" }])
         );
         apiMock.ingest.mockRejectedValueOnce(new Error("server down"));
 
         const modal = new ModalClass();
         modal.onOpen();
-        const btn = modal.contentEl.querySelector("button") as any;
-        btn.onclick();
+        const { ingestBtn } = getAllSources(modal);
+        ingestBtn.onclick();
         await flushPromises();
 
-        expect(btn.disabled).toBe(false);
+        expect(ingestBtn.disabled).toBe(false);
         expect(modal.contentEl.innerHTML).toContain("synthadoc serve");
     });
 });
 
 describe("SynthadocPlugin command registration", () => {
-    it("registers all 19 expected command IDs on onload", async () => {
+    it("registers all 17 expected command IDs on onload", async () => {
         const { default: SynthadocPlugin } = await import("./main");
         const plugin = new SynthadocPlugin();
         await plugin.onload();
 
         const ids = (plugin.addCommand as any).mock.calls.map((c: any) => c[0].id);
         const expected = [
-            "synthadoc-ingest-current",
-            "synthadoc-ingest-all",
+            "synthadoc-ingest",
             "synthadoc-query",
             "synthadoc-jobs",
             "synthadoc-lint-report",
-            "synthadoc-ingest-url",
             "synthadoc-web-search",
             "synthadoc-lint",
             "synthadoc-jobs-retry-dead",
@@ -673,7 +641,7 @@ async function getModal(commandId: string, appOverride?: any): Promise<{ ModalCl
         .filter(([k]) => k.startsWith("_") && k !== "_pollTimer")
         .map(([, v]) => v);
     const capturedFile = (lastInstance as any)._file;
-    const capturedFolder = (lastInstance as any)._folder;
+    const capturedFolder = (lastInstance as any)._folder ?? (lastInstance as any)._rawSourcesFolder;
     const ModalClass = class {
         constructor() {
             let inst: any;
@@ -741,50 +709,144 @@ describe("QueryModal knowledge gap callout", () => {
     });
 });
 
-describe("IngestConfirmModal", () => {
-    it("shows file name and path in confirmation panel", async () => {
-        const { ModalClass } = await getModal("synthadoc-ingest-current", {
-            workspace: { getActiveFile: () => ({ path: "raw_sources/paper.pdf", name: "paper.pdf" }) },
-            vault: { getFiles: () => [], adapter: { getFullPath: (p: string) => `/vault/${p}` } },
-        });
-        const modal = new ModalClass();
-        modal.onOpen();
-        expect(modal.contentEl.innerHTML).toContain("paper.pdf");
-        expect(modal.contentEl.innerHTML).toContain("raw_sources/paper.pdf");
+describe("IngestModal Pick-files tab", () => {
+    const makeVault = (files: { path: string; extension: string; name?: string }[]) => ({
+        workspace: { getActiveFile: () => null },
+        vault: {
+            getFiles: () => files.map(f => ({ ...f, name: f.name ?? f.path.split("/").pop() ?? f.path })),
+            adapter: { getFullPath: (p: string) => `/abs/${p}` },
+        },
     });
 
-    it("calls api.ingest with the absolute file path on button click", async () => {
-        const { ModalClass, apiMock } = await getModal("synthadoc-ingest-current", {
-            workspace: { getActiveFile: () => ({ path: "raw_sources/paper.pdf", name: "paper.pdf" }) },
-            vault: { getFiles: () => [], adapter: { getFullPath: (p: string) => `/vault/${p}` } },
+    // contentEl children: [0]=h3, [1]=tabBar, [2]=WS panel, [3]=URL panel, [4]=All-sources panel, [5]=Pick-files panel
+    // Pick-files panel: [0]=desc, [1]=folderRow([0]=label,[1]=display,[2]=browseBtn,[3]=scanBtn), [2]=selectRow, [3]=listEl, [4]=statusEl, [5]=forceRow, [6]=btnRow
+    const getPickFiles = (modal: any) => {
+        const panel = modal.contentEl._children[5];
+        return {
+            browseBtn: panel._children[1]._children[2] as any,
+            scanBtn:   panel._children[1]._children[3] as any,
+            listEl:    panel._children[3] as any,
+            ingestBtn: panel._children[6]._children[0] as any,
+        };
+    };
+
+    // Simulate the electron folder-picker returning `folder` so Browse can update state.
+    const mockBrowse = (folder: string) => {
+        (window as any).require = (_mod: string) => ({
+            dialog: { showOpenDialog: async () => ({ canceled: false, filePaths: [folder] }) },
         });
-        apiMock.ingest.mockResolvedValueOnce({ job_id: "job-confirm-01" });
-        apiMock.job = vi.fn().mockResolvedValue({ status: "completed", result: {} });
+    };
+    afterEach(() => { delete (window as any).require; });
+
+    it("Scan button populates file list with checkboxes for supported files only", async () => {
+        const { ModalClass } = await getModal("synthadoc-ingest",
+            makeVault([
+                { path: "raw_sources/a.pdf", extension: "pdf" },
+                { path: "raw_sources/b.txt", extension: "txt" },
+                { path: "raw_sources/script.py", extension: "py" }, // unsupported
+            ])
+        );
+        const modal = new ModalClass();
+        modal.onOpen();
+        const { browseBtn, scanBtn, listEl } = getPickFiles(modal);
+        mockBrowse("raw_sources");
+        await browseBtn.onclick();
+        scanBtn.onclick();
+
+        expect(listEl._children.length).toBe(2);
+    });
+
+    it("Ingest selected calls api.ingest only for checked files", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-ingest",
+            makeVault([
+                { path: "raw_sources/a.pdf", extension: "pdf" },
+                { path: "raw_sources/b.txt", extension: "txt" },
+            ])
+        );
+        apiMock.ingest.mockResolvedValue({ job_id: "job-pick-1" });
+        apiMock.jobs.mockResolvedValue([{ id: "job-pick-1", status: "completed" }]);
 
         const modal = new ModalClass();
         modal.onOpen();
-        const btn = modal.contentEl.querySelector("button") as any;
-        await btn.onclick();
+        const { browseBtn, scanBtn, listEl, ingestBtn } = getPickFiles(modal);
+        mockBrowse("raw_sources");
+        await browseBtn.onclick();
+        scanBtn.onclick();
+
+        // Uncheck the second file
+        const cb = listEl._children[1]._children[0];
+        cb.checked = false;
+        cb._listeners?.change?.({ target: cb });
+
+        await ingestBtn.onclick();
         await flushPromises();
 
-        expect(apiMock.ingest).toHaveBeenCalledWith("/vault/raw_sources/paper.pdf");
+        expect(apiMock.ingest).toHaveBeenCalledTimes(1);
+        expect(apiMock.ingest).toHaveBeenCalledWith("/abs/raw_sources/a.pdf", undefined, false);
     });
 
-    it("re-enables button and shows error on failed job", async () => {
-        const { ModalClass, apiMock } = await getModal("synthadoc-ingest-current", {
-            workspace: { getActiveFile: () => ({ path: "raw_sources/paper.pdf", name: "paper.pdf" }) },
-            vault: { getFiles: () => [], adapter: { getFullPath: (p: string) => `/vault/${p}` } },
-        });
+    it("shows error and re-enables button when all queuing fails", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-ingest",
+            makeVault([{ path: "raw_sources/a.pdf", extension: "pdf" }])
+        );
         apiMock.ingest.mockRejectedValueOnce(new Error("server down"));
 
         const modal = new ModalClass();
         modal.onOpen();
-        const btn = modal.contentEl.querySelector("button") as any;
-        await btn.onclick();
+        const { browseBtn, scanBtn, ingestBtn } = getPickFiles(modal);
+        mockBrowse("raw_sources");
+        await browseBtn.onclick();
+        scanBtn.onclick();
+
+        await ingestBtn.onclick();
         await flushPromises();
 
-        expect(btn.disabled).toBe(false);
+        expect(ingestBtn.disabled).toBe(false);
         expect(modal.contentEl.innerHTML).toContain("synthadoc serve");
+    });
+
+    it("excludes wiki/ subfolder files and system files, shows exclusion message", async () => {
+        const { ModalClass } = await getModal("synthadoc-ingest",
+            makeVault([
+                { path: "src/notes/a.pdf",      extension: "pdf" },           // included
+                { path: "src/wiki/page.md",      extension: "md",  name: "page.md" },      // excluded: wiki/
+                { path: "src/sub/wiki/deep.md",  extension: "md",  name: "deep.md" },      // excluded: /wiki/
+                { path: "src/log.md",            extension: "md",  name: "log.md" },       // excluded: system
+                { path: "src/README.md",         extension: "md",  name: "README.md" },    // excluded: system
+                { path: "src/routing.md",        extension: "md",  name: "routing.md" },   // excluded: system
+                { path: "src/notes/b.txt",       extension: "txt", name: "b.txt" },        // included
+            ])
+        );
+        const modal = new ModalClass();
+        modal.onOpen();
+        const { browseBtn, scanBtn, listEl } = getPickFiles(modal);
+        // also grab statusEl: panel._children[4]
+        const statusEl = modal.contentEl._children[5]._children[4];
+        mockBrowse("src");
+        await browseBtn.onclick();
+        scanBtn.onclick();
+
+        expect(listEl._children.length).toBe(2); // a.pdf + b.txt
+        expect(statusEl.innerHTML).toContain("wiki page");
+        expect(statusEl.innerHTML).toContain("system file");
+    });
+
+    it("shows no exclusion message when nothing is filtered", async () => {
+        const { ModalClass } = await getModal("synthadoc-ingest",
+            makeVault([
+                { path: "src/a.pdf", extension: "pdf" },
+                { path: "src/b.txt", extension: "txt" },
+            ])
+        );
+        const modal = new ModalClass();
+        modal.onOpen();
+        const { browseBtn, scanBtn } = getPickFiles(modal);
+        const statusEl = modal.contentEl._children[5]._children[4];
+        mockBrowse("src");
+        await browseBtn.onclick();
+        scanBtn.onclick();
+
+        expect(statusEl.innerHTML).toBe("");
     });
 });
 
@@ -1594,6 +1656,93 @@ describe("JobsModal", () => {
         expect(prevBtn.disabled).toBe(false);
         expect(nextBtn.disabled).toBe(true);
     });
+
+    it("default sort is created_at desc — newest job renders first", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-jobs");
+        apiMock.jobs.mockResolvedValueOnce([
+            { id: "job-old", status: "pending", operation: "ingest", payload: {}, created_at: "2026-01-01 00:00:00" },
+            { id: "job-new", status: "pending", operation: "ingest", payload: {}, created_at: "2026-01-02 00:00:00" },
+        ]);
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        await flushPromises();
+
+        const html = modal.contentEl.innerHTML;
+        expect(html.indexOf("job-new")).toBeLessThan(html.indexOf("job-old"));
+    });
+
+    it("clicking Status header sorts by status asc", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-jobs");
+        apiMock.jobs.mockResolvedValueOnce([
+            { id: "job-z", status: "pending", operation: "ingest", payload: {}, created_at: null },
+            { id: "job-a", status: "in_progress", operation: "ingest", payload: {}, created_at: null },
+        ]);
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        await flushPromises();
+
+        // Table header row: th[0]=checkbox, th[1]=Job ID, th[2]=Status, th[3]=Operation, th[4]=Source, th[5]=Created
+        const table = modal.contentEl._children[3]._children[0]; // tableEl > table
+        const hrow = table._children[0]._children[0];           // thead > tr
+        const statusTh = hrow._children[2];                     // Status th
+        expect(statusTh.innerHTML).toContain("Status");
+
+        statusTh.onclick();
+
+        const html = modal.contentEl.innerHTML;
+        // "in_progress" < "pending" alphabetically, so job-a (in_progress) should come first
+        expect(html.indexOf("job-a")).toBeLessThan(html.indexOf("job-z"));
+    });
+
+    it("clicking a sorted header again reverses the sort order", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-jobs");
+        apiMock.jobs.mockResolvedValueOnce([
+            { id: "job-z", status: "pending", operation: "ingest", payload: {}, created_at: null },
+            { id: "job-a", status: "in_progress", operation: "ingest", payload: {}, created_at: null },
+        ]);
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        await flushPromises();
+
+        const table = modal.contentEl._children[3]._children[0];
+        const hrow = table._children[0]._children[0];
+        const statusTh = hrow._children[2];
+
+        // First click: asc (in_progress first)
+        statusTh.onclick();
+        let html = modal.contentEl.innerHTML;
+        expect(html.indexOf("job-a")).toBeLessThan(html.indexOf("job-z"));
+
+        // Second click: desc (pending first)
+        statusTh.onclick();
+        html = modal.contentEl.innerHTML;
+        expect(html.indexOf("job-z")).toBeLessThan(html.indexOf("job-a"));
+    });
+
+    it("clicking Operation header sorts by operation", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-jobs");
+        apiMock.jobs.mockResolvedValueOnce([
+            { id: "job-lint", status: "pending", operation: "lint", payload: {}, created_at: null },
+            { id: "job-ingest", status: "pending", operation: "ingest", payload: {}, created_at: null },
+        ]);
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        await flushPromises();
+
+        const table = modal.contentEl._children[3]._children[0];
+        const hrow = table._children[0]._children[0];
+        const operationTh = hrow._children[3]; // Operation th
+
+        operationTh.onclick();
+
+        const html = modal.contentEl.innerHTML;
+        // "ingest" < "lint" — job-ingest should appear first
+        expect(html.indexOf("job-ingest")).toBeLessThan(html.indexOf("job-lint"));
+    });
 });
 
 // ── LintReportModal ───────────────────────────────────────────────────────────
@@ -1664,36 +1813,41 @@ describe("LintReportModal", () => {
     });
 });
 
-// ── IngestUrlModal ────────────────────────────────────────────────────────────
+// ── IngestModal URL tab ───────────────────────────────────────────────────────
 
-describe("IngestUrlModal", () => {
+describe("IngestModal URL tab", () => {
+    // contentEl children: [0]=h3, [1]=tabBar, [2]=WS panel, [3]=URL panel, [4]=All-sources panel, [5]=Pick-files panel
+    // URL panel: [0]=desc, [1]=row([0]=input, [1]=btn), [2]=forceRow, [3]=out
+    const getUrlTab = (modal: any) => {
+        const row = modal.contentEl._children[3]._children[1];
+        return { input: row._children[0] as any, btn: row._children[1] as any };
+    };
+
     it("calls api.ingest with the entered URL on Ingest click", async () => {
-        const { ModalClass, apiMock } = await getModal("synthadoc-ingest-url");
+        const { ModalClass, apiMock } = await getModal("synthadoc-ingest");
         apiMock.ingest.mockResolvedValueOnce({ job_id: "url-job-01" });
         apiMock.job = vi.fn().mockResolvedValue({ status: "completed", result: {} });
 
         const modal = new ModalClass();
         modal.onOpen();
 
-        const input = modal.contentEl.querySelector("input") as any;
+        const { input, btn } = getUrlTab(modal);
         input.value = "https://example.com/paper.pdf";
-        const btn = modal.contentEl.querySelector("button") as any;
         await btn.onclick();
         await flushPromises();
 
-        expect(apiMock.ingest).toHaveBeenCalledWith("https://example.com/paper.pdf");
+        expect(apiMock.ingest).toHaveBeenCalledWith("https://example.com/paper.pdf", undefined, false);
     });
 
     it("shows error and re-enables button when api.ingest throws", async () => {
-        const { ModalClass, apiMock } = await getModal("synthadoc-ingest-url");
+        const { ModalClass, apiMock } = await getModal("synthadoc-ingest");
         apiMock.ingest.mockRejectedValueOnce(new Error("refused"));
 
         const modal = new ModalClass();
         modal.onOpen();
 
-        const input = modal.contentEl.querySelector("input") as any;
+        const { input, btn } = getUrlTab(modal);
         input.value = "https://example.com/paper.pdf";
-        const btn = modal.contentEl.querySelector("button") as any;
         await btn.onclick();
         await flushPromises();
 
@@ -1702,12 +1856,12 @@ describe("IngestUrlModal", () => {
     });
 
     it("does nothing when URL input is empty", async () => {
-        const { ModalClass, apiMock } = await getModal("synthadoc-ingest-url");
+        const { ModalClass, apiMock } = await getModal("synthadoc-ingest");
 
         const modal = new ModalClass();
         modal.onOpen();
 
-        const btn = modal.contentEl.querySelector("button") as any;
+        const { btn } = getUrlTab(modal);
         await btn.onclick();
 
         expect(apiMock.ingest).not.toHaveBeenCalled();

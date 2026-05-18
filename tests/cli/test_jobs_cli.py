@@ -55,3 +55,28 @@ def test_jobs_cancel_with_yes_skips_confirmation(tmp_path):
         result = runner.invoke(app, ["jobs", "cancel", "--yes", "--wiki", str(tmp_path)])
     assert result.exit_code == 0, result.output
     assert "3" in result.output
+
+
+def test_jobs_list_passes_sort_params_to_api(tmp_path):
+    """--sort and --order are forwarded as query params."""
+    mock_jobs = [
+        {"id": "j1", "status": "completed", "operation": "ingest", "created_at": "2026-01-02 00:00:00"},
+        {"id": "j2", "status": "pending", "operation": "lint", "created_at": "2026-01-01 00:00:00"},
+    ]
+    with patch("synthadoc.cli.jobs.get", return_value=mock_jobs) as mock_get:
+        result = runner.invoke(app, [
+            "jobs", "list", "--sort", "operation", "--order", "desc", "--wiki", str(tmp_path)
+        ])
+    assert result.exit_code == 0, result.output
+    call_kwargs = mock_get.call_args
+    assert call_kwargs.kwargs.get("sort") == "operation" or "operation" in str(call_kwargs)
+    assert call_kwargs.kwargs.get("order") == "desc" or "desc" in str(call_kwargs)
+
+
+def test_jobs_list_default_sort_is_created_at_asc(tmp_path):
+    """Default --sort is created_at and default --order is asc."""
+    with patch("synthadoc.cli.jobs.get", return_value=[]) as mock_get:
+        runner.invoke(app, ["jobs", "list", "--wiki", str(tmp_path)])
+    call_kwargs = mock_get.call_args
+    assert call_kwargs.kwargs.get("sort") == "created_at" or "created_at" in str(call_kwargs)
+    assert call_kwargs.kwargs.get("order") == "asc" or ("asc" in str(call_kwargs) and "desc" not in str(call_kwargs))

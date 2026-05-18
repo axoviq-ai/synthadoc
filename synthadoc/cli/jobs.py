@@ -29,12 +29,16 @@ app.add_typer(jobs_app, name="jobs")
 @jobs_app.command("list")
 def jobs_list(
     status: Optional[str] = typer.Option(None, "--status", help="Filter by status"),
+    sort: str = typer.Option("created_at", "--sort", help="Sort column: created_at | status | operation"),
+    order: str = typer.Option("asc", "--order", help="Sort direction: asc | desc"),
     wiki: Optional[str] = typer.Option(None, "--wiki", "-w"),
 ):
     """List all jobs for this wiki."""
     from synthadoc.cli._wiki import resolve_wiki
     wiki = resolve_wiki(wiki)
-    params = {"status": status} if status else {}
+    params: dict = {"sort": sort, "order": order}
+    if status:
+        params["status"] = status
     jobs = get(wiki, "/jobs", timeout=10, **params)
     if not jobs:
         typer.echo("No jobs found.")

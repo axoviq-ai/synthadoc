@@ -210,12 +210,24 @@ class JobQueue:
             await db.commit()
         return count
 
-    async def list_jobs(self, status: Optional[JobStatus] = None) -> list[Job]:
+    _SORT_COLUMNS = {"created_at", "status", "operation"}
+
+    async def list_jobs(
+        self,
+        status: Optional[JobStatus] = None,
+        sort_by: str = "created_at",
+        order: str = "asc",
+    ) -> list[Job]:
+        col = sort_by if sort_by in self._SORT_COLUMNS else "created_at"
+        direction = "DESC" if order.lower() == "desc" else "ASC"
         async with aiosqlite.connect(self._path) as db:
             db.row_factory = aiosqlite.Row
-            q = ("SELECT * FROM jobs WHERE status=? ORDER BY created_at"
-                 if status else "SELECT * FROM jobs ORDER BY created_at")
-            args = (status.value,) if status else ()
+            if status:
+                q = f"SELECT * FROM jobs WHERE status=? ORDER BY {col} {direction}"
+                args: tuple = (status.value,)
+            else:
+                q = f"SELECT * FROM jobs ORDER BY {col} {direction}"
+                args = ()
             async with db.execute(q, args) as cur:
                 rows = await cur.fetchall()
             return [Job(id=r["id"], operation=r["operation"],
