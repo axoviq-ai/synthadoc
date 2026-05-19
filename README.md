@@ -241,6 +241,12 @@ cd synthadoc
 pip3 install -e ".[dev]"
 ```
 
+If you already have Synthadoc wikis installed, upgrade the Obsidian plugin in all registered wikis to keep them in sync:
+
+```bash
+synthadoc plugin upgrade
+```
+
 ### Step 2 — Run the Python test suite
 
 Validate that the Python engine builds and all tests pass before proceeding:
@@ -257,13 +263,20 @@ Performance benchmarks (optional — Linux/macOS, measures SLOs):
 pytest tests/performance/ -v --benchmark-disable
 ```
 
-### Step 3 — Build and test the Obsidian plugin
+### Step 3 — Test the Obsidian plugin
+
+The pre-built `main.js` is committed to the repo — you do not need to rebuild it unless you modify the plugin source code. To run the plugin unit tests:
 
 ```bash
 cd obsidian-plugin
 npm install
-npm run build    # produces main.js
 npm test         # runs Vitest unit tests
+```
+
+If you modify `src/main.ts`, rebuild the bundle before installing:
+
+```bash
+npm run build    # produces main.js
 ```
 
 ### Step 4 — Set your API keys
