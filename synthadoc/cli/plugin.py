@@ -10,7 +10,7 @@ from typing import Optional
 import typer
 
 from synthadoc.cli._wiki import resolve_wiki
-from synthadoc.cli.install import resolve_wiki_path
+from synthadoc.cli.install import resolve_wiki_path, _read_registry
 from synthadoc.cli.main import app
 
 plugin_app = typer.Typer(name="plugin", help="Manage the Synthadoc Obsidian plugin.")
@@ -65,6 +65,21 @@ def _write_plugin_data(wiki_path: Path, plugin_dir: Path) -> None:
     data_json.write_text(json.dumps(existing, indent=2), encoding="utf-8")
 
 
+def _install_plugin_into(wiki_path: Path) -> list[str]:
+    """Copy plugin files into wiki_path and write data.json.  Returns copied filenames."""
+    dest_dir = wiki_path / ".obsidian" / "plugins" / _PLUGIN_ID
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    copied = []
+    for filename in _PLUGIN_FILES:
+        src = _PLUGIN_SRC / filename
+        if src.exists():
+            shutil.copy2(src, dest_dir / filename)
+            copied.append(filename)
+    if copied:
+        _write_plugin_data(wiki_path, dest_dir)
+    return copied
+
+
 @plugin_app.command("install")
 def plugin_install_cmd(
     wiki: Optional[str] = typer.Argument(None, help="Wiki name (uses default if omitted)"),
@@ -97,15 +112,7 @@ def plugin_install_cmd(
         )
         raise typer.Exit(1)
 
-    dest_dir = wiki_path / ".obsidian" / "plugins" / _PLUGIN_ID
-    dest_dir.mkdir(parents=True, exist_ok=True)
-
-    copied = []
-    for filename in _PLUGIN_FILES:
-        src = _PLUGIN_SRC / filename
-        if src.exists():
-            shutil.copy2(src, dest_dir / filename)
-            copied.append(filename)
+    copied = _install_plugin_into(wiki_path)
 
     if not copied:
         typer.echo(
@@ -115,11 +122,70 @@ def plugin_install_cmd(
         )
         raise typer.Exit(1)
 
-    _write_plugin_data(wiki_path, dest_dir)
-
+    dest_dir = wiki_path / ".obsidian" / "plugins" / _PLUGIN_ID
     typer.echo(f"Plugin installed into: {dest_dir}")
     for f in copied:
         typer.echo(f"  copied  {f}")
     typer.echo(f"  wrote   data.json (server URL configured automatically)")
     typer.echo()
     typer.echo("Open Obsidian, go to Settings > Community Plugins, and enable 'Synthadoc'.")
+
+
+@plugin_app.command("upgrade")
+def plugin_upgrade_cmd():
+    """Upgrade the Obsidian plugin in every registered wiki vault.
+
+    \b
+    Reads the wiki registry and reinstalls the latest plugin files into each
+    vault that already has the plugin directory.  Run this after updating
+    Synthadoc (pip install -e '.[dev]') to keep all wikis in sync.
+
+    \b
+    Examples:
+      synthadoc plugin upgrade
+    """
+    if not _PLUGIN_SRC.exists():
+        typer.echo(
+            f"Error: obsidian-plugin/ not found at '{_PLUGIN_SRC}'.\n"
+            "Run this command from the synthadoc repo root.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    registry = _read_registry()
+    if not registry:
+        typer.echo("No wikis registered. Use 'synthadoc init' to create a wiki first.")
+        raise typer.Exit(0)
+
+    upgraded: list[str] = []
+    skipped: list[str] = []
+    errors: list[str] = []
+
+    for name, meta in registry.items():
+        wiki_path = Path(meta.get("path", ""))
+        if not wiki_path.exists():
+            errors.append(f"  {name}: path '{wiki_path}' not found on disk (stale registry entry)")
+            continue
+        try:
+            copied = _install_plugin_into(wiki_path)
+            if copied:
+                upgraded.append(name)
+            else:
+                skipped.append(f"  {name}: no plugin files to copy (build obsidian-plugin first)")
+        except Exception as exc:
+            errors.append(f"  {name}: {exc}")
+
+    if upgraded:
+        typer.echo(f"Upgraded {len(upgraded)} wiki(s):")
+        for name in upgraded:
+            typer.echo(f"  {name}")
+    if skipped:
+        typer.echo("Skipped:")
+        for msg in skipped:
+            typer.echo(msg)
+    if errors:
+        typer.echo("Errors:")
+        for msg in errors:
+            typer.echo(msg)
+    if not upgraded and not skipped and not errors:
+        typer.echo("Nothing to upgrade.")

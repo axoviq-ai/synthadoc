@@ -39,12 +39,6 @@ export default class SynthadocPlugin extends Plugin {
         });
 
         this.addCommand({
-            id: "synthadoc-web-search",
-            name: "Ingest: web search...",
-            callback: () => new WebSearchModal(this.app).open(),
-        });
-
-        this.addCommand({
             id: "synthadoc-ingest",
             name: "Ingest...",
             callback: () => new IngestModal(this.app, this.settings.rawSourcesFolder).open(),
@@ -52,20 +46,8 @@ export default class SynthadocPlugin extends Plugin {
 
         this.addCommand({
             id: "synthadoc-jobs",
-            name: "Jobs: list...",
+            name: "Jobs...",
             callback: () => new JobsModal(this.app).open(),
-        });
-
-        this.addCommand({
-            id: "synthadoc-jobs-retry-dead",
-            name: "Jobs: retry failed or dead jobs...",
-            callback: () => new RetryJobModal(this.app).open(),
-        });
-
-        this.addCommand({
-            id: "synthadoc-jobs-purge",
-            name: "Jobs: purge old completed/dead...",
-            callback: () => new PurgeJobsModal(this.app).open(),
         });
 
         this.addCommand({
@@ -87,27 +69,9 @@ export default class SynthadocPlugin extends Plugin {
         });
 
         this.addCommand({
-            id: "synthadoc-audit-costs",
-            name: "Audit: cost summary...",
-            callback: () => new AuditCostsModal(this.app).open(),
-        });
-
-        this.addCommand({
-            id: "synthadoc-audit-queries",
-            name: "Audit: query history...",
-            callback: () => new QueryHistoryModal(this.app).open(),
-        });
-
-        this.addCommand({
-            id: "synthadoc-audit-events",
-            name: "Audit: events...",
-            callback: () => new AuditEventsModal(this.app).open(),
-        });
-
-        this.addCommand({
-            id: "synthadoc-audit-history",
-            name: "Audit: ingest history...",
-            callback: () => new AuditHistoryModal(this.app).open(),
+            id: "synthadoc-audit",
+            name: "Audit...",
+            callback: () => new AuditModal(this.app).open(),
         });
 
         this.addCommand({
@@ -869,6 +833,7 @@ class JobsModal extends Modal {
     private _countdownTimer: number | null = null;
     private _tableEl: HTMLElement | null = null;
     private _countdownEl: HTMLElement | null = null;
+    private _retryBtn: HTMLButtonElement | null = null;
     private _deleteBtn: HTMLButtonElement | null = null;
     private _checkedIds: Set<string> = new Set();
     private _page = 0;
@@ -927,10 +892,14 @@ class JobsModal extends Modal {
             this._resetAndLoad();
         };
 
-        // Delete button — right-aligned on the interval row, always visible
+        // Action buttons — right-aligned on the interval row
+        this._retryBtn = intervalRow.createEl("button", { text: "Retry selected" }) as HTMLButtonElement;
+        this._retryBtn.disabled = true;
+        this._retryBtn.style.cssText = "font-size:12px;margin-left:auto";
+        this._retryBtn.onclick = () => this._retrySelected();
         this._deleteBtn = intervalRow.createEl("button", { text: "Delete selected" }) as HTMLButtonElement;
         this._deleteBtn.disabled = true;
-        this._deleteBtn.style.cssText = "font-size:12px;margin-left:auto";
+        this._deleteBtn.style.cssText = "font-size:12px";
         this._deleteBtn.onclick = () => this._deleteSelected();
 
         // Table
@@ -945,6 +914,32 @@ class JobsModal extends Modal {
         this._nextBtn = this._pageRow.createEl("button", { text: "Next →" }) as HTMLButtonElement;
         this._prevBtn.onclick = () => { this._page--; this._renderTable(); };
         this._nextBtn.onclick = () => { this._page++; this._renderTable(); };
+
+        // Purge footer
+        const purgeRow = contentEl.createEl("div");
+        purgeRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--background-modifier-border);font-size:12px;color:var(--text-muted)";
+        purgeRow.createEl("span", { text: "Older than" });
+        const purgeDaysInput = purgeRow.createEl("input", { type: "number" }) as HTMLInputElement;
+        purgeDaysInput.value = "7";
+        purgeDaysInput.style.cssText = "width:50px;padding:2px 5px;font-size:12px";
+        purgeRow.createEl("span", { text: "days" });
+        const purgeBtn = purgeRow.createEl("button", { text: "Purge old jobs" });
+        purgeBtn.style.cssText = "font-size:12px";
+        const purgeStatusEl = purgeRow.createEl("span");
+        purgeStatusEl.style.cssText = "font-size:12px";
+        purgeBtn.onclick = async () => {
+            const days = parseInt(purgeDaysInput.value) || 7;
+            purgeBtn.disabled = true;
+            purgeStatusEl.setText("Purging…");
+            try {
+                const r = await api.purgeJobs(days) as any;
+                purgeStatusEl.setText(`Purged ${r.purged} job(s)`);
+                new Notice(`Synthadoc: purged ${r.purged} job(s)`);
+                this._load();
+            } catch {
+                purgeStatusEl.setText("Error: is synthadoc serve running?");
+            } finally { purgeBtn.disabled = false; }
+        };
 
         this._resetAndLoad();
     }
@@ -990,8 +985,31 @@ class JobsModal extends Modal {
         }
     }
 
-    private _updateDeleteBtn() {
+    private _hasRetryableChecked(): boolean {
+        const RETRYABLE = new Set(["failed", "dead", "cancelled"]);
+        return [...this._checkedIds].some(id => {
+            const job = this._filteredJobs.find((j: any) => j.id === id);
+            return job && RETRYABLE.has(job.status);
+        });
+    }
+
+    private _updateActionBtns() {
         if (this._deleteBtn) this._deleteBtn.disabled = this._checkedIds.size === 0;
+        if (this._retryBtn) this._retryBtn.disabled = !this._hasRetryableChecked();
+    }
+
+    private async _retrySelected() {
+        if (!this._retryBtn || !this._hasRetryableChecked()) return;
+        this._retryBtn.disabled = true;
+        if (this._deleteBtn) this._deleteBtn.disabled = true;
+        const RETRYABLE = new Set(["failed", "dead", "cancelled"]);
+        const ids = [...this._checkedIds].filter(id => {
+            const job = this._filteredJobs.find((j: any) => j.id === id);
+            return job && RETRYABLE.has(job.status);
+        });
+        await Promise.allSettled(ids.map(id => api.retryJob(id)));
+        this._checkedIds.clear();
+        this._load();
     }
 
     private async _deleteSelected() {
@@ -1034,7 +1052,7 @@ class JobsModal extends Modal {
         for (const id of this._checkedIds) {
             if (!allFilteredIds.has(id)) this._checkedIds.delete(id);
         }
-        this._updateDeleteBtn();
+        this._updateActionBtns();
 
         if (total === 0) {
             this._tableEl.createEl("p", { text: "No jobs match the selected filters.", cls: "synthadoc-muted" });
@@ -1118,7 +1136,7 @@ class JobsModal extends Modal {
                         selectAllCb.checked = terminalJobs.every((j: any) => this._checkedIds.has(j.id));
                         selectAllCb.indeterminate = !selectAllCb.checked && terminalJobs.some((j: any) => this._checkedIds.has(j.id));
                     }
-                    this._updateDeleteBtn();
+                    this._updateActionBtns();
                 };
                 rowCheckboxes.push(cb);
             }
@@ -1159,7 +1177,7 @@ class JobsModal extends Modal {
                     else this._checkedIds.delete(job.id);
                 }
                 for (const cb of rowCheckboxes) cb.checked = selectAllCb!.checked;
-                this._updateDeleteBtn();
+                this._updateActionBtns();
             };
         }
     }
@@ -1355,381 +1373,6 @@ class LintReportModal extends Modal {
     onClose() { this.contentEl.empty(); }
 }
 
-class WebSearchModal extends Modal {
-    private _pollTimer: number | null = null;
-    private _pollInterval = 2000;
-
-    onOpen() {
-        const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
-        if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
-        const { contentEl } = this;
-        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Web search" });
-        makeDraggable(this.modalEl, titleEl);
-        contentEl.createEl("p", {
-            text: "Type a topic — Synthadoc will search the web and compile results into your wiki.",
-            cls: "synthadoc-muted",
-        }).style.cssText = "font-size:12px;margin-bottom:12px";
-
-        const input = contentEl.createEl("textarea", { placeholder: "e.g. Bank of Canada rate outlook 2025\nOntario housing market trends" });
-        input.style.cssText = "width:100%;min-height:80px;padding:6px 8px;resize:vertical;margin-bottom:8px;box-sizing:border-box";
-
-        const settingsRow = contentEl.createEl("div");
-        settingsRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px";
-        settingsRow.createEl("label", { text: "Max results:" });
-        const maxResultsInput = settingsRow.createEl("input", { type: "number" }) as HTMLInputElement;
-        maxResultsInput.value = "20";
-        maxResultsInput.min = "1";
-        maxResultsInput.max = "50";
-        maxResultsInput.step = "1";
-        maxResultsInput.style.cssText = "width:60px;padding:4px 6px";
-        settingsRow.createEl("span", { text: "URLs" }).style.marginRight = "16px";
-        settingsRow.createEl("label", { text: "Poll interval:" });
-        const intervalInput = settingsRow.createEl("input", { type: "number" }) as HTMLInputElement;
-        intervalInput.value = "2000";
-        intervalInput.min = "500";
-        intervalInput.max = "10000";
-        intervalInput.step = "500";
-        intervalInput.style.cssText = "width:70px;padding:4px 6px";
-        settingsRow.createEl("span", { text: "ms" });
-
-        const btnRow = contentEl.createEl("div");
-        btnRow.style.cssText = "display:flex;justify-content:flex-end;margin-bottom:12px";
-        const btn = btnRow.createEl("button", { text: "Search" });
-
-        const statusEl = contentEl.createEl("p");
-        statusEl.style.cssText = "font-size:12px;min-height:20px;margin-bottom:4px;-webkit-user-select:text;user-select:text";
-
-        const pagesEl = contentEl.createEl("div");
-        pagesEl.style.cssText = "-webkit-user-select:text;user-select:text";
-        const errorsEl = contentEl.createEl("div");
-        errorsEl.style.cssText = "-webkit-user-select:text;user-select:text";
-
-        const submit = async () => {
-            const topic = input.value.trim();
-            if (!topic) return;
-            btn.disabled = true;
-            input.disabled = true;
-            this._pollInterval = Math.min(10000, Math.max(500, parseInt(intervalInput.value) || 2000));
-            const maxResults = Math.min(50, Math.max(1, parseInt(maxResultsInput.value) || 20));
-            statusEl.setText("Queuing web search…");
-            pagesEl.empty();
-            errorsEl.empty();
-            try {
-                const r = await api.ingest(`search for: ${topic}`, maxResults) as any;
-                const jobId: string = r.job_id;
-                new Notice(`Synthadoc: web search queued (job ${jobId})`);
-                this._startPolling(jobId, statusEl, pagesEl, errorsEl, btn, input);
-            } catch {
-                statusEl.setText("Error: is synthadoc serve running?");
-                btn.disabled = false;
-                input.disabled = false;
-            }
-        };
-
-        btn.onclick = submit;
-        input.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) submit(); });
-        setTimeout(() => input.focus(), 50);
-    }
-
-    private _startPolling(
-        jobId: string,
-        statusEl: HTMLElement,
-        pagesEl: HTMLElement,
-        errorsEl: HTMLElement,
-        btn: HTMLButtonElement,
-        input: HTMLTextAreaElement,
-    ) {
-        const pages = new Set<string>();
-        const errors: string[] = [];
-        let childJobIds: string[] = [];
-        // Persistent settled set — survives jobs dropping off api.jobs() between polls
-        const settledChildren = new Set<string>();
-
-        const _TERMINAL = ["completed", "failed", "dead", "skipped", "cancelled"];
-
-        const poll = async () => {
-            try {
-                const job = await api.job(jobId) as any;
-                const phase = job.progress?.phase;
-                const isDone = ["completed", "failed", "dead", "skipped"].includes(job.status);
-
-                if (job.result?.child_job_ids?.length && childJobIds.length === 0) {
-                    childJobIds = job.result.child_job_ids;
-                }
-
-                // Phase status — only shown while parent is still running
-                if (!isDone) {
-                    if (phase === "searching") {
-                        statusEl.setText("Searching the web…");
-                    } else if (phase === "found_urls") {
-                        const total = job.progress?.total ?? 0;
-                        statusEl.setText(`Found ${total} URL${total !== 1 ? "s" : ""} — ingesting…`);
-                    }
-                }
-
-                if (childJobIds.length > 0) {
-                    const allJobs = await api.jobs() as any[];
-                    for (const cj of allJobs) {
-                        if (!childJobIds.includes(cj.id)) continue;
-                        if (!_TERMINAL.includes(cj.status)) continue;
-                        if (settledChildren.has(cj.id)) continue;
-                        settledChildren.add(cj.id);
-                        if (cj.status === "completed") {
-                            for (const s of (cj.result?.pages_created ?? [])) pages.add(s);
-                            for (const s of (cj.result?.pages_updated ?? [])) pages.add(s);
-                        } else if (cj.error) {
-                            const src = cj.payload?.source ?? cj.id;
-                            const msg = `${src}: ${cj.error}`;
-                            if (!errors.includes(msg)) errors.push(msg);
-                        }
-                    }
-                    const childSettled = settledChildren.size;
-                    // Show progress; when parent is done clarify that work is still ongoing
-                    if (childSettled < childJobIds.length) {
-                        const remaining = childJobIds.length - childSettled;
-                        if (isDone) {
-                            statusEl.setText(`Wrapping up — ${remaining} ingest${remaining !== 1 ? "s" : ""} still running…`);
-                        } else {
-                            statusEl.setText(`Ingesting ${childJobIds.length} URL${childJobIds.length !== 1 ? "s" : ""}… (${childSettled} done)`);
-                        }
-                    }
-                }
-
-                if (pages.size > 0) {
-                    pagesEl.empty();
-                    pagesEl.createEl("p", { text: `Pages (${pages.size}):` }).style.cssText = "font-size:12px;font-weight:bold;margin-bottom:2px";
-                    const ul = pagesEl.createEl("ul");
-                    ul.style.cssText = "font-size:12px;margin:0;padding-left:18px;-webkit-user-select:text;user-select:text";
-                    for (const slug of pages) ul.createEl("li", { text: slug });
-                }
-
-                if (errors.length > 0) {
-                    errorsEl.empty();
-                    errorsEl.createEl("p", { text: `Errors (${errors.length}):` }).style.cssText = "font-size:12px;font-weight:bold;margin-bottom:2px;color:var(--text-error)";
-                    const ul = errorsEl.createEl("ul");
-                    ul.style.cssText = "font-size:12px;margin:0;padding-left:18px;color:var(--text-error);-webkit-user-select:text;user-select:text";
-                    for (const err of errors) ul.createEl("li", { text: err });
-                }
-
-                const allChildrenSettled = childJobIds.length > 0 && settledChildren.size >= childJobIds.length;
-                if (isDone && (childJobIds.length === 0 || allChildrenSettled)) {
-                    this._stopPolling();
-                    btn.disabled = false;
-                    input.disabled = false;
-                    if (job.status === "completed" || allChildrenSettled) {
-                        statusEl.style.cssText += ";font-weight:bold;color:var(--text-success)";
-                        statusEl.setText(`Done — ${pages.size} page(s) written.`);
-                        new Notice(`Synthadoc: web search complete — ${pages.size} page(s)`);
-                    } else {
-                        statusEl.setText(`Search ${job.status}${job.error ? `: ${job.error}` : ""}`);
-                    }
-                    return;
-                }
-            } catch {
-                // Server unreachable — keep polling silently
-            }
-            this._pollTimer = window.setTimeout(poll, this._pollInterval);
-        };
-
-        this._pollTimer = window.setTimeout(poll, this._pollInterval);
-    }
-
-    private _stopPolling() {
-        if (this._pollTimer !== null) {
-            window.clearTimeout(this._pollTimer);
-            this._pollTimer = null;
-        }
-    }
-
-    onClose() {
-        this._stopPolling();
-        this.contentEl.empty();
-    }
-}
-
-class RetryJobModal extends Modal {
-    private _pollTimer: number | null = null;
-
-    onOpen() {
-        this.modalEl.style.width = "clamp(560px, 70vw, 960px)";
-        const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
-        if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
-        const { contentEl } = this;
-        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Retry failed or dead jobs" });
-        makeDraggable(this.modalEl, titleEl);
-
-        const listEl = contentEl.createEl("div");
-        listEl.style.cssText = "max-height:40vh;overflow-y:auto;margin-bottom:12px";
-
-        const statusEl = contentEl.createEl("p");
-        statusEl.style.cssText = "font-size:12px;min-height:18px;margin-bottom:8px;-webkit-user-select:text;user-select:text";
-
-        const btnRow = contentEl.createEl("div");
-        btnRow.style.cssText = "display:flex;gap:8px;justify-content:flex-end";
-        const retryBtn = btnRow.createEl("button", { text: "Retry selected" });
-        const refreshBtn = btnRow.createEl("button", { text: "Refresh" });
-
-        // Track checkboxes: jobId → checkbox element
-        const checkboxMap = new Map<string, HTMLInputElement>();
-
-        const load = async () => {
-            listEl.empty();
-            checkboxMap.clear();
-            statusEl.setText("Loading…");
-            try {
-                const [failed, dead] = await Promise.all([
-                    api.jobs("failed") as Promise<any[]>,
-                    api.jobs("dead") as Promise<any[]>,
-                ]);
-                const jobs = [...failed, ...dead];
-                statusEl.setText("");
-
-                if (!jobs.length) {
-                    listEl.createEl("p", { text: "No failed or dead jobs." }).style.cssText = "color:var(--text-muted);font-size:13px";
-                    retryBtn.disabled = true;
-                    return;
-                }
-
-                retryBtn.disabled = false;
-                const table = listEl.createEl("table");
-                table.style.cssText = "width:100%;border-collapse:collapse;font-size:13px;-webkit-user-select:text;user-select:text";
-                const hrow = table.createEl("thead").createEl("tr");
-                for (const h of ["", "Status", "Job ID", "Operation", "Source", "Error"]) {
-                    const th = hrow.createEl("th", { text: h });
-                    th.style.cssText = "text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border)";
-                }
-                const tbody = table.createEl("tbody");
-                for (const job of jobs) {
-                    const tr = tbody.createEl("tr");
-                    const source = job.payload?.source
-                        ? job.payload.source.split(/[\\/]/).pop()
-                        : job.operation;
-                    const icon = STATUS_EMOJI[job.status] ?? "";
-
-                    // Checkbox
-                    const cbTd = tr.createEl("td");
-                    cbTd.style.cssText = "padding:4px 8px;border-bottom:1px solid var(--background-modifier-border-subtle)";
-                    const cb = cbTd.createEl("input", { type: "checkbox" }) as HTMLInputElement;
-                    cb.checked = true;
-                    checkboxMap.set(job.id, cb);
-
-                    for (const text of [`${icon} ${job.status}`, job.id, job.operation, source, job.error ?? "—"]) {
-                        const td = tr.createEl("td", { text });
-                        td.style.cssText = "padding:4px 8px;border-bottom:1px solid var(--background-modifier-border-subtle);font-size:12px";
-                    }
-                }
-            } catch {
-                listEl.empty();
-                listEl.createEl("p", { text: "Error: is synthadoc serve running?" }).style.cssText = "color:var(--text-error)";
-                retryBtn.disabled = true;
-            }
-        };
-
-        refreshBtn.onclick = load;
-
-        retryBtn.onclick = async () => {
-            const selected = [...checkboxMap.entries()]
-                .filter(([, cb]) => cb.checked)
-                .map(([id]) => id);
-            if (!selected.length) {
-                statusEl.setText("No jobs selected.");
-                return;
-            }
-
-            retryBtn.disabled = true;
-            refreshBtn.disabled = true;
-            statusEl.setText(`⏳ Re-queuing ${selected.length} job(s)…`);
-
-            // Re-queue all selected
-            let queued = 0;
-            for (const jobId of selected) {
-                try {
-                    await api.retryJob(jobId);
-                    queued++;
-                } catch { /* ignore individual failures — status will show */ }
-            }
-            statusEl.setText(`⏳ ${queued} job(s) re-queued — monitoring progress…`);
-
-            // Poll until all re-queued jobs have settled
-            const pending = new Set(selected);
-            this._pollTimer = window.setInterval(async () => {
-                try {
-                    const allJobs = await api.jobs() as any[];
-                    let inProgress = 0;
-                    let done = 0;
-                    for (const jobId of [...pending]) {
-                        const job = allJobs.find((j: any) => j.id === jobId);
-                        if (!job) { pending.delete(jobId); done++; continue; }
-                        if (["completed", "failed", "dead", "skipped"].includes(job.status)) {
-                            pending.delete(jobId);
-                            done++;
-                        } else {
-                            inProgress++;
-                        }
-                    }
-                    statusEl.setText(`⏳ ${inProgress} running, ${done} settled of ${selected.length}…`);
-                    if (pending.size === 0) {
-                        window.clearInterval(this._pollTimer!);
-                        this._pollTimer = null;
-                        statusEl.setText(`✅ All ${selected.length} job(s) settled. Refreshing list…`);
-                        retryBtn.disabled = false;
-                        refreshBtn.disabled = false;
-                        await load();
-                    }
-                } catch { /* server unreachable — keep polling */ }
-            }, 2000);
-        };
-
-        load();
-    }
-
-    onClose() {
-        if (this._pollTimer !== null) {
-            window.clearInterval(this._pollTimer);
-            this._pollTimer = null;
-        }
-        this.contentEl.empty();
-    }
-}
-
-class PurgeJobsModal extends Modal {
-    onOpen() {
-        const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
-        if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
-        const { contentEl } = this;
-        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Purge old jobs" });
-        makeDraggable(this.modalEl, titleEl);
-        contentEl.createEl("p", {
-            text: "Removes completed and dead jobs older than the specified number of days.",
-            cls: "synthadoc-muted",
-        }).style.cssText = "font-size:12px;margin-bottom:12px";
-
-        const row = contentEl.createEl("div");
-        row.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:12px";
-        row.createEl("label", { text: "Older than (days):" });
-        const input = row.createEl("input", { type: "number" }) as HTMLInputElement;
-        input.value = "7";
-        input.style.cssText = "width:70px;padding:4px 8px";
-        const btn = row.createEl("button", { text: "Purge" });
-
-        const out = contentEl.createEl("p");
-
-        btn.onclick = async () => {
-            const days = parseInt(input.value) || 7;
-            btn.disabled = true;
-            out.setText("Purging…");
-            try {
-                const r = await api.purgeJobs(days) as any;
-                out.setText(`Purged ${r.purged} job(s) older than ${days} day(s).`);
-                new Notice(`Synthadoc: purged ${r.purged} job(s)`);
-            } catch {
-                out.setText("Error: is synthadoc serve running?");
-            } finally { btn.disabled = false; }
-        };
-    }
-    onClose() { this.contentEl.empty(); }
-}
-
 class ScaffoldModal extends Modal {
     private _pollTimer: number | null = null;
 
@@ -1817,16 +1460,54 @@ class ScaffoldModal extends Modal {
     }
 }
 
-class AuditHistoryModal extends Modal {
+class AuditModal extends Modal {
     onOpen() {
-        this.modalEl.style.width = "clamp(520px, 65vw, 900px)";
+        this.modalEl.style.width = "clamp(560px, 70vw, 960px)";
         const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
         if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
         const { contentEl } = this;
-        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Ingest history" });
+        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Audit" });
         makeDraggable(this.modalEl, titleEl);
 
-        const row = contentEl.createEl("div");
+        const tabBar = contentEl.createEl("div");
+        tabBar.style.cssText = "display:flex;gap:0;margin-bottom:16px;border-bottom:1px solid var(--background-modifier-border)";
+
+        type TabName = "Query history" | "Ingest history" | "Events" | "Cost summary";
+        const tabNames: TabName[] = ["Query history", "Ingest history", "Events", "Cost summary"];
+        const panels: Record<TabName, HTMLElement> = {} as any;
+        const tabBtns: Record<TabName, HTMLElement> = {} as any;
+
+        tabNames.forEach(name => {
+            const btn = tabBar.createEl("div", { text: name });
+            btn.style.cssText = "padding:6px 14px;cursor:pointer;font-size:13px;border-bottom:2px solid transparent;margin-bottom:-1px;color:var(--text-muted)";
+            tabBtns[name] = btn;
+            const panel = contentEl.createEl("div");
+            panel.style.display = "none";
+            panels[name] = panel;
+        });
+
+        const switchTab = (name: TabName) => {
+            tabNames.forEach(t => {
+                panels[t].style.display = "none";
+                tabBtns[t].style.borderBottomColor = "transparent";
+                tabBtns[t].style.color = "var(--text-muted)";
+            });
+            panels[name].style.display = "";
+            tabBtns[name].style.borderBottomColor = "var(--interactive-accent)";
+            tabBtns[name].style.color = "var(--text-normal)";
+        };
+
+        tabNames.forEach(name => { tabBtns[name].onclick = () => switchTab(name); });
+
+        this._buildQueryHistoryTab(panels["Query history"]);
+        this._buildIngestHistoryTab(panels["Ingest history"]);
+        this._buildEventsTab(panels["Events"]);
+        this._buildCostSummaryTab(panels["Cost summary"]);
+        switchTab("Query history");
+    }
+
+    private _buildQueryHistoryTab(panel: HTMLElement) {
+        const row = panel.createEl("div");
         row.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:12px";
         row.createEl("label", { text: "Last" });
         const input = row.createEl("input", { type: "number" }) as HTMLInputElement;
@@ -1835,7 +1516,60 @@ class AuditHistoryModal extends Modal {
         row.createEl("span", { text: "records" });
         const btn = row.createEl("button", { text: "Load" });
 
-        const tableEl = contentEl.createEl("div");
+        const tableEl = panel.createEl("div");
+
+        const load = async () => {
+            const limit = parseInt(input.value) || 50;
+            tableEl.setText("Loading…");
+            try {
+                const r = await api.queryHistory(limit) as any;
+                tableEl.empty();
+                if (!r.records.length) {
+                    tableEl.createEl("p", { text: "No queries recorded yet." });
+                    return;
+                }
+                const table = tableEl.createEl("table");
+                table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px;-webkit-user-select:text;user-select:text";
+                const hrow = table.createEl("thead").createEl("tr");
+                for (const h of ["Question", "Sub-Qs", "Tokens", "Cost (USD)", "Asked at"]) {
+                    const th = hrow.createEl("th", { text: h });
+                    th.style.cssText = "text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border)";
+                }
+                const tbody = table.createEl("tbody");
+                for (const rec of r.records) {
+                    const tr = tbody.createEl("tr");
+                    const ts = rec.queried_at ? new Date(rec.queried_at).toLocaleString() : "—";
+                    for (const text of [
+                        rec.question.length > 80 ? rec.question.slice(0, 77) + "…" : rec.question,
+                        String(rec.sub_questions_count ?? 1),
+                        (rec.tokens ?? 0).toLocaleString(),
+                        `$${(rec.cost_usd ?? 0).toFixed(4)}`,
+                        ts,
+                    ]) {
+                        const td = tr.createEl("td", { text });
+                        td.style.cssText = "padding:4px 8px;border-bottom:1px solid var(--background-modifier-border-subtle)";
+                    }
+                }
+            } catch {
+                tableEl.setText("Error: is synthadoc serve running?");
+            }
+        };
+
+        btn.onclick = load;
+        load();
+    }
+
+    private _buildIngestHistoryTab(panel: HTMLElement) {
+        const row = panel.createEl("div");
+        row.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:12px";
+        row.createEl("label", { text: "Last" });
+        const input = row.createEl("input", { type: "number" }) as HTMLInputElement;
+        input.value = "50";
+        input.style.cssText = "width:60px;padding:4px 8px";
+        row.createEl("span", { text: "records" });
+        const btn = row.createEl("button", { text: "Load" });
+
+        const tableEl = panel.createEl("div");
 
         const load = async () => {
             const limit = parseInt(input.value) || 50;
@@ -1858,9 +1592,7 @@ class AuditHistoryModal extends Modal {
                 for (const rec of r.records) {
                     const tr = tbody.createEl("tr");
                     const src = rec.source_path.split(/[\\/]/).pop() ?? rec.source_path;
-                    const ts = rec.ingested_at
-                        ? new Date(rec.ingested_at).toLocaleString()
-                        : "—";
+                    const ts = rec.ingested_at ? new Date(rec.ingested_at).toLocaleString() : "—";
                     for (const text of [
                         src,
                         rec.wiki_page,
@@ -1880,146 +1612,9 @@ class AuditHistoryModal extends Modal {
         btn.onclick = load;
         load();
     }
-    onClose() { this.contentEl.empty(); }
-}
 
-class AuditCostsModal extends Modal {
-    onOpen() {
-        const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
-        if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
-        const { contentEl } = this;
-        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Cost summary" });
-        makeDraggable(this.modalEl, titleEl);
-
-        const row = contentEl.createEl("div");
-        row.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:12px";
-        row.createEl("label", { text: "Last" });
-        const input = row.createEl("input", { type: "number" }) as HTMLInputElement;
-        input.value = "30";
-        input.style.cssText = "width:60px;padding:4px 8px";
-        row.createEl("span", { text: "days" });
-        const btn = row.createEl("button", { text: "Load" });
-
-        const out = contentEl.createEl("div");
-
-        const load = async () => {
-            const days = parseInt(input.value) || 30;
-            out.setText("Loading…");
-            try {
-                const r = await api.auditCosts(days) as any;
-                out.empty();
-
-                const summary = out.createEl("div");
-                summary.style.cssText = "margin-bottom:16px";
-                summary.createEl("p", {
-                    text: `Total: ${(r.total_tokens ?? 0).toLocaleString()} tokens · $${(r.total_cost_usd ?? 0).toFixed(4)} USD`,
-                }).style.cssText = "font-weight:bold;-webkit-user-select:text;user-select:text";
-
-                if (r.daily?.length) {
-                    const table = out.createEl("table");
-                    table.style.cssText = "width:100%;border-collapse:collapse;font-size:13px;-webkit-user-select:text;user-select:text";
-                    const hrow = table.createEl("thead").createEl("tr");
-                    for (const h of ["Day", "Cost (USD)"]) {
-                        const th = hrow.createEl("th", { text: h });
-                        th.style.cssText = "text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border)";
-                    }
-                    const tbody = table.createEl("tbody");
-                    for (const d of r.daily) {
-                        const tr = tbody.createEl("tr");
-                        for (const text of [d.day, `$${(d.cost_usd ?? 0).toFixed(4)}`]) {
-                            const td = tr.createEl("td", { text });
-                            td.style.cssText = "padding:4px 8px;border-bottom:1px solid var(--background-modifier-border-subtle)";
-                        }
-                    }
-                } else {
-                    out.createEl("p", { text: "No cost data for this period.", cls: "synthadoc-muted" });
-                }
-            } catch {
-                out.setText("Error: is synthadoc serve running?");
-            }
-        };
-
-        btn.onclick = load;
-        load();
-    }
-    onClose() { this.contentEl.empty(); }
-}
-
-class QueryHistoryModal extends Modal {
-    onOpen() {
-        this.modalEl.style.width = "clamp(520px, 65vw, 900px)";
-        const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
-        if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
-        const { contentEl } = this;
-        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Query history" });
-        makeDraggable(this.modalEl, titleEl);
-
-        const row = contentEl.createEl("div");
-        row.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:12px";
-        row.createEl("label", { text: "Last" });
-        const input = row.createEl("input", { type: "number" }) as HTMLInputElement;
-        input.value = "50";
-        input.style.cssText = "width:60px;padding:4px 8px";
-        row.createEl("span", { text: "records" });
-        const btn = row.createEl("button", { text: "Load" });
-
-        const tableEl = contentEl.createEl("div");
-
-        const load = async () => {
-            const limit = parseInt(input.value) || 50;
-            tableEl.setText("Loading…");
-            try {
-                const r = await api.queryHistory(limit) as any;
-                tableEl.empty();
-                if (!r.records.length) {
-                    tableEl.createEl("p", { text: "No queries recorded yet." });
-                    return;
-                }
-                const table = tableEl.createEl("table");
-                table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px;-webkit-user-select:text;user-select:text";
-                const hrow = table.createEl("thead").createEl("tr");
-                for (const h of ["Question", "Sub-Qs", "Tokens", "Cost (USD)", "Asked at"]) {
-                    const th = hrow.createEl("th", { text: h });
-                    th.style.cssText = "text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border)";
-                }
-                const tbody = table.createEl("tbody");
-                for (const rec of r.records) {
-                    const tr = tbody.createEl("tr");
-                    const ts = rec.queried_at
-                        ? new Date(rec.queried_at).toLocaleString()
-                        : "—";
-                    for (const text of [
-                        rec.question.length > 80 ? rec.question.slice(0, 77) + "…" : rec.question,
-                        String(rec.sub_questions_count ?? 1),
-                        (rec.tokens ?? 0).toLocaleString(),
-                        `$${(rec.cost_usd ?? 0).toFixed(4)}`,
-                        ts,
-                    ]) {
-                        const td = tr.createEl("td", { text });
-                        td.style.cssText = "padding:4px 8px;border-bottom:1px solid var(--background-modifier-border-subtle)";
-                    }
-                }
-            } catch {
-                tableEl.setText("Error: is synthadoc serve running?");
-            }
-        };
-
-        btn.onclick = load;
-        load();
-    }
-    onClose() { this.contentEl.empty(); }
-}
-
-class AuditEventsModal extends Modal {
-    onOpen() {
-        this.modalEl.style.width = "clamp(560px, 70vw, 960px)";
-        const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
-        if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
-        const { contentEl } = this;
-        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Audit events" });
-        makeDraggable(this.modalEl, titleEl);
-
-        const row = contentEl.createEl("div");
+    private _buildEventsTab(panel: HTMLElement) {
+        const row = panel.createEl("div");
         row.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:12px";
         row.createEl("label", { text: "Last" });
         const input = row.createEl("input", { type: "number" }) as HTMLInputElement;
@@ -2030,7 +1625,7 @@ class AuditEventsModal extends Modal {
         row.createEl("span", { text: "events (max 1000)" });
         const btn = row.createEl("button", { text: "Load" });
 
-        const tableEl = contentEl.createEl("div");
+        const tableEl = panel.createEl("div");
         tableEl.style.cssText = "max-height:60vh;overflow-y:auto";
 
         const load = async () => {
@@ -2072,6 +1667,60 @@ class AuditEventsModal extends Modal {
         input.addEventListener("keydown", (e) => { if (e.key === "Enter") load(); });
         load();
     }
+
+    private _buildCostSummaryTab(panel: HTMLElement) {
+        const row = panel.createEl("div");
+        row.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:12px";
+        row.createEl("label", { text: "Last" });
+        const input = row.createEl("input", { type: "number" }) as HTMLInputElement;
+        input.value = "30";
+        input.style.cssText = "width:60px;padding:4px 8px";
+        row.createEl("span", { text: "days" });
+        const btn = row.createEl("button", { text: "Load" });
+
+        const out = panel.createEl("div");
+
+        const load = async () => {
+            const days = parseInt(input.value) || 30;
+            out.setText("Loading…");
+            try {
+                const r = await api.auditCosts(days) as any;
+                out.empty();
+
+                const summary = out.createEl("div");
+                summary.style.cssText = "margin-bottom:16px";
+                summary.createEl("p", {
+                    text: `Total: ${(r.total_tokens ?? 0).toLocaleString()} tokens · $${(r.total_cost_usd ?? 0).toFixed(4)} USD`,
+                }).style.cssText = "font-weight:bold;-webkit-user-select:text;user-select:text";
+
+                if (r.daily?.length) {
+                    const table = out.createEl("table");
+                    table.style.cssText = "width:100%;border-collapse:collapse;font-size:13px;-webkit-user-select:text;user-select:text";
+                    const hrow = table.createEl("thead").createEl("tr");
+                    for (const h of ["Day", "Cost (USD)"]) {
+                        const th = hrow.createEl("th", { text: h });
+                        th.style.cssText = "text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border)";
+                    }
+                    const tbody = table.createEl("tbody");
+                    for (const d of r.daily) {
+                        const tr = tbody.createEl("tr");
+                        for (const text of [d.day, `$${(d.cost_usd ?? 0).toFixed(4)}`]) {
+                            const td = tr.createEl("td", { text });
+                            td.style.cssText = "padding:4px 8px;border-bottom:1px solid var(--background-modifier-border-subtle)";
+                        }
+                    }
+                } else {
+                    out.createEl("p", { text: "No cost data for this period.", cls: "synthadoc-muted" });
+                }
+            } catch {
+                out.setText("Error: is synthadoc serve running?");
+            }
+        };
+
+        btn.onclick = load;
+        load();
+    }
+
     onClose() { this.contentEl.empty(); }
 }
 
@@ -2091,7 +1740,15 @@ class QueryModal extends Modal {
         input.style.cssText = "width:100%;min-height:72px;padding:6px 8px;resize:vertical;margin-bottom:8px;box-sizing:border-box";
 
         const row = contentEl.createEl("div");
-        row.style.cssText = "display:flex;justify-content:flex-end;margin-bottom:12px";
+        row.style.cssText = "display:flex;align-items:center;gap:8px;justify-content:flex-end;margin-bottom:12px";
+        const timeoutLabel = row.createEl("label", { text: "Timeout (s):" });
+        timeoutLabel.style.cssText = "font-size:12px;color:var(--text-muted);white-space:nowrap";
+        const timeoutInput = row.createEl("input", { type: "number" }) as HTMLInputElement;
+        timeoutInput.value = "60";
+        timeoutInput.min = "10";
+        timeoutInput.max = "300";
+        timeoutInput.step = "10";
+        timeoutInput.style.cssText = "width:60px;padding:4px 6px;font-size:12px";
         const btn = row.createEl("button", { text: "Ask" });
 
         const out = contentEl.createEl("div");
@@ -2117,7 +1774,8 @@ class QueryModal extends Modal {
             out.empty();
             out.createEl("p", { text: "Searching…", cls: "synthadoc-muted" });
             try {
-                const r = await api.query(input.value) as any;
+                const timeoutSecs = Math.min(300, Math.max(10, parseInt(timeoutInput.value) || 60));
+                const r = await api.query(input.value, timeoutSecs) as any;
                 out.empty();
                 await MarkdownRenderer.render(this.app, r.answer, out, "", this);
                 if (r.citations?.length) {
@@ -2133,7 +1791,7 @@ class QueryModal extends Modal {
                         "> [!tip] Knowledge Gap Detected",
                         "> Your wiki doesn't have enough on this topic yet. Enrich it with a web search:",
                         ">",
-                        "> **From Obsidian:** Open Command Palette (`Cmd+P` / `Ctrl+P`) → **Synthadoc: Ingest: web search**",
+                        "> **From Obsidian:** Open Command Palette (`Cmd+P` / `Ctrl+P`) → **Synthadoc: Ingest...** → Web search tab",
                         ">",
                         "> **From the terminal:**",
                         "> ```bash",

@@ -360,7 +360,7 @@ synthadoc jobs list --status pending
 synthadoc jobs list --status completed
 ```
 
-Or from Obsidian: Command Palette → `Synthadoc: Jobs: list...` → use the status-filter checkboxes. The table defaults to newest jobs first; click **Status**, **Operation**, or **Created** headers to re-sort.
+Or from Obsidian: Command Palette → `Synthadoc: Jobs...` → use the status-filter checkboxes. The table defaults to newest jobs first; click **Status**, **Operation**, or **Created** headers to re-sort.
 
 ![Obsidian Jobs list modal with status filter dropdown](png/synthadoc-jobs-modal.png)
 
@@ -1108,11 +1108,9 @@ All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synt
 ### Jobs
 
 
-| Command                                         | What it does                                                                                                                                                                                                                                                                                                                                              |
-| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Synthadoc: Jobs: list...`                      | Job table with status-filter checkboxes (pending, in_progress, completed, failed, skipped, dead, cancelled). Defaults to newest jobs first. Click **Status**, **Operation**, or **Created** column headers to sort — ▲ ascending, ▼ descending, ⇅ unsorted; click again to toggle direction. Supported operation types: `ingest`, `lint`. Auto-refreshes every 10 s (configurable). Paginated at 25 per page. Error details shown inline for failed/dead jobs. |
-| `Synthadoc: Jobs: retry failed or dead jobs...` | Multi-select table of all failed and dead jobs; all checkboxes pre-ticked. Polls progress live until all selected jobs settle.                                                                                                                                                                                                            |
-| `Synthadoc: Jobs: purge old completed/dead...`  | Removes completed and dead jobs older than N days (default: 7).                                                                                                                                                                                                                                                                          |
+| Command                | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Synthadoc: Jobs...`   | Job table with status-filter checkboxes (pending, in_progress, completed, failed, skipped, dead, cancelled). Defaults to newest jobs first. Click **Status**, **Operation**, or **Created** column headers to sort — ▲ ascending, ▼ descending, ⇅ unsorted; click again to toggle direction. Auto-refreshes every 10 s (configurable). Paginated at 25 per page. Error details shown inline for failed/dead/cancelled jobs. **Retry selected** button is enabled when one or more checked jobs are failed, dead, or cancelled — click to re-queue them. **Delete selected** removes checked terminal jobs. A **Purge old jobs** footer row lets you enter a day threshold and remove old completed/dead records in one click. |
 
 > **Tip — cancelling a bad batch:** `synthadoc jobs cancel -w <wiki> --yes` marks every
 > pending job as `skipped` immediately. Follow up with `synthadoc jobs purge` to remove
@@ -1127,13 +1125,9 @@ All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synt
 
 ### Audit
 
-
-| Command                               | What it does                                                                                                                      |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `Synthadoc: Audit: ingest history...` | Table of recent ingest records — source, pages created/updated, tokens, cost, timestamp.                                         |
-| `Synthadoc: Audit: cost summary...`   | Token totals + USD cost with daily breakdown for the last N days.                                                                 |
-| `Synthadoc: Audit: query history...`  | Recent questions, sub-question counts, token usage, cost per query.                                                               |
-| `Synthadoc: Audit: events...`         | Table of system events — contradictions found, auto-resolutions, cost gate triggers. Customisable limit (default 100, max 1000). |
+| Command               | What it does                                                                                                                                                                                                                                                                                          |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Synthadoc: Audit...` | Tabbed modal with four views: **Query history** — recent questions, sub-question counts, tokens, cost per query. **Ingest history** — source file, wiki page slug, tokens, cost, timestamp. **Events** — contradictions found, auto-resolutions, cost gate triggers (max 1000). **Cost summary** — total tokens + USD with daily breakdown. |
 
 ### Routing
 
