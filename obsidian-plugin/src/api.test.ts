@@ -131,7 +131,7 @@ describe("api.lint", () => {
             expect.objectContaining({
                 url: "http://127.0.0.1:7070/jobs/lint",
                 method: "POST",
-                body: JSON.stringify({ scope: "contradictions", auto_resolve: false }),
+                body: JSON.stringify({ scope: "contradictions", auto_resolve: false, adversarial: true }),
             })
         );
     });
@@ -140,7 +140,7 @@ describe("api.lint", () => {
         mockResponse({ contradictions_found: 0, orphans: [] });
         await api.lint();
         expect(mockRequestUrl).toHaveBeenCalledWith(
-            expect.objectContaining({ body: JSON.stringify({ scope: "all", auto_resolve: false }) })
+            expect.objectContaining({ body: JSON.stringify({ scope: "all", auto_resolve: false, adversarial: true }) })
         );
     });
 
@@ -148,7 +148,15 @@ describe("api.lint", () => {
         mockResponse({ contradictions_found: 0, orphans: [] });
         await api.lint("all", true);
         expect(mockRequestUrl).toHaveBeenCalledWith(
-            expect.objectContaining({ body: JSON.stringify({ scope: "all", auto_resolve: true }) })
+            expect.objectContaining({ body: JSON.stringify({ scope: "all", auto_resolve: true, adversarial: true }) })
+        );
+    });
+
+    it("passes adversarial=false when explicitly set to false", async () => {
+        mockResponse({ job_id: "job-1" });
+        await api.lint("all", false, false);
+        expect(mockRequestUrl).toHaveBeenCalledWith(
+            expect.objectContaining({ body: JSON.stringify({ scope: "all", auto_resolve: false, adversarial: false }) })
         );
     });
 });

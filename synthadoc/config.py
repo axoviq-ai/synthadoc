@@ -39,6 +39,7 @@ class AgentsConfig:
     ingest: Optional[AgentConfig] = None
     query: Optional[AgentConfig] = None
     lint: Optional[AgentConfig] = None
+    adversarial: Optional[AgentConfig] = None
     skill: Optional[AgentConfig] = None
     llm_timeout_seconds: int = 0  # 0 = no limit (provider default)
 
@@ -132,6 +133,11 @@ class WikiConfig:
 
 
 @dataclass
+class LintConfig:
+    adversarial_max_per_page: int = 2  # max issues flagged per page by adversarial pass
+
+
+@dataclass
 class SearchConfig:
     vector: bool = False
     vector_top_candidates: int = 20
@@ -156,6 +162,7 @@ class Config:
     web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
     wiki: WikiConfig = field(default_factory=WikiConfig)
     search: SearchConfig = field(default_factory=SearchConfig)
+    lint: LintConfig = field(default_factory=LintConfig)
     hooks: dict = field(default_factory=dict)
     wikis: dict = field(default_factory=dict)
 
@@ -238,7 +245,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         llm_timeout_seconds=int(a.get("llm_timeout_seconds", 0)),
     )
 
-    for name in ("ingest", "query", "lint", "skill"):
+    for name in ("ingest", "query", "lint", "adversarial", "skill"):
         if name in a:
             base_vals = {
                 "provider": default_agent.provider,
@@ -334,6 +341,12 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         vector_top_candidates=int(sr.get("vector_top_candidates", 20)),
     )
 
+    # --- lint ---
+    lt = raw.get("lint", {})
+    lint = LintConfig(
+        adversarial_max_per_page=int(lt.get("adversarial_max_per_page", 2)),
+    )
+
     return Config(
         agents=agents,
         cache=cache,
@@ -347,6 +360,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         web_search=web_search,
         wiki=wiki,
         search=search,
+        lint=lint,
         hooks=hooks,
         wikis=wikis,
     )

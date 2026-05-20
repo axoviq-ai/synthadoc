@@ -176,3 +176,24 @@ def test_context_token_budget_reads_from_toml(tmp_path):
     toml_file.write_text('[query]\ncontext_token_budget = 8000\n')
     cfg = load_config(project_config=toml_file)
     assert cfg.query.context_token_budget == 8000
+
+
+def test_adversarial_agent_config_parses(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents]\ndefault = { provider = "anthropic", model = "claude-opus-4-6" }\n'
+        'adversarial = { provider = "gemini", model = "gemini-2.5-flash" }\n'
+    )
+    cfg = load_config(project_config=cfg_file)
+    adv = cfg.agents.resolve("adversarial")
+    assert adv.provider == "gemini"
+    assert adv.model == "gemini-2.5-flash"
+
+
+def test_adversarial_agent_config_fallback_to_default(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text('[agents]\ndefault = { provider = "anthropic", model = "claude-opus-4-6" }\n')
+    cfg = load_config(project_config=cfg_file)
+    adv = cfg.agents.resolve("adversarial")
+    assert adv.provider == "anthropic"
+    assert adv.model == "claude-opus-4-6"

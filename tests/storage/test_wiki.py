@@ -195,3 +195,35 @@ def test_all_slugs_excludes_candidates(tmp_path):
     assert "main-page" in slugs
     assert "candidate-page" not in slugs
     assert "candidates/candidate-page" not in slugs
+
+
+def test_lint_warnings_round_trip(tmp_wiki):
+    store = WikiStorage(tmp_wiki / "wiki")
+    page = WikiPage(title="Test", tags=[], content="Body.",
+                    status="active", confidence="high", sources=[],
+                    lint_warnings=[{"claim": "Claim A", "concern": "Overstated"}])
+    store.write_page("test", page)
+    loaded = store.read_page("test")
+    assert loaded.lint_warnings == [{"claim": "Claim A", "concern": "Overstated"}]
+
+
+def test_lint_warnings_empty_omitted_from_yaml(tmp_wiki):
+    store = WikiStorage(tmp_wiki / "wiki")
+    page = WikiPage(title="Test", tags=[], content="Body.",
+                    status="active", confidence="high", sources=[])
+    store.write_page("test", page)
+    raw = (tmp_wiki / "wiki" / "test.md").read_text()
+    assert "lint_warnings" not in raw
+
+
+def test_lint_warnings_null_claim_round_trip(tmp_wiki):
+    """Rate-limit failure entry (claim: null) round-trips correctly."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    page = WikiPage(title="Test", tags=[], content="Body.",
+                    status="active", confidence="high", sources=[],
+                    lint_warnings=[{"claim": None,
+                                    "concern": "adversarial-pass-skipped: rate limit"}])
+    store.write_page("test", page)
+    loaded = store.read_page("test")
+    assert loaded.lint_warnings[0]["claim"] is None
+    assert "rate limit" in loaded.lint_warnings[0]["concern"]

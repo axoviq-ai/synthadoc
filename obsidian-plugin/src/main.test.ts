@@ -336,6 +336,19 @@ describe("SynthadocPlugin lint commands", () => {
         await api.lint("all", true);
         expect(api.lint).toHaveBeenCalledWith("all", true);
     });
+
+    it("LintRunModal renders 'Skip adversarial review' checkbox", async () => {
+        const { ModalClass } = await getModal("synthadoc-lint");
+
+        const modal = new ModalClass();
+        modal.contentEl = makeSmartContentEl();
+        modal.onOpen();
+        // No flush needed — onOpen() is synchronous up to the button click
+
+        const html = modal.contentEl.innerHTML;
+        expect(html).toContain("Skip adversarial review");
+        expect(html).toContain("lint-skip-adversarial");
+    });
 });
 
 describe("SynthadocPlugin new commands registered", () => {
@@ -394,7 +407,8 @@ function makeSmartContentEl(): any {
             _html: opts?.text ?? "",
             get innerHTML(): string {
                 const childHtml = el._children.map((c: any) => c.innerHTML).join("");
-                return el._html + childHtml;
+                const idAttr = el.id ? ` id="${el.id}"` : "";
+                return idAttr + el._html + childHtml;
             },
             set innerHTML(v: string) { el._html = v; },
             addEventListener: vi.fn((event: string, handler: any) => {
@@ -1667,24 +1681,26 @@ describe("JobsModal", () => {
 describe("LintReportModal", () => {
     it("calls api.lintReport on open", async () => {
         const { ModalClass, apiMock } = await getModal("synthadoc-lint-report");
-        apiMock.lintReport.mockResolvedValueOnce({ contradictions: [], orphans: [] });
+        apiMock.lintReport.mockResolvedValueOnce({ contradictions: [], orphans: [], adversarial_warnings: [] });
 
         const modal = new ModalClass();
+        modal.contentEl = makeSmartContentEl();
         modal.onOpen();
         await flushPromises();
 
         expect(apiMock.lintReport).toHaveBeenCalled();
     });
 
-    it("shows 'All clear' when no contradictions or orphans", async () => {
+    it("shows 'No contradictions found' when no contradictions or orphans", async () => {
         const { ModalClass, apiMock } = await getModal("synthadoc-lint-report");
-        apiMock.lintReport.mockResolvedValueOnce({ contradictions: [], orphans: [] });
+        apiMock.lintReport.mockResolvedValueOnce({ contradictions: [], orphans: [], adversarial_warnings: [] });
 
         const modal = new ModalClass();
+        modal.contentEl = makeSmartContentEl();
         modal.onOpen();
         await flushPromises();
 
-        expect(modal.contentEl.innerHTML).toContain("All clear");
+        expect(modal.contentEl.innerHTML).toContain("No contradictions found");
     });
 
     it("renders contradicted page slug and contradiction note", async () => {
@@ -1693,9 +1709,11 @@ describe("LintReportModal", () => {
             contradictions: ["alan-turing"],
             contradiction_details: [{ slug: "alan-turing", contradiction_note: "Conflicting dates found" }],
             orphans: [],
+            adversarial_warnings: [],
         });
 
         const modal = new ModalClass();
+        modal.contentEl = makeSmartContentEl();
         modal.onOpen();
         await flushPromises();
 
@@ -1709,9 +1727,11 @@ describe("LintReportModal", () => {
             contradictions: [],
             orphans: ["quantum-computing"],
             orphan_details: [{ slug: "quantum-computing", index_suggestion: "- [[quantum-computing]]" }],
+            adversarial_warnings: [],
         });
 
         const modal = new ModalClass();
+        modal.contentEl = makeSmartContentEl();
         modal.onOpen();
         await flushPromises();
 
@@ -1723,10 +1743,71 @@ describe("LintReportModal", () => {
         apiMock.lintReport.mockRejectedValueOnce(new Error("refused"));
 
         const modal = new ModalClass();
+        modal.contentEl = makeSmartContentEl();
         modal.onOpen();
         await flushPromises();
 
         expect(modal.contentEl.innerHTML).toContain("synthadoc serve");
+    });
+
+    it("renders three tabs (Contradictions, Orphans, Adversarial)", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-lint-report");
+        apiMock.lintReport.mockResolvedValueOnce({
+            contradictions: [], contradiction_details: [],
+            orphans: [], orphan_details: [],
+            adversarial_warnings: [],
+        });
+
+        const modal = new ModalClass();
+        modal.contentEl = makeSmartContentEl();
+        modal.onOpen();
+        await flushPromises();
+
+        const html = modal.contentEl.innerHTML;
+        expect(html).toContain("Contradictions");
+        expect(html).toContain("Orphans");
+        expect(html).toContain("Adversarial");
+    });
+
+    it("renders adversarial warnings in adversarial tab", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-lint-report");
+        apiMock.lintReport.mockResolvedValueOnce({
+            contradictions: [], contradiction_details: [],
+            orphans: [], orphan_details: [],
+            adversarial_warnings: [{
+                slug: "transformer-architecture",
+                warnings: [{ claim: "Transformers replaced RNNs.", concern: "Overstated" }],
+                suggested_reingests: ['synthadoc ingest "papers/attention.pdf" -w my-wiki'],
+            }],
+        });
+
+        const modal = new ModalClass();
+        modal.contentEl = makeSmartContentEl();
+        modal.onOpen();
+        await flushPromises();
+
+        const html = modal.contentEl.innerHTML;
+        expect(html).toContain("transformer-architecture");
+        expect(html).toContain("Transformers replaced RNNs.");
+        expect(html).toContain("Overstated");
+        expect(html).toContain("papers/attention.pdf");
+    });
+
+    it("shows no warnings message when adversarial_warnings is empty", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-lint-report");
+        apiMock.lintReport.mockResolvedValueOnce({
+            contradictions: [], contradiction_details: [],
+            orphans: [], orphan_details: [],
+            adversarial_warnings: [],
+        });
+
+        const modal = new ModalClass();
+        modal.contentEl = makeSmartContentEl();
+        modal.onOpen();
+        await flushPromises();
+
+        const html = modal.contentEl.innerHTML;
+        expect(html).toContain("No adversarial warnings found");
     });
 });
 
