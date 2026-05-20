@@ -12,7 +12,7 @@ import yaml
 from filelock import FileLock
 
 _FRONTMATTER_FIELDS = ("title", "tags", "status", "confidence", "created", "sources", "orphan", "categories",
-                       "aliases", "contradiction_note", "unresolved_note")
+                       "aliases", "contradiction_note", "unresolved_note", "lint_warnings")
 
 
 @dataclass
@@ -37,6 +37,7 @@ class WikiPage:
     aliases: list[str] = field(default_factory=list)
     contradiction_note: Optional[str] = None   # why this page was flagged during ingest
     unresolved_note: Optional[str] = None      # why auto-resolve could not fix it
+    lint_warnings: list[dict] = field(default_factory=list)
 
 
 def _sources_to_dicts(sources: list[SourceRef]) -> list[dict]:
@@ -105,6 +106,8 @@ class WikiStorage:
                 fm["contradiction_note"] = page.contradiction_note
             if page.unresolved_note:
                 fm["unresolved_note"] = page.unresolved_note
+            if page.lint_warnings:
+                fm["lint_warnings"] = page.lint_warnings
             body = page.content
         else:
             fm = frontmatter or {}
@@ -136,6 +139,8 @@ class WikiStorage:
         categories = raw_cats if isinstance(raw_cats, list) else [raw_cats] if raw_cats else []
         raw_aliases = fm.get("aliases", [])
         aliases = raw_aliases if isinstance(raw_aliases, list) else [raw_aliases] if raw_aliases else []
+        lint_warnings_raw = fm.get("lint_warnings", [])
+        lint_warnings = lint_warnings_raw if isinstance(lint_warnings_raw, list) else []
         return WikiPage(
             title=fm.get("title", ""),
             tags=fm.get("tags", []),
@@ -149,6 +154,7 @@ class WikiStorage:
             aliases=aliases,
             contradiction_note=fm.get("contradiction_note") or None,
             unresolved_note=fm.get("unresolved_note") or None,
+            lint_warnings=lint_warnings,
         )
 
     def page_exists(self, slug: str) -> bool:

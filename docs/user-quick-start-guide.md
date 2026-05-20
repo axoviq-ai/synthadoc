@@ -22,14 +22,15 @@ major engine feature. No setup beyond following the steps below is required.
 6. [Batch ingest all demo sources](#step-6--batch-ingest-all-demo-sources)
 7. [Resolve a contradiction](#step-7--resolve-a-contradiction)
 8. [Fix an orphan page](#step-8--fix-an-orphan-page)
-9. [Web search ingestion](#step-9--web-search-ingestion)
-10. [Ingest a YouTube video](#step-10--ingest-a-youtube-video)
-11. [Enrich the wiki with scaffold](#step-11--enrich-the-wiki-with-scaffold)
-12. [Audit features](#step-12--audit-features)
-13. [Scheduling recurring operations](#step-13--scheduling-recurring-operations)
-14. [Set up ROUTING.md — scoped search](#step-14--set-up-routingmd--scoped-search)
-15. [Configure candidates staging](#step-15--configure-candidates-staging)
-16. [Build a context pack](#step-16--build-a-context-pack)
+9. [Run the adversarial lint pass](#step-9--run-the-adversarial-lint-pass)
+10. [Web search ingestion](#step-10--web-search-ingestion)
+11. [Ingest a YouTube video](#step-11--ingest-a-youtube-video)
+12. [Enrich the wiki with scaffold](#step-12--enrich-the-wiki-with-scaffold)
+13. [Audit features](#step-13--audit-features)
+14. [Scheduling recurring operations](#step-14--scheduling-recurring-operations)
+15. [Set up ROUTING.md — scoped search](#step-15--set-up-routingmd--scoped-search)
+16. [Configure candidates staging](#step-16--configure-candidates-staging)
+17. [Build a context pack](#step-17--build-a-context-pack)
 
 **Appendices**
 
@@ -82,7 +83,7 @@ synthadoc serve -w history-of-computing --background
 ![synthadoc serve startup banner](png/synthadoc-serve.png)
 
 The banner confirms the port, wiki path, active LLM provider/model, and PID. If you see
-`Warning: TAVILY_API_KEY is not set`, web search (Step 9) will not work — see
+`Warning: TAVILY_API_KEY is not set`, web search (Step 10) will not work — see
 [Appendix D — Tavily web search key](#appendix-d--tavily-web-search-key).
 
 If the server does not start, the most common cause is the port already being in use.
@@ -276,7 +277,7 @@ Your wiki doesn't have enough on this topic yet. Enrich it with a web search:
 ```
 
 The suggested search strings are generated automatically. Run one of the suggestions
-after Step 9 to fill the gap.
+after Step 10 to fill the gap.
 
 ![CLI query result with knowledge gap callout](png/cli-gap-detection.png)
 
@@ -508,7 +509,163 @@ The number of pages cleaned up is shown in the lint output and recorded in `log.
 
 ---
 
-## Step 9 — Web search ingestion
+## Step 9 — Run the adversarial lint pass
+
+The standard lint checks (contradictions, orphans, dangling links) catch structural problems.
+The **adversarial lint pass** adds a second LLM pass that plays devil's advocate against every
+page — flagging overstated claims, unsupported assertions, and statements that are plausible
+but hard to verify.
+
+The adversarial pass runs automatically as part of every `synthadoc lint run`. No extra flag is
+needed.
+
+### Run lint (with adversarial pass)
+
+```bash
+synthadoc lint run
+synthadoc jobs list           # watch progress
+synthadoc lint report         # view results when complete
+```
+
+The pre-built pages already contain the kinds of sweeping historical claims an adversarial
+reviewer will flag — no additional ingest is needed before this step, though running Step 6
+first gives the adversarial pass more content to work with.
+
+The reviewer flags **up to 2 issues per page** and only flags claims it is highly confident
+about — defensible or nuanced statements are skipped. The full history-of-computing demo
+wiki (10 pre-built pages plus pages created in Step 6) typically produces **10–15 warnings**,
+giving a meaningful but not overwhelming signal.
+
+Sample output for the history-of-computing demo wiki (after Step 6 batch ingest; exact
+wording varies by LLM):
+
+```
+Contradicted pages (0)
+Orphan pages (0)
+
+Adversarial warnings (3):
+
+  alan-turing
+    Claim:   "Saved over fourteen million lives."
+    Concern: This specific figure lacks scholarly consensus — historians dispute both any
+             precise death-count and the causal attribution of lives saved to Turing's
+             cryptanalysis alone. The claim conflates a speculative timeline reduction with
+             a precise casualty figure that is unsupported in academic literature.
+
+  artificial-intelligence-history
+    Claim:   "These systems exhibit emergent capabilities that were not explicitly programmed."
+    Concern: "Emergence" in large language models is disputed — several researchers argue
+             that capability gains are smooth and predictable at scale, and that the label
+             "emergent" reflects measurement choices rather than a genuine phase transition.
+
+  personal-computer-revolution
+    Claim:   "IBM's decision to build the PC from off-the-shelf parts ... was the most
+             consequential business decision of the era."
+    Concern: An unsupported superlative — Microsoft's retention of the MS-DOS licence and
+             Intel's exclusive CPU supply deal were equally pivotal; "most consequential"
+             requires a comparison the text does not make.
+```
+
+> **Note:** Re-ingest suggestions only appear for pages whose sources were ingested from local
+> files (absolute paths) or URLs. Pre-built demo pages use placeholder source references,
+> so no re-ingest command is shown — use `synthadoc ingest <source>` manually if needed.
+
+### What each warning means
+
+Each adversarial warning has two parts:
+
+| Field | Meaning |
+|---|---|
+| **Claim** | The exact sentence or phrase flagged as potentially problematic |
+| **Concern** | Why the adversarial reviewer flagged it — the specific doubt |
+
+The adversarial LLM is deliberately skeptical. Not every warning requires action — some claims
+are defensible with context the LLM does not have. Read each concern before deciding what to do.
+
+### What to do with a warning
+
+| Situation | Action |
+|---|---|
+| Claim is accurate, concern is addressed by other pages | Do nothing — the wiki is fine |
+| Claim is a genuine overstatement | Edit the page in Obsidian and soften the language |
+| Source has been updated since last ingest | Re-ingest with `--force` to bypass dedup: `synthadoc ingest <file> --force` |
+| Claim needs a counterbalancing perspective | Ingest a different source: `synthadoc ingest <other-source>` |
+| Page quality is poor overall | Delete the page and re-ingest: `synthadoc ingest <new-source>` |
+
+> **Re-ingesting the same unchanged source won't fix an overstatement.** The LLM will read
+> the same text and likely produce the same claim. For overstatements, edit the page directly
+> in Obsidian. Use `--force` only when the source document itself has new or updated content.
+
+### Hands-on exercise
+
+The `alan-turing` warning flags the "fourteen million lives" figure as lacking scholarly
+consensus. Fix it:
+
+1. Open `wiki/alan-turing.md` in Obsidian
+2. Find the sentence in the **Wartime Contributions** section that mentions lives saved
+   (added when you ingested `turing-enigma-decryption.pdf` in Step 6)
+3. Remove the specific casualty figure and replace with qualified language:
+   ```
+   Historians credit Turing's Bombe with dramatically accelerating Allied codebreaking,
+   though estimates of the war's duration and lives affected vary widely across sources.
+   ```
+4. Save — the next lint run will re-evaluate the page and the warning will clear
+
+### Verify the warning cleared
+
+```bash
+synthadoc lint run
+synthadoc lint report
+```
+
+The `alan-turing` adversarial warning should no longer appear.
+
+### View warnings in Obsidian
+
+Open the Command Palette (`Ctrl/Cmd+P`) → `Synthadoc: Lint: report` → click the
+**Adversarial** tab. Flagged claims and the **⚠** icon appear in **orange** so warnings
+stand out immediately. The **Concern:** label is also orange; the concern text itself is
+muted for readability. Suggested re-ingest commands appear below each entry.
+
+The same label-coloring convention applies across all tabs: **Why flagged:** in the
+Contradictions tab uses orange, and **Suggested index entry:** in the Orphans tab uses
+accent blue (it is a suggestion, not a warning), so you can scan the full report at a
+glance without reading every line.
+
+> **Skip the adversarial pass:** If you want a fast structural-only lint, open
+> `Synthadoc: Lint: run...` and tick **Skip adversarial review**. This also clears any
+> existing `lint_warnings` from frontmatter so stale warnings do not linger.
+
+### Optional — tune the adversarial pass
+
+**Adjust the warning cap per page** — the default is 2, set in your wiki's `config.toml`:
+
+```toml
+# config.toml
+[lint]
+adversarial_max_per_page = 2  # raise to 3–5 for a deeper review; lower to 1 for less noise
+```
+
+If `[lint]` is absent from `config.toml`, Synthadoc defaults to 2 — no file change needed.
+
+**Use a dedicated judge model** — by default the adversarial pass shares the lint model. For
+the most effective adversarial review, point it at a *different* model: a second opinion
+from a distinct model family is far more likely to surface blind spots and challenge
+assumptions than the same model reviewing its own output:
+
+```toml
+# config.toml
+[agents]
+lint        = { provider = "groq",   model = "llama-3.3-70b-versatile" }
+adversarial = { provider = "groq",   model = "gemma2-9b-it" }   # faster, cheaper judge
+```
+
+The two models are intentionally different — a separate model acting as judge reduces the
+self-serving bias that occurs when a model reviews its own output.
+
+---
+
+## Step 10 — Web search ingestion
 
 > **Requires `TAVILY_API_KEY`** — see [Appendix D](#appendix-d--tavily-web-search-key).
 > Without it, web search jobs fail with `[ERR-SKILL-004]`. All other features work normally.
@@ -607,7 +764,7 @@ The modal prepends `search for:` automatically — just type the topic, no prefi
 
 ---
 
-## Step 10 — Ingest a YouTube video
+## Step 11 — Ingest a YouTube video
 
 Pass any YouTube URL directly — the transcript is extracted automatically from the
 YouTube caption system (no API key, no audio download). Both the full URL and the
@@ -619,7 +776,7 @@ synthadoc ingest "https://www.youtube.com/watch?v=O5nskjZ_GoI"
 
 This ingests *Early Computing: Crash Course Computer Science #1*, which covers Hollerith,
 Babbage, Lovelace, and the first programmable machines — a natural fit for the demo wiki.
-The YouTube entries in `sources.txt` (see Step 9) include this video, so running
+The YouTube entries in `sources.txt` (see Step 10) include this video, so running
 `synthadoc ingest --file sources.txt` handles it alongside the web searches.
 
 The wiki page opens with an **executive summary** — a brief description of what the video
@@ -644,7 +801,7 @@ synthadoc jobs list
 
 ---
 
-## Step 11 — Enrich the wiki with scaffold
+## Step 12 — Enrich the wiki with scaffold
 
 After batch ingest, the wiki has grown from 10 pre-built pages to 12 or more. **Scaffold**
 reads the current wiki state and uses the LLM to regenerate the structure files —
@@ -714,7 +871,7 @@ the whole file as before.
 
 ---
 
-## Step 12 — Audit features
+## Step 13 — Audit features
 
 The `synthadoc audit` commands query the append-only `audit.db` — no `sqlite3` required.
 
@@ -777,7 +934,7 @@ Records every contradiction detection, auto-resolution, and cost gate trigger.
 
 ---
 
-## Step 13 — Scheduling recurring operations
+## Step 14 — Scheduling recurring operations
 
 Hooks react to events that already happened. The scheduler goes the other direction —
 it proactively triggers operations on a timer, keeping the wiki fresh automatically.
@@ -831,7 +988,7 @@ synthadoc schedule remove sched-c9f3e201
 
 ---
 
-## Step 14 — Set up ROUTING.md — scoped search
+## Step 15 — Set up ROUTING.md — scoped search
 
 As your wiki grows, BM25 searches the full corpus for every query. **ROUTING.md** groups pages
 into named topic branches so queries only search the most relevant slice — reducing noise,
@@ -901,7 +1058,7 @@ New pages created by ingest are auto-placed into the most appropriate branch.
 
 ---
 
-## Step 15 — Configure candidates staging
+## Step 16 — Configure candidates staging
 
 By default, every ingested source that produces a new page writes it directly to `wiki/`.
 **Candidates staging** lets you review new pages before they influence queries and lint.
@@ -981,7 +1138,7 @@ Or from Obsidian: `Synthadoc: Staging: manage staging policy...` → select **Of
 
 ---
 
-## Step 16 — Build a context pack
+## Step 17 — Build a context pack
 
 A **context pack** is a token-bounded evidence bundle assembled from the wiki. It decomposes your goal into sub-questions, runs parallel BM25 searches across the wiki, and packs the highest-scoring excerpts into a single cited Markdown document within a token budget.
 
@@ -1102,8 +1259,8 @@ All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synt
 
 | Command                   | What it does                                                                                                                                                                                                             |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `Synthadoc: Lint: run...` | Modal with**Auto-resolve** checkbox. Runs a full lint pass; polls progress live and reports contradiction + orphan counts when complete. Tick the checkbox to automatically resolve contradictions at ≥ 85% confidence. |
-| `Synthadoc: Lint: report` | Full lint report — contradicted pages and orphans with suggested index entries.                                                                                                                                         |
+| `Synthadoc: Lint: run...` | Modal with **Auto-resolve** and **Skip adversarial review** checkboxes. Runs a full lint pass with concurrent adversarial review of every page; polls progress live and reports contradiction, orphan, and adversarial warning counts when complete. Tick **Skip adversarial review** to run lint without the adversarial pass (also clears existing `lint_warnings`). |
+| `Synthadoc: Lint: report` | Full lint report in a 3-tab modal — **Contradictions**, **Orphans**, and **Adversarial**. The Adversarial tab shows each flagged claim with its concern and suggested re-ingest commands derived from the page's source files. |
 
 ### Jobs
 
@@ -1262,7 +1419,7 @@ Restart `synthadoc serve`. The startup banner confirms `LLM: <provider>/<model>`
 
 ## Appendix D — Tavily web search key
 
-Web search ingestion (Step 9) requires a Tavily API key. Get a free key at
+Web search ingestion (Step 10) requires a Tavily API key. Get a free key at
 **[tavily.com](https://tavily.com)** (1,000 searches/month, no credit card required).
 
 **Set the key:**
@@ -1515,4 +1672,4 @@ Full-corpus BM25 scales roughly linearly with page count. At 10000 pages the med
 
 ### Takeaway
 
-For wikis under ~1000 pages the difference between scoped and full-corpus is negligible (both under 25 ms). At 10000 pages routing delivers a **4–5× speedup** (41 ms vs. 191 ms). Enable ROUTING.md ([Step 14](#step-14--set-up-routingmd--scoped-search)) once your wiki exceeds a few hundred pages.
+For wikis under ~1000 pages the difference between scoped and full-corpus is negligible (both under 25 ms). At 10000 pages routing delivers a **4–5× speedup** (41 ms vs. 191 ms). Enable ROUTING.md ([Step 15](#step-15--set-up-routingmd--scoped-search)) once your wiki exceeds a few hundred pages.

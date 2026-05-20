@@ -16,6 +16,19 @@ _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
 from synthadoc.agents.lint_agent import find_orphan_slugs, LINT_SKIP_SLUGS, LINT_SKIP_SOURCE_SLUGS
 
 
+def _is_reingestable(file: str) -> bool:
+    """True only for sources the CLI can actually re-ingest: absolute paths or URLs.
+
+    Relative paths are placeholder entries (e.g. in demo wiki pages) and cannot
+    be resolved without knowing the wiki's raw_sources directory.
+    """
+    if not file:
+        return False
+    if file.startswith(("http://", "https://")):
+        return True
+    return Path(file).is_absolute()
+
+
 def _parse_frontmatter(text: str) -> dict:
     m = _FRONTMATTER_RE.match(text)
     if not m:
@@ -73,16 +86,24 @@ app.add_typer(lint_app, name="lint")
 def lint_cmd(
     scope: str = typer.Option("all", "--scope", help="all/contradictions/orphans/stale"),
     auto_resolve: bool = typer.Option(False, "--auto-resolve"),
+    no_adversarial: bool = typer.Option(False, "--no-adversarial",
+                                         help="Skip adversarial review and clear existing lint_warnings"),
     wiki: Optional[str] = typer.Option(None, "--wiki", "-w"),
 ):
     """Enqueue a lint job. Requires synthadoc serve to be running."""
     from synthadoc.cli._wiki import resolve_wiki
     wiki = resolve_wiki(wiki)
-    result = post(wiki, "/jobs/lint", {"scope": scope, "auto_resolve": auto_resolve})
+    result = post(wiki, "/jobs/lint", {
+        "scope": scope,
+        "auto_resolve": auto_resolve,
+        "adversarial": not no_adversarial,
+    })
     typer.echo(f"Lint enqueued -> job {result['job_id']}")
     w_flag = f" -w {wiki}" if wiki != "." else ""
     typer.echo(f"Check status: synthadoc jobs status {result['job_id']}{w_flag}")
     typer.echo(f"View results: synthadoc lint report{w_flag}")
+    if no_adversarial:
+        typer.echo("ℹ️  Adversarial pass skipped — lint_warnings cleared from all pages.")
 
 
 @lint_app.command("report")
@@ -122,12 +143,32 @@ def lint_report(
     }
     orphans = find_orphan_slugs(page_bodies)
 
+    # --- Adversarial warnings (read lint_warnings from frontmatter) ---
+    adv_pages = []
+    for stem, text in page_texts.items():
+        if stem in LINT_SKIP_SLUGS:
+            continue
+        fm = _parse_frontmatter(text)
+        warnings = fm.get("lint_warnings", []) or []
+        if not isinstance(warnings, list):
+            continue
+        if not warnings:
+            continue
+        sources = fm.get("sources", []) or []
+        suggested_reingests = [
+            f'synthadoc ingest "{s["file"]}" -w {wiki}'
+            for s in sources
+            if isinstance(s, dict) and _is_reingestable(s.get("file", ""))
+        ]
+        adv_pages.append({"slug": stem, "warnings": warnings,
+                           "suggested_reingests": suggested_reingests})
+
     # --- Report ---
-    has_issues = contradicted or orphans
+    has_issues = contradicted or orphans or adv_pages
     if not has_issues:
         # Still sync frontmatter to clear stale orphan: true flags from previous runs.
         _sync_orphan_frontmatter(wiki_dir, page_texts, set())
-        typer.echo("All clear — no contradictions or orphan pages found.")
+        typer.echo("All clear — no contradictions, orphan pages, or adversarial warnings found.")
         return
 
     if contradicted:
@@ -151,11 +192,28 @@ def lint_report(
             typer.echo(f"    -> Add [[{slug}]] to a related content page, e.g.:")
             typer.echo(f"         {suggestion}")
 
+    if adv_pages:
+        total_warnings = sum(len(p["warnings"]) for p in adv_pages)
+        typer.echo(f"\n\U0001f50d Adversarial Warnings ({total_warnings} across {len(adv_pages)} pages):\n")
+        for entry in adv_pages:
+            typer.echo(f"  {entry['slug']} ({len(entry['warnings'])} warning(s))")
+            for w in entry["warnings"]:
+                if w.get("claim"):
+                    typer.echo(f"    ⚠ \"{w['claim']}\"")
+                concern = w.get("concern") or "(no concern text)"
+                typer.echo(f"       Concern: {concern}")
+            if entry["suggested_reingests"]:
+                typer.echo("    \U0001f4a1 If the source has updated content, re-ingest with --force to refresh:")
+                for cmd in entry["suggested_reingests"]:
+                    typer.echo(f"       {cmd} --force")
+
     # Sync orphan: true/false frontmatter so the Obsidian dashboard Dataview
     # query (WHERE orphan = true) reflects the same result as this report.
     _sync_orphan_frontmatter(wiki_dir, page_texts, set(orphans))
 
+    adv_count = sum(len(p["warnings"]) for p in adv_pages)
     typer.echo(
-        f"\n{len(contradicted)} contradiction(s), {len(orphans)} orphan(s) found."
+        f"\n{len(contradicted)} contradiction(s), {len(orphans)} orphan(s), "
+        f"{adv_count} adversarial warning(s)."
         f"\nDashboard: open wiki/dashboard.md in Obsidian for a live view."
     )

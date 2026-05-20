@@ -978,6 +978,8 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 |-----|------|---------|-------------|
 | `agents.default.provider` | str | `"gemini"` | LLM provider: `anthropic`, `openai`, `gemini`, `groq`, `minimax`, `deepseek`, `ollama` |
 | `agents.default.model` | str | `"gemini-2.5-flash"` | Model ID |
+| `agents.adversarial.provider` | str | (inherits default) | Dedicated LLM provider for adversarial lint review. Falls back to `agents.default` when not set. Cross-model adversarial reduces self-serving bias — a different model evaluates claims independently. |
+| `agents.adversarial.model` | str | (inherits default) | Model ID for the adversarial reviewer. Cheap fast models (Gemini Flash, Groq Llama, Claude Haiku) keep adversarial cost under $0.10 for most wikis. |
 | `agents.llm_timeout_seconds` | int | `0` | Per-call LLM timeout in seconds; `0` = no limit. Set to e.g. `90` when using reasoning models (MiniMax-M2.5, DeepSeek-R1) that can exceed their internal generation budget silently. Restart required. |
 | `server.port` | int | `7070` | HTTP listen port |
 | `queue.max_parallel_ingest` | int | `4` | Max concurrent ingest agents |
@@ -1725,3 +1727,9 @@ synthadoc context build "early computing pioneers" --output briefing.md
 - **ai-research demo template** — `synthadoc install ai-research --target <dir> --demo` installs a second demo wiki (alongside history-of-computing) with 12 pre-built AI/ML pages, five raw source files covering multiple ingest scenarios, a contradiction scenario (Gemini Ultra MMLU benchmark methodology dispute), and a pre-configured ROUTING.md
 - **Decision cache prompt-awareness** — the decision-pass cache key (`ck2`) now includes a hash of the full decision prompt (purpose block + instruction template); any change to `purpose.md` content or the purpose-block instructions automatically invalidates cached decisions, preventing stale skip results from being served after prompt edits
 - **YouTube always creates own page** — sources with a structured executive summary (YouTube transcripts) are forced to `action=create` even when the LLM suggests `action=update`, ensuring the executive summary and transcript are never appended to an existing page
+
+### v0.5.0 (Community Edition)
+
+- **Adversarial Lint Pass** — concurrent LLM adversarial review of every wiki page after lint runs; results stored as `lint_warnings` in frontmatter; surfaced in redesigned 3-tab `Lint: report` modal (Contradictions / Orphans / Adversarial) and redesigned `synthadoc lint report` CLI output; configured via `[agents].adversarial` in `config.toml`; skipped with `synthadoc lint run --no-adversarial`; cross-model review (e.g. Gemini Flash judging Anthropic-written pages) reduces self-serving bias; concurrent via `asyncio.gather()` — a 100-page wiki completes in the same wall-clock time as one call; rate-limit failures are caught per-page and stored as non-fatal warning entries
+- **Routing Obsidian plugin** — `Synthadoc: Routing: manage ROUTING.md...` command palette entry opens a modal panel with three buttons: **Init** creates ROUTING.md from the current index.md branch structure (enabled only when ROUTING.md does not exist), **Validate** reports dangling slugs, **Clean** removes dangling slugs from ROUTING.md; after each action results appear inline
+- **Candidates Staging Obsidian plugin** — `Synthadoc: Staging: manage staging policy...` and `Synthadoc: Candidates: review candidate pages...` command palette entries; Staging modal shows policy state with segmented controls; Candidates modal shows a paginated table with promote/discard bulk and per-row actions

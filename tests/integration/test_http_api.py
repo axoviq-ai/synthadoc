@@ -395,3 +395,53 @@ def test_analyse_endpoint_empty_wiki(tmp_wiki):
 
     assert resp.status_code == 200
     assert resp.json()["source"] == "empty.md"
+
+
+def test_enqueue_lint_adversarial_param_forwarded(tmp_wiki):
+    """POST /jobs/lint with adversarial: false enqueues payload with adversarial=False."""
+    from synthadoc.integration.http_server import create_app
+    from unittest.mock import AsyncMock, patch
+    app = create_app(wiki_root=tmp_wiki)
+    enqueued = {}
+
+    async def capture_enqueue(op, payload):
+        enqueued.update(payload)
+        return "job-xyz"
+
+    with patch("synthadoc.core.queue.JobQueue.enqueue", side_effect=capture_enqueue):
+        with TestClient(app) as client:
+            resp = client.post("/jobs/lint", json={"adversarial": False})
+    assert resp.status_code == 200
+    assert enqueued.get("adversarial") is False
+
+
+def test_lint_report_includes_adversarial_warnings(tmp_wiki):
+    """GET /lint/report returns adversarial_warnings from page lint_warnings frontmatter."""
+    wiki_dir = tmp_wiki / "wiki"
+    wiki_dir.mkdir(exist_ok=True)
+    # Real ingest always stores absolute paths; relative paths are placeholder entries
+    # that _is_reingestable() filters out.  Use an absolute path to test the positive case.
+    abs_source = str(tmp_wiki / "raw_sources" / "study.pdf")
+    (wiki_dir / "flagged-page.md").write_text(
+        "---\n"
+        "status: active\n"
+        "sources:\n"
+        f"  - {{file: '{abs_source}', hash: 'abc', size: 1000, ingested: '2026-05-01'}}\n"
+        "lint_warnings:\n"
+        "  - claim: 'Claim A'\n"
+        "    concern: 'Overstated'\n"
+        "---\n\n# Flagged Page\n",
+        encoding="utf-8",
+    )
+    from synthadoc.integration.http_server import create_app
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        r = client.get("/lint/report")
+    assert r.status_code == 200
+    data = r.json()
+    assert "adversarial_warnings" in data
+    assert len(data["adversarial_warnings"]) == 1
+    entry = data["adversarial_warnings"][0]
+    assert entry["slug"] == "flagged-page"
+    assert entry["warnings"][0]["claim"] == "Claim A"
+    assert len(entry["suggested_reingests"]) == 1
+    assert "study.pdf" in entry["suggested_reingests"][0]

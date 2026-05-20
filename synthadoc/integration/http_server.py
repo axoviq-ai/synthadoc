@@ -165,6 +165,7 @@ class IngestRequest(BaseModel):
 class LintRequest(BaseModel):
     scope: str = "all"
     auto_resolve: bool = False
+    adversarial: bool = True
 
 
 class ScaffoldRequest(BaseModel):
@@ -224,7 +225,9 @@ async def _worker_loop(orch) -> None:
                 elif job.operation == "lint":
                     scope = job.payload.get("scope", "all")
                     auto_resolve = job.payload.get("auto_resolve", False)
-                    await orch._run_lint(job.id, scope=scope, auto_resolve=auto_resolve)
+                    adversarial = job.payload.get("adversarial", True)
+                    await orch._run_lint(job.id, scope=scope, auto_resolve=auto_resolve,
+                                         adversarial=adversarial)
                 elif job.operation == "scaffold":
                     domain = job.payload.get("domain", "")
                     await orch._run_scaffold(job.id, domain=domain)
@@ -407,7 +410,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
     @app.post("/jobs/lint")
     async def enqueue_lint(req: LintRequest):
         job_id = await app.state.orch.queue.enqueue(
-            "lint", {"scope": req.scope, "auto_resolve": req.auto_resolve}
+            "lint", {"scope": req.scope, "auto_resolve": req.auto_resolve,
+                     "adversarial": req.adversarial}
         )
         return {"job_id": job_id}
 
@@ -415,6 +419,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
     async def lint_report():
         import yaml as _yaml
         from synthadoc.agents.lint_agent import find_orphan_slugs, LINT_SKIP_SLUGS
+        from synthadoc.cli.lint import _is_reingestable
         wiki_dir = wiki_root / "wiki"
         pages = list(wiki_dir.glob("*.md"))
 
@@ -462,11 +467,34 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                 "index_suggestion": f"- [[{slug}]] — {hint}",
             })
 
+        # Build adversarial_warnings via WikiStorage.read_page() — same parse path
+        # as LintAgent._run_adversarial_pass() which writes the warnings.
+        orch = app.state.orch
+        wiki_name = wiki_root.name
+        adversarial_warnings = []
+        for slug in page_texts:
+            if slug in LINT_SKIP_SLUGS:
+                continue
+            page = orch._store.read_page(slug)
+            if not page or not page.lint_warnings:
+                continue
+            suggested_reingests = [
+                f'synthadoc ingest "{s.file}" -w {wiki_name}'
+                for s in page.sources
+                if s.file and _is_reingestable(s.file)
+            ]
+            adversarial_warnings.append({
+                "slug": slug,
+                "warnings": page.lint_warnings,
+                "suggested_reingests": suggested_reingests,
+            })
+
         return {
             "contradictions": [d["slug"] for d in contradiction_details],
             "contradiction_details": contradiction_details,
             "orphans": [d["slug"] for d in orphan_details],
             "orphan_details": orphan_details,
+            "adversarial_warnings": adversarial_warnings,
         }
 
     @app.get("/jobs")
