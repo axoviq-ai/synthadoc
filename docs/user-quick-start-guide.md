@@ -1241,7 +1241,7 @@ context_token_budget = 6000
 <a name="claim-provenance"></a>
 ## Step 18 — Verify claim provenance
 
-Every claim in your wiki now traces to the exact line range in its source file — verifiable in one click, auditable to the day.
+LLM-compiled wikis have a trust problem: the prose sounds authoritative, but there is no easy way to confirm whether a specific claim actually came from the source — or whether the model embellished it. Synthadoc solves this with **claim-level provenance**: during ingest, a dedicated annotation pass reads every wiki page alongside the numbered source text and inserts a `^[filename:L-L]` citation marker at the end of each substantive paragraph, pointing to the exact line range that supports it. The markers are stored in the page body, validated by the lint system, recorded in the audit database, and rendered as interactive chips in Obsidian. This is not a summary or a paper-level citation — it is a line-precise link from a compiled claim back to the raw evidence, clickable in one step from inside your vault. Very few knowledge tools offer this depth of interactive source traceability.
 
 ### What was annotated during ingest
 
