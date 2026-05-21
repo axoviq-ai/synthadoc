@@ -130,7 +130,8 @@ export default class SynthadocPlugin extends Plugin {
                 : "";
 
             const CITE_RE = /\^\[([^\]:]+):(\d+)-(\d+)\]/g;
-            const BRACKET_RE = /^\[([^\]:]+):(\d+)-(\d+)\]$/;
+            // Matches both [file:L-L] and ^[file:L-L] — Obsidian puts either form in <sup>.
+            const BRACKET_RE = /^\^?\[([^\]:]+):(\d+)-(\d+)\]$/;
 
             const makeChip = (filename: string, lineStart: number, lineEnd: number): HTMLSpanElement => {
                 const chip = document.createElement("span");
@@ -205,7 +206,16 @@ export default class SynthadocPlugin extends Plugin {
                     last = m.index + m[0].length;
                 }
                 if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
-                if (last > 0) textNode.parentNode?.replaceChild(frag, textNode);
+                if (last > 0) {
+                    const parent = textNode.parentNode;
+                    // If the entire <sup> contains only our citation, replace the whole
+                    // <sup> so its superscript styling doesn't wrap the chip.
+                    if (parent?.nodeName === "SUP" && parent.textContent === text) {
+                        parent.replaceWith(frag);
+                    } else {
+                        parent?.replaceChild(frag, textNode);
+                    }
+                }
             }
         });
     }
