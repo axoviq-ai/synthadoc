@@ -121,10 +121,62 @@ export default class SynthadocPlugin extends Plugin {
         });
 
         // Citation chip renderer: ^[file.txt:12-24] → clickable chip
+        // ^[...] is Obsidian's inline footnote syntax, so Obsidian converts it to a
+        // <sup> + <section class="footnotes"> before our post-processor runs.
+        // We intercept the rendered footnote section and replace the <sup> with a chip.
+        // The text-node path handles any renderer that passes ^[...] through as raw text.
         this.registerMarkdownPostProcessor((el, _ctx) => {
             const wikiRoot: string = this.app.vault.adapter instanceof FileSystemAdapter
                 ? this.app.vault.adapter.getBasePath()
                 : "";
+
+            const makeChip = (filename: string, lineStart: number, lineEnd: number): HTMLSpanElement => {
+                const chip = document.createElement("span");
+                chip.className = "synthadoc-citation-chip";
+                chip.textContent = `${filename}:${lineStart}-${lineEnd}`;
+                chip.style.cssText = [
+                    "display:inline-block",
+                    "background:var(--interactive-accent)",
+                    "color:var(--text-on-accent)",
+                    "border-radius:4px",
+                    "padding:0 5px",
+                    "font-size:11px",
+                    "cursor:pointer",
+                    "margin:0 2px",
+                    "opacity:0.85",
+                    "-webkit-user-select:text",
+                    "user-select:text",
+                ].join(";");
+                chip.addEventListener("click", () => {
+                    new SourceViewerModal(this.app, filename, lineStart, lineEnd, wikiRoot).open();
+                });
+                return chip;
+            };
+
+            // Path 1: Obsidian rendered ^[file:L-L] as inline footnotes.
+            // The <section class="footnotes"> holds the citation text; find its <sup>
+            // counterpart via the backref href and swap it with a chip.
+            const footnoteSection = el.querySelector("section.footnotes");
+            if (footnoteSection) {
+                for (const li of Array.from(footnoteSection.querySelectorAll("li[id]"))) {
+                    const raw = (li as HTMLElement).textContent?.trim() ?? "";
+                    const m = /^([^\]:]+):(\d+)-(\d+)/.exec(raw);
+                    if (!m) continue;
+                    const filename = m[1], lineStart = parseInt(m[2], 10), lineEnd = parseInt(m[3], 10);
+                    const backref = li.querySelector("a.footnote-backref");
+                    const refId = backref?.getAttribute("href")?.replace("#", "");
+                    if (refId) {
+                        const sup = document.getElementById(refId);
+                        if (sup) sup.replaceWith(makeChip(filename, lineStart, lineEnd));
+                    }
+                    (li as HTMLElement).remove();
+                }
+                if (!(footnoteSection as HTMLElement).querySelector("li"))
+                    (footnoteSection as HTMLElement).remove();
+                return;
+            }
+
+            // Path 2: renderer left ^[file:L-L] as raw text — walk text nodes directly.
             const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
             const textNodes: Text[] = [];
             let node: Node | null;
@@ -139,14 +191,7 @@ export default class SynthadocPlugin extends Plugin {
                 let m: RegExpExecArray | null;
                 while ((m = citRe.exec(text)) !== null) {
                     if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
-                    const chip = frag.appendChild(document.createElement("span"));
-                    chip.className = "synthadoc-citation-chip";
-                    chip.textContent = `${m[1]}:${m[2]}-${m[3]}`;
-                    chip.style.cssText = "display:inline-block;background:var(--background-modifier-border);color:var(--text-muted);border-radius:4px;padding:0 4px;font-size:11px;cursor:pointer;margin:0 2px;-webkit-user-select:text;user-select:text";
-                    const filename = m[1], lineStart = parseInt(m[2], 10), lineEnd = parseInt(m[3], 10);
-                    chip.addEventListener("click", () => {
-                        new SourceViewerModal(this.app, filename, lineStart, lineEnd, wikiRoot).open();
-                    });
+                    frag.appendChild(makeChip(m[1], parseInt(m[2], 10), parseInt(m[3], 10)));
                     last = m.index + m[0].length;
                 }
                 if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
