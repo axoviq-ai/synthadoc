@@ -19,6 +19,21 @@ logging.getLogger("pypdf").setLevel(logging.ERROR)
 _MIN_CHARS_PER_PAGE = 50
 
 
+def _build_pagemap(page_texts: list[str]) -> dict[int, int]:
+    """Return {first_line_of_page: pdf_page_number} for each non-empty page.
+
+    Line numbers are 1-based and reference the concatenated extracted text.
+    Empty pages are skipped and do not advance the line counter.
+    """
+    pagemap: dict[int, int] = {}
+    current_line = 1
+    for page_num, text in enumerate(page_texts, start=1):
+        if text:
+            pagemap[current_line] = page_num
+            current_line += text.count("\n") + 1
+    return pagemap
+
+
 class PdfSkill(BaseSkill):
     meta = SkillMeta(name="pdf", description="Extract text from PDF files", extensions=[".pdf"])
 
@@ -27,7 +42,7 @@ class PdfSkill(BaseSkill):
         # thread pool so they do not block the asyncio event loop and starve
         # other coroutines (e.g. HTTP handlers, jobs list) while processing
         # large PDFs.
-        text, num_pages = await asyncio.to_thread(self._extract_pypdf, source)
+        text, num_pages, pagemap = await asyncio.to_thread(self._extract_pypdf, source)
 
         # Low yield → likely CJK fonts that pypdf cannot decode; try pdfminer fallback
         if num_pages > 0 and len(text.strip()) < num_pages * _MIN_CHARS_PER_PAGE:
@@ -38,21 +53,25 @@ class PdfSkill(BaseSkill):
             fallback = await asyncio.to_thread(self._extract_pdfminer, source)
             if len(fallback.strip()) > len(text.strip()):
                 text = fallback
+                pagemap = {1: 1}  # pdfminer has no page-level info
 
         return ExtractedContent(text=text, source_path=source,
-                                metadata={"pages": num_pages})
+                                metadata={"pages": num_pages, "page_boundaries": pagemap})
 
-    def _extract_pypdf(self, source: str) -> tuple[str, int]:
+    def _extract_pypdf(self, source: str) -> tuple[str, int, dict[int, int]]:
         try:
             parts = []
+            page_texts: list[str] = []
             with open(source, "rb") as f:
                 reader = pypdf.PdfReader(f)
                 num_pages = len(reader.pages)
                 for page in reader.pages:
                     t = page.extract_text()
+                    page_texts.append(t or "")
                     if t:
                         parts.append(t)
-            return "\n".join(parts), num_pages
+            pagemap = _build_pagemap(page_texts)
+            return "\n".join(parts), num_pages, pagemap
         except (FileNotFoundError, IsADirectoryError):
             raise
         except Exception as exc:

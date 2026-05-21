@@ -29,7 +29,7 @@ def test_extract_pypdf_single_page_returns_text(tmp_path):
     pdf_path.write_bytes(b"fake")
     reader = _mock_reader(["Hello from page one."])
     with patch("synthadoc.skills.pdf.scripts.main.pypdf.PdfReader", return_value=reader):
-        text, num_pages = _make_skill()._extract_pypdf(str(pdf_path))
+        text, num_pages, pagemap = _make_skill()._extract_pypdf(str(pdf_path))
     assert text == "Hello from page one."
     assert num_pages == 1
 
@@ -40,7 +40,7 @@ def test_extract_pypdf_multi_page_joins_with_newline(tmp_path):
     pdf_path.write_bytes(b"fake")
     reader = _mock_reader(["Page one.", "Page two.", "Page three."])
     with patch("synthadoc.skills.pdf.scripts.main.pypdf.PdfReader", return_value=reader):
-        text, num_pages = _make_skill()._extract_pypdf(str(pdf_path))
+        text, num_pages, pagemap = _make_skill()._extract_pypdf(str(pdf_path))
     assert text == "Page one.\nPage two.\nPage three."
     assert num_pages == 3
 
@@ -51,7 +51,7 @@ def test_extract_pypdf_skips_none_and_empty_pages(tmp_path):
     pdf_path.write_bytes(b"fake")
     reader = _mock_reader(["Real text.", "", "More text."])
     with patch("synthadoc.skills.pdf.scripts.main.pypdf.PdfReader", return_value=reader):
-        text, num_pages = _make_skill()._extract_pypdf(str(pdf_path))
+        text, num_pages, pagemap = _make_skill()._extract_pypdf(str(pdf_path))
     assert text == "Real text.\nMore text."
     assert num_pages == 3
 
@@ -143,3 +143,69 @@ async def test_extract_keeps_pypdf_text_when_pdfminer_fallback_is_worse(tmp_path
         with patch("pdfminer.high_level.extract_text", return_value="x"):  # even fewer
             result = await _make_skill().extract(str(pdf_path))
     assert result.text == "ab"
+
+
+# ── _build_pagemap ────────────────────────────────────────────────────────────
+
+def test_build_pagemap_single_page():
+    """Single page: all lines map to page 1 starting at line 1."""
+    from synthadoc.skills.pdf.scripts.main import _build_pagemap
+    page_texts = ["line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10"]
+    pm = _build_pagemap(page_texts)
+    assert pm == {1: 1}
+
+
+def test_build_pagemap_two_pages():
+    """Two pages: page 1 at line 1, page 2 at line 4 (page 1 has 3 lines)."""
+    from synthadoc.skills.pdf.scripts.main import _build_pagemap
+    page_texts = ["a\nb\nc", "d\ne\nf"]
+    pm = _build_pagemap(page_texts)
+    assert pm == {1: 1, 4: 2}
+
+
+def test_build_pagemap_boundary_line():
+    """Verify page boundaries with 2-line pages: page 1 at 1, page 2 at 3."""
+    from synthadoc.skills.pdf.scripts.main import _build_pagemap
+    page_texts = ["x\ny", "z\nw"]
+    pm = _build_pagemap(page_texts)
+    assert pm == {1: 1, 3: 2}
+
+
+def test_build_pagemap_empty_pages_skipped():
+    """Empty pages are skipped but line counter does not advance for them."""
+    from synthadoc.skills.pdf.scripts.main import _build_pagemap
+    page_texts = ["a\nb", "", "c\nd"]
+    pm = _build_pagemap(page_texts)
+    assert 1 in pm
+    assert pm[1] == 1
+    # Page 3 starts at line 3 (page 1 = 2 lines, page 2 = empty = 0 lines)
+    assert 3 in pm
+    assert pm[3] == 3
+
+
+def test_pdf_skill_metadata_includes_page_boundaries(tmp_path):
+    """_extract_pypdf returns 3-tuple and extract() puts page_boundaries in metadata."""
+    from synthadoc.skills.pdf.scripts.main import PdfSkill
+    pdf_path = tmp_path / "doc.pdf"
+    pdf_path.write_bytes(b"fake")
+    reader = _mock_reader(["line1\nline2\nline3", "line4\nline5\nline6"])
+    with patch("synthadoc.skills.pdf.scripts.main.pypdf.PdfReader", return_value=reader):
+        text, num_pages, pagemap = _make_skill()._extract_pypdf(str(pdf_path))
+    assert num_pages == 2
+    assert isinstance(pagemap, dict)
+    assert 1 in pagemap
+
+
+@pytest.mark.asyncio
+async def test_extract_metadata_has_page_boundaries(tmp_path):
+    """extract() includes page_boundaries dict in the returned metadata."""
+    from synthadoc.skills.pdf.scripts.main import PdfSkill
+    pdf_path = tmp_path / "doc.pdf"
+    pdf_path.write_bytes(b"fake")
+    # Use enough chars per page to bypass pdfminer fallback (>50 chars/page)
+    reader = _mock_reader(["A" * 60 + "\n" + "B" * 60, "C" * 60 + "\n" + "D" * 60])
+    with patch("synthadoc.skills.pdf.scripts.main.pypdf.PdfReader", return_value=reader):
+        result = await _make_skill().extract(str(pdf_path))
+    assert "page_boundaries" in result.metadata
+    assert isinstance(result.metadata["page_boundaries"], dict)
+    assert 1 in result.metadata["page_boundaries"]
