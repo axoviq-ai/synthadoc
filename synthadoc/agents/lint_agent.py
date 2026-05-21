@@ -6,10 +6,15 @@ import asyncio
 import json as _json
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.log import AuditDB, LogWriter
 from synthadoc.storage.wiki import WikiStorage
+
+if TYPE_CHECKING:
+    from synthadoc.storage.wiki import WikiPage
 
 
 @dataclass
@@ -47,7 +52,7 @@ _LIST_LINK_RE = re.compile(r"^\s*[-*+]\s+\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
 
 
 def _check_page_citations(
-    slug: str, page: "WikiPage", extracted_dir: "Path"
+    slug: str, page: WikiPage, extracted_dir: Path
 ) -> list[dict]:
     """Return list of {slug, citation, reason} for each invalid citation in page body.
 
@@ -56,8 +61,7 @@ def _check_page_citations(
     - broken_ref: filename not listed in page.sources[]
     - out_of_range: line_end exceeds actual line count of the extracted .txt file
     """
-    from pathlib import Path as _Path
-    source_basenames = {_Path(s.file).name for s in (page.sources or [])}
+    source_basenames = {Path(s.file).name for s in (page.sources or [])}
     issues: list[dict] = []
     seen_citations: set[str] = set()
 
@@ -76,7 +80,7 @@ def _check_page_citations(
             continue
 
         # Check line range against extracted .txt if available
-        txt_path = _Path(extracted_dir) / filename
+        txt_path = Path(extracted_dir) / filename
         if txt_path.exists():
             try:
                 line_count = txt_path.read_text(encoding="utf-8").count("\n") + 1
@@ -335,7 +339,6 @@ class LintAgent:
 
         # Check 5: citation validation (pure regex + file-stat, no LLM)
         if scope == "all":
-            from pathlib import Path as _Path
             wiki_root = self._store._root.parent
             extracted_dir = wiki_root / ".synthadoc" / "extracted"
             for slug in [s for s in slugs if s not in LINT_SKIP_SLUGS]:

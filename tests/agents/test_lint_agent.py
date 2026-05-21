@@ -2,9 +2,9 @@
 # Copyright (C) 2026 Paul Chen / axoviq.com
 import pytest
 from unittest.mock import AsyncMock
-from synthadoc.agents.lint_agent import LintAgent, LintReport, find_orphan_slugs, _fix_dangling_wikilinks, LINT_SKIP_SLUGS, LINT_SKIP_SOURCE_SLUGS, _parse_adversarial_response
+from synthadoc.agents.lint_agent import LintAgent, LintReport, find_orphan_slugs, _fix_dangling_wikilinks, LINT_SKIP_SLUGS, LINT_SKIP_SOURCE_SLUGS, _parse_adversarial_response, _check_page_citations
 from synthadoc.providers.base import CompletionResponse
-from synthadoc.storage.wiki import WikiStorage, WikiPage
+from synthadoc.storage.wiki import WikiStorage, WikiPage, SourceRef
 from synthadoc.storage.log import LogWriter, AuditDB
 
 
@@ -492,8 +492,6 @@ async def test_adversarial_pass_skipped_on_non_all_scope(tmp_wiki):
 
 def test_check_citations_broken_ref(tmp_path):
     """Citation pointing to file not in sources[] is a broken_ref."""
-    from synthadoc.agents.lint_agent import _check_page_citations
-    from synthadoc.storage.wiki import WikiPage, SourceRef
     page = WikiPage(
         title="Test", tags=[], content="A claim.^[other.txt:1-5]",
         status="active", confidence="medium",
@@ -506,8 +504,6 @@ def test_check_citations_broken_ref(tmp_path):
 
 def test_check_citations_out_of_range(tmp_path):
     """Citation with line_end beyond file length is out_of_range."""
-    from synthadoc.agents.lint_agent import _check_page_citations
-    from synthadoc.storage.wiki import WikiPage, SourceRef
     extracted = tmp_path / ".synthadoc" / "extracted"
     extracted.mkdir(parents=True)
     (extracted / "bio.txt").write_text("line1\nline2\nline3\n", encoding="utf-8")
@@ -522,8 +518,6 @@ def test_check_citations_out_of_range(tmp_path):
 
 def test_check_citations_malformed(tmp_path):
     """Citation without line range is malformed."""
-    from synthadoc.agents.lint_agent import _check_page_citations
-    from synthadoc.storage.wiki import WikiPage, SourceRef
     page = WikiPage(
         title="T", tags=[], content="Claim.^[bio.txt]",
         status="active", confidence="medium",
@@ -535,8 +529,6 @@ def test_check_citations_malformed(tmp_path):
 
 def test_check_citations_clean_page_no_issues(tmp_path):
     """Page with correct citations produces no issues."""
-    from synthadoc.agents.lint_agent import _check_page_citations
-    from synthadoc.storage.wiki import WikiPage, SourceRef
     extracted = tmp_path / ".synthadoc" / "extracted"
     extracted.mkdir(parents=True)
     (extracted / "bio.txt").write_text("\n".join(f"line{i}" for i in range(1, 101)), encoding="utf-8")
@@ -551,8 +543,6 @@ def test_check_citations_clean_page_no_issues(tmp_path):
 
 def test_check_citations_reversed_range(tmp_path):
     """line_start > line_end is malformed."""
-    from synthadoc.agents.lint_agent import _check_page_citations
-    from synthadoc.storage.wiki import WikiPage, SourceRef
     page = WikiPage(
         title="T", tags=[], content="Claim.^[bio.txt:50-10]",
         status="active", confidence="medium",
