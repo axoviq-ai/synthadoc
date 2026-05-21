@@ -463,8 +463,8 @@ Skip this step if you trust all your sources — `staging policy off` is the def
 **3. Lint and query** — check for contradictions, flag overstated claims, verify citations, and confirm the wiki answers your questions:
 
 ```bash
-synthadoc lint run                          # structural lint: orphans, broken links, contradictions
-synthadoc lint run --adversarial            # second-LLM pass: flags unsupported or overstated claims per page
+synthadoc lint run                          # full lint: structural checks + adversarial pass (default)
+synthadoc lint run --no-adversarial         # structural only — skip the adversarial LLM review
 synthadoc lint report                       # view all issues including citation violations (Check 5)
 synthadoc audit citations --broken          # list claim citations that failed validation
 synthadoc query "What are the current employment trends in the Toronto GTA?"
@@ -752,6 +752,13 @@ synthadoc audit cost --days 7 -w my-wiki      # last 7 days
 # Audit events: contradictions found, auto-resolutions, cost gate triggers
 synthadoc audit events -w my-wiki             # last 100 events
 synthadoc audit events --json -w my-wiki      # raw JSON for scripting
+
+# Claim citations: source-line provenance for every annotated claim
+synthadoc audit citations -w my-wiki                    # all citations (last 50)
+synthadoc audit citations --page alan-turing -w my-wiki # citations for one page
+synthadoc audit citations --source turing.pdf -w my-wiki # citations from one source
+synthadoc audit citations --broken -w my-wiki           # validation failures only
+synthadoc audit citations --json -w my-wiki             # raw JSON for scripting
 ```
 
 ### Scheduling recurring jobs
@@ -925,6 +932,12 @@ synthadoc audit cost --json -w my-wiki      # {total_tokens, total_cost_usd, dai
 
 synthadoc audit events -w my-wiki           # table: timestamp, job_id, event type, metadata
 synthadoc audit events --json -w my-wiki    # raw JSON
+
+synthadoc audit citations -w my-wiki                     # all claim citations (last 50)
+synthadoc audit citations --page alan-turing -w my-wiki  # citations for one page
+synthadoc audit citations --source turing.pdf -w my-wiki # citations from one source file
+synthadoc audit citations --broken -w my-wiki            # validation failures only
+synthadoc audit citations --json -w my-wiki              # raw JSON for scripting
 ```
 
 > **Note:** Per-model cost tracking is live from v0.2.0 — pricing tables cover all 7 API providers. Token counts and USD cost are recorded for every ingest and query operation in `audit.db`.
