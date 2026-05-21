@@ -120,30 +120,34 @@ export default class SynthadocPlugin extends Plugin {
             new Notice(`Synthadoc: ${engineLabel}${pages}`);
         });
 
-        // Citation chip renderer: ^[file.txt:12-24] → clickable chip
-        // ^[...] is Obsidian's inline footnote syntax, so Obsidian converts it to a
-        // <sup> + <section class="footnotes"> before our post-processor runs.
-        // We intercept the rendered footnote section and replace the <sup> with a chip.
-        // The text-node path handles any renderer that passes ^[...] through as raw text.
+        // Citation chip renderer: ^[file.txt:12-24] → clickable chip.
+        // Obsidian may render ^[...] as a footnote section, a <sup> element, or pass it
+        // through as raw text depending on version and context. All three cases are handled
+        // sequentially with no early return so every path always runs.
         this.registerMarkdownPostProcessor((el, _ctx) => {
             const wikiRoot: string = this.app.vault.adapter instanceof FileSystemAdapter
                 ? this.app.vault.adapter.getBasePath()
                 : "";
 
+            const CITE_RE = /\^\[([^\]:]+):(\d+)-(\d+)\]/g;
+            const BRACKET_RE = /^\[([^\]:]+):(\d+)-(\d+)\]$/;
+
             const makeChip = (filename: string, lineStart: number, lineEnd: number): HTMLSpanElement => {
                 const chip = document.createElement("span");
                 chip.className = "synthadoc-citation-chip";
                 chip.textContent = `${filename}:${lineStart}-${lineEnd}`;
+                // Hardcoded colours ensure visibility across light and dark themes.
                 chip.style.cssText = [
                     "display:inline-block",
-                    "background:var(--interactive-accent)",
-                    "color:var(--text-on-accent)",
+                    "background:#4f46e5",
+                    "color:#ffffff",
                     "border-radius:4px",
-                    "padding:0 5px",
-                    "font-size:11px",
+                    "padding:1px 6px",
+                    "font-size:10px",
+                    "font-weight:500",
                     "cursor:pointer",
-                    "margin:0 2px",
-                    "opacity:0.85",
+                    "margin:0 3px",
+                    "vertical-align:middle",
                     "-webkit-user-select:text",
                     "user-select:text",
                 ].join(";");
@@ -153,9 +157,9 @@ export default class SynthadocPlugin extends Plugin {
                 return chip;
             };
 
-            // Path 1: Obsidian rendered ^[file:L-L] as inline footnotes.
-            // The <section class="footnotes"> holds the citation text; find its <sup>
-            // counterpart via the backref href and swap it with a chip.
+            // Path 1: Obsidian rendered ^[file:L-L] into <section class="footnotes">.
+            // The <li> holds the citation text; the matching <sup> is in the document.
+            // No early return — Paths 2 and 3 still run for the same el.
             const footnoteSection = el.querySelector("section.footnotes");
             if (footnoteSection) {
                 for (const li of Array.from(footnoteSection.querySelectorAll("li[id]"))) {
@@ -166,17 +170,23 @@ export default class SynthadocPlugin extends Plugin {
                     const backref = li.querySelector("a.footnote-backref");
                     const refId = backref?.getAttribute("href")?.replace("#", "");
                     if (refId) {
-                        const sup = document.getElementById(refId);
+                        const sup = el.querySelector(`#${CSS.escape(refId)}`) ?? document.getElementById(refId);
                         if (sup) sup.replaceWith(makeChip(filename, lineStart, lineEnd));
                     }
                     (li as HTMLElement).remove();
                 }
                 if (!(footnoteSection as HTMLElement).querySelector("li"))
                     (footnoteSection as HTMLElement).remove();
-                return;
             }
 
-            // Path 2: renderer left ^[file:L-L] as raw text — walk text nodes directly.
+            // Path 2: Obsidian rendered ^[file:L-L] as <sup>[file:L-L]</sup>.
+            for (const sup of Array.from(el.querySelectorAll("sup"))) {
+                const text = (sup as HTMLElement).textContent?.trim() ?? "";
+                const m = BRACKET_RE.exec(text);
+                if (m) (sup as HTMLElement).replaceWith(makeChip(m[1], parseInt(m[2], 10), parseInt(m[3], 10)));
+            }
+
+            // Path 3: Obsidian passed ^[file:L-L] through as raw text — walk all text nodes.
             const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
             const textNodes: Text[] = [];
             let node: Node | null;
@@ -185,11 +195,11 @@ export default class SynthadocPlugin extends Plugin {
             for (const textNode of textNodes) {
                 const text = textNode.textContent || "";
                 if (!text.includes("^[")) continue;
+                CITE_RE.lastIndex = 0;
                 const frag = document.createDocumentFragment();
                 let last = 0;
-                const citRe = /\^\[([^\]:]+):(\d+)-(\d+)\]/g;
                 let m: RegExpExecArray | null;
-                while ((m = citRe.exec(text)) !== null) {
+                while ((m = CITE_RE.exec(text)) !== null) {
                     if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
                     frag.appendChild(makeChip(m[1], parseInt(m[2], 10), parseInt(m[3], 10)));
                     last = m.index + m[0].length;
