@@ -217,3 +217,72 @@ def test_audit_events_with_data_renders_table(tmp_path):
     result = runner.invoke(app, ["audit", "events", "--wiki", str(wiki)])
     assert result.exit_code == 0
     assert "Audit Events" in result.output
+
+
+# ── claim_citations tests ────────────────────────────────────────────────────
+
+import asyncio
+from synthadoc.storage.log import AuditDB
+
+
+@pytest.fixture
+def db(tmp_path):
+    d = AuditDB(tmp_path / ".synthadoc" / "audit.db")
+    asyncio.run(d.init())
+    return d
+
+
+def test_record_claim_citations_stores_rows(db):
+    citations = [
+        {"source_file": "foo.txt", "line_start": 1, "line_end": 10,
+         "claim_excerpt": "First claim here"},
+        {"source_file": "foo.txt", "line_start": 20, "line_end": 30,
+         "claim_excerpt": "Second claim here"},
+    ]
+    asyncio.run(db.record_claim_citations("alan-turing", citations))
+    rows = asyncio.run(db.list_citations())
+    assert len(rows) == 2
+    assert rows[0]["page_slug"] == "alan-turing"
+    assert rows[0]["source_file"] == "foo.txt"
+    assert rows[0]["line_start"] == 1
+
+
+def test_list_citations_filter_by_page(db):
+    asyncio.run(db.record_claim_citations("alan-turing", [
+        {"source_file": "a.txt", "line_start": 1, "line_end": 5, "claim_excerpt": "x"}
+    ]))
+    asyncio.run(db.record_claim_citations("ada-lovelace", [
+        {"source_file": "b.txt", "line_start": 1, "line_end": 5, "claim_excerpt": "y"}
+    ]))
+    rows = asyncio.run(db.list_citations(page_slug="alan-turing"))
+    assert len(rows) == 1
+    assert rows[0]["page_slug"] == "alan-turing"
+
+
+def test_list_citations_filter_by_source(db):
+    asyncio.run(db.record_claim_citations("alan-turing", [
+        {"source_file": "bio.txt", "line_start": 1, "line_end": 5, "claim_excerpt": "x"}
+    ]))
+    asyncio.run(db.record_claim_citations("alan-turing", [
+        {"source_file": "other.txt", "line_start": 1, "line_end": 5, "claim_excerpt": "y"}
+    ]))
+    rows = asyncio.run(db.list_citations(source_file="bio.txt"))
+    assert len(rows) == 1
+
+
+def test_list_citations_broken_only(db):
+    asyncio.run(db.write_event(
+        "citation_validation_failed",
+        metadata='{"slug": "p", "citation": "^[x.txt:1-2]", "reason": "broken_ref"}'
+    ))
+    asyncio.run(db.write_event("ingest_started", metadata="{}"))
+    rows = asyncio.run(db.list_citations(broken_only=True))
+    assert len(rows) == 1
+    assert rows[0]["reason"] == "broken_ref"
+
+
+def test_write_event_stores_event(db):
+    asyncio.run(db.write_event("citation_pass4_skipped",
+                               metadata='{"slug": "p", "error": "timeout"}'))
+    events = asyncio.run(db.list_events(limit=10))
+    assert any(e["event"] == "citation_pass4_skipped" for e in events)
