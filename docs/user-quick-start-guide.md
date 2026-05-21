@@ -642,6 +642,8 @@ Contradictions tab uses orange, and **Suggested index entry:** in the Orphans ta
 accent blue (it is a suggestion, not a warning), so you can scan the full report at a
 glance without reading every line.
 
+![Synthadoc Lint report — Adversarial tab showing flagged claims across multiple pages](png/lint-report-adversarial.png)
+
 > **Skip the adversarial pass:** If you want a fast structural-only lint, open
 > `Synthadoc: Lint: run...` and tick **Skip adversarial review**. This also clears any
 > existing `lint_warnings` from frontmatter so stale warnings do not linger.
