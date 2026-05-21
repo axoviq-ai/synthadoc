@@ -26,6 +26,7 @@ const DEFAULT_SETTINGS: SynthadocSettings = {
 
 export default class SynthadocPlugin extends Plugin {
     settings: SynthadocSettings = DEFAULT_SETTINGS;
+    private _citationScanTimer: ReturnType<typeof setTimeout> | null = null;
 
     async onload() {
         await this.loadSettings();
@@ -121,73 +122,32 @@ export default class SynthadocPlugin extends Plugin {
         });
 
         // Citation chip renderer: ^[file.txt:12-24] → clickable chip.
-        // Obsidian may render ^[...] as a footnote section, a <sup> element, or pass it
-        // through as raw text depending on version and context. All three cases are handled
-        // sequentially with no early return so every path always runs.
+        //
+        // Obsidian converts ^[...] inline footnotes into numbered [N] superscripts and
+        // appends section.footnotes to the container AFTER all post-processor el blocks
+        // fire. So Path 1 (footnotes → body refs) must run deferred via setTimeout so
+        // section.footnotes is in the DOM when we query it.
+        //
+        // Paths 2 and 3 handle the rare case where Obsidian leaves ^[...] as a raw
+        // <sup> or text node instead of converting it to a footnote.
         this.registerMarkdownPostProcessor((el, _ctx) => {
             const wikiRoot: string = this.app.vault.adapter instanceof FileSystemAdapter
                 ? this.app.vault.adapter.getBasePath()
                 : "";
 
             const CITE_RE = /\^\[([^\]:]+):(\d+)-(\d+)\]/g;
-            // Matches both [file:L-L] and ^[file:L-L] — Obsidian puts either form in <sup>.
             const BRACKET_RE = /^\^?\[([^\]:]+):(\d+)-(\d+)\]$/;
 
-            const makeChip = (filename: string, lineStart: number, lineEnd: number): HTMLSpanElement => {
-                const chip = document.createElement("span");
-                chip.className = "synthadoc-citation-chip";
-                chip.textContent = `${filename}:${lineStart}-${lineEnd}`;
-                // Hardcoded colours ensure visibility across light and dark themes.
-                chip.style.cssText = [
-                    "display:inline-block",
-                    "background:#4f46e5",
-                    "color:#ffffff",
-                    "border-radius:4px",
-                    "padding:1px 6px",
-                    "font-size:10px",
-                    "font-weight:500",
-                    "cursor:pointer",
-                    "margin:0 3px",
-                    "vertical-align:middle",
-                    "-webkit-user-select:text",
-                    "user-select:text",
-                ].join(";");
-                chip.addEventListener("click", () => {
-                    new SourceViewerModal(this.app, filename, lineStart, lineEnd, wikiRoot).open();
-                });
-                return chip;
-            };
-
-            // Path 1: Obsidian rendered ^[file:L-L] into <section class="footnotes">.
-            // The <li> holds the citation text; the matching <sup> is in the document.
-            // No early return — Paths 2 and 3 still run for the same el.
-            const footnoteSection = el.querySelector("section.footnotes");
-            if (footnoteSection) {
-                for (const li of Array.from(footnoteSection.querySelectorAll("li[id]"))) {
-                    const raw = (li as HTMLElement).textContent?.trim() ?? "";
-                    const m = /^([^\]:]+):(\d+)-(\d+)/.exec(raw);
-                    if (!m) continue;
-                    const filename = m[1], lineStart = parseInt(m[2], 10), lineEnd = parseInt(m[3], 10);
-                    const backref = li.querySelector("a.footnote-backref");
-                    const refId = backref?.getAttribute("href")?.replace("#", "");
-                    if (refId) {
-                        const sup = el.querySelector(`#${CSS.escape(refId)}`) ?? document.getElementById(refId);
-                        if (sup) sup.replaceWith(makeChip(filename, lineStart, lineEnd));
-                    }
-                    (li as HTMLElement).remove();
-                }
-                if (!(footnoteSection as HTMLElement).querySelector("li"))
-                    (footnoteSection as HTMLElement).remove();
-            }
-
-            // Path 2: Obsidian rendered ^[file:L-L] as <sup>[file:L-L]</sup>.
+            // Path 2: <sup> whose full text is [file:L-L] or ^[file:L-L].
             for (const sup of Array.from(el.querySelectorAll("sup"))) {
                 const text = (sup as HTMLElement).textContent?.trim() ?? "";
                 const m = BRACKET_RE.exec(text);
-                if (m) (sup as HTMLElement).replaceWith(makeChip(m[1], parseInt(m[2], 10), parseInt(m[3], 10)));
+                if (m) (sup as HTMLElement).replaceWith(
+                    this._makeChip(wikiRoot, m[1], parseInt(m[2], 10), parseInt(m[3], 10))
+                );
             }
 
-            // Path 3: Obsidian passed ^[file:L-L] through as raw text — walk all text nodes.
+            // Path 3: raw text nodes containing ^[file:L-L].
             const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
             const textNodes: Text[] = [];
             let node: Node | null;
@@ -202,14 +162,12 @@ export default class SynthadocPlugin extends Plugin {
                 let m: RegExpExecArray | null;
                 while ((m = CITE_RE.exec(text)) !== null) {
                     if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
-                    frag.appendChild(makeChip(m[1], parseInt(m[2], 10), parseInt(m[3], 10)));
+                    frag.appendChild(this._makeChip(wikiRoot, m[1], parseInt(m[2], 10), parseInt(m[3], 10)));
                     last = m.index + m[0].length;
                 }
                 if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
                 if (last > 0) {
                     const parent = textNode.parentNode;
-                    // If the entire <sup> contains only our citation, replace the whole
-                    // <sup> so its superscript styling doesn't wrap the chip.
                     if (parent?.nodeName === "SUP" && parent.textContent === text) {
                         parent.replaceWith(frag);
                     } else {
@@ -217,6 +175,15 @@ export default class SynthadocPlugin extends Plugin {
                     }
                 }
             }
+
+            // Path 1 (deferred): Obsidian converted ^[...] to numbered footnotes.
+            // section.footnotes is appended after all el blocks fire, so we defer
+            // the whole-document scan 100 ms (debounced) to let the DOM settle.
+            if (this._citationScanTimer !== null) clearTimeout(this._citationScanTimer);
+            this._citationScanTimer = setTimeout(() => {
+                this._citationScanTimer = null;
+                this._replaceFootnoteCitations(wikiRoot);
+            }, 100);
         });
     }
 
@@ -226,6 +193,57 @@ export default class SynthadocPlugin extends Plugin {
 
     async saveSettings() {
         await this.saveData(this.settings);
+    }
+
+    private _makeChip(wikiRoot: string, filename: string, lineStart: number, lineEnd: number): HTMLSpanElement {
+        const chip = document.createElement("span");
+        chip.className = "synthadoc-citation-chip";
+        chip.textContent = `${filename}:${lineStart}-${lineEnd}`;
+        chip.style.cssText = [
+            "display:inline-block",
+            "background:#4f46e5",
+            "color:#ffffff",
+            "border-radius:4px",
+            "padding:1px 6px",
+            "font-size:10px",
+            "font-weight:500",
+            "cursor:pointer",
+            "margin:0 3px",
+            "vertical-align:middle",
+            "-webkit-user-select:text",
+            "user-select:text",
+        ].join(";");
+        chip.addEventListener("click", () => {
+            new SourceViewerModal(this.app, filename, lineStart, lineEnd, wikiRoot).open();
+        });
+        return chip;
+    }
+
+    // Whole-document scan run after Obsidian finishes rendering section.footnotes.
+    // Derives body reference IDs from footnote li ids (fn-N → fnref-N) rather than
+    // from the backref anchor's class, which varies across Obsidian versions.
+    private _replaceFootnoteCitations(wikiRoot: string): void {
+        for (const section of Array.from(document.querySelectorAll("section.footnotes"))) {
+            for (const li of Array.from(section.querySelectorAll("li[id]"))) {
+                const liEl = li as HTMLElement;
+                const raw = liEl.textContent?.trim() ?? "";
+                const m = /^([^\]:]+):(\d+)-(\d+)/.exec(raw);
+                if (!m) continue;
+                const [, filename, ls, le] = m;
+                // li.id: "fn-1", "fn-1-abc", "user-content-fn-1" → "fnref-1", "fnref-1-abc", "user-content-fnref-1"
+                const refId = liEl.id.replace(/\bfn-/, "fnref-");
+                const target = document.getElementById(refId);
+                if (target) {
+                    // id may be on the <a> inside <sup>; replace the <sup> ancestor
+                    (target.closest("sup") ?? target).replaceWith(
+                        this._makeChip(wikiRoot, filename, parseInt(ls, 10), parseInt(le, 10))
+                    );
+                }
+                liEl.remove();
+            }
+            if (!(section as HTMLElement).querySelector("li"))
+                (section as HTMLElement).remove();
+        }
     }
 
     async ingestFile(file: TFile) {
