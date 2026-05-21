@@ -415,6 +415,58 @@ def test_enqueue_lint_adversarial_param_forwarded(tmp_wiki):
     assert enqueued.get("adversarial") is False
 
 
+def test_provenance_citations_empty(tmp_wiki):
+    """GET /provenance/citations returns empty list when no citations."""
+    from synthadoc.integration.http_server import create_app
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.get("/provenance/citations")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 0
+    assert data["citations"] == []
+
+
+def test_provenance_citations_returns_data(tmp_wiki):
+    """GET /provenance/citations returns recorded citations."""
+    import asyncio
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.storage.log import AuditDB
+    # Seed the DB used by the test server
+    db_path = tmp_wiki / ".synthadoc" / "audit.db"
+    db = AuditDB(db_path)
+    asyncio.run(db.init())
+    asyncio.run(db.record_claim_citations("alan-turing", [
+        {"source_file": "bio.txt", "line_start": 1, "line_end": 10,
+         "claim_excerpt": "Turing proposed the test"}
+    ]))
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.get("/provenance/citations")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 1
+    assert data["citations"][0]["page_slug"] == "alan-turing"
+
+
+def test_provenance_citations_filter_by_page(tmp_wiki):
+    from synthadoc.integration.http_server import create_app
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.get("/provenance/citations?page=alan-turing")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "total" in data
+    assert "citations" in data
+
+
+def test_provenance_citations_pagination(tmp_wiki):
+    from synthadoc.integration.http_server import create_app
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.get("/provenance/citations?limit=10&offset=0")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "total" in data
+    assert "citations" in data
+
+
 def test_lint_report_includes_adversarial_warnings(tmp_wiki):
     """GET /lint/report returns adversarial_warnings from page lint_warnings frontmatter."""
     wiki_dir = tmp_wiki / "wiki"

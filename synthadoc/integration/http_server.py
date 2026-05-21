@@ -776,4 +776,38 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         src.unlink()
         return {"slug": slug, "discarded": True}
 
+    # ── Provenance ────────────────────────────────────────────────────────────
+    @app.get("/provenance/citations")
+    async def provenance_citations(
+        page: str = "",
+        source: str = "",
+        broken: bool = False,
+        limit: int = 50,
+        offset: int = 0,
+        sort: str = "ingested_at",
+        order: str = "desc",
+    ):
+        from synthadoc.storage.log import AuditDB as _AuditDB
+        audit = _AuditDB(wiki_root / ".synthadoc" / "audit.db")
+        await audit.init()
+        if broken:
+            rows = await audit.list_citation_failures(limit=limit, offset=offset)
+            return {"total": len(rows), "citations": rows}
+        rows = await audit.list_citations(
+            page_slug=page or None,
+            source_file=source or None,
+            limit=limit,
+            offset=offset,
+            sort=sort,
+            order=order,
+        )
+        # Total count without limit
+        all_rows = await audit.list_citations(
+            page_slug=page or None,
+            source_file=source or None,
+            limit=100_000,
+            offset=0,
+        )
+        return {"total": len(all_rows), "citations": rows}
+
     return app
