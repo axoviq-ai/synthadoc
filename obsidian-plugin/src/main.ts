@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Paul Chen / axoviq.com
-import { App, MarkdownRenderer, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile } from "obsidian";
+import { App, FileSystemAdapter, MarkdownRenderer, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile } from "obsidian";
 import { api, setBase } from "./api";
 
 const SUPPORTED_EXTENSIONS = new Set([
@@ -112,6 +112,9 @@ export default class SynthadocPlugin extends Plugin {
 
         // Citation chip renderer: ^[file.txt:12-24] → clickable chip
         this.registerMarkdownPostProcessor((el, _ctx) => {
+            const wikiRoot: string = this.app.vault.adapter instanceof FileSystemAdapter
+                ? this.app.vault.adapter.getBasePath()
+                : "";
             const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
             const textNodes: Text[] = [];
             let node: Node | null;
@@ -130,8 +133,7 @@ export default class SynthadocPlugin extends Plugin {
                     chip.className = "synthadoc-citation-chip";
                     chip.textContent = `${m[1]}:${m[2]}-${m[3]}`;
                     chip.style.cssText = "display:inline-block;background:var(--background-modifier-border);color:var(--text-muted);border-radius:4px;padding:0 4px;font-size:11px;cursor:pointer;margin:0 2px;-webkit-user-select:text;user-select:text";
-                    const filename = m[1], lineStart = parseInt(m[2]), lineEnd = parseInt(m[3]);
-                    const wikiRoot: string = (this.app.vault.adapter as any).getBasePath?.() ?? "";
+                    const filename = m[1], lineStart = parseInt(m[2], 10), lineEnd = parseInt(m[3], 10);
                     chip.addEventListener("click", () => {
                         new SourceViewerModal(this.app, filename, lineStart, lineEnd, wikiRoot).open();
                     });
@@ -2710,6 +2712,8 @@ class ContextModal extends Modal {
     }
 }
 
+const RAW_SOURCES_DIR = "raw_sources";
+
 class SourceViewerModal extends Modal {
     constructor(
         app: App,
@@ -2720,6 +2724,7 @@ class SourceViewerModal extends Modal {
     ) { super(app); }
 
     onOpen() {
+        const fs = (window as any).require("fs") as typeof import("fs");
         const { contentEl } = this;
         contentEl.empty();
         contentEl.createEl("h3", { text: `${this.filename} — lines ${this.lineStart}–${this.lineEnd}` });
@@ -2730,7 +2735,6 @@ class SourceViewerModal extends Modal {
         const pagemapPath = `${this.wikiRoot}/.synthadoc/extracted/${stem}.pdf.pagemap`;
 
         try {
-            const fs = (window as any).require("fs");
             const text: string = fs.readFileSync(extractedPath, "utf-8");
             const lines = text.split("\n");
             const start = Math.max(0, this.lineStart - 1 - CONTEXT_LINES);
@@ -2750,11 +2754,11 @@ class SourceViewerModal extends Modal {
             // PDF jump button if pagemap exists
             try {
                 const pagemap: Record<string, number> = JSON.parse(fs.readFileSync(pagemapPath, "utf-8"));
-                const pdfPage = this._resolvePagemap(pagemap, this.lineStart);
+                const pdfPage = this.resolvePagemap(pagemap, this.lineStart);
                 const pdfName = this.filename.endsWith(".txt")
                     ? this.filename.replace(/\.txt$/, ".pdf")
                     : this.filename;
-                const pdfPath = `${this.wikiRoot}/raw_sources/${pdfName}`;
+                const pdfPath = `${this.wikiRoot}/${RAW_SOURCES_DIR}/${pdfName}`;
                 const btn = contentEl.createEl("button", { text: `Open PDF at page ${pdfPage} →` });
                 btn.style.cssText = "margin-top:12px;cursor:pointer";
                 btn.addEventListener("click", () => {
@@ -2770,7 +2774,7 @@ class SourceViewerModal extends Modal {
         }
     }
 
-    private _resolvePagemap(pagemap: Record<string, number>, lineStart: number): number {
+    private resolvePagemap(pagemap: Record<string, number>, lineStart: number): number {
         const keys = Object.keys(pagemap).map(Number).sort((a, b) => a - b);
         let page = 1;
         for (const k of keys) {
