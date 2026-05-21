@@ -312,3 +312,37 @@ def test_lint_report_no_adversarial_section_when_clean(tmp_path, monkeypatch):
     result = runner.invoke(app, ["lint", "report", "-w", "mywiki"])
     assert result.exit_code == 0, result.output
     assert "Adversarial" not in result.output
+
+
+def test_lint_report_shows_citation_issues(tmp_path, monkeypatch):
+    """lint report shows Citation Issues section when broken citations found."""
+    import synthadoc.cli.install as install_mod
+    page_with_broken = (
+        "---\nstatus: active\nsources:\n"
+        "  - {file: '/path/bio.txt', hash: 'x', size: 1, ingested: '2026-01-01'}\n"
+        "---\n\n# Page\n\nA claim.^[other.txt:1-5]\n"
+    )
+    wiki_dir, root = _make_wiki(tmp_path, {
+        "index": "# Index\n",
+        "page-a": page_with_broken,
+    })
+    monkeypatch.setattr(install_mod, "_read_registry",
+                        lambda: {"mywiki": {"path": str(tmp_path)}})
+    result = runner.invoke(app, ["lint", "report", "-w", "mywiki"])
+    assert result.exit_code == 0
+    assert "Citation" in result.output
+    assert "broken_ref" in result.output
+
+
+def test_lint_report_no_citation_section_when_clean(tmp_path, monkeypatch):
+    """lint report omits Citation Issues when no broken citations."""
+    import synthadoc.cli.install as install_mod
+    wiki_dir, root = _make_wiki(tmp_path, {
+        "index": "# Index\n",
+        "topic-a": "---\nstatus: active\nsources:\n  - {file: '/p/a.txt', hash: 'x', size: 1, ingested: '2026-01-01'}\n---\n\n# A\n\nSee [[topic-b]].",
+        "topic-b": "---\nstatus: active\nsources:\n  - {file: '/p/b.txt', hash: 'x', size: 1, ingested: '2026-01-01'}\n---\n\n# B\n\nSee [[topic-a]].",
+    })
+    monkeypatch.setattr(install_mod, "_read_registry",
+                        lambda: {"mywiki": {"path": str(tmp_path)}})
+    result = runner.invoke(app, ["lint", "report", "-w", "mywiki"])
+    assert "Citation" not in result.output

@@ -332,3 +332,46 @@ def test_write_event_default_metadata_is_empty_dict(db):
     assert len(matching) == 1
     parsed = json.loads(matching[0]["metadata"])
     assert parsed == {}
+
+
+# ── CLI audit citations tests ────────────────────────────────────────────────
+
+def test_audit_citations_command_all(tmp_path, monkeypatch):
+    """synthadoc audit citations shows all citations."""
+    import synthadoc.cli.install as install_mod
+    from synthadoc.storage.log import AuditDB as _AuditDB
+    (tmp_path / ".synthadoc").mkdir()
+    dbc = _AuditDB(tmp_path / ".synthadoc" / "audit.db")
+    asyncio.run(dbc.init())
+    asyncio.run(dbc.record_claim_citations("alan-turing", [
+        {"source_file": "bio.txt", "line_start": 1, "line_end": 10,
+         "claim_excerpt": "A claim about Turing"}
+    ]))
+    monkeypatch.setattr(install_mod, "_read_registry",
+                        lambda: {"mywiki": {"path": str(tmp_path)}})
+    from typer.testing import CliRunner
+    from synthadoc.cli.main import app as _app
+    cli_runner = CliRunner()
+    result = cli_runner.invoke(_app, ["audit", "citations", "-w", "mywiki"])
+    assert result.exit_code == 0, result.output
+    assert "alan-turing" in result.output
+    assert "bio.txt" in result.output
+
+
+def test_audit_citations_broken_flag(tmp_path, monkeypatch):
+    """--broken flag shows only validation failures."""
+    import synthadoc.cli.install as install_mod
+    from synthadoc.storage.log import AuditDB as _AuditDB
+    (tmp_path / ".synthadoc").mkdir()
+    dbc = _AuditDB(tmp_path / ".synthadoc" / "audit.db")
+    asyncio.run(dbc.init())
+    asyncio.run(dbc.write_event("citation_validation_failed",
+                                metadata={"slug": "p", "citation": "^[x:1-2]", "reason": "broken_ref"}))
+    monkeypatch.setattr(install_mod, "_read_registry",
+                        lambda: {"mywiki": {"path": str(tmp_path)}})
+    from typer.testing import CliRunner
+    from synthadoc.cli.main import app as _app
+    cli_runner = CliRunner()
+    result = cli_runner.invoke(_app, ["audit", "citations", "-w", "mywiki", "--broken"])
+    assert result.exit_code == 0, result.output
+    assert "broken_ref" in result.output
