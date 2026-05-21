@@ -1243,37 +1243,58 @@ context_token_budget = 6000
 
 LLM-compiled wikis have a trust problem: the prose sounds authoritative, but there is no easy way to confirm whether a specific claim actually came from the source — or whether the model embellished it. Synthadoc solves this with **claim-level provenance**: during ingest, a dedicated annotation pass reads every wiki page alongside the numbered source text and inserts a `^[filename:L-L]` citation marker at the end of each substantive paragraph, pointing to the exact line range that supports it. The markers are stored in the page body, validated by the lint system, recorded in the audit database, and rendered as interactive chips in Obsidian. This is not a summary or a paper-level citation — it is a line-precise link from a compiled claim back to the raw evidence, clickable in one step from inside your vault. Very few knowledge tools offer this depth of interactive source traceability.
 
+### Re-ingest sources to generate citations
+
+Citation markers are injected during ingest. The demo wiki pages were built before this feature existed, so they do not have markers yet. To annotate them you need to re-ingest the raw source files — but because the files have not changed, the normal dedup check would skip them. The **Force re-ingest** option bypasses the duplicate check so every file runs through the full pipeline including the citation annotation pass, regardless of whether it was previously ingested.
+
+**From the Obsidian plugin (recommended):**
+
+1. Open the Command Palette (`Ctrl/Cmd+P`) → **Synthadoc: Ingest sources**
+2. Switch to the **All raw_sources** tab
+3. Check **Force re-ingest (skip duplicate check)**
+4. Click **Ingest all**
+
+All supported files in your `raw_sources/` folder are queued immediately. You can watch progress under **Jobs** in the Obsidian command palette or with:
+
+```bash
+synthadoc jobs list -w history-of-computing
+```
+
+Wait until all jobs reach `completed` status before checking for citation markers.
+
+**Why --force is needed:** Synthadoc records a hash of every ingested source file in the audit database. On subsequent ingest of the same unchanged file, the hash matches and the job is skipped — this is intentional to avoid redundant LLM calls. `--force` overrides this check so the annotation pass runs even on previously seen files.
+
 ### What was annotated during ingest
 
-After running `synthadoc ingest` on any source, wiki pages contain inline citation markers:
+Once the re-ingest jobs complete, open any wiki page in **Reading View**. Paragraphs that make a substantive claim now end with an inline citation chip:
 
 ```
 Alan Turing proposed the Turing Test in 1950.^[turing-biography.txt:12-24]
 ```
 
-These render as small clickable chips in Obsidian. Click one to open the **Source Viewer** — the exact lines from the source file, highlighted, with a "Open PDF at page N →" button for PDF sources.
+Click a chip to open the **Source Viewer** — the exact lines from the source file, highlighted, with ±5 lines of context. For PDF sources, a **"Open PDF at page N →"** button resolves the line number to the correct PDF page via a pagemap sidecar and opens it in Obsidian's native PDF viewer.
 
 ### View provenance across the whole wiki
 
-Open the Obsidian command palette → **Synthadoc: View Page Provenance**. A sortable, paginated table shows every citation across the wiki. Sort by source file to audit a single document, or filter by slug to see all claims for one page.
+Open the Obsidian command palette → **Synthadoc: View Page Provenance**. A sortable, paginated table shows every citation across the wiki. You can drag the modal by its title bar to reposition it, and all cell content can be selected and copied. Sort by source file to audit a single document, or filter by slug to see all claims for one page.
 
 ### Find broken citations
 
 ```bash
 # CLI — show citations that failed validation
-synthadoc audit citations -w my-wiki --broken
+synthadoc audit citations -w history-of-computing --broken
 
 # All citations for one page
-synthadoc audit citations -w my-wiki --page alan-turing
+synthadoc audit citations -w history-of-computing --page alan-turing
 ```
 
-The lint report also shows a **Citation Issues** section:
+The lint report also shows a **Citation Issues** section listing any broken, out-of-range, or malformed markers:
 
 ```bash
-synthadoc lint report -w my-wiki
+synthadoc lint report -w history-of-computing
 ```
 
-> Every claim in your wiki traces to the exact source passage — verifiable in one click, auditable to the day. No other wiki compiler provides interactive source-line navigation from within Obsidian.
+> Every claim in your wiki traces to the exact source passage — verifiable in one click, auditable to the day. Citation markers are stored in the page body, validated by lint, and recorded in the audit database, giving you a complete provenance chain from compiled prose back to raw evidence.
 
 ---
 
