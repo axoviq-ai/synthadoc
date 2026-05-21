@@ -1274,6 +1274,8 @@ Alan Turing proposed the Turing Test in 1950.^[turing-biography.txt:12-24]
 
 Click a chip to open the **Source Viewer** — the exact lines from the source file, highlighted, with ±5 lines of context. For PDF sources, a **"Open PDF at page N →"** button resolves the line number to the correct PDF page via a pagemap sidecar and opens it in Obsidian's native PDF viewer.
 
+![Synthadoc citation chips on the alan-turing wiki page — each chip links to the exact source lines](png/claim-level-citation.png)
+
 ### View provenance across the whole wiki
 
 Open the Obsidian command palette → **Synthadoc: View Page Provenance**. A sortable, paginated table shows every citation across the wiki. You can drag the modal by its title bar to reposition it, and all cell content can be selected and copied. Sort by source file to audit a single document, or filter by slug to see all claims for one page.
