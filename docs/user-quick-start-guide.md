@@ -1266,7 +1266,7 @@ Wait until all jobs reach `completed` status before checking for citation marker
 
 ### What was annotated during ingest
 
-Once the re-ingest jobs complete, open any wiki page in **Reading View**. Paragraphs that make a substantive claim now end with an inline citation chip:
+Once the re-ingest jobs complete, open any wiki page in **Reading View** (`Ctrl/Cmd+E`, or click the book icon in the top-right toolbar). Citation chips are rendered by a post-processor that only runs in Reading View — they will not appear in Edit or Live Preview mode. Paragraphs that make a substantive claim now end with an inline citation chip:
 
 ```
 Alan Turing proposed the Turing Test in 1950.^[turing-biography.txt:12-24]
