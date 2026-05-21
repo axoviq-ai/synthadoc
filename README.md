@@ -460,11 +460,13 @@ synthadoc candidates discard punch-card-era           # discard pages that don't
 
 Skip this step if you trust all your sources — `staging policy off` is the default.
 
-**3. Lint and query** — check for contradictions and verify the wiki answers your questions:
+**3. Lint and query** — check for contradictions, flag overstated claims, verify citations, and confirm the wiki answers your questions:
 
 ```bash
-synthadoc lint run
-synthadoc lint report
+synthadoc lint run                          # structural lint: orphans, broken links, contradictions
+synthadoc lint run --adversarial            # second-LLM pass: flags unsupported or overstated claims per page
+synthadoc lint report                       # view all issues including citation violations (Check 5)
+synthadoc audit citations --broken          # list claim citations that failed validation
 synthadoc query "What are the current employment trends in the Toronto GTA?"
 ```
 
