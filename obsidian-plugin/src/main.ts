@@ -109,6 +109,38 @@ export default class SynthadocPlugin extends Plugin {
                 : "";
             new Notice(`Synthadoc: ${engineLabel}${pages}`);
         });
+
+        // Citation chip renderer: ^[file.txt:12-24] → clickable chip
+        this.registerMarkdownPostProcessor((el, _ctx) => {
+            const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+            const textNodes: Text[] = [];
+            let node: Node | null;
+            while ((node = walker.nextNode())) textNodes.push(node as Text);
+
+            for (const textNode of textNodes) {
+                const text = textNode.textContent || "";
+                if (!text.includes("^[")) continue;
+                const frag = document.createDocumentFragment();
+                let last = 0;
+                const citRe = /\^\[([^\]:]+):(\d+)-(\d+)\]/g;
+                let m: RegExpExecArray | null;
+                while ((m = citRe.exec(text)) !== null) {
+                    if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+                    const chip = frag.appendChild(document.createElement("span"));
+                    chip.className = "synthadoc-citation-chip";
+                    chip.textContent = `${m[1]}:${m[2]}-${m[3]}`;
+                    chip.style.cssText = "display:inline-block;background:var(--background-modifier-border);color:var(--text-muted);border-radius:4px;padding:0 4px;font-size:11px;cursor:pointer;margin:0 2px;-webkit-user-select:text;user-select:text";
+                    const filename = m[1], lineStart = parseInt(m[2]), lineEnd = parseInt(m[3]);
+                    const wikiRoot: string = (this.app.vault.adapter as any).getBasePath?.() ?? "";
+                    chip.addEventListener("click", () => {
+                        new SourceViewerModal(this.app, filename, lineStart, lineEnd, wikiRoot).open();
+                    });
+                    last = m.index + m[0].length;
+                }
+                if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+                if (last > 0) textNode.parentNode?.replaceChild(frag, textNode);
+            }
+        });
     }
 
     async loadSettings() {
@@ -2676,4 +2708,77 @@ class ContextModal extends Modal {
         this._result = "";
         this.contentEl.empty();
     }
+}
+
+class SourceViewerModal extends Modal {
+    constructor(
+        app: App,
+        private filename: string,
+        private lineStart: number,
+        private lineEnd: number,
+        private wikiRoot: string,
+    ) { super(app); }
+
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+        contentEl.createEl("h3", { text: `${this.filename} — lines ${this.lineStart}–${this.lineEnd}` });
+
+        const CONTEXT_LINES = 5;
+        const extractedPath = `${this.wikiRoot}/.synthadoc/extracted/${this.filename}`;
+        const stem = this.filename.replace(/\.[^.]+$/, "");
+        const pagemapPath = `${this.wikiRoot}/.synthadoc/extracted/${stem}.pdf.pagemap`;
+
+        try {
+            const fs = (window as any).require("fs");
+            const text: string = fs.readFileSync(extractedPath, "utf-8");
+            const lines = text.split("\n");
+            const start = Math.max(0, this.lineStart - 1 - CONTEXT_LINES);
+            const end = Math.min(lines.length, this.lineEnd + CONTEXT_LINES);
+            const pre = contentEl.createEl("pre");
+            pre.style.cssText = "overflow:auto;max-height:400px;font-size:12px;line-height:1.5";
+            for (let i = start; i < end; i++) {
+                const lineNum = i + 1;
+                const span = pre.createEl("div");
+                span.textContent = `${String(lineNum).padStart(4)} ${lines[i]}`;
+                const inRange = lineNum >= this.lineStart && lineNum <= this.lineEnd;
+                span.style.cssText = inRange
+                    ? "background:var(--background-modifier-hover);font-weight:600"
+                    : "color:var(--text-muted)";
+            }
+
+            // PDF jump button if pagemap exists
+            try {
+                const pagemap: Record<string, number> = JSON.parse(fs.readFileSync(pagemapPath, "utf-8"));
+                const pdfPage = this._resolvePagemap(pagemap, this.lineStart);
+                const pdfName = this.filename.endsWith(".txt")
+                    ? this.filename.replace(/\.txt$/, ".pdf")
+                    : this.filename;
+                const pdfPath = `${this.wikiRoot}/raw_sources/${pdfName}`;
+                const btn = contentEl.createEl("button", { text: `Open PDF at page ${pdfPage} →` });
+                btn.style.cssText = "margin-top:12px;cursor:pointer";
+                btn.addEventListener("click", () => {
+                    this.app.workspace.openLinkText(`${pdfPath}#page=${pdfPage}`, "", true);
+                });
+                contentEl.createEl("p", {
+                    text: "Line numbers refer to extracted text. The PDF page shown is the closest match.",
+                }).style.cssText = "font-size:11px;color:var(--text-muted);margin-top:4px";
+            } catch { /* no pagemap — PDF jump not available */ }
+        } catch {
+            contentEl.createEl("p", { text: `Could not read ${extractedPath}` })
+                .style.cssText = "color:var(--text-error)";
+        }
+    }
+
+    private _resolvePagemap(pagemap: Record<string, number>, lineStart: number): number {
+        const keys = Object.keys(pagemap).map(Number).sort((a, b) => a - b);
+        let page = 1;
+        for (const k of keys) {
+            if (k <= lineStart) page = pagemap[String(k)];
+            else break;
+        }
+        return page;
+    }
+
+    onClose() { this.contentEl.empty(); }
 }
