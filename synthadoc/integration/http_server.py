@@ -261,6 +261,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
     import synthadoc
     from synthadoc.config import load_config
     from synthadoc.core.orchestrator import Orchestrator
+    from synthadoc.storage.log import AuditDB as _AuditDB
 
     # Expose wiki root so skills (e.g. web_search) can load the dynamic blocked-domains list
     os.environ["SYNTHADOC_WIKI_ROOT"] = str(wiki_root)
@@ -787,12 +788,12 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         sort: str = "ingested_at",
         order: str = "desc",
     ):
-        from synthadoc.storage.log import AuditDB as _AuditDB
         audit = _AuditDB(wiki_root / ".synthadoc" / "audit.db")
         await audit.init()
         if broken:
+            all_failures = await audit.list_citation_failures(limit=100_000, offset=0)
             rows = await audit.list_citation_failures(limit=limit, offset=offset)
-            return {"total": len(rows), "citations": rows}
+            return {"total": len(all_failures), "citations": rows}
         rows = await audit.list_citations(
             page_slug=page or None,
             source_file=source or None,

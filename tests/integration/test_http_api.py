@@ -1,8 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
+import asyncio
+
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, patch
+
+from synthadoc.storage.log import AuditDB
 
 
 def test_health(tmp_wiki):
@@ -134,9 +138,7 @@ def test_audit_queries_returns_empty_initially(tmp_wiki):
 
 def test_audit_queries_returns_recorded_data(tmp_wiki):
     """GET /audit/queries must return records after queries have been made."""
-    import asyncio
     from synthadoc.integration.http_server import create_app
-    from synthadoc.storage.log import AuditDB
     # Pre-populate the DB file before the server starts so it shares the record
     db = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     asyncio.run(db.init())
@@ -428,9 +430,7 @@ def test_provenance_citations_empty(tmp_wiki):
 
 def test_provenance_citations_returns_data(tmp_wiki):
     """GET /provenance/citations returns recorded citations."""
-    import asyncio
     from synthadoc.integration.http_server import create_app
-    from synthadoc.storage.log import AuditDB
     # Seed the DB used by the test server
     db_path = tmp_wiki / ".synthadoc" / "audit.db"
     db = AuditDB(db_path)
@@ -465,6 +465,24 @@ def test_provenance_citations_pagination(tmp_wiki):
     data = resp.json()
     assert "total" in data
     assert "citations" in data
+
+
+def test_provenance_citations_broken_returns_correct_total(tmp_wiki):
+    """GET /provenance/citations?broken=true must return the full total, not just page size."""
+    from synthadoc.integration.http_server import create_app
+    db_path = tmp_wiki / ".synthadoc" / "audit.db"
+    db = AuditDB(db_path)
+    asyncio.run(db.init())
+    asyncio.run(db.write_event(
+        event="citation_validation_failed",
+        metadata={"slug": "p", "citation": "^[x:1-2]", "reason": "broken_ref"},
+    ))
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.get("/provenance/citations?broken=true")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] >= 1
+    assert len(data["citations"]) >= 1
 
 
 def test_lint_report_includes_adversarial_warnings(tmp_wiki):
