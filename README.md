@@ -164,7 +164,7 @@ As the wiki accumulates pages the `index.md` table of contents, domain scope (`p
 | Local-first (no cloud data)  | **Yes**                                                               | Varies      | No         | No        |
 | Custom skill plugins         | **Yes**                                                               | Limited     | No         | No        |
 | Obsidian integration         | **Yes**                                                               | No          | No         | No        |
-| Cost guard + audit trail     | **Yes**                                                               | No          | No         | No        |
+| Cost guard + audit trail     | **Yes** (per-job token + cost log; claim citations DB; `audit citations` CLI; ingest/lint/citation event types; full audit history API) | No          | No         | No        |
 | Hook / CI integration        | **Yes** (2 events)                                                    | No          | No         | No        |
 | Offline browsable artifact   | **Yes**                                                               | No          | No         | No        |
 | Multi-wiki isolation         | **Yes**                                                               | No          | No         | No        |
