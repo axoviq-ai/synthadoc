@@ -97,6 +97,16 @@ export default class SynthadocPlugin extends Plugin {
             callback: () => new ContextModal(this.app).open(),
         });
 
+        this.addCommand({
+            id: "view-page-provenance",
+            name: "View Page Provenance",
+            callback: () => {
+                const activeFile = this.app.workspace.getActiveFile();
+                const slug = activeFile ? activeFile.basename : "";
+                new ProvenanceModal(this.app, this.settings.serverUrl, slug).open();
+            },
+        });
+
         this.addRibbonIcon("book-open", "Synthadoc status", async () => {
             const [healthRes, statusRes] = await Promise.allSettled([
                 api.health(),
@@ -2782,6 +2792,157 @@ class SourceViewerModal extends Modal {
             else break;
         }
         return page;
+    }
+
+    onClose() { this.contentEl.empty(); }
+}
+
+const PROVENANCE_PAGE_SIZE = 50;
+
+class ProvenanceModal extends Modal {
+    private filter = "";
+    private sortCol = "ingested_at";
+    private sortAsc = false;
+    private page = 0;
+    private allRows: Record<string, unknown>[] = [];
+    private total = 0;
+    private tableWrap: HTMLElement | null = null;
+    private pagerWrap: HTMLElement | null = null;
+
+    constructor(app: App, private serverUrl: string, private initialSlug: string = "") {
+        super(app);
+    }
+
+    async onOpen() {
+        this.filter = this.initialSlug;
+        await this.load();
+        this.renderAll();
+    }
+
+    private async load() {
+        const params = new URLSearchParams({
+            limit: String(PROVENANCE_PAGE_SIZE),
+            offset: String(this.page * PROVENANCE_PAGE_SIZE),
+            sort: this.sortCol,
+            order: this.sortAsc ? "asc" : "desc",
+        });
+        if (this.filter) params.set("page", this.filter);
+        try {
+            const resp = await fetch(`${this.serverUrl}/provenance/citations?${params}`);
+            const data = await resp.json() as { citations: Record<string, unknown>[]; total: number };
+            this.allRows = data.citations || [];
+            this.total = data.total || 0;
+        } catch {
+            this.allRows = [];
+            this.total = 0;
+        }
+    }
+
+    private renderAll() {
+        const { contentEl } = this;
+        contentEl.empty();
+        contentEl.createEl("h3", { text: "Page Provenance" });
+
+        // Filter bar
+        const filterRow = contentEl.createDiv({ cls: "synthadoc-prov-filter" });
+        filterRow.style.cssText = "display:flex;gap:8px;margin-bottom:12px";
+        const input = filterRow.createEl("input", { type: "text", placeholder: "Filter by slug or source…" });
+        input.value = this.filter;
+        input.style.cssText = "flex:1;padding:4px 8px";
+        input.addEventListener("input", async () => {
+            this.filter = input.value;
+            this.page = 0;
+            await this.load();
+            this.renderTable();
+            this.renderPager();
+        });
+
+        const refreshBtn = filterRow.createEl("button", { text: "↻ Refresh" });
+        refreshBtn.addEventListener("click", async () => {
+            await this.load();
+            this.renderTable();
+            this.renderPager();
+        });
+
+        // Table wrapper
+        this.tableWrap = contentEl.createDiv();
+        this.renderTable();
+
+        // Pager wrapper
+        this.pagerWrap = contentEl.createDiv();
+        this.renderPager();
+    }
+
+    private renderTable() {
+        if (!this.tableWrap) return;
+        this.tableWrap.empty();
+        if (this.allRows.length === 0) {
+            this.tableWrap.createEl("p", { text: "No citations found." })
+                .style.cssText = "color:var(--text-muted)";
+            return;
+        }
+        const table = this.tableWrap.createEl("table");
+        table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px";
+
+        const cols: { key: string; label: string; sortable: boolean }[] = [
+            { key: "page_slug", label: "Page", sortable: true },
+            { key: "claim_excerpt", label: "Claim", sortable: false },
+            { key: "source_file", label: "Source", sortable: true },
+            { key: "lines", label: "Lines", sortable: false },
+            { key: "ingested_at", label: "Ingested", sortable: true },
+        ];
+        const thead = table.createEl("thead");
+        const headerRow = thead.createEl("tr");
+        for (const col of cols) {
+            const th = headerRow.createEl("th", { text: col.label });
+            th.style.cssText = "text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border)";
+            if (col.sortable) {
+                th.style.cursor = "pointer";
+                const isCurrent = this.sortCol === col.key;
+                if (isCurrent) th.textContent += this.sortAsc ? " ↑" : " ↓";
+                th.addEventListener("click", async () => {
+                    if (this.sortCol === col.key) this.sortAsc = !this.sortAsc;
+                    else { this.sortCol = col.key; this.sortAsc = true; }
+                    await this.load();
+                    this.renderTable();
+                });
+            }
+        }
+        const tbody = table.createEl("tbody");
+        for (const row of this.allRows) {
+            const tr = tbody.createEl("tr");
+            tr.style.cssText = "border-bottom:1px solid var(--background-modifier-border-focus)";
+            const lineStart = row.line_start as number | undefined;
+            const lineEnd = row.line_end as number | undefined;
+            const cells = [
+                String(row.page_slug || ""),
+                String(row.claim_excerpt || "").slice(0, 60),
+                String(row.source_file || ""),
+                lineStart != null && lineEnd != null ? `${lineStart}-${lineEnd}` : "",
+                String(row.ingested_at || "").slice(0, 16),
+            ];
+            for (const cell of cells) {
+                const td = tr.createEl("td", { text: cell });
+                td.style.cssText = "padding:4px 8px;color:var(--text-normal)";
+            }
+        }
+    }
+
+    private renderPager() {
+        if (!this.pagerWrap) return;
+        this.pagerWrap.empty();
+        const totalPages = Math.ceil(this.total / PROVENANCE_PAGE_SIZE);
+        if (totalPages <= 1) return;
+        this.pagerWrap.style.cssText = "display:flex;gap:8px;margin-top:8px;align-items:center";
+        const prev = this.pagerWrap.createEl("button", { text: "← Previous" });
+        prev.disabled = this.page === 0;
+        prev.addEventListener("click", async () => { this.page--; await this.load(); this.renderTable(); this.renderPager(); });
+        this.pagerWrap.createEl("span", {
+            text: `Page ${this.page + 1} of ${totalPages} (${this.total} total)`,
+        });
+        const next = this.pagerWrap.createEl("button", { text: "Next →" });
+        next.disabled = this.page >= totalPages - 1;
+        next.addEventListener("click", async () => { this.page++; await this.load(); this.renderTable(); this.renderPager(); });
     }
 
     onClose() { this.contentEl.empty(); }
