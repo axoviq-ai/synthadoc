@@ -238,38 +238,16 @@ class AuditDB:
         self,
         page_slug: str | None = None,
         source_file: str | None = None,
-        broken_only: bool = False,
         limit: int = 50,
         offset: int = 0,
         sort: str = "ingested_at",
         order: str = "desc",
     ) -> list[dict]:
-        """Return citations from claim_citations (or broken events if broken_only)."""
+        """Return citations from claim_citations."""
         _ALLOWED_SORT = {"page_slug", "source_file", "line_start", "ingested_at"}
         if sort not in _ALLOWED_SORT:
             sort = "ingested_at"
         order = "asc" if order.lower() == "asc" else "desc"
-
-        if broken_only:
-            async with aiosqlite.connect(self._path) as db:
-                db.row_factory = aiosqlite.Row
-                async with db.execute(
-                    "SELECT timestamp, metadata FROM audit_events "
-                    "WHERE event='citation_validation_failed' "
-                    "ORDER BY id DESC LIMIT ? OFFSET ?",
-                    (limit, offset),
-                ) as cur:
-                    rows = await cur.fetchall()
-            import json as _json
-            result = []
-            for r in rows:
-                try:
-                    m = _json.loads(r["metadata"] or "{}")
-                except Exception:
-                    m = {}
-                m["timestamp"] = r["timestamp"]
-                result.append(m)
-            return result
 
         wheres, params = [], []
         if page_slug:
@@ -291,14 +269,53 @@ class AuditDB:
                 rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
+    async def list_citation_failures(
+        self,
+        page_slug: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict]:
+        """Return citation validation failures from audit_events.
+
+        Each returned dict has keys: page_slug, source_file, citation, reason,
+        event_time.
+        """
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT timestamp, metadata FROM audit_events "
+                "WHERE event='citation_validation_failed' "
+                "ORDER BY id DESC LIMIT ? OFFSET ?",
+                (limit, offset),
+            ) as cur:
+                rows = await cur.fetchall()
+        result = []
+        for r in rows:
+            try:
+                m = json.loads(r["metadata"] or "{}")
+            except Exception:
+                m = {}
+            entry = {
+                "page_slug": m.get("page_slug") or m.get("slug"),
+                "source_file": m.get("source_file"),
+                "citation": m.get("citation"),
+                "reason": m.get("reason"),
+                "event_time": r["timestamp"],
+            }
+            if page_slug is not None and entry["page_slug"] != page_slug:
+                continue
+            result.append(entry)
+        return result
+
     async def write_event(self, event: str, job_id: str = "",
-                          metadata: str = "") -> None:
+                          metadata: dict | None = None) -> None:
         """Write a single audit event."""
+        meta_str = json.dumps(metadata or {})
         ts = datetime.now(timezone.utc).isoformat()
         async with aiosqlite.connect(self._path) as db:
             await db.execute(
                 "INSERT INTO audit_events (job_id,event,timestamp,metadata) VALUES (?,?,?,?)",
-                (job_id or None, event, ts, metadata or None),
+                (job_id or None, event, ts, meta_str),
             )
             await db.commit()
 

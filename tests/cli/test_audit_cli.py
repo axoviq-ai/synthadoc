@@ -270,19 +270,65 @@ def test_list_citations_filter_by_source(db):
     assert len(rows) == 1
 
 
-def test_list_citations_broken_only(db):
+def test_list_citation_failures_returns_failed_events(db):
     asyncio.run(db.write_event(
         "citation_validation_failed",
-        metadata='{"slug": "p", "citation": "^[x.txt:1-2]", "reason": "broken_ref"}'
+        metadata={"slug": "p", "citation": "^[x.txt:1-2]", "reason": "broken_ref"}
     ))
-    asyncio.run(db.write_event("ingest_started", metadata="{}"))
-    rows = asyncio.run(db.list_citations(broken_only=True))
+    asyncio.run(db.write_event("ingest_started", metadata={"info": "ok"}))
+    rows = asyncio.run(db.list_citation_failures())
     assert len(rows) == 1
     assert rows[0]["reason"] == "broken_ref"
 
 
+def test_list_citation_failures_filter_by_page_slug(db):
+    asyncio.run(db.write_event(
+        "citation_validation_failed",
+        metadata={"slug": "alan-turing", "citation": "^[a.txt:1]", "reason": "missing"}
+    ))
+    asyncio.run(db.write_event(
+        "citation_validation_failed",
+        metadata={"slug": "ada-lovelace", "citation": "^[b.txt:2]", "reason": "broken_ref"}
+    ))
+    rows = asyncio.run(db.list_citation_failures(page_slug="alan-turing"))
+    assert len(rows) == 1
+    assert rows[0]["page_slug"] == "alan-turing"
+    assert rows[0]["reason"] == "missing"
+
+
+def test_list_citation_failures_multiple_events(db):
+    for i in range(4):
+        asyncio.run(db.write_event(
+            "citation_validation_failed",
+            metadata={"slug": f"page-{i}", "citation": f"^[f{i}.txt:1]", "reason": "broken"}
+        ))
+    asyncio.run(db.write_event("ingest_started", metadata={}))
+    rows = asyncio.run(db.list_citation_failures())
+    assert len(rows) == 4
+    assert all(r["reason"] == "broken" for r in rows)
+
+
 def test_write_event_stores_event(db):
     asyncio.run(db.write_event("citation_pass4_skipped",
-                               metadata='{"slug": "p", "error": "timeout"}'))
+                               metadata={"slug": "p", "error": "timeout"}))
     events = asyncio.run(db.list_events(limit=10))
     assert any(e["event"] == "citation_pass4_skipped" for e in events)
+
+
+def test_write_event_accepts_dict_metadata(db):
+    asyncio.run(db.write_event("test_event", metadata={"key": "value", "num": 42}))
+    events = asyncio.run(db.list_events(limit=10))
+    matching = [e for e in events if e["event"] == "test_event"]
+    assert len(matching) == 1
+    parsed = json.loads(matching[0]["metadata"])
+    assert parsed["key"] == "value"
+    assert parsed["num"] == 42
+
+
+def test_write_event_default_metadata_is_empty_dict(db):
+    asyncio.run(db.write_event("no_metadata_event"))
+    events = asyncio.run(db.list_events(limit=10))
+    matching = [e for e in events if e["event"] == "no_metadata_event"]
+    assert len(matching) == 1
+    parsed = json.loads(matching[0]["metadata"])
+    assert parsed == {}
