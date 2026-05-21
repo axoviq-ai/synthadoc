@@ -2860,8 +2860,70 @@ class ProvenanceModal extends Modal {
 
     async onOpen() {
         this.filter = this.initialSlug;
+        this.setupTitleBar();
         await this.load();
         this.renderAll();
+    }
+
+    // Inserts a draggable title bar above contentEl and enables text selection.
+    private setupTitleBar() {
+        const container = this.modalEl;
+
+        const bar = document.createElement("div");
+        bar.style.cssText = [
+            "display:flex",
+            "align-items:center",
+            "justify-content:space-between",
+            "padding:10px 16px",
+            "border-bottom:1px solid var(--background-modifier-border)",
+            "cursor:grab",
+            "user-select:none",
+            "-webkit-user-select:none",
+            "flex-shrink:0",
+        ].join(";");
+
+        const title = document.createElement("span");
+        title.textContent = "Page Provenance";
+        title.style.cssText = "font-weight:600;font-size:14px";
+        bar.appendChild(title);
+
+        const hint = document.createElement("span");
+        hint.textContent = "drag to move";
+        hint.style.cssText = "font-size:10px;color:var(--text-faint)";
+        bar.appendChild(hint);
+
+        container.insertBefore(bar, this.contentEl);
+
+        // Allow all text inside the modal body to be selected and copied.
+        this.contentEl.style.cssText += ";user-select:text;-webkit-user-select:text";
+
+        // Drag-to-move: capture current position on mousedown, then track movement.
+        bar.addEventListener("mousedown", (e: MouseEvent) => {
+            e.preventDefault();
+            const rect = container.getBoundingClientRect();
+            // Switch from Obsidian's centered transform to explicit fixed positioning.
+            container.style.position = "fixed";
+            container.style.left = rect.left + "px";
+            container.style.top = rect.top + "px";
+            container.style.transform = "none";
+            container.style.margin = "0";
+
+            const offsetX = e.clientX - rect.left;
+            const offsetY = e.clientY - rect.top;
+            bar.style.cursor = "grabbing";
+
+            const onMove = (ev: MouseEvent) => {
+                container.style.left = (ev.clientX - offsetX) + "px";
+                container.style.top = (ev.clientY - offsetY) + "px";
+            };
+            const onUp = () => {
+                document.removeEventListener("mousemove", onMove);
+                document.removeEventListener("mouseup", onUp);
+                bar.style.cursor = "grab";
+            };
+            document.addEventListener("mousemove", onMove);
+            document.addEventListener("mouseup", onUp);
+        });
     }
 
     private async load() {
@@ -2886,7 +2948,6 @@ class ProvenanceModal extends Modal {
     private renderAll() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl("h3", { text: "Page Provenance" });
 
         // Filter bar
         const filterRow = contentEl.createDiv({ cls: "synthadoc-prov-filter" });
@@ -2927,7 +2988,7 @@ class ProvenanceModal extends Modal {
             return;
         }
         const table = this.tableWrap.createEl("table");
-        table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px";
+        table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px;user-select:text;-webkit-user-select:text";
 
         const cols: { key: string; label: string; sortable: boolean }[] = [
             { key: "page_slug", label: "Page", sortable: true },
@@ -2940,7 +3001,7 @@ class ProvenanceModal extends Modal {
         const headerRow = thead.createEl("tr");
         for (const col of cols) {
             const th = headerRow.createEl("th", { text: col.label });
-            th.style.cssText = "text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border)";
+            th.style.cssText = "text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border);user-select:none;-webkit-user-select:none";
             if (col.sortable) {
                 th.style.cursor = "pointer";
                 const isCurrent = this.sortCol === col.key;
@@ -2968,7 +3029,7 @@ class ProvenanceModal extends Modal {
             ];
             for (const cell of cells) {
                 const td = tr.createEl("td", { text: cell });
-                td.style.cssText = "padding:4px 8px;color:var(--text-normal)";
+                td.style.cssText = "padding:4px 8px;color:var(--text-normal);user-select:text;-webkit-user-select:text";
             }
         }
     }
