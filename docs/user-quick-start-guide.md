@@ -31,6 +31,7 @@ major engine feature. No setup beyond following the steps below is required.
 15. [Set up ROUTING.md — scoped search](#step-15--set-up-routingmd--scoped-search)
 16. [Configure candidates staging](#step-16--configure-candidates-staging)
 17. [Build a context pack](#step-17--build-a-context-pack)
+18. [Verify claim provenance](#claim-provenance)
 
 **Appendices**
 
@@ -1232,6 +1233,45 @@ Set a permanent default in `config.toml`:
 [query]
 context_token_budget = 6000
 ```
+
+---
+
+<a name="claim-provenance"></a>
+## Step 18 — Verify claim provenance
+
+Every claim in your wiki now traces to the exact line range in its source file — verifiable in one click, auditable to the day.
+
+### What was annotated during ingest
+
+After running `synthadoc ingest` on any source, wiki pages contain inline citation markers:
+
+```
+Alan Turing proposed the Turing Test in 1950.^[turing-biography.txt:12-24]
+```
+
+These render as small clickable chips in Obsidian. Click one to open the **Source Viewer** — the exact lines from the source file, highlighted, with a "Open PDF at page N →" button for PDF sources.
+
+### View provenance across the whole wiki
+
+Open the Obsidian command palette → **Synthadoc: View Page Provenance**. A sortable, paginated table shows every citation across the wiki. Sort by source file to audit a single document, or filter by slug to see all claims for one page.
+
+### Find broken citations
+
+```bash
+# CLI — show citations that failed validation
+synthadoc audit citations -w my-wiki --broken
+
+# All citations for one page
+synthadoc audit citations -w my-wiki --page alan-turing
+```
+
+The lint report also shows a **Citation Issues** section:
+
+```bash
+synthadoc lint report -w my-wiki
+```
+
+> Every claim in your wiki traces to the exact source passage — verifiable in one click, auditable to the day. No other wiki compiler provides interactive source-line navigation from within Obsidian.
 
 ---
 

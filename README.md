@@ -119,6 +119,10 @@ Pages that exist but are referenced by nothing are surfaced by the lint system, 
 
 An LLM synthesising source documents naturally produces confident prose — but may overstate claims, omit caveats, or accept a source's framing uncritically. The **adversarial lint pass** runs a concurrent second-LLM review of every page: it plays devil's advocate to surface issues the primary model accepted too readily — contested estimates, unsupported superlatives, and claims that contradict well-established facts. Warnings are stored in page frontmatter and surfaced in both the CLI report and the Obsidian lint modal. The reviewer is calibrated to flag only high-confidence issues, producing a useful signal without noise. For the strongest signal, point the adversarial pass at a *different* model family: a distinct model is far more likely to challenge assumptions than the same model reviewing its own output.
 
+### Claim-Level Provenance
+
+Every substantive claim in the wiki is annotated with `^[filename:L-L]` — a citation pointing to the exact line range in the source file it came from. Click the citation chip in Obsidian to open a Source Viewer showing the highlighted passage; for PDF sources, Synthadoc resolves the PDF page number automatically via a pagemap sidecar. A global Provenance modal shows all citations across the wiki, sortable and filterable. Broken citations are caught by the lint system and logged in the audit trail. Run `synthadoc audit citations` to query citations from the CLI.
+
 ### 5. Re-synthesis is expensive; Synthadoc caches it
 
 A 3-layer cache (embedding, LLM response, provider prompt cache) means repeated lint runs on unchanged pages cost near-zero tokens.
@@ -155,6 +159,7 @@ As the wiki accumulates pages the `index.md` table of contents, domain scope (`p
 | Contradiction detection      | **Yes**                                                               | No          | No         | No        |
 | Orphan page detection        | **Yes**                                                               | No          | No         | No        |
 | Adversarial claim review     | **Yes** (concurrent second-LLM pass — flags overstated claims and unsupported assertions per page) | No | No | No |
+| Claim-level provenance       | **Yes** (`^[file:L-L]` citations on every claim; Source Viewer in Obsidian; PDF page resolution; global provenance table; broken-citation lint) | No | No | No |
 | Persistent wikilink graph    | **Yes**                                                               | No          | No         | No        |
 | Local-first (no cloud data)  | **Yes**                                                               | Varies      | No         | No        |
 | Custom skill plugins         | **Yes**                                                               | Limited     | No         | No        |
@@ -397,6 +402,7 @@ The guide covers:
 15. Set up query-scoped routing with ROUTING.md
 16. Stage and review candidate pages before promoting them
 17. Build a context pack for grounded LLM prompts
+18. Verify claim provenance — source-line citations, broken citation audit, global provenance table
 
 ---
 
