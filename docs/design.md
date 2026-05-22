@@ -1,6 +1,6 @@
 # Synthadoc — Design Document
 
-**Version:** 0.4.0 (released 2026-05-09)  
+**Version:** 0.5.0 (released 2026-05-21)  
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -29,6 +29,8 @@
 18. [Routing](#18-routing)
 19. [Candidates Staging](#19-candidates-staging)
 20. [Context Packs](#20-context-packs)
+21. [Adversarial Review](#21-adversarial-review)
+22. [Claim-Level Provenance](#22-claim-level-provenance)
 
 **Appendices**
 - [Appendix A — Release Feature Index](#appendix-a--release-feature-index)
@@ -68,6 +70,9 @@ my-wiki/
     jobs.db           ← job queue
     cache.db          ← LLM response cache
     embeddings.db     ← BM25 + vector search index
+    extracted/        ← plain-text sidecars for ingested local sources (v0.5.0)
+      report.txt      ← extracted text for report.pdf (or .docx, .xlsx, etc.)
+      report.pdf.pagemap.json  ← PDF page-boundary map (PDF sources only)
     logs/
       synthadoc.log   ← rotating JSON-lines operational log
       traces.jsonl    ← OpenTelemetry traces
@@ -103,6 +108,16 @@ Content with [[wikilinks]] to related pages…
 | `active` | Normal; up to date |
 | `contradicted` | A new source conflicts with this page; needs resolution |
 | `archived` | Source removed; page retained for reference |
+
+**`lint_warnings`** _(added in v0.5.0)_ — list of adversarial review findings written to frontmatter after each lint run:
+
+```yaml
+lint_warnings:
+  - claim: "Saved over fourteen million lives."
+    concern: "This specific figure lacks scholarly consensus…"
+```
+
+Cleared automatically when `--no-adversarial` is passed to `lint run`.
 
 ### Job
 
@@ -166,8 +181,9 @@ Five-pass pipeline:
 | 1 — Analysis (`_analyse()`) | Default | Extract entities, tags, and a 3-sentence summary from raw text. Result cached under key `analyse-v1` keyed by SHA-256 of the text. |
 | 2 — Candidate search | None (BM25) | Find existing wiki pages related to extracted entities |
 | 3 — Decision | Default | LLM reads summary (not full text) + BM25 candidates + `purpose.md` scope. Outputs per-page action: `create`, `update`, `flag`, `skip` |
-| 4 — Write | None | Apply actions; update frontmatter; write `[[wikilinks]]`; fire hooks |
-| 5 — Overview | Default | Regenerate `wiki/overview.md` if any pages were created or updated |
+| 4 — Citation annotation (`_annotate_citations()`) | Default | For each page section being written, the LLM reads the section alongside the numbered source text and inserts `^[filename:L-L]` inline citation markers at the end of substantive paragraphs. Results cached by section SHA-256. Falls back gracefully (returns original section) on any LLM or parse failure — ingest always completes. Citations are recorded in `audit.db` `claim_citations` table. |
+| 5 — Write | None | Apply actions; update frontmatter; write `[[wikilinks]]`; fire hooks. For local sources, writes a `.txt` sidecar to `.synthadoc/extracted/` (all file types) and a pagemap JSON sidecar when PDF page boundaries are available. |
+| 6 — Overview | Default | Regenerate `wiki/overview.md` if any pages were created or updated |
 
 **Analysis caching:** The analysis step is expensive (full text read + LLM call). Results are cached in `cache.db` by text SHA-256. Subsequent ingests of the same source (e.g. after a `--force` that hits the decision cache miss) re-use the analysis result without a new LLM call.
 
@@ -219,12 +235,6 @@ Question
 - The LLM returns a JSON array of strings. Markdown code fences (` ```json ``` `) are stripped before parsing — required for cross-model robustness (some providers wrap JSON in fences despite instructions)
 - On any failure during decomposition (network error, invalid JSON, empty list, non-array response), the agent falls back silently to `[question]` — the query always completes
 
-**Logging (INFO level):**
-```
-query is simple — no decomposition (1 sub-question)
-query decomposed into 2 sub-question(s): "Who invented FORTRAN?" | "What was the Bombe machine?"
-```
-
 **BM25 corpus cache:** `HybridSearch` builds the BM25 corpus once per server session and caches it in memory (`_cached_corpus`). The cache is invalidated by `invalidate_index()` after every `write_page()` call in IngestAgent, so queries always see current wiki content without redundant disk reads.
 
 #### Knowledge Gap Workflow
@@ -275,12 +285,6 @@ User input: "search for: yard gardening in Canadian climate zones"
 - Implemented as `SearchDecomposeAgent` in `synthadoc/agents/search_decompose_agent.py` — kept separate to avoid coupling the two decomposition strategies.
 - Cap: 4 search strings maximum — prevents runaway Tavily API spend.
 - Fallback: if LLM call fails, JSON is invalid, or all entries are whitespace, use the original phrase as a single search query — the ingest always completes.
-
-**Logging (INFO level):**
-```
-web search is simple — no decomposition (1 query)
-web search decomposed into 3 queries: "Canada hardiness zones map" | "frost dates Canadian cities" | "planting guide by province Canada"
-```
 
 ### Semantic Re-ranking
 
@@ -336,6 +340,7 @@ Runs against the entire wiki or a scoped subset:
 | Orphan | Pages with zero inbound `[[wikilinks]]` |
 | Stale | Pages whose `sources[]` entries no longer exist on disk |
 | Missing link | Entity mentioned in page body but no wikilink created |
+| Adversarial review _(v0.5.0)_ | Independent LLM pass that flags overstated claims, unsupported assertions, and high-confidence statements the source material does not support |
 
 **Auto-resolution:** For contradictions, LintAgent asks the LLM to propose a resolution with a confidence score. If score ≥ `auto_resolve_confidence_threshold` (default 0.85), applies automatically. Below threshold, queues for human review.
 
@@ -344,6 +349,8 @@ Runs against the entire wiki or a scoped subset:
 **Orphan frontmatter sync:** After computing orphans, both `LintAgent.lint()` (server-side, via `POST /jobs/lint`) and `synthadoc lint report` (CLI, offline) write `orphan: true` or `orphan: false` to each eligible page's YAML frontmatter. This keeps the Obsidian Dataview query (`WHERE orphan = true`) in sync with the computed orphan state without requiring the server to be running after `lint report`.
 
 **Auto-generated page exclusions:** The pages `index`, `dashboard`, `overview`, `log`, and `purpose` are excluded from both orphan detection and contradiction checking. Links from these pages do not count as real inbound references — a page linked only from `overview.md` is still reported as an orphan. These pages are also never flagged as contradicted by the ingest pipeline.
+
+**Adversarial review _(v0.5.0)_:** After structural checks complete, `LintAgent` runs an independent LLM review of every non-excluded page concurrently via `asyncio.gather()` — a 100-page wiki completes in wall-clock time equal to one call. The adversarial provider is configured via `[agents].adversarial` (falls back to `[agents].default` if absent); using a different model family from the ingest model reduces self-serving bias. Results are stored as `lint_warnings: [{claim, concern}]` in each page's YAML frontmatter. The cap is `adversarial_max_per_page` (default 2). Rate-limit failures are caught per-page and stored as non-fatal entries. Skipped entirely when `--no-adversarial` is passed to `lint run`; in that case, existing `lint_warnings` are cleared from all pages.
 
 ### SkillAgent
 
@@ -517,6 +524,18 @@ SQLite. Two key tables:
 | `cost_usd` | REAL | Approximate cost (answer tokens × rate) |
 | `queried_at` | TEXT | UTC ISO-8601 |
 
+**`claim_citations`** _(added in v0.5.0)_
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | INTEGER PK | |
+| `page_slug` | TEXT | Wiki page the citation belongs to |
+| `source_file` | TEXT | Filename of the raw source (basename only) |
+| `line_start` | INTEGER | First line of the supporting passage |
+| `line_end` | INTEGER | Last line of the supporting passage |
+| `claim_excerpt` | TEXT | First ~100 chars of the annotated paragraph (for display) |
+| `ingested_at` | TEXT | UTC ISO-8601 |
+
 ### jobs.db — Job queue
 
 See [Section 14 — Job Queue](#14-job-queue).
@@ -570,6 +589,7 @@ Note: BM25 IDF requires a minimum of 3 documents in the corpus for non-zero scor
 | `GET` | `/status` | — | `WikiStatus` |
 | `GET` | `/lint/report` | — | `LintReport` |
 | `GET` | `/health` | — | `{status: "ok"}` |
+| `GET` | `/provenance/citations` _(v0.5.0)_ | `?page=<slug>&source=<file>&broken=<bool>&limit=N&offset=N&sort=<col>&order=<dir>` | `{total: int, citations: [CitationRow]}` |
 
 **`GET /jobs` query parameters:**
 
@@ -609,7 +629,29 @@ The `progress` field is updated in real time during execution (e.g. `{"phase": "
       "slug": "quantum-computing",
       "index_suggestion": "- [[quantum-computing]] — physics, computing, qubits"
     }
+  ],
+  "adversarial_warnings": [
+    {
+      "slug": "alan-turing",
+      "claim": "Saved over fourteen million lives.",
+      "concern": "This figure lacks scholarly consensus…"
+    }
   ]
+}
+```
+
+`adversarial_warnings` is present in v0.5.0+; it is an empty list when no warnings were found or when the adversarial pass was skipped.
+
+**CitationRow object** _(v0.5.0)_:
+
+```json
+{
+  "page_slug": "alan-turing",
+  "source_file": "turing-enigma-decryption.pdf",
+  "line_start": 8,
+  "line_end": 10,
+  "claim_excerpt": "## Bletchley Park and the Bombé",
+  "ingested_at": "2026-05-21T14:32:01"
 }
 ```
 
@@ -632,7 +674,7 @@ The HTTP server runs a background task that polls `jobs.db` every 2 seconds and 
 
 **Package:** `synthadoc-obsidian` (TypeScript)  
 **Location:** `obsidian-plugin/` in the repo  
-**Version:** 0.2.0
+**Version:** 0.5.0
 
 Each vault configures its server URL in plugin settings (default `http://127.0.0.1:7070`).
 
@@ -646,8 +688,9 @@ Reload the plugin (toggle off/on) after copying — a full Obsidian restart is n
 |---------|-----------|
 | `Synthadoc: Ingest...` | Tabbed modal with four ingest modes. **Web search** — type a topic, set max results (1–50, default 20) and poll interval (500–10 000 ms, default 2000 ms); polls live showing phase text, pages list, and per-URL errors until all fan-out jobs settle. `Ctrl/Cmd+Enter` to submit. **From URL** — paste any URL and queue it for ingest; polls job status live. **All sources in folder** — queues every supported file in the configured raw sources folder. **Pick files** — click **Browse…** to select a folder from the OS picker, then **Scan** to list supported files; wiki sub-folder contents and common system files are excluded automatically; select files and click **Ingest selected**. |
 | `Synthadoc: Query: ask the wiki...` | Responsive modal (min 520px, 60vw, max 860px); markdown-rendered answer with citation footer; stays open when clicking elsewhere — must be closed explicitly via ✕ or Escape |
-| `Synthadoc: Lint: report` | Modal showing contradicted pages and orphans with remediation hints |
-| `Synthadoc: Lint: run...` | Modal with **Auto-resolve** checkbox. Queues a lint job; polls progress live; reports contradiction + orphan counts when complete. Tick the checkbox to automatically resolve contradictions at ≥ 85% confidence. |
+| `Synthadoc: Lint: report` | 3-tab modal — **Contradictions**, **Orphans**, **Adversarial** _(v0.5.0)_. The Adversarial tab shows each flagged claim (orange) with its concern and suggested re-ingest commands. |
+| `Synthadoc: Lint: run...` | Modal with **Auto-resolve** and **Skip adversarial review** _(v0.5.0)_ checkboxes. Queues a lint job; polls progress live; reports contradiction, orphan, and adversarial warning counts when complete. Tick **Skip adversarial review** to run structural-only lint (also clears existing `lint_warnings`). |
+| `Synthadoc: View Page Provenance` _(v0.5.0)_ | Sortable, paginated table of every claim citation recorded across the wiki — page, claim excerpt, source file, line range, and ingest timestamp. Draggable; all cell content is selectable and copyable. Click any row to open the Source Viewer showing the exact source lines with ±5 lines of context. For PDF sources a page-jump button opens the native PDF viewer at the correct page. |
 | `Synthadoc: Jobs...` | Modal with status-filter checkboxes (pending, in_progress, completed, failed, skipped, dead, cancelled), sortable results table (click **Status**, **Operation**, or **Created** headers to sort ascending; click again to reverse; ▲/▼ indicates active sort, ⇅ indicates unsorted; default: newest first), error detail rows for failed/dead/cancelled jobs, pagination (25 per page), auto-refresh countdown, a **Retry selected** button (enabled when ≥ 1 selected job is failed/dead/cancelled) and a **Delete selected** button (enabled when ≥ 1 job is selected). A **Purge old jobs** footer row lets you set a day threshold and remove old completed/dead jobs in one click. |
 | `Synthadoc: Routing: manage ROUTING.md...` | Modal panel with three buttons. **Init** creates ROUTING.md from the current index.md branch structure (enabled only when ROUTING.md does not exist). **Validate** reports dangling slugs — pages listed in ROUTING.md that no longer exist in the wiki (enabled only when ROUTING.md exists). **Clean** removes dangling slugs from ROUTING.md (enabled only when ROUTING.md exists). After each action the result appears inline with per-entry `[Branch] [[slug]]` detail rows. |
 | `Synthadoc: Staging: manage staging policy...` | Modal panel showing the current policy state. A segmented control switches between **Off**, **All**, and **Threshold**. When **Threshold** is selected, a second segmented control sets the minimum confidence (**High** / **Medium** / **Low**). A **Save** button persists the change via the HTTP API and updates the inline status. A footer link opens the Candidates modal directly. |
@@ -699,7 +742,7 @@ synthadoc
 ├── ingest <source> [-w wiki] [--batch] [--file manifest] [--force] [--analyse-only] [--max-results N]
 ├── query "<question>" [-w wiki] [--save] [--timeout N]
 ├── lint
-│   ├── run [-w wiki] [--scope contradictions|orphans|all] [--auto-resolve]
+│   ├── run [-w wiki] [--scope contradictions|orphans|all] [--auto-resolve] [--no-adversarial]
 │   └── report [-w wiki]
 ├── jobs
 │   ├── list [-w wiki] [--status pending|in_progress|completed|failed|skipped|dead|cancelled] [--sort created_at|status|operation] [--order asc|desc]
@@ -709,10 +752,11 @@ synthadoc
 │   ├── cancel [-w wiki] [--yes]
 │   └── purge --older-than <days> [-w wiki]
 ├── audit
-│   ├── history [-w wiki] [--limit N] [--json]   — ingest records: timestamp, source, page, tokens, cost
-│   ├── cost [-w wiki] [--days N] [--json]        — token totals + daily breakdown
-│   ├── queries [-w wiki] [--limit N] [--json]   — query history: question, sub-Qs, tokens, cost
-│   └── events [-w wiki] [--limit N] [--json]    — audit events: timestamp, job_id, event type, metadata
+│   ├── history [-w wiki] [--limit N] [--json]         — ingest records: timestamp, source, page, tokens, cost
+│   ├── cost [-w wiki] [--days N] [--json]              — token totals + daily breakdown
+│   ├── queries [-w wiki] [--limit N] [--json]         — query history: question, sub-Qs, tokens, cost
+│   ├── events [-w wiki] [--limit N] [--json]          — audit events: timestamp, job_id, event type, metadata
+│   └── citations [-w wiki] [--page <slug>] [--broken] — claim citations: all or filtered by page; --broken shows validation failures (v0.5.0)
 ├── routing
 │   ├── init [--wiki-root <path>]                 — generate ROUTING.md from index.md branch structure
 │   ├── validate [--wiki-root <path>]             — report dangling slugs and cross-branch duplicates
@@ -978,8 +1022,9 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 |-----|------|---------|-------------|
 | `agents.default.provider` | str | `"gemini"` | LLM provider: `anthropic`, `openai`, `gemini`, `groq`, `minimax`, `deepseek`, `ollama` |
 | `agents.default.model` | str | `"gemini-2.5-flash"` | Model ID |
-| `agents.adversarial.provider` | str | (inherits default) | Dedicated LLM provider for adversarial lint review. Falls back to `agents.default` when not set. Cross-model adversarial reduces self-serving bias — a different model evaluates claims independently. |
-| `agents.adversarial.model` | str | (inherits default) | Model ID for the adversarial reviewer. Cheap fast models (Gemini Flash, Groq Llama, Claude Haiku) keep adversarial cost under $0.10 for most wikis. |
+| `agents.adversarial.provider` | str | (inherits default) | Dedicated LLM provider for adversarial lint review. Falls back to `agents.default` when not set. Cross-model adversarial reduces self-serving bias — a different model family evaluates claims independently. |
+| `agents.adversarial.model` | str | (inherits default) | Model ID for the adversarial reviewer. For maximum independence, choose a model from a different family than the ingest model. |
+| `lint.adversarial_max_per_page` | int | `2` | Maximum adversarial warnings flagged per page. Raise to 3–5 for a thorough audit; lower to 1 to reduce noise on large wikis. |
 | `agents.llm_timeout_seconds` | int | `0` | Per-call LLM timeout in seconds; `0` = no limit. Set to e.g. `90` when using reasoning models (MiniMax-M2.5, DeepSeek-R1) that can exceed their internal generation budget silently. Restart required. |
 | `server.port` | int | `7070` | HTTP listen port |
 | `queue.max_parallel_ingest` | int | `4` | Max concurrent ingest agents |
@@ -1651,6 +1696,167 @@ synthadoc context build "early computing pioneers" --output briefing.md
 
 ---
 
+## 21. Adversarial Review
+
+### Concept
+
+Standard lint validates wiki structure — contradictions, orphans, broken links. It does not evaluate whether the *content* of a page is accurate. The adversarial review closes this gap: after structural checks complete, a second independent LLM pass interrogates every page for epistemic overreach — overstated claims, unsupported assertions, and high-confidence statements the source material does not support.
+
+The key architectural decision is cross-model independence. When the adversarial reviewer is a different model family from the ingest model, neither shares the training-induced inductive biases that cause same-model self-review to systematically miss the same class of errors.
+
+### LintAgent integration
+
+The adversarial review runs as the final phase of every `synthadoc lint run`. After orphan detection and contradiction checks complete, `LintAgent` calls `_adversarial_single(slug, content)` for every non-excluded page concurrently via `asyncio.gather()`. A 100-page wiki completes in the same wall-clock time as a single LLM call.
+
+Each `_adversarial_single` call prompts the adversarial model to act as a skeptical editor and return a JSON array of `{claim, concern}` objects. Results are capped at `adversarial_max_per_page` (default 2) per page. Failures are caught per-page — rate-limit errors and parse failures are stored as non-fatal warning entries and never abort the lint job.
+
+When `--no-adversarial` is passed to `lint run`, the adversarial phase is skipped entirely and any existing `lint_warnings` are cleared from all page frontmatter.
+
+### `lint_warnings` frontmatter
+
+Warnings are written directly to each page's YAML frontmatter after each lint run:
+
+```yaml
+lint_warnings:
+  - claim: "Saved over fourteen million lives."
+    concern: "This figure lacks scholarly consensus — historians dispute both the
+              precision and the causal attribution to Turing's cryptanalysis alone."
+  - claim: "Most consequential business decision of the era."
+    concern: "An unsupported superlative — the MS-DOS licence retention and Intel's
+              exclusive CPU supply deal were equally pivotal."
+```
+
+The field is absent when no warnings exist. Cleared automatically when `--no-adversarial` is used, ensuring stale warnings do not persist after the pass is disabled.
+
+### Configuration
+
+```toml
+# config.toml
+[agents]
+lint        = { provider = "minimax",   model = "MiniMax-M2.5" }
+adversarial = { provider = "anthropic", model = "claude-sonnet-4-6" }   # independent judge — different model family
+
+[lint]
+adversarial_max_per_page = 2   # raise to 3–5 for a deeper audit; lower to 1 for less noise
+```
+
+`[agents].adversarial` falls back to `[agents].default` if absent — the adversarial pass always runs, it just uses the same model as ingest (less effective, still useful).
+
+### CLI commands
+
+| Command | Description |
+|---|---|
+| `synthadoc lint run` | Full lint pass including adversarial review |
+| `synthadoc lint run --no-adversarial` | Structural-only lint; clears existing `lint_warnings` |
+| `synthadoc lint report` | Show warnings — CLI output has a dedicated Adversarial section |
+
+### HTTP API
+
+`GET /lint/report` returns a `LintReport` object. The `adversarial_warnings` field carries all warnings across all pages:
+
+```json
+{
+  "adversarial_warnings": [
+    {
+      "slug": "alan-turing",
+      "claim": "Saved over fourteen million lives.",
+      "concern": "This figure lacks scholarly consensus…"
+    }
+  ]
+}
+```
+
+Empty list when no warnings exist or the pass was skipped.
+
+### Obsidian plugin
+
+`Synthadoc: Lint: run...` modal adds a **Skip adversarial review** checkbox alongside the existing **Auto-resolve** checkbox. When ticked, the lint job runs structural checks only and clears stale warnings.
+
+`Synthadoc: Lint: report` is a 3-tab modal — **Contradictions**, **Orphans**, **Adversarial**. The Adversarial tab renders each warning with the flagged claim in orange, the concern below it in muted text, and suggested re-ingest commands derived from the page's source files.
+
+---
+
+## 22. Claim-Level Provenance
+
+### Concept
+
+Every compiled wiki page is a synthesis — the LLM reads source documents and rewrites them as prose. Claim-level provenance closes the audit gap: during ingest, a dedicated annotation pass inserts a `^[filename:L-L]` citation marker at the end of each substantive paragraph, mapping the compiled claim to the exact line range in the raw source that supports it. Markers are stored in the page body, validated by lint, and recorded in `audit.db`. In Obsidian they render as interactive chips — one click opens the Source Viewer.
+
+### IngestAgent Pass 4 — `_annotate_citations()`
+
+Called within the Write pass for each page section immediately before it is appended to the page. The LLM receives:
+
+1. The numbered raw source text (lines 1, 2, 3 … N)
+2. The compiled section to annotate
+
+It returns the section with `^[filename:L-L]` markers appended to substantive paragraphs. The result is validated against a sanity check (markers must reference real line numbers in the source). On any failure — LLM error, parse failure, or sanity check — the original un-annotated section is used and the failure is recorded as a `citation_pass4_skipped` audit event. Ingest always completes.
+
+Results are cached by section SHA-256 so re-ingest of unchanged sections does not incur an extra LLM call.
+
+### Sidecar files
+
+To support the Source Viewer in Obsidian, `_write_sidecar()` writes two files to `.synthadoc/extracted/` for every locally ingested source:
+
+| File | Contents | Source types |
+|------|----------|-------------|
+| `<basename>.txt` | Plain UTF-8 extracted text with line numbers preserved | All local file types |
+| `<basename>.pagemap.json` | JSON array mapping line numbers to PDF page numbers | PDF only |
+
+The pagemap enables the "Open PDF at page N →" button in the Source Viewer to resolve a line range to the correct PDF page without re-parsing the document. Web and YouTube sources do not produce sidecars (no stable local path to key on).
+
+### `claim_citations` table
+
+Stored in `audit.db`. Written by `AuditDB.record_claim_citations()` after each annotated page section is saved.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | INTEGER PK | |
+| `page_slug` | TEXT | Wiki page the citation belongs to |
+| `source_file` | TEXT | Basename of the raw source file |
+| `line_start` | INTEGER | First line of the supporting passage |
+| `line_end` | INTEGER | Last line of the supporting passage |
+| `claim_excerpt` | TEXT | First ~100 chars of the annotated paragraph |
+| `ingested_at` | TEXT | UTC ISO-8601 |
+
+### HTTP API
+
+```
+GET /provenance/citations
+  ?page=<slug>        filter by wiki page
+  &source=<filename>  filter by source file
+  &broken=<bool>      return only citations that failed validation
+  &limit=N            page size (default 50)
+  &offset=N           pagination offset
+  &sort=<col>         ingested_at | page_slug | source_file (default: ingested_at)
+  &order=asc|desc     (default: desc)
+```
+
+Response: `{total: int, citations: [CitationRow]}`
+
+### CLI commands
+
+| Command | Description |
+|---|---|
+| `synthadoc audit citations -w <wiki>` | Last 50 citations across the whole wiki |
+| `synthadoc audit citations -w <wiki> --page <slug>` | All citations for one page |
+| `synthadoc audit citations -w <wiki> --broken` | Citations that failed line-range validation |
+
+### Obsidian plugin
+
+**Citation chips (Reading View only):** The Obsidian post-processor transforms `^[filename:L-L]` inline footnote markers into styled chips rendered after the claim. Chips only appear in Reading View (`Ctrl/Cmd+E`) — not in Edit or Live Preview mode.
+
+**Source Viewer modal:** Clicking a chip opens a draggable modal showing the referenced source lines highlighted with ±5 lines of surrounding context. File resolution order:
+
+1. `.synthadoc/extracted/<basename>.txt` — pre-extracted sidecar (all local types)
+2. `raw_sources/<filename>` — direct fallback for plain-text types (`.md`, `.txt`, `.csv`)
+3. Friendly error for binary types (`.xlsx`, etc.) with instructions to open the original
+
+For PDF sources, if the pagemap sidecar exists and the target page is > 1, a **"Open PDF at page N →"** button closes the Source Viewer and opens the PDF at the correct page in Obsidian's native viewer.
+
+**Page Provenance modal (`Synthadoc: View Page Provenance`):** A sortable, paginated table of every citation across the wiki. Columns: Page, Claim, Source, Lines, Ingested. Sort by any column header; filter by slug or source filename. Pagination is pinned below the table and always visible. Click any row to open the Source Viewer for that citation. All cell content can be selected and copied independently of the row-click action.
+
+---
+
 ## Appendix A — Release Feature Index
 
 ### v0.1.0 (Community Edition)
@@ -1730,6 +1936,7 @@ synthadoc context build "early computing pioneers" --output briefing.md
 
 ### v0.5.0 (Community Edition)
 
-- **Adversarial Lint Pass** — concurrent LLM adversarial review of every wiki page after lint runs; results stored as `lint_warnings` in frontmatter; surfaced in redesigned 3-tab `Lint: report` modal (Contradictions / Orphans / Adversarial) and redesigned `synthadoc lint report` CLI output; configured via `[agents].adversarial` in `config.toml`; skipped with `synthadoc lint run --no-adversarial`; cross-model review (e.g. Gemini Flash judging Anthropic-written pages) reduces self-serving bias; concurrent via `asyncio.gather()` — a 100-page wiki completes in the same wall-clock time as one call; rate-limit failures are caught per-page and stored as non-fatal warning entries
+- **Adversarial review** — concurrent independent LLM review of every wiki page after lint runs; flags overstated claims, unsupported assertions, and high-confidence statements the source material does not support; results stored as `lint_warnings: [{claim, concern}]` in page frontmatter; surfaced in redesigned 3-tab `Lint: report` modal (Contradictions / Orphans / Adversarial) and redesigned `synthadoc lint report` CLI output; configured via `[agents].adversarial` and `[lint].adversarial_max_per_page` (default 2) in `config.toml`; skipped with `synthadoc lint run --no-adversarial` (also clears stale warnings); cross-model review — a different model family from the ingest model reduces self-serving bias; concurrent via `asyncio.gather()` — a 100-page wiki completes in the same wall-clock time as one call; per-page rate-limit failures are non-fatal
+- **Claim-level provenance** — during ingest, Pass 4 (`_annotate_citations()`) reads each page section alongside numbered source text and inserts `^[filename:L-L]` inline citation markers at the end of substantive paragraphs; markers map compiled claims to exact source line ranges; stored in the page body, recorded in `audit.db` `claim_citations` table, and validated by lint; local source sidecars written to `.synthadoc/extracted/` (plain-text `.txt` for all file types; pagemap JSON for PDFs to resolve line numbers to PDF page numbers); in Obsidian (Reading View only) markers render as interactive citation chips — one click opens the Source Viewer showing the referenced lines with ±5 lines of context; PDF sources show a page-jump button; `GET /provenance/citations` endpoint powers the **View Page Provenance** modal (sortable, paginated citation table); `synthadoc audit citations` CLI queries the same table with `--page` and `--broken` filters
 - **Routing Obsidian plugin** — `Synthadoc: Routing: manage ROUTING.md...` command palette entry opens a modal panel with three buttons: **Init** creates ROUTING.md from the current index.md branch structure (enabled only when ROUTING.md does not exist), **Validate** reports dangling slugs, **Clean** removes dangling slugs from ROUTING.md; after each action results appear inline
 - **Candidates Staging Obsidian plugin** — `Synthadoc: Staging: manage staging policy...` and `Synthadoc: Candidates: review candidate pages...` command palette entries; Staging modal shows policy state with segmented controls; Candidates modal shows a paginated table with promote/discard bulk and per-row actions

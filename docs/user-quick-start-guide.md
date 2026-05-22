@@ -46,6 +46,7 @@ major engine feature. No setup beyond following the steps below is required.
 ---
 
 <a name="verify-server"></a>
+
 ## Step 1 — Verify the demo server has started
 
 If you ran `synthadoc serve -w history-of-computing` or
@@ -111,6 +112,7 @@ synthadoc use
 ---
 
 <a name="install-plugin"></a>
+
 ## Step 2 — Install the Synthadoc plugin
 
 The plugin ships pre-built — no build step required. Run this command before opening
@@ -128,6 +130,7 @@ That's it for the CLI steps. Now open Obsidian.
 ---
 
 <a name="open-vault"></a>
+
 ## Step 3 — Open the vault in Obsidian
 
 **Obsidian must already be installed** — download from **[obsidian.md](https://obsidian.md)** if not.
@@ -176,6 +179,7 @@ type `Synthadoc`).
 ---
 
 <a name="wiki-structure"></a>
+
 ## Step 4 — Review the wiki structure and key files
 
 Open the vault explorer. The key files and folders:
@@ -218,6 +222,7 @@ nodes. `index` and `dashboard` connect to everything; topic pages cluster by cro
 ---
 
 <a name="query-wiki"></a>
+
 ## Step 5 — Query the pre-built wiki (CLI + Obsidian)
 
 ### CLI queries
@@ -329,6 +334,7 @@ an alias and one is a longer substring of the query, the longer one takes preced
 ---
 
 <a name="batch-ingest"></a>
+
 ## Step 6 — Batch ingest all demo sources
 
 The six source files in `raw_sources/` are designed to demonstrate every ingest scenario:
@@ -390,6 +396,7 @@ synthadoc query "What did Konrad Zuse contribute to computing history?"
 ---
 
 <a name="resolve-contradiction"></a>
+
 ## Step 7 — Resolve a contradiction
 
 After `first-compiler-controversy.pdf` is processed, `wiki/grace-hopper.md` will have:
@@ -448,6 +455,7 @@ Or from Obsidian: Command Palette → `Synthadoc: Lint: run with auto-resolve`.
 ---
 
 <a name="fix-orphan"></a>
+
 ## Step 8 — Fix an orphan page
 
 The pre-built demo wiki includes `wiki/ada-lovelace.md`, but no other page links to it.
@@ -519,6 +527,7 @@ The number of pages cleaned up is shown in the lint output and recorded in `log.
 ---
 
 <a name="adversarial-review"></a>
+
 ## Step 9 — Run the adversarial review
 
 Standard lint validates wiki structure — contradictions, orphan pages, dangling links. The
@@ -543,7 +552,7 @@ first gives the adversarial review more content to work with.
 
 The reviewer flags **up to 2 issues per page by default** (configurable via `adversarial_max_per_page` in `config.toml`) and only flags claims it is highly confident
 about — defensible or nuanced statements are skipped. The full history-of-computing demo
-wiki (10 pre-built pages plus pages created in Step 6) typically produces **10–15 warnings**,
+wiki (13 pre-built pages plus pages created in Step 6) typically produces **10–15 warnings**,
 giving a meaningful but not overwhelming signal.
 
 Sample output for the history-of-computing demo wiki (after Step 6 batch ingest; exact
@@ -584,23 +593,25 @@ Adversarial warnings (3):
 
 Each adversarial warning has two parts:
 
-| Field | Meaning |
-|---|---|
-| **Claim** | The exact sentence or phrase flagged as potentially problematic |
-| **Concern** | Why the adversarial reviewer flagged it — the specific doubt |
+
+| Field       | Meaning                                                         |
+| ----------- | --------------------------------------------------------------- |
+| **Claim**   | The exact sentence or phrase flagged as potentially problematic |
+| **Concern** | Why the adversarial reviewer flagged it — the specific doubt   |
 
 The adversarial LLM is deliberately skeptical. Not every warning requires action — some claims
 are defensible with context the LLM does not have. Read each concern before deciding what to do.
 
 ### What to do with a warning
 
-| Situation | Action |
-|---|---|
-| Claim is accurate, concern is addressed by other pages | Do nothing — the wiki is fine |
-| Claim is a genuine overstatement | Edit the page in Obsidian and soften the language |
-| Source has been updated since last ingest | Re-ingest with `--force` to bypass dedup: `synthadoc ingest <file> --force` |
-| Claim needs a counterbalancing perspective | Ingest a different source: `synthadoc ingest <other-source>` |
-| Page quality is poor overall | Delete the page and re-ingest: `synthadoc ingest <new-source>` |
+
+| Situation                                              | Action                                                                     |
+| ------------------------------------------------------ | -------------------------------------------------------------------------- |
+| Claim is accurate, concern is addressed by other pages | Do nothing — the wiki is fine                                             |
+| Claim is a genuine overstatement                       | Edit the page in Obsidian and soften the language                          |
+| Source has been updated since last ingest              | Re-ingest with`--force` to bypass dedup: `synthadoc ingest <file> --force` |
+| Claim needs a counterbalancing perspective             | Ingest a different source:`synthadoc ingest <other-source>`                |
+| Page quality is poor overall                           | Delete the page and re-ingest:`synthadoc ingest <new-source>`              |
 
 > **Re-ingesting the same unchanged source won't fix an overstatement.** The LLM will read
 > the same text and likely produce the same claim. For overstatements, edit the page directly
@@ -682,6 +693,7 @@ same-model review to miss systematic errors.
 ---
 
 <a name="web-search-ingest"></a>
+
 ## Step 10 — Web search ingestion
 
 > **Requires `TAVILY_API_KEY`** — see [Appendix D](#appendix-d--tavily-web-search-key).
@@ -759,7 +771,7 @@ synthadoc ingest --file sources.txt
 
 ### Web search from Obsidian — live view
 
-Open the Command Palette → `Synthadoc: Ingest: web search...`:
+Open the Command Palette → `Synthadoc: Ingest... → web search tab`:
 
 1. Type a topic — e.g. `Linus Torvalds Linux kernel creation 1991`
 2. Set **Max results** (1–50, default 20) to control scope
@@ -782,6 +794,7 @@ The modal prepends `search for:` automatically — just type the topic, no prefi
 ---
 
 <a name="youtube-ingest"></a>
+
 ## Step 11 — Ingest a YouTube video
 
 Pass any YouTube URL directly — the transcript is extracted automatically from the
@@ -820,6 +833,7 @@ synthadoc jobs list
 ---
 
 <a name="scaffold"></a>
+
 ## Step 12 — Enrich the wiki with scaffold
 
 After batch ingest, the wiki has grown from 10 pre-built pages to 12 or more. **Scaffold**
@@ -891,6 +905,7 @@ the whole file as before.
 ---
 
 <a name="audit"></a>
+
 ## Step 13 — Audit features
 
 The `synthadoc audit` commands query the append-only `audit.db` — no `sqlite3` required.
@@ -935,6 +950,8 @@ synthadoc audit queries
 Shows recent questions asked, how many sub-questions each was decomposed into, token
 usage, and per-query cost. Especially useful after running the compound queries in Step 5.
 
+![synthadoc audit queries — query history table showing questions, sub-question count, tokens, and cost](png/audit-queries.png)
+
 ### Audit events
 
 ```bash
@@ -955,6 +972,7 @@ Records every contradiction detection, auto-resolution, and cost gate trigger.
 ---
 
 <a name="scheduling"></a>
+
 ## Step 14 — Scheduling recurring operations
 
 Hooks react to events that already happened. The scheduler goes the other direction —
@@ -1010,6 +1028,7 @@ synthadoc schedule remove sched-c9f3e201
 ---
 
 <a name="routing"></a>
+
 ## Step 15 — Set up ROUTING.md — scoped search
 
 As your wiki grows, BM25 searches the full corpus for every query. **ROUTING.md** groups pages
@@ -1081,6 +1100,7 @@ New pages created by ingest are auto-placed into the most appropriate branch.
 ---
 
 <a name="staging"></a>
+
 ## Step 16 — Configure candidates staging
 
 By default, every ingested source that produces a new page writes it directly to `wiki/`.
@@ -1162,6 +1182,7 @@ Or from Obsidian: `Synthadoc: Staging: manage staging policy...` → select **Of
 ---
 
 <a name="context-pack"></a>
+
 ## Step 17 — Build a context pack
 
 A **context pack** is a token-bounded evidence bundle assembled from the wiki. It decomposes your goal into sub-questions, runs parallel BM25 searches across the wiki, and packs the highest-scoring excerpts into a single cited Markdown document within a token budget.
@@ -1243,13 +1264,14 @@ context_token_budget = 6000
 ---
 
 <a name="claim-provenance"></a>
+
 ## Step 18 — Establish claim-level provenance
 
 Every compiled wiki page is a synthesis — the LLM draws on source text and rewrites it as prose. **Claim-level provenance** closes the audit gap: during ingest, a dedicated annotation pass inserts a `^[filename:L-L]` citation marker at the end of each substantive paragraph, mapping the compiled claim to the exact line range in the raw source that supports it. Markers are stored in the page body, validated by lint, and recorded in the audit database. In Obsidian they render as interactive chips — one click opens the Source Viewer, showing the referenced lines with surrounding context. For PDF sources, a pagemap sidecar resolves the line number to the correct page for direct navigation.
 
 ### Re-ingest sources to generate citations
 
-Citation markers are injected during ingest. The demo wiki pages were built before this feature existed, so they do not have markers yet. To annotate them you need to re-ingest the raw source files — but because the files have not changed, the normal dedup check would skip them. The **Force re-ingest** option bypasses the duplicate check so every file runs through the full pipeline including the citation annotation pass, regardless of whether it was previously ingested.
+Citation markers are injected during ingest. The demo wiki ships with pre-compiled page stubs — static content that was never run through the annotation pass. When you ran Step 6, Synthadoc annotated only the sections it synthesised during that run; the pre-built stub content was not touched. To get full citation coverage across the entire page, you need to re-synthesise from scratch — but because the source files have not changed since Step 6, the normal dedup check would skip them. The **Force re-ingest** option bypasses the duplicate check so every file runs through the full pipeline including the citation annotation pass, regardless of whether it was previously ingested.
 
 **From the Obsidian plugin (recommended):**
 
@@ -1330,10 +1352,10 @@ All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synt
 ### Ingest
 
 
-| Command                            | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Synthadoc: Ingest...`             | Tabbed modal with four ingest modes: **From URL** (paste a URL, polls live until complete), **All sources in folder** (queues every supported file in `raw_sources/`), **Pick files** (click **Browse…** to choose a folder, click **Scan** to list supported files — `wiki/` sub-folder contents and system files such as `log.md`, `routing.md`, `agents.md`, `readme.md`, `dashboard.md`, `index.md`, `overview.md`, and `claude.md` are excluded automatically with a count shown — then select files and click **Ingest selected**), and **Web search** (type a topic, set max results and poll interval, polls live). |
-| `Synthadoc: Ingest: web search...` | Standalone live-polling modal — type a topic, set max results (1–50, default 20) and poll interval (500–10000 ms, default 2000 ms). Shows phase text, live pages list, and URL errors as fan-out jobs complete. `Ctrl/Cmd+Enter` to submit.                                                                                                                                                                                                                |
+| Command                            | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Synthadoc: Ingest...`             | Tabbed modal with four ingest modes:**From URL** (paste a URL, polls live until complete), **All sources in folder** (queues every supported file in `raw_sources/`), **Pick files** (click **Browse…** to choose a folder, click **Scan** to list supported files — `wiki/` sub-folder contents and system files such as `log.md`, `routing.md`, `agents.md`, `readme.md`, `dashboard.md`, `index.md`, `overview.md`, and `claude.md` are excluded automatically with a count shown — then select files and click **Ingest selected**), and **Web search** (type a topic, set max results and poll interval, polls live). |
+| `Synthadoc: Ingest: web search...` | Standalone live-polling modal — type a topic, set max results (1–50, default 20) and poll interval (500–10000 ms, default 2000 ms). Shows phase text, live pages list, and URL errors as fan-out jobs complete.`Ctrl/Cmd+Enter` to submit.                                                                                                                                                                                                                                                                                                                                                                                 |
 
 ### Query
 
@@ -1345,17 +1367,17 @@ All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synt
 ### Lint
 
 
-| Command                   | What it does                                                                                                                                                                                                             |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `Synthadoc: Lint: run...` | Modal with **Auto-resolve** and **Skip adversarial review** checkboxes. Runs a full lint pass with concurrent adversarial review of every page; polls progress live and reports contradiction, orphan, and adversarial warning counts when complete. Tick **Skip adversarial review** to run lint without the adversarial pass (also clears existing `lint_warnings`). |
-| `Synthadoc: Lint: report` | Full lint report in a 3-tab modal — **Contradictions**, **Orphans**, and **Adversarial**. The Adversarial tab shows each flagged claim with its concern and suggested re-ingest commands derived from the page's source files. |
+| Command                   | What it does                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Synthadoc: Lint: run...` | Modal with**Auto-resolve** and **Skip adversarial review** checkboxes. Runs a full lint pass with concurrent adversarial review of every page; polls progress live and reports contradiction, orphan, and adversarial warning counts when complete. Tick **Skip adversarial review** to run lint without the adversarial pass (also clears existing `lint_warnings`). |
+| `Synthadoc: Lint: report` | Full lint report in a 3-tab modal —**Contradictions**, **Orphans**, and **Adversarial**. The Adversarial tab shows each flagged claim with its concern and suggested re-ingest commands derived from the page's source files.                                                                                                                                        |
 
 ### Jobs
 
 
-| Command                | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Synthadoc: Jobs...`   | Job table with status-filter checkboxes (pending, in_progress, completed, failed, skipped, dead, cancelled). Defaults to newest jobs first. Click **Status**, **Operation**, or **Created** column headers to sort — ▲ ascending, ▼ descending, ⇅ unsorted; click again to toggle direction. Auto-refreshes every 10 s (configurable). Paginated at 25 per page. Error details shown inline for failed/dead/cancelled jobs. **Retry selected** button is enabled when one or more checked jobs are failed, dead, or cancelled — click to re-queue them. **Delete selected** removes checked terminal jobs. A **Purge old jobs** footer row lets you enter a day threshold and remove old completed/dead records in one click. |
+| Command              | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Synthadoc: Jobs...` | Job table with status-filter checkboxes (pending, in_progress, completed, failed, skipped, dead, cancelled). Defaults to newest jobs first. Click**Status**, **Operation**, or **Created** column headers to sort — ▲ ascending, ▼ descending, ⇅ unsorted; click again to toggle direction. Auto-refreshes every 10 s (configurable). Paginated at 25 per page. Error details shown inline for failed/dead/cancelled jobs. **Retry selected** button is enabled when one or more checked jobs are failed, dead, or cancelled — click to re-queue them. **Delete selected** removes checked terminal jobs. A **Purge old jobs** footer row lets you enter a day threshold and remove old completed/dead records in one click. |
 
 > **Tip — cancelling a bad batch:** `synthadoc jobs cancel -w <wiki> --yes` marks every
 > pending job as `skipped` immediately. Follow up with `synthadoc jobs purge` to remove
@@ -1370,31 +1392,32 @@ All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synt
 
 ### Audit
 
-| Command               | What it does                                                                                                                                                                                                                                                                                          |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Synthadoc: Audit...` | Tabbed modal with four views: **Query history** — recent questions, sub-question counts, tokens, cost per query. **Ingest history** — source file, wiki page slug, tokens, cost, timestamp. **Events** — contradictions found, auto-resolutions, cost gate triggers (max 1000). **Cost summary** — total tokens + USD with daily breakdown. |
+
+| Command               | What it does                                                                                                                                                                                                                                                                                                                                   |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Synthadoc: Audit...` | Tabbed modal with four views:**Query history** — recent questions, sub-question counts, tokens, cost per query. **Ingest history** — source file, wiki page slug, tokens, cost, timestamp. **Events** — contradictions found, auto-resolutions, cost gate triggers (max 1000). **Cost summary** — total tokens + USD with daily breakdown. |
 
 ### Routing
 
 
-| Command                                    | What it does                                                                                                                                                                                                                                                                                                                                              |
-| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Synthadoc: Routing: manage ROUTING.md...` | Modal panel with three buttons. **Init** creates `ROUTING.md` from your current `index.md` branch structure (enabled only when `ROUTING.md` does not exist). **Validate** reports dangling slugs — pages listed in `ROUTING.md` that no longer exist — as a dry-run with no changes made (enabled only when `ROUTING.md` exists). **Clean** removes dangling slugs from `ROUTING.md` and refreshes the preview (enabled only when `ROUTING.md` exists). Results show per-entry `[Branch] [[slug]]` detail rows inline. |
+| Command                                    | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Synthadoc: Routing: manage ROUTING.md...` | Modal panel with three buttons.**Init** creates `ROUTING.md` from your current `index.md` branch structure (enabled only when `ROUTING.md` does not exist). **Validate** reports dangling slugs — pages listed in `ROUTING.md` that no longer exist — as a dry-run with no changes made (enabled only when `ROUTING.md` exists). **Clean** removes dangling slugs from `ROUTING.md` and refreshes the preview (enabled only when `ROUTING.md` exists). Results show per-entry `[Branch] [[slug]]` detail rows inline. |
 
 ### Staging & Candidates
 
 
-| Command                                          | What it does                                                                                                                                                                                                                                                                                                  |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Synthadoc: Staging: manage staging policy...`   | Shows the current policy in plain language. A segmented control switches between **Off**, **All**, and **Threshold**. When **Threshold** is selected, a second control sets the minimum confidence (**High** / **Medium** / **Low**). **Save** applies the change immediately. A footer link opens the Candidates panel. |
-| `Synthadoc: Candidates: review candidate pages...` | Paginated table (50 per page) of all staged candidate pages. Each row shows the slug, colour-coded confidence badge, and ingest timestamp. Check rows and click **Promote Selected** or **Discard Selected**, or use **Promote All** / **Discard All** to act on every candidate at once. Table reloads after each action. A footer link opens the Staging policy panel. |
+| Command                                            | What it does                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Synthadoc: Staging: manage staging policy...`     | Shows the current policy in plain language. A segmented control switches between**Off**, **All**, and **Threshold**. When **Threshold** is selected, a second control sets the minimum confidence (**High** / **Medium** / **Low**). **Save** applies the change immediately. A footer link opens the Candidates panel.                                                 |
+| `Synthadoc: Candidates: review candidate pages...` | Paginated table (50 per page) of all staged candidate pages. Each row shows the slug, colour-coded confidence badge, and ingest timestamp. Check rows and click**Promote Selected** or **Discard Selected**, or use **Promote All** / **Discard All** to act on every candidate at once. Table reloads after each action. A footer link opens the Staging policy panel. |
 
 ### Context packs
 
 
-| Command                                    | What it does                                                                                                                                                                                                                                                                                                                                              |
-| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Synthadoc: Context: build context pack...` | Enter a goal or question and a token budget (default 4000). Press **Build Context Pack** or `Ctrl/Cmd+Enter`. The server decomposes the goal, retrieves the most relevant wiki pages via BM25, and packs them into a single cited Markdown document within the budget. The result appears in a read-only text area. **Copy to Clipboard** copies it to the OS clipboard; **Save as .md** downloads it as a Markdown file. |
+| Command                                     | What it does                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Synthadoc: Context: build context pack...` | Enter a goal or question and a token budget (default 4000). Press**Build Context Pack** or `Ctrl/Cmd+Enter`. The server decomposes the goal, retrieves the most relevant wiki pages via BM25, and packs them into a single cited Markdown document within the budget. The result appears in a read-only text area. **Copy to Clipboard** copies it to the OS clipboard; **Save as .md** downloads it as a Markdown file. |
 
 > **UX note:** All modals are draggable and support full text selection and copy-paste.
 
@@ -1461,16 +1484,16 @@ Synthadoc defaults to **Gemini Flash** — free, no credit card, 1 million token
 Switch by editing `<wiki-root>/.synthadoc/config.toml` and restarting the server.
 
 
-| Provider    | Env var             | Free tier                                    | Vision          |
-| ----------- | ------------------- | -------------------------------------------- | --------------- |
-| `gemini`    | `GEMINI_API_KEY`    | **Yes — default** · 15 RPM / 1M tokens/day | Yes             |
-| `groq`      | `GROQ_API_KEY`      | Yes — fast Llama, 100K tokens/day           | No              |
-| `ollama`    | _(none)_            | Yes — fully local, no rate limits           | Model-dependent |
-| `minimax`   | `MINIMAX_API_KEY`   | No — cheapest paid text rates               | No              |
-| `anthropic`   | `ANTHROPIC_API_KEY` | No — highest quality, pay-per-token                   | Yes             |
-| `openai`      | `OPENAI_API_KEY`    | No — pay-per-token                                    | Yes             |
-| `claude-code` | _(none)_            | Yes — uses your Claude Code subscription, no key      | Yes             |
-| `opencode`    | _(none)_            | Yes — uses your Opencode subscription, no key         | No              |
+| Provider      | Env var             | Free tier                                         | Vision          |
+| ------------- | ------------------- | ------------------------------------------------- | --------------- |
+| `gemini`      | `GEMINI_API_KEY`    | **Yes — default** · 15 RPM / 1M tokens/day      | Yes             |
+| `groq`        | `GROQ_API_KEY`      | Yes — fast Llama, 100K tokens/day                | No              |
+| `ollama`      | _(none)_            | Yes — fully local, no rate limits                | Model-dependent |
+| `minimax`     | `MINIMAX_API_KEY`   | No — cheapest paid text rates                    | No              |
+| `anthropic`   | `ANTHROPIC_API_KEY` | No — highest quality, pay-per-token              | Yes             |
+| `openai`      | `OPENAI_API_KEY`    | No — pay-per-token                               | Yes             |
+| `claude-code` | _(none)_            | Yes — uses your Claude Code subscription, no key | Yes             |
+| `opencode`    | _(none)_            | Yes — uses your Opencode subscription, no key    | No              |
 
 > CLI providers (`claude-code`, `opencode`) require no API key but need the tool installed and authenticated in your terminal. Web search still requires `TAVILY_API_KEY`. See [Appendix G](#appendix-g--using-a-coding-tool-as-your-llm-provider) for setup details.
 
