@@ -648,9 +648,9 @@ glance without reading every line.
 > `Synthadoc: Lint: run...` and tick **Skip adversarial review**. This also clears any
 > existing `lint_warnings` from frontmatter so stale warnings do not linger.
 
-### Optional — appoint a dedicated judge model
+### Optional — adjust the warning cap
 
-**Adjust the warning cap per page** — the default is 2, set in your wiki's `config.toml`:
+By default the adversarial reviewer flags at most 2 issues per page. Raise the cap for a thorough audit; lower it to reduce noise on large wikis:
 
 ```toml
 # config.toml
@@ -660,11 +660,13 @@ adversarial_max_per_page = 2  # raise to 3–5 for a deeper review; lower to 1 f
 
 If `[lint]` is absent from `config.toml`, Synthadoc defaults to 2 — no file change needed.
 
-**Appoint a dedicated judge model** — by default the adversarial review shares the lint model.
-The most effective configuration is a *different provider entirely*: a model from a distinct
-family, trained on different data with different inductive biases, will surface blind spots and
-challenge assumptions that the primary model would systematically miss. Same-model
-self-review has limited value; cross-model review does not:
+### Optional — appoint a dedicated judge model
+
+By default the adversarial review shares the lint model. The most effective configuration is a
+*different provider entirely*: a model from a distinct family, trained on different data with
+different inductive biases, will surface blind spots and challenge assumptions that the primary
+model would systematically miss. Same-model self-review has limited value; cross-model review
+does not:
 
 ```toml
 # config.toml
