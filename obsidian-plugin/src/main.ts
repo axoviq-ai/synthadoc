@@ -2819,6 +2819,7 @@ class SourceViewerModal extends Modal {
     ) { super(app); }
 
     onOpen() {
+        this.modalEl.style.width = "clamp(700px, 75vw, 1060px)";
         const fs = (window as any).require("fs") as typeof import("fs");
         const { contentEl } = this;
         contentEl.empty();
@@ -2836,7 +2837,7 @@ class SourceViewerModal extends Modal {
             const start = Math.max(0, this.lineStart - 1 - CONTEXT_LINES);
             const end = Math.min(lines.length, this.lineEnd + CONTEXT_LINES);
             const pre = contentEl.createEl("pre");
-            pre.style.cssText = "overflow:auto;max-height:400px;font-size:12px;line-height:1.5";
+            pre.style.cssText = "overflow:auto;max-height:60vh;font-size:12px;line-height:1.5";
             for (let i = start; i < end; i++) {
                 const lineNum = i + 1;
                 const span = pre.createEl("div");
@@ -2854,11 +2855,11 @@ class SourceViewerModal extends Modal {
                 const pdfName = this.filename.endsWith(".txt")
                     ? this.filename.replace(/\.txt$/, ".pdf")
                     : this.filename;
-                const pdfPath = `${this.wikiRoot}/${RAW_SOURCES_DIR}/${pdfName}`;
                 const btn = contentEl.createEl("button", { text: `Open PDF at page ${pdfPage} →` });
                 btn.style.cssText = "margin-top:12px;cursor:pointer";
                 btn.addEventListener("click", () => {
-                    this.app.workspace.openLinkText(`${pdfPath}#page=${pdfPage}`, "", true);
+                    // openLinkText needs a vault-relative path, not an absolute filesystem path.
+                    this.app.workspace.openLinkText(`${RAW_SOURCES_DIR}/${pdfName}#page=${pdfPage}`, "", true);
                 });
                 contentEl.createEl("p", {
                     text: "Line numbers refer to extracted text. The PDF page shown is the closest match.",
