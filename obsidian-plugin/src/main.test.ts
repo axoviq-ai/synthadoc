@@ -8,13 +8,15 @@ import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 vi.mock("obsidian", () => ({
     Plugin: class {
         app: any;
-        addCommand    = vi.fn();
-        addRibbonIcon = vi.fn();
-        addSettingTab = vi.fn();
-        loadData      = vi.fn().mockResolvedValue({});
-        saveData      = vi.fn().mockResolvedValue(undefined);
+        addCommand                   = vi.fn();
+        addRibbonIcon                = vi.fn();
+        addSettingTab                = vi.fn();
+        loadData                     = vi.fn().mockResolvedValue({});
+        saveData                     = vi.fn().mockResolvedValue(undefined);
+        registerMarkdownPostProcessor = vi.fn();
         constructor(app?: any) { this.app = app; }
     },
+    FileSystemAdapter: class {},
     PluginSettingTab: class {
         app: any; plugin: any;
         containerEl = { empty: vi.fn(), createEl: vi.fn().mockReturnValue({ style: {}, setText: vi.fn() }) };
@@ -256,7 +258,7 @@ describe("IngestModal All-sources tab", () => {
 });
 
 describe("SynthadocPlugin command registration", () => {
-    it("registers all 17 expected command IDs on onload", async () => {
+    it("registers all expected command IDs on onload", async () => {
         const { default: SynthadocPlugin } = await import("./main");
         const plugin = new SynthadocPlugin();
         await plugin.onload();
@@ -274,6 +276,7 @@ describe("SynthadocPlugin command registration", () => {
             "synthadoc-staging",
             "synthadoc-candidates",
             "synthadoc-context",
+            "view-page-provenance",
         ];
         for (const id of expected) {
             expect(ids).toContain(id);
@@ -522,13 +525,15 @@ async function getModal(commandId: string, appOverride?: any): Promise<{ ModalCl
     vi.doMock("obsidian", () => ({
         Plugin: class {
             app: any;
-            addCommand    = vi.fn();
-            addRibbonIcon = vi.fn();
-            addSettingTab = vi.fn();
-            loadData      = vi.fn().mockResolvedValue({});
-            saveData      = vi.fn().mockResolvedValue(undefined);
+            addCommand                    = vi.fn();
+            addRibbonIcon                 = vi.fn();
+            addSettingTab                 = vi.fn();
+            loadData                      = vi.fn().mockResolvedValue({});
+            saveData                      = vi.fn().mockResolvedValue(undefined);
+            registerMarkdownPostProcessor = vi.fn();
             constructor(app?: any) { this.app = app; }
         },
+        FileSystemAdapter: class {},
         PluginSettingTab: class {
             app: any; plugin: any;
             containerEl = { empty: vi.fn(), createEl: vi.fn().mockReturnValue({ style: {}, setText: vi.fn() }) };

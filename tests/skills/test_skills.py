@@ -329,7 +329,7 @@ async def test_pdf_skill_cjk_fallback(tmp_path, monkeypatch):
 
     # Simulate pypdf returning nearly nothing (typical CJK font failure)
     def fake_pypdf(self, source):
-        return ("x", 5)  # 1 char for 5 pages — below threshold
+        return ("x", 5, {1: 1})  # 1 char for 5 pages — below threshold
 
     monkeypatch.setattr(PdfSkill, "_extract_pypdf", fake_pypdf)
 
@@ -351,7 +351,7 @@ async def test_pdf_skill_no_fallback_when_pypdf_succeeds(tmp_path, monkeypatch):
     from synthadoc.skills.pdf.scripts.main import PdfSkill
 
     def fake_pypdf(self, source):
-        return ("A" * 500, 3)  # well above threshold
+        return ("A" * 500, 3, {1: 1})  # well above threshold
 
     monkeypatch.setattr(PdfSkill, "_extract_pypdf", fake_pypdf)
 
@@ -586,7 +586,7 @@ async def test_pdf_skill_pdfminer_fallback_used_for_low_yield(tmp_path):
 
     skill = PdfSkill()
     # Simulate pypdf returning sparse text (below threshold) for a 2-page doc
-    with patch.object(skill, "_extract_pypdf", return_value=("ab", 2)), \
+    with patch.object(skill, "_extract_pypdf", return_value=("ab", 2, {1: 1})), \
          patch.object(skill, "_extract_pdfminer", return_value="full pdfminer text") as mock_pm:
         result = await skill.extract("dummy.pdf")
     mock_pm.assert_called_once()
@@ -601,7 +601,7 @@ async def test_pdf_skill_pdfminer_fallback_skipped_when_not_better(tmp_path):
 
     skill = PdfSkill()
     good_text = "x" * 200
-    with patch.object(skill, "_extract_pypdf", return_value=(good_text, 2)), \
+    with patch.object(skill, "_extract_pypdf", return_value=(good_text, 2, {1: 1})), \
          patch.object(skill, "_extract_pdfminer", return_value="short") as mock_pm:
         result = await skill.extract("dummy.pdf")
     mock_pm.assert_not_called()

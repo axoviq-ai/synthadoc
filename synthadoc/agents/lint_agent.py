@@ -6,10 +6,15 @@ import asyncio
 import json as _json
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.log import AuditDB, LogWriter
 from synthadoc.storage.wiki import WikiStorage
+
+if TYPE_CHECKING:
+    from synthadoc.storage.wiki import WikiPage
 
 
 @dataclass
@@ -21,9 +26,12 @@ class LintReport:
     dangling_links_removed: int = 0
     tokens_used: int = 0
     adversarial_warnings: list[dict] = field(default_factory=list)
+    citation_issues: list[dict] = field(default_factory=list)
 
 
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
+_CITATION_BODY_RE = re.compile(r'\^\[([^\]:]+):(\d+)-(\d+)\]')
+_MALFORMED_CITE_RE = re.compile(r'\^\[[^\]]*\]')
 
 # Auto-generated / directory pages whose outbound links must NOT count as real
 # references.  A page linked only from index/overview/dashboard is still an
@@ -41,6 +49,53 @@ LINT_SKIP_SLUGS: frozenset[str] = frozenset(
 # Matches a list item whose first significant content is a single wikilink,
 # e.g. "- [[some-slug]] — description" or "* [[slug]]"
 _LIST_LINK_RE = re.compile(r"^\s*[-*+]\s+\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
+
+
+def _check_page_citations(
+    slug: str, page: WikiPage, extracted_dir: Path
+) -> list[dict]:
+    """Return list of {slug, citation, reason} for each invalid citation in page body.
+
+    Three failure reasons:
+    - malformed: ^[...] marker missing L-L range, or line_start > line_end, or line_start < 1
+    - broken_ref: filename not listed in page.sources[]
+    - out_of_range: line_end exceeds actual line count of the extracted .txt file
+    """
+    source_basenames = {Path(s.file).name for s in (page.sources or [])}
+    issues: list[dict] = []
+    seen_citations: set[str] = set()
+
+    for m in _CITATION_BODY_RE.finditer(page.content or ""):
+        filename, raw_start, raw_end = m.group(1), m.group(2), m.group(3)
+        line_start, line_end = int(raw_start), int(raw_end)
+        citation = m.group(0)
+        seen_citations.add(citation)
+
+        if line_start > line_end or line_start < 1:
+            issues.append({"slug": slug, "citation": citation, "reason": "malformed"})
+            continue
+
+        if filename not in source_basenames:
+            issues.append({"slug": slug, "citation": citation, "reason": "broken_ref"})
+            continue
+
+        # Check line range against extracted .txt if available
+        txt_path = Path(extracted_dir) / filename
+        if txt_path.exists():
+            try:
+                line_count = txt_path.read_text(encoding="utf-8").count("\n") + 1
+                if line_end > line_count:
+                    issues.append({"slug": slug, "citation": citation, "reason": "out_of_range"})
+            except OSError:
+                pass
+
+    # Catch malformed ^[...] without a valid L-L pattern (not matched by _CITATION_BODY_RE)
+    for m in _MALFORMED_CITE_RE.finditer(page.content or ""):
+        citation = m.group(0)
+        if citation not in seen_citations:
+            issues.append({"slug": slug, "citation": citation, "reason": "malformed"})
+
+    return issues
 
 
 def _fix_dangling_wikilinks(content: str, existing_slugs: set[str]) -> str:
@@ -281,6 +336,22 @@ class LintAgent:
                 if page and page.orphan != (slug in orphan_set):
                     page.orphan = slug in orphan_set
                     self._store.write_page(slug, page)
+
+        # Check 5: citation validation (pure regex + file-stat, no LLM)
+        if scope == "all":
+            wiki_root = self._store._root.parent
+            extracted_dir = wiki_root / ".synthadoc" / "extracted"
+            for slug in [s for s in slugs if s not in LINT_SKIP_SLUGS]:
+                page = self._store.read_page(slug)
+                if not page:
+                    continue
+                issues = _check_page_citations(slug, page, extracted_dir)
+                for issue in issues:
+                    report.citation_issues.append(issue)
+                    if self._audit:
+                        await self._audit.record_audit_event(
+                            job_id, "citation_validation_failed", issue,
+                        )
 
         # adversarial pass — runs only on full scope; default on
         if scope == "all":

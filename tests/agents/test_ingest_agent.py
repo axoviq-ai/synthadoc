@@ -1156,6 +1156,11 @@ async def test_ingest_adds_slug_to_routing(tmp_wiki):
             text='{"reasoning":"new topic","action":"create","target":"","new_slug":"grace-hopper","update_content":"","page_content":""}',
             input_tokens=100, output_tokens=50,
         ),
+        # Pass 4: citation annotation — body falls back to raw text (no page_content given)
+        CompletionResponse(
+            text="# Grace Hopper\n\nGrace Hopper pioneered compiler development. ^[grace-hopper.md:1-1]",
+            input_tokens=20, output_tokens=10,
+        ),
         CompletionResponse(text="People", input_tokens=10, output_tokens=5),
         CompletionResponse(text="Overview text.", input_tokens=10, output_tokens=5),
     ]
@@ -1207,5 +1212,337 @@ async def test_ingest_no_routing_path_skips_routing(tmp_wiki):
     result = await agent.ingest(str(source))
 
     assert "ada-lovelace" in result.pages_created
-    # Provider was called for analysis + decision + overview (not branch pick)
-    assert provider.complete.call_count == 3
+    # Provider was called for analysis + decision + Pass 4 citation + overview (not branch pick)
+    assert provider.complete.call_count == 4
+
+
+# ── Pass 4: citation annotation ───────────────────────────────────────────────
+
+async def _make_agent_async(tmp_wiki, provider):
+    """Async helper: build a fully-wired IngestAgent with wiki_root set."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
+    await audit.init()
+    await cache.init()
+    return store, audit, IngestAgent(
+        provider=provider, store=store, search=search,
+        log_writer=log, audit_db=audit, cache=cache,
+        max_pages=15, wiki_root=tmp_wiki,
+    )
+
+
+@pytest.fixture
+async def db(tmp_wiki):
+    """Return an initialised AuditDB for the tmp_wiki."""
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+    return audit
+
+
+@pytest.mark.asyncio
+async def test_pass4_annotates_page_content(tmp_wiki):
+    """Pass 4 LLM call annotates page_content with ^[source:L-L] markers on CREATE."""
+    import itertools
+    from unittest.mock import AsyncMock, patch
+    from synthadoc.providers.base import CompletionResponse
+
+    provider = AsyncMock()
+    analyse_resp = CompletionResponse(
+        text='{"entities":["Ada Lovelace"],"tags":["computing"],"summary":"Ada Lovelace was the first programmer.","relevant":true}',
+        input_tokens=50, output_tokens=20)
+    decision_resp = CompletionResponse(
+        text='{"reasoning":"new topic","action":"create","target":"","new_slug":"ada-lovelace",'
+             '"update_content":"","page_content":"# Ada Lovelace\\n\\nAda Lovelace was the first programmer."}',
+        input_tokens=80, output_tokens=40)
+    citation_resp = CompletionResponse(
+        text="# Ada Lovelace\n\nAda Lovelace was the first programmer. ^[ada.md:1-2]",
+        input_tokens=30, output_tokens=15)
+    overview_resp = CompletionResponse(
+        text="Wiki overview.", input_tokens=10, output_tokens=5)
+
+    provider.complete = AsyncMock(side_effect=itertools.cycle(
+        [analyse_resp, decision_resp, citation_resp, overview_resp]))
+
+    store, audit, agent = await _make_agent_async(tmp_wiki, provider)
+    source = tmp_wiki / "raw_sources" / "ada.md"
+    source.write_text("Ada Lovelace was the first programmer.", encoding="utf-8")
+
+    result = await agent.ingest(str(source))
+
+    assert result.pages_created
+    slug = result.pages_created[0]
+    page = store.read_page(slug)
+    assert page is not None
+    assert "^[" in page.content, f"Expected citation marker in page content, got: {page.content!r}"
+
+
+@pytest.mark.asyncio
+async def test_pass4_failure_does_not_fail_ingest(tmp_wiki):
+    """If Pass 4 raises an exception, ingest still succeeds and records citation_pass4_skipped."""
+    import itertools
+    from unittest.mock import AsyncMock, patch
+    from synthadoc.providers.base import CompletionResponse
+
+    call_count = 0
+
+    async def flaky_complete(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        responses = [
+            # analyse
+            CompletionResponse(
+                text='{"entities":["AI"],"tags":["ml"],"summary":"AI topic.","relevant":true}',
+                input_tokens=50, output_tokens=20),
+            # decision
+            CompletionResponse(
+                text='{"reasoning":"new","action":"create","target":"","new_slug":"ai-topic","update_content":"","page_content":"# AI\\n\\nArtificial intelligence."}',
+                input_tokens=80, output_tokens=40),
+        ]
+        if call_count <= 2:
+            return responses[call_count - 1]
+        # Pass 4 call: raise an exception
+        raise RuntimeError("LLM unavailable")
+
+    provider = AsyncMock()
+    provider.complete = AsyncMock(side_effect=flaky_complete)
+
+    store, audit, agent = await _make_agent_async(tmp_wiki, provider)
+    source = tmp_wiki / "raw_sources" / "ai.md"
+    source.write_text("Artificial intelligence is a broad field.", encoding="utf-8")
+
+    with patch.object(IngestAgent, "_update_overview", AsyncMock()):
+        result = await agent.ingest(str(source))
+
+    assert not result.skipped
+    assert result.pages_created
+
+    events = await audit.list_events()
+    assert any(e["event"] == "citation_pass4_skipped" for e in events), \
+        f"Expected citation_pass4_skipped event, got: {[e['event'] for e in events]}"
+
+
+@pytest.mark.asyncio
+async def test_pass4_only_annotates_update_content(tmp_wiki):
+    """For an UPDATE action, only the new update_content is annotated; existing body unchanged."""
+    import itertools
+    from unittest.mock import AsyncMock, patch
+    from synthadoc.providers.base import CompletionResponse
+
+    provider = AsyncMock()
+    analyse_resp = CompletionResponse(
+        text='{"entities":["Alan Turing"],"tags":["history"],"summary":"Turing info.","relevant":true}',
+        input_tokens=50, output_tokens=20)
+    decision_resp = CompletionResponse(
+        text='{"reasoning":"adds info","action":"update","target":"alan-turing",'
+             '"new_slug":"","update_content":"## Enigma\\n\\nTuring broke Enigma.","page_content":""}',
+        input_tokens=80, output_tokens=40)
+    citation_resp = CompletionResponse(
+        text="## Enigma\n\nTuring broke Enigma. ^[enigma.md:1-1]",
+        input_tokens=30, output_tokens=15)
+    overview_resp = CompletionResponse(
+        text="Wiki overview.", input_tokens=10, output_tokens=5)
+
+    provider.complete = AsyncMock(side_effect=itertools.cycle(
+        [analyse_resp, decision_resp, citation_resp, overview_resp]))
+
+    store, audit, agent = await _make_agent_async(tmp_wiki, provider)
+    original_body = "# Alan Turing\n\nMathematician and computer scientist."
+    store.write_page("alan-turing", WikiPage(
+        title="Alan Turing", tags=["biography"],
+        content=original_body,
+        status="active", confidence="high", sources=[], created="2026-01-01",
+    ))
+
+    source = tmp_wiki / "raw_sources" / "enigma.md"
+    source.write_text("Turing broke the Enigma cipher.", encoding="utf-8")
+
+    with patch.object(IngestAgent, "_update_overview", AsyncMock()):
+        result = await agent.ingest(str(source))
+
+    assert "alan-turing" in result.pages_updated
+    page = store.read_page("alan-turing")
+    # Original body must be unchanged
+    assert original_body in page.content
+    # The new update section has the citation marker
+    assert "^[" in page.content, f"Expected citation in page, got: {page.content!r}"
+
+
+@pytest.mark.asyncio
+async def test_sidecar_written_for_pdf(tmp_wiki):
+    """After ingesting a PDF source with page_boundaries, .synthadoc/extracted/<name>.txt is created."""
+    import itertools
+    from unittest.mock import AsyncMock, patch
+    from synthadoc.providers.base import CompletionResponse
+    from synthadoc.skills.base import ExtractedContent
+
+    provider = AsyncMock()
+    analyse_resp = CompletionResponse(
+        text='{"entities":["PDF"],"tags":["test"],"summary":"PDF content.","relevant":true}',
+        input_tokens=50, output_tokens=20)
+    decision_resp = CompletionResponse(
+        text='{"reasoning":"new","action":"create","target":"","new_slug":"pdf-doc","update_content":"","page_content":"# PDF Doc\\n\\nContent from PDF."}',
+        input_tokens=80, output_tokens=40)
+    citation_resp = CompletionResponse(
+        text="# PDF Doc\n\nContent from PDF. ^[sample.pdf:1-3]",
+        input_tokens=30, output_tokens=15)
+    overview_resp = CompletionResponse(
+        text="Overview.", input_tokens=10, output_tokens=5)
+    provider.complete = AsyncMock(side_effect=itertools.cycle(
+        [analyse_resp, decision_resp, citation_resp, overview_resp]))
+
+    store, audit, agent = await _make_agent_async(tmp_wiki, provider)
+
+    pdf_path = tmp_wiki / "raw_sources" / "sample.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 fake content for testing purposes")
+
+    fake_extracted = ExtractedContent(
+        text="PDF content here.\nPage two content.",
+        source_path=str(pdf_path),
+        metadata={"page_boundaries": {1: 1, 2: 2}},
+    )
+
+    with patch.object(agent._skill_agent, "extract", AsyncMock(return_value=fake_extracted)):
+        with patch.object(IngestAgent, "_update_overview", AsyncMock()):
+            result = await agent.ingest(str(pdf_path))
+
+    txt_file = tmp_wiki / ".synthadoc" / "extracted" / "sample.txt"
+    assert txt_file.exists(), f"Expected sidecar txt at {txt_file}"
+    assert "PDF content here" in txt_file.read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_sidecar_pagemap_written_for_pdf(tmp_wiki):
+    """After ingesting a PDF, .synthadoc/extracted/<name>.pdf.pagemap exists and is valid JSON."""
+    import itertools
+    import json
+    from unittest.mock import AsyncMock, patch
+    from synthadoc.providers.base import CompletionResponse
+    from synthadoc.skills.base import ExtractedContent
+
+    provider = AsyncMock()
+    analyse_resp = CompletionResponse(
+        text='{"entities":["PDF"],"tags":["test"],"summary":"PDF content.","relevant":true}',
+        input_tokens=50, output_tokens=20)
+    decision_resp = CompletionResponse(
+        text='{"reasoning":"new","action":"create","target":"","new_slug":"mypdf","update_content":"","page_content":"# MyPDF\\n\\nContent."}',
+        input_tokens=80, output_tokens=40)
+    citation_resp = CompletionResponse(
+        text="# MyPDF\n\nContent. ^[mypdf.pdf:1-2]",
+        input_tokens=30, output_tokens=15)
+    overview_resp = CompletionResponse(
+        text="Overview.", input_tokens=10, output_tokens=5)
+    provider.complete = AsyncMock(side_effect=itertools.cycle(
+        [analyse_resp, decision_resp, citation_resp, overview_resp]))
+
+    store, audit, agent = await _make_agent_async(tmp_wiki, provider)
+
+    pdf_path = tmp_wiki / "raw_sources" / "mypdf.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 content")
+
+    page_boundaries = {1: 1, 2: 5, 3: 10}
+    fake_extracted = ExtractedContent(
+        text="Page 1 content.\nPage 2 content.\nPage 3 content.",
+        source_path=str(pdf_path),
+        metadata={"page_boundaries": page_boundaries},
+    )
+
+    with patch.object(agent._skill_agent, "extract", AsyncMock(return_value=fake_extracted)):
+        with patch.object(IngestAgent, "_update_overview", AsyncMock()):
+            result = await agent.ingest(str(pdf_path))
+
+    pagemap_file = tmp_wiki / ".synthadoc" / "extracted" / "mypdf.pdf.pagemap"
+    assert pagemap_file.exists(), f"Expected pagemap at {pagemap_file}"
+    data = json.loads(pagemap_file.read_text(encoding="utf-8"))
+    assert isinstance(data, dict)
+    assert len(data) == 3
+
+
+@pytest.mark.asyncio
+async def test_sidecar_not_written_for_txt_source(tmp_wiki):
+    """For a .txt source (no page_boundaries), no sidecar files are written."""
+    import itertools
+    from unittest.mock import AsyncMock, patch
+    from synthadoc.providers.base import CompletionResponse
+
+    provider = AsyncMock()
+    provider.complete = AsyncMock(side_effect=itertools.cycle([
+        CompletionResponse(
+            text='{"entities":["text"],"tags":["test"],"summary":"Text content.","relevant":true}',
+            input_tokens=50, output_tokens=20),
+        CompletionResponse(
+            text='{"reasoning":"new","action":"create","target":"","new_slug":"text-doc","update_content":"","page_content":"# Text Doc\\n\\nContent."}',
+            input_tokens=80, output_tokens=40),
+        CompletionResponse(
+            text="# Text Doc\n\nContent. ^[notes.txt:1-1]",
+            input_tokens=30, output_tokens=15),
+        CompletionResponse(text="Overview.", input_tokens=10, output_tokens=5),
+    ]))
+
+    store, audit, agent = await _make_agent_async(tmp_wiki, provider)
+
+    source = tmp_wiki / "raw_sources" / "notes.txt"
+    source.write_text("This is plain text content.", encoding="utf-8")
+
+    with patch.object(IngestAgent, "_update_overview", AsyncMock()):
+        result = await agent.ingest(str(source))
+
+    extracted_dir = tmp_wiki / ".synthadoc" / "extracted"
+    sidecar_txt = extracted_dir / "notes.txt"
+    sidecar_pagemap = extracted_dir / "notes.pdf.pagemap"
+    # No extracted/ dir at all, or no sidecar files
+    assert not sidecar_txt.exists() or not (extracted_dir / "notes.pdf.pagemap").exists(), \
+        "Sidecar files must NOT be written for plain-text sources without page_boundaries"
+    assert not sidecar_pagemap.exists(), "pagemap must not exist for non-PDF sources"
+
+
+@pytest.mark.asyncio
+async def test_pass4_result_recorded_in_claim_citations(tmp_wiki, db):
+    """After successful Pass 4, claim_citations rows are written to AuditDB."""
+    import itertools
+    from unittest.mock import AsyncMock, patch
+    from synthadoc.providers.base import CompletionResponse
+
+    provider = AsyncMock()
+    analyse_resp = CompletionResponse(
+        text='{"entities":["AI"],"tags":["ml"],"summary":"AI research.","relevant":true}',
+        input_tokens=50, output_tokens=20)
+    decision_resp = CompletionResponse(
+        text='{"reasoning":"new","action":"create","target":"","new_slug":"ai-research",'
+             '"update_content":"","page_content":"# AI Research\\n\\nNeural networks are powerful."}',
+        input_tokens=80, output_tokens=40)
+    # Return annotated content with a citation marker using the source filename
+    citation_resp = CompletionResponse(
+        text="# AI Research\n\nNeural networks are powerful. ^[research.md:1-3]",
+        input_tokens=30, output_tokens=15)
+    overview_resp = CompletionResponse(
+        text="Overview.", input_tokens=10, output_tokens=5)
+    provider.complete = AsyncMock(side_effect=itertools.cycle(
+        [analyse_resp, decision_resp, citation_resp, overview_resp]))
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
+    await cache.init()
+
+    agent = IngestAgent(
+        provider=provider, store=store, search=search,
+        log_writer=log, audit_db=db, cache=cache,
+        max_pages=15, wiki_root=tmp_wiki,
+    )
+
+    source = tmp_wiki / "raw_sources" / "research.md"
+    source.write_text("Neural networks are powerful tools.", encoding="utf-8")
+
+    with patch.object(IngestAgent, "_update_overview", AsyncMock()):
+        result = await agent.ingest(str(source))
+
+    assert result.pages_created
+    citations = await db.list_citations()
+    assert len(citations) > 0, "Expected citation rows in claim_citations after Pass 4"
+    assert citations[0]["source_file"] == "research.md"
+    assert citations[0]["line_start"] == 1
+    assert citations[0]["line_end"] == 3

@@ -91,6 +91,22 @@ _OVERVIEW_PROMPT = (
     "Pages:\n{pages}"
 )
 
+CITATION_PASS4_CACHE_VERSION = "v1"
+_CITATION_EXCERPT_LEN = 100
+_CITATION_RE = re.compile(r'\^\[([^\]:]+):(\d+)-(\d+)\]')
+
+_CITATION_PROMPT = (
+    "You are a citation annotator. Given a wiki page section and the source text it was "
+    "compiled from, insert ^[FILENAME:L-L] at the END of each paragraph that makes a "
+    "substantive claim traceable to the source. L-L is the 1-based line range in the "
+    "numbered source text where the supporting passage appears. Do not annotate headings, "
+    "transition sentences, or [[wikilinks]].\n"
+    "Return ONLY the annotated section — identical to the input except for added ^[...] markers.\n\n"
+    "Source filename: {filename}\n\n"
+    "Source text (lines numbered):\n{numbered_source}\n\n"
+    "Page section to annotate:\n{section}"
+)
+
 _CONFIDENCE_RANK = {"high": 3, "medium": 2, "low": 1}
 
 
@@ -206,6 +222,92 @@ class IngestAgent:
             "image": {"provider": self._provider},
         })
         self._purpose = self._load_purpose()
+
+    def _write_sidecar(self, source_path: str, text: str, pagemap: dict) -> None:
+        """Write .synthadoc/extracted/<name>.txt and (for PDFs) <name>.pdf.pagemap."""
+        if not self._wiki_root:
+            return
+        extracted_dir = self._wiki_root / ".synthadoc" / "extracted"
+        extracted_dir.mkdir(parents=True, exist_ok=True)
+        name = Path(source_path).stem
+        (extracted_dir / f"{name}.txt").write_text(text, encoding="utf-8")
+        if pagemap:
+            (extracted_dir / f"{name}.pdf.pagemap").write_text(
+                json.dumps(pagemap, indent=2), encoding="utf-8"
+            )
+
+    async def _annotate_citations(
+        self, section: str, source_text: str, filename: str
+    ) -> tuple[str, list[dict]]:
+        """Pass 4: annotate section with ^[filename:L-L] markers.
+
+        Returns (annotated_section, citation_list). On any failure returns
+        (original_section, []) so ingest always succeeds.
+        """
+        if not section.strip() or not source_text.strip():
+            return section, []
+
+        numbered = "\n".join(
+            f"{i+1}: {line}" for i, line in enumerate(source_text.splitlines())
+        )
+        body_hash = hashlib.sha256(section.encode()).hexdigest()
+        ck = make_cache_key(
+            "citation-pass4",
+            {"body_hash": body_hash, "filename": filename},
+            version=CITATION_PASS4_CACHE_VERSION,
+        )
+        cached = await self._cache.get(ck)
+        if cached:
+            annotated = cached
+        else:
+            try:
+                resp = await self._provider.complete(
+                    messages=[Message(
+                        role="user",
+                        content=_CITATION_PROMPT.format(
+                            filename=filename,
+                            numbered_source=numbered[:6000],
+                            section=section,
+                        ),
+                    )],
+                    temperature=0.0,
+                )
+                raw = resp.text.strip() or section
+                # Sanity check: annotated text must preserve the original content.
+                # If the LLM returned something structurally different (e.g. JSON),
+                # fall back to original to avoid corrupting the page body.
+                _first_line = section.split("\n")[0][:40].strip()
+                if _first_line and _first_line not in raw:
+                    logger.warning(
+                        "Pass 4 response for %s failed sanity check — using original section",
+                        filename,
+                    )
+                    await self._audit.write_event(
+                        "citation_pass4_skipped",
+                        metadata={"source": filename, "error": "sanity_check_failed"},
+                    )
+                    return section, []
+                annotated = raw
+                await self._cache.set(ck, annotated)
+            except Exception as exc:
+                logger.warning("Pass 4 citation annotation failed for %s: %s", filename, exc)
+                await self._audit.write_event(
+                    "citation_pass4_skipped",
+                    metadata={"source": filename, "error": type(exc).__name__},
+                )
+                return section, []
+
+        citations = [
+            {
+                "source_file": filename,
+                "line_start": int(m.group(2)),
+                "line_end": int(m.group(3)),
+                "claim_excerpt": section.split("\n")[0][:_CITATION_EXCERPT_LEN],
+            }
+            for m in _CITATION_RE.finditer(annotated)
+            if m.group(1) == filename
+        ]
+        return annotated, citations
 
     async def _pick_routing_branch(self, slug: str, page: WikiPage, ri) -> str:
         """Ask LLM to select the best ROUTING.md branch for a newly created page."""
@@ -399,6 +501,15 @@ class IngestAgent:
             result.child_sources = extracted.metadata["child_sources"]
             return result
 
+        # Write text sidecar for all local source types so the Obsidian Source Viewer
+        # can display extracted content for xlsx, docx, md, png, etc. — not just PDFs.
+        # URL/YouTube sources are excluded: their source_path is a URL and Path().stem
+        # would produce unreliable names that could collide across domains.
+        page_boundaries = extracted.metadata.get("page_boundaries", {})
+        is_local = not source.startswith(("http://", "https://"))
+        if is_local or page_boundaries:
+            self._write_sidecar(source, extracted.text, page_boundaries)
+
         # Skill-level token costs (e.g. vision pre-pass in ImageSkill)
         if extracted.metadata.get("tokens_input"):
             result.tokens_used += extracted.metadata["tokens_input"] + extracted.metadata.get("tokens_output", 0)
@@ -524,6 +635,9 @@ class IngestAgent:
         page_content = decisions.get("page_content", "")
         title = p.stem.replace("-", " ").replace("_", " ").title()
 
+        citations: list[dict] = []
+        final_slug: str = ""
+
         if action == "flag" and target and target not in LINT_SKIP_SLUGS and self._store.page_exists(target):
             with self._store.page_lock(target):
                 page = self._store.read_page(target)
@@ -559,6 +673,10 @@ class IngestAgent:
                             section = update_content
                         else:
                             section = f"## From {p.name}\n\n{text[:1000]}"
+                        # Pass 4: annotate only the new update section
+                        section, citations = await self._annotate_citations(
+                            section, extracted.text, p.name
+                        )
                         page.content = page.content.rstrip() + f"\n\n{section}"
                         staged = self._write_or_stage(target, page, policy)
                 if staged:
@@ -566,6 +684,7 @@ class IngestAgent:
                 else:
                     logger.info("ingest: updated page slug=%s source=%s", target, source[:80])
                 result.pages_updated.append(target)
+                final_slug = target
 
         else:  # "create" or fallback
             # Don't create a page if there's no content to put in it
@@ -596,6 +715,10 @@ class IngestAgent:
                                 section = extracted.text
                             else:
                                 section = f"## From {p.name}\n\n{text[:1500]}"
+                            # Pass 4: annotate only the new section
+                            section, citations = await self._annotate_citations(
+                                section, extracted.text, p.name
+                            )
                             page.content = page.content.rstrip() + f"\n\n{section}"
                             staged = self._write_or_stage(slug, page, policy)
                     if staged:
@@ -603,6 +726,7 @@ class IngestAgent:
                     else:
                         logger.info("ingest: updated existing page slug=%s source=%s", slug, source[:80])
                     result.pages_updated.append(slug)
+                    final_slug = slug
                 else:
                     if extracted.metadata.get("has_summary"):
                         body = extracted.text
@@ -610,6 +734,10 @@ class IngestAgent:
                         body = page_content.strip()
                     else:
                         body = f"# {title}\n\n{text[:4000]}"
+                    # Pass 4: annotate the full new page body
+                    body, citations = await self._annotate_citations(
+                        body, extracted.text, p.name
+                    )
                     today = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
                     new_page = WikiPage(
                         title=title, tags=tags,
@@ -642,12 +770,14 @@ class IngestAgent:
                         _WS(cand_dir).write_page(slug, new_page)
                         logger.info("ingest: staged to candidates slug=%s source=%s", slug, source[:80])
                         result.pages_created.append(slug)
+                        final_slug = slug
                     else:
                         with self._store.page_lock(slug):
                             self._store.write_page(slug, new_page)
                             self._search.invalidate_index()
                         logger.info("ingest: created page slug=%s source=%s", slug, source[:80])
                         result.pages_created.append(slug)
+                        final_slug = slug
                         self._store.append_to_index(slug, new_page.title)
                         if self._routing_path:
                             from synthadoc.core.routing import RoutingIndex
@@ -667,8 +797,12 @@ class IngestAgent:
                              tokens=result.tokens_used,
                              cost_usd=result.cost_usd,
                              cache_hits=result.cache_hits)
-        await self._audit.record_ingest(src_hash, src_size, source,
-                                        (result.pages_created + result.pages_updated
-                                         + result.pages_flagged or [title])[0],
-                                        result.tokens_used, result.cost_usd)
+        _wiki_page = (result.pages_created + result.pages_updated
+                      + result.pages_flagged or [title])[0]
+        await asyncio.gather(
+            self._audit.record_ingest(src_hash, src_size, source,
+                                      _wiki_page, result.tokens_used, result.cost_usd),
+            self._audit.record_claim_citations(final_slug or _wiki_page, citations)
+            if citations else asyncio.sleep(0),
+        )
         return result

@@ -89,11 +89,16 @@ async def test_cache_hit_makes_zero_llm_calls(tmp_wiki):
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15,
                         wiki_root=tmp_wiki)
 
-    # Patch _update_overview so it doesn't consume LLM calls in this test
+    # Patch _update_overview and _annotate_citations so they don't consume LLM calls
+    # in this test — it focuses purely on analysis + decision cache behaviour.
     async def _noop_overview(self):
         pass
 
-    with patch.object(IngestAgent, "_update_overview", _noop_overview):
+    async def _noop_annotate(self, section, source_text, filename):
+        return section, []
+
+    with patch.object(IngestAgent, "_update_overview", _noop_overview), \
+         patch.object(IngestAgent, "_annotate_citations", _noop_annotate):
         await agent.ingest(str(source))
         first_count = call_count
         call_count = 0
