@@ -29,6 +29,8 @@
 18. [Routing](#18-routing)
 19. [Candidates Staging](#19-candidates-staging)
 20. [Context Packs](#20-context-packs)
+21. [Adversarial Review](#21-adversarial-review)
+22. [Claim-Level Provenance](#22-claim-level-provenance)
 
 **Appendices**
 - [Appendix A — Release Feature Index](#appendix-a--release-feature-index)
@@ -1703,6 +1705,167 @@ synthadoc context build "early computing pioneers" --tokens 2000
 # Save to a file — feed to an external LLM prompt or store next to a document you're writing
 synthadoc context build "early computing pioneers" --output briefing.md
 ```
+
+---
+
+## 21. Adversarial Review
+
+### Concept
+
+Standard lint validates wiki structure — contradictions, orphans, broken links. It does not evaluate whether the *content* of a page is accurate. The adversarial review closes this gap: after structural checks complete, a second independent LLM pass interrogates every page for epistemic overreach — overstated claims, unsupported assertions, and high-confidence statements the source material does not support.
+
+The key architectural decision is cross-model independence. When the adversarial reviewer is a different model family from the ingest model, neither shares the training-induced inductive biases that cause same-model self-review to systematically miss the same class of errors.
+
+### LintAgent integration
+
+The adversarial review runs as the final phase of every `synthadoc lint run`. After orphan detection and contradiction checks complete, `LintAgent` calls `_adversarial_single(slug, content)` for every non-excluded page concurrently via `asyncio.gather()`. A 100-page wiki completes in the same wall-clock time as a single LLM call.
+
+Each `_adversarial_single` call prompts the adversarial model to act as a skeptical editor and return a JSON array of `{claim, concern}` objects. Results are capped at `adversarial_max_per_page` (default 2) per page. Failures are caught per-page — rate-limit errors and parse failures are stored as non-fatal warning entries and never abort the lint job.
+
+When `--no-adversarial` is passed to `lint run`, the adversarial phase is skipped entirely and any existing `lint_warnings` are cleared from all page frontmatter.
+
+### `lint_warnings` frontmatter
+
+Warnings are written directly to each page's YAML frontmatter after each lint run:
+
+```yaml
+lint_warnings:
+  - claim: "Saved over fourteen million lives."
+    concern: "This figure lacks scholarly consensus — historians dispute both the
+              precision and the causal attribution to Turing's cryptanalysis alone."
+  - claim: "Most consequential business decision of the era."
+    concern: "An unsupported superlative — the MS-DOS licence retention and Intel's
+              exclusive CPU supply deal were equally pivotal."
+```
+
+The field is absent when no warnings exist. Cleared automatically when `--no-adversarial` is used, ensuring stale warnings do not persist after the pass is disabled.
+
+### Configuration
+
+```toml
+# config.toml
+[agents]
+lint        = { provider = "minimax",   model = "MiniMax-M2.5" }
+adversarial = { provider = "anthropic", model = "claude-sonnet-4-6" }   # independent judge — different model family
+
+[lint]
+adversarial_max_per_page = 2   # raise to 3–5 for a deeper audit; lower to 1 for less noise
+```
+
+`[agents].adversarial` falls back to `[agents].default` if absent — the adversarial pass always runs, it just uses the same model as ingest (less effective, still useful).
+
+### CLI commands
+
+| Command | Description |
+|---|---|
+| `synthadoc lint run` | Full lint pass including adversarial review |
+| `synthadoc lint run --no-adversarial` | Structural-only lint; clears existing `lint_warnings` |
+| `synthadoc lint report` | Show warnings — CLI output has a dedicated Adversarial section |
+
+### HTTP API
+
+`GET /lint/report` returns a `LintReport` object. The `adversarial_warnings` field carries all warnings across all pages:
+
+```json
+{
+  "adversarial_warnings": [
+    {
+      "slug": "alan-turing",
+      "claim": "Saved over fourteen million lives.",
+      "concern": "This figure lacks scholarly consensus…"
+    }
+  ]
+}
+```
+
+Empty list when no warnings exist or the pass was skipped.
+
+### Obsidian plugin
+
+`Synthadoc: Lint: run...` modal adds a **Skip adversarial review** checkbox alongside the existing **Auto-resolve** checkbox. When ticked, the lint job runs structural checks only and clears stale warnings.
+
+`Synthadoc: Lint: report` is a 3-tab modal — **Contradictions**, **Orphans**, **Adversarial**. The Adversarial tab renders each warning with the flagged claim in orange, the concern below it in muted text, and suggested re-ingest commands derived from the page's source files.
+
+---
+
+## 22. Claim-Level Provenance
+
+### Concept
+
+Every compiled wiki page is a synthesis — the LLM reads source documents and rewrites them as prose. Claim-level provenance closes the audit gap: during ingest, a dedicated annotation pass inserts a `^[filename:L-L]` citation marker at the end of each substantive paragraph, mapping the compiled claim to the exact line range in the raw source that supports it. Markers are stored in the page body, validated by lint, and recorded in `audit.db`. In Obsidian they render as interactive chips — one click opens the Source Viewer.
+
+### IngestAgent Pass 4 — `_annotate_citations()`
+
+Called within the Write pass for each page section immediately before it is appended to the page. The LLM receives:
+
+1. The numbered raw source text (lines 1, 2, 3 … N)
+2. The compiled section to annotate
+
+It returns the section with `^[filename:L-L]` markers appended to substantive paragraphs. The result is validated against a sanity check (markers must reference real line numbers in the source). On any failure — LLM error, parse failure, or sanity check — the original un-annotated section is used and the failure is recorded as a `citation_pass4_skipped` audit event. Ingest always completes.
+
+Results are cached by section SHA-256 so re-ingest of unchanged sections does not incur an extra LLM call.
+
+### Sidecar files
+
+To support the Source Viewer in Obsidian, `_write_sidecar()` writes two files to `.synthadoc/extracted/` for every locally ingested source:
+
+| File | Contents | Source types |
+|------|----------|-------------|
+| `<basename>.txt` | Plain UTF-8 extracted text with line numbers preserved | All local file types |
+| `<basename>.pagemap.json` | JSON array mapping line numbers to PDF page numbers | PDF only |
+
+The pagemap enables the "Open PDF at page N →" button in the Source Viewer to resolve a line range to the correct PDF page without re-parsing the document. Web and YouTube sources do not produce sidecars (no stable local path to key on).
+
+### `claim_citations` table
+
+Stored in `audit.db`. Written by `AuditDB.record_claim_citations()` after each annotated page section is saved.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | INTEGER PK | |
+| `page_slug` | TEXT | Wiki page the citation belongs to |
+| `source_file` | TEXT | Basename of the raw source file |
+| `line_start` | INTEGER | First line of the supporting passage |
+| `line_end` | INTEGER | Last line of the supporting passage |
+| `claim_excerpt` | TEXT | First ~100 chars of the annotated paragraph |
+| `ingested_at` | TEXT | UTC ISO-8601 |
+
+### HTTP API
+
+```
+GET /provenance/citations
+  ?page=<slug>        filter by wiki page
+  &source=<filename>  filter by source file
+  &broken=<bool>      return only citations that failed validation
+  &limit=N            page size (default 50)
+  &offset=N           pagination offset
+  &sort=<col>         ingested_at | page_slug | source_file (default: ingested_at)
+  &order=asc|desc     (default: desc)
+```
+
+Response: `{total: int, citations: [CitationRow]}`
+
+### CLI commands
+
+| Command | Description |
+|---|---|
+| `synthadoc audit citations -w <wiki>` | Last 50 citations across the whole wiki |
+| `synthadoc audit citations -w <wiki> --page <slug>` | All citations for one page |
+| `synthadoc audit citations -w <wiki> --broken` | Citations that failed line-range validation |
+
+### Obsidian plugin
+
+**Citation chips (Reading View only):** The Obsidian post-processor transforms `^[filename:L-L]` inline footnote markers into styled chips rendered after the claim. Chips only appear in Reading View (`Ctrl/Cmd+E`) — not in Edit or Live Preview mode.
+
+**Source Viewer modal:** Clicking a chip opens a draggable modal showing the referenced source lines highlighted with ±5 lines of surrounding context. File resolution order:
+
+1. `.synthadoc/extracted/<basename>.txt` — pre-extracted sidecar (all local types)
+2. `raw_sources/<filename>` — direct fallback for plain-text types (`.md`, `.txt`, `.csv`)
+3. Friendly error for binary types (`.xlsx`, etc.) with instructions to open the original
+
+For PDF sources, if the pagemap sidecar exists and the target page is > 1, a **"Open PDF at page N →"** button closes the Source Viewer and opens the PDF at the correct page in Obsidian's native viewer.
+
+**Page Provenance modal (`Synthadoc: View Page Provenance`):** A sortable, paginated table of every citation across the wiki. Columns: Page, Claim, Source, Lines, Ingested. Sort by any column header; filter by slug or source filename. Pagination is pinned below the table and always visible. Click any row to open the Source Viewer for that citation. All cell content can be selected and copied independently of the row-click action.
 
 ---
 
