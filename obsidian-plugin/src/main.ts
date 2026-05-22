@@ -2870,11 +2870,20 @@ class SourceViewerModal extends Modal {
         const CONTEXT_LINES = 5;
         const extractedFilename = this.filename.replace(/\.[^.]+$/, ".txt");
         const extractedPath = `${this.wikiRoot}/.synthadoc/extracted/${extractedFilename}`;
+        const rawSourcePath = `${this.wikiRoot}/${RAW_SOURCES_DIR}/${this.filename}`;
         const stem = this.filename.replace(/\.[^.]+$/, "");
         const pagemapPath = `${this.wikiRoot}/.synthadoc/extracted/${stem}.pdf.pagemap`;
 
+        // Resolve the readable text: PDFs have a sidecar in .synthadoc/extracted/;
+        // plain-text source types (.md, .txt, .csv) can be read directly from raw_sources/.
+        const resolvePath = (): string => {
+            if (fs.existsSync(extractedPath)) return extractedPath;
+            if (fs.existsSync(rawSourcePath)) return rawSourcePath;
+            throw new Error(`no readable text for ${this.filename}`);
+        };
+
         try {
-            const text: string = fs.readFileSync(extractedPath, "utf-8");
+            const text: string = fs.readFileSync(resolvePath(), "utf-8");
             const lines = text.split("\n");
             const start = Math.max(0, this.lineStart - 1 - CONTEXT_LINES);
             const end = Math.min(lines.length, this.lineEnd + CONTEXT_LINES);
