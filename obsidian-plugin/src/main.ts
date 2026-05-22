@@ -2820,10 +2820,52 @@ class SourceViewerModal extends Modal {
 
     onOpen() {
         this.modalEl.style.width = "clamp(700px, 75vw, 1060px)";
+
+        // Draggable title bar (same pattern as ProvenanceModal).
+        const container = this.modalEl;
+        const bar = document.createElement("div");
+        bar.style.cssText = [
+            "display:flex", "align-items:center", "justify-content:space-between",
+            "padding:10px 16px", "border-bottom:1px solid var(--background-modifier-border)",
+            "cursor:grab", "user-select:none", "-webkit-user-select:none", "flex-shrink:0",
+        ].join(";");
+        const titleSpan = document.createElement("span");
+        titleSpan.textContent = `${this.filename} — lines ${this.lineStart}–${this.lineEnd}`;
+        titleSpan.style.cssText = "font-weight:600;font-size:14px";
+        bar.appendChild(titleSpan);
+        const hint = document.createElement("span");
+        hint.textContent = "drag to move";
+        hint.style.cssText = "font-size:10px;color:var(--text-faint)";
+        bar.appendChild(hint);
+        container.insertBefore(bar, this.contentEl);
+        this.contentEl.style.cssText += ";user-select:text;-webkit-user-select:text";
+        bar.addEventListener("mousedown", (e: MouseEvent) => {
+            e.preventDefault();
+            const rect = container.getBoundingClientRect();
+            container.style.position = "fixed";
+            container.style.left = rect.left + "px";
+            container.style.top = rect.top + "px";
+            container.style.transform = "none";
+            container.style.margin = "0";
+            const offsetX = e.clientX - rect.left;
+            const offsetY = e.clientY - rect.top;
+            bar.style.cursor = "grabbing";
+            const onMove = (ev: MouseEvent) => {
+                container.style.left = (ev.clientX - offsetX) + "px";
+                container.style.top = (ev.clientY - offsetY) + "px";
+            };
+            const onUp = () => {
+                document.removeEventListener("mousemove", onMove);
+                document.removeEventListener("mouseup", onUp);
+                bar.style.cursor = "grab";
+            };
+            document.addEventListener("mousemove", onMove);
+            document.addEventListener("mouseup", onUp);
+        });
+
         const fs = (window as any).require("fs") as typeof import("fs");
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl("h3", { text: `${this.filename} — lines ${this.lineStart}–${this.lineEnd}` });
 
         const CONTEXT_LINES = 5;
         const extractedFilename = this.filename.replace(/\.pdf$/i, ".txt");
