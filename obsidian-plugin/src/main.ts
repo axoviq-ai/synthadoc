@@ -2900,7 +2900,7 @@ class SourceViewerModal extends Modal {
                 const btn = contentEl.createEl("button", { text: `Open PDF at page ${pdfPage} →` });
                 btn.style.cssText = "margin-top:12px;cursor:pointer";
                 btn.addEventListener("click", () => {
-                    // openLinkText needs a vault-relative path, not an absolute filesystem path.
+                    this.close();
                     this.app.workspace.openLinkText(`${RAW_SOURCES_DIR}/${pdfName}#page=${pdfPage}`, "", true);
                 });
                 contentEl.createEl("p", {
