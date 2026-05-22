@@ -2868,7 +2868,7 @@ class SourceViewerModal extends Modal {
         contentEl.empty();
 
         const CONTEXT_LINES = 5;
-        const extractedFilename = this.filename.replace(/\.pdf$/i, ".txt");
+        const extractedFilename = this.filename.replace(/\.[^.]+$/, ".txt");
         const extractedPath = `${this.wikiRoot}/.synthadoc/extracted/${extractedFilename}`;
         const stem = this.filename.replace(/\.[^.]+$/, "");
         const pagemapPath = `${this.wikiRoot}/.synthadoc/extracted/${stem}.pdf.pagemap`;
