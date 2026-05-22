@@ -104,7 +104,9 @@ export default class SynthadocPlugin extends Plugin {
             callback: () => {
                 const activeFile = this.app.workspace.getActiveFile();
                 const slug = activeFile ? activeFile.basename : "";
-                new ProvenanceModal(this.app, this.settings.serverUrl, slug).open();
+                const wikiRoot = this.app.vault.adapter instanceof FileSystemAdapter
+                    ? this.app.vault.adapter.getBasePath() : "";
+                new ProvenanceModal(this.app, this.settings.serverUrl, wikiRoot, slug).open();
             },
         });
 
@@ -2892,7 +2894,7 @@ class ProvenanceModal extends Modal {
     private tableWrap: HTMLElement | null = null;
     private pagerWrap: HTMLElement | null = null;
 
-    constructor(app: App, private serverUrl: string, private initialSlug: string = "") {
+    constructor(app: App, private serverUrl: string, private wikiRoot: string, private initialSlug: string = "") {
         super(app);
     }
 
@@ -3056,13 +3058,20 @@ class ProvenanceModal extends Modal {
         const tbody = table.createEl("tbody");
         for (const row of this.allRows) {
             const tr = tbody.createEl("tr");
-            tr.style.cssText = "border-bottom:1px solid var(--background-modifier-border-focus)";
+            tr.style.cssText = "border-bottom:1px solid var(--background-modifier-border-focus);cursor:pointer";
+            tr.addEventListener("mouseenter", () => { tr.style.background = "var(--background-modifier-hover)"; });
+            tr.addEventListener("mouseleave", () => { tr.style.background = ""; });
             const lineStart = row.line_start as number | undefined;
             const lineEnd = row.line_end as number | undefined;
+            const sourceFile = String(row.source_file || "");
+            tr.addEventListener("click", () => {
+                if (sourceFile && lineStart != null && lineEnd != null)
+                    new SourceViewerModal(this.app, sourceFile, lineStart, lineEnd, this.wikiRoot).open();
+            });
             const cells = [
                 String(row.page_slug || ""),
                 String(row.claim_excerpt || "").slice(0, 60),
-                String(row.source_file || ""),
+                sourceFile,
                 lineStart != null && lineEnd != null ? `${lineStart}-${lineEnd}` : "",
                 String(row.ingested_at || "").slice(0, 16),
             ];
