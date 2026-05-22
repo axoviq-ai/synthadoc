@@ -2890,22 +2890,24 @@ class SourceViewerModal extends Modal {
                     : "color:var(--text-muted)";
             }
 
-            // PDF jump button if pagemap exists
+            // PDF jump button — only shown when content is past page 1 (page 1 is the default).
             try {
                 const pagemap: Record<string, number> = JSON.parse(fs.readFileSync(pagemapPath, "utf-8"));
                 const pdfPage = this.resolvePagemap(pagemap, this.lineStart);
-                const pdfName = this.filename.endsWith(".txt")
-                    ? this.filename.replace(/\.txt$/, ".pdf")
-                    : this.filename;
-                const btn = contentEl.createEl("button", { text: `Open PDF at page ${pdfPage} →` });
-                btn.style.cssText = "margin-top:12px;cursor:pointer";
-                btn.addEventListener("click", () => {
-                    this.close();
-                    this.app.workspace.openLinkText(`${RAW_SOURCES_DIR}/${pdfName}#page=${pdfPage}`, "", true);
-                });
-                contentEl.createEl("p", {
-                    text: "Line numbers refer to extracted text. The PDF page shown is the closest match.",
-                }).style.cssText = "font-size:11px;color:var(--text-muted);margin-top:4px";
+                if (pdfPage > 1) {
+                    const pdfName = this.filename.endsWith(".txt")
+                        ? this.filename.replace(/\.txt$/, ".pdf")
+                        : this.filename;
+                    const btn = contentEl.createEl("button", { text: `Open PDF at page ${pdfPage} →` });
+                    btn.style.cssText = "margin-top:12px;cursor:pointer";
+                    btn.addEventListener("click", () => {
+                        this.close();
+                        this.app.workspace.openLinkText(`${RAW_SOURCES_DIR}/${pdfName}#page=${pdfPage}`, "", true);
+                    });
+                    contentEl.createEl("p", {
+                        text: "Line numbers refer to extracted text. The PDF page shown is the closest match.",
+                    }).style.cssText = "font-size:11px;color:var(--text-muted);margin-top:4px";
+                }
             } catch { /* no pagemap — PDF jump not available */ }
         } catch {
             contentEl.createEl("p", { text: `Could not read ${extractedPath}` })
