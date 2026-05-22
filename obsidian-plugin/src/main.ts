@@ -2897,6 +2897,7 @@ class ProvenanceModal extends Modal {
     }
 
     async onOpen() {
+        this.modalEl.style.width = "clamp(900px, 82vw, 1200px)";
         this.filter = this.initialSlug;
         this.setupTitleBar();
         await this.load();
