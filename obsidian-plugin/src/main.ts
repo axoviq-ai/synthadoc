@@ -2874,12 +2874,15 @@ class SourceViewerModal extends Modal {
         const stem = this.filename.replace(/\.[^.]+$/, "");
         const pagemapPath = `${this.wikiRoot}/.synthadoc/extracted/${stem}.pdf.pagemap`;
 
-        // Resolve the readable text: PDFs have a sidecar in .synthadoc/extracted/;
-        // plain-text source types (.md, .txt, .csv) can be read directly from raw_sources/.
+        // Plain-text source types can be read directly from raw_sources/ as a fallback.
+        // Binary types (xlsx, docx, png, …) cannot — they need a sidecar that the
+        // ingest pipeline only writes for PDFs today.
+        const TEXT_EXTENSIONS = new Set(["md", "txt", "csv"]);
+        const ext = (this.filename.split(".").pop() ?? "").toLowerCase();
         const resolvePath = (): string => {
             if (fs.existsSync(extractedPath)) return extractedPath;
-            if (fs.existsSync(rawSourcePath)) return rawSourcePath;
-            throw new Error(`no readable text for ${this.filename}`);
+            if (TEXT_EXTENSIONS.has(ext) && fs.existsSync(rawSourcePath)) return rawSourcePath;
+            throw new Error("no-sidecar");
         };
 
         try {
@@ -2919,7 +2922,10 @@ class SourceViewerModal extends Modal {
                 }
             } catch { /* no pagemap — PDF jump not available */ }
         } catch {
-            contentEl.createEl("p", { text: `Could not read ${extractedPath}` })
+            const msg = TEXT_EXTENSIONS.has(ext)
+                ? `Could not read source file for ${this.filename}`
+                : `Extracted text is not stored locally for .${ext} files. The content was processed during ingest but no text sidecar is written to disk for this file type.`;
+            contentEl.createEl("p", { text: msg })
                 .style.cssText = "color:var(--text-error)";
         }
     }
