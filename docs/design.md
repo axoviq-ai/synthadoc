@@ -235,12 +235,6 @@ Question
 - The LLM returns a JSON array of strings. Markdown code fences (` ```json ``` `) are stripped before parsing — required for cross-model robustness (some providers wrap JSON in fences despite instructions)
 - On any failure during decomposition (network error, invalid JSON, empty list, non-array response), the agent falls back silently to `[question]` — the query always completes
 
-**Logging (INFO level):**
-```
-query is simple — no decomposition (1 sub-question)
-query decomposed into 2 sub-question(s): "Who invented FORTRAN?" | "What was the Bombe machine?"
-```
-
 **BM25 corpus cache:** `HybridSearch` builds the BM25 corpus once per server session and caches it in memory (`_cached_corpus`). The cache is invalidated by `invalidate_index()` after every `write_page()` call in IngestAgent, so queries always see current wiki content without redundant disk reads.
 
 #### Knowledge Gap Workflow
@@ -291,12 +285,6 @@ User input: "search for: yard gardening in Canadian climate zones"
 - Implemented as `SearchDecomposeAgent` in `synthadoc/agents/search_decompose_agent.py` — kept separate to avoid coupling the two decomposition strategies.
 - Cap: 4 search strings maximum — prevents runaway Tavily API spend.
 - Fallback: if LLM call fails, JSON is invalid, or all entries are whitespace, use the original phrase as a single search query — the ingest always completes.
-
-**Logging (INFO level):**
-```
-web search is simple — no decomposition (1 query)
-web search decomposed into 3 queries: "Canada hardiness zones map" | "frost dates Canadian cities" | "planting guide by province Canada"
-```
 
 ### Semantic Re-ranking
 
