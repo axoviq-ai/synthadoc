@@ -31,7 +31,7 @@ major engine feature. No setup beyond following the steps below is required.
 15. [Set up ROUTING.md — scoped search](#step-15--set-up-routingmd--scoped-search)
 16. [Configure candidates staging](#step-16--configure-candidates-staging)
 17. [Build a context pack](#step-17--build-a-context-pack)
-18. [Verify claim provenance](#claim-provenance)
+18. [Establish claim-level provenance](#claim-provenance)
 
 **Appendices**
 
@@ -1241,9 +1241,9 @@ context_token_budget = 6000
 ---
 
 <a name="claim-provenance"></a>
-## Step 18 — Verify claim provenance
+## Step 18 — Establish claim-level provenance
 
-LLM-compiled wikis have a trust problem: the prose sounds authoritative, but there is no easy way to confirm whether a specific claim actually came from the source — or whether the model embellished it. Synthadoc solves this with **claim-level provenance**: during ingest, a dedicated annotation pass reads every wiki page alongside the numbered source text and inserts a `^[filename:L-L]` citation marker at the end of each substantive paragraph, pointing to the exact line range that supports it. The markers are stored in the page body, validated by the lint system, recorded in the audit database, and rendered as interactive chips in Obsidian. This is not a summary or a paper-level citation — it is a line-precise link from a compiled claim back to the raw evidence, clickable in one step from inside your vault. Very few knowledge tools offer this depth of interactive source traceability.
+Every compiled wiki page is a synthesis — the LLM draws on source text and rewrites it as prose. **Claim-level provenance** closes the audit gap: during ingest, a dedicated annotation pass inserts a `^[filename:L-L]` citation marker at the end of each substantive paragraph, mapping the compiled claim to the exact line range in the raw source that supports it. Markers are stored in the page body, validated by lint, and recorded in the audit database. In Obsidian they render as interactive chips — one click opens the Source Viewer, showing the referenced lines with surrounding context. For PDF sources, a pagemap sidecar resolves the line number to the correct page for direct navigation.
 
 ### Re-ingest sources to generate citations
 
@@ -1266,7 +1266,7 @@ Wait until all jobs reach `completed` status before checking for citation marker
 
 **Why --force is needed:** Synthadoc records a hash of every ingested source file in the audit database. On subsequent ingest of the same unchanged file, the hash matches and the job is skipped — this is intentional to avoid redundant LLM calls. `--force` overrides this check so the annotation pass runs even on previously seen files.
 
-### What was annotated during ingest
+### Inspect citation chips in Reading View
 
 Once the re-ingest jobs complete, open any wiki page in **Reading View** (`Ctrl/Cmd+E`, or click the book icon in the top-right toolbar). Citation chips are rendered by a post-processor that only runs in Reading View — they will not appear in Edit or Live Preview mode. Paragraphs that make a substantive claim now end with an inline citation chip:
 
@@ -1278,7 +1278,7 @@ Click a chip to open the **Source Viewer** — the exact lines from the source f
 
 ![Synthadoc citation chips on the alan-turing wiki page — each chip links to the exact source lines](png/claim-level-citation.png)
 
-### View provenance across the whole wiki
+### Audit provenance across the whole wiki
 
 Open the Obsidian command palette → **Synthadoc: View Page Provenance**. A sortable, paginated table shows every citation across the wiki. You can drag the modal by its title bar to reposition it, and all cell content can be selected and copied. Sort by source file to audit a single document, or filter by slug to see all claims for one page. Click any row to open the Source Viewer for that citation's exact line range.
 
@@ -1299,8 +1299,6 @@ The lint report also shows a **Citation Issues** section listing any broken, out
 ```bash
 synthadoc lint report -w history-of-computing
 ```
-
-> Every claim in your wiki traces to the exact source passage — verifiable in one click, auditable to the day. Citation markers are stored in the page body, validated by lint, and recorded in the audit database, giving you a complete provenance chain from compiled prose back to raw evidence.
 
 ---
 
