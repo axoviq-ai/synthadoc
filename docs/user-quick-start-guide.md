@@ -1271,7 +1271,7 @@ Every compiled wiki page is a synthesis — the LLM draws on source text and rew
 
 ### Re-ingest sources to generate citations
 
-Citation markers are injected during ingest. The demo wiki pages were built before this feature existed, so they do not have markers yet. To annotate them you need to re-ingest the raw source files — but because the files have not changed, the normal dedup check would skip them. The **Force re-ingest** option bypasses the duplicate check so every file runs through the full pipeline including the citation annotation pass, regardless of whether it was previously ingested.
+Citation markers are injected during ingest. The demo wiki ships with pre-compiled page stubs — static content that was never run through the annotation pass. When you ran Step 6, Synthadoc annotated only the sections it synthesised during that run; the pre-built stub content was not touched. To get full citation coverage across the entire page, you need to re-synthesise from scratch — but because the source files have not changed since Step 6, the normal dedup check would skip them. The **Force re-ingest** option bypasses the duplicate check so every file runs through the full pipeline including the citation annotation pass, regardless of whether it was previously ingested.
 
 **From the Obsidian plugin (recommended):**
 
