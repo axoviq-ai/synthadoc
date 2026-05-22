@@ -3050,10 +3050,17 @@ class ProvenanceModal extends Modal {
     private renderAll() {
         const { contentEl } = this;
         contentEl.empty();
+        contentEl.style.cssText = "display:flex;flex-direction:column;height:70vh";
+
+        // Description
+        const desc = contentEl.createEl("p", {
+            text: "Every citation recorded during ingest — which wiki page claims what, sourced from which file and line range. Click any row to view the highlighted source lines.",
+        });
+        desc.style.cssText = "font-size:12px;color:var(--text-muted);margin:0 0 10px 0;flex-shrink:0";
 
         // Filter bar
         const filterRow = contentEl.createDiv({ cls: "synthadoc-prov-filter" });
-        filterRow.style.cssText = "display:flex;gap:8px;margin-bottom:12px";
+        filterRow.style.cssText = "display:flex;gap:8px;margin-bottom:12px;flex-shrink:0";
         const input = filterRow.createEl("input", { type: "text", placeholder: "Filter by slug or source…" });
         input.value = this.filter;
         input.style.cssText = "flex:1;padding:4px 8px";
@@ -3072,12 +3079,14 @@ class ProvenanceModal extends Modal {
             this.renderPager();
         });
 
-        // Table wrapper
+        // Table wrapper — scrollable, grows to fill available space
         this.tableWrap = contentEl.createDiv();
+        this.tableWrap.style.cssText = "flex:1;overflow:auto;min-height:0";
         this.renderTable();
 
-        // Pager wrapper
+        // Pager wrapper — pinned outside scroll area
         this.pagerWrap = contentEl.createDiv();
+        this.pagerWrap.style.cssText = "flex-shrink:0";
         this.renderPager();
     }
 
@@ -3126,6 +3135,7 @@ class ProvenanceModal extends Modal {
             const lineEnd = row.line_end as number | undefined;
             const sourceFile = String(row.source_file || "");
             tr.addEventListener("click", () => {
+                if (window.getSelection()?.toString()) return;
                 if (sourceFile && lineStart != null && lineEnd != null)
                     new SourceViewerModal(this.app, sourceFile, lineStart, lineEnd, this.wikiRoot).open();
             });
