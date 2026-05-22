@@ -163,8 +163,33 @@ def lint_report(
         adv_pages.append({"slug": stem, "warnings": warnings,
                            "suggested_reingests": suggested_reingests})
 
+    # --- Citation Issues ---
+    from synthadoc.agents.lint_agent import _check_page_citations
+    from synthadoc.cli.install import resolve_wiki_path
+    from synthadoc.storage.wiki import WikiPage as _WP, SourceRef as _SR
+    extracted_dir = resolve_wiki_path(wiki) / ".synthadoc" / "extracted"
+    citation_issues: list[dict] = []
+    for stem, text in page_texts.items():
+        if stem in LINT_SKIP_SLUGS:
+            continue
+        fm = _parse_frontmatter(text)
+        m = _FRONTMATTER_RE.match(text)
+        body = text[m.end():] if m else text
+        sources = [
+            _SR(file=s.get("file", ""), hash=s.get("hash", ""),
+                size=s.get("size", 0), ingested=s.get("ingested", ""))
+            for s in (fm.get("sources") or [])
+            if isinstance(s, dict)
+        ]
+        fake_page = _WP(
+            title=stem, tags=[], content=body,
+            status=fm.get("status", ""), confidence=fm.get("confidence", "medium"),
+            sources=sources,
+        )
+        citation_issues.extend(_check_page_citations(stem, fake_page, extracted_dir))
+
     # --- Report ---
-    has_issues = contradicted or orphans or adv_pages
+    has_issues = contradicted or orphans or adv_pages or citation_issues
     if not has_issues:
         # Still sync frontmatter to clear stale orphan: true flags from previous runs.
         _sync_orphan_frontmatter(wiki_dir, page_texts, set())
@@ -207,6 +232,17 @@ def lint_report(
                 for cmd in entry["suggested_reingests"]:
                     typer.echo(f"       {cmd} --force")
 
+    if citation_issues:
+        by_slug: dict = {}
+        for issue in citation_issues:
+            by_slug.setdefault(issue["slug"], []).append(issue)
+        total = len(citation_issues)
+        typer.echo(f"\nCitation Issues ({total} across {len(by_slug)} pages):\n")
+        for slug, issues in by_slug.items():
+            typer.echo(f"  {slug}")
+            for iss in issues:
+                typer.echo(f"    {iss['citation']} — {iss['reason']}")
+
     # Sync orphan: true/false frontmatter so the Obsidian dashboard Dataview
     # query (WHERE orphan = true) reflects the same result as this report.
     _sync_orphan_frontmatter(wiki_dir, page_texts, set(orphans))
@@ -214,6 +250,6 @@ def lint_report(
     adv_count = sum(len(p["warnings"]) for p in adv_pages)
     typer.echo(
         f"\n{len(contradicted)} contradiction(s), {len(orphans)} orphan(s), "
-        f"{adv_count} adversarial warning(s)."
+        f"{adv_count} adversarial warning(s), {len(citation_issues)} citation issue(s)."
         f"\nDashboard: open wiki/dashboard.md in Obsidian for a live view."
     )

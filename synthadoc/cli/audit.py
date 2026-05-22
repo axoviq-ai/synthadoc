@@ -126,6 +126,62 @@ def queries_cmd(
     console.print(table)
 
 
+@audit_app.command("citations")
+def citations_cmd(
+    wiki: Optional[str] = typer.Option(None, "--wiki", "-w"),
+    page: Optional[str] = typer.Option(None, "--page", help="Filter by page slug"),
+    source: Optional[str] = typer.Option(None, "--source", help="Filter by source filename"),
+    broken: bool = typer.Option(False, "--broken", help="Show validation failures only"),
+    limit: int = typer.Option(50, "--limit", "-n"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Show claim-level citations and validation failures."""
+    import json as _json
+    from synthadoc.cli._wiki import resolve_wiki
+    db_wiki = resolve_wiki(wiki)
+    db = _get_audit_db(db_wiki)
+
+    async def _fetch():
+        await db.init()
+        if broken:
+            return await db.list_citation_failures(limit=limit)
+        return await db.list_citations(
+            page_slug=page, source_file=source, limit=limit
+        )
+
+    records = asyncio.run(_fetch())
+    if as_json:
+        typer.echo(_json.dumps(records, indent=2, default=str))
+        return
+
+    if not records:
+        typer.echo("No citations found.")
+        return
+
+    if broken:
+        typer.echo(f"Citation Validation Failures ({len(records)}):\n")
+        for r in records:
+            ts = (r.get("event_time") or "")[:16]
+            slug = r.get("page_slug") or r.get("slug") or ""
+            citation = r.get("citation") or ""
+            reason = r.get("reason") or ""
+            typer.echo(f"  [{ts}] {slug}  {citation} — {reason}")
+    else:
+        typer.echo(f"Claim Citations (last {limit}):\n")
+        table = Table(title="Claim Citations")
+        table.add_column("Page", style="cyan")
+        table.add_column("Source")
+        table.add_column("Lines", justify="right")
+        table.add_column("Claim")
+        for r in records:
+            page_s = r.get("page_slug") or ""
+            src = r.get("source_file") or ""
+            lines = f"{r.get('line_start')}-{r.get('line_end')}"
+            claim = (r.get("claim_excerpt") or "")[:60]
+            table.add_row(page_s, src, lines, claim)
+        console.print(table)
+
+
 @audit_app.command("events")
 def events_cmd(
     wiki: Optional[str] = typer.Option(None, "--wiki", "-w"),

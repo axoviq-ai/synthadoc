@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Paul Chen / axoviq.com
-import { App, MarkdownRenderer, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile } from "obsidian";
+import { App, FileSystemAdapter, MarkdownRenderer, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile } from "obsidian";
 import { api, setBase } from "./api";
 
 const SUPPORTED_EXTENSIONS = new Set([
@@ -26,6 +26,7 @@ const DEFAULT_SETTINGS: SynthadocSettings = {
 
 export default class SynthadocPlugin extends Plugin {
     settings: SynthadocSettings = DEFAULT_SETTINGS;
+    private _citationScanTimer: ReturnType<typeof setTimeout> | null = null;
 
     async onload() {
         await this.loadSettings();
@@ -97,6 +98,18 @@ export default class SynthadocPlugin extends Plugin {
             callback: () => new ContextModal(this.app).open(),
         });
 
+        this.addCommand({
+            id: "view-page-provenance",
+            name: "View Page Provenance",
+            callback: () => {
+                const activeFile = this.app.workspace.getActiveFile();
+                const slug = activeFile ? activeFile.basename : "";
+                const wikiRoot = this.app.vault.adapter instanceof FileSystemAdapter
+                    ? this.app.vault.adapter.getBasePath() : "";
+                new ProvenanceModal(this.app, this.settings.serverUrl, wikiRoot, slug).open();
+            },
+        });
+
         this.addRibbonIcon("book-open", "Synthadoc status", async () => {
             const [healthRes, statusRes] = await Promise.allSettled([
                 api.health(),
@@ -109,6 +122,71 @@ export default class SynthadocPlugin extends Plugin {
                 : "";
             new Notice(`Synthadoc: ${engineLabel}${pages}`);
         });
+
+        // Citation chip renderer: ^[file.txt:12-24] → clickable chip.
+        //
+        // Obsidian converts ^[...] inline footnotes into numbered [N] superscripts and
+        // appends section.footnotes to the container AFTER all post-processor el blocks
+        // fire. So Path 1 (footnotes → body refs) must run deferred via setTimeout so
+        // section.footnotes is in the DOM when we query it.
+        //
+        // Paths 2 and 3 handle the rare case where Obsidian leaves ^[...] as a raw
+        // <sup> or text node instead of converting it to a footnote.
+        this.registerMarkdownPostProcessor((el, _ctx) => {
+            const wikiRoot: string = this.app.vault.adapter instanceof FileSystemAdapter
+                ? this.app.vault.adapter.getBasePath()
+                : "";
+
+            const CITE_RE = /\^\[([^\]:]+):(\d+)-(\d+)\]/g;
+            const BRACKET_RE = /^\^?\[([^\]:]+):(\d+)-(\d+)\]$/;
+
+            // Path 2: <sup> whose full text is [file:L-L] or ^[file:L-L].
+            for (const sup of Array.from(el.querySelectorAll("sup"))) {
+                const text = (sup as HTMLElement).textContent?.trim() ?? "";
+                const m = BRACKET_RE.exec(text);
+                if (m) (sup as HTMLElement).replaceWith(
+                    this._makeChip(wikiRoot, m[1], parseInt(m[2], 10), parseInt(m[3], 10))
+                );
+            }
+
+            // Path 3: raw text nodes containing ^[file:L-L].
+            const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+            const textNodes: Text[] = [];
+            let node: Node | null;
+            while ((node = walker.nextNode())) textNodes.push(node as Text);
+
+            for (const textNode of textNodes) {
+                const text = textNode.textContent || "";
+                if (!text.includes("^[")) continue;
+                CITE_RE.lastIndex = 0;
+                const frag = document.createDocumentFragment();
+                let last = 0;
+                let m: RegExpExecArray | null;
+                while ((m = CITE_RE.exec(text)) !== null) {
+                    if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+                    frag.appendChild(this._makeChip(wikiRoot, m[1], parseInt(m[2], 10), parseInt(m[3], 10)));
+                    last = m.index + m[0].length;
+                }
+                if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+                if (last > 0) {
+                    const parent = textNode.parentNode;
+                    if (parent?.nodeName === "SUP" && parent.textContent === text) {
+                        parent.replaceWith(frag);
+                    } else {
+                        parent?.replaceChild(frag, textNode);
+                    }
+                }
+            }
+
+            // Path 1 (deferred): Obsidian converted ^[...] to numbered footnotes.
+            // section.footnotes is appended after all el blocks fire, so we defer
+            // the whole-document scan 100 ms (debounced) to let the DOM settle.
+            if (this._citationScanTimer !== null) clearTimeout(this._citationScanTimer);
+            this._citationScanTimer = setTimeout(() => {
+                this._citationScanTimer = null;
+                this._replaceFootnoteCitations(wikiRoot);
+            }, 100);
+        });
     }
 
     async loadSettings() {
@@ -117,6 +195,57 @@ export default class SynthadocPlugin extends Plugin {
 
     async saveSettings() {
         await this.saveData(this.settings);
+    }
+
+    private _makeChip(wikiRoot: string, filename: string, lineStart: number, lineEnd: number): HTMLSpanElement {
+        const chip = document.createElement("span");
+        chip.className = "synthadoc-citation-chip";
+        chip.textContent = `${filename}:${lineStart}-${lineEnd}`;
+        chip.style.cssText = [
+            "display:inline-block",
+            "background:#4f46e5",
+            "color:#ffffff",
+            "border-radius:4px",
+            "padding:1px 6px",
+            "font-size:10px",
+            "font-weight:500",
+            "cursor:pointer",
+            "margin:0 3px",
+            "vertical-align:middle",
+            "-webkit-user-select:text",
+            "user-select:text",
+        ].join(";");
+        chip.addEventListener("click", () => {
+            new SourceViewerModal(this.app, filename, lineStart, lineEnd, wikiRoot).open();
+        });
+        return chip;
+    }
+
+    // Whole-document scan run after Obsidian finishes rendering section.footnotes.
+    // Derives body reference IDs from footnote li ids (fn-N → fnref-N) rather than
+    // from the backref anchor's class, which varies across Obsidian versions.
+    private _replaceFootnoteCitations(wikiRoot: string): void {
+        for (const section of Array.from(document.querySelectorAll("section.footnotes"))) {
+            for (const li of Array.from(section.querySelectorAll("li[id]"))) {
+                const liEl = li as HTMLElement;
+                const raw = liEl.textContent?.trim() ?? "";
+                const m = /^([^\]:]+):(\d+)-(\d+)/.exec(raw);
+                if (!m) continue;
+                const [, filename, ls, le] = m;
+                // li.id: "fn-1", "fn-1-abc", "user-content-fn-1" → "fnref-1", "fnref-1-abc", "user-content-fnref-1"
+                const refId = liEl.id.replace(/\bfn-/, "fnref-");
+                const target = document.getElementById(refId);
+                if (target) {
+                    // id may be on the <a> inside <sup>; replace the <sup> ancestor
+                    (target.closest("sup") ?? target).replaceWith(
+                        this._makeChip(wikiRoot, filename, parseInt(ls, 10), parseInt(le, 10))
+                    );
+                }
+                liEl.remove();
+            }
+            if (!(section as HTMLElement).querySelector("li"))
+                (section as HTMLElement).remove();
+        }
     }
 
     async ingestFile(file: TFile) {
@@ -2676,4 +2805,370 @@ class ContextModal extends Modal {
         this._result = "";
         this.contentEl.empty();
     }
+}
+
+const RAW_SOURCES_DIR = "raw_sources";
+
+class SourceViewerModal extends Modal {
+    constructor(
+        app: App,
+        private filename: string,
+        private lineStart: number,
+        private lineEnd: number,
+        private wikiRoot: string,
+    ) { super(app); }
+
+    onOpen() {
+        this.modalEl.style.width = "clamp(700px, 75vw, 1060px)";
+
+        // Draggable title bar (same pattern as ProvenanceModal).
+        const container = this.modalEl;
+        const bar = document.createElement("div");
+        bar.style.cssText = [
+            "display:flex", "align-items:center", "justify-content:space-between",
+            "padding:10px 16px", "border-bottom:1px solid var(--background-modifier-border)",
+            "cursor:grab", "user-select:none", "-webkit-user-select:none", "flex-shrink:0",
+        ].join(";");
+        const titleSpan = document.createElement("span");
+        titleSpan.textContent = `${this.filename} — lines ${this.lineStart}–${this.lineEnd}`;
+        titleSpan.style.cssText = "font-weight:600;font-size:14px";
+        bar.appendChild(titleSpan);
+        const hint = document.createElement("span");
+        hint.textContent = "drag to move";
+        hint.style.cssText = "font-size:10px;color:var(--text-faint)";
+        bar.appendChild(hint);
+        container.insertBefore(bar, this.contentEl);
+        this.contentEl.style.cssText += ";user-select:text;-webkit-user-select:text";
+        bar.addEventListener("mousedown", (e: MouseEvent) => {
+            e.preventDefault();
+            const rect = container.getBoundingClientRect();
+            container.style.position = "fixed";
+            container.style.left = rect.left + "px";
+            container.style.top = rect.top + "px";
+            container.style.transform = "none";
+            container.style.margin = "0";
+            const offsetX = e.clientX - rect.left;
+            const offsetY = e.clientY - rect.top;
+            bar.style.cursor = "grabbing";
+            const onMove = (ev: MouseEvent) => {
+                container.style.left = (ev.clientX - offsetX) + "px";
+                container.style.top = (ev.clientY - offsetY) + "px";
+            };
+            const onUp = () => {
+                document.removeEventListener("mousemove", onMove);
+                document.removeEventListener("mouseup", onUp);
+                bar.style.cursor = "grab";
+            };
+            document.addEventListener("mousemove", onMove);
+            document.addEventListener("mouseup", onUp);
+        });
+
+        const fs = (window as any).require("fs") as typeof import("fs");
+        const { contentEl } = this;
+        contentEl.empty();
+
+        const CONTEXT_LINES = 5;
+        const extractedFilename = this.filename.replace(/\.[^.]+$/, ".txt");
+        const extractedPath = `${this.wikiRoot}/.synthadoc/extracted/${extractedFilename}`;
+        const rawSourcePath = `${this.wikiRoot}/${RAW_SOURCES_DIR}/${this.filename}`;
+        const stem = this.filename.replace(/\.[^.]+$/, "");
+        const pagemapPath = `${this.wikiRoot}/.synthadoc/extracted/${stem}.pdf.pagemap`;
+
+        // Plain-text source types can be read directly from raw_sources/ as a fallback.
+        // Binary types (xlsx, docx, png, …) cannot — they need a sidecar that the
+        // ingest pipeline only writes for PDFs today.
+        const TEXT_EXTENSIONS = new Set(["md", "txt", "csv"]);
+        const ext = (this.filename.split(".").pop() ?? "").toLowerCase();
+        const resolvePath = (): string => {
+            if (fs.existsSync(extractedPath)) return extractedPath;
+            if (TEXT_EXTENSIONS.has(ext) && fs.existsSync(rawSourcePath)) return rawSourcePath;
+            throw new Error("no-sidecar");
+        };
+
+        try {
+            const text: string = fs.readFileSync(resolvePath(), "utf-8");
+            const lines = text.split("\n");
+            const start = Math.max(0, this.lineStart - 1 - CONTEXT_LINES);
+            const end = Math.min(lines.length, this.lineEnd + CONTEXT_LINES);
+            const pre = contentEl.createEl("pre");
+            pre.style.cssText = "overflow:auto;max-height:60vh;font-size:12px;line-height:1.5";
+            for (let i = start; i < end; i++) {
+                const lineNum = i + 1;
+                const span = pre.createEl("div");
+                span.textContent = `${String(lineNum).padStart(4)} ${lines[i]}`;
+                const inRange = lineNum >= this.lineStart && lineNum <= this.lineEnd;
+                span.style.cssText = inRange
+                    ? "background:var(--background-modifier-hover);font-weight:600"
+                    : "color:var(--text-muted)";
+            }
+
+            // PDF jump button — only shown when content is past page 1 (page 1 is the default).
+            try {
+                const pagemap: Record<string, number> = JSON.parse(fs.readFileSync(pagemapPath, "utf-8"));
+                const pdfPage = this.resolvePagemap(pagemap, this.lineStart);
+                if (pdfPage > 1) {
+                    const pdfName = this.filename.endsWith(".txt")
+                        ? this.filename.replace(/\.txt$/, ".pdf")
+                        : this.filename;
+                    const btn = contentEl.createEl("button", { text: `Open PDF at page ${pdfPage} →` });
+                    btn.style.cssText = "margin-top:12px;cursor:pointer";
+                    btn.addEventListener("click", () => {
+                        this.close();
+                        this.app.workspace.openLinkText(`${RAW_SOURCES_DIR}/${pdfName}#page=${pdfPage}`, "", true);
+                    });
+                    contentEl.createEl("p", {
+                        text: "Line numbers refer to extracted text. The PDF page shown is the closest match.",
+                    }).style.cssText = "font-size:11px;color:var(--text-muted);margin-top:4px";
+                }
+            } catch { /* no pagemap — PDF jump not available */ }
+        } catch {
+            const msg = TEXT_EXTENSIONS.has(ext)
+                ? `Could not read source file for ${this.filename}.`
+                : `Preview not available for .${ext} files. Open the original in raw_sources/ to view its content.`;
+            contentEl.createEl("p", { text: msg })
+                .style.cssText = "color:var(--text-error)";
+        }
+    }
+
+    private resolvePagemap(pagemap: Record<string, number>, lineStart: number): number {
+        const keys = Object.keys(pagemap).map(Number).sort((a, b) => a - b);
+        let page = 1;
+        for (const k of keys) {
+            if (k <= lineStart) page = pagemap[String(k)];
+            else break;
+        }
+        return page;
+    }
+
+    onClose() { this.contentEl.empty(); }
+}
+
+const PROVENANCE_PAGE_SIZE = 50;
+
+class ProvenanceModal extends Modal {
+    private filter = "";
+    private sortCol = "ingested_at";
+    private sortAsc = false;
+    private page = 0;
+    private allRows: Record<string, unknown>[] = [];
+    private total = 0;
+    private tableWrap: HTMLElement | null = null;
+    private pagerWrap: HTMLElement | null = null;
+
+    constructor(app: App, private serverUrl: string, private wikiRoot: string, private initialSlug: string = "") {
+        super(app);
+    }
+
+    async onOpen() {
+        this.modalEl.style.width = "clamp(900px, 82vw, 1200px)";
+        this.filter = this.initialSlug;
+        this.setupTitleBar();
+        await this.load();
+        this.renderAll();
+    }
+
+    // Inserts a draggable title bar above contentEl and enables text selection.
+    private setupTitleBar() {
+        const container = this.modalEl;
+
+        const bar = document.createElement("div");
+        bar.style.cssText = [
+            "display:flex",
+            "align-items:center",
+            "justify-content:space-between",
+            "padding:10px 16px",
+            "border-bottom:1px solid var(--background-modifier-border)",
+            "cursor:grab",
+            "user-select:none",
+            "-webkit-user-select:none",
+            "flex-shrink:0",
+        ].join(";");
+
+        const title = document.createElement("span");
+        title.textContent = "Page Provenance";
+        title.style.cssText = "font-weight:600;font-size:14px";
+        bar.appendChild(title);
+
+        const hint = document.createElement("span");
+        hint.textContent = "drag to move";
+        hint.style.cssText = "font-size:10px;color:var(--text-faint)";
+        bar.appendChild(hint);
+
+        container.insertBefore(bar, this.contentEl);
+
+        // Allow all text inside the modal body to be selected and copied.
+        this.contentEl.style.cssText += ";user-select:text;-webkit-user-select:text";
+
+        // Drag-to-move: capture current position on mousedown, then track movement.
+        bar.addEventListener("mousedown", (e: MouseEvent) => {
+            e.preventDefault();
+            const rect = container.getBoundingClientRect();
+            // Switch from Obsidian's centered transform to explicit fixed positioning.
+            container.style.position = "fixed";
+            container.style.left = rect.left + "px";
+            container.style.top = rect.top + "px";
+            container.style.transform = "none";
+            container.style.margin = "0";
+
+            const offsetX = e.clientX - rect.left;
+            const offsetY = e.clientY - rect.top;
+            bar.style.cursor = "grabbing";
+
+            const onMove = (ev: MouseEvent) => {
+                container.style.left = (ev.clientX - offsetX) + "px";
+                container.style.top = (ev.clientY - offsetY) + "px";
+            };
+            const onUp = () => {
+                document.removeEventListener("mousemove", onMove);
+                document.removeEventListener("mouseup", onUp);
+                bar.style.cursor = "grab";
+            };
+            document.addEventListener("mousemove", onMove);
+            document.addEventListener("mouseup", onUp);
+        });
+    }
+
+    private async load() {
+        const params = new URLSearchParams({
+            limit: String(PROVENANCE_PAGE_SIZE),
+            offset: String(this.page * PROVENANCE_PAGE_SIZE),
+            sort: this.sortCol,
+            order: this.sortAsc ? "asc" : "desc",
+        });
+        if (this.filter) params.set("page", this.filter);
+        try {
+            const resp = await fetch(`${this.serverUrl}/provenance/citations?${params}`);
+            const data = await resp.json() as { citations: Record<string, unknown>[]; total: number };
+            this.allRows = data.citations || [];
+            this.total = data.total || 0;
+        } catch {
+            this.allRows = [];
+            this.total = 0;
+        }
+    }
+
+    private renderAll() {
+        const { contentEl } = this;
+        contentEl.empty();
+        contentEl.style.cssText = "display:flex;flex-direction:column;height:70vh";
+
+        // Description
+        const desc = contentEl.createEl("p", {
+            text: "Every citation recorded during ingest — which wiki page claims what, sourced from which file and line range. Click any row to view the highlighted source lines.",
+        });
+        desc.style.cssText = "font-size:12px;color:var(--text-muted);margin:0 0 10px 0;flex-shrink:0";
+
+        // Filter bar
+        const filterRow = contentEl.createDiv({ cls: "synthadoc-prov-filter" });
+        filterRow.style.cssText = "display:flex;gap:8px;margin-bottom:12px;flex-shrink:0";
+        const input = filterRow.createEl("input", { type: "text", placeholder: "Filter by slug or source…" });
+        input.value = this.filter;
+        input.style.cssText = "flex:1;padding:4px 8px";
+        input.addEventListener("input", async () => {
+            this.filter = input.value;
+            this.page = 0;
+            await this.load();
+            this.renderTable();
+            this.renderPager();
+        });
+
+        const refreshBtn = filterRow.createEl("button", { text: "↻ Refresh" });
+        refreshBtn.addEventListener("click", async () => {
+            await this.load();
+            this.renderTable();
+            this.renderPager();
+        });
+
+        // Table wrapper — scrollable, grows to fill available space
+        this.tableWrap = contentEl.createDiv();
+        this.tableWrap.style.cssText = "flex:1;overflow:auto;min-height:0";
+        this.renderTable();
+
+        // Pager wrapper — pinned outside scroll area
+        this.pagerWrap = contentEl.createDiv();
+        this.pagerWrap.style.cssText = "flex-shrink:0";
+        this.renderPager();
+    }
+
+    private renderTable() {
+        if (!this.tableWrap) return;
+        this.tableWrap.empty();
+        if (this.allRows.length === 0) {
+            this.tableWrap.createEl("p", { text: "No citations found." })
+                .style.cssText = "color:var(--text-muted)";
+            return;
+        }
+        const table = this.tableWrap.createEl("table");
+        table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px;user-select:text;-webkit-user-select:text";
+
+        const cols: { key: string; label: string; sortable: boolean }[] = [
+            { key: "page_slug", label: "Page", sortable: true },
+            { key: "claim_excerpt", label: "Claim", sortable: false },
+            { key: "source_file", label: "Source", sortable: true },
+            { key: "lines", label: "Lines", sortable: false },
+            { key: "ingested_at", label: "Ingested", sortable: true },
+        ];
+        const thead = table.createEl("thead");
+        const headerRow = thead.createEl("tr");
+        for (const col of cols) {
+            const th = headerRow.createEl("th", { text: col.label });
+            th.style.cssText = "text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border);user-select:none;-webkit-user-select:none";
+            if (col.sortable) {
+                th.style.cursor = "pointer";
+                const isCurrent = this.sortCol === col.key;
+                if (isCurrent) th.textContent += this.sortAsc ? " ↑" : " ↓";
+                th.addEventListener("click", async () => {
+                    if (this.sortCol === col.key) this.sortAsc = !this.sortAsc;
+                    else { this.sortCol = col.key; this.sortAsc = true; }
+                    await this.load();
+                    this.renderTable();
+                });
+            }
+        }
+        const tbody = table.createEl("tbody");
+        for (const row of this.allRows) {
+            const tr = tbody.createEl("tr");
+            tr.style.cssText = "border-bottom:1px solid var(--background-modifier-border-focus);cursor:pointer";
+            tr.addEventListener("mouseenter", () => { tr.style.background = "var(--background-modifier-hover)"; });
+            tr.addEventListener("mouseleave", () => { tr.style.background = ""; });
+            const lineStart = row.line_start as number | undefined;
+            const lineEnd = row.line_end as number | undefined;
+            const sourceFile = String(row.source_file || "");
+            tr.addEventListener("click", () => {
+                if (window.getSelection()?.toString()) return;
+                if (sourceFile && lineStart != null && lineEnd != null)
+                    new SourceViewerModal(this.app, sourceFile, lineStart, lineEnd, this.wikiRoot).open();
+            });
+            const cells = [
+                String(row.page_slug || ""),
+                String(row.claim_excerpt || "").slice(0, 60),
+                sourceFile,
+                lineStart != null && lineEnd != null ? `${lineStart}-${lineEnd}` : "",
+                String(row.ingested_at || "").slice(0, 16),
+            ];
+            for (const cell of cells) {
+                const td = tr.createEl("td", { text: cell });
+                td.style.cssText = "padding:4px 8px;color:var(--text-normal);user-select:text;-webkit-user-select:text";
+            }
+        }
+    }
+
+    private renderPager() {
+        if (!this.pagerWrap) return;
+        this.pagerWrap.empty();
+        const totalPages = Math.ceil(this.total / PROVENANCE_PAGE_SIZE);
+        if (totalPages <= 1) return;
+        this.pagerWrap.style.cssText = "display:flex;gap:8px;margin-top:8px;align-items:center";
+        const prev = this.pagerWrap.createEl("button", { text: "← Previous" });
+        prev.disabled = this.page === 0;
+        prev.addEventListener("click", async () => { this.page--; await this.load(); this.renderTable(); this.renderPager(); });
+        this.pagerWrap.createEl("span", {
+            text: `Page ${this.page + 1} of ${totalPages} (${this.total} total)`,
+        });
+        const next = this.pagerWrap.createEl("button", { text: "Next →" });
+        next.disabled = this.page >= totalPages - 1;
+        next.addEventListener("click", async () => { this.page++; await this.load(); this.renderTable(); this.renderPager(); });
+    }
+
+    onClose() { this.contentEl.empty(); }
 }

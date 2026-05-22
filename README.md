@@ -14,7 +14,7 @@
       '-+###############+-'
 
        S Y N T H A D O C
-    Community Edition  v0.4.0
+    Community Edition  v0.5.0
   ────────────────────────────────
   Domain-agnostic LLM wiki engine
 ```
@@ -27,9 +27,9 @@
 [![Hooks](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.hooks&label=Hook%20events&color=teal)](https://github.com/axoviq-ai/synthadoc/tree/main/hooks)
 [![CLI](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.cli_commands&label=CLI%20commands&color=darkblue)](https://github.com/axoviq-ai/synthadoc)
 [![Obsidian](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.obsidian_commands&label=Obsidian%20commands&color=blueviolet)](https://github.com/axoviq-ai/synthadoc/tree/main/obsidian-plugin)
-[![Version](https://img.shields.io/badge/Community%20Edition-v0.4.0-brightgreen.svg)](https://github.com/axoviq-ai/synthadoc)
+[![Version](https://img.shields.io/badge/Community%20Edition-v0.5.0-brightgreen.svg)](https://github.com/axoviq-ai/synthadoc)
 
-**Document version: v0.4.0**
+**Document version: v0.5.0**
 
 **Engineered for solo users and enterprises alike, providing a domain-specific knowledge base that scales seamlessly while maintaining accuracy through autonomous self-optimization.**
 
@@ -119,6 +119,10 @@ Pages that exist but are referenced by nothing are surfaced by the lint system, 
 
 An LLM synthesising source documents naturally produces confident prose — but may overstate claims, omit caveats, or accept a source's framing uncritically. The **adversarial lint pass** runs a concurrent second-LLM review of every page: it plays devil's advocate to surface issues the primary model accepted too readily — contested estimates, unsupported superlatives, and claims that contradict well-established facts. Warnings are stored in page frontmatter and surfaced in both the CLI report and the Obsidian lint modal. The reviewer is calibrated to flag only high-confidence issues, producing a useful signal without noise. For the strongest signal, point the adversarial pass at a *different* model family: a distinct model is far more likely to challenge assumptions than the same model reviewing its own output.
 
+### Claim-Level Provenance
+
+Every substantive claim in the wiki is annotated with `^[filename:L-L]` — a citation pointing to the exact line range in the source file it came from. Click the citation chip in Obsidian to open a Source Viewer showing the highlighted passage; for PDF sources, Synthadoc resolves the PDF page number automatically via a pagemap sidecar. A global Provenance modal shows all citations across the wiki, sortable and filterable. Broken citations are caught by the lint system and logged in the audit trail. Run `synthadoc audit citations` to query citations from the CLI.
+
 ### 5. Re-synthesis is expensive; Synthadoc caches it
 
 A 3-layer cache (embedding, LLM response, provider prompt cache) means repeated lint runs on unchanged pages cost near-zero tokens.
@@ -155,11 +159,12 @@ As the wiki accumulates pages the `index.md` table of contents, domain scope (`p
 | Contradiction detection      | **Yes**                                                               | No          | No         | No        |
 | Orphan page detection        | **Yes**                                                               | No          | No         | No        |
 | Adversarial claim review     | **Yes** (concurrent second-LLM pass — flags overstated claims and unsupported assertions per page) | No | No | No |
+| Claim-level provenance       | **Yes** (`^[file:L-L]` citations on every claim; Source Viewer in Obsidian; PDF page resolution; global provenance table; broken-citation lint) | No | No | No |
 | Persistent wikilink graph    | **Yes**                                                               | No          | No         | No        |
 | Local-first (no cloud data)  | **Yes**                                                               | Varies      | No         | No        |
 | Custom skill plugins         | **Yes**                                                               | Limited     | No         | No        |
 | Obsidian integration         | **Yes**                                                               | No          | No         | No        |
-| Cost guard + audit trail     | **Yes**                                                               | No          | No         | No        |
+| Cost guard + audit trail     | **Yes** (per-job token + cost log; claim citations DB; `audit citations` CLI; ingest/lint/citation event types; full audit history API) | No          | No         | No        |
 | Hook / CI integration        | **Yes** (2 events)                                                    | No          | No         | No        |
 | Offline browsable artifact   | **Yes**                                                               | No          | No         | No        |
 | Multi-wiki isolation         | **Yes**                                                               | No          | No         | No        |
@@ -397,6 +402,7 @@ The guide covers:
 15. Set up query-scoped routing with ROUTING.md
 16. Stage and review candidate pages before promoting them
 17. Build a context pack for grounded LLM prompts
+18. Verify claim provenance — source-line citations, broken citation audit, global provenance table
 
 ---
 
@@ -454,11 +460,13 @@ synthadoc candidates discard punch-card-era           # discard pages that don't
 
 Skip this step if you trust all your sources — `staging policy off` is the default.
 
-**3. Lint and query** — check for contradictions and verify the wiki answers your questions:
+**3. Lint and query** — check for contradictions, flag overstated claims, verify citations, and confirm the wiki answers your questions:
 
 ```bash
-synthadoc lint run
-synthadoc lint report
+synthadoc lint run                          # full lint: structural checks + adversarial pass (default)
+synthadoc lint run --no-adversarial         # structural only — skip the adversarial LLM review
+synthadoc lint report                       # view all issues including citation violations (Check 5)
+synthadoc audit citations --broken          # list claim citations that failed validation
 synthadoc query "What are the current employment trends in the Toronto GTA?"
 ```
 
@@ -744,6 +752,13 @@ synthadoc audit cost --days 7 -w my-wiki      # last 7 days
 # Audit events: contradictions found, auto-resolutions, cost gate triggers
 synthadoc audit events -w my-wiki             # last 100 events
 synthadoc audit events --json -w my-wiki      # raw JSON for scripting
+
+# Claim citations: source-line provenance for every annotated claim
+synthadoc audit citations -w my-wiki                    # all citations (last 50)
+synthadoc audit citations --page alan-turing -w my-wiki # citations for one page
+synthadoc audit citations --source turing.pdf -w my-wiki # citations from one source
+synthadoc audit citations --broken -w my-wiki           # validation failures only
+synthadoc audit citations --json -w my-wiki             # raw JSON for scripting
 ```
 
 ### Scheduling recurring jobs
@@ -917,6 +932,12 @@ synthadoc audit cost --json -w my-wiki      # {total_tokens, total_cost_usd, dai
 
 synthadoc audit events -w my-wiki           # table: timestamp, job_id, event type, metadata
 synthadoc audit events --json -w my-wiki    # raw JSON
+
+synthadoc audit citations -w my-wiki                     # all claim citations (last 50)
+synthadoc audit citations --page alan-turing -w my-wiki  # citations for one page
+synthadoc audit citations --source turing.pdf -w my-wiki # citations from one source file
+synthadoc audit citations --broken -w my-wiki            # validation failures only
+synthadoc audit citations --json -w my-wiki              # raw JSON for scripting
 ```
 
 > **Note:** Per-model cost tracking is live from v0.2.0 — pricing tables cover all 7 API providers. Token counts and USD cost are recorded for every ingest and query operation in `audit.db`.

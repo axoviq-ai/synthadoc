@@ -9,6 +9,8 @@ from typing import Optional
 
 import aiosqlite
 
+CITATION_EXCERPT_LEN = 100
+
 
 class LogWriter:
     def __init__(self, log_path: Path) -> None:
@@ -86,6 +88,16 @@ class AuditDB:
                     tokens INTEGER,
                     cost_usd REAL,
                     queried_at TEXT NOT NULL
+                )""")
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS claim_citations (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    page_slug   TEXT NOT NULL,
+                    source_file TEXT NOT NULL,
+                    line_start  INTEGER NOT NULL,
+                    line_end    INTEGER NOT NULL,
+                    claim_excerpt TEXT,
+                    ingested_at TEXT NOT NULL
                 )""")
             await db.commit()
 
@@ -201,6 +213,111 @@ class AuditDB:
             daily.append({"day": rd["day"], "cost_usd": rd.get("day_cost") or 0.0})
 
         return {"total_tokens": total_tokens, "total_cost_usd": total_cost, "daily": daily}
+
+    async def record_claim_citations(
+        self, page_slug: str, citations: list[dict]
+    ) -> None:
+        """Record claim-level citations produced by Pass 4."""
+        if not citations:
+            return
+        ts = datetime.now(timezone.utc).isoformat()
+        async with aiosqlite.connect(self._path) as db:
+            await db.executemany(
+                "INSERT INTO claim_citations "
+                "(page_slug,source_file,line_start,line_end,claim_excerpt,ingested_at) "
+                "VALUES (?,?,?,?,?,?)",
+                [
+                    (page_slug, c["source_file"], c["line_start"], c["line_end"],
+                     (c.get("claim_excerpt") or "")[:CITATION_EXCERPT_LEN], ts)
+                    for c in citations
+                ],
+            )
+            await db.commit()
+
+    async def list_citations(
+        self,
+        page_slug: str | None = None,
+        source_file: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+        sort: str = "ingested_at",
+        order: str = "desc",
+    ) -> list[dict]:
+        """Return citations from claim_citations."""
+        _ALLOWED_SORT = {"page_slug", "source_file", "line_start", "ingested_at"}
+        if sort not in _ALLOWED_SORT:
+            sort = "ingested_at"
+        order = "asc" if order.lower() == "asc" else "desc"
+
+        wheres, params = [], []
+        if page_slug:
+            wheres.append("page_slug=?")
+            params.append(page_slug)
+        if source_file:
+            wheres.append("source_file=?")
+            params.append(source_file)
+        where = ("WHERE " + " AND ".join(wheres)) if wheres else ""
+        params += [limit, offset]
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                f"SELECT page_slug, source_file, line_start, line_end, "
+                f"claim_excerpt, ingested_at FROM claim_citations "
+                f"{where} ORDER BY {sort} {order} LIMIT ? OFFSET ?",
+                params,
+            ) as cur:
+                rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def list_citation_failures(
+        self,
+        page_slug: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict]:
+        """Return citation validation failures from audit_events.
+
+        Each returned dict has keys: page_slug, source_file, citation, reason,
+        event_time.
+        """
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT timestamp, metadata FROM audit_events "
+                "WHERE event='citation_validation_failed' "
+                "ORDER BY id DESC LIMIT ? OFFSET ?",
+                (limit, offset),
+            ) as cur:
+                rows = await cur.fetchall()
+        result = []
+        for r in rows:
+            try:
+                m = json.loads(r["metadata"] or "{}")
+            except Exception:
+                m = {}
+            entry = {
+                "page_slug": m.get("page_slug") or m.get("slug"),
+                "source_file": m.get("source_file"),
+                "citation": m.get("citation"),
+                "reason": m.get("reason"),
+                "event_time": r["timestamp"],
+            }
+            if page_slug is not None and entry["page_slug"] != page_slug:
+                continue
+            result.append(entry)
+        return result
+
+    async def write_event(self, event: str, job_id: str = "",
+                          metadata: dict | None = None) -> None:
+        """Write a single audit event."""
+        meta_str = json.dumps(metadata or {})
+        ts = datetime.now(timezone.utc).isoformat()
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute(
+                "INSERT INTO audit_events (job_id,event,timestamp,metadata) VALUES (?,?,?,?)",
+                (job_id or None, event, ts, meta_str),
+            )
+            await db.commit()
 
     async def record_audit_event(self, job_id: str, event: str, metadata: dict) -> None:
         ts = datetime.now(timezone.utc).isoformat()

@@ -1,6 +1,6 @@
 ﻿# Synthadoc User Quick-Start Guide
 
-**Version: v0.4.0 (Community Edition)**
+**Version: v0.5.0 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
@@ -22,7 +22,7 @@ major engine feature. No setup beyond following the steps below is required.
 6. [Batch ingest all demo sources](#step-6--batch-ingest-all-demo-sources)
 7. [Resolve a contradiction](#step-7--resolve-a-contradiction)
 8. [Fix an orphan page](#step-8--fix-an-orphan-page)
-9. [Run the adversarial lint pass](#step-9--run-the-adversarial-lint-pass)
+9. [Run the adversarial review](#step-9--run-the-adversarial-review)
 10. [Web search ingestion](#step-10--web-search-ingestion)
 11. [Ingest a YouTube video](#step-11--ingest-a-youtube-video)
 12. [Enrich the wiki with scaffold](#step-12--enrich-the-wiki-with-scaffold)
@@ -31,6 +31,7 @@ major engine feature. No setup beyond following the steps below is required.
 15. [Set up ROUTING.md — scoped search](#step-15--set-up-routingmd--scoped-search)
 16. [Configure candidates staging](#step-16--configure-candidates-staging)
 17. [Build a context pack](#step-17--build-a-context-pack)
+18. [Establish claim-level provenance](#claim-provenance)
 
 **Appendices**
 
@@ -517,18 +518,18 @@ The number of pages cleaned up is shown in the lint output and recorded in `log.
 
 ---
 
-<a name="adversarial-lint"></a>
-## Step 9 — Run the adversarial lint pass
+<a name="adversarial-review"></a>
+## Step 9 — Run the adversarial review
 
-The standard lint checks (contradictions, orphans, dangling links) catch structural problems.
-The **adversarial lint pass** adds a second LLM pass that plays devil's advocate against every
-page — flagging overstated claims, unsupported assertions, and statements that are plausible
-but hard to verify.
+Standard lint validates wiki structure — contradictions, orphan pages, dangling links. The
+**adversarial review** adds a second independent LLM pass that interrogates every page for
+epistemic overreach: overstated claims, unsupported assertions, and high-confidence statements
+the source material does not support.
 
-The adversarial pass runs automatically as part of every `synthadoc lint run`. No extra flag is
+The adversarial review runs automatically as part of every `synthadoc lint run`. No extra flag is
 needed.
 
-### Run lint (with adversarial pass)
+### Run lint with adversarial review
 
 ```bash
 synthadoc lint run
@@ -538,7 +539,7 @@ synthadoc lint report         # view results when complete
 
 The pre-built pages already contain the kinds of sweeping historical claims an adversarial
 reviewer will flag — no additional ingest is needed before this step, though running Step 6
-first gives the adversarial pass more content to work with.
+first gives the adversarial review more content to work with.
 
 The reviewer flags **up to 2 issues per page by default** (configurable via `adversarial_max_per_page` in `config.toml`) and only flags claims it is highly confident
 about — defensible or nuanced statements are skipped. The full history-of-computing demo
@@ -641,13 +642,15 @@ Contradictions tab uses orange, and **Suggested index entry:** in the Orphans ta
 accent blue (it is a suggestion, not a warning), so you can scan the full report at a
 glance without reading every line.
 
+![Synthadoc Lint report — Adversarial tab showing flagged claims across multiple pages](png/lint-report-adversarial.png)
+
 > **Skip the adversarial pass:** If you want a fast structural-only lint, open
 > `Synthadoc: Lint: run...` and tick **Skip adversarial review**. This also clears any
 > existing `lint_warnings` from frontmatter so stale warnings do not linger.
 
-### Optional — tune the adversarial pass
+### Optional — adjust the warning cap
 
-**Adjust the warning cap per page** — the default is 2, set in your wiki's `config.toml`:
+By default the adversarial reviewer flags at most 2 issues per page. Raise the cap for a thorough audit; lower it to reduce noise on large wikis:
 
 ```toml
 # config.toml
@@ -657,20 +660,24 @@ adversarial_max_per_page = 2  # raise to 3–5 for a deeper review; lower to 1 f
 
 If `[lint]` is absent from `config.toml`, Synthadoc defaults to 2 — no file change needed.
 
-**Use a dedicated judge model** — by default the adversarial pass shares the lint model. For
-the most effective adversarial review, point it at a *different* model: a second opinion
-from a distinct model family is far more likely to surface blind spots and challenge
-assumptions than the same model reviewing its own output:
+### Optional — appoint a dedicated judge model
+
+By default the adversarial review shares the lint model. The most effective configuration is a
+*different provider entirely*: a model from a distinct family, trained on different data with
+different inductive biases, will surface blind spots and challenge assumptions that the primary
+model would systematically miss. Same-model self-review has limited value; cross-model review
+does not:
 
 ```toml
 # config.toml
 [agents]
-lint        = { provider = "groq",   model = "llama-3.3-70b-versatile" }
-adversarial = { provider = "groq",   model = "gemma2-9b-it" }   # faster, cheaper judge
+lint        = { provider = "minimax",   model = "MiniMax-M2.5" }
+adversarial = { provider = "anthropic", model = "claude-sonnet-4-6" }   # independent judge — different model family, different inductive biases
 ```
 
-The two models are intentionally different — a separate model acting as judge reduces the
-self-serving bias that occurs when a model reviews its own output.
+The two providers are intentionally different — when a model from one family reviews the
+output of a model from another, neither shares the training-induced assumptions that cause
+same-model review to miss systematic errors.
 
 ---
 
@@ -1231,6 +1238,70 @@ Set a permanent default in `config.toml`:
 ```toml
 [query]
 context_token_budget = 6000
+```
+
+---
+
+<a name="claim-provenance"></a>
+## Step 18 — Establish claim-level provenance
+
+Every compiled wiki page is a synthesis — the LLM draws on source text and rewrites it as prose. **Claim-level provenance** closes the audit gap: during ingest, a dedicated annotation pass inserts a `^[filename:L-L]` citation marker at the end of each substantive paragraph, mapping the compiled claim to the exact line range in the raw source that supports it. Markers are stored in the page body, validated by lint, and recorded in the audit database. In Obsidian they render as interactive chips — one click opens the Source Viewer, showing the referenced lines with surrounding context. For PDF sources, a pagemap sidecar resolves the line number to the correct page for direct navigation.
+
+### Re-ingest sources to generate citations
+
+Citation markers are injected during ingest. The demo wiki pages were built before this feature existed, so they do not have markers yet. To annotate them you need to re-ingest the raw source files — but because the files have not changed, the normal dedup check would skip them. The **Force re-ingest** option bypasses the duplicate check so every file runs through the full pipeline including the citation annotation pass, regardless of whether it was previously ingested.
+
+**From the Obsidian plugin (recommended):**
+
+1. Open the Command Palette (`Ctrl/Cmd+P`) → **Synthadoc: Ingest sources**
+2. Switch to the **All raw_sources** tab
+3. Check **Force re-ingest (skip duplicate check)**
+4. Click **Ingest all**
+
+All supported files in your `raw_sources/` folder are queued immediately. You can watch progress under **Jobs** in the Obsidian command palette or with:
+
+```bash
+synthadoc jobs list -w history-of-computing
+```
+
+Wait until all jobs reach `completed` status before checking for citation markers.
+
+**Why --force is needed:** Synthadoc records a hash of every ingested source file in the audit database. On subsequent ingest of the same unchanged file, the hash matches and the job is skipped — this is intentional to avoid redundant LLM calls. `--force` overrides this check so the annotation pass runs even on previously seen files.
+
+### Inspect citation chips in Reading View
+
+Once the re-ingest jobs complete, open any wiki page in **Reading View** (`Ctrl/Cmd+E`, or click the book icon in the top-right toolbar). Citation chips are rendered by a post-processor that only runs in Reading View — they will not appear in Edit or Live Preview mode. Paragraphs that make a substantive claim now end with an inline citation chip:
+
+```
+Alan Turing proposed the Turing Test in 1950.^[turing-biography.txt:12-24]
+```
+
+Click a chip to open the **Source Viewer** — the exact lines from the source file, highlighted, with ±5 lines of context. For PDF sources, a **"Open PDF at page N →"** button resolves the line number to the correct PDF page via a pagemap sidecar and opens it in Obsidian's native PDF viewer.
+
+![Synthadoc citation chips on the alan-turing wiki page — each chip links to the exact source lines](png/claim-level-citation.png)
+
+### Audit provenance across the whole wiki
+
+Open the Obsidian command palette → **Synthadoc: View Page Provenance**. A sortable, paginated table shows every citation across the wiki. You can drag the modal by its title bar to reposition it, and all cell content can be selected and copied. Sort by source file to audit a single document, or filter by slug to see all claims for one page. Click any row to open the Source Viewer for that citation's exact line range.
+
+![Page Provenance modal showing citation table with a Source Viewer popup open for a PDF row — pagination is pinned below the table](png/page-provenance-line-range.png)
+
+### Find broken citations
+
+```bash
+# CLI — show citations that failed validation
+synthadoc audit citations -w history-of-computing --broken
+
+# All citations for one page
+synthadoc audit citations -w history-of-computing --page alan-turing
+```
+
+![CLI output of audit citations for the alan-turing page — table of source file, line range, and claim excerpt for every recorded citation](png/audit-citation.png)
+
+The lint report also shows a **Citation Issues** section listing any broken, out-of-range, or malformed markers:
+
+```bash
+synthadoc lint report -w history-of-computing
 ```
 
 ---
