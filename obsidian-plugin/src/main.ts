@@ -2923,8 +2923,8 @@ class SourceViewerModal extends Modal {
             } catch { /* no pagemap — PDF jump not available */ }
         } catch {
             const msg = TEXT_EXTENSIONS.has(ext)
-                ? `Could not read source file for ${this.filename}`
-                : `Extracted text is not stored locally for .${ext} files. The content was processed during ingest but no text sidecar is written to disk for this file type.`;
+                ? `Could not read source file for ${this.filename}.`
+                : `Preview not available for .${ext} files. Open the original in raw_sources/ to view its content.`;
             contentEl.createEl("p", { text: msg })
                 .style.cssText = "color:var(--text-error)";
         }
