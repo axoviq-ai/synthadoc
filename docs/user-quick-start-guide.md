@@ -1278,7 +1278,9 @@ Click a chip to open the **Source Viewer** — the exact lines from the source f
 
 ### View provenance across the whole wiki
 
-Open the Obsidian command palette → **Synthadoc: View Page Provenance**. A sortable, paginated table shows every citation across the wiki. You can drag the modal by its title bar to reposition it, and all cell content can be selected and copied. Sort by source file to audit a single document, or filter by slug to see all claims for one page.
+Open the Obsidian command palette → **Synthadoc: View Page Provenance**. A sortable, paginated table shows every citation across the wiki. You can drag the modal by its title bar to reposition it, and all cell content can be selected and copied. Sort by source file to audit a single document, or filter by slug to see all claims for one page. Click any row to open the Source Viewer for that citation's exact line range.
+
+![Page Provenance modal showing citation table with a Source Viewer popup open for a PDF row — pagination is pinned below the table](png/page-provenance-line-range.png)
 
 ### Find broken citations
 
