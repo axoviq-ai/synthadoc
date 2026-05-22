@@ -1296,6 +1296,8 @@ synthadoc audit citations -w history-of-computing --broken
 synthadoc audit citations -w history-of-computing --page alan-turing
 ```
 
+![CLI output of audit citations for the alan-turing page — table of source file, line range, and claim excerpt for every recorded citation](png/audit-citation.png)
+
 The lint report also shows a **Citation Issues** section listing any broken, out-of-range, or malformed markers:
 
 ```bash
