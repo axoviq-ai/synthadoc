@@ -224,16 +224,17 @@ class IngestAgent:
         self._purpose = self._load_purpose()
 
     def _write_sidecar(self, source_path: str, text: str, pagemap: dict) -> None:
-        """Write .synthadoc/extracted/<name>.txt and <name>.pdf.pagemap sidecar files."""
+        """Write .synthadoc/extracted/<name>.txt and (for PDFs) <name>.pdf.pagemap."""
         if not self._wiki_root:
             return
         extracted_dir = self._wiki_root / ".synthadoc" / "extracted"
         extracted_dir.mkdir(parents=True, exist_ok=True)
         name = Path(source_path).stem
         (extracted_dir / f"{name}.txt").write_text(text, encoding="utf-8")
-        (extracted_dir / f"{name}.pdf.pagemap").write_text(
-            json.dumps(pagemap, indent=2), encoding="utf-8"
-        )
+        if pagemap:
+            (extracted_dir / f"{name}.pdf.pagemap").write_text(
+                json.dumps(pagemap, indent=2), encoding="utf-8"
+            )
 
     async def _annotate_citations(
         self, section: str, source_text: str, filename: str
@@ -500,9 +501,13 @@ class IngestAgent:
             result.child_sources = extracted.metadata["child_sources"]
             return result
 
-        # PDF sidecar: write extracted text + pagemap for Obsidian Source Viewer
+        # Write text sidecar for all local source types so the Obsidian Source Viewer
+        # can display extracted content for xlsx, docx, md, png, etc. — not just PDFs.
+        # URL/YouTube sources are excluded: their source_path is a URL and Path().stem
+        # would produce unreliable names that could collide across domains.
         page_boundaries = extracted.metadata.get("page_boundaries", {})
-        if page_boundaries:
+        is_local = not source.startswith(("http://", "https://"))
+        if is_local or page_boundaries:
             self._write_sidecar(source, extracted.text, page_boundaries)
 
         # Skill-level token costs (e.g. vision pre-pass in ImageSkill)
