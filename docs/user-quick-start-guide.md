@@ -22,7 +22,7 @@ major engine feature. No setup beyond following the steps below is required.
 6. [Batch ingest all demo sources](#step-6--batch-ingest-all-demo-sources)
 7. [Resolve a contradiction](#step-7--resolve-a-contradiction)
 8. [Fix an orphan page](#step-8--fix-an-orphan-page)
-9. [Run the adversarial lint pass](#step-9--run-the-adversarial-lint-pass)
+9. [Run the adversarial review](#step-9--run-the-adversarial-review)
 10. [Web search ingestion](#step-10--web-search-ingestion)
 11. [Ingest a YouTube video](#step-11--ingest-a-youtube-video)
 12. [Enrich the wiki with scaffold](#step-12--enrich-the-wiki-with-scaffold)
@@ -518,18 +518,18 @@ The number of pages cleaned up is shown in the lint output and recorded in `log.
 
 ---
 
-<a name="adversarial-lint"></a>
-## Step 9 — Run the adversarial lint pass
+<a name="adversarial-review"></a>
+## Step 9 — Run the adversarial review
 
-The standard lint checks (contradictions, orphans, dangling links) catch structural problems.
-The **adversarial lint pass** adds a second LLM pass that plays devil's advocate against every
-page — flagging overstated claims, unsupported assertions, and statements that are plausible
-but hard to verify.
+Standard lint validates wiki structure — contradictions, orphan pages, dangling links. The
+**adversarial review** adds a second independent LLM pass that interrogates every page for
+epistemic overreach: overstated claims, unsupported assertions, and high-confidence statements
+the source material does not support.
 
-The adversarial pass runs automatically as part of every `synthadoc lint run`. No extra flag is
+The adversarial review runs automatically as part of every `synthadoc lint run`. No extra flag is
 needed.
 
-### Run lint (with adversarial pass)
+### Run lint with adversarial review
 
 ```bash
 synthadoc lint run
@@ -539,7 +539,7 @@ synthadoc lint report         # view results when complete
 
 The pre-built pages already contain the kinds of sweeping historical claims an adversarial
 reviewer will flag — no additional ingest is needed before this step, though running Step 6
-first gives the adversarial pass more content to work with.
+first gives the adversarial review more content to work with.
 
 The reviewer flags **up to 2 issues per page by default** (configurable via `adversarial_max_per_page` in `config.toml`) and only flags claims it is highly confident
 about — defensible or nuanced statements are skipped. The full history-of-computing demo
@@ -648,7 +648,7 @@ glance without reading every line.
 > `Synthadoc: Lint: run...` and tick **Skip adversarial review**. This also clears any
 > existing `lint_warnings` from frontmatter so stale warnings do not linger.
 
-### Optional — tune the adversarial pass
+### Optional — appoint a dedicated judge model
 
 **Adjust the warning cap per page** — the default is 2, set in your wiki's `config.toml`:
 
@@ -660,20 +660,22 @@ adversarial_max_per_page = 2  # raise to 3–5 for a deeper review; lower to 1 f
 
 If `[lint]` is absent from `config.toml`, Synthadoc defaults to 2 — no file change needed.
 
-**Use a dedicated judge model** — by default the adversarial pass shares the lint model. For
-the most effective adversarial review, point it at a *different* model: a second opinion
-from a distinct model family is far more likely to surface blind spots and challenge
-assumptions than the same model reviewing its own output:
+**Appoint a dedicated judge model** — by default the adversarial review shares the lint model.
+The most effective configuration is a *different provider entirely*: a model from a distinct
+family, trained on different data with different inductive biases, will surface blind spots and
+challenge assumptions that the primary model would systematically miss. Same-model
+self-review has limited value; cross-model review does not:
 
 ```toml
 # config.toml
 [agents]
-lint        = { provider = "groq",   model = "llama-3.3-70b-versatile" }
-adversarial = { provider = "groq",   model = "gemma2-9b-it" }   # faster, cheaper judge
+lint        = { provider = "minimax",   model = "MiniMax-M2.5" }
+adversarial = { provider = "anthropic", model = "claude-sonnet-4-6" }   # independent judge — different model family, different inductive biases
 ```
 
-The two models are intentionally different — a separate model acting as judge reduces the
-self-serving bias that occurs when a model reviews its own output.
+The two providers are intentionally different — when a model from one family reviews the
+output of a model from another, neither shares the training-induced assumptions that cause
+same-model review to miss systematic errors.
 
 ---
 
