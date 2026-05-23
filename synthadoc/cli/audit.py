@@ -182,6 +182,29 @@ def citations_cmd(
         console.print(table)
 
 
+lifecycle_audit_app = typer.Typer(help="Lifecycle event management.")
+audit_app.add_typer(lifecycle_audit_app, name="lifecycle")
+
+
+@lifecycle_audit_app.command("purge")
+def lifecycle_purge(
+    wiki: Optional[str] = typer.Option(None, "--wiki", "-w"),
+    before: Optional[str] = typer.Option(None, "--before", help="ISO date e.g. 2026-01-01"),
+    keep_latest: Optional[int] = typer.Option(None, "--keep-latest", help="Keep N most recent events per slug"),
+) -> None:
+    """Purge old lifecycle events from audit.db."""
+    from synthadoc.cli._wiki import resolve_wiki
+    wiki_name = resolve_wiki(wiki)
+    db = _get_audit_db(wiki_name)
+
+    async def _run():
+        await db.init()
+        await db.purge_lifecycle_events(before_date=before, keep_latest=keep_latest)
+
+    asyncio.run(_run())
+    typer.echo("Lifecycle events purged.")
+
+
 @audit_app.command("events")
 def events_cmd(
     wiki: Optional[str] = typer.Option(None, "--wiki", "-w"),

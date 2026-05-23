@@ -7,6 +7,7 @@ import hashlib
 import json as _json
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -15,6 +16,7 @@ from synthadoc.storage.log import AuditDB, LogWriter
 from synthadoc.storage.wiki import WikiStorage, LifecycleState, is_url, TriggerSource
 
 if TYPE_CHECKING:
+    from synthadoc.config import Config
     from synthadoc.storage.wiki import WikiPage
 
 
@@ -178,7 +180,8 @@ class LintAgent:
                  audit_db: AuditDB | None = None,
                  adversarial_provider: LLMProvider | None = None,
                  adversarial_max_per_page: int = 2,
-                 wiki_root: "Path | str | None" = None) -> None:
+                 wiki_root: "Path | str | None" = None,
+                 cfg: "Config | None" = None) -> None:
         self._provider = provider
         self._store = store
         self._log = log_writer
@@ -187,6 +190,7 @@ class LintAgent:
         self._adversarial_provider = adversarial_provider or provider
         self._adversarial_max_per_page = adversarial_max_per_page
         self._wiki_root = Path(wiki_root) if wiki_root else self._store._root.parent
+        self._cfg = cfg
 
     def _find_orphans(self, slugs: list[str]) -> list[str]:
         page_texts = {}
@@ -346,6 +350,13 @@ class LintAgent:
                 _logging.getLogger(__name__).warning(
                     "lifecycle check failed for %s: %s", slug, exc
                 )
+
+        if self._audit and self._cfg:
+            retention = getattr(getattr(self._cfg, "audit", None), "lifecycle_retention_days", 0)
+            if retention > 0:
+                from datetime import timedelta
+                cutoff = (datetime.now(timezone.utc) - timedelta(days=retention)).isoformat()
+                await self._audit.purge_lifecycle_events(before_date=cutoff)
 
     async def lint(self, scope: str = "all", auto_resolve: bool = False,
                    adversarial: bool = True, lifecycle: bool = True,

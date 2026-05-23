@@ -463,6 +463,7 @@ class Orchestrator:
                 audit_db=self._audit,
                 adversarial_max_per_page=self._cfg.lint.adversarial_max_per_page,
                 wiki_root=self._root,
+                cfg=self._cfg,
             ).lint(scope=scope, auto_resolve=auto_resolve, adversarial=adversarial,
                    lifecycle=lifecycle, job_id=job_id)
             await self._queue.complete(job_id, result={

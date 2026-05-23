@@ -143,6 +143,11 @@ class SearchConfig:
     vector_top_candidates: int = 20
 
 
+@dataclass
+class AuditConfig:
+    lifecycle_retention_days: int = 0   # 0 = keep forever
+
+
 # ---------------------------------------------------------------------------
 # Root config
 # ---------------------------------------------------------------------------
@@ -163,6 +168,7 @@ class Config:
     wiki: WikiConfig = field(default_factory=WikiConfig)
     search: SearchConfig = field(default_factory=SearchConfig)
     lint: LintConfig = field(default_factory=LintConfig)
+    audit: AuditConfig = field(default_factory=AuditConfig)
     hooks: dict = field(default_factory=dict)
     wikis: dict = field(default_factory=dict)
 
@@ -347,6 +353,12 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         adversarial_max_per_page=int(lt.get("adversarial_max_per_page", 2)),
     )
 
+    # --- audit ---
+    at = raw.get("audit", {})
+    audit = AuditConfig(
+        lifecycle_retention_days=int(at.get("lifecycle_retention_days", 0)),
+    )
+
     return Config(
         agents=agents,
         cache=cache,
@@ -361,6 +373,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         wiki=wiki,
         search=search,
         lint=lint,
+        audit=audit,
         hooks=hooks,
         wikis=wikis,
     )
