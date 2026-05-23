@@ -99,6 +99,23 @@ class AuditDB:
                     claim_excerpt TEXT,
                     ingested_at TEXT NOT NULL
                 )""")
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS page_states (
+                    slug         TEXT PRIMARY KEY,
+                    state        TEXT NOT NULL,
+                    updated_at   TEXT NOT NULL,
+                    triggered_by TEXT NOT NULL
+                )""")
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS lifecycle_events (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    slug         TEXT NOT NULL,
+                    from_state   TEXT,
+                    to_state     TEXT NOT NULL,
+                    reason       TEXT,
+                    triggered_by TEXT NOT NULL,
+                    timestamp    TEXT NOT NULL
+                )""")
             await db.commit()
 
     async def record_ingest(self, source_hash: str, source_size: int,
@@ -326,4 +343,96 @@ class AuditDB:
                 "INSERT INTO audit_events (job_id,event,timestamp,metadata) VALUES (?,?,?,?)",
                 (job_id, event, ts, json.dumps(metadata)),
             )
+            await db.commit()
+
+    async def set_page_state(self, slug: str, state: str, triggered_by: str) -> None:
+        ts = datetime.now(timezone.utc).isoformat()
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute(
+                "INSERT INTO page_states (slug,state,updated_at,triggered_by) VALUES (?,?,?,?)"
+                " ON CONFLICT(slug) DO UPDATE SET state=excluded.state,"
+                " updated_at=excluded.updated_at, triggered_by=excluded.triggered_by",
+                (slug, state, ts, triggered_by),
+            )
+            await db.commit()
+
+    async def get_page_state(self, slug: str) -> Optional[dict]:
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT slug,state,updated_at,triggered_by FROM page_states WHERE slug=?",
+                (slug,),
+            ) as cur:
+                row = await cur.fetchone()
+        return dict(row) if row else None
+
+    async def record_lifecycle_event(
+        self, slug: str, from_state: Optional[str], to_state: str,
+        reason: str, triggered_by: str,
+    ) -> None:
+        ts = datetime.now(timezone.utc).isoformat()
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute(
+                "INSERT INTO lifecycle_events"
+                " (slug,from_state,to_state,reason,triggered_by,timestamp)"
+                " VALUES (?,?,?,?,?,?)",
+                (slug, from_state, to_state, reason or "", triggered_by, ts),
+            )
+            await db.commit()
+
+    async def get_lifecycle_events(
+        self,
+        slug: Optional[str] = None,
+        to_state: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict]:
+        wheres, params = [], []
+        if slug:
+            wheres.append("slug=?")
+            params.append(slug)
+        if to_state:
+            wheres.append("to_state=?")
+            params.append(to_state)
+        where = ("WHERE " + " AND ".join(wheres)) if wheres else ""
+        params += [limit, offset]
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                f"SELECT id,slug,from_state,to_state,reason,triggered_by,timestamp"
+                f" FROM lifecycle_events {where} ORDER BY id ASC LIMIT ? OFFSET ?",
+                params,
+            ) as cur:
+                rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def get_lifecycle_summary(self) -> dict:
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT state, COUNT(*) as cnt FROM page_states GROUP BY state"
+            ) as cur:
+                rows = await cur.fetchall()
+        return {r["state"]: r["cnt"] for r in rows}
+
+    async def purge_lifecycle_events(
+        self,
+        before_date: Optional[str] = None,
+        keep_latest: Optional[int] = None,
+    ) -> None:
+        async with aiosqlite.connect(self._path) as db:
+            if before_date:
+                await db.execute(
+                    "DELETE FROM lifecycle_events WHERE timestamp < ?", (before_date,)
+                )
+            elif keep_latest is not None:
+                await db.execute("""
+                    DELETE FROM lifecycle_events WHERE id NOT IN (
+                        SELECT id FROM lifecycle_events le
+                        WHERE (
+                            SELECT COUNT(*) FROM lifecycle_events le2
+                            WHERE le2.slug = le.slug AND le2.id >= le.id
+                        ) <= ?
+                    )
+                """, (keep_latest,))
             await db.commit()
