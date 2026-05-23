@@ -68,6 +68,8 @@ async def test_purge_keep_latest(db):
     await db.purge_lifecycle_events(keep_latest=2)
     events = await db.get_lifecycle_events(slug="p1")
     assert len(events) == 2
+    assert events[0]["reason"] == "reason 3"
+    assert events[1]["reason"] == "reason 4"
 
 
 async def test_get_lifecycle_events_pagination(db):

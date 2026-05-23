@@ -428,11 +428,11 @@ class AuditDB:
             elif keep_latest is not None:
                 await db.execute("""
                     DELETE FROM lifecycle_events WHERE id NOT IN (
-                        SELECT id FROM lifecycle_events le
-                        WHERE (
-                            SELECT COUNT(*) FROM lifecycle_events le2
-                            WHERE le2.slug = le.slug AND le2.id >= le.id
-                        ) <= ?
+                        SELECT id FROM (
+                            SELECT id,
+                                   ROW_NUMBER() OVER (PARTITION BY slug ORDER BY id DESC) AS rn
+                            FROM lifecycle_events
+                        ) WHERE rn <= ?
                     )
                 """, (keep_latest,))
             await db.commit()
