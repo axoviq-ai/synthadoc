@@ -19,7 +19,7 @@ from synthadoc.core.cache import CACHE_VERSION, CacheManager, make_cache_key
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.log import AuditDB, LogWriter
 from synthadoc.storage.search import HybridSearch
-from synthadoc.storage.wiki import SourceRef, WikiPage, WikiStorage
+from synthadoc.storage.wiki import LifecycleState, SourceRef, WikiPage, WikiStorage
 from synthadoc.skills.web_search.scripts.main import _INTENT_RE as _WEB_INTENT_RE
 from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
 
@@ -667,6 +667,10 @@ class IngestAgent:
                 with self._store.page_lock(target):
                     page = self._store.read_page(target)
                     if page:
+                        # Reset stale pages to draft on re-ingest
+                        if page.status == LifecycleState.STALE:
+                            page.status = LifecycleState.DRAFT
+                            self._stale_to_draft_slug = target
                         if extracted.metadata.get("has_summary"):
                             section = extracted.text
                         elif update_content:
@@ -711,6 +715,10 @@ class IngestAgent:
                     with self._store.page_lock(slug):
                         page = self._store.read_page(slug)
                         if page:
+                            # Reset stale pages to draft on re-ingest
+                            if page.status == LifecycleState.STALE:
+                                page.status = LifecycleState.DRAFT
+                                self._stale_to_draft_slug = slug
                             if extracted.metadata.get("has_summary"):
                                 section = extracted.text
                             else:
@@ -805,10 +813,17 @@ class IngestAgent:
             self._audit.record_claim_citations(final_slug or _wiki_page, citations)
             if citations else asyncio.sleep(0),
         )
-        if self._audit and result.pages_created:
-            await self._audit.set_page_state(final_slug or _wiki_page, "draft", "ingest")
-            await self._audit.record_lifecycle_event(
-                final_slug or _wiki_page, None, "draft",
-                "new page created by ingest", "ingest"
-            )
+        if self._audit:
+            if result.pages_created:
+                await self._audit.set_page_state(final_slug or _wiki_page, LifecycleState.DRAFT, "ingest")
+                await self._audit.record_lifecycle_event(
+                    final_slug or _wiki_page, None, LifecycleState.DRAFT,
+                    "new page created by ingest", "ingest"
+                )
+            elif result.pages_updated and getattr(self, "_stale_to_draft_slug", None):
+                await self._audit.set_page_state(self._stale_to_draft_slug, LifecycleState.DRAFT, "ingest")
+                await self._audit.record_lifecycle_event(
+                    self._stale_to_draft_slug, LifecycleState.STALE, LifecycleState.DRAFT,
+                    "re-ingest of stale page", "ingest"
+                )
         return result

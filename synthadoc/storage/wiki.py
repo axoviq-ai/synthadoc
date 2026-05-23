@@ -15,6 +15,16 @@ _FRONTMATTER_FIELDS = ("title", "tags", "status", "confidence", "created", "sour
                        "aliases", "contradiction_note", "unresolved_note", "lint_warnings")
 
 
+class LifecycleState:
+    """Named constants for the 5-state lifecycle machine."""
+    DRAFT        = "draft"
+    ACTIVE       = "active"
+    CONTRADICTED = "contradicted"
+    STALE        = "stale"
+    ARCHIVED     = "archived"
+    ALL = frozenset({"draft", "active", "contradicted", "stale", "archived"})
+
+
 @dataclass
 class SourceRef:
     file: str
