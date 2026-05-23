@@ -25,6 +25,19 @@ class LifecycleState:
     ALL = frozenset({"draft", "active", "contradicted", "stale", "archived"})
 
 
+def is_url(path: str) -> bool:
+    """Return True if path is an HTTP/HTTPS URL (not a local file reference)."""
+    return path.startswith(("http://", "https://"))
+
+
+class TriggerSource:
+    """Constants for lifecycle event triggered_by field."""
+    INGEST      = "ingest"
+    LINT        = "lint"
+    USER        = "user"
+    MANUAL_EDIT = "manual_edit"
+
+
 @dataclass
 class SourceRef:
     file: str

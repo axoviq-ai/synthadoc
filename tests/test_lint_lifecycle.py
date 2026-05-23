@@ -73,6 +73,8 @@ async def test_stale_detection_on_hash_mismatch(tmp_path):
     await agent.lint(scope="all", adversarial=False)
     page = store.read_page("test-page")
     assert page.status == LifecycleState.STALE
+    events = await db.get_lifecycle_events(slug="test-page")
+    assert any(e["to_state"] == LifecycleState.STALE for e in events)
 
 
 async def test_archived_detection_on_missing_source(tmp_path):
@@ -93,6 +95,8 @@ async def test_archived_detection_on_missing_source(tmp_path):
     await agent.lint(scope="all", adversarial=False)
     page = store.read_page("test-page")
     assert page.status == LifecycleState.ARCHIVED
+    events = await db.get_lifecycle_events(slug="test-page")
+    assert any(e["to_state"] == LifecycleState.ARCHIVED for e in events)
 
 
 async def test_no_lifecycle_flag_skips_checks(tmp_path):
