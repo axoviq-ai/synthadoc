@@ -5,6 +5,7 @@ import pytest
 from typer.testing import CliRunner
 from unittest.mock import patch
 from synthadoc.cli.main import app
+from synthadoc.storage.wiki import LifecycleState
 
 runner = CliRunner()
 
@@ -28,7 +29,7 @@ def test_lifecycle_activate_calls_transition():
         assert result.exit_code == 0
         mock_post.assert_called_once()
         call_body = mock_post.call_args[0][2]
-        assert call_body["to_state"] == "active"
+        assert call_body["to_state"] == LifecycleState.ACTIVE
         assert call_body["slug"] == "alan-turing"
 
 
@@ -42,7 +43,7 @@ def test_lifecycle_archive_calls_transition():
         ])
         assert result.exit_code == 0
         call_body = mock_post.call_args[0][2]
-        assert call_body["to_state"] == "archived"
+        assert call_body["to_state"] == LifecycleState.ARCHIVED
 
 
 def test_lifecycle_restore_calls_transition():
@@ -55,7 +56,7 @@ def test_lifecycle_restore_calls_transition():
         ])
         assert result.exit_code == 0
         call_body = mock_post.call_args[0][2]
-        assert call_body["to_state"] == "draft"
+        assert call_body["to_state"] == LifecycleState.DRAFT
 
 
 def test_lifecycle_log_calls_events():

@@ -8,6 +8,7 @@ import typer
 
 from synthadoc.cli.main import app
 from synthadoc.cli._http import get
+from synthadoc.storage.wiki import LifecycleState
 
 
 @app.command("status")
@@ -31,7 +32,7 @@ def status_cmd(wiki: Optional[str] = typer.Option(None, "--wiki", "-w")):
                 "stale": "<- re-ingest needed",
                 "contradicted": "<- review required",
             }
-            for state in ("active", "draft", "stale", "contradicted", "archived"):
+            for state in LifecycleState.ORDERED:
                 count = counts.get(state, 0)
                 hint = f"  {_HINTS[state]}" if state in _HINTS and count > 0 else ""
                 typer.echo(f"  {state:<14} {count}{hint}")

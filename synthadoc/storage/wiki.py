@@ -23,6 +23,7 @@ class LifecycleState:
     STALE        = "stale"
     ARCHIVED     = "archived"
     ALL = frozenset({"draft", "active", "contradicted", "stale", "archived"})
+    ORDERED = ("active", "draft", "stale", "contradicted", "archived")
 
 
 def is_url(path: str) -> bool:
