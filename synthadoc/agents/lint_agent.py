@@ -402,7 +402,7 @@ class LintAgent:
                         except Exception:
                             decision = {"resolvable": False, "reason": "auto-resolve returned unparseable output", "resolution": ""}
                         if decision.get("resolvable"):
-                            page.status = "active"
+                            page.status = LifecycleState.ACTIVE
                             page.contradiction_note = None
                             page.unresolved_note = None
                             resolution = decision.get("resolution", "").strip()
