@@ -226,8 +226,9 @@ async def _worker_loop(orch) -> None:
                     scope = job.payload.get("scope", "all")
                     auto_resolve = job.payload.get("auto_resolve", False)
                     adversarial = job.payload.get("adversarial", True)
+                    lifecycle = job.payload.get("lifecycle", True)
                     await orch._run_lint(job.id, scope=scope, auto_resolve=auto_resolve,
-                                         adversarial=adversarial)
+                                         adversarial=adversarial, lifecycle=lifecycle)
                 elif job.operation == "scaffold":
                     domain = job.payload.get("domain", "")
                     await orch._run_scaffold(job.id, domain=domain)
@@ -262,6 +263,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
     from synthadoc.config import load_config
     from synthadoc.core.orchestrator import Orchestrator
     from synthadoc.storage.log import AuditDB as _AuditDB
+    from synthadoc.storage.wiki import LifecycleState, TriggerSource
 
     # Expose wiki root so skills (e.g. web_search) can load the dynamic blocked-domains list
     os.environ["SYNTHADOC_WIKI_ROOT"] = str(wiki_root)
@@ -810,5 +812,68 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             offset=0,
         )
         return {"total": len(all_rows), "citations": rows}
+
+    # ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    _ALLOWED_LIFECYCLE_TRANSITIONS: set[tuple[str, str]] = {
+        (LifecycleState.DRAFT,        LifecycleState.ACTIVE),
+        (LifecycleState.DRAFT,        LifecycleState.ARCHIVED),
+        (LifecycleState.ACTIVE,       LifecycleState.ARCHIVED),
+        (LifecycleState.ACTIVE,       LifecycleState.STALE),
+        (LifecycleState.CONTRADICTED, LifecycleState.ARCHIVED),
+        (LifecycleState.STALE,        LifecycleState.DRAFT),
+        (LifecycleState.STALE,        LifecycleState.ARCHIVED),
+        (LifecycleState.ARCHIVED,     LifecycleState.DRAFT),
+    }
+
+    class LifecycleTransitionRequest(BaseModel):
+        slug: str
+        to_state: str
+        reason: str
+
+    @app.get("/lifecycle/status")
+    async def lifecycle_status():
+        audit = _AuditDB(wiki_root / ".synthadoc" / "audit.db")
+        await audit.init()
+        counts = await audit.get_lifecycle_summary()
+        return {"counts": counts}
+
+    @app.get("/lifecycle/events")
+    async def lifecycle_events(
+        slug: str = "",
+        to_state: str = "",
+        limit: int = 50,
+        offset: int = 0,
+    ):
+        audit = _AuditDB(wiki_root / ".synthadoc" / "audit.db")
+        await audit.init()
+        events = await audit.get_lifecycle_events(
+            slug=slug or None,
+            to_state=to_state or None,
+            limit=limit,
+            offset=offset,
+        )
+        return {"events": events, "total": len(events)}
+
+    @app.post("/lifecycle/transition")
+    async def lifecycle_transition(req: LifecycleTransitionRequest):
+        orch = app.state.orch
+        page = orch._store.read_page(req.slug)
+        if not page:
+            raise HTTPException(status_code=404, detail=f"Page not found: {req.slug}")
+        from_state = page.status
+        if (from_state, req.to_state) not in _ALLOWED_LIFECYCLE_TRANSITIONS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Transition {from_state!r} -> {req.to_state!r} is not allowed.",
+            )
+        page.status = req.to_state
+        orch._store.write_page(req.slug, page)
+        audit = _AuditDB(wiki_root / ".synthadoc" / "audit.db")
+        await audit.init()
+        await audit.set_page_state(req.slug, req.to_state, TriggerSource.USER)
+        await audit.record_lifecycle_event(req.slug, from_state, req.to_state,
+                                            req.reason, TriggerSource.USER)
+        return {"ok": True, "slug": req.slug, "from_state": from_state, "to_state": req.to_state}
 
     return app
