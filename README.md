@@ -126,7 +126,7 @@ Every substantive claim in the wiki is annotated with `^[filename:L-L]` — a ci
 
 ### 5-State Lifecycle Machine
 
-Every compiled wiki page moves through a **5-state lifecycle** (`draft → active → stale → archived`) with a full audit trail — every state change recorded with who triggered it and why. New pages start as `draft`; lint automatically promotes clean pages to `active`, marks pages `stale` when their source file changes on disk, and archives pages whose source file disappears. Manual transitions (`activate`, `archive`, `restore`) and the full event log are available from both the CLI and the Obsidian plugin.
+Every compiled wiki page moves through a **5-state lifecycle** (`draft | active | contradicted | stale | archived`) with a full audit trail — every state change recorded with who triggered it and why. New pages start as `draft`; lint automatically promotes clean pages to `active`, marks pages `stale` when their source file changes on disk, and archives pages whose source file disappears. Manual transitions (`activate`, `archive`, `restore`) and the full event log are available from both the CLI and the Obsidian plugin.
 
 ### 5. Re-synthesis is expensive; Synthadoc caches it
 
@@ -165,7 +165,7 @@ As the wiki accumulates pages the `index.md` table of contents, domain scope (`p
 | Orphan page detection        | **Yes**                                                               | No          | No         | No        |
 | Adversarial claim review     | **Yes** (concurrent second-LLM pass — flags overstated claims and unsupported assertions per page) | No | No | No |
 | Claim-level provenance       | **Yes** (`^[file:L-L]` citations on every claim; Source Viewer in Obsidian; PDF page resolution; global provenance table; broken-citation lint) | No | No | No |
-| 5-state lifecycle machine    | **Yes** (`draft → active → stale → archived`; auto-transitions via lint; manual CLI + Obsidian; immutable audit trail per transition) | No | No | No |
+| 5-state lifecycle machine    | **Yes** (`draft | active | contradicted | stale | archived`; auto-transitions via lint; manual CLI + Obsidian; immutable audit trail per transition) | No | No | No |
 | Persistent wikilink graph    | **Yes**                                                               | No          | No         | No        |
 | Local-first (no cloud data)  | **Yes**                                                               | Varies      | No         | No        |
 | Custom skill plugins         | **Yes**                                                               | Limited     | No         | No        |
