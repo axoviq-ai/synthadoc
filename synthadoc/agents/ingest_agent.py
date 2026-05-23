@@ -742,7 +742,7 @@ class IngestAgent:
                     new_page = WikiPage(
                         title=title, tags=tags,
                         content=body,
-                        status="active", confidence="medium",
+                        status="draft", confidence="medium",
                         sources=[SourceRef(
                             file=source,
                             hash=src_hash or "",
@@ -805,4 +805,10 @@ class IngestAgent:
             self._audit.record_claim_citations(final_slug or _wiki_page, citations)
             if citations else asyncio.sleep(0),
         )
+        if self._audit and result.pages_created:
+            await self._audit.set_page_state(final_slug or _wiki_page, "draft", "ingest")
+            await self._audit.record_lifecycle_event(
+                final_slug or _wiki_page, None, "draft",
+                "new page created by ingest", "ingest"
+            )
         return result
