@@ -1,6 +1,6 @@
 ﻿# Synthadoc User Quick-Start Guide
 
-**Version: v0.5.0 (Community Edition)**
+**Version: v0.6.0 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
@@ -20,18 +20,20 @@ major engine feature. No setup beyond following the steps below is required.
 4. [Review the wiki structure and key files](#step-4--review-the-wiki-structure-and-key-files)
 5. [Query the pre-built wiki (CLI + Obsidian)](#step-5--query-the-pre-built-wiki-cli--obsidian)
 6. [Batch ingest all demo sources](#step-6--batch-ingest-all-demo-sources)
-7. [Resolve a contradiction](#step-7--resolve-a-contradiction)
-8. [Fix an orphan page](#step-8--fix-an-orphan-page)
-9. [Run the adversarial review](#step-9--run-the-adversarial-review)
-10. [Web search ingestion](#step-10--web-search-ingestion)
-11. [Ingest a YouTube video](#step-11--ingest-a-youtube-video)
-12. [Enrich the wiki with scaffold](#step-12--enrich-the-wiki-with-scaffold)
-13. [Audit features](#step-13--audit-features)
-14. [Scheduling recurring operations](#step-14--scheduling-recurring-operations)
-15. [Set up ROUTING.md — scoped search](#step-15--set-up-routingmd--scoped-search)
-16. [Configure candidates staging](#step-16--configure-candidates-staging)
-17. [Build a context pack](#step-17--build-a-context-pack)
-18. [Establish claim-level provenance](#claim-provenance)
+7. [Run lint — promote pages to active](#step-7--run-lint--promote-pages-to-active)
+8. [Manage page lifecycle](#step-8--manage-page-lifecycle)
+9. [Resolve a contradiction](#step-9--resolve-a-contradiction)
+10. [Fix an orphan page](#step-10--fix-an-orphan-page)
+11. [Run the adversarial review](#step-11--run-the-adversarial-review)
+12. [Web search ingestion](#step-12--web-search-ingestion)
+13. [Ingest a YouTube video](#step-13--ingest-a-youtube-video)
+14. [Enrich the wiki with scaffold](#step-14--enrich-the-wiki-with-scaffold)
+15. [Audit features](#step-15--audit-features)
+16. [Scheduling recurring operations](#step-16--scheduling-recurring-operations)
+17. [Set up ROUTING.md — scoped search](#step-17--set-up-routingmd--scoped-search)
+18. [Configure candidates staging](#step-18--configure-candidates-staging)
+19. [Build a context pack](#step-19--build-a-context-pack)
+20. [Establish claim-level provenance](#claim-provenance)
 
 **Appendices**
 
@@ -288,7 +290,7 @@ Your wiki doesn't have enough on this topic yet. Enrich it with a web search:
 ```
 
 The suggested search strings are generated automatically. Run one of the suggestions
-after Step 10 to fill the gap.
+after Step 12 to fill the gap.
 
 ![CLI query result with knowledge gap callout](png/cli-gap-detection.png)
 
@@ -393,11 +395,130 @@ synthadoc query "Who invented FORTRAN and when?"
 synthadoc query "What did Konrad Zuse contribute to computing history?"
 ```
 
+> **Pages are created as `draft`.** Every page produced by ingest starts in the `draft` state — compiled but not yet reviewed. Run lint (Step 7) to promote clean pages to `active`.
+
+---
+
+<a name="lint-run"></a>
+
+## Step 7 — Run lint — promote pages to active
+
+Every page from Step 6 was created as `draft`. A lint run validates each page — checking for contradictions, orphan pages, and dangling links — and automatically promotes clean pages to `active`.
+
+```bash
+synthadoc lint run
+synthadoc jobs list           # watch progress
+```
+
+### Before and after
+
+**Before lint:**
+
+```
+Wiki: history-of-computing
+  draft          6
+  active        13
+  stale          0
+  contradicted   0
+  archived       0
+```
+
+**After lint:**
+
+```
+Wiki: history-of-computing
+  draft          0
+  active        18
+  stale          0
+  contradicted   1
+  archived       0
+```
+
+`grace-hopper` was flagged contradicted (see Step 9) — all other new pages were promoted to `active`.
+
+```bash
+synthadoc status
+```
+
+---
+
+<a name="lifecycle"></a>
+
+## Step 8 — Manage page lifecycle
+
+Every compiled page starts as **draft** — not yet reviewed or trusted. Running lint in Step 7 promoted clean pages to **active**. The remaining lifecycle states handle what happens when sources change or pages need to be retired.
+
+### Lifecycle states
+
+| State | Meaning | How to reach it |
+|---|---|---|
+| `draft` | Newly compiled, not yet lint-reviewed | Automatic on ingest |
+| `active` | Lint-reviewed, current, trusted | Lint auto-promotes from draft |
+| `contradicted` | Conflict detected | Lint detects contradiction |
+| `stale` | Source file changed since last ingest | Lint detects hash mismatch |
+| `archived` | Source removed or explicitly retired | Lint auto-archives on missing source; or manual |
+
+### Check lifecycle status
+
+```bash
+synthadoc status -w history-of-computing
+```
+
+```
+Wiki: history-of-computing
+  active         18
+  draft           0
+  stale           0
+  contradicted    1
+  archived        0
+```
+
+### Manage states in Obsidian
+
+Open the Command Palette (`Ctrl/Cmd+P`) → **Synthadoc: Manage Page Lifecycle**. A sortable, filterable table shows every wiki page with its current state and last transition. Click a filter checkbox to focus on a specific state. Click an action button to move a page — a reason dialog appears before committing.
+
+### Manual state transitions (CLI)
+
+```bash
+# Mark a page as active after manual review
+synthadoc lifecycle activate alan-turing -w history-of-computing --reason "reviewed and verified"
+
+# Retire a page whose source has been superseded
+synthadoc lifecycle archive alan-turing -w history-of-computing --reason "replaced by v2 source"
+
+# View full history for a page
+synthadoc lifecycle log alan-turing -w history-of-computing
+```
+
+### Stale detection
+
+If a source file changes after ingest, the next lint run detects the SHA-256 hash mismatch and marks the page `stale`. Resolve it by re-ingesting the updated file:
+
+```bash
+synthadoc ingest raw_sources/updated-source.pdf -w history-of-computing --force
+```
+
+### Audit trail
+
+Every state transition is recorded with who triggered it and why:
+
+```bash
+synthadoc lifecycle log alan-turing -w history-of-computing
+```
+
+```
+Slug           From      To       By      Timestamp           Reason
+alan-turing    null      draft    ingest  2026-05-23T10:00    new page created by ingest
+alan-turing    draft     active   lint    2026-05-23T10:05    lint passed
+```
+
+> Every state change — automated or manual — is permanently recorded. For enterprise wikis, this trail answers "when was this page reviewed, by what process, and why was it changed."
+
 ---
 
 <a name="resolve-contradiction"></a>
 
-## Step 7 — Resolve a contradiction
+## Step 9 — Resolve a contradiction
 
 After `first-compiler-controversy.pdf` is processed, `wiki/grace-hopper.md` will have:
 
@@ -456,7 +577,7 @@ Or from Obsidian: Command Palette → `Synthadoc: Lint: run with auto-resolve`.
 
 <a name="fix-orphan"></a>
 
-## Step 8 — Fix an orphan page
+## Step 10 — Fix an orphan page
 
 The pre-built demo wiki includes `wiki/ada-lovelace.md`, but no other page links to it.
 That makes it an **orphan** — a page with no inbound `[[wikilinks]]`.
@@ -528,7 +649,7 @@ The number of pages cleaned up is shown in the lint output and recorded in `log.
 
 <a name="adversarial-review"></a>
 
-## Step 9 — Run the adversarial review
+## Step 11 — Run the adversarial review
 
 Standard lint validates wiki structure — contradictions, orphan pages, dangling links. The
 **adversarial review** adds a second independent LLM pass that interrogates every page for
@@ -694,7 +815,7 @@ same-model review to miss systematic errors.
 
 <a name="web-search-ingest"></a>
 
-## Step 10 — Web search ingestion
+## Step 12 — Web search ingestion
 
 > **Requires `TAVILY_API_KEY`** — see [Appendix D](#appendix-d--tavily-web-search-key).
 > Without it, web search jobs fail with `[ERR-SKILL-004]`. All other features work normally.
@@ -795,7 +916,7 @@ The modal prepends `search for:` automatically — just type the topic, no prefi
 
 <a name="youtube-ingest"></a>
 
-## Step 11 — Ingest a YouTube video
+## Step 13 — Ingest a YouTube video
 
 Pass any YouTube URL directly — the transcript is extracted automatically from the
 YouTube caption system (no API key, no audio download). Both the full URL and the
@@ -834,7 +955,7 @@ synthadoc jobs list
 
 <a name="scaffold"></a>
 
-## Step 12 — Enrich the wiki with scaffold
+## Step 14 — Enrich the wiki with scaffold
 
 After batch ingest, the wiki has grown from 10 pre-built pages to 12 or more. **Scaffold**
 reads the current wiki state and uses the LLM to regenerate the structure files —
@@ -906,7 +1027,7 @@ the whole file as before.
 
 <a name="audit"></a>
 
-## Step 13 — Audit features
+## Step 15 — Audit features
 
 The `synthadoc audit` commands query the append-only `audit.db` — no `sqlite3` required.
 
@@ -958,7 +1079,7 @@ usage, and per-query cost. Especially useful after running the compound queries 
 synthadoc audit events
 ```
 
-Expected after Steps 6–8:
+Expected after Steps 6–10:
 
 ```
 2026-04-21 10:12  contradiction_found   grace-hopper ← first-compiler-controversy.pdf
@@ -973,7 +1094,7 @@ Records every contradiction detection, auto-resolution, and cost gate trigger.
 
 <a name="scheduling"></a>
 
-## Step 14 — Scheduling recurring operations
+## Step 16 — Scheduling recurring operations
 
 Hooks react to events that already happened. The scheduler goes the other direction —
 it proactively triggers operations on a timer, keeping the wiki fresh automatically.
@@ -1029,7 +1150,7 @@ synthadoc schedule remove sched-c9f3e201
 
 <a name="routing"></a>
 
-## Step 15 — Set up ROUTING.md — scoped search
+## Step 17 — Set up ROUTING.md — scoped search
 
 As your wiki grows, BM25 searches the full corpus for every query. **ROUTING.md** groups pages
 into named topic branches so queries only search the most relevant slice — reducing noise,
@@ -1101,7 +1222,7 @@ New pages created by ingest are auto-placed into the most appropriate branch.
 
 <a name="staging"></a>
 
-## Step 16 — Configure candidates staging
+## Step 18 — Configure candidates staging
 
 By default, every ingested source that produces a new page writes it directly to `wiki/`.
 **Candidates staging** lets you review new pages before they influence queries and lint.
@@ -1183,7 +1304,7 @@ Or from Obsidian: `Synthadoc: Staging: manage staging policy...` → select **Of
 
 <a name="context-pack"></a>
 
-## Step 17 — Build a context pack
+## Step 19 — Build a context pack
 
 A **context pack** is a token-bounded evidence bundle assembled from the wiki. It decomposes your goal into sub-questions, runs parallel BM25 searches across the wiki, and packs the highest-scoring excerpts into a single cited Markdown document within a token budget.
 
@@ -1265,7 +1386,7 @@ context_token_budget = 6000
 
 <a name="claim-provenance"></a>
 
-## Step 18 — Establish claim-level provenance
+## Step 20 — Establish claim-level provenance
 
 Every compiled wiki page is a synthesis — the LLM draws on source text and rewrites it as prose. **Claim-level provenance** closes the audit gap: during ingest, a dedicated annotation pass inserts a `^[filename:L-L]` citation marker at the end of each substantive paragraph, mapping the compiled claim to the exact line range in the raw source that supports it. Markers are stored in the page body, validated by lint, and recorded in the audit database. In Obsidian they render as interactive chips — one click opens the Source Viewer, showing the referenced lines with surrounding context. For PDF sources, a pagemap sidecar resolves the line number to the correct page for direct navigation.
 
@@ -1389,6 +1510,13 @@ All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synt
 | Command                                   | What it does                                                                                                                   |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `Synthadoc: Wiki: regenerate scaffold...` | Rewrites`index.md`, `AGENTS.md`, and `purpose.md` using the LLM. Polls job status live. All existing wiki pages are preserved. |
+
+### Lifecycle
+
+
+| Command                                   | What it does                                                                                                                                                                                                                                                                                                                                                                                |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Synthadoc: Manage Page Lifecycle`        | Sortable, filterable, paginated table of all wiki pages with their current lifecycle state (`draft`, `active`, `contradicted`, `stale`, `archived`) and last transition timestamp. State filter checkboxes narrow the table. Click column headers to sort. Each row shows valid transition action buttons — click to trigger a transition; a reason dialog appears before committing. Draft and stale badge links on the lint modal and jobs panel open this table pre-filtered to that state. |
 
 ### Audit
 
@@ -1783,4 +1911,4 @@ Full-corpus BM25 scales roughly linearly with page count. At 10000 pages the med
 
 ### Takeaway
 
-For wikis under ~1000 pages the difference between scoped and full-corpus is negligible (both under 25 ms). At 10000 pages routing delivers a **4–5× speedup** (41 ms vs. 191 ms). Enable ROUTING.md ([Step 15](#step-15--set-up-routingmd--scoped-search)) once your wiki exceeds a few hundred pages.
+For wikis under ~1000 pages the difference between scoped and full-corpus is negligible (both under 25 ms). At 10000 pages routing delivers a **4–5× speedup** (41 ms vs. 191 ms). Enable ROUTING.md ([Step 17](#step-17--set-up-routingmd--scoped-search)) once your wiki exceeds a few hundred pages.
