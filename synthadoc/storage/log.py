@@ -150,6 +150,17 @@ class AuditDB:
             d.setdefault("size", d.get("source_size"))
             return d
 
+    async def find_by_source_path(self, source_path: str) -> Optional[dict]:
+        """Return the most recent ingest record for the given source path, or None."""
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM ingests WHERE source_path=? ORDER BY id DESC LIMIT 1",
+                (source_path,),
+            ) as cur:
+                row = await cur.fetchone()
+        return dict(row) if row else None
+
     async def find_by_hash(self, source_hash: str, source_size: int) -> Optional[dict]:
         async with aiosqlite.connect(self._path) as db:
             db.row_factory = aiosqlite.Row

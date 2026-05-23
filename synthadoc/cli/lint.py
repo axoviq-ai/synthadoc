@@ -88,6 +88,8 @@ def lint_cmd(
     auto_resolve: bool = typer.Option(False, "--auto-resolve"),
     no_adversarial: bool = typer.Option(False, "--no-adversarial",
                                          help="Skip adversarial review and clear existing lint_warnings"),
+    no_lifecycle: bool = typer.Option(False, "--no-lifecycle",
+                                      help="Skip lifecycle checks (draft promotion, stale detection)."),
     wiki: Optional[str] = typer.Option(None, "--wiki", "-w"),
 ):
     """Enqueue a lint job. Requires synthadoc serve to be running."""
@@ -97,6 +99,7 @@ def lint_cmd(
         "scope": scope,
         "auto_resolve": auto_resolve,
         "adversarial": not no_adversarial,
+        "lifecycle": not no_lifecycle,
     })
     typer.echo(f"Lint enqueued -> job {result['job_id']}")
     w_flag = f" -w {wiki}" if wiki != "." else ""

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.log import AuditDB, LogWriter
-from synthadoc.storage.wiki import WikiStorage
+from synthadoc.storage.wiki import WikiStorage, LifecycleState
 
 if TYPE_CHECKING:
     from synthadoc.storage.wiki import WikiPage
@@ -27,6 +27,10 @@ class LintReport:
     tokens_used: int = 0
     adversarial_warnings: list[dict] = field(default_factory=list)
     citation_issues: list[dict] = field(default_factory=list)
+    lifecycle_promoted: int = 0
+    lifecycle_stale: int = 0
+    lifecycle_archived: int = 0
+    lifecycle_synced: int = 0
 
 
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
@@ -172,7 +176,8 @@ class LintAgent:
                  log_writer: LogWriter, confidence_threshold: float = 0.85,
                  audit_db: AuditDB | None = None,
                  adversarial_provider: LLMProvider | None = None,
-                 adversarial_max_per_page: int = 2) -> None:
+                 adversarial_max_per_page: int = 2,
+                 wiki_root=None) -> None:
         self._provider = provider
         self._store = store
         self._log = log_writer
@@ -180,6 +185,7 @@ class LintAgent:
         self._audit = audit_db
         self._adversarial_provider = adversarial_provider or provider
         self._adversarial_max_per_page = adversarial_max_per_page
+        self._wiki_root = Path(wiki_root) if wiki_root else self._store._root.parent
 
     def _find_orphans(self, slugs: list[str]) -> list[str]:
         page_texts = {}
@@ -261,8 +267,87 @@ class LintAgent:
 
         return all_warnings, total_tokens
 
+    async def _transition(self, slug: str, page: "WikiPage", from_state: str,
+                          to_state: str, reason: str) -> None:
+        page.status = to_state
+        self._store.write_page(slug, page)
+        if self._audit:
+            await self._audit.set_page_state(slug, to_state, "lint")
+            await self._audit.record_lifecycle_event(slug, from_state, to_state, reason, "lint")
+
+    async def _run_lifecycle_checks(self, slugs: list[str], report: LintReport) -> None:
+        import hashlib
+        raw_sources_dir = self._wiki_root / "raw_sources"
+        for slug in slugs:
+            if slug in LINT_SKIP_SLUGS:
+                continue
+            try:
+                page = self._store.read_page(slug)
+                if not page:
+                    continue
+                current = page.status
+
+                # Check 1: archived detection -- source file no longer on disk
+                if raw_sources_dir.exists() and current in (LifecycleState.ACTIVE, LifecycleState.STALE, LifecycleState.DRAFT):
+                    for src_ref in page.sources:
+                        if src_ref.file and not src_ref.file.startswith(("http://", "https://")):
+                            src_path = raw_sources_dir / src_ref.file
+                            if not src_path.exists():
+                                await self._transition(slug, page, current,
+                                                       LifecycleState.ARCHIVED,
+                                                       "source file no longer on disk")
+                                report.lifecycle_archived += 1
+                                current = LifecycleState.ARCHIVED
+                                break
+
+                if current == LifecycleState.ARCHIVED:
+                    continue
+
+                # Check 2: stale detection -- source file hash changed
+                if current == LifecycleState.ACTIVE and self._audit:
+                    for src_ref in page.sources:
+                        if src_ref.file and not src_ref.file.startswith(("http://", "https://")):
+                            src_path = raw_sources_dir / src_ref.file
+                            if src_path.exists():
+                                current_hash = hashlib.sha256(src_path.read_bytes()).hexdigest()
+                                record = await self._audit.find_by_source_path(src_ref.file)
+                                if record and record.get("source_hash") != current_hash:
+                                    await self._transition(slug, page, LifecycleState.ACTIVE,
+                                                           LifecycleState.STALE,
+                                                           "source file modified since last ingest")
+                                    report.lifecycle_stale += 1
+                                    current = LifecycleState.STALE
+                                    break
+
+                # Check 3: draft promotion
+                if current == LifecycleState.DRAFT:
+                    await self._transition(slug, page, LifecycleState.DRAFT,
+                                           LifecycleState.ACTIVE, "lint passed")
+                    report.lifecycle_promoted += 1
+                    current = LifecycleState.ACTIVE
+
+                # Check 4: manual-edit sync -- frontmatter state differs from DB
+                if self._audit and current in LifecycleState.ALL:
+                    db_state = await self._audit.get_page_state(slug)
+                    if db_state and db_state["state"] != current:
+                        await self._audit.set_page_state(slug, current, "manual_edit")
+                        await self._audit.record_lifecycle_event(
+                            slug, db_state["state"], current,
+                            "manual frontmatter edit detected", "manual_edit"
+                        )
+                        report.lifecycle_synced += 1
+                    elif not db_state:
+                        await self._audit.set_page_state(slug, current, "lint")
+
+            except Exception as exc:
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    "lifecycle check failed for %s: %s", slug, exc
+                )
+
     async def lint(self, scope: str = "all", auto_resolve: bool = False,
-                   adversarial: bool = True, job_id: str = "system") -> LintReport:
+                   adversarial: bool = True, lifecycle: bool = True,
+                   job_id: str = "system") -> LintReport:
         report = LintReport()
         slugs = self._store.list_pages()
 
@@ -367,6 +452,9 @@ class LintAgent:
                     if page and page.lint_warnings:
                         page.lint_warnings = []
                         self._store.write_page(slug, page)
+
+        if scope == "all" and lifecycle:
+            await self._run_lifecycle_checks(slugs, report)
 
         self._log.log_lint(resolved=report.contradictions_resolved,
                            flagged=report.contradictions_found - report.contradictions_resolved,
