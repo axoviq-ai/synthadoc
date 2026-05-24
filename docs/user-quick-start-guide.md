@@ -505,6 +505,8 @@ Wiki: history-of-computing
 
 Open the Command Palette (`Ctrl/Cmd+P`) → **Synthadoc: Manage Page Lifecycle**. A sortable, filterable table shows every wiki page with its current state and last transition. Click a filter checkbox to focus on a specific state. Click an action button to move a page — a reason dialog appears before committing.
 
+![Synthadoc Manage Page Lifecycle modal — one row per page showing current state, last changed timestamp, and action buttons](png/synthadoc-lifecycle-mgmt.png)
+
 ### Manual state transitions (CLI)
 
 ```bash
