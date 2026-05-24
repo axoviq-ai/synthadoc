@@ -1377,44 +1377,42 @@ class LintRunModal extends Modal {
         });
         intro.style.cssText = "font-size:12px;color:var(--text-muted);margin-bottom:16px;-webkit-user-select:text;user-select:text";
 
-        // Option: Auto-resolve contradictions
-        const autoResolveWrap = contentEl.createEl("div");
-        autoResolveWrap.style.cssText = "margin-bottom:14px";
-        const autoResolveLbl = autoResolveWrap.createEl("label", { text: "Auto-resolve contradictions" });
-        autoResolveLbl.htmlFor = "lint-auto-resolve";
-        autoResolveLbl.style.cssText = "display:block;font-size:13px;font-weight:600;margin-bottom:4px;cursor:pointer";
-        const autoResolveHint = autoResolveWrap.createEl("p", {
-            text: "Auto-resolve rewrites contradicted pages to reconcile conflicts automatically. Leave unchecked to review the report first.",
-        });
-        autoResolveHint.style.cssText = "font-size:11px;color:var(--text-muted);margin:0 0 6px;-webkit-user-select:text;user-select:text";
-        const cb = autoResolveWrap.createEl("input", { type: "checkbox" }) as HTMLInputElement;
-        cb.id = "lint-auto-resolve";
+        function addLintOption(
+            id: string,
+            title: string,
+            hint: string,
+            defaultChecked = false
+        ): HTMLInputElement {
+            const row = contentEl.createEl("div");
+            row.style.cssText = "display:flex;align-items:flex-start;gap:10px;margin-bottom:14px";
+            const input = row.createEl("input", { type: "checkbox" }) as HTMLInputElement;
+            input.id = id;
+            input.checked = defaultChecked;
+            input.style.cssText = "margin-top:3px;flex-shrink:0;cursor:pointer";
+            const textBlock = row.createEl("div");
+            const lbl = textBlock.createEl("label", { text: title });
+            lbl.htmlFor = id;
+            lbl.style.cssText = "display:block;font-size:13px;font-weight:600;margin-bottom:3px;cursor:pointer";
+            const desc = textBlock.createEl("p", { text: hint });
+            desc.style.cssText = "font-size:11px;color:var(--text-muted);margin:0;-webkit-user-select:text;user-select:text";
+            return input;
+        }
 
-        // Option: Skip adversarial review
-        const skipAdvWrap = contentEl.createEl("div");
-        skipAdvWrap.style.cssText = "margin-bottom:14px";
-        const skipAdvLbl = skipAdvWrap.createEl("label", { text: "Skip adversarial review" });
-        skipAdvLbl.htmlFor = "lint-skip-adversarial";
-        skipAdvLbl.style.cssText = "display:block;font-size:13px;font-weight:600;margin-bottom:4px;cursor:pointer";
-        const skipAdvHint = skipAdvWrap.createEl("p", {
-            text: "Adversarial review uses a second LLM pass to flag unsupported claims. Check this to skip that pass and finish faster.",
-        });
-        skipAdvHint.style.cssText = "font-size:11px;color:var(--text-muted);margin:0 0 6px;-webkit-user-select:text;user-select:text";
-        const skipAdvCb = skipAdvWrap.createEl("input", { type: "checkbox" }) as HTMLInputElement;
-        skipAdvCb.id = "lint-skip-adversarial";
-
-        // Option: Check URL availability
-        const checkUrlWrap = contentEl.createEl("div");
-        checkUrlWrap.style.cssText = "margin-bottom:16px";
-        const checkUrlLbl = checkUrlWrap.createEl("label", { text: "Check URL availability" });
-        checkUrlLbl.htmlFor = "lint-check-urls";
-        checkUrlLbl.style.cssText = "display:block;font-size:13px;font-weight:600;margin-bottom:4px;cursor:pointer";
-        const checkUrlHint = checkUrlWrap.createEl("p", {
-            text: "Issue an HTTP HEAD request for each URL-sourced page. A 404 or 410 response (or a removed YouTube video) transitions the page to archived. Network timeouts leave the page unchanged.",
-        });
-        checkUrlHint.style.cssText = "font-size:11px;color:var(--text-muted);margin:0 0 6px;-webkit-user-select:text;user-select:text";
-        const checkUrlCb = checkUrlWrap.createEl("input", { type: "checkbox" }) as HTMLInputElement;
-        checkUrlCb.id = "lint-check-urls";
+        const cb = addLintOption(
+            "lint-auto-resolve",
+            "Auto-resolve contradictions",
+            "Auto-resolve rewrites contradicted pages to reconcile conflicts automatically. Leave unchecked to review the report first."
+        );
+        const skipAdvCb = addLintOption(
+            "lint-skip-adversarial",
+            "Skip adversarial review",
+            "Adversarial review uses a second LLM pass to flag unsupported claims. Check this to skip that pass and finish faster."
+        );
+        const checkUrlCb = addLintOption(
+            "lint-check-urls",
+            "Check URL availability",
+            "Issue an HTTP HEAD request for each URL-sourced page. A 404 or 410 response (or a removed YouTube video) transitions the page to archived. Network timeouts leave the page unchanged."
+        );
 
         // Pre-check based on server config (async — defaults to unchecked on failure)
         api.config().then((cfg: any) => {
