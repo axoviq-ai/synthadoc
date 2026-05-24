@@ -511,6 +511,10 @@ Open the Command Palette (`Ctrl/Cmd+P`) → **Synthadoc: Manage Page Lifecycle**
 
 ![Synthadoc Manage Page Lifecycle modal — one row per page showing current state, last changed timestamp, and action buttons](png/synthadoc-lifecycle-mgmt.png)
 
+Switch to the **Audit Log** tab to see the full history of every state transition — filterable by slug and target state, sortable by any column, with pagination.
+
+![Synthadoc Lifecycle Audit Log tab — searchable history of state transitions with From/To state chips, triggered-by, timestamp, and reason columns](png/synthadoc-lifecycle-audit.png)
+
 ### Manual state transitions (CLI)
 
 ```bash
