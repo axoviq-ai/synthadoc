@@ -3356,7 +3356,7 @@ class LifecycleModal extends Modal {
         const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Manage Page Lifecycle" });
         makeDraggable(modalEl, titleEl);
 
-        // State filter checkboxes
+        // State filter checkboxes + Refresh button
         const filterBar = contentEl.createEl("div");
         filterBar.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:10px;flex-shrink:0";
         filterBar.createEl("span", { text: "Filter:" }).style.cssText = "font-size:12px;font-weight:600";
@@ -3375,6 +3375,15 @@ class LifecycleModal extends Modal {
                 this._renderAll();
             };
         }
+        const refreshBtn = filterBar.createEl("button", { text: "↻ Refresh" }) as HTMLButtonElement;
+        refreshBtn.style.cssText = "margin-left:auto;font-size:12px;padding:2px 10px";
+        refreshBtn.addEventListener("click", async () => {
+            refreshBtn.disabled = true;
+            refreshBtn.textContent = "↻ Refreshing…";
+            await this._fetchAndRender();
+            refreshBtn.disabled = false;
+            refreshBtn.textContent = "↻ Refresh";
+        });
 
         // Table wrapper — scrollable, grows to fill space
         this._tableWrap = contentEl.createDiv();
