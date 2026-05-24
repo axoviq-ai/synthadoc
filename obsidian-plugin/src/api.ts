@@ -65,8 +65,9 @@ export const api = {
 
     lifecycleStatus: () => call("/lifecycle/status"),
     lifecyclePages: () => call("/lifecycle/pages"),
-    lifecycleEvents: (params: { to_state?: string; limit?: number; offset?: number }) => {
+    lifecycleEvents: (params: { slug?: string; to_state?: string; limit?: number; offset?: number }) => {
         const p = new URLSearchParams();
+        if (params.slug) p.set("slug", params.slug);
         if (params.to_state) p.set("to_state", params.to_state);
         if (params.limit != null) p.set("limit", String(params.limit));
         if (params.offset != null) p.set("offset", String(params.offset));

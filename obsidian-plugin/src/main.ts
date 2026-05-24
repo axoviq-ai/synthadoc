@@ -3354,13 +3354,26 @@ const ALLOWED_TRANSITIONS: Record<string, string[]> = {
 const ALL_LIFECYCLE_STATES = [...LifecycleState.ALL];
 
 class LifecycleModal extends Modal {
+    private _activeTab: "states" | "audit" = "states";
+    // Tab 1 — current page states
     private _page = 0;
-    private _pages: any[] = [];   // one entry per slug from page_states
+    private _pages: any[] = [];
     private _checkedStates: Set<string>;
     private _sortCol = "slug";
     private _sortAsc = true;
     private _tableWrap: HTMLElement | null = null;
     private _pagerWrap: HTMLElement | null = null;
+    private _tab1Content: HTMLElement | null = null;
+    // Tab 2 — audit log
+    private _auditPage = 0;
+    private _auditEvents: any[] = [];
+    private _auditSlugFilter = "";
+    private _auditStateFilter = "";
+    private _auditSortCol = "timestamp";
+    private _auditSortAsc = false;
+    private _auditTableWrap: HTMLElement | null = null;
+    private _auditPagerWrap: HTMLElement | null = null;
+    private _tab2Content: HTMLElement | null = null;
 
     constructor(
         app: App,
@@ -3376,7 +3389,7 @@ class LifecycleModal extends Modal {
 
     async onOpen() {
         const { contentEl, modalEl } = this;
-        modalEl.style.width = "900px";
+        modalEl.style.width = "clamp(1000px, 80vw, 1200px)";
         modalEl.style.height = "75vh";
         contentEl.style.cssText = "display:flex;flex-direction:column;height:100%";
 
@@ -3386,8 +3399,42 @@ class LifecycleModal extends Modal {
         const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Manage Page Lifecycle" });
         makeDraggable(modalEl, titleEl);
 
-        // State filter checkboxes + Refresh button
-        const filterBar = contentEl.createEl("div");
+        // Tab bar
+        const TAB_INACTIVE = "padding:6px 18px;font-size:13px;cursor:pointer;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-muted)";
+        const TAB_ACTIVE   = "padding:6px 18px;font-size:13px;cursor:pointer;background:none;border:none;border-bottom:2px solid var(--interactive-accent);color:var(--text-normal);font-weight:600";
+        const tabBar = contentEl.createEl("div");
+        tabBar.style.cssText = "display:flex;border-bottom:1px solid var(--background-modifier-border);margin-bottom:10px;flex-shrink:0";
+        const tab1Btn = tabBar.createEl("button", { text: "Current States" }) as HTMLButtonElement;
+        tab1Btn.style.cssText = TAB_ACTIVE;
+        const tab2Btn = tabBar.createEl("button", { text: "Audit Log" }) as HTMLButtonElement;
+        tab2Btn.style.cssText = TAB_INACTIVE;
+
+        // Two content areas
+        this._tab1Content = contentEl.createDiv();
+        this._tab1Content.style.cssText = "display:flex;flex-direction:column;flex:1;min-height:0";
+        this._tab2Content = contentEl.createDiv();
+        this._tab2Content.style.cssText = "display:none;flex-direction:column;flex:1;min-height:0";
+
+        tab1Btn.addEventListener("click", () => {
+            this._activeTab = "states";
+            tab1Btn.style.cssText = TAB_ACTIVE;
+            tab2Btn.style.cssText = TAB_INACTIVE;
+            this._tab1Content!.style.display = "flex";
+            this._tab2Content!.style.display = "none";
+        });
+        tab2Btn.addEventListener("click", async () => {
+            this._activeTab = "audit";
+            tab2Btn.style.cssText = TAB_ACTIVE;
+            tab1Btn.style.cssText = TAB_INACTIVE;
+            this._tab1Content!.style.display = "none";
+            this._tab2Content!.style.display = "flex";
+            if (this._auditEvents.length === 0) await this._fetchAudit();
+        });
+
+        // ── Tab 1 content ──────────────────────────────────────────────
+        const tab1 = this._tab1Content;
+
+        const filterBar = tab1.createEl("div");
         filterBar.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:10px;flex-shrink:0";
         filterBar.createEl("span", { text: "Filter:" }).style.cssText = "font-size:12px;font-weight:600";
         for (const state of ALL_LIFECYCLE_STATES) {
@@ -3415,15 +3462,57 @@ class LifecycleModal extends Modal {
             refreshBtn.textContent = "↻ Refresh";
         });
 
-        // Table wrapper — scrollable, grows to fill space
-        this._tableWrap = contentEl.createDiv();
+        this._tableWrap = tab1.createDiv();
         this._tableWrap.style.cssText = "flex:1;overflow:auto;min-height:0;border:1px solid var(--background-modifier-border);border-radius:4px";
 
-        // Pager — pinned below scroll
-        this._pagerWrap = contentEl.createDiv();
+        this._pagerWrap = tab1.createDiv();
         this._pagerWrap.style.cssText = "flex-shrink:0;display:flex;gap:8px;align-items:center;margin-top:8px;font-size:12px;color:var(--text-muted)";
 
         await this._fetchAndRender();
+
+        // ── Tab 2 content ──────────────────────────────────────────────
+        const tab2 = this._tab2Content;
+
+        const auditFilterBar = tab2.createEl("div");
+        auditFilterBar.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:10px;flex-shrink:0";
+
+        const slugInput = auditFilterBar.createEl("input", { type: "text" }) as HTMLInputElement;
+        slugInput.placeholder = "Search by slug…";
+        slugInput.style.cssText = "width:220px;font-size:12px;padding:3px 8px";
+        slugInput.addEventListener("input", () => {
+            this._auditSlugFilter = slugInput.value.trim();
+            this._auditPage = 0;
+            this._renderAuditAll();
+        });
+
+        const stateSelect = auditFilterBar.createEl("select") as HTMLSelectElement;
+        stateSelect.style.cssText = "font-size:12px;padding:3px 8px";
+        stateSelect.createEl("option", { text: "All states", value: "" });
+        for (const s of ALL_LIFECYCLE_STATES) {
+            stateSelect.createEl("option", { text: s, value: s });
+        }
+        stateSelect.addEventListener("change", () => {
+            this._auditStateFilter = stateSelect.value;
+            this._auditPage = 0;
+            this._renderAuditAll();
+        });
+
+        const auditRefreshBtn = auditFilterBar.createEl("button", { text: "↻ Refresh" }) as HTMLButtonElement;
+        auditRefreshBtn.style.cssText = "margin-left:auto;font-size:12px;padding:2px 10px";
+        auditRefreshBtn.addEventListener("click", async () => {
+            auditRefreshBtn.disabled = true;
+            auditRefreshBtn.textContent = "↻ Refreshing…";
+            this._auditEvents = [];
+            await this._fetchAudit();
+            auditRefreshBtn.disabled = false;
+            auditRefreshBtn.textContent = "↻ Refresh";
+        });
+
+        this._auditTableWrap = tab2.createDiv();
+        this._auditTableWrap.style.cssText = "flex:1;overflow:auto;min-height:0;border:1px solid var(--background-modifier-border);border-radius:4px";
+
+        this._auditPagerWrap = tab2.createDiv();
+        this._auditPagerWrap.style.cssText = "flex-shrink:0;display:flex;gap:8px;align-items:center;margin-top:8px;font-size:12px;color:var(--text-muted)";
     }
 
     private async _fetchAndRender() {
@@ -3434,6 +3523,16 @@ class LifecycleModal extends Modal {
             this._pages = [];
         }
         this._renderAll();
+    }
+
+    private async _fetchAudit() {
+        try {
+            const result = await api.lifecycleEvents({ limit: 1000 }) as any;
+            this._auditEvents = result.events ?? [];
+        } catch {
+            this._auditEvents = [];
+        }
+        this._renderAuditAll();
     }
 
     private _filteredPages(): any[] {
@@ -3450,9 +3549,32 @@ class LifecycleModal extends Modal {
         });
     }
 
+    private _filteredAuditEvents(): any[] {
+        return this._auditEvents.filter(ev => {
+            if (this._auditSlugFilter && !String(ev.slug ?? "").toLowerCase().includes(this._auditSlugFilter.toLowerCase())) return false;
+            if (this._auditStateFilter && ev.to_state !== this._auditStateFilter) return false;
+            return true;
+        });
+    }
+
+    private _sortedAuditEvents(events: any[]): any[] {
+        const col = this._auditSortCol;
+        const dir = this._auditSortAsc ? 1 : -1;
+        return [...events].sort((a, b) => {
+            const av: string = a[col] ?? "";
+            const bv: string = b[col] ?? "";
+            return av < bv ? -dir : av > bv ? dir : 0;
+        });
+    }
+
     private _renderAll() {
         this._renderTable();
         this._renderPager();
+    }
+
+    private _renderAuditAll() {
+        this._renderAuditTable();
+        this._renderAuditPager();
     }
 
     private _renderTable() {
@@ -3507,11 +3629,9 @@ class LifecycleModal extends Modal {
             tr.addEventListener("mouseenter", () => { tr.style.background = "var(--background-modifier-hover)"; });
             tr.addEventListener("mouseleave", () => { tr.style.background = ""; });
 
-            // Slug
             const slugTd = tr.createEl("td", { text: pg.slug ?? "—" });
             slugTd.style.cssText = "padding:6px 10px;font-family:var(--font-monospace);font-size:12px";
 
-            // State chip
             const stateTd = tr.createEl("td");
             stateTd.style.cssText = "padding:6px 10px";
             const stateVal = pg.state ?? "";
@@ -3519,17 +3639,14 @@ class LifecycleModal extends Modal {
             chip.style.cssText = `border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;`
                 + (LIFECYCLE_STATE_COLORS[stateVal] ?? "background:var(--background-modifier-border)");
 
-            // Last changed — updated_at is ISO-8601 with timezone
             const rawTs: string = pg.updated_at ?? "";
             const ts = rawTs ? new Date(rawTs).toLocaleString() : "—";
             const tsTd = tr.createEl("td", { text: ts });
             tsTd.style.cssText = "padding:6px 10px;color:var(--text-muted);font-size:12px";
 
-            // Triggered by
             const trigTd = tr.createEl("td", { text: pg.triggered_by ?? "—" });
             trigTd.style.cssText = "padding:6px 10px;color:var(--text-muted);font-size:12px";
 
-            // Actions — valid transitions for current state
             const actionsTd = tr.createEl("td");
             actionsTd.style.cssText = "padding:6px 10px";
             const allowed = ALLOWED_TRANSITIONS[stateVal] ?? [];
@@ -3551,6 +3668,100 @@ class LifecycleModal extends Modal {
         }
     }
 
+    private _renderAuditTable() {
+        if (!this._auditTableWrap) return;
+        this._auditTableWrap.empty();
+
+        if (this._auditEvents.length === 0) {
+            this._auditTableWrap.createEl("p", { text: "No audit events found." })
+                .style.cssText = "color:var(--text-muted);padding:16px";
+            return;
+        }
+
+        const filtered = this._filteredAuditEvents();
+        const sorted = this._sortedAuditEvents(filtered);
+
+        if (sorted.length === 0) {
+            this._auditTableWrap.createEl("p", { text: "No events match the current filter." })
+                .style.cssText = "color:var(--text-muted);padding:16px";
+            return;
+        }
+
+        const totalPages = Math.max(1, Math.ceil(sorted.length / LIFECYCLE_PAGE_SIZE));
+        this._auditPage = Math.min(this._auditPage, totalPages - 1);
+        const slice = sorted.slice(this._auditPage * LIFECYCLE_PAGE_SIZE, (this._auditPage + 1) * LIFECYCLE_PAGE_SIZE);
+
+        const AUDIT_COLS: { key: string; label: string; sortable: boolean }[] = [
+            { key: "slug",         label: "Slug",         sortable: true },
+            { key: "from_state",   label: "From",         sortable: true },
+            { key: "to_state",     label: "To",           sortable: true },
+            { key: "triggered_by", label: "Triggered By", sortable: true },
+            { key: "timestamp",    label: "Timestamp",    sortable: true },
+            { key: "reason",       label: "Reason",       sortable: false },
+        ];
+
+        const table = this._auditTableWrap.createEl("table");
+        table.style.cssText = "width:100%;border-collapse:collapse;font-size:13px";
+
+        const thead = table.createEl("thead");
+        const hrow = thead.createEl("tr");
+        hrow.style.cssText = "background:var(--background-secondary)";
+        for (const col of AUDIT_COLS) {
+            const th = hrow.createEl("th", { text: col.label });
+            th.style.cssText = "text-align:left;padding:6px 10px;border-bottom:1px solid var(--background-modifier-border);white-space:nowrap;user-select:none";
+            if (col.sortable) {
+                th.style.cursor = "pointer";
+                if (this._auditSortCol === col.key) th.textContent += this._auditSortAsc ? " ▲" : " ▼";
+                else th.textContent += " ⇅";
+                th.addEventListener("click", () => {
+                    if (this._auditSortCol === col.key) this._auditSortAsc = !this._auditSortAsc;
+                    else { this._auditSortCol = col.key; this._auditSortAsc = true; }
+                    this._renderAuditTable();
+                });
+            }
+        }
+
+        const tbody = table.createEl("tbody");
+        for (const ev of slice) {
+            const tr = tbody.createEl("tr");
+            tr.style.borderBottom = "1px solid var(--background-modifier-border-subtle)";
+            tr.addEventListener("mouseenter", () => { tr.style.background = "var(--background-modifier-hover)"; });
+            tr.addEventListener("mouseleave", () => { tr.style.background = ""; });
+
+            const slugTd = tr.createEl("td", { text: ev.slug ?? "—" });
+            slugTd.style.cssText = "padding:6px 10px;font-family:var(--font-monospace);font-size:12px;white-space:nowrap";
+
+            const fromTd = tr.createEl("td");
+            fromTd.style.cssText = "padding:6px 10px;white-space:nowrap";
+            const fromVal = ev.from_state ?? "";
+            if (fromVal) {
+                const fromChip = fromTd.createEl("span", { text: fromVal });
+                fromChip.style.cssText = `border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;`
+                    + (LIFECYCLE_STATE_COLORS[fromVal] ?? "background:var(--background-modifier-border)");
+            } else {
+                fromTd.textContent = "—";
+            }
+
+            const toTd = tr.createEl("td");
+            toTd.style.cssText = "padding:6px 10px;white-space:nowrap";
+            const toVal = ev.to_state ?? "";
+            const toChip = toTd.createEl("span", { text: toVal });
+            toChip.style.cssText = `border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;`
+                + (LIFECYCLE_STATE_COLORS[toVal] ?? "background:var(--background-modifier-border)");
+
+            const trigTd = tr.createEl("td", { text: ev.triggered_by ?? "—" });
+            trigTd.style.cssText = "padding:6px 10px;color:var(--text-muted);font-size:12px;white-space:nowrap";
+
+            const rawTs: string = ev.timestamp ?? "";
+            const ts = rawTs ? new Date(rawTs).toLocaleString() : "—";
+            const tsTd = tr.createEl("td", { text: ts });
+            tsTd.style.cssText = "padding:6px 10px;color:var(--text-muted);font-size:12px;white-space:nowrap";
+
+            const reasonTd = tr.createEl("td", { text: ev.reason ?? "—" });
+            reasonTd.style.cssText = "padding:6px 10px;font-size:12px;color:var(--text-muted)";
+        }
+    }
+
     private _renderPager() {
         if (!this._pagerWrap) return;
         this._pagerWrap.empty();
@@ -3568,8 +3779,26 @@ class LifecycleModal extends Modal {
         next.addEventListener("click", () => { this._page++; this._renderAll(); });
     }
 
+    private _renderAuditPager() {
+        if (!this._auditPagerWrap) return;
+        this._auditPagerWrap.empty();
+        const filtered = this._filteredAuditEvents();
+        const totalPages = Math.max(1, Math.ceil(filtered.length / LIFECYCLE_PAGE_SIZE));
+        if (totalPages <= 1) return;
+        const prev = this._auditPagerWrap.createEl("button", { text: "← Prev" }) as HTMLButtonElement;
+        prev.disabled = this._auditPage === 0;
+        prev.addEventListener("click", () => { this._auditPage--; this._renderAuditAll(); });
+        this._auditPagerWrap.createEl("span", {
+            text: `Page ${this._auditPage + 1} of ${totalPages} (${filtered.length} events)`,
+        });
+        const next = this._auditPagerWrap.createEl("button", { text: "Next →" }) as HTMLButtonElement;
+        next.disabled = this._auditPage >= totalPages - 1;
+        next.addEventListener("click", () => { this._auditPage++; this._renderAuditAll(); });
+    }
+
     onClose() {
         this._pages = [];
+        this._auditEvents = [];
         this.contentEl.empty();
     }
 }
