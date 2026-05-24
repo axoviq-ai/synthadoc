@@ -1258,6 +1258,12 @@ Open `ROUTING.md` — it looks like this:
 - [[von-neumann-architecture]]
 ```
 
+### Manage routing in Obsidian
+
+Open the Command Palette (`Ctrl/Cmd+P`) → **Synthadoc: Routing: manage ROUTING.md**. The modal shows the current ROUTING.md content and three actions: **Init** (generate from index.md), **Validate** (report dangling slugs and duplicates), and **Clean** (remove dangling entries).
+
+![Synthadoc routing modal — ROUTING.md initialised, showing branch count confirmation and file content preview](png/synthadoc-routing-init.png)
+
 ### Edit and extend
 
 Add new branches or move slugs by hand. ROUTING.md is just a Markdown file — the format is
