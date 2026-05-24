@@ -1,0 +1,49 @@
+# Synthadoc demo content — released to the public domain (CC0). Factual summary for demonstration purposes.
+
+Language model benchmarks are standardised evaluations designed to measure model capability across specific tasks — knowledge retrieval, reasoning, coding, instruction following, and safety. Benchmark results are widely cited in research papers and model release announcements. Understanding their design, limitations, and proper interpretation is essential for drawing valid conclusions from them.
+
+## MMLU
+
+Massive Multitask Language Understanding (MMLU, Hendrycks et al., 2021) is a multiple-choice benchmark covering 57 subjects including mathematics, history, law, medicine, and the natural sciences. Questions are drawn from practice exams, textbooks, and academic sources. The standard evaluation protocol is 5-shot: the model is given five examples from the subject before answering each question.
+
+MMLU scores human expert performance at approximately 89.8% under the 5-shot protocol. Models are compared against this baseline as a rough proxy for expert-level knowledge.
+
+A common error in MMLU reporting concerns Gemini Ultra. Google's technical report (December 2023) cited a Gemini Ultra MMLU score of 90.0% without clearly stating this used CoT@32 — 32 chain-of-thought samples with majority voting. Under the standard 5-shot direct-answer protocol used for all other models in the comparison, Gemini Ultra scores 83.7%, below GPT-4's 86.4%. The 90.0% figure is not comparable to standard MMLU numbers.
+
+## HumanEval
+
+HumanEval (Chen et al., 2021) is a code generation benchmark consisting of 164 Python programming problems. Each problem provides a function signature and docstring; the model must generate a function body. Solutions are evaluated by running the provided unit tests.
+
+The primary metric is pass@1: the fraction of problems solved on the first attempt. A more lenient metric, pass@k, measures whether any of k sampled completions passes. HumanEval numbers in research papers almost always report pass@1 unless otherwise stated.
+
+HumanEval is relatively narrow — all problems are algorithmic rather than software engineering tasks — and models have been observed to memorise solutions from training data containing GitHub code. More recent code benchmarks (SWE-bench, LiveCodeBench) use problems created after model training cutoffs to reduce contamination.
+
+## BIG-Bench and BIG-Bench Hard
+
+Beyond the Imitation Game (BIG-Bench, Srivastava et al., 2022) is a collaborative benchmark of 204 tasks designed to probe capabilities beyond standard NLP tasks — logical reasoning, causal reasoning, common sense, multilingual understanding, and more. BIG-Bench Hard (BBH) is a 23-task subset that frontier models at the time of publication could not reliably solve, preserving headroom for future evaluation.
+
+## HellaSwag, WinoGrande, ARC
+
+Several benchmarks measure commonsense and physical reasoning.
+
+HellaSwag: a sentence completion task requiring knowledge of common event sequences. Models must select the most plausible continuation of a partial scene description. Carefully constructed via adversarial filtering to make statistical shortcuts ineffective.
+
+WinoGrande: a co-reference resolution task derived from the Winograd Schema Challenge. Requires understanding of physical and social common sense to resolve ambiguous pronoun references.
+
+ARC (AI2 Reasoning Challenge): a multiple-choice science question set divided into Easy and Challenge partitions. The Challenge partition was designed to be solvable by humans but unsolvable by retrieval-based systems.
+
+## TruthfulQA
+
+TruthfulQA (Lin et al., 2022) measures how often models produce truthful answers to questions that humans commonly answer incorrectly due to misconceptions, myths, and false beliefs. Larger models score lower on TruthfulQA under standard prompting because they are better at reproducing common human misconceptions from their training data. This is one of the motivations for RLHF: InstructGPT showed improved truthfulness over the base GPT-3.
+
+## Benchmark Saturation and Contamination
+
+Established benchmarks become unreliable once frontier models achieve near-ceiling performance. MMLU scores for the top models now differ by only a few percentage points, making it a poor discriminator. Benchmark saturation has driven the creation of harder successors (GPQA, MMLU-Pro) and reasoning benchmarks like MATH and AIME.
+
+Data contamination — the presence of benchmark questions in training data — is a persistent concern. It inflates reported performance and makes it difficult to know how much of a high score reflects genuine generalisation versus memorisation. Some organisations report contamination analysis; many do not.
+
+## Evaluating Evaluation
+
+Benchmarks do not measure what they appear to measure in a vacuum. Performance on a multiple-choice reasoning benchmark depends on prompt formatting, few-shot example selection, decoding temperature, and answer extraction methodology. Small differences in these choices can move benchmark scores by several percentage points. Reproducibility of benchmark results across labs requires carefully standardising evaluation protocols, which is not universally done.
+
+The trend toward evaluation frameworks (EleutherAI's lm-evaluation-harness, Stanford's HELM) that standardise prompts and evaluation across models has improved reproducibility but has not eliminated the problem.

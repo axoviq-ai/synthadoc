@@ -10,6 +10,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, field_validator
 from starlette.middleware.base import BaseHTTPMiddleware
+from typing import Optional
 
 import logging
 import re
@@ -166,6 +167,8 @@ class LintRequest(BaseModel):
     scope: str = "all"
     auto_resolve: bool = False
     adversarial: bool = True
+    lifecycle: bool = True
+    check_url_availability: Optional[bool] = None  # None = use server config
 
 
 class ScaffoldRequest(BaseModel):
@@ -200,6 +203,12 @@ class StagingPolicyRequest(BaseModel):
     confidence_min: str | None = None
 
 
+class LifecycleTransitionRequest(BaseModel):
+    slug: str
+    to_state: str
+    reason: str
+
+
 def _parse_retry_after(exc: Exception, default: float = 60.0) -> float:
     """Parse 'Please try again in Xm Y.Zs' from a rate-limit error message."""
     m = re.search(r"Please try again in (?:(\d+)m\s*)?(\d+(?:\.\d+)?)s", str(exc))
@@ -226,8 +235,11 @@ async def _worker_loop(orch) -> None:
                     scope = job.payload.get("scope", "all")
                     auto_resolve = job.payload.get("auto_resolve", False)
                     adversarial = job.payload.get("adversarial", True)
+                    lifecycle = job.payload.get("lifecycle", True)
+                    check_url_availability = job.payload.get("check_url_availability")  # None = use config
                     await orch._run_lint(job.id, scope=scope, auto_resolve=auto_resolve,
-                                         adversarial=adversarial)
+                                         adversarial=adversarial, lifecycle=lifecycle,
+                                         check_url_availability=check_url_availability)
                 elif job.operation == "scaffold":
                     domain = job.payload.get("domain", "")
                     await orch._run_scaffold(job.id, domain=domain)
@@ -262,6 +274,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
     from synthadoc.config import load_config
     from synthadoc.core.orchestrator import Orchestrator
     from synthadoc.storage.log import AuditDB as _AuditDB
+    from synthadoc.storage.wiki import LifecycleState, TriggerSource
 
     # Expose wiki root so skills (e.g. web_search) can load the dynamic blocked-domains list
     os.environ["SYNTHADOC_WIKI_ROOT"] = str(wiki_root)
@@ -328,6 +341,12 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             "pages": len(orch._store.list_pages()),
             "jobs_pending": pending,
             "jobs_total": len(jobs),
+        }
+
+    @app.get("/config")
+    async def config_info():
+        return {
+            "check_url_availability": cfg.lint.check_url_availability,
         }
 
     async def _run_query(question: str, timeout_seconds: int = 60) -> dict:
@@ -410,10 +429,15 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
 
     @app.post("/jobs/lint")
     async def enqueue_lint(req: LintRequest):
-        job_id = await app.state.orch.queue.enqueue(
-            "lint", {"scope": req.scope, "auto_resolve": req.auto_resolve,
-                     "adversarial": req.adversarial}
-        )
+        payload: dict = {
+            "scope": req.scope,
+            "auto_resolve": req.auto_resolve,
+            "adversarial": req.adversarial,
+            "lifecycle": req.lifecycle,
+        }
+        if req.check_url_availability is not None:
+            payload["check_url_availability"] = req.check_url_availability
+        job_id = await app.state.orch.queue.enqueue("lint", payload)
         return {"job_id": job_id}
 
     @app.get("/lint/report")
@@ -810,5 +834,70 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             offset=0,
         )
         return {"total": len(all_rows), "citations": rows}
+
+    # ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    _ALLOWED_LIFECYCLE_TRANSITIONS: set[tuple[str, str]] = {
+        (LifecycleState.DRAFT,        LifecycleState.ACTIVE),
+        (LifecycleState.DRAFT,        LifecycleState.ARCHIVED),
+        (LifecycleState.ACTIVE,       LifecycleState.ARCHIVED),
+        (LifecycleState.ACTIVE,       LifecycleState.STALE),
+        (LifecycleState.CONTRADICTED, LifecycleState.ARCHIVED),
+        (LifecycleState.STALE,        LifecycleState.DRAFT),
+        (LifecycleState.STALE,        LifecycleState.ARCHIVED),
+        (LifecycleState.ARCHIVED,     LifecycleState.DRAFT),
+    }
+
+    @app.get("/lifecycle/pages")
+    async def lifecycle_pages():
+        audit = _AuditDB(wiki_root / ".synthadoc" / "audit.db")
+        await audit.init()
+        pages = await audit.get_all_page_states()
+        return {"pages": pages}
+
+    @app.get("/lifecycle/status")
+    async def lifecycle_status():
+        audit = _AuditDB(wiki_root / ".synthadoc" / "audit.db")
+        await audit.init()
+        counts = await audit.get_lifecycle_summary()
+        return {"counts": counts}
+
+    @app.get("/lifecycle/events")
+    async def lifecycle_events(
+        slug: str = "",
+        to_state: str = "",
+        limit: int = 50,
+        offset: int = 0,
+    ):
+        audit = _AuditDB(wiki_root / ".synthadoc" / "audit.db")
+        await audit.init()
+        events = await audit.get_lifecycle_events(
+            slug=slug or None,
+            to_state=to_state or None,
+            limit=limit,
+            offset=offset,
+        )
+        return {"events": events, "total": len(events)}
+
+    @app.post("/lifecycle/transition")
+    async def lifecycle_transition(req: LifecycleTransitionRequest):
+        orch = app.state.orch
+        page = orch._store.read_page(req.slug)
+        if not page:
+            raise HTTPException(status_code=404, detail=f"Page not found: {req.slug}")
+        from_state = page.status
+        if (from_state, req.to_state) not in _ALLOWED_LIFECYCLE_TRANSITIONS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Transition {from_state!r} -> {req.to_state!r} is not allowed.",
+            )
+        page.status = req.to_state
+        orch._store.write_page(req.slug, page)
+        audit = _AuditDB(wiki_root / ".synthadoc" / "audit.db")
+        await audit.init()
+        await audit.set_page_state(req.slug, req.to_state, TriggerSource.USER)
+        await audit.record_lifecycle_event(req.slug, from_state, req.to_state,
+                                            req.reason, TriggerSource.USER)
+        return {"ok": True, "slug": req.slug, "from_state": from_state, "to_state": req.to_state}
 
     return app

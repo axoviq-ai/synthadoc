@@ -1,0 +1,43 @@
+# Synthadoc demo content — released to the public domain (CC0). Factual summary for demonstration purposes.
+
+The Internet is a global network of interconnected computer networks that exchange data using standardised communication protocols. Its development from a small experimental research network in 1969 to an infrastructure connecting billions of devices is one of the most consequential technological transformations of the twentieth century.
+
+## Packet Switching and ARPANET
+
+The conceptual foundation of the internet is packet switching, a method of transmitting data by breaking it into discrete chunks — packets — that travel independently through the network and are reassembled at the destination. This contrasts with circuit switching, used by telephone networks, which establishes a dedicated end-to-end circuit for the duration of each call.
+
+Packet switching was proposed independently by Paul Baran at the RAND Corporation, who published detailed descriptions between 1960 and 1964, and by Donald Davies at the National Physical Laboratory in the United Kingdom in 1965. Baran's motivation was partly military: he wanted a communications network that could survive the loss of nodes in a nuclear attack by routing traffic around damage. Davies's motivation was efficiency.
+
+The Advanced Research Projects Agency of the United States Department of Defense funded ARPANET, the first packet-switched network to connect geographically separate sites. ARPANET's first message was transmitted on 29 October 1969, between a computer at UCLA and one at the Stanford Research Institute. The message was "lo" — an attempt to type "login" that crashed the system after the first two letters. By December 1969, four nodes were connected: UCLA, Stanford Research Institute, the University of California Santa Barbara, and the University of Utah.
+
+## TCP/IP: The Universal Protocol
+
+Through the early 1970s, ARPANET grew but remained a single network. The challenge of connecting heterogeneous networks — different underlying hardware with different packet formats — demanded a new approach. Vinton Cerf and Robert Kahn published the foundational paper "A Protocol for Packet Network Intercommunication" in 1974, introducing the Transmission Control Protocol (TCP).
+
+TCP defined a method for reliably transmitting data across diverse interconnected networks. It was later split into two separate protocols: TCP, which handles reliable, ordered delivery of data streams between applications, and IP (Internet Protocol), which handles addressing and routing packets across network boundaries. The resulting TCP/IP protocol suite became the universal language of the internet.
+
+On 1 January 1983 — sometimes called "Flag Day" — ARPANET switched from its earlier Network Control Program to TCP/IP. This date marks the formal birth of the modern internet as a unified network. The Berkeley BSD Unix distribution played a major role in propagating TCP/IP: its 1983 release included a high-quality, publicly available TCP/IP implementation that was adopted by universities, research institutions, and eventually commercial vendors.
+
+## Domain Name System
+
+As the network grew, the original mechanism for mapping host names to numeric addresses — a single text file called HOSTS.TXT maintained by the Stanford Research Institute and distributed periodically to all nodes — became unworkable. By 1983 the file required constant updates and its distribution created bottlenecks.
+
+Paul Mockapetris designed the Domain Name System (DNS) in 1983. DNS replaced the centralised file with a distributed, hierarchical database. Responsibility for portions of the namespace was delegated to authoritative servers at each domain, which could be updated independently. DNS made the network scalable to millions and eventually billions of hosts.
+
+## Electronic Mail
+
+Electronic mail predated the World Wide Web by two decades. The first network email was sent by Ray Tomlinson in 1971 over ARPANET. Tomlinson also introduced the use of the @ symbol to separate the user name from the host name, a convention that persists unchanged. Email rapidly became the dominant use of ARPANET, consuming a larger share of network traffic than any other application by the mid-1970s.
+
+## The World Wide Web
+
+The internet provided a communication infrastructure, but widespread non-technical access required a simpler interface. Tim Berners-Lee, a physicist at CERN in Geneva, proposed the World Wide Web in a 1989 document titled "Information Management: A Proposal." He implemented it in 1990 and made the software publicly available in 1991.
+
+The Web introduced three interrelated technologies: HTML (HyperText Markup Language) for encoding documents, HTTP (HyperText Transfer Protocol) for requesting and serving them, and URLs (Uniform Resource Locators) for addressing them. A hyperlink in an HTML document allowed a reader to navigate from one document to another on any server, creating a global web of connected information navigable without technical knowledge.
+
+The first graphical web browser, Mosaic, was released by the National Center for Supercomputing Applications in 1993. Mosaic made the Web accessible to a general audience by displaying images inline with text. Netscape Navigator, released in 1994, brought the Web to millions of homes.
+
+## Commercialisation and Growth
+
+The National Science Foundation Network (NSFNET), which had provided the internet's backbone in the United States through the late 1980s, was retired in 1995 as commercial internet service providers assumed responsibility for the backbone infrastructure. This transition marked the commercialisation of the internet.
+
+Growth through the 1990s was exponential. The number of websites grew from a few hundred in 1992 to over a million by 1997. Electronic commerce, online publishing, and search engines transformed retail, media, and information access. By 2000, internet access was widespread in North America, Western Europe, and parts of Asia, though global connectivity remained uneven.

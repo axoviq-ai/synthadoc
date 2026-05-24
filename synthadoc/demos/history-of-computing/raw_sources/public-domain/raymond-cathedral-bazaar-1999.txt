@@ -1,0 +1,43 @@
+# Synthadoc demo content — released to the public domain (CC0). Factual summary for demonstration purposes.
+
+The open source software movement grew from a combination of practical collaboration habits in the research computing community and principled advocacy for software freedom that began in the early 1980s. Over two decades it transformed the economics and culture of software production.
+
+## Richard Stallman and the Free Software Foundation
+
+Richard Stallman was a programmer at the MIT Artificial Intelligence Laboratory who had worked in a culture of open sharing — programmers routinely exchanged and modified source code as a matter of course. When the culture shifted in the early 1980s, driven by commercial software companies that distributed programs only as compiled binaries and prohibited copying and modification, Stallman experienced this as an ethical wrong.
+
+In 1983 he announced the GNU Project — an effort to create a complete free Unix-compatible operating system. "Free" in this context meant free as in freedom: users would be free to run, study, modify, and redistribute the software. Stallman founded the Free Software Foundation in 1985 and published the GNU Manifesto, articulating the ethical case for software freedom.
+
+In 1989 Stallman published the GNU General Public License (GPL), a copyleft licence designed to ensure that programs released under it — and any software derived from them — would remain free. The GPL required that derivative works be distributed under the same terms, creating a viral propagation of freedom. The GPL became the most widely used open source licence.
+
+The GNU Project produced many of the essential tools of the Unix software ecosystem: the GCC compiler, the bash shell, the glibc C library, and many others. By the early 1990s, GNU had nearly all the components of a complete operating system except a working kernel.
+
+## Linux
+
+In 1991, Linus Torvalds, a student at the University of Helsinki, posted a message to a Usenet newsgroup announcing that he was writing a free operating system kernel for Intel 386 processors "just as a hobby, won't be big and professional." He released the first version of Linux under a licence that initially prohibited commercial use; he later adopted the GPL.
+
+Linux, combined with the GNU userland tools, provided the first complete free Unix-like operating system. The combination attracted a rapidly growing community of developers who contributed bug fixes, new drivers, and new features through email and later through version control systems. Development was distributed, asynchronous, and international.
+
+Linux grew to become the dominant kernel in servers, cloud computing infrastructure, Android smartphones, embedded systems, and supercomputers. The development model that produced it — thousands of contributors coordinated through public repositories and mailing lists — became a template for large-scale open source projects.
+
+## The Cathedral and the Bazaar
+
+Eric S. Raymond (ESR) presented a paper called "The Cathedral and the Bazaar" at the Linux Kongress in 1997, later published as an essay. The paper contrasted two models of software development.
+
+The cathedral model, exemplified by much traditional commercial and open source software, involved a small group of developers working in relative isolation for extended periods before releasing a polished version. The bazaar model, exemplified by Linux and the open-source community's practices, involved continuous public releases, many developers with varying commit privileges, and rapid iteration based on user feedback.
+
+Raymond articulated "Linus's Law": given enough eyeballs, all bugs are shallow. The argument was that a large community of users and developers would find and fix bugs faster than any small team, because the problem would be novel to fewer of them.
+
+The essay had direct practical consequences. It circulated at Netscape Communications, whose browser business was losing ground to Microsoft's Internet Explorer. In 1998 Netscape announced that it would release the source code of Netscape Communicator, creating the Mozilla project. The Mozilla project eventually produced Firefox, which became the second most widely used browser in the world.
+
+## Open Source Initiative and Licensing
+
+The term "open source" was proposed in early 1998 by Christine Peterson and adopted at a strategy session that included Raymond, Bruce Perens, and others. The intention was to provide a term less ideologically charged than "free software" that would be more palatable to businesses. The same year, Bruce Perens and Raymond founded the Open Source Initiative (OSI) to steward the definition and certify licences.
+
+The OSI definition of open source specifies that compliant licences must permit free redistribution, must include source code, must allow derived works, and must not discriminate against persons, groups, or fields of endeavour. Under this umbrella, a spectrum of licences emerged: the GPL and its variants (LGPL, AGPL) impose copyleft requirements; the MIT and BSD licences are permissive, imposing almost no restrictions; the Apache licence adds patent grant provisions.
+
+## Impact
+
+By the early 2000s, open source software underpinned most internet infrastructure: Linux and BSD servers, the Apache web server, the Sendmail and Postfix mail transfer agents, the BIND DNS server, and MySQL and PostgreSQL databases. The LAMP stack (Linux, Apache, MySQL, PHP) became the standard platform for web applications.
+
+GitHub, launched in 2008, lowered the barrier to participation further by providing a web interface for Git-based version control, making it easy for any developer to fork a project, propose changes, and have them reviewed. Open source became the default model for new infrastructure software.

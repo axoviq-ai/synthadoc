@@ -1,0 +1,50 @@
+# Synthadoc demo content — released to the public domain (CC0). Factual summary for demonstration purposes.
+
+The "First Draft of a Report on the EDVAC," written by John von Neumann in 1945, is one of the most consequential documents in the history of computing. It described, for the first time in systematic form, the architecture of a stored-program computer — a design so general and durable that variants of it still underlie virtually every general-purpose computing device built today.
+
+## Background: EDVAC and the Moore School
+
+The context for the First Draft was the Electronic Discrete Variable Automatic Computer (EDVAC), a successor to ENIAC being designed at the Moore School of Electrical Engineering at the University of Pennsylvania. John Mauchly and J. Presper Eckert had been working on the EDVAC concept since 1944, and von Neumann, a consultant to the project, distilled the design discussions into the First Draft in the spring of 1945.
+
+The document was circulated internally and quickly spread among researchers, establishing what became known as the von Neumann architecture. The attribution to von Neumann alone has been disputed by Eckert and Mauchly and by subsequent historians, who point out that many of the ideas in the document came from collective discussions. Nevertheless, the term von Neumann architecture has persisted because the First Draft was the document that codified and propagated the design.
+
+## The Stored-Program Concept
+
+The central insight of the von Neumann architecture is that both program instructions and data should be stored in the same memory, using the same binary representation. This seems obvious in retrospect but was a departure from earlier designs in which the program was external to the machine — encoded on patch cables, plug-boards, or paper tape that had to be physically reconfigured to change what the machine did.
+
+With a stored program, a new program could be loaded into memory the same way data was loaded, without rewiring the machine. More profoundly, a program could treat its own instructions as data, modifying them during execution. This flexibility made general-purpose computing practically achievable.
+
+## Architecture Components
+
+The First Draft described a computer organised into five functional units:
+
+**Memory** stores both instructions and data in a single address space, addressed by sequential numbers. Instructions and operands are fetched from memory by the control unit as needed.
+
+**The Arithmetic Logic Unit (ALU)** performs the primitive operations: addition, subtraction, multiplication, division, and logical operations such as AND, OR, and NOT. The ALU operates on values retrieved from registers — small, fast storage locations within the CPU.
+
+**The Control Unit** directs the sequence of operations. It maintains a program counter that points to the address of the next instruction to execute. The control unit fetches the instruction from memory, decodes it to determine what operation is required and what operands it needs, and then signals the appropriate unit — usually the ALU — to carry out the operation.
+
+**Input and Output** units allow the computer to communicate with the external world: reading data from punched cards, paper tape, or keyboards, and writing results to printers or storage.
+
+**The Central Processing Unit** is the collective term for the ALU and control unit together, the active heart of the machine.
+
+## The Fetch-Decode-Execute Cycle
+
+The fundamental operating cycle of a von Neumann machine is:
+
+1. Fetch: the control unit reads the instruction stored at the address given by the program counter.
+2. Decode: the control unit interprets the binary instruction to determine the operation and its operands.
+3. Execute: the control unit directs the ALU or another unit to perform the operation.
+4. Increment: the program counter advances to the next instruction.
+
+This cycle repeats continuously. Conditional branches — instructions that update the program counter to a non-sequential address based on a computed result — provide the mechanism for loops and decisions. The speed at which this cycle executes, measured in clock cycles per second, became the primary metric by which processor performance was judged for decades.
+
+## Influence on Computer Design
+
+The First Draft circulated widely and shaped the design of early computers across the United States and Britain. The IAS machine at Princeton, built by von Neumann's team starting in 1945, was the first computer constructed directly to this specification. Clones of the IAS machine were built at universities and research laboratories throughout the world in the late 1940s and 1950s.
+
+Alan Turing's earlier theoretical Turing machine shares the same conceptual foundation — the idea that an abstract machine with a finite description can compute any computable function — but the First Draft provided the engineering blueprint rather than the mathematical abstraction. Every programming language, from assembly code to modern high-level languages, ultimately targets the instruction set of a von Neumann machine.
+
+## Limitations and Extensions
+
+The von Neumann bottleneck — the single bus connecting the CPU to memory, which constrains throughput — was identified as a performance limit as early as the 1970s. Modern processor designs address this through caches, multiple memory banks, out-of-order execution, and specialised co-processors, but the fundamental stored-program architecture remains the dominant paradigm. Alternative models such as dataflow architectures and neuromorphic computing have been explored, but none has displaced the von Neumann machine for general-purpose workloads.

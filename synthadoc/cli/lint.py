@@ -88,16 +88,24 @@ def lint_cmd(
     auto_resolve: bool = typer.Option(False, "--auto-resolve"),
     no_adversarial: bool = typer.Option(False, "--no-adversarial",
                                          help="Skip adversarial review and clear existing lint_warnings"),
+    no_lifecycle: bool = typer.Option(False, "--no-lifecycle",
+                                      help="Skip lifecycle checks (draft promotion, stale detection)."),
+    check_urls: bool = typer.Option(False, "--check-urls",
+                                    help="Check URL source availability via HTTP HEAD (adds network calls)"),
     wiki: Optional[str] = typer.Option(None, "--wiki", "-w"),
 ):
     """Enqueue a lint job. Requires synthadoc serve to be running."""
     from synthadoc.cli._wiki import resolve_wiki
     wiki = resolve_wiki(wiki)
-    result = post(wiki, "/jobs/lint", {
+    payload: dict = {
         "scope": scope,
         "auto_resolve": auto_resolve,
         "adversarial": not no_adversarial,
-    })
+        "lifecycle": not no_lifecycle,
+    }
+    if check_urls:
+        payload["check_url_availability"] = True
+    result = post(wiki, "/jobs/lint", payload)
     typer.echo(f"Lint enqueued -> job {result['job_id']}")
     w_flag = f" -w {wiki}" if wiki != "." else ""
     typer.echo(f"Check status: synthadoc jobs status {result['job_id']}{w_flag}")

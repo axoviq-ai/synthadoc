@@ -65,6 +65,9 @@ vi.mock("./api", () => ({
         candidates: vi.fn(), candidatesPromoteAll: vi.fn(), candidatesDiscardAll: vi.fn(),
         candidatePromote: vi.fn(), candidateDiscard: vi.fn(),
         contextBuild: vi.fn(),
+        config: vi.fn().mockResolvedValue({ check_url_availability: false }),
+        lifecycleStatus: vi.fn(), lifecyclePages: vi.fn(), lifecycleEvents: vi.fn(),
+        lifecycleTransition: vi.fn(), deleteJob: vi.fn(),
     },
     setBase: vi.fn(),
 }));
@@ -580,6 +583,9 @@ async function getModal(commandId: string, appOverride?: any): Promise<{ ModalCl
             candidates: vi.fn(), candidatesPromoteAll: vi.fn(), candidatesDiscardAll: vi.fn(),
             candidatePromote: vi.fn(), candidateDiscard: vi.fn(),
             contextBuild: vi.fn(),
+            config: vi.fn().mockResolvedValue({ check_url_availability: false }),
+            lifecycleStatus: vi.fn(), lifecyclePages: vi.fn(), lifecycleEvents: vi.fn(),
+            lifecycleTransition: vi.fn(), deleteJob: vi.fn(),
         },
         setBase: vi.fn(),
     };

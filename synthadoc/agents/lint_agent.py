@@ -3,18 +3,25 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json as _json
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.log import AuditDB, LogWriter
-from synthadoc.storage.wiki import WikiStorage
+from synthadoc.storage.wiki import WikiStorage, LifecycleState, is_url, TriggerSource
+
+import logging as _logging
 
 if TYPE_CHECKING:
+    from synthadoc.config import Config
     from synthadoc.storage.wiki import WikiPage
+
+_log = _logging.getLogger(__name__)
 
 
 @dataclass
@@ -27,6 +34,10 @@ class LintReport:
     tokens_used: int = 0
     adversarial_warnings: list[dict] = field(default_factory=list)
     citation_issues: list[dict] = field(default_factory=list)
+    lifecycle_promoted: int = 0
+    lifecycle_stale: int = 0
+    lifecycle_archived: int = 0
+    lifecycle_synced: int = 0
 
 
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
@@ -172,7 +183,9 @@ class LintAgent:
                  log_writer: LogWriter, confidence_threshold: float = 0.85,
                  audit_db: AuditDB | None = None,
                  adversarial_provider: LLMProvider | None = None,
-                 adversarial_max_per_page: int = 2) -> None:
+                 adversarial_max_per_page: int = 2,
+                 wiki_root: "Path | str | None" = None,
+                 cfg: "Config | None" = None) -> None:
         self._provider = provider
         self._store = store
         self._log = log_writer
@@ -180,6 +193,8 @@ class LintAgent:
         self._audit = audit_db
         self._adversarial_provider = adversarial_provider or provider
         self._adversarial_max_per_page = adversarial_max_per_page
+        self._wiki_root = Path(wiki_root) if wiki_root else self._store._root.parent
+        self._cfg = cfg
 
     def _find_orphans(self, slugs: list[str]) -> list[str]:
         page_texts = {}
@@ -261,8 +276,174 @@ class LintAgent:
 
         return all_warnings, total_tokens
 
+    async def _transition(self, slug: str, page: "WikiPage", from_state: str,
+                          to_state: str, reason: str) -> None:
+        if self._audit:
+            await self._audit.set_page_state(slug, to_state, TriggerSource.LINT)
+            await self._audit.record_lifecycle_event(
+                slug, from_state, to_state, reason, TriggerSource.LINT
+            )
+        page.status = to_state
+        self._store.write_page(slug, page)
+
+    async def _is_url_unavailable(self, url: str) -> bool:
+        """Return True only if URL is definitively gone (404/410 or YouTube VideoUnavailable).
+        Returns False on timeout, connection error, or any ambiguous failure — avoid false positives.
+        """
+        import re as _re
+        _YT = _re.compile(
+            r'(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)([A-Za-z0-9_-]{11})'
+        )
+        m = _YT.search(url)
+        if m:
+            _log.debug("lifecycle url-check [youtube] id=%s url=%s", m.group(1), url)
+            try:
+                from youtube_transcript_api import YouTubeTranscriptApi
+                from youtube_transcript_api._errors import VideoUnavailable
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(
+                    None,
+                    lambda: YouTubeTranscriptApi.get_transcript(m.group(1))
+                )
+                _log.debug("lifecycle url-check [youtube] unavailable=%s url=%s", False, url)
+                return False
+            except Exception as exc:
+                # Only VideoUnavailable is a definitive signal
+                try:
+                    result = isinstance(exc, VideoUnavailable)
+                except NameError:
+                    result = False
+                _log.debug("lifecycle url-check [youtube] unavailable=%s url=%s", result, url)
+                return result
+
+        # Generic URL: HTTP HEAD
+        _log.debug("lifecycle url-check [http-head] url=%s", url)
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.head(url, follow_redirects=True)
+                _log.debug("lifecycle url-check [http-head] status=%d url=%s", resp.status_code, url)
+                return resp.status_code in (404, 410)
+        except Exception as exc:
+            _log.debug("lifecycle url-check [http-head] error=%s url=%s", type(exc).__name__, url)
+            return False  # timeout / connection error = assume available
+
+    async def _run_lifecycle_checks(self, slugs: list[str], report: LintReport,
+                                     check_url_availability: bool = False,
+                                     url_staleness_days: int = 0) -> None:
+        raw_sources_dir = self._wiki_root / "raw_sources"
+        for slug in slugs:
+            if slug in LINT_SKIP_SLUGS:
+                continue
+            try:
+                page = self._store.read_page(slug)
+                if not page:
+                    continue
+                current = page.status
+
+                # Check 1: archived detection -- source file no longer on disk / URL unavailable
+                if current in (LifecycleState.ACTIVE, LifecycleState.STALE, LifecycleState.DRAFT):
+                    for src_ref in page.sources:
+                        if src_ref.file and not is_url(src_ref.file):
+                            if raw_sources_dir.exists():
+                                src_path = raw_sources_dir / src_ref.file
+                                if not src_path.exists():
+                                    await self._transition(slug, page, current,
+                                                           LifecycleState.ARCHIVED,
+                                                           "source file no longer on disk")
+                                    report.lifecycle_archived += 1
+                                    current = LifecycleState.ARCHIVED
+                                    break
+                        # URL archived: HTTP HEAD or YouTube availability (opt-in)
+                        elif src_ref.file and is_url(src_ref.file) and check_url_availability:
+                            _log.debug("lifecycle archived-check [url] slug=%s url=%s", slug, src_ref.file)
+                            if await self._is_url_unavailable(src_ref.file):
+                                _log.debug("lifecycle archived [url] slug=%s url=%s → archived", slug, src_ref.file)
+                                await self._transition(slug, page, current,
+                                                       LifecycleState.ARCHIVED,
+                                                       "URL source no longer available")
+                                report.lifecycle_archived += 1
+                                current = LifecycleState.ARCHIVED
+                                break
+
+                if current == LifecycleState.ARCHIVED:
+                    continue
+
+                # Check 2: stale detection -- source file hash changed
+                if current == LifecycleState.ACTIVE and self._audit:
+                    for src_ref in page.sources:
+                        if src_ref.file and not is_url(src_ref.file):
+                            src_path = raw_sources_dir / src_ref.file
+                            if src_path.exists():
+                                current_hash = hashlib.sha256(src_path.read_bytes()).hexdigest()
+                                record = await self._audit.find_by_source_path(src_ref.file)
+                                if record and record.get("source_hash") is not None and record.get("source_hash") != current_hash:
+                                    await self._transition(slug, page, LifecycleState.ACTIVE,
+                                                           LifecycleState.STALE,
+                                                           "source file modified since last ingest")
+                                    report.lifecycle_stale += 1
+                                    current = LifecycleState.STALE
+                                    break
+                        # URL stale: age-based (no network call)
+                        elif src_ref.file and is_url(src_ref.file) and url_staleness_days > 0 and self._audit:
+                            record = await self._audit.find_by_source_path(src_ref.file)
+                            if record and record.get("ingested_at"):
+                                try:
+                                    ingested_dt = datetime.fromisoformat(record["ingested_at"])
+                                    if ingested_dt.tzinfo is None:
+                                        ingested_dt = ingested_dt.replace(tzinfo=timezone.utc)
+                                    age_days = (datetime.now(timezone.utc) - ingested_dt).days
+                                    _log.debug(
+                                        "lifecycle stale-check [url] slug=%s url=%s age_days=%d threshold=%d",
+                                        slug, src_ref.file, age_days, url_staleness_days,
+                                    )
+                                    if age_days > url_staleness_days:
+                                        _log.debug("lifecycle stale [url] slug=%s url=%s → stale", slug, src_ref.file)
+                                        await self._transition(slug, page, LifecycleState.ACTIVE,
+                                                               LifecycleState.STALE,
+                                                               f"URL source not re-ingested in {age_days} days")
+                                        report.lifecycle_stale += 1
+                                        current = LifecycleState.STALE
+                                        break
+                                except (ValueError, TypeError):
+                                    pass  # malformed timestamp — skip
+
+                # Check 3: draft promotion
+                if current == LifecycleState.DRAFT:
+                    await self._transition(slug, page, LifecycleState.DRAFT,
+                                           LifecycleState.ACTIVE, "lint passed")
+                    report.lifecycle_promoted += 1
+                    current = LifecycleState.ACTIVE
+
+                # Check 4: manual-edit sync -- frontmatter state differs from DB
+                if self._audit and current in LifecycleState.ALL:
+                    db_state = await self._audit.get_page_state(slug)
+                    if db_state and db_state["state"] != current:
+                        await self._audit.set_page_state(slug, current, TriggerSource.MANUAL_EDIT)
+                        await self._audit.record_lifecycle_event(
+                            slug, db_state["state"], current,
+                            "manual frontmatter edit detected", TriggerSource.MANUAL_EDIT
+                        )
+                        report.lifecycle_synced += 1
+                    elif not db_state:
+                        await self._audit.set_page_state(slug, current, TriggerSource.LINT)
+
+            except Exception as exc:
+                _log.warning(
+                    "lifecycle check failed for %s: %s", slug, exc
+                )
+
+        if self._audit and self._cfg:
+            retention = getattr(getattr(self._cfg, "audit", None), "lifecycle_retention_days", 0)
+            if retention > 0:
+                from datetime import timedelta
+                cutoff = (datetime.now(timezone.utc) - timedelta(days=retention)).isoformat()
+                await self._audit.purge_lifecycle_events(before_date=cutoff)
+
     async def lint(self, scope: str = "all", auto_resolve: bool = False,
-                   adversarial: bool = True, job_id: str = "system") -> LintReport:
+                   adversarial: bool = True, lifecycle: bool = True,
+                   check_url_availability: Optional[bool] = None,
+                   job_id: str = "system") -> LintReport:
         report = LintReport()
         slugs = self._store.list_pages()
 
@@ -271,7 +452,7 @@ class LintAgent:
                 if slug in LINT_SKIP_SLUGS:
                     continue
                 page = self._store.read_page(slug)
-                if page and page.status == "contradicted":
+                if page and page.status == LifecycleState.CONTRADICTED:
                     report.contradictions_found += 1
                     if self._audit:
                         await self._audit.record_audit_event(
@@ -304,7 +485,7 @@ class LintAgent:
                         except Exception:
                             decision = {"resolvable": False, "reason": "auto-resolve returned unparseable output", "resolution": ""}
                         if decision.get("resolvable"):
-                            page.status = "active"
+                            page.status = LifecycleState.ACTIVE
                             page.contradiction_note = None
                             page.unresolved_note = None
                             resolution = decision.get("resolution", "").strip()
@@ -367,6 +548,15 @@ class LintAgent:
                     if page and page.lint_warnings:
                         page.lint_warnings = []
                         self._store.write_page(slug, page)
+
+        if scope == "all" and lifecycle:
+            _check_urls = (
+                check_url_availability
+                if check_url_availability is not None
+                else getattr(getattr(self._cfg, "lint", None), "check_url_availability", False)
+            )
+            _url_staleness = getattr(getattr(self._cfg, "audit", None), "url_staleness_days", 0)
+            await self._run_lifecycle_checks(slugs, report, _check_urls, _url_staleness)
 
         self._log.log_lint(resolved=report.contradictions_resolved,
                            flagged=report.contradictions_found - report.contradictions_resolved,

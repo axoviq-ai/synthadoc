@@ -1,0 +1,64 @@
+# Synthadoc demo content — released to the public domain (CC0). Factual summary for demonstration purposes.
+
+Attention mechanisms are a family of techniques that allow neural networks to dynamically weight different parts of their input when computing an output. The concept emerged in sequence-to-sequence learning and became the defining feature of the transformer architecture. Attention is now ubiquitous in deep learning, underpinning large language models, vision transformers, and multimodal systems.
+
+## Origins
+
+The idea of attention in neural networks was introduced by Bahdanau et al. in 2014 ("Neural Machine Translation by Jointly Learning to Align and Translate"). In the recurrent sequence-to-sequence framework of the time, the decoder received a fixed-length context vector summarising the entire source sentence — a bottleneck that degraded translation quality on long sequences.
+
+Bahdanau attention allowed the decoder to look back at all encoder hidden states and compute a weighted sum, where the weights reflected relevance to the current decoding step. This soft alignment mechanism improved translation quality substantially and introduced the core attention pattern: compute similarities between a query and a set of keys, normalise via softmax, and aggregate the corresponding values.
+
+## Scaled Dot-Product Attention
+
+The transformer (Vaswani et al., 2017) reformulated attention as a function of three matrices:
+
+- Query (Q): what the current position is looking for
+- Key (K): what each position can be matched against
+- Value (V): what each position contributes to the output
+
+The attention score between two positions is the dot product of their query and key vectors. These scores are scaled by 1/sqrt(d_k) — the square root of the key dimension — to prevent the dot products from growing large in magnitude and pushing the softmax into a region of very small gradients.
+
+Scaled dot-product attention:
+
+  Attention(Q, K, V) = softmax(QK^T / sqrt(d_k)) · V
+
+The output is a weighted sum of value vectors, where the weights are the normalised attention scores. This formulation is parallelisable over the full sequence length and maps well to matrix multiplication on GPU hardware.
+
+## Multi-Head Attention
+
+Rather than running a single attention function on the full model dimension, multi-head attention applies h parallel attention heads, each operating on a lower-dimensional projection of Q, K, and V. The outputs of all heads are concatenated and linearly projected back to the model dimension.
+
+  MultiHead(Q, K, V) = Concat(head_1, ..., head_h) · W_O
+  where head_i = Attention(Q · W_Qi, K · W_Ki, V · W_Vi)
+
+Multi-head attention allows the model to jointly attend to information from different representation subspaces at different positions. Each head can learn to attend to different syntactic or semantic relationships.
+
+## Self-Attention vs Cross-Attention
+
+In self-attention, Q, K, and V all come from the same sequence. This allows each position to attend to all other positions in the same sequence, capturing long-range dependencies without regard to distance.
+
+In cross-attention, Q comes from one sequence (e.g. the decoder) and K, V come from another sequence (e.g. the encoder output). This is how the decoder in the original transformer attends to the source sequence.
+
+## Causal (Masked) Self-Attention
+
+Decoder-only language models use causal (autoregressive) self-attention, where each position is allowed to attend only to previous positions and itself. This is implemented by masking future positions in the attention score matrix — setting their logits to negative infinity before softmax — so they receive zero weight.
+
+Causal masking is what enables GPT-style models to be trained via next-token prediction while preserving the autoregressive property at inference time.
+
+## Positional Encodings and Relative Attention
+
+Standard self-attention is permutation-invariant: it has no built-in notion of position or order. Positional encodings are added to embeddings to inject position information.
+
+The original transformer used fixed sinusoidal encodings. Later models used learned absolute positional embeddings (GPT-2, BERT). More recent work uses relative position encodings, where attention scores are modified based on the distance between positions rather than their absolute index. Rotary Position Embedding (RoPE), introduced by Su et al. in 2021 and used in LLaMA and many other models, encodes relative position by rotating the Q and K vectors in the complex plane.
+
+## Efficient Attention
+
+Standard self-attention has O(N²) time and space complexity in sequence length N, because the full N×N attention matrix must be computed. For long sequences this is prohibitive.
+
+Flash Attention (Dao et al., 2022) achieves the same result as standard attention using O(N) GPU memory by computing attention in blocks and never materialising the full matrix. Flash Attention 2 (2023) improved parallelism and is now the standard implementation in most large model training frameworks.
+
+Linear attention variants approximate the softmax operation to achieve O(N) complexity but sacrifice exact computation. These remain an active research area.
+
+## Influence
+
+Attention mechanisms are now foundational across deep learning. Vision Transformers (ViT) apply self-attention to image patches. Cross-attention underpins text-to-image diffusion models and multimodal architectures. Attention in protein structure prediction (AlphaFold 2) enables modelling of residue-residue contacts. The scalability and interpretability of attention weights have made it one of the most studied components in modern neural network research.

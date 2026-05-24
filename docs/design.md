@@ -31,6 +31,7 @@
 20. [Context Packs](#20-context-packs)
 21. [Adversarial Review](#21-adversarial-review)
 22. [Claim-Level Provenance](#22-claim-level-provenance)
+23. [Lifecycle Machine](#23-lifecycle-machine)
 
 **Appendices**
 - [Appendix A — Release Feature Index](#appendix-a--release-feature-index)
@@ -105,9 +106,13 @@ Content with [[wikilinks]] to related pages…
 
 | Value | Meaning |
 |-------|---------|
-| `active` | Normal; up to date |
+| `draft` | Newly compiled — not yet lint-reviewed |
+| `active` | Lint-reviewed, current, trusted |
 | `contradicted` | A new source conflicts with this page; needs resolution |
-| `archived` | Source removed; page retained for reference |
+| `stale` | Source file changed since last ingest |
+| `archived` | Source removed or manually retired |
+
+New pages are created with `status: draft`. Lint promotes them to `active` automatically when all checks pass. See [§23 Lifecycle Machine](#23-lifecycle-machine) for full transition rules.
 
 **`lint_warnings`** _(added in v0.5.0)_ — list of adversarial review findings written to frontmatter after each lint run:
 
@@ -341,6 +346,10 @@ Runs against the entire wiki or a scoped subset:
 | Stale | Pages whose `sources[]` entries no longer exist on disk |
 | Missing link | Entity mentioned in page body but no wikilink created |
 | Adversarial review _(v0.5.0)_ | Independent LLM pass that flags overstated claims, unsupported assertions, and high-confidence statements the source material does not support |
+| Lifecycle — archived detection _(v0.6.0)_ | Source file no longer on disk → transition page to `archived` |
+| Lifecycle — stale detection _(v0.6.0)_ | SHA-256 hash of source on disk ≠ recorded ingest hash → transition page to `stale` |
+| Lifecycle — draft promotion _(v0.6.0)_ | `draft` page with no active issues → transition to `active` |
+| Lifecycle — manual-edit sync _(v0.6.0)_ | Frontmatter `status` differs from `page_states` DB record → reconcile DB to match |
 
 **Auto-resolution:** For contradictions, LintAgent asks the LLM to propose a resolution with a confidence score. If score ≥ `auto_resolve_confidence_threshold` (default 0.85), applies automatically. Below threshold, queues for human review.
 
@@ -536,6 +545,31 @@ SQLite. Two key tables:
 | `claim_excerpt` | TEXT | First ~100 chars of the annotated paragraph (for display) |
 | `ingested_at` | TEXT | UTC ISO-8601 |
 
+**`page_states`** _(added in v0.6.0)_
+
+Fast slug-keyed current state index. One row per wiki page.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `slug` | TEXT PK | Wiki page slug |
+| `state` | TEXT | One of: `draft`, `active`, `contradicted`, `stale`, `archived` |
+| `updated_at` | TEXT | UTC ISO-8601 — when this row was last modified |
+| `triggered_by` | TEXT | Who caused the last transition: `ingest`, `lint`, `cli`, `api` |
+
+**`lifecycle_events`** _(added in v0.6.0)_
+
+Immutable append-only audit log of every lifecycle transition.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | INTEGER PK | |
+| `slug` | TEXT | Wiki page slug |
+| `from_state` | TEXT | Previous state (`null` on first creation) |
+| `to_state` | TEXT | New state |
+| `reason` | TEXT | Human-readable reason (empty string if none provided) |
+| `triggered_by` | TEXT | `ingest`, `lint`, `cli`, `api` |
+| `timestamp` | TEXT | UTC ISO-8601 |
+
 ### jobs.db — Job queue
 
 See [Section 14 — Job Queue](#14-job-queue).
@@ -590,6 +624,9 @@ Note: BM25 IDF requires a minimum of 3 documents in the corpus for non-zero scor
 | `GET` | `/lint/report` | — | `LintReport` |
 | `GET` | `/health` | — | `{status: "ok"}` |
 | `GET` | `/provenance/citations` _(v0.5.0)_ | `?page=<slug>&source=<file>&broken=<bool>&limit=N&offset=N&sort=<col>&order=<dir>` | `{total: int, citations: [CitationRow]}` |
+| `GET` | `/lifecycle/status` _(v0.6.0)_ | — | `{draft: int, active: int, contradicted: int, stale: int, archived: int}` |
+| `GET` | `/lifecycle/events` _(v0.6.0)_ | `?slug=<slug>&to_state=<state>&limit=N&offset=N` | `{total: int, events: [LifecycleEvent]}` |
+| `POST` | `/lifecycle/transition` _(v0.6.0)_ | `{slug: str, to_state: str, reason?: str}` | `{slug, from_state, to_state, timestamp}` |
 
 **`GET /jobs` query parameters:**
 
@@ -691,6 +728,7 @@ Reload the plugin (toggle off/on) after copying — a full Obsidian restart is n
 | `Synthadoc: Lint: report` | 3-tab modal — **Contradictions**, **Orphans**, **Adversarial** _(v0.5.0)_. The Adversarial tab shows each flagged claim (orange) with its concern and suggested re-ingest commands. |
 | `Synthadoc: Lint: run...` | Modal with **Auto-resolve** and **Skip adversarial review** _(v0.5.0)_ checkboxes. Queues a lint job; polls progress live; reports contradiction, orphan, and adversarial warning counts when complete. Tick **Skip adversarial review** to run structural-only lint (also clears existing `lint_warnings`). |
 | `Synthadoc: View Page Provenance` _(v0.5.0)_ | Sortable, paginated table of every claim citation recorded across the wiki — page, claim excerpt, source file, line range, and ingest timestamp. Draggable; all cell content is selectable and copyable. Click any row to open the Source Viewer showing the exact source lines with ±5 lines of context. For PDF sources a page-jump button opens the native PDF viewer at the correct page. |
+| `Synthadoc: Manage Page Lifecycle` _(v0.6.0)_ | Sortable, filterable, paginated table of all wiki pages with their current lifecycle state (`draft`, `active`, `contradicted`, `stale`, `archived`) and last transition timestamp. State filter checkboxes narrow the table; click column headers to sort. Each row shows valid transition buttons — click a button to trigger a transition; a reason dialog appears before committing. Clicking a draft or stale badge on the lint modal or jobs panel opens this table pre-filtered to that state. |
 | `Synthadoc: Jobs...` | Modal with status-filter checkboxes (pending, in_progress, completed, failed, skipped, dead, cancelled), sortable results table (click **Status**, **Operation**, or **Created** headers to sort ascending; click again to reverse; ▲/▼ indicates active sort, ⇅ indicates unsorted; default: newest first), error detail rows for failed/dead/cancelled jobs, pagination (25 per page), auto-refresh countdown, a **Retry selected** button (enabled when ≥ 1 selected job is failed/dead/cancelled) and a **Delete selected** button (enabled when ≥ 1 job is selected). A **Purge old jobs** footer row lets you set a day threshold and remove old completed/dead jobs in one click. |
 | `Synthadoc: Routing: manage ROUTING.md...` | Modal panel with three buttons. **Init** creates ROUTING.md from the current index.md branch structure (enabled only when ROUTING.md does not exist). **Validate** reports dangling slugs — pages listed in ROUTING.md that no longer exist in the wiki (enabled only when ROUTING.md exists). **Clean** removes dangling slugs from ROUTING.md (enabled only when ROUTING.md exists). After each action the result appears inline with per-entry `[Branch] [[slug]]` detail rows. |
 | `Synthadoc: Staging: manage staging policy...` | Modal panel showing the current policy state. A segmented control switches between **Off**, **All**, and **Threshold**. When **Threshold** is selected, a second segmented control sets the minimum confidence (**High** / **Medium** / **Low**). A **Save** button persists the change via the HTTP API and updates the inline status. A footer link opens the Candidates modal directly. |
@@ -770,6 +808,13 @@ synthadoc
 ├── context
 │   └── build "<goal>" [-w wiki] [--tokens N] [--output <file>]
 ├── status [-w wiki]
+├── lifecycle
+│   ├── activate <slug> [-w wiki] [--reason "<str>"]
+│   ├── archive  <slug> [-w wiki] [--reason "<str>"]
+│   ├── restore  <slug> [-w wiki] [--reason "<str>"]
+│   └── log      [slug] [-w wiki] [--state <state>]
+├── audit
+│   └── lifecycle purge -w wiki (--before <date> | --keep-latest <n>)
 ├── cache clear [-w wiki]
 └── schedule
     ├── add --op "<cmd>" --cron "<expr>" [-w wiki]
@@ -777,6 +822,8 @@ synthadoc
     ├── remove <id> [-w wiki]
     └── apply [-w wiki]
 ```
+
+`synthadoc status -w <wiki>` now shows a per-state page count breakdown alongside the existing page total and job counts.
 
 ### `query` options
 
@@ -1004,6 +1051,9 @@ on_lint_complete   = { cmd = "python hooks/notify.py", blocking = true }  # bloc
 provider    = "tavily"   # only supported provider
 max_results = 20         # URLs returned per query; each enqueued as an ingest job
 
+[audit]
+lifecycle_retention_days = 0   # 0 = keep forever (default); set to e.g. 365 to prune old events
+
 # Cron format: minute hour day-of-month month day-of-week
 #              0-59   0-23 1-31         1-12  0-6 (0=Sun)
 
@@ -1045,6 +1095,7 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 | `web_search.max_results` | int | `20` | Maximum results fetched per web search query |
 | `search.vector` | bool | `false` | Enable semantic re-ranking; downloads `BAAI/bge-small-en-v1.5` (~130 MB) once on first enable |
 | `search.vector_top_candidates` | int | `20` | BM25 candidate pool size when vector re-ranking is active |
+| `audit.lifecycle_retention_days` | int | `0` | Days to retain lifecycle events in `audit.db`. `0` = keep forever (default). When set, events older than this threshold are pruned at the end of each lint run. |
 
 ---
 
@@ -1712,6 +1763,8 @@ Each `_adversarial_single` call prompts the adversarial model to act as a skepti
 
 When `--no-adversarial` is passed to `lint run`, the adversarial phase is skipped entirely and any existing `lint_warnings` are cleared from all page frontmatter.
 
+When `--no-lifecycle` is passed to `lint run`, all four lifecycle checks are skipped. Existing `page_states` and `lifecycle_events` records are not modified.
+
 ### `lint_warnings` frontmatter
 
 Warnings are written directly to each page's YAML frontmatter after each lint run:
@@ -1857,6 +1910,184 @@ For PDF sources, if the pagemap sidecar exists and the target page is > 1, a **"
 
 ---
 
+
+## 23. Lifecycle Machine
+
+### Concept
+
+Every wiki page moves through a defined set of states that reflect its review status and the health of its source material. Pages start as `draft` — compiled but not yet validated — and advance to `active` when lint passes all checks. Subsequent changes to the source file on disk push the page to `stale`; a missing source file triggers `archived`. Manual transitions allow operators to override any state.
+
+### States
+
+| State | Meaning | How to reach it |
+|---|---|---|
+| `draft` | Newly compiled, not yet lint-reviewed | Automatic on ingest |
+| `active` | Lint-reviewed, current, trusted | Lint auto-promotes from `draft` |
+| `contradicted` | Conflict detected | Lint detects contradiction between sources |
+| `stale` | Source file changed since last ingest | Lint detects SHA-256 hash mismatch |
+| `archived` | Source removed or explicitly retired | Lint auto-archives on missing source; or manual |
+
+### Transition rules
+
+| From | To | Trigger | Condition |
+|---|---|---|---|
+| _(none)_ | `draft` | `ingest` | New page created by ingest |
+| `draft` | `active` | `lint` | Page passes all lint checks |
+| `active` | `stale` | `lint` | Local source: SHA-256 hash mismatch; or URL source older than `url_staleness_days` |
+| `active` / `stale` | `archived` | `lint` | Local source no longer exists on disk; or URL source returns 404/410 (opt-in) |
+| any | `archived` | `cli` / `api` | Manual archive (`synthadoc lifecycle archive`) |
+| `archived` | `draft` | `cli` / `api` | Manual restore (`synthadoc lifecycle restore`) |
+| `contradicted` | `archived` | `cli` / `api` | Manual archive after reviewing the conflict |
+
+### Storage
+
+Two new tables in `audit.db`:
+
+**`page_states`** — fast slug-keyed current state index (one row per page):
+
+```sql
+page_states (slug TEXT PK, state TEXT, updated_at TEXT, triggered_by TEXT)
+```
+
+**`lifecycle_events`** — immutable append-only audit log:
+
+```sql
+lifecycle_events (id INTEGER PK, slug TEXT, from_state TEXT, to_state TEXT,
+                  reason TEXT, triggered_by TEXT, timestamp TEXT)
+```
+
+`triggered_by` values: `ingest`, `lint`, `cli`, `api`.
+
+### LintAgent integration
+
+Four lifecycle checks run at the end of every lint pass, after all existing checks, unless `--no-lifecycle` is passed:
+
+1. **Archived detection** — source no longer available → transition page to `archived`
+2. **Stale detection** — source has changed since last ingest → transition page to `stale`
+3. **Draft promotion** — `draft` page with no active issues → transition to `active`
+4. **Manual-edit sync** — frontmatter `status` ≠ `page_states` DB → reconcile DB record to match
+
+Pass `--no-lifecycle` to `synthadoc lint run` to skip all four checks. Existing `page_states` and `lifecycle_events` records are not modified.
+
+#### Check 1 — Archived detection (local and URL sources)
+
+For **local file sources**: if the source path recorded in frontmatter no longer exists on disk, the page is transitioned to `archived`.
+
+For **URL sources** (`http://`, `https://`, `youtube.com/watch?v=…`): availability is checked only when `[lint] check_url_availability = true` (default: `false` — opt-in because it adds a network call per URL source during every lint run).
+
+- **Generic URLs** — an HTTP HEAD request is issued. Responses of 404 or 410 are treated as archived. Timeouts, connection errors, and any other status code leave the page unchanged (conservative: no false positives on transient failures).
+- **YouTube URLs** — the transcript API is probed with the video ID. A `VideoUnavailable` response means the video is deleted or private → `archived`. Any other error (network error, parsing failure) leaves the page unchanged.
+
+Enable with the `--check-urls` flag or the config key:
+
+```bash
+synthadoc lint run --check-urls
+```
+
+```toml
+[lint]
+check_url_availability = true   # default: false
+```
+
+#### Check 2 — Stale detection (local and URL sources)
+
+For **local file sources**: a SHA-256 hash of the current file on disk is compared to the hash recorded at ingest time. A mismatch transitions the page to `stale`.
+
+For **URL sources**: staleness is age-based. If `url_staleness_days` is non-zero, the `ingested_at` timestamp from `audit.db` is compared to the current time. Pages whose last ingest is older than the threshold are transitioned to `stale`, prompting a re-ingest.
+
+```toml
+[audit]
+url_staleness_days = 90   # 0 = never mark URL sources stale (default)
+```
+
+URL staleness detection runs on every lint pass when the config value is non-zero — no extra flag required.
+
+#### Debug logging
+
+When URL availability or staleness checks run, the lint agent emits `DEBUG`-level log lines for each check outcome:
+
+```
+lifecycle url-check [youtube] id=dQw4w9WgXcQ url=https://www.youtube.com/watch?v=dQw4w9WgXcQ → unavailable
+lifecycle url-check [head]    url=https://example.com/page → status=404 → unavailable
+lifecycle url-stale           url=https://example.com/page → age=102d threshold=90d → stale
+```
+
+Enable debug logging in `config.toml`:
+
+```toml
+[logs]
+level = "DEBUG"
+```
+
+### Auto-retention
+
+```toml
+[audit]
+lifecycle_retention_days = 365   # 0 = keep forever (default)
+```
+
+When non-zero, events older than `lifecycle_retention_days` are pruned from `lifecycle_events` at the end of each lint run. `page_states` records are never pruned — they represent current state, not history.
+
+### CLI commands
+
+```
+synthadoc status -w <wiki>
+    Show page counts by lifecycle state alongside existing page and job totals.
+
+synthadoc lint run [--no-lifecycle] [--check-urls]
+    Run lint. --no-lifecycle skips all four lifecycle checks.
+    --check-urls enables HTTP availability checks for URL sources (overrides config).
+
+synthadoc lifecycle activate <slug> -w <wiki> [--reason "..."]
+    Transition a page to active.
+
+synthadoc lifecycle archive  <slug> -w <wiki> [--reason "..."]
+    Transition a page to archived.
+
+synthadoc lifecycle restore  <slug> -w <wiki> [--reason "..."]
+    Transition an archived page back to draft.
+
+synthadoc lifecycle log      [slug] -w <wiki> [--state <state>]
+    Print the event log for one page (or all pages). Filter by to_state with --state.
+
+synthadoc audit lifecycle purge -w <wiki> --before <date>
+    Delete lifecycle events older than <date> (ISO-8601, e.g. 2026-01-01).
+
+synthadoc audit lifecycle purge -w <wiki> --keep-latest <n>
+    Keep only the most recent <n> events per slug, delete the rest.
+```
+
+### HTTP API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/lifecycle/status` | Current state counts from `page_states` |
+| `GET` | `/lifecycle/events` | Paginated event log (`slug`, `to_state`, `limit`, `offset` query params) |
+| `POST` | `/lifecycle/transition` | Body: `{slug, to_state, reason?}` — validates allowed transition, writes both tables |
+
+### Obsidian plugin
+
+**`Synthadoc: Manage Page Lifecycle`** — opens `LifecycleModal`:
+
+- Loads all pages via `GET /lifecycle/status` and lists them in a sortable, paginated table (25 per page by default).
+- State filter checkboxes (one per state) narrow the table to the selected states.
+- Column headers (Slug, State, Last transition) are sortable — click to cycle ascending/descending/unsorted.
+- Each row shows valid action buttons for the current state. Click a button to trigger a transition — `ReasonModal` appears first, prompting for an optional reason string, before committing via `POST /lifecycle/transition`.
+- Draft and stale badge links on the lint modal and jobs panel open `LifecycleModal` pre-filtered to that state.
+
+### Configuration
+
+```toml
+[audit]
+lifecycle_retention_days = 365   # 0 = keep forever (default)
+url_staleness_days = 90          # 0 = never mark URL sources stale (default)
+
+[lint]
+check_url_availability = true    # default: false — adds a network call per URL source during lint
+```
+
+---
+
 ## Appendix A — Release Feature Index
 
 ### v0.1.0 (Community Edition)
@@ -1940,3 +2171,12 @@ For PDF sources, if the pagemap sidecar exists and the target page is > 1, a **"
 - **Claim-level provenance** — during ingest, Pass 4 (`_annotate_citations()`) reads each page section alongside numbered source text and inserts `^[filename:L-L]` inline citation markers at the end of substantive paragraphs; markers map compiled claims to exact source line ranges; stored in the page body, recorded in `audit.db` `claim_citations` table, and validated by lint; local source sidecars written to `.synthadoc/extracted/` (plain-text `.txt` for all file types; pagemap JSON for PDFs to resolve line numbers to PDF page numbers); in Obsidian (Reading View only) markers render as interactive citation chips — one click opens the Source Viewer showing the referenced lines with ±5 lines of context; PDF sources show a page-jump button; `GET /provenance/citations` endpoint powers the **View Page Provenance** modal (sortable, paginated citation table); `synthadoc audit citations` CLI queries the same table with `--page` and `--broken` filters
 - **Routing Obsidian plugin** — `Synthadoc: Routing: manage ROUTING.md...` command palette entry opens a modal panel with three buttons: **Init** creates ROUTING.md from the current index.md branch structure (enabled only when ROUTING.md does not exist), **Validate** reports dangling slugs, **Clean** removes dangling slugs from ROUTING.md; after each action results appear inline
 - **Candidates Staging Obsidian plugin** — `Synthadoc: Staging: manage staging policy...` and `Synthadoc: Candidates: review candidate pages...` command palette entries; Staging modal shows policy state with segmented controls; Candidates modal shows a paginated table with promote/discard bulk and per-row actions
+### v0.6.0 (Community Edition)
+
+- **5-state lifecycle machine** — every wiki page tracks a `draft | active | contradicted | stale | archived` state in two new `audit.db` tables: `page_states` (fast current-state index, slug PK) and `lifecycle_events` (immutable audit log of every transition with slug, from/to state, reason, triggered_by, and timestamp)
+- **Ingest creates draft pages** — all new pages are created with `status: draft` instead of `active`; pages must pass a lint run to be promoted
+- **LintAgent lifecycle checks** — four automated checks run at the end of every lint pass: archived detection (source file missing → `archived`), stale detection (source hash mismatch → `stale`), draft promotion (draft + no active issues → `active`), manual-edit sync (frontmatter `status` ≠ DB → reconcile); skipped when `--no-lifecycle` is passed
+- **Auto-retention** — `[audit] lifecycle_retention_days = N` in `config.toml` prunes old `lifecycle_events` at the end of each lint run; `0` = keep forever (default)
+- **Lifecycle CLI** — `synthadoc lifecycle activate/archive/restore/log`, `synthadoc status` extended with per-state counts, `synthadoc audit lifecycle purge --before / --keep-latest`
+- **Lifecycle HTTP API** — `GET /lifecycle/status`, `GET /lifecycle/events`, `POST /lifecycle/transition`
+- **Lifecycle Obsidian plugin** — `Synthadoc: Manage Page Lifecycle` command opens `LifecycleModal`: sortable, filterable, paginated table of all pages with current state and last transition; valid transition action buttons per row; `ReasonModal` prompts for reason before committing; draft/stale badge links on lint modal and jobs panel open the table pre-filtered

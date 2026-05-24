@@ -4,11 +4,22 @@
 # These are the sources used in the Synthadoc demo walkthrough.
 # Lines starting with # are comments and are ignored.
 
+# Public-domain source files (synced via: synthadoc demo sync ai-research)
+raw_sources/public-domain/transformer-architecture.txt
+raw_sources/public-domain/attention-mechanisms.txt
+raw_sources/public-domain/large-language-models.txt
+raw_sources/public-domain/reinforcement-learning-from-human-feedback.txt
+raw_sources/public-domain/scaling-laws.txt
+raw_sources/public-domain/training-techniques.txt
+raw_sources/public-domain/geoffrey-hinton-biography.txt
+raw_sources/public-domain/andrej-karpathy-biography.txt
+
+# Local file: benchmark methodology correction (contradicts llm-benchmarks.md)
+raw_sources/llm-benchmarks-q1-2026.pdf
+
+# Web and URL sources (demonstrate URL ingestion and search intent)
 https://arxiv.org/abs/2212.08073
 https://www.youtube.com/watch?v=kCc8FmEb1nY
 search for: chain-of-thought prompting research 2024
 search for: speculative decoding inference optimization
 search for: mixture of experts LLM architecture 2024
-
-# Local file: benchmark methodology correction (contradicts llm-benchmarks.md)
-raw_sources/llm-benchmarks-q1-2026.pdf
