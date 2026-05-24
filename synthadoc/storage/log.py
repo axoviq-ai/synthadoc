@@ -417,6 +417,15 @@ class AuditDB:
                 rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
+    async def get_all_page_states(self) -> list:
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT slug, state, updated_at, triggered_by FROM page_states ORDER BY slug ASC"
+            ) as cur:
+                rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
     async def get_lifecycle_summary(self) -> dict:
         async with aiosqlite.connect(self._path) as db:
             db.row_factory = aiosqlite.Row

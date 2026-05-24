@@ -842,6 +842,13 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         (LifecycleState.ARCHIVED,     LifecycleState.DRAFT),
     }
 
+    @app.get("/lifecycle/pages")
+    async def lifecycle_pages():
+        audit = _AuditDB(wiki_root / ".synthadoc" / "audit.db")
+        await audit.init()
+        pages = await audit.get_all_page_states()
+        return {"pages": pages}
+
     @app.get("/lifecycle/status")
     async def lifecycle_status():
         audit = _AuditDB(wiki_root / ".synthadoc" / "audit.db")

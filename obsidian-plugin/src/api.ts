@@ -63,6 +63,7 @@ export const api = {
         call("/context/build", "POST", { goal, token_budget: tokenBudget }),
 
     lifecycleStatus: () => call("/lifecycle/status"),
+    lifecyclePages: () => call("/lifecycle/pages"),
     lifecycleEvents: (params: { to_state?: string; limit?: number; offset?: number }) => {
         const p = new URLSearchParams();
         if (params.to_state) p.set("to_state", params.to_state);

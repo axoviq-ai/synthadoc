@@ -3325,10 +3325,10 @@ const ALL_LIFECYCLE_STATES = [...LifecycleState.ALL];
 
 class LifecycleModal extends Modal {
     private _page = 0;
-    private _events: any[] = [];
+    private _pages: any[] = [];   // one entry per slug from page_states
     private _checkedStates: Set<string>;
-    private _sortCol = "timestamp";
-    private _sortAsc = false;
+    private _sortCol = "slug";
+    private _sortAsc = true;
     private _tableWrap: HTMLElement | null = null;
     private _pagerWrap: HTMLElement | null = null;
 
@@ -3389,29 +3389,22 @@ class LifecycleModal extends Modal {
 
     private async _fetchAndRender() {
         try {
-            const singleState = this._checkedStates.size === 1
-                ? [...this._checkedStates][0]
-                : undefined;
-            const result = await api.lifecycleEvents({
-                to_state: singleState,
-                limit: 500,
-                offset: 0,
-            }) as any;
-            this._events = result.events ?? result.records ?? [];
+            const result = await api.lifecyclePages() as any;
+            this._pages = result.pages ?? [];
         } catch {
-            this._events = [];
+            this._pages = [];
         }
         this._renderAll();
     }
 
-    private _filteredEvents(): any[] {
-        return this._events.filter(e => this._checkedStates.has(e.to_state ?? ""));
+    private _filteredPages(): any[] {
+        return this._pages.filter(p => this._checkedStates.has(p.state ?? ""));
     }
 
-    private _sortedEvents(events: any[]): any[] {
+    private _sortedPages(pages: any[]): any[] {
         const col = this._sortCol;
         const dir = this._sortAsc ? 1 : -1;
-        return [...events].sort((a, b) => {
+        return [...pages].sort((a, b) => {
             const av: string = a[col] ?? "";
             const bv: string = b[col] ?? "";
             return av < bv ? -dir : av > bv ? dir : 0;
@@ -3427,14 +3420,14 @@ class LifecycleModal extends Modal {
         if (!this._tableWrap) return;
         this._tableWrap.empty();
 
-        const filtered = this._filteredEvents();
-        const sorted = this._sortedEvents(filtered);
+        const filtered = this._filteredPages();
+        const sorted = this._sortedPages(filtered);
         const totalPages = Math.max(1, Math.ceil(sorted.length / LIFECYCLE_PAGE_SIZE));
         this._page = Math.min(this._page, totalPages - 1);
         const slice = sorted.slice(this._page * LIFECYCLE_PAGE_SIZE, (this._page + 1) * LIFECYCLE_PAGE_SIZE);
 
         if (sorted.length === 0) {
-            this._tableWrap.createEl("p", { text: "No lifecycle events found." })
+            this._tableWrap.createEl("p", { text: "No pages found." })
                 .style.cssText = "color:var(--text-muted);padding:16px";
             return;
         }
@@ -3443,11 +3436,11 @@ class LifecycleModal extends Modal {
         table.style.cssText = "width:100%;border-collapse:collapse;font-size:13px";
 
         const COLS: { key: string; label: string; sortable: boolean }[] = [
-            { key: "slug", label: "Slug", sortable: true },
-            { key: "to_state", label: "State", sortable: true },
-            { key: "timestamp", label: "Last Changed", sortable: true },
+            { key: "slug",         label: "Slug",         sortable: true },
+            { key: "state",        label: "State",        sortable: true },
+            { key: "updated_at",   label: "Last Changed", sortable: true },
             { key: "triggered_by", label: "Triggered By", sortable: true },
-            { key: "_actions", label: "Actions", sortable: false },
+            { key: "_actions",     label: "Actions",      sortable: false },
         ];
 
         const thead = table.createEl("thead");
@@ -3469,36 +3462,35 @@ class LifecycleModal extends Modal {
         }
 
         const tbody = table.createEl("tbody");
-        for (const ev of slice) {
+        for (const pg of slice) {
             const tr = tbody.createEl("tr");
             tr.style.borderBottom = "1px solid var(--background-modifier-border-subtle)";
             tr.addEventListener("mouseenter", () => { tr.style.background = "var(--background-modifier-hover)"; });
             tr.addEventListener("mouseleave", () => { tr.style.background = ""; });
 
             // Slug
-            const slugTd = tr.createEl("td", { text: ev.slug ?? "—" });
+            const slugTd = tr.createEl("td", { text: pg.slug ?? "—" });
             slugTd.style.cssText = "padding:6px 10px;font-family:var(--font-monospace);font-size:12px";
 
             // State chip
             const stateTd = tr.createEl("td");
             stateTd.style.cssText = "padding:6px 10px";
-            const stateVal = ev.to_state ?? "";
+            const stateVal = pg.state ?? "";
             const chip = stateTd.createEl("span", { text: stateVal });
             chip.style.cssText = `border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;`
                 + (LIFECYCLE_STATE_COLORS[stateVal] ?? "background:var(--background-modifier-border)");
 
-            // Last changed (from timestamp field)
-            const ts = ev.timestamp
-                ? new Date(ev.timestamp.replace(" ", "T") + "+00:00").toLocaleString()
-                : "—";
+            // Last changed — updated_at is ISO-8601 with timezone
+            const rawTs: string = pg.updated_at ?? "";
+            const ts = rawTs ? new Date(rawTs).toLocaleString() : "—";
             const tsTd = tr.createEl("td", { text: ts });
             tsTd.style.cssText = "padding:6px 10px;color:var(--text-muted);font-size:12px";
 
             // Triggered by
-            const trigTd = tr.createEl("td", { text: ev.triggered_by ?? "—" });
+            const trigTd = tr.createEl("td", { text: pg.triggered_by ?? "—" });
             trigTd.style.cssText = "padding:6px 10px;color:var(--text-muted);font-size:12px";
 
-            // Actions
+            // Actions — valid transitions for current state
             const actionsTd = tr.createEl("td");
             actionsTd.style.cssText = "padding:6px 10px";
             const allowed = ALLOWED_TRANSITIONS[stateVal] ?? [];
@@ -3506,7 +3498,7 @@ class LifecycleModal extends Modal {
                 const btn = actionsTd.createEl("button", { text: toState }) as HTMLButtonElement;
                 btn.style.cssText = "margin-right:4px;font-size:11px;padding:2px 8px";
                 btn.addEventListener("click", () => {
-                    const slug = ev.slug ?? "";
+                    const slug = pg.slug ?? "";
                     new ReasonModal(this.app, `Transition "${slug}" to ${toState}`, async (reason) => {
                         try {
                             await api.lifecycleTransition(slug, toState, reason);
@@ -3523,7 +3515,7 @@ class LifecycleModal extends Modal {
     private _renderPager() {
         if (!this._pagerWrap) return;
         this._pagerWrap.empty();
-        const filtered = this._filteredEvents();
+        const filtered = this._filteredPages();
         const totalPages = Math.max(1, Math.ceil(filtered.length / LIFECYCLE_PAGE_SIZE));
         if (totalPages <= 1) return;
         const prev = this._pagerWrap.createEl("button", { text: "← Prev" }) as HTMLButtonElement;
@@ -3538,7 +3530,7 @@ class LifecycleModal extends Modal {
     }
 
     onClose() {
-        this._events = [];
+        this._pages = [];
         this.contentEl.empty();
     }
 }
