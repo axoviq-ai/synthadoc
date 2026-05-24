@@ -1,0 +1,45 @@
+# Synthadoc demo content — released to the public domain (CC0). Factual summary for demonstration purposes.
+
+The personal computer revolution of the 1970s and 1980s brought programmable computing out of air-conditioned mainframe rooms and into homes, schools, and small businesses. It was made possible by two decades of hardware miniaturisation driven by the transistor and the integrated circuit.
+
+## The Transistor and the Shift from Vacuum Tubes
+
+Vacuum tube computers of the late 1940s — ENIAC being the most famous — were large, expensive, and failure-prone. ENIAC occupied 1,800 square feet, contained 17,468 vacuum tubes, and required constant maintenance as tubes burned out. The transistor, demonstrated at Bell Labs in December 1947 by John Bardeen, Walter Brattain, and William Shockley, replaced the vacuum tube with a device that was smaller, more reliable, consumed far less power, and generated much less heat.
+
+The second-generation computers of the late 1950s used transistors instead of vacuum tubes. The IBM 7090, introduced in 1959, was a transistorised version of the vacuum tube IBM 709 and was six times faster. Transistorised computers were still large mainframes but were more reliable and more economical to operate than their predecessors.
+
+## The Integrated Circuit
+
+Jack Kilby at Texas Instruments filed a patent in February 1959 for an integrated circuit — multiple electronic components fabricated on a single piece of semiconductor material. Robert Noyce at Fairchild Semiconductor independently developed a practically superior implementation and filed a patent in July 1959. Their combined work established the foundation of the semiconductor industry.
+
+The integrated circuit solved the problem of assembling complex circuits from discrete components. As manufacturing processes improved through the 1960s, the number of components that could be placed on a single chip grew rapidly. Gordon Moore, then at Fairchild, observed in a 1965 paper that the number of components per integrated circuit had doubled roughly every year and predicted this would continue for at least a decade. The observation was later revised to a doubling approximately every two years and became known as Moore's Law. It held as an empirical trend for over fifty years, driving relentless reductions in cost and size.
+
+## The Microprocessor
+
+The Intel 4004, released in 1971, was the first commercially available microprocessor — a complete central processing unit on a single chip. It was designed by Federico Faggin, Ted Hoff, and Stanley Mazor for a line of calculators being developed by the Japanese company Busicom. Intel purchased the rights to sell the 4004 for non-calculator applications, recognising it as a general-purpose computing engine.
+
+The 4004 contained 2,300 transistors, operated at 740 kHz, and processed data in 4-bit chunks. It was followed by the 8008 (1972), the 8080 (1974), and the 8086 (1978), each doubling or more the transistor count and performance. The 8080 became the processor for the first commercially successful personal computer.
+
+## Altair 8800 (1975)
+
+MITS (Micro Instrumentation and Telemetry Systems) published the Altair 8800 in the January 1975 issue of Popular Electronics as a build-it-yourself computer kit priced at $439. Based on the Intel 8080 processor, the Altair had 256 bytes of memory, no keyboard, no display, and no operating system. Users communicated with it by toggling binary switches and reading blinking lights.
+
+Despite its primitive interface, the Altair sold thousands of kits and triggered a community of hobbyist computer builders. It attracted Bill Gates and Paul Allen, then students at Harvard, who saw in it the opportunity they had been waiting for. They wrote a BASIC interpreter for the Altair — the first product of what became Microsoft. Gates's letter to hobbyists in 1976, arguing that copying software without paying was theft, was one of the earliest statements of what became commercial software licensing.
+
+## Apple II (1977) and the First Killer App
+
+Steve Wozniak, a hardware engineer at Hewlett-Packard, designed the Apple II around the MOS Technology 6502 microprocessor. The Apple II, released in 1977 with a plastic case designed for home use, included a built-in keyboard, colour graphics, and expansion slots for add-on cards. It was designed from the beginning to be a finished consumer product rather than a hobbyist kit.
+
+VisiCalc, the first electronic spreadsheet, was written by Dan Bricklin and Bob Frankston for the Apple II and released in 1979. VisiCalc allowed users to perform financial calculations interactively, updating a grid of values automatically when any cell changed. It became the first example of what would be called a killer application — software so useful that people purchased hardware to run it. VisiCalc drove Apple II sales and established the personal computer as a business tool.
+
+## IBM PC and the Open Architecture (1981)
+
+IBM entered the personal computer market in August 1981 with the IBM Personal Computer. Rather than developing proprietary technology, IBM built the PC from commercially available components — the Intel 8088 processor, memory chips, and peripherals from multiple suppliers — and published the technical specifications. This open architecture allowed other manufacturers to build IBM-compatible machines legally.
+
+IBM licensed its operating system from Microsoft, which acquired it (as QDOS) from Seattle Computer Products and adapted it as MS-DOS. The decision to license rather than own the operating system was among the most consequential business errors IBM made: as dozens of clone manufacturers entered the market, IBM lost its ability to control the platform. The x86 architecture, running DOS and later Windows, became the industry standard.
+
+## Macintosh (1984) and the Graphical User Interface
+
+Xerox PARC (Palo Alto Research Center) developed the first practical graphical user interface in the early 1970s on the Alto workstation. The Alto introduced windows, icons, a mouse, and pull-down menus. Although Xerox did not successfully commercialise the Alto, Apple engineers who visited PARC in 1979 absorbed the approach.
+
+Apple's Lisa (1983) and Macintosh (1984) brought the graphical user interface to commercial products. The Macintosh, priced at $2,495, combined a GUI with a mouse and a built-in display in a compact, integrated design. It established the model — visual, direct-manipulation interface with application icons and windows — that Microsoft followed with Windows 1.0 in 1985 and that became the standard desktop computing paradigm.

@@ -1,0 +1,47 @@
+# Synthadoc demo content — released to the public domain (CC0). Factual summary for demonstration purposes.
+
+Alan Mathison Turing (1912–1954) was a British mathematician, logician, and cryptanalyst whose foundational work shaped both theoretical computer science and the practice of wartime codebreaking. Born in London, Turing studied mathematics at King's College, Cambridge, graduating with first-class honours in 1934. He was elected a Fellow of King's College in 1935.
+
+## Early Theoretical Work
+
+In 1936, Turing published "On Computable Numbers, with an Application to the Entscheidungsproblem," a paper that addressed a problem posed by David Hilbert: whether there exists a definite method capable of deciding whether any given mathematical assertion is true or false. Turing's answer was to define a theoretical computing device, later called the Turing machine, consisting of an infinite tape divided into cells, a read/write head, and a finite set of rules governing transitions between states.
+
+The Turing machine provided the first rigorous mathematical model of computation. Turing proved that certain problems — including the halting problem, which asks whether a given program will eventually terminate — are undecidable: no algorithm can solve them in all cases. This insight defined the boundaries of what mechanical reasoning can and cannot accomplish, establishing the theoretical limits of computation before any general-purpose computer had been built.
+
+Turing also demonstrated that a single machine — the universal Turing machine — could simulate any other Turing machine by reading its description as data. This concept of a stored program, where instructions and data share the same representation, was the intellectual precursor to stored-program computers that followed.
+
+## Bletchley Park and the Enigma Machine
+
+When the Second World War began, Turing joined the Government Code and Cypher School at Bletchley Park, the British codebreaking centre housed in a Victorian mansion north of London. He became one of the most important figures in the effort to break the German Enigma cipher.
+
+The Enigma machine was an electro-mechanical device used by the German military to encrypt communications. It employed a series of rotating wheels (rotors) that produced a substitution cipher of enormous complexity. The number of possible rotor settings was astronomically large, making brute-force decryption impractical by hand.
+
+Turing built on earlier work by Polish cryptanalysts — particularly Marian Rejewski, Jerzy Różycki, and Henryk Zygalski — who had partially solved earlier versions of Enigma before the war. Drawing on their methods and developing new mathematical approaches, Turing designed the Bombe, an electromechanical machine that exploited cribs — known or guessed plaintext fragments — to narrow the search space dramatically. The Bombe ran multiple candidate rotor settings in parallel and rejected configurations that produced contradictions, homing in on valid settings far faster than manual methods.
+
+By 1941 and through the remainder of the war, Bletchley Park was decrypting large volumes of German naval, army, and air force traffic. Historians who have studied the declassified records estimate that the intelligence produced from these decryptions, known collectively as Ultra, shortened the Second World War in Europe by approximately one to two years, though estimates vary and the precise impact remains a subject of scholarly debate. The work at Bletchley Park remained classified until the 1970s, which meant Turing's wartime contributions were largely unknown to the public during his lifetime.
+
+## The ACE Computer Design
+
+After the war, Turing joined the National Physical Laboratory in London, where he designed the Automatic Computing Engine (ACE). His 1945 design report described a stored-program computer with a high-speed mercury delay-line memory and a remarkably sophisticated instruction set for the era. The ACE design was ambitious enough that laboratory politics and caution delayed its construction; a scaled-down version, the Pilot ACE, ran its first program in 1950.
+
+Turing also worked at the University of Manchester, contributing to software development for the Manchester Mark 1, an early stored-program computer. His work there bridged theory and practice, demonstrating that the theoretical machines he had described a decade earlier could be realised in hardware.
+
+## Computing Machinery and Intelligence (1950)
+
+In 1950, Turing published "Computing Machinery and Intelligence" in the philosophical journal Mind. The paper opened with the question "Can machines think?" and proposed replacing this vague question with what he called the imitation game, later known as the Turing Test.
+
+In the imitation game, a human interrogator communicates via text with two participants — one human and one machine — and attempts to determine which is which. Turing argued that if a machine could perform indistinguishably from a human in this test, we would have no principled reason to deny it the label of thinking. He anticipated common objections — theological, mathematical, and practical — and addressed each in turn.
+
+The 1950 paper is one of the founding documents of artificial intelligence as a field and remains widely cited in philosophy of mind and computer science.
+
+## Persecution and Death
+
+In 1952, Turing was prosecuted under Victorian-era gross indecency laws for his relationship with another man. He was convicted and accepted chemical castration as an alternative to imprisonment. His security clearance was revoked, ending his access to classified government work.
+
+Turing died on 7 June 1954. The cause was cyanide poisoning. An inquest returned a verdict of suicide, though some researchers have questioned whether the death was accidental. He was 41 years old.
+
+## Legacy
+
+The ACM Turing Award, established in 1966, is named in his honour and is considered the highest distinction in computer science. In 2009, the British Prime Minister issued a formal apology for Turing's treatment, and in 2013 he received a posthumous royal pardon. His portrait has appeared on the British £50 note since 2021.
+
+Turing's theoretical contributions — the Turing machine, computability theory, and the formulation of artificial intelligence as a scientific programme — remain foundational across mathematics, computer science, and philosophy.

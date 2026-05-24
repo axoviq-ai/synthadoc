@@ -1,0 +1,49 @@
+# Synthadoc demo content — released to the public domain (CC0). Factual summary for demonstration purposes.
+
+Artificial intelligence — the attempt to build machines that exhibit intelligent behaviour — has a history intertwined with the history of computing itself. The field has passed through several distinct phases: early optimism, extended disappointments known as AI winters, a statistical revival, and a deep learning breakthrough that produced systems of unexpected capability.
+
+## Turing's Question
+
+The question "Can machines think?" was posed in its modern form by Alan Turing in his 1950 paper "Computing Machinery and Intelligence." Turing did not attempt to define machine thought directly but proposed the imitation game as a behavioural criterion: a machine that could converse indistinguishably from a human in a text exchange had demonstrated something meaningfully like intelligence.
+
+Turing's framing was deliberately operational — he avoided metaphysical questions about consciousness in favour of a practical test — and this influenced how AI researchers approached the problem for decades. The paper also anticipated major objections (theological, mathematical, informal) and addressed each.
+
+## Dartmouth Conference (1956)
+
+The term "artificial intelligence" was coined at a workshop held at Dartmouth College in the summer of 1956, proposed by John McCarthy in the funding proposal he wrote with Marvin Minsky, Claude Shannon, and Nathaniel Rochester. The proposal asserted that "every aspect of learning or any other feature of intelligence can in principle be so precisely described that a machine can be made to simulate it."
+
+The Dartmouth workshop brought together many of the researchers who would define the field: McCarthy, Minsky, Shannon, Rochester, Allen Newell, and Herbert Simon. Newell and Simon demonstrated their Logic Theorist program, which proved mathematical theorems by symbolic manipulation. Their subsequent General Problem Solver (GPS) aimed at a universal problem-solving architecture. The early 1960s saw rapid progress on game-playing programs, theorem provers, and question-answering systems.
+
+## ELIZA and Early Natural Language Processing
+
+In 1966, Joseph Weizenbaum at MIT created ELIZA, a program that simulated a Rogerian psychotherapist by reflecting user statements back as questions. ELIZA operated by pattern matching and template substitution, with no understanding of language semantics. Nevertheless, users attributed understanding and empathy to ELIZA, a phenomenon Weizenbaum found troubling.
+
+ELIZA demonstrated both the susceptibility of humans to the appearance of intelligence and the limits of surface-level language processing. Weizenbaum later wrote "Computer Power and Human Reason" (1976), arguing against attributing understanding to machines.
+
+## First AI Winter (1974–1980)
+
+By the early 1970s, the gap between AI researchers' predictions and their systems' performance had become difficult to ignore. Programs that succeeded on carefully crafted problems failed when applied to the full complexity of real-world tasks. The Lighthill Report, commissioned by the British Science Research Council and published in 1973, reviewed AI research and concluded that it had failed to produce the promised general-purpose intelligent systems. Funding in the United Kingdom was drastically reduced.
+
+Similar retrenchment occurred in the United States. DARPA cut funding for speech recognition and machine translation research after concluding that progress had been insufficient. This period of reduced funding and dampened expectations is known as the first AI winter.
+
+## Expert Systems and the Second AI Winter
+
+The 1980s saw a commercial revival of AI through expert systems — programs that encoded domain expert knowledge as a large set of condition-action rules. XCON (eXpert CONfigurer), developed for Digital Equipment Corporation by John McDermott beginning in 1978, configured VAX computer orders by applying thousands of rules. By the mid-1980s XCON was saving DEC millions of dollars annually. Expert systems were deployed in medicine, financial analysis, and equipment diagnosis.
+
+A commercial AI industry grew around LISP machines — special-purpose hardware optimised for the LISP language. Companies like Symbolics and LISP Machines Inc. sold workstations for AI development. The Japanese Fifth Generation Computer project, announced in 1982, aimed to build massively parallel AI hardware.
+
+The commercial boom collapsed in the late 1980s. LISP machine hardware was displaced by commodity workstations running general-purpose operating systems. Expert systems proved expensive to maintain: rules needed constant updating by domain experts, and systems were brittle outside their designed parameters. The second AI winter brought another round of funding cuts.
+
+## Neural Networks and the Statistical Turn
+
+The intellectual groundwork for the neural network revival was laid in 1986, when David Rumelhart, Geoffrey Hinton, and Ronald Williams published a clear exposition of the backpropagation algorithm for training multi-layer neural networks. Backpropagation had been discovered and rediscovered several times but had not attracted widespread attention. The 1986 paper demonstrated that networks with hidden layers could learn internal representations, solving problems that single-layer perceptrons could not.
+
+The shift through the 1990s and 2000s was from symbolic AI — reasoning through explicit rules and representations — to statistical machine learning, in which systems learned patterns from labelled data. Support Vector Machines, introduced by Vladimir Vapnik in the 1990s, provided strong performance on classification tasks with principled theoretical foundations. Random forests, ensemble methods, and kernel methods all contributed to practical machine learning applications.
+
+## Deep Learning Breakthrough
+
+In 2012, a convolutional neural network called AlexNet, developed by Alex Krizhevsky, Ilya Sutskever, and Geoffrey Hinton at the University of Toronto, won the ImageNet Large Scale Visual Recognition Challenge by a margin that shocked the computer vision community. AlexNet's error rate was dramatically lower than those of competing systems. The key differences were the use of GPU hardware for training, the availability of large labelled datasets, and architectural advances such as the ReLU activation function and dropout regularisation.
+
+Deep learning — neural networks with many layers trained on large datasets — rapidly demonstrated state-of-the-art performance in speech recognition, machine translation, and game playing. DeepMind's AlphaGo defeated the world Go champion in 2016, a milestone many researchers had expected to be decades away.
+
+Large language models, built on the transformer architecture introduced in 2017, brought AI capabilities into text generation, question answering, and code completion at scales and with a breadth of application that returned Turing's 1950 question to the centre of public discourse.

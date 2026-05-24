@@ -1,0 +1,53 @@
+# Synthadoc demo content — released to the public domain (CC0). Factual summary for demonstration purposes.
+
+The transistor and the integrated circuit are the paired inventions that transformed computing from a specialised research activity into an everyday mass-market technology. Their development at Bell Telephone Laboratories and at semiconductor companies in Silicon Valley in the late 1940s and 1950s set in motion the exponential miniaturisation that has continued without interruption for over seventy years.
+
+## Vacuum Tubes and Their Limitations
+
+Before the transistor, electronic amplifiers and switches used vacuum tubes — glass envelopes evacuated of air, containing electrodes through which current flowed. Vacuum tubes performed reliably for radio and early computing but had significant drawbacks: they were large (typically several inches long), generated considerable heat, consumed substantial power, and failed frequently. The ENIAC computer, completed in 1945, contained 17,468 vacuum tubes and required a dedicated staff simply to replace the tubes that failed during operation.
+
+The theoretical basis for replacing vacuum tubes with semiconductor devices had been developing through the 1930s and 1940s. Semiconductors — materials such as germanium and silicon whose electrical conductivity lies between that of conductors and insulators — were used as simple rectifiers in radar detectors during the Second World War. Bell Labs, aware of the commercial importance of solid-state amplifiers for telephone networks, assembled a research team specifically to pursue the problem.
+
+## The Point-Contact Transistor (1947)
+
+The Bell Labs team was led by William Shockley, a physicist who had theorised that it should be possible to use an electric field to modulate the conductance of a semiconductor surface. The experimental work was carried out primarily by John Bardeen, a theoretical physicist, and Walter Brattain, an experimental physicist.
+
+On 16 December 1947, Bardeen and Brattain demonstrated the first working transistor at Bell Labs in Murray Hill, New Jersey. The device was a point-contact transistor: two gold foil contacts placed very close together on the surface of a germanium crystal, with a third contact providing a base voltage. A small signal applied to one contact was amplified at the other.
+
+The demonstration succeeded in amplifying a voice signal, confirming the principle. Bell Labs management arranged an internal demonstration on 23 December 1947 and withheld the announcement for several months while filing patents. The public announcement came in June 1948.
+
+Bardeen, Brattain, and Shockley shared the Nobel Prize in Physics in 1956 for the discovery.
+
+## The Junction Transistor and Silicon
+
+Shockley was disappointed to have been excluded from the experimental breakthrough and, working independently, developed the junction transistor — a superior design consisting of layers of differently doped semiconductor sandwiched together. The junction transistor was more reliable and easier to manufacture than the point-contact device and became the basis for subsequent semiconductor technology.
+
+Germanium was the initial semiconductor of choice, but silicon offered advantages: it was more abundant, tolerated higher operating temperatures, and formed a stable oxide layer that proved critical for later integrated circuit manufacture. Gordon Teal at Texas Instruments grew the first silicon transistors in 1954, and silicon rapidly displaced germanium for most applications.
+
+## The Integrated Circuit (1958–1959)
+
+Through the 1950s, electronic systems were assembled by hand-wiring discrete transistors, resistors, and capacitors together. As systems grew more complex, this became a bottleneck: the "tyranny of numbers" meant that the reliability of a system fell as the number of components and hand-soldered connections increased.
+
+Jack Kilby, a newly hired engineer at Texas Instruments, proposed in the summer of 1958 that all the components of an electronic circuit could be fabricated from a single piece of semiconductor material, eliminating the hand-assembly step. He demonstrated a working integrated circuit in September 1958. The device was small, crude, and difficult to manufacture, but it proved the principle.
+
+Independently, Robert Noyce at Fairchild Semiconductor in California developed a more manufacturable approach based on the planar process, in which components were deposited on a flat silicon surface through photolithographic masking steps. Noyce's design, which connected components with metal traces deposited on the surface rather than by fine wires, was better suited to mass production.
+
+Kilby received the Nobel Prize in Physics in 2000; Noyce had died in 1990.
+
+## Moore's Law
+
+In 1965, Gordon Moore, then research director at Fairchild Semiconductor, published an observation in Electronics magazine: the number of components per integrated circuit had roughly doubled every year since the first ICs were manufactured. He projected that this trend would continue for at least a decade, and predicted that by 1975 it would be feasible to put 65,000 components on a single chip.
+
+Moore revised his estimate to a doubling approximately every two years in 1975. The empirical trend that bore his name held for over fifty years, enabling chips to go from the hundreds of transistors in early ICs to the tens of billions in modern processors. The economic consequence — roughly constant cost per transistor as density increased — drove down the price of computing hardware continuously.
+
+## Intel 4004 and the Microprocessor (1971)
+
+The microprocessor brought the entire central processing unit of a computer onto a single chip. Intel's 4004, designed by Federico Faggin, Ted Hoff, and Stanley Mazor, was fabricated in Intel's silicon gate MOS process and contained 2,300 transistors on a chip roughly 3mm by 4mm. It operated at 740 kHz, processed 4 bits at a time, and could address 640 bytes of program memory.
+
+The 4004's existence as a general-purpose CPU on a chip made the personal computer economically feasible. Subsequent Intel processors — the 8080 (1974), the 8086 (1978), and their descendants — powered the Altair, the IBM PC, and the industry of compatible machines that followed.
+
+## Physical Limits and the End of Scaling
+
+By the 2010s, transistors in leading-edge processors had gate lengths of a few nanometres — approaching atomic dimensions. Fundamental physical limits began to constrain continued scaling: quantum tunnelling caused leakage current at extremely small dimensions, and heat dissipation became a critical constraint. The simple scaling that had characterised Moore's Law began to slow.
+
+The industry responded by moving from two-dimensional planar transistors to three-dimensional FinFET structures, and by stacking multiple chips vertically in packages. Specialised processors — GPUs for parallel computation, TPUs for machine learning inference, NPUs for neural network acceleration — complemented general-purpose CPUs. These developments continued the practical trajectory of Moore's Law even as classical transistor scaling reached its limits.
