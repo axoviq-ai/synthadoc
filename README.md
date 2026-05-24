@@ -347,7 +347,7 @@ A **wiki** is a self-contained, structured knowledge base — a folder of Markdo
 
 A wiki must be installed before the engine can serve it. The fastest way to get started is the **History of Computing** demo, which ships with 13 pre-built pages and sample source files — no LLM API key required to browse it.
 
-**Install the demo wiki:**
+**First time — install the demo wiki:**
 
 ```bash
 # Linux / macOS
@@ -357,7 +357,13 @@ synthadoc install history-of-computing --target ~/wikis --demo
 synthadoc install history-of-computing --target %USERPROFILE%\wikis --demo
 ```
 
-> **Already installed the demo?** Skip the install command and run `synthadoc demo sync history-of-computing` instead. This copies any new source files added to the demo template into your existing wiki without overwriting anything you have already ingested or modified.
+**Upgrading / already installed the demo — sync new source files instead:**
+
+```bash
+synthadoc demo sync history-of-computing
+```
+
+This copies any new source files added to the demo template into your existing wiki without overwriting anything you have already ingested or modified. Skip the `install` command above if you have previously installed this demo.
 
 **Then start the engine:**
 
