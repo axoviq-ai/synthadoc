@@ -443,6 +443,10 @@ synthadoc jobs list           # watch progress
 
 Wait until the lint job shows `completed`.
 
+You can also run lint from the Obsidian plugin — open the command palette (`Ctrl/Cmd+P`) and choose **Synthadoc: Lint: run…**:
+
+![Synthadoc Run Lint panel in Obsidian](png/synthadoc-lint-run.png)
+
 ### 3. Check status after lint
 
 ```bash
