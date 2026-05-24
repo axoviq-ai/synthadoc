@@ -361,6 +361,8 @@ synthadoc ingest --batch raw_sources/
 
 **Obsidian:** Command Palette → `Synthadoc: Ingest...` → select the **All raw_sources** tab
 
+![Synthadoc Ingest modal — All raw_sources tab queuing source files for batch ingest](png/synthadoc-batch-ingest-raw-sources.png)
+
 Both enqueue one job per file. Watch them:
 
 ```bash
