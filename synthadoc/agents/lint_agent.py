@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.log import AuditDB, LogWriter
@@ -282,7 +282,45 @@ class LintAgent:
         page.status = to_state
         self._store.write_page(slug, page)
 
-    async def _run_lifecycle_checks(self, slugs: list[str], report: LintReport) -> None:
+    async def _is_url_unavailable(self, url: str) -> bool:
+        """Return True only if URL is definitively gone (404/410 or YouTube VideoUnavailable).
+        Returns False on timeout, connection error, or any ambiguous failure — avoid false positives.
+        """
+        import re as _re
+        _YT = _re.compile(
+            r'(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/shorts/)([A-Za-z0-9_-]{11})'
+        )
+        m = _YT.search(url)
+        if m:
+            try:
+                from youtube_transcript_api import YouTubeTranscriptApi
+                from youtube_transcript_api._errors import VideoUnavailable
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(
+                    None,
+                    lambda: YouTubeTranscriptApi.get_transcript(m.group(1))
+                )
+                return False
+            except Exception as exc:
+                # Only VideoUnavailable is a definitive signal
+                try:
+                    from youtube_transcript_api._errors import VideoUnavailable
+                    return isinstance(exc, VideoUnavailable)
+                except ImportError:
+                    return False
+
+        # Generic URL: HTTP HEAD
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.head(url, follow_redirects=True)
+                return resp.status_code in (404, 410)
+        except Exception:
+            return False  # timeout / connection error = assume available
+
+    async def _run_lifecycle_checks(self, slugs: list[str], report: LintReport,
+                                     check_url_availability: bool = False,
+                                     url_staleness_days: int = 0) -> None:
         raw_sources_dir = self._wiki_root / "raw_sources"
         for slug in slugs:
             if slug in LINT_SKIP_SLUGS:
@@ -293,15 +331,25 @@ class LintAgent:
                     continue
                 current = page.status
 
-                # Check 1: archived detection -- source file no longer on disk
-                if raw_sources_dir.exists() and current in (LifecycleState.ACTIVE, LifecycleState.STALE, LifecycleState.DRAFT):
+                # Check 1: archived detection -- source file no longer on disk / URL unavailable
+                if current in (LifecycleState.ACTIVE, LifecycleState.STALE, LifecycleState.DRAFT):
                     for src_ref in page.sources:
                         if src_ref.file and not is_url(src_ref.file):
-                            src_path = raw_sources_dir / src_ref.file
-                            if not src_path.exists():
+                            if raw_sources_dir.exists():
+                                src_path = raw_sources_dir / src_ref.file
+                                if not src_path.exists():
+                                    await self._transition(slug, page, current,
+                                                           LifecycleState.ARCHIVED,
+                                                           "source file no longer on disk")
+                                    report.lifecycle_archived += 1
+                                    current = LifecycleState.ARCHIVED
+                                    break
+                        # URL archived: HTTP HEAD or YouTube availability (opt-in)
+                        elif src_ref.file and is_url(src_ref.file) and check_url_availability:
+                            if await self._is_url_unavailable(src_ref.file):
                                 await self._transition(slug, page, current,
                                                        LifecycleState.ARCHIVED,
-                                                       "source file no longer on disk")
+                                                       "URL source no longer available")
                                 report.lifecycle_archived += 1
                                 current = LifecycleState.ARCHIVED
                                 break
@@ -324,6 +372,24 @@ class LintAgent:
                                     report.lifecycle_stale += 1
                                     current = LifecycleState.STALE
                                     break
+                        # URL stale: age-based (no network call)
+                        elif src_ref.file and is_url(src_ref.file) and url_staleness_days > 0 and self._audit:
+                            record = await self._audit.find_by_source_path(src_ref.file)
+                            if record and record.get("ingested_at"):
+                                try:
+                                    ingested_dt = datetime.fromisoformat(record["ingested_at"])
+                                    if ingested_dt.tzinfo is None:
+                                        ingested_dt = ingested_dt.replace(tzinfo=timezone.utc)
+                                    age_days = (datetime.now(timezone.utc) - ingested_dt).days
+                                    if age_days > url_staleness_days:
+                                        await self._transition(slug, page, LifecycleState.ACTIVE,
+                                                               LifecycleState.STALE,
+                                                               f"URL source not re-ingested in {age_days} days")
+                                        report.lifecycle_stale += 1
+                                        current = LifecycleState.STALE
+                                        break
+                                except (ValueError, TypeError):
+                                    pass  # malformed timestamp — skip
 
                 # Check 3: draft promotion
                 if current == LifecycleState.DRAFT:
@@ -360,6 +426,7 @@ class LintAgent:
 
     async def lint(self, scope: str = "all", auto_resolve: bool = False,
                    adversarial: bool = True, lifecycle: bool = True,
+                   check_url_availability: Optional[bool] = None,
                    job_id: str = "system") -> LintReport:
         report = LintReport()
         slugs = self._store.list_pages()
@@ -467,7 +534,13 @@ class LintAgent:
                         self._store.write_page(slug, page)
 
         if scope == "all" and lifecycle:
-            await self._run_lifecycle_checks(slugs, report)
+            _check_urls = (
+                check_url_availability
+                if check_url_availability is not None
+                else getattr(getattr(self._cfg, "lint", None), "check_url_availability", False)
+            )
+            _url_staleness = getattr(getattr(self._cfg, "audit", None), "url_staleness_days", 0)
+            await self._run_lifecycle_checks(slugs, report, _check_urls, _url_staleness)
 
         self._log.log_lint(resolved=report.contradictions_resolved,
                            flagged=report.contradictions_found - report.contradictions_resolved,

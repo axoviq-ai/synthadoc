@@ -10,6 +10,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, field_validator
 from starlette.middleware.base import BaseHTTPMiddleware
+from typing import Optional
 
 import logging
 import re
@@ -166,6 +167,8 @@ class LintRequest(BaseModel):
     scope: str = "all"
     auto_resolve: bool = False
     adversarial: bool = True
+    lifecycle: bool = True
+    check_url_availability: Optional[bool] = None  # None = use server config
 
 
 class ScaffoldRequest(BaseModel):
@@ -227,8 +230,10 @@ async def _worker_loop(orch) -> None:
                     auto_resolve = job.payload.get("auto_resolve", False)
                     adversarial = job.payload.get("adversarial", True)
                     lifecycle = job.payload.get("lifecycle", True)
+                    check_url_availability = job.payload.get("check_url_availability")  # None = use config
                     await orch._run_lint(job.id, scope=scope, auto_resolve=auto_resolve,
-                                         adversarial=adversarial, lifecycle=lifecycle)
+                                         adversarial=adversarial, lifecycle=lifecycle,
+                                         check_url_availability=check_url_availability)
                 elif job.operation == "scaffold":
                     domain = job.payload.get("domain", "")
                     await orch._run_scaffold(job.id, domain=domain)
@@ -412,10 +417,15 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
 
     @app.post("/jobs/lint")
     async def enqueue_lint(req: LintRequest):
-        job_id = await app.state.orch.queue.enqueue(
-            "lint", {"scope": req.scope, "auto_resolve": req.auto_resolve,
-                     "adversarial": req.adversarial}
-        )
+        payload: dict = {
+            "scope": req.scope,
+            "auto_resolve": req.auto_resolve,
+            "adversarial": req.adversarial,
+            "lifecycle": req.lifecycle,
+        }
+        if req.check_url_availability is not None:
+            payload["check_url_availability"] = req.check_url_availability
+        job_id = await app.state.orch.queue.enqueue("lint", payload)
         return {"job_id": job_id}
 
     @app.get("/lint/report")
