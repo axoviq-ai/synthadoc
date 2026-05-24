@@ -489,7 +489,7 @@ Every compiled page starts as **draft** — not yet reviewed or trusted. Running
 ### Check lifecycle status
 
 ```bash
-synthadoc status -w history-of-computing
+synthadoc status
 ```
 
 ```
@@ -509,13 +509,13 @@ Open the Command Palette (`Ctrl/Cmd+P`) → **Synthadoc: Manage Page Lifecycle**
 
 ```bash
 # Mark a page as active after manual review
-synthadoc lifecycle activate alan-turing -w history-of-computing --reason "reviewed and verified"
+synthadoc lifecycle activate alan-turing --reason "reviewed and verified"
 
 # Retire a page whose source has been superseded
-synthadoc lifecycle archive alan-turing -w history-of-computing --reason "replaced by v2 source"
+synthadoc lifecycle archive alan-turing --reason "replaced by v2 source"
 
 # View full history for a page
-synthadoc lifecycle log alan-turing -w history-of-computing
+synthadoc lifecycle log alan-turing
 ```
 
 ### Stale detection — local files
@@ -523,7 +523,7 @@ synthadoc lifecycle log alan-turing -w history-of-computing
 If a source file on disk changes after ingest, the next lint run detects the SHA-256 hash mismatch and marks the page `stale`. Resolve it by re-ingesting the updated file:
 
 ```bash
-synthadoc ingest raw_sources/updated-source.pdf -w history-of-computing --force
+synthadoc ingest raw_sources/updated-source.pdf --force
 ```
 
 ### URL source availability and freshness
@@ -558,7 +558,7 @@ url_staleness_days = 90   # 0 = never flag (default)
 When non-zero, lint compares the `ingested_at` timestamp in the audit database to today. Pages older than the threshold are marked `stale`, prompting a re-ingest:
 
 ```bash
-synthadoc ingest "https://example.com/article" -w history-of-computing --force
+synthadoc ingest "https://example.com/article" --force
 ```
 
 ### Audit trail
@@ -566,7 +566,7 @@ synthadoc ingest "https://example.com/article" -w history-of-computing --force
 Every state transition is recorded with who triggered it and why:
 
 ```bash
-synthadoc lifecycle log alan-turing -w history-of-computing
+synthadoc lifecycle log alan-turing
 ```
 
 ```
@@ -1467,7 +1467,7 @@ Citation markers are injected during ingest. The demo wiki ships with pre-compil
 All supported files in your `raw_sources/` folder are queued immediately. You can watch progress under **Jobs** in the Obsidian command palette or with:
 
 ```bash
-synthadoc jobs list -w history-of-computing
+synthadoc jobs list
 ```
 
 Wait until all jobs reach `completed` status before checking for citation markers.
@@ -1496,10 +1496,10 @@ Open the Obsidian command palette → **Synthadoc: View Page Provenance**. A sor
 
 ```bash
 # CLI — show citations that failed validation
-synthadoc audit citations -w history-of-computing --broken
+synthadoc audit citations --broken
 
 # All citations for one page
-synthadoc audit citations -w history-of-computing --page alan-turing
+synthadoc audit citations --page alan-turing
 ```
 
 ![CLI output of audit citations for the alan-turing page — table of source file, line range, and claim excerpt for every recorded citation](png/audit-citation.png)
@@ -1507,7 +1507,7 @@ synthadoc audit citations -w history-of-computing --page alan-turing
 The lint report also shows a **Citation Issues** section listing any broken, out-of-range, or malformed markers:
 
 ```bash
-synthadoc lint report -w history-of-computing
+synthadoc lint report
 ```
 
 ---
