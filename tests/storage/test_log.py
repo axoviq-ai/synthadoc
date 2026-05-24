@@ -35,3 +35,28 @@ def test_audit_db_hash_size_mismatch_returns_none(tmp_wiki):
         result = await db.find_by_hash("abc123", 9999)
         assert result is None
     asyncio.run(run())
+
+
+def test_get_all_page_states_empty(tmp_wiki):
+    async def run():
+        db = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+        await db.init()
+        pages = await db.get_all_page_states()
+        assert pages == []
+    asyncio.run(run())
+
+
+def test_get_all_page_states_returns_slugs(tmp_wiki):
+    async def run():
+        db = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+        await db.init()
+        await db.set_page_state("alan-turing", "active", "ingest")
+        await db.set_page_state("grace-hopper", "draft", "ingest")
+        pages = await db.get_all_page_states()
+        slugs = [p["slug"] for p in pages]
+        assert "alan-turing" in slugs
+        assert "grace-hopper" in slugs
+        states = {p["slug"]: p["state"] for p in pages}
+        assert states["alan-turing"] == "active"
+        assert states["grace-hopper"] == "draft"
+    asyncio.run(run())

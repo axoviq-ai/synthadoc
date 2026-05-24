@@ -343,6 +343,12 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             "jobs_total": len(jobs),
         }
 
+    @app.get("/config")
+    async def config_info():
+        return {
+            "check_url_availability": cfg.lint.check_url_availability,
+        }
+
     async def _run_query(question: str, timeout_seconds: int = 60) -> dict:
         try:
             result = await app.state.orch.query(question, timeout_seconds=timeout_seconds)

@@ -1370,27 +1370,56 @@ class LintRunModal extends Modal {
         const { contentEl } = this;
         const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Run lint" });
         makeDraggable(this.modalEl, titleEl);
+        this.modalEl.style.width = "clamp(480px, 55vw, 680px)";
 
-        const optRow = contentEl.createEl("div");
-        optRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:8px";
-        const cb = optRow.createEl("input", { type: "checkbox" }) as HTMLInputElement;
-        cb.id = "lint-auto-resolve";
-        const lbl = optRow.createEl("label", { text: "Auto-resolve contradictions" });
-        lbl.htmlFor = "lint-auto-resolve";
-        lbl.style.cssText = "font-size:13px;cursor:pointer";
+        const intro = contentEl.createEl("p", {
+            text: "Lint checks every wiki page for contradictions, orphaned links, and adversarial claims. Configure the options below then click Run lint to enqueue the job.",
+        });
+        intro.style.cssText = "font-size:12px;color:var(--text-muted);margin-bottom:16px;-webkit-user-select:text;user-select:text";
 
-        const hint = contentEl.createEl("p", {
+        // Option: Auto-resolve contradictions
+        const autoResolveWrap = contentEl.createEl("div");
+        autoResolveWrap.style.cssText = "margin-bottom:14px";
+        const autoResolveLbl = autoResolveWrap.createEl("label", { text: "Auto-resolve contradictions" });
+        autoResolveLbl.htmlFor = "lint-auto-resolve";
+        autoResolveLbl.style.cssText = "display:block;font-size:13px;font-weight:600;margin-bottom:4px;cursor:pointer";
+        const autoResolveHint = autoResolveWrap.createEl("p", {
             text: "Auto-resolve rewrites contradicted pages to reconcile conflicts automatically. Leave unchecked to review the report first.",
         });
-        hint.style.cssText = "font-size:11px;color:var(--text-muted);margin-bottom:16px;-webkit-user-select:text;user-select:text";
+        autoResolveHint.style.cssText = "font-size:11px;color:var(--text-muted);margin:0 0 6px;-webkit-user-select:text;user-select:text";
+        const cb = autoResolveWrap.createEl("input", { type: "checkbox" }) as HTMLInputElement;
+        cb.id = "lint-auto-resolve";
 
-        const skipAdvRow = contentEl.createEl("div");
-        skipAdvRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:16px";
-        const skipAdvCb = skipAdvRow.createEl("input", { type: "checkbox" }) as HTMLInputElement;
-        skipAdvCb.id = "lint-skip-adversarial";
-        const skipAdvLbl = skipAdvRow.createEl("label", { text: "Skip adversarial review" });
+        // Option: Skip adversarial review
+        const skipAdvWrap = contentEl.createEl("div");
+        skipAdvWrap.style.cssText = "margin-bottom:14px";
+        const skipAdvLbl = skipAdvWrap.createEl("label", { text: "Skip adversarial review" });
         skipAdvLbl.htmlFor = "lint-skip-adversarial";
-        skipAdvLbl.style.cssText = "font-size:13px;cursor:pointer";
+        skipAdvLbl.style.cssText = "display:block;font-size:13px;font-weight:600;margin-bottom:4px;cursor:pointer";
+        const skipAdvHint = skipAdvWrap.createEl("p", {
+            text: "Adversarial review uses a second LLM pass to flag unsupported claims. Check this to skip that pass and finish faster.",
+        });
+        skipAdvHint.style.cssText = "font-size:11px;color:var(--text-muted);margin:0 0 6px;-webkit-user-select:text;user-select:text";
+        const skipAdvCb = skipAdvWrap.createEl("input", { type: "checkbox" }) as HTMLInputElement;
+        skipAdvCb.id = "lint-skip-adversarial";
+
+        // Option: Check URL availability
+        const checkUrlWrap = contentEl.createEl("div");
+        checkUrlWrap.style.cssText = "margin-bottom:16px";
+        const checkUrlLbl = checkUrlWrap.createEl("label", { text: "Check URL availability" });
+        checkUrlLbl.htmlFor = "lint-check-urls";
+        checkUrlLbl.style.cssText = "display:block;font-size:13px;font-weight:600;margin-bottom:4px;cursor:pointer";
+        const checkUrlHint = checkUrlWrap.createEl("p", {
+            text: "Issue an HTTP HEAD request for each URL-sourced page. A 404 or 410 response (or a removed YouTube video) transitions the page to archived. Network timeouts leave the page unchanged.",
+        });
+        checkUrlHint.style.cssText = "font-size:11px;color:var(--text-muted);margin:0 0 6px;-webkit-user-select:text;user-select:text";
+        const checkUrlCb = checkUrlWrap.createEl("input", { type: "checkbox" }) as HTMLInputElement;
+        checkUrlCb.id = "lint-check-urls";
+
+        // Pre-check based on server config (async — defaults to unchecked on failure)
+        api.config().then((cfg: any) => {
+            if (cfg?.check_url_availability) checkUrlCb.checked = true;
+        }).catch(() => {});
 
         const btnRow = contentEl.createEl("div");
         btnRow.style.cssText = "display:flex;align-items:center;gap:8px;justify-content:flex-end";
@@ -1408,14 +1437,16 @@ class LintRunModal extends Modal {
         btn.onclick = async () => {
             const autoResolve = cb.checked;
             const adversarial = !skipAdvCb.checked;
+            const checkUrls = checkUrlCb.checked ? true : null;
             btn.disabled = true;
             cb.disabled = true;
             skipAdvCb.disabled = true;
+            checkUrlCb.disabled = true;
             reportLink.style.display = "none";
             out.empty();
             out.createEl("p", { text: autoResolve ? "⏳ Enqueueing lint with auto-resolve…" : "⏳ Enqueueing lint…" });
             try {
-                const r = await api.lint("all", autoResolve, adversarial) as any;
+                const r = await api.lint("all", autoResolve, adversarial, checkUrls) as any;
                 const jobId: string = r.job_id;
                 out.empty();
                 out.createEl("p", { text: `⏳ Lint running… (job ${jobId.slice(0, 8)})` });
@@ -1436,7 +1467,6 @@ class LintRunModal extends Modal {
                         this._pollTimer = null;
 
                         if (status === "completed") {
-                            // Fetch the actual lint report for contradiction/orphan counts
                             try {
                                 const report = await api.lintReport() as any;
                                 const details: any[] = report.contradiction_details ?? [];
@@ -1477,6 +1507,7 @@ class LintRunModal extends Modal {
                         btn.disabled = false;
                         cb.disabled = false;
                         skipAdvCb.disabled = false;
+                        checkUrlCb.disabled = false;
                         reportLink.style.display = "";
                     } catch {
                         // server unreachable — keep polling silently
@@ -1488,6 +1519,7 @@ class LintRunModal extends Modal {
                 btn.disabled = false;
                 cb.disabled = false;
                 skipAdvCb.disabled = false;
+                checkUrlCb.disabled = false;
             }
         };
     }

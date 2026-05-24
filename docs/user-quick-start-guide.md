@@ -541,7 +541,7 @@ synthadoc lint run --check-urls
 ```
 
 ```toml
-# .synthadoc/config.toml
+# config.toml
 [lint]
 check_url_availability = true
 ```

@@ -31,8 +31,9 @@ export const api = {
     status:       ()                          => call("/status"),
     query:        (question: string, timeoutSeconds = 60) => call("/query", "POST", { question, timeout_seconds: timeoutSeconds }),
     ingest:       (source: string, maxResults?: number, force?: boolean) => call("/jobs/ingest", "POST", { source, ...(maxResults != null ? { max_results: maxResults } : {}), ...(force ? { force: true } : {}) }),
-    lint:         (scope = "all", autoResolve = false, adversarial = true) =>
-        call("/jobs/lint", "POST", { scope, auto_resolve: autoResolve, adversarial }),
+    config:       ()                          => call("/config"),
+    lint:         (scope = "all", autoResolve = false, adversarial = true, checkUrls?: boolean | null) =>
+        call("/jobs/lint", "POST", { scope, auto_resolve: autoResolve, adversarial, ...(checkUrls != null ? { check_url_availability: checkUrls } : {}) }),
     lintReport:   ()                          => call("/lint/report"),
     jobs:         (status?: string)           => call(status ? `/jobs?status=${encodeURIComponent(status)}` : "/jobs"),
     retryJob:     (jobId: string)             => call(`/jobs/${jobId}/retry`, "POST"),
