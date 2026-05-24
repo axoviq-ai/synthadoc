@@ -15,9 +15,13 @@ from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.log import AuditDB, LogWriter
 from synthadoc.storage.wiki import WikiStorage, LifecycleState, is_url, TriggerSource
 
+import logging as _logging
+
 if TYPE_CHECKING:
     from synthadoc.config import Config
     from synthadoc.storage.wiki import WikiPage
+
+_log = _logging.getLogger(__name__)
 
 
 @dataclass
@@ -292,6 +296,7 @@ class LintAgent:
         )
         m = _YT.search(url)
         if m:
+            _log.debug("lifecycle url-check [youtube] id=%s url=%s", m.group(1), url)
             try:
                 from youtube_transcript_api import YouTubeTranscriptApi
                 from youtube_transcript_api._errors import VideoUnavailable
@@ -300,22 +305,27 @@ class LintAgent:
                     None,
                     lambda: YouTubeTranscriptApi.get_transcript(m.group(1))
                 )
+                _log.debug("lifecycle url-check [youtube] unavailable=%s url=%s", False, url)
                 return False
             except Exception as exc:
                 # Only VideoUnavailable is a definitive signal
                 try:
-                    from youtube_transcript_api._errors import VideoUnavailable
-                    return isinstance(exc, VideoUnavailable)
-                except ImportError:
-                    return False
+                    result = isinstance(exc, VideoUnavailable)
+                except NameError:
+                    result = False
+                _log.debug("lifecycle url-check [youtube] unavailable=%s url=%s", result, url)
+                return result
 
         # Generic URL: HTTP HEAD
+        _log.debug("lifecycle url-check [http-head] url=%s", url)
         try:
             import httpx
             async with httpx.AsyncClient(timeout=5.0) as client:
                 resp = await client.head(url, follow_redirects=True)
+                _log.debug("lifecycle url-check [http-head] status=%d url=%s", resp.status_code, url)
                 return resp.status_code in (404, 410)
-        except Exception:
+        except Exception as exc:
+            _log.debug("lifecycle url-check [http-head] error=%s url=%s", type(exc).__name__, url)
             return False  # timeout / connection error = assume available
 
     async def _run_lifecycle_checks(self, slugs: list[str], report: LintReport,
@@ -346,7 +356,9 @@ class LintAgent:
                                     break
                         # URL archived: HTTP HEAD or YouTube availability (opt-in)
                         elif src_ref.file and is_url(src_ref.file) and check_url_availability:
+                            _log.debug("lifecycle archived-check [url] slug=%s url=%s", slug, src_ref.file)
                             if await self._is_url_unavailable(src_ref.file):
+                                _log.debug("lifecycle archived [url] slug=%s url=%s → archived", slug, src_ref.file)
                                 await self._transition(slug, page, current,
                                                        LifecycleState.ARCHIVED,
                                                        "URL source no longer available")
@@ -381,7 +393,12 @@ class LintAgent:
                                     if ingested_dt.tzinfo is None:
                                         ingested_dt = ingested_dt.replace(tzinfo=timezone.utc)
                                     age_days = (datetime.now(timezone.utc) - ingested_dt).days
+                                    _log.debug(
+                                        "lifecycle stale-check [url] slug=%s url=%s age_days=%d threshold=%d",
+                                        slug, src_ref.file, age_days, url_staleness_days,
+                                    )
                                     if age_days > url_staleness_days:
+                                        _log.debug("lifecycle stale [url] slug=%s url=%s → stale", slug, src_ref.file)
                                         await self._transition(slug, page, LifecycleState.ACTIVE,
                                                                LifecycleState.STALE,
                                                                f"URL source not re-ingested in {age_days} days")
@@ -412,8 +429,7 @@ class LintAgent:
                         await self._audit.set_page_state(slug, current, TriggerSource.LINT)
 
             except Exception as exc:
-                import logging as _logging
-                _logging.getLogger(__name__).warning(
+                _log.warning(
                     "lifecycle check failed for %s: %s", slug, exc
                 )
 
@@ -436,7 +452,7 @@ class LintAgent:
                 if slug in LINT_SKIP_SLUGS:
                     continue
                 page = self._store.read_page(slug)
-                if page and page.status == "contradicted":
+                if page and page.status == LifecycleState.CONTRADICTED:
                     report.contradictions_found += 1
                     if self._audit:
                         await self._audit.record_audit_event(
