@@ -1,0 +1,59 @@
+# Synthadoc demo content — released to the public domain (CC0). Factual summary for demonstration purposes.
+
+Scaling laws describe the empirical relationship between the performance of a neural language model and the three variables that determine the cost of training it: the number of model parameters (N), the size of the training dataset in tokens (D), and the total compute budget (C). The key finding is that loss decreases smoothly and predictably as a power law when any of these variables is increased. This predictability is unusual in engineering: it means researchers can forecast model capability before training, enabling rational allocation of compute across model size and data volume.
+
+## Kaplan et al. (2020)
+
+The first systematic study of neural language model scaling was published by Kaplan, McCandlish, Henighan, and colleagues at OpenAI in 2020 ("Scaling Laws for Neural Language Models").
+
+Their main findings, measured in cross-entropy loss on held-out text:
+
+**Power laws in N, D, and C:** Loss scales as a smooth power law in each variable independently. For parameters: L(N) ∝ N^(−α_N), for data: L(D) ∝ D^(−α_D), for compute: L(C) ∝ C^(−α_C).
+
+**Model size matters most:** When holding compute fixed and varying the split between model size and training duration, larger models trained on fewer tokens consistently outperformed smaller models trained longer. The implication was that the field was systematically over-training small models.
+
+**Data and parameters should co-scale:** Optimal performance at a given compute budget requires scaling both N and D together. At the time, most research scaled N far faster than D.
+
+**Architectural hyperparameters are secondary:** Within a broad range, choices like depth versus width, number of attention heads, and feedforward dimension had minor effects on performance relative to total parameter count.
+
+The Kaplan scaling law exponents implied that model size should grow faster than the training data volume — approximately as N ∝ C^(0.73) and D ∝ C^(0.27). This informed the design of GPT-3, which was trained on 300 billion tokens with 175 billion parameters.
+
+## Chinchilla (2022)
+
+In 2022, Hoffmann, Borgeaud, Mensch, and colleagues at DeepMind revisited the scaling laws with a more careful experimental design ("Training Compute-Optimal Large Language Models"). Their study, which produced the Chinchilla model, found different optimal ratios.
+
+The Chinchilla finding: for a fixed compute budget, the optimal model has roughly equal scaling in N and D. Specifically:
+
+  N_opt ∝ C^(0.50), D_opt ∝ C^(0.50)
+
+Or equivalently: the optimal training run uses approximately 20 tokens per parameter.
+
+This was a significant revision. Under the Kaplan law, GPT-3 (175B parameters, 300B tokens ≈ 1.7 tokens/parameter) was substantially under-trained. Under Chinchilla, the same compute budget would be better spent on a 70B parameter model trained on 1.4 trillion tokens.
+
+DeepMind validated this by training Chinchilla (70B parameters, 1.4T tokens) with the same compute as Gopher (280B parameters), and found Chinchilla matched or exceeded Gopher on nearly every benchmark.
+
+## Practical Consequences
+
+The Chinchilla result changed the design philosophy of subsequent large models. LLaMA (2023) explicitly targeted compute-optimal or over-trained (more tokens than Chinchilla-optimal) regimes, reasoning that once a model is trained, inference at smaller model size is cheaper. LLaMA 2 (70B, 2T tokens) and LLaMA 3 (8B, 15T tokens) exemplify this "overtrain small models" strategy: using more data than Chinchilla-optimal because inference cost per query favours smaller models at deployment scale.
+
+## Limitations and Open Questions
+
+Scaling laws are empirical: they describe what has been observed but do not explain why the power law relationship holds. Theoretical accounts remain incomplete.
+
+The exponents are not universal: different architectures, tokenisers, datasets, and evaluation tasks can yield different scaling behaviour. The Kaplan and Chinchilla laws were measured on English text language modelling; their applicability to code, multilingual data, and multimodal tasks has been studied but is not identical.
+
+Emergent capabilities complicate the picture: some capabilities appear to emerge discontinuously at certain scales, which is not easily reconciled with smooth power laws in loss. Whether emergence is a real discontinuity or an artefact of coarse-grained evaluation metrics is debated.
+
+## Scaling Beyond Language
+
+Scaling law analysis has been applied to domains beyond text:
+
+Vision models: similar power laws have been observed in image classification and generation.
+
+Multimodal models: scaling both the vision encoder and language model components shows additive benefits.
+
+Reinforcement learning: scaling laws for game-playing agents show power laws in environment interactions and model size, though with steeper data requirements than language modelling.
+
+Code models: code models (Codex, Code LLaMA) show scaling behaviour consistent with language model laws, with benefits from training on code-specific data.
+
+The generality of scaling laws across domains has led some researchers to treat them as a near-universal property of learning from data with gradient descent on over-parameterised models, though a complete theoretical account remains an open problem.

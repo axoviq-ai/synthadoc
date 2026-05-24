@@ -1,0 +1,49 @@
+# Synthadoc demo content — released to the public domain (CC0). Factual summary for demonstration purposes.
+
+Geoffrey Everest Hinton (born 1947) is a British-Canadian cognitive scientist and computer scientist whose decades-long advocacy for neural networks and connectionist models, persisted through periods of academic scepticism, directly enabled the deep learning revolution. He is widely regarded as one of the three founding figures of modern deep learning, alongside Yann LeCun and Yoshua Bengio.
+
+## Early Life and Education
+
+Hinton was born in Wimbledon, London. He studied experimental psychology at the University of Cambridge (BA, 1970) and earned his PhD in artificial intelligence from the University of Edinburgh in 1978, supervised by Christopher Longuet-Higgins. His doctoral work focused on learning representations in networks, a theme that would define his career.
+
+## Connectionism and the Perceptron Debate
+
+When Hinton began his research career, neural networks were in deep disfavour. The 1969 book "Perceptrons" by Minsky and Papert had demonstrated that single-layer networks could not solve certain simple problems (notably XOR), and many AI researchers concluded that the neural network paradigm was fundamentally limited. Research funding shifted to symbolic AI and expert systems.
+
+Hinton was among a small group — including David Rumelhart and James McClelland — who continued to believe that multi-layer networks trained with the right learning algorithm could overcome these limitations. This became known as the connectionist program.
+
+## Backpropagation
+
+In 1986, Hinton, Rumelhart, and Williams published "Learning Representations by Back-propagating Errors" in Nature, one of the most cited papers in the history of machine learning. The paper demonstrated that the backpropagation algorithm — which computes gradients of a loss function with respect to all weights in a multi-layer network using the chain rule of calculus — could be applied efficiently to train networks with hidden layers.
+
+Although backpropagation had been described earlier by other researchers (notably Linnainmaa in 1970 and Werbos in 1974), the 1986 paper popularised it and demonstrated its practical utility on a range of tasks. Backpropagation remains the primary training algorithm for neural networks more than three decades later.
+
+## Boltzmann Machines and Deep Belief Networks
+
+In the 1980s and early 1990s, Hinton developed Boltzmann machines — stochastic recurrent networks trained with a contrastive divergence algorithm — and worked on other generative model architectures. Progress on these systems was limited by computational constraints.
+
+In 2006, Hinton and collaborators published a landmark paper introducing deep belief networks: multi-layer generative models trained greedily, one layer at a time, using a restricted Boltzmann machine (RBM) at each layer. The paper showed that this unsupervised pre-training procedure could initialise a deep network in a region of parameter space from which supervised fine-tuning could succeed.
+
+This work, along with concurrent work by Bengio's group and LeCun's group, reignited interest in deep networks after more than a decade of stagnation and is credited with launching the deep learning era.
+
+## AlexNet (2012)
+
+The pivotal demonstration of deep learning's practical power came at ImageNet 2012. Hinton's graduate students Alex Krizhevsky and Ilya Sutskever, working with Hinton, trained a deep convolutional neural network (AlexNet) on the ImageNet Large Scale Visual Recognition Challenge using GPUs. AlexNet achieved a top-5 error rate of 15.3%, compared to 26.2% for the best non-deep-learning entry.
+
+The gap was so large — more than 10 percentage points — that it effectively ended debate about whether deep learning was competitive with other machine learning approaches for vision tasks. The AlexNet result is commonly cited as the moment the deep learning era began in earnest for industry and academia alike.
+
+## Google Brain and Academic Career
+
+After a long career at Carnegie Mellon University and the University of Toronto, Hinton joined Google Brain part-time in 2013, following Google's acquisition of his startup DNNresearch. He maintained his position at the University of Toronto while working at Google.
+
+At Google, Hinton contributed to research on distributed representations, capsule networks, and techniques for knowledge distillation.
+
+## Departure from Google and AI Safety
+
+In May 2023, Hinton resigned from Google to speak more freely about the risks of artificial intelligence. He stated that he had changed his view on the trajectory of AI capability and now believed that the risks of AI systems becoming more intelligent than humans, and potentially acting against human interests, were more serious and closer in time than he had previously thought.
+
+Hinton's public statements about AI risk drew significant media attention given his status as one of the field's founding figures and his history of scepticism toward claims of near-term AI danger.
+
+## Turing Award
+
+In 2018, Hinton, LeCun, and Bengio were jointly awarded the Turing Award — the highest honour in computer science, often described as the field's Nobel Prize — by the Association for Computing Machinery (ACM). The citation recognised their work that led to the deep learning breakthrough that has made neural networks a critical component of computing.

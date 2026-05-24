@@ -1,0 +1,53 @@
+# Synthadoc demo content — released to the public domain (CC0). Factual summary for demonstration purposes.
+
+The transformer is a neural network architecture introduced in 2017 by Vaswani et al. in the paper "Attention Is All You Need," published by researchers at Google Brain and Google Research. It replaced recurrent neural networks as the dominant architecture for sequence modelling tasks, particularly in natural language processing, and subsequently became the foundation for nearly all large language models.
+
+## Core Innovation
+
+The key innovation of the transformer is the self-attention mechanism, which allows every position in a sequence to attend to every other position in a single operation. Recurrent networks process tokens one at a time in order, making them slow to train on long sequences and prone to the vanishing gradient problem. The transformer eliminates sequential computation entirely: all positions are processed in parallel, making it far more efficient on modern hardware.
+
+## Architecture
+
+The original transformer has an encoder-decoder structure. The encoder reads the input sequence and produces a sequence of continuous representations. The decoder generates the output sequence one token at a time, attending to both its own previous outputs and the encoder's representations.
+
+Each encoder layer contains two sub-layers: a multi-head self-attention mechanism and a position-wise feedforward network. A residual connection and layer normalisation are applied around each sub-layer. The decoder adds a third sub-layer — cross-attention over the encoder output — between the self-attention and feedforward sub-layers.
+
+Positional encodings are added to the input embeddings to inject information about token order, since the self-attention mechanism is permutation-invariant.
+
+## Self-Attention
+
+The self-attention mechanism works by projecting each input token into three vectors: a query (Q), a key (K), and a value (V). The attention weight between two positions is computed as the dot product of their query and key vectors, scaled by the square root of the key dimension, and passed through a softmax function. The output at each position is a weighted sum of the value vectors.
+
+Scaled dot-product attention:
+
+  Attention(Q, K, V) = softmax(QK^T / sqrt(d_k)) · V
+
+## Multi-Head Attention
+
+Instead of applying a single attention function, the transformer runs h parallel attention operations (heads) on linearly projected versions of Q, K, and V. The outputs of all heads are concatenated and projected again. Multi-head attention allows the model to attend to information from different representation subspaces simultaneously.
+
+## Feedforward Sublayer
+
+The position-wise feedforward network applies two linear transformations with a ReLU activation in between. The same network is applied to each position independently. The hidden dimension of the feedforward layer is typically four times the model dimension.
+
+## Modern Variants
+
+The original encoder-decoder design is well-suited to sequence-to-sequence tasks such as machine translation. Subsequent work identified two simpler variants that dominate modern practice:
+
+Encoder-only models (BERT family): encode the full input sequence, useful for classification and understanding tasks. These use bidirectional self-attention.
+
+Decoder-only models (GPT family): generate sequences autoregressively, attending only to previous positions via a causal mask. These became the basis for large language models trained on next-token prediction.
+
+Most contemporary large language models — GPT-3, GPT-4, LLaMA, Claude, Gemini — are decoder-only transformers.
+
+## Pre-Norm vs Post-Norm
+
+The original paper places layer normalisation after the residual connection (post-norm). Later work found that placing layer normalisation before the sub-layer (pre-norm) improves training stability, particularly at large scale. Pre-norm has become standard in modern large language models.
+
+## Flash Attention
+
+In 2022, Dao et al. introduced Flash Attention, an exact attention algorithm that avoids materialising the full N×N attention matrix in GPU HBM by fusing the attention computation into a single kernel and using tiling. Flash Attention produces mathematically identical results to standard attention while using O(N) memory rather than O(N²), and is substantially faster in practice. Flash Attention 2 (2023) improved parallelism further.
+
+## Influence
+
+The transformer's architecture has extended beyond language to images (Vision Transformer, 2020), audio, video, biology (AlphaFold 2, 2021), and reinforcement learning. Its combination of scalability, parallelism, and expressiveness made it the dominant architecture of the deep learning era.

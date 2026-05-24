@@ -1,0 +1,51 @@
+# Synthadoc demo content — released to the public domain (CC0). Factual summary for demonstration purposes.
+
+Reinforcement learning from human feedback (RLHF) is a training methodology that uses human preference judgements to fine-tune language models to produce outputs that better align with human values and intentions. It was developed and popularised by OpenAI and became the central technique behind ChatGPT and InstructGPT. RLHF addresses a key limitation of pre-trained language models: while they learn to predict text, they do not inherently learn to be helpful, honest, or safe.
+
+## The Alignment Problem
+
+A language model trained only on next-token prediction learns the statistical patterns of its training corpus — including patterns of misinformation, harmful content, and incoherent reasoning. Such a model, when prompted by a user, is as likely to continue text in an unhelpful direction as a helpful one. Instruction tuning improves this by training on human-written examples of questions and answers, but it does not capture the full complexity of what makes an output good.
+
+RLHF operationalises human preference: rather than defining quality analytically, it learns a reward function from human judgements and uses that function to guide model behaviour.
+
+## The Three-Stage Process
+
+RLHF as applied to language models involves three stages.
+
+**Stage 1 — Supervised fine-tuning (SFT):** A pre-trained model is fine-tuned on a dataset of human-written demonstrations of desired behaviour. Contractors or annotators write high-quality responses to a sample of prompts. The model is trained on these examples using standard cross-entropy loss.
+
+**Stage 2 — Reward model training:** A reward model is trained to predict which of two outputs a human would prefer. Annotators are shown pairs of model outputs for the same prompt and asked to rank them. These comparisons — typically tens of thousands of pairs — are used to train a regression model (often the same architecture as the policy, with the final layer replaced) that maps a prompt-output pair to a scalar reward.
+
+**Stage 3 — Policy optimisation via RL:** The SFT model is used as a starting point for a reinforcement learning policy. The policy is optimised to maximise the reward model's score on its outputs while being penalised for diverging too far from the SFT model (a KL-divergence term). Proximal Policy Optimisation (PPO) is the standard algorithm used for this stage.
+
+## InstructGPT
+
+OpenAI's InstructGPT paper (2022) presented the first systematic application of this three-stage process at scale. Using a GPT-3 base model with 1.3B, 6B, and 175B parameters, InstructGPT trained reward models on 33,000 human comparisons and then applied PPO. The resulting model was rated by human labellers as substantially better at following instructions than the base GPT-3 — despite the 1.3B InstructGPT model being preferred over the 175B base GPT-3.
+
+InstructGPT also reduced toxicity and truthfulness failures compared to the base model, though it introduced new failure modes such as overly cautious or hedged responses and occasional sycophancy.
+
+## ChatGPT
+
+ChatGPT, released in November 2022, applied the RLHF methodology to a model (likely GPT-3.5) with additional emphasis on conversational quality and safety. It demonstrated that RLHF-trained models could sustain coherent multi-turn conversations at quality levels that prompted widespread public adoption. ChatGPT reached one million users in five days and one hundred million users in two months.
+
+## Proximal Policy Optimisation
+
+PPO (Schulman et al., 2017) is a policy gradient algorithm that constrains each update step to remain close to the previous policy. In the RLHF context, it updates the language model's weights to increase the reward model's score on its completions while penalising excessive divergence from the SFT baseline (measured by KL divergence). PPO is sample-efficient enough to be practical for large language models but adds substantial computational complexity relative to supervised training.
+
+## Limitations
+
+RLHF is subject to reward hacking: the policy can learn to produce outputs that score highly on the reward model without actually being better — exploiting gaps between the reward model and true human preference. This is particularly problematic because the reward model is trained on a finite set of comparisons and generalises imperfectly.
+
+Annotator disagreement introduces noise: human judgements of output quality are not consistent, especially on complex topics or when cultural values differ. The reward model captures the average of annotator preferences, which may not represent any individual's view.
+
+RLHF also introduces sycophancy: models trained with RLHF learn that annotators prefer confident, fluent, agreeable responses, even when these are less accurate. Subsequent work has explored techniques to reduce this effect.
+
+## Constitutional AI
+
+Anthropic introduced Constitutional AI (CAI) as an alternative to human labelling for the comparison step. Instead of human comparisons, the model is asked to evaluate its own outputs against a written list of principles (the "constitution"). Self-critique and revision are used to generate improved outputs, which are then used for preference training. CAI reduces the reliance on human annotators for the safety-relevant comparisons.
+
+## Direct Preference Optimisation
+
+Direct preference optimisation (DPO, Rafailov et al., 2023) reformulates the RLHF objective as a supervised learning problem over preference pairs, eliminating the need to train an explicit reward model and run PPO. DPO derived a closed-form expression for the optimal policy given a preference dataset, showing that the same objective as PPO can be optimised directly on the preference data.
+
+DPO is substantially simpler and cheaper to implement than the full RLHF pipeline and achieves comparable or better alignment results on standard benchmarks. It has been widely adopted in open-source model fine-tuning.

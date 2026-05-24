@@ -1,0 +1,65 @@
+# Synthadoc demo content — released to the public domain (CC0). Factual summary for demonstration purposes.
+
+Training large language models involves a sequence of techniques applied at different stages: data preparation, pre-training, supervised fine-tuning, alignment, and inference-time optimisation. Each stage builds on the previous and shapes the model's final capabilities and behaviour.
+
+## Pre-Training
+
+Pre-training is the first and most expensive stage. The model is trained on a large corpus — typically one to fifteen trillion tokens — using the next-token prediction objective. The loss is cross-entropy between the predicted token distribution and the actual next token.
+
+Training uses stochastic gradient descent with the Adam or AdamW optimiser. AdamW adds weight decay to Adam's adaptive learning rate, reducing overfitting on large models. A cosine learning rate schedule is standard: the rate warms up linearly over the first few thousand steps, then decays to a small fraction of the peak rate by the end of training.
+
+Batch size is typically set to maximise GPU utilisation. Large batches (one to four million tokens per step) are common in frontier model training, distributed across thousands of accelerators.
+
+## Mixed Precision Training
+
+Training at full 32-bit floating point precision is unnecessarily expensive. Mixed precision training maintains a master copy of weights in FP32 but performs the forward and backward passes in FP16 or BF16 (brain float). BF16 is preferred for large models because it has the same exponent range as FP32 (preventing overflow on large activations) while using half the memory.
+
+Gradient scaling is used with FP16 to prevent underflow in very small gradients.
+
+## Gradient Checkpointing
+
+Storing all activations in memory during the forward pass for use in the backward pass is memory-prohibitive for large models. Gradient checkpointing (also called activation recomputation) stores only a subset of activations and recomputes the others during the backward pass. This trades increased compute (roughly 30% overhead) for substantially reduced memory requirements.
+
+## Distributed Training
+
+Large models do not fit on a single GPU. Several parallelism strategies are used in combination.
+
+Data parallelism: the model is replicated across multiple devices, each processing a different mini-batch. Gradients are averaged across replicas before the weight update (all-reduce). ZeRO (Zero Redundancy Optimizer, from DeepSpeed) shards the optimizer state, gradients, and optionally the parameters across data-parallel ranks, dramatically reducing memory per device.
+
+Tensor parallelism: individual matrix multiplications within a layer are split across devices. The attention and feedforward sublayers are parallelised row-wise or column-wise, with all-reduce communications after each split computation.
+
+Pipeline parallelism: different layers of the model are assigned to different devices. Micro-batches flow through the pipeline; the main overhead is pipeline bubbles when devices wait for the previous stage to complete.
+
+## Supervised Fine-Tuning
+
+After pre-training, models are fine-tuned on instruction-following datasets. These typically consist of several million examples of prompt-completion pairs covering diverse tasks: question answering, summarisation, code generation, dialogue, and reasoning.
+
+Fine-tuning uses the same cross-entropy objective as pre-training but on a much smaller dataset and for fewer steps. The learning rate is reduced substantially (typically 1–10% of the pre-training peak rate) to avoid catastrophic forgetting of pre-training knowledge.
+
+## Parameter-Efficient Fine-Tuning
+
+Full fine-tuning of a 70B parameter model requires substantial compute. Parameter-efficient fine-tuning (PEFT) methods update only a small subset of parameters.
+
+Low-Rank Adaptation (LoRA, Hu et al., 2021) adds low-rank decomposition matrices to the weight matrices of attention and feedforward layers. Only these small matrices (typically 0.1–1% of total parameters) are trained. LoRA achieves performance comparable to full fine-tuning on most tasks while requiring a fraction of the compute and memory.
+
+QLoRA (2023) combines LoRA with quantisation: the base model weights are quantised to 4-bit (NF4 format) and held frozen, while LoRA adapters are trained in 16-bit. This allows fine-tuning a 65B model on a single consumer GPU.
+
+## Tokenisation
+
+Input text must be converted to discrete tokens before being fed to the model. Modern LLMs use byte-pair encoding (BPE) or SentencePiece tokenisation. BPE iteratively merges frequent character pairs into larger units, producing a vocabulary of 32,000 to 128,000 tokens that balances coverage of common words with handling of rare or novel tokens.
+
+Tokenisation efficiency matters: a more efficient tokeniser represents the same text in fewer tokens, reducing compute and context length requirements. GPT-4's cl100k tokeniser handles code and multilingual text substantially more efficiently than earlier tokenisers.
+
+## Data Quality and Filtering
+
+The quality of the pre-training corpus has a large effect on downstream performance. Common filtering steps include:
+
+Language identification: keeping only pages in the target language or desired language mix.
+
+Deduplication: removing near-duplicate documents using MinHash or similar techniques. Duplicate documents can dominate gradient updates and cause memorisation.
+
+Quality filtering: using classifiers trained on curated reference corpora (Wikipedia, books) to score and filter web pages.
+
+Personally identifiable information (PII) redaction: removing or masking personal data.
+
+The Dolma dataset (2024) and other open pre-training corpora document their filtering pipelines in detail, providing a reference for practitioners.

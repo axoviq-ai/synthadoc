@@ -1,0 +1,51 @@
+# Synthadoc demo content — released to the public domain (CC0). Factual summary for demonstration purposes.
+
+Large language models (LLMs) are neural networks trained on vast quantities of text to predict the next token in a sequence. They emerged as the dominant paradigm in natural language processing following the introduction of the transformer architecture in 2017, and by the early 2020s had demonstrated qualitatively new capabilities — instruction following, code generation, mathematical reasoning, and multi-step problem solving — that earlier systems could not achieve at scale.
+
+## Pre-Training
+
+LLMs are trained with a self-supervised objective: given a sequence of tokens, predict the next token. Because the supervision signal comes from the data itself, training can scale to internet-scale corpora without manual labelling. The training dataset for a modern frontier model typically contains one to fifteen trillion tokens drawn from web pages, books, code repositories, and curated sources.
+
+Training a large model requires substantial compute. GPT-3 (175 billion parameters, 2020) was trained on roughly 300 billion tokens. LLaMA 2 (70 billion parameters, 2023) was trained on two trillion tokens. Frontier models (GPT-4, Claude 3, Gemini Ultra) have not disclosed their parameter counts or training data sizes.
+
+## GPT Series (OpenAI)
+
+The Generative Pre-trained Transformer (GPT) series by OpenAI established the decoder-only transformer as the standard architecture for large language models.
+
+GPT-1 (2018, 117M parameters) demonstrated that a language model pre-trained on a large corpus and fine-tuned with a task-specific head could match or exceed task-specific models on multiple NLP benchmarks.
+
+GPT-2 (2019, 1.5B parameters) showed that scaling alone — without any task-specific fine-tuning — produced a model that could generate coherent long-form text. OpenAI initially withheld the full model over concerns about misuse.
+
+GPT-3 (2020, 175B parameters) demonstrated in-context learning: the model could perform new tasks given only a few examples in its prompt, without any weight updates. This few-shot capability was qualitatively different from prior systems and shifted the field toward prompting as the primary interface.
+
+InstructGPT (2022) applied reinforcement learning from human feedback (RLHF) to GPT-3, producing a model that was substantially better at following user instructions and less likely to generate harmful or misleading content.
+
+GPT-4 (2023) extended the architecture to multimodal inputs and achieved performance approaching professional-level on several human examinations.
+
+## BERT and Encoder-Only Models
+
+In parallel with the GPT line, Google introduced BERT (Bidirectional Encoder Representations from Transformers) in 2018. BERT uses an encoder-only transformer trained with two objectives: masked language modelling (predicting masked tokens from context) and next-sentence prediction. BERT's bidirectional attention allows it to use context from both sides of a token, making it well-suited for classification, named entity recognition, and question answering.
+
+BERT and its variants (RoBERTa, ALBERT, DeBERTa) dominated NLP benchmark leaderboards from 2018 to 2021. Encoder-only models remain widely used for tasks that require representing full sequences rather than generating them.
+
+## LLaMA Family (Meta)
+
+Meta AI released LLaMA (Large Language Model Meta AI) in February 2023 as a research release. LLaMA offered a range of parameter sizes (7B to 65B) trained on publicly available data (CommonCrawl, C4, Wikipedia, GitHub, books). Its strong performance at smaller sizes — competitive with GPT-3 at 13B parameters — made it influential as a base for open-source fine-tuning.
+
+LLaMA 2 (2023) was released under a commercial-friendly licence and included instruction-tuned variants (Llama 2 Chat). LLaMA 3 (2024) extended the series further, improving benchmark performance substantially.
+
+## Instruction Tuning and Alignment
+
+Raw pre-trained LLMs are poor at following user instructions: they tend to continue text rather than answer questions. Instruction tuning, introduced by FLAN (2021) and popularised by InstructGPT and ChatGPT, fine-tunes a model on examples of instruction-output pairs to make it more responsive to user queries.
+
+RLHF (reinforcement learning from human feedback) further refines the model's behaviour by training a reward model on human preference data and using it to guide policy optimisation. DPO (direct preference optimisation, 2023) achieved similar alignment results without the explicit reward model, by directly optimising the policy against preference pairs.
+
+## Emergent Capabilities
+
+Models above certain scale thresholds show capabilities that are absent in smaller models and appear without explicit training for those capabilities. These emergent abilities include multi-step arithmetic, chain-of-thought reasoning, coding from natural-language descriptions, and analogy completion.
+
+The exact mechanism of emergence is debated. Some researchers attribute it to phase transitions in the model's internal representations; others argue it reflects continuous improvements that only become measurable at scale given the difficulty of the benchmarks used.
+
+## Context Length
+
+The context window — the maximum number of tokens a model can attend to — has expanded substantially. Early GPT-2 had a 1,024-token context. GPT-3 extended this to 4,096 tokens. Subsequent models pushed to 8K, 32K, 128K, and, in some systems, to over one million tokens using specialised architectures. Longer contexts allow models to reason over entire documents, code repositories, or multi-turn conversations.
