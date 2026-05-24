@@ -1,0 +1,49 @@
+# Synthadoc demo content — released to the public domain (CC0). Factual summary for demonstration purposes.
+
+Programming languages are formal notations for expressing computation in a form that both humans and machines can process. Their history from the 1940s through the present reflects an ongoing negotiation between the needs of human cognition — readability, expressiveness, and abstraction — and the constraints of machine execution — efficiency, precision, and resource use.
+
+## Machine Code and Assembly Language
+
+The earliest computers were programmed by specifying numeric opcodes directly — binary or hexadecimal codes representing individual machine instructions. A programmer adding two numbers had to know the exact numeric code for the add instruction on the specific hardware, and had to manage memory addresses manually.
+
+Assembly languages, developed in the early 1950s, introduced symbolic names for opcodes (ADD, MOV, JMP) and symbolic labels for memory locations. An assembler program translated symbolic code to machine code. Assembly removed the need to remember numeric opcodes but left the programmer working at the level of individual machine operations, with no concept of subroutines, variables in the modern sense, or structured control flow.
+
+## FORTRAN: The First Widely Used High-Level Language
+
+John Backus at IBM led the development of FORTRAN (Formula Translation), first delivered to IBM customers in 1957. FORTRAN allowed scientific programmers to write arithmetic expressions in notation close to standard mathematical notation: A = B + C * D, rather than a sequence of load, multiply, and add instructions.
+
+Backus and his team developed an optimising compiler that translated FORTRAN source code into machine code efficient enough to compete with hand-written assembly. The demonstration that a compiler could produce fast machine code overcame initial scepticism and established the credibility of high-level languages. FORTRAN dominated scientific computing for decades and remains in active use for numerical computation.
+
+## LISP: Lists and Symbolic Computation
+
+John McCarthy at MIT designed LISP (List Processing) in 1958, influenced by Alonzo Church's lambda calculus. LISP was built around lists as the primary data structure and introduced recursive function definitions, automatic memory management through garbage collection, and the concept that code and data have the same representation — a list can be both a program and data that programs manipulate.
+
+LISP became the dominant language of artificial intelligence research. Its flexibility and introspective capabilities made it well suited to symbolic AI tasks such as theorem proving, game playing, and natural language processing. McCarthy received the ACM Turing Award in 1971.
+
+## COBOL: Business Data Processing
+
+COBOL (Common Business-Oriented Language) was developed in 1959 by a committee convened by the United States Department of Defense, with Grace Hopper as a primary technical influence. COBOL targeted business data processing: reading records, sorting files, producing reports, and performing the arithmetic of payroll, billing, and inventory.
+
+COBOL's design prioritised readability by non-specialists and portability across different manufacturers' hardware. Its English-like syntax — MULTIPLY HOURS-WORKED BY HOURLY-RATE GIVING GROSS-PAY — made programs legible to auditors and managers. COBOL was standardised in 1960 and became the most widely deployed language in commercial data processing, with large bodies of code still in production at financial institutions and government agencies.
+
+## Structured Programming
+
+In 1968, Edsger Dijkstra published a letter titled "Go To Statement Considered Harmful" in Communications of the ACM, arguing that unrestricted use of the goto instruction made programs difficult to understand and verify. The letter catalysed the structured programming movement, which advocated organising programs as compositions of three control structures: sequence, selection (if/else), and iteration (loops).
+
+Structured programming became the dominant pedagogical and practical approach through the 1970s. Languages like Pascal, designed by Niklaus Wirth in 1970, were explicitly designed to enforce structured programming discipline. C, developed at Bell Labs by Dennis Ritchie in 1972, provided structured programming constructs while retaining low-level access to hardware.
+
+## Object-Oriented Programming
+
+Simula 67, designed by Ole-Johan Dahl and Kristen Nygaard at the Norwegian Computing Centre, introduced the class and object concepts — grouping data and the operations on that data into a single unit. Smalltalk, developed at Xerox PARC through the 1970s by Alan Kay and others, radicalised this approach: in Smalltalk, everything is an object, and computation proceeds entirely through message passing between objects.
+
+C++, developed by Bjarne Stroustrup at Bell Labs in 1985, brought object-oriented programming to the C language and to systems programming. Java, released by Sun Microsystems in 1995, combined object orientation with a virtual machine that provided portability across hardware platforms — "write once, run anywhere." Python, designed by Guido van Rossum and first released in 1991, combined object orientation with dynamic typing and a focus on readability.
+
+## Type Systems and Language Theory
+
+A type system assigns types to expressions in a program and uses them to detect errors before execution. Static type systems (C, Java, Haskell) check types at compile time; dynamic type systems (Python, JavaScript, LISP) check at runtime. Strong typing prevents operations that are undefined for a given type; weak typing allows implicit conversions between types.
+
+Formal language theory, developed by Noam Chomsky for linguistics and adapted for programming languages, provides a framework for describing syntax rigorously. Backus-Naur Form (BNF), introduced to describe ALGOL 60, became the standard notation for specifying programming language grammars. Type theory, developed in mathematics by Bertrand Russell and later refined by Per Martin-Löf, provides a foundation for reasoning about program correctness.
+
+## Modern Language Development
+
+Functional programming languages such as Haskell (1990), derived from earlier work on ML and Miranda, formalised a style in which programs are composed of pure functions without side effects. Rust (2015), developed at Mozilla, introduced a type system that enforces memory safety at compile time without a garbage collector, enabling systems programming without the memory errors endemic to C. The diversity of contemporary languages reflects the persistence of the core tensions in language design: between safety and performance, between abstraction and control, between expressiveness and verifiability.

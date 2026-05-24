@@ -115,3 +115,5 @@ from synthadoc.cli import candidates  # noqa: F401, E402  — registers staging 
 from synthadoc.cli import context  # noqa: F401, E402  — registers context sub-app
 from synthadoc.cli.plugin import plugin_app  # noqa: F401, E402
 app.add_typer(plugin_app)
+from synthadoc.cli.lifecycle import lifecycle_app  # noqa: F401, E402
+app.add_typer(lifecycle_app)

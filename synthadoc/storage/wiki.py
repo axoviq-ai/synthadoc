@@ -15,6 +15,30 @@ _FRONTMATTER_FIELDS = ("title", "tags", "status", "confidence", "created", "sour
                        "aliases", "contradiction_note", "unresolved_note", "lint_warnings")
 
 
+class LifecycleState:
+    """Named constants for the 5-state lifecycle machine."""
+    DRAFT        = "draft"
+    ACTIVE       = "active"
+    CONTRADICTED = "contradicted"
+    STALE        = "stale"
+    ARCHIVED     = "archived"
+    ALL = frozenset({"draft", "active", "contradicted", "stale", "archived"})
+    ORDERED = ("active", "draft", "stale", "contradicted", "archived")
+
+
+def is_url(path: str) -> bool:
+    """Return True if path is an HTTP/HTTPS URL (not a local file reference)."""
+    return path.startswith(("http://", "https://"))
+
+
+class TriggerSource:
+    """Constants for lifecycle event triggered_by field."""
+    INGEST      = "ingest"
+    LINT        = "lint"
+    USER        = "user"
+    MANUAL_EDIT = "manual_edit"
+
+
 @dataclass
 class SourceRef:
     file: str

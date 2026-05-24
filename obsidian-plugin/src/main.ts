@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Paul Chen / axoviq.com
 import { App, FileSystemAdapter, MarkdownRenderer, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile } from "obsidian";
-import { api, setBase } from "./api";
+import { api, setBase, getBase } from "./api";
 
 const SUPPORTED_EXTENSIONS = new Set([
     "md", "txt", "pdf", "docx", "xlsx", "csv",
@@ -107,6 +107,16 @@ export default class SynthadocPlugin extends Plugin {
                 const wikiRoot = this.app.vault.adapter instanceof FileSystemAdapter
                     ? this.app.vault.adapter.getBasePath() : "";
                 new ProvenanceModal(this.app, this.settings.serverUrl, wikiRoot, slug).open();
+            },
+        });
+
+        this.addCommand({
+            id: "lifecycle-modal",
+            name: "Manage Page Lifecycle",
+            callback: () => {
+                const wikiRoot = this.app.vault.adapter instanceof FileSystemAdapter
+                    ? this.app.vault.adapter.getBasePath() : "";
+                new LifecycleModal(this.app, wikiRoot, this.settings.serverUrl).open();
             },
         });
 
@@ -982,6 +992,40 @@ class JobsModal extends Modal {
         const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Jobs" });
         makeDraggable(this.modalEl, titleEl);
 
+        // Draft/stale badge — fetch lifecycle status and show badge if any pages need attention
+        (async () => {
+            try {
+                const lcStatus = await api.lifecycleStatus() as any;
+                const counts = lcStatus.counts || {};
+                if ((counts.draft || 0) + (counts.stale || 0) > 0) {
+                    const badge = contentEl.createDiv();
+                    badge.style.cssText = "display:flex;gap:12px;font-size:12px;margin-top:4px";
+                    if (counts.draft) {
+                        const d = badge.createSpan({ text: `${counts.draft} draft` });
+                        d.style.color = "var(--color-orange)";
+                        d.style.cursor = "pointer";
+                        d.addEventListener("click", () => {
+                            this.close();
+                            const wr = this.app.vault.adapter instanceof FileSystemAdapter
+                                ? this.app.vault.adapter.getBasePath() : "";
+                            new LifecycleModal(this.app, wr, getBase(), LifecycleState.DRAFT).open();
+                        });
+                    }
+                    if (counts.stale) {
+                        const s = badge.createSpan({ text: `${counts.stale} stale` });
+                        s.style.color = "var(--color-yellow)";
+                        s.style.cursor = "pointer";
+                        s.addEventListener("click", () => {
+                            this.close();
+                            const wr = this.app.vault.adapter instanceof FileSystemAdapter
+                                ? this.app.vault.adapter.getBasePath() : "";
+                            new LifecycleModal(this.app, wr, getBase(), LifecycleState.STALE).open();
+                        });
+                    }
+                }
+            } catch { /* server may not be running */ }
+        })();
+
         // Status checkboxes
         const filterRow = contentEl.createEl("div");
         filterRow.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:8px";
@@ -1326,27 +1370,54 @@ class LintRunModal extends Modal {
         const { contentEl } = this;
         const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Run lint" });
         makeDraggable(this.modalEl, titleEl);
+        this.modalEl.style.width = "clamp(480px, 55vw, 680px)";
 
-        const optRow = contentEl.createEl("div");
-        optRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:8px";
-        const cb = optRow.createEl("input", { type: "checkbox" }) as HTMLInputElement;
-        cb.id = "lint-auto-resolve";
-        const lbl = optRow.createEl("label", { text: "Auto-resolve contradictions" });
-        lbl.htmlFor = "lint-auto-resolve";
-        lbl.style.cssText = "font-size:13px;cursor:pointer";
-
-        const hint = contentEl.createEl("p", {
-            text: "Auto-resolve rewrites contradicted pages to reconcile conflicts automatically. Leave unchecked to review the report first.",
+        const intro = contentEl.createEl("p", {
+            text: "Lint checks every wiki page for contradictions, orphaned links, and adversarial claims. Configure the options below then click Run lint to enqueue the job.",
         });
-        hint.style.cssText = "font-size:11px;color:var(--text-muted);margin-bottom:16px;-webkit-user-select:text;user-select:text";
+        intro.style.cssText = "font-size:12px;color:var(--text-muted);margin-bottom:16px;-webkit-user-select:text;user-select:text";
 
-        const skipAdvRow = contentEl.createEl("div");
-        skipAdvRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:16px";
-        const skipAdvCb = skipAdvRow.createEl("input", { type: "checkbox" }) as HTMLInputElement;
-        skipAdvCb.id = "lint-skip-adversarial";
-        const skipAdvLbl = skipAdvRow.createEl("label", { text: "Skip adversarial review" });
-        skipAdvLbl.htmlFor = "lint-skip-adversarial";
-        skipAdvLbl.style.cssText = "font-size:13px;cursor:pointer";
+        function addLintOption(
+            id: string,
+            title: string,
+            hint: string,
+            defaultChecked = false
+        ): HTMLInputElement {
+            const row = contentEl.createEl("div");
+            row.style.cssText = "display:flex;align-items:flex-start;gap:10px;margin-bottom:14px";
+            const input = row.createEl("input", { type: "checkbox" }) as HTMLInputElement;
+            input.id = id;
+            input.checked = defaultChecked;
+            input.style.cssText = "margin-top:3px;flex-shrink:0;cursor:pointer";
+            const textBlock = row.createEl("div");
+            const lbl = textBlock.createEl("label", { text: title });
+            lbl.htmlFor = id;
+            lbl.style.cssText = "display:block;font-size:13px;font-weight:600;margin-bottom:3px;cursor:pointer";
+            const desc = textBlock.createEl("p", { text: hint });
+            desc.style.cssText = "font-size:11px;color:var(--text-muted);margin:0;-webkit-user-select:text;user-select:text";
+            return input;
+        }
+
+        const cb = addLintOption(
+            "lint-auto-resolve",
+            "Auto-resolve contradictions",
+            "Auto-resolve rewrites contradicted pages to reconcile conflicts automatically. Leave unchecked to review the report first."
+        );
+        const skipAdvCb = addLintOption(
+            "lint-skip-adversarial",
+            "Skip adversarial review",
+            "Adversarial review uses a second LLM pass to flag unsupported claims. Check this to skip that pass and finish faster."
+        );
+        const checkUrlCb = addLintOption(
+            "lint-check-urls",
+            "Check URL availability",
+            "Issue an HTTP HEAD request for each URL-sourced page. A 404 or 410 response (or a removed YouTube video) transitions the page to archived. Network timeouts leave the page unchanged."
+        );
+
+        // Pre-check based on server config (async — defaults to unchecked on failure)
+        api.config().then((cfg: any) => {
+            if (cfg?.check_url_availability) checkUrlCb.checked = true;
+        }).catch(() => {});
 
         const btnRow = contentEl.createEl("div");
         btnRow.style.cssText = "display:flex;align-items:center;gap:8px;justify-content:flex-end";
@@ -1364,14 +1435,16 @@ class LintRunModal extends Modal {
         btn.onclick = async () => {
             const autoResolve = cb.checked;
             const adversarial = !skipAdvCb.checked;
+            const checkUrls = checkUrlCb.checked ? true : null;
             btn.disabled = true;
             cb.disabled = true;
             skipAdvCb.disabled = true;
+            checkUrlCb.disabled = true;
             reportLink.style.display = "none";
             out.empty();
             out.createEl("p", { text: autoResolve ? "⏳ Enqueueing lint with auto-resolve…" : "⏳ Enqueueing lint…" });
             try {
-                const r = await api.lint("all", autoResolve, adversarial) as any;
+                const r = await api.lint("all", autoResolve, adversarial, checkUrls) as any;
                 const jobId: string = r.job_id;
                 out.empty();
                 out.createEl("p", { text: `⏳ Lint running… (job ${jobId.slice(0, 8)})` });
@@ -1392,7 +1465,6 @@ class LintRunModal extends Modal {
                         this._pollTimer = null;
 
                         if (status === "completed") {
-                            // Fetch the actual lint report for contradiction/orphan counts
                             try {
                                 const report = await api.lintReport() as any;
                                 const details: any[] = report.contradiction_details ?? [];
@@ -1433,6 +1505,7 @@ class LintRunModal extends Modal {
                         btn.disabled = false;
                         cb.disabled = false;
                         skipAdvCb.disabled = false;
+                        checkUrlCb.disabled = false;
                         reportLink.style.display = "";
                     } catch {
                         // server unreachable — keep polling silently
@@ -1444,6 +1517,7 @@ class LintRunModal extends Modal {
                 btn.disabled = false;
                 cb.disabled = false;
                 skipAdvCb.disabled = false;
+                checkUrlCb.disabled = false;
             }
         };
     }
@@ -1471,6 +1545,41 @@ class LintReportModal extends Modal {
         runBtn.onclick = () => { this.close(); new LintRunModal(this.app).open(); };
         this.modalEl.style.width = "clamp(680px, 75vw, 1060px)";
         makeDraggable(this.modalEl, header);
+
+        // Draft/stale badge — fetch lifecycle status and show badge if any pages need attention
+        (async () => {
+            try {
+                const lcStatus = await api.lifecycleStatus() as any;
+                const counts = lcStatus.counts || {};
+                if ((counts.draft || 0) + (counts.stale || 0) > 0) {
+                    const badge = header.createDiv();
+                    badge.style.cssText = "display:flex;gap:12px;font-size:12px;margin-top:4px";
+                    if (counts.draft) {
+                        const d = badge.createSpan({ text: `${counts.draft} draft` });
+                        d.style.color = "var(--color-orange)";
+                        d.style.cursor = "pointer";
+                        d.addEventListener("click", () => {
+                            this.close();
+                            const wr = this.app.vault.adapter instanceof FileSystemAdapter
+                                ? this.app.vault.adapter.getBasePath() : "";
+                            new LifecycleModal(this.app, wr, getBase(), LifecycleState.DRAFT).open();
+                        });
+                    }
+                    if (counts.stale) {
+                        const s = badge.createSpan({ text: `${counts.stale} stale` });
+                        s.style.color = "var(--color-yellow)";
+                        s.style.cursor = "pointer";
+                        s.addEventListener("click", () => {
+                            this.close();
+                            const wr = this.app.vault.adapter instanceof FileSystemAdapter
+                                ? this.app.vault.adapter.getBasePath() : "";
+                            new LifecycleModal(this.app, wr, getBase(), LifecycleState.STALE).open();
+                        });
+                    }
+                }
+            } catch { /* server may not be running */ }
+        })();
+
         const out = contentEl.createEl("div");
         out.style.cssText = "-webkit-user-select:text;user-select:text";
         out.createEl("p", { text: "Loading…", cls: "synthadoc-muted" });
@@ -3171,4 +3280,525 @@ class ProvenanceModal extends Modal {
     }
 
     onClose() { this.contentEl.empty(); }
+}
+
+// ── Lifecycle constants ───────────────────────────────────────────────────────
+
+const LifecycleState = {
+    DRAFT:        "draft",
+    ACTIVE:       "active",
+    CONTRADICTED: "contradicted",
+    STALE:        "stale",
+    ARCHIVED:     "archived",
+    ORDERED: ["active", "draft", "stale", "contradicted", "archived"] as const,
+    ALL: ["draft", "active", "contradicted", "stale", "archived"] as const,
+} as const;
+
+const TriggerSource = {
+    INGEST:      "ingest",
+    LINT:        "lint",
+    USER:        "user",
+    MANUAL_EDIT: "manual_edit",
+} as const;
+
+// ── ReasonModal ───────────────────────────────────────────────────────────────
+
+class ReasonModal extends Modal {
+    private reason = "";
+    constructor(app: App, private label: string, private onConfirm: (r: string) => void) {
+        super(app);
+    }
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.createEl("h3", { text: this.label });
+        const input = contentEl.createEl("input", { type: "text" }) as HTMLInputElement;
+        input.style.cssText = "width:100%;margin:8px 0 12px 0;padding:4px 8px";
+        input.placeholder = "Reason (required)";
+        input.addEventListener("input", () => { this.reason = input.value; });
+        const row = contentEl.createDiv();
+        row.style.cssText = "display:flex;gap:8px;justify-content:flex-end";
+        const cancel = row.createEl("button", { text: "Cancel" });
+        cancel.addEventListener("click", () => this.close());
+        const confirm = row.createEl("button", { text: "Confirm" }) as HTMLButtonElement;
+        confirm.style.cssText = "background:var(--interactive-accent);color:var(--text-on-accent)";
+        confirm.addEventListener("click", () => {
+            if (!this.reason.trim()) { input.style.border = "1px solid red"; return; }
+            this.onConfirm(this.reason.trim());
+            this.close();
+        });
+        setTimeout(() => input.focus(), 50);
+    }
+    onClose() { this.contentEl.empty(); }
+}
+
+// ── LifecycleModal ────────────────────────────────────────────────────────────
+
+const LIFECYCLE_PAGE_SIZE = 20;
+
+const LIFECYCLE_STATE_COLORS: Record<string, string> = {
+    [LifecycleState.DRAFT]:        "background:#7a4f00;color:#ffd880",
+    [LifecycleState.ACTIVE]:       "background:#1a4a1a;color:#80ff80",
+    [LifecycleState.CONTRADICTED]: "background:#5a0000;color:#ffb0b0",
+    [LifecycleState.STALE]:        "background:#5a5a00;color:#ffff80",
+    [LifecycleState.ARCHIVED]:     "background:#3a3a3a;color:#cccccc",
+};
+
+const ALLOWED_TRANSITIONS: Record<string, string[]> = {
+    [LifecycleState.DRAFT]:        [LifecycleState.ACTIVE, LifecycleState.ARCHIVED],
+    [LifecycleState.ACTIVE]:       [LifecycleState.ARCHIVED],
+    [LifecycleState.CONTRADICTED]: [LifecycleState.ARCHIVED],
+    [LifecycleState.STALE]:        [LifecycleState.DRAFT, LifecycleState.ARCHIVED],
+    [LifecycleState.ARCHIVED]:     [LifecycleState.DRAFT],
+};
+
+const ALL_LIFECYCLE_STATES = [...LifecycleState.ALL];
+
+class LifecycleModal extends Modal {
+    private _activeTab: "states" | "audit" = "states";
+    // Tab 1 — current page states
+    private _page = 0;
+    private _pages: any[] = [];
+    private _checkedStates: Set<string>;
+    private _sortCol = "slug";
+    private _sortAsc = true;
+    private _tableWrap: HTMLElement | null = null;
+    private _pagerWrap: HTMLElement | null = null;
+    private _tab1Content: HTMLElement | null = null;
+    // Tab 2 — audit log
+    private _auditPage = 0;
+    private _auditEvents: any[] = [];
+    private _auditSlugFilter = "";
+    private _auditStateFilter = "";
+    private _auditSortCol = "timestamp";
+    private _auditSortAsc = false;
+    private _auditTableWrap: HTMLElement | null = null;
+    private _auditPagerWrap: HTMLElement | null = null;
+    private _tab2Content: HTMLElement | null = null;
+
+    constructor(
+        app: App,
+        private wikiRoot: string,
+        private serverUrl: string,
+        private initialFilter?: string,
+    ) {
+        super(app);
+        this._checkedStates = new Set(
+            initialFilter ? [initialFilter] : ALL_LIFECYCLE_STATES
+        );
+    }
+
+    async onOpen() {
+        const { contentEl, modalEl } = this;
+        modalEl.style.width = "clamp(1000px, 80vw, 1200px)";
+        modalEl.style.height = "75vh";
+        contentEl.style.cssText = "display:flex;flex-direction:column;height:100%";
+
+        const bg = this.containerEl.querySelector(".modal-bg");
+        if (bg) bg.addEventListener("click", e => e.stopImmediatePropagation(), { capture: true });
+
+        const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Manage Page Lifecycle" });
+        makeDraggable(modalEl, titleEl);
+
+        // Tab bar
+        const TAB_INACTIVE = "padding:6px 18px;font-size:13px;cursor:pointer;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-muted)";
+        const TAB_ACTIVE   = "padding:6px 18px;font-size:13px;cursor:pointer;background:none;border:none;border-bottom:2px solid var(--interactive-accent);color:var(--text-normal);font-weight:600";
+        const tabBar = contentEl.createEl("div");
+        tabBar.style.cssText = "display:flex;border-bottom:1px solid var(--background-modifier-border);margin-bottom:10px;flex-shrink:0";
+        const tab1Btn = tabBar.createEl("button", { text: "Current States" }) as HTMLButtonElement;
+        tab1Btn.style.cssText = TAB_ACTIVE;
+        const tab2Btn = tabBar.createEl("button", { text: "Audit Log" }) as HTMLButtonElement;
+        tab2Btn.style.cssText = TAB_INACTIVE;
+
+        // Two content areas
+        this._tab1Content = contentEl.createDiv();
+        this._tab1Content.style.cssText = "display:flex;flex-direction:column;flex:1;min-height:0";
+        this._tab2Content = contentEl.createDiv();
+        this._tab2Content.style.cssText = "display:none;flex-direction:column;flex:1;min-height:0";
+
+        tab1Btn.addEventListener("click", () => {
+            this._activeTab = "states";
+            tab1Btn.style.cssText = TAB_ACTIVE;
+            tab2Btn.style.cssText = TAB_INACTIVE;
+            this._tab1Content!.style.display = "flex";
+            this._tab2Content!.style.display = "none";
+        });
+        tab2Btn.addEventListener("click", async () => {
+            this._activeTab = "audit";
+            tab2Btn.style.cssText = TAB_ACTIVE;
+            tab1Btn.style.cssText = TAB_INACTIVE;
+            this._tab1Content!.style.display = "none";
+            this._tab2Content!.style.display = "flex";
+            if (this._auditEvents.length === 0) await this._fetchAudit();
+        });
+
+        // ── Tab 1 content ──────────────────────────────────────────────
+        const tab1 = this._tab1Content;
+
+        const filterBar = tab1.createEl("div");
+        filterBar.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:10px;flex-shrink:0";
+        filterBar.createEl("span", { text: "Filter:" }).style.cssText = "font-size:12px;font-weight:600";
+        for (const state of ALL_LIFECYCLE_STATES) {
+            const lbl = filterBar.createEl("label");
+            lbl.style.cssText = "display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;user-select:none";
+            const cb = lbl.createEl("input", { type: "checkbox" }) as HTMLInputElement;
+            cb.checked = this._checkedStates.has(state);
+            const chip = lbl.createEl("span", { text: state });
+            chip.style.cssText = `border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;`
+                + (LIFECYCLE_STATE_COLORS[state] ?? "");
+            cb.onchange = () => {
+                if (cb.checked) this._checkedStates.add(state);
+                else this._checkedStates.delete(state);
+                this._page = 0;
+                this._renderAll();
+            };
+        }
+        const refreshBtn = filterBar.createEl("button", { text: "↻ Refresh" }) as HTMLButtonElement;
+        refreshBtn.style.cssText = "margin-left:auto;font-size:12px;padding:2px 10px";
+        refreshBtn.addEventListener("click", async () => {
+            refreshBtn.disabled = true;
+            refreshBtn.textContent = "↻ Refreshing…";
+            await this._fetchAndRender();
+            refreshBtn.disabled = false;
+            refreshBtn.textContent = "↻ Refresh";
+        });
+
+        this._tableWrap = tab1.createDiv();
+        this._tableWrap.style.cssText = "flex:1;overflow:auto;min-height:0;border:1px solid var(--background-modifier-border);border-radius:4px";
+
+        this._pagerWrap = tab1.createDiv();
+        this._pagerWrap.style.cssText = "flex-shrink:0;display:flex;gap:8px;align-items:center;margin-top:8px;font-size:12px;color:var(--text-muted)";
+
+        await this._fetchAndRender();
+
+        // ── Tab 2 content ──────────────────────────────────────────────
+        const tab2 = this._tab2Content;
+
+        const auditFilterBar = tab2.createEl("div");
+        auditFilterBar.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:10px;flex-shrink:0";
+
+        const slugInput = auditFilterBar.createEl("input", { type: "text" }) as HTMLInputElement;
+        slugInput.placeholder = "Search by slug…";
+        slugInput.style.cssText = "width:220px;font-size:12px;padding:3px 8px";
+        slugInput.addEventListener("input", () => {
+            this._auditSlugFilter = slugInput.value.trim();
+            this._auditPage = 0;
+            this._renderAuditAll();
+        });
+
+        const stateSelect = auditFilterBar.createEl("select") as HTMLSelectElement;
+        stateSelect.style.cssText = "font-size:12px;padding:3px 8px";
+        stateSelect.createEl("option", { text: "All states", value: "" });
+        for (const s of ALL_LIFECYCLE_STATES) {
+            stateSelect.createEl("option", { text: s, value: s });
+        }
+        stateSelect.addEventListener("change", () => {
+            this._auditStateFilter = stateSelect.value;
+            this._auditPage = 0;
+            this._renderAuditAll();
+        });
+
+        const auditRefreshBtn = auditFilterBar.createEl("button", { text: "↻ Refresh" }) as HTMLButtonElement;
+        auditRefreshBtn.style.cssText = "margin-left:auto;font-size:12px;padding:2px 10px";
+        auditRefreshBtn.addEventListener("click", async () => {
+            auditRefreshBtn.disabled = true;
+            auditRefreshBtn.textContent = "↻ Refreshing…";
+            this._auditEvents = [];
+            await this._fetchAudit();
+            auditRefreshBtn.disabled = false;
+            auditRefreshBtn.textContent = "↻ Refresh";
+        });
+
+        this._auditTableWrap = tab2.createDiv();
+        this._auditTableWrap.style.cssText = "flex:1;overflow:auto;min-height:0;border:1px solid var(--background-modifier-border);border-radius:4px";
+
+        this._auditPagerWrap = tab2.createDiv();
+        this._auditPagerWrap.style.cssText = "flex-shrink:0;display:flex;gap:8px;align-items:center;margin-top:8px;font-size:12px;color:var(--text-muted)";
+    }
+
+    private async _fetchAndRender() {
+        try {
+            const result = await api.lifecyclePages() as any;
+            this._pages = result.pages ?? [];
+        } catch {
+            this._pages = [];
+        }
+        this._renderAll();
+    }
+
+    private async _fetchAudit() {
+        try {
+            const result = await api.lifecycleEvents({ limit: 1000 }) as any;
+            this._auditEvents = result.events ?? [];
+        } catch {
+            this._auditEvents = [];
+        }
+        this._renderAuditAll();
+    }
+
+    private _filteredPages(): any[] {
+        return this._pages.filter(p => this._checkedStates.has(p.state ?? ""));
+    }
+
+    private _sortedPages(pages: any[]): any[] {
+        const col = this._sortCol;
+        const dir = this._sortAsc ? 1 : -1;
+        return [...pages].sort((a, b) => {
+            const av: string = a[col] ?? "";
+            const bv: string = b[col] ?? "";
+            return av < bv ? -dir : av > bv ? dir : 0;
+        });
+    }
+
+    private _filteredAuditEvents(): any[] {
+        return this._auditEvents.filter(ev => {
+            if (this._auditSlugFilter && !String(ev.slug ?? "").toLowerCase().includes(this._auditSlugFilter.toLowerCase())) return false;
+            if (this._auditStateFilter && ev.to_state !== this._auditStateFilter) return false;
+            return true;
+        });
+    }
+
+    private _sortedAuditEvents(events: any[]): any[] {
+        const col = this._auditSortCol;
+        const dir = this._auditSortAsc ? 1 : -1;
+        return [...events].sort((a, b) => {
+            const av: string = a[col] ?? "";
+            const bv: string = b[col] ?? "";
+            return av < bv ? -dir : av > bv ? dir : 0;
+        });
+    }
+
+    private _renderAll() {
+        this._renderTable();
+        this._renderPager();
+    }
+
+    private _renderAuditAll() {
+        this._renderAuditTable();
+        this._renderAuditPager();
+    }
+
+    private _renderTable() {
+        if (!this._tableWrap) return;
+        this._tableWrap.empty();
+
+        const filtered = this._filteredPages();
+        const sorted = this._sortedPages(filtered);
+        const totalPages = Math.max(1, Math.ceil(sorted.length / LIFECYCLE_PAGE_SIZE));
+        this._page = Math.min(this._page, totalPages - 1);
+        const slice = sorted.slice(this._page * LIFECYCLE_PAGE_SIZE, (this._page + 1) * LIFECYCLE_PAGE_SIZE);
+
+        if (sorted.length === 0) {
+            this._tableWrap.createEl("p", { text: "No pages found." })
+                .style.cssText = "color:var(--text-muted);padding:16px";
+            return;
+        }
+
+        const table = this._tableWrap.createEl("table");
+        table.style.cssText = "width:100%;border-collapse:collapse;font-size:13px";
+
+        const COLS: { key: string; label: string; sortable: boolean }[] = [
+            { key: "slug",         label: "Slug",         sortable: true },
+            { key: "state",        label: "State",        sortable: true },
+            { key: "updated_at",   label: "Last Changed", sortable: true },
+            { key: "triggered_by", label: "Triggered By", sortable: true },
+            { key: "_actions",     label: "Actions",      sortable: false },
+        ];
+
+        const thead = table.createEl("thead");
+        const hrow = thead.createEl("tr");
+        hrow.style.cssText = "background:var(--background-secondary)";
+        for (const col of COLS) {
+            const th = hrow.createEl("th", { text: col.label });
+            th.style.cssText = "text-align:left;padding:6px 10px;border-bottom:1px solid var(--background-modifier-border);white-space:nowrap;user-select:none";
+            if (col.sortable) {
+                th.style.cursor = "pointer";
+                if (this._sortCol === col.key) th.textContent += this._sortAsc ? " ▲" : " ▼";
+                else th.textContent += " ⇅";
+                th.addEventListener("click", () => {
+                    if (this._sortCol === col.key) this._sortAsc = !this._sortAsc;
+                    else { this._sortCol = col.key; this._sortAsc = true; }
+                    this._renderTable();
+                });
+            }
+        }
+
+        const tbody = table.createEl("tbody");
+        for (const pg of slice) {
+            const tr = tbody.createEl("tr");
+            tr.style.borderBottom = "1px solid var(--background-modifier-border-subtle)";
+            tr.addEventListener("mouseenter", () => { tr.style.background = "var(--background-modifier-hover)"; });
+            tr.addEventListener("mouseleave", () => { tr.style.background = ""; });
+
+            const slugTd = tr.createEl("td", { text: pg.slug ?? "—" });
+            slugTd.style.cssText = "padding:6px 10px;font-family:var(--font-monospace);font-size:12px";
+
+            const stateTd = tr.createEl("td");
+            stateTd.style.cssText = "padding:6px 10px";
+            const stateVal = pg.state ?? "";
+            const chip = stateTd.createEl("span", { text: stateVal });
+            chip.style.cssText = `border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;`
+                + (LIFECYCLE_STATE_COLORS[stateVal] ?? "background:var(--background-modifier-border)");
+
+            const rawTs: string = pg.updated_at ?? "";
+            const ts = rawTs ? new Date(rawTs).toLocaleString() : "—";
+            const tsTd = tr.createEl("td", { text: ts });
+            tsTd.style.cssText = "padding:6px 10px;color:var(--text-muted);font-size:12px";
+
+            const trigTd = tr.createEl("td", { text: pg.triggered_by ?? "—" });
+            trigTd.style.cssText = "padding:6px 10px;color:var(--text-muted);font-size:12px";
+
+            const actionsTd = tr.createEl("td");
+            actionsTd.style.cssText = "padding:6px 10px";
+            const allowed = ALLOWED_TRANSITIONS[stateVal] ?? [];
+            for (const toState of allowed) {
+                const btn = actionsTd.createEl("button", { text: toState }) as HTMLButtonElement;
+                btn.style.cssText = "margin-right:4px;font-size:11px;padding:2px 8px";
+                btn.addEventListener("click", () => {
+                    const slug = pg.slug ?? "";
+                    new ReasonModal(this.app, `Transition "${slug}" to ${toState}`, async (reason) => {
+                        try {
+                            await api.lifecycleTransition(slug, toState, reason);
+                            await this._fetchAndRender();
+                        } catch {
+                            new Notice("Synthadoc: lifecycle transition failed — is the server running?");
+                        }
+                    }).open();
+                });
+            }
+        }
+    }
+
+    private _renderAuditTable() {
+        if (!this._auditTableWrap) return;
+        this._auditTableWrap.empty();
+
+        if (this._auditEvents.length === 0) {
+            this._auditTableWrap.createEl("p", { text: "No audit events found." })
+                .style.cssText = "color:var(--text-muted);padding:16px";
+            return;
+        }
+
+        const filtered = this._filteredAuditEvents();
+        const sorted = this._sortedAuditEvents(filtered);
+
+        if (sorted.length === 0) {
+            this._auditTableWrap.createEl("p", { text: "No events match the current filter." })
+                .style.cssText = "color:var(--text-muted);padding:16px";
+            return;
+        }
+
+        const totalPages = Math.max(1, Math.ceil(sorted.length / LIFECYCLE_PAGE_SIZE));
+        this._auditPage = Math.min(this._auditPage, totalPages - 1);
+        const slice = sorted.slice(this._auditPage * LIFECYCLE_PAGE_SIZE, (this._auditPage + 1) * LIFECYCLE_PAGE_SIZE);
+
+        const AUDIT_COLS: { key: string; label: string; sortable: boolean }[] = [
+            { key: "slug",         label: "Slug",         sortable: true },
+            { key: "from_state",   label: "From",         sortable: true },
+            { key: "to_state",     label: "To",           sortable: true },
+            { key: "triggered_by", label: "Triggered By", sortable: true },
+            { key: "timestamp",    label: "Timestamp",    sortable: true },
+            { key: "reason",       label: "Reason",       sortable: false },
+        ];
+
+        const table = this._auditTableWrap.createEl("table");
+        table.style.cssText = "width:100%;border-collapse:collapse;font-size:13px";
+
+        const thead = table.createEl("thead");
+        const hrow = thead.createEl("tr");
+        hrow.style.cssText = "background:var(--background-secondary)";
+        for (const col of AUDIT_COLS) {
+            const th = hrow.createEl("th", { text: col.label });
+            th.style.cssText = "text-align:left;padding:6px 10px;border-bottom:1px solid var(--background-modifier-border);white-space:nowrap;user-select:none";
+            if (col.sortable) {
+                th.style.cursor = "pointer";
+                if (this._auditSortCol === col.key) th.textContent += this._auditSortAsc ? " ▲" : " ▼";
+                else th.textContent += " ⇅";
+                th.addEventListener("click", () => {
+                    if (this._auditSortCol === col.key) this._auditSortAsc = !this._auditSortAsc;
+                    else { this._auditSortCol = col.key; this._auditSortAsc = true; }
+                    this._renderAuditTable();
+                });
+            }
+        }
+
+        const tbody = table.createEl("tbody");
+        for (const ev of slice) {
+            const tr = tbody.createEl("tr");
+            tr.style.borderBottom = "1px solid var(--background-modifier-border-subtle)";
+            tr.addEventListener("mouseenter", () => { tr.style.background = "var(--background-modifier-hover)"; });
+            tr.addEventListener("mouseleave", () => { tr.style.background = ""; });
+
+            const slugTd = tr.createEl("td", { text: ev.slug ?? "—" });
+            slugTd.style.cssText = "padding:6px 10px;font-family:var(--font-monospace);font-size:12px;white-space:nowrap";
+
+            const fromTd = tr.createEl("td");
+            fromTd.style.cssText = "padding:6px 10px;white-space:nowrap";
+            const fromVal = ev.from_state ?? "";
+            if (fromVal) {
+                const fromChip = fromTd.createEl("span", { text: fromVal });
+                fromChip.style.cssText = `border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;`
+                    + (LIFECYCLE_STATE_COLORS[fromVal] ?? "background:var(--background-modifier-border)");
+            } else {
+                fromTd.textContent = "—";
+            }
+
+            const toTd = tr.createEl("td");
+            toTd.style.cssText = "padding:6px 10px;white-space:nowrap";
+            const toVal = ev.to_state ?? "";
+            const toChip = toTd.createEl("span", { text: toVal });
+            toChip.style.cssText = `border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;`
+                + (LIFECYCLE_STATE_COLORS[toVal] ?? "background:var(--background-modifier-border)");
+
+            const trigTd = tr.createEl("td", { text: ev.triggered_by ?? "—" });
+            trigTd.style.cssText = "padding:6px 10px;color:var(--text-muted);font-size:12px;white-space:nowrap";
+
+            const rawTs: string = ev.timestamp ?? "";
+            const ts = rawTs ? new Date(rawTs).toLocaleString() : "—";
+            const tsTd = tr.createEl("td", { text: ts });
+            tsTd.style.cssText = "padding:6px 10px;color:var(--text-muted);font-size:12px;white-space:nowrap";
+
+            const reasonTd = tr.createEl("td", { text: ev.reason ?? "—" });
+            reasonTd.style.cssText = "padding:6px 10px;font-size:12px;color:var(--text-muted)";
+        }
+    }
+
+    private _renderPager() {
+        if (!this._pagerWrap) return;
+        this._pagerWrap.empty();
+        const filtered = this._filteredPages();
+        const totalPages = Math.max(1, Math.ceil(filtered.length / LIFECYCLE_PAGE_SIZE));
+        if (totalPages <= 1) return;
+        const prev = this._pagerWrap.createEl("button", { text: "← Prev" }) as HTMLButtonElement;
+        prev.disabled = this._page === 0;
+        prev.addEventListener("click", () => { this._page--; this._renderAll(); });
+        this._pagerWrap.createEl("span", {
+            text: `Page ${this._page + 1} of ${totalPages} (${filtered.length} total)`,
+        });
+        const next = this._pagerWrap.createEl("button", { text: "Next →" }) as HTMLButtonElement;
+        next.disabled = this._page >= totalPages - 1;
+        next.addEventListener("click", () => { this._page++; this._renderAll(); });
+    }
+
+    private _renderAuditPager() {
+        if (!this._auditPagerWrap) return;
+        this._auditPagerWrap.empty();
+        const filtered = this._filteredAuditEvents();
+        const totalPages = Math.max(1, Math.ceil(filtered.length / LIFECYCLE_PAGE_SIZE));
+        if (totalPages <= 1) return;
+        const prev = this._auditPagerWrap.createEl("button", { text: "← Prev" }) as HTMLButtonElement;
+        prev.disabled = this._auditPage === 0;
+        prev.addEventListener("click", () => { this._auditPage--; this._renderAuditAll(); });
+        this._auditPagerWrap.createEl("span", {
+            text: `Page ${this._auditPage + 1} of ${totalPages} (${filtered.length} events)`,
+        });
+        const next = this._auditPagerWrap.createEl("button", { text: "Next →" }) as HTMLButtonElement;
+        next.disabled = this._auditPage >= totalPages - 1;
+        next.addEventListener("click", () => { this._auditPage++; this._renderAuditAll(); });
+    }
+
+    onClose() {
+        this._pages = [];
+        this._auditEvents = [];
+        this.contentEl.empty();
+    }
 }

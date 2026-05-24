@@ -8,6 +8,10 @@ export function setBase(url: string): void {
     BASE = url.replace(/\/$/, "");
 }
 
+export function getBase(): string {
+    return BASE;
+}
+
 async function call(path: string, method = "GET", body?: object) {
     const res = await requestUrl({
         url: `${BASE}${path}`,
@@ -27,8 +31,9 @@ export const api = {
     status:       ()                          => call("/status"),
     query:        (question: string, timeoutSeconds = 60) => call("/query", "POST", { question, timeout_seconds: timeoutSeconds }),
     ingest:       (source: string, maxResults?: number, force?: boolean) => call("/jobs/ingest", "POST", { source, ...(maxResults != null ? { max_results: maxResults } : {}), ...(force ? { force: true } : {}) }),
-    lint:         (scope = "all", autoResolve = false, adversarial = true) =>
-        call("/jobs/lint", "POST", { scope, auto_resolve: autoResolve, adversarial }),
+    config:       ()                          => call("/config"),
+    lint:         (scope = "all", autoResolve = false, adversarial = true, checkUrls?: boolean | null) =>
+        call("/jobs/lint", "POST", { scope, auto_resolve: autoResolve, adversarial, ...(checkUrls != null ? { check_url_availability: checkUrls } : {}) }),
     lintReport:   ()                          => call("/lint/report"),
     jobs:         (status?: string)           => call(status ? `/jobs?status=${encodeURIComponent(status)}` : "/jobs"),
     retryJob:     (jobId: string)             => call(`/jobs/${jobId}/retry`, "POST"),
@@ -57,4 +62,18 @@ export const api = {
 
     contextBuild: (goal: string, tokenBudget: number) =>
         call("/context/build", "POST", { goal, token_budget: tokenBudget }),
+
+    lifecycleStatus: () => call("/lifecycle/status"),
+    lifecyclePages: () => call("/lifecycle/pages"),
+    lifecycleEvents: (params: { slug?: string; to_state?: string; limit?: number; offset?: number }) => {
+        const p = new URLSearchParams();
+        if (params.slug) p.set("slug", params.slug);
+        if (params.to_state) p.set("to_state", params.to_state);
+        if (params.limit != null) p.set("limit", String(params.limit));
+        if (params.offset != null) p.set("offset", String(params.offset));
+        const qs = p.toString();
+        return call(qs ? `/lifecycle/events?${qs}` : "/lifecycle/events");
+    },
+    lifecycleTransition: (slug: string, to_state: string, reason: string) =>
+        call("/lifecycle/transition", "POST", { slug, to_state, reason }),
 };

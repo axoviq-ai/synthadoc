@@ -1,0 +1,45 @@
+# Synthadoc demo content — released to the public domain (CC0). Factual summary for demonstration purposes.
+
+Andrej Karpathy (born 1986) is a Slovak-Canadian AI researcher and educator known for his contributions to computer vision, large language models, and autonomous vehicles, as well as for his widely followed educational content on deep learning. He completed his PhD at Stanford University under Fei-Fei Li, directed AI at Tesla for five years, co-founded OpenAI, and returned to OpenAI before departing to found his own venture in 2024.
+
+## Early Life and Education
+
+Karpathy was born in Bratislava, Czechoslovakia (now Slovakia) and emigrated with his family to Canada as a child, growing up in Toronto. He studied computer science at the University of Toronto (BCS, 2009) and then completed a master's degree at the University of British Columbia. He moved to Stanford University for his PhD, which he completed in 2016 under the supervision of Fei-Fei Li in the Stanford Vision Lab.
+
+## PhD Research: Image Captioning and Dense Visual Descriptions
+
+Karpathy's PhD work focused on the intersection of computer vision and natural language processing. His dissertation contributed methods for aligning visual and textual representations, including dense captioning — generating descriptions not for whole images but for individual regions within them.
+
+A widely cited contribution from this period is "Deep Visual-Semantic Alignments for Generating Image Descriptions" (2015), which used recurrent networks and bidirectional alignments between image regions and text fragments to generate detailed captions. This work was influential in multimodal learning research.
+
+## OpenAI (2015–2017)
+
+Karpathy co-founded OpenAI in December 2015 alongside Elon Musk, Sam Altman, Ilya Sutskever, and others. At OpenAI he worked on reinforcement learning, contributing to early research on training agents in complex environments. He left OpenAI in 2017 to join Tesla.
+
+## Tesla AI (2017–2022)
+
+At Tesla, Karpathy served as Director of AI and later Senior Director of AI, leading the team responsible for Autopilot — Tesla's driver assistance and autonomous driving system. Under his leadership, Tesla's approach relied entirely on camera-based perception without radar or LiDAR, a technically controversial decision that distinguished Tesla's approach from competitors.
+
+Karpathy was a public advocate for the "data flywheel" strategy: Tesla's fleet of vehicles collects edge cases in the real world, which are used to train and improve the neural networks, which in turn are deployed to collect more data. He presented this approach at Tesla's AI Day events in 2021 and 2022, providing detailed technical descriptions of the neural network architecture and training pipeline.
+
+Karpathy departed Tesla in July 2022.
+
+## Return to OpenAI (2023)
+
+Karpathy rejoined OpenAI in February 2023 as a researcher, working on large language models and related technology. He departed again in February 2024, citing a desire to pursue independent work.
+
+## Educational Content and nanoGPT
+
+Karpathy is one of the most effective communicators of deep learning concepts to practitioners. His lecture series for Stanford CS231n (Convolutional Neural Networks for Visual Recognition) was a foundational resource for an entire generation of computer vision practitioners and is freely available online.
+
+After leaving Tesla, Karpathy launched an educational YouTube channel and Substack. His video series "The spelled-out intro to neural networks and backpropagation: building micrograd" and "Let's build GPT: from scratch, in code, spelled out" walk through the implementation of neural networks and transformers from first principles, in Python, with detailed explanations of each component. These videos have been viewed millions of times and are widely recommended as introductory resources.
+
+nanoGPT is an open-source repository by Karpathy (released December 2022) that implements a character-level and token-level GPT in approximately 300 lines of PyTorch. It is designed to be readable rather than production-optimised, making it a reference implementation for educational use. It can train a GPT-2-equivalent model in a few hours on a single GPU.
+
+## Eureka Labs
+
+In July 2024, Karpathy announced Eureka Labs, a company focused on AI-native education. The founding premise is that AI models can serve as teaching assistants — grading work, answering questions, and guiding students through material — at scale and personalisation levels that human educators cannot achieve alone. The company's first product targets AI and machine learning education.
+
+## Influence
+
+Karpathy occupies an unusual position in the AI field: he combines research contributions across vision, language, and reinforcement learning with a demonstrated ability to explain complex technical material accessibly. His public presence on social media, his open-source projects, and his educational content have made him one of the most influential figures in shaping how practitioners learn and think about deep learning and large language models.

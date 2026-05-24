@@ -123,6 +123,11 @@ An LLM synthesising source documents naturally produces confident prose — but 
 
 Every substantive claim in the wiki is annotated with `^[filename:L-L]` — a citation pointing to the exact line range in the source file it came from. Click the citation chip in Obsidian to open a Source Viewer showing the highlighted passage; for PDF sources, Synthadoc resolves the PDF page number automatically via a pagemap sidecar. A global Provenance modal shows all citations across the wiki, sortable and filterable. Broken citations are caught by the lint system and logged in the audit trail. Run `synthadoc audit citations` to query citations from the CLI.
 
+
+### 5-State Lifecycle Machine
+
+Every compiled wiki page moves through a **5-state lifecycle** (`draft | active | contradicted | stale | archived`) with a full audit trail — every state change recorded with who triggered it and why. New pages start as `draft`; lint automatically promotes clean pages to `active`, marks pages `stale` when their source file changes on disk, and archives pages whose source file disappears. Manual transitions (`activate`, `archive`, `restore`) and the full event log are available from both the CLI and the Obsidian plugin.
+
 ### 5. Re-synthesis is expensive; Synthadoc caches it
 
 A 3-layer cache (embedding, LLM response, provider prompt cache) means repeated lint runs on unchanged pages cost near-zero tokens.
@@ -160,6 +165,7 @@ As the wiki accumulates pages the `index.md` table of contents, domain scope (`p
 | Orphan page detection        | **Yes**                                                               | No          | No         | No        |
 | Adversarial claim review     | **Yes** (concurrent second-LLM pass — flags overstated claims and unsupported assertions per page) | No | No | No |
 | Claim-level provenance       | **Yes** (`^[file:L-L]` citations on every claim; Source Viewer in Obsidian; PDF page resolution; global provenance table; broken-citation lint) | No | No | No |
+| 5-state lifecycle machine    | **Yes** (`draft / active / contradicted / stale / archived`; auto-transitions via lint; manual CLI + Obsidian; immutable audit trail per transition) | No | No | No |
 | Persistent wikilink graph    | **Yes**                                                               | No          | No         | No        |
 | Local-first (no cloud data)  | **Yes**                                                               | Varies      | No         | No        |
 | Custom skill plugins         | **Yes**                                                               | Limited     | No         | No        |
@@ -341,7 +347,7 @@ A **wiki** is a self-contained, structured knowledge base — a folder of Markdo
 
 A wiki must be installed before the engine can serve it. The fastest way to get started is the **History of Computing** demo, which ships with 13 pre-built pages and sample source files — no LLM API key required to browse it.
 
-**Install the demo wiki:**
+**First time — install the demo wiki:**
 
 ```bash
 # Linux / macOS
@@ -350,6 +356,14 @@ synthadoc install history-of-computing --target ~/wikis --demo
 # Windows (cmd.exe)
 synthadoc install history-of-computing --target %USERPROFILE%\wikis --demo
 ```
+
+**Upgrading / already installed the demo — sync new source files instead:**
+
+```bash
+synthadoc demo sync history-of-computing
+```
+
+This copies any new source files added to the demo template into your existing wiki without overwriting anything you have already ingested or modified. Skip the `install` command above if you have previously installed this demo.
 
 **Then start the engine:**
 
@@ -392,17 +406,18 @@ The guide covers:
 5. Query the pre-built wiki — including knowledge gap detection
 6. Batch ingest all demo source files
 7. Resolve a contradiction
-8. Fix an orphan page
-9. Run the adversarial lint pass — flag overstated claims across all pages
-10. Web search ingestion with automatic decomposition
-11. Ingest a YouTube video
-12. Enrich the wiki with scaffold (regenerate/update index, purpose, AGENTS.md)
-13. Audit features (token cost, history, events)
-14. Schedule recurring operations
-15. Set up query-scoped routing with ROUTING.md
-16. Stage and review candidate pages before promoting them
-17. Build a context pack for grounded LLM prompts
-18. Verify claim provenance — source-line citations, broken citation audit, global provenance table
+8. Manage page lifecycle — draft, active, stale, archived states
+9. Fix an orphan page
+10. Run the adversarial lint pass — flag overstated claims across all pages
+11. Web search ingestion with automatic decomposition
+12. Ingest a YouTube video
+13. Enrich the wiki with scaffold (regenerate/update index, purpose, AGENTS.md)
+14. Audit features (token cost, history, events)
+15. Schedule recurring operations
+16. Set up query-scoped routing with ROUTING.md
+17. Stage and review candidate pages before promoting them
+18. Build a context pack for grounded LLM prompts
+19. Verify claim provenance — source-line citations, broken citation audit, global provenance table
 
 ---
 
@@ -553,6 +568,9 @@ synthadoc install history-of-computing --target ~/wikis --demo
 # List available demo templates
 synthadoc demo list
 
+# Sync new source files into an existing demo install (additive only, no overwrites)
+synthadoc demo sync history-of-computing
+
 # Install the Obsidian plugin directly into the active Obsidian vault
 synthadoc plugin install history-of-computing
 ```
@@ -688,8 +706,35 @@ synthadoc lint run --auto-resolve -w my-wiki
 # Skip adversarial review (structural checks only; also clears existing warnings)
 synthadoc lint run --no-adversarial -w my-wiki
 
+# Skip lifecycle checks (structural and adversarial checks only)
+synthadoc lint run --no-lifecycle -w my-wiki
+
 # Instant report (reads wiki files directly, no server needed)
 synthadoc lint report -w my-wiki
+```
+
+### Managing page lifecycle
+
+```bash
+# Show page counts by lifecycle state
+synthadoc status -w my-wiki
+
+# Promote a draft page to active after manual review
+synthadoc lifecycle activate <slug> -w my-wiki --reason "reviewed and verified"
+
+# Archive a page whose source has been superseded
+synthadoc lifecycle archive <slug> -w my-wiki --reason "replaced by updated source"
+
+# Restore an archived page back to draft for re-review
+synthadoc lifecycle restore <slug> -w my-wiki --reason "source re-added"
+
+# View full state history for a page (or all pages)
+synthadoc lifecycle log <slug> -w my-wiki
+synthadoc lifecycle log -w my-wiki
+
+# Purge old lifecycle events to reclaim audit.db space
+synthadoc audit lifecycle purge -w my-wiki --before 2026-01-01
+synthadoc audit lifecycle purge -w my-wiki --keep-latest 100
 ```
 
 ### Monitoring jobs
@@ -886,6 +931,11 @@ Expected `status` output:
 ```
 Wiki:         /home/user/wikis/my-wiki
 Pages:        34
+  active         34
+  draft           0
+  stale           0
+  contradicted    0
+  archived        0
 Jobs pending: 0
 Jobs total:   12
 ```
@@ -941,6 +991,8 @@ synthadoc audit citations --json -w my-wiki              # raw JSON for scriptin
 ```
 
 > **Note:** Per-model cost tracking is live from v0.2.0 — pricing tables cover all 7 API providers. Token counts and USD cost are recorded for every ingest and query operation in `audit.db`.
+
+> **Lifecycle transitions** are also recorded in `audit.db` — every state change (slug, from/to state, triggered_by, reason, timestamp) is permanently stored as an immutable audit event. Query the log with `synthadoc lifecycle log` or `GET /lifecycle/events`.
 
 ### Cache management
 

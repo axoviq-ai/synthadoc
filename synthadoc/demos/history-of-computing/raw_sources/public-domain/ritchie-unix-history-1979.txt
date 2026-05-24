@@ -1,0 +1,39 @@
+# Synthadoc demo content — released to the public domain (CC0). Factual summary for demonstration purposes.
+
+Unix is a family of multitasking, multiuser operating systems that trace their lineage to work begun at Bell Telephone Laboratories in 1969. Its influence on subsequent operating systems, programming languages, and software culture has been profound and pervasive.
+
+## Origins in Multics
+
+Unix grew out of the collapse of Multics (Multiplexed Information and Computing Service), an ambitious timesharing operating system developed in the 1960s as a joint project between MIT, Bell Labs, and General Electric. Multics aimed to provide computing as a utility — a single large machine serving many simultaneous users, much as an electric power plant serves many customers.
+
+Bell Labs withdrew from the Multics project in 1969, concluding that the system was too complex and too slow to meet Bell's needs. Two of the Bell Labs programmers who had worked on Multics, Ken Thompson and Dennis Ritchie, were unwilling to return to the batch-processing environment that had preceded it. Thompson, in particular, wanted to write a space-travel game for a discarded PDP-7 minicomputer he had found in the lab, and to do so he needed an operating system.
+
+## The PDP-7 and the First Unix
+
+Working mostly on his own in the summer of 1969 while his wife and infant son were on holiday, Thompson wrote the kernel of what would become Unix on the PDP-7. He borrowed ideas from Multics — the hierarchical file system, the shell as a user-space program, the notion of processes — but stripped them to their essentials. The name "Unix" was a pun on Multics, coined by Brian Kernighan.
+
+Ritchie joined Thompson's efforts, and the system was ported to the more capable PDP-11 in 1970. At Bell Labs, Unix spread informally through the research community. In 1971, Bell Labs published the first Unix Programmer's Manual, covering a system that was by then running on several machines internally.
+
+## The C Language and Portability
+
+The original Unix was written in assembly language, which tied it to specific hardware. To make Unix portable — capable of running on different machines without complete rewriting — Ritchie developed a new programming language. He began with BCPL and its derivative B, developed by Thompson and Martin Richards, and redesigned the type system and language structure to suit the PDP-11's architecture. The result was C, largely complete in its first published form by 1972.
+
+Ritchie then rewrote Unix in C. This was a transformative act: for the first time, a production operating system was written in a high-level language. Porting Unix to a new machine required rewriting only the machine-specific parts of the kernel in assembly; the bulk of the system could be recompiled from C source. This approach made Unix the first widely portable operating system.
+
+The C language itself spread with Unix. It became the dominant systems programming language of the 1970s and 1980s and the base language on which much subsequent language design built. Ritchie and Brian Kernighan documented C in "The C Programming Language," published in 1978, which became one of the best-selling technical books in the history of computing.
+
+## Pipes, Filters, and the Unix Philosophy
+
+Unix established a design philosophy — articulated most clearly by Douglas McIlroy — centred on composability. The principle is that each program should do one thing well, accept text input, and produce text output. Programs are composed by connecting them with pipes, a mechanism that routes the output of one process directly to the input of another without writing an intermediate file.
+
+This design emerged from practical experience: programs written as filters could be combined in novel ways their authors had not anticipated. A user wanting to count the unique words in a file could compose the sort, uniq, and wc commands without writing any new code. The pipe and filter model influenced the design of later languages, shells, and distributed systems.
+
+## Licensing and the Berkeley Fork
+
+AT&T licensed Unix to universities at low cost, making it widely available for academic use. The University of California, Berkeley became a major centre of Unix development. Starting in 1977, Berkeley's Computer Systems Research Group (CSRG) produced the Berkeley Software Distribution (BSD), which added significant new features: a virtual memory system, a faster file system, and — critically for the growth of the internet — a complete implementation of the TCP/IP networking protocols in 1983.
+
+BSD's networking code was picked up by many commercial Unix vendors and became the foundation on which the internet ran. BSD also generated several long-lived descendants: FreeBSD, OpenBSD, and NetBSD continue in active development, and Apple's macOS and iOS are derived from BSD through the NeXTSTEP operating system.
+
+## Legacy and the Linux Continuation
+
+Turing Award winner Ken Thompson and Dennis Ritchie received the ACM Turing Award in 1983 for developing Unix. The Unix design principles — small tools, text streams, hierarchical file systems, and a sharp separation between kernel and user space — remain the dominant paradigm in server and cloud computing. Linux, developed by Linus Torvalds starting in 1991 and released under the GNU General Public License, extended the Unix model to commodity hardware and became the foundation of the modern internet infrastructure.

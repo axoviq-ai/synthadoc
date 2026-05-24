@@ -5,7 +5,7 @@ status: active
 confidence: high
 created: 2026-05-09
 sources:
-  - file: raw_sources/ai-fundamentals-overview.md
+  - file: ai-fundamentals-overview.md
     hash: a3f8c2d1e4b9071652340abc98def765a3f8c2d1e4b9071652340abc98def765
     size: 3847
     ingested: '2026-05-09'

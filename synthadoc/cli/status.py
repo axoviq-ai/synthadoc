@@ -8,11 +8,12 @@ import typer
 
 from synthadoc.cli.main import app
 from synthadoc.cli._http import get
+from synthadoc.storage.wiki import LifecycleState
 
 
 @app.command("status")
 def status_cmd(wiki: Optional[str] = typer.Option(None, "--wiki", "-w")):
-    """Show wiki status. Requires synthadoc serve to be running."""
+    """Show wiki status including lifecycle summary. Requires synthadoc serve to be running."""
     from synthadoc.cli._wiki import resolve_wiki
     wiki = resolve_wiki(wiki)
     result = get(wiki, "/status")
@@ -20,3 +21,22 @@ def status_cmd(wiki: Optional[str] = typer.Option(None, "--wiki", "-w")):
     typer.echo(f"Pages:        {result['pages']}")
     typer.echo(f"Jobs pending: {result['jobs_pending']}")
     typer.echo(f"Jobs total:   {result['jobs_total']}")
+
+    try:
+        lc = get(wiki, "/lifecycle/status")
+        counts = lc.get('counts', {})
+        typer.echo("\nPage lifecycle:")
+        if not counts:
+            typer.echo("  (none — run `synthadoc lint run` to initialise lifecycle states)")
+        else:
+            _HINTS = {
+                "draft": "<- run `synthadoc lint run` to promote",
+                "stale": "<- re-ingest needed",
+                "contradicted": "<- review required",
+            }
+            for state in LifecycleState.ORDERED:
+                count = counts.get(state, 0)
+                hint = f"  {_HINTS[state]}" if state in _HINTS and count > 0 else ""
+                typer.echo(f"  {state:<14} {count}{hint}")
+    except Exception:
+        pass  # server may not support lifecycle yet

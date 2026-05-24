@@ -515,3 +515,189 @@ def test_lint_report_includes_adversarial_warnings(tmp_wiki):
     assert entry["warnings"][0]["claim"] == "Claim A"
     assert len(entry["suggested_reingests"]) == 1
     assert "study.pdf" in entry["suggested_reingests"][0]
+
+
+def test_lifecycle_pages_endpoint_returns_list(tmp_wiki):
+    """GET /lifecycle/pages returns current state per slug from page_states table."""
+    from synthadoc.integration.http_server import create_app
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.get("/lifecycle/pages")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "pages" in data
+    assert isinstance(data["pages"], list)
+
+
+def test_lifecycle_status_endpoint(tmp_wiki):
+    """GET /lifecycle/status returns state counts."""
+    from synthadoc.integration.http_server import create_app
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.get("/lifecycle/status")
+    assert resp.status_code == 200
+    assert "counts" in resp.json()
+
+
+def test_lifecycle_events_endpoint(tmp_wiki):
+    """GET /lifecycle/events returns paginated events."""
+    from synthadoc.integration.http_server import create_app
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.get("/lifecycle/events?limit=5&offset=0")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "events" in data
+    assert "total" in data
+
+
+def test_lifecycle_transition_valid(tmp_wiki):
+    """POST /lifecycle/transition moves a draft page to active."""
+    import asyncio
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.storage.wiki import WikiStorage, WikiPage
+
+    wiki_dir = tmp_wiki / "wiki"
+    page = WikiPage(title="Test", tags=[], content="# Test",
+                    status="draft", confidence="medium", sources=[])
+    WikiStorage(wiki_dir).write_page("test-page", page)
+
+    db = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    asyncio.run(db.init())
+    asyncio.run(db.set_page_state("test-page", "draft", "ingest"))
+
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.post("/lifecycle/transition", json={
+            "slug": "test-page", "to_state": "active", "reason": "reviewed"
+        })
+    assert resp.status_code == 200
+    assert resp.json()["to_state"] == "active"
+
+
+def test_lifecycle_transition_page_not_found(tmp_wiki):
+    """POST /lifecycle/transition returns 404 when page is missing."""
+    from synthadoc.integration.http_server import create_app
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.post("/lifecycle/transition", json={
+            "slug": "no-such-page", "to_state": "active", "reason": "test"
+        })
+    assert resp.status_code == 404
+
+
+def test_staging_policy_get(tmp_wiki):
+    """GET /staging/policy returns the current policy (defaults to off)."""
+    from synthadoc.integration.http_server import create_app
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.get("/staging/policy")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "policy" in data
+    assert "confidence_min" in data
+
+
+def test_lifecycle_transition_invalid_transition_rejected(tmp_wiki):
+    """POST /lifecycle/transition returns 422 for disallowed state transitions."""
+    import asyncio
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.storage.wiki import WikiStorage, WikiPage
+
+    wiki_dir = tmp_wiki / "wiki"
+    page = WikiPage(title="Test", tags=[], content="# Test",
+                    status="active", confidence="medium", sources=[])
+    WikiStorage(wiki_dir).write_page("active-page", page)
+
+    db = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    asyncio.run(db.init())
+    asyncio.run(db.set_page_state("active-page", "active", "ingest"))
+
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.post("/lifecycle/transition", json={
+            "slug": "active-page", "to_state": "draft", "reason": "test"
+        })
+    assert resp.status_code == 422
+
+
+def test_audit_events_endpoint(tmp_wiki):
+    """GET /audit/events returns records."""
+    from synthadoc.integration.http_server import create_app
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.get("/audit/events?limit=10")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "records" in data
+    assert "count" in data
+
+
+def test_cancel_pending_jobs_endpoint(tmp_wiki):
+    """POST /jobs/cancel-pending cancels all pending jobs."""
+    from synthadoc.integration.http_server import create_app
+    with patch("synthadoc.core.queue.JobQueue.cancel_pending",
+               new=AsyncMock(return_value=0)):
+        with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+            resp = client.post("/jobs/cancel-pending")
+    assert resp.status_code == 200
+    assert resp.json()["cancelled"] == 0
+
+
+def test_delete_job_endpoint_not_found(tmp_wiki):
+    """DELETE /jobs/{id} returns 404 when job does not exist."""
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.core.queue import Job, JobStatus
+    with patch("synthadoc.core.queue.JobQueue.list_jobs",
+               new=AsyncMock(return_value=[])):
+        with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+            resp = client.delete("/jobs/no-such-job")
+    assert resp.status_code == 404
+
+
+def test_delete_completed_job_endpoint(tmp_wiki):
+    """DELETE /jobs/{id} removes a completed job."""
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.core.queue import Job, JobStatus
+    import datetime
+    completed_job = Job(id="done-1", operation="lint", payload={},
+                        status=JobStatus.COMPLETED, retries=0, error=None,
+                        created_at=datetime.datetime.now(datetime.timezone.utc))
+    with patch("synthadoc.core.queue.JobQueue.list_jobs",
+               new=AsyncMock(return_value=[completed_job])):
+        with patch("synthadoc.core.queue.JobQueue.delete", new=AsyncMock()):
+            with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+                resp = client.delete("/jobs/done-1")
+    assert resp.status_code == 200
+    assert resp.json()["deleted"] == "done-1"
+
+
+def test_delete_pending_job_returns_409(tmp_wiki):
+    """DELETE /jobs/{id} returns 409 when the job is still pending."""
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.core.queue import Job, JobStatus
+    import datetime
+    pending_job = Job(id="run-1", operation="lint", payload={},
+                      status=JobStatus.PENDING, retries=0, error=None,
+                      created_at=datetime.datetime.now(datetime.timezone.utc))
+    with patch("synthadoc.core.queue.JobQueue.list_jobs",
+               new=AsyncMock(return_value=[pending_job])):
+        with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+            resp = client.delete("/jobs/run-1")
+    assert resp.status_code == 409
+
+
+def test_parse_retry_after_with_match():
+    """_parse_retry_after extracts seconds from rate-limit error messages."""
+    from synthadoc.integration.http_server import _parse_retry_after
+    exc = Exception("Please try again in 1m 30.5s.")
+    assert _parse_retry_after(exc) == pytest.approx(90.5)
+
+
+def test_parse_retry_after_no_match_returns_default():
+    """_parse_retry_after returns default when message does not match."""
+    from synthadoc.integration.http_server import _parse_retry_after
+    assert _parse_retry_after(Exception("unrelated error")) == 60.0
+
+
+def test_config_endpoint_returns_lint_settings(tmp_wiki):
+    """GET /config exposes check_url_availability from the server config."""
+    from synthadoc.integration.http_server import create_app
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.get("/config")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "check_url_availability" in data
+    assert isinstance(data["check_url_availability"], bool)
