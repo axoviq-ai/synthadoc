@@ -25,8 +25,10 @@ def status_cmd(wiki: Optional[str] = typer.Option(None, "--wiki", "-w")):
     try:
         lc = get(wiki, "/lifecycle/status")
         counts = lc.get('counts', {})
-        if counts:
-            typer.echo("\nPage lifecycle:")
+        typer.echo("\nPage lifecycle:")
+        if not counts:
+            typer.echo("  (none — run `synthadoc lint run` to initialise lifecycle states)")
+        else:
             _HINTS = {
                 "draft": "<- run `synthadoc lint run` to promote",
                 "stale": "<- re-ingest needed",
