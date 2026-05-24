@@ -5,7 +5,7 @@ status: active
 confidence: medium
 created: 2026-05-09
 sources:
-  - file: raw_sources/model-capabilities-comparison.xlsx
+  - file: model-capabilities-comparison.xlsx
     hash: b7e1a042c5d3f896740123cde45fab89b7e1a042c5d3f896740123cde45fab89
     size: 9214
     ingested: '2026-05-09'
