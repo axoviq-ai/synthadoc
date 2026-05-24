@@ -9,6 +9,8 @@ major engine feature. No setup beyond following the steps below is required.
 > **Before you start:** complete [README Installation Steps 1–6](../README.md#installation)
 > (clone, install, set your API key, install the demo wiki, and start the engine).
 > Then come back here.
+>
+> **Already installed the demo wiki?** Skip `synthadoc install` and run `synthadoc demo sync history-of-computing` instead. This copies any new source files added to the latest demo template into your existing wiki without overwriting anything you have already ingested or modified.
 
 ---
 
@@ -492,12 +494,47 @@ synthadoc lifecycle archive alan-turing -w history-of-computing --reason "replac
 synthadoc lifecycle log alan-turing -w history-of-computing
 ```
 
-### Stale detection
+### Stale detection — local files
 
-If a source file changes after ingest, the next lint run detects the SHA-256 hash mismatch and marks the page `stale`. Resolve it by re-ingesting the updated file:
+If a source file on disk changes after ingest, the next lint run detects the SHA-256 hash mismatch and marks the page `stale`. Resolve it by re-ingesting the updated file:
 
 ```bash
 synthadoc ingest raw_sources/updated-source.pdf -w history-of-computing --force
+```
+
+### URL source availability and freshness
+
+Pages ingested from web URLs or YouTube are also monitored — but these checks are opt-in to avoid adding network calls to every lint run.
+
+**Archived — URL has gone away**
+
+Enable HTTP availability checks with the `--check-urls` flag or a config option:
+
+```bash
+synthadoc lint run --check-urls
+```
+
+```toml
+# .synthadoc/config.toml
+[lint]
+check_url_availability = true
+```
+
+When enabled, lint issues an HTTP HEAD request for each URL-sourced page. A 404 or 410 response transitions the page to `archived`. YouTube videos are probed via the transcript system — a deleted or private video triggers `archived`. Network timeouts and other transient errors leave the page unchanged (no false positives).
+
+**Stale — URL content is old**
+
+To flag URL-sourced pages that have not been re-ingested in a long time:
+
+```toml
+[audit]
+url_staleness_days = 90   # 0 = never flag (default)
+```
+
+When non-zero, lint compares the `ingested_at` timestamp in the audit database to today. Pages older than the threshold are marked `stale`, prompting a re-ingest:
+
+```bash
+synthadoc ingest "https://example.com/article" -w history-of-computing --force
 ```
 
 ### Audit trail

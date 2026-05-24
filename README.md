@@ -357,6 +357,8 @@ synthadoc install history-of-computing --target ~/wikis --demo
 synthadoc install history-of-computing --target %USERPROFILE%\wikis --demo
 ```
 
+> **Already installed the demo?** Skip the install command and run `synthadoc demo sync history-of-computing` instead. This copies any new source files added to the demo template into your existing wiki without overwriting anything you have already ingested or modified.
+
 **Then start the engine:**
 
 ```bash
@@ -559,6 +561,9 @@ synthadoc install history-of-computing --target ~/wikis --demo
 
 # List available demo templates
 synthadoc demo list
+
+# Sync new source files into an existing demo install (additive only, no overwrites)
+synthadoc demo sync history-of-computing
 
 # Install the Obsidian plugin directly into the active Obsidian vault
 synthadoc plugin install history-of-computing

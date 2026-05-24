@@ -1933,8 +1933,8 @@ Every wiki page moves through a defined set of states that reflect its review st
 |---|---|---|---|
 | _(none)_ | `draft` | `ingest` | New page created by ingest |
 | `draft` | `active` | `lint` | Page passes all lint checks |
-| `active` | `stale` | `lint` | SHA-256 hash of source on disk ≠ recorded ingest hash |
-| `active` / `stale` | `archived` | `lint` | Source file no longer exists on disk |
+| `active` | `stale` | `lint` | Local source: SHA-256 hash mismatch; or URL source older than `url_staleness_days` |
+| `active` / `stale` | `archived` | `lint` | Local source no longer exists on disk; or URL source returns 404/410 (opt-in) |
 | any | `archived` | `cli` / `api` | Manual archive (`synthadoc lifecycle archive`) |
 | `archived` | `draft` | `cli` / `api` | Manual restore (`synthadoc lifecycle restore`) |
 | `contradicted` | `archived` | `cli` / `api` | Manual archive after reviewing the conflict |
@@ -1962,12 +1962,62 @@ lifecycle_events (id INTEGER PK, slug TEXT, from_state TEXT, to_state TEXT,
 
 Four lifecycle checks run at the end of every lint pass, after all existing checks, unless `--no-lifecycle` is passed:
 
-1. **Archived detection** — source file no longer on disk → transition page to `archived`
-2. **Stale detection** — SHA-256 hash of source on disk ≠ recorded ingest hash → transition page to `stale`
+1. **Archived detection** — source no longer available → transition page to `archived`
+2. **Stale detection** — source has changed since last ingest → transition page to `stale`
 3. **Draft promotion** — `draft` page with no active issues → transition to `active`
 4. **Manual-edit sync** — frontmatter `status` ≠ `page_states` DB → reconcile DB record to match
 
 Pass `--no-lifecycle` to `synthadoc lint run` to skip all four checks. Existing `page_states` and `lifecycle_events` records are not modified.
+
+#### Check 1 — Archived detection (local and URL sources)
+
+For **local file sources**: if the source path recorded in frontmatter no longer exists on disk, the page is transitioned to `archived`.
+
+For **URL sources** (`http://`, `https://`, `youtube.com/watch?v=…`): availability is checked only when `[lint] check_url_availability = true` (default: `false` — opt-in because it adds a network call per URL source during every lint run).
+
+- **Generic URLs** — an HTTP HEAD request is issued. Responses of 404 or 410 are treated as archived. Timeouts, connection errors, and any other status code leave the page unchanged (conservative: no false positives on transient failures).
+- **YouTube URLs** — the transcript API is probed with the video ID. A `VideoUnavailable` response means the video is deleted or private → `archived`. Any other error (network error, parsing failure) leaves the page unchanged.
+
+Enable with the `--check-urls` flag or the config key:
+
+```bash
+synthadoc lint run --check-urls
+```
+
+```toml
+[lint]
+check_url_availability = true   # default: false
+```
+
+#### Check 2 — Stale detection (local and URL sources)
+
+For **local file sources**: a SHA-256 hash of the current file on disk is compared to the hash recorded at ingest time. A mismatch transitions the page to `stale`.
+
+For **URL sources**: staleness is age-based. If `url_staleness_days` is non-zero, the `ingested_at` timestamp from `audit.db` is compared to the current time. Pages whose last ingest is older than the threshold are transitioned to `stale`, prompting a re-ingest.
+
+```toml
+[audit]
+url_staleness_days = 90   # 0 = never mark URL sources stale (default)
+```
+
+URL staleness detection runs on every lint pass when the config value is non-zero — no extra flag required.
+
+#### Debug logging
+
+When URL availability or staleness checks run, the lint agent emits `DEBUG`-level log lines for each check outcome:
+
+```
+lifecycle url-check [youtube] id=dQw4w9WgXcQ url=https://www.youtube.com/watch?v=dQw4w9WgXcQ → unavailable
+lifecycle url-check [head]    url=https://example.com/page → status=404 → unavailable
+lifecycle url-stale           url=https://example.com/page → age=102d threshold=90d → stale
+```
+
+Enable debug logging in `config.toml`:
+
+```toml
+[logs]
+level = "DEBUG"
+```
 
 ### Auto-retention
 
@@ -1983,6 +2033,10 @@ When non-zero, events older than `lifecycle_retention_days` are pruned from `lif
 ```
 synthadoc status -w <wiki>
     Show page counts by lifecycle state alongside existing page and job totals.
+
+synthadoc lint run [--no-lifecycle] [--check-urls]
+    Run lint. --no-lifecycle skips all four lifecycle checks.
+    --check-urls enables HTTP availability checks for URL sources (overrides config).
 
 synthadoc lifecycle activate <slug> -w <wiki> [--reason "..."]
     Transition a page to active.
@@ -2026,6 +2080,10 @@ synthadoc audit lifecycle purge -w <wiki> --keep-latest <n>
 ```toml
 [audit]
 lifecycle_retention_days = 365   # 0 = keep forever (default)
+url_staleness_days = 90          # 0 = never mark URL sources stale (default)
+
+[lint]
+check_url_availability = true    # default: false — adds a network call per URL source during lint
 ```
 
 ---
