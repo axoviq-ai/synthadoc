@@ -407,42 +407,66 @@ synthadoc query "What did Konrad Zuse contribute to computing history?"
 
 ## Step 7 — Run lint — promote pages to active
 
-Every page from Step 6 was created as `draft`. A lint run validates each page — checking for contradictions, orphan pages, and dangling links — and automatically promotes clean pages to `active`.
+Every page created by ingest in Step 6 starts as `draft`. A lint run validates each page — checking for contradictions, orphan pages, and dangling links — and automatically promotes clean pages to `active`.
+
+### 1. Check status before running lint
+
+```bash
+synthadoc status
+```
+
+Expected output (after batch ingest, before lint):
+
+```
+[wiki: history-of-computing]
+Wiki:         ~/wikis/history-of-computing
+Pages:        18
+Jobs pending: 0
+Jobs total:   6
+
+Page lifecycle:
+  active         0
+  draft          5  <- run `synthadoc lint run` to promote
+  stale          0
+  contradicted   0
+  archived       0
+```
+
+The 5 `draft` pages are the new pages created by ingest. The 13 pre-built demo pages are not shown yet — they have no lifecycle record until lint runs for the first time and syncs their state.
+
+### 2. Run lint
 
 ```bash
 synthadoc lint run
 synthadoc jobs list           # watch progress
 ```
 
-### Before and after
+Wait until the lint job shows `completed`.
 
-**Before lint:**
-
-```
-Wiki: history-of-computing
-  draft          6
-  active        13
-  stale          0
-  contradicted   0
-  archived       0
-```
-
-**After lint:**
-
-```
-Wiki: history-of-computing
-  draft          0
-  active        18
-  stale          0
-  contradicted   1
-  archived       0
-```
-
-`grace-hopper` was flagged contradicted (see Step 9) — all other new pages were promoted to `active`.
+### 3. Check status after lint
 
 ```bash
 synthadoc status
 ```
+
+Expected output:
+
+```
+[wiki: history-of-computing]
+Wiki:         ~/wikis/history-of-computing
+Pages:        18
+Jobs pending: 0
+Jobs total:   7
+
+Page lifecycle:
+  active        17
+  draft          0
+  stale          0
+  contradicted   1  <- review required
+  archived       0
+```
+
+All 5 draft pages were promoted to `active`. The 13 pre-built pages were registered in the lifecycle system for the first time — 12 became `active`, and `grace-hopper` became `contradicted` (see Step 9).
 
 ---
 

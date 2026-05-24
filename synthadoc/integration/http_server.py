@@ -203,6 +203,12 @@ class StagingPolicyRequest(BaseModel):
     confidence_min: str | None = None
 
 
+class LifecycleTransitionRequest(BaseModel):
+    slug: str
+    to_state: str
+    reason: str
+
+
 def _parse_retry_after(exc: Exception, default: float = 60.0) -> float:
     """Parse 'Please try again in Xm Y.Zs' from a rate-limit error message."""
     m = re.search(r"Please try again in (?:(\d+)m\s*)?(\d+(?:\.\d+)?)s", str(exc))
@@ -835,11 +841,6 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         (LifecycleState.STALE,        LifecycleState.ARCHIVED),
         (LifecycleState.ARCHIVED,     LifecycleState.DRAFT),
     }
-
-    class LifecycleTransitionRequest(BaseModel):
-        slug: str
-        to_state: str
-        reason: str
 
     @app.get("/lifecycle/status")
     async def lifecycle_status():
