@@ -187,7 +187,8 @@ class JobQueue:
         """Mark all pending jobs as cancelled. Returns the number of jobs cancelled."""
         async with aiosqlite.connect(self._path) as db:
             async with db.execute("SELECT COUNT(*) FROM jobs WHERE status='pending'") as cur:
-                count = (await cur.fetchone())[0]
+                row = await cur.fetchone()
+                count = row[0] if row else 0
             await db.execute(
                 "UPDATE jobs SET status='cancelled', error='cancelled by user' WHERE status='pending'"
             )
@@ -201,7 +202,8 @@ class JobQueue:
                 "AND created_at < datetime('now', ?)",
                 (f"-{older_than_days} days",)
             ) as cur:
-                count = (await cur.fetchone())[0]
+                row = await cur.fetchone()
+                count = row[0] if row else 0
             await db.execute(
                 "DELETE FROM jobs WHERE status IN ('completed','dead') "
                 "AND created_at < datetime('now', ?)",

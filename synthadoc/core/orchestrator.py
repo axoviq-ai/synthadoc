@@ -9,6 +9,7 @@ from typing import Optional
 import logging
 
 from synthadoc.config import Config, load_config
+from synthadoc.errors import DomainBlockedException
 from synthadoc.core.cache import CacheManager
 from synthadoc.core.cost_guard import CostGuard
 from synthadoc.core.hooks import HookExecutor
@@ -58,7 +59,12 @@ def _read_manifest(path: Path) -> list[str] | None:
             continue
         candidate = Path(line)
         resolved = candidate if candidate.is_absolute() else (base / candidate)
-        if resolved.exists():
+        try:
+            path_exists = resolved.exists()
+        except OSError:
+            # ENAMETOOLONG (errno 63) or other OS error — line can't be a valid path
+            path_exists = False
+        if path_exists:
             continue
         return None  # line is not a URL, intent, or valid path — not a manifest
 
@@ -343,7 +349,7 @@ class Orchestrator:
                 await self._queue.fail(job_id, str(e))
                 raise
 
-    async def _auto_block_domain(self, exc: "DomainBlockedException") -> None:
+    async def _auto_block_domain(self, exc: DomainBlockedException) -> None:
         """Persist a newly discovered blocked domain and record an audit event."""
         import json
         import logging

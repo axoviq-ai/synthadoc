@@ -152,11 +152,13 @@ def _check_network(provider: str) -> None:
         )
 
 
-def _spawn_background(wiki_root: Path, effective_port: int, log_path: Path) -> None:
+def _spawn_background(wiki_root: Path, effective_port: int, log_path: Path,
+                       banner_kwargs: dict | None = None) -> None:
     """Detach the server as a background process and return to the shell."""
     # Strip --background / -b from the forwarded args.
     server_args = [a for a in sys.argv[1:] if a not in ("--background", "-b")]
 
+    shared_env = {**os.environ, _NO_BANNER_ENV: "1"}
     if sys.platform == "win32":
         # pythonw.exe runs Python with no console window at all — the child
         # process has zero console association, so the parent's CMD/PowerShell
@@ -164,30 +166,32 @@ def _spawn_background(wiki_root: Path, effective_port: int, log_path: Path) -> N
         pythonw = Path(sys.executable).with_name("pythonw.exe")
         interpreter = str(pythonw) if pythonw.exists() else sys.executable
         cmd = [interpreter, "-m", "synthadoc"] + server_args
-        popen_kwargs: dict = dict(
-            args=cmd,
+        proc = subprocess.Popen(
+            cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
-            env={**os.environ, _NO_BANNER_ENV: "1"},
+            env=shared_env,
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
         )
     else:
         cmd = [sys.argv[0]] + server_args
-        popen_kwargs = dict(
-            args=cmd,
+        proc = subprocess.Popen(
+            cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
-            env={**os.environ, _NO_BANNER_ENV: "1"},
+            env=shared_env,
             start_new_session=True,
         )
-
-    proc = subprocess.Popen(**popen_kwargs)
 
     # Persist PID so the user (or a stop command) can terminate the server.
     pid_path = wiki_root / ".synthadoc" / "server.pid"
     pid_path.write_text(str(proc.pid), encoding="utf-8")
+
+    if banner_kwargs is not None:
+        from synthadoc.cli.logo import print_banner
+        print_banner(**banner_kwargs, pid=proc.pid)
 
     # Brief pause — detect immediate crashes before telling the user it worked.
     time.sleep(1.5)
@@ -317,8 +321,8 @@ def serve_cmd(
 
     _check_network(provider)
 
-    if not os.environ.get(_NO_BANNER_ENV):
-        from synthadoc.cli.logo import print_banner
+    _print_banner = not os.environ.get(_NO_BANNER_ENV)
+    if _print_banner:
         mode = "MCP (stdio)" if mcp_only else "HTTP" if http_only else "HTTP + MCP"
         _agent_cfg = cfg.agents.resolve("default")
         _override_count = sum(
@@ -326,14 +330,19 @@ def serve_cmd(
             if getattr(cfg.agents, slot, None) is not None
         )
         _llm_note = f"(+ {_override_count} override{'s' if _override_count != 1 else ''})" if _override_count else ""
-        print_banner(port=effective_port, wiki=str(root), mode=mode,
-                     provider=_agent_cfg.provider, model=_agent_cfg.model,
-                     llm_note=_llm_note)
+        _banner_kwargs = dict(port=effective_port, wiki=str(root), mode=mode,
+                              provider=_agent_cfg.provider, model=_agent_cfg.model,
+                              llm_note=_llm_note)
 
     if background:
         log_path = root / ".synthadoc" / "logs" / "synthadoc.log"
-        _spawn_background(root, effective_port, log_path)
+        _spawn_background(root, effective_port, log_path,
+                          banner_kwargs=_banner_kwargs if _print_banner else None)
         return
+
+    if _print_banner:
+        from synthadoc.cli.logo import print_banner
+        print_banner(**_banner_kwargs)
 
     if not mcp_only:
         from synthadoc.integration.http_server import create_app

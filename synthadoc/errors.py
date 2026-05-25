@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
+from __future__ import annotations
+from typing import NoReturn
+
 """Synthadoc error code registry.
 
 Every user-facing error carries a short, stable code so that errors can be
@@ -16,7 +19,6 @@ SKILL  Skill dispatch and execution errors (not found, missing dep, blocked)
 INGEST Ingest source errors (file not found, empty, wrong type)
 JOB    Job management errors (not found)
 """
-from __future__ import annotations
 
 # ── Server ────────────────────────────────────────────────────────────────────
 SRV_NOT_RUNNING  = "ERR-SRV-001"   # No server listening for the requested wiki
@@ -106,7 +108,7 @@ QUERY_TIMEOUT = "ERR-QUERY-001"  # LLM synthesis timed out; retry the query
 JOB_NOT_FOUND = "ERR-JOB-001"   # Job ID does not exist in jobs.db
 
 
-def cli_error(code: str, message: str, hint: str = "") -> None:
+def cli_error(code: str, message: str, hint: str = "") -> NoReturn:
     """Print a categorised error and exit with code 1.
 
     Only call from CLI-layer code. Agents and skills raise standard Python

@@ -33,7 +33,7 @@ _GLOBAL_SKILLS_DIR = Path.home() / ".synthadoc" / "skills"
 
 
 class SkillNotFoundError(Exception):
-    def __init__(self, source: str, available: list[str] = None):
+    def __init__(self, source: str, available: list[str] | None = None):
         msg = f"[ERR-SKILL-001] No skill matched: {source!r}."
         if available:
             msg += f" Available: {', '.join(sorted(available))}"
@@ -62,6 +62,8 @@ def _skill_dirs_in(base: Optional[Path]) -> list[Path]:
 
 def _import_class(script: Path, class_name: str) -> type:
     spec = importlib.util.spec_from_file_location(script.stem, script)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Cannot load spec for {script}")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     cls = getattr(mod, class_name, None)
@@ -160,6 +162,8 @@ class SkillAgent:
             raise SkillNotFoundError(name, list(self._registry.keys()))
         if name not in self._loaded:
             meta = self._registry[name]
+            if meta.skill_dir is None:
+                raise ImportError(f"Skill '{name}' has no skill_dir set")
             self._check_requires(meta)
             cls = _import_class(meta.skill_dir / meta.entry_script, meta.entry_class)
             self._loaded[name] = cls

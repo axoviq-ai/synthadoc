@@ -13,10 +13,10 @@ context_app = typer.Typer(name="context", help="Build token-bounded evidence pac
 app.add_typer(context_app)
 
 
-def _build_context_pack(wiki_or_root: str, goal: str, tokens: int) -> str:
+def _build_context_pack(wiki_or_root: Path | str, goal: str, tokens: int) -> str:
     """Call server POST /context/build and return Markdown string."""
     from synthadoc.cli._http import post
-    result = post(wiki_or_root, "/context/build", {"goal": goal, "token_budget": tokens})
+    result = post(str(wiki_or_root), "/context/build", {"goal": goal, "token_budget": tokens})
     from synthadoc.agents.context_agent import ContextPack, ContextPage
     pages = [
         ContextPage(
@@ -56,13 +56,12 @@ def context_build(
 ) -> None:
     """Build a token-bounded, cited evidence pack from the wiki."""
     wiki_root_path = Path(wiki_root) if wiki_root else None
-    if not wiki_root_path:
-        from synthadoc.cli._wiki import resolve_wiki
-        wiki_name = wiki or resolve_wiki(None)
+    if wiki_root_path is not None:
+        markdown = _build_context_pack(wiki_root_path, goal, tokens)
     else:
-        wiki_name = wiki
-
-    markdown = _build_context_pack(wiki_root_path or wiki_name, goal, tokens)
+        from synthadoc.cli._wiki import resolve_wiki
+        resolved_wiki: str = wiki or resolve_wiki(None)
+        markdown = _build_context_pack(resolved_wiki, goal, tokens)
 
     if output:
         Path(output).write_text(markdown, encoding="utf-8")

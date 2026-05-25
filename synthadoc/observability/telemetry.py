@@ -21,6 +21,8 @@ class _JsonlExporter(SpanExporter):
     def export(self, spans):
         with open(self._path, "a", newline="\n") as f:
             for span in spans:
+                if span.context is None:
+                    continue
                 f.write(json.dumps({
                     "name": span.name,
                     "trace_id": format(span.context.trace_id, "032x"),
@@ -47,6 +49,7 @@ def get_tracer() -> trace.Tracer:
     global _tracer
     if _tracer is None:
         setup_telemetry()
+    assert _tracer is not None
     return _tracer
 
 

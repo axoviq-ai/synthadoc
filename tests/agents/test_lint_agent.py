@@ -145,13 +145,17 @@ async def test_orphan_flag_cleared_when_inbound_link_added(tmp_wiki):
         content="Links to [[page-a]] here.", status="active", confidence="high",
         sources=[]))
 
-    assert store.read_page("page-a").orphan is True
+    page_before = store.read_page("page-a")
+    assert page_before is not None
+    assert page_before.orphan is True
 
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log)
     await agent.lint(scope="orphans")
 
-    assert store.read_page("page-a").orphan is False
+    page_after = store.read_page("page-a")
+    assert page_after is not None
+    assert page_after.orphan is False
 
 
 # ── CJK (Chinese / Japanese / Korean) coverage ───────────────────────────────
@@ -297,6 +301,7 @@ async def test_lint_removes_dangling_links(tmp_wiki):
 
     assert report.dangling_links_removed == 1
     updated = store.read_page("index")
+    assert updated is not None
     assert "[[crashcourse-computer-science]]" not in updated.content
     assert "[[alan-turing]]" in updated.content
 
@@ -348,6 +353,7 @@ async def test_adversarial_pass_stores_warnings(tmp_wiki):
     )
     report = await agent.lint(adversarial=True)
     page = store.read_page("ai-page")
+    assert page is not None
     assert len(page.lint_warnings) == 1
     assert page.lint_warnings[0]["claim"] == "Transformers replaced RNNs entirely by 2020."
     assert len(report.adversarial_warnings) == 1
@@ -370,7 +376,9 @@ async def test_adversarial_pass_no_warnings_on_clean_page(tmp_wiki):
         adversarial_provider=adv_provider,
     )
     report = await agent.lint(adversarial=True)
-    assert store.read_page("clean").lint_warnings == []
+    clean_page = store.read_page("clean")
+    assert clean_page is not None
+    assert clean_page.lint_warnings == []
     assert report.adversarial_warnings == []
 
 
@@ -400,7 +408,8 @@ async def test_adversarial_pass_rate_limit_is_non_fatal(tmp_wiki):
     all_warnings = [
         w
         for slug in ["p1", "p2"]
-        for w in (store.read_page(slug).lint_warnings or [])
+        for p in [store.read_page(slug)] if p is not None
+        for w in (p.lint_warnings or [])
     ]
     claims = {w["claim"] for w in all_warnings}
     # list_pages() order is filesystem-dependent (inode order on macOS), so assert
@@ -421,7 +430,9 @@ async def test_no_adversarial_clears_existing_warnings(tmp_wiki):
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log)
     await agent.lint(adversarial=False)
-    assert store.read_page("p").lint_warnings == []
+    p_page = store.read_page("p")
+    assert p_page is not None
+    assert p_page.lint_warnings == []
 
 
 @pytest.mark.asyncio

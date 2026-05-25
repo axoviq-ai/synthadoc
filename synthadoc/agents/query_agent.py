@@ -11,7 +11,7 @@ from pathlib import Path
 from synthadoc.agents._utils import parse_json_string_array
 from synthadoc.agents.search_decompose_agent import SearchDecomposeAgent
 from synthadoc.providers.base import LLMProvider, Message
-from synthadoc.storage.search import HybridSearch
+from synthadoc.storage.search import HybridSearch, SearchResult
 from synthadoc.storage.wiki import WikiStorage
 
 logger = logging.getLogger(__name__)
@@ -153,7 +153,7 @@ class QueryAgent:
 
         results_per_sub = await asyncio.gather(*[_search_one(q) for q in sub_questions])
 
-        best: dict[str, object] = {}
+        best: dict[str, SearchResult] = {}
         for results in results_per_sub:
             for r in results:
                 if r.slug not in best or r.score > best[r.slug].score:

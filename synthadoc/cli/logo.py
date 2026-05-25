@@ -69,6 +69,7 @@ def print_banner(
     provider: str = "",
     model: str = "",
     llm_note: str = "",
+    pid: int | None = None,
 ) -> None:
     """Print the startup banner to stdout."""
     use_color = _color_supported()
@@ -86,7 +87,7 @@ def print_banner(
         _c(_WHITE,          f"  Port:  {port}", use_color),
         _c(_WHITE,          f"  Wiki:  {Path(wiki).name}", use_color),
         _c(_WHITE,          f"  LLM:   {llm_label}", use_color),
-        _c(_WHITE,          f"  PID:   {os.getpid()}", use_color),
+        _c(_WHITE,          f"  PID:   {pid if pid is not None else os.getpid()}", use_color),
         "",
         _c(_DIM,            f"  http://127.0.0.1:{port}", use_color),
     ]

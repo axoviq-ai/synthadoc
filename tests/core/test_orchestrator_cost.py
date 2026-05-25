@@ -143,7 +143,7 @@ async def _run_and_capture_ingest_cost(orch, input_tokens: int, output_tokens: i
          patch.object(orch._queue, "complete", side_effect=spy_complete):
         await orch._run_ingest(job_id, "test.md", auto_confirm=True)
 
-    return captured.get("cost_usd", None)
+    return float(captured.get("cost_usd") or 0.0)
 
 
 @pytest.mark.asyncio
