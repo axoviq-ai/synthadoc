@@ -9,8 +9,8 @@ from openpyxl.styles import Font, PatternFill, Alignment
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas  # type: ignore[import-untyped]
+from reportlab.lib.pagesizes import letter  # type: ignore[import-untyped]
 from PIL import Image, ImageDraw, ImageFont
 
 OUT = Path(__file__).parent / "raw_sources"
@@ -21,6 +21,7 @@ OUT = Path(__file__).parent / "raw_sources"
 def make_xlsx():
     wb = openpyxl.Workbook()
     ws = wb.active
+    assert ws is not None
     ws.title = "Model Comparison"
 
     header_fill = PatternFill("solid", fgColor="1F4E79")
@@ -89,19 +90,20 @@ def make_pptx():
     prs.slide_width  = Inches(13.33)
     prs.slide_height = Inches(7.5)
 
-    blank = prs.slide_layouts[6]   # blank
     title_content = prs.slide_layouts[1]
 
     def add_title_slide(title, subtitle=""):
         sl = prs.slides.add_slide(prs.slide_layouts[0])
+        assert sl.shapes.title is not None
         sl.shapes.title.text = title
         sl.shapes.title.text_frame.paragraphs[0].font.size = Pt(40)
-        sl.placeholders[1].text = subtitle
+        sl.placeholders[1].text = subtitle  # type: ignore[union-attr]
 
     def add_content_slide(title, bullets):
         sl = prs.slides.add_slide(title_content)
+        assert sl.shapes.title is not None
         sl.shapes.title.text = title
-        tf = sl.placeholders[1].text_frame
+        tf = sl.placeholders[1].text_frame  # type: ignore[union-attr]
         tf.text = bullets[0]
         for b in bullets[1:]:
             p = tf.add_paragraph()
@@ -213,14 +215,6 @@ def make_png():
     draw.text((W // 2, 30), "Neural Network Architecture", fill=title_color, anchor="mm")
     draw.text((W // 2, 55), "Feedforward Network — Fully Connected Layers", fill="#888888", anchor="mm")
 
-    # Layer positions
-    layers = [
-        ("Input\nLayer",  "input",  [150]),
-        ("Hidden\nLayer 1", "hidden", [250]),
-        ("Hidden\nLayer 2", "hidden", [350]),
-        ("Output\nLayer", "output", [550]),  # using x as position holder
-    ]
-
     # x positions and node counts
     x_positions = [120, 270, 420, 600, 750]
     node_counts  = [4, 6, 6, 5, 3]
@@ -230,7 +224,7 @@ def make_png():
     node_radius = 18
     node_positions = []
 
-    for li, (x, n, ltype) in enumerate(zip(x_positions, node_counts, layer_types)):
+    for _, (x, n, ltype) in enumerate(zip(x_positions, node_counts, layer_types)):
         y_start = (H - n * 70) // 2 + 60
         layer_nodes = []
         for ni in range(n):
@@ -245,7 +239,7 @@ def make_png():
                 draw.line([(px + node_radius, py), (nx - node_radius, ny)], fill=edge_color, width=1)
 
     # Draw nodes
-    for li, (layer_nodes, ltype) in enumerate(zip(node_positions, layer_types)):
+    for _, (layer_nodes, ltype) in enumerate(zip(node_positions, layer_types)):
         color = node_colors.get(ltype, "#7b68ee")
         for nx, ny in layer_nodes:
             draw.ellipse(
@@ -254,7 +248,7 @@ def make_png():
             )
 
     # Layer labels
-    for li, (x, name) in enumerate(zip(x_positions, layer_names)):
+    for _, (x, name) in enumerate(zip(x_positions, layer_names)):
         draw.text((x, H - 35), name, fill=label_color, anchor="mm")
 
     # Legend

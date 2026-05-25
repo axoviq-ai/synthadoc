@@ -303,7 +303,7 @@ class LintAgent:
                 loop = asyncio.get_event_loop()
                 await loop.run_in_executor(
                     None,
-                    lambda: YouTubeTranscriptApi.get_transcript(m.group(1))
+                    lambda: YouTubeTranscriptApi.get_transcript(m.group(1))  # type: ignore[attr-defined]
                 )
                 _log.debug("lifecycle url-check [youtube] unavailable=%s url=%s", False, url)
                 return False

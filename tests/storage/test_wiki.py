@@ -11,6 +11,7 @@ def test_write_and_read_page(tmp_wiki):
                     status="active", confidence="medium", sources=[])
     store.write_page("test", page)
     loaded = store.read_page("test")
+    assert loaded is not None
     assert loaded.title == "Test"
     assert "ai" in loaded.tags
     assert "[[Other]]" in loaded.content
@@ -59,6 +60,7 @@ def test_unicode_title_and_content(tmp_wiki):
                     status="active", confidence="high", sources=[])
     store.write_page("pool-zh", page)
     loaded = store.read_page("pool-zh")
+    assert loaded is not None
     assert loaded.title == "游泳池维护 🏊"
     assert "氯气含量 ppm" in loaded.content
     assert "中文" in loaded.tags
@@ -72,6 +74,7 @@ def test_overwrite_page_replaces_content(tmp_wiki):
     store.write_page("doc", WikiPage(title="v2", tags=[], content="second",
                      status="active", confidence="high", sources=[]))
     loaded = store.read_page("doc")
+    assert loaded is not None
     assert loaded.title == "v2"
     assert loaded.content == "second"
     assert "first" not in loaded.content
@@ -83,6 +86,7 @@ def test_empty_content_roundtrip(tmp_wiki):
     store.write_page("empty", WikiPage(title="Empty", tags=[], content="",
                      status="active", confidence="low", sources=[]))
     loaded = store.read_page("empty")
+    assert loaded is not None
     assert loaded.content == ""
 
 
@@ -94,6 +98,7 @@ def test_categories_roundtrip(tmp_wiki):
                     categories=["Swimming Pool", "Recently Added"])
     store.write_page("cat-page", page)
     loaded = store.read_page("cat-page")
+    assert loaded is not None
     assert loaded.categories == ["Swimming Pool", "Recently Added"]
 
 
@@ -107,6 +112,7 @@ def test_categories_missing_defaults_to_empty(tmp_wiki):
         encoding="utf-8"
     )
     loaded = store.read_page("no-cats")
+    assert loaded is not None
     assert loaded.categories == []
 
 
@@ -123,6 +129,7 @@ def test_orphan_flag_roundtrip(tmp_wiki):
     store.write_page("orphan-page", WikiPage(title="Orphan", tags=[], content="alone",
                      status="active", confidence="low", sources=[], orphan=True))
     loaded = store.read_page("orphan-page")
+    assert loaded is not None
     assert loaded.orphan is True
 
 
@@ -134,6 +141,7 @@ def test_set_page_categories_replaces_existing(tmp_wiki):
                      categories=["Old Category"]))
     store.set_page_categories("p", ["New Category"])
     loaded = store.read_page("p")
+    assert loaded is not None
     assert loaded.categories == ["New Category"]
     assert "Old Category" not in loaded.categories
 
@@ -204,6 +212,7 @@ def test_lint_warnings_round_trip(tmp_wiki):
                     lint_warnings=[{"claim": "Claim A", "concern": "Overstated"}])
     store.write_page("test", page)
     loaded = store.read_page("test")
+    assert loaded is not None
     assert loaded.lint_warnings == [{"claim": "Claim A", "concern": "Overstated"}]
 
 
@@ -225,5 +234,6 @@ def test_lint_warnings_null_claim_round_trip(tmp_wiki):
                                     "concern": "adversarial-pass-skipped: rate limit"}])
     store.write_page("test", page)
     loaded = store.read_page("test")
+    assert loaded is not None
     assert loaded.lint_warnings[0]["claim"] is None
     assert "rate limit" in loaded.lint_warnings[0]["concern"]

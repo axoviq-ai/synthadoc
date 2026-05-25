@@ -20,7 +20,7 @@ class RoutingIndex:
         for line in path.read_text(encoding="utf-8").splitlines():
             if m := _BRANCH_RE.match(line):
                 current = m.group(1).strip()
-                branches.setdefault(current, [])
+                branches.setdefault(current, [])  # type: ignore[arg-type]
             elif current and (m := _SLUG_RE.match(line)):
                 branches[current].append(m.group(1).strip())
         return cls(branches)
@@ -36,7 +36,7 @@ class RoutingIndex:
                 name = m.group(1).strip()
                 if name not in ("Index", "Recently Added"):
                     current = name
-                    branches.setdefault(current, [])
+                    branches.setdefault(name, [])
                 else:
                     current = None
             elif current:
