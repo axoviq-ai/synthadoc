@@ -1062,7 +1062,7 @@ op   = "ingest --batch raw_sources/"
 cron = "0 2 * * *"   # every day at 02:00
 
 [[schedule.jobs]]
-op   = "lint"
+op   = "lint run"
 cron = "0 3 * * 0"   # every Sunday at 03:00
 ```
 
