@@ -813,7 +813,7 @@ synthadoc audit citations --json -w my-wiki             # raw JSON for scripting
 synthadoc schedule add --op "ingest --batch raw_sources/" --cron "0 2 * * *" -w my-wiki
 
 # Weekly lint
-synthadoc schedule add --op "lint" --cron "0 3 * * 0" -w my-wiki
+synthadoc schedule add --op "lint run" --cron "0 3 * * 0" -w my-wiki
 
 # List scheduled jobs
 synthadoc schedule list -w my-wiki
