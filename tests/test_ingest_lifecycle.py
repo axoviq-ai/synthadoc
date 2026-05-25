@@ -22,6 +22,7 @@ def test_new_page_status_is_draft(tmp_path):
     page = _make_page(status="draft")
     store.write_page("test-page", page)
     read_back = store.read_page("test-page")
+    assert read_back is not None
     assert read_back.status == "draft"
 
 

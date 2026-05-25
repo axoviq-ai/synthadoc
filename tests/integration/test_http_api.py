@@ -654,7 +654,7 @@ def test_delete_completed_job_endpoint(tmp_wiki):
     import datetime
     completed_job = Job(id="done-1", operation="lint", payload={},
                         status=JobStatus.COMPLETED, retries=0, error=None,
-                        created_at=datetime.datetime.now(datetime.timezone.utc))
+                        created_at=datetime.datetime.now(datetime.timezone.utc).isoformat())
     with patch("synthadoc.core.queue.JobQueue.list_jobs",
                new=AsyncMock(return_value=[completed_job])):
         with patch("synthadoc.core.queue.JobQueue.delete", new=AsyncMock()):
@@ -671,7 +671,7 @@ def test_delete_pending_job_returns_409(tmp_wiki):
     import datetime
     pending_job = Job(id="run-1", operation="lint", payload={},
                       status=JobStatus.PENDING, retries=0, error=None,
-                      created_at=datetime.datetime.now(datetime.timezone.utc))
+                      created_at=datetime.datetime.now(datetime.timezone.utc).isoformat())
     with patch("synthadoc.core.queue.JobQueue.list_jobs",
                new=AsyncMock(return_value=[pending_job])):
         with TestClient(create_app(wiki_root=tmp_wiki)) as client:

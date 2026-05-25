@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import httpx
 import typer
+from typing import NoReturn
 
 from synthadoc.config import load_config
 from synthadoc.cli.install import resolve_wiki_path
@@ -70,7 +71,7 @@ def delete(wiki: str, path: str) -> dict:
                     f"Server returned {e.response.status_code}: {_detail(e.response)}")
 
 
-def _timeout_error(path: str, timeout: int) -> None:
+def _timeout_error(path: str, timeout: int) -> NoReturn:
     if "/query" in path:
         E.cli_error(
             E.QUERY_TIMEOUT,
@@ -101,7 +102,7 @@ def _detail(response: httpx.Response) -> str:
         return response.text.strip()
 
 
-def _no_server(wiki: str) -> None:
+def _no_server(wiki: str) -> NoReturn:
     E.cli_error(
         E.SRV_NOT_RUNNING,
         f"No synthadoc server is running for wiki '{wiki}'.",

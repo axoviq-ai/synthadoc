@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
 import logging
+import logging.handlers
 import json
 from pathlib import Path
 from synthadoc.config import LogsConfig
@@ -15,9 +16,11 @@ def _reset_root_logger():
 
 
 def _cfg(**kwargs) -> LogsConfig:
-    defaults = dict(level="INFO", max_file_mb=1, backup_count=3)
-    defaults.update(kwargs)
-    return LogsConfig(**defaults)
+    return LogsConfig(
+        level=kwargs.get("level", "INFO"),
+        max_file_mb=kwargs.get("max_file_mb", 1),
+        backup_count=kwargs.get("backup_count", 3),
+    )
 
 
 def test_setup_creates_log_file(tmp_path):

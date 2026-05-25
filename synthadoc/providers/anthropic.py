@@ -29,7 +29,7 @@ class AnthropicProvider(LLMProvider):
         }
         if system:
             kwargs["system"] = system
-        last_exc = None
+        last_exc: Exception | None = None
         for attempt in range(_MAX_RETRIES):
             try:
                 resp = await self._client.messages.create(**kwargs)
@@ -46,4 +46,5 @@ class AnthropicProvider(LLMProvider):
                 continue
             except Exception:
                 raise
+        assert last_exc is not None
         raise last_exc

@@ -35,6 +35,7 @@ async def test_url_archived_on_404(tmp_path):
         await agent.lint(scope="all", adversarial=False, check_url_availability=True)
 
     page = store.read_page("test-page")
+    assert page is not None
     assert page.status == "archived"
 
 
@@ -52,6 +53,7 @@ async def test_url_not_archived_on_200(tmp_path):
         await agent.lint(scope="all", adversarial=False, check_url_availability=True)
 
     page = store.read_page("test-page")
+    assert page is not None
     assert page.status != "archived"
 
 
@@ -69,6 +71,7 @@ async def test_url_not_archived_when_flag_off(tmp_path):
         await agent.lint(scope="all", adversarial=False, check_url_availability=False)
 
     page = store.read_page("test-page")
+    assert page is not None
     assert page.status != "archived"  # flag off → no check
 
 
@@ -101,6 +104,7 @@ async def test_url_stale_on_old_ingest(tmp_path):
 
     await agent.lint(scope="all", adversarial=False, check_url_availability=False)
     page = store.read_page("test-page")
+    assert page is not None
     assert page.status == "stale"
 
 
@@ -132,4 +136,5 @@ async def test_url_not_stale_when_recent(tmp_path):
 
     await agent.lint(scope="all", adversarial=False, check_url_availability=False)
     page = store.read_page("test-page")
+    assert page is not None
     assert page.status != "stale"  # only 5 days old, threshold is 30

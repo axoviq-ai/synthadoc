@@ -33,7 +33,7 @@ class CacheManager:
                 )""")
             await db.commit()
 
-    async def get(self, key: str) -> Optional[dict]:
+    async def get(self, key: str) -> Any:
         async with aiosqlite.connect(self._path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
@@ -42,7 +42,7 @@ class CacheManager:
                 row = await cur.fetchone()
             return json.loads(row["value"]) if row else None
 
-    async def set(self, key: str, value: dict) -> None:
+    async def set(self, key: str, value: Any) -> None:
         async with aiosqlite.connect(self._path) as db:
             await db.execute(
                 "INSERT OR REPLACE INTO response_cache (key,value) VALUES (?,?)",

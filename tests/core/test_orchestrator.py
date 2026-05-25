@@ -297,6 +297,7 @@ async def test_run_ingest_sources_txt_is_expanded_into_child_jobs(tmp_wiki):
     completed = await orch._queue.list_jobs(status=JobStatus.COMPLETED)
     parent = next((j for j in completed if j.id == job_id), None)
     assert parent is not None, "parent job should be completed"
+    assert parent.result is not None
     assert parent.result["child_sources_enqueued"] == 3
     assert len(parent.result["child_job_ids"]) == 3
 

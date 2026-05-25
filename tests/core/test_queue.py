@@ -10,6 +10,7 @@ async def test_enqueue_dequeue(tmp_wiki):
     await q.init()
     job_id = await q.enqueue("ingest", {"source": "paper.pdf"})
     job = await q.dequeue()
+    assert job is not None
     assert job.id == job_id
     assert job.operation == "ingest"
     assert job.status == JobStatus.IN_PROGRESS
@@ -21,6 +22,7 @@ async def test_complete_job(tmp_wiki):
     await q.init()
     job_id = await q.enqueue("ingest", {"source": "x.pdf"})
     job = await q.dequeue()
+    assert job is not None
     await q.complete(job.id)
     jobs = await q.list_jobs(status=JobStatus.COMPLETED)
     assert any(j.id == job_id for j in jobs)
@@ -32,8 +34,10 @@ async def test_fail_retries_then_dies(tmp_wiki):
     await q.init()
     await q.enqueue("ingest", {"source": "x.pdf"})
     job = await q.dequeue()
+    assert job is not None
     await q.fail(job.id, "timeout")
     job = await q.dequeue()
+    assert job is not None
     await q.fail(job.id, "timeout")
     dead = await q.list_jobs(status=JobStatus.DEAD)
     assert len(dead) == 1
@@ -48,6 +52,7 @@ async def test_delete_job_atomic(tmp_wiki):
     await audit.init()
     job_id = await q.enqueue("ingest", {"source": "x.pdf"})
     job = await q.dequeue()
+    assert job is not None
     await q.complete(job.id)
     await q.delete(job_id, audit_db=audit)
     all_jobs = await q.list_jobs()
@@ -87,6 +92,7 @@ async def test_fail_before_max_retries_stays_pending(tmp_wiki):
     await q.init()
     await q.enqueue("ingest", {"source": "x.pdf"})
     job = await q.dequeue()
+    assert job is not None
     await q.fail(job.id, "transient error")
     pending = await q.list_jobs(status=JobStatus.PENDING)
     assert any(j.id == job.id for j in pending)
@@ -99,6 +105,7 @@ async def test_skip_does_not_retry(tmp_wiki):
     await q.init()
     job_id = await q.enqueue("ingest", {"source": "blocked.com"})
     job = await q.dequeue()
+    assert job is not None
     await q.skip(job.id, "domain blocked")
     pending = await q.list_jobs(status=JobStatus.PENDING)
     assert not any(j.id == job_id for j in pending)
@@ -113,6 +120,7 @@ async def test_fail_permanent_goes_to_failed_not_dead(tmp_wiki):
     await q.init()
     job_id = await q.enqueue("ingest", {"source": "stub.pdf"})
     job = await q.dequeue()
+    assert job is not None
     await q.fail_permanent(job.id, "NotImplementedError: skill stub")
     failed = await q.list_jobs(status=JobStatus.FAILED)
     assert any(j.id == job_id for j in failed)
@@ -139,6 +147,7 @@ async def test_dequeue_fifo_order(tmp_wiki):
         ids.append(await q.enqueue("ingest", {"source": f"file{i}.pdf"}))
     for expected_id in ids:
         job = await q.dequeue()
+        assert job is not None
         assert job.id == expected_id
         await q.complete(job.id)
 
@@ -164,6 +173,7 @@ async def test_retry_resets_retries_counter(tmp_wiki):
     # Exhaust retries → dead
     for _ in range(2):
         job = await q.dequeue()
+        assert job is not None
         await q.fail(job.id, "error")
     dead = await q.list_jobs(status=JobStatus.DEAD)
     assert any(j.id == job_id for j in dead)
@@ -183,6 +193,7 @@ async def test_purge_removes_old_completed_and_dead(tmp_wiki):
     await q.init()
     job_id = await q.enqueue("ingest", {"source": "old.pdf"})
     job = await q.dequeue()
+    assert job is not None
     await q.complete(job.id)
     # Backdate the job so it appears old
     async with aiosqlite.connect(q._path) as db:
@@ -203,6 +214,7 @@ async def test_purge_keeps_recent_jobs(tmp_wiki):
     await q.init()
     job_id = await q.enqueue("ingest", {"source": "recent.pdf"})
     job = await q.dequeue()
+    assert job is not None
     await q.complete(job.id)
     removed = await q.purge(older_than_days=7)
     assert removed == 0
@@ -229,6 +241,7 @@ async def test_update_progress_overwrites(tmp_wiki):
     await q.update_progress(job_id, {"phase": "found_urls", "total": 5})
     jobs = await q.list_jobs()
     job = next(j for j in jobs if j.id == job_id)
+    assert job.progress is not None
     assert job.progress["phase"] == "found_urls"
     assert job.progress["total"] == 5
 
@@ -351,6 +364,7 @@ async def test_cancel_pending_marks_all_pending_as_cancelled(tmp_wiki):
     ids = [await q.enqueue("ingest", {"source": f"url{i}.com"}) for i in range(4)]
     # Complete one so it should not be cancelled
     job = await q.dequeue()
+    assert job is not None
     await q.complete(job.id)
     count = await q.cancel_pending()
     assert count == 3

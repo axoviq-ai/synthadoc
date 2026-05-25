@@ -23,15 +23,15 @@ class SkillMeta:
     version: str = "1.0"
     entry_script: str = "scripts/main.py"
     entry_class: str = ""
-    triggers: Optional[Triggers] = None
+    triggers: Triggers = field(default_factory=Triggers)
     requires: list[str] = field(default_factory=list)
     skill_dir: Optional[Path] = None
     # Deprecated: kept for backwards compat with old flat-file skill classes
     extensions: list[str] = field(default_factory=list)
 
     def __post_init__(self):
-        if self.triggers is None:
-            self.triggers = Triggers(extensions=list(self.extensions), intents=[])
+        if not self.triggers.extensions and self.extensions:
+            self.triggers = Triggers(extensions=list(self.extensions), intents=self.triggers.intents)
         if not self.entry_class:
             self.entry_class = "".join(p.title() for p in self.name.split("_")) + "Skill"
 
