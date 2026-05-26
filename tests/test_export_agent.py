@@ -119,3 +119,70 @@ async def test_empty_wiki_llms_full_txt(tmp_path):
     agent = _agent(tmp_path, store)
     result = await agent.export(ExportOptions(format="llms-full.txt"))
     assert "# test-wiki" in result
+
+
+@pytest.mark.asyncio
+async def test_graphml_has_node_for_each_page(tmp_path):
+    store = _make_store(tmp_path)
+    _write_page(store, "babbage", "Charles Babbage", LifecycleState.ACTIVE)
+    _write_page(store, "lovelace", "Ada Lovelace", LifecycleState.ACTIVE)
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="graphml"))
+    assert 'id="babbage"' in result
+    assert 'id="lovelace"' in result
+
+
+@pytest.mark.asyncio
+async def test_graphml_node_has_status_attribute(tmp_path):
+    store = _make_store(tmp_path)
+    _write_page(store, "babbage", "Charles Babbage", LifecycleState.ACTIVE)
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="graphml"))
+    assert "active" in result
+
+
+@pytest.mark.asyncio
+async def test_graphml_wikilink_edge_has_wikilink_type(tmp_path):
+    store = _make_store(tmp_path)
+    _write_page(store, "babbage", "Charles Babbage", LifecycleState.ACTIVE,
+                content="See also [[lovelace]].")
+    _write_page(store, "lovelace", "Ada Lovelace", LifecycleState.ACTIVE)
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="graphml"))
+    assert 'source="babbage"' in result
+    assert 'target="lovelace"' in result
+    assert "wikilink" in result
+
+
+@pytest.mark.asyncio
+async def test_graphml_routing_branch_on_node(tmp_path):
+    store = _make_store(tmp_path)
+    _write_page(store, "babbage", "Charles Babbage", LifecycleState.ACTIVE)
+    routing_path = tmp_path / "ROUTING.md"
+    routing_path.write_text("## Pioneers\n- [[babbage]]\n", encoding="utf-8")
+    agent = ExportAgent(
+        store=store, wiki_name="test-wiki",
+        audit_db_path=tmp_path / ".synthadoc" / "audit.db",
+        routing_path=routing_path,
+    )
+    result = await agent.export(ExportOptions(format="graphml"))
+    assert "Pioneers" in result
+
+
+@pytest.mark.asyncio
+async def test_graphml_no_self_links(tmp_path):
+    store = _make_store(tmp_path)
+    _write_page(store, "babbage", "Charles Babbage", LifecycleState.ACTIVE,
+                content="[[babbage]] is a self-link.")
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="graphml"))
+    assert 'source="babbage" target="babbage"' not in result
+
+
+@pytest.mark.asyncio
+async def test_graphml_empty_wiki(tmp_path):
+    store = _make_store(tmp_path)
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="graphml"))
+    assert '<?xml version="1.0"' in result
+    assert "<graphml" in result

@@ -3,6 +3,7 @@
 # Copyright (C) 2026 William Johnason / axoviq.com
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,6 +11,7 @@ from pathlib import Path
 from synthadoc.storage.wiki import WikiStorage, WikiPage, LifecycleState
 
 _SKIP_SLUGS = frozenset({"index", "log", "dashboard", "overview", "purpose"})
+_WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 EXPORT_FORMATS = frozenset({"llms.txt", "llms-full.txt", "graphml", "json"})
 _MAX_FULL_TXT_BYTES = 5 * 1024 * 1024  # 5 MB
 
@@ -126,7 +128,85 @@ class ExportAgent:
         return result
 
     def _render_graphml(self, pages: dict[str, WikiPage], routing) -> str:
-        raise NotImplementedError("implemented in Task 2")
+        import xml.etree.ElementTree as ET
+
+        all_links: dict[str, list[str]] = {}
+        for slug, page in pages.items():
+            targets = []
+            for m in _WIKILINK_RE.finditer(page.content or ""):
+                target = m.group(1).strip().split("|")[0].strip()
+                if target in pages and target != slug:
+                    targets.append(target)
+            all_links[slug] = targets
+
+        inbound_count: dict[str, int] = {s: 0 for s in pages}
+        for targets in all_links.values():
+            for t in targets:
+                if t in inbound_count:
+                    inbound_count[t] += 1
+
+        slug_to_branch: dict[str, str] = {}
+        for branch, slugs in routing.branches.items():
+            for s in slugs:
+                slug_to_branch[s] = branch
+
+        NS = "http://graphml.graphdrawing.org/graphml"
+        XSI = "http://www.w3.org/2001/XMLSchema-instance"
+        root_el = ET.Element("graphml", {
+            "xmlns": NS,
+            "xmlns:xsi": XSI,
+            "xsi:schemaLocation": f"{NS} {NS}/1.1/graphml.xsd",
+        })
+
+        def _key(kid, for_, name, typ):
+            ET.SubElement(root_el, "key", {"id": kid, "for": for_,
+                                           "attr.name": name, "attr.type": typ})
+
+        _key("title",               "node", "title",               "string")
+        _key("status",              "node", "status",              "string")
+        _key("confidence",          "node", "confidence",          "string")
+        _key("orphan",              "node", "orphan",              "boolean")
+        _key("citation_count",      "node", "citation_count",      "int")
+        _key("inbound_link_count",  "node", "inbound_link_count",  "int")
+        _key("routing_branch",      "node", "routing_branch",      "string")
+        _key("edge_type",           "edge", "edge_type",           "string")
+
+        graph_el = ET.SubElement(root_el, "graph",
+                                  {"id": "wiki", "edgedefault": "directed"})
+
+        for slug in sorted(pages):
+            page = pages[slug]
+            node_el = ET.SubElement(graph_el, "node", {"id": slug})
+
+            def _data(key, val, _node=node_el):
+                d = ET.SubElement(_node, "data", {"key": key})
+                d.text = str(val)
+
+            _data("title", page.title)
+            _data("status", page.status)
+            _data("confidence", page.confidence or "")
+            _data("orphan", "true" if page.orphan else "false")
+            _data("citation_count", "0")
+            _data("inbound_link_count", str(inbound_count.get(slug, 0)))
+            _data("routing_branch", slug_to_branch.get(slug, ""))
+
+        edge_id = 0
+        for slug in sorted(all_links):
+            seen: set[str] = set()
+            for target in all_links[slug]:
+                if target not in seen:
+                    edge_el = ET.SubElement(graph_el, "edge", {
+                        "id": f"e{edge_id}", "source": slug, "target": target,
+                    })
+                    d = ET.SubElement(edge_el, "data", {"key": "edge_type"})
+                    d.text = "wikilink"
+                    edge_id += 1
+                    seen.add(target)
+
+        ET.indent(root_el, space="  ")
+        return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(
+            root_el, encoding="unicode"
+        )
 
     def _render_json(self, pages, citations, lc_events, cost_data, routing) -> str:
         raise NotImplementedError("implemented in Task 3")
