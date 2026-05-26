@@ -268,3 +268,21 @@ async def test_json_date_object_created_serializes(tmp_path):
     agent = _agent(tmp_path, store)
     result = json.loads(await agent.export(ExportOptions(format="json")))
     assert result["pages"][0]["created"] == "2026-05-26"
+
+
+@pytest.mark.asyncio
+async def test_json_date_object_ingested_serializes(tmp_path):
+    """yaml.safe_load coerces bare YAML dates to datetime.date — SourceRef.ingested must not blow up json.dumps."""
+    import datetime, json
+    from synthadoc.storage.wiki import SourceRef
+    store = _make_store(tmp_path)
+    page = WikiPage(
+        title="Source Page", tags=[], content="", status=LifecycleState.ACTIVE,
+        confidence="high",
+        sources=[SourceRef(file="doc.pdf", hash="abc", size=100, ingested=datetime.date(2026, 5, 26))],
+        orphan=False,
+    )
+    store.write_page("source-page", page)
+    agent = _agent(tmp_path, store)
+    result = json.loads(await agent.export(ExportOptions(format="json")))
+    assert result["pages"][0]["sources"][0]["ingested"] == "2026-05-26"

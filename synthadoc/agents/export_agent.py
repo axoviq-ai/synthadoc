@@ -266,7 +266,8 @@ class ExportAgent:
                 "sources": [
                     {
                         "file": s.file, "hash": s.hash,
-                        "size": s.size, "ingested": s.ingested,
+                        "size": s.size,
+                        "ingested": str(s.ingested) if s.ingested is not None else None,
                     }
                     for s in (page.sources or [])
                 ],
