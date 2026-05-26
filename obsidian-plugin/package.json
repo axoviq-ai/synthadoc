@@ -8,9 +8,11 @@
     "coverage": "vitest run --coverage"
   },
   "devDependencies": {
+    "@types/cytoscape": "^3.21.9",
     "@types/node": "^20",
     "@vitest/coverage-v8": "^4.1.4",
     "builtin-modules": "^3.3.0",
+    "cytoscape": "^3.33.4",
     "esbuild": "^0.28.0",
     "obsidian": "latest",
     "typescript": "^5.3",

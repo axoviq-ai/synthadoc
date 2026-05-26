@@ -126,6 +126,12 @@ export default class SynthadocPlugin extends Plugin {
             callback: () => new ExportModal(this.app).open(),
         });
 
+        this.addCommand({
+            id: "synthadoc-view-graph",
+            name: "View Knowledge Graph",
+            callback: () => new GraphViewModal(this.app).open(),
+        });
+
         this.addRibbonIcon("book-open", "Synthadoc status", async () => {
             const [healthRes, statusRes] = await Promise.allSettled([
                 api.health(),
@@ -3905,6 +3911,116 @@ class ExportModal extends Modal {
 }
 
 class GraphViewModal extends Modal {
-    onOpen() { this.contentEl.createEl("p", { text: "Graph View coming soon." }); }
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+        contentEl.style.width = "clamp(900px, 85vw, 1300px)";
+        contentEl.createEl("h2", { text: "Knowledge Graph" });
+
+        // Toolbar
+        const toolbar = contentEl.createDiv({ cls: "synthadoc-graph-toolbar" });
+        const exportBtn = toolbar.createEl("button", { text: "Export to file" });
+
+        // Graph container
+        const container = contentEl.createDiv();
+        container.style.cssText = "width:100%;height:600px;background:#1e1e2e;border-radius:4px;";
+
+        exportBtn.addEventListener("click", async () => {
+            try {
+                const content = await api.exportWiki("graphml", "all");
+                const today = new Date().toISOString().slice(0, 10);
+                const path = `exports/wiki-${today}.graphml`;
+                if (await this.app.vault.adapter.exists(path)) {
+                    await this.app.vault.adapter.write(path, content);
+                } else {
+                    await this.app.vault.create(path, content);
+                }
+                new Notice(`Synthadoc: graph exported to ${path}`);
+            } catch (e) {
+                new Notice(`Synthadoc: graph export failed — ${e}`);
+            }
+        });
+
+        // Fetch graph data and render with Cytoscape.js
+        api.exportWiki("graphml", "all").then(graphmlText => {
+            this._renderGraph(container, graphmlText);
+        }).catch(() => {
+            container.createEl("p", { text: "Could not load graph — is the server running?" });
+        });
+    }
+
+    private _renderGraph(container: HTMLElement, graphmlText: string) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(graphmlText, "application/xml");
+        const NS = "http://graphml.graphdrawing.org/graphml";
+
+        const getAttr = (el: Element, keyId: string): string => {
+            for (const d of Array.from(el.getElementsByTagNameNS(NS, "data"))) {
+                if (d.getAttribute("key") === keyId) return d.textContent || "";
+            }
+            return "";
+        };
+
+        const STATUS_COLORS: Record<string, string> = {
+            active: "#4ade80", draft: "#fbbf24", stale: "#f97316",
+            contradicted: "#f87171", archived: "#6b7280",
+        };
+
+        const nodes = Array.from(doc.getElementsByTagNameNS(NS, "node")).map(n => {
+            const id = n.getAttribute("id") || "";
+            const status = getAttr(n, "status");
+            return {
+                data: {
+                    id,
+                    label: getAttr(n, "title") || id,
+                    status,
+                    color: STATUS_COLORS[status] || "#94a3b8",
+                },
+            };
+        });
+
+        const edges = Array.from(doc.getElementsByTagNameNS(NS, "edge")).map((e, i) => ({
+            data: {
+                id: `e${i}`,
+                source: e.getAttribute("source") || "",
+                target: e.getAttribute("target") || "",
+            },
+        }));
+
+        // Dynamically import cytoscape to keep bundle size manageable
+        import("cytoscape").then(({ default: cytoscape }) => {
+            cytoscape({
+                container,
+                elements: [...nodes, ...edges],
+                style: [
+                    {
+                        selector: "node",
+                        style: {
+                            "background-color": "data(color)",
+                            "label": "data(label)",
+                            "color": "#e2e8f0",
+                            "font-size": "10px",
+                            "text-valign": "bottom",
+                            "text-halign": "center",
+                            "width": "24px",
+                            "height": "24px",
+                        },
+                    },
+                    {
+                        selector: "edge",
+                        style: {
+                            "width": 1,
+                            "line-color": "#475569",
+                            "target-arrow-color": "#475569",
+                            "target-arrow-shape": "triangle",
+                            "curve-style": "bezier",
+                        },
+                    },
+                ],
+                layout: { name: "cose", animate: false },
+            });
+        });
+    }
+
     onClose() { this.contentEl.empty(); }
 }

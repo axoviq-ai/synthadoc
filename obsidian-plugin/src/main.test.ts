@@ -447,6 +447,13 @@ function makeSmartContentEl(): any {
                 tagIndex.get(childTag)!.push(child);
                 return child;
             }),
+            createDiv: vi.fn((childOpts?: any) => {
+                const child = makeEl("div", childOpts);
+                el._children.push(child);
+                if (!tagIndex.has("div")) tagIndex.set("div", []);
+                tagIndex.get("div")!.push(child);
+                return child;
+            }),
             querySelector: vi.fn((selector: string) => {
                 // Strip attribute qualifiers and leading dot/hash; treat as a tag name
                 const tag2 = selector.replace(/\[.*?\]/g, "").replace(/^[.#]/, "");
@@ -2278,6 +2285,32 @@ describe("CandidatesModal", () => {
         await flushPromises();
 
         expect(modal.contentEl.innerHTML).toContain("Synthadoc server");
+    });
+});
+
+// ── Graph View Modal ──────────────────────────────────────────────────────────
+
+describe("Graph View Modal", () => {
+    it("opens without error when export returns empty graphml", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-view-graph");
+        apiMock.exportWiki.mockResolvedValue(
+            '<?xml version="1.0"?><graphml xmlns="http://graphml.graphdrawing.org/graphml"><graph id="wiki" edgedefault="directed"></graph></graphml>'
+        );
+        const m = new ModalClass();
+        expect(() => m.onOpen()).not.toThrow();
+        m.onClose();
+    });
+
+    it("Export to file button exists in toolbar", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-view-graph");
+        apiMock.exportWiki.mockResolvedValue(
+            '<?xml version="1.0"?><graphml xmlns="http://graphml.graphdrawing.org/graphml"><graph id="wiki" edgedefault="directed"></graph></graphml>'
+        );
+        const m = new ModalClass();
+        m.onOpen();
+        const btns = Array.from(m.contentEl.querySelectorAll("button")).map((b: any) => b._html ?? b.textContent);
+        expect(btns).toContain("Export to file");
+        m.onClose();
     });
 });
 
