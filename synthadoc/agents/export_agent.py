@@ -262,7 +262,7 @@ class ExportAgent:
                 "categories": page.categories or [],
                 "aliases": page.aliases or [],
                 "orphan": page.orphan,
-                "created": page.created,
+                "created": str(page.created) if page.created is not None else None,
                 "sources": [
                     {
                         "file": s.file, "hash": s.hash,

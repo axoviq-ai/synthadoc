@@ -252,3 +252,19 @@ async def test_json_unknown_format_raises(tmp_path):
     agent = _agent(tmp_path, store)
     with pytest.raises(ValueError, match="Unknown format"):
         await agent.export(ExportOptions(format="bogus"))
+
+
+@pytest.mark.asyncio
+async def test_json_date_object_created_serializes(tmp_path):
+    """yaml.safe_load converts bare YAML dates to datetime.date — must not blow up json.dumps."""
+    import datetime, json
+    store = _make_store(tmp_path)
+    page = WikiPage(
+        title="Date Page", tags=[], content="", status=LifecycleState.ACTIVE,
+        confidence="high", sources=[], created=datetime.date(2026, 5, 26),
+        orphan=False,
+    )
+    store.write_page("date-page", page)
+    agent = _agent(tmp_path, store)
+    result = json.loads(await agent.export(ExportOptions(format="json")))
+    assert result["pages"][0]["created"] == "2026-05-26"

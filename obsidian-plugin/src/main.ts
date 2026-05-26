@@ -3822,7 +3822,8 @@ class ExportModal extends Modal {
     onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl("h2", { text: "Export Wiki" });
+        const titleEl = contentEl.createEl("h2", { text: "Export Wiki" });
+        makeDraggable(this.modalEl, titleEl);
 
         // Format selector
         const fmtRow = contentEl.createEl("div", { cls: "setting-item" });
@@ -3918,7 +3919,8 @@ class GraphViewModal extends Modal {
         const { contentEl } = this;
         contentEl.empty();
         contentEl.style.width = "clamp(900px, 85vw, 1300px)";
-        contentEl.createEl("h2", { text: "Knowledge Graph" });
+        const titleEl = contentEl.createEl("h2", { text: "Knowledge Graph" });
+        makeDraggable(this.modalEl, titleEl);
 
         // Toolbar
         const toolbar = contentEl.createDiv({ cls: "synthadoc-graph-toolbar" });
