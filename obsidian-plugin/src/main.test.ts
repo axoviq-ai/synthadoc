@@ -73,6 +73,13 @@ vi.mock("./api", () => ({
     setBase: vi.fn(),
 }));
 
+vi.mock("cytoscape", () => ({
+    default: vi.fn().mockReturnValue({
+        layout: vi.fn().mockReturnValue({ run: vi.fn() }),
+        on: vi.fn(),
+    }),
+}));
+
 afterEach(() => vi.clearAllMocks());
 
 describe("SynthadocPlugin.onload", () => {
@@ -2291,25 +2298,51 @@ describe("CandidatesModal", () => {
 // ── Graph View Modal ──────────────────────────────────────────────────────────
 
 describe("Graph View Modal", () => {
+    const EMPTY_GRAPHML = '<?xml version="1.0"?><graphml xmlns="http://graphml.graphdrawing.org/graphml"><graph id="wiki" edgedefault="directed"></graph></graphml>';
+
     it("opens without error when export returns empty graphml", async () => {
         const { ModalClass, apiMock } = await getModal("synthadoc-view-graph");
-        apiMock.exportWiki.mockResolvedValue(
-            '<?xml version="1.0"?><graphml xmlns="http://graphml.graphdrawing.org/graphml"><graph id="wiki" edgedefault="directed"></graph></graphml>'
-        );
+        apiMock.exportWiki.mockResolvedValue(EMPTY_GRAPHML);
         const m = new ModalClass();
         expect(() => m.onOpen()).not.toThrow();
+        // Let async fetch + cytoscape import resolve
+        await new Promise(r => setTimeout(r, 0));
+        await new Promise(r => setTimeout(r, 0));
         m.onClose();
     });
 
     it("Export to file button exists in toolbar", async () => {
         const { ModalClass, apiMock } = await getModal("synthadoc-view-graph");
-        apiMock.exportWiki.mockResolvedValue(
-            '<?xml version="1.0"?><graphml xmlns="http://graphml.graphdrawing.org/graphml"><graph id="wiki" edgedefault="directed"></graph></graphml>'
-        );
+        apiMock.exportWiki.mockResolvedValue(EMPTY_GRAPHML);
         const m = new ModalClass();
         m.onOpen();
         const btns = Array.from(m.contentEl.querySelectorAll("button")).map((b: any) => b._html ?? b.textContent);
         expect(btns).toContain("Export to file");
+        m.onClose();
+    });
+
+    it("onClose sets _closed flag and empties contentEl", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-view-graph");
+        apiMock.exportWiki.mockResolvedValue(EMPTY_GRAPHML);
+        const m = new ModalClass();
+        m.onOpen();
+        // Verify _closed starts as false after onOpen
+        expect(m._closed).toBe(false);
+        m.onClose();
+        // After onClose, _closed should be true and contentEl should be emptied
+        expect(m._closed).toBe(true);
+        expect(m.contentEl.empty).toHaveBeenCalled();
+    });
+
+    it("shows error fallback when api call fails", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-view-graph");
+        apiMock.exportWiki.mockRejectedValue(new Error("server down"));
+        const m = new ModalClass();
+        m.onOpen();
+        await new Promise(r => setTimeout(r, 0));
+        const p = m.contentEl.querySelector("p");
+        const text = p?._html ?? p?.textContent ?? "";
+        expect(text).toContain("Could not load graph");
         m.onClose();
     });
 });

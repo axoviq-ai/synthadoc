@@ -3911,7 +3911,10 @@ class ExportModal extends Modal {
 }
 
 class GraphViewModal extends Modal {
+    private _closed = false;
+
     onOpen() {
+        this._closed = false;
         const { contentEl } = this;
         contentEl.empty();
         contentEl.style.width = "clamp(900px, 85vw, 1300px)";
@@ -3950,6 +3953,7 @@ class GraphViewModal extends Modal {
     }
 
     private _renderGraph(container: HTMLElement, graphmlText: string) {
+        if (this._closed) return;
         const parser = new DOMParser();
         const doc = parser.parseFromString(graphmlText, "application/xml");
         const NS = "http://graphml.graphdrawing.org/graphml";
@@ -3989,6 +3993,7 @@ class GraphViewModal extends Modal {
 
         // Dynamically import cytoscape to keep bundle size manageable
         import("cytoscape").then(({ default: cytoscape }) => {
+            if (this._closed) return;
             cytoscape({
                 container,
                 elements: [...nodes, ...edges],
@@ -4019,8 +4024,13 @@ class GraphViewModal extends Modal {
                 ],
                 layout: { name: "cose", animate: false },
             });
+        }).catch(() => {
+            if (!this._closed) container.textContent = "Could not load graph renderer.";
         });
     }
 
-    onClose() { this.contentEl.empty(); }
+    onClose() {
+        this._closed = true;
+        this.contentEl.empty();
+    }
 }
