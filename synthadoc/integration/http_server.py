@@ -209,6 +209,12 @@ class LifecycleTransitionRequest(BaseModel):
     reason: str
 
 
+class ExportRequest(BaseModel):
+    format: str
+    status_filter: str = "all"
+    context_pack: str | None = None
+
+
 def _parse_retry_after(exc: Exception, default: float = 60.0) -> float:
     """Parse 'Please try again in Xm Y.Zs' from a rate-limit error message."""
     m = re.search(r"Please try again in (?:(\d+)m\s*)?(\d+(?:\.\d+)?)s", str(exc))
@@ -899,5 +905,32 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         await audit.record_lifecycle_event(req.slug, from_state, req.to_state,
                                             req.reason, TriggerSource.USER)
         return {"ok": True, "slug": req.slug, "from_state": from_state, "to_state": req.to_state}
+
+    # ── Export ────────────────────────────────────────────────────────────────
+    @app.post("/export")
+    async def export_wiki(req: ExportRequest):
+        from synthadoc.agents.export_agent import ExportAgent, ExportOptions, EXPORT_FORMATS
+        if req.format not in EXPORT_FORMATS:
+            raise HTTPException(status_code=422,
+                                detail=f"Unknown format: {req.format!r}")
+        agent = ExportAgent(
+            store=app.state.orch._store,
+            wiki_name=wiki_root.name,
+            audit_db_path=wiki_root / ".synthadoc" / "audit.db",
+            routing_path=wiki_root / "ROUTING.md",
+        )
+        opts = ExportOptions(
+            format=req.format,
+            status_filter=req.status_filter,
+            context_pack=req.context_pack,
+        )
+        content = await agent.export(opts)
+        _CONTENT_TYPES = {
+            "llms.txt":      "text/plain; charset=utf-8",
+            "llms-full.txt": "text/plain; charset=utf-8",
+            "graphml":       "application/xml",
+            "json":          "application/json",
+        }
+        return Response(content=content, media_type=_CONTENT_TYPES[req.format])
 
     return app
