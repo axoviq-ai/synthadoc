@@ -186,3 +186,69 @@ async def test_graphml_empty_wiki(tmp_path):
     result = await agent.export(ExportOptions(format="graphml"))
     assert '<?xml version="1.0"' in result
     assert "<graphml" in result
+
+
+@pytest.mark.asyncio
+async def test_json_has_all_six_differentiators(tmp_path):
+    store = _make_store(tmp_path)
+    _write_page(store, "babbage", "Charles Babbage", LifecycleState.ACTIVE,
+                content="Babbage designed the Difference Engine.")
+    agent = _agent(tmp_path, store)
+    import json
+    result = json.loads(await agent.export(ExportOptions(format="json")))
+    page = result["pages"][0]
+    assert "claims" in page                         # differentiator 1
+    assert "lifecycle_history" in page              # differentiator 2
+    assert "total_compilation_cost_usd" in result   # differentiator 3
+    assert "routing" in result                      # differentiator 4
+    assert result["wiki"] == "test-wiki"
+    assert "exported_at" in result
+
+
+@pytest.mark.asyncio
+async def test_json_status_filter(tmp_path):
+    store = _make_store(tmp_path)
+    _write_page(store, "active-page", "Active", LifecycleState.ACTIVE)
+    _write_page(store, "stale-page", "Stale", LifecycleState.STALE)
+    agent = _agent(tmp_path, store)
+    import json
+    result = json.loads(await agent.export(ExportOptions(format="json", status_filter="active")))
+    slugs = [p["slug"] for p in result["pages"]]
+    assert "active-page" in slugs
+    assert "stale-page" not in slugs
+
+
+@pytest.mark.asyncio
+async def test_json_page_has_correct_fields(tmp_path):
+    store = _make_store(tmp_path)
+    _write_page(store, "babbage", "Charles Babbage", LifecycleState.ACTIVE,
+                content="Content.", tags=["pioneer"])
+    agent = _agent(tmp_path, store)
+    import json
+    result = json.loads(await agent.export(ExportOptions(format="json")))
+    page = result["pages"][0]
+    assert page["slug"] == "babbage"
+    assert page["title"] == "Charles Babbage"
+    assert page["status"] == "active"
+    assert page["tags"] == ["pioneer"]
+    assert "content" in page
+    assert "sources" in page
+    assert "lint_warnings" in page
+
+
+@pytest.mark.asyncio
+async def test_json_empty_wiki(tmp_path):
+    store = _make_store(tmp_path)
+    agent = _agent(tmp_path, store)
+    import json
+    result = json.loads(await agent.export(ExportOptions(format="json")))
+    assert result["page_count"] == 0
+    assert result["pages"] == []
+
+
+@pytest.mark.asyncio
+async def test_json_unknown_format_raises(tmp_path):
+    store = _make_store(tmp_path)
+    agent = _agent(tmp_path, store)
+    with pytest.raises(ValueError, match="Unknown format"):
+        await agent.export(ExportOptions(format="bogus"))

@@ -208,5 +208,72 @@ class ExportAgent:
             root_el, encoding="unicode"
         )
 
-    def _render_json(self, pages, citations, lc_events, cost_data, routing) -> str:
-        raise NotImplementedError("implemented in Task 3")
+    def _render_json(
+        self,
+        pages: dict[str, WikiPage],
+        citations: list[dict],
+        lc_events: list[dict],
+        cost_data: dict,
+        routing,
+    ) -> str:
+        import json as _json
+
+        citations_by_slug: dict[str, list[dict]] = {}
+        for c in citations:
+            citations_by_slug.setdefault(c["page_slug"], []).append({
+                "source_file": c["source_file"],
+                "source_lines": [c["line_start"], c["line_end"]],
+                "claim_excerpt": c.get("claim_excerpt", ""),
+            })
+
+        events_by_slug: dict[str, list[dict]] = {}
+        for e in lc_events:
+            events_by_slug.setdefault(e["slug"], []).append({
+                "from": e.get("from_state"),
+                "to": e["to_state"],
+                "ts": e.get("timestamp", ""),
+                "triggered_by": e.get("triggered_by", ""),
+                "reason": e.get("reason", ""),
+            })
+
+        branch_memberships = []
+        for branch, slugs in routing.branches.items():
+            for slug in slugs:
+                if slug in pages:
+                    branch_memberships.append({"slug": slug, "branch": branch})
+
+        output: dict = {
+            "wiki": self._wiki_name,
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "total_compilation_cost_usd": cost_data.get("total_cost_usd", 0.0),
+            "page_count": len(pages),
+            "routing": {"branch_memberships": branch_memberships},
+            "pages": [],
+        }
+
+        for slug in sorted(pages):
+            page = pages[slug]
+            output["pages"].append({
+                "slug": slug,
+                "title": page.title,
+                "status": page.status,
+                "confidence": page.confidence,
+                "tags": page.tags or [],
+                "categories": page.categories or [],
+                "aliases": page.aliases or [],
+                "orphan": page.orphan,
+                "created": page.created,
+                "sources": [
+                    {
+                        "file": s.file, "hash": s.hash,
+                        "size": s.size, "ingested": s.ingested,
+                    }
+                    for s in (page.sources or [])
+                ],
+                "content": page.content or "",
+                "claims": citations_by_slug.get(slug, []),
+                "lifecycle_history": events_by_slug.get(slug, []),
+                "lint_warnings": page.lint_warnings or [],
+            })
+
+        return _json.dumps(output, ensure_ascii=False, indent=2)
