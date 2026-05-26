@@ -120,6 +120,12 @@ export default class SynthadocPlugin extends Plugin {
             },
         });
 
+        this.addCommand({
+            id: "synthadoc-export-wiki",
+            name: "Export Wiki",
+            callback: () => new ExportModal(this.app).open(),
+        });
+
         this.addRibbonIcon("book-open", "Synthadoc status", async () => {
             const [healthRes, statusRes] = await Promise.allSettled([
                 api.health(),
@@ -3801,4 +3807,104 @@ class LifecycleModal extends Modal {
         this._auditEvents = [];
         this.contentEl.empty();
     }
+}
+
+class ExportModal extends Modal {
+    private _format = "json";
+    private _statusFilter = "all";
+
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+        contentEl.createEl("h2", { text: "Export Wiki" });
+
+        // Format selector
+        const fmtRow = contentEl.createEl("div", { cls: "setting-item" });
+        fmtRow.createEl("label", { text: "Format" });
+        const select = fmtRow.createEl("select");
+        ["json", "llms.txt", "llms-full.txt", "graphml"].forEach(fmt => {
+            const opt = select.createEl("option", { text: fmt, value: fmt });
+            if (fmt === this._format) opt.selected = true;
+        });
+
+        // Output path
+        const pathRow = contentEl.createEl("div", { cls: "setting-item" });
+        pathRow.createEl("label", { text: "Output path (in vault)" });
+        const today = new Date().toISOString().slice(0, 10);
+        const pathInput = pathRow.createEl("input", {
+            type: "text",
+            value: `exports/wiki-${today}.json`,
+        }) as HTMLInputElement;
+        pathInput.value = `exports/wiki-${today}.json`;
+
+        // Status filter
+        const statusRow = contentEl.createEl("div", { cls: "setting-item" });
+        statusRow.createEl("label", { text: "Status filter" });
+        const statusSel = statusRow.createEl("select");
+        [["all", "All pages"], ["active", "Active only"]].forEach(([val, label]) => {
+            const o = statusSel.createEl("option", { text: label, value: val });
+            if (val === "all") o.selected = true;
+        });
+
+        // Button row
+        const btnRow = contentEl.createEl("div", { cls: "modal-button-container" });
+        const exportBtn = btnRow.createEl("button", { text: "Export" }) as HTMLButtonElement;
+        let viewGraphBtn: HTMLButtonElement | null = null;
+
+        const updateExtension = () => {
+            const ext: Record<string, string> = {
+                "json": "json", "llms.txt": "txt", "llms-full.txt": "txt", "graphml": "graphml",
+            };
+            pathInput.value = pathInput.value.replace(/\.[^.]+$/, `.${ext[this._format] || "txt"}`);
+            if (this._format === "graphml") {
+                if (!viewGraphBtn) {
+                    viewGraphBtn = btnRow.createEl("button", { text: "View Graph" }) as HTMLButtonElement;
+                    viewGraphBtn.addEventListener("click", () => {
+                        new GraphViewModal(this.app).open();
+                        this.close();
+                    });
+                }
+            } else if (viewGraphBtn) {
+                viewGraphBtn.remove();
+                viewGraphBtn = null;
+            }
+        };
+
+        select.addEventListener("change", () => {
+            this._format = select.value;
+            updateExtension();
+        });
+        statusSel.addEventListener("change", () => { this._statusFilter = statusSel.value; });
+
+        exportBtn.addEventListener("click", async () => {
+            exportBtn.disabled = true;
+            exportBtn.textContent = "Exporting…";
+            try {
+                const content = await api.exportWiki(this._format, this._statusFilter);
+                const path = pathInput.value.trim() || `exports/wiki-export.${this._format}`;
+                if (await this.app.vault.adapter.exists(path)) {
+                    await this.app.vault.adapter.write(path, content);
+                } else {
+                    const parent = path.split("/").slice(0, -1).join("/");
+                    if (parent && !(await this.app.vault.adapter.exists(parent))) {
+                        await this.app.vault.createFolder(parent);
+                    }
+                    await this.app.vault.create(path, content);
+                }
+                new Notice(`Synthadoc: exported to ${path}`);
+                this.close();
+            } catch (e) {
+                new Notice(`Synthadoc: export failed — ${e}`);
+                exportBtn.disabled = false;
+                exportBtn.textContent = "Export";
+            }
+        });
+    }
+
+    onClose() { this.contentEl.empty(); }
+}
+
+class GraphViewModal extends Modal {
+    onOpen() { this.contentEl.createEl("p", { text: "Graph View coming soon." }); }
+    onClose() { this.contentEl.empty(); }
 }

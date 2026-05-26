@@ -407,7 +407,8 @@ function makeSmartContentEl(): any {
             style: {} as CSSStyleDeclaration,
             onclick: null,
             disabled: false,
-            value: "",
+            value: opts?.value ?? "",
+            type: opts?.type ?? "",
             min: "",
             max: "",
             focus: vi.fn(),
@@ -418,6 +419,8 @@ function makeSmartContentEl(): any {
                 return idAttr + el._html + childHtml;
             },
             set innerHTML(v: string) { el._html = v; },
+            get textContent(): string { return el._html; },
+            set textContent(v: string) { el._html = v; },
             addEventListener: vi.fn((event: string, handler: any) => {
                 if (!el._listeners) el._listeners = {};
                 el._listeners[event] = handler;
@@ -445,10 +448,15 @@ function makeSmartContentEl(): any {
                 return child;
             }),
             querySelector: vi.fn((selector: string) => {
-                // Strip leading dot/hash; treat selector as a tag name
-                const tag2 = selector.replace(/^[.#]/, "");
+                // Strip attribute qualifiers and leading dot/hash; treat as a tag name
+                const tag2 = selector.replace(/\[.*?\]/g, "").replace(/^[.#]/, "");
                 return tagIndex.get(tag2)?.[0] ?? null;
             }),
+            querySelectorAll: vi.fn((selector: string) => {
+                const tag2 = selector.replace(/\[.*?\]/g, "").replace(/^[.#]/, "");
+                return tagIndex.get(tag2) ?? [];
+            }),
+            remove: vi.fn(),
         };
         return el;
     }
@@ -456,8 +464,12 @@ function makeSmartContentEl(): any {
     const root = makeEl("div");
     // Add a top-level querySelector that searches tagIndex
     root.querySelector = vi.fn((selector: string) => {
-        const tag2 = selector.replace(/^[.#]/, "");
+        const tag2 = selector.replace(/\[.*?\]/g, "").replace(/^[.#]/, "");
         return tagIndex.get(tag2)?.[0] ?? null;
+    });
+    root.querySelectorAll = vi.fn((selector: string) => {
+        const tag2 = selector.replace(/\[.*?\]/g, "").replace(/^[.#]/, "");
+        return tagIndex.get(tag2) ?? [];
     });
     // empty() removes root's direct children from the index then clears root
     root.empty = vi.fn(() => {
@@ -1880,10 +1892,71 @@ describe("IngestModal URL tab", () => {
 });
 
 describe("Export Modal", () => {
-    it.todo("format dropdown shows all four formats");
-    it.todo("output path pre-fills with .json extension for json format");
-    it.todo("Export button calls exportWiki with correct args");
-    it.todo("View Graph button appears only for graphml format");
+    it("format dropdown shows all four formats", async () => {
+        const { ModalClass } = await getModal("synthadoc-export-wiki");
+        const modal = new ModalClass();
+        modal.onOpen();
+
+        // First select in tagIndex is the format selector
+        const select = modal.contentEl.querySelector("select");
+        expect(select).not.toBeNull();
+        const optionTexts = select!._children.map((o: any) => o.value ?? o._html);
+        expect(optionTexts).toContain("json");
+        expect(optionTexts).toContain("llms.txt");
+        expect(optionTexts).toContain("llms-full.txt");
+        expect(optionTexts).toContain("graphml");
+    });
+
+    it("output path pre-fills with .json extension for json format", async () => {
+        const { ModalClass } = await getModal("synthadoc-export-wiki");
+        const modal = new ModalClass();
+        modal.onOpen();
+
+        const input = modal.contentEl.querySelector("input");
+        expect(input).not.toBeNull();
+        expect(input!.value).toMatch(/\.json$/);
+    });
+
+    it("Export button calls exportWiki with correct args", async () => {
+        const vaultApp = {
+            vault: {
+                adapter: { exists: vi.fn().mockResolvedValue(false), write: vi.fn() },
+                createFolder: vi.fn().mockResolvedValue(undefined),
+                create: vi.fn().mockResolvedValue(undefined),
+            },
+        };
+        const { ModalClass, apiMock } = await getModal("synthadoc-export-wiki", vaultApp);
+        apiMock.exportWiki.mockResolvedValue("{}");
+
+        const modal = new ModalClass();
+        modal.onOpen();
+
+        const exportBtn = modal.contentEl.querySelectorAll("button")
+            .find((b: any) => b._html === "Export");
+        expect(exportBtn).toBeDefined();
+        exportBtn!._listeners?.click?.();
+        await flushPromises();
+
+        expect(apiMock.exportWiki).toHaveBeenCalledWith("json", "all");
+    });
+
+    it("View Graph button appears only for graphml format", async () => {
+        const { ModalClass } = await getModal("synthadoc-export-wiki");
+        const modal = new ModalClass();
+        modal.onOpen();
+
+        // Default format is json — no View Graph button
+        const btnsBefore = modal.contentEl.querySelectorAll("button").map((b: any) => b._html);
+        expect(btnsBefore).not.toContain("View Graph");
+
+        // Switch to graphml
+        const select = modal.contentEl.querySelector("select");
+        select!.value = "graphml";
+        select!._listeners?.change?.();
+
+        const btnsAfter = modal.contentEl.querySelectorAll("button").map((b: any) => b._html);
+        expect(btnsAfter).toContain("View Graph");
+    });
 });
 
 // ── AuditModal — Ingest history tab ───────────────────────────────────────────
