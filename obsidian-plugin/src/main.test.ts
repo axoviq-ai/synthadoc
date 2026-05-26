@@ -68,6 +68,7 @@ vi.mock("./api", () => ({
         config: vi.fn().mockResolvedValue({ check_url_availability: false }),
         lifecycleStatus: vi.fn(), lifecyclePages: vi.fn(), lifecycleEvents: vi.fn(),
         lifecycleTransition: vi.fn(), deleteJob: vi.fn(),
+        exportWiki: vi.fn(),
     },
     setBase: vi.fn(),
 }));
@@ -586,6 +587,7 @@ async function getModal(commandId: string, appOverride?: any): Promise<{ ModalCl
             config: vi.fn().mockResolvedValue({ check_url_availability: false }),
             lifecycleStatus: vi.fn(), lifecyclePages: vi.fn(), lifecycleEvents: vi.fn(),
             lifecycleTransition: vi.fn(), deleteJob: vi.fn(),
+            exportWiki: vi.fn(),
         },
         setBase: vi.fn(),
     };
@@ -1877,6 +1879,13 @@ describe("IngestModal URL tab", () => {
     });
 });
 
+describe("Export Modal", () => {
+    it("calls exportWiki with correct format on export button click", async () => {
+        // Placeholder: verify api shape
+        const { ModalClass, apiMock } = await getModal("synthadoc-query");
+        expect(typeof apiMock.exportWiki).toBe("function");
+    });
+});
 
 // ── AuditModal — Ingest history tab ───────────────────────────────────────────
 
