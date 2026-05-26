@@ -3,15 +3,12 @@
 # Copyright (C) 2026 William Johnason / axoviq.com
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 from synthadoc.storage.wiki import WikiStorage, WikiPage, LifecycleState
 
-_WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 _SKIP_SLUGS = frozenset({"index", "log", "dashboard", "overview", "purpose"})
 EXPORT_FORMATS = frozenset({"llms.txt", "llms-full.txt", "graphml", "json"})
 _MAX_FULL_TXT_BYTES = 5 * 1024 * 1024  # 5 MB
@@ -21,7 +18,7 @@ _MAX_FULL_TXT_BYTES = 5 * 1024 * 1024  # 5 MB
 class ExportOptions:
     format: str
     status_filter: str = "all"
-    context_pack: Optional[str] = None
+    context_pack: str | None = None
 
 
 class ExportAgent:
@@ -55,19 +52,22 @@ class ExportAgent:
                 continue
             pages[slug] = page
 
-        from synthadoc.storage.log import AuditDB
-        from synthadoc.core.routing import RoutingIndex
-        audit = AuditDB(self._audit_db_path)
-        await audit.init()
-        routing = RoutingIndex.parse(self._routing_path)
-
         if opts.format == "llms.txt":
             return self._render_llms_txt(pages)
         if opts.format == "llms-full.txt":
             return self._render_llms_full_txt(pages)
+
+        # graphml and json both need routing
+        from synthadoc.core.routing import RoutingIndex
+        routing = RoutingIndex.parse(self._routing_path)
+
         if opts.format == "graphml":
             return self._render_graphml(pages, routing)
-        # json
+
+        # json only
+        from synthadoc.storage.log import AuditDB
+        audit = AuditDB(self._audit_db_path)
+        await audit.init()
         citations = await audit.list_citations(limit=100_000)
         lc_events = await audit.get_lifecycle_events(limit=100_000)
         cost_data = await audit.cost_summary(days=3650)
