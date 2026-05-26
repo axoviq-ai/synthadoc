@@ -36,6 +36,7 @@ major engine feature. No setup beyond following the steps below is required.
 18. [Configure candidates staging](#step-18--configure-candidates-staging)
 19. [Build a context pack](#step-19--build-a-context-pack)
 20. [Establish claim-level provenance](#claim-provenance)
+21. [Export your wiki](#step-21--export-your-wiki)
 
 **Appendices**
 
@@ -1528,6 +1529,32 @@ synthadoc lint report
 
 ---
 
+## Step 21 — Export your wiki
+
+Once your wiki is populated and pages are reviewed, export it for use in other tools. All four formats are assembled by the server with zero additional LLM calls.
+
+```bash
+# For LLM context windows — active pages only (llms.txt spec)
+synthadoc export --format llms.txt --status active
+
+# Full content dump with provenance footnotes preserved inline
+synthadoc export --format llms-full.txt --output exports/history-full.txt
+
+# Knowledge graph — open in Gephi, Cytoscape, or yEd
+synthadoc export --format graphml --output exports/history.graphml
+
+# Agent-ready JSON with claim citations, lifecycle history, and compilation cost
+synthadoc export --format json --output exports/history.json
+```
+
+**Flags:** `--format/-f` (required: `llms.txt`, `llms-full.txt`, `graphml`, `json`), `--output/-o` (stdout default), `--status/-s` (filter by lifecycle state: `all`, `active`, `draft`, `stale`, `contradicted`, `archived`), `--context-pack/-c` (export only pages in a named context pack).
+
+Requires `synthadoc serve` to be running.
+
+**In Obsidian:** Open the command palette → **Synthadoc: Export Wiki** to export via a modal dialog. Select a format, choose a status filter, and click **Export** — the file is saved directly to your vault (default: `exports/wiki-YYYY-MM-DD.<ext>`). Select the **GraphML** format and click **View Graph** to render the knowledge graph inline with lifecycle-colored nodes. Use **View Knowledge Graph** from the command palette to open the graph viewer directly.
+
+---
+
 ## What's next?
 
 You have now walked through every major Synthadoc feature on the demo wiki. When you're
@@ -1625,6 +1652,14 @@ All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synt
 | Command                                     | What it does                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `Synthadoc: Context: build context pack...` | Enter a goal or question and a token budget (default 4000). Press**Build Context Pack** or `Ctrl/Cmd+Enter`. The server decomposes the goal, retrieves the most relevant wiki pages via BM25, and packs them into a single cited Markdown document within the budget. The result appears in a read-only text area. **Copy to Clipboard** copies it to the OS clipboard; **Save as .md** downloads it as a Markdown file. |
+
+### Export
+
+
+| Command                                | What it does                                                                                                                                                                                                                                                                                                                                                       |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Synthadoc: Export Wiki`               | Modal with a format dropdown (`json`, `llms.txt`, `llms-full.txt`, `graphml`), an output path input pre-filled with today's date and the correct extension, and a status filter selector. Click **Export** to write the file to your vault `exports/` folder. For GraphML format, a **View Graph** button also appears — click it to open the graph viewer. |
+| `Synthadoc: View Knowledge Graph`      | Embedded Cytoscape.js knowledge graph. Nodes colored by lifecycle state (active=green, draft=yellow, stale=orange, contradicted=red, archived=grey). Edges represent wikilinks. An **Export to file** button saves the GraphML to `exports/wiki-YYYY-MM-DD.graphml` in your vault. |
 
 > **UX note:** All modals are draggable and support full text selection and copy-paste.
 

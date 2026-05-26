@@ -195,6 +195,28 @@ synthadoc lint report -w history-of-computing
 
 ---
 
+## Step 6 — Export your wiki
+
+All four formats are available once the server is running.
+
+```bash
+# LLM navigation index — active pages only (llms.txt spec)
+synthadoc export --format llms.txt --status active -w history-of-computing
+
+# Full text dump — preserves provenance footnotes inline
+synthadoc export --format llms-full.txt --output exports/history-full.txt -w history-of-computing
+
+# Knowledge graph — open in Gephi, Cytoscape, or yEd
+synthadoc export --format graphml --output exports/history.graphml -w history-of-computing
+
+# Structured JSON — includes claim citations, lifecycle history, and total compilation cost
+synthadoc export --format json --output exports/history.json -w history-of-computing
+```
+
+**In Obsidian:** Command palette → `Synthadoc: Export Wiki`. Select format → click Export. File saved to vault `exports/` folder. For GraphML, click **View Graph** to render the knowledge graph inside Obsidian with lifecycle-colored nodes.
+
+---
+
 ## Wiki pages (pre-built)
 
 | Page | Description |
