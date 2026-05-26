@@ -12,7 +12,7 @@ export function getBase(): string {
     return BASE;
 }
 
-async function call(path: string, method = "GET", body?: object) {
+async function _callInner(path: string, method = "GET", body?: object) {
     const res = await requestUrl({
         url: `${BASE}${path}`,
         method,
@@ -23,21 +23,15 @@ async function call(path: string, method = "GET", body?: object) {
     if (res.status < 200 || res.status >= 300) {
         throw new Error(`synthadoc API ${res.status}`);
     }
-    return res.json;
+    return res;
+}
+
+async function call(path: string, method = "GET", body?: object) {
+    return (await _callInner(path, method, body)).json;
 }
 
 async function callRaw(path: string, method = "GET", body?: object): Promise<string> {
-    const res = await requestUrl({
-        url: `${BASE}${path}`,
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: body ? JSON.stringify(body) : undefined,
-        throw: false,
-    });
-    if (res.status < 200 || res.status >= 300) {
-        throw new Error(`synthadoc API ${res.status}`);
-    }
-    return res.text;
+    return (await _callInner(path, method, body)).text;
 }
 
 export const api = {

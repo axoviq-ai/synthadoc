@@ -1880,11 +1880,10 @@ describe("IngestModal URL tab", () => {
 });
 
 describe("Export Modal", () => {
-    it("calls exportWiki with correct format on export button click", async () => {
-        // Placeholder: verify api shape
-        const { ModalClass, apiMock } = await getModal("synthadoc-query");
-        expect(typeof apiMock.exportWiki).toBe("function");
-    });
+    it.todo("format dropdown shows all four formats");
+    it.todo("output path pre-fills with .json extension for json format");
+    it.todo("Export button calls exportWiki with correct args");
+    it.todo("View Graph button appears only for graphml format");
 });
 
 // ── AuditModal — Ingest history tab ───────────────────────────────────────────
