@@ -1932,12 +1932,16 @@ describe("Export Modal", () => {
     });
 
     it("Export button calls exportWiki with correct args", async () => {
+        const mockTFile = {};
+        const mockLeaf = { openFile: vi.fn().mockResolvedValue(undefined) };
         const vaultApp = {
             vault: {
-                adapter: { exists: vi.fn().mockResolvedValue(false), write: vi.fn() },
+                getAbstractFileByPath: vi.fn().mockReturnValue(null),
                 createFolder: vi.fn().mockResolvedValue(undefined),
-                create: vi.fn().mockResolvedValue(undefined),
+                create: vi.fn().mockResolvedValue(mockTFile),
             },
+            workspace: { getLeaf: vi.fn().mockReturnValue(mockLeaf) },
+            commands: { executeCommandById: vi.fn() },
         };
         const { ModalClass, apiMock } = await getModal("synthadoc-export-wiki", vaultApp);
         apiMock.exportWiki.mockResolvedValue("{}");
@@ -1952,6 +1956,8 @@ describe("Export Modal", () => {
         await flushPromises();
 
         expect(apiMock.exportWiki).toHaveBeenCalledWith("json", "all");
+        expect(vaultApp.vault.create).toHaveBeenCalled();
+        expect(mockLeaf.openFile).toHaveBeenCalledWith(mockTFile);
     });
 
     it("View Graph button appears only for graphml format", async () => {

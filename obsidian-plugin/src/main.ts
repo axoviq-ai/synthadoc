@@ -31,6 +31,9 @@ export default class SynthadocPlugin extends Plugin {
     async onload() {
         await this.loadSettings();
         setBase(this.settings.serverUrl);
+        // Enable "Detect all file extensions" so exported files (json, txt, graphml)
+        // are visible in the file explorer without a manual settings change.
+        (this.app as any)?.vault?.setConfig?.("detectAllExtensions", true);
         this.addSettingTab(new SynthadocSettingTab(this.app, this));
 
         this.addCommand({
@@ -3891,17 +3894,23 @@ class ExportModal extends Modal {
             try {
                 const content = await api.exportWiki(this._format, this._statusFilter);
                 const path = pathInput.value.trim() || `exports/wiki-export.${this._format}`;
-                if (await this.app.vault.adapter.exists(path)) {
-                    await this.app.vault.adapter.write(path, content);
+                let tfile: TFile;
+                const existing = this.app.vault.getAbstractFileByPath(path);
+                if (existing instanceof TFile) {
+                    await this.app.vault.modify(existing, content);
+                    tfile = existing;
                 } else {
                     const parent = path.split("/").slice(0, -1).join("/");
-                    if (parent && !(await this.app.vault.adapter.exists(parent))) {
-                        await this.app.vault.createFolder(parent);
+                    if (parent) {
+                        try { await this.app.vault.createFolder(parent); } catch { /* already exists */ }
                     }
-                    await this.app.vault.create(path, content);
+                    tfile = await this.app.vault.create(path, content);
                 }
                 new Notice(`Synthadoc: exported to ${path}`);
                 this.close();
+                const leaf = this.app.workspace.getLeaf(false);
+                await leaf.openFile(tfile);
+                (this.app as any).commands.executeCommandById("file-explorer:reveal-active-file");
             } catch (e) {
                 new Notice(`Synthadoc: export failed — ${e}`);
                 exportBtn.disabled = false;
