@@ -3820,6 +3820,8 @@ class ExportModal extends Modal {
     private _statusFilter = "all";
 
     onOpen() {
+        const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
+        if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
         const { contentEl } = this;
         contentEl.empty();
         const titleEl = contentEl.createEl("h2", { text: "Export Wiki" });
@@ -3916,6 +3918,8 @@ class GraphViewModal extends Modal {
 
     onOpen() {
         this._closed = false;
+        const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
+        if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
         const { contentEl } = this;
         contentEl.empty();
         contentEl.style.width = "clamp(900px, 85vw, 1300px)";
