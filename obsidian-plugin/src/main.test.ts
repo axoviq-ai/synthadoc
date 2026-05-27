@@ -14,6 +14,7 @@ vi.mock("obsidian", () => ({
         loadData                     = vi.fn().mockResolvedValue({});
         saveData                     = vi.fn().mockResolvedValue(undefined);
         registerMarkdownPostProcessor = vi.fn();
+        registerExtensions           = vi.fn();
         constructor(app?: any) { this.app = app; }
     },
     FileSystemAdapter: class {},
@@ -561,6 +562,7 @@ async function getModal(commandId: string, appOverride?: any): Promise<{ ModalCl
             loadData                      = vi.fn().mockResolvedValue({});
             saveData                      = vi.fn().mockResolvedValue(undefined);
             registerMarkdownPostProcessor = vi.fn();
+            registerExtensions            = vi.fn();
             constructor(app?: any) { this.app = app; }
         },
         FileSystemAdapter: class {},

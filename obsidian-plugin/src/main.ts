@@ -31,9 +31,9 @@ export default class SynthadocPlugin extends Plugin {
     async onload() {
         await this.loadSettings();
         setBase(this.settings.serverUrl);
-        // Enable "Detect all file extensions" so exported files (json, txt, graphml)
-        // are visible in the file explorer without a manual settings change.
-        (this.app as any)?.vault?.setConfig?.("detectAllExtensions", true);
+        // Register export file extensions so Obsidian indexes and shows them in the
+        // file explorer without the user needing to enable "Detect all file extensions".
+        this.registerExtensions(["json", "graphml"], "markdown");
         this.addSettingTab(new SynthadocSettingTab(this.app, this));
 
         this.addCommand({
