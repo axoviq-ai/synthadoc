@@ -1060,6 +1060,19 @@ class JobsModal extends Modal {
             };
         }
 
+        // Quick-launch links
+        const quickRow = contentEl.createEl("div");
+        quickRow.style.cssText = "display:flex;align-items:center;gap:12px;margin-bottom:8px;font-size:12px";
+        quickRow.createEl("span", { text: "Launch:" }).style.cssText = "color:var(--text-muted);font-weight:600";
+        const _makeQuickLink = (label: string, open: () => void) => {
+            const a = quickRow.createEl("a", { text: label });
+            a.style.cssText = "cursor:pointer;color:var(--link-color)";
+            a.onclick = () => { this.close(); setTimeout(open, 150); };
+        };
+        _makeQuickLink("Ingest",      () => new IngestModal(this.app).open());
+        _makeQuickLink("Lint",        () => new LintRunModal(this.app).open());
+        _makeQuickLink("Lint report", () => new LintReportModal(this.app).open());
+
         // Interval + countdown row
         const intervalRow = contentEl.createEl("div");
         intervalRow.style.cssText = "display:flex;align-items:center;gap:6px;margin-bottom:10px;font-size:12px;color:var(--text-muted)";
