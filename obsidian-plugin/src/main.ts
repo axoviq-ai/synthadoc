@@ -3022,7 +3022,9 @@ class SourceViewerModal extends Modal {
         contentEl.empty();
 
         const CONTEXT_LINES = 5;
-        const extractedFilename = this.filename.replace(/\.[^.]+$/, ".txt");
+        const extractedFilename = this.filename.includes(".")
+            ? this.filename.replace(/\.[^.]+$/, ".txt")
+            : this.filename + ".txt";
         const extractedPath = `${this.wikiRoot}/.synthadoc/extracted/${extractedFilename}`;
         const rawSourcePath = `${this.wikiRoot}/${RAW_SOURCES_DIR}/${this.filename}`;
         const stem = this.filename.replace(/\.[^.]+$/, "");
@@ -3032,10 +3034,13 @@ class SourceViewerModal extends Modal {
         // Binary types (xlsx, docx, png, …) cannot — they need a sidecar that the
         // ingest pipeline only writes for PDFs today.
         const TEXT_EXTENSIONS = new Set(["md", "txt", "csv"]);
-        const ext = (this.filename.split(".").pop() ?? "").toLowerCase();
+        const dotIdx = this.filename.lastIndexOf(".");
+        // Files with no extension (bare slugs) are treated as plain text.
+        const ext = dotIdx >= 0 ? this.filename.slice(dotIdx + 1).toLowerCase() : "";
+        const isText = TEXT_EXTENSIONS.has(ext) || ext === "";
         const resolvePath = (): string => {
             if (fs.existsSync(extractedPath)) return extractedPath;
-            if (TEXT_EXTENSIONS.has(ext) && fs.existsSync(rawSourcePath)) return rawSourcePath;
+            if (isText && fs.existsSync(rawSourcePath)) return rawSourcePath;
             throw new Error("no-sidecar");
         };
 
@@ -3076,7 +3081,7 @@ class SourceViewerModal extends Modal {
                 }
             } catch { /* no pagemap — PDF jump not available */ }
         } catch {
-            const msg = TEXT_EXTENSIONS.has(ext)
+            const msg = isText
                 ? `Could not read source file for ${this.filename}.`
                 : `Preview not available for .${ext} files. Open the original in raw_sources/ to view its content.`;
             contentEl.createEl("p", { text: msg })
