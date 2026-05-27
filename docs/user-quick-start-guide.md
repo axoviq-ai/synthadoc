@@ -1589,8 +1589,9 @@ The exported `.graphml` file can be loaded in any of these free tools:
 **Gephi** (recommended for large wikis and analysis)
 1. Download from [gephi.org](https://gephi.org) (free, open source)
 2. **File → Open** your `.graphml` file
-3. Run **Layout → ForceAtlas2** in the Layout panel
-4. Use **Statistics** to compute degree centrality or community detection
+3. Run **Layout → ForceAtlas2** in the Layout panel; enable **Prevent Overlap** in Tuning to spread nodes apart
+4. To show node labels: click the **label toggle button** (marked **Aα** or **T**) in the bottom toolbar next to the Nodes slider
+5. Use **Statistics** to compute degree centrality or community detection
 
 **Cytoscape** (recommended for programmatic analysis)
 1. Download from [cytoscape.org](https://cytoscape.org) (free)
