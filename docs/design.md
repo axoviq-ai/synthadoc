@@ -2096,7 +2096,7 @@ The `synthadoc export` command serializes the wiki in four machine-readable form
 
 **`llms.txt`** — Navigation index per the [llmstxt.org](https://llmstxt.org/) spec. Active pages appear under `## Pages` with a one-line description; contradicted and stale pages appear under `## Needs Review` with a reason note; archived pages are omitted entirely. With `--status active` only `## Pages` is emitted.
 
-**`llms-full.txt`** — Flat content dump. Pages are separated by `---`. Each page opens with `Status: <state> | Confidence: <level> | Tags: ...`. Provenance footnotes (`^[source.txt:42-58]`) are preserved verbatim in the body. Output is capped at 5 MB; if exceeded a truncation notice is appended.
+**`llms-full.txt`** — Flat content dump. Pages are separated by `---`. Each page opens with `Status: <state> | Confidence: <level> | Tags: ...`. Provenance footnotes (`^[source.txt:42-58]`) are preserved verbatim in the body. No size limit — the full wiki is always exported. For very large wikis a streaming export path is planned as a future enhancement.
 
 **`graphml`** — Standard GraphML 1.1. Nodes = pages; edges = wikilinks extracted from page bodies. Node attributes: `title`, `status`, `confidence`, `orphan` (boolean), `citation_count` (int), `inbound_link_count` (int), `routing_branch` (from ROUTING.md branch membership). All edges carry `edge_type="wikilink"`. Self-links are suppressed.
 

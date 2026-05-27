@@ -13,7 +13,6 @@ from synthadoc.storage.wiki import WikiStorage, WikiPage, LifecycleState
 _SKIP_SLUGS = frozenset({"index", "log", "dashboard", "overview", "purpose"})
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 EXPORT_FORMATS = frozenset({"llms.txt", "llms-full.txt", "graphml", "json"})
-_MAX_FULL_TXT_BYTES = 5 * 1024 * 1024  # 5 MB
 
 
 @dataclass
@@ -121,11 +120,7 @@ class ExportAgent:
             section += f"\n\n{page.content or ''}\n"
             sections.append(section)
 
-        result = "".join(sections)
-        if len(result.encode("utf-8")) > _MAX_FULL_TXT_BYTES:
-            result = result[: _MAX_FULL_TXT_BYTES].rsplit("\n", 1)[0]
-            result += "\n\n[TRUNCATED — wiki exceeds 5 MB export limit]\n"
-        return result
+        return "".join(sections)
 
     def _render_graphml(self, pages: dict[str, WikiPage], routing) -> str:
         import xml.etree.ElementTree as ET
