@@ -333,6 +333,18 @@ class IngestModal extends Modal {
         switchTab("Web search");
     }
 
+    private _makeJobsLink(container: HTMLElement): void {
+        const link = container.createEl("a", { text: "View jobs →" });
+        link.style.cssText = "font-size:12px;cursor:pointer;color:var(--link-color);margin-right:auto";
+        link.onclick = () => {
+            this.close();
+            setTimeout(() => new JobsModal(
+                this.app,
+                new Set(["pending", "in_progress", "failed", "skipped"]),
+            ).open(), 150);
+        };
+    }
+
     private _forceRow(panel: HTMLElement): () => boolean {
         const row = panel.createEl("div");
         row.style.cssText = "display:flex;align-items:center;gap:6px;margin-bottom:10px;font-size:12px;color:var(--text-muted)";
@@ -373,7 +385,8 @@ class IngestModal extends Modal {
         const isForced = this._forceRow(panel);
 
         const btnRow = panel.createEl("div");
-        btnRow.style.cssText = "display:flex;justify-content:flex-end;margin-bottom:10px";
+        btnRow.style.cssText = "display:flex;align-items:center;gap:8px;justify-content:flex-end;margin-bottom:10px";
+        this._makeJobsLink(btnRow);
         const btn = btnRow.createEl("button", { text: "Search" }) as HTMLButtonElement;
 
         const statusEl = panel.createEl("p");
@@ -499,6 +512,10 @@ class IngestModal extends Modal {
 
         const isForced = this._forceRow(panel);
 
+        const linkRow = panel.createEl("div");
+        linkRow.style.cssText = "display:flex;margin-bottom:6px";
+        this._makeJobsLink(linkRow);
+
         const out = panel.createEl("div");
         out.style.cssText = "margin-top:4px;-webkit-user-select:text;user-select:text";
 
@@ -575,15 +592,9 @@ class IngestModal extends Modal {
 
         const btnRow = panel.createEl("div");
         btnRow.style.cssText = "display:flex;gap:8px;justify-content:flex-end;align-items:center";
+        this._makeJobsLink(btnRow);
         const ingestBtn = btnRow.createEl("button", { text: "Ingest all" }) as HTMLButtonElement;
         ingestBtn.style.cssText = "font-weight:bold";
-
-        const jobsLink = btnRow.createEl("a", { text: "View jobs list →" });
-        jobsLink.style.cssText = "display:none;font-size:12px;cursor:pointer;color:var(--link-color)";
-        jobsLink.onclick = () => {
-            this.close();
-            setTimeout(() => (this.app as any).commands?.executeCommandById("synthadoc:synthadoc-jobs"), 150);
-        };
 
         const setStatus = (html: string) => { statusEl.innerHTML = html; };
 
@@ -601,7 +612,6 @@ class IngestModal extends Modal {
             }
 
             ingestBtn.disabled = true;
-            jobsLink.style.display = "none";
             setStatus(`⏳ Queuing ${files.length} file(s)…`);
 
             const force = isForced();
@@ -644,7 +654,6 @@ class IngestModal extends Modal {
                         this._pollTimer = null;
                         setStatus(`✅ All ${jobIds.length} job(s) complete.${queueFailed ? ` (${queueFailed} file(s) failed to queue.)` : ""}`);
                         ingestBtn.disabled = false;
-                        jobsLink.style.display = "";
                     }
                 } catch { /* server unreachable — keep polling */ }
             }, 2000);
@@ -710,16 +719,10 @@ class IngestModal extends Modal {
 
         const btnRow = panel.createEl("div");
         btnRow.style.cssText = "display:flex;gap:8px;justify-content:flex-end;align-items:center";
+        this._makeJobsLink(btnRow);
         const ingestBtn = btnRow.createEl("button", { text: "Ingest selected" }) as HTMLButtonElement;
         ingestBtn.style.cssText = "font-weight:bold";
         ingestBtn.disabled = true;
-
-        const jobsLink = btnRow.createEl("a", { text: "View jobs list →" });
-        jobsLink.style.cssText = "display:none;font-size:12px;cursor:pointer;color:var(--link-color)";
-        jobsLink.onclick = () => {
-            this.close();
-            setTimeout(() => (this.app as any).commands?.executeCommandById("synthadoc:synthadoc-jobs"), 150);
-        };
 
         let scannedFiles: any[] = [];
         let checkboxRefs: HTMLInputElement[] = [];
@@ -785,7 +788,6 @@ class IngestModal extends Modal {
             } else {
                 statusEl.innerHTML = "";
             }
-            jobsLink.style.display = "none";
         };
 
         scanBtn.onclick = scan;
@@ -801,7 +803,6 @@ class IngestModal extends Modal {
             ingestBtn.disabled = true;
             scanBtn.disabled = true;
             browseBtn.disabled = true;
-            jobsLink.style.display = "none";
             setStatus(`⏳ Queuing ${selectedFiles.length} file(s)…`);
 
             const force = isForced();
@@ -850,7 +851,6 @@ class IngestModal extends Modal {
                         scanBtn.disabled = false;
                         browseBtn.disabled = false;
                         updateCount();
-                        jobsLink.style.display = "";
                     }
                 } catch { /* server unreachable — keep polling */ }
             }, 2000);
@@ -976,6 +976,11 @@ const JOBS_PAGE_SIZE = 25;
 
 class JobsModal extends Modal {
     private _selected: Set<string> = new Set(["pending", "in_progress"]);
+
+    constructor(app: App, initialFilters?: Set<string>) {
+        super(app);
+        if (initialFilters) this._selected = new Set(initialFilters);
+    }
     private _intervalSecs = 10;
     private _countdown = 10;
     private _countdownTimer: number | null = null;

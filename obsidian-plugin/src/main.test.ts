@@ -176,12 +176,12 @@ describe("IngestModal All-sources tab", () => {
     });
 
     // contentEl children: [0]=h3, [1]=tabBar, [2]=WS panel, [3]=URL panel, [4]=All-sources panel, [5]=Pick-files panel
-    // All-sources panel: [0]=desc, [1]=folderRow([0]=label,[1]=folderDisplay), [2]=statusEl, [3]=forceRow, [4]=btnRow([0]=ingestBtn)
+    // All-sources panel: [0]=desc, [1]=folderRow([0]=label,[1]=folderDisplay), [2]=statusEl, [3]=forceRow, [4]=btnRow([0]=jobsLink,[1]=ingestBtn)
     const getAllSources = (modal: any) => {
         const panel = modal.contentEl._children[4];
         return {
             folderDisplay: panel._children[1]._children[1] as any,
-            ingestBtn:     panel._children[4]._children[0] as any,
+            ingestBtn:     panel._children[4]._children[1] as any,
         };
     };
 
@@ -725,7 +725,7 @@ describe("IngestModal Pick-files tab", () => {
             browseBtn: panel._children[1]._children[2] as any,
             scanBtn:   panel._children[1]._children[3] as any,
             listEl:    panel._children[3] as any,
-            ingestBtn: panel._children[6]._children[0] as any,
+            ingestBtn: panel._children[6]._children[1] as any,
         };
     };
 
