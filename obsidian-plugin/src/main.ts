@@ -3638,8 +3638,21 @@ class LifecycleModal extends Modal {
             tr.addEventListener("mouseenter", () => { tr.style.background = "var(--background-modifier-hover)"; });
             tr.addEventListener("mouseleave", () => { tr.style.background = ""; });
 
-            const slugTd = tr.createEl("td", { text: pg.slug ?? "—" });
+            const slugTd = tr.createEl("td");
             slugTd.style.cssText = "padding:6px 10px;font-family:var(--font-monospace);font-size:12px";
+            const slugVal = pg.slug ?? "";
+            if (slugVal) {
+                const slugLink = slugTd.createEl("a", { text: slugVal });
+                slugLink.style.cssText = "color:var(--link-color);text-decoration:none;cursor:pointer";
+                slugLink.addEventListener("mouseenter", () => { slugLink.style.textDecoration = "underline"; });
+                slugLink.addEventListener("mouseleave", () => { slugLink.style.textDecoration = "none"; });
+                slugLink.addEventListener("click", (e) => {
+                    e.preventDefault();
+                    this.app.workspace.openLinkText(slugVal, "", false);
+                });
+            } else {
+                slugTd.textContent = "—";
+            }
 
             const stateTd = tr.createEl("td");
             stateTd.style.cssText = "padding:6px 10px";
