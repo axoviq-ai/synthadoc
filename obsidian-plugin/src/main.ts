@@ -33,7 +33,7 @@ export default class SynthadocPlugin extends Plugin {
         setBase(this.settings.serverUrl);
         // Register export file extensions so Obsidian indexes and shows them in the
         // file explorer without the user needing to enable "Detect all file extensions".
-        this.registerExtensions(["json", "graphml"], "markdown");
+        this.registerExtensions(["json", "txt", "graphml"], "markdown");
         this.addSettingTab(new SynthadocSettingTab(this.app, this));
 
         this.addCommand({
@@ -3931,7 +3931,8 @@ class GraphViewModal extends Modal {
         if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.style.width = "clamp(900px, 85vw, 1300px)";
+        this.modalEl.style.width = "clamp(960px, 88vw, 1400px)";
+        this.modalEl.style.height = "clamp(700px, 88vh, 1000px)";
         const titleEl = contentEl.createEl("h2", { text: "Knowledge Graph" });
         makeDraggable(this.modalEl, titleEl);
 
@@ -3939,18 +3940,22 @@ class GraphViewModal extends Modal {
         const toolbar = contentEl.createDiv({ cls: "synthadoc-graph-toolbar" });
         const exportBtn = toolbar.createEl("button", { text: "Export to file" });
 
-        // Graph container
+        // Graph container — fills remaining modal height minus title + toolbar
         const container = contentEl.createDiv();
-        container.style.cssText = "width:100%;height:600px;background:#1e1e2e;border-radius:4px;";
+        container.style.cssText = "width:100%;height:calc(100% - 80px);min-height:500px;background:#1e1e2e;border-radius:4px;";
 
         exportBtn.addEventListener("click", async () => {
             try {
                 const content = await api.exportWiki("graphml", "all");
                 const today = new Date().toISOString().slice(0, 10);
-                const path = `exports/wiki-${today}.graphml`;
-                if (await this.app.vault.adapter.exists(path)) {
-                    await this.app.vault.adapter.write(path, content);
+                const path = `exports/wiki-graph-${today}.graphml`;
+                const existing = this.app.vault.getAbstractFileByPath(path);
+                if (existing instanceof TFile) {
+                    const ok = confirm(`"${path}" already exists. Overwrite?`);
+                    if (!ok) return;
+                    await this.app.vault.modify(existing, content);
                 } else {
+                    try { await this.app.vault.createFolder("exports"); } catch { /* exists */ }
                     await this.app.vault.create(path, content);
                 }
                 new Notice(`Synthadoc: graph exported to ${path}`);
