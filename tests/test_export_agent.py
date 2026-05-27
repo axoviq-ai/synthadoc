@@ -142,6 +142,16 @@ async def test_graphml_node_has_status_attribute(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_graphml_node_has_label_key(tmp_path):
+    store = _make_store(tmp_path)
+    _write_page(store, "babbage", "Charles Babbage", LifecycleState.ACTIVE)
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="graphml"))
+    assert 'attr.name="label"' in result
+    assert "Charles Babbage" in result
+
+
+@pytest.mark.asyncio
 async def test_graphml_wikilink_edge_has_wikilink_type(tmp_path):
     store = _make_store(tmp_path)
     _write_page(store, "babbage", "Charles Babbage", LifecycleState.ACTIVE,

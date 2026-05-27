@@ -158,6 +158,7 @@ class ExportAgent:
             ET.SubElement(root_el, "key", {"id": kid, "for": for_,
                                            "attr.name": name, "attr.type": typ})
 
+        _key("label",               "node", "label",               "string")
         _key("title",               "node", "title",               "string")
         _key("status",              "node", "status",              "string")
         _key("confidence",          "node", "confidence",          "string")
@@ -178,6 +179,7 @@ class ExportAgent:
                 d = ET.SubElement(_node, "data", {"key": key})
                 d.text = str(val)
 
+            _data("label", page.title)
             _data("title", page.title)
             _data("status", page.status)
             _data("confidence", page.confidence or "")
