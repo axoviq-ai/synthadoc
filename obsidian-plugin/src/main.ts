@@ -1939,26 +1939,42 @@ class AuditModal extends Modal {
                     return;
                 }
                 const table = tableEl.createEl("table");
-                table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px;-webkit-user-select:text;user-select:text";
+                table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px;-webkit-user-select:text;user-select:text;table-layout:fixed";
+                // colgroup — fixes column widths so the table doesn't reflow per row
+                const cg = table.createEl("colgroup");
+                for (const w of ["20%", "26%", "8%", "10%", "36%"]) {
+                    const col = cg.createEl("col") as HTMLElement;
+                    col.style.width = w;
+                }
+                const COLS = [
+                    { label: "Source",     wrap: false },
+                    { label: "Wiki page",  wrap: false },
+                    { label: "Tokens",     wrap: true  },
+                    { label: "Cost (USD)", wrap: true  },
+                    { label: "Ingested at", wrap: true },
+                ];
                 const hrow = table.createEl("thead").createEl("tr");
-                for (const h of ["Source", "Wiki page", "Tokens", "Cost (USD)", "Ingested at"]) {
-                    const th = hrow.createEl("th", { text: h });
-                    th.style.cssText = "text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border)";
+                for (const col of COLS) {
+                    const th = hrow.createEl("th", { text: col.label });
+                    th.style.cssText = "text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
                 }
                 const tbody = table.createEl("tbody");
                 for (const rec of r.records) {
                     const tr = tbody.createEl("tr");
-                    const src = rec.source_path.split(/[\\/]/).pop() ?? rec.source_path;
+                    const _parts = rec.source_path.split(/[\\/]/);
+                    const src = _parts.filter(Boolean).pop() ?? rec.source_path;
                     const ts = rec.ingested_at ? new Date(rec.ingested_at).toLocaleString() : "—";
-                    for (const text of [
-                        src,
-                        rec.wiki_page,
-                        (rec.tokens ?? 0).toLocaleString(),
-                        `$${(rec.cost_usd ?? 0).toFixed(4)}`,
-                        ts,
-                    ]) {
-                        const td = tr.createEl("td", { text });
-                        td.style.cssText = "padding:4px 8px;border-bottom:1px solid var(--background-modifier-border-subtle)";
+                    const cells = [
+                        { text: src,                                    nowrap: true  },
+                        { text: rec.wiki_page,                          nowrap: true  },
+                        { text: (rec.tokens ?? 0).toLocaleString(),     nowrap: true  },
+                        { text: `$${(rec.cost_usd ?? 0).toFixed(4)}`,   nowrap: true  },
+                        { text: ts,                                      nowrap: true  },
+                    ];
+                    for (const cell of cells) {
+                        const td = tr.createEl("td", { text: cell.text });
+                        td.style.cssText = "padding:4px 8px;border-bottom:1px solid var(--background-modifier-border-subtle);overflow:hidden;text-overflow:ellipsis"
+                            + (cell.nowrap ? ";white-space:nowrap" : "");
                     }
                 }
             } catch {
