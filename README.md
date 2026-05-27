@@ -189,6 +189,7 @@ As the wiki accumulates pages the `index.md` table of contents, domain scope (`p
 | Query-scoped routing         | **Yes** (ROUTING.md — branch-scoped BM25, query auto-selects branch) | No          | No         | No        |
 | Candidates staging           | **Yes** (ingest to staging area, promote or discard)                  | No          | No         | No        |
 | Context packs                | **Yes** (goal → sub-questions → token-budget evidence pack)         | No          | No         | No        |
+| Export formats               | **Yes** (llms.txt, llms-full.txt, GraphML, JSON — lifecycle-filtered, provenance-threaded, cost-annotated; inline graph viewer in Obsidian) | No | No | No |
 
 ### Key differentiators vs. RAG
 
@@ -893,6 +894,30 @@ synthadoc context build "Early programming languages" --tokens 8000 -w my-wiki
 # Save next to a document you are writing
 synthadoc context build "Rise of microprocessors" --output ~/drafts/computing-brief.md -w my-wiki
 ```
+
+### Exporting
+
+Export your wiki in machine-readable formats for RAG pipelines, LLM context windows, and graph analysis tools. All formats are assembled server-side with zero additional LLM calls. Requires `synthadoc serve` to be running.
+
+```bash
+# Active pages as LLM context (llms.txt spec)
+synthadoc export --format llms.txt --status active -w my-wiki
+
+# Full content dump with provenance footnotes preserved
+synthadoc export --format llms-full.txt --output exports/wiki-full.txt -w my-wiki
+
+# Export wikilink graph as GraphML — open in yEd, Gephi, or Cytoscape
+synthadoc export --format graphml --output exports/wiki.graphml -w my-wiki
+
+# Agent-ready JSON with provenance, lifecycle history, and compilation cost
+synthadoc export --format json --output exports/wiki.json -w my-wiki
+```
+
+**Flags:** `--format/-f` (required: `llms.txt`, `llms-full.txt`, `graphml`, `json`), `--output/-o` (write to file relative to CWD; omit for stdout), `--status/-s` (`all`/`active`/`draft`/`stale`/`contradicted`/`archived`).
+
+> **Tip:** Run from your wiki root so `--output exports/…` lands inside your Obsidian vault.
+
+In Obsidian: command palette → **Synthadoc: Export Wiki** — choose format and status filter, then click **Export**. The file is saved to the vault's `exports/` folder and opened automatically. For GraphML, a **View Graph** button renders an inline preview; export the file to load in a dedicated tool.
 
 ### Removing a wiki
 

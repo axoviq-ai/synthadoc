@@ -36,6 +36,7 @@ major engine feature. No setup beyond following the steps below is required.
 18. [Configure candidates staging](#step-18--configure-candidates-staging)
 19. [Build a context pack](#step-19--build-a-context-pack)
 20. [Establish claim-level provenance](#claim-provenance)
+21. [Export your wiki](#step-21--export-your-wiki)
 
 **Appendices**
 
@@ -1528,6 +1529,77 @@ synthadoc lint report
 
 ---
 
+## Step 21 — Export your wiki
+
+Once your wiki is populated and pages are reviewed, export it for use in other tools. All four formats are assembled by the server with zero additional LLM calls.
+
+### What each format contains
+
+| Format | What it exports | Best used for |
+|---|---|---|
+| `llms.txt` | Page titles + one-line summaries for active pages only | Feeding AI tools a fast, compact wiki index |
+| `llms-full.txt` | Full page content with provenance footnotes inline | Large-context LLM prompts, RAG pipelines |
+| `graphml` | Directed wikilink graph — one node per page, one edge per `[[link]]` | Graph analysis in yEd, Gephi, or Cytoscape |
+| `json` | Full structured dump: content, tags, sources, claims, lifecycle history, routing, and compilation cost | Programmatic processing, agent pipelines |
+
+### Status filter
+
+The `--status` flag controls which lifecycle states are included:
+
+- **`all`** (default) — active, draft, stale, and contradicted pages
+- **`active`** — only fully reviewed, promoted pages (recommended for AI consumption)
+- **`draft` / `stale` / `contradicted` / `archived`** — single-state subsets for targeted exports
+
+### CLI
+
+Run from your wiki root so `--output exports/…` writes inside your Obsidian vault.
+
+```bash
+# Active pages only — compact LLM context (llms.txt spec)
+synthadoc export --format llms.txt --status active
+
+# All pages — full content with provenance footnotes
+synthadoc export --format llms-full.txt --output exports/history-full.txt
+
+# Export wikilink graph as GraphML — open in yEd, Gephi, or Cytoscape
+synthadoc export --format graphml --output exports/history.graphml
+
+# Agent-ready JSON with claim citations, lifecycle history, and compilation cost
+synthadoc export --format json --output exports/history.json
+```
+
+**Flags:** `--format/-f` (required), `--output/-o` (path relative to CWD; omit for stdout), `--status/-s` (default `all`).
+
+Requires `synthadoc serve` to be running.
+
+### In Obsidian
+
+Open the command palette → **Synthadoc: Export Wiki**. The modal shows a brief description of each format. Select a format, adjust the status filter, and click **Export** — the file is saved to your vault's `exports/` folder and opened automatically. When **GraphML** is selected, a **View Graph** button also appears for an inline preview before saving.
+
+### Opening GraphML in external tools
+
+The exported `.graphml` file can be loaded in any of these free tools:
+
+**yEd Graph Editor** (recommended for getting started)
+1. Download from [yworks.com/yed](https://www.yworks.com/products/yed) (free, Windows/Mac/Linux)
+2. Open yEd → **File → Open** → select your `.graphml` file
+3. Apply a layout: **Layout → Hierarchical** or **Layout → Organic** for best results
+4. Node labels show page titles; edges show wikilink direction
+
+**Gephi** (recommended for large wikis and analysis)
+1. Download from [gephi.org](https://gephi.org) (free, open source)
+2. **File → Open** your `.graphml` file
+3. Run **Layout → ForceAtlas2** in the Layout panel; enable **Prevent Overlap** in Tuning to spread nodes apart
+4. To show node labels: click the **label toggle button** (marked **Aα** or **T**) in the bottom toolbar next to the Nodes slider
+5. Use **Statistics** to compute degree centrality or community detection
+
+**Cytoscape** (recommended for programmatic analysis)
+1. Download from [cytoscape.org](https://cytoscape.org) (free)
+2. **File → Import → Network from File** → select your `.graphml`
+3. Apply a layout from the **Layout** menu
+
+---
+
 ## What's next?
 
 You have now walked through every major Synthadoc feature on the demo wiki. When you're
@@ -1625,6 +1697,13 @@ All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synt
 | Command                                     | What it does                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `Synthadoc: Context: build context pack...` | Enter a goal or question and a token budget (default 4000). Press**Build Context Pack** or `Ctrl/Cmd+Enter`. The server decomposes the goal, retrieves the most relevant wiki pages via BM25, and packs them into a single cited Markdown document within the budget. The result appears in a read-only text area. **Copy to Clipboard** copies it to the OS clipboard; **Save as .md** downloads it as a Markdown file. |
+
+### Export
+
+
+| Command                  | What it does |
+| ------------------------ | ------------ |
+| `Synthadoc: Export Wiki` | Modal with a format dropdown (`json`, `llms.txt`, `llms-full.txt`, `graphml`), a full-width output path field pre-filled with today's date and the correct extension, and a status filter selector. A brief description at the top explains what each format contains. Click **Export** to write the file to your vault's `exports/` folder; the file opens automatically. For GraphML format, a **View Graph** button also appears for an inline Cytoscape.js preview — nodes are coloured by lifecycle state (active=green, draft=yellow, stale=orange, contradicted=red, archived=grey) and edges represent wikilinks. To load the graph in a dedicated tool, export to file and open in **yEd**, **Gephi**, or **Cytoscape**. |
 
 > **UX note:** All modals are draggable and support full text selection and copy-paste.
 

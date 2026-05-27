@@ -14,6 +14,7 @@ vi.mock("obsidian", () => ({
         loadData                     = vi.fn().mockResolvedValue({});
         saveData                     = vi.fn().mockResolvedValue(undefined);
         registerMarkdownPostProcessor = vi.fn();
+        registerExtensions           = vi.fn();
         constructor(app?: any) { this.app = app; }
     },
     FileSystemAdapter: class {},
@@ -68,8 +69,16 @@ vi.mock("./api", () => ({
         config: vi.fn().mockResolvedValue({ check_url_availability: false }),
         lifecycleStatus: vi.fn(), lifecyclePages: vi.fn(), lifecycleEvents: vi.fn(),
         lifecycleTransition: vi.fn(), deleteJob: vi.fn(),
+        exportWiki: vi.fn(),
     },
     setBase: vi.fn(),
+}));
+
+vi.mock("cytoscape", () => ({
+    default: vi.fn().mockReturnValue({
+        layout: vi.fn().mockReturnValue({ run: vi.fn() }),
+        on: vi.fn(),
+    }),
 }));
 
 afterEach(() => vi.clearAllMocks());
@@ -406,7 +415,8 @@ function makeSmartContentEl(): any {
             style: {} as CSSStyleDeclaration,
             onclick: null,
             disabled: false,
-            value: "",
+            value: opts?.value ?? "",
+            type: opts?.type ?? "",
             min: "",
             max: "",
             focus: vi.fn(),
@@ -417,6 +427,8 @@ function makeSmartContentEl(): any {
                 return idAttr + el._html + childHtml;
             },
             set innerHTML(v: string) { el._html = v; },
+            get textContent(): string { return el._html; },
+            set textContent(v: string) { el._html = v; },
             addEventListener: vi.fn((event: string, handler: any) => {
                 if (!el._listeners) el._listeners = {};
                 el._listeners[event] = handler;
@@ -443,11 +455,23 @@ function makeSmartContentEl(): any {
                 tagIndex.get(childTag)!.push(child);
                 return child;
             }),
+            createDiv: vi.fn((childOpts?: any) => {
+                const child = makeEl("div", childOpts);
+                el._children.push(child);
+                if (!tagIndex.has("div")) tagIndex.set("div", []);
+                tagIndex.get("div")!.push(child);
+                return child;
+            }),
             querySelector: vi.fn((selector: string) => {
-                // Strip leading dot/hash; treat selector as a tag name
-                const tag2 = selector.replace(/^[.#]/, "");
+                // Strip attribute qualifiers and leading dot/hash; treat as a tag name
+                const tag2 = selector.replace(/\[.*?\]/g, "").replace(/^[.#]/, "");
                 return tagIndex.get(tag2)?.[0] ?? null;
             }),
+            querySelectorAll: vi.fn((selector: string) => {
+                const tag2 = selector.replace(/\[.*?\]/g, "").replace(/^[.#]/, "");
+                return tagIndex.get(tag2) ?? [];
+            }),
+            remove: vi.fn(),
         };
         return el;
     }
@@ -455,8 +479,12 @@ function makeSmartContentEl(): any {
     const root = makeEl("div");
     // Add a top-level querySelector that searches tagIndex
     root.querySelector = vi.fn((selector: string) => {
-        const tag2 = selector.replace(/^[.#]/, "");
+        const tag2 = selector.replace(/\[.*?\]/g, "").replace(/^[.#]/, "");
         return tagIndex.get(tag2)?.[0] ?? null;
+    });
+    root.querySelectorAll = vi.fn((selector: string) => {
+        const tag2 = selector.replace(/\[.*?\]/g, "").replace(/^[.#]/, "");
+        return tagIndex.get(tag2) ?? [];
     });
     // empty() removes root's direct children from the index then clears root
     root.empty = vi.fn(() => {
@@ -482,7 +510,7 @@ function makeSmartContentEl(): any {
  *
  * NOTE: uses vi.resetModules() / dynamic re-import internally.
  */
-async function getModal(commandId: string, appOverride?: any): Promise<{ ModalClass: new () => any; apiMock: any }> {
+async function getModal(commandId: string, appOverride?: any): Promise<{ ModalClass: new () => any; apiMock: any; ref: { current: any } }> {
     // We can't extract QueryModal from main.ts because it's private.
     // Instead, we invoke the command callback and intercept the `open()` call
     // (which is an instance property vi.fn()) by replacing it AFTER construction
@@ -525,6 +553,7 @@ async function getModal(commandId: string, appOverride?: any): Promise<{ ModalCl
 
     // Re-define the obsidian mock with a tracking Modal
     let lastInstance: any = null;
+    const ref = { current: null as any };
     vi.doMock("obsidian", () => ({
         Plugin: class {
             app: any;
@@ -534,6 +563,7 @@ async function getModal(commandId: string, appOverride?: any): Promise<{ ModalCl
             loadData                      = vi.fn().mockResolvedValue({});
             saveData                      = vi.fn().mockResolvedValue(undefined);
             registerMarkdownPostProcessor = vi.fn();
+            registerExtensions            = vi.fn();
             constructor(app?: any) { this.app = app; }
         },
         FileSystemAdapter: class {},
@@ -554,9 +584,9 @@ async function getModal(commandId: string, appOverride?: any): Promise<{ ModalCl
             modalEl = { style: {} as CSSStyleDeclaration, addEventListener: vi.fn() };
             containerEl = { querySelector: vi.fn().mockReturnValue({ addEventListener: vi.fn() }) };
             contentEl = makeSmartContentEl();
-            open = vi.fn(function (this: any) { lastInstance = this; });
+            open = vi.fn(function (this: any) { lastInstance = this; ref.current = this; });
             close = vi.fn();
-            constructor(app: any) { this.app = app; lastInstance = this; }
+            constructor(app: any) { this.app = app; lastInstance = this; ref.current = this; }
         },
         SuggestModal: class {
             app: any; open = vi.fn(); setPlaceholder = vi.fn();
@@ -586,6 +616,7 @@ async function getModal(commandId: string, appOverride?: any): Promise<{ ModalCl
             config: vi.fn().mockResolvedValue({ check_url_availability: false }),
             lifecycleStatus: vi.fn(), lifecyclePages: vi.fn(), lifecycleEvents: vi.fn(),
             lifecycleTransition: vi.fn(), deleteJob: vi.fn(),
+            exportWiki: vi.fn(),
         },
         setBase: vi.fn(),
     };
@@ -626,7 +657,7 @@ async function getModal(commandId: string, appOverride?: any): Promise<{ ModalCl
             return inst;
         }
     } as any;
-    return { ModalClass, apiMock: freshApiMock.api };
+    return { ModalClass, apiMock: freshApiMock.api, ref };
 }
 
 describe("QueryModal knowledge gap callout", () => {
@@ -1877,6 +1908,80 @@ describe("IngestModal URL tab", () => {
     });
 });
 
+describe("Export Modal", () => {
+    it("format dropdown shows all four formats", async () => {
+        const { ModalClass } = await getModal("synthadoc-export-wiki");
+        const modal = new ModalClass();
+        modal.onOpen();
+
+        // First select in tagIndex is the format selector
+        const select = modal.contentEl.querySelector("select");
+        expect(select).not.toBeNull();
+        const optionTexts = select!._children.map((o: any) => o.value ?? o._html);
+        expect(optionTexts).toContain("json");
+        expect(optionTexts).toContain("llms.txt");
+        expect(optionTexts).toContain("llms-full.txt");
+        expect(optionTexts).toContain("graphml");
+    });
+
+    it("output path pre-fills with .json extension for json format", async () => {
+        const { ModalClass } = await getModal("synthadoc-export-wiki");
+        const modal = new ModalClass();
+        modal.onOpen();
+
+        const input = modal.contentEl.querySelector("input");
+        expect(input).not.toBeNull();
+        expect(input!.value).toMatch(/\.json$/);
+    });
+
+    it("Export button calls exportWiki with correct args", async () => {
+        const mockTFile = {};
+        const mockLeaf = { openFile: vi.fn().mockResolvedValue(undefined) };
+        const vaultApp = {
+            vault: {
+                adapter: { exists: vi.fn().mockResolvedValue(false) },
+                getAbstractFileByPath: vi.fn().mockReturnValue(null),
+                createFolder: vi.fn().mockResolvedValue(undefined),
+                create: vi.fn().mockResolvedValue(mockTFile),
+            },
+            workspace: { getLeaf: vi.fn().mockReturnValue(mockLeaf) },
+            commands: { executeCommandById: vi.fn() },
+        };
+        const { ModalClass, apiMock } = await getModal("synthadoc-export-wiki", vaultApp);
+        apiMock.exportWiki.mockResolvedValue("{}");
+
+        const modal = new ModalClass();
+        modal.onOpen();
+
+        const exportBtn = modal.contentEl.querySelectorAll("button")
+            .find((b: any) => b._html === "Export");
+        expect(exportBtn).toBeDefined();
+        exportBtn!._listeners?.click?.();
+        await flushPromises();
+
+        expect(apiMock.exportWiki).toHaveBeenCalledWith("json", "all");
+        expect(vaultApp.vault.create).toHaveBeenCalled();
+        expect(mockLeaf.openFile).toHaveBeenCalledWith(mockTFile);
+    });
+
+    it("View Graph button appears only for graphml format", async () => {
+        const { ModalClass } = await getModal("synthadoc-export-wiki");
+        const modal = new ModalClass();
+        modal.onOpen();
+
+        // Default format is json — no View Graph button
+        const btnsBefore = modal.contentEl.querySelectorAll("button").map((b: any) => b._html);
+        expect(btnsBefore).not.toContain("View Graph");
+
+        // Switch to graphml
+        const select = modal.contentEl.querySelector("select");
+        select!.value = "graphml";
+        select!._listeners?.change?.();
+
+        const btnsAfter = modal.contentEl.querySelectorAll("button").map((b: any) => b._html);
+        expect(btnsAfter).toContain("View Graph");
+    });
+});
 
 // ── AuditModal — Ingest history tab ───────────────────────────────────────────
 
@@ -2197,6 +2302,84 @@ describe("CandidatesModal", () => {
         await flushPromises();
 
         expect(modal.contentEl.innerHTML).toContain("Synthadoc server");
+    });
+});
+
+// ── Graph View Modal ──────────────────────────────────────────────────────────
+
+describe("Graph View Modal", () => {
+    const EMPTY_GRAPHML = '<?xml version="1.0"?><graphml xmlns="http://graphml.graphdrawing.org/graphml"><graph id="wiki" edgedefault="directed"></graph></graphml>';
+
+    // GraphViewModal is only reachable via Export Wiki → View Graph button.
+    // Load the module through ExportModal, switch to graphml, click View Graph,
+    // and capture the GraphViewModal class via the ref tracker.
+    async function getGVM(appOverride?: any) {
+        const { ModalClass: ExportModalClass, apiMock, ref } = await getModal("synthadoc-export-wiki", appOverride);
+        apiMock.exportWiki.mockResolvedValue(EMPTY_GRAPHML);
+
+        const exportModal = new ExportModalClass();
+        exportModal.onOpen();
+
+        const select = exportModal.contentEl.querySelector("select");
+        select!.value = "graphml";
+        select!._listeners?.change?.();
+
+        const viewGraphBtn = exportModal.contentEl.querySelectorAll("button")
+            .find((b: any) => b._html === "View Graph");
+        viewGraphBtn!._listeners?.click?.();
+
+        // ref.current is now the GraphViewModal instance
+        const GVMClass = ref.current.constructor;
+        const ModalClass = class {
+            constructor() {
+                const inst = new GVMClass(appOverride);
+                inst.contentEl = makeSmartContentEl();
+                inst.modalEl = { style: {}, addEventListener: vi.fn() };
+                inst.containerEl = { querySelector: vi.fn().mockReturnValue({ addEventListener: vi.fn() }) };
+                return inst;
+            }
+        } as any;
+        return { ModalClass, apiMock };
+    }
+
+    it("opens without error when export returns empty graphml", async () => {
+        const { ModalClass } = await getGVM();
+        const m = new ModalClass();
+        expect(() => m.onOpen()).not.toThrow();
+        await new Promise(r => setTimeout(r, 0));
+        await new Promise(r => setTimeout(r, 0));
+        m.onClose();
+    });
+
+    it("Export to file button exists in toolbar", async () => {
+        const { ModalClass } = await getGVM();
+        const m = new ModalClass();
+        m.onOpen();
+        const btns = Array.from(m.contentEl.querySelectorAll("button")).map((b: any) => b._html ?? b.textContent);
+        expect(btns).toContain("Export to file");
+        m.onClose();
+    });
+
+    it("onClose sets _closed flag and empties contentEl", async () => {
+        const { ModalClass } = await getGVM();
+        const m = new ModalClass();
+        m.onOpen();
+        expect(m._closed).toBe(false);
+        m.onClose();
+        expect(m._closed).toBe(true);
+        expect(m.contentEl.empty).toHaveBeenCalled();
+    });
+
+    it("shows error fallback when api call fails", async () => {
+        const { ModalClass, apiMock } = await getGVM();
+        apiMock.exportWiki.mockRejectedValue(new Error("server down"));
+        const m = new ModalClass();
+        m.onOpen();
+        await new Promise(r => setTimeout(r, 0));
+        const p = m.contentEl.querySelector("p");
+        const text = p?._html ?? p?.textContent ?? "";
+        expect(text).toContain("Could not load graph");
+        m.onClose();
     });
 });
 

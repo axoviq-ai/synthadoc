@@ -264,10 +264,10 @@ def _make_cfg(provider: str, model: str) -> "Config":
 
 def test_make_provider_missing_anthropic_key_exits(monkeypatch, capsys):
     """make_provider must exit with a helpful message when key is absent."""
-    import click
+    import click, typer
     from synthadoc.providers import make_provider
     monkeypatch.setenv("ANTHROPIC_API_KEY", "")
-    with pytest.raises(click.exceptions.Exit) as exc_info:
+    with pytest.raises((click.exceptions.Exit, typer.Exit)) as exc_info:
         make_provider("ingest", _make_cfg("anthropic", "claude-opus-4-6"))
     assert exc_info.value.exit_code == 1
     err = capsys.readouterr().err
@@ -278,10 +278,10 @@ def test_make_provider_missing_anthropic_key_exits(monkeypatch, capsys):
 
 def test_make_provider_missing_openai_key_exits(monkeypatch, capsys):
     """Same early-exit behaviour for OpenAI provider."""
-    import click
+    import click, typer
     from synthadoc.providers import make_provider
     monkeypatch.setenv("OPENAI_API_KEY", "")
-    with pytest.raises(click.exceptions.Exit) as exc_info:
+    with pytest.raises((click.exceptions.Exit, typer.Exit)) as exc_info:
         make_provider("ingest", _make_cfg("openai", "gpt-4o"))
     assert exc_info.value.exit_code == 1
     assert "OPENAI_API_KEY" in capsys.readouterr().err
@@ -297,10 +297,10 @@ def test_make_provider_ollama_requires_no_key(monkeypatch):
 
 
 def test_make_provider_missing_gemini_key_exits(monkeypatch, capsys):
-    import click
+    import click, typer
     from synthadoc.providers import make_provider
     monkeypatch.setenv("GEMINI_API_KEY", "")
-    with pytest.raises(click.exceptions.Exit) as exc_info:
+    with pytest.raises((click.exceptions.Exit, typer.Exit)) as exc_info:
         make_provider("ingest", _make_cfg("gemini", "gemini-2.0-flash"))
     assert exc_info.value.exit_code == 1
     err = capsys.readouterr().err
@@ -309,10 +309,10 @@ def test_make_provider_missing_gemini_key_exits(monkeypatch, capsys):
 
 
 def test_make_provider_missing_groq_key_exits(monkeypatch, capsys):
-    import click
+    import click, typer
     from synthadoc.providers import make_provider
     monkeypatch.setenv("GROQ_API_KEY", "")
-    with pytest.raises(click.exceptions.Exit) as exc_info:
+    with pytest.raises((click.exceptions.Exit, typer.Exit)) as exc_info:
         make_provider("ingest", _make_cfg("groq", "llama-3.3-70b-versatile"))
     assert exc_info.value.exit_code == 1
     err = capsys.readouterr().err
@@ -321,10 +321,10 @@ def test_make_provider_missing_groq_key_exits(monkeypatch, capsys):
 
 
 def test_make_provider_missing_minimax_key_exits(monkeypatch, capsys):
-    import click
+    import click, typer
     from synthadoc.providers import make_provider
     monkeypatch.setenv("MINIMAX_API_KEY", "")
-    with pytest.raises(click.exceptions.Exit) as exc_info:
+    with pytest.raises((click.exceptions.Exit, typer.Exit)) as exc_info:
         make_provider("ingest", _make_cfg("minimax", "MiniMax-M2.5"))
     assert exc_info.value.exit_code == 1
     err = capsys.readouterr().err
@@ -363,9 +363,9 @@ def test_make_provider_groq_uses_openai_provider_with_base_url(monkeypatch):
 
 
 def test_unknown_provider_raises_value_error(capsys):
-    import click
+    import click, typer
     from synthadoc.providers import make_provider
-    with pytest.raises(click.exceptions.Exit) as exc_info:
+    with pytest.raises((click.exceptions.Exit, typer.Exit)) as exc_info:
         make_provider("ingest", _make_cfg("unknown_llm", "some-model"))
     assert exc_info.value.exit_code == 1
     assert "ERR-CFG-002" in capsys.readouterr().err
@@ -725,10 +725,10 @@ async def test_openai_provider_vision_call_uses_image_url_format():
 
 
 def test_make_provider_missing_deepseek_key_exits(monkeypatch, capsys):
-    import click
+    import click, typer
     from synthadoc.providers import make_provider
     monkeypatch.setenv("DEEPSEEK_API_KEY", "")
-    with pytest.raises(click.exceptions.Exit) as exc_info:
+    with pytest.raises((click.exceptions.Exit, typer.Exit)) as exc_info:
         make_provider("ingest", _make_cfg("deepseek", "deepseek-chat"))
     assert exc_info.value.exit_code == 1
     err = capsys.readouterr().err
