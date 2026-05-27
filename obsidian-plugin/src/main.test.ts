@@ -1959,7 +1959,7 @@ describe("Export Modal", () => {
         exportBtn!._listeners?.click?.();
         await flushPromises();
 
-        expect(apiMock.exportWiki).toHaveBeenCalledWith("json", "all");
+        expect(apiMock.exportWiki).toHaveBeenCalledWith("json", "active");
         expect(vaultApp.vault.create).toHaveBeenCalled();
         expect(mockLeaf.openFile).toHaveBeenCalledWith(mockTFile);
     });

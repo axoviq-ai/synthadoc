@@ -3827,7 +3827,7 @@ class LifecycleModal extends Modal {
 
 class ExportModal extends Modal {
     private _format = "json";
-    private _statusFilter = "all";
+    private _statusFilter = "active";
 
     onOpen() {
         const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
@@ -3841,12 +3841,13 @@ class ExportModal extends Modal {
         const infoEl = contentEl.createEl("div");
         infoEl.style.cssText = "margin:0 0 14px;padding:8px 10px;background:var(--background-secondary);border-radius:6px;font-size:12px;color:var(--text-muted);line-height:1.7;";
         infoEl.innerHTML = [
-            "Exports the wiki to your vault's <code>exports/</code> folder. No additional LLM calls.",
-            "<br>",
-            "<b>json</b> — full structured dump with claims, lifecycle history, and routing<br>",
-            "<b>llms.txt</b> — active pages in the <a href='https://llmstxt.org'>llmstxt.org</a> format (for AI tools)<br>",
-            "<b>llms-full.txt</b> — full page content with provenance footnotes inline<br>",
-            "<b>graphml</b> — wikilink graph — open in <b>yEd</b>, <b>Gephi</b>, or <b>Cytoscape</b>",
+            "<b>Exports the wiki to your vault's <code>exports/</code> folder. No additional LLM calls.</b>",
+            "<ul style='margin:6px 0 0 0;padding-left:18px;list-style:disc'>",
+            "<li><b>json</b> — full structured dump with claims, lifecycle history, and routing</li>",
+            "<li><b>llms.txt</b> — active pages in the <a href='https://llmstxt.org'>llmstxt.org</a> format (for AI tools)</li>",
+            "<li><b>llms-full.txt</b> — full page content with provenance footnotes inline</li>",
+            "<li><b>graphml</b> — wikilink graph — open in <b>yEd</b>, <b>Gephi</b>, or <b>Cytoscape</b></li>",
+            "</ul>",
         ].join("");
 
         // Format selector
@@ -3885,7 +3886,7 @@ class ExportModal extends Modal {
         const statusSel = statusRow.createEl("select");
         [["all", "All pages"], ["active", "Active only"]].forEach(([val, label]) => {
             const o = statusSel.createEl("option", { text: label, value: val });
-            if (val === "all") o.selected = true;
+            if (val === this._statusFilter) o.selected = true;
         });
 
         // Button row
