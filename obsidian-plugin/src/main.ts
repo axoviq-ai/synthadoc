@@ -1688,7 +1688,9 @@ class LintReportModal extends Modal {
                 const ul = panels["Orphans"].createEl("ul");
                 orphanDetails.forEach(({ slug, index_suggestion }) => {
                     const li = ul.createEl("li");
-                    li.createEl("code", { text: slug });
+                    const slugLink = li.createEl("a", { text: slug });
+                    slugLink.style.cssText = "cursor:pointer;font-family:var(--font-monospace);font-size:var(--font-smaller);font-weight:600";
+                    slugLink.onclick = () => this.app.workspace.openLinkText(slug, "", false);
                     li.appendText(" — no inbound links");
                     const sug = li.createEl("div");
                     sug.style.cssText = "font-size:11px;margin-top:2px";
