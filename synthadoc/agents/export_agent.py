@@ -72,7 +72,8 @@ class ExportAgent:
         citations = await audit.list_citations(limit=100_000)
         lc_events = await audit.get_lifecycle_events(limit=100_000)
         cost_data = await audit.cost_summary(days=3650)
-        return self._render_json(pages, citations, lc_events, cost_data, routing)
+        ingest_records = await audit.list_ingests(limit=100_000)
+        return self._render_json(pages, citations, lc_events, cost_data, ingest_records, routing)
 
     def _render_llms_txt(self, pages: dict[str, WikiPage]) -> str:
         lines = [f"# {self._wiki_name}", f"> Synthadoc wiki: {self._wiki_name}", ""]
@@ -209,6 +210,7 @@ class ExportAgent:
         citations: list[dict],
         lc_events: list[dict],
         cost_data: dict,
+        ingest_records: list[dict],
         routing,
     ) -> str:
         import json as _json
@@ -220,6 +222,13 @@ class ExportAgent:
                 "source_lines": [c["line_start"], c["line_end"]],
                 "claim_excerpt": c.get("claim_excerpt", ""),
             })
+
+        ingest_cost_by_slug: dict[str, float] = {}
+        ingest_tokens_by_slug: dict[str, int] = {}
+        for r in ingest_records:
+            slug = r["wiki_page"]
+            ingest_cost_by_slug[slug] = ingest_cost_by_slug.get(slug, 0.0) + (r["cost_usd"] or 0.0)
+            ingest_tokens_by_slug[slug] = ingest_tokens_by_slug.get(slug, 0) + (r["tokens"] or 0)
 
         events_by_slug: dict[str, list[dict]] = {}
         for e in lc_events:
@@ -270,6 +279,8 @@ class ExportAgent:
                 "claims": citations_by_slug.get(slug, []),
                 "lifecycle_history": events_by_slug.get(slug, []),
                 "lint_warnings": page.lint_warnings or [],
+                "ingest_cost_usd": round(ingest_cost_by_slug.get(slug, 0.0), 6),
+                "ingest_tokens": ingest_tokens_by_slug.get(slug, 0),
             })
 
         return _json.dumps(output, ensure_ascii=False, indent=2)

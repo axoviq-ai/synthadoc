@@ -234,6 +234,8 @@ async def test_json_page_has_correct_fields(tmp_path):
     assert "content" in page
     assert "sources" in page
     assert "lint_warnings" in page
+    assert page["ingest_cost_usd"] == 0.0
+    assert page["ingest_tokens"] == 0
 
 
 @pytest.mark.asyncio
@@ -268,6 +270,34 @@ async def test_json_date_object_created_serializes(tmp_path):
     agent = _agent(tmp_path, store)
     result = json.loads(await agent.export(ExportOptions(format="json")))
     assert result["pages"][0]["created"] == "2026-05-26"
+
+
+@pytest.mark.asyncio
+async def test_json_page_ingest_cost_aggregates_from_audit_db(tmp_path):
+    from synthadoc.storage.log import AuditDB
+    store = _make_store(tmp_path)
+    _write_page(store, "babbage", "Charles Babbage", LifecycleState.ACTIVE)
+    _write_page(store, "lovelace", "Ada Lovelace", LifecycleState.ACTIVE)
+    audit_path = tmp_path / ".synthadoc" / "audit.db"
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    audit = AuditDB(audit_path)
+    await audit.init()
+    # Two source files contributed to babbage, one to lovelace
+    await audit.record_ingest("h1", 100, "src1.txt", "babbage", tokens=200, cost_usd=0.001)
+    await audit.record_ingest("h2", 200, "src2.txt", "babbage", tokens=300, cost_usd=0.002)
+    await audit.record_ingest("h3", 150, "src3.txt", "lovelace", tokens=100, cost_usd=0.0005)
+    agent = ExportAgent(
+        store=store, wiki_name="test-wiki",
+        audit_db_path=audit_path,
+        routing_path=tmp_path / "ROUTING.md",
+    )
+    import json
+    result = json.loads(await agent.export(ExportOptions(format="json")))
+    pages_by_slug = {p["slug"]: p for p in result["pages"]}
+    assert pages_by_slug["babbage"]["ingest_tokens"] == 500
+    assert abs(pages_by_slug["babbage"]["ingest_cost_usd"] - 0.003) < 1e-9
+    assert pages_by_slug["lovelace"]["ingest_tokens"] == 100
+    assert abs(pages_by_slug["lovelace"]["ingest_cost_usd"] - 0.0005) < 1e-9
 
 
 @pytest.mark.asyncio
