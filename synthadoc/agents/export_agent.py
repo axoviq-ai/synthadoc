@@ -147,7 +147,9 @@ class ExportAgent:
                 slug_to_branch[s] = branch
 
         NS = "http://graphml.graphdrawing.org/graphml"
+        YNS = "http://www.yworks.com/xml/graphml"
         XSI = "http://www.w3.org/2001/XMLSchema-instance"
+        ET.register_namespace("y", YNS)
         root_el = ET.Element("graphml", {
             "xmlns": NS,
             "xmlns:xsi": XSI,
@@ -167,6 +169,9 @@ class ExportAgent:
         _key("inbound_link_count",  "node", "inbound_link_count",  "int")
         _key("routing_branch",      "node", "routing_branch",      "string")
         _key("edge_type",           "edge", "edge_type",           "string")
+        # yEd reads node labels from its own namespace key, not the standard label attribute
+        ET.SubElement(root_el, "key", {"id": "yed_node", "for": "node",
+                                       "yfiles.type": "nodegraphics"})
 
         graph_el = ET.SubElement(root_el, "graph",
                                   {"id": "wiki", "edgedefault": "directed"})
@@ -187,6 +192,9 @@ class ExportAgent:
             _data("citation_count", "0")
             _data("inbound_link_count", str(inbound_count.get(slug, 0)))
             _data("routing_branch", slug_to_branch.get(slug, ""))
+            yed_data = ET.SubElement(node_el, "data", {"key": "yed_node"})
+            sn = ET.SubElement(yed_data, f"{{{YNS}}}ShapeNode")
+            ET.SubElement(sn, f"{{{YNS}}}NodeLabel").text = page.title
 
         edge_id = 0
         for slug in sorted(all_links):

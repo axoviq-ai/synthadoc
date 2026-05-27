@@ -149,6 +149,9 @@ async def test_graphml_node_has_label_key(tmp_path):
     result = await agent.export(ExportOptions(format="graphml"))
     assert 'attr.name="label"' in result
     assert "Charles Babbage" in result
+    # yEd NodeLabel for native label display in yEd
+    assert "NodeLabel" in result
+    assert 'yfiles.type="nodegraphics"' in result
 
 
 @pytest.mark.asyncio
