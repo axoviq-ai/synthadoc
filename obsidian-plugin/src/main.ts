@@ -3900,25 +3900,39 @@ class ExportModal extends Modal {
             try {
                 const content = await api.exportWiki(this._format, this._statusFilter);
                 const path = pathInput.value.trim() || `exports/wiki-export.${this._format}`;
-                let tfile: TFile;
-                const existing = this.app.vault.getAbstractFileByPath(path);
-                if (existing instanceof TFile) {
+
+                // Use filesystem check — vault index may not include files from
+                // sessions before the extension was registered.
+                if (await this.app.vault.adapter.exists(path)) {
                     const ok = confirm(`"${path}" already exists. Overwrite?`);
                     if (!ok) { exportBtn.disabled = false; exportBtn.textContent = "Export"; return; }
-                    await this.app.vault.modify(existing, content);
-                    tfile = existing;
+                }
+
+                let tfile: TFile | null = null;
+                const existingTFile = this.app.vault.getAbstractFileByPath(path);
+                if (existingTFile instanceof TFile) {
+                    await this.app.vault.modify(existingTFile, content);
+                    tfile = existingTFile;
                 } else {
                     const parent = path.split("/").slice(0, -1).join("/");
                     if (parent) {
                         try { await this.app.vault.createFolder(parent); } catch { /* already exists */ }
                     }
-                    tfile = await this.app.vault.create(path, content);
+                    try {
+                        tfile = await this.app.vault.create(path, content);
+                    } catch {
+                        // File exists on disk but not in vault index — write directly.
+                        await this.app.vault.adapter.write(path, content);
+                        tfile = this.app.vault.getAbstractFileByPath(path) as TFile | null;
+                    }
                 }
                 new Notice(`Synthadoc: exported to ${path}`);
                 this.close();
-                const leaf = this.app.workspace.getLeaf(false);
-                await leaf.openFile(tfile);
-                (this.app as any).commands.executeCommandById("file-explorer:reveal-active-file");
+                if (tfile) {
+                    const leaf = this.app.workspace.getLeaf(false);
+                    await leaf.openFile(tfile);
+                    (this.app as any).commands.executeCommandById("file-explorer:reveal-active-file");
+                }
             } catch (e) {
                 new Notice(`Synthadoc: export failed — ${e}`);
                 exportBtn.disabled = false;

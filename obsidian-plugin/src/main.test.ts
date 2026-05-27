@@ -1938,6 +1938,7 @@ describe("Export Modal", () => {
         const mockLeaf = { openFile: vi.fn().mockResolvedValue(undefined) };
         const vaultApp = {
             vault: {
+                adapter: { exists: vi.fn().mockResolvedValue(false) },
                 getAbstractFileByPath: vi.fn().mockReturnValue(null),
                 createFolder: vi.fn().mockResolvedValue(undefined),
                 create: vi.fn().mockResolvedValue(mockTFile),
