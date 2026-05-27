@@ -367,6 +367,21 @@ Dispatches to the correct skill based on file extension, URL prefix, or intent k
 
 When a source is a URL or an intent phrase (e.g. `search for: Dennis Ritchie`), IngestAgent skips the local file checks — there is no file to verify or hash. File-existence validation and SHA-256 dedup only apply to local file paths.
 
+### ExportAgent
+
+Serialises the wiki to one of four formats with zero additional LLM calls. Invoked via `synthadoc export --format <fmt>` or the Obsidian **Export Wiki** command.
+
+| Format | Output |
+|--------|--------|
+| `llms.txt` | Active pages as a compact index (title + first-line summary) in the [llmstxt.org](https://llmstxt.org) spec; pages with `contradicted` or `stale` status appear in a **Needs Review** section |
+| `llms-full.txt` | Full page content for all pages, separated by `---` dividers with status and confidence headers; no size limit |
+| `graphml` | Directed wikilink graph — one node per page, one edge per `[[wikilink]]`; includes `label` (Gephi), `y:NodeLabel` (yEd), status, confidence, orphan flag, inbound link count, and routing branch per node |
+| `json` | Full structured dump: content, tags, sources, claims (from audit DB), lifecycle history, routing branch memberships, per-page `ingest_cost_usd` and `ingest_tokens`, and total compilation cost |
+
+**Status filter:** All formats accept `--status-filter active|contradicted|stale|archived|draft|all` (default `all`) to scope the export to a lifecycle subset.
+
+**GraphML tool compatibility:** The file includes both a standard `label` data key (read by Gephi and Cytoscape) and a `y:ShapeNode/y:NodeLabel` element (read by yEd). No position data is embedded — run the tool's own layout algorithm after import.
+
 ---
 
 ## 5. Skills System
