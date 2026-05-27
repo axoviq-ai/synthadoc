@@ -35,10 +35,10 @@ def test_apply_provider_override_updates_per_agent():
 
 def test_apply_provider_override_unknown_raises():
     """Unknown --provider value → Exit (cli_error calls typer.Exit)."""
-    import click
+    import click, typer
     from synthadoc.cli.serve import _apply_provider_override
     cfg = _make_cfg("anthropic")
-    with pytest.raises((SystemExit, click.exceptions.Exit)):
+    with pytest.raises((SystemExit, click.exceptions.Exit, typer.Exit)):
         _apply_provider_override(cfg, "unknown-tool")
 
 
@@ -130,7 +130,8 @@ def test_check_port_raises_when_port_in_use(tmp_path):
         pytest.skip("No bindable port found")
 
     try:
-        with pytest.raises((SystemExit, click.exceptions.Exit)):
+        import typer as _typer
+        with pytest.raises((SystemExit, click.exceptions.Exit, _typer.Exit)):
             _check_port(base, host="127.0.0.1")
     finally:
         s.close()

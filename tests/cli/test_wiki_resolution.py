@@ -59,11 +59,12 @@ def test_cwd_fallback_when_config_present(monkeypatch, tmp_path):
 
 
 def test_error_when_nothing_resolves(monkeypatch, tmp_path):
+    import typer
     resolve_wiki, ENV_VAR, _, _r, _ = _imp()
     monkeypatch.delenv(ENV_VAR, raising=False)
     monkeypatch.chdir(tmp_path)   # no .synthadoc/config.toml here
     with patch("synthadoc.cli._wiki._read_default_wiki", return_value=None):
-        with pytest.raises(click.exceptions.Exit) as exc:
+        with pytest.raises((click.exceptions.Exit, typer.Exit)) as exc:
             resolve_wiki(None)
     assert exc.value.exit_code == 1
 
