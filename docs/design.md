@@ -367,6 +367,21 @@ Dispatches to the correct skill based on file extension, URL prefix, or intent k
 
 When a source is a URL or an intent phrase (e.g. `search for: Dennis Ritchie`), IngestAgent skips the local file checks — there is no file to verify or hash. File-existence validation and SHA-256 dedup only apply to local file paths.
 
+### ExportAgent
+
+Serialises the wiki to one of four formats with zero additional LLM calls. Invoked via `synthadoc export --format <fmt>` or the Obsidian **Export Wiki** command.
+
+| Format | Output |
+|--------|--------|
+| `llms.txt` | Active pages as a compact index (title + first-line summary) in the [llmstxt.org](https://llmstxt.org) spec; pages with `contradicted` or `stale` status appear in a **Needs Review** section |
+| `llms-full.txt` | Full page content for all pages, separated by `---` dividers with status and confidence headers; no size limit |
+| `graphml` | Directed wikilink graph — one node per page, one edge per `[[wikilink]]`; includes `label` (Gephi), `y:NodeLabel` (yEd), status, confidence, orphan flag, inbound link count, and routing branch per node |
+| `json` | Full structured dump: content, tags, sources, claims (from audit DB), lifecycle history, routing branch memberships, per-page `ingest_cost_usd` and `ingest_tokens`, and total compilation cost |
+
+**Status filter:** All formats accept `--status-filter active|contradicted|stale|archived|draft|all` (default `all`) to scope the export to a lifecycle subset.
+
+**GraphML tool compatibility:** The file includes both a standard `label` data key (read by Gephi and Cytoscape) and a `y:ShapeNode/y:NodeLabel` element (read by yEd). No position data is embedded — run the tool's own layout algorithm after import.
+
 ---
 
 ## 5. Skills System
@@ -2088,6 +2103,46 @@ check_url_availability = true    # default: false — adds a network call per UR
 
 ---
 
+## 24. Export Formats
+
+The `synthadoc export` command serializes the wiki in four machine-readable formats, assembled server-side from cached data with zero additional LLM calls. Requires `synthadoc serve` to be running.
+
+### Formats
+
+**`llms.txt`** — Navigation index per the [llmstxt.org](https://llmstxt.org/) spec. Active pages appear under `## Pages` with a one-line description; contradicted and stale pages appear under `## Needs Review` with a reason note; archived pages are omitted entirely. With `--status active` only `## Pages` is emitted.
+
+**`llms-full.txt`** — Flat content dump. Pages are separated by `---`. Each page opens with `Status: <state> | Confidence: <level> | Tags: ...`. Provenance footnotes (`^[source.txt:42-58]`) are preserved verbatim in the body. No size limit — the full wiki is always exported. For very large wikis a streaming export path is planned as a future enhancement.
+
+**`graphml`** — Standard GraphML 1.1. Nodes = pages; edges = wikilinks extracted from page bodies. Node attributes: `title`, `status`, `confidence`, `orphan` (boolean), `citation_count` (int), `inbound_link_count` (int), `routing_branch` (from ROUTING.md branch membership). All edges carry `edge_type="wikilink"`. Self-links are suppressed.
+
+**`json`** — Agent-ready structured dump. Six unique differentiators beyond what any competing tool exports:
+- `claims[]` per page — source file, line range, claim excerpt (from the claim provenance audit database)
+- `lifecycle_history[]` per page — every state transition with from/to/timestamp/reason
+- `compilation_cost_usd` per page and `total_compilation_cost_usd` for the whole wiki
+- `routing.branch_memberships` — ROUTING.md branch name for each page
+- Lifecycle state filter (`status_filter`) applied at export time
+- Context pack scope (`context_pack`) — exports only pages within the named pack
+
+### CLI
+
+```bash
+synthadoc export --format <fmt> [--output <path>] [--status <state>] [--context-pack <name>] [--wiki <name>]
+```
+
+Outputs to stdout by default; `--output` writes to a file. `--status` filters pages by lifecycle state (`all` / `active` / `draft` / `stale` / `contradicted` / `archived`).
+
+### POST /export endpoint
+
+Accepts `{ format, status_filter, context_pack }`. Returns raw content with appropriate `Content-Type` (`text/plain; charset=utf-8` for text formats, `application/xml` for graphml, `application/json` for json). Returns 422 for unknown format. No LLM calls.
+
+### Obsidian
+
+**Export Wiki** command opens a modal with: format dropdown (json / llms.txt / llms-full.txt / graphml), output path input pre-filled with today's date and the correct extension, status filter selector, Export button (writes to vault), and a View Graph button (graphml format only — opens the Graph View Modal).
+
+**View Knowledge Graph** command opens an embedded Cytoscape.js graph viewer. Nodes are colored by lifecycle state (active=green, draft=yellow, stale=orange, contradicted=red, archived=grey) and sized by inbound link count. An "Export to file" button in the toolbar saves the GraphML to the vault's `exports/` folder.
+
+---
+
 ## Appendix A — Release Feature Index
 
 ### v0.1.0 (Community Edition)
@@ -2180,3 +2235,4 @@ check_url_availability = true    # default: false — adds a network call per UR
 - **Lifecycle CLI** — `synthadoc lifecycle activate/archive/restore/log`, `synthadoc status` extended with per-state counts, `synthadoc audit lifecycle purge --before / --keep-latest`
 - **Lifecycle HTTP API** — `GET /lifecycle/status`, `GET /lifecycle/events`, `POST /lifecycle/transition`
 - **Lifecycle Obsidian plugin** — `Synthadoc: Manage Page Lifecycle` command opens `LifecycleModal`: sortable, filterable, paginated table of all pages with current state and last transition; valid transition action buttons per row; `ReasonModal` prompts for reason before committing; draft/stale badge links on lint modal and jobs panel open the table pre-filtered
+- **Export formats** — `synthadoc export --format <fmt>` serializes the wiki in four formats assembled server-side with zero LLM calls: `llms.txt` (navigation index per llmstxt.org spec — active pages in `## Pages`, contradicted/stale in `## Needs Review`, archived omitted); `llms-full.txt` (flat content dump with `---` separators, provenance footnotes preserved verbatim, ≤5 MB with truncation notice); `graphml` (standard GraphML 1.1 — nodes=pages with `title`, `status`, `confidence`, `orphan`, `citation_count`, `inbound_link_count`, `routing_branch` attributes; edges=wikilinks with `edge_type="wikilink"`); `json` (agent-ready dump with `claims[]` per page, `lifecycle_history[]`, `compilation_cost_usd`, `total_compilation_cost_usd`, `routing.branch_memberships`); `POST /export` endpoint accepts `{format, status_filter, context_pack}`, returns raw content with appropriate `Content-Type`; Obsidian adds two commands: **Export Wiki** (format picker modal, writes to vault `exports/` folder) and **View Knowledge Graph** (embedded Cytoscape.js graph with lifecycle-colored nodes and "Export to file" button)

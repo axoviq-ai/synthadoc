@@ -31,6 +31,9 @@ export default class SynthadocPlugin extends Plugin {
     async onload() {
         await this.loadSettings();
         setBase(this.settings.serverUrl);
+        // Register export file extensions so Obsidian indexes and shows them in the
+        // file explorer without the user needing to enable "Detect all file extensions".
+        this.registerExtensions(["json", "txt", "graphml"], "markdown");
         this.addSettingTab(new SynthadocSettingTab(this.app, this));
 
         this.addCommand({
@@ -118,6 +121,12 @@ export default class SynthadocPlugin extends Plugin {
                     ? this.app.vault.adapter.getBasePath() : "";
                 new LifecycleModal(this.app, wikiRoot, this.settings.serverUrl).open();
             },
+        });
+
+        this.addCommand({
+            id: "synthadoc-export-wiki",
+            name: "Export Wiki",
+            callback: () => new ExportModal(this.app).open(),
         });
 
         this.addRibbonIcon("book-open", "Synthadoc status", async () => {
@@ -3799,6 +3808,300 @@ class LifecycleModal extends Modal {
     onClose() {
         this._pages = [];
         this._auditEvents = [];
+        this.contentEl.empty();
+    }
+}
+
+class ExportModal extends Modal {
+    private _format = "json";
+    private _statusFilter = "all";
+
+    onOpen() {
+        const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
+        if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
+        const { contentEl } = this;
+        contentEl.empty();
+        const titleEl = contentEl.createEl("h2", { text: "Export Wiki" });
+        makeDraggable(this.modalEl, titleEl);
+
+        // Description
+        const infoEl = contentEl.createEl("div");
+        infoEl.style.cssText = "margin:0 0 14px;padding:8px 10px;background:var(--background-secondary);border-radius:6px;font-size:12px;color:var(--text-muted);line-height:1.7;";
+        infoEl.innerHTML = [
+            "Exports the wiki to your vault's <code>exports/</code> folder. No additional LLM calls.",
+            "<br>",
+            "<b>json</b> — full structured dump with claims, lifecycle history, and routing<br>",
+            "<b>llms.txt</b> — active pages in the <a href='https://llmstxt.org'>llmstxt.org</a> format (for AI tools)<br>",
+            "<b>llms-full.txt</b> — full page content with provenance footnotes inline<br>",
+            "<b>graphml</b> — wikilink graph — open in <b>yEd</b>, <b>Gephi</b>, or <b>Cytoscape</b>",
+        ].join("");
+
+        // Format selector
+        const fmtRow = contentEl.createEl("div", { cls: "setting-item" });
+        fmtRow.createEl("label", { text: "Format" });
+        const select = fmtRow.createEl("select");
+        ["json", "llms.txt", "llms-full.txt", "graphml"].forEach(fmt => {
+            const opt = select.createEl("option", { text: fmt, value: fmt });
+            if (fmt === this._format) opt.selected = true;
+        });
+
+        // Output path
+        const today = new Date().toISOString().slice(0, 10);
+        const defaultPath = (fmt: string): string => {
+            const stems: Record<string, string> = {
+                "json":          `wiki-${today}.json`,
+                "llms.txt":      `wiki-llms-${today}.txt`,
+                "llms-full.txt": `wiki-llms-full-${today}.txt`,
+                "graphml":       `wiki-graph-${today}.graphml`,
+            };
+            return `exports/${stems[fmt] ?? `wiki-${today}.txt`}`;
+        };
+        const pathRow = contentEl.createEl("div");
+        pathRow.style.cssText = "margin-bottom:12px;";
+        const pathLabel = pathRow.createEl("label", { text: "Output path (in vault)" });
+        pathLabel.style.cssText = "display:block;margin-bottom:4px;font-size:13px;";
+        const pathInput = pathRow.createEl("input", {
+            type: "text",
+            value: defaultPath(this._format),
+        }) as HTMLInputElement;
+        pathInput.style.cssText = "width:100%;box-sizing:border-box;font-family:var(--font-monospace);font-size:12px;";
+
+        // Status filter
+        const statusRow = contentEl.createEl("div", { cls: "setting-item" });
+        statusRow.createEl("label", { text: "Status filter" });
+        const statusSel = statusRow.createEl("select");
+        [["all", "All pages"], ["active", "Active only"]].forEach(([val, label]) => {
+            const o = statusSel.createEl("option", { text: label, value: val });
+            if (val === "all") o.selected = true;
+        });
+
+        // Button row
+        const btnRow = contentEl.createEl("div", { cls: "modal-button-container" });
+        const exportBtn = btnRow.createEl("button", { text: "Export" }) as HTMLButtonElement;
+        let viewGraphBtn: HTMLButtonElement | null = null;
+
+        const updateExtension = () => {
+            pathInput.value = defaultPath(this._format);
+            if (this._format === "graphml") {
+                if (!viewGraphBtn) {
+                    viewGraphBtn = btnRow.createEl("button", { text: "View Graph" }) as HTMLButtonElement;
+                    viewGraphBtn.addEventListener("click", () => {
+                        new GraphViewModal(this.app).open();
+                        this.close();
+                    });
+                }
+            } else if (viewGraphBtn) {
+                viewGraphBtn.remove();
+                viewGraphBtn = null;
+            }
+        };
+
+        select.addEventListener("change", () => {
+            this._format = select.value;
+            updateExtension();
+        });
+        statusSel.addEventListener("change", () => { this._statusFilter = statusSel.value; });
+
+        exportBtn.addEventListener("click", async () => {
+            exportBtn.disabled = true;
+            exportBtn.textContent = "Exporting…";
+            try {
+                const content = await api.exportWiki(this._format, this._statusFilter);
+                const path = pathInput.value.trim() || `exports/wiki-export.${this._format}`;
+
+                // Use filesystem check — vault index may not include files from
+                // sessions before the extension was registered.
+                if (await this.app.vault.adapter.exists(path)) {
+                    const ok = confirm(`"${path}" already exists. Overwrite?`);
+                    if (!ok) { exportBtn.disabled = false; exportBtn.textContent = "Export"; return; }
+                }
+
+                let tfile: TFile | null = null;
+                const existingTFile = this.app.vault.getAbstractFileByPath(path);
+                if (existingTFile instanceof TFile) {
+                    await this.app.vault.modify(existingTFile, content);
+                    tfile = existingTFile;
+                } else {
+                    const parent = path.split("/").slice(0, -1).join("/");
+                    if (parent) {
+                        try { await this.app.vault.createFolder(parent); } catch { /* already exists */ }
+                    }
+                    try {
+                        tfile = await this.app.vault.create(path, content);
+                    } catch {
+                        // File exists on disk but not in vault index — write directly.
+                        await this.app.vault.adapter.write(path, content);
+                        tfile = this.app.vault.getAbstractFileByPath(path) as TFile | null;
+                    }
+                }
+                new Notice(`Synthadoc: exported to ${path}`);
+                this.close();
+                if (tfile) {
+                    const leaf = this.app.workspace.getLeaf(false);
+                    await leaf.openFile(tfile);
+                    (this.app as any).commands.executeCommandById("file-explorer:reveal-active-file");
+                }
+            } catch (e) {
+                new Notice(`Synthadoc: export failed — ${e}`);
+                exportBtn.disabled = false;
+                exportBtn.textContent = "Export";
+            }
+        });
+    }
+
+    onClose() { this.contentEl.empty(); }
+}
+
+class GraphViewModal extends Modal {
+    private _closed = false;
+
+    onOpen() {
+        this._closed = false;
+        const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
+        if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
+        const { contentEl } = this;
+        contentEl.empty();
+        this.modalEl.style.width = "clamp(960px, 88vw, 1400px)";
+        this.modalEl.style.height = "clamp(700px, 88vh, 1000px)";
+        const titleEl = contentEl.createEl("h2", { text: "Knowledge Graph" });
+        makeDraggable(this.modalEl, titleEl);
+
+        // Toolbar
+        const toolbar = contentEl.createDiv({ cls: "synthadoc-graph-toolbar" });
+        const exportBtn = toolbar.createEl("button", { text: "Export to file" });
+
+        // Graph container — fills remaining modal height minus title + toolbar
+        const container = contentEl.createDiv();
+        container.style.cssText = "width:100%;height:calc(100% - 80px);min-height:500px;background:#1e1e2e;border-radius:4px;";
+
+        exportBtn.addEventListener("click", async () => {
+            try {
+                const content = await api.exportWiki("graphml", "all");
+                const today = new Date().toISOString().slice(0, 10);
+                const path = `exports/wiki-graph-${today}.graphml`;
+                const existing = this.app.vault.getAbstractFileByPath(path);
+                if (existing instanceof TFile) {
+                    const ok = confirm(`"${path}" already exists. Overwrite?`);
+                    if (!ok) return;
+                    await this.app.vault.modify(existing, content);
+                } else {
+                    try { await this.app.vault.createFolder("exports"); } catch { /* exists */ }
+                    await this.app.vault.create(path, content);
+                }
+                new Notice(`Synthadoc: graph exported to ${path}`);
+            } catch (e) {
+                new Notice(`Synthadoc: graph export failed — ${e}`);
+            }
+        });
+
+        // Fetch graph data and render with Cytoscape.js
+        api.exportWiki("graphml", "all").then(graphmlText => {
+            this._renderGraph(container, graphmlText);
+        }).catch(() => {
+            container.createEl("p", { text: "Could not load graph — is the server running?" });
+        });
+    }
+
+    private _renderGraph(container: HTMLElement, graphmlText: string) {
+        if (this._closed) return;
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(graphmlText, "application/xml");
+        const NS = "http://graphml.graphdrawing.org/graphml";
+
+        const getAttr = (el: Element, keyId: string): string => {
+            for (const d of Array.from(el.getElementsByTagNameNS(NS, "data"))) {
+                if (d.getAttribute("key") === keyId) return d.textContent || "";
+            }
+            return "";
+        };
+
+        const STATUS_COLORS: Record<string, string> = {
+            active: "#4ade80", draft: "#fbbf24", stale: "#f97316",
+            contradicted: "#f87171", archived: "#6b7280",
+        };
+
+        const nodes = Array.from(doc.getElementsByTagNameNS(NS, "node")).map(n => {
+            const id = n.getAttribute("id") || "";
+            const status = getAttr(n, "status");
+            return {
+                data: {
+                    id,
+                    label: getAttr(n, "title") || id,
+                    status,
+                    color: STATUS_COLORS[status] || "#94a3b8",
+                },
+            };
+        });
+
+        const edges = Array.from(doc.getElementsByTagNameNS(NS, "edge")).map((e, i) => ({
+            data: {
+                id: `e${i}`,
+                source: e.getAttribute("source") || "",
+                target: e.getAttribute("target") || "",
+            },
+        }));
+
+        // Dynamically import cytoscape to keep bundle size manageable
+        import("cytoscape").then(({ default: cytoscape }) => {
+            if (this._closed) return;
+            const cy = cytoscape({
+                container,
+                elements: [...nodes, ...edges],
+                style: [
+                    {
+                        selector: "node",
+                        style: {
+                            "background-color": "data(color)",
+                            "label": "data(label)",
+                            "color": "#e2e8f0",
+                            "font-size": "11px",
+                            "text-valign": "bottom",
+                            "text-halign": "center",
+                            "text-margin-y": "6px",
+                            "text-wrap": "wrap",
+                            "text-max-width": "120px",
+                            "text-background-color": "#1e1e2e",
+                            "text-background-opacity": 0.75,
+                            "text-background-padding": "2px",
+                            "text-background-shape": "round-rectangle",
+                            "width": "42px",
+                            "height": "42px",
+                            "border-width": 2,
+                            "border-color": "#2d3748",
+                        },
+                    },
+                    {
+                        selector: "edge",
+                        style: {
+                            "width": 1.5,
+                            "line-color": "#475569",
+                            "target-arrow-color": "#64748b",
+                            "target-arrow-shape": "triangle",
+                            "curve-style": "bezier",
+                            "opacity": 0.65,
+                        },
+                    },
+                ],
+                layout: {
+                    name: "cose",
+                    animate: false,
+                    nodeRepulsion: 10000,
+                    idealEdgeLength: 130,
+                    nodeOverlap: 60,
+                    padding: 60,
+                    gravity: 0.5,
+                    numIter: 1000,
+                    randomize: true,
+                },
+            });
+            cy.fit(undefined, 60);
+        }).catch(() => {
+            if (!this._closed) container.textContent = "Could not load graph renderer.";
+        });
+    }
+
+    onClose() {
+        this._closed = true;
         this.contentEl.empty();
     }
 }

@@ -12,7 +12,7 @@ export function getBase(): string {
     return BASE;
 }
 
-async function call(path: string, method = "GET", body?: object) {
+async function _callInner(path: string, method = "GET", body?: object) {
     const res = await requestUrl({
         url: `${BASE}${path}`,
         method,
@@ -23,7 +23,15 @@ async function call(path: string, method = "GET", body?: object) {
     if (res.status < 200 || res.status >= 300) {
         throw new Error(`synthadoc API ${res.status}`);
     }
-    return res.json;
+    return res;
+}
+
+async function call(path: string, method = "GET", body?: object) {
+    return (await _callInner(path, method, body)).json;
+}
+
+async function callRaw(path: string, method = "GET", body?: object): Promise<string> {
+    return (await _callInner(path, method, body)).text;
 }
 
 export const api = {
@@ -76,4 +84,11 @@ export const api = {
     },
     lifecycleTransition: (slug: string, to_state: string, reason: string) =>
         call("/lifecycle/transition", "POST", { slug, to_state, reason }),
+
+    exportWiki: (format: string, statusFilter = "all", contextPack?: string) =>
+        callRaw("/export", "POST", {
+            format,
+            status_filter: statusFilter,
+            ...(contextPack ? { context_pack: contextPack } : {}),
+        }),
 };
