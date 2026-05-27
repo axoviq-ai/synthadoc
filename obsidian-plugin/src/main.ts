@@ -3215,11 +3215,25 @@ class ProvenanceModal extends Modal {
         // Filter bar
         const filterRow = contentEl.createDiv({ cls: "synthadoc-prov-filter" });
         filterRow.style.cssText = "display:flex;gap:8px;margin-bottom:12px;flex-shrink:0";
-        const input = filterRow.createEl("input", { type: "text", placeholder: "Filter by slug or source…" });
+        const inputWrap = filterRow.createDiv();
+        inputWrap.style.cssText = "position:relative;flex:1;display:flex;align-items:center";
+        const input = inputWrap.createEl("input", { type: "text", placeholder: "Filter by slug or source…" });
         input.value = this.filter;
-        input.style.cssText = "flex:1;padding:4px 8px";
+        input.style.cssText = "width:100%;box-sizing:border-box;padding:4px 26px 4px 8px";
+        const clearBtn = inputWrap.createEl("span", { text: "×" });
+        clearBtn.style.cssText = "position:absolute;right:7px;cursor:pointer;color:var(--text-muted);font-size:16px;line-height:1;display:" + (this.filter ? "block" : "none");
+        clearBtn.addEventListener("click", async () => {
+            this.filter = "";
+            input.value = "";
+            clearBtn.style.display = "none";
+            this.page = 0;
+            await this.load();
+            this.renderTable();
+            this.renderPager();
+        });
         input.addEventListener("input", async () => {
             this.filter = input.value;
+            clearBtn.style.display = input.value ? "block" : "none";
             this.page = 0;
             await this.load();
             this.renderTable();
