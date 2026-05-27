@@ -3843,11 +3843,20 @@ class ExportModal extends Modal {
         const pathRow = contentEl.createEl("div", { cls: "setting-item" });
         pathRow.createEl("label", { text: "Output path (in vault)" });
         const today = new Date().toISOString().slice(0, 10);
+        const defaultPath = (fmt: string): string => {
+            const stems: Record<string, string> = {
+                "json":          `wiki-${today}.json`,
+                "llms.txt":      `wiki-llms-${today}.txt`,
+                "llms-full.txt": `wiki-llms-full-${today}.txt`,
+                "graphml":       `wiki-graph-${today}.graphml`,
+            };
+            return `exports/${stems[fmt] ?? `wiki-${today}.txt`}`;
+        };
         const pathInput = pathRow.createEl("input", {
             type: "text",
-            value: `exports/wiki-${today}.json`,
+            value: defaultPath(this._format),
         }) as HTMLInputElement;
-        pathInput.value = `exports/wiki-${today}.json`;
+        pathInput.value = defaultPath(this._format);
 
         // Status filter
         const statusRow = contentEl.createEl("div", { cls: "setting-item" });
@@ -3864,10 +3873,7 @@ class ExportModal extends Modal {
         let viewGraphBtn: HTMLButtonElement | null = null;
 
         const updateExtension = () => {
-            const ext: Record<string, string> = {
-                "json": "json", "llms.txt": "txt", "llms-full.txt": "txt", "graphml": "graphml",
-            };
-            pathInput.value = pathInput.value.replace(/\.[^.]+$/, `.${ext[this._format] || "txt"}`);
+            pathInput.value = defaultPath(this._format);
             if (this._format === "graphml") {
                 if (!viewGraphBtn) {
                     viewGraphBtn = btnRow.createEl("button", { text: "View Graph" }) as HTMLButtonElement;
@@ -3897,6 +3903,8 @@ class ExportModal extends Modal {
                 let tfile: TFile;
                 const existing = this.app.vault.getAbstractFileByPath(path);
                 if (existing instanceof TFile) {
+                    const ok = confirm(`"${path}" already exists. Overwrite?`);
+                    if (!ok) { exportBtn.disabled = false; exportBtn.textContent = "Export"; return; }
                     await this.app.vault.modify(existing, content);
                     tfile = existing;
                 } else {
