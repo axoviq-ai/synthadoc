@@ -510,7 +510,7 @@ function makeSmartContentEl(): any {
  *
  * NOTE: uses vi.resetModules() / dynamic re-import internally.
  */
-async function getModal(commandId: string, appOverride?: any): Promise<{ ModalClass: new () => any; apiMock: any }> {
+async function getModal(commandId: string, appOverride?: any): Promise<{ ModalClass: new () => any; apiMock: any; ref: { current: any } }> {
     // We can't extract QueryModal from main.ts because it's private.
     // Instead, we invoke the command callback and intercept the `open()` call
     // (which is an instance property vi.fn()) by replacing it AFTER construction
@@ -553,6 +553,7 @@ async function getModal(commandId: string, appOverride?: any): Promise<{ ModalCl
 
     // Re-define the obsidian mock with a tracking Modal
     let lastInstance: any = null;
+    const ref = { current: null as any };
     vi.doMock("obsidian", () => ({
         Plugin: class {
             app: any;
@@ -583,9 +584,9 @@ async function getModal(commandId: string, appOverride?: any): Promise<{ ModalCl
             modalEl = { style: {} as CSSStyleDeclaration, addEventListener: vi.fn() };
             containerEl = { querySelector: vi.fn().mockReturnValue({ addEventListener: vi.fn() }) };
             contentEl = makeSmartContentEl();
-            open = vi.fn(function (this: any) { lastInstance = this; });
+            open = vi.fn(function (this: any) { lastInstance = this; ref.current = this; });
             close = vi.fn();
-            constructor(app: any) { this.app = app; lastInstance = this; }
+            constructor(app: any) { this.app = app; lastInstance = this; ref.current = this; }
         },
         SuggestModal: class {
             app: any; open = vi.fn(); setPlaceholder = vi.fn();
@@ -656,7 +657,7 @@ async function getModal(commandId: string, appOverride?: any): Promise<{ ModalCl
             return inst;
         }
     } as any;
-    return { ModalClass, apiMock: freshApiMock.api };
+    return { ModalClass, apiMock: freshApiMock.api, ref };
 }
 
 describe("QueryModal knowledge gap callout", () => {
@@ -2309,20 +2310,49 @@ describe("CandidatesModal", () => {
 describe("Graph View Modal", () => {
     const EMPTY_GRAPHML = '<?xml version="1.0"?><graphml xmlns="http://graphml.graphdrawing.org/graphml"><graph id="wiki" edgedefault="directed"></graph></graphml>';
 
-    it("opens without error when export returns empty graphml", async () => {
-        const { ModalClass, apiMock } = await getModal("synthadoc-view-graph");
+    // GraphViewModal is only reachable via Export Wiki → View Graph button.
+    // Load the module through ExportModal, switch to graphml, click View Graph,
+    // and capture the GraphViewModal class via the ref tracker.
+    async function getGVM(appOverride?: any) {
+        const { ModalClass: ExportModalClass, apiMock, ref } = await getModal("synthadoc-export-wiki", appOverride);
         apiMock.exportWiki.mockResolvedValue(EMPTY_GRAPHML);
+
+        const exportModal = new ExportModalClass();
+        exportModal.onOpen();
+
+        const select = exportModal.contentEl.querySelector("select");
+        select!.value = "graphml";
+        select!._listeners?.change?.();
+
+        const viewGraphBtn = exportModal.contentEl.querySelectorAll("button")
+            .find((b: any) => b._html === "View Graph");
+        viewGraphBtn!._listeners?.click?.();
+
+        // ref.current is now the GraphViewModal instance
+        const GVMClass = ref.current.constructor;
+        const ModalClass = class {
+            constructor() {
+                const inst = new GVMClass(appOverride);
+                inst.contentEl = makeSmartContentEl();
+                inst.modalEl = { style: {}, addEventListener: vi.fn() };
+                inst.containerEl = { querySelector: vi.fn().mockReturnValue({ addEventListener: vi.fn() }) };
+                return inst;
+            }
+        } as any;
+        return { ModalClass, apiMock };
+    }
+
+    it("opens without error when export returns empty graphml", async () => {
+        const { ModalClass } = await getGVM();
         const m = new ModalClass();
         expect(() => m.onOpen()).not.toThrow();
-        // Let async fetch + cytoscape import resolve
         await new Promise(r => setTimeout(r, 0));
         await new Promise(r => setTimeout(r, 0));
         m.onClose();
     });
 
     it("Export to file button exists in toolbar", async () => {
-        const { ModalClass, apiMock } = await getModal("synthadoc-view-graph");
-        apiMock.exportWiki.mockResolvedValue(EMPTY_GRAPHML);
+        const { ModalClass } = await getGVM();
         const m = new ModalClass();
         m.onOpen();
         const btns = Array.from(m.contentEl.querySelectorAll("button")).map((b: any) => b._html ?? b.textContent);
@@ -2331,20 +2361,17 @@ describe("Graph View Modal", () => {
     });
 
     it("onClose sets _closed flag and empties contentEl", async () => {
-        const { ModalClass, apiMock } = await getModal("synthadoc-view-graph");
-        apiMock.exportWiki.mockResolvedValue(EMPTY_GRAPHML);
+        const { ModalClass } = await getGVM();
         const m = new ModalClass();
         m.onOpen();
-        // Verify _closed starts as false after onOpen
         expect(m._closed).toBe(false);
         m.onClose();
-        // After onClose, _closed should be true and contentEl should be emptied
         expect(m._closed).toBe(true);
         expect(m.contentEl.empty).toHaveBeenCalled();
     });
 
     it("shows error fallback when api call fails", async () => {
-        const { ModalClass, apiMock } = await getModal("synthadoc-view-graph");
+        const { ModalClass, apiMock } = await getGVM();
         apiMock.exportWiki.mockRejectedValue(new Error("server down"));
         const m = new ModalClass();
         m.onOpen();

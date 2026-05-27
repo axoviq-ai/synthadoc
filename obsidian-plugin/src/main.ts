@@ -129,12 +129,6 @@ export default class SynthadocPlugin extends Plugin {
             callback: () => new ExportModal(this.app).open(),
         });
 
-        this.addCommand({
-            id: "synthadoc-view-graph",
-            name: "View Knowledge Graph",
-            callback: () => new GraphViewModal(this.app).open(),
-        });
-
         this.addRibbonIcon("book-open", "Synthadoc status", async () => {
             const [healthRes, statusRes] = await Promise.allSettled([
                 api.health(),
@@ -3830,6 +3824,18 @@ class ExportModal extends Modal {
         const titleEl = contentEl.createEl("h2", { text: "Export Wiki" });
         makeDraggable(this.modalEl, titleEl);
 
+        // Description
+        const infoEl = contentEl.createEl("div");
+        infoEl.style.cssText = "margin:0 0 14px;padding:8px 10px;background:var(--background-secondary);border-radius:6px;font-size:12px;color:var(--text-muted);line-height:1.7;";
+        infoEl.innerHTML = [
+            "Exports the wiki to your vault's <code>exports/</code> folder. No additional LLM calls.",
+            "<br>",
+            "<b>json</b> — full structured dump with claims, lifecycle history, and routing<br>",
+            "<b>llms.txt</b> — active pages in the <a href='https://llmstxt.org'>llmstxt.org</a> format (for AI tools)<br>",
+            "<b>llms-full.txt</b> — full page content with provenance footnotes inline<br>",
+            "<b>graphml</b> — wikilink graph — open in <b>yEd</b>, <b>Gephi</b>, or <b>Cytoscape</b>",
+        ].join("");
+
         // Format selector
         const fmtRow = contentEl.createEl("div", { cls: "setting-item" });
         fmtRow.createEl("label", { text: "Format" });
@@ -3840,8 +3846,6 @@ class ExportModal extends Modal {
         });
 
         // Output path
-        const pathRow = contentEl.createEl("div", { cls: "setting-item" });
-        pathRow.createEl("label", { text: "Output path (in vault)" });
         const today = new Date().toISOString().slice(0, 10);
         const defaultPath = (fmt: string): string => {
             const stems: Record<string, string> = {
@@ -3852,11 +3856,15 @@ class ExportModal extends Modal {
             };
             return `exports/${stems[fmt] ?? `wiki-${today}.txt`}`;
         };
+        const pathRow = contentEl.createEl("div");
+        pathRow.style.cssText = "margin-bottom:12px;";
+        const pathLabel = pathRow.createEl("label", { text: "Output path (in vault)" });
+        pathLabel.style.cssText = "display:block;margin-bottom:4px;font-size:13px;";
         const pathInput = pathRow.createEl("input", {
             type: "text",
             value: defaultPath(this._format),
         }) as HTMLInputElement;
-        pathInput.value = defaultPath(this._format);
+        pathInput.style.cssText = "width:100%;box-sizing:border-box;font-family:var(--font-monospace);font-size:12px;";
 
         // Status filter
         const statusRow = contentEl.createEl("div", { cls: "setting-item" });
@@ -4036,7 +4044,7 @@ class GraphViewModal extends Modal {
         // Dynamically import cytoscape to keep bundle size manageable
         import("cytoscape").then(({ default: cytoscape }) => {
             if (this._closed) return;
-            cytoscape({
+            const cy = cytoscape({
                 container,
                 elements: [...nodes, ...edges],
                 style: [
@@ -4046,26 +4054,47 @@ class GraphViewModal extends Modal {
                             "background-color": "data(color)",
                             "label": "data(label)",
                             "color": "#e2e8f0",
-                            "font-size": "10px",
+                            "font-size": "11px",
                             "text-valign": "bottom",
                             "text-halign": "center",
-                            "width": "24px",
-                            "height": "24px",
+                            "text-margin-y": "6px",
+                            "text-wrap": "wrap",
+                            "text-max-width": "120px",
+                            "text-background-color": "#1e1e2e",
+                            "text-background-opacity": 0.75,
+                            "text-background-padding": "2px",
+                            "text-background-shape": "round-rectangle",
+                            "width": "42px",
+                            "height": "42px",
+                            "border-width": 2,
+                            "border-color": "#2d3748",
                         },
                     },
                     {
                         selector: "edge",
                         style: {
-                            "width": 1,
+                            "width": 1.5,
                             "line-color": "#475569",
-                            "target-arrow-color": "#475569",
+                            "target-arrow-color": "#64748b",
                             "target-arrow-shape": "triangle",
                             "curve-style": "bezier",
+                            "opacity": 0.65,
                         },
                     },
                 ],
-                layout: { name: "cose", animate: false },
+                layout: {
+                    name: "cose",
+                    animate: false,
+                    nodeRepulsion: 10000,
+                    idealEdgeLength: 130,
+                    nodeOverlap: 60,
+                    padding: 60,
+                    gravity: 0.5,
+                    numIter: 1000,
+                    randomize: true,
+                },
             });
+            cy.fit(undefined, 60);
         }).catch(() => {
             if (!this._closed) container.textContent = "Could not load graph renderer.";
         });
