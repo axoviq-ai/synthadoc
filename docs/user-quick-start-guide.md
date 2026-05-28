@@ -560,8 +560,11 @@ If a source file on disk changes after ingest, the next lint run detects the SHA
 
    ```bash
    synthadoc lifecycle log --state stale
-   # Slug          From     To      By    Timestamp            Reason
-   # konrad-zuse   active   stale   lint  2026-05-28 11:03:00  source hash changed
+   ```
+   ```
+   [wiki: history-of-computing]
+   Slug          From    To      By    Timestamp            Reason
+   konrad-zuse   active  stale   lint  2026-05-28T18:11:13  source file modified since last ingest
    ```
 
 4. **Inspect the full transition history for the page:**
@@ -624,9 +627,13 @@ synthadoc lifecycle log konrad-zuse
 ```
 
 ```
-Slug           From      To       By      Timestamp           Reason
-alan-turing    —         draft    ingest  2026-05-23T10:00    new page created by ingest
-alan-turing    draft     active   lint    2026-05-23T10:05    lint passed
+[wiki: history-of-computing]
+Slug          From    To      By      Timestamp            Reason
+konrad-zuse   null    draft   ingest  2026-05-28T14:58:50  new page created by ingest
+konrad-zuse   draft   active  lint    2026-05-28T17:54:51  lint passed
+konrad-zuse   active  stale   lint    2026-05-28T18:11:13  source file modified since last ingest
+konrad-zuse   stale   draft   ingest  2026-05-28T18:30:56  re-ingest of stale page
+konrad-zuse   draft   active  lint    2026-05-28T18:31:23  lint passed
 ```
 
 > For enterprise wikis, this trail answers the compliance questions: "when was this page reviewed, by what process, and why was it changed?" — without requiring anyone to maintain that record manually.
