@@ -222,7 +222,7 @@ history-of-computing/
 **Graph view** (`Ctrl/Cmd+G`): the 10 pre-built pages should appear as interconnected
 nodes. `index` and `dashboard` connect to everything; topic pages cluster by cross-links.
 
-![Obsidian Graph View — pre-built wiki](png/synthadoc-graph-view.png)
+![Obsidian Graph View — pre-built wiki](png/synthadoc-wiki-graph.png)
 
 ---
 
@@ -1635,11 +1635,11 @@ Open the Command Palette (`Ctrl/Cmd+P`) → **Synthadoc: Export Wiki**.
 
 The modal opens with a description panel explaining each format, a format dropdown, a full-width output path field (pre-filled with today's date and the correct file extension), and a status filter. Click **Export** — the file is written to your vault's `exports/` folder and opened automatically.
 
-![Synthadoc Export Wiki modal — format dropdown, description panel, output path field, status filter, and Export button](png/synthadoc-export-modal.png)
+![Synthadoc Export Wiki modal — format dropdown, description panel, output path field, status filter, and Export button](png/synthadoc-export-wiki.png)
 
 When **GraphML** is selected, a **View Graph** button appears. Click it for an inline Cytoscape.js preview of your wiki's link structure before saving to file.
 
-![Synthadoc inline GraphML viewer — nodes represent wiki pages, edges represent wikilinks, with a View Graph preview inside Obsidian](png/synthadoc-export-graphview.png)
+![Synthadoc inline knowledge graph viewer — nodes represent wiki pages, edges represent wikilinks, with a View Graph preview inside Obsidian](png/synthadoc-export-kg.png)
 
 ### What makes the JSON export unique
 
