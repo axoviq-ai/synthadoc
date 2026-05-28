@@ -126,7 +126,7 @@ Every substantive claim in the wiki is annotated with `^[filename:L-L]` — a ci
 
 ### 5-State Lifecycle Machine
 
-Every compiled wiki page moves through a **5-state lifecycle** (`draft | active | contradicted | stale | archived`) with a full audit trail — every state change recorded with who triggered it and why. New pages start as `draft`; lint automatically promotes clean pages to `active`, marks pages `stale` when their source file changes on disk, and archives pages whose source file disappears. Manual transitions (`activate`, `archive`, `restore`) and the full event log are available from both the CLI and the Obsidian plugin.
+Every compiled wiki page moves through a **5-state lifecycle** (`draft | active | contradicted | stale | archived`) with a full audit trail — every state change recorded with who triggered it and why. New pages start as `draft`; lint automatically promotes clean pages to `active`, marks pages `stale` when their source file changes on disk, and archives pages whose source file disappears. Manual transitions (`activate` — draft→active, `archive` — active→archived, `restore` — archived→draft) and the full event log are available from both the CLI and the Obsidian plugin.
 
 ### 5. Re-synthesis is expensive; Synthadoc caches it
 
