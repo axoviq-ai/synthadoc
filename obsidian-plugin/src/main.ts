@@ -333,6 +333,18 @@ class IngestModal extends Modal {
         switchTab("Web search");
     }
 
+    private _makeJobsLink(container: HTMLElement): void {
+        const link = container.createEl("a", { text: "View jobs →" });
+        link.style.cssText = "font-size:12px;cursor:pointer;color:var(--link-color);margin-right:auto";
+        link.onclick = () => {
+            this.close();
+            setTimeout(() => new JobsModal(
+                this.app,
+                new Set(["pending", "in_progress", "failed", "skipped"]),
+            ).open(), 150);
+        };
+    }
+
     private _forceRow(panel: HTMLElement): () => boolean {
         const row = panel.createEl("div");
         row.style.cssText = "display:flex;align-items:center;gap:6px;margin-bottom:10px;font-size:12px;color:var(--text-muted)";
@@ -373,7 +385,8 @@ class IngestModal extends Modal {
         const isForced = this._forceRow(panel);
 
         const btnRow = panel.createEl("div");
-        btnRow.style.cssText = "display:flex;justify-content:flex-end;margin-bottom:10px";
+        btnRow.style.cssText = "display:flex;align-items:center;gap:8px;justify-content:flex-end;margin-bottom:10px";
+        this._makeJobsLink(btnRow);
         const btn = btnRow.createEl("button", { text: "Search" }) as HTMLButtonElement;
 
         const statusEl = panel.createEl("p");
@@ -499,6 +512,10 @@ class IngestModal extends Modal {
 
         const isForced = this._forceRow(panel);
 
+        const linkRow = panel.createEl("div");
+        linkRow.style.cssText = "display:flex;margin-bottom:6px";
+        this._makeJobsLink(linkRow);
+
         const out = panel.createEl("div");
         out.style.cssText = "margin-top:4px;-webkit-user-select:text;user-select:text";
 
@@ -575,15 +592,9 @@ class IngestModal extends Modal {
 
         const btnRow = panel.createEl("div");
         btnRow.style.cssText = "display:flex;gap:8px;justify-content:flex-end;align-items:center";
+        this._makeJobsLink(btnRow);
         const ingestBtn = btnRow.createEl("button", { text: "Ingest all" }) as HTMLButtonElement;
         ingestBtn.style.cssText = "font-weight:bold";
-
-        const jobsLink = btnRow.createEl("a", { text: "View jobs list →" });
-        jobsLink.style.cssText = "display:none;font-size:12px;cursor:pointer;color:var(--link-color)";
-        jobsLink.onclick = () => {
-            this.close();
-            setTimeout(() => (this.app as any).commands?.executeCommandById("synthadoc:synthadoc-jobs"), 150);
-        };
 
         const setStatus = (html: string) => { statusEl.innerHTML = html; };
 
@@ -601,7 +612,6 @@ class IngestModal extends Modal {
             }
 
             ingestBtn.disabled = true;
-            jobsLink.style.display = "none";
             setStatus(`⏳ Queuing ${files.length} file(s)…`);
 
             const force = isForced();
@@ -644,7 +654,6 @@ class IngestModal extends Modal {
                         this._pollTimer = null;
                         setStatus(`✅ All ${jobIds.length} job(s) complete.${queueFailed ? ` (${queueFailed} file(s) failed to queue.)` : ""}`);
                         ingestBtn.disabled = false;
-                        jobsLink.style.display = "";
                     }
                 } catch { /* server unreachable — keep polling */ }
             }, 2000);
@@ -710,16 +719,10 @@ class IngestModal extends Modal {
 
         const btnRow = panel.createEl("div");
         btnRow.style.cssText = "display:flex;gap:8px;justify-content:flex-end;align-items:center";
+        this._makeJobsLink(btnRow);
         const ingestBtn = btnRow.createEl("button", { text: "Ingest selected" }) as HTMLButtonElement;
         ingestBtn.style.cssText = "font-weight:bold";
         ingestBtn.disabled = true;
-
-        const jobsLink = btnRow.createEl("a", { text: "View jobs list →" });
-        jobsLink.style.cssText = "display:none;font-size:12px;cursor:pointer;color:var(--link-color)";
-        jobsLink.onclick = () => {
-            this.close();
-            setTimeout(() => (this.app as any).commands?.executeCommandById("synthadoc:synthadoc-jobs"), 150);
-        };
 
         let scannedFiles: any[] = [];
         let checkboxRefs: HTMLInputElement[] = [];
@@ -785,7 +788,6 @@ class IngestModal extends Modal {
             } else {
                 statusEl.innerHTML = "";
             }
-            jobsLink.style.display = "none";
         };
 
         scanBtn.onclick = scan;
@@ -801,7 +803,6 @@ class IngestModal extends Modal {
             ingestBtn.disabled = true;
             scanBtn.disabled = true;
             browseBtn.disabled = true;
-            jobsLink.style.display = "none";
             setStatus(`⏳ Queuing ${selectedFiles.length} file(s)…`);
 
             const force = isForced();
@@ -850,7 +851,6 @@ class IngestModal extends Modal {
                         scanBtn.disabled = false;
                         browseBtn.disabled = false;
                         updateCount();
-                        jobsLink.style.display = "";
                     }
                 } catch { /* server unreachable — keep polling */ }
             }, 2000);
@@ -976,6 +976,11 @@ const JOBS_PAGE_SIZE = 25;
 
 class JobsModal extends Modal {
     private _selected: Set<string> = new Set(["pending", "in_progress"]);
+
+    constructor(app: App, initialFilters?: Set<string>) {
+        super(app);
+        if (initialFilters) this._selected = new Set(initialFilters);
+    }
     private _intervalSecs = 10;
     private _countdown = 10;
     private _countdownTimer: number | null = null;
@@ -1054,6 +1059,19 @@ class JobsModal extends Modal {
                 this._resetAndLoad();
             };
         }
+
+        // Quick-launch links
+        const quickRow = contentEl.createEl("div");
+        quickRow.style.cssText = "display:flex;align-items:center;gap:12px;margin-bottom:8px;font-size:12px";
+        quickRow.createEl("span", { text: "Launch:" }).style.cssText = "color:var(--text-muted);font-weight:600";
+        const _makeQuickLink = (label: string, open: () => void) => {
+            const a = quickRow.createEl("a", { text: label });
+            a.style.cssText = "cursor:pointer;color:var(--link-color)";
+            a.onclick = () => { this.close(); setTimeout(open, 150); };
+        };
+        _makeQuickLink("Ingest",      () => new IngestModal(this.app).open());
+        _makeQuickLink("Lint",        () => new LintRunModal(this.app).open());
+        _makeQuickLink("Lint report", () => new LintReportModal(this.app).open());
 
         // Interval + countdown row
         const intervalRow = contentEl.createEl("div");
@@ -1670,7 +1688,9 @@ class LintReportModal extends Modal {
                 const ul = panels["Orphans"].createEl("ul");
                 orphanDetails.forEach(({ slug, index_suggestion }) => {
                     const li = ul.createEl("li");
-                    li.createEl("code", { text: slug });
+                    const slugLink = li.createEl("a", { text: slug });
+                    slugLink.style.cssText = "cursor:pointer;font-family:var(--font-monospace);font-size:var(--font-smaller);font-weight:600";
+                    slugLink.onclick = () => this.app.workspace.openLinkText(slug, "", false);
                     li.appendText(" — no inbound links");
                     const sug = li.createEl("div");
                     sug.style.cssText = "font-size:11px;margin-top:2px";
@@ -1939,26 +1959,42 @@ class AuditModal extends Modal {
                     return;
                 }
                 const table = tableEl.createEl("table");
-                table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px;-webkit-user-select:text;user-select:text";
+                table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px;-webkit-user-select:text;user-select:text;table-layout:fixed";
+                // colgroup — fixes column widths so the table doesn't reflow per row
+                const cg = table.createEl("colgroup");
+                for (const w of ["20%", "26%", "8%", "10%", "36%"]) {
+                    const col = cg.createEl("col") as HTMLElement;
+                    col.style.width = w;
+                }
+                const COLS = [
+                    { label: "Source",     wrap: false },
+                    { label: "Wiki page",  wrap: false },
+                    { label: "Tokens",     wrap: true  },
+                    { label: "Cost (USD)", wrap: true  },
+                    { label: "Ingested at", wrap: true },
+                ];
                 const hrow = table.createEl("thead").createEl("tr");
-                for (const h of ["Source", "Wiki page", "Tokens", "Cost (USD)", "Ingested at"]) {
-                    const th = hrow.createEl("th", { text: h });
-                    th.style.cssText = "text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border)";
+                for (const col of COLS) {
+                    const th = hrow.createEl("th", { text: col.label });
+                    th.style.cssText = "text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
                 }
                 const tbody = table.createEl("tbody");
                 for (const rec of r.records) {
                     const tr = tbody.createEl("tr");
-                    const src = rec.source_path.split(/[\\/]/).pop() ?? rec.source_path;
+                    const _parts = rec.source_path.split(/[\\/]/);
+                    const src = _parts.filter(Boolean).pop() ?? rec.source_path;
                     const ts = rec.ingested_at ? new Date(rec.ingested_at).toLocaleString() : "—";
-                    for (const text of [
-                        src,
-                        rec.wiki_page,
-                        (rec.tokens ?? 0).toLocaleString(),
-                        `$${(rec.cost_usd ?? 0).toFixed(4)}`,
-                        ts,
-                    ]) {
-                        const td = tr.createEl("td", { text });
-                        td.style.cssText = "padding:4px 8px;border-bottom:1px solid var(--background-modifier-border-subtle)";
+                    const cells = [
+                        { text: src,                                    nowrap: true  },
+                        { text: rec.wiki_page,                          nowrap: true  },
+                        { text: (rec.tokens ?? 0).toLocaleString(),     nowrap: true  },
+                        { text: `$${(rec.cost_usd ?? 0).toFixed(4)}`,   nowrap: true  },
+                        { text: ts,                                      nowrap: true  },
+                    ];
+                    for (const cell of cells) {
+                        const td = tr.createEl("td", { text: cell.text });
+                        td.style.cssText = "padding:4px 8px;border-bottom:1px solid var(--background-modifier-border-subtle);overflow:hidden;text-overflow:ellipsis"
+                            + (cell.nowrap ? ";white-space:nowrap" : "");
                     }
                 }
             } catch {
@@ -2986,7 +3022,9 @@ class SourceViewerModal extends Modal {
         contentEl.empty();
 
         const CONTEXT_LINES = 5;
-        const extractedFilename = this.filename.replace(/\.[^.]+$/, ".txt");
+        const extractedFilename = this.filename.includes(".")
+            ? this.filename.replace(/\.[^.]+$/, ".txt")
+            : this.filename + ".txt";
         const extractedPath = `${this.wikiRoot}/.synthadoc/extracted/${extractedFilename}`;
         const rawSourcePath = `${this.wikiRoot}/${RAW_SOURCES_DIR}/${this.filename}`;
         const stem = this.filename.replace(/\.[^.]+$/, "");
@@ -2996,10 +3034,13 @@ class SourceViewerModal extends Modal {
         // Binary types (xlsx, docx, png, …) cannot — they need a sidecar that the
         // ingest pipeline only writes for PDFs today.
         const TEXT_EXTENSIONS = new Set(["md", "txt", "csv"]);
-        const ext = (this.filename.split(".").pop() ?? "").toLowerCase();
+        const dotIdx = this.filename.lastIndexOf(".");
+        // Files with no extension (bare slugs) are treated as plain text.
+        const ext = dotIdx >= 0 ? this.filename.slice(dotIdx + 1).toLowerCase() : "";
+        const isText = TEXT_EXTENSIONS.has(ext) || ext === "";
         const resolvePath = (): string => {
             if (fs.existsSync(extractedPath)) return extractedPath;
-            if (TEXT_EXTENSIONS.has(ext) && fs.existsSync(rawSourcePath)) return rawSourcePath;
+            if (isText && fs.existsSync(rawSourcePath)) return rawSourcePath;
             throw new Error("no-sidecar");
         };
 
@@ -3040,7 +3081,7 @@ class SourceViewerModal extends Modal {
                 }
             } catch { /* no pagemap — PDF jump not available */ }
         } catch {
-            const msg = TEXT_EXTENSIONS.has(ext)
+            const msg = isText
                 ? `Could not read source file for ${this.filename}.`
                 : `Preview not available for .${ext} files. Open the original in raw_sources/ to view its content.`;
             contentEl.createEl("p", { text: msg })
@@ -3179,11 +3220,25 @@ class ProvenanceModal extends Modal {
         // Filter bar
         const filterRow = contentEl.createDiv({ cls: "synthadoc-prov-filter" });
         filterRow.style.cssText = "display:flex;gap:8px;margin-bottom:12px;flex-shrink:0";
-        const input = filterRow.createEl("input", { type: "text", placeholder: "Filter by slug or source…" });
+        const inputWrap = filterRow.createDiv();
+        inputWrap.style.cssText = "position:relative;flex:1;display:flex;align-items:center";
+        const input = inputWrap.createEl("input", { type: "text", placeholder: "Filter by slug or source…" });
         input.value = this.filter;
-        input.style.cssText = "flex:1;padding:4px 8px";
+        input.style.cssText = "width:100%;box-sizing:border-box;padding:4px 26px 4px 8px";
+        const clearBtn = inputWrap.createEl("span", { text: "×" });
+        clearBtn.style.cssText = "position:absolute;right:7px;cursor:pointer;color:var(--text-muted);font-size:16px;line-height:1;display:" + (this.filter ? "block" : "none");
+        clearBtn.addEventListener("click", async () => {
+            this.filter = "";
+            input.value = "";
+            clearBtn.style.display = "none";
+            this.page = 0;
+            await this.load();
+            this.renderTable();
+            this.renderPager();
+        });
         input.addEventListener("input", async () => {
             this.filter = input.value;
+            clearBtn.style.display = input.value ? "block" : "none";
             this.page = 0;
             await this.load();
             this.renderTable();
@@ -3638,8 +3693,21 @@ class LifecycleModal extends Modal {
             tr.addEventListener("mouseenter", () => { tr.style.background = "var(--background-modifier-hover)"; });
             tr.addEventListener("mouseleave", () => { tr.style.background = ""; });
 
-            const slugTd = tr.createEl("td", { text: pg.slug ?? "—" });
+            const slugTd = tr.createEl("td");
             slugTd.style.cssText = "padding:6px 10px;font-family:var(--font-monospace);font-size:12px";
+            const slugVal = pg.slug ?? "";
+            if (slugVal) {
+                const slugLink = slugTd.createEl("a", { text: slugVal });
+                slugLink.style.cssText = "color:var(--link-color);text-decoration:none;cursor:pointer";
+                slugLink.addEventListener("mouseenter", () => { slugLink.style.textDecoration = "underline"; });
+                slugLink.addEventListener("mouseleave", () => { slugLink.style.textDecoration = "none"; });
+                slugLink.addEventListener("click", (e) => {
+                    e.preventDefault();
+                    this.app.workspace.openLinkText(slugVal, "", false);
+                });
+            } else {
+                slugTd.textContent = "—";
+            }
 
             const stateTd = tr.createEl("td");
             stateTd.style.cssText = "padding:6px 10px";
@@ -3814,7 +3882,7 @@ class LifecycleModal extends Modal {
 
 class ExportModal extends Modal {
     private _format = "json";
-    private _statusFilter = "all";
+    private _statusFilter = "active";
 
     onOpen() {
         const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
@@ -3828,12 +3896,13 @@ class ExportModal extends Modal {
         const infoEl = contentEl.createEl("div");
         infoEl.style.cssText = "margin:0 0 14px;padding:8px 10px;background:var(--background-secondary);border-radius:6px;font-size:12px;color:var(--text-muted);line-height:1.7;";
         infoEl.innerHTML = [
-            "Exports the wiki to your vault's <code>exports/</code> folder. No additional LLM calls.",
-            "<br>",
-            "<b>json</b> — full structured dump with claims, lifecycle history, and routing<br>",
-            "<b>llms.txt</b> — active pages in the <a href='https://llmstxt.org'>llmstxt.org</a> format (for AI tools)<br>",
-            "<b>llms-full.txt</b> — full page content with provenance footnotes inline<br>",
-            "<b>graphml</b> — wikilink graph — open in <b>yEd</b>, <b>Gephi</b>, or <b>Cytoscape</b>",
+            "<b>Exports the wiki to your vault's <code>exports/</code> folder. No additional LLM calls.</b>",
+            "<ul style='margin:6px 0 0 0;padding-left:18px;list-style:disc'>",
+            "<li><b>json</b> — full structured dump with claims, lifecycle history, and routing</li>",
+            "<li><b>llms.txt</b> — active pages in the <a href='https://llmstxt.org'>llmstxt.org</a> format (for AI tools)</li>",
+            "<li><b>llms-full.txt</b> — full page content with provenance footnotes inline</li>",
+            "<li><b>graphml</b> — wikilink graph — open in <b>yEd</b>, <b>Gephi</b>, or <b>Cytoscape</b></li>",
+            "</ul>",
         ].join("");
 
         // Format selector
@@ -3872,7 +3941,7 @@ class ExportModal extends Modal {
         const statusSel = statusRow.createEl("select");
         [["all", "All pages"], ["active", "Active only"]].forEach(([val, label]) => {
             const o = statusSel.createEl("option", { text: label, value: val });
-            if (val === "all") o.selected = true;
+            if (val === this._statusFilter) o.selected = true;
         });
 
         // Button row

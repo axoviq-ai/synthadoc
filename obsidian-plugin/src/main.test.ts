@@ -176,12 +176,12 @@ describe("IngestModal All-sources tab", () => {
     });
 
     // contentEl children: [0]=h3, [1]=tabBar, [2]=WS panel, [3]=URL panel, [4]=All-sources panel, [5]=Pick-files panel
-    // All-sources panel: [0]=desc, [1]=folderRow([0]=label,[1]=folderDisplay), [2]=statusEl, [3]=forceRow, [4]=btnRow([0]=ingestBtn)
+    // All-sources panel: [0]=desc, [1]=folderRow([0]=label,[1]=folderDisplay), [2]=statusEl, [3]=forceRow, [4]=btnRow([0]=jobsLink,[1]=ingestBtn)
     const getAllSources = (modal: any) => {
         const panel = modal.contentEl._children[4];
         return {
             folderDisplay: panel._children[1]._children[1] as any,
-            ingestBtn:     panel._children[4]._children[0] as any,
+            ingestBtn:     panel._children[4]._children[1] as any,
         };
     };
 
@@ -725,7 +725,7 @@ describe("IngestModal Pick-files tab", () => {
             browseBtn: panel._children[1]._children[2] as any,
             scanBtn:   panel._children[1]._children[3] as any,
             listEl:    panel._children[3] as any,
-            ingestBtn: panel._children[6]._children[0] as any,
+            ingestBtn: panel._children[6]._children[1] as any,
         };
     };
 
@@ -1466,8 +1466,8 @@ describe("JobsModal", () => {
         modal.onOpen();
         await flushPromises();
 
-        // pageRow is contentEl._children[4]; display must be "none" for ≤ JOBS_PAGE_SIZE jobs
-        const pageRow = modal.contentEl._children[4];
+        // pageRow is contentEl._children[5]; display must be "none" for ≤ JOBS_PAGE_SIZE jobs
+        const pageRow = modal.contentEl._children[5];
         expect(pageRow.style.display).toBe("none");
     });
 
@@ -1486,7 +1486,7 @@ describe("JobsModal", () => {
         await flushPromises();
 
         // pageRow visible; label says Page 1 of 2; 26th job not yet rendered
-        const pageRow = modal.contentEl._children[4];
+        const pageRow = modal.contentEl._children[5];
         expect(pageRow.style.display).toBe("flex");
         expect(pageRow._children[1].textContent).toContain("Page 1 of 2");
         expect(pageRow._children[1].textContent).toContain("26 total");
@@ -1508,13 +1508,13 @@ describe("JobsModal", () => {
         await flushPromises();
 
         // Click Next →  (pageRow._children[2])
-        const nextBtn = modal.contentEl._children[4]._children[2];
+        const nextBtn = modal.contentEl._children[5]._children[2];
         nextBtn.onclick();
 
         expect(modal.contentEl.innerHTML).toContain("job-026");
         expect(modal.contentEl.innerHTML).not.toContain("job-001");
 
-        const pageRow = modal.contentEl._children[4];
+        const pageRow = modal.contentEl._children[5];
         expect(pageRow._children[1].textContent).toContain("Page 2 of 2");
     });
 
@@ -1531,8 +1531,8 @@ describe("JobsModal", () => {
         modal.onOpen();
         await flushPromises();
 
-        const prevBtn = modal.contentEl._children[4]._children[0];
-        const nextBtn = modal.contentEl._children[4]._children[2];
+        const prevBtn = modal.contentEl._children[5]._children[0];
+        const nextBtn = modal.contentEl._children[5]._children[2];
 
         // Page 1: prev disabled, next enabled
         expect(prevBtn.disabled).toBe(true);
@@ -1571,7 +1571,7 @@ describe("JobsModal", () => {
         await flushPromises();
 
         // Table header row: th[0]=checkbox, th[1]=Job ID, th[2]=Status, th[3]=Operation, th[4]=Source, th[5]=Created
-        const table = modal.contentEl._children[3]._children[0]; // tableEl > table
+        const table = modal.contentEl._children[4]._children[0]; // tableEl > table
         const hrow = table._children[0]._children[0];           // thead > tr
         const statusTh = hrow._children[2];                     // Status th
         expect(statusTh.innerHTML).toContain("Status");
@@ -1594,7 +1594,7 @@ describe("JobsModal", () => {
         modal.onOpen();
         await flushPromises();
 
-        const table = modal.contentEl._children[3]._children[0];
+        const table = modal.contentEl._children[4]._children[0];
         const hrow = table._children[0]._children[0];
         const statusTh = hrow._children[2];
 
@@ -1620,7 +1620,7 @@ describe("JobsModal", () => {
         modal.onOpen();
         await flushPromises();
 
-        const table = modal.contentEl._children[3]._children[0];
+        const table = modal.contentEl._children[4]._children[0];
         const hrow = table._children[0]._children[0];
         const operationTh = hrow._children[3]; // Operation th
 
@@ -1642,7 +1642,7 @@ describe("JobsModal", () => {
         await flushPromises();
 
         // Find the Retry selected button in the interval row
-        const intervalRow = modal.contentEl._children[2]; // h3[0], filterRow[1], intervalRow[2]
+        const intervalRow = modal.contentEl._children[3]; // h3[0], filterRow[1], quickRow[2], intervalRow[3]
         const retryBtn = intervalRow._children?.find((b: any) => b._html === "Retry selected");
         expect(retryBtn).toBeDefined();
         expect(retryBtn.disabled).toBe(true);
@@ -1679,12 +1679,12 @@ describe("JobsModal", () => {
         await flushPromises(); // now _filteredJobs = [job-f1, job-c1]
 
         // Select all terminal jobs via select-all checkbox in table header
-        const table = modal.contentEl._children[3]._children[0]; // tableEl[3] > table
+        const table = modal.contentEl._children[4]._children[0]; // tableEl[4] > table
         const selectAllCb = table._children[0]._children[0]._children[0]._children[0]; // thead > tr > th > input
         selectAllCb.checked = true;
         selectAllCb.onchange();
 
-        const intervalRow = modal.contentEl._children[2]; // intervalRow[2]
+        const intervalRow = modal.contentEl._children[3]; // intervalRow[3]
         const retryBtn = intervalRow._children?.find((b: any) => b._html === "Retry selected");
         expect(retryBtn).toBeDefined();
         retryBtn.onclick();
@@ -1704,7 +1704,7 @@ describe("JobsModal", () => {
         modal.onOpen();
         await flushPromises();
 
-        const purgeRow = modal.contentEl._children[5]; // h3[0], filterRow[1], intervalRow[2], tableEl[3], pageRow[4], purgeRow[5]
+        const purgeRow = modal.contentEl._children[6]; // h3[0], filterRow[1], quickRow[2], intervalRow[3], tableEl[4], pageRow[5], purgeRow[6]
         const purgeDaysInput = purgeRow._children?.find((el: any) => el._tag === "input");
         const purgeBtn = purgeRow._children?.find((el: any) => el._tag === "button");
         expect(purgeBtn).toBeDefined();
@@ -1959,7 +1959,7 @@ describe("Export Modal", () => {
         exportBtn!._listeners?.click?.();
         await flushPromises();
 
-        expect(apiMock.exportWiki).toHaveBeenCalledWith("json", "all");
+        expect(apiMock.exportWiki).toHaveBeenCalledWith("json", "active");
         expect(vaultApp.vault.create).toHaveBeenCalled();
         expect(mockLeaf.openFile).toHaveBeenCalledWith(mockTFile);
     });

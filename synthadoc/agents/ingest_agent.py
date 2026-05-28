@@ -501,14 +501,14 @@ class IngestAgent:
             result.child_sources = extracted.metadata["child_sources"]
             return result
 
-        # Write text sidecar for all local source types so the Obsidian Source Viewer
-        # can display extracted content for xlsx, docx, md, png, etc. — not just PDFs.
-        # URL/YouTube sources are excluded: their source_path is a URL and Path().stem
-        # would produce unreliable names that could collide across domains.
+        # Write text sidecar so the Obsidian Source Viewer can display extracted content.
+        # For URL sources we use str(p) (the URL slug, e.g. "what-is-agent-evaluation")
+        # which matches the source_file value already stored in claim_citations.
         page_boundaries = extracted.metadata.get("page_boundaries", {})
         is_local = not is_url(source)
-        if is_local or page_boundaries:
-            self._write_sidecar(source, extracted.text, page_boundaries)
+        sidecar_path = source if is_local else str(p)
+        if is_local or extracted.text:
+            self._write_sidecar(sidecar_path, extracted.text, page_boundaries)
 
         # Skill-level token costs (e.g. vision pre-pass in ImageSkill)
         if extracted.metadata.get("tokens_input"):
