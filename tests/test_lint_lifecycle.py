@@ -68,7 +68,7 @@ async def test_stale_detection_on_hash_mismatch(tmp_path):
     db = await _make_db(tmp_path)
     # Record ingest with old hash (different from current file content)
     old_hash = "oldhash123abc"
-    await db.record_ingest(old_hash, 100, "source.txt", "test-page", 0, 0.0)
+    await db.record_ingest(old_hash, 100, str(raw_dir / "source.txt"), "test-page", 0, 0.0)
     # Now source file has different content → different hash on disk
     src.write_text("updated content", encoding="utf-8")
     agent = LintAgent(AsyncMock(), store, _make_log(), audit_db=db, wiki_root=tmp_path)
