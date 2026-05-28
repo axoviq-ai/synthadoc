@@ -479,19 +479,21 @@ All 5 draft pages were promoted to `active`. The 13 pre-built pages were registe
 
 ## Step 8 — Manage page lifecycle
 
-Every compiled page starts as **draft** — not yet reviewed or trusted. Running lint in Step 7 promoted clean pages to **active**. The remaining lifecycle states handle what happens when sources change or pages need to be retired.
+Most knowledge bases treat every page the same — ingested means trusted. Synthadoc is different: every compiled page carries a lifecycle state that reflects whether it has been reviewed, whether its source has changed, and whether a conflict has been detected. Pages you haven't reviewed yet are `draft`. Pages whose source files have been modified since ingest are automatically flagged `stale`. Pages with conflicting sources are marked `contradicted`. Pages whose source has disappeared are `archived`. Every state change — automated or manual — is permanently recorded with who triggered it and why.
+
+> **Differentiation:** RAG pipelines and competing wiki tools have no equivalent concept. They ingest content and serve it forever, with no way to know whether the underlying source is still current, whether two sources contradict each other, or whether a page was ever reviewed. Synthadoc's 5-state lifecycle machine turns your wiki from a static dump into a living, auditable knowledge base.
 
 ### Lifecycle states
 
-| State | Meaning | How to reach it |
-|---|---|---|
-| `draft` | Newly compiled, not yet lint-reviewed | Automatic on ingest |
-| `active` | Lint-reviewed, current, trusted | Lint auto-promotes from draft |
-| `contradicted` | Conflict detected | Lint detects contradiction |
-| `stale` | Source file changed since last ingest | Lint detects hash mismatch |
-| `archived` | Source removed or explicitly retired | Lint auto-archives on missing source; or manual |
+| State | Meaning | How it is reached | What to do |
+|---|---|---|---|
+| `draft` | Compiled but not yet lint-reviewed | Automatic on ingest | Run lint to auto-promote clean pages |
+| `active` | Lint-reviewed, current, trusted | Lint auto-promotes from `draft` | No action needed |
+| `contradicted` | Two or more sources conflict | Lint detects contradiction automatically | Re-ingest corrected source, or archive |
+| `stale` | Source file has changed since last ingest | Lint detects SHA-256 hash mismatch | Re-ingest the updated source with `--force` |
+| `archived` | Source removed or explicitly retired | Lint auto-archives on missing source; or manual | Restore to `draft` if source returns |
 
-### Check lifecycle status
+### Check lifecycle status (CLI)
 
 ```bash
 synthadoc status
@@ -508,30 +510,35 @@ Wiki: history-of-computing
 
 ### Manage states in Obsidian
 
-Open the Command Palette (`Ctrl/Cmd+P`) → **Synthadoc: Manage Page Lifecycle**. A sortable, filterable table shows every wiki page with its current state and last transition. Click a filter checkbox to focus on a specific state. Click an action button to move a page — a reason dialog appears before committing.
+Open the Command Palette (`Ctrl/Cmd+P`) → **Synthadoc: Manage Page Lifecycle**. A sortable, filterable table shows every wiki page with its current state, last transition timestamp, and the action buttons valid for that state. Filter by state using the checkboxes at the top, or sort by any column header. Click an action button — a **reason dialog** appears before the transition commits, ensuring every manual change is documented.
 
 ![Synthadoc Manage Page Lifecycle modal — one row per page showing current state, last changed timestamp, and action buttons](png/synthadoc-lifecycle-mgmt.png)
 
-Switch to the **Audit Log** tab to see the full history of every state transition — filterable by slug and target state, sortable by any column, with pagination.
+Switch to the **Audit Log** tab to see the full history of every state transition across all pages — searchable by slug, filterable by target state, sortable by any column, with pagination.
 
 ![Synthadoc Lifecycle Audit Log tab — searchable history of state transitions with From/To state chips, triggered-by, timestamp, and reason columns](png/synthadoc-lifecycle-audit.png)
 
 ### Manual state transitions (CLI)
 
+The CLI gives you full control over page state outside of lint automation:
+
 ```bash
-# Mark a page as active after manual review
+# Promote a page to active after manual review
 synthadoc lifecycle activate alan-turing --reason "reviewed and verified"
 
 # Retire a page whose source has been superseded
 synthadoc lifecycle archive alan-turing --reason "replaced by v2 source"
 
-# View full history for a page
+# Restore an archived page back to draft for re-review
+synthadoc lifecycle restore alan-turing --reason "source re-added to raw_sources"
+
+# View the full transition history for a page
 synthadoc lifecycle log alan-turing
 ```
 
 ### Stale detection — local files
 
-If a source file on disk changes after ingest, the next lint run detects the SHA-256 hash mismatch and marks the page `stale`. Resolve it by re-ingesting the updated file:
+If a source file on disk changes after ingest, the next lint run detects the SHA-256 hash mismatch and marks the page `stale`. This catches silent content drift — source documents updated without anyone re-ingesting them. Resolve it by re-ingesting the updated file:
 
 ```bash
 synthadoc ingest raw_sources/updated-source.pdf --force
@@ -555,11 +562,11 @@ synthadoc lint run --check-urls
 check_url_availability = true
 ```
 
-When enabled, lint issues an HTTP HEAD request for each URL-sourced page. A 404 or 410 response transitions the page to `archived`. YouTube videos are probed via the transcript system — a deleted or private video triggers `archived`. Network timeouts and other transient errors leave the page unchanged (no false positives).
+When enabled, lint issues an HTTP HEAD request for each URL-sourced page. A 404 or 410 response transitions the page to `archived`. YouTube videos are probed via the transcript system — a deleted or private video triggers `archived`. Network timeouts and other transient errors leave the page unchanged (conservative: no false positives from transient failures).
 
 **Stale — URL content is old**
 
-To flag URL-sourced pages that have not been re-ingested in a long time:
+To flag URL-sourced pages that have not been re-ingested recently:
 
 ```toml
 [audit]
@@ -574,7 +581,7 @@ synthadoc ingest "https://example.com/article" --force
 
 ### Audit trail
 
-Every state transition is recorded with who triggered it and why:
+Every state transition — automated by lint or triggered manually — is permanently appended to an immutable event log. The log captures the slug, the previous state, the new state, who triggered the change (`ingest`, `lint`, `cli`, or `api`), the timestamp, and the reason.
 
 ```bash
 synthadoc lifecycle log alan-turing
@@ -582,11 +589,11 @@ synthadoc lifecycle log alan-turing
 
 ```
 Slug           From      To       By      Timestamp           Reason
-alan-turing    null      draft    ingest  2026-05-23T10:00    new page created by ingest
+alan-turing    —         draft    ingest  2026-05-23T10:00    new page created by ingest
 alan-turing    draft     active   lint    2026-05-23T10:05    lint passed
 ```
 
-> Every state change — automated or manual — is permanently recorded. For enterprise wikis, this trail answers "when was this page reviewed, by what process, and why was it changed."
+> For enterprise wikis, this trail answers the compliance questions: "when was this page reviewed, by what process, and why was it changed?" — without requiring anyone to maintain that record manually.
 
 ---
 
@@ -1531,50 +1538,73 @@ synthadoc lint report
 
 ## Step 21 — Export your wiki
 
-Once your wiki is populated and pages are reviewed, export it for use in other tools. All four formats are assembled by the server with zero additional LLM calls.
+Synthadoc exports your wiki in four machine-readable formats — all assembled server-side from cached data with **zero additional LLM calls**. Use exports to feed reviewed knowledge to an external AI assistant, load your wiki's link structure into a graph analysis tool, or integrate page content into an agent pipeline. Because exports respect the lifecycle filter, you can choose to export only `active` pages — the ones that have passed lint review — rather than everything that has ever been ingested.
+
+> **Differentiation:** Unlike static document exports from other tools, Synthadoc's exports carry the full provenance chain. The `json` format includes the exact source lines that support every claim, the complete state transition history for each page, and the API cost that was spent compiling it. No other knowledge base tool produces an export this rich.
 
 ### What each format contains
 
 | Format | What it exports | Best used for |
 |---|---|---|
-| `llms.txt` | Page titles + one-line summaries for active pages only | Feeding AI tools a fast, compact wiki index |
-| `llms-full.txt` | Full page content with provenance footnotes inline | Large-context LLM prompts, RAG pipelines |
-| `graphml` | Directed wikilink graph — one node per page, one edge per `[[link]]` | Graph analysis in yEd, Gephi, or Cytoscape |
-| `json` | Full structured dump: content, tags, sources, claims, lifecycle history, routing, and compilation cost | Programmatic processing, agent pipelines |
+| `llms.txt` | Page titles + one-line summaries, structured per the [llmstxt.org](https://llmstxt.org) spec. Contradicted/stale pages appear in a **Needs Review** section; archived pages are omitted. | Feeding AI assistants a compact, navigable wiki index |
+| `llms-full.txt` | Full page content for all pages, separated by `---` dividers, with status and confidence headers. Provenance footnotes (`^[source.txt:42-58]`) are preserved verbatim. No size limit. | Large-context LLM prompts, RAG pipelines, offline reading |
+| `graphml` | Directed wikilink graph — one node per page, one edge per `[[wikilink]]`. Each node carries the page title, lifecycle state, confidence level, orphan flag, inbound link count, and routing branch. Compatible with yEd, Gephi, and Cytoscape. | Visualising knowledge structure, detecting hub pages and orphans |
+| `json` | Full structured dump per page: content, tags, sources, claims with source line ranges, lifecycle transition history, routing branch, and per-page ingest cost and token usage. Wiki-level: total compilation cost and routing branch memberships. | Agent pipelines, programmatic processing, compliance audits |
 
-### Status filter
+### Status filter — export only what you trust
 
-The `--status` flag controls which lifecycle states are included:
+The `--status` flag scopes the export to a specific lifecycle state:
 
-- **`all`** (default) — active, draft, stale, and contradicted pages
-- **`active`** — only fully reviewed, promoted pages (recommended for AI consumption)
-- **`draft` / `stale` / `contradicted` / `archived`** — single-state subsets for targeted exports
+| Value | What is included | When to use it |
+|---|---|---|
+| `all` (default) | Every non-archived page | Full snapshot |
+| `active` | Only lint-reviewed, trusted pages | **Recommended for AI consumption** — avoids feeding unreviewed content to an LLM |
+| `draft` | Pages awaiting first lint pass | Reviewing what has been ingested but not yet approved |
+| `stale` | Pages whose source has changed | Identifying content that needs re-ingest |
+| `contradicted` | Pages with detected conflicts | Targeted review of known issues |
+| `archived` | Retired pages | Audit or recovery |
 
 ### CLI
 
 Run from your wiki root so `--output exports/…` writes inside your Obsidian vault.
 
 ```bash
-# Active pages only — compact LLM context (llms.txt spec)
+# Active pages only — compact index of trusted knowledge (llms.txt spec)
 synthadoc export --format llms.txt --status active
 
-# All pages — full content with provenance footnotes
+# All pages — full content with provenance footnotes preserved
 synthadoc export --format llms-full.txt --output exports/history-full.txt
 
-# Export wikilink graph as GraphML — open in yEd, Gephi, or Cytoscape
+# Wikilink graph — open in yEd, Gephi, or Cytoscape
 synthadoc export --format graphml --output exports/history.graphml
 
-# Agent-ready JSON with claim citations, lifecycle history, and compilation cost
+# Agent-ready JSON — claims, lifecycle history, per-page cost, routing
 synthadoc export --format json --output exports/history.json
 ```
 
-**Flags:** `--format/-f` (required), `--output/-o` (path relative to CWD; omit for stdout), `--status/-s` (default `all`).
+**Flags:** `--format/-f` (required: `llms.txt`, `llms-full.txt`, `graphml`, `json`), `--output/-o` (path relative to CWD; omit to print to stdout), `--status/-s` (default `all`).
 
 Requires `synthadoc serve` to be running.
 
 ### In Obsidian
 
-Open the command palette → **Synthadoc: Export Wiki**. The modal shows a brief description of each format. Select a format, adjust the status filter, and click **Export** — the file is saved to your vault's `exports/` folder and opened automatically. When **GraphML** is selected, a **View Graph** button also appears for an inline preview before saving.
+Open the Command Palette (`Ctrl/Cmd+P`) → **Synthadoc: Export Wiki**.
+
+The modal opens with a description panel explaining each format, a format dropdown, a full-width output path field (pre-filled with today's date and the correct file extension), and a status filter. Click **Export** — the file is written to your vault's `exports/` folder and opened automatically.
+
+![Synthadoc Export Wiki modal — format dropdown, description panel, output path field, status filter, and Export button](png/synthadoc-export-modal.png)
+
+When **GraphML** is selected, a **View Graph** button appears. Click it for an inline Cytoscape.js preview of your wiki's link structure before saving to file.
+
+![Synthadoc inline GraphML viewer — nodes represent wiki pages, edges represent wikilinks, with a View Graph preview inside Obsidian](png/synthadoc-export-graphview.png)
+
+### What makes the JSON export unique
+
+Open `exports/history.json` and inspect any page entry. You will find fields no other wiki export tool produces:
+
+- **`claims[]`** — every annotated paragraph linked to the exact source lines that support it (`source_file`, `line_start`, `line_end`, `claim_excerpt`). Not "cited from X" — but "line 42–58 of X."
+- **`lifecycle_history[]`** — the complete state transition log for this page: from/to state, timestamp, triggered by, and reason. You can audit exactly when a page was reviewed and how it got to its current state.
+- **`ingest_cost_usd` / `ingest_tokens`** — the cumulative API cost and token count spent compiling this page across all of its source files. Know which pages drove cost.
 
 ### Opening GraphML in external tools
 
@@ -1591,7 +1621,8 @@ The exported `.graphml` file can be loaded in any of these free tools:
 2. **File → Open** your `.graphml` file
 3. Run **Layout → ForceAtlas2** in the Layout panel; enable **Prevent Overlap** in Tuning to spread nodes apart
 4. To show node labels: click the **label toggle button** (marked **Aα** or **T**) in the bottom toolbar next to the Nodes slider
-5. Use **Statistics** to compute degree centrality or community detection
+5. Color nodes by the `status` attribute to see which pages are `active`, `stale`, or `contradicted` at a glance
+6. Use **Statistics** to compute degree centrality or community detection
 
 **Cytoscape** (recommended for programmatic analysis)
 1. Download from [cytoscape.org](https://cytoscape.org) (free)
