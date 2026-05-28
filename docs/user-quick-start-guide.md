@@ -219,11 +219,6 @@ history-of-computing/
 | `AGENTS.md`           | Domain-specific guidelines the LLM reads on every ingest          |
 | `wiki/purpose.md`     | In-scope / out-of-scope definition for History of Computing       |
 
-**Graph view** (`Ctrl/Cmd+G`): the 10 pre-built pages should appear as interconnected
-nodes. `index` and `dashboard` connect to everything; topic pages cluster by cross-links.
-
-![Obsidian Graph View — pre-built wiki](png/synthadoc-wiki-graph.png)
-
 ---
 
 <a name="query-wiki"></a>
@@ -485,13 +480,14 @@ Most knowledge bases treat every page the same — ingested means trusted. Synth
 
 ### Lifecycle states
 
-| State | Meaning | How it is reached | What to do |
-|---|---|---|---|
-| `draft` | Compiled but not yet lint-reviewed | Automatic on ingest | Run lint to auto-promote clean pages |
-| `active` | Lint-reviewed, current, trusted | Lint auto-promotes from `draft` | No action needed |
-| `contradicted` | Two or more sources conflict | Lint detects contradiction automatically | Re-ingest corrected source, or archive |
-| `stale` | Source file has changed since last ingest | Lint detects SHA-256 hash mismatch | Re-ingest the updated source with `--force` |
-| `archived` | Source removed or explicitly retired | Lint auto-archives on missing source; or manual | Restore to `draft` if source returns |
+
+| State          | Meaning                                   | How it is reached                               | What to do                                 |
+| -------------- | ----------------------------------------- | ----------------------------------------------- | ------------------------------------------ |
+| `draft`        | Compiled but not yet lint-reviewed        | Automatic on ingest                             | Run lint to auto-promote clean pages       |
+| `active`       | Lint-reviewed, current, trusted           | Lint auto-promotes from`draft`                  | No action needed                           |
+| `contradicted` | Two or more sources conflict              | Lint detects contradiction automatically        | Re-ingest corrected source, or archive     |
+| `stale`        | Source file has changed since last ingest | Lint detects SHA-256 hash mismatch              | Re-ingest the updated source with`--force` |
+| `archived`     | Source removed or explicitly retired      | Lint auto-archives on missing source; or manual | Restore to`draft` if source returns        |
 
 ### Check lifecycle status (CLI)
 
@@ -549,30 +545,27 @@ If a source file on disk changes after ingest, the next lint run detects the SHA
    ```
 
    Save the file.
-
 2. **Run lint** — the hash mismatch is detected automatically:
 
    ```bash
    synthadoc lint run
    ```
-
 3. **Find which pages are now stale** — `synthadoc status` shows the counts but not which pages. To see the specific pages, use the **Lifecycle Management** panel in the Obsidian plugin, or run:
 
    ```bash
    synthadoc lifecycle log --state stale
    ```
+
    ```
    [wiki: history-of-computing]
    Slug          From    To      By    Timestamp            Reason
    konrad-zuse   active  stale   lint  2026-05-28T18:11:13  source file modified since last ingest
    ```
-
 4. **Inspect the full transition history for the page:**
 
    ```bash
    synthadoc lifecycle log konrad-zuse
    ```
-
 5. **Resolve staleness** — re-ingest the updated file:
 
    ```bash
@@ -1587,25 +1580,27 @@ Synthadoc exports your wiki in four machine-readable formats — all assembled s
 
 ### What each format contains
 
-| Format | What it exports | Best used for |
-|---|---|---|
-| `llms.txt` | Page titles + one-line summaries, structured per the [llmstxt.org](https://llmstxt.org) spec. Contradicted/stale pages appear in a **Needs Review** section; archived pages are omitted. | Feeding AI assistants a compact, navigable wiki index |
-| `llms-full.txt` | Full page content for all pages, separated by `---` dividers, with status and confidence headers. Provenance footnotes (`^[source.txt:42-58]`) are preserved verbatim. No size limit. | Large-context LLM prompts, RAG pipelines, offline reading |
-| `graphml` | Directed wikilink graph — one node per page, one edge per `[[wikilink]]`. Each node carries the page title, lifecycle state, confidence level, orphan flag, inbound link count, and routing branch. Compatible with yEd, Gephi, and Cytoscape. | Visualising knowledge structure, detecting hub pages and orphans |
-| `json` | Full structured dump per page: content, tags, sources, claims with source line ranges, lifecycle transition history, routing branch, and per-page ingest cost and token usage. Wiki-level: total compilation cost and routing branch memberships. | Agent pipelines, programmatic processing, compliance audits |
+
+| Format          | What it exports                                                                                                                                                                                                                                   | Best used for                                                    |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `llms.txt`      | Page titles + one-line summaries, structured per the[llmstxt.org](https://llmstxt.org) spec. Contradicted/stale pages appear in a **Needs Review** section; archived pages are omitted.                                                           | Feeding AI assistants a compact, navigable wiki index            |
+| `llms-full.txt` | Full page content for all pages, separated by`---` dividers, with status and confidence headers. Provenance footnotes (`^[source.txt:42-58]`) are preserved verbatim. No size limit.                                                              | Large-context LLM prompts, RAG pipelines, offline reading        |
+| `graphml`       | Directed wikilink graph — one node per page, one edge per`[[wikilink]]`. Each node carries the page title, lifecycle state, confidence level, orphan flag, inbound link count, and routing branch. Compatible with yEd, Gephi, and Cytoscape.    | Visualising knowledge structure, detecting hub pages and orphans |
+| `json`          | Full structured dump per page: content, tags, sources, claims with source line ranges, lifecycle transition history, routing branch, and per-page ingest cost and token usage. Wiki-level: total compilation cost and routing branch memberships. | Agent pipelines, programmatic processing, compliance audits      |
 
 ### Status filter — export only what you trust
 
 The `--status` flag scopes the export to a specific lifecycle state:
 
-| Value | What is included | When to use it |
-|---|---|---|
-| `all` (default) | Every non-archived page | Full snapshot |
-| `active` | Only lint-reviewed, trusted pages | **Recommended for AI consumption** — avoids feeding unreviewed content to an LLM |
-| `draft` | Pages awaiting first lint pass | Reviewing what has been ingested but not yet approved |
-| `stale` | Pages whose source has changed | Identifying content that needs re-ingest |
-| `contradicted` | Pages with detected conflicts | Targeted review of known issues |
-| `archived` | Retired pages | Audit or recovery |
+
+| Value           | What is included                  | When to use it                                                                    |
+| --------------- | --------------------------------- | --------------------------------------------------------------------------------- |
+| `all` (default) | Every non-archived page           | Full snapshot                                                                     |
+| `active`        | Only lint-reviewed, trusted pages | **Recommended for AI consumption** — avoids feeding unreviewed content to an LLM |
+| `draft`         | Pages awaiting first lint pass    | Reviewing what has been ingested but not yet approved                             |
+| `stale`         | Pages whose source has changed    | Identifying content that needs re-ingest                                          |
+| `contradicted`  | Pages with detected conflicts     | Targeted review of known issues                                                   |
+| `archived`      | Retired pages                     | Audit or recovery                                                                 |
 
 ### CLI
 
@@ -1654,12 +1649,14 @@ Open `exports/history.json` and inspect any page entry. You will find fields no 
 The exported `.graphml` file can be loaded in any of these free tools:
 
 **yEd Graph Editor** (recommended for getting started)
+
 1. Download from [yworks.com/yed](https://www.yworks.com/products/yed) (free, Windows/Mac/Linux)
 2. Open yEd → **File → Open** → select your `.graphml` file
 3. Apply a layout: **Layout → Hierarchical** or **Layout → Organic** for best results
 4. Node labels show page titles; edges show wikilink direction
 
 **Gephi** (recommended for large wikis and analysis)
+
 1. Download from [gephi.org](https://gephi.org) (free, open source)
 2. **File → Open** your `.graphml` file
 3. Run **Layout → ForceAtlas2** in the Layout panel; enable **Prevent Overlap** in Tuning to spread nodes apart
@@ -1668,6 +1665,7 @@ The exported `.graphml` file can be loaded in any of these free tools:
 6. Use **Statistics** to compute degree centrality or community detection
 
 **Cytoscape** (recommended for programmatic analysis)
+
 1. Download from [cytoscape.org](https://cytoscape.org) (free)
 2. **File → Import → Network from File** → select your `.graphml`
 3. Apply a layout from the **Layout** menu
@@ -1698,10 +1696,10 @@ All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synt
 ### Ingest
 
 
-| Command                            | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Synthadoc: Ingest...`             | Tabbed modal with four ingest modes: **Web search** (type a topic, polls live), **URL** (paste a URL, polls live until complete), **All raw_sources** (queues every supported file in `raw_sources/`), **Pick files** (click **Browse…** to choose a folder, click **Scan** to list supported files — `wiki/` sub-folder contents and system files such as `log.md`, `routing.md`, `agents.md`, `readme.md`, `dashboard.md`, `index.md`, `overview.md`, and `claude.md` are excluded automatically with a count shown — then select files and click **Ingest selected**), and **Web search** (type a topic, set max results and poll interval, polls live). |
-| `Synthadoc: Ingest: web search...` | Standalone live-polling modal — type a topic, set max results (1–50, default 20) and poll interval (500–10000 ms, default 2000 ms). Shows phase text, live pages list, and URL errors as fan-out jobs complete.`Ctrl/Cmd+Enter` to submit.                                                                                                                                                                                                                                                                                                                                                                                 |
+| Command                            | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Synthadoc: Ingest...`             | Tabbed modal with four ingest modes:**Web search** (type a topic, polls live), **URL** (paste a URL, polls live until complete), **All raw_sources** (queues every supported file in `raw_sources/`), **Pick files** (click **Browse…** to choose a folder, click **Scan** to list supported files — `wiki/` sub-folder contents and system files such as `log.md`, `routing.md`, `agents.md`, `readme.md`, `dashboard.md`, `index.md`, `overview.md`, and `claude.md` are excluded automatically with a count shown — then select files and click **Ingest selected**), and **Web search** (type a topic, set max results and poll interval, polls live). |
+| `Synthadoc: Ingest: web search...` | Standalone live-polling modal — type a topic, set max results (1–50, default 20) and poll interval (500–10000 ms, default 2000 ms). Shows phase text, live pages list, and URL errors as fan-out jobs complete.`Ctrl/Cmd+Enter` to submit.                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 ### Query
 
@@ -1739,9 +1737,9 @@ All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synt
 ### Lifecycle
 
 
-| Command                                   | What it does                                                                                                                                                                                                                                                                                                                                                                                |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Synthadoc: Manage Page Lifecycle`        | Sortable, filterable, paginated table of all wiki pages with their current lifecycle state (`draft`, `active`, `contradicted`, `stale`, `archived`) and last transition timestamp. State filter checkboxes narrow the table. Click column headers to sort. Each row shows valid transition action buttons — click to trigger a transition; a reason dialog appears before committing. Draft and stale badge links on the lint modal and jobs panel open this table pre-filtered to that state. |
+| Command                            | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Synthadoc: Manage Page Lifecycle` | Sortable, filterable, paginated table of all wiki pages with their current lifecycle state (`draft`, `active`, `contradicted`, `stale`, `archived`) and last transition timestamp. State filter checkboxes narrow the table. Click column headers to sort. Each row shows valid transition action buttons — click to trigger a transition; a reason dialog appears before committing. Draft and stale badge links on the lint modal and jobs panel open this table pre-filtered to that state. |
 
 ### Audit
 
@@ -1775,8 +1773,8 @@ All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synt
 ### Export
 
 
-| Command                  | What it does |
-| ------------------------ | ------------ |
+| Command                  | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Synthadoc: Export Wiki` | Modal with a format dropdown (`json`, `llms.txt`, `llms-full.txt`, `graphml`), a full-width output path field pre-filled with today's date and the correct extension, and a status filter selector. A brief description at the top explains what each format contains. Click **Export** to write the file to your vault's `exports/` folder; the file opens automatically. For GraphML format, a **View Graph** button also appears for an inline Cytoscape.js preview — nodes are coloured by lifecycle state (active=green, draft=yellow, stale=orange, contradicted=red, archived=grey) and edges represent wikilinks. To load the graph in a dedicated tool, export to file and open in **yEd**, **Gephi**, or **Cytoscape**. |
 
 > **UX note:** All modals are draggable and support full text selection and copy-paste.
