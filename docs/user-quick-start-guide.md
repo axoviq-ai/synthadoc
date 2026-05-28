@@ -533,7 +533,7 @@ synthadoc lifecycle archive alan-turing --reason "replaced by v2 source"
 synthadoc lifecycle restore alan-turing --reason "source re-added to raw_sources"
 
 # View the full transition history for a page
-synthadoc lifecycle log alan-turing
+synthadoc lifecycle log konrad-zuse
 ```
 
 ### Stale detection — local files
@@ -620,7 +620,7 @@ synthadoc ingest "https://example.com/article" --force
 Every state transition — automated by lint or triggered manually — is permanently appended to an immutable event log. The log captures the slug, the previous state, the new state, who triggered the change (`ingest`, `lint`, `cli`, or `api`), the timestamp, and the reason.
 
 ```bash
-synthadoc lifecycle log alan-turing
+synthadoc lifecycle log konrad-zuse
 ```
 
 ```
