@@ -538,11 +538,47 @@ synthadoc lifecycle log alan-turing
 
 ### Stale detection — local files
 
-If a source file on disk changes after ingest, the next lint run detects the SHA-256 hash mismatch and marks the page `stale`. This catches silent content drift — source documents updated without anyone re-ingesting them. Resolve it by re-ingesting the updated file:
+If a source file on disk changes after ingest, the next lint run detects the SHA-256 hash mismatch and marks the page `stale`. This catches silent content drift — source documents updated without anyone re-ingesting them.
 
-```bash
-synthadoc ingest raw_sources/updated-source.pdf --force
-```
+**Walk-through with the demo wiki:**
+
+1. **Edit the raw source file** — open `raw_sources/konrad-zuse-z3-computer.md` in any text editor. Add a sentence at the very end of the file:
+
+   ```
+   Updated: The Z3 blueprint later influenced Plankalkül, Zuse's programming language.
+   ```
+
+   Save the file.
+
+2. **Run lint** — the hash mismatch is detected automatically:
+
+   ```bash
+   synthadoc lint run
+   ```
+
+3. **Find which pages are now stale** — `synthadoc status` shows the counts but not which pages. To see the specific pages, use the **Lifecycle Management** panel in the Obsidian plugin, or run:
+
+   ```bash
+   synthadoc lifecycle log --state stale
+   # Slug          From     To      By    Timestamp            Reason
+   # konrad-zuse   active   stale   lint  2026-05-28 11:03:00  source hash changed
+   ```
+
+4. **Inspect the full transition history for the page:**
+
+   ```bash
+   synthadoc lifecycle log konrad-zuse
+   ```
+
+5. **Resolve staleness** — re-ingest the updated file:
+
+   ```bash
+   synthadoc ingest raw_sources/konrad-zuse-z3-computer.md --force
+   ```
+
+   The next `synthadoc lint run` returns the page to `active`.
+
+The same mechanism works for any raw source format — markdown, plain text, PDF, DOCX. Once a file is re-ingested, the stored hash updates and lint no longer flags the page as stale.
 
 ### URL source availability and freshness
 
