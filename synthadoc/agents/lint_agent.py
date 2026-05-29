@@ -376,7 +376,7 @@ class LintAgent:
                             src_path = raw_sources_dir / src_ref.file
                             if src_path.exists():
                                 current_hash = hashlib.sha256(src_path.read_bytes()).hexdigest()
-                                record = await self._audit.find_by_source_path(src_ref.file)
+                                record = await self._audit.find_by_source_path(str(src_path))
                                 if record and record.get("source_hash") is not None and record.get("source_hash") != current_hash:
                                     await self._transition(slug, page, LifecycleState.ACTIVE,
                                                            LifecycleState.STALE,

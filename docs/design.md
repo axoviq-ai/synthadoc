@@ -1,6 +1,6 @@
 # Synthadoc — Design Document
 
-**Version:** 0.5.0 (released 2026-05-21)  
+**Version:** 0.6.0 (released 2026-05-28)  
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -726,7 +726,7 @@ The HTTP server runs a background task that polls `jobs.db` every 2 seconds and 
 
 **Package:** `synthadoc-obsidian` (TypeScript)  
 **Location:** `obsidian-plugin/` in the repo  
-**Version:** 0.5.0
+**Version:** 0.6.0
 
 Each vault configures its server URL in plugin settings (default `http://127.0.0.1:7070`).
 
@@ -795,7 +795,7 @@ synthadoc
 ├── ingest <source> [-w wiki] [--batch] [--file manifest] [--force] [--analyse-only] [--max-results N]
 ├── query "<question>" [-w wiki] [--save] [--timeout N]
 ├── lint
-│   ├── run [-w wiki] [--scope contradictions|orphans|all] [--auto-resolve] [--no-adversarial]
+│   ├── run [-w wiki] [--scope contradictions|orphans|all] [--auto-resolve] [--no-adversarial] [--no-lifecycle] [--check-urls]
 │   └── report [-w wiki]
 ├── jobs
 │   ├── list [-w wiki] [--status pending|in_progress|completed|failed|skipped|dead|cancelled] [--sort created_at|status|operation] [--order asc|desc]
@@ -804,12 +804,6 @@ synthadoc
 │   ├── delete <id> [-w wiki]
 │   ├── cancel [-w wiki] [--yes]
 │   └── purge --older-than <days> [-w wiki]
-├── audit
-│   ├── history [-w wiki] [--limit N] [--json]         — ingest records: timestamp, source, page, tokens, cost
-│   ├── cost [-w wiki] [--days N] [--json]              — token totals + daily breakdown
-│   ├── queries [-w wiki] [--limit N] [--json]         — query history: question, sub-Qs, tokens, cost
-│   ├── events [-w wiki] [--limit N] [--json]          — audit events: timestamp, job_id, event type, metadata
-│   └── citations [-w wiki] [--page <slug>] [--broken] — claim citations: all or filtered by page; --broken shows validation failures (v0.5.0)
 ├── routing
 │   ├── init [--wiki-root <path>]                 — generate ROUTING.md from index.md branch structure
 │   ├── validate [--wiki-root <path>]             — report dangling slugs and cross-branch duplicates
@@ -822,6 +816,7 @@ synthadoc
 │   └── discard <slug>|--all [--wiki-root <path>]
 ├── context
 │   └── build "<goal>" [-w wiki] [--tokens N] [--output <file>]
+├── export -f <fmt> [-o <path>] [-s <state>] [-w wiki]    — llms.txt, llms-full.txt, graphml, json
 ├── status [-w wiki]
 ├── lifecycle
 │   ├── activate <slug> [-w wiki] [--reason "<str>"]
@@ -829,7 +824,13 @@ synthadoc
 │   ├── restore  <slug> [-w wiki] [--reason "<str>"]
 │   └── log      [slug] [-w wiki] [--state <state>]
 ├── audit
-│   └── lifecycle purge -w wiki (--before <date> | --keep-latest <n>)
+│   ├── history [-w wiki] [--limit N] [--json]
+│   ├── cost [-w wiki] [--days N] [--json]
+│   ├── queries [-w wiki] [--limit N] [--json]
+│   ├── events [-w wiki] [--limit N] [--json]
+│   ├── citations [-w wiki] [--page <slug>] [--source <file>] [--broken] [--json]
+│   └── lifecycle
+│       └── purge -w wiki (--before <date> | --keep-latest <n>)
 ├── cache clear [-w wiki]
 └── schedule
     ├── add --op "<cmd>" --cron "<expr>" [-w wiki]
@@ -1948,10 +1949,12 @@ Every wiki page moves through a defined set of states that reflect its review st
 |---|---|---|---|
 | _(none)_ | `draft` | `ingest` | New page created by ingest |
 | `draft` | `active` | `lint` | Page passes all lint checks |
+| `draft` / `stale` / `contradicted` | `active` | `cli` / `api` | Manual activate (`synthadoc lifecycle activate`) |
+| `active` | `contradicted` | `lint` | Contradiction detected between two or more sources |
 | `active` | `stale` | `lint` | Local source: SHA-256 hash mismatch; or URL source older than `url_staleness_days` |
 | `active` / `stale` | `archived` | `lint` | Local source no longer exists on disk; or URL source returns 404/410 (opt-in) |
 | any | `archived` | `cli` / `api` | Manual archive (`synthadoc lifecycle archive`) |
-| `archived` | `draft` | `cli` / `api` | Manual restore (`synthadoc lifecycle restore`) |
+| `archived` | `draft` | `cli` / `api` | Manual restore (`synthadoc lifecycle restore`) — places page back in review queue |
 | `contradicted` | `archived` | `cli` / `api` | Manual archive after reviewing the conflict |
 
 ### Storage
@@ -2113,15 +2116,33 @@ The `synthadoc export` command serializes the wiki in four machine-readable form
 
 **`llms-full.txt`** — Flat content dump. Pages are separated by `---`. Each page opens with `Status: <state> | Confidence: <level> | Tags: ...`. Provenance footnotes (`^[source.txt:42-58]`) are preserved verbatim in the body. No size limit — the full wiki is always exported. For very large wikis a streaming export path is planned as a future enhancement.
 
-**`graphml`** — Standard GraphML 1.1. Nodes = pages; edges = wikilinks extracted from page bodies. Node attributes: `title`, `status`, `confidence`, `orphan` (boolean), `citation_count` (int), `inbound_link_count` (int), `routing_branch` (from ROUTING.md branch membership). All edges carry `edge_type="wikilink"`. Self-links are suppressed.
+**`graphml`** — Standard GraphML 1.1. Nodes = pages; edges = wikilinks extracted from page bodies. Node attributes:
 
-**`json`** — Agent-ready structured dump. Six unique differentiators beyond what any competing tool exports:
-- `claims[]` per page — source file, line range, claim excerpt (from the claim provenance audit database)
-- `lifecycle_history[]` per page — every state transition with from/to/timestamp/reason
-- `compilation_cost_usd` per page and `total_compilation_cost_usd` for the whole wiki
-- `routing.branch_memberships` — ROUTING.md branch name for each page
-- Lifecycle state filter (`status_filter`) applied at export time
-- Context pack scope (`context_pack`) — exports only pages within the named pack
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `label` | string | Human-readable page title — read by Gephi and Cytoscape as the display label |
+| `title` | string | Same as `label`; retained for backwards compatibility |
+| `status` | string | Lifecycle state (`draft`, `active`, `contradicted`, `stale`, `archived`) |
+| `confidence` | string | Ingest confidence level |
+| `orphan` | boolean | `true` if the page has zero inbound wikilinks |
+| `citation_count` | int | Reserved; always `0` in current release |
+| `inbound_link_count` | int | Number of other pages that link to this page |
+| `routing_branch` | string | Branch name from ROUTING.md membership |
+
+All edges carry `edge_type="wikilink"`. Self-links are suppressed. The file also embeds a `y:ShapeNode/y:NodeLabel` element (yEd namespace) so node labels render natively when the file is opened in **yEd Graph Editor**. No position data is embedded — run the tool's layout algorithm after import. Tested tools: yEd (Layout → Organic or Hierarchical), Gephi (enable labels via the Aα button in the bottom toolbar; run ForceAtlas2), Cytoscape (File → Import → Network from File).
+
+**`json`** — Agent-ready structured dump. Each page object contains:
+
+| Field | Description |
+|-------|-------------|
+| `claims[]` | Source file, line range, claim excerpt — from the claim provenance audit database |
+| `lifecycle_history[]` | Every state transition with `from`, `to`, `timestamp`, `triggered_by`, `reason` |
+| `ingest_cost_usd` | Cumulative LLM cost (USD) across all source files that contributed to this page |
+| `ingest_tokens` | Cumulative token count across all ingest calls for this page |
+| `sources[]` | Source file metadata: file, hash, size, ingested timestamp |
+| `lint_warnings[]` | Adversarial review findings: `{claim, concern}` pairs |
+
+Wiki-level fields: `total_compilation_cost_usd`, `routing.branch_memberships`, `exported_at`, `page_count`.
 
 ### CLI
 
@@ -2133,13 +2154,17 @@ Outputs to stdout by default; `--output` writes to a file. `--status` filters pa
 
 ### POST /export endpoint
 
-Accepts `{ format, status_filter, context_pack }`. Returns raw content with appropriate `Content-Type` (`text/plain; charset=utf-8` for text formats, `application/xml` for graphml, `application/json` for json). Returns 422 for unknown format. No LLM calls.
+Accepts `{ format, status_filter }`. Returns raw content with appropriate `Content-Type` (`text/plain; charset=utf-8` for text formats, `application/xml` for graphml, `application/json` for json). Returns 422 for unknown format. No LLM calls.
 
 ### Obsidian
 
-**Export Wiki** command opens a modal with: format dropdown (json / llms.txt / llms-full.txt / graphml), output path input pre-filled with today's date and the correct extension, status filter selector, Export button (writes to vault), and a View Graph button (graphml format only — opens the Graph View Modal).
-
-**View Knowledge Graph** command opens an embedded Cytoscape.js graph viewer. Nodes are colored by lifecycle state (active=green, draft=yellow, stale=orange, contradicted=red, archived=grey) and sized by inbound link count. An "Export to file" button in the toolbar saves the GraphML to the vault's `exports/` folder.
+**`Synthadoc: Export Wiki`** opens a modal with:
+- A brief description panel explaining each format
+- Format dropdown (json / llms.txt / llms-full.txt / graphml)
+- Output path field (full-width, pre-filled with today's date and correct extension, editable)
+- Status filter dropdown (`all` / `active` / `draft` / `stale` / `contradicted` / `archived`)
+- **Export** button — writes to the vault's `exports/` folder and opens the file automatically
+- **View Graph** button (graphml only) — opens an inline Cytoscape.js graph preview before saving
 
 ---
 
@@ -2235,4 +2260,4 @@ Accepts `{ format, status_filter, context_pack }`. Returns raw content with appr
 - **Lifecycle CLI** — `synthadoc lifecycle activate/archive/restore/log`, `synthadoc status` extended with per-state counts, `synthadoc audit lifecycle purge --before / --keep-latest`
 - **Lifecycle HTTP API** — `GET /lifecycle/status`, `GET /lifecycle/events`, `POST /lifecycle/transition`
 - **Lifecycle Obsidian plugin** — `Synthadoc: Manage Page Lifecycle` command opens `LifecycleModal`: sortable, filterable, paginated table of all pages with current state and last transition; valid transition action buttons per row; `ReasonModal` prompts for reason before committing; draft/stale badge links on lint modal and jobs panel open the table pre-filtered
-- **Export formats** — `synthadoc export --format <fmt>` serializes the wiki in four formats assembled server-side with zero LLM calls: `llms.txt` (navigation index per llmstxt.org spec — active pages in `## Pages`, contradicted/stale in `## Needs Review`, archived omitted); `llms-full.txt` (flat content dump with `---` separators, provenance footnotes preserved verbatim, ≤5 MB with truncation notice); `graphml` (standard GraphML 1.1 — nodes=pages with `title`, `status`, `confidence`, `orphan`, `citation_count`, `inbound_link_count`, `routing_branch` attributes; edges=wikilinks with `edge_type="wikilink"`); `json` (agent-ready dump with `claims[]` per page, `lifecycle_history[]`, `compilation_cost_usd`, `total_compilation_cost_usd`, `routing.branch_memberships`); `POST /export` endpoint accepts `{format, status_filter, context_pack}`, returns raw content with appropriate `Content-Type`; Obsidian adds two commands: **Export Wiki** (format picker modal, writes to vault `exports/` folder) and **View Knowledge Graph** (embedded Cytoscape.js graph with lifecycle-colored nodes and "Export to file" button)
+- **Export formats** — `synthadoc export --format <fmt>` serializes the wiki in four formats assembled server-side with zero LLM calls: `llms.txt` (navigation index per llmstxt.org spec — active pages in `## Pages`, contradicted/stale in `## Needs Review`, archived omitted); `llms-full.txt` (flat content dump with `---` separators, provenance footnotes preserved verbatim, no size limit); `graphml` (standard GraphML 1.1 — node attributes include `label`/`title`, `status`, `confidence`, `orphan`, `inbound_link_count`, `routing_branch`; edges=wikilinks; dual-label support: `label` key for Gephi/Cytoscape, `y:NodeLabel` for yEd; no position data — run tool layout after import); `json` (agent-ready dump with `claims[]`, `lifecycle_history[]`, per-page `ingest_cost_usd` and `ingest_tokens`, `total_compilation_cost_usd`, `routing.branch_memberships`); all formats accept `--status` filter (`all`/`active`/`draft`/`stale`/`contradicted`/`archived`); `POST /export` endpoint accepts `{format, status_filter}`; Obsidian **Export Wiki** command — format dropdown, full-width output path, status filter, Export button, View Graph inline preview button (graphml only)
