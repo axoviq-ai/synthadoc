@@ -314,6 +314,32 @@ async def test_json_page_ingest_cost_aggregates_from_audit_db(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_graphml_citation_count_from_audit_db(tmp_path):
+    from synthadoc.storage.log import AuditDB
+    store = _make_store(tmp_path)
+    _write_page(store, "babbage", "Charles Babbage", LifecycleState.ACTIVE)
+    _write_page(store, "lovelace", "Ada Lovelace", LifecycleState.ACTIVE)
+    audit_path = tmp_path / ".synthadoc" / "audit.db"
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    audit = AuditDB(audit_path)
+    await audit.init()
+    await audit.record_claim_citations("babbage", [
+        {"source_file": "src.txt", "line_start": 1, "line_end": 5, "claim_excerpt": "claim 1"},
+        {"source_file": "src.txt", "line_start": 6, "line_end": 10, "claim_excerpt": "claim 2"},
+        {"source_file": "src.txt", "line_start": 11, "line_end": 15, "claim_excerpt": "claim 3"},
+    ])
+    agent = ExportAgent(
+        store=store, wiki_name="test-wiki",
+        audit_db_path=audit_path,
+        routing_path=tmp_path / "ROUTING.md",
+    )
+    result = await agent.export(ExportOptions(format="graphml"))
+    # babbage has 3 citations, lovelace has 0
+    assert ">3<" in result or "<data key=\"citation_count\">3</data>" in result
+    assert "<data key=\"citation_count\">0</data>" in result
+
+
+@pytest.mark.asyncio
 async def test_json_date_object_ingested_serializes(tmp_path):
     """yaml.safe_load coerces bare YAML dates to datetime.date — SourceRef.ingested must not blow up json.dumps."""
     import datetime, json
