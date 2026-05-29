@@ -14,7 +14,7 @@
       '-+###############+-'
 
        S Y N T H A D O C
-    Community Edition  v0.5.0
+    Community Edition  v0.6.0
   ────────────────────────────────
   Domain-agnostic LLM wiki engine
 ```
@@ -27,9 +27,9 @@
 [![Hooks](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.hooks&label=Hook%20events&color=teal)](https://github.com/axoviq-ai/synthadoc/tree/main/hooks)
 [![CLI](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.cli_commands&label=CLI%20commands&color=darkblue)](https://github.com/axoviq-ai/synthadoc)
 [![Obsidian](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.obsidian_commands&label=Obsidian%20commands&color=blueviolet)](https://github.com/axoviq-ai/synthadoc/tree/main/obsidian-plugin)
-[![Version](https://img.shields.io/badge/Community%20Edition-v0.5.0-brightgreen.svg)](https://github.com/axoviq-ai/synthadoc)
+[![Version](https://img.shields.io/badge/Community%20Edition-v0.6.0-brightgreen.svg)](https://github.com/axoviq-ai/synthadoc)
 
-**Document version: v0.5.0**
+**Document version: v0.6.0**
 
 **Engineered for solo users and enterprises alike, providing a domain-specific knowledge base that scales seamlessly while maintaining accuracy through autonomous self-optimization.**
 
@@ -126,7 +126,7 @@ Every substantive claim in the wiki is annotated with `^[filename:L-L]` — a ci
 
 ### 5-State Lifecycle Machine
 
-Every compiled wiki page moves through a **5-state lifecycle** (`draft | active | contradicted | stale | archived`) with a full audit trail — every state change recorded with who triggered it and why. New pages start as `draft`; lint automatically promotes clean pages to `active`, marks pages `stale` when their source file changes on disk, and archives pages whose source file disappears. Manual transitions (`activate`, `archive`, `restore`) and the full event log are available from both the CLI and the Obsidian plugin.
+Every compiled wiki page moves through a **5-state lifecycle** (`draft | active | contradicted | stale | archived`) with a full audit trail — every state change recorded with who triggered it and why. New pages start as `draft`; lint automatically promotes clean pages to `active`, marks pages `stale` when their source file changes on disk, and archives pages whose source file disappears. Manual transitions (`activate` — draft→active, `archive` — active→archived, `restore` — archived→draft) and the full event log are available from both the CLI and the Obsidian plugin.
 
 ### 5. Re-synthesis is expensive; Synthadoc caches it
 
@@ -406,19 +406,21 @@ The guide covers:
 4. Review wiki structure and key files (index, purpose, AGENTS.md, dashboard)
 5. Query the pre-built wiki — including knowledge gap detection
 6. Batch ingest all demo source files
-7. Resolve a contradiction
-8. Manage page lifecycle — draft, active, stale, archived states
-9. Fix an orphan page
-10. Run the adversarial lint pass — flag overstated claims across all pages
-11. Web search ingestion with automatic decomposition
-12. Ingest a YouTube video
-13. Enrich the wiki with scaffold (regenerate/update index, purpose, AGENTS.md)
-14. Audit features (token cost, history, events)
-15. Schedule recurring operations
-16. Set up query-scoped routing with ROUTING.md
-17. Stage and review candidate pages before promoting them
-18. Build a context pack for grounded LLM prompts
-19. Verify claim provenance — source-line citations, broken citation audit, global provenance table
+7. Run lint — auto-promote clean pages to active
+8. Manage page lifecycle — 5-state machine (draft → active → stale/contradicted/archived), manual transitions, immutable audit trail
+9. Resolve a contradiction
+10. Fix an orphan page
+11. Run the adversarial lint pass — flag overstated claims across all pages
+12. Web search ingestion with automatic decomposition
+13. Ingest a YouTube video
+14. Enrich the wiki with scaffold (regenerate/update index, purpose, AGENTS.md)
+15. Audit features (token cost, history, events)
+16. Schedule recurring operations
+17. Set up query-scoped routing with ROUTING.md
+18. Stage and review candidate pages before promoting them
+19. Build a context pack for grounded LLM prompts
+20. Verify claim provenance — source-line citations, broken citation audit, global provenance table
+21. Export your wiki — llms.txt, llms-full.txt, GraphML wikilink graph, agent-ready JSON with provenance and lifecycle history
 
 ---
 
@@ -791,7 +793,7 @@ synthadoc audit history -w my-wiki            # last 50 records
 synthadoc audit history -n 100 -w my-wiki     # last 100 records
 synthadoc audit history --json -w my-wiki     # raw JSON for scripting
 
-# Token usage: totals + daily breakdown (cost always $0.0000 in v0.1)
+# Token usage: totals + daily breakdown
 synthadoc audit cost -w my-wiki               # last 30 days
 synthadoc audit cost --days 7 -w my-wiki      # last 7 days
 
