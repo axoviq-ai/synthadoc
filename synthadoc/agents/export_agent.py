@@ -63,7 +63,15 @@ class ExportAgent:
         routing = RoutingIndex.parse(self._routing_path)
 
         if opts.format == "graphml":
-            return self._render_graphml(pages, routing)
+            from synthadoc.storage.log import AuditDB
+            audit = AuditDB(self._audit_db_path)
+            await audit.init()
+            raw_citations = await audit.list_citations(limit=100_000)
+            citation_counts: dict[str, int] = {}
+            for c in raw_citations:
+                slug = c["page_slug"]
+                citation_counts[slug] = citation_counts.get(slug, 0) + 1
+            return self._render_graphml(pages, routing, citation_counts)
 
         # json only
         from synthadoc.storage.log import AuditDB
@@ -123,7 +131,7 @@ class ExportAgent:
 
         return "".join(sections)
 
-    def _render_graphml(self, pages: dict[str, WikiPage], routing) -> str:
+    def _render_graphml(self, pages: dict[str, WikiPage], routing, citation_counts: dict[str, int] | None = None) -> str:
         import xml.etree.ElementTree as ET
 
         all_links: dict[str, list[str]] = {}
@@ -189,7 +197,7 @@ class ExportAgent:
             _data("status", page.status)
             _data("confidence", page.confidence or "")
             _data("orphan", "true" if page.orphan else "false")
-            _data("citation_count", "0")
+            _data("citation_count", str((citation_counts or {}).get(slug, 0)))
             _data("inbound_link_count", str(inbound_count.get(slug, 0)))
             _data("routing_branch", slug_to_branch.get(slug, ""))
             yed_data = ET.SubElement(node_el, "data", {"key": "yed_node"})
