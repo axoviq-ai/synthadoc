@@ -502,13 +502,17 @@ class IngestAgent:
             return result
 
         # Write text sidecar so the Obsidian Source Viewer can display extracted content.
-        # For URL sources we use str(p) (the URL slug, e.g. "what-is-agent-evaluation")
-        # which matches the source_file value already stored in claim_citations.
+        #   local file  → not is_url, not _is_web_search → sidecar from source path
+        #   http/s URL  → is_url → sidecar keyed by URL slug (str(p))
+        #   intent phrase ("search for: …") → _is_web_search=True → skip: the source string
+        #     contains ":" which macOS treats as a path separator; content arrives via child_sources.
+        #     (If Tavily returns no results the child_sources early-return was skipped, but we still
+        #     must not attempt to write a sidecar with an intent phrase as the filename.)
         page_boundaries = extracted.metadata.get("page_boundaries", {})
-        is_local = not is_url(source)
-        sidecar_path = source if is_local else str(p)
-        if is_local or extracted.text:
-            self._write_sidecar(sidecar_path, extracted.text, page_boundaries)
+        if not is_url(source) and not _is_web_search:
+            self._write_sidecar(source, extracted.text, page_boundaries)
+        elif is_url(source) and extracted.text:
+            self._write_sidecar(str(p), extracted.text, page_boundaries)
 
         # Skill-level token costs (e.g. vision pre-pass in ImageSkill)
         if extracted.metadata.get("tokens_input"):
