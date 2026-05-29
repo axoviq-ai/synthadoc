@@ -30,13 +30,22 @@ def status_cmd(wiki: Optional[str] = typer.Option(None, "--wiki", "-w")):
             typer.echo("  (none — run `synthadoc lint run` to initialise lifecycle states)")
         else:
             _HINTS = {
-                "draft": "<- run `synthadoc lint run` to promote",
-                "stale": "<- re-ingest needed",
-                "contradicted": "<- review required",
+                "draft":            "<- run `synthadoc lint run` to promote",
+                "draft_candidates": "<- promote from candidates/ first, then lint",
+                "stale":            "<- re-ingest needed",
+                "contradicted":     "<- review required",
             }
-            for state in LifecycleState.ORDERED:
+            _LABELS = {
+                "draft_candidates": "draft (staged)",
+            }
+            display_states = list(LifecycleState.ORDERED)
+            if counts.get("draft_candidates", 0) > 0:
+                idx = display_states.index("draft") + 1
+                display_states.insert(idx, "draft_candidates")
+            for state in display_states:
                 count = counts.get(state, 0)
+                label = _LABELS.get(state, state)
                 hint = f"  {_HINTS[state]}" if state in _HINTS and count > 0 else ""
-                typer.echo(f"  {state:<14} {count}{hint}")
+                typer.echo(f"  {label:<14} {count}{hint}")
     except Exception:
         pass  # server may not support lifecycle yet

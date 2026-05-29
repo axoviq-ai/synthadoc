@@ -859,6 +859,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         audit = _AuditDB(wiki_root / ".synthadoc" / "audit.db")
         await audit.init()
         pages = await audit.get_all_page_states()
+        cdir = _cand_dir()
+        pages = [p for p in pages if not (cdir / f"{p['slug']}.md").exists()]
         return {"pages": pages}
 
     @app.get("/lifecycle/status")
@@ -866,6 +868,15 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         audit = _AuditDB(wiki_root / ".synthadoc" / "audit.db")
         await audit.init()
         counts = await audit.get_lifecycle_summary()
+        # Split draft into wiki-domain drafts vs staged-in-candidates drafts.
+        if counts.get("draft", 0) > 0:
+            cdir = _cand_dir()
+            all_states = await audit.get_all_page_states()
+            in_cand = sum(1 for p in all_states
+                          if p["state"] == "draft" and (cdir / f"{p['slug']}.md").exists())
+            if in_cand:
+                counts["draft"] = counts["draft"] - in_cand
+                counts["draft_candidates"] = in_cand
         return {"counts": counts}
 
     @app.get("/lifecycle/events")
@@ -888,6 +899,14 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
     @app.post("/lifecycle/transition")
     async def lifecycle_transition(req: LifecycleTransitionRequest):
         orch = app.state.orch
+        if (_cand_dir() / f"{req.slug}.md").exists():
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"'{req.slug}' is in candidates/ and has not been promoted yet. "
+                    f"Run: synthadoc candidates promote {req.slug}"
+                ),
+            )
         page = orch._store.read_page(req.slug)
         if not page:
             raise HTTPException(status_code=404, detail=f"Page not found: {req.slug}")
