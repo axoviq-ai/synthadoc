@@ -339,12 +339,14 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
 
     @app.get("/status")
     async def status():
+        from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
         orch = app.state.orch
         jobs = await orch.queue.list_jobs()
         pending = sum(1 for j in jobs if j.status == "pending")
+        pages = [s for s in orch._store.list_pages() if s not in LINT_SKIP_SLUGS]
         return {
             "wiki": str(wiki_root),
-            "pages": len(orch._store.list_pages()),
+            "pages": len(pages),
             "jobs_pending": pending,
             "jobs_total": len(jobs),
         }
