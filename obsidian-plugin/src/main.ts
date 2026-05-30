@@ -2505,7 +2505,7 @@ class StagingModal extends Modal {
 
 // ── CandidatesModal ───────────────────────────────────────────────────────────
 
-const CAND_PAGE_SIZE = 50;
+const CAND_PAGE_SIZE = 30;
 
 const CONF_BADGE: Record<string, string> = {
     high:   "background:#2d6a2d;color:#b6ffb6;",
@@ -2544,7 +2544,7 @@ class CandidatesModal extends Modal {
 
     onOpen(): void {
         const { contentEl, modalEl } = this;
-        modalEl.style.width = "clamp(560px, 70vw, 1000px)";
+        modalEl.style.width = "clamp(760px, 85vw, 1200px)";
 
         const bg = this.containerEl.querySelector(".modal-bg");
         if (bg) bg.addEventListener("click", e => e.stopImmediatePropagation(), { capture: true });
