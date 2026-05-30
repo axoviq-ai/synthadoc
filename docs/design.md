@@ -836,7 +836,9 @@ synthadoc
     ├── add --op "<cmd>" --cron "<expr>" [-w wiki]
     ├── list [-w wiki]
     ├── remove <id> [-w wiki]
-    └── apply [-w wiki]
+    ├── apply [-w wiki]
+    ├── run --op "<cmd>" [-w wiki]
+    └── history [-w wiki] [-n N]
 ```
 
 `synthadoc status -w <wiki>` now shows a per-state page count breakdown alongside the existing page total and job counts.

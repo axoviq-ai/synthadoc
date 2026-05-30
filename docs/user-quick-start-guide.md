@@ -1241,13 +1241,32 @@ synthadoc schedule add --op "scaffold" --cron "0 4 * * 0"
 synthadoc schedule list
 ```
 
-Expected:
+Expected output — each row now shows the schedule, next run time, last run, and last result:
 
 ```
-sched-a3f1b2c4  0 2 * * *  ingest --batch raw_sources/
-sched-b7e9d012  0 3 * * 0  lint run
-sched-c9f3e201  0 4 * * 0  scaffold
+ID                   Schedule           Next Run             Last Run             Last Result    Command
+sched-a3f1b2c4       0 2 * * *          2026-05-31 02:00     —                    —              synthadoc ... schedule run --op "ingest --batch raw_sources/"
+sched-b7e9d012       0 3 * * 0          2026-06-01 03:00     —                    —              synthadoc ... schedule run --op "lint run"
+sched-c9f3e201       0 4 * * 0          2026-06-01 04:00     —                    —              synthadoc ... schedule run --op "scaffold"
 ```
+
+Next run time is computed from the cron expression on macOS/Linux, and read from the OS Task Scheduler on Windows.
+
+### Check run history
+
+Each time a scheduled job fires, the result is recorded in the audit trail. View recent runs:
+
+```bash
+synthadoc schedule history
+```
+
+```
+Run ID               Op              Started                Duration    Status     Error
+run-a1b2c3d4         lint run        2026-05-31 03:00:00      47.3s     success
+run-e5f6a7b8         lint run        2026-05-24 03:00:00      12.1s     failed     connection refused
+```
+
+A `failed` run means either `synthadoc serve` was not running when the task fired, or the operation itself encountered an error. Re-run manually with `synthadoc schedule run --op "lint run"` to recover.
 
 ### Clean up (demo only)
 
@@ -1261,7 +1280,9 @@ synthadoc schedule remove sched-c9f3e201
 
 > **Production use:** for always-on scheduling, run `synthadoc serve` as a background
 > service (systemd, launchd, or Windows Service) so the server is available when the OS
-> fires the scheduled task.
+> fires the scheduled task. If a run is missed (server down or machine asleep), it will
+> not automatically retry — check `synthadoc schedule history` for failures and re-run
+> manually if needed.
 
 ---
 

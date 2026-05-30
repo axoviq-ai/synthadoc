@@ -818,11 +818,18 @@ synthadoc schedule add --op "ingest --batch raw_sources/" --cron "0 2 * * *" -w 
 # Weekly lint
 synthadoc schedule add --op "lint run" --cron "0 3 * * 0" -w my-wiki
 
-# List scheduled jobs
+# List scheduled jobs (shows schedule, next run, last run, last result)
 synthadoc schedule list -w my-wiki
 
 # Remove a scheduled job
 synthadoc schedule remove <id> -w my-wiki
+
+# Run a scheduled operation immediately and record the result in the audit trail
+synthadoc schedule run --op "lint run" -w my-wiki
+
+# Show recent scheduled run history
+synthadoc schedule history -w my-wiki
+synthadoc schedule history --limit 50 -w my-wiki
 ```
 
 ### Routing
