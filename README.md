@@ -811,6 +811,8 @@ synthadoc audit citations --json -w my-wiki             # raw JSON for scripting
 
 ### Scheduling recurring jobs
 
+Relative paths in `--op` (e.g. `raw_sources/`) are resolved against the **wiki root directory**, not the working directory of the shell that runs the schedule. This means they work correctly even when the OS scheduler fires the task with a different working directory (e.g. `C:\Windows\System32` on Windows).
+
 ```bash
 # Register a nightly ingest
 synthadoc schedule add --op "ingest --batch raw_sources/" --cron "0 2 * * *" -w my-wiki

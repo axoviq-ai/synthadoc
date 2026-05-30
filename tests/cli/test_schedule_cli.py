@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 William Johnason / axoviq.com
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 from typer.testing import CliRunner
@@ -77,6 +78,23 @@ def test_schedule_remove_calls_scheduler(tmp_path):
     assert result.exit_code == 0, result.output
     assert "sched-001" in result.output
     mock_sched.remove.assert_called_once_with("sched-001")
+
+
+def test_schedule_run_uses_wiki_root_as_cwd(tmp_path):
+    """schedule run must set cwd=wiki_root so relative paths like raw_sources/ resolve correctly."""
+    wiki = _make_wiki(tmp_path)
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cwd"] = kwargs.get("cwd")
+        return MagicMock(returncode=0)
+
+    with patch("subprocess.run", side_effect=fake_run):
+        result = runner.invoke(app, [
+            "schedule", "run", "--op", "lint run", "--wiki", str(wiki),
+        ])
+    assert result.exit_code == 0, result.output
+    assert captured["cwd"] == str(wiki)
 
 
 def test_schedule_apply_registers_jobs(tmp_path):

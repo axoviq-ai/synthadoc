@@ -125,7 +125,7 @@ def run_cmd(
     t0 = time.monotonic()
     try:
         cmd = [sys.executable, "-m", "synthadoc", "-w", wiki_name] + op.split()
-        result = subprocess.run(cmd)
+        result = subprocess.run(cmd, cwd=str(root))
         duration = time.monotonic() - t0
         if result.returncode == 0:
             asyncio.run(db.record_scheduled_run_finish(run_id, "success", duration))
