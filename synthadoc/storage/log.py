@@ -116,6 +116,18 @@ class AuditDB:
                     triggered_by TEXT NOT NULL,
                     timestamp    TEXT NOT NULL
                 )""")
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS scheduled_runs (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id      TEXT NOT NULL,
+                    op          TEXT NOT NULL,
+                    wiki        TEXT NOT NULL,
+                    started_at  TEXT NOT NULL,
+                    finished_at TEXT,
+                    status      TEXT,
+                    duration_s  REAL,
+                    error       TEXT
+                )""")
             await db.commit()
 
     async def record_ingest(self, source_hash: str, source_size: int,
@@ -456,3 +468,36 @@ class AuditDB:
                     )
                 """, (keep_latest,))
             await db.commit()
+
+    async def record_scheduled_run_start(self, run_id: str, op: str, wiki: str) -> None:
+        ts = datetime.now(timezone.utc).isoformat()
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute(
+                "INSERT INTO scheduled_runs (run_id,op,wiki,started_at,status)"
+                " VALUES (?,?,?,?,'running')",
+                (run_id, op, wiki, ts),
+            )
+            await db.commit()
+
+    async def record_scheduled_run_finish(
+        self, run_id: str, status: str, duration_s: float, error: Optional[str] = None
+    ) -> None:
+        ts = datetime.now(timezone.utc).isoformat()
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute(
+                "UPDATE scheduled_runs SET finished_at=?, status=?, duration_s=?, error=?"
+                " WHERE run_id=?",
+                (ts, status, round(duration_s, 2), error, run_id),
+            )
+            await db.commit()
+
+    async def list_scheduled_runs(self, limit: int = 20) -> list[dict]:
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT run_id,op,wiki,started_at,finished_at,status,duration_s,error"
+                " FROM scheduled_runs ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ) as cur:
+                rows = await cur.fetchall()
+        return [dict(r) for r in rows]

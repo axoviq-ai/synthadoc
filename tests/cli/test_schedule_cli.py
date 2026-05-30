@@ -46,6 +46,9 @@ def test_schedule_list_shows_entries(tmp_path):
     entry.id = "sched-001"
     entry.cron = "0 * * * *"
     entry.op = "lint"
+    entry.next_run = "2026-05-31 02:00"
+    entry.last_run = "2026-05-30 02:00"
+    entry.last_result = "success"
     mock_sched = MagicMock()
     mock_sched.list.return_value = [entry]
     with patch("synthadoc.core.scheduler.Scheduler", return_value=mock_sched):

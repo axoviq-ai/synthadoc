@@ -30,6 +30,7 @@ dependencies = [
     "pyyaml>=6.0",
     "tavily-python>=0.5",
     "youtube-transcript-api>=0.6",
+    "croniter>=2.0",
 ]
 
 [project.optional-dependencies]
@@ -59,6 +60,10 @@ testpaths = ["tests"]
 addopts = "-m 'not integration'"
 markers = [
     "integration: marks tests that require real external tools (run explicitly with '-m integration')",
+    "windows: marks tests that run only on Windows",
+    "linux: marks tests that run only on Linux",
+    "macos: marks tests that run only on macOS",
+    "posix: marks tests that run only on Linux or macOS",
 ]
 
 [tool.hatch.version]
