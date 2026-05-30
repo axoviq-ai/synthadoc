@@ -416,17 +416,22 @@ class LintAgent:
                     current = LifecycleState.ACTIVE
 
                 # Check 4: manual-edit sync -- frontmatter state differs from DB
-                if self._audit and current in LifecycleState.ALL:
+                if self._audit:
                     db_state = await self._audit.get_page_state(slug)
-                    if db_state and db_state["state"] != current:
-                        await self._audit.set_page_state(slug, current, TriggerSource.MANUAL_EDIT)
-                        await self._audit.record_lifecycle_event(
-                            slug, db_state["state"], current,
-                            "manual frontmatter edit detected", TriggerSource.MANUAL_EDIT
-                        )
-                        report.lifecycle_synced += 1
+                    if current in LifecycleState.ALL:
+                        if db_state and db_state["state"] != current:
+                            await self._audit.set_page_state(slug, current, TriggerSource.MANUAL_EDIT)
+                            await self._audit.record_lifecycle_event(
+                                slug, db_state["state"], current,
+                                "manual frontmatter edit detected", TriggerSource.MANUAL_EDIT
+                            )
+                            report.lifecycle_synced += 1
+                        elif not db_state:
+                            await self._audit.set_page_state(slug, current, TriggerSource.LINT)
                     elif not db_state:
-                        await self._audit.set_page_state(slug, current, TriggerSource.LINT)
+                        # frontmatter has no valid status — bootstrap as draft so the page
+                        # is registered in page_states and visible to the lifecycle system
+                        await self._audit.set_page_state(slug, LifecycleState.DRAFT, TriggerSource.LINT)
 
             except Exception as exc:
                 _log.warning(
