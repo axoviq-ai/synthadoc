@@ -2505,7 +2505,7 @@ class StagingModal extends Modal {
 
 // ── CandidatesModal ───────────────────────────────────────────────────────────
 
-const CAND_PAGE_SIZE = 50;
+const CAND_PAGE_SIZE = 30;
 
 const CONF_BADGE: Record<string, string> = {
     high:   "background:#2d6a2d;color:#b6ffb6;",
@@ -2517,10 +2517,34 @@ class CandidatesModal extends Modal {
     private _candidates: any[] = [];
     private _page = 0;
     private _selected: Set<string> = new Set();
+    private _sortCol: "slug" | "title" | "confidence" | "created" = "confidence";
+    private _sortAsc = true;
+
+    private _sortedCandidates(): any[] {
+        const CONF_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
+        const col = this._sortCol;
+        const dir = this._sortAsc ? 1 : -1;
+        return [...this._candidates].sort((a, b) => {
+            let av: any, bv: any;
+            if (col === "confidence") {
+                av = CONF_ORDER[a.confidence] ?? 3;
+                bv = CONF_ORDER[b.confidence] ?? 3;
+            } else {
+                av = (a[col] ?? "").toString().toLowerCase();
+                bv = (b[col] ?? "").toString().toLowerCase();
+            }
+            if (av < bv) return -dir;
+            if (av > bv) return dir;
+            // secondary: newest ingested first
+            const ca = a.created ?? "";
+            const cb = b.created ?? "";
+            return ca < cb ? 1 : ca > cb ? -1 : 0;
+        });
+    }
 
     onOpen(): void {
         const { contentEl, modalEl } = this;
-        modalEl.style.width = "clamp(560px, 70vw, 1000px)";
+        modalEl.style.width = "clamp(760px, 85vw, 1200px)";
 
         const bg = this.containerEl.querySelector(".modal-bg");
         if (bg) bg.addEventListener("click", e => e.stopImmediatePropagation(), { capture: true });
@@ -2536,13 +2560,8 @@ class CandidatesModal extends Modal {
         const actionBar = contentEl.createEl("div");
         actionBar.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center;";
 
-        const promoteAllBtn  = actionBar.createEl("button", { text: "Promote All" }) as HTMLButtonElement;
-        const discardAllBtn  = actionBar.createEl("button", { text: "Discard All" }) as HTMLButtonElement;
-        discardAllBtn.style.color = "var(--text-error)";
-        const sep = actionBar.createEl("span", { text: "|" });
-        sep.style.cssText = "color:var(--text-muted);margin:0 2px;";
-        const promoteSelBtn  = actionBar.createEl("button", { text: "Promote Selected" }) as HTMLButtonElement;
-        const discardSelBtn  = actionBar.createEl("button", { text: "Discard Selected" }) as HTMLButtonElement;
+        const promoteSelBtn = actionBar.createEl("button", { text: "Promote Selected" }) as HTMLButtonElement;
+        const discardSelBtn = actionBar.createEl("button", { text: "Discard Selected" }) as HTMLButtonElement;
         discardSelBtn.style.color = "var(--text-error)";
 
         // Table container
@@ -2567,21 +2586,25 @@ class CandidatesModal extends Modal {
             setTimeout(() => (this.app as any).commands?.executeCommandById("synthadoc:synthadoc-staging"), 150);
         };
 
+        const CAND_COLS: { key: "slug" | "title" | "confidence" | "created"; label: string; align: string }[] = [
+            { key: "slug",       label: "Slug",       align: "left" },
+            { key: "title",      label: "Title",      align: "left" },
+            { key: "confidence", label: "Confidence", align: "center" },
+            { key: "created",    label: "Ingested",   align: "left" },
+        ];
+
         const render = () => {
             tableWrap.empty();
-            const total = this._candidates.length;
+            const sorted = this._sortedCandidates();
+            const total = sorted.length;
             const totalPages = Math.max(1, Math.ceil(total / CAND_PAGE_SIZE));
             this._page = Math.min(this._page, totalPages - 1);
-            const slice = this._candidates.slice(this._page * CAND_PAGE_SIZE, (this._page + 1) * CAND_PAGE_SIZE);
+            const slice = sorted.slice(this._page * CAND_PAGE_SIZE, (this._page + 1) * CAND_PAGE_SIZE);
 
             prevBtn.disabled = this._page === 0;
             nextBtn.disabled = this._page >= totalPages - 1;
             pageRow.style.display = totalPages > 1 ? "flex" : "none";
             pageLabel.textContent = `Page ${this._page + 1} of ${totalPages} (${total} total)`;
-
-            const allBtnsDisabled = total === 0;
-            promoteAllBtn.disabled = allBtnsDisabled;
-            discardAllBtn.disabled = allBtnsDisabled;
 
             if (total === 0) {
                 tableWrap.createEl("div", { text: "No candidates. All new pages are publishing directly." })
@@ -2601,10 +2624,24 @@ class CandidatesModal extends Modal {
             thCheck.style.cssText = "padding:6px 8px;width:32px;";
             const allCheckbox = thCheck.createEl("input", { type: "checkbox" }) as HTMLInputElement;
             allCheckbox.title = "Select all on this page";
-            hrow.createEl("th", { text: "Slug" }).style.cssText = "padding:6px 8px;text-align:left;";
-            hrow.createEl("th", { text: "Title" }).style.cssText = "padding:6px 8px;text-align:left;";
-            hrow.createEl("th", { text: "Confidence" }).style.cssText = "padding:6px 8px;text-align:center;";
-            hrow.createEl("th", { text: "Ingested" }).style.cssText = "padding:6px 8px;text-align:left;";
+
+            for (const col of CAND_COLS) {
+                const th = hrow.createEl("th");
+                th.style.cssText = `padding:6px 8px;text-align:${col.align};cursor:pointer;user-select:none;white-space:nowrap;`;
+                const isCurrent = this._sortCol === col.key;
+                th.textContent = col.label + (isCurrent ? (this._sortAsc ? " ▲" : " ▼") : " ⇅");
+                th.onclick = () => {
+                    if (this._sortCol === col.key) {
+                        this._sortAsc = !this._sortAsc;
+                    } else {
+                        this._sortCol = col.key;
+                        // confidence: high first (asc in CONF_ORDER); ingested: newest first (desc); others: a-z
+                        this._sortAsc = col.key !== "created";
+                    }
+                    this._page = 0;
+                    render();
+                };
+            }
 
             const tbody = table.createEl("tbody");
             const rowCheckboxes: HTMLInputElement[] = [];
@@ -2670,8 +2707,6 @@ class CandidatesModal extends Modal {
                 render();
             } catch {
                 setResult("❌ Cannot reach Synthadoc server. Is it running?");
-                promoteAllBtn.disabled = true;
-                discardAllBtn.disabled = true;
                 promoteSelBtn.disabled = true;
                 discardSelBtn.disabled = true;
             }
@@ -2679,32 +2714,6 @@ class CandidatesModal extends Modal {
 
         prevBtn.onclick = () => { this._page--; render(); };
         nextBtn.onclick = () => { this._page++; render(); };
-
-        promoteAllBtn.onclick = async () => {
-            promoteAllBtn.disabled = true;
-            setResult("⏳ Promoting all…");
-            try {
-                const r = await api.candidatesPromoteAll() as any;
-                setResult(`✅ Promoted ${r.count} page${r.count === 1 ? "" : "s"} to wiki.`);
-                await reload();
-            } catch (e: any) {
-                setResult(`❌ ${e.message ?? "Failed."}`);
-                promoteAllBtn.disabled = false;
-            }
-        };
-
-        discardAllBtn.onclick = async () => {
-            discardAllBtn.disabled = true;
-            setResult("⏳ Discarding all…");
-            try {
-                const r = await api.candidatesDiscardAll() as any;
-                setResult(`✅ Discarded ${r.count} candidate${r.count === 1 ? "" : "s"}.`);
-                await reload();
-            } catch (e: any) {
-                setResult(`❌ ${e.message ?? "Failed."}`);
-                discardAllBtn.disabled = false;
-            }
-        };
 
         promoteSelBtn.onclick = async () => {
             const slugs = [...this._selected];
