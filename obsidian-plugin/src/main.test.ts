@@ -2255,42 +2255,133 @@ describe("CandidatesModal", () => {
         expect(modal.contentEl.innerHTML).toContain("early-internet");
     });
 
-    it("Promote All calls api.candidatesPromoteAll", async () => {
+    it("default sort orders high confidence first", async () => {
         const { ModalClass, apiMock } = await getModal("synthadoc-candidates");
-        apiMock.candidates
-            .mockResolvedValueOnce([{ slug: "early-internet", title: "Early Internet", confidence: "medium", created: "2026-05-01" }])
-            .mockResolvedValueOnce([]);
-        apiMock.candidatesPromoteAll.mockResolvedValueOnce({ count: 1 });
+        apiMock.candidates.mockResolvedValueOnce([
+            { slug: "low-page",    title: "Low",    confidence: "low",    created: "2026-05-01" },
+            { slug: "high-page",   title: "High",   confidence: "high",   created: "2026-05-02" },
+            { slug: "medium-page", title: "Medium", confidence: "medium", created: "2026-05-03" },
+        ]);
 
         const modal = new ModalClass();
         modal.onOpen();
         await flushPromises();
 
-        // promoteAllBtn is actionBar._children[0]; actionBar is contentEl._children[2]
-        const promoteAllBtn = modal.contentEl._children[2]._children[0];
-        await promoteAllBtn.onclick();
-        await flushPromises();
-
-        expect(apiMock.candidatesPromoteAll).toHaveBeenCalled();
+        const html = modal.contentEl.innerHTML;
+        expect(html.indexOf("high-page")).toBeLessThan(html.indexOf("medium-page"));
+        expect(html.indexOf("medium-page")).toBeLessThan(html.indexOf("low-page"));
     });
 
-    it("Discard All calls api.candidatesDiscardAll", async () => {
+    it("clicking Confidence header twice reverses sort to low first", async () => {
         const { ModalClass, apiMock } = await getModal("synthadoc-candidates");
-        apiMock.candidates
-            .mockResolvedValueOnce([{ slug: "early-internet", title: "Early Internet", confidence: "medium", created: "2026-05-01" }])
-            .mockResolvedValueOnce([]);
-        apiMock.candidatesDiscardAll.mockResolvedValueOnce({ count: 1 });
+        apiMock.candidates.mockResolvedValueOnce([
+            { slug: "high-page", title: "High", confidence: "high", created: "2026-05-01" },
+            { slug: "low-page",  title: "Low",  confidence: "low",  created: "2026-05-02" },
+        ]);
 
         const modal = new ModalClass();
         modal.onOpen();
         await flushPromises();
 
-        // discardAllBtn is actionBar._children[1]
-        const discardAllBtn = modal.contentEl._children[2]._children[1];
-        await discardAllBtn.onclick();
+        // tableWrap[3] > table[0]; thead[0] > hrow[0]; confidence is th[3] (after checkbox, slug, title)
+        const table = modal.contentEl._children[3]._children[0];
+        const confTh = table._children[0]._children[0]._children[3];
+        expect(confTh.innerHTML).toContain("Confidence");
+
+        // Already sorted by confidence asc (high first); clicking again flips to desc (low first)
+        confTh.onclick();
+
+        const html = modal.contentEl.innerHTML;
+        expect(html.indexOf("low-page")).toBeLessThan(html.indexOf("high-page"));
+    });
+
+    it("clicking Ingested header sorts by created date newest first", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-candidates");
+        apiMock.candidates.mockResolvedValueOnce([
+            { slug: "old-page", title: "Old", confidence: "high", created: "2026-01-01" },
+            { slug: "new-page", title: "New", confidence: "high", created: "2026-05-01" },
+        ]);
+
+        const modal = new ModalClass();
+        modal.onOpen();
         await flushPromises();
 
-        expect(apiMock.candidatesDiscardAll).toHaveBeenCalled();
+        const table = modal.contentEl._children[3]._children[0];
+        const ingestedTh = table._children[0]._children[0]._children[4]; // th[4] = Ingested
+        expect(ingestedTh.innerHTML).toContain("Ingested");
+        ingestedTh.onclick();
+
+        const html = modal.contentEl.innerHTML;
+        expect(html.indexOf("new-page")).toBeLessThan(html.indexOf("old-page"));
+    });
+
+    it("clicking Slug header sorts alphabetically", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-candidates");
+        apiMock.candidates.mockResolvedValueOnce([
+            { slug: "zebra-page", title: "Zebra", confidence: "low",  created: "2026-05-01" },
+            { slug: "alpha-page", title: "Alpha", confidence: "high", created: "2026-05-02" },
+        ]);
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        await flushPromises();
+
+        const table = modal.contentEl._children[3]._children[0];
+        const slugTh = table._children[0]._children[0]._children[1]; // th[1] = Slug
+        expect(slugTh.innerHTML).toContain("Slug");
+        slugTh.onclick();
+
+        const html = modal.contentEl.innerHTML;
+        expect(html.indexOf("alpha-page")).toBeLessThan(html.indexOf("zebra-page"));
+    });
+
+    it("Promote Selected calls api.candidatePromote for checked items", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-candidates");
+        apiMock.candidates
+            .mockResolvedValueOnce([{ slug: "my-page", title: "My Page", confidence: "high", created: "2026-05-01" }])
+            .mockResolvedValueOnce([]);
+        apiMock.candidatePromote.mockResolvedValueOnce({});
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        await flushPromises();
+
+        // Check the row checkbox: tableWrap[3] > table[0] > tbody[1] > tr[0] > td[0] > checkbox[0]
+        const table = modal.contentEl._children[3]._children[0];
+        const rowCb = table._children[1]._children[0]._children[0]._children[0] as HTMLInputElement;
+        rowCb.checked = true;
+        rowCb.onchange?.({} as any);
+
+        // promoteSelBtn = actionBar[2]._children[0]
+        const promoteSelBtn = modal.contentEl._children[2]._children[0];
+        await promoteSelBtn.onclick();
+        await flushPromises();
+
+        expect(apiMock.candidatePromote).toHaveBeenCalledWith("my-page");
+    });
+
+    it("Discard Selected calls api.candidateDiscard for checked items", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-candidates");
+        apiMock.candidates
+            .mockResolvedValueOnce([{ slug: "my-page", title: "My Page", confidence: "low", created: "2026-05-01" }])
+            .mockResolvedValueOnce([]);
+        apiMock.candidateDiscard.mockResolvedValueOnce({});
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        await flushPromises();
+
+        const table = modal.contentEl._children[3]._children[0];
+        const rowCb = table._children[1]._children[0]._children[0]._children[0] as HTMLInputElement;
+        rowCb.checked = true;
+        rowCb.onchange?.({} as any);
+
+        // discardSelBtn = actionBar[2]._children[1]
+        const discardSelBtn = modal.contentEl._children[2]._children[1];
+        await discardSelBtn.onclick();
+        await flushPromises();
+
+        expect(apiMock.candidateDiscard).toHaveBeenCalledWith("my-page");
     });
 
     it("shows error when api.candidates throws", async () => {
