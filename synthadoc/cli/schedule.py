@@ -65,7 +65,6 @@ def list_cmd(wiki: Optional[str] = typer.Option(None, "--wiki", "-w")) -> None:
     if not entries:
         typer.echo("No scheduled jobs found.")
         return
-    typer.echo(f"[wiki: {wiki}]")
     typer.echo(f"{'ID':<20} {'Schedule':<18} {'Next Run':<20} {'Last Run':<20} {'Last Result':<14} Command")
     typer.echo("-" * 110)
     for e in entries:
@@ -166,7 +165,6 @@ def history_cmd(
     if not runs:
         typer.echo("No scheduled run history found.")
         return
-    typer.echo(f"[wiki: {wiki_name}]")
     typer.echo(f"{'Run ID':<20} {'Op':<14} {'Started':<22} {'Duration':>10}  {'Status':<10} Error")
     typer.echo("-" * 90)
     for r in runs:

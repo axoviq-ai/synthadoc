@@ -198,6 +198,37 @@ def test_windows_list_schtasks_parses_next_run(tmp_path, monkeypatch):
     assert e.cron == "0 2 * * *"
 
 
+@windows
+def test_windows_list_schtasks_ignores_system_task_contamination(tmp_path, monkeypatch):
+    """Fields from non-synthadoc tasks must not contaminate a preceding synthadoc entry."""
+    import subprocess
+    fake_output = (
+        # synthadoc task
+        "TaskName:                             \\synthadoc-sched-abc123\n"
+        "Next Run Time:                        5/31/2026 10:00:00 PM\n"
+        "Last Run Time:                        N/A\n"
+        "Last Result:                          267011\n"
+        "Task To Run:                          synthadoc -w mywiki schedule run --op \"lint run\"\n"
+        "Start Time:                           10:00:00 PM\n"
+        # unrelated system task immediately after — should NOT bleed into our entry
+        "TaskName:                             \\Microsoft\\Windows\\SomeSystemTask\n"
+        "Task To Run:                          COM handler\n"
+        "Last Run Time:                        5/30/2026 11:32:01 AM\n"
+        "Last Result:                          0\n"
+        "Start Time:                           11:33:00 AM\n"
+    )
+    mock_result = type("R", (), {"stdout": fake_output, "returncode": 0})()
+    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: mock_result)
+    sched = Scheduler(wiki="mywiki", wiki_root=str(tmp_path))
+    entries = sched._list_schtasks()
+    assert len(entries) == 1
+    e = entries[0]
+    assert e.cron == "0 22 * * *"           # Start Time 10:00:00 PM
+    assert e.op != "COM handler"
+    assert e.last_run == ""                 # N/A → cleared
+    assert e.last_result == "N/A"           # code 267011
+
+
 # ------------------------------------------------------------------
 # Platform-specific: Linux / macOS (crontab)
 # Run with: pytest -m posix

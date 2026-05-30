@@ -122,21 +122,28 @@ class Scheduler:
                     "success" if result_raw == "0"
                     else ("N/A" if result_raw in ("", "267011") else f"failed ({result_raw})")
                 )
+                cron = d.get("cron", "")
+                next_run = d.get("next_run", "")
+                if next_run in ("N/A", ""):
+                    next_run = _cron_next_run(cron)
                 entries.append(ScheduleEntry(
                     id=d["id"],
                     op=d["op"],
-                    cron=d.get("cron", ""),
+                    cron=cron,
                     wiki=self._wiki,
-                    next_run=d.get("next_run", ""),
+                    next_run=next_run,
                     last_run=d.get("last_run", ""),
                     last_result=last_result,
                 ))
 
         for raw_line in result.stdout.splitlines():
             line = raw_line.strip()
-            if line.startswith("TaskName:") and "synthadoc-" in line:
+            if line.startswith("TaskName:"):
                 _flush(current)
-                current = {"id": line.split("synthadoc-")[-1].strip()}
+                current = (
+                    {"id": line.split("synthadoc-")[-1].strip()}
+                    if "synthadoc-" in line else {}
+                )
             elif current:
                 if line.startswith("Task To Run:"):
                     current["op"] = line.split(":", 1)[-1].strip()
