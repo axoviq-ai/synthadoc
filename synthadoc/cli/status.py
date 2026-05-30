@@ -47,5 +47,10 @@ def status_cmd(wiki: Optional[str] = typer.Option(None, "--wiki", "-w")):
                 label = _LABELS.get(state, state)
                 hint = f"  {_HINTS[state]}" if state in _HINTS and count > 0 else ""
                 typer.echo(f"  {label:<14} {count}{hint}")
+            wiki_total = result.get("pages", 0)
+            lifecycle_total = sum(counts.get(s, 0) for s in LifecycleState.ORDERED)
+            untracked = wiki_total - lifecycle_total
+            if untracked > 0:
+                typer.echo(f"  {'untracked':<14} {untracked}  <- run `synthadoc lint run` to initialise lifecycle states")
     except Exception:
         pass  # server may not support lifecycle yet
