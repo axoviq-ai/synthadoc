@@ -832,6 +832,26 @@ synthadoc schedule history -w my-wiki
 synthadoc schedule history --limit 50 -w my-wiki
 ```
 
+**Cron expression format:** `minute  hour  day-of-month  month  day-of-week`
+
+| Field | Range | Examples |
+|-------|-------|---------|
+| minute | 0–59 | `0` = on the hour |
+| hour | 0–23 | `2` = 2 AM, `22` = 10 PM |
+| day of month | 1–31 | `*` = every day |
+| month | 1–12 | `*` = every month |
+| day of week | 0–6 | `0` = Sunday, `1` = Monday |
+
+Common schedules:
+
+| Expression | Meaning |
+|------------|---------|
+| `0 2 * * *` | Every day at 2 AM |
+| `0 22 * * *` | Every night at 10 PM |
+| `0 3 * * 0` | Every Sunday at 3 AM |
+| `0 */6 * * *` | Every 6 hours |
+| `30 8 * * 1-5` | Weekdays at 8:30 AM |
+
 ### Routing
 
 ROUTING.md maps wiki branches to page slugs so queries and ingest jobs are scoped to the relevant section of the wiki. Create it once from your existing `index.md`, then let Synthadoc maintain it automatically as new pages are added.
