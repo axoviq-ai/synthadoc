@@ -126,15 +126,20 @@ def run_cmd(
     t0 = time.monotonic()
     try:
         cmd = [sys.executable, "-m", "synthadoc", "-w", wiki_name] + op.split()
-        result = subprocess.run(cmd, cwd=str(root))
+        result = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True)
         duration = time.monotonic() - t0
+        if result.stdout:
+            typer.echo(result.stdout, nl=False)
         if result.returncode == 0:
             asyncio.run(db.record_scheduled_run_finish(run_id, "success", duration))
-            typer.echo(f"  {run_id}  {op}  {duration:.1f}s  success")
+            typer.echo(f"[schedule] {run_id}  {op}  {duration:.1f}s  success")
         else:
-            err = f"exit code {result.returncode}"
+            stderr_snippet = result.stderr.strip()[:300] if result.stderr else ""
+            err = f"exit code {result.returncode}" + (f": {stderr_snippet}" if stderr_snippet else "")
             asyncio.run(db.record_scheduled_run_finish(run_id, "failed", duration, err))
-            typer.echo(f"  {run_id}  {op}  {duration:.1f}s  failed ({err})", err=True)
+            if result.stderr:
+                typer.echo(result.stderr, nl=False, err=True)
+            typer.echo(f"[schedule] {run_id}  {op}  {duration:.1f}s  failed ({err})", err=True)
             raise typer.Exit(result.returncode)
     except typer.Exit:
         raise
