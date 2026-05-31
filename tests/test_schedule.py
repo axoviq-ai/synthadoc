@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from synthadoc.storage.log import AuditDB
 from synthadoc.core.scheduler import (
-    Scheduler, ScheduleEntry, _cron_next_run, _matches_cron,
+    Scheduler, ScheduleEntry, _cron_next_run, _matches_cron, _format_run_ts,
 )
 
 
@@ -24,6 +24,31 @@ def test_cron_next_run_returns_future_datetime():
 
 def test_cron_next_run_invalid_returns_empty():
     assert _cron_next_run("not a cron") == ""
+
+
+# ------------------------------------------------------------------
+# _format_run_ts
+# ------------------------------------------------------------------
+
+def test_format_run_ts_converts_utc_iso_to_local():
+    # UTC ISO string — must come back as YYYY-MM-DD HH:MM (16 chars, no tz suffix)
+    result = _format_run_ts("2026-05-31T03:04:00.014163+00:00")
+    assert len(result) == 16
+    assert "T" not in result
+    assert "+" not in result
+
+
+def test_format_run_ts_naive_iso_passthrough():
+    result = _format_run_ts("2026-05-30T22:04:00")
+    assert result == "2026-05-30 22:04"
+
+
+def test_format_run_ts_empty_returns_empty():
+    assert _format_run_ts("") == ""
+
+
+def test_format_run_ts_invalid_returns_original():
+    assert _format_run_ts("not-a-date") == "not-a-date"
 
 
 # ------------------------------------------------------------------

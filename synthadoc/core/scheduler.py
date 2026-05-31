@@ -59,7 +59,7 @@ class Scheduler:
                 cron=cron,
                 wiki=e.get("wiki", self._wiki),
                 next_run=_cron_next_run(cron),
-                last_run=lr.get("started_at", ""),
+                last_run=_format_run_ts(lr.get("started_at", "")),
                 last_result=lr.get("status", ""),
             ))
         return result
@@ -174,6 +174,20 @@ def _cron_next_run(cron: str) -> str:
         return it.get_next(datetime).strftime("%Y-%m-%d %H:%M")
     except Exception:
         return ""
+
+
+def _format_run_ts(ts: str) -> str:
+    """Convert a stored UTC ISO timestamp to local YYYY-MM-DD HH:MM, or '' on error."""
+    if not ts:
+        return ""
+    try:
+        from datetime import timezone
+        dt = datetime.fromisoformat(ts)
+        if dt.tzinfo is not None:
+            dt = dt.astimezone().replace(tzinfo=None)
+        return dt.strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        return ts
 
 
 def _matches_cron(cron: str, dt: datetime) -> bool:
