@@ -1254,19 +1254,32 @@ Next run time is computed from the cron expression on macOS/Linux, and read from
 
 ### Check run history
 
-Each time a scheduled job fires, the result is recorded in the audit trail. View recent runs:
+Each time a scheduled job fires, the outcome (status, duration, and any output or error) is recorded in the schedule history log. View recent runs:
 
 ```bash
 synthadoc schedule history
 ```
 
 ```
-Run ID               Op              Started                Duration    Status     Error
-run-a1b2c3d4         lint run        2026-05-31 03:00:00      47.3s     success
-run-e5f6a7b8         lint run        2026-05-24 03:00:00      12.1s     failed     connection refused
+Run ID               Op              Started              Duration    Status
+------------------------------------------------------------------------
+run-a1b2c3d4         lint run        2026-05-31 03:00       47.3s    success
+run-342a7e95         ingest          2026-05-30 23:11        0.8s    failed
+run-bc56dc6a         scaffold        2026-05-30 23:04       31.2s    success
+
+Details
+-------
+run-a1b2c3d4  lint run  success
+  Checked 47 pages. 2 adversarial warnings. 0 orphan pages.
+
+run-342a7e95  ingest  failed
+  exit code 1: MINIMAX_API_KEY is not set
+
+run-bc56dc6a  scaffold  success
+  Scaffold complete — domain-specific content generated.
 ```
 
-A `failed` run means either `synthadoc serve` was not running when the task fired, or the operation itself encountered an error. Re-run manually with `synthadoc schedule run --op "lint run"` to recover.
+The **Details** section only appears when runs have output to show. Successful runs display captured output; failed runs display the error. A `failed` run means either `synthadoc serve` was not running when the task fired, or the operation itself encountered an error. Re-run manually with `synthadoc schedule run --op "lint run"` to recover.
 
 ### Clean up (demo only)
 
