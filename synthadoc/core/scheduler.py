@@ -9,7 +9,7 @@ import sys
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -170,7 +170,7 @@ def _cron_next_run(cron: str) -> str:
     """Return the next scheduled datetime string for a cron expression, or ''."""
     try:
         from croniter import croniter
-        it = croniter(cron, datetime.now(timezone.utc))
+        it = croniter(cron, datetime.now())
         return it.get_next(datetime).strftime("%Y-%m-%d %H:%M")
     except Exception:
         return ""
