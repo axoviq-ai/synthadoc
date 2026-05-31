@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import platform
+import re
+import shutil
 import subprocess
+import sys
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -54,7 +57,14 @@ class Scheduler:
             self._add_crontab_entry(op=op, cron=cron, entry_id=entry_id)
 
     def _build_run_cmd(self, op: str) -> str:
-        return f'synthadoc -w {self._wiki} schedule run --op "{op}"'
+        exe = shutil.which("synthadoc")
+        if exe:
+            prefix = f'"{exe}"' if " " in exe else exe
+        else:
+            python = sys.executable
+            python_q = f'"{python}"' if " " in python else python
+            prefix = f"{python_q} -m synthadoc"
+        return f'{prefix} -w {self._wiki} schedule run --op "{op}"'
 
     def _build_crontab_line(self, op: str, cron: str, entry_id: str) -> str:
         cmd = self._build_run_cmd(op)
@@ -97,9 +107,8 @@ class Scheduler:
             entry_id = line.split(self._TAG_PREFIX)[-1].strip()
             parts = line.split()
             cron = " ".join(parts[:5])
-            op_parts = parts[5:]
-            tag = self._TAG_PREFIX.strip()
-            op = " ".join(p for p in op_parts if not p.startswith(tag))
+            m = re.search(r'--op\s+"([^"]+)"', line)
+            op = m.group(1) if m else " ".join(parts[5:]).split(self._TAG_PREFIX)[0].strip()
             next_run = _cron_next_run(cron)
             entries.append(ScheduleEntry(
                 id=entry_id, op=op.strip(), cron=cron,
@@ -146,7 +155,9 @@ class Scheduler:
                 )
             elif current:
                 if line.startswith("Task To Run:"):
-                    current["op"] = line.split(":", 1)[-1].strip()
+                    full_cmd = line.split(":", 1)[-1].strip()
+                    m = re.search(r'--op\s+"([^"]+)"', full_cmd)
+                    current["op"] = m.group(1) if m else full_cmd
                 elif line.startswith("Next Run Time:"):
                     current["next_run"] = line.split(":", 1)[-1].strip()
                 elif line.startswith("Last Run Time:"):

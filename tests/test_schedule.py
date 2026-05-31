@@ -192,6 +192,7 @@ def test_windows_list_schtasks_parses_next_run(tmp_path, monkeypatch):
     assert len(entries) == 1
     e = entries[0]
     assert e.id == "sched-abc123"
+    assert e.op == "lint run"          # extracted from --op, not the full command
     assert e.next_run == "5/31/2026 2:00:00 AM"
     assert e.last_run == "5/30/2026 2:00:00 AM"
     assert e.last_result == "success"
@@ -257,9 +258,10 @@ def test_posix_list_crontab_parses_next_run(tmp_path, monkeypatch):
     assert len(entries) == 1
     e = entries[0]
     assert e.id == "sched-xyz"
+    assert e.op == "lint run"   # extracted from --op, not the full command
     assert e.cron == "0 2 * * *"
-    assert e.next_run != ""  # croniter computed a future datetime
-    assert e.last_run == ""  # not available in crontab
+    assert e.next_run != ""     # croniter computed a future datetime
+    assert e.last_run == ""     # not available in crontab
     assert e.last_result == ""  # not available in crontab
 
 
