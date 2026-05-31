@@ -162,7 +162,9 @@ class Scheduler:
                     current["next_run"] = line.split(":", 1)[-1].strip()
                 elif line.startswith("Last Run Time:"):
                     val = line.split(":", 1)[-1].strip()
-                    current["last_run"] = "" if val == "N/A" else val
+                    # "11/30/1999 12:00:00 AM" is Windows' sentinel for "never run"
+                    never_run = val in ("N/A", "") or val.startswith("11/30/1999")
+                    current["last_run"] = "" if never_run else val
                 elif line.startswith("Last Result:"):
                     current["last_result"] = line.split(":", 1)[-1].strip()
                 elif line.startswith("Start Time:"):
