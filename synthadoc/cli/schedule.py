@@ -122,6 +122,7 @@ def run_cmd(
     asyncio.run(db.init())
     asyncio.run(db.record_scheduled_run_start(run_id, op, wiki_name))
 
+    typer.echo(f"[schedule] {run_id}  {op}  starting")
     t0 = time.monotonic()
     try:
         cmd = [sys.executable, "-m", "synthadoc", "-w", wiki_name] + op.split()
