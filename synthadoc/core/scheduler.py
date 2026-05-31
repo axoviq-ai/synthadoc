@@ -146,15 +146,16 @@ async def _run_scheduled_job(
         )
         stdout, stderr = await proc.communicate()
         duration = time.monotonic() - t0
+        out = _truncate_output(stdout.decode(errors="replace").strip() if stdout else "")
 
         if proc.returncode == 0:
-            await audit_db.record_scheduled_run_finish(run_id, "success", duration)
+            await audit_db.record_scheduled_run_finish(run_id, "success", duration, output=out)
             logger.info("[schedule] %s  %s  %.1fs  success", run_id, op, duration)
         else:
             err = f"exit code {proc.returncode}"
             if stderr:
                 err += f": {stderr.decode(errors='replace').strip()[:300]}"
-            await audit_db.record_scheduled_run_finish(run_id, "failed", duration, err)
+            await audit_db.record_scheduled_run_finish(run_id, "failed", duration, err, out)
             logger.warning("[schedule] %s  %s  %.1fs  failed (%s)", run_id, op, duration, err)
     except asyncio.CancelledError:
         raise
@@ -167,6 +168,15 @@ async def _run_scheduled_job(
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
+
+_OUTPUT_LIMIT = 500
+
+
+def _truncate_output(text: str) -> str:
+    if len(text) <= _OUTPUT_LIMIT:
+        return text
+    return text[:_OUTPUT_LIMIT] + "…"
+
 
 def _cron_next_run(cron: str) -> str:
     """Return the next scheduled datetime string for a cron expression, or ''."""

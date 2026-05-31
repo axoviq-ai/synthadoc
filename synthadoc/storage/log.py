@@ -127,16 +127,19 @@ class AuditDB:
                     finished_at TEXT,
                     status      TEXT,
                     duration_s  REAL,
-                    error       TEXT
+                    error       TEXT,
+                    output      TEXT DEFAULT ''
                 )""")
-            # Migration: add entry_id to existing installs
-            try:
-                await db.execute(
-                    "ALTER TABLE scheduled_runs ADD COLUMN entry_id TEXT NOT NULL DEFAULT ''"
-                )
-                await db.commit()
-            except Exception:
-                pass  # column already exists
+            # Migrations for existing installs
+            for migration in (
+                "ALTER TABLE scheduled_runs ADD COLUMN entry_id TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE scheduled_runs ADD COLUMN output TEXT DEFAULT ''",
+            ):
+                try:
+                    await db.execute(migration)
+                    await db.commit()
+                except Exception:
+                    pass  # column already exists
             await db.commit()
 
     async def record_ingest(self, source_hash: str, source_size: int,
@@ -491,14 +494,16 @@ class AuditDB:
             await db.commit()
 
     async def record_scheduled_run_finish(
-        self, run_id: str, status: str, duration_s: float, error: Optional[str] = None
+        self, run_id: str, status: str, duration_s: float,
+        error: Optional[str] = None, output: str = "",
     ) -> None:
         ts = datetime.now(timezone.utc).isoformat()
         async with aiosqlite.connect(self._path) as db:
             await db.execute(
-                "UPDATE scheduled_runs SET finished_at=?, status=?, duration_s=?, error=?"
+                "UPDATE scheduled_runs"
+                " SET finished_at=?, status=?, duration_s=?, error=?, output=?"
                 " WHERE run_id=?",
-                (ts, status, round(duration_s, 2), error, run_id),
+                (ts, status, round(duration_s, 2), error, output, run_id),
             )
             await db.commit()
 
@@ -506,7 +511,8 @@ class AuditDB:
         async with aiosqlite.connect(self._path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT run_id,entry_id,op,wiki,started_at,finished_at,status,duration_s,error"
+                "SELECT run_id,entry_id,op,wiki,started_at,finished_at,"
+                "       status,duration_s,error,output"
                 " FROM scheduled_runs ORDER BY id DESC LIMIT ?",
                 (limit,),
             ) as cur:

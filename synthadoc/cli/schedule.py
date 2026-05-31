@@ -170,15 +170,37 @@ def history_cmd(
         await db.init()
         return await db.list_scheduled_runs(limit=limit)
 
+    from synthadoc.core.scheduler import _format_run_ts
+
     runs = asyncio.run(_fetch())
     if not runs:
         typer.echo("No scheduled run history found.")
         return
-    typer.echo(f"{'Run ID':<20} {'Op':<14} {'Started':<22} {'Duration':>10}  {'Status':<10} Error")
-    typer.echo("-" * 90)
+
+    typer.echo(f"{'Run ID':<20} {'Op':<14} {'Started':<20} {'Duration':>10}  Status")
+    typer.echo("-" * 72)
     for r in runs:
-        dur = f"{r['duration_s']:.1f}s" if r.get("duration_s") is not None else "—"
+        dur = f"{r['duration_s']:.1f}s" if r.get("duration_s") is not None else "-"
+        started = _format_run_ts(r.get("started_at") or "")
         typer.echo(
-            f"{r['run_id']:<20} {r['op']:<14} {(r['started_at'] or '')[:19]:<22}"
-            f" {dur:>10}  {(r['status'] or '—'):<10} {r.get('error') or ''}"
+            f"{r['run_id']:<20} {r['op']:<14} {started:<20} {dur:>10}  {r.get('status') or '-'}"
         )
+
+    detail_runs = [
+        r for r in runs
+        if (r.get("status") == "success" and r.get("output"))
+        or (r.get("status") != "success" and (r.get("error") or r.get("output")))
+    ]
+    if detail_runs:
+        typer.echo("")
+        typer.echo("Details")
+        typer.echo("-" * 7)
+        for r in detail_runs:
+            typer.echo(f"{r['run_id']}  {r['op']}  {r.get('status') or '-'}")
+            content = (
+                r.get("error") if r.get("status") != "success"
+                else r.get("output") or ""
+            )
+            for line in (content or "").splitlines():
+                typer.echo(f"  {line}")
+            typer.echo("")

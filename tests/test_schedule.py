@@ -8,6 +8,7 @@ from pathlib import Path
 from synthadoc.storage.log import AuditDB
 from synthadoc.core.scheduler import (
     Scheduler, ScheduleEntry, _cron_next_run, _matches_cron, _format_run_ts,
+    _truncate_output,
 )
 
 
@@ -180,13 +181,15 @@ async def test_record_scheduled_run_finish_success(tmp_path):
     db = AuditDB(tmp_path / "audit.db")
     await db.init()
     await db.record_scheduled_run_start("run-xyz", "lint run", "mywiki", "sched-001")
-    await db.record_scheduled_run_finish("run-xyz", "success", 42.5)
+    await db.record_scheduled_run_finish("run-xyz", "success", 42.5,
+                                         output="Checked 42 pages. 0 issues.")
     runs = await db.list_scheduled_runs()
     r = runs[0]
     assert r["status"] == "success"
     assert r["duration_s"] == 42.5
     assert r["error"] is None
     assert r["finished_at"] is not None
+    assert r["output"] == "Checked 42 pages. 0 issues."
 
 
 @pytest.mark.asyncio
@@ -194,10 +197,36 @@ async def test_record_scheduled_run_finish_failed(tmp_path):
     db = AuditDB(tmp_path / "audit.db")
     await db.init()
     await db.record_scheduled_run_start("run-fail", "lint run", "mywiki", "sched-001")
-    await db.record_scheduled_run_finish("run-fail", "failed", 3.2, "exit code 1")
+    await db.record_scheduled_run_finish("run-fail", "failed", 3.2, "exit code 1",
+                                         output="partial stdout before crash")
     runs = await db.list_scheduled_runs()
     assert runs[0]["status"] == "failed"
     assert runs[0]["error"] == "exit code 1"
+    assert runs[0]["output"] == "partial stdout before crash"
+
+
+# ------------------------------------------------------------------
+# _truncate_output
+# ------------------------------------------------------------------
+
+def test_truncate_output_short_passthrough():
+    assert _truncate_output("short") == "short"
+
+
+def test_truncate_output_empty():
+    assert _truncate_output("") == ""
+
+
+def test_truncate_output_at_limit_exact():
+    text = "x" * 500
+    assert _truncate_output(text) == text
+
+
+def test_truncate_output_over_limit_appends_ellipsis():
+    text = "x" * 501
+    result = _truncate_output(text)
+    assert result.endswith("…")
+    assert len(result) == 501  # 500 chars + ellipsis
 
 
 @pytest.mark.asyncio
