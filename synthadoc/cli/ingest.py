@@ -99,6 +99,6 @@ def ingest_cmd(
         if max_results is not None:
             body["max_results"] = max_results
         result = post(wiki, "/jobs/ingest", body)
-        typer.echo(f"Enqueued {s} → job {result['job_id']}")
+        typer.echo(f"Enqueued {s} -> job {result['job_id']}")
         w_flag = f" -w {wiki}" if wiki != "." else ""
         typer.echo(f"Check status: synthadoc jobs status {result['job_id']}{w_flag}")

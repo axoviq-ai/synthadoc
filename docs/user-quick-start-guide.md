@@ -1241,13 +1241,45 @@ synthadoc schedule add --op "scaffold" --cron "0 4 * * 0"
 synthadoc schedule list
 ```
 
-Expected:
+Expected output — each row now shows the schedule, next run time, last run, and last result:
 
 ```
-sched-a3f1b2c4  0 2 * * *  ingest --batch raw_sources/
-sched-b7e9d012  0 3 * * 0  lint run
-sched-c9f3e201  0 4 * * 0  scaffold
+ID                   Schedule           Next Run             Last Run             Last Result    Command
+sched-a3f1b2c4       0 2 * * *          2026-05-31 02:00     —                    —              synthadoc ... schedule run --op "ingest --batch raw_sources/"
+sched-b7e9d012       0 3 * * 0          2026-06-01 03:00     —                    —              synthadoc ... schedule run --op "lint run"
+sched-c9f3e201       0 4 * * 0          2026-06-01 04:00     —                    —              synthadoc ... schedule run --op "scaffold"
 ```
+
+Next run time is computed from the cron expression on macOS/Linux, and read from the OS Task Scheduler on Windows.
+
+### Check run history
+
+Each time a scheduled job fires, the outcome (status, duration, and any output or error) is recorded in the schedule history log. View recent runs:
+
+```bash
+synthadoc schedule history
+```
+
+```
+Run ID               Op              Started              Duration    Status
+------------------------------------------------------------------------
+run-a1b2c3d4         lint run        2026-05-31 03:00       47.3s    success
+run-342a7e95         ingest          2026-05-30 23:11        0.8s    failed
+run-bc56dc6a         scaffold        2026-05-30 23:04       31.2s    success
+
+Details
+-------
+run-a1b2c3d4  lint run  success
+  Checked 47 pages. 2 adversarial warnings. 0 orphan pages.
+
+run-342a7e95  ingest  failed
+  exit code 1: MINIMAX_API_KEY is not set
+
+run-bc56dc6a  scaffold  success
+  Scaffold complete — domain-specific content generated.
+```
+
+The **Details** section only appears when runs have output to show. Successful runs display captured output; failed runs display the error. A `failed` run means either `synthadoc serve` was not running when the task fired, or the operation itself encountered an error. Re-run manually with `synthadoc schedule run --op "lint run"` to recover.
 
 ### Clean up (demo only)
 
@@ -1261,7 +1293,9 @@ synthadoc schedule remove sched-c9f3e201
 
 > **Production use:** for always-on scheduling, run `synthadoc serve` as a background
 > service (systemd, launchd, or Windows Service) so the server is available when the OS
-> fires the scheduled task.
+> fires the scheduled task. If a run is missed (server down or machine asleep), it will
+> not automatically retry — check `synthadoc schedule history` for failures and re-run
+> manually if needed.
 
 ---
 
