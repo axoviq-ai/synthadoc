@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import subprocess
 import sys
 import time
@@ -126,7 +127,9 @@ def run_cmd(
     t0 = time.monotonic()
     try:
         cmd = [sys.executable, "-m", "synthadoc", "-w", wiki_name] + op.split()
-        result = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True)
+        sub_env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+        result = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True,
+                                encoding="utf-8", env=sub_env)
         duration = time.monotonic() - t0
         if result.stdout:
             typer.echo(result.stdout, nl=False)

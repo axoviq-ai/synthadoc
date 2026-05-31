@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import sys
 import time
 import uuid
@@ -141,6 +142,7 @@ async def _run_scheduled_job(
             cwd=str(wiki_root),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
         )
         stdout, stderr = await proc.communicate()
         duration = time.monotonic() - t0
