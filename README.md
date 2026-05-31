@@ -811,6 +811,8 @@ synthadoc audit citations --json -w my-wiki             # raw JSON for scripting
 
 ### Scheduling recurring jobs
 
+Relative paths in `--op` (e.g. `raw_sources/`) are resolved against the **wiki root directory**, not the working directory of the shell that runs the schedule. This means they work correctly even when the OS scheduler fires the task with a different working directory (e.g. `C:\Windows\System32` on Windows).
+
 ```bash
 # Register a nightly ingest
 synthadoc schedule add --op "ingest --batch raw_sources/" --cron "0 2 * * *" -w my-wiki
@@ -818,12 +820,39 @@ synthadoc schedule add --op "ingest --batch raw_sources/" --cron "0 2 * * *" -w 
 # Weekly lint
 synthadoc schedule add --op "lint run" --cron "0 3 * * 0" -w my-wiki
 
-# List scheduled jobs
+# List scheduled jobs (shows schedule, next run, last run, last result)
 synthadoc schedule list -w my-wiki
 
 # Remove a scheduled job
 synthadoc schedule remove <id> -w my-wiki
+
+# Run a scheduled operation immediately and record the result in the audit trail
+synthadoc schedule run --op "lint run" -w my-wiki
+
+# Show recent scheduled run history
+synthadoc schedule history -w my-wiki
+synthadoc schedule history --limit 50 -w my-wiki
 ```
+
+**Cron expression format:** `minute  hour  day-of-month  month  day-of-week`
+
+| Field | Range | Examples |
+|-------|-------|---------|
+| minute | 0–59 | `0` = on the hour |
+| hour | 0–23 | `2` = 2 AM, `22` = 10 PM |
+| day of month | 1–31 | `*` = every day |
+| month | 1–12 | `*` = every month |
+| day of week | 0–6 | `0` = Sunday, `1` = Monday |
+
+Common schedules:
+
+| Expression | Meaning |
+|------------|---------|
+| `0 2 * * *` | Every day at 2 AM |
+| `0 22 * * *` | Every night at 10 PM |
+| `0 3 * * 0` | Every Sunday at 3 AM |
+| `0 */6 * * *` | Every 6 hours |
+| `30 8 * * 1-5` | Weekdays at 8:30 AM |
 
 ### Routing
 

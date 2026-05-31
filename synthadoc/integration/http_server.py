@@ -295,12 +295,23 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         await orch.init()
         app.state.orch = orch
         worker = asyncio.create_task(_worker_loop(orch))
+
+        from synthadoc.core.scheduler import run_scheduler_loop
+        audit_db = _AuditDB(wiki_root / ".synthadoc" / "audit.db")
+        await audit_db.init()
+        scheduler = asyncio.create_task(
+            run_scheduler_loop(wiki_root.name, wiki_root, audit_db)
+        )
+
         yield
+
         worker.cancel()
-        try:
-            await worker
-        except asyncio.CancelledError:
-            pass
+        scheduler.cancel()
+        for task in (worker, scheduler):
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
     app = FastAPI(title="synthadoc", version=synthadoc.__version__, lifespan=lifespan)
     app.add_middleware(ContentSizeLimitMiddleware, max_bytes=max_body_bytes)
