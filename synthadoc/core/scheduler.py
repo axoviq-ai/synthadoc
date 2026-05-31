@@ -2,15 +2,21 @@
 # Copyright (C) 2026 William Johnason / axoviq.com
 from __future__ import annotations
 
-import platform
-import re
-import shutil
-import subprocess
+import asyncio
+import json
+import logging
 import sys
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Optional
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from synthadoc.storage.log import AuditDB
+
+logger = logging.getLogger("synthadoc.scheduler")
 
 
 @dataclass
@@ -25,171 +31,135 @@ class ScheduleEntry:
 
 
 class Scheduler:
-    _TAG_PREFIX = "# synthadoc:"
-
     def __init__(self, wiki: str, wiki_root: str) -> None:
         self._wiki = wiki
-        self._wiki_root = wiki_root
+        self._wiki_root = Path(wiki_root)
+        self._path = self._wiki_root / ".synthadoc" / "schedules.json"
 
     def add(self, op: str, cron: str) -> str:
         entry_id = f"sched-{uuid.uuid4().hex[:8]}"
-        self._register_os_task(op=op, cron=cron, entry_id=entry_id)
+        entries = self._load_raw()
+        entries.append({"id": entry_id, "op": op, "cron": cron, "wiki": self._wiki})
+        self._save_raw(entries)
         return entry_id
 
-    def list(self) -> list[ScheduleEntry]:
-        return self._list_os_tasks()
-
     def remove(self, entry_id: str) -> None:
-        self._remove_os_task(entry_id)
+        self._save_raw([e for e in self._load_raw() if e["id"] != entry_id])
+
+    def list(self) -> list[ScheduleEntry]:
+        raw = self._load_raw()
+        last_runs = self._fetch_last_runs()
+        result = []
+        for e in raw:
+            cron = e.get("cron", "")
+            lr = last_runs.get(e["id"], {})
+            result.append(ScheduleEntry(
+                id=e["id"],
+                op=e["op"],
+                cron=cron,
+                wiki=e.get("wiki", self._wiki),
+                next_run=_cron_next_run(cron),
+                last_run=lr.get("started_at", ""),
+                last_result=lr.get("status", ""),
+            ))
+        return result
 
     def apply(self, jobs: list[ScheduleEntry]) -> list[str]:
         return [self.add(op=j.op, cron=j.cron) for j in jobs]
 
     # ------------------------------------------------------------------
-    # OS task registration
+    # Internal storage
     # ------------------------------------------------------------------
 
-    def _register_os_task(self, op: str, cron: str, entry_id: str) -> None:
-        if platform.system() == "Windows":
-            args = self._build_schtasks_args(op=op, cron=cron, entry_id=entry_id)
-            subprocess.run(["schtasks"] + args, check=True)
-        else:
-            self._add_crontab_entry(op=op, cron=cron, entry_id=entry_id)
+    def _load_raw(self) -> list[dict]:
+        if not self._path.exists():
+            return []
+        try:
+            return json.loads(self._path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return []
 
-    def _build_run_cmd(self, op: str) -> str:
-        exe = shutil.which("synthadoc")
-        if exe:
-            prefix = f'"{exe}"' if " " in exe else exe
-        else:
-            python = sys.executable
-            python_q = f'"{python}"' if " " in python else python
-            prefix = f"{python_q} -m synthadoc"
-        return f'{prefix} -w {self._wiki} schedule run --op "{op}"'
+    def _save_raw(self, entries: list[dict]) -> None:
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._path.write_text(json.dumps(entries, indent=2), encoding="utf-8")
 
-    def _build_crontab_line(self, op: str, cron: str, entry_id: str) -> str:
-        cmd = self._build_run_cmd(op)
-        return f"{cron} {cmd} {self._TAG_PREFIX}{entry_id}"
+    def _fetch_last_runs(self) -> dict[str, dict]:
+        from synthadoc.storage.log import AuditDB
+        db = AuditDB(self._wiki_root / ".synthadoc" / "audit.db")
 
-    def _add_crontab_entry(self, op: str, cron: str, entry_id: str) -> None:
-        current = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
-        existing = current.stdout if current.returncode == 0 else ""
-        new_line = self._build_crontab_line(op=op, cron=cron, entry_id=entry_id)
-        updated = existing.rstrip("\n") + "\n" + new_line + "\n"
-        subprocess.run(["crontab", "-"], input=updated, text=True, check=True)
+        async def _query():
+            await db.init()
+            return await db.get_last_run_per_entry()
 
-    def _build_schtasks_args(self, op: str, cron: str, entry_id: str) -> list[str]:
-        parts = cron.split()
-        minute, hour = parts[0], parts[1]
-        cmd = self._build_run_cmd(op)
-        return [
-            "/Create", "/F",
-            "/TN", f"synthadoc-{entry_id}",
-            "/TR", cmd,
-            "/SC", "DAILY",
-            "/ST", f"{int(hour):02d}:{int(minute):02d}",
-        ]
+        try:
+            return asyncio.run(_query())
+        except Exception:
+            return {}
 
-    # ------------------------------------------------------------------
-    # OS task listing
-    # ------------------------------------------------------------------
 
-    def _list_os_tasks(self) -> list[ScheduleEntry]:
-        if platform.system() == "Windows":
-            return self._list_schtasks()
-        return self._list_crontab()
+# ------------------------------------------------------------------
+# Server-side scheduler loop — runs inside synthadoc serve
+# ------------------------------------------------------------------
 
-    def _list_crontab(self) -> list[ScheduleEntry]:
-        result = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
-        entries = []
-        for line in result.stdout.splitlines():
-            if self._TAG_PREFIX not in line:
-                continue
-            entry_id = line.split(self._TAG_PREFIX)[-1].strip()
-            parts = line.split()
-            cron = " ".join(parts[:5])
-            m = re.search(r'--op\s+"([^"]+)"', line)
-            op = m.group(1) if m else " ".join(parts[5:]).split(self._TAG_PREFIX)[0].strip()
-            next_run = _cron_next_run(cron)
-            entries.append(ScheduleEntry(
-                id=entry_id, op=op.strip(), cron=cron,
-                wiki=self._wiki, next_run=next_run,
-            ))
-        return entries
+async def run_scheduler_loop(wiki: str, wiki_root: Path, audit_db: "AuditDB") -> None:
+    """Asyncio background task: fire scheduled jobs at their cron times."""
+    while True:
+        now = datetime.now()
+        sleep_secs = max(1.0, 60.0 - now.second - now.microsecond / 1_000_000)
+        await asyncio.sleep(sleep_secs)
 
-    def _list_schtasks(self) -> list[ScheduleEntry]:
-        result = subprocess.run(
-            ["schtasks", "/Query", "/FO", "LIST", "/V"],
-            capture_output=True, text=True,
+        now = datetime.now()
+        try:
+            sched = Scheduler(wiki=wiki, wiki_root=str(wiki_root))
+            for entry in sched._load_raw():
+                if _matches_cron(entry.get("cron", ""), now):
+                    asyncio.create_task(
+                        _run_scheduled_job(entry, wiki, wiki_root, audit_db)
+                    )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("scheduler loop error: %s", exc)
+
+
+async def _run_scheduled_job(
+    entry: dict, wiki: str, wiki_root: Path, audit_db: "AuditDB"
+) -> None:
+    """Execute one scheduled job and record the result in the audit DB."""
+    run_id = f"run-{uuid.uuid4().hex[:8]}"
+    op = entry["op"]
+    entry_id = entry["id"]
+
+    await audit_db.record_scheduled_run_start(run_id, op, wiki, entry_id)
+    logger.info("[schedule] %s  %s  starting", run_id, op)
+
+    t0 = time.monotonic()
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "synthadoc", "-w", wiki,
+            *op.split(),
+            cwd=str(wiki_root),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
-        entries = []
-        current: dict = {}
+        stdout, stderr = await proc.communicate()
+        duration = time.monotonic() - t0
 
-        def _flush(d: dict) -> None:
-            if "id" in d and "op" in d:
-                result_raw = d.get("last_result", "")
-                last_result = (
-                    "success" if result_raw == "0"
-                    else ("N/A" if result_raw in ("", "267011") else f"failed ({result_raw})")
-                )
-                cron = d.get("cron", "")
-                next_run = d.get("next_run", "")
-                if next_run in ("N/A", ""):
-                    next_run = _cron_next_run(cron)
-                entries.append(ScheduleEntry(
-                    id=d["id"],
-                    op=d["op"],
-                    cron=cron,
-                    wiki=self._wiki,
-                    next_run=next_run,
-                    last_run=d.get("last_run", ""),
-                    last_result=last_result,
-                ))
-
-        for raw_line in result.stdout.splitlines():
-            line = raw_line.strip()
-            if line.startswith("TaskName:"):
-                _flush(current)
-                current = (
-                    {"id": line.split("synthadoc-")[-1].strip()}
-                    if "synthadoc-" in line else {}
-                )
-            elif current:
-                if line.startswith("Task To Run:"):
-                    full_cmd = line.split(":", 1)[-1].strip()
-                    m = re.search(r'--op\s+"([^"]+)"', full_cmd)
-                    current["op"] = m.group(1) if m else full_cmd
-                elif line.startswith("Next Run Time:"):
-                    current["next_run"] = line.split(":", 1)[-1].strip()
-                elif line.startswith("Last Run Time:"):
-                    val = line.split(":", 1)[-1].strip()
-                    # "11/30/1999 12:00:00 AM" is Windows' sentinel for "never run"
-                    never_run = val in ("N/A", "") or val.startswith("11/30/1999")
-                    current["last_run"] = "" if never_run else val
-                elif line.startswith("Last Result:"):
-                    current["last_result"] = line.split(":", 1)[-1].strip()
-                elif line.startswith("Start Time:"):
-                    time_str = line.split(":", 1)[-1].strip()
-                    current["cron"] = _schtasks_time_to_cron(time_str)
-
-        _flush(current)
-        return entries
-
-    # ------------------------------------------------------------------
-    # OS task removal
-    # ------------------------------------------------------------------
-
-    def _remove_os_task(self, entry_id: str) -> None:
-        if platform.system() == "Windows":
-            subprocess.run(
-                ["schtasks", "/Delete", "/TN", f"synthadoc-{entry_id}", "/F"],
-                check=True,
-            )
+        if proc.returncode == 0:
+            await audit_db.record_scheduled_run_finish(run_id, "success", duration)
+            logger.info("[schedule] %s  %s  %.1fs  success", run_id, op, duration)
         else:
-            result = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
-            lines = [ln for ln in result.stdout.splitlines()
-                     if f"{self._TAG_PREFIX}{entry_id}" not in ln]
-            subprocess.run(["crontab", "-"], input="\n".join(lines) + "\n",
-                           text=True, check=True)
+            err = f"exit code {proc.returncode}"
+            if stderr:
+                err += f": {stderr.decode(errors='replace').strip()[:300]}"
+            await audit_db.record_scheduled_run_finish(run_id, "failed", duration, err)
+            logger.warning("[schedule] %s  %s  %.1fs  failed (%s)", run_id, op, duration, err)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        duration = time.monotonic() - t0
+        await audit_db.record_scheduled_run_finish(run_id, "failed", duration, str(exc))
+        logger.error("[schedule] %s  %s  failed: %s", run_id, op, exc)
 
 
 # ------------------------------------------------------------------
@@ -206,12 +176,10 @@ def _cron_next_run(cron: str) -> str:
         return ""
 
 
-def _schtasks_time_to_cron(time_str: str) -> str:
-    """Convert a schtasks Start Time string (e.g. '2:00:00 AM') to a cron expression."""
-    for fmt in ("%I:%M:%S %p", "%H:%M:%S", "%I:%M %p", "%H:%M"):
-        try:
-            t = datetime.strptime(time_str.strip(), fmt)
-            return f"{t.minute} {t.hour} * * *"
-        except ValueError:
-            continue
-    return ""
+def _matches_cron(cron: str, dt: datetime) -> bool:
+    """Return True if dt (at minute precision) matches the cron expression."""
+    try:
+        from croniter import croniter
+        return croniter.match(cron, dt)
+    except Exception:
+        return False

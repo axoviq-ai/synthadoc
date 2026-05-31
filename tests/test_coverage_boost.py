@@ -7,7 +7,6 @@ test suite, chosen to maximise statement coverage with minimal test complexity.
 """
 from __future__ import annotations
 
-import platform
 from pathlib import Path
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -53,68 +52,6 @@ def test_cost_guard_interactive_proceeds_on_y():
             CostEstimate(tokens=10000, cost_usd=1.00, operation="batch"),
             auto_confirm=False, interactive=True
         )
-
-
-# ── core/scheduler.py ─────────────────────────────────────────────────────────
-
-def test_scheduler_register_os_task_windows():
-    """_register_os_task routes to schtasks on Windows."""
-    from synthadoc.core.scheduler import Scheduler
-    sched = Scheduler(wiki="my-wiki", wiki_root="/wikis/my-wiki")
-    with patch("platform.system", return_value="Windows"), \
-         patch.object(sched, "_build_schtasks_args", return_value=["arg"]) as mock_args, \
-         patch("subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0)
-        sched._register_os_task(op="lint run", cron="0 3 * * 0", entry_id="s1")
-    mock_args.assert_called_once()
-    mock_run.assert_called_once()
-
-
-def test_scheduler_register_os_task_linux():
-    """_register_os_task routes to crontab on non-Windows."""
-    from synthadoc.core.scheduler import Scheduler
-    sched = Scheduler(wiki="my-wiki", wiki_root="/wikis/my-wiki")
-    with patch("platform.system", return_value="Linux"), \
-         patch.object(sched, "_add_crontab_entry") as mock_cron:
-        sched._register_os_task(op="lint run", cron="0 3 * * 0", entry_id="s1")
-    mock_cron.assert_called_once_with(op="lint run", cron="0 3 * * 0", entry_id="s1")
-
-
-def test_scheduler_list_os_tasks_windows():
-    """_list_os_tasks routes to _list_schtasks on Windows."""
-    from synthadoc.core.scheduler import Scheduler
-    sched = Scheduler(wiki="my-wiki", wiki_root="/wikis/my-wiki")
-    with patch("platform.system", return_value="Windows"), \
-         patch.object(sched, "_list_schtasks", return_value=[]) as mock_list:
-        sched._list_os_tasks()
-    mock_list.assert_called_once()
-
-
-def test_scheduler_remove_os_task_windows():
-    """_remove_os_task calls schtasks /Delete on Windows."""
-    from synthadoc.core.scheduler import Scheduler
-    import subprocess
-    sched = Scheduler(wiki="my-wiki", wiki_root="/wikis/my-wiki")
-    with patch("platform.system", return_value="Windows"), \
-         patch("subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0)
-        sched._remove_os_task("sched-win1")
-    call_args = mock_run.call_args[0][0]
-    assert "/Delete" in call_args
-    assert "synthadoc-sched-win1" in call_args
-
-
-def test_scheduler_remove_os_task_linux():
-    """_remove_os_task rewrites crontab on non-Windows."""
-    from synthadoc.core.scheduler import Scheduler
-    sched = Scheduler(wiki="my-wiki", wiki_root="/wikis/my-wiki")
-    existing = "0 2 * * * cmd # synthadoc:sched-001\n0 3 * * * other\n"
-    with patch("platform.system", return_value="Linux"), \
-         patch("subprocess.run") as mock_run:
-        mock_run.return_value = MagicMock(returncode=0, stdout=existing)
-        sched._remove_os_task("sched-001")
-    # Second call writes new crontab (with the entry removed)
-    assert mock_run.call_count == 2
 
 
 # ── cli/ingest.py ─────────────────────────────────────────────────────────────

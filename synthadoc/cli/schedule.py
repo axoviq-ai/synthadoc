@@ -43,7 +43,7 @@ def add_cmd(
     cron: str = typer.Option(..., "--cron", help="Cron expression"),
     wiki: Optional[str] = typer.Option(None, "--wiki", "-w"),
 ) -> None:
-    """Register a recurring operation with the OS scheduler."""
+    """Register a recurring operation with the synthadoc server scheduler."""
     from synthadoc.cli._wiki import resolve_wiki
     wiki = resolve_wiki(wiki)
     from synthadoc.core.scheduler import Scheduler

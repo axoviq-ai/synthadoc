@@ -1,32 +1,23 @@
 # tests/test_schedule.py
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 William Johnason / axoviq.com
-#
-# Platform markers:
-#   pytest -m windows   — run only on Windows
-#   pytest -m linux     — run only on Linux
-#   pytest -m macos     — run only on macOS
-#   pytest -m "not (windows or linux or macos)"  — cross-platform tests only
-import platform
+import json
 import pytest
+from datetime import datetime
 from pathlib import Path
 from synthadoc.storage.log import AuditDB
-from synthadoc.core.scheduler import _cron_next_run, _schtasks_time_to_cron, Scheduler
-
-windows = pytest.mark.skipif(platform.system() != "Windows", reason="Windows only")
-linux   = pytest.mark.skipif(platform.system() != "Linux",   reason="Linux only")
-macos   = pytest.mark.skipif(platform.system() != "Darwin",  reason="macOS only")
-posix   = pytest.mark.skipif(platform.system() == "Windows", reason="POSIX only")
+from synthadoc.core.scheduler import (
+    Scheduler, ScheduleEntry, _cron_next_run, _matches_cron,
+)
 
 
 # ------------------------------------------------------------------
-# Fix 1 helpers
+# _cron_next_run helpers
 # ------------------------------------------------------------------
 
 def test_cron_next_run_returns_future_datetime():
     result = _cron_next_run("0 2 * * *")
     assert result != ""
-    # Should be a date string like "2026-05-31 02:00"
     assert len(result) == 16
     assert ":" in result
 
@@ -35,24 +26,35 @@ def test_cron_next_run_invalid_returns_empty():
     assert _cron_next_run("not a cron") == ""
 
 
-def test_schtasks_time_to_cron_am():
-    assert _schtasks_time_to_cron("2:00:00 AM") == "0 2 * * *"
+# ------------------------------------------------------------------
+# _matches_cron
+# ------------------------------------------------------------------
+
+def test_matches_cron_true_at_scheduled_time():
+    # 0 2 * * * fires at 02:00 on any day
+    dt = datetime(2026, 5, 31, 2, 0, 0)
+    assert _matches_cron("0 2 * * *", dt) is True
 
 
-def test_schtasks_time_to_cron_pm():
-    assert _schtasks_time_to_cron("11:30:00 PM") == "30 23 * * *"
+def test_matches_cron_false_at_wrong_minute():
+    dt = datetime(2026, 5, 31, 2, 1, 0)
+    assert _matches_cron("0 2 * * *", dt) is False
 
 
-def test_schtasks_time_to_cron_24h():
-    assert _schtasks_time_to_cron("14:15:00") == "15 14 * * *"
+def test_matches_cron_false_at_wrong_hour():
+    dt = datetime(2026, 5, 31, 3, 0, 0)
+    assert _matches_cron("0 2 * * *", dt) is False
 
 
-def test_schtasks_time_to_cron_invalid_returns_empty():
-    assert _schtasks_time_to_cron("garbage") == ""
+def test_matches_cron_invalid_returns_false():
+    assert _matches_cron("not a cron", datetime.now()) is False
 
+
+# ------------------------------------------------------------------
+# ScheduleEntry defaults
+# ------------------------------------------------------------------
 
 def test_schedule_entry_defaults():
-    from synthadoc.core.scheduler import ScheduleEntry
     e = ScheduleEntry(op="lint run", cron="0 2 * * *", wiki="mywiki")
     assert e.next_run == ""
     assert e.last_run == ""
@@ -60,43 +62,89 @@ def test_schedule_entry_defaults():
     assert e.id.startswith("sched-")
 
 
-def test_build_run_cmd_uses_schedule_run(tmp_path):
+# ------------------------------------------------------------------
+# Scheduler — JSON storage
+# ------------------------------------------------------------------
+
+def test_scheduler_add_creates_json_entry(tmp_path):
     sched = Scheduler(wiki="mywiki", wiki_root=str(tmp_path))
-    cmd = sched._build_run_cmd("lint run")
-    assert "schedule run" in cmd
-    assert '--op "lint run"' in cmd
-    assert "-w mywiki" in cmd
+    entry_id = sched.add(op="lint run", cron="0 2 * * *")
+    assert entry_id.startswith("sched-")
+    data = json.loads((tmp_path / ".synthadoc" / "schedules.json").read_text())
+    assert len(data) == 1
+    assert data[0]["id"] == entry_id
+    assert data[0]["op"] == "lint run"
+    assert data[0]["cron"] == "0 2 * * *"
 
 
-def test_build_crontab_line_uses_schedule_run(tmp_path):
+def test_scheduler_add_multiple_entries(tmp_path):
     sched = Scheduler(wiki="mywiki", wiki_root=str(tmp_path))
-    line = sched._build_crontab_line("lint run", "0 2 * * *", "sched-abc")
-    assert "schedule run" in line
-    assert "0 2 * * *" in line
-    assert "sched-abc" in line
+    id1 = sched.add(op="lint run", cron="0 2 * * *")
+    id2 = sched.add(op="scaffold", cron="0 3 * * 0")
+    data = json.loads((tmp_path / ".synthadoc" / "schedules.json").read_text())
+    assert len(data) == 2
+    assert {d["id"] for d in data} == {id1, id2}
 
 
-def test_build_schtasks_args_uses_schedule_run(tmp_path):
+def test_scheduler_remove_deletes_entry(tmp_path):
     sched = Scheduler(wiki="mywiki", wiki_root=str(tmp_path))
-    args = sched._build_schtasks_args("lint run", "0 2 * * *", "sched-abc")
-    tr_idx = args.index("/TR")
-    cmd = args[tr_idx + 1]
-    assert "schedule run" in cmd
-    assert '--op "lint run"' in cmd
+    id1 = sched.add(op="lint run", cron="0 2 * * *")
+    id2 = sched.add(op="scaffold", cron="0 3 * * 0")
+    sched.remove(id1)
+    data = json.loads((tmp_path / ".synthadoc" / "schedules.json").read_text())
+    assert len(data) == 1
+    assert data[0]["id"] == id2
+
+
+def test_scheduler_remove_nonexistent_is_noop(tmp_path):
+    sched = Scheduler(wiki="mywiki", wiki_root=str(tmp_path))
+    sched.add(op="lint run", cron="0 2 * * *")
+    sched.remove("sched-doesnotexist")
+    data = json.loads((tmp_path / ".synthadoc" / "schedules.json").read_text())
+    assert len(data) == 1
+
+
+def test_scheduler_list_returns_entries_with_next_run(tmp_path):
+    sched = Scheduler(wiki="mywiki", wiki_root=str(tmp_path))
+    sched.add(op="lint run", cron="0 2 * * *")
+    entries = sched.list()
+    assert len(entries) == 1
+    e = entries[0]
+    assert e.op == "lint run"
+    assert e.cron == "0 2 * * *"
+    assert e.next_run != ""   # computed by croniter
+
+
+def test_scheduler_list_empty_without_file(tmp_path):
+    sched = Scheduler(wiki="mywiki", wiki_root=str(tmp_path))
+    assert sched.list() == []
+
+
+def test_scheduler_apply_adds_all_jobs(tmp_path):
+    sched = Scheduler(wiki="mywiki", wiki_root=str(tmp_path))
+    jobs = [
+        ScheduleEntry(op="lint run", cron="0 2 * * *", wiki="mywiki"),
+        ScheduleEntry(op="scaffold", cron="0 3 * * 0", wiki="mywiki"),
+    ]
+    ids = sched.apply(jobs)
+    assert len(ids) == 2
+    data = json.loads((tmp_path / ".synthadoc" / "schedules.json").read_text())
+    assert len(data) == 2
 
 
 # ------------------------------------------------------------------
-# Fix 3 — AuditDB scheduled_runs
+# AuditDB scheduled_runs
 # ------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_record_scheduled_run_start(tmp_path):
     db = AuditDB(tmp_path / "audit.db")
     await db.init()
-    await db.record_scheduled_run_start("run-abc", "lint run", "mywiki")
+    await db.record_scheduled_run_start("run-abc", "lint run", "mywiki", "sched-001")
     runs = await db.list_scheduled_runs()
     assert len(runs) == 1
     assert runs[0]["run_id"] == "run-abc"
+    assert runs[0]["entry_id"] == "sched-001"
     assert runs[0]["op"] == "lint run"
     assert runs[0]["status"] == "running"
     assert runs[0]["finished_at"] is None
@@ -106,7 +154,7 @@ async def test_record_scheduled_run_start(tmp_path):
 async def test_record_scheduled_run_finish_success(tmp_path):
     db = AuditDB(tmp_path / "audit.db")
     await db.init()
-    await db.record_scheduled_run_start("run-xyz", "lint run", "mywiki")
+    await db.record_scheduled_run_start("run-xyz", "lint run", "mywiki", "sched-001")
     await db.record_scheduled_run_finish("run-xyz", "success", 42.5)
     runs = await db.list_scheduled_runs()
     r = runs[0]
@@ -120,24 +168,22 @@ async def test_record_scheduled_run_finish_success(tmp_path):
 async def test_record_scheduled_run_finish_failed(tmp_path):
     db = AuditDB(tmp_path / "audit.db")
     await db.init()
-    await db.record_scheduled_run_start("run-fail", "lint run", "mywiki")
+    await db.record_scheduled_run_start("run-fail", "lint run", "mywiki", "sched-001")
     await db.record_scheduled_run_finish("run-fail", "failed", 3.2, "exit code 1")
     runs = await db.list_scheduled_runs()
-    r = runs[0]
-    assert r["status"] == "failed"
-    assert r["error"] == "exit code 1"
+    assert runs[0]["status"] == "failed"
+    assert runs[0]["error"] == "exit code 1"
 
 
 @pytest.mark.asyncio
 async def test_list_scheduled_runs_ordered_desc(tmp_path):
     db = AuditDB(tmp_path / "audit.db")
     await db.init()
-    await db.record_scheduled_run_start("run-1", "lint run", "mywiki")
-    await db.record_scheduled_run_start("run-2", "lint run", "mywiki")
-    await db.record_scheduled_run_start("run-3", "lint run", "mywiki")
+    for i in range(3):
+        await db.record_scheduled_run_start(f"run-{i}", "lint run", "mywiki", f"sched-{i:03d}")
     runs = await db.list_scheduled_runs()
-    assert runs[0]["run_id"] == "run-3"  # most recent first
-    assert runs[-1]["run_id"] == "run-1"
+    assert runs[0]["run_id"] == "run-2"
+    assert runs[-1]["run_id"] == "run-0"
 
 
 @pytest.mark.asyncio
@@ -145,131 +191,22 @@ async def test_list_scheduled_runs_respects_limit(tmp_path):
     db = AuditDB(tmp_path / "audit.db")
     await db.init()
     for i in range(5):
-        await db.record_scheduled_run_start(f"run-{i}", "lint run", "mywiki")
+        await db.record_scheduled_run_start(f"run-{i}", "lint run", "mywiki", f"sched-{i:03d}")
     runs = await db.list_scheduled_runs(limit=3)
     assert len(runs) == 3
 
 
-# ------------------------------------------------------------------
-# Platform-specific: Windows (schtasks)
-# Run with: pytest -m windows
-# ------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_get_last_run_per_entry(tmp_path):
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+    await db.record_scheduled_run_start("run-1", "lint run", "mywiki", "sched-aaa")
+    await db.record_scheduled_run_finish("run-1", "success", 10.0)
+    await db.record_scheduled_run_start("run-2", "lint run", "mywiki", "sched-aaa")
+    await db.record_scheduled_run_finish("run-2", "failed", 1.0, "oops")
+    await db.record_scheduled_run_start("run-3", "scaffold", "mywiki", "sched-bbb")
+    await db.record_scheduled_run_finish("run-3", "success", 5.0)
 
-@windows
-def test_windows_build_schtasks_args_daily(tmp_path):
-    sched = Scheduler(wiki="mywiki", wiki_root=str(tmp_path))
-    args = sched._build_schtasks_args("lint run", "0 2 * * *", "sched-test")
-    assert "/SC" in args
-    sc_idx = args.index("/SC")
-    assert args[sc_idx + 1] == "DAILY"
-    st_idx = args.index("/ST")
-    assert args[st_idx + 1] == "02:00"
-
-
-@windows
-def test_windows_schtasks_time_roundtrip():
-    assert _schtasks_time_to_cron("2:00:00 AM") == "0 2 * * *"
-    assert _schtasks_time_to_cron("11:45:00 PM") == "45 23 * * *"
-    assert _schtasks_time_to_cron("12:00:00 AM") == "0 0 * * *"
-
-
-@windows
-def test_windows_list_schtasks_parses_next_run(tmp_path, monkeypatch):
-    """_list_schtasks parses Next Run Time and Last Result from schtasks output."""
-    import subprocess
-    fake_output = (
-        "TaskName:                             \\synthadoc-sched-abc123\n"
-        "Next Run Time:                        5/31/2026 2:00:00 AM\n"
-        "Last Run Time:                        5/30/2026 2:00:00 AM\n"
-        "Last Result:                          0\n"
-        "Task To Run:                          synthadoc -w mywiki schedule run --op \"lint run\"\n"
-        "Start Time:                           2:00:00 AM\n"
-    )
-    mock_result = type("R", (), {"stdout": fake_output, "returncode": 0})()
-    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: mock_result)
-    sched = Scheduler(wiki="mywiki", wiki_root=str(tmp_path))
-    entries = sched._list_schtasks()
-    assert len(entries) == 1
-    e = entries[0]
-    assert e.id == "sched-abc123"
-    assert e.op == "lint run"          # extracted from --op, not the full command
-    assert e.next_run == "5/31/2026 2:00:00 AM"
-    assert e.last_run == "5/30/2026 2:00:00 AM"
-    assert e.last_result == "success"
-    assert e.cron == "0 2 * * *"
-
-
-@windows
-def test_windows_list_schtasks_ignores_system_task_contamination(tmp_path, monkeypatch):
-    """Fields from non-synthadoc tasks must not contaminate a preceding synthadoc entry."""
-    import subprocess
-    fake_output = (
-        # synthadoc task
-        "TaskName:                             \\synthadoc-sched-abc123\n"
-        "Next Run Time:                        5/31/2026 10:00:00 PM\n"
-        "Last Run Time:                        N/A\n"
-        "Last Result:                          267011\n"
-        "Task To Run:                          synthadoc -w mywiki schedule run --op \"lint run\"\n"
-        "Start Time:                           10:00:00 PM\n"
-        # unrelated system task immediately after — should NOT bleed into our entry
-        "TaskName:                             \\Microsoft\\Windows\\SomeSystemTask\n"
-        "Task To Run:                          COM handler\n"
-        "Last Run Time:                        5/30/2026 11:32:01 AM\n"
-        "Last Result:                          0\n"
-        "Start Time:                           11:33:00 AM\n"
-    )
-    mock_result = type("R", (), {"stdout": fake_output, "returncode": 0})()
-    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: mock_result)
-    sched = Scheduler(wiki="mywiki", wiki_root=str(tmp_path))
-    entries = sched._list_schtasks()
-    assert len(entries) == 1
-    e = entries[0]
-    assert e.cron == "0 22 * * *"           # Start Time 10:00:00 PM
-    assert e.op != "COM handler"
-    assert e.last_run == ""                 # N/A → cleared
-    assert e.last_result == "N/A"           # code 267011
-
-
-# ------------------------------------------------------------------
-# Platform-specific: Linux / macOS (crontab)
-# Run with: pytest -m posix
-# ------------------------------------------------------------------
-
-@posix
-def test_posix_crontab_line_format(tmp_path):
-    sched = Scheduler(wiki="mywiki", wiki_root=str(tmp_path))
-    line = sched._build_crontab_line("lint run", "0 2 * * *", "sched-abc")
-    assert line.startswith("0 2 * * *")
-    assert 'schedule run --op "lint run"' in line
-    assert "# synthadoc:sched-abc" in line
-
-
-@posix
-def test_posix_list_crontab_parses_next_run(tmp_path, monkeypatch):
-    """_list_crontab parses entry and computes next_run via croniter."""
-    import subprocess
-    fake_crontab = (
-        '0 2 * * * synthadoc -w mywiki schedule run --op "lint run" # synthadoc:sched-xyz\n'
-    )
-    mock_result = type("R", (), {"stdout": fake_crontab, "returncode": 0})()
-    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: mock_result)
-    sched = Scheduler(wiki="mywiki", wiki_root=str(tmp_path))
-    entries = sched._list_crontab()
-    assert len(entries) == 1
-    e = entries[0]
-    assert e.id == "sched-xyz"
-    assert e.op == "lint run"   # extracted from --op, not the full command
-    assert e.cron == "0 2 * * *"
-    assert e.next_run != ""     # croniter computed a future datetime
-    assert e.last_run == ""     # not available in crontab
-    assert e.last_result == ""  # not available in crontab
-
-
-@posix
-def test_posix_cron_next_run_is_future():
-    from datetime import datetime, timezone
-    result = _cron_next_run("0 2 * * *")
-    assert result != ""
-    dt = datetime.strptime(result, "%Y-%m-%d %H:%M")
-    # next run must be in the future relative to now
-    assert dt >= datetime.now().replace(second=0, microsecond=0)
+    last = await db.get_last_run_per_entry()
+    assert last["sched-aaa"]["status"] == "failed"   # most recent for aaa
+    assert last["sched-bbb"]["status"] == "success"

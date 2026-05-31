@@ -120,6 +120,7 @@ class AuditDB:
                 CREATE TABLE IF NOT EXISTS scheduled_runs (
                     id          INTEGER PRIMARY KEY AUTOINCREMENT,
                     run_id      TEXT NOT NULL,
+                    entry_id    TEXT NOT NULL DEFAULT '',
                     op          TEXT NOT NULL,
                     wiki        TEXT NOT NULL,
                     started_at  TEXT NOT NULL,
@@ -128,6 +129,14 @@ class AuditDB:
                     duration_s  REAL,
                     error       TEXT
                 )""")
+            # Migration: add entry_id to existing installs
+            try:
+                await db.execute(
+                    "ALTER TABLE scheduled_runs ADD COLUMN entry_id TEXT NOT NULL DEFAULT ''"
+                )
+                await db.commit()
+            except Exception:
+                pass  # column already exists
             await db.commit()
 
     async def record_ingest(self, source_hash: str, source_size: int,
@@ -469,13 +478,15 @@ class AuditDB:
                 """, (keep_latest,))
             await db.commit()
 
-    async def record_scheduled_run_start(self, run_id: str, op: str, wiki: str) -> None:
+    async def record_scheduled_run_start(
+        self, run_id: str, op: str, wiki: str, entry_id: str = ""
+    ) -> None:
         ts = datetime.now(timezone.utc).isoformat()
         async with aiosqlite.connect(self._path) as db:
             await db.execute(
-                "INSERT INTO scheduled_runs (run_id,op,wiki,started_at,status)"
-                " VALUES (?,?,?,?,'running')",
-                (run_id, op, wiki, ts),
+                "INSERT INTO scheduled_runs (run_id,entry_id,op,wiki,started_at,status)"
+                " VALUES (?,?,?,?,?,'running')",
+                (run_id, entry_id, op, wiki, ts),
             )
             await db.commit()
 
@@ -495,9 +506,28 @@ class AuditDB:
         async with aiosqlite.connect(self._path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT run_id,op,wiki,started_at,finished_at,status,duration_s,error"
+                "SELECT run_id,entry_id,op,wiki,started_at,finished_at,status,duration_s,error"
                 " FROM scheduled_runs ORDER BY id DESC LIMIT ?",
                 (limit,),
             ) as cur:
                 rows = await cur.fetchall()
         return [dict(r) for r in rows]
+
+    async def get_last_run_per_entry(self) -> dict[str, dict]:
+        """Return {entry_id: {started_at, status}} for the most recent run per entry."""
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """
+                SELECT sr.entry_id, sr.started_at, sr.status
+                FROM scheduled_runs sr
+                INNER JOIN (
+                    SELECT entry_id, MAX(id) AS max_id
+                    FROM scheduled_runs
+                    WHERE entry_id != ''
+                    GROUP BY entry_id
+                ) latest ON sr.id = latest.max_id
+                """
+            ) as cur:
+                rows = await cur.fetchall()
+        return {r["entry_id"]: dict(r) for r in rows}
