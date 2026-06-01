@@ -19,6 +19,36 @@ _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
 _FM_STRIP_RE = re.compile(r"^---\s*\n.*?\n---\s*\n+", re.DOTALL)
 _H1_STRIP_RE = re.compile(r"^#[^#][^\n]*\n+")
 
+
+def _parse_scaffold_json(raw: str) -> dict | None:
+    """Try progressively looser strategies to extract the scaffold JSON object."""
+    # 1. Direct parse
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+    # 2. Find the outermost {...} block
+    m = re.search(r"\{.*\}", raw, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except json.JSONDecodeError:
+            pass
+    # 3. Fix the most common MiniMax JSON defect: missing comma between adjacent
+    #    array objects ("} {" → "}, {") then retry
+    fixed = re.sub(r"}\s*\n(\s*){", r"},\n\1{", raw)
+    try:
+        return json.loads(fixed)
+    except json.JSONDecodeError:
+        pass
+    m = re.search(r"\{.*\}", fixed, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group(0))
+        except json.JSONDecodeError:
+            pass
+    return None
+
 _SYSTEM_PROMPT = (
     "You are a knowledge management assistant helping to set up a domain-specific wiki. "
     "Return ONLY valid JSON — no markdown fences, no explanation."
@@ -136,25 +166,43 @@ class ScaffoldAgent:
             slugs_instruction=slugs_instruction,
         )
 
-        resp = await self._provider.complete(
-            messages=[Message(role="user", content=prompt)],
-            system=_SYSTEM_PROMPT,
-            temperature=0.3,
-            max_tokens=self._max_tokens,
-        )
+        messages: list[Message] = [Message(role="user", content=prompt)]
+        data: dict | None = None
+        last_exc: Exception | None = None
 
-        raw = resp.text.strip()
-        # Strip markdown fences if present
-        m = _FENCE_RE.search(raw)
-        if m:
-            raw = m.group(1)
+        for attempt in range(2):
+            resp = await self._provider.complete(
+                messages=messages,
+                system=_SYSTEM_PROMPT,
+                temperature=0.3,
+                max_tokens=self._max_tokens,
+            )
+            raw = resp.text.strip()
+            m = _FENCE_RE.search(raw)
+            if m:
+                raw = m.group(1)
 
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise ValueError(
-                f"ScaffoldAgent: LLM returned unparseable scaffold JSON: {exc}"
-            ) from exc
+            data = _parse_scaffold_json(raw)
+            if data is not None:
+                break
+
+            # First attempt failed — ask the model to fix its own output
+            logger.warning(
+                "ScaffoldAgent: JSON parse failed on attempt %d — asking model to self-correct",
+                attempt + 1,
+            )
+            logger.debug("ScaffoldAgent: malformed raw response: %.500s", raw)
+            messages = messages + [
+                Message(role="assistant", content=resp.text),
+                Message(role="user", content=(
+                    "The JSON you returned is not valid. "
+                    "Return ONLY the corrected JSON with no additional text."
+                )),
+            ]
+            last_exc = ValueError(f"ScaffoldAgent: unparseable scaffold JSON after {attempt + 1} attempt(s)")
+
+        if data is None:
+            raise last_exc or ValueError("ScaffoldAgent: unparseable scaffold JSON")
 
         return ScaffoldResult(
             index_md=self._build_index_md(domain, data),
