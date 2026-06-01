@@ -251,39 +251,6 @@ def test_patch_toml_section_ends_before_next_section(tmp_path):
     assert "port = 7070" in content
 
 
-# ── cli/scaffold.py — _run_scaffold() ─────────────────────────────────────────
-
-def test_run_scaffold_returns_none_when_no_api_key(tmp_path):
-    """_run_scaffold returns None when the required API env var is unset."""
-    from synthadoc.cli.scaffold import _run_scaffold
-    sd = tmp_path / ".synthadoc"
-    sd.mkdir()
-    (sd / "config.toml").write_text(
-        '[agents]\ndefault = { provider = "gemini", model = "gemini-2.5-flash" }\n',
-        encoding="utf-8",
-    )
-    with patch.dict("os.environ", {"GEMINI_API_KEY": ""}, clear=False):
-        result = _run_scaffold(tmp_path, "test domain")
-    assert result is None
-
-
-def test_run_scaffold_raises_on_llm_exception(tmp_path):
-    """_run_scaffold propagates LLM exceptions so callers show a specific error."""
-    from synthadoc.cli.scaffold import _run_scaffold
-    sd = tmp_path / ".synthadoc"
-    sd.mkdir()
-    (sd / "config.toml").write_text(
-        '[agents]\ndefault = { provider = "gemini", model = "gemini-2.5-flash" }\n',
-        encoding="utf-8",
-    )
-    with patch.dict("os.environ", {"GEMINI_API_KEY": "fake-key"}, clear=False), \
-         patch("synthadoc.providers.make_provider", return_value=MagicMock()), \
-         patch("synthadoc.agents.scaffold_agent.ScaffoldAgent") as MockAgent:
-        MockAgent.return_value.scaffold = AsyncMock(side_effect=RuntimeError("LLM failed"))
-        with pytest.raises(RuntimeError, match="LLM failed"):
-            _run_scaffold(tmp_path, "test domain")
-
-
 def test_install_run_scaffold_returns_none_when_no_api_key(tmp_path):
     """install._run_scaffold returns None when the required API env var is unset."""
     from synthadoc.cli.install import _run_scaffold
@@ -1269,27 +1236,22 @@ def test_setup_logging_with_none_cfg_uses_defaults(tmp_path):
             h.close()
 
 
-# ── cli/scaffold.py — exception path in scaffold_cmd ─────────────────────────
+# ── cli/scaffold.py — server error path in scaffold_cmd ──────────────────────
 
-def test_scaffold_cmd_llm_exception_shows_agent_failed_error(tmp_path):
-    """scaffold command shows ERR-AGENT-001 when LLM raises an exception."""
+def test_scaffold_cmd_server_error_shows_agent_failed_error(tmp_path):
+    """scaffold command exits non-zero when POST /jobs/scaffold raises."""
+    from unittest.mock import MagicMock
     from typer.testing import CliRunner
     from synthadoc.cli.main import app
     runner = CliRunner()
 
-    (tmp_path / "wiki").mkdir()
-    sd = tmp_path / ".synthadoc"
-    sd.mkdir()
-    (sd / "config.toml").write_text(
-        '[wiki]\ndomain = "Test Domain"\n'
-        '[agents]\ndefault = { provider = "gemini", model = "gemini-2.5-flash" }\n',
-        encoding="utf-8",
-    )
+    get_mock = MagicMock(return_value={"domain": "Test Domain"})
+    post_mock = MagicMock(side_effect=RuntimeError("Server error"))
 
-    with patch("synthadoc.cli.scaffold._run_scaffold",
-               side_effect=RuntimeError("LLM error")), \
-         patch("synthadoc.cli._wiki.resolve_wiki", return_value=str(tmp_path)):
-        result = runner.invoke(app, ["scaffold", "--wiki", str(tmp_path)])
+    with patch("synthadoc.cli._http.get", get_mock), \
+         patch("synthadoc.cli._http.post", post_mock), \
+         patch("synthadoc.cli._wiki.resolve_wiki", return_value="test-wiki"):
+        result = runner.invoke(app, ["scaffold", "--wiki", "test-wiki"])
 
     assert result.exit_code != 0
 

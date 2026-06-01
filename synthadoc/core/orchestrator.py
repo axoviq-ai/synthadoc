@@ -422,7 +422,9 @@ class Orchestrator:
         return await self._queue.enqueue("lint", {"scope": scope, "auto_resolve": auto_resolve})
 
     async def _run_scaffold(self, job_id: str, domain: str) -> None:
-        from synthadoc.agents.scaffold_agent import ScaffoldAgent
+        from synthadoc.agents.scaffold_agent import ScaffoldAgent, preserve_user_zone
+        import re as _re
+        _WIKILINK_RE = _re.compile(r"\[\[([^\]|#]+?)(?:\|[^\]]*)?\]\]")
         try:
             wiki_dir = self._root / "wiki"
             protected_slugs = [p.stem for p in wiki_dir.glob("*.md")]
@@ -430,15 +432,39 @@ class Orchestrator:
                 provider=make_provider("ingest", self._cfg),
                 max_tokens=self._cfg.agents.scaffold_max_tokens,
             ).scaffold(domain=domain, protected_slugs=protected_slugs or None)
-            (self._root / "wiki" / "index.md").write_text(
-                result.index_md, encoding="utf-8", newline="\n")
+
+            index_path = self._root / "wiki" / "index.md"
+            existing = index_path.read_text(encoding="utf-8") if index_path.exists() else ""
+            final_index = preserve_user_zone(existing, result.index_md)
+            index_path.write_text(final_index, encoding="utf-8", newline="\n")
             (self._root / "AGENTS.md").write_text(
                 result.agents_md, encoding="utf-8", newline="\n")
             (self._root / "wiki" / "purpose.md").write_text(
                 result.purpose_md, encoding="utf-8", newline="\n")
+
+            # Stamp categories from index.md section headings onto linked pages
+            slug_cats: dict[str, list[str]] = {}
+            current_section: str | None = None
+            for line in result.index_md.splitlines():
+                h2 = _re.match(r"^## (.+)", line)
+                if h2:
+                    current_section = h2.group(1).strip()
+                    continue
+                if current_section:
+                    for m in _WIKILINK_RE.finditer(line):
+                        slug = m.group(1).strip()
+                        slug_cats.setdefault(slug, [])
+                        if current_section not in slug_cats[slug]:
+                            slug_cats[slug].append(current_section)
+            categories_updated = 0
+            for slug, cats in slug_cats.items():
+                if self._store.page_exists(slug):
+                    self._store.set_page_categories(slug, cats)
+                    categories_updated += 1
+
             await self._queue.complete(job_id, result={
                 "domain": domain,
-                "categories": len(result.index_md.splitlines()),
+                "categories_updated": categories_updated,
             })
         except Exception as e:
             await self._queue.fail(job_id, str(e))
