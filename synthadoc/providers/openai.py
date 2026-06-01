@@ -43,24 +43,50 @@ _sleep = asyncio.sleep
 
 
 def _extract_last_json(s: str) -> str:
-    """Return the last JSON object or array in s, or '' if none found.
+    """Extract the last complete JSON object or array from s using brace matching.
 
-    Tries the structure that ends latest (object vs. array). Uses find() for
-    the opening bracket so nested structures are captured from the outermost brace.
+    Walks backwards from the last closing bracket to find its matching opener,
+    correctly handling nested structures and ignoring stray braces in prose.
     """
+    def _find_opening(text: str, close_pos: int, close_ch: str, open_ch: str) -> int:
+        depth = 0
+        in_str = False
+        escape = False
+        for i in range(close_pos, -1, -1):
+            c = text[i]
+            if escape:
+                escape = False
+                continue
+            if c == '\\' and in_str:
+                escape = True
+                continue
+            if c == '"':
+                in_str = not in_str
+                continue
+            if in_str:
+                continue
+            if c == close_ch:
+                depth += 1
+            elif c == open_ch:
+                depth -= 1
+                if depth == 0:
+                    return i
+        return -1
+
     obj_end = s.rfind("}")
     arr_end = s.rfind("]")
-    if obj_end < 0 and arr_end < 0:
-        return ""
-    if obj_end >= arr_end:
-        obj_start = s.find("{")
-        if obj_start >= 0:
-            return s[obj_start: obj_end + 1]
+    result_obj = result_arr = ""
+    if obj_end >= 0:
+        start = _find_opening(s, obj_end, "}", "{")
+        if start >= 0:
+            result_obj = s[start: obj_end + 1]
     if arr_end >= 0:
-        arr_start = s.find("[")
-        if arr_start >= 0:
-            return s[arr_start: arr_end + 1]
-    return ""
+        start = _find_opening(s, arr_end, "]", "[")
+        if start >= 0:
+            result_arr = s[start: arr_end + 1]
+    if result_obj and result_arr:
+        return result_obj if obj_end >= arr_end else result_arr
+    return result_obj or result_arr
 
 
 class OpenAIProvider(LLMProvider):
@@ -200,34 +226,34 @@ class OpenAIProvider(LLMProvider):
                 f"(code={err_code}): {err_msg}"
             )
         choice = resp.choices[0]
-        text = choice.message.content or ""
-        # Strip <think>...</think> blocks that reasoning models prepend to their output.
-        # Also strip an unclosed <think> block when the model was cut off mid-thinking.
-        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+        original_content = choice.message.content or ""
+        # Strip <think>...</think> blocks — keep what's outside them (the actual answer).
+        text = re.sub(r"<think>.*?</think>", "", original_content, flags=re.DOTALL).strip()
+        # Also remove a dangling unclosed <think> at the end (model cut off mid-thinking).
         text = re.sub(r"<think>.*$", "", text, flags=re.DOTALL).strip()
         if not text:
-            # Reasoning models (e.g. MiniMax M2.x) return content=null or put the answer
-            # in a non-standard field. MiniMax uses "reasoning" or "reasoning_content".
-            extra = getattr(choice.message, "model_extra", None) or {}
-            reasoning = (extra.get("reasoning_content") or extra.get("reasoning") or "").strip()
-            if reasoning:
-                clean = re.sub(r"<think>.*?</think>", "", reasoning, flags=re.DOTALL).strip()
-                # When the model wraps its entire output in <think> tags, stripping
-                # removes everything — extract from inside the last think block instead.
-                if not clean:
-                    m = re.search(r"<think>(.*?)</think>", reasoning, re.DOTALL)
-                    clean = m.group(1).strip() if m else reasoning
-                extracted = _extract_last_json(clean)
-                if extracted:
-                    text = extracted
-                    logger.debug(
-                        "OpenAI provider: content=null — extracted JSON from reasoning_content"
-                    )
-                else:
-                    text = clean
-                    logger.debug(
-                        "OpenAI provider: content=null — using full reasoning_content as prose answer"
-                    )
+            # The entire content was inside <think> or there was no closing tag.
+            # Try brace-matching extraction from the raw content first (MiniMax puts
+            # JSON inside the think block rather than after it).
+            text = _extract_last_json(original_content)
+            if text:
+                logger.debug("OpenAI provider: extracted JSON from inside <think> block")
+            else:
+                # Fall back to the reasoning/reasoning_content side-channel field.
+                extra = getattr(choice.message, "model_extra", None) or {}
+                reasoning = (extra.get("reasoning_content") or extra.get("reasoning") or "").strip()
+                if reasoning:
+                    clean = re.sub(r"<think>.*?</think>", "", reasoning, flags=re.DOTALL).strip()
+                    if not clean:
+                        m = re.search(r"<think>(.*?)</think>", reasoning, re.DOTALL)
+                        clean = m.group(1).strip() if m else reasoning
+                    extracted = _extract_last_json(clean)
+                    if extracted:
+                        text = extracted
+                        logger.debug("OpenAI provider: extracted JSON from reasoning field")
+                    else:
+                        text = clean
+                        logger.debug("OpenAI provider: using full reasoning field as prose answer")
         return CompletionResponse(text=text,
                                   input_tokens=resp.usage.prompt_tokens,
                                   output_tokens=resp.usage.completion_tokens)
