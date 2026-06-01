@@ -47,6 +47,29 @@ def scaffold_cmd(
                     f"Scaffold request failed: {exc}",
                     "Is `synthadoc serve` running?")
 
+    import time
     job_id = result.get("job_id", "?")
     typer.echo(f"Scaffold job queued: {job_id}")
-    typer.echo("Monitor progress with: synthadoc jobs")
+    typer.echo("Waiting for scaffold to complete…")
+
+    while True:
+        time.sleep(2)
+        try:
+            job = get(wiki, f"/jobs/{job_id}")
+        except Exception:
+            typer.echo("Monitor progress with: synthadoc jobs")
+            break
+        status = job.get("status", "")
+        if status == "completed":
+            cats = (job.get("result") or {}).get("categories_updated", 0)
+            typer.echo("Scaffold complete.")
+            typer.echo("  index.md    updated")
+            typer.echo("  AGENTS.md   updated")
+            typer.echo("  purpose.md  updated")
+            typer.echo(f"  categories  stamped on {cats} page(s)")
+            break
+        if status in ("failed", "dead"):
+            error = job.get("error") or "unknown error"
+            E.cli_error(E.AGENT_FAILED, f"Scaffold failed: {error}",
+                        "Check `synthadoc jobs` for details.")
+            break
