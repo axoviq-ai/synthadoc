@@ -427,7 +427,8 @@ class Orchestrator:
             wiki_dir = self._root / "wiki"
             protected_slugs = [p.stem for p in wiki_dir.glob("*.md")]
             result = await ScaffoldAgent(
-                provider=make_provider("ingest", self._cfg)
+                provider=make_provider("ingest", self._cfg),
+                max_tokens=self._cfg.agents.scaffold_max_tokens,
             ).scaffold(domain=domain, protected_slugs=protected_slugs or None)
             (self._root / "wiki" / "index.md").write_text(
                 result.index_md, encoding="utf-8", newline="\n")
