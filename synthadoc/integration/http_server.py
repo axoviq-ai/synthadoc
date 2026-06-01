@@ -365,6 +365,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
     @app.get("/config")
     async def config_info():
         return {
+            "domain": cfg.wiki.domain,
             "check_url_availability": cfg.lint.check_url_availability,
         }
 

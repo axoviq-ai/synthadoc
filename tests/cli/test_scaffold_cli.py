@@ -1,175 +1,103 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
+from __future__ import annotations
+
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from typer.testing import CliRunner
 from synthadoc.cli.main import app
 
 runner = CliRunner()
 
 
-def _make_wiki(tmp_path, domain="Robotics"):
-    """Create a minimal wiki directory layout."""
-    wiki_dir = tmp_path / "my-wiki"
-    (wiki_dir / "wiki").mkdir(parents=True)
-    (wiki_dir / ".synthadoc").mkdir()
-    (wiki_dir / ".synthadoc" / "config.toml").write_text(
-        f'[wiki]\ndomain = "{domain}"\n[server]\nport = 7070\n',
-        encoding="utf-8",
-    )
-    (wiki_dir / "wiki" / "index.md").write_text(
-        "# Index\n\n## Key Concepts\n<!-- desc -->\n",
-        encoding="utf-8",
-    )
-    (wiki_dir / "wiki" / "purpose.md").write_text(
-        f"# Wiki Purpose\n\nThis wiki covers: {domain}.\n",
-        encoding="utf-8",
-    )
-    (wiki_dir / "AGENTS.md").write_text(
-        f"# AGENTS.md — {domain} Wiki\n",
-        encoding="utf-8",
-    )
-    return wiki_dir
+def _make_get_mock(domain: str = "Robotics", job_id: str = "abc-123",
+                   final_status: str = "completed", categories: int = 3):
+    """Return a get mock: /config → domain, /jobs/{id} → completed job."""
+    completed_job = {"status": final_status, "result": {"categories_updated": categories},
+                     "error": None}
+    def _get(wiki, path, **kw):
+        if path == "/config":
+            return {"domain": domain}
+        if path.startswith("/jobs/"):
+            return completed_job
+        return {}
+    return MagicMock(side_effect=_get)
 
 
-def test_scaffold_command_writes_files(tmp_path):
-    """scaffold rewrites index.md, AGENTS.md, and purpose.md from LLM output."""
-    from synthadoc.agents.scaffold_agent import ScaffoldResult
-    wiki_dir = _make_wiki(tmp_path)
+def _invoke_scaffold(wiki: str = "my-wiki", get_mock=None, post_mock=None):
+    with patch("synthadoc.cli._http.get", get_mock), \
+         patch("synthadoc.cli._http.post", post_mock), \
+         patch("synthadoc.cli._wiki.resolve_wiki", return_value=wiki), \
+         patch("time.sleep"):  # skip the 2-second poll delay
+        return runner.invoke(app, ["scaffold", "--wiki", wiki])
 
-    mock_result = ScaffoldResult(
-        index_md="---\ntitle: Index\n---\n# Robotics — Index\n",
-        agents_md="# AGENTS.md — Robotics Wiki\n",
-        purpose_md="# Wiki Purpose\nThis wiki covers: Robotics.\n",
-        dashboard_intro="A wiki tracking Robotics knowledge.",
-    )
 
-    with patch("synthadoc.cli.scaffold._run_scaffold", return_value=mock_result):
-        result = runner.invoke(app, ["scaffold", "--wiki", str(wiki_dir)])
+def test_scaffold_queues_job_on_server():
+    """scaffold_cmd posts to /jobs/scaffold and exits zero."""
+    get_mock = _make_get_mock(domain="Robotics", job_id="job-xyz")
+    post_mock = MagicMock(return_value={"job_id": "job-xyz"})
+    result = _invoke_scaffold(get_mock=get_mock, post_mock=post_mock)
 
     assert result.exit_code == 0, result.output
-    assert (wiki_dir / "wiki" / "index.md").read_text(encoding="utf-8") == mock_result.index_md
-    assert (wiki_dir / "AGENTS.md").read_text(encoding="utf-8") == mock_result.agents_md
-    assert (wiki_dir / "wiki" / "purpose.md").read_text(encoding="utf-8") == mock_result.purpose_md
+    post_mock.assert_called_once()
+    call_args = post_mock.call_args
+    assert call_args[0][1] == "/jobs/scaffold"
+    assert call_args[0][2]["domain"] == "Robotics"
 
 
-def test_scaffold_detects_protected_slugs(tmp_path):
-    """scaffold passes slugs of existing linked pages to the LLM call."""
-    from synthadoc.agents.scaffold_agent import ScaffoldResult
-    wiki_dir = _make_wiki(tmp_path)
-
-    # Create a real page that is linked from index.md
-    (wiki_dir / "wiki" / "neural-networks.md").write_text("# Neural Networks\n", encoding="utf-8")
-    (wiki_dir / "wiki" / "index.md").write_text(
-        "# Index\n\n## Key Concepts\n[[neural-networks]]\n",
-        encoding="utf-8",
-    )
-
-    mock_result = ScaffoldResult(
-        index_md="---\ntitle: Index\n---\n# Robotics — Index\n",
-        agents_md="# AGENTS.md\n",
-        purpose_md="# Purpose\n",
-        dashboard_intro="desc",
-    )
-
-    captured_slugs = []
-
-    def _capture_scaffold(dest, domain, protected_slugs=None):
-        captured_slugs.extend(protected_slugs or [])
-        return mock_result
-
-    with patch("synthadoc.cli.scaffold._run_scaffold", side_effect=_capture_scaffold):
-        result = runner.invoke(app, ["scaffold", "--wiki", str(wiki_dir)])
+def test_scaffold_shows_completion_summary():
+    """scaffold_cmd prints index/AGENTS/purpose updated and category count."""
+    get_mock = _make_get_mock(categories=7)
+    post_mock = MagicMock(return_value={"job_id": "job-1"})
+    result = _invoke_scaffold(get_mock=get_mock, post_mock=post_mock)
 
     assert result.exit_code == 0, result.output
-    assert "neural-networks" in captured_slugs
+    assert "index.md" in result.output
+    assert "AGENTS.md" in result.output
+    assert "purpose.md" in result.output
+    assert "7" in result.output
 
 
-def test_scaffold_does_not_touch_config(tmp_path):
-    """scaffold must never modify .synthadoc/config.toml."""
-    from synthadoc.agents.scaffold_agent import ScaffoldResult
-    wiki_dir = _make_wiki(tmp_path)
-    config_path = wiki_dir / ".synthadoc" / "config.toml"
-    original_config = config_path.read_text(encoding="utf-8")
-
-    mock_result = ScaffoldResult(
-        index_md="# Index\n",
-        agents_md="# AGENTS\n",
-        purpose_md="# Purpose\n",
-        dashboard_intro="desc",
-    )
-
-    with patch("synthadoc.cli.scaffold._run_scaffold", return_value=mock_result):
-        result = runner.invoke(app, ["scaffold", "--wiki", str(wiki_dir)])
+def test_scaffold_uses_domain_from_server_config():
+    """scaffold_cmd reads domain from GET /config, not the local filesystem."""
+    get_mock = _make_get_mock(domain="AI Research")
+    post_mock = MagicMock(return_value={"job_id": "job-2"})
+    result = _invoke_scaffold(get_mock=get_mock, post_mock=post_mock)
 
     assert result.exit_code == 0, result.output
-    assert config_path.read_text(encoding="utf-8") == original_config
+    assert "AI Research" in result.output
 
 
-def test_scaffold_exits_when_scaffold_fails(tmp_path):
-    """scaffold exits non-zero when the LLM call returns None (no API key)."""
-    wiki_dir = _make_wiki(tmp_path)
+def test_scaffold_exits_nonzero_when_server_unreachable():
+    """scaffold_cmd exits non-zero when GET /config fails."""
+    get_mock = MagicMock(side_effect=Exception("Connection refused"))
+    post_mock = MagicMock()
+    result = _invoke_scaffold(get_mock=get_mock, post_mock=post_mock)
 
-    with patch("synthadoc.cli.scaffold._run_scaffold", return_value=None):
-        result = runner.invoke(app, ["scaffold", "--wiki", str(wiki_dir)])
+    assert result.exit_code != 0
+    post_mock.assert_not_called()
+
+
+def test_scaffold_exits_nonzero_when_enqueue_fails():
+    """scaffold_cmd exits non-zero when POST /jobs/scaffold raises."""
+    get_mock = _make_get_mock()
+    post_mock = MagicMock(side_effect=Exception("Server error"))
+    result = _invoke_scaffold(get_mock=get_mock, post_mock=post_mock)
 
     assert result.exit_code != 0
 
 
-def test_scaffold_missing_wiki_dir_exits(tmp_path):
-    """scaffold exits non-zero when the wiki directory does not exist."""
-    nonexistent = tmp_path / "no-such-wiki"
-    result = runner.invoke(app, ["scaffold", "--wiki", str(nonexistent)])
+def test_scaffold_exits_nonzero_when_job_fails():
+    """scaffold_cmd exits non-zero when the job ends in failed status."""
+    get_mock = _make_get_mock(final_status="failed")
+    # Patch error field too
+    def _get(wiki, path, **kw):
+        if path == "/config":
+            return {"domain": "Robotics"}
+        return {"status": "failed", "result": None, "error": "LLM timeout"}
+    get_mock = MagicMock(side_effect=_get)
+    post_mock = MagicMock(return_value={"job_id": "job-3"})
+    result = _invoke_scaffold(get_mock=get_mock, post_mock=post_mock)
+
     assert result.exit_code != 0
-
-
-def test_scaffold_missing_config_exits(tmp_path):
-    """scaffold exits non-zero when config.toml is absent."""
-    wiki_dir = tmp_path / "bare-wiki"
-    (wiki_dir / "wiki").mkdir(parents=True)
-    result = runner.invoke(app, ["scaffold", "--wiki", str(wiki_dir)])
-    assert result.exit_code != 0
-
-
-def test_protected_slugs_returns_linked_existing_pages(tmp_path):
-    """_protected_slugs includes slugs that are both linked from index.md and have a wiki file."""
-    from synthadoc.cli.scaffold import _protected_slugs
-    (tmp_path / "wiki").mkdir()
-    (tmp_path / "wiki" / "index.md").write_text(
-        "# Index\n\n[[neural-networks]] and [[robotics]]\n",
-        encoding="utf-8",
-    )
-    (tmp_path / "wiki" / "neural-networks.md").write_text("# NN\n", encoding="utf-8")
-    # robotics.md does not exist — must not be included
-    slugs = _protected_slugs(tmp_path)
-    assert "neural-networks" in slugs
-    assert "robotics" not in slugs
-
-
-def test_protected_slugs_empty_when_no_index(tmp_path):
-    """_protected_slugs returns [] when index.md is absent."""
-    from synthadoc.cli.scaffold import _protected_slugs
-    (tmp_path / "wiki").mkdir()
-    slugs = _protected_slugs(tmp_path)
-    assert slugs == []
-
-
-def test_apply_categories_stamps_headings_on_pages(tmp_path):
-    """_apply_categories reads H2 headings from index.md and stamps categories on linked pages."""
-    from synthadoc.cli.scaffold import _apply_categories
-    from synthadoc.storage.wiki import WikiStorage
-
-    wiki_dir = tmp_path / "wiki"
-    wiki_dir.mkdir()
-    (wiki_dir / "neural-networks.md").write_text(
-        "---\ntitle: Neural Networks\ntags: []\nstatus: active\n"
-        "confidence: high\ncreated: '2026-01-01'\nsources: []\n---\nContent.",
-        encoding="utf-8",
-    )
-    index_md = "# Index\n\n## Key Concepts\n- [[neural-networks]]\n"
-    updated = _apply_categories(tmp_path, index_md)
-    assert updated >= 1
-    store = WikiStorage(wiki_dir)
-    page = store.read_page("neural-networks")
-    assert page is not None
-    assert "Key Concepts" in (page.categories or [])
+    assert "LLM timeout" in result.output
