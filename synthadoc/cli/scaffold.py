@@ -86,7 +86,7 @@ def _run_scaffold(dest: Path, domain: str, protected_slugs: Optional[list[str]] 
 
     provider = make_provider("ingest", cfg)
     from synthadoc.agents.scaffold_agent import ScaffoldAgent
-    agent = ScaffoldAgent(provider=provider)
+    agent = ScaffoldAgent(provider=provider, max_tokens=cfg.agents.scaffold_max_tokens)
     return asyncio.run(agent.scaffold(domain=domain, protected_slugs=protected_slugs))
 
 
