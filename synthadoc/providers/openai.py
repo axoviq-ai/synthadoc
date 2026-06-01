@@ -227,33 +227,52 @@ class OpenAIProvider(LLMProvider):
             )
         choice = resp.choices[0]
         original_content = choice.message.content or ""
-        # Strip <think>...</think> blocks — keep what's outside them (the actual answer).
-        text = re.sub(r"<think>.*?</think>", "", original_content, flags=re.DOTALL).strip()
-        # Also remove a dangling unclosed <think> at the end (model cut off mid-thinking).
-        text = re.sub(r"<think>.*$", "", text, flags=re.DOTALL).strip()
-        if not text:
-            # The entire content was inside <think> or there was no closing tag.
-            # Try brace-matching extraction from the raw content first (MiniMax puts
-            # JSON inside the think block rather than after it).
+        # Reasoning models (MiniMax M2, DeepSeek R1, Qwen QwQ) wrap their chain-of-thought
+        # in <think> blocks, but the </think> tag can appear mid-JSON (e.g. inside a key
+        # name), making regex-based stripping unreliable. For these models, extract the last
+        # JSON structure directly via brace matching, then scrub residual think tags.
+        if original_content.lstrip().startswith("<think>"):
+            # Reasoning models embed chain-of-thought in <think> blocks. The </think>
+            # tag can appear mid-JSON key, so regex stripping is unreliable. Extract
+            # via brace matching, then scrub think tags and residual control chars.
             text = _extract_last_json(original_content)
             if text:
-                logger.debug("OpenAI provider: extracted JSON from inside <think> block")
+                text = re.sub(r"</?think>", "", text)
+                text = re.sub(r"[\x00-\x1f]", "", text)
+                logger.debug("OpenAI provider: extracted answer from reasoning model content")
             else:
-                # Fall back to the reasoning/reasoning_content side-channel field.
+                # No JSON found in content — check the reasoning side-channel field (MiniMax
+                # uses "reasoning", DeepSeek uses "reasoning_content").
                 extra = getattr(choice.message, "model_extra", None) or {}
                 reasoning = (extra.get("reasoning_content") or extra.get("reasoning") or "").strip()
-                if reasoning:
-                    clean = re.sub(r"<think>.*?</think>", "", reasoning, flags=re.DOTALL).strip()
-                    if not clean:
-                        m = re.search(r"<think>(.*?)</think>", reasoning, re.DOTALL)
-                        clean = m.group(1).strip() if m else reasoning
-                    extracted = _extract_last_json(clean)
-                    if extracted:
-                        text = extracted
-                        logger.debug("OpenAI provider: extracted JSON from reasoning field")
-                    else:
-                        text = clean
-                        logger.debug("OpenAI provider: using full reasoning field as prose answer")
+                extracted = _extract_last_json(reasoning)
+                if extracted:
+                    text = extracted
+                    logger.debug("OpenAI provider: extracted JSON from reasoning side-channel")
+                else:
+                    # Prose response — strip think blocks to get the actual answer text.
+                    text = re.sub(r"<think>.*?</think>", "", original_content, flags=re.DOTALL).strip()
+                    text = re.sub(r"<think>.*$", "", text, flags=re.DOTALL).strip()
+                    if not text:
+                        text = reasoning
+                    logger.debug("OpenAI provider: using think-stripped content as prose answer")
+        elif not original_content:
+            # content=null — some reasoning models (e.g. MiniMax M2.x) omit content
+            # entirely and put the answer in a side-channel field.
+            extra = getattr(choice.message, "model_extra", None) or {}
+            reasoning = (extra.get("reasoning_content") or extra.get("reasoning") or "").strip()
+            extracted = _extract_last_json(reasoning)
+            if extracted:
+                text = extracted
+            else:
+                # Prose: strip any think tags from the reasoning field.
+                clean = re.sub(r"<think>.*?</think>", "", reasoning, flags=re.DOTALL).strip()
+                clean = re.sub(r"<think>.*$", "", clean, flags=re.DOTALL).strip()
+                text = clean or reasoning
+            if text:
+                logger.debug("OpenAI provider: content=null — extracted from side-channel")
+        else:
+            text = original_content
         return CompletionResponse(text=text,
                                   input_tokens=resp.usage.prompt_tokens,
                                   output_tokens=resp.usage.completion_tokens)
