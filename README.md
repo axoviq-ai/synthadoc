@@ -820,6 +820,10 @@ synthadoc schedule add --op "ingest --batch raw_sources/" --cron "0 2 * * *" -w 
 # Weekly lint
 synthadoc schedule add --op "lint run" --cron "0 3 * * 0" -w my-wiki
 
+# Bulk-register all jobs declared in [[schedule.jobs]] in config.toml (alternative to schedule add)
+# See docs/design.md § "schedule sub-commands" for the config.toml format
+synthadoc schedule apply -w my-wiki
+
 # List scheduled jobs (shows schedule, next run, last run, last result)
 synthadoc schedule list -w my-wiki
 
