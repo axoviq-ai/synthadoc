@@ -107,6 +107,9 @@ QUERY_TIMEOUT = "ERR-QUERY-001"  # LLM synthesis timed out; retry the query
 # ── Jobs ──────────────────────────────────────────────────────────────────────
 JOB_NOT_FOUND = "ERR-JOB-001"   # Job ID does not exist in jobs.db
 
+# ── Agent ─────────────────────────────────────────────────────────────────────
+AGENT_FAILED = "ERR-AGENT-001"  # LLM agent call failed (empty response, bad JSON, timeout)
+
 
 def cli_error(code: str, message: str, hint: str = "") -> NoReturn:
     """Print a categorised error and exit with code 1.

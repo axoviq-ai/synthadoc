@@ -42,6 +42,27 @@ _SERVER_ERROR_RETRY_DELAYS_S: tuple[int, ...] = (5, 15, 30)
 _sleep = asyncio.sleep
 
 
+def _extract_last_json(s: str) -> str:
+    """Return the last JSON object or array in s, or '' if none found.
+
+    Tries the structure that ends latest (object vs. array). Uses find() for
+    the opening bracket so nested structures are captured from the outermost brace.
+    """
+    obj_end = s.rfind("}")
+    arr_end = s.rfind("]")
+    if obj_end < 0 and arr_end < 0:
+        return ""
+    if obj_end >= arr_end:
+        obj_start = s.find("{")
+        if obj_start >= 0:
+            return s[obj_start: obj_end + 1]
+    if arr_end >= 0:
+        arr_start = s.find("[")
+        if arr_start >= 0:
+            return s[arr_start: arr_end + 1]
+    return ""
+
+
 class OpenAIProvider(LLMProvider):
     def __init__(self, api_key: str, config: AgentConfig, timeout: int = 0) -> None:
         kwargs: dict = {"api_key": api_key}
@@ -184,22 +205,23 @@ class OpenAIProvider(LLMProvider):
         text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
         if not text:
             # Reasoning models (e.g. MiniMax M2.x) return content=null and put their
-            # answer in a non-standard reasoning_content field.  For structured callers
-            # (e.g. decompose) we extract the last JSON array; for prose callers
-            # (e.g. query synthesis) we fall back to the full cleaned text.
+            # answer in a non-standard reasoning_content field.
             extra = getattr(choice.message, "model_extra", None) or {}
             reasoning = (extra.get("reasoning_content") or "").strip()
             if reasoning:
                 clean = re.sub(r"<think>.*?</think>", "", reasoning, flags=re.DOTALL).strip()
-                last_close = clean.rfind("]")
-                if last_close >= 0:
-                    last_open = clean.rfind("[", 0, last_close)
-                    if last_open >= 0:
-                        text = clean[last_open: last_close + 1]
-                        logger.debug(
-                            "OpenAI provider: content=null — extracted JSON from reasoning_content"
-                        )
-                if not text:
+                # When the model wraps its entire output in <think> tags, stripping
+                # removes everything — extract from inside the last think block instead.
+                if not clean:
+                    m = re.search(r"<think>(.*?)</think>", reasoning, re.DOTALL)
+                    clean = m.group(1).strip() if m else reasoning
+                extracted = _extract_last_json(clean)
+                if extracted:
+                    text = extracted
+                    logger.debug(
+                        "OpenAI provider: content=null — extracted JSON from reasoning_content"
+                    )
+                else:
                     text = clean
                     logger.debug(
                         "OpenAI provider: content=null — using full reasoning_content as prose answer"

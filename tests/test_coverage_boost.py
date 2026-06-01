@@ -267,8 +267,8 @@ def test_run_scaffold_returns_none_when_no_api_key(tmp_path):
     assert result is None
 
 
-def test_run_scaffold_returns_none_on_llm_exception(tmp_path):
-    """_run_scaffold returns None and logs a warning when ScaffoldAgent raises."""
+def test_run_scaffold_raises_on_llm_exception(tmp_path):
+    """_run_scaffold propagates LLM exceptions so callers show a specific error."""
     from synthadoc.cli.scaffold import _run_scaffold
     sd = tmp_path / ".synthadoc"
     sd.mkdir()
@@ -280,8 +280,8 @@ def test_run_scaffold_returns_none_on_llm_exception(tmp_path):
          patch("synthadoc.providers.make_provider", return_value=MagicMock()), \
          patch("synthadoc.agents.scaffold_agent.ScaffoldAgent") as MockAgent:
         MockAgent.return_value.scaffold = AsyncMock(side_effect=RuntimeError("LLM failed"))
-        result = _run_scaffold(tmp_path, "test domain")
-    assert result is None
+        with pytest.raises(RuntimeError, match="LLM failed"):
+            _run_scaffold(tmp_path, "test domain")
 
 
 def test_install_run_scaffold_returns_none_when_no_api_key(tmp_path):
