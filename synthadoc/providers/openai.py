@@ -2,6 +2,7 @@
 # Copyright (C) 2026 Paul Chen / axoviq.com
 from __future__ import annotations
 import asyncio
+import json as _json
 import logging
 import re
 from typing import Optional
@@ -234,22 +235,32 @@ class OpenAIProvider(LLMProvider):
         if original_content.lstrip().startswith("<think>"):
             # Reasoning models embed chain-of-thought in <think> blocks. The </think>
             # tag can appear mid-JSON key, so regex stripping is unreliable. Extract
-            # via brace matching, then scrub think tags and residual control chars.
+            # via brace matching, scrub think tags and control chars, then validate as
+            # real JSON — brace matching can false-positive on [[wikilinks]], which are
+            # not JSON. Invalid extractions fall through to prose handling.
             text = _extract_last_json(original_content)
             if text:
                 text = re.sub(r"</?think>", "", text)
                 text = re.sub(r"[\x00-\x1f]", "", text)
-                logger.debug("OpenAI provider: extracted answer from reasoning model content")
-            else:
-                # No JSON found in content — check the reasoning side-channel field (MiniMax
+                try:
+                    _json.loads(text)
+                    logger.debug("OpenAI provider: extracted JSON from reasoning model content")
+                except (_json.JSONDecodeError, ValueError):
+                    text = ""  # false positive (e.g. [[wikilink]]) — fall through to prose
+            if not text:
+                # No JSON in content — check the reasoning side-channel field (MiniMax
                 # uses "reasoning", DeepSeek uses "reasoning_content").
                 extra = getattr(choice.message, "model_extra", None) or {}
                 reasoning = (extra.get("reasoning_content") or extra.get("reasoning") or "").strip()
                 extracted = _extract_last_json(reasoning)
                 if extracted:
-                    text = extracted
-                    logger.debug("OpenAI provider: extracted JSON from reasoning side-channel")
-                else:
+                    try:
+                        _json.loads(extracted)
+                        text = extracted
+                        logger.debug("OpenAI provider: extracted JSON from reasoning side-channel")
+                    except (_json.JSONDecodeError, ValueError):
+                        pass
+                if not text:
                     # Prose response — strip think blocks to get the actual answer text.
                     text = re.sub(r"<think>.*?</think>", "", original_content, flags=re.DOTALL).strip()
                     text = re.sub(r"<think>.*$", "", text, flags=re.DOTALL).strip()
@@ -263,8 +274,12 @@ class OpenAIProvider(LLMProvider):
             reasoning = (extra.get("reasoning_content") or extra.get("reasoning") or "").strip()
             extracted = _extract_last_json(reasoning)
             if extracted:
-                text = extracted
-            else:
+                try:
+                    _json.loads(extracted)
+                    text = extracted
+                except (_json.JSONDecodeError, ValueError):
+                    extracted = ""
+            if not extracted:
                 # Prose: strip any think tags from the reasoning field.
                 clean = re.sub(r"<think>.*?</think>", "", reasoning, flags=re.DOTALL).strip()
                 clean = re.sub(r"<think>.*$", "", clean, flags=re.DOTALL).strip()

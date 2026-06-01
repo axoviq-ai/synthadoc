@@ -488,6 +488,34 @@ async def test_openai_provider_strips_think_tags_from_content():
 
 
 @pytest.mark.asyncio
+async def test_openai_provider_think_wikilink_returns_full_prose():
+    """Bracket-match false-positive: [[wikilink]] looks like a JSON array to _extract_last_json.
+    The provider must validate via json.loads and fall back to prose so the full answer is returned."""
+    cfg = AgentConfig(provider="minimax", model="MiniMax-M2.5",
+                      base_url="https://api.minimax.io/v1")
+    provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = (
+        "<think>Let me answer this.</think>"
+        "Alan Turing was a British mathematician and computer scientist [[Alan Turing]]."
+    )
+    mock_choice.message.model_extra = {}
+    mock_resp = MagicMock()
+    mock_resp.choices = [mock_choice]
+    mock_resp.usage.prompt_tokens = 20
+    mock_resp.usage.completion_tokens = 30
+
+    with patch.object(provider._client.chat.completions, "create",
+                      new=AsyncMock(return_value=mock_resp)):
+        result = await provider.complete(
+            messages=[Message(role="user", content="Who is Alan Turing?")]
+        )
+    assert result.text == "Alan Turing was a British mathematician and computer scientist [[Alan Turing]]."
+    assert "[[Alan Turing]]" in result.text  # wikilink preserved, not extracted as JSON
+
+
+@pytest.mark.asyncio
 async def test_openai_provider_extracts_json_from_reasoning_content():
     """MiniMax-style reasoning models return content=null with JSON in reasoning_content.
     The provider must extract the last JSON array from reasoning_content as a fallback."""
