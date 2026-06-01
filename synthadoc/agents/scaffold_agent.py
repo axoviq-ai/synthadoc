@@ -109,8 +109,9 @@ class ScaffoldResult:
 
 
 class ScaffoldAgent:
-    def __init__(self, provider: LLMProvider) -> None:
+    def __init__(self, provider: LLMProvider, max_tokens: int = 8192) -> None:
         self._provider = provider
+        self._max_tokens = max_tokens
 
     async def scaffold(
         self,
@@ -139,7 +140,7 @@ class ScaffoldAgent:
             messages=[Message(role="user", content=prompt)],
             system=_SYSTEM_PROMPT,
             temperature=0.3,
-            max_tokens=2048,
+            max_tokens=self._max_tokens,
         )
 
         raw = resp.text.strip()

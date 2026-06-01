@@ -267,8 +267,8 @@ def test_run_scaffold_returns_none_when_no_api_key(tmp_path):
     assert result is None
 
 
-def test_run_scaffold_returns_none_on_llm_exception(tmp_path):
-    """_run_scaffold returns None and logs a warning when ScaffoldAgent raises."""
+def test_run_scaffold_raises_on_llm_exception(tmp_path):
+    """_run_scaffold propagates LLM exceptions so callers show a specific error."""
     from synthadoc.cli.scaffold import _run_scaffold
     sd = tmp_path / ".synthadoc"
     sd.mkdir()
@@ -280,8 +280,8 @@ def test_run_scaffold_returns_none_on_llm_exception(tmp_path):
          patch("synthadoc.providers.make_provider", return_value=MagicMock()), \
          patch("synthadoc.agents.scaffold_agent.ScaffoldAgent") as MockAgent:
         MockAgent.return_value.scaffold = AsyncMock(side_effect=RuntimeError("LLM failed"))
-        result = _run_scaffold(tmp_path, "test domain")
-    assert result is None
+        with pytest.raises(RuntimeError, match="LLM failed"):
+            _run_scaffold(tmp_path, "test domain")
 
 
 def test_install_run_scaffold_returns_none_when_no_api_key(tmp_path):
@@ -1112,3 +1112,276 @@ def test_read_manifest_with_valid_file_path(tmp_path):
     result = _read_manifest(manifest)
     assert result is not None
     assert len(result) == 1
+
+
+# ── cli/status.py — lifecycle display ─────────────────────────────────────────
+
+def test_status_cmd_shows_lifecycle_counts():
+    """status shows lifecycle state counts when /lifecycle/status returns data."""
+    from typer.testing import CliRunner
+    from synthadoc.cli.main import app
+    runner = CliRunner()
+
+    def fake_get(wiki, path):
+        if path == "/status":
+            return {"wiki": "test", "pages": 5, "jobs_pending": 0, "jobs_total": 3}
+        return {"counts": {"draft": 2, "active": 3, "stale": 1, "contradicted": 0}}
+
+    with patch("synthadoc.cli.status.get", side_effect=fake_get), \
+         patch("synthadoc.cli._wiki.resolve_wiki", return_value="test"):
+        result = runner.invoke(app, ["status", "--wiki", "test"])
+
+    assert result.exit_code == 0
+    assert "active" in result.output
+    assert "draft" in result.output
+
+
+def test_status_cmd_lifecycle_empty_counts():
+    """status shows 'none' prompt when lifecycle counts are empty."""
+    from typer.testing import CliRunner
+    from synthadoc.cli.main import app
+    runner = CliRunner()
+
+    def fake_get(wiki, path):
+        if path == "/status":
+            return {"wiki": "test", "pages": 0, "jobs_pending": 0, "jobs_total": 0}
+        return {"counts": {}}
+
+    with patch("synthadoc.cli.status.get", side_effect=fake_get), \
+         patch("synthadoc.cli._wiki.resolve_wiki", return_value="test"):
+        result = runner.invoke(app, ["status", "--wiki", "test"])
+
+    assert result.exit_code == 0
+    assert "none" in result.output.lower() or "lint" in result.output
+
+
+def test_status_cmd_lifecycle_with_draft_candidates():
+    """status shows 'draft (staged)' label when draft_candidates count is non-zero."""
+    from typer.testing import CliRunner
+    from synthadoc.cli.main import app
+    runner = CliRunner()
+
+    def fake_get(wiki, path):
+        if path == "/status":
+            return {"wiki": "test", "pages": 3, "jobs_pending": 0, "jobs_total": 1}
+        return {"counts": {"draft": 0, "draft_candidates": 2, "active": 1}}
+
+    with patch("synthadoc.cli.status.get", side_effect=fake_get), \
+         patch("synthadoc.cli._wiki.resolve_wiki", return_value="test"):
+        result = runner.invoke(app, ["status", "--wiki", "test"])
+
+    assert result.exit_code == 0
+    assert "staged" in result.output or "draft" in result.output
+
+
+def test_status_cmd_lifecycle_exception_silenced():
+    """status completes successfully even when /lifecycle/status raises."""
+    from typer.testing import CliRunner
+    from synthadoc.cli.main import app
+    runner = CliRunner()
+
+    def fake_get(wiki, path):
+        if path == "/status":
+            return {"wiki": "test", "pages": 5, "jobs_pending": 0, "jobs_total": 3}
+        raise RuntimeError("lifecycle endpoint not available")
+
+    with patch("synthadoc.cli.status.get", side_effect=fake_get), \
+         patch("synthadoc.cli._wiki.resolve_wiki", return_value="test"):
+        result = runner.invoke(app, ["status", "--wiki", "test"])
+
+    assert result.exit_code == 0
+    assert "Pages" in result.output
+
+
+# ── core/hooks.py — blocking fire and exception handler ───────────────────────
+
+def test_hook_fire_with_blocking_dict_config(tmp_path):
+    """fire() with {'cmd': '...', 'blocking': True} runs the hook synchronously."""
+    import sys
+    from synthadoc.core.hooks import HookExecutor
+    script = tmp_path / "success.py"
+    script.write_text("import sys; sys.exit(0)\n", encoding="utf-8")
+    executor = HookExecutor({"on_test": {"cmd": f"{sys.executable} {script}", "blocking": True}})
+    executor.fire("on_test", {})  # must not raise (exit code 0)
+
+
+def test_hook_run_non_runtime_exception_is_logged(caplog):
+    """Non-RuntimeError from subprocess is caught in _run() and logged as error."""
+    import logging
+    from synthadoc.core.hooks import HookExecutor
+    executor = HookExecutor({})
+    with patch("subprocess.run", side_effect=OSError("permission denied")):
+        with caplog.at_level(logging.ERROR):
+            executor._run("bad_cmd", {}, blocking=False)
+    assert any("Hook error" in r.message for r in caplog.records)
+
+
+# ── core/logging_config.py — exception info + cfg=None ───────────────────────
+
+def test_console_formatter_includes_exception_traceback():
+    """_ConsoleFormatter appends exception traceback when exc_info is set."""
+    import logging, sys
+    from synthadoc.core.logging_config import _ConsoleFormatter
+    formatter = _ConsoleFormatter()
+    try:
+        raise ValueError("console exc test")
+    except ValueError:
+        record = logging.LogRecord(
+            "test.logger", logging.ERROR, "f.py", 1, "msg", (), sys.exc_info()
+        )
+        output = formatter.format(record)
+    assert "ValueError" in output
+    assert "console exc test" in output
+
+
+def test_jsonl_formatter_includes_exc_field():
+    """_JsonlFormatter includes 'exc' key when exc_info is set."""
+    import json, logging, sys
+    from synthadoc.core.logging_config import _JsonlFormatter
+    formatter = _JsonlFormatter()
+    try:
+        raise RuntimeError("jsonl exc test")
+    except RuntimeError:
+        record = logging.LogRecord(
+            "test", logging.ERROR, "f.py", 1, "oops", (), sys.exc_info()
+        )
+        output = formatter.format(record)
+    data = json.loads(output)
+    assert "exc" in data
+    assert "RuntimeError" in data["exc"]
+
+
+def test_setup_logging_with_none_cfg_uses_defaults(tmp_path):
+    """setup_logging(cfg=None) falls back to LogsConfig defaults without error."""
+    import logging
+    from synthadoc.core.logging_config import setup_logging
+    root = logging.getLogger()
+    for h in list(root.handlers):
+        root.removeHandler(h)
+        h.close()
+    try:
+        setup_logging(tmp_path, cfg=None)
+        log_path = tmp_path / ".synthadoc" / "logs" / "synthadoc.log"
+        assert log_path.exists()
+    finally:
+        for h in list(root.handlers):
+            root.removeHandler(h)
+            h.close()
+
+
+# ── cli/scaffold.py — exception path in scaffold_cmd ─────────────────────────
+
+def test_scaffold_cmd_llm_exception_shows_agent_failed_error(tmp_path):
+    """scaffold command shows ERR-AGENT-001 when LLM raises an exception."""
+    from typer.testing import CliRunner
+    from synthadoc.cli.main import app
+    runner = CliRunner()
+
+    (tmp_path / "wiki").mkdir()
+    sd = tmp_path / ".synthadoc"
+    sd.mkdir()
+    (sd / "config.toml").write_text(
+        '[wiki]\ndomain = "Test Domain"\n'
+        '[agents]\ndefault = { provider = "gemini", model = "gemini-2.5-flash" }\n',
+        encoding="utf-8",
+    )
+
+    with patch("synthadoc.cli.scaffold._run_scaffold",
+               side_effect=RuntimeError("LLM error")), \
+         patch("synthadoc.cli._wiki.resolve_wiki", return_value=str(tmp_path)):
+        result = runner.invoke(app, ["scaffold", "--wiki", str(tmp_path)])
+
+    assert result.exit_code != 0
+
+
+# ── providers/__init__.py — anthropic and openai branches ────────────────────
+
+def test_make_provider_anthropic_returns_anthropic_provider():
+    """make_provider with provider='anthropic' returns an AnthropicProvider."""
+    from synthadoc.providers import make_provider
+    from synthadoc.config import Config, AgentsConfig, AgentConfig
+    from synthadoc.providers.anthropic import AnthropicProvider
+    cfg = Config(agents=AgentsConfig(
+        default=AgentConfig(provider="anthropic", model="claude-opus-4-6")
+    ))
+    with patch("synthadoc.providers._require_env", return_value="fake-key"):
+        provider = make_provider("ingest", cfg)
+    assert isinstance(provider, AnthropicProvider)
+
+
+def test_make_provider_openai_returns_openai_provider():
+    """make_provider with provider='openai' returns an OpenAIProvider."""
+    from synthadoc.providers import make_provider
+    from synthadoc.config import Config, AgentsConfig, AgentConfig
+    from synthadoc.providers.openai import OpenAIProvider
+    cfg = Config(agents=AgentsConfig(
+        default=AgentConfig(provider="openai", model="gpt-4o")
+    ))
+    with patch("synthadoc.providers._require_env", return_value="fake-key"):
+        provider = make_provider("ingest", cfg)
+    assert isinstance(provider, OpenAIProvider)
+
+
+# ── cli/routing.py — routing init with missing index.md ──────────────────────
+
+def test_routing_init_missing_index_exits(tmp_path):
+    """routing init exits when wiki/index.md does not exist."""
+    from typer.testing import CliRunner
+    from synthadoc.cli.main import app
+    runner = CliRunner()
+
+    (tmp_path / "wiki").mkdir()
+    # Deliberately do NOT create index.md
+    sd = tmp_path / ".synthadoc"
+    sd.mkdir()
+    (sd / "config.toml").write_text("[server]\nport = 7070\n", encoding="utf-8")
+
+    with patch("synthadoc.cli.routing.resolve_wiki_path", return_value=tmp_path), \
+         patch("synthadoc.cli.routing.resolve_wiki", return_value=str(tmp_path)):
+        result = runner.invoke(app, ["routing", "init", "--wiki", str(tmp_path)])
+
+    assert result.exit_code != 0
+    assert "index.md" in result.output or result.exit_code == 1
+
+
+# ── skills/base.py — resource not found raises ───────────────────────────────
+
+def test_skill_get_resource_not_found_raises(tmp_path):
+    """BaseSkill.get_resource raises FileNotFoundError for unknown resource names."""
+    from synthadoc.skills.base import BaseSkill
+
+    class _TestSkill(BaseSkill):
+        async def extract(self, source, **kw): ...
+
+    skill = _TestSkill()
+    skill.skill_dir = tmp_path  # exists but has no assets/ or references/ subdir
+    skill._resources_dir = None
+
+    with pytest.raises(FileNotFoundError):
+        skill.get_resource("nonexistent.md")
+
+
+# ── observability/telemetry.py — lazy tracer init ────────────────────────────
+
+def test_get_tracer_initialises_when_not_set():
+    """get_tracer() calls setup_telemetry() lazily when _tracer is None."""
+    import synthadoc.observability.telemetry as telemetry_mod
+    original = telemetry_mod._tracer
+    try:
+        telemetry_mod._tracer = None
+        t = telemetry_mod.get_tracer()
+        assert t is not None
+    finally:
+        telemetry_mod._tracer = original
+
+
+# ── storage/log.py — invalid sort column normalised ──────────────────────────
+
+@pytest.mark.asyncio
+async def test_audit_list_citations_invalid_sort_normalised(tmp_wiki):
+    """list_citations normalises an unrecognised sort column to 'ingested_at'."""
+    from synthadoc.storage.log import AuditDB
+    db = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await db.init()
+    result = await db.list_citations(sort="malicious_column; DROP TABLE--")
+    assert isinstance(result, list)

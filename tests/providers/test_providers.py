@@ -488,6 +488,34 @@ async def test_openai_provider_strips_think_tags_from_content():
 
 
 @pytest.mark.asyncio
+async def test_openai_provider_think_wikilink_returns_full_prose():
+    """Bracket-match false-positive: [[wikilink]] looks like a JSON array to _extract_last_json.
+    The provider must validate via json.loads and fall back to prose so the full answer is returned."""
+    cfg = AgentConfig(provider="minimax", model="MiniMax-M2.5",
+                      base_url="https://api.minimax.io/v1")
+    provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = (
+        "<think>Let me answer this.</think>"
+        "Alan Turing was a British mathematician and computer scientist [[Alan Turing]]."
+    )
+    mock_choice.message.model_extra = {}
+    mock_resp = MagicMock()
+    mock_resp.choices = [mock_choice]
+    mock_resp.usage.prompt_tokens = 20
+    mock_resp.usage.completion_tokens = 30
+
+    with patch.object(provider._client.chat.completions, "create",
+                      new=AsyncMock(return_value=mock_resp)):
+        result = await provider.complete(
+            messages=[Message(role="user", content="Who is Alan Turing?")]
+        )
+    assert result.text == "Alan Turing was a British mathematician and computer scientist [[Alan Turing]]."
+    assert "[[Alan Turing]]" in result.text  # wikilink preserved, not extracted as JSON
+
+
+@pytest.mark.asyncio
 async def test_openai_provider_extracts_json_from_reasoning_content():
     """MiniMax-style reasoning models return content=null with JSON in reasoning_content.
     The provider must extract the last JSON array from reasoning_content as a fallback."""
@@ -933,3 +961,157 @@ async def test_ollama_provider_uses_eval_count_for_output_tokens():
     assert result.input_tokens == 12
     assert result.output_tokens == 7
     assert result.total_tokens == 19
+
+
+# ── _extract_last_json unit tests ─────────────────────────────────────────────
+
+def test_extract_last_json_finds_object():
+    """Extracts a JSON object from text with a prefix."""
+    from synthadoc.providers.openai import _extract_last_json
+    result = _extract_last_json('some prefix {"key": "value"}')
+    assert result == '{"key": "value"}'
+
+
+def test_extract_last_json_prefers_later_ending_structure():
+    """When object and array both exist, returns the one ending last."""
+    from synthadoc.providers.openai import _extract_last_json
+    # Array ends after the object
+    result = _extract_last_json('{"k": 1}["a", "b"]')
+    assert result == '["a", "b"]'
+
+
+def test_extract_last_json_no_closer_returns_empty():
+    """Input with no closing bracket returns empty string."""
+    from synthadoc.providers.openai import _extract_last_json
+    result = _extract_last_json("no brackets here at all")
+    assert result == ""
+
+
+def test_extract_last_json_no_matching_opener_returns_empty():
+    """Closing brace with no matching opener returns empty string."""
+    from synthadoc.providers.openai import _extract_last_json
+    result = _extract_last_json("text}with closing but no opener")
+    assert result == ""
+
+
+def test_extract_last_json_handles_escaped_backslash_in_string():
+    """Escaped backslash inside a JSON string is tracked correctly."""
+    from synthadoc.providers.openai import _extract_last_json
+    # The string contains a literal backslash: {"path": "C:\\file"}
+    s = r'{"path": "C:\\file"}'
+    result = _extract_last_json(s)
+    assert result == s
+
+
+# ── new openai provider scenario tests ────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_openai_provider_think_side_channel_valid_json():
+    """<think> content with no extractable JSON falls through to side-channel; valid JSON extracted."""
+    cfg = AgentConfig(provider="minimax", model="MiniMax-M2.5",
+                      base_url="https://api.minimax.io/v1")
+    provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    mock_choice = MagicMock()
+    # Content has no JSON brackets — extraction returns ""
+    mock_choice.message.content = "<think>thinking here</think>just prose, no brackets"
+    mock_choice.message.model_extra = {
+        "reasoning": '["What is X?", "How does Y work?"]'
+    }
+    mock_resp = MagicMock()
+    mock_resp.choices = [mock_choice]
+    mock_resp.usage.prompt_tokens = 20
+    mock_resp.usage.completion_tokens = 15
+
+    with patch.object(provider._client.chat.completions, "create",
+                      new=AsyncMock(return_value=mock_resp)):
+        result = await provider.complete(
+            messages=[Message(role="user", content="Tell me about X")]
+        )
+    assert result.text == '["What is X?", "How does Y work?"]'
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_think_side_channel_invalid_json_falls_to_prose():
+    """<think> path: side-channel with [[wikilink]] (invalid JSON) falls through to prose."""
+    cfg = AgentConfig(provider="minimax", model="MiniMax-M2.5",
+                      base_url="https://api.minimax.io/v1")
+    provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = (
+        "<think>Let me think.</think>Prose answer about [[Some Topic]]."
+    )
+    mock_choice.message.model_extra = {
+        "reasoning": "More details in [[Subtopic]] here."
+    }
+    mock_resp = MagicMock()
+    mock_resp.choices = [mock_choice]
+    mock_resp.usage.prompt_tokens = 10
+    mock_resp.usage.completion_tokens = 15
+
+    with patch.object(provider._client.chat.completions, "create",
+                      new=AsyncMock(return_value=mock_resp)):
+        result = await provider.complete(
+            messages=[Message(role="user", content="Tell me about the topic")]
+        )
+    assert "Prose answer" in result.text
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_think_only_no_answer_uses_reasoning():
+    """When content is only <think>...</think> with no answer, reasoning field is returned."""
+    cfg = AgentConfig(provider="minimax", model="MiniMax-M2.5",
+                      base_url="https://api.minimax.io/v1")
+    provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = "<think>internal thinking only, no answer here</think>"
+    mock_choice.message.model_extra = {"reasoning": "The answer is 42."}
+    mock_resp = MagicMock()
+    mock_resp.choices = [mock_choice]
+    mock_resp.usage.prompt_tokens = 10
+    mock_resp.usage.completion_tokens = 5
+
+    with patch.object(provider._client.chat.completions, "create",
+                      new=AsyncMock(return_value=mock_resp)):
+        result = await provider.complete(
+            messages=[Message(role="user", content="What is the answer?")]
+        )
+    assert result.text == "The answer is 42."
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_content_null_reasoning_wikilink_returns_prose():
+    """content=null with [[wikilink]] in reasoning falls back to prose (not false-positive JSON)."""
+    cfg = AgentConfig(provider="minimax", model="MiniMax-M2.5",
+                      base_url="https://api.minimax.io/v1")
+    provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = None
+    mock_choice.message.model_extra = {
+        "reasoning_content": "Alan Turing founded computer science. See [[Alan Turing]]."
+    }
+    mock_resp = MagicMock()
+    mock_resp.choices = [mock_choice]
+    mock_resp.usage.prompt_tokens = 10
+    mock_resp.usage.completion_tokens = 20
+
+    with patch.object(provider._client.chat.completions, "create",
+                      new=AsyncMock(return_value=mock_resp)):
+        result = await provider.complete(
+            messages=[Message(role="user", content="Tell me about Turing")]
+        )
+    assert "Alan Turing" in result.text
+    assert result.text != "[[Alan Turing]]"
+
+
+@pytest.mark.asyncio
+async def test_base_provider_embed_raises_not_implemented():
+    """LLMProvider.embed() raises NotImplementedError for providers that don't support it."""
+    cfg = AgentConfig(provider="minimax", model="MiniMax-M2.5",
+                      base_url="https://api.minimax.io/v1")
+    provider = OpenAIProvider(api_key="fake", config=cfg)
+    with pytest.raises(NotImplementedError):
+        await provider.embed(["some text"])

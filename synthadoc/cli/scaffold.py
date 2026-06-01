@@ -61,7 +61,11 @@ def _protected_slugs(wiki_dir: Path) -> list[str]:
 
 
 def _run_scaffold(dest: Path, domain: str, protected_slugs: Optional[list[str]] = None):
-    """Run ScaffoldAgent. Returns ScaffoldResult or None if no API key is set."""
+    """Run ScaffoldAgent. Returns ScaffoldResult or None if no API key is set.
+
+    Raises on LLM/agent errors so callers can distinguish key-missing (None)
+    from LLM failure (exception).
+    """
     import asyncio
     import os
     from synthadoc.config import load_config
@@ -80,16 +84,10 @@ def _run_scaffold(dest: Path, domain: str, protected_slugs: Optional[list[str]] 
     if env_var and not os.environ.get(env_var, "").strip():
         return None
 
-    try:
-        provider = make_provider("ingest", cfg)
-        from synthadoc.agents.scaffold_agent import ScaffoldAgent
-        agent = ScaffoldAgent(provider=provider)
-        return asyncio.run(agent.scaffold(domain=domain, protected_slugs=protected_slugs))
-    except Exception as exc:
-        import logging
-        logging.getLogger(__name__).warning("Scaffold LLM call failed: %s", exc)
-        typer.echo(f"Error: LLM scaffold failed — {exc}", err=True)
-        return None
+    provider = make_provider("ingest", cfg)
+    from synthadoc.agents.scaffold_agent import ScaffoldAgent
+    agent = ScaffoldAgent(provider=provider, max_tokens=cfg.agents.scaffold_max_tokens)
+    return asyncio.run(agent.scaffold(domain=domain, protected_slugs=protected_slugs))
 
 
 @app.command("scaffold")
@@ -137,7 +135,16 @@ def scaffold_cmd(
         typer.echo(f"Preserving {len(slugs)} protected page(s): {', '.join(slugs)}")
 
     typer.echo(f"Generating scaffold for domain: {domain}...")
-    result = _run_scaffold(dest, domain, protected_slugs=slugs if slugs else None)
+    try:
+        result = _run_scaffold(dest, domain, protected_slugs=slugs if slugs else None)
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Scaffold LLM call failed: %s", exc)
+        E.cli_error(
+            E.AGENT_FAILED,
+            f"Scaffold failed: {exc}",
+            "Check your LLM provider configuration and try again.",
+        )
 
     if result is None:
         E.cli_error(

@@ -83,7 +83,7 @@ def _run_scaffold(dest: Path, domain: str):
     try:
         provider = make_provider("ingest", cfg)
         from synthadoc.agents.scaffold_agent import ScaffoldAgent
-        agent = ScaffoldAgent(provider=provider)
+        agent = ScaffoldAgent(provider=provider, max_tokens=cfg.agents.scaffold_max_tokens)
         return asyncio.run(agent.scaffold(domain=domain))
     except Exception as exc:
         import logging
