@@ -201,13 +201,15 @@ class OpenAIProvider(LLMProvider):
             )
         choice = resp.choices[0]
         text = choice.message.content or ""
-        # Strip <think>...</think> blocks that reasoning models prepend to their output
+        # Strip <think>...</think> blocks that reasoning models prepend to their output.
+        # Also strip an unclosed <think> block when the model was cut off mid-thinking.
         text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+        text = re.sub(r"<think>.*$", "", text, flags=re.DOTALL).strip()
         if not text:
-            # Reasoning models (e.g. MiniMax M2.x) return content=null and put their
-            # answer in a non-standard reasoning_content field.
+            # Reasoning models (e.g. MiniMax M2.x) return content=null or put the answer
+            # in a non-standard field. MiniMax uses "reasoning" or "reasoning_content".
             extra = getattr(choice.message, "model_extra", None) or {}
-            reasoning = (extra.get("reasoning_content") or "").strip()
+            reasoning = (extra.get("reasoning_content") or extra.get("reasoning") or "").strip()
             if reasoning:
                 clean = re.sub(r"<think>.*?</think>", "", reasoning, flags=re.DOTALL).strip()
                 # When the model wraps its entire output in <think> tags, stripping

@@ -139,7 +139,7 @@ class ScaffoldAgent:
             messages=[Message(role="user", content=prompt)],
             system=_SYSTEM_PROMPT,
             temperature=0.3,
-            max_tokens=2048,
+            max_tokens=8192,
         )
 
         raw = resp.text.strip()
