@@ -2165,19 +2165,25 @@ class QueryModal extends Modal {
             if (!input.value.trim()) return;
             btn.disabled = true;
             out.empty();
-            out.createEl("p", { text: "Searching…", cls: "synthadoc-muted" });
-            try {
-                const timeoutSecs = Math.min(300, Math.max(10, parseInt(timeoutInput.value) || 60));
-                const r = await api.query(input.value, timeoutSecs) as any;
+            const statusEl = out.createEl("p", { text: "Streaming…", cls: "synthadoc-muted" });
+            const streamEl = out.createEl("span");
+            let fullAnswer = "";
+            let citations: string[] = [];
+            let knowledgeGap = false;
+            let suggestedSearches: string[] = [];
+
+            const renderFinal = async () => {
                 out.empty();
-                await MarkdownRenderer.render(this.app, r.answer, out, "", this);
-                if (r.citations?.length) {
+                if (fullAnswer) {
+                    await MarkdownRenderer.render(this.app, fullAnswer, out, "", this);
+                }
+                if (citations.length) {
                     const cite = out.createEl("p");
                     cite.style.cssText = "font-size:11px;color:var(--text-muted);margin-top:8px";
-                    cite.setText("Sources: " + r.citations.join(", "));
+                    cite.setText("Sources: " + citations.join(", "));
                 }
-                if (r.knowledge_gap && r.suggested_searches?.length) {
-                    const searchCmds = (r.suggested_searches as string[])
+                if (knowledgeGap && suggestedSearches.length) {
+                    const searchCmds = suggestedSearches
                         .map((s: string) => `synthadoc ingest "search for: ${s}"`)
                         .join("\n");
                     const callout = [
@@ -2197,10 +2203,42 @@ class QueryModal extends Modal {
                     gapEl.style.cssText = "margin-top:16px";
                     await MarkdownRenderer.render(this.app, callout, gapEl, "", this);
                 }
+                btn.disabled = false;
+            };
+
+            try {
+                await api.queryStream(input.value.trim(), undefined, {
+                    onStatus: (phase) => { statusEl.setText(phase === "retrieving" ? "Searching…" : "Generating…"); },
+                    onToken: (text) => {
+                        fullAnswer += text;
+                        streamEl.textContent = (streamEl.textContent ?? "") + text;
+                    },
+                    onCitations: (c) => { citations = c; },
+                    onGap: (s) => { knowledgeGap = true; suggestedSearches = s; },
+                    onDone: () => { renderFinal(); },
+                    onError: (msg) => {
+                        out.empty();
+                        out.createEl("p", { text: `Error: ${msg}` });
+                        btn.disabled = false;
+                    },
+                });
             } catch {
-                out.empty();
-                out.createEl("p", { text: "Error: is synthadoc serve running?" });
-            } finally { btn.disabled = false; }
+                // Fallback to blocking query if streaming fails
+                try {
+                    const timeoutSecs = Math.min(300, Math.max(10, parseInt(timeoutInput.value) || 60));
+                    const r = await api.query(input.value, timeoutSecs) as any;
+                    out.empty();
+                    await MarkdownRenderer.render(this.app, r.answer, out, "", this);
+                    if (r.citations?.length) {
+                        const cite = out.createEl("p");
+                        cite.style.cssText = "font-size:11px;color:var(--text-muted);margin-top:8px";
+                        cite.setText("Sources: " + r.citations.join(", "));
+                    }
+                } catch {
+                    out.empty();
+                    out.createEl("p", { text: "Error: is synthadoc serve running?" });
+                } finally { btn.disabled = false; }
+            }
         };
 
         btn.onclick = submit;
