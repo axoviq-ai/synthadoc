@@ -4,7 +4,7 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import AsyncGenerator, Optional, Union
 
 
 @dataclass
@@ -37,7 +37,7 @@ class LLMProvider(ABC):
     async def complete_stream(
         self, messages: list[Message], system: Optional[str] = None,
         temperature: float = 0.0, max_tokens: int = 4096
-    ):
+    ) -> AsyncGenerator[str, None]:
         """Yield token strings as an async generator. Override in subclasses."""
         raise NotImplementedError("streaming not supported by this provider")
         if False:  # make this a generator

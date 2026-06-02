@@ -2,7 +2,7 @@
 # Copyright (C) 2026 Paul Chen / axoviq.com
 from __future__ import annotations
 import asyncio
-from typing import Optional
+from typing import AsyncGenerator, Optional
 import anthropic as anthropic_lib
 from synthadoc.config import AgentConfig
 from synthadoc.providers.base import CompletionResponse, LLMProvider, Message
@@ -52,7 +52,7 @@ class AnthropicProvider(LLMProvider):
     async def complete_stream(
         self, messages: list[Message], system: Optional[str] = None,
         temperature: float = 0.0, max_tokens: int = 4096
-    ):
+    ) -> AsyncGenerator[str, None]:
         kwargs: dict = {
             "model": self._config.model,
             "max_tokens": max_tokens,

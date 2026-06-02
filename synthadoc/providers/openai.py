@@ -5,7 +5,7 @@ import asyncio
 import json as _json
 import logging
 import re
-from typing import Optional
+from typing import AsyncGenerator, Optional
 import openai as _openai
 from openai import AsyncOpenAI
 from synthadoc.config import AgentConfig
@@ -295,7 +295,7 @@ class OpenAIProvider(LLMProvider):
     async def complete_stream(
         self, messages: list[Message], system: Optional[str] = None,
         temperature: float = 0.0, max_tokens: int = 4096
-    ):
+    ) -> AsyncGenerator[str, None]:
         msgs = []
         if system:
             msgs.append({"role": "system", "content": system})

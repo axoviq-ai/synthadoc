@@ -62,11 +62,12 @@ async def test_anthropic_provider_complete_stream_yields_tokens():
     event3 = MagicMock(); event3.type = "message_stop"
 
     class _FakeStream:
+        def __init__(self):
+            self._events = [event1, event2, event3]
+            self._idx = 0
         async def __aenter__(self): return self
         async def __aexit__(self, *a): pass
         def __aiter__(self): return self
-        _events = [event1, event2, event3]
-        _idx = 0
         async def __anext__(self):
             if self._idx >= len(self._events):
                 raise StopAsyncIteration

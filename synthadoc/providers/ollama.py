@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
 from __future__ import annotations
-from typing import Optional
+import json as _json
+from typing import AsyncGenerator, Optional
 import httpx
 from synthadoc.config import AgentConfig
 from synthadoc.providers.base import CompletionResponse, LLMProvider, Message
@@ -31,8 +32,7 @@ class OllamaProvider(LLMProvider):
     async def complete_stream(
         self, messages: list[Message], system: Optional[str] = None,
         temperature: float = 0.0, max_tokens: int = 4096
-    ):
-        import json as _json
+    ) -> AsyncGenerator[str, None]:
         msgs = []
         if system:
             msgs.append({"role": "system", "content": system})
