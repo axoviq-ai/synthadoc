@@ -124,3 +124,105 @@ def test_delete_http_status_error_exits():
          patch.object(httpx, "delete", side_effect=err):
         with pytest.raises(typer.Exit):
             delete("my-wiki", "/jobs/abc")
+
+
+# ── get_stream() ─────────────────────────────────────────────────────────────
+
+def test_get_stream_yields_events():
+    """get_stream must yield (event_name, data) tuples for SSE lines."""
+    from synthadoc.cli._http import get_stream
+
+    sse_body = "event: token\ndata: {\"text\": \"hello\"}\n\nevent: done\ndata: {}\n\n"
+
+    mock_resp = MagicMock()
+    mock_resp.__enter__ = lambda s: s
+    mock_resp.__exit__ = MagicMock(return_value=False)
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.iter_lines = MagicMock(return_value=iter(sse_body.splitlines()))
+
+    mock_client = MagicMock()
+    mock_client.__enter__ = lambda s: s
+    mock_client.__exit__ = MagicMock(return_value=False)
+    mock_client.stream = MagicMock(return_value=mock_resp)
+
+    with patch("synthadoc.cli._http.server_url", return_value="http://127.0.0.1:7070"), \
+         patch("synthadoc.cli._http.httpx.Client", return_value=mock_client):
+        events = list(get_stream("my-wiki", "/query/stream", q="test"))
+
+    assert events[0] == ("token", {"text": "hello"})
+    assert events[1] == ("done", {})
+
+
+def test_get_stream_connect_error_exits():
+    """get_stream ConnectError must call _no_server."""
+    from synthadoc.cli._http import get_stream
+
+    mock_client = MagicMock()
+    mock_client.__enter__ = lambda s: s
+    mock_client.__exit__ = MagicMock(return_value=False)
+    mock_client.stream = MagicMock(side_effect=httpx.ConnectError("refused"))
+
+    with patch("synthadoc.cli._http.server_url", return_value="http://127.0.0.1:7070"), \
+         patch("synthadoc.cli._http.httpx.Client", return_value=mock_client):
+        with pytest.raises(typer.Exit):
+            list(get_stream("my-wiki", "/query/stream", q="test"))
+
+
+def test_get_stream_read_timeout_exits():
+    """get_stream ReadTimeout must call _timeout_error."""
+    from synthadoc.cli._http import get_stream
+
+    mock_client = MagicMock()
+    mock_client.__enter__ = lambda s: s
+    mock_client.__exit__ = MagicMock(return_value=False)
+    mock_client.stream = MagicMock(side_effect=httpx.ReadTimeout("timeout"))
+
+    with patch("synthadoc.cli._http.server_url", return_value="http://127.0.0.1:7070"), \
+         patch("synthadoc.cli._http.httpx.Client", return_value=mock_client):
+        with pytest.raises(typer.Exit):
+            list(get_stream("my-wiki", "/query/stream", q="test"))
+
+
+def test_get_stream_http_status_error_exits():
+    """get_stream HTTPStatusError must call cli_error."""
+    from synthadoc.cli._http import get_stream
+
+    mock_resp_inner = MagicMock()
+    mock_resp_inner.__enter__ = lambda s: s
+    mock_resp_inner.__exit__ = MagicMock(return_value=False)
+    err = _make_status_error(500, "GET", "http://127.0.0.1:7070/query/stream")
+    mock_resp_inner.raise_for_status = MagicMock(side_effect=err)
+
+    mock_client = MagicMock()
+    mock_client.__enter__ = lambda s: s
+    mock_client.__exit__ = MagicMock(return_value=False)
+    mock_client.stream = MagicMock(return_value=mock_resp_inner)
+
+    with patch("synthadoc.cli._http.server_url", return_value="http://127.0.0.1:7070"), \
+         patch("synthadoc.cli._http.httpx.Client", return_value=mock_client):
+        with pytest.raises(typer.Exit):
+            list(get_stream("my-wiki", "/query/stream", q="test"))
+
+
+def test_get_stream_malformed_json_yields_raw():
+    """get_stream must yield raw string dict when data line is not valid JSON."""
+    from synthadoc.cli._http import get_stream
+
+    sse_body = "event: token\ndata: not-json\n\n"
+
+    mock_resp = MagicMock()
+    mock_resp.__enter__ = lambda s: s
+    mock_resp.__exit__ = MagicMock(return_value=False)
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.iter_lines = MagicMock(return_value=iter(sse_body.splitlines()))
+
+    mock_client = MagicMock()
+    mock_client.__enter__ = lambda s: s
+    mock_client.__exit__ = MagicMock(return_value=False)
+    mock_client.stream = MagicMock(return_value=mock_resp)
+
+    with patch("synthadoc.cli._http.server_url", return_value="http://127.0.0.1:7070"), \
+         patch("synthadoc.cli._http.httpx.Client", return_value=mock_client):
+        events = list(get_stream("my-wiki", "/query/stream", q="test"))
+
+    assert events[0] == ("token", {"raw": "not-json"})

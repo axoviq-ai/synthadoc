@@ -83,3 +83,65 @@ async def test_list_queries_respects_limit(tmp_wiki):
                                tokens=50, cost_usd=0.0001)
     records = await db.list_queries(limit=3)
     assert len(records) == 3
+
+
+@pytest.mark.asyncio
+async def test_audit_db_session_lifecycle(tmp_wiki):
+    """create_session / append_message / get_session_messages / has_prior_sessions."""
+    db = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await db.init()
+
+    # No sessions yet
+    assert not await db.has_prior_sessions()
+
+    # Create session and verify has_prior_sessions
+    await db.create_session("sess-001", "POWER_USER")
+    assert await db.has_prior_sessions()
+
+    # Append messages
+    await db.append_message("sess-001", "user", "Hello?")
+    await db.append_message("sess-001", "assistant", "Hi there!")
+
+    # Get messages
+    msgs = await db.get_session_messages("sess-001")
+    assert len(msgs) == 2
+    assert msgs[0]["role"] == "user"
+    assert msgs[0]["content"] == "Hello?"
+    assert msgs[1]["role"] == "assistant"
+
+    # create_session is idempotent (OR IGNORE)
+    await db.create_session("sess-001", "EXPLORER")  # should not raise
+
+
+@pytest.mark.asyncio
+async def test_audit_db_get_session_messages_empty(tmp_wiki):
+    """get_session_messages for an unknown session must return an empty list."""
+    db = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await db.init()
+    msgs = await db.get_session_messages("nonexistent-session")
+    assert msgs == []
+
+
+@pytest.mark.asyncio
+async def test_audit_db_has_prior_sessions_multiple(tmp_wiki):
+    """has_prior_sessions returns True when multiple sessions exist."""
+    db = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await db.init()
+    await db.create_session("sess-A", "EXPLORER")
+    await db.create_session("sess-B", "POWER_USER")
+    assert await db.has_prior_sessions()
+
+
+@pytest.mark.asyncio
+async def test_audit_db_append_message_updates_last_active(tmp_wiki):
+    """append_message must not crash and session last_active is updated."""
+    db = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await db.init()
+    await db.create_session("sess-X", "POWER_USER")
+    # Append multiple messages — should complete without error
+    await db.append_message("sess-X", "user", "First message")
+    await db.append_message("sess-X", "assistant", "First reply")
+    await db.append_message("sess-X", "user", "Second message")
+    msgs = await db.get_session_messages("sess-X")
+    assert len(msgs) == 3
+    assert msgs[2]["content"] == "Second message"

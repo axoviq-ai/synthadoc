@@ -5,7 +5,7 @@ import asyncio
 import json as _json
 import logging
 import re
-from typing import Optional
+from typing import AsyncGenerator, Optional
 import openai as _openai
 from openai import AsyncOpenAI
 from synthadoc.config import AgentConfig
@@ -291,3 +291,20 @@ class OpenAIProvider(LLMProvider):
         return CompletionResponse(text=text,
                                   input_tokens=resp.usage.prompt_tokens,
                                   output_tokens=resp.usage.completion_tokens)
+
+    async def complete_stream(
+        self, messages: list[Message], system: Optional[str] = None,
+        temperature: float = 0.0, max_tokens: int = 4096
+    ) -> AsyncGenerator[str, None]:
+        msgs = []
+        if system:
+            msgs.append({"role": "system", "content": system})
+        msgs.extend({"role": m.role, "content": self._to_openai_content(m.content)}
+                    for m in messages)
+        async for chunk in self._client.chat.completions.create(
+            model=self._config.model, messages=msgs,
+            temperature=temperature, max_tokens=max_tokens,
+            timeout=self._timeout, stream=True,
+        ):
+            if chunk.choices and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content

@@ -190,6 +190,9 @@ As the wiki accumulates pages the `index.md` table of contents, domain scope (`p
 | Candidates staging           | **Yes** (ingest to staging area, promote or discard)                  | No          | No         | No        |
 | Context packs                | **Yes** (goal → sub-questions → token-budget evidence pack)         | No          | No         | No        |
 | Export formats               | **Yes** (llms.txt, llms-full.txt, GraphML, JSON — lifecycle-filtered, provenance-threaded, cost-annotated; inline graph viewer in Obsidian) | No | No | No |
+| Streaming query output       | **Yes** (token-by-token; `--no-stream` for pipe-friendly blocking mode) | No          | No         | No        |
+| Query result cache           | **Yes** (cache key = question + wiki version; auto-invalidates on ingest or lifecycle change; `--no-cache` to bypass) | No          | No         | No        |
+| Browser-based chat UI        | **Yes** (`synthadoc web` — session-aware, streaming, citations, knowledge-gap callouts) | No          | No         | No        |
 
 ### Key differentiators vs. RAG
 
@@ -421,6 +424,8 @@ The guide covers:
 19. Build a context pack for grounded LLM prompts
 20. Verify claim provenance — source-line citations, broken citation audit, global provenance table
 21. Export your wiki — llms.txt, llms-full.txt, GraphML wikilink graph, agent-ready JSON with provenance and lifecycle history
+22. Use the web chat UI — streaming answers, session-aware hint chips, citations in-browser
+23. Query caching — understand how answers are cached and how to bypass with `--no-cache`
 
 ---
 
@@ -687,12 +692,29 @@ for precise citation.
 ### Querying
 
 ```bash
-# Ask a question — answer cites wiki pages
+# Ask a question — answer streams token-by-token as the LLM generates it
 synthadoc query "What is Moore's Law?" -w my-wiki
+
+# Blocking mode (no streaming) — useful in scripts or pipes
+synthadoc query "What is Moore's Law?" --no-stream -w my-wiki
+
+# Skip the cache — always call the LLM even if the answer is cached
+synthadoc query "What is Moore's Law?" --no-cache -w my-wiki
 
 # Save the answer as a new wiki page
 synthadoc query "What is Moore's Law?" --save -w my-wiki
 ```
+
+Query answers are **cached automatically** by question content and wiki version. Repeated identical questions return instantly from cache. The cache invalidates automatically when you ingest new content or change a page's lifecycle state.
+
+### Web Chat UI
+
+```bash
+# Open the browser-based chat interface for a wiki
+synthadoc web -w my-wiki
+```
+
+Opens your browser to `http://localhost:{port}/app`. The UI detects whether you are new to the wiki, exploring, or a returning user and shows contextual hint chips. Ask questions in the text box; answers stream in as the LLM generates them. Citations appear below each answer; knowledge-gap callouts suggest ingesting more content when the wiki lacks coverage.
 
 ### Linting
 
