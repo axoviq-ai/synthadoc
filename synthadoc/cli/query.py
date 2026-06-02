@@ -41,7 +41,7 @@ def _stream_query(wiki: str, question: str, no_cache: bool, timeout: int) -> Non
     params: dict = {"q": question}
     if no_cache:
         params["no_cache"] = "true"
-    for event_name, data in get_stream(wiki, "/query/stream", **params):
+    for event_name, data in get_stream(wiki, "/query/stream", timeout=timeout, **params):
         if event_name == "token":
             typer.echo(data.get("text", ""), nl=False)
         elif event_name == "citations":

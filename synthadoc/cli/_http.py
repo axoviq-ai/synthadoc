@@ -71,17 +71,14 @@ def delete(wiki: str, path: str) -> dict:
                     f"Server returned {e.response.status_code}: {_detail(e.response)}")
 
 
-def get_stream(wiki: str, path: str, **params):
+def get_stream(wiki: str, path: str, timeout: int = 120, **params):
     """Yield (event_name, data_dict) tuples from an SSE endpoint."""
     import json as _json
     url = server_url(wiki)
     full_url = f"{url}{path}"
-    qs = "&".join(f"{k}={v}" for k, v in params.items())
-    if qs:
-        full_url = f"{full_url}?{qs}"
     try:
-        with httpx.Client(timeout=120) as client:
-            with client.stream("GET", full_url) as resp:
+        with httpx.Client(timeout=timeout) as client:
+            with client.stream("GET", full_url, params=params) as resp:
                 resp.raise_for_status()
                 event_name = "message"
                 for line in resp.iter_lines():
@@ -97,6 +94,11 @@ def get_stream(wiki: str, path: str, **params):
                         event_name = "message"
     except httpx.ConnectError:
         _no_server(wiki)
+    except httpx.ReadTimeout:
+        _timeout_error(path, timeout)
+    except httpx.HTTPStatusError as e:
+        E.cli_error(E.SRV_HTTP_ERROR,
+                    f"Server returned {e.response.status_code}: {_detail(e.response)}")
 
 
 def _timeout_error(path: str, timeout: int) -> NoReturn:
