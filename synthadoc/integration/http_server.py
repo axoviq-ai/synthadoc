@@ -404,8 +404,6 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                 return cached
         result = await _run_query(q, timeout_seconds=timeout_seconds)
         if not no_cache:
-            from synthadoc.core.cache import make_query_cache_key
-            cache_key = make_query_cache_key(q, orch._wiki_epoch)
             await orch._cache.set_query(cache_key, orch._wiki_epoch, result)
         return result
 
