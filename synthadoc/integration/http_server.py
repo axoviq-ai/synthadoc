@@ -396,9 +396,9 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         if not q.strip():
             raise HTTPException(status_code=400, detail="q must not be empty")
         orch = app.state.orch
+        from synthadoc.core.cache import make_query_cache_key
+        cache_key = make_query_cache_key(q, orch._wiki_epoch)
         if not no_cache:
-            from synthadoc.core.cache import make_query_cache_key
-            cache_key = make_query_cache_key(q, orch._wiki_epoch)
             cached = await orch._cache.get_query(cache_key)
             if cached is not None:
                 return cached
