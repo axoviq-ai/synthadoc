@@ -1057,4 +1057,28 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         }
         return Response(content=content, media_type=_CONTENT_TYPES[req.format])
 
+    # Serve the React web UI for /app and /app/* paths
+    _web_dist = Path(__file__).parent.parent.parent / "web-ui" / "dist"
+    if _web_dist.exists():
+        from fastapi.staticfiles import StaticFiles
+        from fastapi.responses import FileResponse
+        _assets = _web_dist / "assets"
+        if _assets.exists():
+            app.mount("/app/assets", StaticFiles(directory=str(_assets)), name="web_assets")
+
+        @app.get("/app")
+        @app.get("/app/{path:path}")
+        async def spa(path: str = ""):
+            from fastapi.responses import FileResponse
+            return FileResponse(str(_web_dist / "index.html"))
+    else:
+        @app.get("/app")
+        @app.get("/app/{path:path}")
+        async def spa_not_built(path: str = ""):
+            return Response(
+                content="Web UI not built. Run: cd web-ui && npm run build",
+                status_code=503,
+                media_type="text/plain",
+            )
+
     return app
