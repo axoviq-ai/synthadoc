@@ -1,6 +1,6 @@
 # Synthadoc — Design Document
 
-**Version:** 0.7.0 (released 2026-06-02)  
+**Version:** 0.6.0  
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
