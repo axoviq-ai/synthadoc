@@ -2,6 +2,15 @@
 # Copyright (C) 2026 William Johnason / axoviq.com
 from __future__ import annotations
 
+from typing import Literal
+
+SessionMode = Literal["NEW_WIKI", "EXPLORER", "HEALTH_CHECK", "POWER_USER"]
+
+NEW_WIKI: SessionMode = "NEW_WIKI"
+EXPLORER: SessionMode = "EXPLORER"
+HEALTH_CHECK: SessionMode = "HEALTH_CHECK"
+POWER_USER: SessionMode = "POWER_USER"
+
 _HINTS_BY_MODE: dict[str, list[str]] = {
     "NEW_WIKI": [
         "How do I ingest my first document?",
@@ -47,11 +56,11 @@ _TOPIC_HINT_PATTERNS: list[tuple[list[str], list[str]]] = [
 
 class HintEngine:
     @staticmethod
-    def initial_hints(mode: str) -> list[str]:
+    def initial_hints(mode: SessionMode) -> list[str]:
         return _HINTS_BY_MODE.get(mode, _HINTS_BY_MODE["POWER_USER"])
 
     @staticmethod
-    def after_response(answer: str, mode: str) -> list[str]:
+    def after_response(answer: str, mode: SessionMode) -> list[str]:
         answer_lower = answer.lower()
         for keywords, hints in _TOPIC_HINT_PATTERNS:
             if any(kw in answer_lower for kw in keywords):

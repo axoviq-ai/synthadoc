@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from synthadoc.agents._utils import parse_json_string_array
-from synthadoc.agents.hint_engine import HintEngine
+from synthadoc.agents.hint_engine import HintEngine, SessionMode
 from synthadoc.agents.search_decompose_agent import SearchDecomposeAgent
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.search import HybridSearch, SearchResult
@@ -431,7 +431,7 @@ class QueryAgent:
 
     async def run_stream(
         self, question: str, session_id: str | None = None,  # reserved for future session history
-        session_mode: str = "POWER_USER",
+        session_mode: SessionMode = "POWER_USER",
     ):
         """Stream query response as an async generator of SSE event dicts.
 
