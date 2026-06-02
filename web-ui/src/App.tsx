@@ -12,7 +12,7 @@ const MODE_LABELS: Record<string, string> = {
 };
 
 export default function App() {
-    const { session, hints, updateHints } = useSession();
+    const { session, hints, updateHints, sessionError } = useSession();
 
     return (
         <div className="app">
@@ -24,9 +24,8 @@ export default function App() {
                     </span>
                 )}
             </header>
-            {!session && (
-                <p className="connecting">Connecting to server…</p>
-            )}
+            {!session && !sessionError && <p className="connecting">Connecting to server…</p>}
+            {sessionError && <p className="error-banner">{sessionError}</p>}
             <ChatWindow
                 sessionId={session?.session_id ?? null}
                 hints={hints}

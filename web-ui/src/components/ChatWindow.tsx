@@ -34,15 +34,16 @@ export function ChatWindow({ sessionId, hints, onHints }: Props) {
 
     return (
         <div className="chat-window">
-            <div className="messages">
+            <div className="messages" aria-live="polite">
                 {messages.map((m, i) => <MessageBubble key={i} msg={m} />)}
-                {error && <p className="error-banner">{error}</p>}
+                {error && <p className="error-banner" role="alert">{error}</p>}
                 <div ref={bottomRef} />
             </div>
             <HintChips hints={hints} onSelect={(h) => { setInput(h); }} />
             <div className="input-row">
                 <textarea
                     className="query-input"
+                    aria-label="Ask your wiki"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKey}
@@ -52,6 +53,7 @@ export function ChatWindow({ sessionId, hints, onHints }: Props) {
                 />
                 <button
                     className="send-btn"
+                    aria-label={streaming ? "Sending" : "Ask"}
                     onClick={submit}
                     disabled={streaming || !sessionId || !input.trim()}
                 >
