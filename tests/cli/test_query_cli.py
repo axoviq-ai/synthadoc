@@ -117,3 +117,100 @@ def test_query_cmd_no_stream_uses_blocking(tmp_wiki, monkeypatch):
     monkeypatch.setattr("synthadoc.cli.query.get", _fake_get)
     result = runner.invoke(app, ["query", "What is AI?", "-w", "test", "--no-stream"])
     assert any("/query" in p for p in called_paths), "blocking /query endpoint should have been called"
+
+
+def test_query_cmd_no_stream_no_cache_flag_forwarded(monkeypatch):
+    """--no-stream --no-cache must forward no_cache=true to blocking get()."""
+    received_kwargs = {}
+
+    def _fake_get(wiki, path, **kw):
+        received_kwargs.update(kw)
+        return {"answer": "ok", "citations": [], "knowledge_gap": False, "suggested_searches": []}
+
+    monkeypatch.setattr("synthadoc.cli.query.get", _fake_get)
+    runner.invoke(app, ["query", "What is AI?", "-w", "test", "--no-stream", "--no-cache"])
+    assert received_kwargs.get("no_cache") == "true"
+
+
+def test_stream_query_prints_tokens(monkeypatch):
+    """_stream_query must print token text as it arrives."""
+    events = [
+        ("token", {"text": "Hello"}),
+        ("token", {"text": " world"}),
+        ("done", {"next_hints": []}),
+    ]
+    monkeypatch.setattr("synthadoc.cli.query.get_stream", lambda *a, **kw: iter(events))
+    from synthadoc.cli.query import _stream_query
+    output = []
+    monkeypatch.setattr("typer.echo", lambda msg, **kw: output.append(str(msg)))
+    _stream_query("my-wiki", "Hello?", no_cache=False, timeout=60)
+    combined = "".join(output)
+    assert "Hello" in combined
+    assert "world" in combined
+
+
+def test_stream_query_shows_citations(monkeypatch):
+    """_stream_query must print sources line when citations arrive."""
+    events = [
+        ("citations", {"citations": ["page-1", "page-2"]}),
+        ("done", {"next_hints": []}),
+    ]
+    monkeypatch.setattr("synthadoc.cli.query.get_stream", lambda *a, **kw: iter(events))
+    from synthadoc.cli.query import _stream_query
+    output = []
+    monkeypatch.setattr("typer.echo", lambda msg, **kw: output.append(str(msg)))
+    _stream_query("my-wiki", "Question?", no_cache=False, timeout=60)
+    combined = "".join(output)
+    assert "[[page-1]]" in combined
+    assert "[[page-2]]" in combined
+
+
+def test_stream_query_shows_knowledge_gap(monkeypatch):
+    """_stream_query must show gap callout when gap event arrives."""
+    events = [
+        ("gap", {"suggested_searches": ["topic A", "topic B"]}),
+        ("done", {"next_hints": []}),
+    ]
+    monkeypatch.setattr("synthadoc.cli.query.get_stream", lambda *a, **kw: iter(events))
+    from synthadoc.cli.query import _stream_query
+    output = []
+    monkeypatch.setattr("typer.echo", lambda msg, **kw: output.append(str(msg)))
+    _stream_query("my-wiki", "Question?", no_cache=False, timeout=60)
+    combined = "".join(output)
+    assert "Knowledge Gap" in combined
+    assert "topic A" in combined
+
+
+def test_stream_query_error_event_stops_stream(monkeypatch):
+    """_stream_query must print error and return early on error event."""
+    events = [
+        ("error", {"message": "LLM timeout"}),
+        ("token", {"text": "should not appear"}),
+    ]
+    monkeypatch.setattr("synthadoc.cli.query.get_stream", lambda *a, **kw: iter(events))
+    from synthadoc.cli.query import _stream_query
+    err_output = []
+    output = []
+    monkeypatch.setattr(
+        "typer.echo",
+        lambda msg, err=False, **kw: err_output.append(str(msg)) if err else output.append(str(msg)),
+    )
+    _stream_query("my-wiki", "Question?", no_cache=False, timeout=60)
+    combined_err = "".join(err_output)
+    combined_out = "".join(output)
+    assert "LLM timeout" in combined_err
+    assert "should not appear" not in combined_out
+
+
+def test_stream_query_no_cache_flag_passed(monkeypatch):
+    """_stream_query must pass no_cache=true param when no_cache=True."""
+    received_params = {}
+
+    def _fake_stream(wiki, path, timeout, **params):
+        received_params.update(params)
+        return iter([])
+
+    monkeypatch.setattr("synthadoc.cli.query.get_stream", _fake_stream)
+    from synthadoc.cli.query import _stream_query
+    _stream_query("my-wiki", "Q?", no_cache=True, timeout=60)
+    assert received_params.get("no_cache") == "true"

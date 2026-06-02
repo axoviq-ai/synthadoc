@@ -70,3 +70,22 @@ def test_post_sessions_returns_session_id_and_mode(tmp_wiki):
     assert "mode" in data
     assert data["mode"] in ("NEW_WIKI", "EXPLORER", "HEALTH_CHECK", "POWER_USER")
     assert re.match(r"[0-9a-f-]{36}", data["session_id"])
+
+
+def test_spa_not_built_returns_503(tmp_wiki):
+    """GET /app returns 503 with helpful message when web-ui/dist is missing."""
+    import pytest
+    from fastapi.testclient import TestClient
+    from pathlib import Path
+
+    app = _make_app(tmp_wiki)
+    # If the developer has built the UI, the 503 path is unreachable — skip
+    import synthadoc.integration.http_server as srv_mod
+    dist_path = Path(srv_mod.__file__).parent.parent.parent / "web-ui" / "dist"
+    if dist_path.exists() and (dist_path / "index.html").is_file():
+        pytest.skip("web-ui/dist exists; 503 path not reachable")
+
+    with TestClient(app) as client:
+        resp = client.get("/app")
+    assert resp.status_code == 503
+    assert b"npm run build" in resp.content
