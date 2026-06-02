@@ -1059,7 +1059,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
 
     # Serve the React web UI for /app and /app/* paths
     _web_dist = Path(__file__).parent.parent.parent / "web-ui" / "dist"
-    if _web_dist.exists():
+    if _web_dist.exists() and (_web_dist / "index.html").is_file():
         from fastapi.staticfiles import StaticFiles
         from fastapi.responses import FileResponse
         _assets = _web_dist / "assets"
@@ -1069,7 +1069,6 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         @app.get("/app")
         @app.get("/app/{path:path}")
         async def spa(path: str = ""):
-            from fastapi.responses import FileResponse
             return FileResponse(str(_web_dist / "index.html"))
     else:
         @app.get("/app")
