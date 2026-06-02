@@ -27,3 +27,27 @@ class OllamaProvider(LLMProvider):
         return CompletionResponse(text=data.get("message", {}).get("content", ""),
                                   input_tokens=data.get("prompt_eval_count", 0),
                                   output_tokens=data.get("eval_count", 0))
+
+    async def complete_stream(
+        self, messages: list[Message], system: Optional[str] = None,
+        temperature: float = 0.0, max_tokens: int = 4096
+    ):
+        import json as _json
+        msgs = []
+        if system:
+            msgs.append({"role": "system", "content": system})
+        msgs.extend({"role": m.role, "content": m.content} for m in messages)
+        async with httpx.AsyncClient(timeout=120) as client:
+            async with client.stream("POST", f"{self._base_url}/api/chat", json={
+                "model": self._config.model, "messages": msgs, "stream": True,
+            }) as resp:
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    if not line:
+                        continue
+                    data = _json.loads(line)
+                    token = data.get("message", {}).get("content", "")
+                    if token:
+                        yield token
+                    if data.get("done"):
+                        break

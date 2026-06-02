@@ -33,3 +33,12 @@ class LLMProvider(ABC):
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         raise NotImplementedError("embedding not supported by this provider")
+
+    async def complete_stream(
+        self, messages: list[Message], system: Optional[str] = None,
+        temperature: float = 0.0, max_tokens: int = 4096
+    ):
+        """Yield token strings as an async generator. Override in subclasses."""
+        raise NotImplementedError("streaming not supported by this provider")
+        if False:  # make this a generator
+            yield ""
