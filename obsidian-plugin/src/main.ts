@@ -2215,7 +2215,7 @@ class QueryModal extends Modal {
                     },
                     onCitations: (c) => { citations = c; },
                     onGap: (s) => { knowledgeGap = true; suggestedSearches = s; },
-                    onDone: () => { renderFinal(); },
+                    onDone: async () => { await renderFinal(); },
                     onError: (msg) => {
                         out.empty();
                         out.createEl("p", { text: `Error: ${msg}` });

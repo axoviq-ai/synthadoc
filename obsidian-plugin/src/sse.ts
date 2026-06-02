@@ -6,7 +6,7 @@ export interface SSECallbacks {
     onToken: (text: string) => void;
     onCitations: (citations: string[]) => void;
     onGap?: (suggestions: string[]) => void;
-    onDone: (nextHints: string[]) => void;
+    onDone: (nextHints: string[]) => void | Promise<void>;
     onError?: (message: string) => void;
 }
 
@@ -25,28 +25,32 @@ export async function consumeSSE(url: string, callbacks: SSECallbacks): Promise<
     let buffer = "";
     let currentEvent = "message";
 
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-        for (const line of lines) {
-            if (line.startsWith("event:")) {
-                currentEvent = line.slice(6).trim();
-            } else if (line.startsWith("data:")) {
-                const raw = line.slice(5).trim();
-                try {
-                    const data = JSON.parse(raw);
-                    _dispatch(currentEvent, data, callbacks);
-                } catch { /* ignore malformed */ }
-                currentEvent = "message";
+    try {
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
+            for (const line of lines) {
+                if (line.startsWith("event:")) {
+                    currentEvent = line.slice(6).trim();
+                } else if (line.startsWith("data:")) {
+                    const raw = line.slice(5).trim();
+                    try {
+                        const data = JSON.parse(raw);
+                        await _dispatch(currentEvent, data, callbacks);
+                    } catch { /* ignore malformed */ }
+                    currentEvent = "message";
+                }
             }
         }
+    } finally {
+        reader.cancel();
     }
 }
 
-function _dispatch(event: string, data: Record<string, unknown>, cb: SSECallbacks): void {
+async function _dispatch(event: string, data: Record<string, unknown>, cb: SSECallbacks): Promise<void> {
     switch (event) {
         case "status":
             cb.onStatus?.(data.phase as string, data.sources as number | undefined);
@@ -61,7 +65,7 @@ function _dispatch(event: string, data: Record<string, unknown>, cb: SSECallback
             cb.onGap?.((data.suggested_searches as string[]) ?? []);
             break;
         case "done":
-            cb.onDone((data.next_hints as string[]) ?? []);
+            await cb.onDone((data.next_hints as string[]) ?? []);
             break;
         case "error":
             cb.onError?.(data.message as string);
