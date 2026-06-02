@@ -422,6 +422,25 @@ class Orchestrator:
         )
         return result
 
+    async def query_stream(
+        self, question: str, session_id: str | None = None,
+        session_mode: str = "POWER_USER",
+    ):
+        """Async generator yielding SSE event dicts for streaming query response."""
+        from synthadoc.agents.query_agent import QueryAgent
+        _provider = make_provider("query", self._cfg)
+        _routing_path = self._root / "ROUTING.md"
+        agent = QueryAgent(
+            provider=_provider,
+            store=self._store, search=self._search,
+            gap_score_threshold=self._cfg.query.gap_score_threshold,
+            routing_path=_routing_path if _routing_path.exists() else None,
+        )
+        async for evt in agent.run_stream(
+            question, session_id=session_id, session_mode=session_mode
+        ):
+            yield evt
+
     async def lint(self, scope: str = "all", auto_resolve: bool = False) -> str:
         """Enqueue a lint job. The server worker loop executes it."""
         return await self._queue.enqueue("lint", {"scope": scope, "auto_resolve": auto_resolve})

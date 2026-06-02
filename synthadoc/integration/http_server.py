@@ -401,6 +401,86 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
     async def query_post(req: QueryRequest):
         return await _run_query(req.question, timeout_seconds=req.timeout_seconds)
 
+    @app.get("/query/stream")
+    async def query_stream(q: str, session_id: str | None = None, no_cache: bool = False):
+        import json as _json
+        from fastapi.responses import StreamingResponse
+        if not q.strip():
+            raise HTTPException(status_code=400, detail="q must not be empty")
+        orch = app.state.orch
+
+        if not no_cache:
+            from synthadoc.core.cache import make_query_cache_key
+            cache_key = make_query_cache_key(q, orch._wiki_epoch)
+            cached = await orch._cache.get_query(cache_key)
+            if cached is not None:
+                async def _cached_stream():
+                    events = [
+                        {"event": "status", "data": {"phase": "synthesizing", "sources": len(cached.get("citations", []))}},
+                    ]
+                    for word in cached["answer"].split(" "):
+                        events.append({"event": "token", "data": {"text": word + " "}})
+                    events.append({"event": "citations", "data": {"citations": cached.get("citations", [])}})
+                    events.append({"event": "done", "data": {"next_hints": []}})
+                    for evt in events:
+                        yield f"event: {evt['event']}\ndata: {_json.dumps(evt['data'])}\n\n"
+                return StreamingResponse(_cached_stream(), media_type="text/event-stream")
+
+        session_mode = "POWER_USER"
+
+        async def _live_stream():
+            full_answer = ""
+            citations = []
+            try:
+                async for evt in orch.query_stream(q, session_id=session_id, session_mode=session_mode):
+                    if evt["event"] == "token":
+                        full_answer += evt["data"].get("text", "")
+                    elif evt["event"] == "citations":
+                        citations = evt["data"].get("citations", [])
+                    yield f"event: {evt['event']}\ndata: {_json.dumps(evt['data'])}\n\n"
+            except Exception as exc:
+                known = _classify_llm_error(exc)
+                msg = known.detail if known else "LLM provider unavailable"
+                yield f"event: error\ndata: {_json.dumps({'message': msg})}\n\n"
+                return
+            if not no_cache and full_answer:
+                from synthadoc.core.cache import make_query_cache_key
+                cache_key = make_query_cache_key(q, orch._wiki_epoch)
+                await orch._cache.set_query(cache_key, orch._wiki_epoch, {
+                    "answer": full_answer, "citations": citations,
+                    "knowledge_gap": False, "suggested_searches": [],
+                })
+            if session_id and full_answer:
+                await orch._audit.append_message(session_id, "user", q)
+                await orch._audit.append_message(session_id, "assistant", full_answer)
+
+        return StreamingResponse(_live_stream(), media_type="text/event-stream")
+
+    @app.post("/sessions")
+    async def create_session():
+        import uuid as _uuid
+        orch = app.state.orch
+        session_id = str(_uuid.uuid4())
+        page_count = len(orch._store.list_pages())
+        if page_count < 5:
+            mode = "NEW_WIKI"
+        elif not await orch._audit.has_prior_sessions():
+            mode = "EXPLORER"
+        else:
+            pages = [orch._store.read_page(s) for s in orch._store.list_pages()]
+            has_health_issues = any(
+                p and p.status in ("stale", "contradicted")
+                for p in pages
+            )
+            mode = "HEALTH_CHECK" if has_health_issues else "POWER_USER"
+        await orch._audit.create_session(session_id, mode)
+        from synthadoc.agents.hint_engine import HintEngine
+        return {
+            "session_id": session_id,
+            "mode": mode,
+            "initial_hints": HintEngine.initial_hints(mode),
+        }
+
     @app.post("/analyse")
     async def analyse_source(req: AnalyseRequest):
         """Run analysis pass on a source and return structured result without writing pages."""

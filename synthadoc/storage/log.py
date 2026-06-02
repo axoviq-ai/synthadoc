@@ -130,6 +130,21 @@ class AuditDB:
                     error       TEXT,
                     output      TEXT DEFAULT ''
                 )""")
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS chat_sessions (
+                    session_id   TEXT PRIMARY KEY,
+                    mode         TEXT NOT NULL,
+                    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+                    last_active  TEXT NOT NULL DEFAULT (datetime('now'))
+                )""")
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS chat_messages (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id   TEXT NOT NULL REFERENCES chat_sessions(session_id),
+                    role         TEXT NOT NULL,
+                    content      TEXT NOT NULL,
+                    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+                )""")
             # Migrations for existing installs
             for migration in (
                 "ALTER TABLE scheduled_runs ADD COLUMN entry_id TEXT NOT NULL DEFAULT ''",
@@ -537,3 +552,40 @@ class AuditDB:
             ) as cur:
                 rows = await cur.fetchall()
         return {r["entry_id"]: dict(r) for r in rows}
+
+    async def create_session(self, session_id: str, mode: str) -> None:
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute(
+                "INSERT OR IGNORE INTO chat_sessions (session_id, mode) VALUES (?,?)",
+                (session_id, mode),
+            )
+            await db.commit()
+
+    async def append_message(self, session_id: str, role: str, content: str) -> None:
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute(
+                "INSERT INTO chat_messages (session_id, role, content) VALUES (?,?,?)",
+                (session_id, role, content),
+            )
+            await db.execute(
+                "UPDATE chat_sessions SET last_active=datetime('now') WHERE session_id=?",
+                (session_id,),
+            )
+            await db.commit()
+
+    async def get_session_messages(self, session_id: str, limit: int = 20) -> list[dict]:
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT role, content FROM chat_messages WHERE session_id=? "
+                "ORDER BY id DESC LIMIT ?",
+                (session_id, limit),
+            ) as cur:
+                rows = await cur.fetchall()
+        return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
+
+    async def has_prior_sessions(self) -> bool:
+        async with aiosqlite.connect(self._path) as db:
+            async with db.execute("SELECT COUNT(*) FROM chat_sessions") as cur:
+                row = await cur.fetchone()
+        return (row[0] if row else 0) > 0
