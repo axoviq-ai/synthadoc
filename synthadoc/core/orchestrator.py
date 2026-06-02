@@ -103,7 +103,11 @@ class Orchestrator:
         self._log    = LogWriter(wiki_root / "log.md")
         self._cost   = CostGuard(self._cfg.cost)
         self._hooks  = HookExecutor(self._cfg.hooks)
+        self._wiki_epoch: int = 0
         setup_telemetry(sd / "logs" / "traces.jsonl")
+
+    def _bump_epoch(self) -> None:
+        self._wiki_epoch += 1
 
     async def init(self) -> None:
         await self._queue.init()
@@ -266,6 +270,7 @@ class Orchestrator:
                 await self._queue.skip(job_id, result.skip_reason or "skipped")
             else:
                 await self._queue.complete(job_id, result=job_result)
+                self._bump_epoch()
                 # Embed newly written pages for vector search
                 if self._cfg.search.vector:
                     for slug in result.pages_created + result.pages_updated:
