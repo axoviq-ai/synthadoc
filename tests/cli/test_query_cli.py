@@ -24,7 +24,7 @@ def test_query_cli_no_gap_shows_only_answer():
     """When knowledge_gap=False, no callout must appear in output."""
     with _mock_get({"answer": "AI is great.", "citations": ["ai-page"],
                     "knowledge_gap": False, "suggested_searches": []}):
-        result = runner.invoke(app, ["query", "What is AI?", "-w", "."])
+        result = runner.invoke(app, ["query", "What is AI?", "-w", ".", "--no-stream"])
     assert "AI is great." in result.output
     assert "Knowledge Gap" not in result.output
 
@@ -37,7 +37,7 @@ def test_query_cli_gap_shows_callout():
         "knowledge_gap": True,
         "suggested_searches": ["canadian spring vegetables", "frost dates Canada"],
     }):
-        result = runner.invoke(app, ["query", "Vegetables in Canada?", "-w", "my-wiki"])
+        result = runner.invoke(app, ["query", "Vegetables in Canada?", "-w", "my-wiki", "--no-stream"])
     assert "[!tip] Knowledge Gap Detected" in result.output
     assert "canadian spring vegetables" in result.output
     assert "frost dates Canada" in result.output
@@ -51,7 +51,7 @@ def test_query_cli_gap_includes_wiki_name_in_terminal_commands():
         "knowledge_gap": True,
         "suggested_searches": ["vegetable planting guide"],
     }):
-        result = runner.invoke(app, ["query", "Vegetables?", "-w", "yard-gardening-in-canada"])
+        result = runner.invoke(app, ["query", "Vegetables?", "-w", "yard-gardening-in-canada", "--no-stream"])
     assert '-w yard-gardening-in-canada' in result.output
 
 
@@ -63,7 +63,7 @@ def test_query_cli_gap_includes_command_palette_hint():
         "knowledge_gap": True,
         "suggested_searches": ["test query"],
     }):
-        result = runner.invoke(app, ["query", "Something?", "-w", "my-wiki"])
+        result = runner.invoke(app, ["query", "Something?", "-w", "my-wiki", "--no-stream"])
     assert "Command Palette" in result.output
     assert "Synthadoc: Ingest..." in result.output
 
@@ -72,7 +72,7 @@ def test_query_cli_default_timeout_is_60():
     """Without --timeout, get() must be called with timeout=60."""
     ctx, mock = _capture_get({"answer": "ok", "citations": [], "knowledge_gap": False})
     with ctx:
-        runner.invoke(app, ["query", "What is AI?", "-w", "."])
+        runner.invoke(app, ["query", "What is AI?", "-w", ".", "--no-stream"])
     _, kwargs = mock.call_args
     assert kwargs.get("timeout") == 60
 
@@ -81,7 +81,7 @@ def test_query_cli_custom_timeout_forwarded():
     """--timeout N must be forwarded to get() as timeout=N."""
     ctx, mock = _capture_get({"answer": "ok", "citations": [], "knowledge_gap": False})
     with ctx:
-        runner.invoke(app, ["query", "What is AI?", "-w", ".", "--timeout", "120"])
+        runner.invoke(app, ["query", "What is AI?", "-w", ".", "--timeout", "120", "--no-stream"])
     _, kwargs = mock.call_args
     assert kwargs.get("timeout") == 120
 
@@ -94,5 +94,26 @@ def test_query_cli_gap_includes_requery_hint():
         "knowledge_gap": True,
         "suggested_searches": ["test"],
     }):
-        result = runner.invoke(app, ["query", "Something?", "-w", "my-wiki"])
+        result = runner.invoke(app, ["query", "Something?", "-w", "my-wiki", "--no-stream"])
     assert "re-run" in result.output.lower() or "re-run" in result.output
+
+
+def test_query_cmd_streams_by_default(tmp_wiki, monkeypatch):
+    """synthadoc query uses SSE streaming by default."""
+    called = []
+    def _fake_stream(wiki, question, no_cache, timeout):
+        called.append(True)
+    monkeypatch.setattr("synthadoc.cli.query._stream_query", _fake_stream)
+    result = runner.invoke(app, ["query", "What is AI?", "-w", "test"])
+    assert called, "_stream_query should have been called"
+
+
+def test_query_cmd_no_stream_uses_blocking(tmp_wiki, monkeypatch):
+    """synthadoc query --no-stream uses the blocking GET /query endpoint."""
+    called_paths = []
+    def _fake_get(wiki, path, **kw):
+        called_paths.append(path)
+        return {"answer": "ok", "citations": [], "knowledge_gap": False, "suggested_searches": []}
+    monkeypatch.setattr("synthadoc.cli.query.get", _fake_get)
+    result = runner.invoke(app, ["query", "What is AI?", "-w", "test", "--no-stream"])
+    assert any("/query" in p for p in called_paths), "blocking /query endpoint should have been called"
