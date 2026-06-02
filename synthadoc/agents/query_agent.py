@@ -430,7 +430,7 @@ class QueryAgent:
         )
 
     async def run_stream(
-        self, question: str, session_id: str | None = None,
+        self, question: str, session_id: str | None = None,  # reserved for future session history
         session_mode: str = "POWER_USER",
     ):
         """Stream query response as an async generator of SSE event dicts.
@@ -478,7 +478,7 @@ class QueryAgent:
             synthesis_prompt = (
                 f"The wiki does not yet have a page on this topic. "
                 f"Answer the question using your general knowledge, then note in one sentence "
-                f"that the wiki does not currently cover this topic.\n\n"
+                f"that the wiki does not currently cover this topic and suggest the user enriches it.\n\n"
                 f"Question: {question}\n\nWiki pages available:\n{context}"
             )
         else:

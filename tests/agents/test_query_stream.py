@@ -20,10 +20,9 @@ def _make_streaming_agent(tmp_wiki, tokens=("Answer", " here"), answer_full="Ans
     store = WikiStorage(tmp_wiki / "wiki")
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
     provider = MagicMock()
-    provider.complete = AsyncMock(side_effect=[
-        MagicMock(text='["what is AI?"]', input_tokens=10, output_tokens=5),
-        MagicMock(text=answer_full, input_tokens=100, output_tokens=30),
-    ])
+    provider.complete = AsyncMock(return_value=MagicMock(
+        text='["what is AI?"]', input_tokens=10, output_tokens=5
+    ))
     async def _stream(*a, **kw):
         for t in tokens:
             yield t
@@ -89,3 +88,31 @@ async def test_run_stream_event_structure(tmp_wiki):
     for evt in events:
         assert "event" in evt, f"missing 'event' key in {evt}"
         assert "data" in evt, f"missing 'data' key in {evt}"
+
+@pytest.mark.asyncio
+async def test_run_stream_gap_emits_gap_event(tmp_wiki):
+    """When gap is detected (low BM25 score + threshold), run_stream emits a gap event."""
+    from synthadoc.storage.search import SearchResult
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = MagicMock()
+    # decompose call + SearchDecomposeAgent call (for suggested searches)
+    provider.complete = AsyncMock(side_effect=[
+        MagicMock(text='["quantum error correction"]', input_tokens=10, output_tokens=5),
+        MagicMock(text='["quantum computing", "error correction"]', input_tokens=10, output_tokens=5),
+    ])
+
+    async def _stream(*a, **kw):
+        yield "Sorry, not enough info."
+    provider.complete_stream = _stream
+
+    agent = QueryAgent(
+        provider=provider, store=store, search=search,
+        gap_score_threshold=10.0,  # very high threshold -> gap always triggered
+    )
+    events = await _collect_stream(agent, "quantum error correction")
+    gap_events = [e for e in events if e["event"] == "gap"]
+    assert len(gap_events) == 1, "gap event must be emitted when knowledge gap detected"
+    assert "suggested_searches" in gap_events[0]["data"]
+    assert isinstance(gap_events[0]["data"]["suggested_searches"], list)
