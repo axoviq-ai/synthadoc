@@ -14,7 +14,7 @@
       '-+###############+-'
 
        S Y N T H A D O C
-    Community Edition  v0.6.0
+    Community Edition  v0.7.0
   ────────────────────────────────
   Domain-agnostic LLM wiki engine
 ```
@@ -27,9 +27,9 @@
 [![Hooks](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.hooks&label=Hook%20events&color=teal)](https://github.com/axoviq-ai/synthadoc/tree/main/hooks)
 [![CLI](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.cli_commands&label=CLI%20commands&color=darkblue)](https://github.com/axoviq-ai/synthadoc)
 [![Obsidian](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.obsidian_commands&label=Obsidian%20commands&color=blueviolet)](https://github.com/axoviq-ai/synthadoc/tree/main/obsidian-plugin)
-[![Version](https://img.shields.io/badge/Community%20Edition-v0.6.0-brightgreen.svg)](https://github.com/axoviq-ai/synthadoc)
+[![Version](https://img.shields.io/badge/Community%20Edition-v0.7.0-brightgreen.svg)](https://github.com/axoviq-ai/synthadoc)
 
-**Document version: v0.6.0**
+**Document version: v0.7.0**
 
 **Engineered for solo users and enterprises alike, providing a domain-specific knowledge base that scales seamlessly while maintaining accuracy through autonomous self-optimization.**
 
@@ -190,6 +190,9 @@ As the wiki accumulates pages the `index.md` table of contents, domain scope (`p
 | Candidates staging           | **Yes** (ingest to staging area, promote or discard)                  | No          | No         | No        |
 | Context packs                | **Yes** (goal → sub-questions → token-budget evidence pack)         | No          | No         | No        |
 | Export formats               | **Yes** (llms.txt, llms-full.txt, GraphML, JSON — lifecycle-filtered, provenance-threaded, cost-annotated; inline graph viewer in Obsidian) | No | No | No |
+| Streaming query output       | **Yes** (token-by-token; `--no-stream` for pipe-friendly blocking mode) | No          | No         | No        |
+| Query result cache           | **Yes** (cache key = question + wiki version; auto-invalidates on ingest or lifecycle change; `--no-cache` to bypass) | No          | No         | No        |
+| Browser-based chat UI        | **Yes** (`synthadoc web` — session-aware, streaming, citations, knowledge-gap callouts) | No          | No         | No        |
 
 ### Key differentiators vs. RAG
 
@@ -421,6 +424,8 @@ The guide covers:
 19. Build a context pack for grounded LLM prompts
 20. Verify claim provenance — source-line citations, broken citation audit, global provenance table
 21. Export your wiki — llms.txt, llms-full.txt, GraphML wikilink graph, agent-ready JSON with provenance and lifecycle history
+22. Use the web chat UI — streaming answers, session-aware hint chips, citations in-browser
+23. Query caching — understand how answers are cached and how to bypass with `--no-cache`
 
 ---
 
@@ -687,12 +692,29 @@ for precise citation.
 ### Querying
 
 ```bash
-# Ask a question — answer cites wiki pages
+# Ask a question — answer streams token-by-token as the LLM generates it
 synthadoc query "What is Moore's Law?" -w my-wiki
+
+# Blocking mode (no streaming) — useful in scripts or pipes
+synthadoc query "What is Moore's Law?" --no-stream -w my-wiki
+
+# Skip the cache — always call the LLM even if the answer is cached
+synthadoc query "What is Moore's Law?" --no-cache -w my-wiki
 
 # Save the answer as a new wiki page
 synthadoc query "What is Moore's Law?" --save -w my-wiki
 ```
+
+Query answers are **cached automatically** by question content and wiki version. Repeated identical questions return instantly from cache. The cache invalidates automatically when you ingest new content or change a page's lifecycle state.
+
+### Web Chat UI
+
+```bash
+# Open the browser-based chat interface for a wiki
+synthadoc web -w my-wiki
+```
+
+Opens your browser to `http://localhost:{port}/app`. The UI detects whether you are new to the wiki, exploring, or a returning user and shows contextual hint chips. Ask questions in the text box; answers stream in as the LLM generates them. Citations appear below each answer; knowledge-gap callouts suggest ingesting more content when the wiki lacks coverage.
 
 ### Linting
 
