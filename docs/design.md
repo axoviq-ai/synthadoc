@@ -843,6 +843,33 @@ synthadoc
 
 `synthadoc status -w <wiki>` now shows a per-state page count breakdown alongside the existing page total and job counts.
 
+### `schedule` sub-commands
+
+| Command | Description |
+|---|---|
+| `schedule add --op "<cmd>" --cron "<expr>"` | Register a single recurring job with the scheduler |
+| `schedule apply` | Bulk-register all jobs declared in `[[schedule.jobs]]` in `config.toml`; idempotent alternative to running `schedule add` once per job |
+| `schedule list` | List all registered jobs with their cron expression, next run time, last run time, and last result |
+| `schedule remove <id>` | Remove a registered job by ID |
+| `schedule run --op "<cmd>"` | Execute an operation immediately and record the result in the audit trail |
+| `schedule history` | Show recent scheduled run history from the audit trail |
+
+`schedule apply` is the recommended setup path when jobs are declared in `config.toml`. It reads the `[[schedule.jobs]]` array and registers every entry in one command, making schedule configuration reproducible and version-controllable:
+
+```bash
+# Declare jobs in .synthadoc/config.toml
+# [[schedule.jobs]]
+# op   = "ingest --batch raw_sources/"
+# cron = "0 2 * * *"
+#
+# [[schedule.jobs]]
+# op   = "lint run"
+# cron = "0 3 * * 0"
+
+# Register all declared jobs at once
+synthadoc schedule apply -w my-wiki
+```
+
 ### `query` options
 
 | Flag | Default | Description |
