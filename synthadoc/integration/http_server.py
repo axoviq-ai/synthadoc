@@ -392,10 +392,22 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         }
 
     @app.get("/query")
-    async def query(q: str, timeout_seconds: int = 60):
+    async def query(q: str, timeout_seconds: int = 60, no_cache: bool = False):
         if not q.strip():
             raise HTTPException(status_code=400, detail="q must not be empty")
-        return await _run_query(q, timeout_seconds=timeout_seconds)
+        orch = app.state.orch
+        if not no_cache:
+            from synthadoc.core.cache import make_query_cache_key
+            cache_key = make_query_cache_key(q, orch._wiki_epoch)
+            cached = await orch._cache.get_query(cache_key)
+            if cached is not None:
+                return cached
+        result = await _run_query(q, timeout_seconds=timeout_seconds)
+        if not no_cache:
+            from synthadoc.core.cache import make_query_cache_key
+            cache_key = make_query_cache_key(q, orch._wiki_epoch)
+            await orch._cache.set_query(cache_key, orch._wiki_epoch, result)
+        return result
 
     @app.post("/query")
     async def query_post(req: QueryRequest):
@@ -1017,6 +1029,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         await audit.set_page_state(req.slug, req.to_state, TriggerSource.USER)
         await audit.record_lifecycle_event(req.slug, from_state, req.to_state,
                                             req.reason, TriggerSource.USER)
+        orch._bump_epoch()
         return {"ok": True, "slug": req.slug, "from_state": from_state, "to_state": req.to_state}
 
     # ── Export ────────────────────────────────────────────────────────────────

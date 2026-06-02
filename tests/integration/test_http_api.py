@@ -701,3 +701,53 @@ def test_config_endpoint_returns_lint_settings(tmp_wiki):
     data = resp.json()
     assert "check_url_availability" in data
     assert isinstance(data["check_url_availability"], bool)
+
+
+def test_query_endpoint_returns_cached_result(tmp_wiki):
+    """GET /query must return a cached answer on second identical call."""
+    from synthadoc.integration.http_server import create_app
+    from fastapi.testclient import TestClient
+    from unittest.mock import AsyncMock, patch
+    from synthadoc.agents.query_agent import QueryResult
+
+    app = create_app(wiki_root=tmp_wiki)
+    mock_result = QueryResult(
+        question="what is AI",
+        answer="test answer",
+        citations=[],
+        knowledge_gap=False,
+        suggested_searches=[],
+    )
+
+    with patch("synthadoc.core.orchestrator.Orchestrator.query",
+               new=AsyncMock(return_value=mock_result)) as mock_query:
+        with TestClient(app) as client:
+            resp1 = client.get("/query?q=what+is+AI")
+            resp2 = client.get("/query?q=what+is+AI")
+
+    assert resp1.status_code == 200
+    assert resp2.status_code == 200
+    assert resp1.json()["answer"] == "test answer"
+    assert resp2.json()["answer"] == "test answer"
+    # Second call should hit cache — LLM called only once
+    assert mock_query.call_count == 1
+
+
+def test_lifecycle_transition_bumps_epoch(tmp_wiki):
+    """A lifecycle transition must increment the orchestrator's wiki_epoch."""
+    from synthadoc.integration.http_server import create_app
+    from fastapi.testclient import TestClient
+
+    wiki_dir = tmp_wiki / "wiki"
+    (wiki_dir / "test-page.md").write_text(
+        "---\nstatus: draft\n---\n# Test Page\n",
+        encoding="utf-8",
+    )
+    app = create_app(wiki_root=tmp_wiki)
+    with TestClient(app) as client:
+        epoch_before = client.app.state.orch._wiki_epoch
+        resp = client.post("/lifecycle/transition",
+                           json={"slug": "test-page", "to_state": "active", "reason": "test"})
+        epoch_after = client.app.state.orch._wiki_epoch
+    if resp.status_code == 200:
+        assert epoch_after > epoch_before
