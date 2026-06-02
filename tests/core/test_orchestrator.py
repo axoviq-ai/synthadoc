@@ -381,6 +381,65 @@ async def test_vector_migration_noop_when_vector_disabled(tmp_wiki):
 
 
 @pytest.mark.asyncio
+async def test_wiki_epoch_increments_on_successful_ingest(tmp_wiki):
+    """_wiki_epoch must increment after a successful ingest job."""
+    from synthadoc.core.orchestrator import Orchestrator
+    from synthadoc.agents.ingest_agent import IngestResult
+    orch = Orchestrator(wiki_root=tmp_wiki)
+    await orch.init()
+    assert orch._wiki_epoch == 0
+
+    job_id = await orch._queue.enqueue("ingest", {"source": "http://example.com", "force": False})
+    mock_result = IngestResult(
+        source="http://example.com",
+        pages_created=["new-page"],
+        pages_updated=[],
+        pages_flagged=[],
+        tokens_used=10,
+        input_tokens=8,
+        output_tokens=2,
+        cost_usd=0.0,
+        skipped=False,
+        skip_reason="",
+        child_sources=[],
+    )
+    with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
+         patch("synthadoc.agents.ingest_agent.IngestAgent.ingest", new=AsyncMock(return_value=mock_result)):
+        await orch._run_ingest(job_id, source="http://example.com", auto_confirm=True)
+
+    assert orch._wiki_epoch == 1
+
+
+@pytest.mark.asyncio
+async def test_wiki_epoch_does_not_increment_on_skipped_ingest(tmp_wiki):
+    """_wiki_epoch must NOT increment when ingest is skipped."""
+    from synthadoc.core.orchestrator import Orchestrator
+    from synthadoc.agents.ingest_agent import IngestResult
+    orch = Orchestrator(wiki_root=tmp_wiki)
+    await orch.init()
+
+    job_id = await orch._queue.enqueue("ingest", {"source": "http://example.com", "force": False})
+    mock_result = IngestResult(
+        source="http://example.com",
+        pages_created=[],
+        pages_updated=[],
+        pages_flagged=[],
+        tokens_used=0,
+        input_tokens=0,
+        output_tokens=0,
+        cost_usd=0.0,
+        skipped=True,
+        skip_reason="already cached",
+        child_sources=[],
+    )
+    with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
+         patch("synthadoc.agents.ingest_agent.IngestAgent.ingest", new=AsyncMock(return_value=mock_result)):
+        await orch._run_ingest(job_id, source="http://example.com", auto_confirm=True)
+
+    assert orch._wiki_epoch == 0
+
+
+@pytest.mark.asyncio
 async def test_run_lint_passes_adversarial_false(tmp_wiki):
     """_run_lint() passes adversarial=False to LintAgent.lint() when requested."""
     from synthadoc.config import load_config
