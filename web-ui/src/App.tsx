@@ -25,7 +25,7 @@ export default function App() {
                 )}
             </header>
             {!session && !sessionError && <p className="connecting">Connecting to server…</p>}
-            {sessionError && <p className="error-banner">{sessionError}</p>}
+            {sessionError && <p className="error-banner" role="alert">{sessionError}</p>}
             <ChatWindow
                 sessionId={session?.session_id ?? null}
                 hints={hints}
