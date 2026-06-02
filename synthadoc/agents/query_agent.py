@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from synthadoc.agents._utils import parse_json_string_array
+from synthadoc.agents.hint_engine import HintEngine
 from synthadoc.agents.search_decompose_agent import SearchDecomposeAgent
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.search import HybridSearch, SearchResult
@@ -427,3 +428,80 @@ class QueryAgent:
             suggested_searches=_suggested,
             sub_questions_count=len(sub_questions),
         )
+
+    async def run_stream(
+        self, question: str, session_id: str | None = None,
+        session_mode: str = "POWER_USER",
+    ):
+        """Stream query response as an async generator of SSE event dicts.
+
+        Event sequence: status(retrieving) → status(synthesizing) → token* → citations → [gap] → done
+        """
+        yield {"event": "status", "data": {"phase": "retrieving"}}
+
+        question = self._expand_aliases(question)
+        sub_questions = await self.decompose(question)
+
+        scoped_slugs: list[str] | None = None
+        if self._routing:
+            branches = await self._routing_branch_pick(question)
+            if branches:
+                scoped_slugs = self._routing.slugs_for_branches(branches)
+
+        async def _search_one(sub_q: str):
+            return await self._search.hybrid_search(
+                sub_q.lower().split(), top_n=self._top_n, scoped_slugs=scoped_slugs
+            )
+
+        results_per_sub = await asyncio.gather(*[_search_one(q) for q in sub_questions])
+        best: dict[str, SearchResult] = {}
+        for results in results_per_sub:
+            for r in results:
+                if r.slug not in best or r.score > best[r.slug].score:
+                    best[r.slug] = r
+        candidates = sorted(best.values(), key=lambda r: r.score, reverse=True)[:self._top_n]
+
+        citations = [r.slug for r in candidates]
+        context = "\n\n".join(
+            f"### {p.title}\n{p.content[:1000]}"
+            for r in candidates
+            if (p := self._store.read_page(r.slug))
+        ) or "No relevant pages found."
+
+        _max_score = max((r.score for r in candidates), default=0.0)
+        _gap = self._gap_score_threshold > 0 and (
+            len(candidates) < 3
+            or _max_score < self._gap_score_threshold
+        )
+
+        if _gap:
+            synthesis_prompt = (
+                f"The wiki does not yet have a page on this topic. "
+                f"Answer the question using your general knowledge, then note in one sentence "
+                f"that the wiki does not currently cover this topic.\n\n"
+                f"Question: {question}\n\nWiki pages available:\n{context}"
+            )
+        else:
+            synthesis_prompt = (
+                f"Answer using ONLY these wiki pages. Cite with [[PageTitle]].\n\n"
+                f"Question: {question}\n\nPages:\n{context}"
+            )
+
+        yield {"event": "status", "data": {"phase": "synthesizing", "sources": len(citations)}}
+
+        full_answer = ""
+        async for token in self._provider.complete_stream(
+            messages=[Message(role="user", content=synthesis_prompt)],
+            temperature=0.0,
+        ):
+            full_answer += token
+            yield {"event": "token", "data": {"text": token}}
+
+        yield {"event": "citations", "data": {"citations": citations}}
+
+        if _gap:
+            _suggested = await SearchDecomposeAgent(self._provider).decompose(question)
+            yield {"event": "gap", "data": {"suggested_searches": _suggested}}
+
+        next_hints = HintEngine.after_response(full_answer, session_mode)
+        yield {"event": "done", "data": {"next_hints": next_hints}}
