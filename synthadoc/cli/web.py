@@ -2,7 +2,6 @@
 # Copyright (C) 2026 William Johnason / axoviq.com
 from __future__ import annotations
 
-import re
 import webbrowser
 from typing import Optional
 
@@ -14,20 +13,22 @@ from synthadoc.cli.main import app
 
 @app.command("web")
 def web_cmd(
-    wiki: Optional[str] = typer.Option(None, "--wiki", "-w"),
-    port: Optional[int] = typer.Option(None, "--port"),
-    no_browser: bool = typer.Option(False, "--no-browser", help="Print URL without opening browser"),
+    wiki: Optional[str] = typer.Option(None, "--wiki", "-w",
+        help="Wiki name. Omit when a default wiki is set with `synthadoc use`."),
+    no_browser: bool = typer.Option(False, "--no-browser",
+        help="Print the URL without opening a browser tab."),
 ):
-    """Open the local web chat UI in your browser.
+    """Open the web chat UI for a wiki in your browser.
 
-    Requires synthadoc serve to be running.
+    The port is read from the wiki's config — no need to remember it:
+
+        synthadoc web -w history-of-computing
+        synthadoc web          # when `synthadoc use` is set
     """
     from synthadoc.cli._wiki import resolve_wiki
     from synthadoc.cli._http import server_url, _no_server
     wiki = resolve_wiki(wiki)
     base = server_url(wiki)
-    if port:
-        base = re.sub(r":\d+$", f":{port}", base)
     try:
         httpx.get(f"{base}/", timeout=2)
     except httpx.ConnectError:

@@ -90,6 +90,7 @@ def print_banner(
         _c(_WHITE,          f"  PID:   {pid if pid is not None else os.getpid()}", use_color),
         "",
         _c(_DIM,            f"  http://127.0.0.1:{port}", use_color),
+        _c(_YELLOW,         f"  synthadoc web -w {Path(wiki).name}", use_color),
     ]
 
     # Pad shorter list so we can zip

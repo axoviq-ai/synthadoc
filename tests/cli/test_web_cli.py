@@ -40,13 +40,12 @@ def test_web_cmd_opens_browser_by_default():
     assert any("/app" in u for u in opened)
 
 
-def test_web_cmd_port_override():
-    """--port N must override the port in the URL."""
-    with _patch_resolve_wiki(), _patch_server_url("http://127.0.0.1:7777"), \
+def test_web_cmd_port_from_config():
+    """Port must come from the wiki config (server_url), not a CLI flag."""
+    with _patch_resolve_wiki(), _patch_server_url("http://127.0.0.1:9090"), \
          _patch_httpx_get_ok():
-        result = runner.invoke(app, ["web", "-w", "my-wiki", "--port", "9999", "--no-browser"])
-    assert "9999" in result.output
-    assert "7777" not in result.output
+        result = runner.invoke(app, ["web", "-w", "my-wiki", "--no-browser"])
+    assert "9090" in result.output
 
 
 def test_web_cmd_connect_error_exits():
