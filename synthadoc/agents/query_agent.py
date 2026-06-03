@@ -87,6 +87,13 @@ class QueryAgent:
             f"Question: {question}", multi=True,
         )
 
+    def _load_purpose_context(self) -> str:
+        """Return purpose.md as a pinned preamble for synthesis, or '' if absent."""
+        page = self._store.read_page("purpose")
+        if not page:
+            return ""
+        return f"### Wiki Scope (purpose.md)\n{page.content[:12000]}"
+
     def _expand_aliases(self, question: str) -> str:
         """Replace alias matches in question with canonical slug names."""
         alias_map: dict[str, str] = {}
@@ -383,11 +390,13 @@ class QueryAgent:
             _suggested = []
 
         citations = [r.slug for r in candidates]
-        context = "\n\n".join(
+        _purpose_ctx = self._load_purpose_context()
+        _pages_ctx = "\n\n".join(
             f"### {p.title}\n{p.content[:1000]}"
             for r in candidates
-            if (p := self._store.read_page(r.slug))
+            if r.slug != "purpose" and (p := self._store.read_page(r.slug))
         ) or "No relevant pages found."
+        context = f"{_purpose_ctx}\n\n{_pages_ctx}" if _purpose_ctx else _pages_ctx
 
         if _gap:
             synthesis_prompt = (
@@ -563,11 +572,13 @@ class QueryAgent:
         candidates = sorted(best.values(), key=lambda r: r.score, reverse=True)[:self._top_n]
 
         citations = [r.slug for r in candidates]
-        context = "\n\n".join(
+        _purpose_ctx = self._load_purpose_context()
+        _pages_ctx = "\n\n".join(
             f"### {p.title}\n{p.content[:1000]}"
             for r in candidates
-            if (p := self._store.read_page(r.slug))
+            if r.slug != "purpose" and (p := self._store.read_page(r.slug))
         ) or "No relevant pages found."
+        context = f"{_purpose_ctx}\n\n{_pages_ctx}" if _purpose_ctx else _pages_ctx
 
         _max_score = max((r.score for r in candidates), default=0.0)
         _gap, _discriminating_term, _pages_with_overlap, _min_specific_qualifying = \

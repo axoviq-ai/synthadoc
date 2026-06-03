@@ -116,3 +116,55 @@ async def test_run_stream_gap_emits_gap_event(tmp_wiki):
     assert len(gap_events) == 1, "gap event must be emitted when knowledge gap detected"
     assert "suggested_searches" in gap_events[0]["data"]
     assert isinstance(gap_events[0]["data"]["suggested_searches"], list)
+
+
+@pytest.mark.asyncio
+async def test_run_stream_purpose_pinned_in_synthesis(tmp_wiki):
+    """When purpose.md exists, synthesis prompt must include the Wiki Scope preamble."""
+    (tmp_wiki / "wiki" / "purpose.md").write_text(
+        "---\ntitle: Purpose\n---\nThis wiki covers enterprise software engineering.\n"
+        "Include: architecture, design patterns.\nExclude: personal projects.",
+        encoding="utf-8",
+    )
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = MagicMock()
+    provider.complete = AsyncMock(return_value=MagicMock(
+        text='["what is dependency injection?"]', input_tokens=10, output_tokens=5,
+    ))
+    captured: list[dict] = []
+    async def _stream(messages, **kw):
+        captured.append({"messages": messages})
+        yield "Answer here"
+    provider.complete_stream = _stream
+
+    agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=0.0)
+    await _collect_stream(agent, "What is dependency injection?")
+
+    assert captured, "complete_stream was not called"
+    synthesis_content = captured[0]["messages"][0].content
+    assert "Wiki Scope (purpose.md)" in synthesis_content
+    assert "enterprise software engineering" in synthesis_content
+
+
+@pytest.mark.asyncio
+async def test_run_stream_no_purpose_no_preamble(tmp_wiki):
+    """When purpose.md is absent, synthesis prompt must not contain the Wiki Scope preamble."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = MagicMock()
+    provider.complete = AsyncMock(return_value=MagicMock(
+        text='["what is caching?"]', input_tokens=10, output_tokens=5,
+    ))
+    captured: list[dict] = []
+    async def _stream(messages, **kw):
+        captured.append({"messages": messages})
+        yield "Answer here"
+    provider.complete_stream = _stream
+
+    agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=0.0)
+    await _collect_stream(agent, "What is caching?")
+
+    assert captured
+    synthesis_content = captured[0]["messages"][0].content
+    assert "Wiki Scope" not in synthesis_content
