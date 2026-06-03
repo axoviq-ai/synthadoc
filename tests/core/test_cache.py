@@ -107,6 +107,22 @@ def test_make_query_cache_key_is_epoch_sensitive():
     assert k1 != k2
 
 
+def test_make_query_cache_key_is_model_sensitive():
+    """Different models produce different keys for the same question and epoch."""
+    from synthadoc.core.cache import make_query_cache_key
+    k1 = make_query_cache_key("What is AI?", epoch=1, model="gemini-2.5-flash-lite")
+    k2 = make_query_cache_key("What is AI?", epoch=1, model="minimax/MiniMax-M2.5")
+    assert k1 != k2
+
+
+def test_make_query_cache_key_empty_model_is_stable():
+    """Omitting model (default '') is equivalent to passing model=''."""
+    from synthadoc.core.cache import make_query_cache_key
+    k1 = make_query_cache_key("What is AI?", epoch=1)
+    k2 = make_query_cache_key("What is AI?", epoch=1, model="")
+    assert k1 == k2
+
+
 @pytest.mark.asyncio
 async def test_query_cache_cleanup_keeps_boundary_entry(tmp_path):
     """Entry at exactly current_epoch - 5 must be KEPT (< not <=)."""

@@ -18,9 +18,9 @@ def make_cache_key(operation: str, inputs: dict, version: str = CACHE_VERSION) -
     return hashlib.sha256(payload.encode()).hexdigest()[:32]
 
 
-def make_query_cache_key(question: str, epoch: int) -> str:
+def make_query_cache_key(question: str, epoch: int, model: str = "") -> str:
     normalized = " ".join(question.lower().split())
-    payload = f"{normalized}|{epoch}"
+    payload = f"{normalized}|{epoch}|{model}"
     return hashlib.sha256(payload.encode()).hexdigest()[:32]
 
 
