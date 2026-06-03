@@ -99,6 +99,28 @@ async def test_fail_before_max_retries_stays_pending(tmp_wiki):
 
 
 @pytest.mark.asyncio
+async def test_get_job_returns_job_by_id(tmp_wiki):
+    """get_job returns the correct job when the ID exists."""
+    q = JobQueue(tmp_wiki / ".synthadoc" / "jobs.db")
+    await q.init()
+    job_id = await q.enqueue("ingest", {"source": "paper.pdf"})
+    job = await q.get_job(job_id)
+    assert job is not None
+    assert job.id == job_id
+    assert job.operation == "ingest"
+    assert job.status == JobStatus.PENDING
+
+
+@pytest.mark.asyncio
+async def test_get_job_returns_none_for_missing_id(tmp_wiki):
+    """get_job returns None when no job with the given ID exists."""
+    q = JobQueue(tmp_wiki / ".synthadoc" / "jobs.db")
+    await q.init()
+    result = await q.get_job("deadbeef")
+    assert result is None
+
+
+@pytest.mark.asyncio
 async def test_skip_does_not_retry(tmp_wiki):
     """Skipped jobs must not reappear in the pending queue."""
     q = JobQueue(tmp_wiki / ".synthadoc" / "jobs.db")

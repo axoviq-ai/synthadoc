@@ -119,6 +119,8 @@ _LIVE_DATA_TRIGGERS: frozenset[str] = frozenset({
     "whats new", "updated", "new pages", "added", "last week", "past week",
     "adversarial", "adversarial warning", "flagged", "overstated", "claim concern",
     "lint warning", "warnings",
+    "job", "jobs", "job id", "job status", "ingest job", "queue",
+    "pending jobs", "failed job", "dead job",
 })
 
 _RECENT_CHANGE_TRIGGERS: frozenset[str] = frozenset({
@@ -129,6 +131,11 @@ _RECENT_CHANGE_TRIGGERS: frozenset[str] = frozenset({
 _ADVERSARIAL_TRIGGERS: frozenset[str] = frozenset({
     "adversarial", "adversarial warning", "flagged", "overstated", "claim concern",
     "lint warning", "warnings",
+})
+
+_JOB_TRIGGERS: frozenset[str] = frozenset({
+    "job", "jobs", "job id", "job status", "ingest job", "queue",
+    "pending jobs", "failed job", "dead job",
 })
 
 
@@ -187,37 +194,38 @@ class QueryAgent:
             audit = AuditDB(audit_path)
             await audit.init()
             counts: dict[str, int] = await audit.get_lifecycle_summary()
-            if not counts:
-                return ""
 
-            _HINTS = {
-                "draft":       "← run `synthadoc lint run` to promote",
-                "stale":       "← re-ingest needed",
-                "contradicted": "← review required",
-            }
-            lines = ["### Current page counts"]
-            for state in ("active", "draft", "stale", "contradicted", "archived"):
-                n = counts.get(state, 0)
-                hint = f"  {_HINTS[state]}" if state in _HINTS and n > 0 else ""
-                lines.append(f"  {state:<14} {n}{hint}")
+            lines: list[str] = []
 
-            # For specific state questions, list the actual page slugs
-            detected_state: str | None = None
-            for state in ("stale", "archived", "draft", "contradicted", "active"):
-                if state in q_lower or (state == "contradicted" and "contradiction" in q_lower):
-                    detected_state = state
-                    break
+            if counts:
+                _HINTS = {
+                    "draft":       "← run `synthadoc lint run` to promote",
+                    "stale":       "← re-ingest needed",
+                    "contradicted": "← review required",
+                }
+                lines.append("### Current page counts")
+                for state in ("active", "draft", "stale", "contradicted", "archived"):
+                    n = counts.get(state, 0)
+                    hint = f"  {_HINTS[state]}" if state in _HINTS and n > 0 else ""
+                    lines.append(f"  {state:<14} {n}{hint}")
 
-            if detected_state:
-                all_pages = await audit.get_all_page_states()
-                matching = [p for p in all_pages if p["state"] == detected_state]
-                if matching:
-                    lines.append(f"\n### Pages currently marked '{detected_state}'")
-                    for p in matching:
-                        ts = p.get("updated_at", "")[:10]
-                        lines.append(f"  - {p['slug']}  (since {ts})" if ts else f"  - {p['slug']}")
-                else:
-                    lines.append(f"\n### Pages currently marked '{detected_state}'\n  (none)")
+                # For specific state questions, list the actual page slugs
+                detected_state: str | None = None
+                for state in ("stale", "archived", "draft", "contradicted", "active"):
+                    if state in q_lower or (state == "contradicted" and "contradiction" in q_lower):
+                        detected_state = state
+                        break
+
+                if detected_state:
+                    all_pages = await audit.get_all_page_states()
+                    matching = [p for p in all_pages if p["state"] == detected_state]
+                    if matching:
+                        lines.append(f"\n### Pages currently marked '{detected_state}'")
+                        for p in matching:
+                            ts = p.get("updated_at", "")[:10]
+                            lines.append(f"  - {p['slug']}  (since {ts})" if ts else f"  - {p['slug']}")
+                    else:
+                        lines.append(f"\n### Pages currently marked '{detected_state}'\n  (none)")
 
             # Adversarial warnings — read directly from page frontmatter
             if any(kw in q_lower for kw in _ADVERSARIAL_TRIGGERS):
@@ -250,7 +258,36 @@ class QueryAgent:
                 else:
                     lines.append("\n### Pages ingested or updated in the last 7 days\n  (none)")
 
-            return "\n".join(lines)
+            # Job status — detect a specific 8-char hex job ID or list recent jobs
+            if any(kw in q_lower for kw in _JOB_TRIGGERS) and self._orchestrator is not None:
+                _queue = self._orchestrator._queue
+                _job_id_match = re.search(r'\b([0-9a-f]{8})\b', q_lower)
+                if _job_id_match:
+                    _job_id = _job_id_match.group(1)
+                    _job = await _queue.get_job(_job_id)
+                    if _job:
+                        lines.append(f"\n### Job {_job_id}")
+                        lines.append(f"  operation : {_job.operation}")
+                        lines.append(f"  status    : {_job.status.value}")
+                        lines.append(f"  retries   : {_job.retries}")
+                        if _job.error:
+                            lines.append(f"  error     : {_job.error}")
+                        if _job.created_at:
+                            lines.append(f"  created   : {(_job.created_at or '')[:19]}")
+                    else:
+                        lines.append(f"\n### Job {_job_id}\n  (not found)")
+                else:
+                    _recent_jobs = await _queue.list_jobs(order="desc")
+                    if _recent_jobs:
+                        lines.append("\n### Recent jobs")
+                        for _j in _recent_jobs[:10]:
+                            _ts = (_j.created_at or "")[:10]
+                            _err = f"  — {_j.error}" if _j.error else ""
+                            lines.append(f"  - [{_j.id}] {_j.operation}  {_j.status.value}  {_ts}{_err}")
+                    else:
+                        lines.append("\n### Jobs\n  (no jobs found)")
+
+            return "\n".join(lines) if lines else ""
         except Exception as exc:
             logger.debug("live wiki data fetch failed: %s", exc)
             return ""
