@@ -4,7 +4,7 @@ import hashlib
 import pytest
 import aiosqlite
 from unittest.mock import AsyncMock
-from synthadoc.agents.ingest_agent import IngestAgent, IngestResult, _slugify, _coerce_str_list
+from synthadoc.agents.ingest_agent import IngestAgent, IngestResult, _slugify, _coerce_str_list, _parse_json_response
 from synthadoc.providers.base import CompletionResponse
 from synthadoc.storage.wiki import WikiStorage, WikiPage
 from synthadoc.storage.search import HybridSearch
@@ -35,6 +35,35 @@ def test_slugify_pure_symbols_returns_hash():
     slug = _slugify("!!! ???")
     assert slug.startswith("page-")
     assert len(slug) > 5
+
+
+# --- _parse_json_response unit tests ---
+
+def test_parse_json_response_returns_dict():
+    result = _parse_json_response('{"entities": ["AI"], "tags": ["ml"]}')
+    assert result == {"entities": ["AI"], "tags": ["ml"]}
+
+
+def test_parse_json_response_unwraps_top_level_array():
+    """LLM sometimes returns a JSON array wrapping the dict — unwrap first element."""
+    result = _parse_json_response('[{"entities": ["AI"], "tags": ["ml"]}]')
+    assert result == {"entities": ["AI"], "tags": ["ml"]}
+
+
+def test_parse_json_response_empty_array_returns_empty_dict():
+    result = _parse_json_response("[]")
+    assert result == {}
+
+
+def test_parse_json_response_non_dict_array_returns_empty_dict():
+    """Array of non-dict elements should fall through to brace extraction."""
+    result = _parse_json_response('["a", "b"]')
+    assert isinstance(result, dict)
+
+
+def test_parse_json_response_handles_markdown_fence():
+    result = _parse_json_response('```json\n{"entities": ["BERT"]}\n```')
+    assert result["entities"] == ["BERT"]
 
 
 @pytest.fixture
