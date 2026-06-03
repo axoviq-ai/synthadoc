@@ -115,6 +115,13 @@ _LIVE_DATA_TRIGGERS: frozenset[str] = frozenset({
     "stale", "archived", "archive", "draft", "active", "contradicted",
     "contradictions", "contradiction", "review", "lifecycle", "lifecycle state",
     "pages marked", "which pages", "how many pages", "page count",
+    "changed", "this week", "recently", "recent changes", "what's new",
+    "whats new", "updated", "new pages", "added", "last week", "past week",
+})
+
+_RECENT_CHANGE_TRIGGERS: frozenset[str] = frozenset({
+    "changed", "this week", "recently", "recent changes", "what's new",
+    "whats new", "updated", "new pages", "added", "last week", "past week",
 })
 
 
@@ -204,6 +211,22 @@ class QueryAgent:
                         lines.append(f"  - {p['slug']}  (since {ts})" if ts else f"  - {p['slug']}")
                 else:
                     lines.append(f"\n### Pages currently marked '{detected_state}'\n  (none)")
+
+            # Recent ingest history when question asks about changes/updates
+            if any(kw in q_lower for kw in _RECENT_CHANGE_TRIGGERS):
+                recent = await audit.list_ingests_since(days=7)
+                if recent:
+                    lines.append("\n### Pages ingested or updated in the last 7 days")
+                    seen: set[str] = set()
+                    for r in recent:
+                        slug = r.get("wiki_page") or ""
+                        src = r.get("source_path") or ""
+                        date = (r.get("ingested_at") or "")[:10]
+                        if slug and slug not in seen:
+                            seen.add(slug)
+                            lines.append(f"  - [[{slug}]]  (from {src}, {date})" if src else f"  - [[{slug}]]  ({date})")
+                else:
+                    lines.append("\n### Pages ingested or updated in the last 7 days\n  (none)")
 
             return "\n".join(lines)
         except Exception as exc:

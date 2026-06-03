@@ -1727,6 +1727,31 @@ def test_get_relevant_system_pages_lint_keyword(tmp_wiki):
 
 
 @pytest.mark.asyncio
+async def test_fetch_live_wiki_data_recent_changes(tmp_wiki):
+    """'What changed this week?' must include recent ingest history."""
+    from unittest.mock import AsyncMock as _AsMock, patch
+    from synthadoc.storage.log import AuditDB
+
+    audit_path = tmp_wiki / ".synthadoc" / "audit.db"
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    db = AuditDB(audit_path)
+    await db.init()
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    agent = QueryAgent(provider=_AsMock(), store=store, search=search)
+
+    recent_row = [{"wiki_page": "alan-turing", "source_path": "turing.pdf",
+                   "ingested_at": "2026-06-03T10:00:00+00:00"}]
+    with patch.object(AuditDB, "list_ingests_since", new=AsyncMock(return_value=recent_row)), \
+         patch.object(AuditDB, "get_lifecycle_summary", new=AsyncMock(return_value={"active": 5})):
+        result = await agent._fetch_live_wiki_data("What changed in the wiki this week?")
+
+    assert "alan-turing" in result
+    assert "last 7 days" in result
+
+
+@pytest.mark.asyncio
 async def test_query_system_knowledge_suppresses_gap(tmp_wiki):
     """When system knowledge matches, gap must be suppressed even at very high threshold."""
     store = WikiStorage(tmp_wiki / "wiki")

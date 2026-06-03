@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -217,6 +217,19 @@ class AuditDB:
                 "SELECT source_path, wiki_page, tokens, cost_usd, ingested_at "
                 "FROM ingests ORDER BY id ASC LIMIT ?",
                 (limit,),
+            ) as cur:
+                rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def list_ingests_since(self, days: int = 7) -> list[dict]:
+        """Return ingest records from the last `days` days, newest first."""
+        since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT source_path, wiki_page, ingested_at "
+                "FROM ingests WHERE ingested_at >= ? ORDER BY id DESC",
+                (since,),
             ) as cur:
                 rows = await cur.fetchall()
         return [dict(r) for r in rows]
