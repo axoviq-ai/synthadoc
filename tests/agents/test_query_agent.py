@@ -1895,3 +1895,36 @@ async def test_query_live_data_injected_into_synthesis(tmp_wiki):
     synthesis_prompt = provider.complete.call_args_list[1][1]["messages"][0].content
     assert "Live Wiki Data" in synthesis_prompt
     assert "my-page" in synthesis_prompt
+
+
+@pytest.mark.asyncio
+async def test_no_gap_for_wiki_introspective_queries(tmp_wiki):
+    """Meta-questions about the wiki's own scope must never trigger a knowledge gap.
+
+    "What topics does this wiki cover?" has all content words filtered as stopwords
+    (topic, cover) or too short (wiki, what, does, this), so _key_terms is empty and
+    BM25 returns < 3 candidates — signal 1 fires. The _WIKI_INTROSPECTIVE_TRIGGERS
+    guard must suppress this before SearchDecomposeAgent is called.
+    """
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("neural-networks", WikiPage(
+        title="Neural Networks", tags=["ai"],
+        content="Neural networks are computational models inspired by the brain. "
+                "They consist of layers of interconnected nodes.",
+        status="active", confidence="high", sources=[],
+    ))
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["What topics does this wiki cover?"]',
+                           input_tokens=5, output_tokens=5),
+        CompletionResponse(text="This wiki covers neural networks and AI topics.",
+                           input_tokens=50, output_tokens=10),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search)
+    result = await agent.query("What topics does this wiki cover?")
+
+    assert result.knowledge_gap is False
+    assert result.suggested_searches == []
+    # SearchDecomposeAgent should NOT have been called (only 2 complete() calls total)
+    assert provider.complete.call_count == 2

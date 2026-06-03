@@ -138,6 +138,33 @@ _JOB_TRIGGERS: frozenset[str] = frozenset({
     "pending jobs", "failed job", "dead job",
 })
 
+# Phrase fragments that identify meta/introspective questions about the wiki's own
+# content or scope ("What topics does this wiki cover?"). These can never be gaps:
+# the answer is precisely the retrieved wiki pages. Gap detection would fire here
+# because all content words (topic, cover, scope, wiki) are either stopwords or
+# too short, leaving _key_terms empty and candidates < 3 (signal 1 fires).
+_WIKI_INTROSPECTIVE_TRIGGERS: frozenset[str] = frozenset({
+    "what topics",
+    "what subject",
+    "what does this wiki",
+    "what's in this wiki",
+    "whats in this wiki",
+    "what is in this wiki",
+    "what does my wiki",
+    "what does your wiki",
+    "what pages",
+    "wiki cover",
+    "wiki contain",
+    "wiki includ",
+    "wiki know about",
+    "topics covered",
+    "subjects covered",
+    "this wiki cover",
+    "this wiki know",
+    "this wiki includ",
+    "this wiki contain",
+})
+
 
 class QueryAgent:
     def __init__(self, provider: LLMProvider, store: WikiStorage,
@@ -609,6 +636,9 @@ class QueryAgent:
         _system_ctx = self._get_relevant_system_pages(question)
         if _system_ctx:
             _gap = False
+        _q_lower = question.lower()
+        if _gap and any(kw in _q_lower for kw in _WIKI_INTROSPECTIVE_TRIGGERS):
+            _gap = False
         if _gap:
             _suggested = await SearchDecomposeAgent(self._provider).decompose(question)
         else:
@@ -876,6 +906,9 @@ class QueryAgent:
         )
 
         if _system_ctx:
+            _gap = False
+        _q_lower_s = question.lower()
+        if _gap and any(kw in _q_lower_s for kw in _WIKI_INTROSPECTIVE_TRIGGERS):
             _gap = False
 
         if _gap:
