@@ -370,10 +370,10 @@ class QueryAgent:
             _min_specific_qualifying = len(candidates)
 
         _gap = self._gap_score_threshold > 0 and (
-            len(candidates) < 3                          # signal 1: too few pages
-            or _max_score < self._gap_score_threshold    # signal 2: low BM25 scores
-            or _pages_with_overlap < 2                   # signal 3: no dedicated coverage
-            or _any_term_missing                         # signal 4: defining concept absent
+            len(candidates) < 3                                              # signal 1: too few pages
+            or (bool(_key_terms) and _max_score < self._gap_score_threshold) # signal 2: skip when query has no content words
+            or _pages_with_overlap < 2                                       # signal 3: no dedicated coverage
+            or _any_term_missing                                             # signal 4: defining concept absent
             or _defining_term_absent                     # signal 5: defining term barely present
         )
 
@@ -532,7 +532,7 @@ class QueryAgent:
 
         gap = self._gap_score_threshold > 0 and (
             len(candidates) < 3
-            or max_score < self._gap_score_threshold
+            or (bool(_key_terms) and max_score < self._gap_score_threshold)  # skip when no content words
             or _pages_with_overlap < 2
             or _any_term_missing
             or _defining_term_absent
