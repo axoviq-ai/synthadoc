@@ -546,6 +546,8 @@ class QueryAgent:
                 f"Answer the question using the Synthadoc Help documentation and Live Wiki Data below. "
                 f"If Live Wiki Data is present, use it to give concrete, specific answers "
                 f"(e.g. list the actual page names, show real counts). "
+                f"After answering, include a short 'To verify or investigate further' section "
+                f"with the relevant CLI commands from the documentation the user can run themselves. "
                 f"Do not reference or cite wiki pages.\n\n"
                 f"Question: {question}\n\nDocumentation:\n{context}"
             )
@@ -763,6 +765,8 @@ class QueryAgent:
                 f"Answer the question using the Synthadoc Help documentation and Live Wiki Data below. "
                 f"If Live Wiki Data is present, use it to give concrete, specific answers "
                 f"(e.g. list the actual page names, show real counts). "
+                f"After answering, include a short 'To verify or investigate further' section "
+                f"with the relevant CLI commands from the documentation the user can run themselves. "
                 f"Do not reference or cite wiki pages.\n\n"
                 f"Question: {question}\n\nDocumentation:\n{context}"
             )
