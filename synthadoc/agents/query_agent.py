@@ -107,6 +107,7 @@ class QueryResult:
     knowledge_gap: bool = False
     suggested_searches: list[str] = field(default_factory=list)
     sub_questions_count: int = 0
+    cacheable: bool = True  # False for action results and live-data answers
 
 
 # Keywords that indicate the question is asking about live wiki state
@@ -286,6 +287,7 @@ class QueryAgent:
                         answer=_result.message,
                         citations=[],
                         knowledge_gap=not _result.success,
+                        cacheable=False,
                     )
 
         sub_questions = await self.decompose(question)
@@ -540,6 +542,7 @@ class QueryAgent:
         _ctx_parts = []
         if _purpose_ctx:
             _ctx_parts.append(_purpose_ctx)
+        _is_live_data = False
         if _system_ctx:
             # System knowledge matched: answer from help pages only; wiki pages are irrelevant noise
             _ctx_parts.append(f"## Synthadoc Help\n{_system_ctx}")
@@ -547,6 +550,7 @@ class QueryAgent:
             _live_data = await self._fetch_live_wiki_data(question)
             if _live_data:
                 _ctx_parts.append(f"## Live Wiki Data\n{_live_data}")
+                _is_live_data = True
         else:
             _ctx_parts.append(_pages_ctx)
         context = "\n\n".join(_ctx_parts)
@@ -604,6 +608,7 @@ class QueryAgent:
             knowledge_gap=_gap,
             suggested_searches=_suggested,
             sub_questions_count=len(sub_questions),
+            cacheable=not _is_live_data,
         )
 
     def _detect_gap(
@@ -725,6 +730,7 @@ class QueryAgent:
                     yield {"event": "done", "data": {
                         "citations": [], "hints": [], "gap": not _result.success,
                         "job_id": _result.job_id,
+                        "cacheable": False,
                     }}
                     return
 
@@ -763,6 +769,7 @@ class QueryAgent:
         _ctx_parts = []
         if _purpose_ctx:
             _ctx_parts.append(_purpose_ctx)
+        _is_live_data = False
         if _system_ctx:
             # System knowledge matched: answer from help pages only; wiki pages are irrelevant noise
             _ctx_parts.append(f"## Synthadoc Help\n{_system_ctx}")
@@ -770,6 +777,7 @@ class QueryAgent:
             _live_data = await self._fetch_live_wiki_data(question)
             if _live_data:
                 _ctx_parts.append(f"## Live Wiki Data\n{_live_data}")
+                _is_live_data = True
         else:
             _ctx_parts.append(_pages_ctx)
         context = "\n\n".join(_ctx_parts)
@@ -836,4 +844,4 @@ class QueryAgent:
             yield {"event": "gap", "data": {"suggested_searches": _suggested}}
 
         next_hints = HintEngine.after_response(full_answer, session_mode)
-        yield {"event": "done", "data": {"next_hints": next_hints}}
+        yield {"event": "done", "data": {"next_hints": next_hints, "cacheable": not _is_live_data}}

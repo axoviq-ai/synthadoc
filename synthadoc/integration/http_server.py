@@ -394,6 +394,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             "citations": result.citations,
             "knowledge_gap": result.knowledge_gap,
             "suggested_searches": result.suggested_searches,
+            "cacheable": result.cacheable,
         }
 
     @app.get("/query")
@@ -410,7 +411,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             if cached is not None:
                 return cached
         result = await _run_query(q, timeout_seconds=timeout_seconds)
-        await orch._cache.set_query(cache_key, orch._wiki_epoch, result)
+        if result.get("cacheable", True):
+            await orch._cache.set_query(cache_key, orch._wiki_epoch, result)
         return result
 
     @app.post("/query")
@@ -457,6 +459,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         async def _live_stream():
             full_answer = ""
             citations = []
+            _is_cacheable = True
             try:
                 async for evt in orch.query_stream(q, session_id=session_id, session_mode=session_mode):
                     if evt["event"] == "token":
@@ -464,6 +467,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                     elif evt["event"] == "citations":
                         citations = evt["data"].get("citations", [])
                     elif evt["event"] == "done":
+                        _is_cacheable = evt["data"].get("cacheable", True)
                         from synthadoc.agents.hint_engine import HintEngine
                         cursor = _session_state.get(session_id or "", {}).get("cursor", 0)
                         next_hints, new_cursor = HintEngine.after_response_windowed(
@@ -481,7 +485,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                 msg = known.detail if known else "LLM provider unavailable"
                 yield f"event: error\ndata: {_json.dumps({'message': msg})}\n\n"
                 return
-            if full_answer:
+            if full_answer and _is_cacheable:
                 from synthadoc.core.cache import make_query_cache_key
                 _qcfg = orch._cfg.agents.resolve("query")
                 _query_model = f"{_qcfg.provider}/{_qcfg.model}"
