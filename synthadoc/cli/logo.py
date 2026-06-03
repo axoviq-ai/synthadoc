@@ -89,7 +89,7 @@ def print_banner(
         _c(_WHITE,          f"  LLM:   {llm_label}", use_color),
         _c(_WHITE,          f"  PID:   {pid if pid is not None else os.getpid()}", use_color),
         "",
-        _c(_YELLOW,         "  Launch Web-UI:", use_color),
+        _c(_YELLOW,         "  Launch Query Agent Web-UI:", use_color),
         _c(_YELLOW,         f"    synthadoc web -w {Path(wiki).name}", use_color),
     ]
 
