@@ -1675,3 +1675,92 @@ async def test_gap_sentinel_not_triggered_when_llm_answers_normally(tmp_wiki):
     assert result.answer == "AI stands for Artificial Intelligence [[ai-overview]]."
     # Only 2 provider calls: decompose + synthesis. No SearchDecomposeAgent call.
     assert provider.complete.call_count == 2
+
+
+# ── system knowledge ──────────────────────────────────────────────────────────
+
+def test_system_knowledge_loaded():
+    """_SYSTEM_KNOWLEDGE must contain at least the four bundled help pages."""
+    from synthadoc.agents.query_agent import _SYSTEM_KNOWLEDGE
+    assert len(_SYSTEM_KNOWLEDGE) >= 4
+    titles = [p.title for p in _SYSTEM_KNOWLEDGE]
+    assert any("Ingest" in t for t in titles)
+    assert any("Lint" in t for t in titles)
+    assert any("Export" in t for t in titles)
+    assert any("Lifecycle" in t for t in titles)
+
+
+def test_get_relevant_system_pages_ingest_keyword(tmp_wiki):
+    """'ingest' in question must match the ingest guide page."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    from unittest.mock import AsyncMock as _AsMock
+    provider = _AsMock()
+    agent = QueryAgent(provider=provider, store=store, search=search)
+    result = agent._get_relevant_system_pages("What file types can I ingest?")
+    assert result != ""
+    assert "Ingest" in result or "ingest" in result.lower()
+
+
+def test_get_relevant_system_pages_no_match(tmp_wiki):
+    """A question with no Synthadoc keywords must return an empty string."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    from unittest.mock import AsyncMock as _AsMock
+    provider = _AsMock()
+    agent = QueryAgent(provider=provider, store=store, search=search)
+    result = agent._get_relevant_system_pages("What is the capital of France?")
+    assert result == ""
+
+
+def test_get_relevant_system_pages_lint_keyword(tmp_wiki):
+    """'lint' in question must match the lint guide page."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    from unittest.mock import AsyncMock as _AsMock
+    provider = _AsMock()
+    agent = QueryAgent(provider=provider, store=store, search=search)
+    result = agent._get_relevant_system_pages("How do I run lint checks?")
+    assert result != ""
+    assert "Lint" in result or "lint" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_query_system_knowledge_suppresses_gap(tmp_wiki):
+    """When system knowledge matches, gap must be suppressed even at very high threshold."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["What file types can I ingest?"]',
+                           input_tokens=5, output_tokens=5),
+        CompletionResponse(text="You can ingest PDF, DOCX, and more.",
+                           input_tokens=80, output_tokens=15),
+    ]
+    # Very high threshold that would normally fire gap — system knowledge must override
+    agent = QueryAgent(provider=provider, store=store, search=search,
+                       gap_score_threshold=999.0)
+    result = await agent.query("What file types can I ingest?")
+    assert result.knowledge_gap is False
+    assert result.suggested_searches == []
+
+
+@pytest.mark.asyncio
+async def test_query_system_knowledge_in_synthesis_prompt(tmp_wiki):
+    """When system knowledge matches, synthesis prompt must contain 'Synthadoc Help'."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["What file types can I ingest?"]',
+                           input_tokens=5, output_tokens=5),
+        CompletionResponse(text="You can ingest PDF, DOCX, and more.",
+                           input_tokens=80, output_tokens=15),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=0.0)
+    await agent.query("What file types can I ingest?")
+
+    # The second complete() call is synthesis — its prompt must include Synthadoc Help
+    assert len(provider.complete.call_args_list) >= 2
+    synthesis_prompt = provider.complete.call_args_list[1][1]["messages"][0].content
+    assert "Synthadoc Help" in synthesis_prompt

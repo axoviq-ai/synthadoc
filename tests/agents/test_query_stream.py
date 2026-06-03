@@ -168,3 +168,48 @@ async def test_run_stream_no_purpose_no_preamble(tmp_wiki):
     assert captured
     synthesis_content = captured[0]["messages"][0].content
     assert "Wiki Scope" not in synthesis_content
+
+
+@pytest.mark.asyncio
+async def test_run_stream_system_knowledge_in_synthesis(tmp_wiki):
+    """When the question contains a Synthadoc keyword (e.g. 'ingest'), the synthesis
+    prompt must include a 'Synthadoc Help' section."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = MagicMock()
+    provider.complete = AsyncMock(return_value=MagicMock(
+        text='["what file types can I ingest?"]', input_tokens=10, output_tokens=5,
+    ))
+    captured: list[dict] = []
+    async def _stream(messages, **kw):
+        captured.append({"messages": messages})
+        yield "You can ingest PDF and DOCX files."
+    provider.complete_stream = _stream
+
+    agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=0.0)
+    await _collect_stream(agent, "What file types can I ingest?")
+
+    assert captured
+    synthesis_content = captured[0]["messages"][0].content
+    assert "Synthadoc Help" in synthesis_content
+
+
+@pytest.mark.asyncio
+async def test_run_stream_system_knowledge_suppresses_gap(tmp_wiki):
+    """When system knowledge matches, no gap event should be emitted even at very high threshold."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = MagicMock()
+    provider.complete = AsyncMock(return_value=MagicMock(
+        text='["what file types can I ingest?"]', input_tokens=10, output_tokens=5,
+    ))
+    async def _stream(*a, **kw):
+        yield "You can ingest PDF files."
+    provider.complete_stream = _stream
+
+    # Very high threshold that would normally force a gap on an empty wiki
+    agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=999.0)
+    events = await _collect_stream(agent, "What file types can I ingest?")
+
+    gap_events = [e for e in events if e["event"] == "gap"]
+    assert len(gap_events) == 0, "system knowledge match must suppress gap event"

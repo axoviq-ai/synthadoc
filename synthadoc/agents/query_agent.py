@@ -18,6 +18,52 @@ from synthadoc.storage.wiki import WikiStorage
 logger = logging.getLogger(__name__)
 
 _MAX_SUB_QUESTIONS = 4
+
+# ── bundled system knowledge (answers Synthadoc product questions) ────────────
+_KNOWLEDGE_DIR = Path(__file__).parent.parent / "knowledge"
+
+
+@dataclass
+class _SystemPage:
+    keywords: list[str]
+    title: str
+    content: str
+
+
+def _load_system_knowledge() -> list[_SystemPage]:
+    """Load bundled knowledge pages from synthadoc/knowledge/ once at import."""
+    pages: list[_SystemPage] = []
+    if not _KNOWLEDGE_DIR.exists():
+        return pages
+    for md_file in sorted(_KNOWLEDGE_DIR.glob("*.md")):
+        try:
+            text = md_file.read_text(encoding="utf-8")
+            keywords: list[str] = []
+            title = md_file.stem
+            content = text
+            if text.startswith("---"):
+                parts = text.split("---", 2)
+                if len(parts) >= 3:
+                    fm = parts[1]
+                    content = parts[2].strip()
+                    for line in fm.splitlines():
+                        if line.startswith("title:"):
+                            title = line[6:].strip()
+                        elif line.startswith("keywords:"):
+                            kw_raw = line[9:].strip()
+                            if kw_raw.startswith("["):
+                                keywords = [
+                                    k.strip().strip("\"'")
+                                    for k in kw_raw.strip("[]").split(",")
+                                    if k.strip()
+                                ]
+            pages.append(_SystemPage(keywords=keywords, title=title, content=content))
+        except Exception as exc:
+            logger.warning("system knowledge: could not load %s (%s)", md_file, exc)
+    return pages
+
+
+_SYSTEM_KNOWLEDGE: list[_SystemPage] = _load_system_knowledge()
 _MAX_QUESTION_CHARS = 4000
 
 # Stopwords excluded when extracting key terms for the content-overlap gap check.
@@ -86,6 +132,16 @@ class QueryAgent:
             self._provider, self._routing.branches,
             f"Question: {question}", multi=True,
         )
+
+    @staticmethod
+    def _get_relevant_system_pages(question: str) -> str:
+        """Return formatted system knowledge pages whose keywords match the question."""
+        q_lower = question.lower()
+        matched: list[str] = []
+        for page in _SYSTEM_KNOWLEDGE:
+            if any(kw in q_lower for kw in page.keywords):
+                matched.append(f"### {page.title}\n{page.content}")
+        return "\n\n".join(matched)
 
     def _load_purpose_context(self) -> str:
         """Return purpose.md as a pinned preamble for synthesis, or '' if absent."""
@@ -384,6 +440,9 @@ class QueryAgent:
             len(candidates), _max_score, _discriminating_term,
             _pages_with_overlap, _min_specific_qualifying, _gap,
         )
+        _system_ctx = self._get_relevant_system_pages(question)
+        if _system_ctx:
+            _gap = False
         if _gap:
             _suggested = await SearchDecomposeAgent(self._provider).decompose(question)
         else:
@@ -396,7 +455,13 @@ class QueryAgent:
             for r in candidates
             if r.slug != "purpose" and (p := self._store.read_page(r.slug))
         ) or "No relevant pages found."
-        context = f"{_purpose_ctx}\n\n{_pages_ctx}" if _purpose_ctx else _pages_ctx
+        _ctx_parts = []
+        if _purpose_ctx:
+            _ctx_parts.append(_purpose_ctx)
+        if _system_ctx:
+            _ctx_parts.append(f"## Synthadoc Help\n{_system_ctx}")
+        _ctx_parts.append(_pages_ctx)
+        context = "\n\n".join(_ctx_parts)
 
         if _gap:
             synthesis_prompt = (
@@ -405,6 +470,12 @@ class QueryAgent:
                 f"that the wiki does not currently cover this topic and suggest the user enriches it.\n\n"
                 f"Question: {question}\n\n"
                 f"Wiki pages available (unrelated to this question):\n{context}"
+            )
+        elif _system_ctx:
+            synthesis_prompt = (
+                f"Answer using the provided pages below. Use Synthadoc Help pages to answer "
+                f"product-related questions. For wiki pages, cite with [[PageTitle]].\n\n"
+                f"Question: {question}\n\nPages:\n{context}"
             )
         else:
             synthesis_prompt = (
@@ -573,12 +644,19 @@ class QueryAgent:
 
         citations = [r.slug for r in candidates]
         _purpose_ctx = self._load_purpose_context()
+        _system_ctx = self._get_relevant_system_pages(question)
         _pages_ctx = "\n\n".join(
             f"### {p.title}\n{p.content[:1000]}"
             for r in candidates
             if r.slug != "purpose" and (p := self._store.read_page(r.slug))
         ) or "No relevant pages found."
-        context = f"{_purpose_ctx}\n\n{_pages_ctx}" if _purpose_ctx else _pages_ctx
+        _ctx_parts = []
+        if _purpose_ctx:
+            _ctx_parts.append(_purpose_ctx)
+        if _system_ctx:
+            _ctx_parts.append(f"## Synthadoc Help\n{_system_ctx}")
+        _ctx_parts.append(_pages_ctx)
+        context = "\n\n".join(_ctx_parts)
 
         _max_score = max((r.score for r in candidates), default=0.0)
         _gap, _discriminating_term, _pages_with_overlap, _min_specific_qualifying = \
@@ -591,6 +669,9 @@ class QueryAgent:
             _pages_with_overlap, _min_specific_qualifying, _gap,
         )
 
+        if _system_ctx:
+            _gap = False
+
         if _gap:
             synthesis_prompt = (
                 f"The wiki does not yet have a page on this topic. "
@@ -598,6 +679,12 @@ class QueryAgent:
                 f"that the wiki does not currently cover this topic and suggest the user enriches it.\n\n"
                 f"Question: {question}\n\n"
                 f"Wiki pages available (unrelated to this question):\n{context}"
+            )
+        elif _system_ctx:
+            synthesis_prompt = (
+                f"Answer using the provided pages below. Use Synthadoc Help pages to answer "
+                f"product-related questions. For wiki pages, cite with [[PageTitle]].\n\n"
+                f"Question: {question}\n\nPages:\n{context}"
             )
         else:
             synthesis_prompt = (
