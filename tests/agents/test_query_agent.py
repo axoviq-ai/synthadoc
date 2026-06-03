@@ -5,6 +5,7 @@ import pytest
 from unittest.mock import AsyncMock, patch
 from synthadoc.agents.query_agent import QueryAgent, QueryResult
 from synthadoc.providers.base import CompletionResponse
+from synthadoc.storage.log import AuditDB
 from synthadoc.storage.wiki import WikiStorage, WikiPage
 from synthadoc.storage.search import HybridSearch, SearchResult
 
@@ -1783,3 +1784,89 @@ async def test_query_system_knowledge_no_wiki_citations(tmp_wiki):
     agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=0.0)
     result = await agent.query("What file types can I ingest?")
     assert result.citations == []
+
+
+# ── _fetch_live_wiki_data ──────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_fetch_live_wiki_data_no_db_returns_empty(tmp_wiki):
+    """Returns empty string gracefully when audit.db does not exist."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    agent = QueryAgent(provider=AsyncMock(), store=store, search=search)
+    result = await agent._fetch_live_wiki_data("which pages are stale?")
+    assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_fetch_live_wiki_data_no_trigger_returns_empty(tmp_wiki):
+    """Returns empty string when question has no lifecycle keywords."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    agent = QueryAgent(provider=AsyncMock(), store=store, search=search)
+    result = await agent._fetch_live_wiki_data("tell me about the Roman Empire")
+    assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_fetch_live_wiki_data_returns_counts(tmp_wiki):
+    """Returns lifecycle counts when audit.db exists with page states."""
+    sd = tmp_wiki / ".synthadoc"
+    sd.mkdir(parents=True, exist_ok=True)
+    audit = AuditDB(sd / "audit.db")
+    await audit.init()
+    await audit.set_page_state("page-a", "active", "test")
+    await audit.set_page_state("page-b", "stale", "test")
+    await audit.set_page_state("page-c", "stale", "test")
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    agent = QueryAgent(provider=AsyncMock(), store=store, search=search)
+    result = await agent._fetch_live_wiki_data("which pages are stale?")
+
+    assert "stale" in result
+    assert "page-b" in result
+    assert "page-c" in result
+    assert "active" in result
+
+
+@pytest.mark.asyncio
+async def test_fetch_live_wiki_data_counts_contradicted(tmp_wiki):
+    """'how many pages contradicted' triggers live data with contradiction counts."""
+    sd = tmp_wiki / ".synthadoc"
+    sd.mkdir(parents=True, exist_ok=True)
+    audit = AuditDB(sd / "audit.db")
+    await audit.init()
+    await audit.set_page_state("page-x", "contradicted", "test")
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    agent = QueryAgent(provider=AsyncMock(), store=store, search=search)
+    result = await agent._fetch_live_wiki_data("how many pages contradicted?")
+
+    assert "contradicted" in result
+    assert "page-x" in result
+
+
+@pytest.mark.asyncio
+async def test_query_live_data_injected_into_synthesis(tmp_wiki):
+    """When lifecycle question matches system knowledge, synthesis prompt contains Live Wiki Data."""
+    sd = tmp_wiki / ".synthadoc"
+    sd.mkdir(parents=True, exist_ok=True)
+    audit = AuditDB(sd / "audit.db")
+    await audit.init()
+    await audit.set_page_state("my-page", "stale", "test")
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["which pages are stale?"]', input_tokens=5, output_tokens=5),
+        CompletionResponse(text="Here are the stale pages...", input_tokens=80, output_tokens=15),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=0.0)
+    await agent.query("which pages are stale?")
+
+    synthesis_prompt = provider.complete.call_args_list[1][1]["messages"][0].content
+    assert "Live Wiki Data" in synthesis_prompt
+    assert "my-page" in synthesis_prompt

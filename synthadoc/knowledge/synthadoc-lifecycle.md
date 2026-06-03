@@ -72,12 +72,28 @@ Page lifecycle:
 To find and act on specific states:
 
 ```bash
-# List all stale pages
+# List stale pages and schedule re-ingest
 synthadoc lint run --scope stale
 
-# List all contradicted pages
+# List contradicted pages needing review
 synthadoc lint run --scope contradictions
 
 # Promote drafts / re-check stale pages
 synthadoc lint run --scope lifecycle
+
+# Show lifecycle event history for all pages (transitions log)
+synthadoc lifecycle log
+
+# Filter history by state — shows which pages entered that state and when
+synthadoc lifecycle log --state stale
+synthadoc lifecycle log --state archived
+synthadoc lifecycle log --state contradicted
+synthadoc lifecycle log --state active
+synthadoc lifecycle log --state draft
+
+# Limit output
+synthadoc lifecycle log --state stale --limit 20
+
+# History for a single page
+synthadoc lifecycle log <slug>
 ```

@@ -12,6 +12,7 @@ from synthadoc.agents._utils import parse_json_string_array
 from synthadoc.agents.hint_engine import HintEngine, SessionMode
 from synthadoc.agents.search_decompose_agent import SearchDecomposeAgent
 from synthadoc.providers.base import LLMProvider, Message
+from synthadoc.storage.log import AuditDB
 from synthadoc.storage.search import HybridSearch, SearchResult
 from synthadoc.storage.wiki import WikiStorage
 
@@ -108,6 +109,14 @@ class QueryResult:
     sub_questions_count: int = 0
 
 
+# Keywords that indicate the question is asking about live wiki state
+_LIVE_DATA_TRIGGERS: frozenset[str] = frozenset({
+    "stale", "archived", "archive", "draft", "active", "contradicted",
+    "contradictions", "contradiction", "review", "lifecycle", "lifecycle state",
+    "pages marked", "which pages", "how many pages", "page count",
+})
+
+
 class QueryAgent:
     def __init__(self, provider: LLMProvider, store: WikiStorage,
                  search: HybridSearch, top_n: int = 8,
@@ -142,6 +151,61 @@ class QueryAgent:
             if any(kw in q_lower for kw in page.keywords):
                 matched.append(f"### {page.title}\n{page.content}")
         return "\n\n".join(matched)
+
+    async def _fetch_live_wiki_data(self, question: str) -> str:
+        """Return a formatted snapshot of live wiki lifecycle data if the question asks for it.
+
+        Queries AuditDB directly — no HTTP round-trip. Returns empty string if the DB
+        does not exist yet (fresh install before first ingest).
+        """
+        q_lower = question.lower()
+        if not any(kw in q_lower for kw in _LIVE_DATA_TRIGGERS):
+            return ""
+
+        audit_path = self._store._root.parent / ".synthadoc" / "audit.db"
+        if not audit_path.exists():
+            return ""
+
+        try:
+            audit = AuditDB(audit_path)
+            await audit.init()
+            counts: dict[str, int] = await audit.get_lifecycle_summary()
+            if not counts:
+                return ""
+
+            _HINTS = {
+                "draft":       "← run `synthadoc lint run` to promote",
+                "stale":       "← re-ingest needed",
+                "contradicted": "← review required",
+            }
+            lines = ["### Current page counts"]
+            for state in ("active", "draft", "stale", "contradicted", "archived"):
+                n = counts.get(state, 0)
+                hint = f"  {_HINTS[state]}" if state in _HINTS and n > 0 else ""
+                lines.append(f"  {state:<14} {n}{hint}")
+
+            # For specific state questions, list the actual page slugs
+            detected_state: str | None = None
+            for state in ("stale", "archived", "draft", "contradicted", "active"):
+                if state in q_lower or (state == "contradicted" and "contradiction" in q_lower):
+                    detected_state = state
+                    break
+
+            if detected_state:
+                all_pages = await audit.get_all_page_states()
+                matching = [p for p in all_pages if p["state"] == detected_state]
+                if matching:
+                    lines.append(f"\n### Pages currently marked '{detected_state}'")
+                    for p in matching:
+                        ts = p.get("updated_at", "")[:10]
+                        lines.append(f"  - {p['slug']}  (since {ts})" if ts else f"  - {p['slug']}")
+                else:
+                    lines.append(f"\n### Pages currently marked '{detected_state}'\n  (none)")
+
+            return "\n".join(lines)
+        except Exception as exc:
+            logger.debug("live wiki data fetch failed: %s", exc)
+            return ""
 
     def _load_purpose_context(self) -> str:
         """Return purpose.md as a pinned preamble for synthesis, or '' if absent."""
@@ -462,6 +526,9 @@ class QueryAgent:
             # System knowledge matched: answer from help pages only; wiki pages are irrelevant noise
             _ctx_parts.append(f"## Synthadoc Help\n{_system_ctx}")
             citations = []
+            _live_data = await self._fetch_live_wiki_data(question)
+            if _live_data:
+                _ctx_parts.append(f"## Live Wiki Data\n{_live_data}")
         else:
             _ctx_parts.append(_pages_ctx)
         context = "\n\n".join(_ctx_parts)
@@ -476,7 +543,9 @@ class QueryAgent:
             )
         elif _system_ctx:
             synthesis_prompt = (
-                f"Answer the question using ONLY the Synthadoc Help documentation below. "
+                f"Answer the question using the Synthadoc Help documentation and Live Wiki Data below. "
+                f"If Live Wiki Data is present, use it to give concrete, specific answers "
+                f"(e.g. list the actual page names, show real counts). "
                 f"Do not reference or cite wiki pages.\n\n"
                 f"Question: {question}\n\nDocumentation:\n{context}"
             )
@@ -660,6 +729,9 @@ class QueryAgent:
             # System knowledge matched: answer from help pages only; wiki pages are irrelevant noise
             _ctx_parts.append(f"## Synthadoc Help\n{_system_ctx}")
             citations = []
+            _live_data = await self._fetch_live_wiki_data(question)
+            if _live_data:
+                _ctx_parts.append(f"## Live Wiki Data\n{_live_data}")
         else:
             _ctx_parts.append(_pages_ctx)
         context = "\n\n".join(_ctx_parts)
@@ -688,7 +760,9 @@ class QueryAgent:
             )
         elif _system_ctx:
             synthesis_prompt = (
-                f"Answer the question using ONLY the Synthadoc Help documentation below. "
+                f"Answer the question using the Synthadoc Help documentation and Live Wiki Data below. "
+                f"If Live Wiki Data is present, use it to give concrete, specific answers "
+                f"(e.g. list the actual page names, show real counts). "
                 f"Do not reference or cite wiki pages.\n\n"
                 f"Question: {question}\n\nDocumentation:\n{context}"
             )
