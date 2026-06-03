@@ -410,8 +410,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             if cached is not None:
                 return cached
         result = await _run_query(q, timeout_seconds=timeout_seconds)
-        if not no_cache:
-            await orch._cache.set_query(cache_key, orch._wiki_epoch, result)
+        await orch._cache.set_query(cache_key, orch._wiki_epoch, result)
         return result
 
     @app.post("/query")
@@ -482,7 +481,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                 msg = known.detail if known else "LLM provider unavailable"
                 yield f"event: error\ndata: {_json.dumps({'message': msg})}\n\n"
                 return
-            if not no_cache and full_answer:
+            if full_answer:
                 from synthadoc.core.cache import make_query_cache_key
                 _qcfg = orch._cfg.agents.resolve("query")
                 _query_model = f"{_qcfg.provider}/{_qcfg.model}"
