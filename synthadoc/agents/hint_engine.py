@@ -135,16 +135,11 @@ class HintEngine:
     def after_response_windowed(
         answer: str, mode: SessionMode, cursor: int
     ) -> tuple[list[str], int]:
-        """Returns (next_hints, new_cursor).
+        """Returns (next_hints, new_cursor). Cursor always advances.
 
-        Topic keyword match returns relevant hints without advancing the cursor
-        so the rotation position is preserved for the next non-topic query.
+        Topic keyword match overrides which hints are shown but does not
+        freeze the cursor — rotation continues on every response.
         """
-        answer_lower = answer.lower()
-        for keywords, hints in _topic_patterns:
-            if any(kw in answer_lower for kw in keywords):
-                return hints[:3], cursor
-
         pool = HintEngine.build_pool(mode)
         if not pool:
             return [], cursor
@@ -153,4 +148,11 @@ class HintEngine:
         # Double the pool so a single slice handles wrap-around cleanly
         window = (pool * 2)[start:start + n]
         next_cursor = (start + n) % len(pool)
+
+        # Topic match: show contextually relevant hints but still advance cursor
+        answer_lower = answer.lower()
+        for keywords, hints in _topic_patterns:
+            if any(kw in answer_lower for kw in keywords):
+                return hints[:3], next_cursor
+
         return window, next_cursor

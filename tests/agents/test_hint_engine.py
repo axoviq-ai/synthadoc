@@ -70,11 +70,12 @@ def test_windowed_wraps_around():
     assert next_c < len(pool)
 
 
-def test_windowed_topic_match_pauses_cursor():
+def test_windowed_topic_match_advances_cursor():
+    pool = HintEngine.build_pool("POWER_USER")
     _, cursor_before = HintEngine.after_response_windowed("answer", "POWER_USER", 0)
     _, cursor_after = HintEngine.after_response_windowed("the page is stale", "POWER_USER", cursor_before)
-    # topic match: cursor must not advance
-    assert cursor_after == cursor_before
+    # topic match must still advance the cursor so rotation continues
+    assert cursor_after == (cursor_before + 3) % len(pool)
 
 
 def test_windowed_topic_match_returns_relevant_hints():
