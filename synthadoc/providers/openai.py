@@ -301,7 +301,7 @@ class OpenAIProvider(LLMProvider):
             msgs.append({"role": "system", "content": system})
         msgs.extend({"role": m.role, "content": self._to_openai_content(m.content)}
                     for m in messages)
-        async for chunk in self._client.chat.completions.create(
+        async for chunk in await self._client.chat.completions.create(
             model=self._config.model, messages=msgs,
             temperature=temperature, max_tokens=max_tokens,
             timeout=self._timeout, stream=True,

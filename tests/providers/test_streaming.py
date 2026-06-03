@@ -33,12 +33,14 @@ async def test_openai_provider_complete_stream_yields_tokens():
     chunk2 = MagicMock(); chunk2.choices = [MagicMock(delta=MagicMock(content=" world"))]
     chunk3 = MagicMock(); chunk3.choices = [MagicMock(delta=MagicMock(content=None))]
 
-    async def _fake_stream(*a, **kw):
-        for c in [chunk1, chunk2, chunk3]:
-            yield c
+    async def _fake_create(*a, **kw):
+        async def _gen():
+            for c in [chunk1, chunk2, chunk3]:
+                yield c
+        return _gen()
 
     mock_client = MagicMock()
-    mock_client.chat.completions.create = _fake_stream
+    mock_client.chat.completions.create = _fake_create
     provider._client = mock_client
 
     tokens = []
