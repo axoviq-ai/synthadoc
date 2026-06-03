@@ -70,8 +70,10 @@ Skip lifecycle checks with `--no-lifecycle`.
 | `--check-urls` | Validate source URLs via HTTP HEAD requests |
 | `-w / --wiki` | Specify wiki name or path |
 
-## Viewing Lint History
+## Viewing Current Issues (No Server Required)
+
+To see a report of current contradictions and orphan pages without running a full lint job:
 
 ```bash
-synthadoc lint history
+synthadoc lint report
 ```
