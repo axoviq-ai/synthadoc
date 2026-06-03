@@ -52,10 +52,32 @@ Pages are archived automatically when their source becomes unavailable. To archi
 
 ## Checking Lifecycle Health
 
+For a quick overview of all lifecycle state counts at once, use the status command:
+
 ```bash
-# Show all stale pages
+synthadoc status
+```
+
+This prints a summary like:
+
+```
+Page lifecycle:
+  draft          3  <- run `synthadoc lint run` to promote
+  active         42
+  stale          5  <- re-ingest needed
+  contradicted   2  <- review required
+  archived       1
+```
+
+To find and act on specific states:
+
+```bash
+# List all stale pages
 synthadoc lint run --scope stale
 
-# Show all pages with contradictions
+# List all contradicted pages
 synthadoc lint run --scope contradictions
+
+# Promote drafts / re-check stale pages
+synthadoc lint run --scope lifecycle
 ```
