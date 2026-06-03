@@ -117,11 +117,18 @@ _LIVE_DATA_TRIGGERS: frozenset[str] = frozenset({
     "pages marked", "which pages", "how many pages", "page count",
     "changed", "this week", "recently", "recent changes", "what's new",
     "whats new", "updated", "new pages", "added", "last week", "past week",
+    "adversarial", "adversarial warning", "flagged", "overstated", "claim concern",
+    "lint warning", "warnings",
 })
 
 _RECENT_CHANGE_TRIGGERS: frozenset[str] = frozenset({
     "changed", "this week", "recently", "recent changes", "what's new",
     "whats new", "updated", "new pages", "added", "last week", "past week",
+})
+
+_ADVERSARIAL_TRIGGERS: frozenset[str] = frozenset({
+    "adversarial", "adversarial warning", "flagged", "overstated", "claim concern",
+    "lint warning", "warnings",
 })
 
 
@@ -211,6 +218,21 @@ class QueryAgent:
                         lines.append(f"  - {p['slug']}  (since {ts})" if ts else f"  - {p['slug']}")
                 else:
                     lines.append(f"\n### Pages currently marked '{detected_state}'\n  (none)")
+
+            # Adversarial warnings — read directly from page frontmatter
+            if any(kw in q_lower for kw in _ADVERSARIAL_TRIGGERS):
+                warned: list[tuple[str, int]] = []
+                for slug in self._store.list_pages():
+                    page = self._store.read_page(slug)
+                    if page and page.lint_warnings:
+                        warned.append((slug, len(page.lint_warnings)))
+                warned.sort(key=lambda x: x[1], reverse=True)
+                if warned:
+                    lines.append("\n### Pages with adversarial warnings")
+                    for slug, n in warned:
+                        lines.append(f"  - [[{slug}]]  ({n} warning{'s' if n != 1 else ''})")
+                else:
+                    lines.append("\n### Pages with adversarial warnings\n  (none — run `synthadoc lint run` to check)")
 
             # Recent ingest history when question asks about changes/updates
             if any(kw in q_lower for kw in _RECENT_CHANGE_TRIGGERS):

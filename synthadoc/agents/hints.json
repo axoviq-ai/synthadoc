@@ -9,7 +9,7 @@
     ],
     "EXPLORER": [
       "What topics does this wiki cover?",
-      "Show me a summary of the most-cited pages",
+      "What are the key topics in this wiki?",
       "What are the stale pages in my wiki?",
       "Ingest a new source into the wiki",
       "Run a full lint check"
@@ -23,7 +23,7 @@
     ],
     "POWER_USER": [
       "What changed in the wiki this week?",
-      "Which pages have the most citations?",
+      "Which pages have adversarial warnings?",
       "Export my wiki as llms.txt",
       "Run lint on contradictions only",
       "Schedule a daily ingest at 6 AM",
@@ -85,6 +85,14 @@
         "Rebuild the wiki scaffold",
         "What does scaffold generate?",
         "Run scaffold to update templates"
+      ]
+    },
+    {
+      "keywords": ["adversarial", "warning", "flagged", "overstated", "claim concern"],
+      "hints": [
+        "Which pages have adversarial warnings?",
+        "Run the adversarial lint pass",
+        "How do I review a flagged claim?"
       ]
     }
   ]

@@ -19,7 +19,7 @@ def reset_hints():
 def test_build_pool_mode_hints_first():
     pool = HintEngine.build_pool("EXPLORER")
     explorer_hints = ["What topics does this wiki cover?",
-                      "Show me a summary of the most-cited pages",
+                      "What are the key topics in this wiki?",
                       "What are the stale pages in my wiki?"]
     assert pool[:3] == explorer_hints
 
@@ -169,7 +169,7 @@ def test_configure_missing_file_uses_builtins():
     HintEngine.configure(Path("/nonexistent/hints.json"))
     assert HintEngine.initial_hints("POWER_USER") == [
         "What changed in the wiki this week?",
-        "Which pages have the most citations?",
+        "Which pages have adversarial warnings?",
         "Export my wiki as llms.txt",
     ]
 
