@@ -34,17 +34,29 @@ Before a source is turned into a wiki page, it passes through candidates staging
 
 ## Marking a Page as Active
 
-To manually promote a draft or stale page to active:
+**Option 1 — Direct CLI promotion (single page):**
+
+```bash
+synthadoc lifecycle activate PAGE_SLUG --reason "manual review passed"
+```
+
+This immediately moves the named page from draft (or stale) to active. The `--reason` flag is required.
+
+**Option 2 — Promote all drafts at once via lint:**
 
 ```bash
 synthadoc lint run --scope lifecycle
 ```
 
-Or re-ingest the source to trigger automatic promotion:
+Runs lifecycle checks across the whole wiki and promotes any draft or stale pages that pass.
+
+**Option 3 — Re-ingest the source (automatic promotion):**
 
 ```bash
-synthadoc ingest --force <source>
+synthadoc ingest --force PATH_OR_URL
 ```
+
+Re-ingesting the source triggers an automatic lint pass. If the page passes, it transitions from draft to active automatically.
 
 ## Archiving a Page
 
