@@ -1726,6 +1726,8 @@ synthadoc web -w history-of-computing
 
 Your browser opens to `http://localhost:7070/app` (port matches your wiki's `config.toml`). The server must already be running — `synthadoc web` opens the URL but does not start the engine.
 
+![Synthadoc Query Agent Web UI](png/synthadoc-query-agent-web-UI.png)
+
 ### Session modes
 
 The UI detects the state of your wiki and your session history, then adapts:
