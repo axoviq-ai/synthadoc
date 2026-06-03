@@ -92,9 +92,11 @@ class Scheduler:
             await db.init()
             return await db.get_last_run_per_entry()
 
+        coro = _query()
         try:
-            return asyncio.run(_query())
+            return asyncio.run(coro)
         except Exception:
+            coro.close()
             return {}
 
 
