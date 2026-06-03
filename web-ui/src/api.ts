@@ -27,9 +27,11 @@ export async function streamQuery(
     question: string,
     sessionId: string,
     callbacks: StreamCallbacks,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    noCache?: boolean,
 ): Promise<void> {
     const params = new URLSearchParams({ q: question, session_id: sessionId });
+    if (noCache) params.set("no_cache", "true");
     const resp = await fetch(`${BASE}/query/stream?${params}`, {
         headers: { Accept: "text/event-stream" },
         signal,

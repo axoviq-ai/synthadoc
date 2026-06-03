@@ -15,6 +15,7 @@ interface Props {
 export function ChatWindow({ sessionId, hints, onHints }: Props) {
     const { messages, streaming, error, send } = useQueryStream(sessionId, onHints);
     const [input, setInput] = useState("");
+    const [noCache, setNoCache] = useState(false);
     const bottomRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -25,7 +26,7 @@ export function ChatWindow({ sessionId, hints, onHints }: Props) {
         const q = input.trim();
         if (!q) return;
         setInput("");
-        send(q);
+        send(q, noCache);
     };
 
     const handleKey = (e: React.KeyboardEvent) => {
@@ -40,6 +41,17 @@ export function ChatWindow({ sessionId, hints, onHints }: Props) {
                 <div ref={bottomRef} />
             </div>
             <HintChips hints={hints} onSelect={(h) => { setInput(h); }} />
+            <div className="input-options">
+                <label className="bypass-cache-label">
+                    <input
+                        type="checkbox"
+                        checked={noCache}
+                        onChange={(e) => setNoCache(e.target.checked)}
+                        disabled={streaming}
+                    />
+                    Bypass cache
+                </label>
+            </div>
             <div className="input-row">
                 <textarea
                     className="query-input"

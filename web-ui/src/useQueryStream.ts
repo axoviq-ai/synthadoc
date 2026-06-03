@@ -23,7 +23,7 @@ export function useQueryStream(sessionId: string | null, onHints: (hints: string
         return () => { abortRef.current?.abort(); };
     }, []);
 
-    const send = useCallback(async (question: string) => {
+    const send = useCallback(async (question: string, noCache = false) => {
         if (!sessionId || streamingRef.current) return;
         setError(null);
         setStreaming(true);
@@ -72,7 +72,7 @@ export function useQueryStream(sessionId: string | null, onHints: (hints: string
                     setStreaming(false);
                     streamingRef.current = false;
                 },
-            }, controller.signal);
+            }, controller.signal, noCache);
         } catch {
             if (!controller.signal.aborted) {
                 setError("Unexpected error");
