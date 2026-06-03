@@ -2133,20 +2133,28 @@ class QueryModal extends Modal {
         input.style.cssText = "width:100%;min-height:72px;padding:6px 8px;resize:vertical;margin-bottom:8px;box-sizing:border-box";
 
         const row = contentEl.createEl("div");
-        row.style.cssText = "display:flex;align-items:center;gap:8px;justify-content:flex-end;margin-bottom:12px";
-        const noCacheLabel = row.createEl("label");
+        row.style.cssText = "display:flex;align-items:center;justify-content:space-between;margin-bottom:12px";
+
+        const settingsGroup = row.createEl("div");
+        settingsGroup.style.cssText = "display:flex;align-items:center;gap:16px";
+
+        const noCacheLabel = settingsGroup.createEl("label");
         noCacheLabel.style.cssText = "display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-muted);white-space:nowrap;cursor:pointer";
         const noCacheCheckbox = noCacheLabel.createEl("input", { type: "checkbox" }) as HTMLInputElement;
         noCacheCheckbox.checked = false;
         noCacheLabel.appendText("Bypass cache");
-        const timeoutLabel = row.createEl("label", { text: "Timeout (s):" });
+
+        const timeoutGroup = settingsGroup.createEl("div");
+        timeoutGroup.style.cssText = "display:flex;align-items:center;gap:6px";
+        const timeoutLabel = timeoutGroup.createEl("label", { text: "Timeout (s):" });
         timeoutLabel.style.cssText = "font-size:12px;color:var(--text-muted);white-space:nowrap";
-        const timeoutInput = row.createEl("input", { type: "number" }) as HTMLInputElement;
+        const timeoutInput = timeoutGroup.createEl("input", { type: "number" }) as HTMLInputElement;
         timeoutInput.value = "60";
         timeoutInput.min = "10";
         timeoutInput.max = "300";
         timeoutInput.step = "10";
         timeoutInput.style.cssText = "width:60px;padding:4px 6px;font-size:12px";
+
         const btn = row.createEl("button", { text: "Ask" });
 
         const out = contentEl.createEl("div");
