@@ -2196,25 +2196,7 @@ class QueryModal extends Modal {
                     cite.setText("Sources: " + citations.join(", "));
                 }
                 if (knowledgeGap && suggestedSearches.length) {
-                    const searchCmds = suggestedSearches
-                        .map((s: string) => `synthadoc ingest "search for: ${s}"`)
-                        .join("\n");
-                    const callout = [
-                        "> [!tip] Knowledge Gap Detected",
-                        "> Your wiki doesn't have enough on this topic yet. Enrich it with a web search:",
-                        ">",
-                        "> **From Obsidian:** Open Command Palette (`Cmd+P` / `Ctrl+P`) → **Synthadoc: Ingest...** → Web search tab",
-                        ">",
-                        "> **From the terminal:**",
-                        "> ```bash",
-                        ...searchCmds.split("\n").map((cmd: string) => `> ${cmd}`),
-                        "> ```",
-                        ">",
-                        "> After ingesting, re-run your query to get a richer answer.",
-                    ].join("\n");
-                    const gapEl = out.createEl("div");
-                    gapEl.style.cssText = "margin-top:16px";
-                    await MarkdownRenderer.render(this.app, callout, gapEl, "", this);
+                    await this._renderGapSection(out, suggestedSearches);
                 }
                 btn.disabled = false;
             };
@@ -2248,25 +2230,7 @@ class QueryModal extends Modal {
                         cite.setText("Sources: " + r.citations.join(", "));
                     }
                     if (r.knowledge_gap && r.suggested_searches?.length) {
-                        const searchCmds = (r.suggested_searches as string[])
-                            .map((s) => `synthadoc ingest "search for: ${s}"`)
-                            .join("\n");
-                        const callout = [
-                            "> [!tip] Knowledge Gap Detected",
-                            "> Your wiki doesn't have enough on this topic yet. Enrich it with a web search:",
-                            ">",
-                            "> **From Obsidian:** Open Command Palette (`Cmd+P` / `Ctrl+P`) → **Synthadoc: Ingest...** → Web search tab",
-                            ">",
-                            "> **From the terminal:**",
-                            "> ```bash",
-                            ...searchCmds.split("\n").map((cmd) => `> ${cmd}`),
-                            "> ```",
-                            ">",
-                            "> After ingesting, re-run your query to get a richer answer.",
-                        ].join("\n");
-                        const gapEl = out.createEl("div");
-                        gapEl.style.cssText = "margin-top:16px";
-                        await MarkdownRenderer.render(this.app, callout, gapEl, "", this);
+                        await this._renderGapSection(out, r.suggested_searches as string[]);
                     }
                 } catch {
                     out.empty();
@@ -2277,6 +2241,46 @@ class QueryModal extends Modal {
 
         btn.onclick = submit;
         input.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) submit(); });
+    }
+    private async _renderGapSection(container: HTMLElement, suggestions: string[]): Promise<void> {
+        const commands = suggestions
+            .map((s) => `synthadoc ingest "search for: ${s}"`)
+            .join("\n");
+        const callout = [
+            "> [!tip] Knowledge Gap Detected",
+            "> Your wiki doesn't have enough on this topic yet. Enrich it with a web search:",
+            ">",
+            "> **From Obsidian:** Open Command Palette (`Cmd+P` / `Ctrl+P`) → **Synthadoc: Ingest...** → Web search tab",
+            ">",
+            "> **From the terminal:**",
+        ].join("\n");
+        const gapEl = container.createEl("div");
+        gapEl.style.cssText = "margin-top:16px";
+        await MarkdownRenderer.render(this.app, callout, gapEl, "", this);
+
+        const calloutContent = gapEl.querySelector(".callout-content") as HTMLElement | null;
+        const target = calloutContent ?? gapEl;
+
+        const row = target.createEl("div");
+        row.style.cssText = "display:flex;align-items:flex-start;gap:8px;margin:6px 0";
+
+        const pre = row.createEl("pre");
+        pre.style.cssText = "flex:1;margin:0;padding:6px 10px;background:var(--background-secondary);border-radius:4px;font-family:var(--font-monospace);font-size:12px;white-space:pre;overflow-x:auto;color:var(--text-normal)";
+        pre.setText(commands);
+
+        const copyBtn = row.createEl("button");
+        copyBtn.style.cssText = "flex-shrink:0;align-self:flex-start;padding:3px 10px;font-size:11px;cursor:pointer";
+        copyBtn.setText("Copy");
+        copyBtn.onclick = () => {
+            navigator.clipboard.writeText(commands).then(() => {
+                copyBtn.setText("Copied!");
+                setTimeout(() => copyBtn.setText("Copy"), 2000);
+            }).catch(() => {});
+        };
+
+        const footer = target.createEl("p");
+        footer.style.cssText = "font-size:12px;color:var(--text-muted);margin-top:6px";
+        footer.setText("After ingesting, re-run your query to get a richer answer.");
     }
     onClose() { this.contentEl.empty(); }
 }
