@@ -42,6 +42,10 @@ _STOPWORDS = frozenset({
     # ("What did X contribute to Y?", "What did X achieve?") — wiki pages
     # describe actions with specific verbs ("invented", "built") instead.
     "contribute", "achieve", "accomplish", "pioneer", "introduce",
+    # Meta-wiki query words: "What topics does this wiki cover?" — "topic" and
+    # "cover" describe the wiki's own structure, not page content, so they never
+    # appear frequently in pages and always trigger false-positive gap detection.
+    "topic", "cover", "scope", "about",
 })
 
 
@@ -599,6 +603,12 @@ class QueryAgent:
         ):
             full_answer += token
             yield {"event": "token", "data": {"text": token}}
+
+        if not full_answer:
+            logger.warning("run_stream: LLM returned empty response for question %r", question)
+            fallback = "(No response was generated. Please try again.)"
+            yield {"event": "token", "data": {"text": fallback}}
+            full_answer = fallback
 
         yield {"event": "citations", "data": {"citations": citations}}
 
