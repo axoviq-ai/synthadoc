@@ -294,6 +294,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         orch = Orchestrator(wiki_root=wiki_root, config=cfg)
         await orch.init()
         app.state.orch = orch
+        from synthadoc.agents.hint_engine import HintEngine as _HE
+        _HE.configure(wiki_root / "hints.json")
         worker = asyncio.create_task(_worker_loop(orch))
 
         from synthadoc.core.scheduler import run_scheduler_loop
@@ -315,6 +317,9 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
 
     app = FastAPI(title="synthadoc", version=synthadoc.__version__, lifespan=lifespan)
     app.add_middleware(ContentSizeLimitMiddleware, max_bytes=max_body_bytes)
+
+    # Per-session state: mode + hint rotation cursor
+    _session_state: dict[str, dict] = {}  # session_id -> {"mode": str, "cursor": int}
 
     from fastapi.middleware.cors import CORSMiddleware
     app.add_middleware(
@@ -421,6 +426,9 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             raise HTTPException(status_code=400, detail="q must not be empty")
         orch = app.state.orch
 
+        _sstate = _session_state.get(session_id or "", {"mode": "POWER_USER", "cursor": 0})
+        session_mode: str = _sstate["mode"]
+
         if not no_cache:
             from synthadoc.core.cache import make_query_cache_key
             _qcfg = orch._cfg.agents.resolve("query")
@@ -436,13 +444,16 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                         events.append({"event": "token", "data": {"text": word + " "}})
                     events.append({"event": "citations", "data": {"citations": cached.get("citations", [])}})
                     from synthadoc.agents.hint_engine import HintEngine
-                    next_hints = HintEngine.after_response(cached.get("answer", ""), "POWER_USER")
+                    cursor = _session_state.get(session_id or "", {}).get("cursor", 0)
+                    next_hints, new_cursor = HintEngine.after_response_windowed(
+                        cached.get("answer", ""), session_mode, cursor
+                    )
+                    if session_id and session_id in _session_state:
+                        _session_state[session_id]["cursor"] = new_cursor
                     events.append({"event": "done", "data": {"next_hints": next_hints}})
                     for evt in events:
                         yield f"event: {evt['event']}\ndata: {_json.dumps(evt['data'])}\n\n"
                 return StreamingResponse(_cached_stream(), media_type="text/event-stream")
-
-        session_mode = "POWER_USER"
 
         async def _live_stream():
             full_answer = ""
@@ -453,6 +464,16 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                         full_answer += evt["data"].get("text", "")
                     elif evt["event"] == "citations":
                         citations = evt["data"].get("citations", [])
+                    elif evt["event"] == "done":
+                        from synthadoc.agents.hint_engine import HintEngine
+                        cursor = _session_state.get(session_id or "", {}).get("cursor", 0)
+                        next_hints, new_cursor = HintEngine.after_response_windowed(
+                            full_answer, session_mode, cursor
+                        )
+                        if session_id and session_id in _session_state:
+                            _session_state[session_id]["cursor"] = new_cursor
+                        yield f"event: done\ndata: {_json.dumps({'next_hints': next_hints})}\n\n"
+                        continue
                     yield f"event: {evt['event']}\ndata: {_json.dumps(evt['data'])}\n\n"
             except Exception as exc:
                 known = _classify_llm_error(exc)
@@ -495,6 +516,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             mode = "HEALTH_CHECK" if has_health_issues else "POWER_USER"
         await orch._audit.create_session(session_id, mode)
         from synthadoc.agents.hint_engine import HintEngine
+        _session_state[session_id] = {"mode": mode, "cursor": 0}
         return {
             "session_id": session_id,
             "mode": mode,
