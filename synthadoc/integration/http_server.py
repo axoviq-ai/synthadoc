@@ -435,7 +435,9 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                     for word in cached["answer"].split(" "):
                         events.append({"event": "token", "data": {"text": word + " "}})
                     events.append({"event": "citations", "data": {"citations": cached.get("citations", [])}})
-                    events.append({"event": "done", "data": {"next_hints": []}})
+                    from synthadoc.agents.hint_engine import HintEngine
+                    next_hints = HintEngine.after_response(cached.get("answer", ""), "POWER_USER")
+                    events.append({"event": "done", "data": {"next_hints": next_hints}})
                     for evt in events:
                         yield f"event: {evt['event']}\ndata: {_json.dumps(evt['data'])}\n\n"
                 return StreamingResponse(_cached_stream(), media_type="text/event-stream")

@@ -28,7 +28,7 @@ body {
 
 .bubble { max-width: 80%; padding: 0.6rem 0.9rem; border-radius: 12px; line-height: 1.5; }
 .bubble-user { background: #7c3aed; color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
-.bubble-assistant { background: #1e2533; color: #e2e8f0; align-self: flex-start; border-bottom-left-radius: 4px; }
+.bubble-assistant { background: #1e2533; color: #e2e8f0; align-self: flex-start; border-bottom-left-radius: 4px; max-width: 100%; }
 .bubble-text { white-space: pre-wrap; word-break: break-word; }
 .bubble-citations { font-size: 0.78rem; margin-top: 0.4rem; color: #94a3b8; }
 .bubble-gap { margin-top: 0.5rem; font-size: 0.82rem; color: #f59e0b; }
