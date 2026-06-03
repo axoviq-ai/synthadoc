@@ -204,6 +204,9 @@ body {
     height: 100%;
     overflow: hidden;
     min-width: 0;
+    background-size: cover;
+    background-position: center top;
+    background-repeat: no-repeat;
 }
 
 .error-banner-top {
@@ -226,6 +229,7 @@ body {
     padding: 0;
     scrollbar-width: thin;
     scrollbar-color: #2d3748 transparent;
+    background: rgba(11, 13, 24, 0.68);
 }
 
 /* ─── Hero (empty state) ───────────────────────── */

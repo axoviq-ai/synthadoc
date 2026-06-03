@@ -6,6 +6,7 @@ import { useSession } from "./useSession";
 import { useQueryHistory } from "./useQueryHistory";
 import { Sidebar } from "./components/Sidebar";
 import { ChatWindow } from "./components/ChatWindow";
+import heroBg from "./assets/hero-bg.png";
 
 export default function App() {
     const { session, hints, updateHints, sessionError, resetSession } = useSession();
@@ -45,7 +46,7 @@ export default function App() {
                 onSelect={handleSelect}
                 onNewRun={handleNewRun}
             />
-            <main className="main-panel">
+            <main className="main-panel" style={{ backgroundImage: `url(${heroBg})` }}>
                 {sessionError && (
                     <p className="error-banner error-banner-top" role="alert">{sessionError}</p>
                 )}
