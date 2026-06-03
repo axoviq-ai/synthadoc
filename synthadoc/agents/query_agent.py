@@ -547,7 +547,8 @@ class QueryAgent:
                 f"If Live Wiki Data is present, use it to give concrete, specific answers "
                 f"(e.g. list the actual page names, show real counts). "
                 f"After answering, include a short 'To verify or investigate further' section "
-                f"with the relevant CLI commands from the documentation the user can run themselves. "
+                f"with the relevant CLI commands copied VERBATIM from the code blocks in the documentation — "
+                f"do not rephrase or generate command names from memory. "
                 f"Do not reference or cite wiki pages.\n\n"
                 f"Question: {question}\n\nDocumentation:\n{context}"
             )
@@ -766,7 +767,8 @@ class QueryAgent:
                 f"If Live Wiki Data is present, use it to give concrete, specific answers "
                 f"(e.g. list the actual page names, show real counts). "
                 f"After answering, include a short 'To verify or investigate further' section "
-                f"with the relevant CLI commands from the documentation the user can run themselves. "
+                f"with the relevant CLI commands copied VERBATIM from the code blocks in the documentation — "
+                f"do not rephrase or generate command names from memory. "
                 f"Do not reference or cite wiki pages.\n\n"
                 f"Question: {question}\n\nDocumentation:\n{context}"
             )
