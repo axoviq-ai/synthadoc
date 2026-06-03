@@ -59,6 +59,14 @@ def test_detect_how_question_returns_false(tmp_path):
     agent = _make_agent(tmp_path, "{}")
     assert agent.detect("How do I run a lint check?") is False
 
+def test_detect_reingest_question_returns_false(tmp_path):
+    agent = _make_agent(tmp_path, "{}")
+    assert agent.detect("How do I re-ingest with --force?") is False
+
+def test_detect_ingest_url_still_true(tmp_path):
+    agent = _make_agent(tmp_path, "{}")
+    assert agent.detect("Ingest https://example.com/article") is True
+
 
 # ── lint dispatch ─────────────────────────────────────────────────────────────
 

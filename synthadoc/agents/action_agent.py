@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 _ACTION_RE = re.compile(
     r"^(please\s+)?(run|execute|start|trigger|perform)\b.{0,50}\b(lint|ingest|scaffold)\b"
-    r"|\bingest\s+\S"
+    r"|(?<![a-zA-Z-])ingest\s+\S"
     r"|\b(rebuild|regenerate)\b.{0,20}\bscaffold\b"
     r"|\bschedule\s+(add|a|an|daily|weekly|hourly|every|at)\b"
     r"|\b(list|show)\b.{0,20}\bschedul"
