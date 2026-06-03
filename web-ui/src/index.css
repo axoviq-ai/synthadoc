@@ -420,7 +420,7 @@ body {
 
 /* ─── Message bubbles ──────────────────────────── */
 .messages-list {
-    padding: 1rem 1.25rem 0.5rem;
+    padding: 1rem 1.25rem 2rem;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;

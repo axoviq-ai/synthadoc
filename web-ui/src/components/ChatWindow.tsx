@@ -26,7 +26,7 @@ export function ChatWindow({
     const { messages, streaming, error, send } = useQueryStream(sessionId, onHints);
     const [input, setInput] = useState("");
     const [noCache, setNoCache] = useState(false);
-    const bottomRef = useRef<HTMLDivElement>(null);
+    const messagesRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
     useEffect(() => {
@@ -38,7 +38,8 @@ export function ChatWindow({
     }, [injectedQuery, onInjected]);
 
     useEffect(() => {
-        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+        const el = messagesRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
     }, [messages]);
 
     const submit = () => {
@@ -55,13 +56,12 @@ export function ChatWindow({
 
     return (
         <div className="chat-window">
-            <div className="messages" aria-live="polite">
+            <div className="messages" ref={messagesRef} aria-live="polite">
                 {messages.length === 0
                     ? <Hero mode={mode} />
                     : (
                         <div className="messages-list">
                             {messages.map((m, i) => <MessageBubble key={i} msg={m} wikiName={wikiName} />)}
-                            <div ref={bottomRef} />
                         </div>
                     )
                 }
