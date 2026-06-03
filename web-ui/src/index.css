@@ -30,6 +30,28 @@ body {
 .bubble-user { background: #7c3aed; color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
 .bubble-assistant { background: #1e2533; color: #e2e8f0; align-self: flex-start; border-bottom-left-radius: 4px; max-width: 100%; }
 .bubble-text { white-space: pre-wrap; word-break: break-word; }
+
+/* Markdown prose styles (assistant bubbles only) */
+.bubble-md { word-break: break-word; }
+.bubble-md p { margin: 0.4rem 0; }
+.bubble-md p:first-child { margin-top: 0; }
+.bubble-md p:last-child { margin-bottom: 0; }
+.bubble-md h1, .bubble-md h2, .bubble-md h3 { margin: 0.75rem 0 0.25rem; font-weight: 600; }
+.bubble-md h1 { font-size: 1.1rem; }
+.bubble-md h2 { font-size: 1rem; }
+.bubble-md h3 { font-size: 0.95rem; }
+.bubble-md ul, .bubble-md ol { margin: 0.3rem 0 0.3rem 1.4rem; }
+.bubble-md li { margin: 0.15rem 0; }
+.bubble-md code { background: #0f1117; border-radius: 4px; padding: 0.1em 0.35em; font-size: 0.85em; font-family: "Fira Code", "Cascadia Code", monospace; }
+.bubble-md pre { background: #0f1117; border-radius: 6px; padding: 0.7rem 0.9rem; overflow-x: auto; margin: 0.5rem 0; }
+.bubble-md pre code { background: none; padding: 0; font-size: 0.82rem; }
+.bubble-md blockquote { border-left: 3px solid #374151; padding-left: 0.75rem; color: #94a3b8; margin: 0.4rem 0; }
+.bubble-md hr { border: none; border-top: 1px solid #2d3748; margin: 0.5rem 0; }
+.bubble-md table { border-collapse: collapse; width: 100%; margin: 0.5rem 0; font-size: 0.88rem; }
+.bubble-md th, .bubble-md td { border: 1px solid #374151; padding: 0.35rem 0.65rem; text-align: left; }
+.bubble-md th { background: #2d3748; font-weight: 600; }
+.bubble-md tr:nth-child(even) td { background: #161d2a; }
+
 .bubble-citations { font-size: 0.78rem; margin-top: 0.4rem; color: #94a3b8; }
 .bubble-gap { margin-top: 0.5rem; font-size: 0.82rem; color: #f59e0b; }
 .bubble-gap ul { margin-left: 1.2rem; margin-top: 0.25rem; }
