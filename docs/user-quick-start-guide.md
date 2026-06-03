@@ -1724,7 +1724,7 @@ The `synthadoc web` command opens a browser-based chat interface for your wiki. 
 synthadoc web -w history-of-computing
 ```
 
-Your browser opens to `http://localhost:7070/app` (port matches your wiki's `config.toml`). The server must already be running — `synthadoc web` opens the URL but does not start the engine.
+Your browser opens automatically to the web chat interface.
 
 ![Synthadoc Query Agent Web UI](png/synthadoc-query-agent-web-UI.png)
 
