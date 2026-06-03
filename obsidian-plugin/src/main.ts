@@ -2134,6 +2134,11 @@ class QueryModal extends Modal {
 
         const row = contentEl.createEl("div");
         row.style.cssText = "display:flex;align-items:center;gap:8px;justify-content:flex-end;margin-bottom:12px";
+        const noCacheLabel = row.createEl("label");
+        noCacheLabel.style.cssText = "display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-muted);white-space:nowrap;cursor:pointer";
+        const noCacheCheckbox = noCacheLabel.createEl("input", { type: "checkbox" }) as HTMLInputElement;
+        noCacheCheckbox.checked = false;
+        noCacheLabel.appendText("Bypass cache");
         const timeoutLabel = row.createEl("label", { text: "Timeout (s):" });
         timeoutLabel.style.cssText = "font-size:12px;color:var(--text-muted);white-space:nowrap";
         const timeoutInput = row.createEl("input", { type: "number" }) as HTMLInputElement;
@@ -2221,7 +2226,7 @@ class QueryModal extends Modal {
                         out.createEl("p", { text: `Error: ${msg}` });
                         btn.disabled = false;
                     },
-                });
+                }, noCacheCheckbox.checked);
             } catch {
                 // Fallback to blocking query if streaming fails
                 try {

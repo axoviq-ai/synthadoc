@@ -70,6 +70,7 @@ vi.mock("./api", () => ({
         lifecycleStatus: vi.fn(), lifecyclePages: vi.fn(), lifecycleEvents: vi.fn(),
         lifecycleTransition: vi.fn(), deleteJob: vi.fn(),
         exportWiki: vi.fn(),
+        queryStream: vi.fn(), createSession: vi.fn(),
     },
     setBase: vi.fn(),
 }));
@@ -617,6 +618,8 @@ async function getModal(commandId: string, appOverride?: any): Promise<{ ModalCl
             lifecycleStatus: vi.fn(), lifecyclePages: vi.fn(), lifecycleEvents: vi.fn(),
             lifecycleTransition: vi.fn(), deleteJob: vi.fn(),
             exportWiki: vi.fn(),
+            queryStream: vi.fn().mockRejectedValue(new Error("streaming unavailable")),
+            createSession: vi.fn(),
         },
         setBase: vi.fn(),
     };
@@ -705,6 +708,60 @@ describe("QueryModal knowledge gap callout", () => {
         await flushPromises();
 
         expect(modal.contentEl.innerHTML).not.toContain("Knowledge Gap Detected");
+    });
+
+    it("bypass cache checkbox is present and unchecked by default", async () => {
+        const { ModalClass } = await getModal("synthadoc-query");
+        const modal = new ModalClass();
+        modal.onOpen();
+        const checkbox = modal.contentEl.querySelector("input[type='checkbox']") as HTMLInputElement | null;
+        expect(checkbox).not.toBeNull();
+        expect(checkbox!.checked).toBe(false);
+    });
+
+    it("queryStream called with noCache=true when bypass cache is checked", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-query");
+
+        apiMock.queryStream.mockResolvedValue(undefined);
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        const textarea = modal.contentEl.querySelector("textarea") as any;
+        textarea.value = "What is AI?";
+        const checkbox = modal.contentEl.querySelector("input[type='checkbox']") as HTMLInputElement;
+        checkbox.checked = true;
+        const btn = modal.contentEl.querySelector("button") as any;
+        btn.onclick();
+        await flushPromises();
+
+        expect(apiMock.queryStream).toHaveBeenCalledWith(
+            "What is AI?",
+            undefined,
+            expect.any(Object),
+            true,
+        );
+    });
+
+    it("queryStream called with noCache=false when bypass cache is unchecked", async () => {
+        const { ModalClass, apiMock } = await getModal("synthadoc-query");
+
+        apiMock.queryStream.mockResolvedValue(undefined);
+
+        const modal = new ModalClass();
+        modal.onOpen();
+        const textarea = modal.contentEl.querySelector("textarea") as any;
+        textarea.value = "What is AI?";
+        // checkbox left unchecked (default)
+        const btn = modal.contentEl.querySelector("button") as any;
+        btn.onclick();
+        await flushPromises();
+
+        expect(apiMock.queryStream).toHaveBeenCalledWith(
+            "What is AI?",
+            undefined,
+            expect.any(Object),
+            false,
+        );
     });
 });
 
