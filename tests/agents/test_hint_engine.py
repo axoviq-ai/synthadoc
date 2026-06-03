@@ -80,7 +80,7 @@ def test_windowed_topic_match_advances_cursor():
 
 def test_windowed_topic_match_returns_relevant_hints():
     hints, _ = HintEngine.after_response_windowed("your page is stale and outdated", "POWER_USER", 0)
-    assert "Run: synthadoc lint" in hints
+    assert "How do I run a lint check?" in hints
 
 
 def test_windowed_no_topic_match_returns_pool_window():

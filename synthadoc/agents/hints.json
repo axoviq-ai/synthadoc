@@ -26,7 +26,7 @@
       "keywords": ["stale", "outdated", "old"],
       "hints": [
         "How do I mark a page as active?",
-        "Run: synthadoc lint",
+        "How do I run a lint check?",
         "Which pages need review?"
       ]
     },
