@@ -20,31 +20,49 @@ _FM_STRIP_RE = re.compile(r"^---\s*\n.*?\n---\s*\n+", re.DOTALL)
 _H1_STRIP_RE = re.compile(r"^#[^#][^\n]*\n+")
 
 
+def _coerce_scaffold_dict(value: object) -> dict | None:
+    """Coerce a parsed JSON value to the expected scaffold dict shape.
+
+    Some models (e.g. MiniMax) return the top-level array directly or wrap the
+    dict inside a single-element array.  Accept and normalise both.
+    """
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, list):
+        # [{"categories": [...], ...}] — single wrapped dict
+        if value and isinstance(value[0], dict) and "categories" in value[0]:
+            return value[0]
+        # [{"heading": ..., "slugs": [...]}] — categories array returned directly
+        if value and isinstance(value[0], dict) and "heading" in value[0]:
+            return {"categories": value}
+    return None
+
+
 def _parse_scaffold_json(raw: str) -> dict | None:
     """Try progressively looser strategies to extract the scaffold JSON object."""
     # 1. Direct parse
     try:
-        return json.loads(raw)
+        return _coerce_scaffold_dict(json.loads(raw))
     except json.JSONDecodeError:
         pass
     # 2. Find the outermost {...} block
     m = re.search(r"\{.*\}", raw, re.DOTALL)
     if m:
         try:
-            return json.loads(m.group(0))
+            return _coerce_scaffold_dict(json.loads(m.group(0)))
         except json.JSONDecodeError:
             pass
     # 3. Fix the most common MiniMax JSON defect: missing comma between adjacent
     #    array objects ("} {" → "}, {") then retry
     fixed = re.sub(r"}\s*\n(\s*){", r"},\n\1{", raw)
     try:
-        return json.loads(fixed)
+        return _coerce_scaffold_dict(json.loads(fixed))
     except json.JSONDecodeError:
         pass
     m = re.search(r"\{.*\}", fixed, re.DOTALL)
     if m:
         try:
-            return json.loads(m.group(0))
+            return _coerce_scaffold_dict(json.loads(m.group(0)))
         except json.JSONDecodeError:
             pass
     return None
