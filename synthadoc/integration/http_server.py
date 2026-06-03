@@ -397,7 +397,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             raise HTTPException(status_code=400, detail="q must not be empty")
         orch = app.state.orch
         from synthadoc.core.cache import make_query_cache_key
-        _query_model = orch._cfg.agents.resolve("query").model
+        _qcfg = orch._cfg.agents.resolve("query")
+        _query_model = f"{_qcfg.provider}/{_qcfg.model}"
         cache_key = make_query_cache_key(q, orch._wiki_epoch, _query_model)
         if not no_cache:
             cached = await orch._cache.get_query(cache_key)
@@ -422,7 +423,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
 
         if not no_cache:
             from synthadoc.core.cache import make_query_cache_key
-            _query_model = orch._cfg.agents.resolve("query").model
+            _qcfg = orch._cfg.agents.resolve("query")
+            _query_model = f"{_qcfg.provider}/{_qcfg.model}"
             cache_key = make_query_cache_key(q, orch._wiki_epoch, _query_model)
             cached = await orch._cache.get_query(cache_key)
             if cached is not None:
@@ -459,7 +461,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                 return
             if not no_cache and full_answer:
                 from synthadoc.core.cache import make_query_cache_key
-                _query_model = orch._cfg.agents.resolve("query").model
+                _qcfg = orch._cfg.agents.resolve("query")
+                _query_model = f"{_qcfg.provider}/{_qcfg.model}"
                 cache_key = make_query_cache_key(q, orch._wiki_epoch, _query_model)
                 await orch._cache.set_query(cache_key, orch._wiki_epoch, {
                     "answer": full_answer, "citations": citations,

@@ -108,11 +108,14 @@ def test_make_query_cache_key_is_epoch_sensitive():
 
 
 def test_make_query_cache_key_is_model_sensitive():
-    """Different models produce different keys for the same question and epoch."""
+    """Different provider/model strings produce different keys for the same question and epoch."""
     from synthadoc.core.cache import make_query_cache_key
-    k1 = make_query_cache_key("What is AI?", epoch=1, model="gemini-2.5-flash-lite")
-    k2 = make_query_cache_key("What is AI?", epoch=1, model="minimax/MiniMax-M2.5")
+    k1 = make_query_cache_key("What is AI?", epoch=1, model="gemini/gemini-2.5-flash-lite")
+    k2 = make_query_cache_key("What is AI?", epoch=1, model="openai/gpt-4o-mini")
+    k3 = make_query_cache_key("What is AI?", epoch=1, model="claude-code/")
+    k4 = make_query_cache_key("What is AI?", epoch=1, model="opencode/")
     assert k1 != k2
+    assert k3 != k4  # same empty model, different provider
 
 
 def test_make_query_cache_key_empty_model_is_stable():
