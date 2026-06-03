@@ -1,34 +1,33 @@
 ---
 title: Synthadoc Ingest Guide
-keywords: [ingest, source, import, file, format, type, pdf, docx, pptx, xlsx, csv, markdown, txt, url, youtube, web, search, batch, bulk, force, schedule, manifest, rescan]
+keywords: [ingest, source, import, file, format, type, pdf, docx, pptx, xlsx, csv, markdown, txt, url, youtube, web, search, batch, bulk, force, schedule, manifest, rescan, image, png, jpg]
 ---
 
 # Synthadoc Ingest Guide
 
-## Supported File Types
+## Everything You Can Ingest
 
-Synthadoc can ingest the following local file formats:
+Synthadoc accepts six categories of input — local files, images, web pages, YouTube videos, and web search results:
 
-- **Documents**: `.pdf`, `.docx`, `.pptx`, `.xlsx`, `.csv`
-- **Images**: `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.tiff`
-- **Text and Markdown**: `.md`, `.txt`
-
-## Supported Web Sources
-
-- **HTTP/HTTPS URLs** — any public web page
-- **YouTube videos** — Synthadoc extracts the transcript automatically
-- **Web search queries** — use intent phrases: `search for: <topic>`, `find on the web: <topic>`, `look up: <topic>`, or `web search: <topic>`
+| Category | Supported formats / how to use |
+|---|---|
+| **Documents** | `.pdf`, `.docx`, `.pptx`, `.xlsx`, `.csv` |
+| **Images** | `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.tiff` |
+| **Text / Markdown** | `.md`, `.txt` |
+| **Web pages** | Any `http://` or `https://` URL |
+| **YouTube videos** | YouTube URL — transcript is extracted automatically |
+| **Web search** | Intent phrase: `search for: <topic>`, `find on the web: <topic>`, `look up: <topic>`, or `web search: <topic>` |
 
 ## Basic Ingest Commands
 
 ```bash
-# Ingest a single file
+# Ingest a local file
 synthadoc ingest path/to/document.pdf
 
-# Ingest a URL
+# Ingest a web page
 synthadoc ingest https://example.com/article
 
-# Ingest a YouTube video
+# Ingest a YouTube video (transcript extracted automatically)
 synthadoc ingest https://www.youtube.com/watch?v=VIDEO_ID
 
 # Web search ingest
