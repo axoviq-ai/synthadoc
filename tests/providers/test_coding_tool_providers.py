@@ -133,6 +133,27 @@ def test_claude_is_quota_exhausted_false():
     assert provider._is_quota_exhausted("some other error") is False
 
 
+@pytest.mark.asyncio
+async def test_coding_tool_complete_stream_yields_words():
+    """complete_stream() shim delegates to complete() and yields word-by-word."""
+    import json
+    from synthadoc.providers.base import Message
+    provider = _make_claude_provider()
+    raw = json.dumps({
+        "result": "Hello world answer",
+        "total_input_tokens": 10,
+        "total_output_tokens": 5,
+        "is_error": False,
+    })
+    mock_proc = _make_mock_proc(raw.encode(), b"", returncode=0)
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)):
+        tokens = []
+        async for tok in provider.complete_stream([Message(role="user", content="hi")]):
+            tokens.append(tok)
+    assert "".join(tokens) == "Hello world answer"
+    assert len(tokens) == 3  # three words
+
+
 def test_claude_build_command_no_model():
     provider = _make_claude_provider()
     cmd = provider._build_command(provider._resolved_binary)

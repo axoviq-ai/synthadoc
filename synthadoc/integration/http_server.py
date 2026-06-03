@@ -452,6 +452,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                     yield f"event: {evt['event']}\ndata: {_json.dumps(evt['data'])}\n\n"
             except Exception as exc:
                 known = _classify_llm_error(exc)
+                if not known:
+                    logger.exception("Streaming query failed")
                 msg = known.detail if known else "LLM provider unavailable"
                 yield f"event: error\ndata: {_json.dumps({'message': msg})}\n\n"
                 return
