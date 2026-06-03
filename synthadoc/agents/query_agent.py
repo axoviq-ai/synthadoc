@@ -429,6 +429,103 @@ class QueryAgent:
             sub_questions_count=len(sub_questions),
         )
 
+    def _detect_gap(
+        self, question: str, candidates: list[SearchResult], max_score: float
+    ) -> tuple[bool, str, int, int]:
+        """Full 5-signal knowledge gap detection.
+
+        Returns (gap, discriminating_term, pages_with_overlap, min_specific_qualifying).
+        Called by both run() and run_stream() so they share identical detection logic.
+        """
+        _MIN_TERM_FREQ = 2
+        _any_term_missing = False
+        _defining_term_absent = False
+        _discriminating_term = ""
+        _pages_with_overlap = len(candidates)
+        _min_specific_qualifying = len(candidates)
+
+        _contains_cjk = any(
+            '぀' <= c <= 'ヿ'
+            or '一' <= c <= '鿿'
+            or '가' <= c <= '힯'
+            for c in question
+        )
+        _key_terms = set() if _contains_cjk else {
+            w.lower().rstrip("s'?!.,").replace("-", " ")
+            for w in question.split()
+            if len(w) > 4 and w.lower().rstrip("s'?!.,").replace("-", " ") not in _STOPWORDS
+        }
+
+        if _key_terms and candidates:
+            _term_doc_freq = {
+                t: sum(
+                    1 for r in candidates
+                    if (p := self._store.read_page(r.slug))
+                    and t in p.content.lower().replace("-", " ")
+                )
+                for t in _key_terms
+            }
+            _covered = {t: f for t, f in _term_doc_freq.items() if f > 0}
+            _n_cands = len(candidates)
+            _specific = {t: f for t, f in _covered.items() if f <= _n_cands * 0.8}
+            if not _specific:
+                _specific = _covered
+            elif max(_specific.values(), default=0) <= 1:
+                _specific = _covered
+
+            if _specific:
+                _discriminating_term = min(_specific, key=lambda t: _specific[t])
+            elif _covered:
+                _discriminating_term = min(_covered, key=lambda t: _covered[t])
+            elif _term_doc_freq:
+                _discriminating_term = min(_term_doc_freq, key=lambda t: _term_doc_freq[t])
+
+            _term_qualifying_pages: dict[str, int] = {t: 0 for t in _specific}
+            _pages_with_overlap = 0
+            for _r in candidates:
+                _p = self._store.read_page(_r.slug)
+                if not _p:
+                    continue
+                _content = _p.content.lower().replace("-", " ")
+                _page_on_topic = False
+                for _t in _specific:
+                    if _content.count(_t) >= _MIN_TERM_FREQ:
+                        _term_qualifying_pages[_t] += 1
+                        _page_on_topic = True
+                if _page_on_topic:
+                    _pages_with_overlap += 1
+
+            _signal4_active = _pages_with_overlap < _n_cands // 2
+            _any_term_missing = (
+                _signal4_active
+                and bool(_covered)
+                and len(_term_doc_freq) >= 2
+                and any(f == 0 for f in _term_doc_freq.values())
+                and max(_covered.values()) / len(candidates) <= 0.8
+            )
+            _min_specific_qualifying = (
+                min(_term_qualifying_pages.values()) if _term_qualifying_pages else 0
+            )
+            _signal5_doc_freq_cap = max(2, (_n_cands + 2) // 3)
+            _defining_term_absent = (
+                bool(_specific)
+                and len(_term_doc_freq) >= 2
+                and any(
+                    _term_qualifying_pages[t] == 0
+                    and _specific[t] < _signal5_doc_freq_cap
+                    for t in _term_qualifying_pages
+                )
+            )
+
+        gap = self._gap_score_threshold > 0 and (
+            len(candidates) < 3
+            or max_score < self._gap_score_threshold
+            or _pages_with_overlap < 2
+            or _any_term_missing
+            or _defining_term_absent
+        )
+        return gap, _discriminating_term, _pages_with_overlap, _min_specific_qualifying
+
     async def run_stream(
         self, question: str, session_id: str | None = None,  # reserved for future session history
         session_mode: SessionMode = "POWER_USER",
@@ -469,9 +566,14 @@ class QueryAgent:
         ) or "No relevant pages found."
 
         _max_score = max((r.score for r in candidates), default=0.0)
-        _gap = self._gap_score_threshold > 0 and (
-            len(candidates) < 3
-            or _max_score < self._gap_score_threshold
+        _gap, _discriminating_term, _pages_with_overlap, _min_specific_qualifying = \
+            self._detect_gap(question, candidates, _max_score)
+
+        logger.info(
+            "query retrieval — pages=%d, max_score=%.2f, "
+            "discriminating_term=%r, on_topic_pages=%d, min_qualifying=%d, gap=%s",
+            len(candidates), _max_score, _discriminating_term,
+            _pages_with_overlap, _min_specific_qualifying, _gap,
         )
 
         if _gap:
@@ -479,7 +581,8 @@ class QueryAgent:
                 f"The wiki does not yet have a page on this topic. "
                 f"Answer the question using your general knowledge, then note in one sentence "
                 f"that the wiki does not currently cover this topic and suggest the user enriches it.\n\n"
-                f"Question: {question}\n\nWiki pages available:\n{context}"
+                f"Question: {question}\n\n"
+                f"Wiki pages available (unrelated to this question):\n{context}"
             )
         else:
             synthesis_prompt = (
