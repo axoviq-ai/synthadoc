@@ -2208,21 +2208,33 @@ Accepts `{ format, status_filter }`. Returns raw content with appropriate `Conte
 
 ### SSE Streaming Query
 
-`GET /query/stream?q=<question>` returns a Server-Sent Events stream. The server calls the LLM with streaming mode and forwards each token chunk as an SSE event:
+`GET /query/stream?q=<question>[&session_id=<uuid>][&no_cache=true]` returns a Server-Sent Events stream. Each event is a JSON-encoded object:
 
 ```
-data: Alan
+data: {"event": "status", "data": {"phase": "retrieving"}}
 
-data:  Turing
+data: {"event": "status", "data": {"phase": "synthesizing", "sources": 3}}
 
-data:  was
+data: {"event": "token", "data": {"text": "Alan"}}
 
-data:  a
+data: {"event": "token", "data": {"text": " Turing"}}
 
-data: [DONE]
+data: {"event": "citations", "data": {"citations": ["alan-turing", "enigma"]}}
+
+data: {"event": "done", "data": {"next_hints": ["What came after Turing?", ...]}}
 ```
 
-The `[DONE]` sentinel closes the stream. The CLI `synthadoc query` renders tokens as they arrive using ANSI cursor control. Pass `--no-stream` to fall back to the blocking `POST /query` endpoint and print the full answer when complete.
+| Event | Payload | When |
+|---|---|---|
+| `status` | `{"phase": "retrieving"}` | Phase 1 starts |
+| `status` | `{"phase": "synthesizing", "sources": N}` | Phase 2 starts |
+| `token` | `{"text": "…"}` | Each LLM token |
+| `citations` | `{"citations": […]}` | After last token |
+| `gap` | `{"suggested_searches": […]}` | If knowledge gap detected |
+| `done` | `{"next_hints": […]}` | Stream complete |
+| `error` | `{"message": "…"}` | On any exception |
+
+The CLI `synthadoc query` renders tokens as they arrive using ANSI cursor control. Pass `--no-stream` to fall back to the blocking `POST /query` endpoint and print the full answer when complete.
 
 The streaming path shares the same query decomposition, BM25 retrieval, and knowledge-gap detection as the blocking path. The only difference is delivery mechanism — SSE for streaming, plain JSON for blocking.
 
@@ -2270,35 +2282,39 @@ The web chat UI is a React single-page application served at `GET /app` by the S
 
 ### Session Management
 
-Each browser session is assigned a `session_id` (UUID) stored in `localStorage`. The server tracks session activity in a lightweight in-memory store:
+Each browser session is assigned a `session_id` (UUID) on `POST /sessions`. The server maintains a lightweight in-memory store per session:
 
 | Field | Type | Description |
 |---|---|---|
 | `session_id` | UUID | Unique identifier for this browser session |
-| `wiki` | str | Wiki name this session is associated with |
-| `question_count` | int | Total questions asked in this session |
-| `first_seen` | datetime | When this session was first created |
-| `last_seen` | datetime | When this session last made a request |
+| `mode` | str | Session mode (`NEW_WIKI`, `EXPLORER`, `HEALTH_CHECK`, `POWER_USER`) |
+| `cursor` | int | Current position in the hint pool for windowed rotation |
+| `last_hints` | list[str] | Hints returned in the previous response (used for deduplication) |
 
-**Session mode** is derived from `question_count`:
+**Session mode** is derived from the wiki's current state at `POST /sessions`:
 
-| Mode | Condition | Description |
+| Mode | Condition | Hint behaviour |
 |---|---|---|
-| `new_wiki` | `question_count == 0` | First visit — show onboarding hint chips |
-| `explorer` | `1 <= question_count <= 9` | Early exploration — show discovery chips |
-| `power_user` | `question_count >= 10` | Returning power user — show focused follow-up chips |
+| `NEW_WIKI` | `WikiStorage.count_pages() < 5` | Onboarding chips — guides user through first ingest |
+| `EXPLORER` | ≥5 pages, no prior `chat_sessions` rows | Discovery chips — broad overview questions |
+| `HEALTH_CHECK` | ≥5 pages, prior sessions, ≥1 `stale` page | Lifecycle chips — suggests running lint or reviewing stale pages |
+| `POWER_USER` | ≥5 pages, prior sessions, no stale pages | Context-sensitive follow-up chips |
 
-The mode is returned as part of every query response and drives the hint chip set displayed in the UI.
+The mode is returned by `POST /sessions` and also visible as a badge in the UI header.
 
 ### Hint Engine
 
-The hint engine generates contextual chip suggestions:
+The `HintEngine` class (server-side, no LLM call) generates contextual chips:
 
-1. **New Wiki mode:** 3–5 broad overview questions derived from `wiki/index.md` category headings (static, generated once per wiki).
-2. **Explorer mode:** follow-up questions derived from the most recent answer's citation set — "what does X connect to?", "what came before Y?".
-3. **Power User mode:** questions that the session history has *not* yet covered, derived by comparing session question history against the BM25 top-scoring pages not yet retrieved.
+**Initial hints** (`initial_hints(mode)` — shown before the first question):
+3 fixed chips selected from the mode's priority hint set (e.g. `NEW_WIKI` → "How do I ingest my first document?").
 
-Hint chips are rendered below each answer and also in the empty-state panel before the first question. Clicking a chip populates the text box.
+**After-response hints** (`after_response_windowed(answer, mode, cursor, previous_hints)`):
+Uses a sliding window over a deduplicated hint pool to rotate suggestions across sessions. The pool is built by placing the current mode's hints first, followed by other modes' hints (no duplicates). A `cursor` advances by 3 on each call so consecutive responses cycle through the full pool over time.
+
+If the answer text matches a topic pattern (e.g. the word "stale" in the answer triggers "How do I run a lint check?"), topic-relevant hints override the window — unless they exactly match the previous response's hints, in which case the pool window is used instead. This prevents keyword-triggered hints from repeating on consecutive wiki-management answers.
+
+Hint chips are rendered below each answer and in the empty-state panel before the first question. Clicking a chip populates the text box without auto-submitting.
 
 ### Multi-turn Conversation
 
@@ -2415,7 +2431,7 @@ Opens the default browser to `http://localhost:{port}/app`. The server must alre
 
 - **Streaming query output** — `synthadoc query` streams the LLM answer token-by-token via Server-Sent Events (SSE); the CLI renders tokens as they arrive. `--no-stream` reverts to blocking mode for scripts and pipes. `GET /query/stream` SSE endpoint; the streaming path reuses all existing decomposition, BM25, and knowledge-gap logic.
 - **Epoch-based query result cache** — query answers are cached in `cache.db` under a composite key of normalised question + wiki epoch + cache version. The wiki epoch increments on every ingest completion and every lifecycle transition, so cached answers are always consistent with current wiki content. `--no-cache` bypasses the cache per call without evicting the entry. `synthadoc cache clear` resets the epoch and removes all entries.
-- **Web chat UI** — React SPA served at `GET /app` by the existing HTTP server (no extra port or process). Features: session-aware mode detection (`new_wiki` / `explorer` / `power_user` based on question count), streaming answers via SSE, citation links, knowledge-gap callouts, contextual hint chips, and multi-turn conversation history. Session state stored in browser `localStorage`; server maintains a lightweight in-memory session store.
+- **Web chat UI** — React SPA served at `GET /app` by the existing HTTP server (no extra port or process). Features: session-aware mode detection (`NEW_WIKI` / `EXPLORER` / `HEALTH_CHECK` / `POWER_USER`) based on wiki page count, prior session history, and stale-page presence; streaming answers via SSE; citation links; knowledge-gap callouts; contextual hint chips with windowed pool rotation; and multi-turn conversation history. Server maintains a lightweight in-memory session store (session_id, mode, hint cursor, last_hints).
 - **Session management and hint engine** — hint chip sets are derived from wiki index headings (new mode), recent citation graph (explorer mode), and uncovered BM25 top pages (power-user mode). Mode badge displayed in the UI header.
 - **Obsidian plugin streaming** — the Query command streams the answer into the modal as tokens arrive, matching the CLI and web UI streaming experience. No change to the Obsidian command count.
 - **`synthadoc web` CLI command** — opens the default browser to `http://localhost:{port}/app`; thin wrapper around OS open/start/xdg-open; server must already be running.

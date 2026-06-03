@@ -1728,15 +1728,16 @@ Your browser opens to `http://localhost:7070/app` (port matches your wiki's `con
 
 ### Session modes
 
-The UI detects how familiar you are with the wiki and adapts:
+The UI detects the state of your wiki and your session history, then adapts:
 
-| Mode badge | When it appears | What changes |
+| Mode badge | When it appears | Hint chips shown |
 |---|---|---|
-| **New Wiki** | First visit, no prior questions | Onboarding hint chips — suggests broad overview questions |
-| **Explorer** | A few questions asked | Discovery chips — suggests related topics you have not queried yet |
-| **Power User** | Frequent returning visitor | Focused chips — suggests deep-dive follow-ups |
+| **New Wiki** | Fewer than 5 wiki pages exist | Onboarding — guides you through ingesting your first documents |
+| **Explorer** | ≥5 pages, first time opening the UI for this wiki | Discovery — broad overview questions to explore the wiki |
+| **Health Check** | ≥5 pages, returning user, ≥1 stale page in the wiki | Lifecycle review — suggests running lint or inspecting stale pages |
+| **Power User** | ≥5 pages, returning user, no stale pages | Context-sensitive follow-ups based on your last answer |
 
-The mode badge appears in the top-right corner of the chat interface.
+The mode badge appears in the top-right corner of the chat interface. It reflects the wiki's current state — after you run lint and promote pages, a **Health Check** session will become **Power User** on the next session open.
 
 ### Asking questions
 
