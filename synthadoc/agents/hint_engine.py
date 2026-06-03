@@ -16,55 +16,50 @@ EXPLORER: SessionMode = "EXPLORER"
 HEALTH_CHECK: SessionMode = "HEALTH_CHECK"
 POWER_USER: SessionMode = "POWER_USER"
 
-# ── built-in defaults (never mutated) ────────────────────────────────────────
+# ── bundled defaults (hints.json shipped alongside this module) ───────────────
 
-_BUILTIN_BY_MODE: dict[str, list[str]] = {
-    "NEW_WIKI": [
-        "How do I ingest my first document?",
-        "What sources can Synthadoc ingest?",
-        "How do I set up a scheduled ingest?",
-    ],
-    "EXPLORER": [
-        "What topics does this wiki cover?",
-        "Show me a summary of the most-cited pages",
-        "What are the stale pages in my wiki?",
-    ],
-    "HEALTH_CHECK": [
-        "Which pages are marked stale?",
-        "Show me pages with contradictions",
-        "How do I run a lint check?",
-    ],
+_BUNDLED_HINTS = Path(__file__).parent / "hints.json"
+
+# Minimal emergency fallback used only when hints.json is missing or unreadable
+_FALLBACK_BY_MODE: dict[str, list[str]] = {
     "POWER_USER": [
         "What changed in the wiki this week?",
         "Which pages have the most citations?",
         "Export my wiki as llms.txt",
     ],
 }
+_FALLBACK_PATTERNS: list[tuple[list[str], list[str]]] = []
 
-_BUILTIN_PATTERNS: list[tuple[list[str], list[str]]] = [
-    (
-        ["stale", "outdated", "old"],
-        ["How do I mark a page as active?", "Run: synthadoc lint", "Which pages need review?"],
-    ),
-    (
-        ["ingest", "source", "document", "pdf", "url"],
-        ["What file types can I ingest?", "How do I bulk ingest?", "How do I re-ingest with --force?"],
-    ),
-    (
-        ["export", "llms", "graph", "json"],
-        ["Export as llms.txt for AI tools", "Export as GraphML", "Filter export by lifecycle state"],
-    ),
-    (
-        ["lifecycle", "active", "archive", "draft"],
-        ["How do lifecycle states work?", "How do I archive a page?", "What is candidates staging?"],
-    ),
-]
+
+def _load_hints_file(path: Path) -> tuple[dict[str, list[str]], list[tuple[list[str], list[str]]]]:
+    """Parse a hints.json file into (by_mode, topic_patterns). Returns empty structures on error."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.warning("HintEngine: could not load %s (%s)", path, exc)
+        return {}, []
+    by_mode = {
+        mode: [h for h in hints if isinstance(h, str)]
+        for mode, hints in data.get("by_mode", {}).items()
+    }
+    patterns = [
+        (pat.get("keywords", []), pat.get("hints", []))
+        for pat in data.get("topic_patterns", [])
+        if pat.get("keywords") and pat.get("hints")
+    ]
+    return by_mode, patterns
 
 # ── working copies (reset by configure()) ────────────────────────────────────
 
-_hints_by_mode: dict[str, list[str]] = {k: list(v) for k, v in _BUILTIN_BY_MODE.items()}
-_topic_patterns: list[tuple[list[str], list[str]]] = list(_BUILTIN_PATTERNS)
-_pool_cache: dict[str, list[str]] = {}
+def _init_working_copies() -> tuple[dict, list, dict]:
+    by_mode, patterns = _load_hints_file(_BUNDLED_HINTS)
+    if not by_mode:
+        by_mode = {k: list(v) for k, v in _FALLBACK_BY_MODE.items()}
+        patterns = list(_FALLBACK_PATTERNS)
+    return by_mode, patterns, {}
+
+
+_hints_by_mode, _topic_patterns, _pool_cache = _init_working_copies()
 
 
 class HintEngine:
@@ -89,36 +84,24 @@ class HintEngine:
         Custom topic_patterns take priority over built-ins.
         """
         global _hints_by_mode, _topic_patterns, _pool_cache
-        _hints_by_mode = {k: list(v) for k, v in _BUILTIN_BY_MODE.items()}
-        _topic_patterns = list(_BUILTIN_PATTERNS)
-        _pool_cache = {}
+        _hints_by_mode, _topic_patterns, _pool_cache = _init_working_copies()
 
         if hints_path is None or not hints_path.exists():
             return
 
-        try:
-            data = json.loads(hints_path.read_text(encoding="utf-8"))
-        except Exception as exc:
-            logger.warning("HintEngine: could not load %s (%s) — using built-in hints", hints_path, exc)
-            return
+        extra_by_mode, extra_patterns = _load_hints_file(hints_path)
 
-        for mode, extra in data.get("by_mode", {}).items():
+        for mode, extras in extra_by_mode.items():
             existing = _hints_by_mode.get(mode, [])
-            new_hints = [h for h in extra if isinstance(h, str) and h not in existing]
-            _hints_by_mode[mode] = existing + new_hints
+            _hints_by_mode[mode] = existing + [h for h in extras if h not in existing]
 
-        # User patterns prepended so they fire before built-ins
-        for pat in reversed(data.get("topic_patterns", [])):
-            kws = pat.get("keywords", [])
-            hints = pat.get("hints", [])
-            if kws and hints:
-                _topic_patterns.insert(0, (kws, hints))
+        # User patterns prepended so they fire before bundled ones
+        for kws, hints in reversed(extra_patterns):
+            _topic_patterns.insert(0, (kws, hints))
 
         logger.info(
-            "HintEngine: loaded %s (%d extra modes, %d extra patterns)",
-            hints_path,
-            sum(1 for m in data.get("by_mode", {}) if m in _hints_by_mode),
-            len(data.get("topic_patterns", [])),
+            "HintEngine: merged %s (%d modes, %d patterns)",
+            hints_path, len(extra_by_mode), len(extra_patterns),
         )
 
     @staticmethod

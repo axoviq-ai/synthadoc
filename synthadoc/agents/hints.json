@@ -1,0 +1,58 @@
+{
+  "by_mode": {
+    "NEW_WIKI": [
+      "How do I ingest my first document?",
+      "What sources can Synthadoc ingest?",
+      "How do I set up a scheduled ingest?"
+    ],
+    "EXPLORER": [
+      "What topics does this wiki cover?",
+      "Show me a summary of the most-cited pages",
+      "What are the stale pages in my wiki?"
+    ],
+    "HEALTH_CHECK": [
+      "Which pages are marked stale?",
+      "Show me pages with contradictions",
+      "How do I run a lint check?"
+    ],
+    "POWER_USER": [
+      "What changed in the wiki this week?",
+      "Which pages have the most citations?",
+      "Export my wiki as llms.txt"
+    ]
+  },
+  "topic_patterns": [
+    {
+      "keywords": ["stale", "outdated", "old"],
+      "hints": [
+        "How do I mark a page as active?",
+        "Run: synthadoc lint",
+        "Which pages need review?"
+      ]
+    },
+    {
+      "keywords": ["ingest", "source", "document", "pdf", "url"],
+      "hints": [
+        "What file types can I ingest?",
+        "How do I bulk ingest?",
+        "How do I re-ingest with --force?"
+      ]
+    },
+    {
+      "keywords": ["export", "llms", "graph", "json"],
+      "hints": [
+        "Export as llms.txt for AI tools",
+        "Export as GraphML",
+        "Filter export by lifecycle state"
+      ]
+    },
+    {
+      "keywords": ["lifecycle", "active", "archive", "draft"],
+      "hints": [
+        "How do lifecycle states work?",
+        "How do I archive a page?",
+        "What is candidates staging?"
+      ]
+    }
+  ]
+}
