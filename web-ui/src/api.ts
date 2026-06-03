@@ -7,6 +7,7 @@ export interface SessionInfo {
     session_id: string;
     mode: string;
     initial_hints: string[];
+    wiki_name?: string;
 }
 
 export interface StreamCallbacks {

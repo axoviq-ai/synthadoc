@@ -10,9 +10,10 @@ interface Props {
     sessionId: string | null;
     hints: string[];
     onHints: (hints: string[]) => void;
+    wikiName: string;
 }
 
-export function ChatWindow({ sessionId, hints, onHints }: Props) {
+export function ChatWindow({ sessionId, hints, onHints, wikiName }: Props) {
     const { messages, streaming, error, send } = useQueryStream(sessionId, onHints);
     const [input, setInput] = useState("");
     const [noCache, setNoCache] = useState(false);
@@ -36,7 +37,7 @@ export function ChatWindow({ sessionId, hints, onHints }: Props) {
     return (
         <div className="chat-window">
             <div className="messages" aria-live="polite">
-                {messages.map((m, i) => <MessageBubble key={i} msg={m} />)}
+                {messages.map((m, i) => <MessageBubble key={i} msg={m} wikiName={wikiName} />)}
                 {error && <p className="error-banner" role="alert">{error}</p>}
                 <div ref={bottomRef} />
             </div>

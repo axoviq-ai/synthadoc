@@ -53,8 +53,17 @@ body {
 .bubble-md tr:nth-child(even) td { background: #161d2a; }
 
 .bubble-citations { font-size: 0.78rem; margin-top: 0.4rem; color: #94a3b8; }
-.bubble-gap { margin-top: 0.5rem; font-size: 0.82rem; color: #f59e0b; }
-.bubble-gap ul { margin-left: 1.2rem; margin-top: 0.25rem; }
+
+.bubble-gap-callout { margin-top: 0.75rem; border-left: 3px solid #f59e0b; background: #16130a; border-radius: 0 6px 6px 0; padding: 0.65rem 0.8rem; font-size: 0.82rem; }
+.bubble-gap-callout .gap-title { font-weight: 600; color: #f59e0b; margin-bottom: 0.4rem; }
+.bubble-gap-callout .gap-text { color: #cbd5e1; margin-bottom: 0.5rem; }
+.bubble-gap-callout .gap-section { color: #94a3b8; margin: 0.3rem 0; }
+.bubble-gap-callout .gap-section code { background: #0f1117; border-radius: 3px; padding: 0.1em 0.3em; font-size: 0.85em; font-family: "Fira Code", "Cascadia Code", monospace; }
+.bubble-gap-callout .gap-pre-wrap { position: relative; margin: 0.4rem 0; }
+.bubble-gap-callout .gap-pre { background: #0f1117; border-radius: 6px; padding: 0.6rem 0.8rem; overflow-x: auto; font-family: "Fira Code", "Cascadia Code", monospace; font-size: 0.80rem; color: #a5f3fc; white-space: pre; line-height: 1.6; }
+.bubble-gap-callout .gap-copy-btn { position: absolute; top: 0.35rem; right: 0.4rem; background: #2d3748; border: none; color: #94a3b8; font-size: 0.72rem; padding: 0.15rem 0.5rem; border-radius: 4px; cursor: pointer; transition: background 0.15s; }
+.bubble-gap-callout .gap-copy-btn:hover { background: #374151; color: #e2e8f0; }
+.bubble-gap-callout .gap-footer { color: #64748b; font-size: 0.78rem; margin-top: 0.4rem; }
 
 .hint-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .hint-chip { background: #1e2533; border: 1px solid #374151; color: #94a3b8; font-size: 0.8rem; padding: 0.25rem 0.6rem; border-radius: 999px; cursor: pointer; transition: background 0.15s; }

@@ -30,6 +30,7 @@ export default function App() {
                 sessionId={session?.session_id ?? null}
                 hints={hints}
                 onHints={updateHints}
+                wikiName={session?.wiki_name ?? ""}
             />
         </div>
     );

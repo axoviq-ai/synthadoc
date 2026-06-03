@@ -524,6 +524,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             "session_id": session_id,
             "mode": mode,
             "initial_hints": HintEngine.initial_hints(mode),
+            "wiki_name": wiki_root.name,
         }
 
     @app.post("/analyse")
