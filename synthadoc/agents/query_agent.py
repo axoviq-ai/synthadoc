@@ -459,8 +459,11 @@ class QueryAgent:
         if _purpose_ctx:
             _ctx_parts.append(_purpose_ctx)
         if _system_ctx:
+            # System knowledge matched: answer from help pages only; wiki pages are irrelevant noise
             _ctx_parts.append(f"## Synthadoc Help\n{_system_ctx}")
-        _ctx_parts.append(_pages_ctx)
+            citations = []
+        else:
+            _ctx_parts.append(_pages_ctx)
         context = "\n\n".join(_ctx_parts)
 
         if _gap:
@@ -473,9 +476,9 @@ class QueryAgent:
             )
         elif _system_ctx:
             synthesis_prompt = (
-                f"Answer using the provided pages below. Use Synthadoc Help pages to answer "
-                f"product-related questions. For wiki pages, cite with [[PageTitle]].\n\n"
-                f"Question: {question}\n\nPages:\n{context}"
+                f"Answer the question using ONLY the Synthadoc Help documentation below. "
+                f"Do not reference or cite wiki pages.\n\n"
+                f"Question: {question}\n\nDocumentation:\n{context}"
             )
         else:
             synthesis_prompt = (
@@ -654,8 +657,11 @@ class QueryAgent:
         if _purpose_ctx:
             _ctx_parts.append(_purpose_ctx)
         if _system_ctx:
+            # System knowledge matched: answer from help pages only; wiki pages are irrelevant noise
             _ctx_parts.append(f"## Synthadoc Help\n{_system_ctx}")
-        _ctx_parts.append(_pages_ctx)
+            citations = []
+        else:
+            _ctx_parts.append(_pages_ctx)
         context = "\n\n".join(_ctx_parts)
 
         _max_score = max((r.score for r in candidates), default=0.0)
@@ -682,9 +688,9 @@ class QueryAgent:
             )
         elif _system_ctx:
             synthesis_prompt = (
-                f"Answer using the provided pages below. Use Synthadoc Help pages to answer "
-                f"product-related questions. For wiki pages, cite with [[PageTitle]].\n\n"
-                f"Question: {question}\n\nPages:\n{context}"
+                f"Answer the question using ONLY the Synthadoc Help documentation below. "
+                f"Do not reference or cite wiki pages.\n\n"
+                f"Question: {question}\n\nDocumentation:\n{context}"
             )
         else:
             synthesis_prompt = (

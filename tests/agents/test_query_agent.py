@@ -1764,3 +1764,22 @@ async def test_query_system_knowledge_in_synthesis_prompt(tmp_wiki):
     assert len(provider.complete.call_args_list) >= 2
     synthesis_prompt = provider.complete.call_args_list[1][1]["messages"][0].content
     assert "Synthadoc Help" in synthesis_prompt
+    # Wiki pages must NOT be in the synthesis context (they're noise for product questions)
+    assert "No relevant pages found" not in synthesis_prompt
+
+
+@pytest.mark.asyncio
+async def test_query_system_knowledge_no_wiki_citations(tmp_wiki):
+    """When system knowledge matches, citations list must be empty (no wiki pages injected)."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["What file types can I ingest?"]',
+                           input_tokens=5, output_tokens=5),
+        CompletionResponse(text="You can ingest PDF, DOCX, and more.",
+                           input_tokens=80, output_tokens=15),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=0.0)
+    result = await agent.query("What file types can I ingest?")
+    assert result.citations == []
