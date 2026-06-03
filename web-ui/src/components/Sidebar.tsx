@@ -81,15 +81,24 @@ export function Sidebar({ wikiName, connected, history, activeQuestion, onSelect
 
 function SynthadocLogo() {
     return (
-        <svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <rect width="28" height="28" rx="7" fill="#7c3aed"/>
-            <rect x="6" y="8" width="7" height="1.8" rx="0.9" fill="white"/>
-            <rect x="6" y="11.6" width="7" height="1.8" rx="0.9" fill="white"/>
-            <rect x="6" y="15.2" width="7" height="1.8" rx="0.9" fill="white"/>
-            <rect x="6" y="18.8" width="5" height="1.8" rx="0.9" fill="white"/>
-            <rect x="15" y="8" width="7" height="1.8" rx="0.9" fill="rgba(255,255,255,0.45)"/>
-            <rect x="15" y="11.6" width="7" height="1.8" rx="0.9" fill="rgba(255,255,255,0.45)"/>
-            <rect x="15" y="15.2" width="5" height="1.8" rx="0.9" fill="rgba(255,255,255,0.45)"/>
+        <svg width="34" height="34" viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <linearGradient id="slg" x1="3" y1="3" x2="31" y2="31" gradientUnits="userSpaceOnUse">
+                    <stop offset="0%" stopColor="#e0aaff"/>
+                    <stop offset="40%" stopColor="#a855f7"/>
+                    <stop offset="100%" stopColor="#4f46e5"/>
+                </linearGradient>
+                <mask id="slm">
+                    <circle cx="14" cy="14" r="8.2" fill="white"/>
+                    <circle cx="14" cy="14" r="4.8" fill="black"/>
+                </mask>
+            </defs>
+            {/* Dark circular background */}
+            <circle cx="17" cy="17" r="16" fill="#0b0d1c"/>
+            {/* Upper-left ring (donut) */}
+            <circle cx="14" cy="14" r="8.2" fill="url(#slg)" mask="url(#slm)"/>
+            {/* Lower-right solid orb, overlapping the ring */}
+            <circle cx="21.5" cy="21.5" r="5.5" fill="url(#slg)"/>
         </svg>
     );
 }

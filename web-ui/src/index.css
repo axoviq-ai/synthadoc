@@ -54,8 +54,11 @@ body {
 .sidebar-brand {
     font-size: 1.05rem;
     font-weight: 700;
-    color: #e2e8f0;
     letter-spacing: 0.01em;
+    background: linear-gradient(90deg, #c084fc 0%, #818cf8 55%, #60a5fa 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
 }
 
 .new-run-btn {
