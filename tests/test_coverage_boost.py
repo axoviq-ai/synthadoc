@@ -1339,6 +1339,47 @@ def test_get_tracer_initialises_when_not_set():
 
 # ── storage/log.py — invalid sort column normalised ──────────────────────────
 
+# ── agents/hint_engine.py — fallback and empty-pool paths ────────────────────
+
+def test_hint_engine_init_fallback_when_file_unreadable():
+    """_init_working_copies() falls back to _FALLBACK_BY_MODE when hints.json unreadable."""
+    import synthadoc.agents.hint_engine as _he
+    with patch.object(_he, "_load_hints_file", return_value=({}, [])):
+        by_mode, patterns, cache = _he._init_working_copies()
+    assert "POWER_USER" in by_mode
+    assert isinstance(cache, dict)
+
+
+def test_hint_engine_empty_pool_returns_unchanged_cursor():
+    """after_response_windowed returns ([], cursor) when the pool is empty."""
+    import synthadoc.agents.hint_engine as _he
+    from synthadoc.agents.hint_engine import HintEngine
+    with patch.object(_he, "_hints_by_mode", {}), patch.object(_he, "_pool_cache", {}):
+        hints, cursor = HintEngine.after_response_windowed("answer", "UNKNOWN_MODE", 7)
+    assert hints == []
+    assert cursor == 7
+
+
+# ── agents/_routing.py — JSON parse exception path ───────────────────────────
+
+@pytest.mark.asyncio
+async def test_routing_json_parse_exception_returns_empty():
+    """pick_routing_branches returns [] when the LLM JSON is malformed."""
+    from synthadoc.agents._routing import pick_routing_branches
+
+    class _FakeProvider:
+        async def complete(self, messages, temperature=0.0):
+            class R:
+                text = "[not a valid json array]"  # matches \[.*?\] but invalid JSON
+            return R()
+
+    branches = {"Tech": [], "Science": []}
+    result = await pick_routing_branches(
+        _FakeProvider(), branches, "test context", multi=True
+    )
+    assert result == []
+
+
 @pytest.mark.asyncio
 async def test_audit_list_citations_invalid_sort_normalised(tmp_wiki):
     """list_citations normalises an unrecognised sort column to 'ingested_at'."""

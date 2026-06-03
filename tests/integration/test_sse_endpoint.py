@@ -72,6 +72,73 @@ def test_post_sessions_returns_session_id_and_mode(tmp_wiki):
     assert re.match(r"[0-9a-f-]{36}", data["session_id"])
 
 
+def _make_wiki_pages(wiki_dir, count=5, stale_index=None):
+    """Create count wiki pages; if stale_index is set, that page gets status: stale."""
+    for i in range(count):
+        status = "stale" if i == stale_index else "active"
+        (wiki_dir / f"page{i}.md").write_text(
+            f"---\ntitle: Page {i}\nstatus: {status}\n---\n\nContent.\n",
+            encoding="utf-8",
+        )
+
+
+def test_post_sessions_explorer_mode(tmp_wiki):
+    """POST /sessions with 5+ pages and no prior sessions must return EXPLORER."""
+    from fastapi.testclient import TestClient
+    _make_wiki_pages(tmp_wiki / "wiki")
+    app = _make_app(tmp_wiki)
+    with TestClient(app) as client:
+        resp = client.post("/sessions")
+    assert resp.status_code == 200
+    assert resp.json()["mode"] == "EXPLORER"
+
+
+def test_post_sessions_power_user_mode(tmp_wiki):
+    """POST /sessions on second call with no stale pages returns POWER_USER."""
+    from fastapi.testclient import TestClient
+    _make_wiki_pages(tmp_wiki / "wiki")
+    app = _make_app(tmp_wiki)
+    with TestClient(app) as client:
+        client.post("/sessions")          # first call → EXPLORER + records session
+        resp = client.post("/sessions")   # second call → has_prior_sessions=True → POWER_USER
+    assert resp.status_code == 200
+    assert resp.json()["mode"] == "POWER_USER"
+
+
+def test_post_sessions_health_check_mode(tmp_wiki):
+    """POST /sessions on second call with a stale page returns HEALTH_CHECK."""
+    from fastapi.testclient import TestClient
+    _make_wiki_pages(tmp_wiki / "wiki", stale_index=0)
+    app = _make_app(tmp_wiki)
+    with TestClient(app) as client:
+        client.post("/sessions")          # first call records session
+        resp = client.post("/sessions")   # second call → stale page → HEALTH_CHECK
+    assert resp.status_code == 200
+    assert resp.json()["mode"] == "HEALTH_CHECK"
+
+
+def test_query_stream_with_session_updates_cursor(tmp_wiki):
+    """GET /query/stream with a valid session_id must update cursor and last_hints."""
+    from fastapi.testclient import TestClient
+    app = _make_app(tmp_wiki)
+
+    async def _fake_stream(question, session_id=None, session_mode="NEW_WIKI"):
+        yield {"event": "status", "data": {"phase": "synthesizing", "sources": 0}}
+        yield {"event": "token", "data": {"text": "your wiki covers several topics"}}
+        yield {"event": "done", "data": {"cacheable": True}}
+
+    with TestClient(app) as client:
+        # Replace instance attr to avoid self-binding issues with class-level patch
+        sess = client.post("/sessions").json()
+        sid = sess["session_id"]
+        app.state.orch.query_stream = _fake_stream
+        resp = client.get(f"/query/stream?q=test&session_id={sid}")
+
+    assert resp.status_code == 200
+    assert b"done" in resp.content
+    assert b"next_hints" in resp.content
+
+
 def test_spa_not_built_returns_503(tmp_wiki):
     """GET /app returns 503 with helpful message when web-ui/dist is missing."""
     import pytest
