@@ -139,6 +139,43 @@ def test_query_stream_with_session_updates_cursor(tmp_wiki):
     assert b"next_hints" in resp.content
 
 
+def test_query_stream_gap_stored_and_replayed_from_cache(tmp_wiki):
+    """A gap response must store knowledge_gap+suggested_searches and replay them on cache hit."""
+    from fastapi.testclient import TestClient
+    app = _make_app(tmp_wiki)
+
+    async def _gap_stream(question, session_id=None, session_mode="POWER_USER"):
+        yield {"event": "status", "data": {"phase": "retrieving"}}
+        yield {"event": "token", "data": {"text": "No pages on this topic."}}
+        yield {"event": "citations", "data": {"citations": []}}
+        yield {"event": "gap", "data": {"suggested_searches": ["ingest quantum computing", "add quantum page"]}}
+        yield {"event": "done", "data": {"cacheable": True, "next_hints": []}}
+
+    # First request — live stream; verify gap event is forwarded
+    with TestClient(app) as client:
+        app.state.orch.query_stream = _gap_stream
+        resp = client.get("/query/stream?q=quantum+computing")
+
+    assert resp.status_code == 200
+    assert b"gap" in resp.content
+    assert b"quantum" in resp.content
+
+    # Second request — served from cache; the gap event must still appear
+    # (verifies both that cache stored knowledge_gap=True and that _cached_stream replays it)
+    with TestClient(app) as client:
+        # Replace stream with one that would not emit a gap — any gap in resp2 must come from cache
+        async def _no_gap_stream(question, session_id=None, session_mode="POWER_USER"):
+            raise AssertionError("live stream must not be called on cache hit")
+            yield  # make it a generator
+
+        app.state.orch.query_stream = _no_gap_stream
+        resp2 = client.get("/query/stream?q=quantum+computing")
+
+    assert resp2.status_code == 200
+    assert b"gap" in resp2.content
+    assert b"quantum" in resp2.content
+
+
 def test_spa_not_built_returns_503(tmp_wiki):
     """GET /app returns 503 with helpful message when web-ui/dist is missing."""
     import pytest

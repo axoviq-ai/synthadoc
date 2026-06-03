@@ -444,6 +444,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                     for word in cached["answer"].split(" "):
                         events.append({"event": "token", "data": {"text": word + " "}})
                     events.append({"event": "citations", "data": {"citations": cached.get("citations", [])}})
+                    if cached.get("knowledge_gap") and cached.get("suggested_searches"):
+                        events.append({"event": "gap", "data": {"suggested_searches": cached["suggested_searches"]}})
                     from synthadoc.agents.hint_engine import HintEngine
                     _ss = _session_state.get(session_id or "", {})
                     cursor = _ss.get("cursor", 0)
@@ -464,12 +466,17 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             full_answer = ""
             citations = []
             _is_cacheable = True
+            _knowledge_gap = False
+            _suggested_searches: list[str] = []
             try:
                 async for evt in orch.query_stream(q, session_id=session_id, session_mode=session_mode):
                     if evt["event"] == "token":
                         full_answer += evt["data"].get("text", "")
                     elif evt["event"] == "citations":
                         citations = evt["data"].get("citations", [])
+                    elif evt["event"] == "gap":
+                        _knowledge_gap = True
+                        _suggested_searches = evt["data"].get("suggested_searches", [])
                     elif evt["event"] == "done":
                         _is_cacheable = evt["data"].get("cacheable", True)
                         from synthadoc.agents.hint_engine import HintEngine
@@ -500,7 +507,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                 cache_key = make_query_cache_key(q, orch._wiki_epoch, _query_model)
                 await orch._cache.set_query(cache_key, orch._wiki_epoch, {
                     "answer": full_answer, "citations": citations,
-                    "knowledge_gap": False, "suggested_searches": [],
+                    "knowledge_gap": _knowledge_gap,
+                    "suggested_searches": _suggested_searches,
                 })
             if session_id and full_answer:
                 await orch._audit.append_message(session_id, "user", q)
