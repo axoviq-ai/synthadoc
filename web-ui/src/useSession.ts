@@ -10,18 +10,26 @@ export function useSession() {
     const [hints, setHints] = useState<string[]>([]);
     const [sessionError, setSessionError] = useState<string | null>(null);
 
-    useEffect(() => {
-        createSession()
-            .then((s) => {
-                setSession(s);
-                setHints(s.initial_hints);
-            })
-            .catch((err: unknown) => {
-                setSessionError(err instanceof Error ? err.message : "Failed to connect to server");
-            });
+    const initSession = useCallback(async () => {
+        try {
+            const s = await createSession();
+            setSession(s);
+            setHints(s.initial_hints);
+            setSessionError(null);
+        } catch (err: unknown) {
+            setSessionError(err instanceof Error ? err.message : "Failed to connect to server");
+        }
     }, []);
+
+    useEffect(() => { initSession(); }, [initSession]);
+
+    const resetSession = useCallback(async () => {
+        setSession(null);
+        setHints([]);
+        await initSession();
+    }, [initSession]);
 
     const updateHints = useCallback((next: string[]) => setHints(next), []);
 
-    return { session, hints, updateHints, sessionError };
+    return { session, hints, updateHints, sessionError, resetSession };
 }
