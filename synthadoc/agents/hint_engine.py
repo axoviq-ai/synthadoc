@@ -133,12 +133,15 @@ class HintEngine:
 
     @staticmethod
     def after_response_windowed(
-        answer: str, mode: SessionMode, cursor: int
+        answer: str, mode: SessionMode, cursor: int, *,
+        previous_hints: list[str] | None = None,
     ) -> tuple[list[str], int]:
         """Returns (next_hints, new_cursor). Cursor always advances.
 
         Topic keyword match overrides which hints are shown but does not
         freeze the cursor — rotation continues on every response.
+        If a topic match would repeat previous_hints, that pattern is skipped
+        so the pool rotation stays visible across consecutive queries.
         """
         pool = HintEngine.build_pool(mode)
         if not pool:
@@ -149,10 +152,14 @@ class HintEngine:
         window = (pool * 2)[start:start + n]
         next_cursor = (start + n) % len(pool)
 
-        # Topic match: show contextually relevant hints but still advance cursor
+        # Topic match: show contextually relevant hints but still advance cursor.
+        # Skip a match whose hints equal the previous set — breaks feedback loops
+        # where common words (e.g. "source", "active") repeatedly fire the same pattern.
         answer_lower = answer.lower()
         for keywords, hints in _topic_patterns:
             if any(kw in answer_lower for kw in keywords):
-                return hints[:3], next_cursor
+                topic = hints[:n]
+                if previous_hints is None or sorted(topic) != sorted(previous_hints):
+                    return topic, next_cursor
 
         return window, next_cursor

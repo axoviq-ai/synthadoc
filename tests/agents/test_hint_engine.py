@@ -89,6 +89,23 @@ def test_windowed_no_topic_match_returns_pool_window():
     assert hints == pool[:3]
 
 
+def test_windowed_skips_repeated_topic_hints():
+    # Same topic match on consecutive calls should not return the same hints twice.
+    stale_answer = "your page is stale and outdated"
+    hints1, c1 = HintEngine.after_response_windowed(stale_answer, "POWER_USER", 0)
+    # Second call passes previous_hints — same topic match should be skipped.
+    hints2, _ = HintEngine.after_response_windowed(stale_answer, "POWER_USER", c1,
+                                                    previous_hints=hints1)
+    assert hints2 != hints1, "repeated topic hints must be suppressed"
+
+
+def test_windowed_allows_topic_hints_after_different_previous():
+    stale_answer = "your page is stale and outdated"
+    hints1, _ = HintEngine.after_response_windowed(stale_answer, "POWER_USER", 0,
+                                                   previous_hints=["some", "other", "hints"])
+    assert "How do I run a lint check?" in hints1
+
+
 # ── after_response (backward compat) ─────────────────────────────────────────
 
 def test_after_response_returns_list():

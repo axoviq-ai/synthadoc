@@ -445,12 +445,16 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                         events.append({"event": "token", "data": {"text": word + " "}})
                     events.append({"event": "citations", "data": {"citations": cached.get("citations", [])}})
                     from synthadoc.agents.hint_engine import HintEngine
-                    cursor = _session_state.get(session_id or "", {}).get("cursor", 0)
+                    _ss = _session_state.get(session_id or "", {})
+                    cursor = _ss.get("cursor", 0)
+                    prev_hints = _ss.get("last_hints", [])
                     next_hints, new_cursor = HintEngine.after_response_windowed(
-                        cached.get("answer", ""), session_mode, cursor
+                        cached.get("answer", ""), session_mode, cursor,
+                        previous_hints=prev_hints,
                     )
                     if session_id and session_id in _session_state:
                         _session_state[session_id]["cursor"] = new_cursor
+                        _session_state[session_id]["last_hints"] = next_hints
                     events.append({"event": "done", "data": {"next_hints": next_hints}})
                     for evt in events:
                         yield f"event: {evt['event']}\ndata: {_json.dumps(evt['data'])}\n\n"
@@ -469,12 +473,16 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                     elif evt["event"] == "done":
                         _is_cacheable = evt["data"].get("cacheable", True)
                         from synthadoc.agents.hint_engine import HintEngine
-                        cursor = _session_state.get(session_id or "", {}).get("cursor", 0)
+                        _ss = _session_state.get(session_id or "", {})
+                        cursor = _ss.get("cursor", 0)
+                        prev_hints = _ss.get("last_hints", [])
                         next_hints, new_cursor = HintEngine.after_response_windowed(
-                            full_answer, session_mode, cursor
+                            full_answer, session_mode, cursor,
+                            previous_hints=prev_hints,
                         )
                         if session_id and session_id in _session_state:
                             _session_state[session_id]["cursor"] = new_cursor
+                            _session_state[session_id]["last_hints"] = next_hints
                         yield f"event: done\ndata: {_json.dumps({'next_hints': next_hints})}\n\n"
                         continue
                     yield f"event: {evt['event']}\ndata: {_json.dumps(evt['data'])}\n\n"
@@ -519,7 +527,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             mode = "HEALTH_CHECK" if has_health_issues else "POWER_USER"
         await orch._audit.create_session(session_id, mode)
         from synthadoc.agents.hint_engine import HintEngine
-        _session_state[session_id] = {"mode": mode, "cursor": 0}
+        _session_state[session_id] = {"mode": mode, "cursor": 0, "last_hints": []}
         return {
             "session_id": session_id,
             "mode": mode,
