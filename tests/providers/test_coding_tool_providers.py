@@ -208,6 +208,29 @@ def test_opencode_parse_output_no_text_events_raises():
         provider._parse_output("\n".join(lines))
 
 
+def test_opencode_error_event_fatal_when_no_text():
+    """error event with no prior text → RuntimeError."""
+    import json
+    provider = _make_opencode_provider()
+    lines = [
+        json.dumps({"type": "error", "error": {"name": "invalid api key"}}),
+    ]
+    with pytest.raises(RuntimeError, match="invalid api key"):
+        provider._parse_output("\n".join(lines))
+
+
+def test_opencode_error_event_nonfatal_when_text_collected():
+    """error event after text has been collected → warning logged, text returned."""
+    import json
+    provider = _make_opencode_provider()
+    lines = [
+        json.dumps({"type": "text", "data": "The answer is 42."}),
+        json.dumps({"type": "error", "error": {"name": "tool call failed"}}),
+    ]
+    resp = provider._parse_output("\n".join(lines))
+    assert resp.text == "The answer is 42."
+
+
 def test_opencode_parse_output_step_finish_error_raises():
     """step_finish with reason=error → RuntimeError."""
     import json

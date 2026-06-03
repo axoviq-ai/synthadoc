@@ -307,7 +307,12 @@ class OpencodeProvider(CodingToolCLIProvider):
             elif etype == "error":
                 err = event.get("error") or {}
                 msg = (err.get("data") or {}).get("message") or err.get("name") or "unknown error"
-                raise RuntimeError(f"opencode: API error — {msg}")
+                if text_parts:
+                    # A tool-call or sub-request failed but the model still produced text.
+                    # Log and continue rather than discarding a good answer.
+                    _logger.warning("opencode: non-fatal error event (text collected): %s", msg)
+                else:
+                    raise RuntimeError(f"opencode: API error — {msg}")
 
             # --- token counts ---
             elif etype == "step_finish":
