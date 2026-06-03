@@ -50,6 +50,44 @@ async def test_openai_provider_complete_stream_yields_tokens():
 
 
 @pytest.mark.asyncio
+async def test_openai_provider_complete_stream_strips_think_blocks():
+    """complete_stream must suppress <think>...</think> tokens from reasoning models."""
+    from synthadoc.providers.openai import OpenAIProvider
+    from synthadoc.config import AgentConfig
+
+    cfg = AgentConfig(provider="openai", model="minimax/MiniMax-M2.5")
+    provider = OpenAIProvider.__new__(OpenAIProvider)
+    provider._config = cfg
+    provider._timeout = None
+
+    # Simulate MiniMax streaming: think block split across tokens, then real answer
+    raw_tokens = ["<think>", "some reasoning", "</think>", "\n\nThe answer is 42."]
+    chunks = []
+    for t in raw_tokens:
+        c = MagicMock()
+        c.choices = [MagicMock(delta=MagicMock(content=t))]
+        chunks.append(c)
+
+    async def _fake_create(*a, **kw):
+        async def _gen():
+            for c in chunks:
+                yield c
+        return _gen()
+
+    mock_client = MagicMock()
+    mock_client.chat.completions.create = _fake_create
+    provider._client = mock_client
+
+    tokens = []
+    async for tok in provider.complete_stream([Message(role="user", content="hi")]):
+        tokens.append(tok)
+    combined = "".join(tokens)
+    assert "think" not in combined.lower()
+    assert "some reasoning" not in combined
+    assert "42" in combined
+
+
+@pytest.mark.asyncio
 async def test_anthropic_provider_complete_stream_yields_tokens():
     """AnthropicProvider.complete_stream must yield token strings."""
     from synthadoc.providers.anthropic import AnthropicProvider
