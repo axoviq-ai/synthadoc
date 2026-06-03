@@ -1069,12 +1069,16 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
     _web_dist = Path(__file__).parent.parent.parent / "web-ui" / "dist"
     if _web_dist.exists() and (_web_dist / "index.html").is_file():
         from fastapi.staticfiles import StaticFiles
-        from fastapi.responses import FileResponse
+        from fastapi.responses import FileResponse, RedirectResponse
         _assets = _web_dist / "assets"
         if _assets.exists():
             app.mount("/app/assets", StaticFiles(directory=str(_assets)), name="web_assets")
 
         @app.get("/app")
+        async def spa_root():
+            return RedirectResponse(url="/app/", status_code=307)
+
+        @app.get("/app/")
         @app.get("/app/{path:path}")
         async def spa(path: str = ""):
             return FileResponse(str(_web_dist / "index.html"))
