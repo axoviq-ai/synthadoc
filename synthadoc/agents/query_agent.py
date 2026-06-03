@@ -121,12 +121,14 @@ class QueryAgent:
     def __init__(self, provider: LLMProvider, store: WikiStorage,
                  search: HybridSearch, top_n: int = 8,
                  gap_score_threshold: float = 2.0,
-                 routing_path: Path | None = None) -> None:
+                 routing_path: Path | None = None,
+                 orchestrator: object | None = None) -> None:
         self._provider = provider
         self._store = store
         self._search = search
         self._top_n = top_n
         self._gap_score_threshold = gap_score_threshold
+        self._orchestrator = orchestrator
         self._routing = None
         if routing_path:
             from synthadoc.core.routing import RoutingIndex
@@ -270,6 +272,22 @@ class QueryAgent:
 
     async def query(self, question: str) -> QueryResult:
         question = self._expand_aliases(question)
+
+        # Action pre-flight: if orchestrator is available and question is an action, dispatch it
+        if self._orchestrator is not None:
+            from synthadoc.agents.action_agent import ActionAgent
+            _action_agent = ActionAgent(self._provider, self._orchestrator,
+                                        self._store._root.parent)
+            if _action_agent.detect(question):
+                _result = await _action_agent.run(question)
+                if _result is not None:
+                    return QueryResult(
+                        question=question,
+                        answer=_result.message,
+                        citations=[],
+                        knowledge_gap=not _result.success,
+                    )
+
         sub_questions = await self.decompose(question)
 
         scoped_slugs: list[str] | None = None
@@ -693,6 +711,23 @@ class QueryAgent:
 
         Event sequence: status(retrieving) → status(synthesizing) → token* → citations → [gap] → done
         """
+        # Action pre-flight: dispatch action requests before entering the query pipeline
+        if self._orchestrator is not None:
+            from synthadoc.agents.action_agent import ActionAgent
+            _action_agent = ActionAgent(self._provider, self._orchestrator,
+                                        self._store._root.parent)
+            if _action_agent.detect(question):
+                _result = await _action_agent.run(question)
+                if _result is not None:
+                    yield {"event": "status", "data": {"phase": "acting"}}
+                    yield {"event": "token", "data": {"text": _result.message}}
+                    yield {"event": "citations", "data": {"citations": []}}
+                    yield {"event": "done", "data": {
+                        "citations": [], "hints": [], "gap": not _result.success,
+                        "job_id": _result.job_id,
+                    }}
+                    return
+
         yield {"event": "status", "data": {"phase": "retrieving"}}
 
         question = self._expand_aliases(question)

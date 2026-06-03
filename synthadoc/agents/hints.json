@@ -3,22 +3,31 @@
     "NEW_WIKI": [
       "How do I ingest my first document?",
       "What sources can Synthadoc ingest?",
-      "How do I set up a scheduled ingest?"
+      "How do I set up a scheduled ingest?",
+      "Ingest a URL into my wiki",
+      "Run scaffold to generate starter pages"
     ],
     "EXPLORER": [
       "What topics does this wiki cover?",
       "Show me a summary of the most-cited pages",
-      "What are the stale pages in my wiki?"
+      "What are the stale pages in my wiki?",
+      "Ingest a new source into the wiki",
+      "Run a full lint check"
     ],
     "HEALTH_CHECK": [
       "Which pages are marked stale?",
       "Show me pages with contradictions",
-      "How do I run a lint check?"
+      "How do I run a lint check?",
+      "Run lint with auto-resolve enabled",
+      "Show my scheduled tasks"
     ],
     "POWER_USER": [
       "What changed in the wiki this week?",
       "Which pages have the most citations?",
-      "Export my wiki as llms.txt"
+      "Export my wiki as llms.txt",
+      "Run lint on contradictions only",
+      "Schedule a daily ingest at 6 AM",
+      "Rebuild the wiki scaffold"
     ]
   },
   "topic_patterns": [
@@ -52,6 +61,30 @@
         "How do lifecycle states work?",
         "How do I archive a page?",
         "What is candidates staging?"
+      ]
+    },
+    {
+      "keywords": ["lint", "contradiction", "orphan", "dangling"],
+      "hints": [
+        "Run lint with auto-resolve enabled",
+        "Run lint on contradictions only",
+        "How do I run a lint check?"
+      ]
+    },
+    {
+      "keywords": ["schedule", "scheduled", "recurring", "cron"],
+      "hints": [
+        "Show my scheduled tasks",
+        "Schedule a daily ingest at 6 AM",
+        "Schedule a weekly scaffold rebuild"
+      ]
+    },
+    {
+      "keywords": ["scaffold", "template", "structure"],
+      "hints": [
+        "Rebuild the wiki scaffold",
+        "What does scaffold generate?",
+        "Run scaffold to update templates"
       ]
     }
   ]
