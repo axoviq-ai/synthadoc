@@ -4,8 +4,8 @@ __pycache__/
 .coverage
 coverage.json
 htmlcov/
-dist/
-build/
+/dist/
+/build/
 *.egg-info/
 .env
 .venv/
