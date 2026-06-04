@@ -1600,6 +1600,60 @@ def test_expand_aliases_case_insensitive(tmp_wiki):
     assert "alan-turing" in result2
 
 
+# ── sub-question gap detection (framed queries) ───────────────────────────────
+
+@pytest.mark.asyncio
+async def test_framed_query_gap_detected_via_sub_questions(tmp_wiki):
+    """A verbose request like 'please provide details of X' should fire gap detection
+    when X is not in the wiki, the same as the bare 'what is X?' form.
+
+    decompose() strips the request framing and returns clean sub-questions; gap
+    detection uses those instead of the raw question so framing words don't
+    dilute the key-term absence signals.
+    """
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+
+    # Wiki has pages about general AI topics — topic-adjacent but no agent-as-a-judge
+    for i in range(5):
+        store.write_page(f"ai-page-{i}", WikiPage(
+            title=f"AI Page {i}", tags=[],
+            content="Artificial intelligence and design of neural networks. Benchmarks for evaluation.",
+            status="active", confidence="high", sources=[],
+        ))
+
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        # decompose strips framing → clean sub-questions that isolate the actual topic
+        CompletionResponse(
+            text='["What is agent-as-a-judge?", "What are benchmarks for agent-as-a-judge systems?"]',
+            input_tokens=10, output_tokens=10,
+        ),
+        # synthesis answer (gap=True branch — general knowledge answer)
+        CompletionResponse(
+            text="Agent-as-a-judge is an evaluation paradigm where an LLM grades other LLMs.",
+            input_tokens=80, output_tokens=20,
+        ),
+        # SearchDecomposeAgent suggested searches
+        CompletionResponse(
+            text='["agent-as-a-judge definition", "LLM evaluation benchmarks"]',
+            input_tokens=10, output_tokens=10,
+        ),
+    ]
+
+    agent = QueryAgent(provider=provider, store=store, search=search,
+                       gap_score_threshold=2.0)
+    all_slugs = [f"ai-page-{i}" for i in range(5)]
+    with patch.object(agent._search, "bm25_search",
+                      return_value=_fake_results(all_slugs, score=3.0)):
+        result = await agent.query(
+            "please provide some details of agent-as-a-judge design and benchmark information"
+        )
+
+    assert result.knowledge_gap is True
+    assert len(result.suggested_searches) >= 1
+
+
 # ── post-synthesis [GAP] sentinel ────────────────────────────────────────────
 
 @pytest.mark.asyncio

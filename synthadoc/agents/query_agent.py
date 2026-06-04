@@ -236,7 +236,7 @@ class QueryAgent:
         q_lower = question.lower()
         matched: list[str] = []
         for page in _SYSTEM_KNOWLEDGE:
-            if any(kw in q_lower for kw in page.keywords):
+            if any(re.search(r'\b' + re.escape(kw) + r'\b', q_lower) for kw in page.keywords):
                 matched.append(f"### {page.title}\n{page.content}")
         # If no keyword matched but question looks like a CLI invocation, include
         # all system pages so the LLM can answer from bundled documentation.
@@ -527,8 +527,12 @@ class QueryAgent:
         sub_questions, candidates = await self._run_search(question)
 
         _max_score = max((r.score for r in candidates), default=0.0)
+        # Use sub-questions for gap detection: decomposition strips request framing
+        # ("please provide details of X") so key terms reflect the actual topic, not
+        # the phrasing. Falls back to the original question if decomposition returned it.
+        _gap_q = " ".join(sub_questions) if sub_questions else question
         _gap, _discriminating_term, _pages_with_overlap, _min_specific_qualifying = \
-            self._detect_gap(question, candidates, _max_score)
+            self._detect_gap(_gap_q, candidates, _max_score)
         _system_ctx = self._get_relevant_system_pages(question)
         _live_data = await self._fetch_live_wiki_data(question)
         if _system_ctx or _live_data:
@@ -738,7 +742,7 @@ class QueryAgent:
         yield {"event": "status", "data": {"phase": "retrieving"}}
 
         question = self._expand_aliases(question)
-        _, candidates = await self._run_search(question)
+        sub_questions, candidates = await self._run_search(question)
 
         citations = [r.slug for r in candidates]
         _purpose_ctx = self._load_purpose_context()
@@ -770,8 +774,9 @@ class QueryAgent:
         context = "\n\n".join(_ctx_parts)
 
         _max_score = max((r.score for r in candidates), default=0.0)
+        _gap_q = " ".join(sub_questions) if sub_questions else question
         _gap, _discriminating_term, _pages_with_overlap, _min_specific_qualifying = \
-            self._detect_gap(question, candidates, _max_score)
+            self._detect_gap(_gap_q, candidates, _max_score)
 
         if _system_ctx or _live_data:
             _gap = False
