@@ -74,6 +74,7 @@
         "Activate a draft page",
         "Archive a stale page",
         "Restore an archived page to draft",
+        "What is candidates staging?",
         "Show wiki status",
         "How do lifecycle states work?"
       ]
@@ -91,7 +92,9 @@
       "hints": [
         "What pages are orphan pages?",
         "List contradicted pages",
+        "Run lint on contradictions only",
         "Run lint with auto-resolve enabled",
+        "How do I run a lint check?",
         "Show my lint report"
       ]
     },
