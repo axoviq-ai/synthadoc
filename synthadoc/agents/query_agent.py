@@ -117,6 +117,7 @@ _LIVE_DATA_TRIGGERS: frozenset[str] = frozenset({
     "pages marked", "which pages", "how many pages", "page count",
     "changed", "this week", "recently", "recent changes", "what's new",
     "whats new", "updated", "new pages", "added", "last week", "past week",
+    "this month", "last month", "past month", "this year", "last year", "past year",
     "adversarial", "adversarial warning", "flagged", "overstated", "claim concern",
     "lint warning", "warnings",
     "job", "jobs", "job id", "job status", "ingest job", "queue",
@@ -126,6 +127,7 @@ _LIVE_DATA_TRIGGERS: frozenset[str] = frozenset({
 _RECENT_CHANGE_TRIGGERS: frozenset[str] = frozenset({
     "changed", "this week", "recently", "recent changes", "what's new",
     "whats new", "updated", "new pages", "added", "last week", "past week",
+    "this month", "last month", "past month", "this year", "last year", "past year",
 })
 
 _ADVERSARIAL_TRIGGERS: frozenset[str] = frozenset({
@@ -174,6 +176,26 @@ _WIKI_INTROSPECTIVE_TRIGGERS: frozenset[str] = frozenset({
     "this wiki includ",
     "this wiki contain",
 })
+
+
+def _parse_lookback_days(question: str) -> int:
+    """Return a lookback window in days parsed from natural language time phrases.
+
+    Recognises "last N months/weeks", month/year keywords, and falls back to 7 days
+    (one week) for bare "recently", "this week", "last week", etc.
+    """
+    q = question.lower()
+    m = re.search(r'(?:last|past)\s+(\d+)\s+months?', q)
+    if m:
+        return int(m.group(1)) * 30
+    m = re.search(r'(?:last|past)\s+(\d+)\s+weeks?', q)
+    if m:
+        return int(m.group(1)) * 7
+    if any(kw in q for kw in ("this year", "last year", "past year")):
+        return 365
+    if any(kw in q for kw in ("this month", "last month", "past month")):
+        return 30
+    return 7  # week / recently / default
 
 
 class QueryAgent:
@@ -290,9 +312,15 @@ class QueryAgent:
 
             # Recent ingest history when question asks about changes/updates
             if any(kw in q_lower for kw in _RECENT_CHANGE_TRIGGERS):
-                recent = await audit.list_ingests_since(days=7)
+                _days = _parse_lookback_days(question)
+                _window_label = (
+                    f"{_days // 365} year{'s' if _days // 365 > 1 else ''}" if _days >= 365
+                    else f"{_days // 30} month{'s' if _days // 30 > 1 else ''}" if _days >= 30
+                    else f"{_days} day{'s' if _days > 1 else ''}"
+                )
+                recent = await audit.list_ingests_since(days=_days)
                 if recent:
-                    lines.append("\n### Pages ingested or updated in the last 7 days")
+                    lines.append(f"\n### Pages ingested or updated in the last {_window_label}")
                     seen: set[str] = set()
                     for r in recent:
                         slug = r.get("wiki_page") or ""
@@ -302,7 +330,7 @@ class QueryAgent:
                             seen.add(slug)
                             lines.append(f"  - [[{slug}]]  (from {src}, {date})" if src else f"  - [[{slug}]]  ({date})")
                 else:
-                    lines.append("\n### Pages ingested or updated in the last 7 days\n  (none)")
+                    lines.append(f"\n### Pages ingested or updated in the last {_window_label}\n  (none)")
 
             # Job status — detect a specific 8-char hex job ID or list recent jobs
             if any(kw in q_lower for kw in _JOB_TRIGGERS) and self._orchestrator is not None:
@@ -653,7 +681,8 @@ class QueryAgent:
             _pages_with_overlap, _min_specific_qualifying, _gap,
         )
         _system_ctx = self._get_relevant_system_pages(question)
-        if _system_ctx:
+        _live_data = await self._fetch_live_wiki_data(question)
+        if _system_ctx or _live_data:
             _gap = False
         _q_lower = question.lower()
         if _gap and (
@@ -681,10 +710,14 @@ class QueryAgent:
             # System knowledge matched: answer from help pages only; wiki pages are irrelevant noise
             _ctx_parts.append(f"## Synthadoc Help\n{_system_ctx}")
             citations = []
-            _live_data = await self._fetch_live_wiki_data(question)
             if _live_data:
                 _ctx_parts.append(f"## Live Wiki Data\n{_live_data}")
                 _is_live_data = True
+        elif _live_data:
+            # Pure live-data query (no system knowledge page matched, but audit/queue data available)
+            citations = []
+            _ctx_parts.append(f"## Live Wiki Data\n{_live_data}")
+            _is_live_data = True
         else:
             _ctx_parts.append(_pages_ctx)
         context = "\n\n".join(_ctx_parts)
@@ -707,6 +740,14 @@ class QueryAgent:
                 f"do not rephrase or generate command names from memory. "
                 f"Do not reference or cite wiki pages.\n\n"
                 f"Question: {question}\n\nDocumentation:\n{context}"
+            )
+        elif _is_live_data:
+            synthesis_prompt = (
+                f"Answer using the Live Wiki Data below. "
+                f"The data is fetched directly from Synthadoc's audit log and page state database — "
+                f"give specific, concrete answers using the actual page names, dates, and counts shown. "
+                f"Do not reference or cite wiki page content.\n\n"
+                f"Question: {question}\n\nData:\n{context}"
             )
         else:
             synthesis_prompt = (
@@ -904,14 +945,19 @@ class QueryAgent:
         if _purpose_ctx:
             _ctx_parts.append(_purpose_ctx)
         _is_live_data = False
+        _live_data = await self._fetch_live_wiki_data(question)
         if _system_ctx:
             # System knowledge matched: answer from help pages only; wiki pages are irrelevant noise
             _ctx_parts.append(f"## Synthadoc Help\n{_system_ctx}")
             citations = []
-            _live_data = await self._fetch_live_wiki_data(question)
             if _live_data:
                 _ctx_parts.append(f"## Live Wiki Data\n{_live_data}")
                 _is_live_data = True
+        elif _live_data:
+            # Pure live-data query (no system knowledge page matched, but audit/queue data available)
+            citations = []
+            _ctx_parts.append(f"## Live Wiki Data\n{_live_data}")
+            _is_live_data = True
         else:
             _ctx_parts.append(_pages_ctx)
         context = "\n\n".join(_ctx_parts)
@@ -927,7 +973,7 @@ class QueryAgent:
             _pages_with_overlap, _min_specific_qualifying, _gap,
         )
 
-        if _system_ctx:
+        if _system_ctx or _live_data:
             _gap = False
         _q_lower_s = question.lower()
         if _gap and (
@@ -954,6 +1000,14 @@ class QueryAgent:
                 f"do not rephrase or generate command names from memory. "
                 f"Do not reference or cite wiki pages.\n\n"
                 f"Question: {question}\n\nDocumentation:\n{context}"
+            )
+        elif _is_live_data:
+            synthesis_prompt = (
+                f"Answer using the Live Wiki Data below. "
+                f"The data is fetched directly from Synthadoc's audit log and page state database — "
+                f"give specific, concrete answers using the actual page names, dates, and counts shown. "
+                f"Do not reference or cite wiki page content.\n\n"
+                f"Question: {question}\n\nData:\n{context}"
             )
         else:
             synthesis_prompt = (

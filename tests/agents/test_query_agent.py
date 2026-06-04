@@ -3,7 +3,7 @@
 import asyncio
 import pytest
 from unittest.mock import AsyncMock, patch
-from synthadoc.agents.query_agent import QueryAgent, QueryResult
+from synthadoc.agents.query_agent import QueryAgent, QueryResult, _parse_lookback_days
 from synthadoc.providers.base import CompletionResponse
 from synthadoc.storage.log import AuditDB
 from synthadoc.storage.wiki import WikiStorage, WikiPage
@@ -1928,3 +1928,95 @@ async def test_no_gap_for_wiki_introspective_queries(tmp_wiki):
     assert result.suggested_searches == []
     # SearchDecomposeAgent should NOT have been called (only 2 complete() calls total)
     assert provider.complete.call_count == 2
+
+
+# ── _parse_lookback_days ──────────────────────────────────────────────────────
+
+def test_parse_lookback_days_week():
+    assert _parse_lookback_days("What changed this week?") == 7
+
+def test_parse_lookback_days_recently():
+    assert _parse_lookback_days("What changed recently?") == 7
+
+def test_parse_lookback_days_month():
+    assert _parse_lookback_days("What changed this month?") == 30
+
+def test_parse_lookback_days_last_month():
+    assert _parse_lookback_days("What pages were added last month?") == 30
+
+def test_parse_lookback_days_year():
+    assert _parse_lookback_days("What pages were added this year?") == 365
+
+def test_parse_lookback_days_last_year():
+    assert _parse_lookback_days("What changed last year?") == 365
+
+def test_parse_lookback_days_n_months():
+    assert _parse_lookback_days("What changed in the last 3 months?") == 90
+
+def test_parse_lookback_days_2_months():
+    assert _parse_lookback_days("What pages were added in the last 2 months?") == 60
+
+def test_parse_lookback_days_n_weeks():
+    assert _parse_lookback_days("Show changes from the past 2 weeks") == 14
+
+
+# ── live-data routing without system knowledge page match ─────────────────────
+
+@pytest.mark.asyncio
+async def test_live_data_routed_without_system_ctx(tmp_wiki):
+    """'What changed in the wiki this week?' must use audit log even when no system
+    knowledge page matches — the pure live-data path introduced in the routing fix.
+    """
+    sd = tmp_wiki / ".synthadoc"
+    sd.mkdir(parents=True, exist_ok=True)
+    audit = AuditDB(sd / "audit.db")
+    await audit.init()
+    await audit.record_ingest("abc", 100, "notes.md", "my-notes", 10, 0.001)
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["What changed in the wiki this week?"]',
+                           input_tokens=5, output_tokens=5),
+        CompletionResponse(text="Here is what changed this week...",
+                           input_tokens=80, output_tokens=15),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=0.0)
+    result = await agent.query("What changed in the wiki this week?")
+
+    synthesis_prompt = provider.complete.call_args_list[1][1]["messages"][0].content
+    assert "Live Wiki Data" in synthesis_prompt
+    assert "my-notes" in synthesis_prompt
+    assert result.knowledge_gap is False
+    assert result.cacheable is False
+    assert result.citations == []
+
+
+@pytest.mark.asyncio
+async def test_live_data_month_lookback(tmp_wiki):
+    """'What changed this month?' must query with a 30-day window, not 7 days."""
+    sd = tmp_wiki / ".synthadoc"
+    sd.mkdir(parents=True, exist_ok=True)
+    audit = AuditDB(sd / "audit.db")
+    await audit.init()
+    await audit.record_ingest("abc", 100, "notes.md", "monthly-page", 10, 0.001)
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["What changed this month?"]',
+                           input_tokens=5, output_tokens=5),
+        CompletionResponse(text="Here is what changed this month...",
+                           input_tokens=80, output_tokens=15),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=0.0)
+    result = await agent.query("What changed this month?")
+
+    synthesis_prompt = provider.complete.call_args_list[1][1]["messages"][0].content
+    assert "Live Wiki Data" in synthesis_prompt
+    assert "monthly-page" in synthesis_prompt
+    assert "month" in synthesis_prompt  # window label in section heading
+    assert result.knowledge_gap is False
+    assert result.cacheable is False
