@@ -398,6 +398,7 @@ class Orchestrator:
                 store=self._store, search=self._search,
                 gap_score_threshold=self._cfg.query.gap_score_threshold,
                 orchestrator=self,
+                max_tokens=self._cfg.agents.query_max_tokens,
             ).query(question),
             timeout=timeout_seconds if timeout_seconds > 0 else None,
         )
@@ -437,6 +438,7 @@ class Orchestrator:
             gap_score_threshold=self._cfg.query.gap_score_threshold,
             routing_path=_routing_path if _routing_path.exists() else None,
             orchestrator=self,
+            max_tokens=self._cfg.agents.query_max_tokens,
         )
         async for evt in agent.run_stream(
             question, session_id=session_id, session_mode=session_mode

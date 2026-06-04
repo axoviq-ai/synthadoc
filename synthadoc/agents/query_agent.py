@@ -117,6 +117,7 @@ _LIVE_DATA_TRIGGERS: frozenset[str] = frozenset({
     "pages marked", "which pages", "how many pages", "page count",
     "changed", "this week", "recently", "recent changes", "what's new",
     "whats new", "updated", "new pages", "added", "last week", "past week",
+    "this month", "last month", "past month", "this year", "last year", "past year",
     "adversarial", "adversarial warning", "flagged", "overstated", "claim concern",
     "lint warning", "warnings",
     "job", "jobs", "job id", "job status", "ingest job", "queue",
@@ -126,6 +127,7 @@ _LIVE_DATA_TRIGGERS: frozenset[str] = frozenset({
 _RECENT_CHANGE_TRIGGERS: frozenset[str] = frozenset({
     "changed", "this week", "recently", "recent changes", "what's new",
     "whats new", "updated", "new pages", "added", "last week", "past week",
+    "this month", "last month", "past month", "this year", "last year", "past year",
 })
 
 _ADVERSARIAL_TRIGGERS: frozenset[str] = frozenset({
@@ -176,18 +178,40 @@ _WIKI_INTROSPECTIVE_TRIGGERS: frozenset[str] = frozenset({
 })
 
 
+def _parse_lookback_days(question: str) -> int:
+    """Return a lookback window in days parsed from natural language time phrases.
+
+    Recognises "last N months/weeks", month/year keywords, and falls back to 7 days
+    (one week) for bare "recently", "this week", "last week", etc.
+    """
+    q = question.lower()
+    m = re.search(r'(?:last|past)\s+(\d+)\s+months?', q)
+    if m:
+        return int(m.group(1)) * 30
+    m = re.search(r'(?:last|past)\s+(\d+)\s+weeks?', q)
+    if m:
+        return int(m.group(1)) * 7
+    if any(kw in q for kw in ("this year", "last year", "past year")):
+        return 365
+    if any(kw in q for kw in ("this month", "last month", "past month")):
+        return 30
+    return 7  # week / recently / default
+
+
 class QueryAgent:
     def __init__(self, provider: LLMProvider, store: WikiStorage,
                  search: HybridSearch, top_n: int = 8,
                  gap_score_threshold: float = 2.0,
                  routing_path: Path | None = None,
-                 orchestrator: object | None = None) -> None:
+                 orchestrator: object | None = None,
+                 max_tokens: int = 8192) -> None:
         self._provider = provider
         self._store = store
         self._search = search
         self._top_n = top_n
         self._gap_score_threshold = gap_score_threshold
         self._orchestrator = orchestrator
+        self._max_tokens = max_tokens
         self._routing = None
         if routing_path:
             from synthadoc.core.routing import RoutingIndex
@@ -214,7 +238,10 @@ class QueryAgent:
         q_lower = question.lower()
         matched: list[str] = []
         for page in _SYSTEM_KNOWLEDGE:
-            if any(kw in q_lower for kw in page.keywords):
+            # Use ASCII-only boundaries so English keywords adjacent to CJK characters
+            # (e.g. "调度器scheduler") still match — Unicode \b treats CJK as word chars.
+            if any(re.search(r'(?<![a-zA-Z0-9])' + re.escape(kw) + r'(?![a-zA-Z0-9])',
+                             q_lower) for kw in page.keywords):
                 matched.append(f"### {page.title}\n{page.content}")
         # If no keyword matched but question looks like a CLI invocation, include
         # all system pages so the LLM can answer from bundled documentation.
@@ -290,9 +317,15 @@ class QueryAgent:
 
             # Recent ingest history when question asks about changes/updates
             if any(kw in q_lower for kw in _RECENT_CHANGE_TRIGGERS):
-                recent = await audit.list_ingests_since(days=7)
+                _days = _parse_lookback_days(question)
+                _window_label = (
+                    f"{_days // 365} year{'s' if _days // 365 > 1 else ''}" if _days >= 365
+                    else f"{_days // 30} month{'s' if _days // 30 > 1 else ''}" if _days >= 30
+                    else f"{_days} day{'s' if _days > 1 else ''}"
+                )
+                recent = await audit.list_ingests_since(days=_days)
                 if recent:
-                    lines.append("\n### Pages ingested or updated in the last 7 days")
+                    lines.append(f"\n### Pages ingested or updated in the last {_window_label}")
                     seen: set[str] = set()
                     for r in recent:
                         slug = r.get("wiki_page") or ""
@@ -302,7 +335,7 @@ class QueryAgent:
                             seen.add(slug)
                             lines.append(f"  - [[{slug}]]  (from {src}, {date})" if src else f"  - [[{slug}]]  ({date})")
                 else:
-                    lines.append("\n### Pages ingested or updated in the last 7 days\n  (none)")
+                    lines.append(f"\n### Pages ingested or updated in the last {_window_label}\n  (none)")
 
             # Job status — detect a specific 8-char hex job ID or list recent jobs
             if any(kw in q_lower for kw in _JOB_TRIGGERS) and self._orchestrator is not None:
@@ -337,6 +370,56 @@ class QueryAgent:
         except Exception as exc:
             logger.debug("live wiki data fetch failed: %s", exc)
             return ""
+
+    def _build_synthesis_prompt(
+        self,
+        question: str,
+        context: str,
+        *,
+        gap: bool,
+        system_ctx: str,
+        is_live_data: bool,
+        gap_sentinel: bool = False,
+    ) -> str:
+        """Build the LLM synthesis prompt. gap_sentinel=True adds the [GAP] marker
+        instruction used by run() for post-synthesis gap override; run_stream() omits it."""
+        if gap:
+            return (
+                f"The wiki does not yet have a page on this topic. "
+                f"Answer the question using your general knowledge, then note in one sentence "
+                f"that the wiki does not currently cover this topic and suggest the user enriches it.\n\n"
+                f"Question: {question}\n\n"
+                f"Wiki pages available (unrelated to this question):\n{context}"
+            )
+        if system_ctx:
+            return (
+                f"Answer the question using the Synthadoc Help documentation and Live Wiki Data below. "
+                f"If Live Wiki Data is present, use it to give concrete, specific answers "
+                f"(e.g. list the actual page names, show real counts). "
+                f"Present every CLI command in a fenced code block, exactly as it appears in the documentation. "
+                f"Angle-bracket placeholders like <schedule-id> or <slug> are literal CLI arguments — "
+                f"copy them verbatim, do not omit or paraphrase them. "
+                f"Keep the answer concise; do not add a verification or troubleshooting section. "
+                f"Do not reference or cite wiki pages.\n\n"
+                f"Question: {question}\n\nDocumentation:\n{context}"
+            )
+        if is_live_data:
+            return (
+                f"Answer using the Live Wiki Data below. "
+                f"The data is fetched directly from Synthadoc's audit log and page state database — "
+                f"give specific, concrete answers using the actual page names, dates, and counts shown. "
+                f"Do not reference or cite wiki page content.\n\n"
+                f"Question: {question}\n\nData:\n{context}"
+            )
+        gap_instruction = (
+            "If the pages do not contain enough information to answer the question, "
+            "start your response with exactly '[GAP]' on its own line, then explain what's missing.\n\n"
+        ) if gap_sentinel else ""
+        return (
+            f"Answer using ONLY these wiki pages. Cite with [[PageTitle]].\n\n"
+            f"{gap_instruction}"
+            f"Question: {question}\n\nPages:\n{context}"
+        )
 
     def _load_purpose_context(self) -> str:
         """Return purpose.md as a pinned preamble for synthesis, or '' if absent."""
@@ -399,6 +482,33 @@ class QueryAgent:
         )
         return [question]
 
+    async def _run_search(self, question: str) -> tuple[list[str], list[SearchResult]]:
+        """Decompose question, apply routing scope, run parallel BM25 search.
+
+        Returns (sub_questions, candidates).
+        """
+        sub_questions = await self.decompose(question)
+
+        scoped_slugs: list[str] | None = None
+        if self._routing:
+            branches = await self._routing_branch_pick(question)
+            if branches:
+                scoped_slugs = self._routing.slugs_for_branches(branches)
+
+        async def _search_one(sub_q: str):
+            return await self._search.hybrid_search(
+                sub_q.lower().split(), top_n=self._top_n, scoped_slugs=scoped_slugs
+            )
+
+        results_per_sub = await asyncio.gather(*[_search_one(q) for q in sub_questions])
+        best: dict[str, SearchResult] = {}
+        for results in results_per_sub:
+            for r in results:
+                if r.slug not in best or r.score > best[r.slug].score:
+                    best[r.slug] = r
+        candidates = sorted(best.values(), key=lambda r: r.score, reverse=True)[:self._top_n]
+        return sub_questions, candidates
+
     async def query(self, question: str) -> QueryResult:
         question = self._expand_aliases(question)
 
@@ -418,242 +528,18 @@ class QueryAgent:
                         cacheable=False,
                     )
 
-        sub_questions = await self.decompose(question)
+        sub_questions, candidates = await self._run_search(question)
 
-        scoped_slugs: list[str] | None = None
-        if self._routing:
-            branches = await self._routing_branch_pick(question)
-            if branches:
-                scoped_slugs = self._routing.slugs_for_branches(branches)
-
-        async def _search_one(sub_q: str):
-            return await self._search.hybrid_search(
-                sub_q.lower().split(), top_n=self._top_n, scoped_slugs=scoped_slugs
-            )
-
-        results_per_sub = await asyncio.gather(*[_search_one(q) for q in sub_questions])
-
-        best: dict[str, SearchResult] = {}
-        for results in results_per_sub:
-            for r in results:
-                if r.slug not in best or r.score > best[r.slug].score:
-                    best[r.slug] = r
-        candidates = sorted(best.values(), key=lambda r: r.score, reverse=True)[:self._top_n]
-
-        # ── Knowledge gap detection ────────────────────────────────────────────
-        # Three independent signals; any one triggers the gap:
-        #
-        #   1. Page count < 3  — wiki has almost nothing on the topic.
-        #
-        #   2. Max BM25 score < gap_score_threshold  — pages exist but their
-        #      keyword overlap with the query is weak (tunable via
-        #      [query] gap_score_threshold in synthadoc.toml; default 2.0).
-        #
-        #   3. Content overlap < 2  — BM25 scores are corpus-relative and can
-        #      be inflated by shared vocabulary even when pages are off-topic
-        #      (e.g. spring-flower pages match a vegetables query because both
-        #      use words like "spring", "planting", "Canada").  This check
-        #      counts how many retrieved pages actually contain at least one
-        #      key noun from the question.  Key terms = question words longer
-        #      than 4 chars that are not in _STOPWORDS, with trailing
-        #      plural/punctuation stripped for basic suffix matching.
-        #      If fewer than 2 pages pass this test, the wiki lacks on-topic
-        #      content regardless of BM25 scores.
-        #
-        # Set gap_score_threshold = 0 to disable gap detection entirely.
         _max_score = max((r.score for r in candidates), default=0.0)
-
-        # Extract meaningful content words from the question for the overlap check.
-        # Strip trailing plural-s, possessive-apostrophe, and punctuation so that
-        # "Moore's" → "moore", "vegetables" → "vegetable", "indoors" → "indoor".
-        # Stripping 2 chars was too aggressive — it turned "Canadian" into "canadi",
-        # which still matched every page in a Canada-focused wiki and made the check
-        # useless as a discriminator.  Including "'" in the strip set is safe: it
-        # handles possessives ("Moore's" → "moore") and plural-possessives
-        # ("computers'" → "computer") without over-stripping ordinary words.
-        # Hyphens are normalised to spaces so that compound terms like "open-source"
-        # match wiki pages that write "open source" (and vice-versa).  The same
-        # normalisation is applied to page content during the overlap check.
-        #
-        # CJK scripts (Chinese, Japanese, Korean) do not use whitespace word
-        # boundaries, so split() either yields the whole sentence as one token
-        # (doc_freq=0 in any page → spurious signal 4 gap) or tiny 1-2 char
-        # fragments that all fail the len>4 guard.  Skip key-term extraction
-        # entirely for CJK input; signals 1 and 2 remain active and are
-        # language-agnostic.
-        _contains_cjk = any(
-            '぀' <= c <= 'ヿ'    # Japanese kana (hiragana + katakana)
-            or '一' <= c <= '鿿' # CJK Unified Ideographs (Chinese/Japanese/Korean)
-            or '가' <= c <= '힯' # Korean Hangul syllables
-            for c in question
-        )
-        _key_terms = set() if _contains_cjk else {
-            w.lower().rstrip("s'?!.,").replace("-", " ")  # normalize compound terms
-            for w in question.split()
-            if len(w) > 4 and w.lower().rstrip("s'?!.,").replace("-", " ") not in _STOPWORDS
-        }
-
-        # Signal 3: check whether retrieved pages contain dedicated coverage of the
-        # query's specific topic words.
-        #
-        # Generic corpus terms ("canadian", "spring", "plant") appear in nearly
-        # every page and would make every page look on-topic.  We filter them out
-        # by excluding terms whose document frequency exceeds 60% of the candidates.
-        # From the remaining "specific" terms we check whether at least 2 candidates
-        # contain ANY of them with meaningful frequency (≥ 2 occurrences).
-        #
-        # Using ANY rather than a single rarest term handles multi-aspect queries
-        # correctly: a page about "full shade" plants is on-topic for a query about
-        # "sun, partial shade, and full shade" even if it lacks the word "partial".
-        #
-        # Zero-freq terms (synonyms like "backyard" vs "garden") are excluded;
-        # they reflect vocabulary mismatch, not missing content.
-        _MIN_TERM_FREQ = 2
-        _any_term_missing = False   # signal 4 default
-        _defining_term_absent = False  # signal 5 default
-        if _key_terms and candidates:
-            # Count how many candidates contain each key term (doc frequency).
-            # Content is hyphen-normalised to match both "open-source" and "open source".
-            _term_doc_freq = {
-                t: sum(
-                    1 for r in candidates
-                    if (p := self._store.read_page(r.slug))
-                    and t in p.content.lower().replace("-", " ")
-                )
-                for t in _key_terms
-            }
-            _covered = {t: f for t, f in _term_doc_freq.items() if f > 0}
-
-            # Drop hyper-generic terms that appear in >80% of candidates.
-            # Using 80% (not 60%) so moderately-common topic words like "partial"
-            # (present in ~60-70% of pages in a shade-focused wiki) are kept as
-            # discriminators rather than being wrongly discarded as generic.
-            _n_cands = len(candidates)
-            _specific = {t: f for t, f in _covered.items() if f <= _n_cands * 0.8}
-            if not _specific:
-                _specific = _covered  # all terms are corpus-generic; use full covered set
-            # If every term in _specific appears in only one page it is too rare to
-            # discriminate topic coverage — expand to include all covered terms.
-            elif max(_specific.values(), default=0) <= 1:
-                _specific = _covered
-
-            # Log the rarest specific term as a representative discriminator.
-            if _specific:
-                _discriminating_term = min(_specific, key=lambda t: _specific[t])
-            elif _covered:
-                _discriminating_term = min(_covered, key=lambda t: _covered[t])
-            else:
-                _discriminating_term = min(_term_doc_freq, key=lambda t: _term_doc_freq[t])
-
-            # Single pass: compute both signal 3 (any specific term ≥ freq) and
-            # per-term qualifying page counts (needed for signals 4 and 5).
-            _term_qualifying_pages: dict[str, int] = {t: 0 for t in _specific}
-            _pages_with_overlap = 0
-            for _r in candidates:
-                _p = self._store.read_page(_r.slug)
-                if not _p:
-                    continue
-                _content = _p.content.lower().replace("-", " ")
-                _page_on_topic = False
-                for _t in _specific:
-                    if _content.count(_t) >= _MIN_TERM_FREQ:
-                        _term_qualifying_pages[_t] += 1
-                        _page_on_topic = True
-                if _page_on_topic:
-                    _pages_with_overlap += 1
-
-            # Signal 4 guard: if ≥ half the candidates have dedicated on-topic
-            # coverage, a term with doc_freq=0 is almost certainly a synonym
-            # mismatch ("backyard" absent when the wiki says "garden") rather than
-            # a genuine absence.  Signal 4 needs this guard; signal 5 does not —
-            # signal 5 only fires for terms with doc_freq > 0 and relies on
-            # guard B (doc_freq cap) as the sole discriminator.
-            _signal4_active = _pages_with_overlap < _n_cands // 2
-
-            # Signal 4: a defining concept word is entirely absent from the wiki.
-            # When a query has ≥ 2 key terms and at least one appears in zero
-            # retrieved pages, the topic's core vocabulary is missing — not a
-            # synonym/vocabulary mismatch.  E.g. "quantum error correction" in a
-            # history-of-computing wiki: "error" and "correction" hit Bombe pages
-            # (high BM25 score, signal 3 passes), but "quantum" has zero coverage,
-            # definitively flagging the topic as absent.
-            #
-            # Coverage guard: if non-zero terms appear in >80% of candidates they
-            # are generic corpus words, not topic discriminators — the zero-freq term
-            # is a synonym mismatch, not a true gap.
-            #
-            # On-topic guard: if coverage is already good (≥ n_cands//2 pages),
-            # a doc_freq=0 term is likely a synonym mismatch, not a genuine absence.
-            _any_term_missing = (
-                _signal4_active
-                and bool(_covered)
-                and len(_term_doc_freq) >= 2
-                and any(f == 0 for f in _term_doc_freq.values())
-                and max(_covered.values()) / len(candidates) <= 0.8
-            )
-
-            # Signal 5: a specific topic term exists in the wiki but never appears
-            # with meaningful frequency (≥ MIN_TERM_FREQ) in any single candidate
-            # page — i.e. only passing references, not dedicated coverage.
-            #
-            # Guard B — doc_freq cap: a term appearing in ≥ ⌈n_cands/3⌉ candidates
-            # is a reference term (present in the domain), not an absent concept.
-            # Low doc_freq + qualifying_pages=0 is the fingerprint of a genuine gap.
-            # Guard B alone is sufficient; guard A is intentionally omitted here.
-            #
-            # Why no guard A: when on_topic_pages = n_cands//2 exactly, guard A
-            # would block signal 5 even when min_qualifying=0 for the discriminating
-            # term — this is the bug where half the pages share vocabulary (e.g.
-            # "agent", "judge") while the specific concept ("methodologies") has
-            # zero dedicated coverage.  Guard B catches that case: if the term's
-            # doc_freq is below the threshold it is genuinely absent, not just
-            # phrased differently.
-            #
-            # "quantum error correction" (gap): "quantum" doc_freq=2 < threshold(3),
-            # qualifying=0 → gap=True ✓
-            #
-            # "Moore's Law" (no gap): "moore" doc_freq=4 ≥ threshold(3) → guard B
-            # blocks → gap=False ✓
-            #
-            # "agent-as-a-judge methodologies" (gap fixed): on_topic_pages=4/8 (was
-            # blocking guard A), "methodologie" doc_freq=1–2 < threshold(3),
-            # qualifying=0 → gap=True ✓
-            _min_specific_qualifying = (
-                min(_term_qualifying_pages.values())
-                if _term_qualifying_pages else 0
-            )
-            _signal5_doc_freq_cap = max(2, (_n_cands + 2) // 3)
-            _defining_term_absent = (
-                bool(_specific)
-                and len(_term_doc_freq) >= 2
-                and any(
-                    _term_qualifying_pages[t] == 0
-                    and _specific[t] < _signal5_doc_freq_cap      # guard B
-                    for t in _term_qualifying_pages
-                )
-            )
-        else:
-            _discriminating_term = ""
-            _pages_with_overlap = len(candidates)   # no key terms → skip check
-            _min_specific_qualifying = len(candidates)
-
-        _gap = self._gap_score_threshold > 0 and (
-            len(candidates) < 3                                              # signal 1: too few pages
-            or (bool(_key_terms) and _max_score < self._gap_score_threshold) # signal 2: skip when query has no content words
-            or _pages_with_overlap < 2                                       # signal 3: no dedicated coverage
-            or _any_term_missing                                             # signal 4: defining concept absent
-            or _defining_term_absent                     # signal 5: defining term barely present
-        )
-
-        # Always log retrieval quality so operators can tune gap_score_threshold.
-        logger.info(
-            "query retrieval — pages=%d, max_score=%.2f, "
-            "discriminating_term=%r, on_topic_pages=%d, min_qualifying=%d, gap=%s",
-            len(candidates), _max_score, _discriminating_term,
-            _pages_with_overlap, _min_specific_qualifying, _gap,
-        )
+        # Use sub-questions for gap detection: decomposition strips request framing
+        # ("please provide details of X") so key terms reflect the actual topic, not
+        # the phrasing. Falls back to the original question if decomposition returned it.
+        _gap_q = " ".join(sub_questions) if sub_questions else question
+        _gap, _discriminating_term, _pages_with_overlap, _min_specific_qualifying = \
+            self._detect_gap(_gap_q, candidates, _max_score)
         _system_ctx = self._get_relevant_system_pages(question)
-        if _system_ctx:
+        _live_data = await self._fetch_live_wiki_data(question)
+        if _system_ctx or _live_data:
             _gap = False
         _q_lower = question.lower()
         if _gap and (
@@ -681,44 +567,28 @@ class QueryAgent:
             # System knowledge matched: answer from help pages only; wiki pages are irrelevant noise
             _ctx_parts.append(f"## Synthadoc Help\n{_system_ctx}")
             citations = []
-            _live_data = await self._fetch_live_wiki_data(question)
             if _live_data:
                 _ctx_parts.append(f"## Live Wiki Data\n{_live_data}")
                 _is_live_data = True
+        elif _live_data:
+            # Pure live-data query (no system knowledge page matched, but audit/queue data available)
+            citations = []
+            _ctx_parts.append(f"## Live Wiki Data\n{_live_data}")
+            _is_live_data = True
         else:
             _ctx_parts.append(_pages_ctx)
         context = "\n\n".join(_ctx_parts)
 
-        if _gap:
-            synthesis_prompt = (
-                f"The wiki does not yet have a page on this topic. "
-                f"Answer the question using your general knowledge, then note in one sentence "
-                f"that the wiki does not currently cover this topic and suggest the user enriches it.\n\n"
-                f"Question: {question}\n\n"
-                f"Wiki pages available (unrelated to this question):\n{context}"
-            )
-        elif _system_ctx:
-            synthesis_prompt = (
-                f"Answer the question using the Synthadoc Help documentation and Live Wiki Data below. "
-                f"If Live Wiki Data is present, use it to give concrete, specific answers "
-                f"(e.g. list the actual page names, show real counts). "
-                f"After answering, include a short 'To verify or investigate further' section "
-                f"with the relevant CLI commands copied VERBATIM from the code blocks in the documentation — "
-                f"do not rephrase or generate command names from memory. "
-                f"Do not reference or cite wiki pages.\n\n"
-                f"Question: {question}\n\nDocumentation:\n{context}"
-            )
-        else:
-            synthesis_prompt = (
-                f"Answer using ONLY these wiki pages. Cite with [[PageTitle]].\n\n"
-                f"If the pages do not contain enough information to answer the question, "
-                f"start your response with exactly '[GAP]' on its own line, then explain what's missing.\n\n"
-                f"Question: {question}\n\nPages:\n{context}"
-            )
+        synthesis_prompt = self._build_synthesis_prompt(
+            question, context,
+            gap=_gap, system_ctx=_system_ctx, is_live_data=_is_live_data,
+            gap_sentinel=True,
+        )
 
         resp2 = await self._provider.complete(
             messages=[Message(role="user", content=synthesis_prompt)],
             temperature=0.0,
+            max_tokens=self._max_tokens,
         )
 
         # Post-synthesis gap override: the sentinel [GAP] in the answer means the LLM
@@ -840,6 +710,12 @@ class QueryAgent:
             or _any_term_missing
             or _defining_term_absent
         )
+        logger.info(
+            "query retrieval — pages=%d, max_score=%.2f, "
+            "discriminating_term=%r, on_topic_pages=%d, min_qualifying=%d, gap=%s",
+            len(candidates), max_score, _discriminating_term,
+            _pages_with_overlap, _min_specific_qualifying, gap,
+        )
         return gap, _discriminating_term, _pages_with_overlap, _min_specific_qualifying
 
     async def run_stream(
@@ -871,26 +747,7 @@ class QueryAgent:
         yield {"event": "status", "data": {"phase": "retrieving"}}
 
         question = self._expand_aliases(question)
-        sub_questions = await self.decompose(question)
-
-        scoped_slugs: list[str] | None = None
-        if self._routing:
-            branches = await self._routing_branch_pick(question)
-            if branches:
-                scoped_slugs = self._routing.slugs_for_branches(branches)
-
-        async def _search_one(sub_q: str):
-            return await self._search.hybrid_search(
-                sub_q.lower().split(), top_n=self._top_n, scoped_slugs=scoped_slugs
-            )
-
-        results_per_sub = await asyncio.gather(*[_search_one(q) for q in sub_questions])
-        best: dict[str, SearchResult] = {}
-        for results in results_per_sub:
-            for r in results:
-                if r.slug not in best or r.score > best[r.slug].score:
-                    best[r.slug] = r
-        candidates = sorted(best.values(), key=lambda r: r.score, reverse=True)[:self._top_n]
+        sub_questions, candidates = await self._run_search(question)
 
         citations = [r.slug for r in candidates]
         _purpose_ctx = self._load_purpose_context()
@@ -904,30 +761,29 @@ class QueryAgent:
         if _purpose_ctx:
             _ctx_parts.append(_purpose_ctx)
         _is_live_data = False
+        _live_data = await self._fetch_live_wiki_data(question)
         if _system_ctx:
             # System knowledge matched: answer from help pages only; wiki pages are irrelevant noise
             _ctx_parts.append(f"## Synthadoc Help\n{_system_ctx}")
             citations = []
-            _live_data = await self._fetch_live_wiki_data(question)
             if _live_data:
                 _ctx_parts.append(f"## Live Wiki Data\n{_live_data}")
                 _is_live_data = True
+        elif _live_data:
+            # Pure live-data query (no system knowledge page matched, but audit/queue data available)
+            citations = []
+            _ctx_parts.append(f"## Live Wiki Data\n{_live_data}")
+            _is_live_data = True
         else:
             _ctx_parts.append(_pages_ctx)
         context = "\n\n".join(_ctx_parts)
 
         _max_score = max((r.score for r in candidates), default=0.0)
+        _gap_q = " ".join(sub_questions) if sub_questions else question
         _gap, _discriminating_term, _pages_with_overlap, _min_specific_qualifying = \
-            self._detect_gap(question, candidates, _max_score)
+            self._detect_gap(_gap_q, candidates, _max_score)
 
-        logger.info(
-            "query retrieval — pages=%d, max_score=%.2f, "
-            "discriminating_term=%r, on_topic_pages=%d, min_qualifying=%d, gap=%s",
-            len(candidates), _max_score, _discriminating_term,
-            _pages_with_overlap, _min_specific_qualifying, _gap,
-        )
-
-        if _system_ctx:
+        if _system_ctx or _live_data:
             _gap = False
         _q_lower_s = question.lower()
         if _gap and (
@@ -936,30 +792,10 @@ class QueryAgent:
         ):
             _gap = False
 
-        if _gap:
-            synthesis_prompt = (
-                f"The wiki does not yet have a page on this topic. "
-                f"Answer the question using your general knowledge, then note in one sentence "
-                f"that the wiki does not currently cover this topic and suggest the user enriches it.\n\n"
-                f"Question: {question}\n\n"
-                f"Wiki pages available (unrelated to this question):\n{context}"
-            )
-        elif _system_ctx:
-            synthesis_prompt = (
-                f"Answer the question using the Synthadoc Help documentation and Live Wiki Data below. "
-                f"If Live Wiki Data is present, use it to give concrete, specific answers "
-                f"(e.g. list the actual page names, show real counts). "
-                f"After answering, include a short 'To verify or investigate further' section "
-                f"with the relevant CLI commands copied VERBATIM from the code blocks in the documentation — "
-                f"do not rephrase or generate command names from memory. "
-                f"Do not reference or cite wiki pages.\n\n"
-                f"Question: {question}\n\nDocumentation:\n{context}"
-            )
-        else:
-            synthesis_prompt = (
-                f"Answer using ONLY these wiki pages. Cite with [[PageTitle]].\n\n"
-                f"Question: {question}\n\nPages:\n{context}"
-            )
+        synthesis_prompt = self._build_synthesis_prompt(
+            question, context,
+            gap=_gap, system_ctx=_system_ctx, is_live_data=_is_live_data,
+        )
 
         yield {"event": "status", "data": {"phase": "synthesizing", "sources": len(citations)}}
 
@@ -967,6 +803,7 @@ class QueryAgent:
         async for token in self._provider.complete_stream(
             messages=[Message(role="user", content=synthesis_prompt)],
             temperature=0.0,
+            max_tokens=self._max_tokens,
         ):
             full_answer += token
             yield {"event": "token", "data": {"text": token}}

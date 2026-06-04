@@ -44,6 +44,26 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
     );
 }
 
+// Escape CLI-style placeholders like <schedule-id> or <wiki-name> that appear
+// outside code spans. ReactMarkdown v10 drops unknown HTML tags silently, making
+// these placeholders invisible. We only target hyphenated names (not <br>, <em>, etc).
+// Content inside fenced code blocks (```...```) or inline code (`...`) is left
+// verbatim — the <code> element renders angle brackets correctly without escaping.
+function escapePlaceholders(text: string): string {
+    const PLACEHOLDER = /<([a-z][a-z0-9]*(?:-[a-z0-9]+)+)>/g;
+    const CODE_RE = /```[\s\S]*?```|`[^`]*`/g;
+    const parts: string[] = [];
+    let cursor = 0;
+    let m: RegExpExecArray | null;
+    while ((m = CODE_RE.exec(text)) !== null) {
+        parts.push(text.slice(cursor, m.index).replace(PLACEHOLDER, "&lt;$1&gt;"));
+        parts.push(m[0]);
+        cursor = m.index + m[0].length;
+    }
+    parts.push(text.slice(cursor).replace(PLACEHOLDER, "&lt;$1&gt;"));
+    return parts.join("");
+}
+
 export function MessageBubble({ msg, wikiName }: Props) {
     const isUser = msg.role === "user";
     return (
@@ -51,7 +71,7 @@ export function MessageBubble({ msg, wikiName }: Props) {
             {isUser
                 ? <p className="bubble-text">{msg.text}</p>
                 : <div className="bubble-md">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{escapePlaceholders(msg.text)}</ReactMarkdown>
                   </div>
             }
             {msg.citations && msg.citations.length > 0 && (

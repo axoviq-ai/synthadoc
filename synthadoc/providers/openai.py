@@ -227,6 +227,13 @@ class OpenAIProvider(LLMProvider):
                 f"(code={err_code}): {err_msg}"
             )
         choice = resp.choices[0]
+        if choice.finish_reason == "length":
+            logger.warning(
+                "complete: response truncated by token limit "
+                "(finish_reason=length, max_tokens=%d, model=%s). "
+                "Increase query_max_tokens in [agents] of config.toml.",
+                max_tokens, self._config.model,
+            )
         original_content = choice.message.content or ""
         # Reasoning models (MiniMax M2, DeepSeek R1, Qwen QwQ) wrap their chain-of-thought
         # in <think> blocks, but the </think> tag can appear mid-JSON (e.g. inside a key
@@ -303,38 +310,108 @@ class OpenAIProvider(LLMProvider):
                     for m in messages)
         buf = ""
         in_think = False
+        _think_chars = 0
+        _answer_chars = 0
+        _use_fallback = False   # True when reasoning model detected
+        _fallback_task = None   # asyncio.Task running complete() in parallel
+        logger.info("complete_stream: max_tokens=%d model=%s", max_tokens, self._config.model)
         async for chunk in await self._client.chat.completions.create(
             model=self._config.model, messages=msgs,
             temperature=temperature, max_tokens=max_tokens,
             timeout=self._timeout, stream=True,
         ):
+            if chunk.choices and chunk.choices[0].finish_reason == "length":
+                logger.warning(
+                    "complete_stream: response truncated by token limit "
+                    "(finish_reason=length, max_tokens=%d, model=%s). "
+                    "think_chars=%d answer_chars=%d. "
+                    "Increase query_max_tokens in [agents] of config.toml.",
+                    max_tokens, self._config.model, _think_chars, _answer_chars,
+                )
             if not (chunk.choices and chunk.choices[0].delta.content):
                 continue
-            buf += chunk.choices[0].delta.content
-            # Suppress <think>...</think> reasoning blocks (e.g. MiniMax M2.5).
+            delta = chunk.choices[0].delta.content
+            if in_think:
+                _think_chars += len(delta)
+            else:
+                _answer_chars += len(delta)
+
+            buf += delta
+            # Suppress the initial <think>...</think> CoT preamble.
             # Tags may arrive split across tokens, so we scan a rolling buffer.
+            # For reasoning models (MiniMax M2.5, DeepSeek R1, etc.) we launch a
+            # parallel non-streaming complete() call as soon as the opening <think>
+            # tag is detected.  By the time </think> arrives the non-streaming call
+            # is often already done — zero extra latency on the happy path.
             while True:
-                if not in_think:
-                    idx = buf.find("<think>")
+                if in_think:
+                    idx = buf.find("</think>")
                     if idx == -1:
-                        # No tag found; yield all but the last 6 chars (partial tag guard)
+                        buf = buf[max(0, len(buf) - 7):]  # keep partial "</think>"
+                        break
+                    else:
+                        buf = ""   # discard: answer comes from complete() fallback
+                        in_think = False
+                        _use_fallback = True
+                        break
+                else:
+                    open_idx = buf.find("<think>")
+                    if open_idx == -1:
+                        # No think block yet — stream normally, hold back 6 chars to
+                        # guard against a partial "<think>" tag spanning two deltas.
                         safe = max(0, len(buf) - 6)
                         if safe:
                             yield buf[:safe]
                             buf = buf[safe:]
                         break
                     else:
-                        if idx > 0:
-                            yield buf[:idx]
-                        buf = buf[idx + 7:]  # skip "<think>"
+                        if open_idx > 0:
+                            yield buf[:open_idx]
+                        buf = buf[open_idx + 7:]  # strip "<think>"
                         in_think = True
-                else:
-                    idx = buf.find("</think>")
-                    if idx == -1:
-                        buf = buf[max(0, len(buf) - 7):]  # keep potential partial "</think>"
-                        break
-                    else:
-                        buf = buf[idx + 8:].lstrip()  # skip "</think>" + leading whitespace
-                        in_think = False
+                        if _fallback_task is None:
+                            # Reasoning model detected: start complete() now, in parallel,
+                            # so both calls run concurrently while we suppress the think block.
+                            _fallback_task = asyncio.create_task(
+                                self.complete(messages, system, temperature, max_tokens)
+                            )
+
+            if _use_fallback:
+                break  # abort streaming — complete() will provide the full answer
+
+        if _use_fallback and _fallback_task is not None:
+            logger.info(
+                "complete_stream: reasoning model — awaiting parallel complete() "
+                "(think_chars=%d, model=%s)",
+                _think_chars, self._config.model,
+            )
+            try:
+                resp = await _fallback_task
+                if resp.text:
+                    logger.info(
+                        "complete_stream: fallback done (answer_len=%d, model=%s)",
+                        len(resp.text), self._config.model,
+                    )
+                    yield resp.text
+            except Exception as exc:
+                logger.warning(
+                    "complete_stream: fallback complete() failed (%s: %s)",
+                    type(exc).__name__, exc,
+                )
+            return
+
+        if in_think:
+            logger.warning(
+                "complete_stream: stream ended inside <think> block — think block was never closed "
+                "(think_chars=%d, answer_chars=%d, max_tokens=%d, model=%s). "
+                "The model exhausted its token budget during reasoning. "
+                "Increase query_max_tokens in [agents] of config.toml.",
+                _think_chars, _answer_chars, max_tokens, self._config.model,
+            )
+        else:
+            logger.info(
+                "complete_stream: done (think_chars=%d, answer_chars=%d, max_tokens=%d, model=%s)",
+                _think_chars, _answer_chars, max_tokens, self._config.model,
+            )
         if buf and not in_think:
             yield buf

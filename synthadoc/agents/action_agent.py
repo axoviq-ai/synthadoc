@@ -22,7 +22,11 @@ _ACTION_RE = re.compile(
     r"|(?<![a-zA-Z-])ingest\s+\S"
     r"|\b(rebuild|regenerate)\b.{0,20}\bscaffold\b"
     r"|\bschedule\s+(add|a|an|daily|weekly|hourly|every|at)\b"
-    r"|\b(list|show)\b.{0,20}\bschedul"
+    r"|\b(add|create|register)\b.{0,80}\bschedul"
+    r"|\b(list|show|display|view)\b.{0,20}\bschedul"
+    r"|\bschedul\w*.{0,30}\b(histor|run|log)\w*\b"
+    r"|(?<![a-zA-Z0-9])schedul\w*.{0,150}(?<![a-zA-Z0-9])(scaffold|ingest|lint)(?![a-zA-Z0-9])"
+    r"|(?<![a-zA-Z0-9])(scaffold|ingest|lint)(?![a-zA-Z0-9]).{0,150}(?<![a-zA-Z0-9])schedul\w*"
     r"|\b(activate|archive|restore)\s+\w",
     re.IGNORECASE,
 )
@@ -33,15 +37,19 @@ _EXTRACT_PROMPT_TEMPLATE = (
     "You are an action parser for Synthadoc. Extract the intended action and its "
     "parameters from the user request below.\n\n"
     "Return ONLY a JSON object — no explanation, no markdown fences.\n\n"
-    'Schema: {{"action": "<lint|ingest|scaffold|schedule_add|schedule_list|'
-    'lifecycle_activate|lifecycle_archive|lifecycle_restore|none>", "params": {{...}}}}\n\n'
+    'Schema: {{"action": "<lint|lint_report|ingest|scaffold|schedule_add|schedule_list|'
+    'schedule_history|lifecycle_activate|lifecycle_archive|lifecycle_restore|none>", "params": {{...}}}}\n\n'
     "params keys by action:\n"
     "  lint          : scope (all|contradictions|orphans|stale|citations), auto_resolve (bool)\n"
+    "  lint_report   : (no params — shows current contradictions, orphans and adversarial warnings; no server needed)\n"
     "  ingest        : source (URL or path), force (bool)\n"
     "  scaffold      : domain (string or null)\n"
-    "  schedule_add  : op (full synthadoc command, e.g. 'ingest --batch sources/'), "
+    "  schedule_add  : op (full synthadoc subcommand, e.g. 'scaffold', 'lint run', "
+    "'ingest --batch sources/'; NOTE: lint requires the 'run' subcommand — op must be "
+    "'lint run', never just 'lint'), "
     "cron (parsed cron expression), schedule_description (original natural language)\n"
-    "  schedule_list : (no params)\n"
+    "  schedule_list    : (no params)\n"
+    "  schedule_history : (no params — shows recent scheduled run history)\n"
     "  lifecycle_activate / lifecycle_archive / lifecycle_restore : slug, reason\n"
     "  none          : (no params)\n\n"
     "Cron parsing: 'daily at 6am'='0 6 * * *', 'every Sunday at 7pm'='0 19 * * 0', "
@@ -122,6 +130,8 @@ class ActionAgent:
     async def _dispatch(self, action: str, params: dict) -> ActionResult:
         if action == "lint":
             return await self._do_lint(params)
+        if action == "lint_report":
+            return await self._do_lint_report()
         if action == "ingest":
             return await self._do_ingest(params)
         if action == "scaffold":
@@ -130,10 +140,54 @@ class ActionAgent:
             return self._do_schedule_add(params)
         if action == "schedule_list":
             return self._do_schedule_list()
+        if action == "schedule_history":
+            return await self._do_schedule_history()
         if action in ("lifecycle_activate", "lifecycle_archive", "lifecycle_restore"):
             return await self._do_lifecycle(action, params)
         return ActionResult(action_type=action, success=False,
                             message=f"Unknown action type: `{action}`")
+
+    async def _do_lint_report(self) -> ActionResult:
+        from synthadoc.agents.lint_agent import read_current_lint_state
+        state = read_current_lint_state(self._orch._store)
+        parts: list[str] = []
+
+        if state.contradicted:
+            lines = [
+                f"**Contradicted pages ({len(state.contradicted)})** — "
+                f"resolve conflict and set `status: active`:\n"
+            ]
+            for slug in state.contradicted:
+                lines.append(f"- `{slug}`")
+            parts.append("\n".join(lines))
+
+        if state.orphans:
+            lines = [f"**Orphan pages ({len(state.orphans)})** — no inbound links:\n"]
+            for slug in state.orphans:
+                lines.append(f"- `{slug}`")
+            parts.append("\n".join(lines))
+
+        if state.adv_pages:
+            total = sum(len(p["warnings"]) for p in state.adv_pages)
+            lines = [
+                f"**Adversarial warnings** ({total} across {len(state.adv_pages)} pages):\n"
+            ]
+            for entry in state.adv_pages:
+                lines.append(f"- `{entry['slug']}`:")
+                for w in entry["warnings"]:
+                    claim = w.get("claim") or ""
+                    concern = w.get("concern") or ""
+                    if claim:
+                        lines.append(f'  - "{claim}" — {concern}')
+                    else:
+                        lines.append(f"  - {concern}")
+            parts.append("\n".join(lines))
+
+        if not parts:
+            message = "All clear — no contradictions, orphan pages, or adversarial warnings."
+        else:
+            message = "\n\n".join(parts)
+        return ActionResult(action_type="lint_report", success=True, message=message)
 
     async def _do_lint(self, params: dict) -> ActionResult:
         scope = params.get("scope", "all")
@@ -195,6 +249,9 @@ class ActionAgent:
     def _do_schedule_add(self, params: dict) -> ActionResult:
         from synthadoc.core.scheduler import Scheduler as ScheduleDB
         op = params.get("op", "")
+        # Normalise known ops that require a subcommand: "lint" → "lint run"
+        if op.strip() == "lint":
+            op = "lint run"
         cron = params.get("cron", "")
         desc = params.get("schedule_description", cron)
         if not op or not cron:
@@ -227,6 +284,45 @@ class ActionAgent:
             success=True,
             message=schedule_table,
         )
+
+    async def _do_schedule_history(self) -> ActionResult:
+        from synthadoc.storage.log import AuditDB
+        audit_path = self._wiki_root / ".synthadoc" / "audit.db"
+        if not audit_path.exists():
+            return ActionResult(
+                action_type="schedule_history",
+                success=True,
+                message="No scheduled run history yet — jobs will appear here after their first run.",
+            )
+        audit = AuditDB(audit_path)
+        await audit.init()
+        runs = await audit.list_scheduled_runs(limit=20)
+        if not runs:
+            return ActionResult(
+                action_type="schedule_history",
+                success=True,
+                message="No scheduled run history yet — jobs will appear here after their first run.",
+            )
+        lines = [
+            "**Recent scheduled runs:**\n",
+            "| Run ID | Op | Started | Duration | Status |",
+            "|---|---|---|---|---|",
+        ]
+        for r in runs:
+            started = (r.get("started_at") or "")[:16].replace("T", " ")
+            dur = f"{r['duration_s']:.1f}s" if r.get("duration_s") is not None else "—"
+            status = r.get("status") or "—"
+            err = r.get("error") or ""
+            if status == "failed" and err:
+                status_cell = f"❌ {err[:60]}"
+            elif status == "success":
+                status_cell = "✅"
+            else:
+                status_cell = status
+            lines.append(
+                f"| `{r['run_id']}` | `{r['op']}` | {started} | {dur} | {status_cell} |"
+            )
+        return ActionResult(action_type="schedule_history", success=True, message="\n".join(lines))
 
     async def _do_lifecycle(self, action: str, params: dict) -> ActionResult:
         from synthadoc.storage.log import AuditDB
