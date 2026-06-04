@@ -203,13 +203,15 @@ class QueryAgent:
                  search: HybridSearch, top_n: int = 8,
                  gap_score_threshold: float = 2.0,
                  routing_path: Path | None = None,
-                 orchestrator: object | None = None) -> None:
+                 orchestrator: object | None = None,
+                 max_tokens: int = 8192) -> None:
         self._provider = provider
         self._store = store
         self._search = search
         self._top_n = top_n
         self._gap_score_threshold = gap_score_threshold
         self._orchestrator = orchestrator
+        self._max_tokens = max_tokens
         self._routing = None
         if routing_path:
             from synthadoc.core.routing import RoutingIndex
@@ -586,6 +588,7 @@ class QueryAgent:
         resp2 = await self._provider.complete(
             messages=[Message(role="user", content=synthesis_prompt)],
             temperature=0.0,
+            max_tokens=self._max_tokens,
         )
 
         # Post-synthesis gap override: the sentinel [GAP] in the answer means the LLM
@@ -800,6 +803,7 @@ class QueryAgent:
         async for token in self._provider.complete_stream(
             messages=[Message(role="user", content=synthesis_prompt)],
             temperature=0.0,
+            max_tokens=self._max_tokens,
         ):
             full_answer += token
             yield {"event": "token", "data": {"text": token}}
