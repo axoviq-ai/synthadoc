@@ -88,6 +88,55 @@ async def test_openai_provider_complete_stream_strips_think_blocks():
 
 
 @pytest.mark.asyncio
+async def test_openai_provider_complete_stream_strips_inline_think_blocks():
+    """Inline <think> blocks mid-answer (MiniMax M2.5 self-correction) must be stripped.
+
+    The model may emit the answer continuation AFTER an inline </think>, or the inline
+    think content may arrive in delta.reasoning_content (skipped).  Either way the final
+    output must be clean with no think noise and no truncation.
+    """
+    from synthadoc.providers.openai import OpenAIProvider
+    from synthadoc.config import AgentConfig
+
+    cfg = AgentConfig(provider="openai", model="minimax/MiniMax-M2.5")
+    provider = OpenAIProvider.__new__(OpenAIProvider)
+    provider._config = cfg
+    provider._timeout = None
+
+    # First think block (CoT preamble), then answer, then inline think, then rest of answer
+    raw_tokens = [
+        "<think>initial reasoning</think>",
+        "synthadoc",
+        "<think>rethink</think>",
+        " schedule remove <schedule-id>",
+    ]
+    chunks = []
+    for t in raw_tokens:
+        c = MagicMock()
+        c.choices = [MagicMock(delta=MagicMock(content=t))]
+        chunks.append(c)
+
+    async def _fake_create(*a, **kw):
+        async def _gen():
+            for c in chunks:
+                yield c
+        return _gen()
+
+    mock_client = MagicMock()
+    mock_client.chat.completions.create = _fake_create
+    provider._client = mock_client
+
+    tokens = []
+    async for tok in provider.complete_stream([Message(role="user", content="hi")]):
+        tokens.append(tok)
+    combined = "".join(tokens)
+    assert "think" not in combined.lower()
+    assert "rethink" not in combined
+    assert "initial reasoning" not in combined
+    assert "synthadoc schedule remove <schedule-id>" in combined
+
+
+@pytest.mark.asyncio
 async def test_anthropic_provider_complete_stream_yields_tokens():
     """AnthropicProvider.complete_stream must yield token strings."""
     from synthadoc.providers.anthropic import AnthropicProvider
