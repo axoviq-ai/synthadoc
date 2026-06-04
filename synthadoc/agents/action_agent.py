@@ -27,7 +27,13 @@ _ACTION_RE = re.compile(
     r"|\bschedul\w*.{0,30}\b(histor|run|log)\w*\b"
     r"|(?<![a-zA-Z0-9])schedul\w*.{0,150}(?<![a-zA-Z0-9])(scaffold|ingest|lint)(?![a-zA-Z0-9])"
     r"|(?<![a-zA-Z0-9])(scaffold|ingest|lint)(?![a-zA-Z0-9]).{0,150}(?<![a-zA-Z0-9])schedul\w*"
-    r"|\b(activate|archive|restore)\s+\w",
+    r"|\b(activate|archive|restore)\s+\w"
+    r"|\borphan\s+page"
+    r"|\bpage\w*.{0,20}\borphan"
+    r"|\b(list|show|what|which|find|are there).{0,60}\b(orphan|contradict|adversarial).{0,40}\bpage"
+    r"|\blint\s+(report|state|status|result|summary)"
+    r"|\b(show|display|view|get)\b.{0,30}\blint\s+report"
+    r"|\bwhat.{0,30}\b(orphan|contradict|adversarial)",
     re.IGNORECASE,
 )
 
@@ -42,6 +48,9 @@ _EXTRACT_PROMPT_TEMPLATE = (
     "params keys by action:\n"
     "  lint          : scope (all|contradictions|orphans|stale|citations), auto_resolve (bool)\n"
     "  lint_report   : (no params — shows current contradictions, orphans and adversarial warnings; no server needed)\n"
+    "                  Use lint_report for ANY question asking what orphan/contradicted/adversarial pages exist NOW.\n"
+    "                  Examples: 'what pages are orphans?', 'show contradictions', 'list orphan pages',\n"
+    "                  'are there any contradicted pages?', 'show lint report'\n"
     "  ingest        : source (URL or path), force (bool)\n"
     "  scaffold      : domain (string or null)\n"
     "  schedule_add  : op (full synthadoc subcommand, e.g. 'scaffold', 'lint run', "
