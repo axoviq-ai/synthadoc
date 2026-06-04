@@ -13,7 +13,7 @@ from synthadoc.cli.main import app
 from synthadoc.cli._http import post
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
-from synthadoc.agents.lint_agent import find_orphan_slugs, LINT_SKIP_SLUGS, LINT_SKIP_SOURCE_SLUGS
+from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
 
 
 def _is_reingestable(file: str) -> bool:
@@ -133,43 +133,26 @@ def lint_report(
         E.cli_error(E.WIKI_NOT_FOUND, f"Wiki directory not found: {wiki_dir}")
 
     pages = list(wiki_dir.glob("*.md"))
-
     page_texts: dict[str, str] = {p.stem: p.read_text(encoding="utf-8") for p in pages}
 
-    # --- Contradictions ---
-    contradicted = [
-        stem for stem, text in page_texts.items()
-        if stem not in LINT_SKIP_SLUGS and "status: contradicted" in text
-    ]
+    from synthadoc.storage.wiki import WikiStorage
+    from synthadoc.agents.lint_agent import read_current_lint_state
+    _state = read_current_lint_state(WikiStorage(wiki_dir))
+    contradicted = _state.contradicted
+    orphans = _state.orphans
 
-    # --- Orphans ---
-    # Strip frontmatter before scanning so CLI and server-side LintAgent use the
-    # same definition: only wikilinks in the page body count as real references.
-    page_bodies: dict[str, str] = {
-        slug: (text[m.end():] if (m := _FRONTMATTER_RE.match(text)) else text)
-        for slug, text in page_texts.items()
-    }
-    orphans = find_orphan_slugs(page_bodies)
-
-    # --- Adversarial warnings (read lint_warnings from frontmatter) ---
+    # Augment adv_pages with re-ingest suggestions (CLI-only)
     adv_pages = []
-    for stem, text in page_texts.items():
-        if stem in LINT_SKIP_SLUGS:
-            continue
-        fm = _parse_frontmatter(text)
-        warnings = fm.get("lint_warnings", []) or []
-        if not isinstance(warnings, list):
-            continue
-        if not warnings:
-            continue
+    for entry in _state.adv_pages:
+        slug = entry["slug"]
+        fm = _parse_frontmatter(page_texts.get(slug, ""))
         sources = fm.get("sources", []) or []
         suggested_reingests = [
             f'synthadoc ingest "{s["file"]}" -w {wiki}'
             for s in sources
             if isinstance(s, dict) and _is_reingestable(s.get("file", ""))
         ]
-        adv_pages.append({"slug": stem, "warnings": warnings,
-                           "suggested_reingests": suggested_reingests})
+        adv_pages.append({**entry, "suggested_reingests": suggested_reingests})
 
     # --- Citation Issues ---
     from synthadoc.agents.lint_agent import _check_page_citations

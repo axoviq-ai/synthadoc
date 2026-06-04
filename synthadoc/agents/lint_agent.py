@@ -178,6 +178,39 @@ def _parse_adversarial_response(text: str) -> list[dict]:
     return []
 
 
+@dataclass
+class LintStateSummary:
+    contradicted: list[str]
+    orphans: list[str]
+    adv_pages: list[dict]  # [{slug, warnings: list[dict]}]
+
+
+def read_current_lint_state(store: WikiStorage) -> LintStateSummary:
+    """Scan wiki pages and return contradictions, orphans, and adversarial warnings.
+
+    Reads from WikiStorage directly — no LLM, no server required.
+    """
+    slugs = store.list_pages()
+    contradicted: list[str] = []
+    page_bodies: dict[str, str] = {}
+    adv_pages: list[dict] = []
+
+    for slug in slugs:
+        page = store.read_page(slug)
+        if page is None:
+            continue
+        page_bodies[slug] = page.content or ""
+        if slug in LINT_SKIP_SLUGS:
+            continue
+        if page.status == LifecycleState.CONTRADICTED:
+            contradicted.append(slug)
+        if page.lint_warnings:
+            adv_pages.append({"slug": slug, "warnings": list(page.lint_warnings)})
+
+    orphans = find_orphan_slugs(page_bodies)
+    return LintStateSummary(contradicted=contradicted, orphans=orphans, adv_pages=adv_pages)
+
+
 class LintAgent:
     def __init__(self, provider: LLMProvider, store: WikiStorage,
                  log_writer: LogWriter, confidence_threshold: float = 0.85,

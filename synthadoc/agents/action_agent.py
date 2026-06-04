@@ -33,10 +33,11 @@ _EXTRACT_PROMPT_TEMPLATE = (
     "You are an action parser for Synthadoc. Extract the intended action and its "
     "parameters from the user request below.\n\n"
     "Return ONLY a JSON object — no explanation, no markdown fences.\n\n"
-    'Schema: {{"action": "<lint|ingest|scaffold|schedule_add|schedule_list|'
+    'Schema: {{"action": "<lint|lint_report|ingest|scaffold|schedule_add|schedule_list|'
     'lifecycle_activate|lifecycle_archive|lifecycle_restore|none>", "params": {{...}}}}\n\n'
     "params keys by action:\n"
     "  lint          : scope (all|contradictions|orphans|stale|citations), auto_resolve (bool)\n"
+    "  lint_report   : (no params — shows current contradictions, orphans and adversarial warnings; no server needed)\n"
     "  ingest        : source (URL or path), force (bool)\n"
     "  scaffold      : domain (string or null)\n"
     "  schedule_add  : op (full synthadoc command, e.g. 'ingest --batch sources/'), "
@@ -122,6 +123,8 @@ class ActionAgent:
     async def _dispatch(self, action: str, params: dict) -> ActionResult:
         if action == "lint":
             return await self._do_lint(params)
+        if action == "lint_report":
+            return await self._do_lint_report()
         if action == "ingest":
             return await self._do_ingest(params)
         if action == "scaffold":
@@ -134,6 +137,48 @@ class ActionAgent:
             return await self._do_lifecycle(action, params)
         return ActionResult(action_type=action, success=False,
                             message=f"Unknown action type: `{action}`")
+
+    async def _do_lint_report(self) -> ActionResult:
+        from synthadoc.agents.lint_agent import read_current_lint_state
+        state = read_current_lint_state(self._orch._store)
+        parts: list[str] = []
+
+        if state.contradicted:
+            lines = [
+                f"**Contradicted pages ({len(state.contradicted)})** — "
+                f"resolve conflict and set `status: active`:\n"
+            ]
+            for slug in state.contradicted:
+                lines.append(f"- `{slug}`")
+            parts.append("\n".join(lines))
+
+        if state.orphans:
+            lines = [f"**Orphan pages ({len(state.orphans)})** — no inbound links:\n"]
+            for slug in state.orphans:
+                lines.append(f"- `{slug}`")
+            parts.append("\n".join(lines))
+
+        if state.adv_pages:
+            total = sum(len(p["warnings"]) for p in state.adv_pages)
+            lines = [
+                f"**Adversarial warnings** ({total} across {len(state.adv_pages)} pages):\n"
+            ]
+            for entry in state.adv_pages:
+                lines.append(f"- `{entry['slug']}`:")
+                for w in entry["warnings"]:
+                    claim = w.get("claim") or ""
+                    concern = w.get("concern") or ""
+                    if claim:
+                        lines.append(f'  - "{claim}" — {concern}')
+                    else:
+                        lines.append(f"  - {concern}")
+            parts.append("\n".join(lines))
+
+        if not parts:
+            message = "All clear — no contradictions, orphan pages, or adversarial warnings."
+        else:
+            message = "\n\n".join(parts)
+        return ActionResult(action_type="lint_report", success=True, message=message)
 
     async def _do_lint(self, params: dict) -> ActionResult:
         scope = params.get("scope", "all")

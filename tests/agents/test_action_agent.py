@@ -3,6 +3,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from synthadoc.agents.action_agent import ActionAgent, _format_schedule_list
+from synthadoc.agents.lint_agent import LintStateSummary
 from synthadoc.providers.base import CompletionResponse
 
 
@@ -142,6 +143,38 @@ async def test_schedule_list_empty(tmp_path):
     assert result is not None
     assert result.success is True
     assert "none" in result.message.lower() or "scheduled" in result.message.lower()
+
+
+# ── lint_report dispatch ─────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_lint_report_action_all_clear(tmp_path):
+    extraction = '{"action": "lint_report", "params": {}}'
+    agent = _make_agent(tmp_path, extraction)
+    with patch("synthadoc.agents.lint_agent.read_current_lint_state") as mock_rcs:
+        mock_rcs.return_value = LintStateSummary(contradicted=[], orphans=[], adv_pages=[])
+        result = await agent.run("please run synthadoc lint report")
+    assert result is not None
+    assert result.success is True
+    assert "all clear" in result.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_lint_report_action_with_issues(tmp_path):
+    extraction = '{"action": "lint_report", "params": {}}'
+    agent = _make_agent(tmp_path, extraction)
+    with patch("synthadoc.agents.lint_agent.read_current_lint_state") as mock_rcs:
+        mock_rcs.return_value = LintStateSummary(
+            contradicted=["page-a"],
+            orphans=["page-b"],
+            adv_pages=[{"slug": "page-c", "warnings": [{"claim": "x", "concern": "y"}]}],
+        )
+        result = await agent.run("please run synthadoc lint report")
+    assert result is not None
+    assert result.success is True
+    assert "page-a" in result.message
+    assert "page-b" in result.message
+    assert "page-c" in result.message
 
 
 # ── none action ───────────────────────────────────────────────────────────────
