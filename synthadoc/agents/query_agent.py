@@ -738,6 +738,8 @@ class QueryAgent:
                 f"After answering, include a short 'To verify or investigate further' section "
                 f"with the relevant CLI commands copied VERBATIM from the code blocks in the documentation — "
                 f"do not rephrase or generate command names from memory. "
+                f"When commands appear in a Markdown table, use inline code (single backticks) "
+                f"not fenced code blocks — fenced blocks do not render inside table cells. "
                 f"Do not reference or cite wiki pages.\n\n"
                 f"Question: {question}\n\nDocumentation:\n{context}"
             )
@@ -998,6 +1000,8 @@ class QueryAgent:
                 f"After answering, include a short 'To verify or investigate further' section "
                 f"with the relevant CLI commands copied VERBATIM from the code blocks in the documentation — "
                 f"do not rephrase or generate command names from memory. "
+                f"When commands appear in a Markdown table, use inline code (single backticks) "
+                f"not fenced code blocks — fenced blocks do not render inside table cells. "
                 f"Do not reference or cite wiki pages.\n\n"
                 f"Question: {question}\n\nDocumentation:\n{context}"
             )
