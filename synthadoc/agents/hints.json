@@ -29,6 +29,8 @@
       "Export my wiki as llms.txt",
       "Run lint on contradictions only",
       "Schedule a daily ingest at 6 AM",
+      "Schedule scaffold every Sunday at 11 PM",
+      "Schedule lint run every night at 9 PM",
       "Rebuild the wiki scaffold"
     ]
   },
@@ -77,8 +79,9 @@
       "keywords": ["schedule", "scheduled", "recurring", "cron"],
       "hints": [
         "Show my scheduled tasks",
-        "Schedule a daily ingest at 6 AM",
-        "Schedule a weekly scaffold rebuild"
+        "Schedule scaffold every Sunday at 11 PM",
+        "Schedule lint run every night at 9 PM",
+        "Schedule a daily ingest at 6 AM"
       ]
     },
     {
