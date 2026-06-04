@@ -71,10 +71,11 @@
     {
       "keywords": ["lifecycle", "active", "archive", "draft", "restore", "activate"],
       "hints": [
-        "Show wiki status",
         "Activate a draft page",
         "Archive a stale page",
-        "Restore an archived page to draft"
+        "Restore an archived page to draft",
+        "Show wiki status",
+        "How do lifecycle states work?"
       ]
     },
     {
