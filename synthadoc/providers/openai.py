@@ -312,6 +312,7 @@ class OpenAIProvider(LLMProvider):
         in_think = False
         _think_chars = 0
         _answer_chars = 0
+        _first_think_done = False  # True once the first </think> has closed
         logger.info("complete_stream: max_tokens=%d model=%s", max_tokens, self._config.model)
         async for chunk in await self._client.chat.completions.create(
             model=self._config.model, messages=msgs,
@@ -334,31 +335,50 @@ class OpenAIProvider(LLMProvider):
             else:
                 _answer_chars += len(delta)
             buf += delta
-            # Suppress <think>...</think> reasoning blocks (e.g. MiniMax M2.5).
+            # Strip <think>...</think> reasoning blocks (MiniMax M2.5, DeepSeek R1, etc.).
+            # The FIRST think block is fully suppressed (chain-of-thought preamble).
+            # Subsequent inline <think> blocks — which some models embed mid-answer for
+            # self-correction — have their tags stripped but their CONTENT passed through,
+            # because the actual answer text often lives inside those inline blocks.
             # Tags may arrive split across tokens, so we scan a rolling buffer.
             while True:
-                if not in_think:
-                    idx = buf.find("<think>")
+                if in_think:
+                    # Suppressing the first think block
+                    idx = buf.find("</think>")
                     if idx == -1:
-                        # No tag found; yield all but the last 6 chars (partial tag guard)
-                        safe = max(0, len(buf) - 6)
+                        buf = buf[max(0, len(buf) - 7):]  # keep partial "</think>"
+                        break
+                    else:
+                        buf = buf[idx + 8:].lstrip()  # skip "</think>" + whitespace
+                        in_think = False
+                        _first_think_done = True
+                else:
+                    # Not suppressing — scan for both open and close tags
+                    open_idx = buf.find("<think>")
+                    close_idx = buf.find("</think>")
+                    if open_idx == -1 and close_idx == -1:
+                        # No tags. Hold back 7 chars when we may see </think> (8 chars),
+                        # otherwise 6 chars guards against a partial <think> (7 chars).
+                        holdback = 7 if _first_think_done else 6
+                        safe = max(0, len(buf) - holdback)
                         if safe:
                             yield buf[:safe]
                             buf = buf[safe:]
                         break
+                    # Pick whichever tag appears first
+                    first_open = open_idx != -1 and (close_idx == -1 or open_idx < close_idx)
+                    if first_open:
+                        if open_idx > 0:
+                            yield buf[:open_idx]
+                        buf = buf[open_idx + 7:]  # strip "<think>"
+                        if not _first_think_done:
+                            in_think = True   # suppress the first think block
+                        # else: inline think — just strip the tag, content flows through
                     else:
-                        if idx > 0:
-                            yield buf[:idx]
-                        buf = buf[idx + 7:]  # skip "<think>"
-                        in_think = True
-                else:
-                    idx = buf.find("</think>")
-                    if idx == -1:
-                        buf = buf[max(0, len(buf) - 7):]  # keep potential partial "</think>"
-                        break
-                    else:
-                        buf = buf[idx + 8:].lstrip()  # skip "</think>" + leading whitespace
-                        in_think = False
+                        # Orphan </think> (closing an inline think we stripped open tag for)
+                        if close_idx > 0:
+                            yield buf[:close_idx]
+                        buf = buf[close_idx + 8:].lstrip()  # strip "</think>"
         if in_think:
             logger.warning(
                 "complete_stream: stream ended inside <think> block — think block was never closed "
@@ -373,4 +393,6 @@ class OpenAIProvider(LLMProvider):
                 _think_chars, _answer_chars, max_tokens, self._config.model,
             )
         if buf and not in_think:
-            yield buf
+            buf = buf.replace("</think>", "").replace("<think>", "")
+            if buf:
+                yield buf
