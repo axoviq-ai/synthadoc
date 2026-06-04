@@ -143,6 +143,16 @@ _JOB_TRIGGERS: frozenset[str] = frozenset({
 # the answer is precisely the retrieved wiki pages. Gap detection would fire here
 # because all content words (topic, cover, scope, wiki) are either stopwords or
 # too short, leaving _key_terms empty and candidates < 3 (signal 1 fires).
+# CLI subcommands — if the question starts with "synthadoc <subcommand>" or
+# contains known CLI patterns, treat it as a system knowledge query and suppress
+# gap. This prevents wiki-miss false positives when users paste CLI commands.
+_SYNTHADOC_CLI_SUBCOMMANDS: frozenset[str] = frozenset({
+    "synthadoc ingest", "synthadoc jobs", "synthadoc job",
+    "synthadoc lifecycle", "synthadoc lint", "synthadoc status",
+    "synthadoc export", "synthadoc candidates", "synthadoc web",
+    "synthadoc query", "synthadoc config",
+})
+
 _WIKI_INTROSPECTIVE_TRIGGERS: frozenset[str] = frozenset({
     "what topics",
     "what subject",
@@ -195,12 +205,21 @@ class QueryAgent:
 
     @staticmethod
     def _get_relevant_system_pages(question: str) -> str:
-        """Return formatted system knowledge pages whose keywords match the question."""
+        """Return formatted system knowledge pages whose keywords match the question.
+
+        CLI command prefix ("synthadoc <subcommand>") is treated as an implicit
+        system-knowledge match — all bundled pages are included so the LLM has
+        full context for the command being asked about.
+        """
         q_lower = question.lower()
         matched: list[str] = []
         for page in _SYSTEM_KNOWLEDGE:
             if any(kw in q_lower for kw in page.keywords):
                 matched.append(f"### {page.title}\n{page.content}")
+        # If no keyword matched but question looks like a CLI invocation, include
+        # all system pages so the LLM can answer from bundled documentation.
+        if not matched and any(cmd in q_lower for cmd in _SYNTHADOC_CLI_SUBCOMMANDS):
+            matched = [f"### {p.title}\n{p.content}" for p in _SYSTEM_KNOWLEDGE]
         return "\n\n".join(matched)
 
     async def _fetch_live_wiki_data(self, question: str) -> str:
@@ -637,7 +656,10 @@ class QueryAgent:
         if _system_ctx:
             _gap = False
         _q_lower = question.lower()
-        if _gap and any(kw in _q_lower for kw in _WIKI_INTROSPECTIVE_TRIGGERS):
+        if _gap and (
+            any(kw in _q_lower for kw in _WIKI_INTROSPECTIVE_TRIGGERS)
+            or any(cmd in _q_lower for cmd in _SYNTHADOC_CLI_SUBCOMMANDS)
+        ):
             _gap = False
         if _gap:
             _suggested = await SearchDecomposeAgent(self._provider).decompose(question)
@@ -908,7 +930,10 @@ class QueryAgent:
         if _system_ctx:
             _gap = False
         _q_lower_s = question.lower()
-        if _gap and any(kw in _q_lower_s for kw in _WIKI_INTROSPECTIVE_TRIGGERS):
+        if _gap and (
+            any(kw in _q_lower_s for kw in _WIKI_INTROSPECTIVE_TRIGGERS)
+            or any(cmd in _q_lower_s for cmd in _SYNTHADOC_CLI_SUBCOMMANDS)
+        ):
             _gap = False
 
         if _gap:
