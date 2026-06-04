@@ -3,6 +3,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from synthadoc.agents.action_agent import ActionAgent, _format_schedule_list
+from synthadoc.agents.lint_agent import LintStateSummary
 from synthadoc.providers.base import CompletionResponse
 
 
@@ -46,6 +47,26 @@ def test_detect_schedule_add(tmp_path):
 def test_detect_schedule_list(tmp_path):
     agent = _make_agent(tmp_path, "{}")
     assert agent.detect("Show my scheduled tasks") is True
+
+def test_detect_schedule_add_via_scheduler_noun(tmp_path):
+    agent = _make_agent(tmp_path, "{}")
+    assert agent.detect("please add a scaffold task to synthadoc scheduler and run it at 7 PM on every Saturday") is True
+
+def test_detect_schedule_add_via_create(tmp_path):
+    agent = _make_agent(tmp_path, "{}")
+    assert agent.detect("Create a scheduled ingest job for every Monday at 9 AM") is True
+
+def test_detect_schedule_add_via_register(tmp_path):
+    agent = _make_agent(tmp_path, "{}")
+    assert agent.detect("Register a weekly scaffold in the schedule") is True
+
+def test_detect_schedule_add_chinese_mixed(tmp_path):
+    agent = _make_agent(tmp_path, "{}")
+    assert agent.detect("请在 Synthadoc 调度器scheduler 添加一个 scaffold 任务，并使其在每周六晚上 7 点运行") is True
+
+def test_detect_schedule_add_chinese_operation_first(tmp_path):
+    agent = _make_agent(tmp_path, "{}")
+    assert agent.detect("scaffold 任务 每天晚上 scheduler 自动运行") is True
 
 def test_detect_lifecycle_activate(tmp_path):
     agent = _make_agent(tmp_path, "{}")
@@ -142,6 +163,38 @@ async def test_schedule_list_empty(tmp_path):
     assert result is not None
     assert result.success is True
     assert "none" in result.message.lower() or "scheduled" in result.message.lower()
+
+
+# ── lint_report dispatch ─────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_lint_report_action_all_clear(tmp_path):
+    extraction = '{"action": "lint_report", "params": {}}'
+    agent = _make_agent(tmp_path, extraction)
+    with patch("synthadoc.agents.lint_agent.read_current_lint_state") as mock_rcs:
+        mock_rcs.return_value = LintStateSummary(contradicted=[], orphans=[], adv_pages=[])
+        result = await agent.run("please run synthadoc lint report")
+    assert result is not None
+    assert result.success is True
+    assert "all clear" in result.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_lint_report_action_with_issues(tmp_path):
+    extraction = '{"action": "lint_report", "params": {}}'
+    agent = _make_agent(tmp_path, extraction)
+    with patch("synthadoc.agents.lint_agent.read_current_lint_state") as mock_rcs:
+        mock_rcs.return_value = LintStateSummary(
+            contradicted=["page-a"],
+            orphans=["page-b"],
+            adv_pages=[{"slug": "page-c", "warnings": [{"claim": "x", "concern": "y"}]}],
+        )
+        result = await agent.run("please run synthadoc lint report")
+    assert result is not None
+    assert result.success is True
+    assert "page-a" in result.message
+    assert "page-b" in result.message
+    assert "page-c" in result.message
 
 
 # ── none action ───────────────────────────────────────────────────────────────

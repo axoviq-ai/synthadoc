@@ -227,9 +227,7 @@ def test_lint_report_uses_env_var(monkeypatch, tmp_path):
     monkeypatch.setenv(ENV_VAR, "my-wiki")
     fake_wiki_dir = tmp_path / "wiki"
     fake_wiki_dir.mkdir()
-    with patch("synthadoc.cli.install.resolve_wiki_path", return_value=tmp_path) as mock_rwp, \
-         patch("synthadoc.cli.lint.find_orphan_slugs", return_value=[]), \
-         patch("synthadoc.cli.lint._sync_orphan_frontmatter"):
+    with patch("synthadoc.cli.install.resolve_wiki_path", return_value=tmp_path) as mock_rwp:
         result = automation_runner.invoke(app, ["lint", "report"])
     assert result.exit_code == 0
     assert mock_rwp.call_args[0][0] == "my-wiki"

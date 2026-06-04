@@ -3,7 +3,7 @@
 import asyncio
 import pytest
 from unittest.mock import AsyncMock, patch
-from synthadoc.agents.query_agent import QueryAgent, QueryResult
+from synthadoc.agents.query_agent import QueryAgent, QueryResult, _parse_lookback_days
 from synthadoc.providers.base import CompletionResponse
 from synthadoc.storage.log import AuditDB
 from synthadoc.storage.wiki import WikiStorage, WikiPage
@@ -1600,6 +1600,60 @@ def test_expand_aliases_case_insensitive(tmp_wiki):
     assert "alan-turing" in result2
 
 
+# ── sub-question gap detection (framed queries) ───────────────────────────────
+
+@pytest.mark.asyncio
+async def test_framed_query_gap_detected_via_sub_questions(tmp_wiki):
+    """A verbose request like 'please provide details of X' should fire gap detection
+    when X is not in the wiki, the same as the bare 'what is X?' form.
+
+    decompose() strips the request framing and returns clean sub-questions; gap
+    detection uses those instead of the raw question so framing words don't
+    dilute the key-term absence signals.
+    """
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+
+    # Wiki has pages about general AI topics — topic-adjacent but no agent-as-a-judge
+    for i in range(5):
+        store.write_page(f"ai-page-{i}", WikiPage(
+            title=f"AI Page {i}", tags=[],
+            content="Artificial intelligence and design of neural networks. Benchmarks for evaluation.",
+            status="active", confidence="high", sources=[],
+        ))
+
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        # decompose strips framing → clean sub-questions that isolate the actual topic
+        CompletionResponse(
+            text='["What is agent-as-a-judge?", "What are benchmarks for agent-as-a-judge systems?"]',
+            input_tokens=10, output_tokens=10,
+        ),
+        # synthesis answer (gap=True branch — general knowledge answer)
+        CompletionResponse(
+            text="Agent-as-a-judge is an evaluation paradigm where an LLM grades other LLMs.",
+            input_tokens=80, output_tokens=20,
+        ),
+        # SearchDecomposeAgent suggested searches
+        CompletionResponse(
+            text='["agent-as-a-judge definition", "LLM evaluation benchmarks"]',
+            input_tokens=10, output_tokens=10,
+        ),
+    ]
+
+    agent = QueryAgent(provider=provider, store=store, search=search,
+                       gap_score_threshold=2.0)
+    all_slugs = [f"ai-page-{i}" for i in range(5)]
+    with patch.object(agent._search, "bm25_search",
+                      return_value=_fake_results(all_slugs, score=3.0)):
+        result = await agent.query(
+            "please provide some details of agent-as-a-judge design and benchmark information"
+        )
+
+    assert result.knowledge_gap is True
+    assert len(result.suggested_searches) >= 1
+
+
 # ── post-synthesis [GAP] sentinel ────────────────────────────────────────────
 
 @pytest.mark.asyncio
@@ -1928,3 +1982,95 @@ async def test_no_gap_for_wiki_introspective_queries(tmp_wiki):
     assert result.suggested_searches == []
     # SearchDecomposeAgent should NOT have been called (only 2 complete() calls total)
     assert provider.complete.call_count == 2
+
+
+# ── _parse_lookback_days ──────────────────────────────────────────────────────
+
+def test_parse_lookback_days_week():
+    assert _parse_lookback_days("What changed this week?") == 7
+
+def test_parse_lookback_days_recently():
+    assert _parse_lookback_days("What changed recently?") == 7
+
+def test_parse_lookback_days_month():
+    assert _parse_lookback_days("What changed this month?") == 30
+
+def test_parse_lookback_days_last_month():
+    assert _parse_lookback_days("What pages were added last month?") == 30
+
+def test_parse_lookback_days_year():
+    assert _parse_lookback_days("What pages were added this year?") == 365
+
+def test_parse_lookback_days_last_year():
+    assert _parse_lookback_days("What changed last year?") == 365
+
+def test_parse_lookback_days_n_months():
+    assert _parse_lookback_days("What changed in the last 3 months?") == 90
+
+def test_parse_lookback_days_2_months():
+    assert _parse_lookback_days("What pages were added in the last 2 months?") == 60
+
+def test_parse_lookback_days_n_weeks():
+    assert _parse_lookback_days("Show changes from the past 2 weeks") == 14
+
+
+# ── live-data routing without system knowledge page match ─────────────────────
+
+@pytest.mark.asyncio
+async def test_live_data_routed_without_system_ctx(tmp_wiki):
+    """'What changed in the wiki this week?' must use audit log even when no system
+    knowledge page matches — the pure live-data path introduced in the routing fix.
+    """
+    sd = tmp_wiki / ".synthadoc"
+    sd.mkdir(parents=True, exist_ok=True)
+    audit = AuditDB(sd / "audit.db")
+    await audit.init()
+    await audit.record_ingest("abc", 100, "notes.md", "my-notes", 10, 0.001)
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["What changed in the wiki this week?"]',
+                           input_tokens=5, output_tokens=5),
+        CompletionResponse(text="Here is what changed this week...",
+                           input_tokens=80, output_tokens=15),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=0.0)
+    result = await agent.query("What changed in the wiki this week?")
+
+    synthesis_prompt = provider.complete.call_args_list[1][1]["messages"][0].content
+    assert "Live Wiki Data" in synthesis_prompt
+    assert "my-notes" in synthesis_prompt
+    assert result.knowledge_gap is False
+    assert result.cacheable is False
+    assert result.citations == []
+
+
+@pytest.mark.asyncio
+async def test_live_data_month_lookback(tmp_wiki):
+    """'What changed this month?' must query with a 30-day window, not 7 days."""
+    sd = tmp_wiki / ".synthadoc"
+    sd.mkdir(parents=True, exist_ok=True)
+    audit = AuditDB(sd / "audit.db")
+    await audit.init()
+    await audit.record_ingest("abc", 100, "notes.md", "monthly-page", 10, 0.001)
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["What changed this month?"]',
+                           input_tokens=5, output_tokens=5),
+        CompletionResponse(text="Here is what changed this month...",
+                           input_tokens=80, output_tokens=15),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=0.0)
+    result = await agent.query("What changed this month?")
+
+    synthesis_prompt = provider.complete.call_args_list[1][1]["messages"][0].content
+    assert "Live Wiki Data" in synthesis_prompt
+    assert "monthly-page" in synthesis_prompt
+    assert "month" in synthesis_prompt  # window label in section heading
+    assert result.knowledge_gap is False
+    assert result.cacheable is False

@@ -23,10 +23,14 @@
     ],
     "POWER_USER": [
       "What changed in the wiki this week?",
+      "What changed in the wiki this month?",
+      "What pages were added this year?",
       "Which pages have adversarial warnings?",
       "Export my wiki as llms.txt",
       "Run lint on contradictions only",
       "Schedule a daily ingest at 6 AM",
+      "Schedule scaffold every Sunday at 11 PM",
+      "Schedule lint run every night at 9 PM",
       "Rebuild the wiki scaffold"
     ]
   },
@@ -75,8 +79,9 @@
       "keywords": ["schedule", "scheduled", "recurring", "cron"],
       "hints": [
         "Show my scheduled tasks",
-        "Schedule a daily ingest at 6 AM",
-        "Schedule a weekly scaffold rebuild"
+        "Schedule scaffold every Sunday at 11 PM",
+        "Schedule lint run every night at 9 PM",
+        "Schedule a daily ingest at 6 AM"
       ]
     },
     {
@@ -93,6 +98,15 @@
         "Which pages have adversarial warnings?",
         "Run the adversarial lint pass",
         "How do I review a flagged claim?"
+      ]
+    },
+    {
+      "keywords": ["changed", "updated", "ingested", "added", "recently", "this week", "this month", "this year"],
+      "hints": [
+        "What changed in the wiki this week?",
+        "What changed in the wiki this month?",
+        "What pages were added in the last 3 months?",
+        "What pages were added this year?"
       ]
     }
   ]

@@ -2,7 +2,7 @@
 # Copyright (C) 2026 Paul Chen / axoviq.com
 import pytest
 from unittest.mock import AsyncMock
-from synthadoc.agents.lint_agent import LintAgent, LintReport, find_orphan_slugs, _fix_dangling_wikilinks, LINT_SKIP_SLUGS, LINT_SKIP_SOURCE_SLUGS, _parse_adversarial_response, _check_page_citations
+from synthadoc.agents.lint_agent import LintAgent, LintReport, find_orphan_slugs, _fix_dangling_wikilinks, LINT_SKIP_SLUGS, LINT_SKIP_SOURCE_SLUGS, _parse_adversarial_response, _check_page_citations, read_current_lint_state
 from synthadoc.providers.base import CompletionResponse
 from synthadoc.storage.wiki import WikiStorage, WikiPage, SourceRef
 from synthadoc.storage.log import LogWriter, AuditDB
@@ -561,3 +561,59 @@ def test_check_citations_reversed_range(tmp_path):
     )
     issues = _check_page_citations("t", page, extracted_dir=tmp_path)
     assert any(i["reason"] == "malformed" for i in issues)
+
+
+# ── read_current_lint_state ───────────────────────────────────────────────────
+
+def test_read_current_lint_state_all_clear(tmp_wiki):
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("hub", WikiPage(title="Hub", tags=[], content="See [[spoke]].",
+        status="active", confidence="high", sources=[]))
+    store.write_page("spoke", WikiPage(title="Spoke", tags=[], content="content",
+        status="active", confidence="high", sources=[]))
+    state = read_current_lint_state(store)
+    assert state.contradicted == []
+    assert state.adv_pages == []
+
+
+def test_read_current_lint_state_contradicted(tmp_wiki):
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("conflict-page", WikiPage(title="Conflict", tags=[], content="disputed",
+        status="contradicted", confidence="low", sources=[]))
+    state = read_current_lint_state(store)
+    assert "conflict-page" in state.contradicted
+
+
+def test_read_current_lint_state_orphan(tmp_wiki):
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("hub", WikiPage(title="Hub", tags=[], content="See [[linked]].",
+        status="active", confidence="medium", sources=[]))
+    store.write_page("linked", WikiPage(title="Linked", tags=[], content="content",
+        status="active", confidence="medium", sources=[]))
+    store.write_page("orphan", WikiPage(title="Orphan", tags=[], content="alone",
+        status="active", confidence="medium", sources=[]))
+    state = read_current_lint_state(store)
+    assert "orphan" in state.orphans
+    assert "linked" not in state.orphans
+
+
+def test_read_current_lint_state_adv_warnings(tmp_wiki):
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("flagged", WikiPage(title="Flagged", tags=[], content="content",
+        status="active", confidence="high", sources=[],
+        lint_warnings=[{"claim": "Overstated fact", "concern": "not accurate"}]))
+    state = read_current_lint_state(store)
+    assert len(state.adv_pages) == 1
+    assert state.adv_pages[0]["slug"] == "flagged"
+
+
+def test_read_current_lint_state_skips_lint_skip_slugs(tmp_wiki):
+    """LINT_SKIP_SLUGS pages never appear in contradicted or adv_pages."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    for slug in LINT_SKIP_SLUGS:
+        store.write_page(slug, WikiPage(title=slug, tags=[], content="auto",
+            status="contradicted", confidence="low", sources=[],
+            lint_warnings=[{"claim": "c", "concern": "c"}]))
+    state = read_current_lint_state(store)
+    assert state.contradicted == []
+    assert state.adv_pages == []
