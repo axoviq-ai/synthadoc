@@ -43,7 +43,9 @@ _EXTRACT_PROMPT_TEMPLATE = (
     "  lint_report   : (no params — shows current contradictions, orphans and adversarial warnings; no server needed)\n"
     "  ingest        : source (URL or path), force (bool)\n"
     "  scaffold      : domain (string or null)\n"
-    "  schedule_add  : op (full synthadoc command, e.g. 'ingest --batch sources/'), "
+    "  schedule_add  : op (full synthadoc subcommand, e.g. 'scaffold', 'lint run', "
+    "'ingest --batch sources/'; NOTE: lint requires the 'run' subcommand — op must be "
+    "'lint run', never just 'lint'), "
     "cron (parsed cron expression), schedule_description (original natural language)\n"
     "  schedule_list : (no params)\n"
     "  lifecycle_activate / lifecycle_archive / lifecycle_restore : slug, reason\n"
@@ -243,6 +245,9 @@ class ActionAgent:
     def _do_schedule_add(self, params: dict) -> ActionResult:
         from synthadoc.core.scheduler import Scheduler as ScheduleDB
         op = params.get("op", "")
+        # Normalise known ops that require a subcommand: "lint" → "lint run"
+        if op.strip() == "lint":
+            op = "lint run"
         cron = params.get("cron", "")
         desc = params.get("schedule_description", cron)
         if not op or not cron:
