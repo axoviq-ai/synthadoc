@@ -312,8 +312,8 @@ class OpenAIProvider(LLMProvider):
         in_think = False
         _think_chars = 0
         _answer_chars = 0
-        _first_think_done = False  # True once the initial CoT </think> has closed
-        _answer_buf = ""           # Accumulates all post-think content for bulk stripping
+        _use_fallback = False   # True when reasoning model detected
+        _fallback_task = None   # asyncio.Task running complete() in parallel
         logger.info("complete_stream: max_tokens=%d model=%s", max_tokens, self._config.model)
         async for chunk in await self._client.chat.completions.create(
             model=self._config.model, messages=msgs,
@@ -336,20 +336,13 @@ class OpenAIProvider(LLMProvider):
             else:
                 _answer_chars += len(delta)
 
-            if _first_think_done:
-                # After the initial CoT preamble, accumulate all content into a buffer.
-                # Models like MiniMax M2.5 inject inline <think> blocks mid-answer via
-                # delta.reasoning_content (not delta.content), causing the answer in
-                # delta.content to arrive fragmented and truncated when streamed token
-                # by token.  Buffering the full post-think output and applying a single
-                # regex strip at stream end — the same strategy as complete() — produces
-                # a clean, complete answer.
-                _answer_buf += delta
-                continue
-
             buf += delta
             # Suppress the initial <think>...</think> CoT preamble.
             # Tags may arrive split across tokens, so we scan a rolling buffer.
+            # For reasoning models (MiniMax M2.5, DeepSeek R1, etc.) we launch a
+            # parallel non-streaming complete() call as soon as the opening <think>
+            # tag is detected.  By the time </think> arrives the non-streaming call
+            # is often already done — zero extra latency on the happy path.
             while True:
                 if in_think:
                     idx = buf.find("</think>")
@@ -357,11 +350,9 @@ class OpenAIProvider(LLMProvider):
                         buf = buf[max(0, len(buf) - 7):]  # keep partial "</think>"
                         break
                     else:
-                        buf = buf[idx + 8:].lstrip()  # skip "</think>" + whitespace
+                        buf = ""   # discard: answer comes from complete() fallback
                         in_think = False
-                        _first_think_done = True
-                        _answer_buf = buf   # any content after </think> in this chunk
-                        buf = ""
+                        _use_fallback = True
                         break
                 else:
                     open_idx = buf.find("<think>")
@@ -378,6 +369,37 @@ class OpenAIProvider(LLMProvider):
                             yield buf[:open_idx]
                         buf = buf[open_idx + 7:]  # strip "<think>"
                         in_think = True
+                        if _fallback_task is None:
+                            # Reasoning model detected: start complete() now, in parallel,
+                            # so both calls run concurrently while we suppress the think block.
+                            _fallback_task = asyncio.create_task(
+                                self.complete(messages, system, temperature, max_tokens)
+                            )
+
+            if _use_fallback:
+                break  # abort streaming — complete() will provide the full answer
+
+        if _use_fallback and _fallback_task is not None:
+            logger.info(
+                "complete_stream: reasoning model — awaiting parallel complete() "
+                "(think_chars=%d, model=%s)",
+                _think_chars, self._config.model,
+            )
+            try:
+                resp = await _fallback_task
+                if resp.text:
+                    logger.info(
+                        "complete_stream: fallback done (answer_len=%d, model=%s)",
+                        len(resp.text), self._config.model,
+                    )
+                    yield resp.text
+            except Exception as exc:
+                logger.warning(
+                    "complete_stream: fallback complete() failed (%s: %s)",
+                    type(exc).__name__, exc,
+                )
+            return
+
         if in_think:
             logger.warning(
                 "complete_stream: stream ended inside <think> block — think block was never closed "
@@ -391,13 +413,5 @@ class OpenAIProvider(LLMProvider):
                 "complete_stream: done (think_chars=%d, answer_chars=%d, max_tokens=%d, model=%s)",
                 _think_chars, _answer_chars, max_tokens, self._config.model,
             )
-        # Flush pre-think holdback (models with no think blocks, or content before first <think>)
         if buf and not in_think:
             yield buf
-        # Yield the buffered post-think answer with all inline think blocks stripped.
-        # Same regex pass that complete() applies to the full non-streaming response.
-        if _answer_buf:
-            clean = re.sub(r"<think>.*?</think>", "", _answer_buf, flags=re.DOTALL).strip()
-            clean = re.sub(r"<think>.*$", "", clean, flags=re.DOTALL).strip()
-            if clean:
-                yield clean
