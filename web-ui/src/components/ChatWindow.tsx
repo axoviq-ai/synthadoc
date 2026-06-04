@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 William Johnason / axoviq.com
 
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useLayoutEffect, useState } from "react";
 import { MessageBubble } from "./MessageBubble";
 import { HintChips } from "./HintChips";
 import { Hero } from "./Hero";
@@ -37,7 +37,7 @@ export function ChatWindow({
         }
     }, [injectedQuery, onInjected]);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         const el = messagesRef.current;
         if (el) el.scrollTop = el.scrollHeight;
     }, [messages]);
