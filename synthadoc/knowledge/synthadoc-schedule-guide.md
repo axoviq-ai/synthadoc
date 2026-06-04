@@ -67,7 +67,7 @@ Shows all registered jobs with ID, cron expression, next run time, last run time
 synthadoc schedule remove <schedule-id>
 ```
 
-Get the `<schedule-id>` from `synthadoc schedule list`. Example:
+Replace `<schedule-id>` with the ID shown by `synthadoc schedule list`. Example:
 
 ```bash
 synthadoc schedule list

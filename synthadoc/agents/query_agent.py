@@ -396,6 +396,8 @@ class QueryAgent:
                 f"(e.g. list the actual page names, show real counts). "
                 f"Include only the CLI commands directly relevant to the answer — "
                 f"copy them VERBATIM from the documentation code blocks, do not rephrase or invent command names. "
+                f"Angle brackets in code blocks are literal CLI placeholders (e.g. <schedule-id>, <slug>) — "
+                f"reproduce them exactly as written, do not treat them as HTML tags or omit them. "
                 f"Keep the answer concise and focused; do not add a separate verification section. "
                 f"Do not reference or cite wiki pages.\n\n"
                 f"Question: {question}\n\nDocumentation:\n{context}"
