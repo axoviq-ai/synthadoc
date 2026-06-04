@@ -60,6 +60,14 @@ def test_detect_schedule_add_via_register(tmp_path):
     agent = _make_agent(tmp_path, "{}")
     assert agent.detect("Register a weekly scaffold in the schedule") is True
 
+def test_detect_schedule_add_chinese_mixed(tmp_path):
+    agent = _make_agent(tmp_path, "{}")
+    assert agent.detect("请在 Synthadoc 调度器scheduler 添加一个 scaffold 任务，并使其在每周六晚上 7 点运行") is True
+
+def test_detect_schedule_add_chinese_operation_first(tmp_path):
+    agent = _make_agent(tmp_path, "{}")
+    assert agent.detect("scaffold 任务 每天晚上 scheduler 自动运行") is True
+
 def test_detect_lifecycle_activate(tmp_path):
     agent = _make_agent(tmp_path, "{}")
     assert agent.detect("Activate page grace-hopper") is True

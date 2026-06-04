@@ -236,7 +236,10 @@ class QueryAgent:
         q_lower = question.lower()
         matched: list[str] = []
         for page in _SYSTEM_KNOWLEDGE:
-            if any(re.search(r'\b' + re.escape(kw) + r'\b', q_lower) for kw in page.keywords):
+            # Use ASCII-only boundaries so English keywords adjacent to CJK characters
+            # (e.g. "调度器scheduler") still match — Unicode \b treats CJK as word chars.
+            if any(re.search(r'(?<![a-zA-Z0-9])' + re.escape(kw) + r'(?![a-zA-Z0-9])',
+                             q_lower) for kw in page.keywords):
                 matched.append(f"### {page.title}\n{page.content}")
         # If no keyword matched but question looks like a CLI invocation, include
         # all system pages so the LLM can answer from bundled documentation.

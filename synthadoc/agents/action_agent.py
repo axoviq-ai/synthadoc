@@ -24,6 +24,8 @@ _ACTION_RE = re.compile(
     r"|\bschedule\s+(add|a|an|daily|weekly|hourly|every|at)\b"
     r"|\b(add|create|register)\b.{0,80}\bschedul"
     r"|\b(list|show)\b.{0,20}\bschedul"
+    r"|(?<![a-zA-Z0-9])schedul\w*.{0,150}(?<![a-zA-Z0-9])(scaffold|ingest|lint)(?![a-zA-Z0-9])"
+    r"|(?<![a-zA-Z0-9])(scaffold|ingest|lint)(?![a-zA-Z0-9]).{0,150}(?<![a-zA-Z0-9])schedul\w*"
     r"|\b(activate|archive|restore)\s+\w",
     re.IGNORECASE,
 )
