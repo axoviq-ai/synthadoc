@@ -20,7 +20,7 @@ def test_build_pool_mode_hints_first():
     pool = HintEngine.build_pool("EXPLORER")
     explorer_hints = ["What topics does this wiki cover?",
                       "What are the key topics in this wiki?",
-                      "What are the stale pages in my wiki?"]
+                      "Show wiki status"]
     assert pool[:3] == explorer_hints
 
 
