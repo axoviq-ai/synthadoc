@@ -164,7 +164,12 @@ def _parse_json_response(text: str) -> dict:
     text = text.strip()
     # Direct parse
     try:
-        return json.loads(text)
+        result = json.loads(text)
+        if isinstance(result, dict):
+            return result
+        # LLM sometimes wraps the dict in a top-level array; unwrap first element
+        if isinstance(result, list) and result and isinstance(result[0], dict):
+            return result[0]
     except json.JSONDecodeError:
         pass
     # Strip markdown code block: ```json ... ``` or ``` ... ```
@@ -331,6 +336,8 @@ class IngestAgent:
             temperature=0.0,
         )
         data = _parse_json_response(resp.text)
+        if not isinstance(data, dict):
+            data = {}
         data["entities"] = _coerce_str_list(data.get("entities", []))
         data["tags"] = _coerce_str_list(data.get("tags", []))
         data.setdefault("summary", text[:200])
@@ -393,7 +400,7 @@ class IngestAgent:
         p = self._wiki_root / "wiki" / "purpose.md"
         if not p.exists():
             return ""
-        return p.read_text(encoding="utf-8")[:3000]
+        return p.read_text(encoding="utf-8")[:12000]
 
     def _hash(self, path: str) -> tuple[str, int]:
         data = Path(path).read_bytes()

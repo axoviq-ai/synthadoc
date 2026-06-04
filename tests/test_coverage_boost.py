@@ -1339,6 +1339,47 @@ def test_get_tracer_initialises_when_not_set():
 
 # ── storage/log.py — invalid sort column normalised ──────────────────────────
 
+# ── agents/hint_engine.py — fallback and empty-pool paths ────────────────────
+
+def test_hint_engine_init_fallback_when_file_unreadable():
+    """_init_working_copies() falls back to _FALLBACK_BY_MODE when hints.json unreadable."""
+    import synthadoc.agents.hint_engine as _he
+    with patch.object(_he, "_load_hints_file", return_value=({}, [])):
+        by_mode, patterns, cache = _he._init_working_copies()
+    assert "POWER_USER" in by_mode
+    assert isinstance(cache, dict)
+
+
+def test_hint_engine_empty_pool_returns_unchanged_cursor():
+    """after_response_windowed returns ([], cursor) when the pool is empty."""
+    import synthadoc.agents.hint_engine as _he
+    from synthadoc.agents.hint_engine import HintEngine
+    with patch.object(_he, "_hints_by_mode", {}), patch.object(_he, "_pool_cache", {}):
+        hints, cursor = HintEngine.after_response_windowed("answer", "UNKNOWN_MODE", 7)
+    assert hints == []
+    assert cursor == 7
+
+
+# ── agents/_routing.py — JSON parse exception path ───────────────────────────
+
+@pytest.mark.asyncio
+async def test_routing_json_parse_exception_returns_empty():
+    """pick_routing_branches returns [] when the LLM JSON is malformed."""
+    from synthadoc.agents._routing import pick_routing_branches
+
+    class _FakeProvider:
+        async def complete(self, messages, temperature=0.0):
+            class R:
+                text = "[not a valid json array]"  # matches \[.*?\] but invalid JSON
+            return R()
+
+    branches = {"Tech": [], "Science": []}
+    result = await pick_routing_branches(
+        _FakeProvider(), branches, "test context", multi=True
+    )
+    assert result == []
+
+
 @pytest.mark.asyncio
 async def test_audit_list_citations_invalid_sort_normalised(tmp_wiki):
     """list_citations normalises an unrecognised sort column to 'ingested_at'."""
@@ -1347,3 +1388,271 @@ async def test_audit_list_citations_invalid_sort_normalised(tmp_wiki):
     await db.init()
     result = await db.list_citations(sort="malicious_column; DROP TABLE--")
     assert isinstance(result, list)
+
+
+@pytest.mark.asyncio
+async def test_list_ingests_since_returns_recent_rows(tmp_wiki):
+    """list_ingests_since returns rows within the requested window."""
+    import aiosqlite
+    from datetime import datetime, timezone
+    from synthadoc.storage.log import AuditDB
+
+    audit_path = tmp_wiki / ".synthadoc" / "audit.db"
+    db = AuditDB(audit_path)
+    await db.init()
+
+    ts = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(audit_path) as conn:
+        await conn.execute(
+            "INSERT INTO ingests (source_hash,source_size,source_path,wiki_page,tokens,cost_usd,ingested_at)"
+            " VALUES (?,?,?,?,?,?,?)",
+            ("h1", 10, "a.pdf", "page-a", 100, 0.0, ts),
+        )
+        await conn.commit()
+
+    rows = await db.list_ingests_since(days=7)
+    assert any(r["wiki_page"] == "page-a" for r in rows)
+
+
+@pytest.mark.asyncio
+async def test_fetch_live_wiki_data_adversarial_with_warnings(tmp_wiki):
+    """'Which pages have adversarial warnings?' returns pages that have lint_warnings."""
+    from synthadoc.storage.wiki import WikiStorage
+    from synthadoc.storage.search import HybridSearch
+    from synthadoc.storage.log import AuditDB
+    from synthadoc.agents.query_agent import QueryAgent
+
+    audit_path = tmp_wiki / ".synthadoc" / "audit.db"
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    db = AuditDB(audit_path)
+    await db.init()
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("alan-turing", "content", frontmatter={
+        "title": "Alan Turing", "status": "active",
+        "lint_warnings": [{"claim": "genius", "concern": "overstated"}],
+    })
+
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    agent = QueryAgent(provider=AsyncMock(), store=store, search=search)
+
+    with patch.object(AuditDB, "get_lifecycle_summary",
+                      new=AsyncMock(return_value={"active": 1})):
+        result = await agent._fetch_live_wiki_data("Which pages have adversarial warnings?")
+
+    assert "alan-turing" in result
+    assert "1 warning" in result
+
+
+@pytest.mark.asyncio
+async def test_fetch_live_wiki_data_adversarial_none(tmp_wiki):
+    """'Which pages have adversarial warnings?' with no warnings reports none."""
+    from synthadoc.storage.wiki import WikiStorage
+    from synthadoc.storage.search import HybridSearch
+    from synthadoc.storage.log import AuditDB
+    from synthadoc.agents.query_agent import QueryAgent
+
+    audit_path = tmp_wiki / ".synthadoc" / "audit.db"
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    db = AuditDB(audit_path)
+    await db.init()
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    agent = QueryAgent(provider=AsyncMock(), store=store, search=search)
+
+    with patch.object(AuditDB, "get_lifecycle_summary",
+                      new=AsyncMock(return_value={"active": 0})):
+        result = await agent._fetch_live_wiki_data("Which pages have adversarial warnings?")
+
+    assert "none" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_fetch_live_wiki_data_no_recent_ingests(tmp_wiki):
+    """'What changed this week?' with no recent rows reports none."""
+    from synthadoc.storage.wiki import WikiStorage
+    from synthadoc.storage.search import HybridSearch
+    from synthadoc.storage.log import AuditDB
+    from synthadoc.agents.query_agent import QueryAgent
+
+    audit_path = tmp_wiki / ".synthadoc" / "audit.db"
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    db = AuditDB(audit_path)
+    await db.init()
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    agent = QueryAgent(provider=AsyncMock(), store=store, search=search)
+
+    with patch.object(AuditDB, "list_ingests_since", new=AsyncMock(return_value=[])), \
+         patch.object(AuditDB, "get_lifecycle_summary",
+                      new=AsyncMock(return_value={"active": 3})):
+        result = await agent._fetch_live_wiki_data("What changed this week?")
+
+    assert "none" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_fetch_live_wiki_data_empty_detected_state(tmp_wiki):
+    """When a lifecycle state is queried but no pages match, 'none' is reported."""
+    from synthadoc.storage.wiki import WikiStorage
+    from synthadoc.storage.search import HybridSearch
+    from synthadoc.storage.log import AuditDB
+    from synthadoc.agents.query_agent import QueryAgent
+
+    audit_path = tmp_wiki / ".synthadoc" / "audit.db"
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    db = AuditDB(audit_path)
+    await db.init()
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    agent = QueryAgent(provider=AsyncMock(), store=store, search=search)
+
+    with patch.object(AuditDB, "get_lifecycle_summary",
+                      new=AsyncMock(return_value={"stale": 0, "active": 2})), \
+         patch.object(AuditDB, "get_all_page_states", new=AsyncMock(return_value=[])):
+        result = await agent._fetch_live_wiki_data("Which pages are stale?")
+
+    assert "(none)" in result
+
+
+# ── agents/query_agent.py — job status live data ─────────────────────────────
+
+@pytest.mark.asyncio
+async def test_fetch_live_wiki_data_job_by_id_found(tmp_wiki):
+    """'What is the status of job baf72992?' returns that job's details."""
+    from synthadoc.storage.wiki import WikiStorage
+    from synthadoc.storage.search import HybridSearch
+    from synthadoc.storage.log import AuditDB
+    from synthadoc.agents.query_agent import QueryAgent
+    from synthadoc.core.queue import Job, JobStatus
+
+    audit_path = tmp_wiki / ".synthadoc" / "audit.db"
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    db = AuditDB(audit_path)
+    await db.init()
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+
+    mock_job = Job(
+        id="baf72992", operation="ingest",
+        payload={"source": "https://example.com"},
+        status=JobStatus.COMPLETED, retries=0, error=None,
+        created_at="2026-06-03T10:00:00",
+    )
+    mock_queue = AsyncMock()
+    mock_queue.get_job = AsyncMock(return_value=mock_job)
+    mock_orch = MagicMock()
+    mock_orch._queue = mock_queue
+
+    agent = QueryAgent(provider=AsyncMock(), store=store, search=search, orchestrator=mock_orch)
+
+    with patch.object(AuditDB, "get_lifecycle_summary",
+                      new=AsyncMock(return_value={"active": 1})):
+        result = await agent._fetch_live_wiki_data(
+            "What is the status of my jobs? Job ID: baf72992"
+        )
+
+    assert "baf72992" in result
+    assert "completed" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_fetch_live_wiki_data_job_by_id_not_found(tmp_wiki):
+    """Querying a non-existent job ID reports 'not found'."""
+    from synthadoc.storage.wiki import WikiStorage
+    from synthadoc.storage.search import HybridSearch
+    from synthadoc.storage.log import AuditDB
+    from synthadoc.agents.query_agent import QueryAgent
+
+    audit_path = tmp_wiki / ".synthadoc" / "audit.db"
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    db = AuditDB(audit_path)
+    await db.init()
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+
+    mock_queue = AsyncMock()
+    mock_queue.get_job = AsyncMock(return_value=None)
+    mock_orch = MagicMock()
+    mock_orch._queue = mock_queue
+
+    agent = QueryAgent(provider=AsyncMock(), store=store, search=search, orchestrator=mock_orch)
+
+    with patch.object(AuditDB, "get_lifecycle_summary",
+                      new=AsyncMock(return_value={"active": 1})):
+        result = await agent._fetch_live_wiki_data("What is the status of job deadbeef?")
+
+    assert "not found" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_fetch_live_wiki_data_jobs_list(tmp_wiki):
+    """'What is the status of my jobs?' without a job ID lists recent jobs."""
+    from synthadoc.storage.wiki import WikiStorage
+    from synthadoc.storage.search import HybridSearch
+    from synthadoc.storage.log import AuditDB
+    from synthadoc.agents.query_agent import QueryAgent
+    from synthadoc.core.queue import Job, JobStatus
+
+    audit_path = tmp_wiki / ".synthadoc" / "audit.db"
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    db = AuditDB(audit_path)
+    await db.init()
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+
+    mock_job = Job(
+        id="abc12345", operation="ingest",
+        payload={"source": "https://example.com"},
+        status=JobStatus.PENDING, retries=0, error=None,
+        created_at="2026-06-03T09:00:00",
+    )
+    mock_queue = AsyncMock()
+    mock_queue.list_jobs = AsyncMock(return_value=[mock_job])
+    mock_orch = MagicMock()
+    mock_orch._queue = mock_queue
+
+    agent = QueryAgent(provider=AsyncMock(), store=store, search=search, orchestrator=mock_orch)
+
+    with patch.object(AuditDB, "get_lifecycle_summary",
+                      new=AsyncMock(return_value={"active": 1})):
+        result = await agent._fetch_live_wiki_data("What is the status of my jobs?")
+
+    assert "abc12345" in result
+    assert "ingest" in result
+
+
+@pytest.mark.asyncio
+async def test_fetch_live_wiki_data_jobs_empty(tmp_wiki):
+    """'What is the status of my jobs?' with no jobs reports 'no jobs found'."""
+    from synthadoc.storage.wiki import WikiStorage
+    from synthadoc.storage.search import HybridSearch
+    from synthadoc.storage.log import AuditDB
+    from synthadoc.agents.query_agent import QueryAgent
+
+    audit_path = tmp_wiki / ".synthadoc" / "audit.db"
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    db = AuditDB(audit_path)
+    await db.init()
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+
+    mock_queue = AsyncMock()
+    mock_queue.list_jobs = AsyncMock(return_value=[])
+    mock_orch = MagicMock()
+    mock_orch._queue = mock_queue
+
+    agent = QueryAgent(provider=AsyncMock(), store=store, search=search, orchestrator=mock_orch)
+
+    with patch.object(AuditDB, "get_lifecycle_summary",
+                      new=AsyncMock(return_value={"active": 1})):
+        result = await agent._fetch_live_wiki_data("What is the status of my jobs?")
+
+    assert "no jobs" in result.lower()

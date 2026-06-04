@@ -2,7 +2,7 @@
 # Copyright (C) 2026 Paul Chen / axoviq.com
 from __future__ import annotations
 import asyncio
-from typing import Optional
+from typing import AsyncGenerator, Optional
 import anthropic as anthropic_lib
 from synthadoc.config import AgentConfig
 from synthadoc.providers.base import CompletionResponse, LLMProvider, Message
@@ -48,3 +48,21 @@ class AnthropicProvider(LLMProvider):
                 raise
         assert last_exc is not None
         raise last_exc
+
+    async def complete_stream(
+        self, messages: list[Message], system: Optional[str] = None,
+        temperature: float = 0.0, max_tokens: int = 4096
+    ) -> AsyncGenerator[str, None]:
+        kwargs: dict = {
+            "model": self._config.model,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "messages": [{"role": m.role, "content": m.content} for m in messages],
+        }
+        if system:
+            kwargs["system"] = system
+        async with self._client.messages.stream(**kwargs) as stream:
+            async for event in stream:
+                if (event.type == "content_block_delta"
+                        and hasattr(event.delta, "text")):
+                    yield event.delta.text

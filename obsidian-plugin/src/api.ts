@@ -91,4 +91,15 @@ export const api = {
             status_filter: statusFilter,
             ...(contextPack ? { context_pack: contextPack } : {}),
         }),
+
+    queryStream: (question: string, sessionId: string | undefined, callbacks: import("./sse").SSECallbacks, noCache = false): Promise<void> => {
+        const params = new URLSearchParams({ q: question });
+        if (sessionId) params.set("session_id", sessionId);
+        if (noCache) params.set("no_cache", "true");
+        const url = `${BASE}/query/stream?${params.toString()}`;
+        return import("./sse").then(({ consumeSSE }) => consumeSSE(url, callbacks));
+    },
+    createSession: (): Promise<{ session_id: string; mode: string; initial_hints: string[] }> => {
+        return fetch(`${BASE}/sessions`, { method: "POST" }).then(r => r.json());
+    },
 };

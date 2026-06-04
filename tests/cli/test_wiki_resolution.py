@@ -192,7 +192,7 @@ def test_query_uses_env_var(monkeypatch):
     with patch("synthadoc.cli.query.get", return_value={
         "answer": "Test answer", "citations": [], "knowledge_gap": False, "suggested_searches": []
     }) as mock_get:
-        result = automation_runner.invoke(app, ["query", "what is turing?"])
+        result = automation_runner.invoke(app, ["query", "what is turing?", "--no-stream"])
     assert result.exit_code == 0
     assert "Test answer" in result.output
     assert mock_get.call_args[0][0] == "my-wiki"

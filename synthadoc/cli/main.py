@@ -118,3 +118,4 @@ app.add_typer(plugin_app)
 from synthadoc.cli.lifecycle import lifecycle_app  # noqa: F401, E402
 app.add_typer(lifecycle_app)
 from synthadoc.cli import export  # noqa: F401, E402
+from synthadoc.cli import web  # noqa: F401, E402

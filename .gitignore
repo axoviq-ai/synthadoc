@@ -4,8 +4,8 @@ __pycache__/
 .coverage
 coverage.json
 htmlcov/
-dist/
-build/
+/dist/
+/build/
 *.egg-info/
 .env
 .venv/
@@ -14,7 +14,7 @@ node_modules/
 obsidian-plugin/node_modules/
 obsidian-plugin/coverage/
 .VSCodeCounter/
-.claude/settings.local.json
+.claude/
 
 # synthadoc operational — never commit
 .synthadoc/

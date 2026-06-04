@@ -1,6 +1,6 @@
 # Synthadoc — Design Document
 
-**Version:** 0.6.0 (released 2026-05-28)  
+**Version:** 0.6.0  
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -32,6 +32,9 @@
 21. [Adversarial Review](#21-adversarial-review)
 22. [Claim-Level Provenance](#22-claim-level-provenance)
 23. [Lifecycle Machine](#23-lifecycle-machine)
+24. [Export Formats](#24-export-formats)
+25. [Streaming Query and Query Cache](#25-streaming-query-and-query-cache)
+26. [Web Chat UI and Session Management](#26-web-chat-ui-and-session-management)
 
 **Appendices**
 - [Appendix A — Release Feature Index](#appendix-a--release-feature-index)
@@ -642,6 +645,8 @@ Note: BM25 IDF requires a minimum of 3 documents in the corpus for non-zero scor
 | `GET` | `/lifecycle/status` _(v0.6.0)_ | — | `{draft: int, active: int, contradicted: int, stale: int, archived: int}` |
 | `GET` | `/lifecycle/events` _(v0.6.0)_ | `?slug=<slug>&to_state=<state>&limit=N&offset=N` | `{total: int, events: [LifecycleEvent]}` |
 | `POST` | `/lifecycle/transition` _(v0.6.0)_ | `{slug: str, to_state: str, reason?: str}` | `{slug, from_state, to_state, timestamp}` |
+| `GET` | `/query/stream` _(v0.7.0)_ | `?q=<question>&no_cache=<bool>` | SSE stream of `data: <token>\n\n` events, terminated by `data: [DONE]\n\n` |
+| `GET` | `/app` _(v0.7.0)_ | — | Serves the React SPA (web chat UI) |
 
 **`GET /jobs` query parameters:**
 
@@ -875,6 +880,8 @@ synthadoc schedule apply -w my-wiki
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--save` | off | Save the answer as a new wiki page |
+| `--no-stream` | off | Disable token-by-token streaming; print the full answer when complete. Use in scripts, pipes, or terminals that do not handle ANSI escape codes. |
+| `--no-cache` | off | Bypass the query result cache and always call the LLM. |
 | `--timeout N` | `60` | Seconds to wait for the LLM response. Increase for slower providers (e.g. `--timeout 120` for MiniMax reasoning models) |
 
 ### `ingest --analyse-only`
@@ -2197,6 +2204,134 @@ Accepts `{ format, status_filter }`. Returns raw content with appropriate `Conte
 
 ---
 
+## 25. Streaming Query and Query Cache
+
+### SSE Streaming Query
+
+`GET /query/stream?q=<question>[&session_id=<uuid>][&no_cache=true]` returns a Server-Sent Events stream. Each event is a JSON-encoded object:
+
+```
+data: {"event": "status", "data": {"phase": "retrieving"}}
+
+data: {"event": "status", "data": {"phase": "synthesizing", "sources": 3}}
+
+data: {"event": "token", "data": {"text": "Alan"}}
+
+data: {"event": "token", "data": {"text": " Turing"}}
+
+data: {"event": "citations", "data": {"citations": ["alan-turing", "enigma"]}}
+
+data: {"event": "done", "data": {"next_hints": ["What came after Turing?", ...]}}
+```
+
+| Event | Payload | When |
+|---|---|---|
+| `status` | `{"phase": "retrieving"}` | Phase 1 starts |
+| `status` | `{"phase": "synthesizing", "sources": N}` | Phase 2 starts |
+| `token` | `{"text": "…"}` | Each LLM token |
+| `citations` | `{"citations": […]}` | After last token |
+| `gap` | `{"suggested_searches": […]}` | If knowledge gap detected |
+| `done` | `{"next_hints": […]}` | Stream complete |
+| `error` | `{"message": "…"}` | On any exception |
+
+The CLI `synthadoc query` renders tokens as they arrive using ANSI cursor control. Pass `--no-stream` to fall back to the blocking `POST /query` endpoint and print the full answer when complete.
+
+The streaming path shares the same query decomposition, BM25 retrieval, and knowledge-gap detection as the blocking path. The only difference is delivery mechanism — SSE for streaming, plain JSON for blocking.
+
+### Epoch-Based Query Result Cache
+
+Query answers are cached in `cache.db` under a composite key:
+
+```
+cache_key = hash(
+    normalised_question,
+    wiki_epoch,
+    cache_version
+)
+```
+
+**Wiki epoch** is an integer stored in `cache.db` that increments on every event that changes wiki content:
+
+| Event | Effect on epoch |
+|-------|----------------|
+| `ingest` completes (pages written) | epoch + 1 |
+| `lifecycle transition` (any state change) | epoch + 1 |
+| `cache clear` | epoch reset to 0 |
+
+Because the epoch is part of the cache key, any structural change to the wiki automatically invalidates all cached query answers — there is no explicit expiry TTL. Answers cached before an ingest are never served after it.
+
+**`--no-cache` flag:** bypasses `cache.get()` and `cache.set()` for the current call. The existing cache entry (if any) is left intact; it will be served on subsequent calls without `--no-cache`.
+
+**`synthadoc cache clear`:** deletes all entries from `cache.db`, including both ingest response cache and query answer cache. The epoch is reset to 0.
+
+### QueryAgent integration
+
+`QueryAgent.query()` checks the cache before decomposing the question. On a hit, the cached `QueryResult` is returned immediately — no BM25 search, no LLM call. On a miss, the full pipeline runs and the result is written to cache before returning.
+
+The streaming endpoint inverts this: if a cache hit exists, the cached answer is replayed as an SSE stream (one token per event, then `[DONE]`), giving the same streaming UX even for cached responses.
+
+---
+
+## 26. Web Chat UI and Session Management
+
+### Architecture
+
+The web chat UI is a React single-page application served at `GET /app` by the Synthadoc HTTP server. It communicates with the existing REST API — no additional server process or port is required.
+
+**Serving:** The bundled static assets (`index.html`, `main.js`, `main.css`) are packaged with the `synthadoc` Python distribution under `synthadoc/web_ui/dist/`. The HTTP server mounts them at `/app` via a static file handler. The SPA's API calls target the same origin (`http://127.0.0.1:<port>`), so no CORS configuration is needed beyond what is already in place for the Obsidian plugin.
+
+### Session Management
+
+Each browser session is assigned a `session_id` (UUID) on `POST /sessions`. The server maintains a lightweight in-memory store per session:
+
+| Field | Type | Description |
+|---|---|---|
+| `session_id` | UUID | Unique identifier for this browser session |
+| `mode` | str | Session mode (`NEW_WIKI`, `EXPLORER`, `HEALTH_CHECK`, `POWER_USER`) |
+| `cursor` | int | Current position in the hint pool for windowed rotation |
+| `last_hints` | list[str] | Hints returned in the previous response (used for deduplication) |
+
+**Session mode** is derived from the wiki's current state at `POST /sessions`:
+
+| Mode | Condition | Hint behaviour |
+|---|---|---|
+| `NEW_WIKI` | `WikiStorage.count_pages() < 5` | Onboarding chips — guides user through first ingest |
+| `EXPLORER` | ≥5 pages, no prior `chat_sessions` rows | Discovery chips — broad overview questions |
+| `HEALTH_CHECK` | ≥5 pages, prior sessions, ≥1 `stale` page | Lifecycle chips — suggests running lint or reviewing stale pages |
+| `POWER_USER` | ≥5 pages, prior sessions, no stale pages | Context-sensitive follow-up chips |
+
+The mode is returned by `POST /sessions` and also visible as a badge in the UI header.
+
+### Hint Engine
+
+The `HintEngine` class (server-side, no LLM call) generates contextual chips:
+
+**Initial hints** (`initial_hints(mode)` — shown before the first question):
+3 fixed chips selected from the mode's priority hint set (e.g. `NEW_WIKI` → "How do I ingest my first document?").
+
+**After-response hints** (`after_response_windowed(answer, mode, cursor, previous_hints)`):
+Uses a sliding window over a deduplicated hint pool to rotate suggestions across sessions. The pool is built by placing the current mode's hints first, followed by other modes' hints (no duplicates). A `cursor` advances by 3 on each call so consecutive responses cycle through the full pool over time.
+
+If the answer text matches a topic pattern (e.g. the word "stale" in the answer triggers "How do I run a lint check?"), topic-relevant hints override the window — unless they exactly match the previous response's hints, in which case the pool window is used instead. This prevents keyword-triggered hints from repeating on consecutive wiki-management answers.
+
+Hint chips are rendered below each answer and in the empty-state panel before the first question. Clicking a chip populates the text box without auto-submitting.
+
+### Multi-turn Conversation
+
+The UI sends the full conversation history with each request as a `context` array (array of `{role, content}` objects). `QueryAgent` prepends this history to the system prompt so follow-up questions resolve correctly.
+
+History is stored in the browser's session state (JavaScript array); it is not persisted server-side. Closing the browser tab or refreshing the page starts a new conversation turn sequence (but `session_id` is preserved via `localStorage`).
+
+### CLI command
+
+```
+synthadoc web [-w wiki] [--port N]
+```
+
+Opens the default browser to `http://localhost:{port}/app`. The server must already be running (`synthadoc serve`). This command is a thin wrapper around the OS `open`/`start`/`xdg-open` call — it does not start a new server process.
+
+---
+
 ## Appendix A — Release Feature Index
 
 ### v0.1.0 (Community Edition)
@@ -2290,3 +2425,13 @@ Accepts `{ format, status_filter }`. Returns raw content with appropriate `Conte
 - **Lifecycle HTTP API** — `GET /lifecycle/status`, `GET /lifecycle/events`, `POST /lifecycle/transition`
 - **Lifecycle Obsidian plugin** — `Synthadoc: Manage Page Lifecycle` command opens `LifecycleModal`: sortable, filterable, paginated table of all pages with current state and last transition; valid transition action buttons per row; `ReasonModal` prompts for reason before committing; draft/stale badge links on lint modal and jobs panel open the table pre-filtered
 - **Export formats** — `synthadoc export --format <fmt>` serializes the wiki in four formats assembled server-side with zero LLM calls: `llms.txt` (navigation index per llmstxt.org spec — active pages in `## Pages`, contradicted/stale in `## Needs Review`, archived omitted); `llms-full.txt` (flat content dump with `---` separators, provenance footnotes preserved verbatim, no size limit); `graphml` (standard GraphML 1.1 — node attributes include `label`/`title`, `status`, `confidence`, `orphan`, `inbound_link_count`, `routing_branch`; edges=wikilinks; dual-label support: `label` key for Gephi/Cytoscape, `y:NodeLabel` for yEd; no position data — run tool layout after import); `json` (agent-ready dump with `claims[]`, `lifecycle_history[]`, per-page `ingest_cost_usd` and `ingest_tokens`, `total_compilation_cost_usd`, `routing.branch_memberships`); all formats accept `--status` filter (`all`/`active`/`draft`/`stale`/`contradicted`/`archived`); `POST /export` endpoint accepts `{format, status_filter}`; Obsidian **Export Wiki** command — format dropdown, full-width output path, status filter, Export button, View Graph inline preview button (graphml only)
+
+
+### v0.7.0 (Community Edition)
+
+- **Streaming query output** — `synthadoc query` streams the LLM answer token-by-token via Server-Sent Events (SSE); the CLI renders tokens as they arrive. `--no-stream` reverts to blocking mode for scripts and pipes. `GET /query/stream` SSE endpoint; the streaming path reuses all existing decomposition, BM25, and knowledge-gap logic.
+- **Epoch-based query result cache** — query answers are cached in `cache.db` under a composite key of normalised question + wiki epoch + cache version. The wiki epoch increments on every ingest completion and every lifecycle transition, so cached answers are always consistent with current wiki content. `--no-cache` bypasses the cache per call without evicting the entry. `synthadoc cache clear` resets the epoch and removes all entries.
+- **Web chat UI** — React SPA served at `GET /app` by the existing HTTP server (no extra port or process). Features: session-aware mode detection (`NEW_WIKI` / `EXPLORER` / `HEALTH_CHECK` / `POWER_USER`) based on wiki page count, prior session history, and stale-page presence; streaming answers via SSE; citation links; knowledge-gap callouts; contextual hint chips with windowed pool rotation; and multi-turn conversation history. Server maintains a lightweight in-memory session store (session_id, mode, hint cursor, last_hints).
+- **Session management and hint engine** — hint chip sets are derived from wiki index headings (new mode), recent citation graph (explorer mode), and uncovered BM25 top pages (power-user mode). Mode badge displayed in the UI header.
+- **Obsidian plugin streaming** — the Query command streams the answer into the modal as tokens arrive, matching the CLI and web UI streaming experience. No change to the Obsidian command count.
+- **`synthadoc web` CLI command** — opens the default browser to `http://localhost:{port}/app`; thin wrapper around OS open/start/xdg-open; server must already be running.

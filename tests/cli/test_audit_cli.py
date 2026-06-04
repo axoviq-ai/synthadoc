@@ -375,3 +375,42 @@ def test_audit_citations_broken_flag(tmp_path, monkeypatch):
     result = cli_runner.invoke(_app, ["audit", "citations", "-w", "mywiki", "--broken"])
     assert result.exit_code == 0, result.output
     assert "broken_ref" in result.output
+
+
+def test_audit_lifecycle_purge_command(tmp_path, monkeypatch):
+    """audit lifecycle purge must call purge_lifecycle_events and print confirmation."""
+    import synthadoc.cli.install as install_mod
+    from synthadoc.storage.log import AuditDB as _AuditDB
+    (tmp_path / ".synthadoc").mkdir()
+    dbc = _AuditDB(tmp_path / ".synthadoc" / "audit.db")
+    asyncio.run(dbc.init())
+    monkeypatch.setattr(install_mod, "_read_registry",
+                        lambda: {"mywiki": {"path": str(tmp_path)}})
+    from typer.testing import CliRunner
+    from synthadoc.cli.main import app as _app
+    cli_runner = CliRunner()
+    result = cli_runner.invoke(_app, [
+        "audit", "lifecycle", "purge", "-w", "mywiki",
+    ])
+    assert result.exit_code == 0, result.output
+    assert "purged" in result.output.lower()
+
+
+def test_audit_lifecycle_purge_with_before(tmp_path, monkeypatch):
+    """audit lifecycle purge --before must pass the date to purge_lifecycle_events."""
+    import synthadoc.cli.install as install_mod
+    from synthadoc.storage.log import AuditDB as _AuditDB
+    (tmp_path / ".synthadoc").mkdir()
+    dbc = _AuditDB(tmp_path / ".synthadoc" / "audit.db")
+    asyncio.run(dbc.init())
+    monkeypatch.setattr(install_mod, "_read_registry",
+                        lambda: {"mywiki": {"path": str(tmp_path)}})
+    from typer.testing import CliRunner
+    from synthadoc.cli.main import app as _app
+    cli_runner = CliRunner()
+    result = cli_runner.invoke(_app, [
+        "audit", "lifecycle", "purge", "-w", "mywiki",
+        "--before", "2026-01-01",
+    ])
+    assert result.exit_code == 0, result.output
+    assert "purged" in result.output.lower()

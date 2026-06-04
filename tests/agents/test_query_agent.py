@@ -5,6 +5,7 @@ import pytest
 from unittest.mock import AsyncMock, patch
 from synthadoc.agents.query_agent import QueryAgent, QueryResult
 from synthadoc.providers.base import CompletionResponse
+from synthadoc.storage.log import AuditDB
 from synthadoc.storage.wiki import WikiStorage, WikiPage
 from synthadoc.storage.search import HybridSearch, SearchResult
 
@@ -1674,4 +1675,256 @@ async def test_gap_sentinel_not_triggered_when_llm_answers_normally(tmp_wiki):
     assert result.knowledge_gap is False
     assert result.answer == "AI stands for Artificial Intelligence [[ai-overview]]."
     # Only 2 provider calls: decompose + synthesis. No SearchDecomposeAgent call.
+    assert provider.complete.call_count == 2
+
+
+# ── system knowledge ──────────────────────────────────────────────────────────
+
+def test_system_knowledge_loaded():
+    """_SYSTEM_KNOWLEDGE must contain at least the four bundled help pages."""
+    from synthadoc.agents.query_agent import _SYSTEM_KNOWLEDGE
+    assert len(_SYSTEM_KNOWLEDGE) >= 4
+    titles = [p.title for p in _SYSTEM_KNOWLEDGE]
+    assert any("Ingest" in t for t in titles)
+    assert any("Lint" in t for t in titles)
+    assert any("Export" in t for t in titles)
+    assert any("Lifecycle" in t for t in titles)
+
+
+def test_get_relevant_system_pages_ingest_keyword(tmp_wiki):
+    """'ingest' in question must match the ingest guide page."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    from unittest.mock import AsyncMock as _AsMock
+    provider = _AsMock()
+    agent = QueryAgent(provider=provider, store=store, search=search)
+    result = agent._get_relevant_system_pages("What file types can I ingest?")
+    assert result != ""
+    assert "Ingest" in result or "ingest" in result.lower()
+
+
+def test_get_relevant_system_pages_no_match(tmp_wiki):
+    """A question with no Synthadoc keywords must return an empty string."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    from unittest.mock import AsyncMock as _AsMock
+    provider = _AsMock()
+    agent = QueryAgent(provider=provider, store=store, search=search)
+    result = agent._get_relevant_system_pages("What is the capital of France?")
+    assert result == ""
+
+
+def test_get_relevant_system_pages_lint_keyword(tmp_wiki):
+    """'lint' in question must match the lint guide page."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    from unittest.mock import AsyncMock as _AsMock
+    provider = _AsMock()
+    agent = QueryAgent(provider=provider, store=store, search=search)
+    result = agent._get_relevant_system_pages("How do I run lint checks?")
+    assert result != ""
+    assert "Lint" in result or "lint" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_fetch_live_wiki_data_recent_changes(tmp_wiki):
+    """'What changed this week?' must include recent ingest history."""
+    from unittest.mock import AsyncMock as _AsMock, patch
+    from synthadoc.storage.log import AuditDB
+
+    audit_path = tmp_wiki / ".synthadoc" / "audit.db"
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    db = AuditDB(audit_path)
+    await db.init()
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    agent = QueryAgent(provider=_AsMock(), store=store, search=search)
+
+    recent_row = [{"wiki_page": "alan-turing", "source_path": "turing.pdf",
+                   "ingested_at": "2026-06-03T10:00:00+00:00"}]
+    with patch.object(AuditDB, "list_ingests_since", new=AsyncMock(return_value=recent_row)), \
+         patch.object(AuditDB, "get_lifecycle_summary", new=AsyncMock(return_value={"active": 5})):
+        result = await agent._fetch_live_wiki_data("What changed in the wiki this week?")
+
+    assert "alan-turing" in result
+    assert "last 7 days" in result
+
+
+@pytest.mark.asyncio
+async def test_query_system_knowledge_suppresses_gap(tmp_wiki):
+    """When system knowledge matches, gap must be suppressed even at very high threshold."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["What file types can I ingest?"]',
+                           input_tokens=5, output_tokens=5),
+        CompletionResponse(text="You can ingest PDF, DOCX, and more.",
+                           input_tokens=80, output_tokens=15),
+    ]
+    # Very high threshold that would normally fire gap — system knowledge must override
+    agent = QueryAgent(provider=provider, store=store, search=search,
+                       gap_score_threshold=999.0)
+    result = await agent.query("What file types can I ingest?")
+    assert result.knowledge_gap is False
+    assert result.suggested_searches == []
+
+
+@pytest.mark.asyncio
+async def test_query_system_knowledge_in_synthesis_prompt(tmp_wiki):
+    """When system knowledge matches, synthesis prompt must contain 'Synthadoc Help'."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["What file types can I ingest?"]',
+                           input_tokens=5, output_tokens=5),
+        CompletionResponse(text="You can ingest PDF, DOCX, and more.",
+                           input_tokens=80, output_tokens=15),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=0.0)
+    await agent.query("What file types can I ingest?")
+
+    # The second complete() call is synthesis — its prompt must include Synthadoc Help
+    assert len(provider.complete.call_args_list) >= 2
+    synthesis_prompt = provider.complete.call_args_list[1][1]["messages"][0].content
+    assert "Synthadoc Help" in synthesis_prompt
+    # Wiki pages must NOT be in the synthesis context (they're noise for product questions)
+    assert "No relevant pages found" not in synthesis_prompt
+
+
+@pytest.mark.asyncio
+async def test_query_system_knowledge_no_wiki_citations(tmp_wiki):
+    """When system knowledge matches, citations list must be empty (no wiki pages injected)."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["What file types can I ingest?"]',
+                           input_tokens=5, output_tokens=5),
+        CompletionResponse(text="You can ingest PDF, DOCX, and more.",
+                           input_tokens=80, output_tokens=15),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=0.0)
+    result = await agent.query("What file types can I ingest?")
+    assert result.citations == []
+
+
+# ── _fetch_live_wiki_data ──────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_fetch_live_wiki_data_no_db_returns_empty(tmp_wiki):
+    """Returns empty string gracefully when audit.db does not exist."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    agent = QueryAgent(provider=AsyncMock(), store=store, search=search)
+    result = await agent._fetch_live_wiki_data("which pages are stale?")
+    assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_fetch_live_wiki_data_no_trigger_returns_empty(tmp_wiki):
+    """Returns empty string when question has no lifecycle keywords."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    agent = QueryAgent(provider=AsyncMock(), store=store, search=search)
+    result = await agent._fetch_live_wiki_data("tell me about the Roman Empire")
+    assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_fetch_live_wiki_data_returns_counts(tmp_wiki):
+    """Returns lifecycle counts when audit.db exists with page states."""
+    sd = tmp_wiki / ".synthadoc"
+    sd.mkdir(parents=True, exist_ok=True)
+    audit = AuditDB(sd / "audit.db")
+    await audit.init()
+    await audit.set_page_state("page-a", "active", "test")
+    await audit.set_page_state("page-b", "stale", "test")
+    await audit.set_page_state("page-c", "stale", "test")
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    agent = QueryAgent(provider=AsyncMock(), store=store, search=search)
+    result = await agent._fetch_live_wiki_data("which pages are stale?")
+
+    assert "stale" in result
+    assert "page-b" in result
+    assert "page-c" in result
+    assert "active" in result
+
+
+@pytest.mark.asyncio
+async def test_fetch_live_wiki_data_counts_contradicted(tmp_wiki):
+    """'how many pages contradicted' triggers live data with contradiction counts."""
+    sd = tmp_wiki / ".synthadoc"
+    sd.mkdir(parents=True, exist_ok=True)
+    audit = AuditDB(sd / "audit.db")
+    await audit.init()
+    await audit.set_page_state("page-x", "contradicted", "test")
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    agent = QueryAgent(provider=AsyncMock(), store=store, search=search)
+    result = await agent._fetch_live_wiki_data("how many pages contradicted?")
+
+    assert "contradicted" in result
+    assert "page-x" in result
+
+
+@pytest.mark.asyncio
+async def test_query_live_data_injected_into_synthesis(tmp_wiki):
+    """When lifecycle question matches system knowledge, synthesis prompt contains Live Wiki Data."""
+    sd = tmp_wiki / ".synthadoc"
+    sd.mkdir(parents=True, exist_ok=True)
+    audit = AuditDB(sd / "audit.db")
+    await audit.init()
+    await audit.set_page_state("my-page", "stale", "test")
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["which pages are stale?"]', input_tokens=5, output_tokens=5),
+        CompletionResponse(text="Here are the stale pages...", input_tokens=80, output_tokens=15),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=0.0)
+    await agent.query("which pages are stale?")
+
+    synthesis_prompt = provider.complete.call_args_list[1][1]["messages"][0].content
+    assert "Live Wiki Data" in synthesis_prompt
+    assert "my-page" in synthesis_prompt
+
+
+@pytest.mark.asyncio
+async def test_no_gap_for_wiki_introspective_queries(tmp_wiki):
+    """Meta-questions about the wiki's own scope must never trigger a knowledge gap.
+
+    "What topics does this wiki cover?" has all content words filtered as stopwords
+    (topic, cover) or too short (wiki, what, does, this), so _key_terms is empty and
+    BM25 returns < 3 candidates — signal 1 fires. The _WIKI_INTROSPECTIVE_TRIGGERS
+    guard must suppress this before SearchDecomposeAgent is called.
+    """
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("neural-networks", WikiPage(
+        title="Neural Networks", tags=["ai"],
+        content="Neural networks are computational models inspired by the brain. "
+                "They consist of layers of interconnected nodes.",
+        status="active", confidence="high", sources=[],
+    ))
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["What topics does this wiki cover?"]',
+                           input_tokens=5, output_tokens=5),
+        CompletionResponse(text="This wiki covers neural networks and AI topics.",
+                           input_tokens=50, output_tokens=10),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search)
+    result = await agent.query("What topics does this wiki cover?")
+
+    assert result.knowledge_gap is False
+    assert result.suggested_searches == []
+    # SearchDecomposeAgent should NOT have been called (only 2 complete() calls total)
     assert provider.complete.call_count == 2

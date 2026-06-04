@@ -5,7 +5,7 @@ import asyncio
 import json as _json
 import logging
 import re
-from typing import Optional
+from typing import AsyncGenerator, Optional
 import openai as _openai
 from openai import AsyncOpenAI
 from synthadoc.config import AgentConfig
@@ -291,3 +291,50 @@ class OpenAIProvider(LLMProvider):
         return CompletionResponse(text=text,
                                   input_tokens=resp.usage.prompt_tokens,
                                   output_tokens=resp.usage.completion_tokens)
+
+    async def complete_stream(
+        self, messages: list[Message], system: Optional[str] = None,
+        temperature: float = 0.0, max_tokens: int = 4096
+    ) -> AsyncGenerator[str, None]:
+        msgs = []
+        if system:
+            msgs.append({"role": "system", "content": system})
+        msgs.extend({"role": m.role, "content": self._to_openai_content(m.content)}
+                    for m in messages)
+        buf = ""
+        in_think = False
+        async for chunk in await self._client.chat.completions.create(
+            model=self._config.model, messages=msgs,
+            temperature=temperature, max_tokens=max_tokens,
+            timeout=self._timeout, stream=True,
+        ):
+            if not (chunk.choices and chunk.choices[0].delta.content):
+                continue
+            buf += chunk.choices[0].delta.content
+            # Suppress <think>...</think> reasoning blocks (e.g. MiniMax M2.5).
+            # Tags may arrive split across tokens, so we scan a rolling buffer.
+            while True:
+                if not in_think:
+                    idx = buf.find("<think>")
+                    if idx == -1:
+                        # No tag found; yield all but the last 6 chars (partial tag guard)
+                        safe = max(0, len(buf) - 6)
+                        if safe:
+                            yield buf[:safe]
+                            buf = buf[safe:]
+                        break
+                    else:
+                        if idx > 0:
+                            yield buf[:idx]
+                        buf = buf[idx + 7:]  # skip "<think>"
+                        in_think = True
+                else:
+                    idx = buf.find("</think>")
+                    if idx == -1:
+                        buf = buf[max(0, len(buf) - 7):]  # keep potential partial "</think>"
+                        break
+                    else:
+                        buf = buf[idx + 8:].lstrip()  # skip "</think>" + leading whitespace
+                        in_think = False
+        if buf and not in_think:
+            yield buf
