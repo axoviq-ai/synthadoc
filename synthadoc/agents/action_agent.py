@@ -23,7 +23,8 @@ _ACTION_RE = re.compile(
     r"|\b(rebuild|regenerate)\b.{0,20}\bscaffold\b"
     r"|\bschedule\s+(add|a|an|daily|weekly|hourly|every|at)\b"
     r"|\b(add|create|register)\b.{0,80}\bschedul"
-    r"|\b(list|show)\b.{0,20}\bschedul"
+    r"|\b(list|show|display|view)\b.{0,20}\bschedul"
+    r"|\bschedul\w*.{0,30}\b(histor|run|log)\w*\b"
     r"|(?<![a-zA-Z0-9])schedul\w*.{0,150}(?<![a-zA-Z0-9])(scaffold|ingest|lint)(?![a-zA-Z0-9])"
     r"|(?<![a-zA-Z0-9])(scaffold|ingest|lint)(?![a-zA-Z0-9]).{0,150}(?<![a-zA-Z0-9])schedul\w*"
     r"|\b(activate|archive|restore)\s+\w",
@@ -37,7 +38,7 @@ _EXTRACT_PROMPT_TEMPLATE = (
     "parameters from the user request below.\n\n"
     "Return ONLY a JSON object — no explanation, no markdown fences.\n\n"
     'Schema: {{"action": "<lint|lint_report|ingest|scaffold|schedule_add|schedule_list|'
-    'lifecycle_activate|lifecycle_archive|lifecycle_restore|none>", "params": {{...}}}}\n\n'
+    'schedule_history|lifecycle_activate|lifecycle_archive|lifecycle_restore|none>", "params": {{...}}}}\n\n'
     "params keys by action:\n"
     "  lint          : scope (all|contradictions|orphans|stale|citations), auto_resolve (bool)\n"
     "  lint_report   : (no params — shows current contradictions, orphans and adversarial warnings; no server needed)\n"
@@ -47,7 +48,8 @@ _EXTRACT_PROMPT_TEMPLATE = (
     "'ingest --batch sources/'; NOTE: lint requires the 'run' subcommand — op must be "
     "'lint run', never just 'lint'), "
     "cron (parsed cron expression), schedule_description (original natural language)\n"
-    "  schedule_list : (no params)\n"
+    "  schedule_list    : (no params)\n"
+    "  schedule_history : (no params — shows recent scheduled run history)\n"
     "  lifecycle_activate / lifecycle_archive / lifecycle_restore : slug, reason\n"
     "  none          : (no params)\n\n"
     "Cron parsing: 'daily at 6am'='0 6 * * *', 'every Sunday at 7pm'='0 19 * * 0', "
@@ -138,6 +140,8 @@ class ActionAgent:
             return self._do_schedule_add(params)
         if action == "schedule_list":
             return self._do_schedule_list()
+        if action == "schedule_history":
+            return await self._do_schedule_history()
         if action in ("lifecycle_activate", "lifecycle_archive", "lifecycle_restore"):
             return await self._do_lifecycle(action, params)
         return ActionResult(action_type=action, success=False,
@@ -280,6 +284,45 @@ class ActionAgent:
             success=True,
             message=schedule_table,
         )
+
+    async def _do_schedule_history(self) -> ActionResult:
+        from synthadoc.storage.log import AuditDB
+        audit_path = self._wiki_root / ".synthadoc" / "audit.db"
+        if not audit_path.exists():
+            return ActionResult(
+                action_type="schedule_history",
+                success=True,
+                message="No scheduled run history yet — jobs will appear here after their first run.",
+            )
+        audit = AuditDB(audit_path)
+        await audit.init()
+        runs = await audit.list_scheduled_runs(limit=20)
+        if not runs:
+            return ActionResult(
+                action_type="schedule_history",
+                success=True,
+                message="No scheduled run history yet — jobs will appear here after their first run.",
+            )
+        lines = [
+            "**Recent scheduled runs:**\n",
+            "| Run ID | Op | Started | Duration | Status |",
+            "|---|---|---|---|---|",
+        ]
+        for r in runs:
+            started = (r.get("started_at") or "")[:16].replace("T", " ")
+            dur = f"{r['duration_s']:.1f}s" if r.get("duration_s") is not None else "—"
+            status = r.get("status") or "—"
+            err = r.get("error") or ""
+            if status == "failed" and err:
+                status_cell = f"❌ {err[:60]}"
+            elif status == "success":
+                status_cell = "✅"
+            else:
+                status_cell = status
+            lines.append(
+                f"| `{r['run_id']}` | `{r['op']}` | {started} | {dur} | {status_cell} |"
+            )
+        return ActionResult(action_type="schedule_history", success=True, message="\n".join(lines))
 
     async def _do_lifecycle(self, action: str, params: dict) -> ActionResult:
         from synthadoc.storage.log import AuditDB
