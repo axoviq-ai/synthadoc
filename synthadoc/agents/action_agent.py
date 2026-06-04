@@ -22,6 +22,7 @@ _ACTION_RE = re.compile(
     r"|(?<![a-zA-Z-])ingest\s+\S"
     r"|\b(rebuild|regenerate)\b.{0,20}\bscaffold\b"
     r"|\bschedule\s+(add|a|an|daily|weekly|hourly|every|at)\b"
+    r"|\b(add|create|register)\b.{0,80}\bschedul"
     r"|\b(list|show)\b.{0,20}\bschedul"
     r"|\b(activate|archive|restore)\s+\w",
     re.IGNORECASE,

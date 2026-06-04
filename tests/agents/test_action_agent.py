@@ -48,6 +48,18 @@ def test_detect_schedule_list(tmp_path):
     agent = _make_agent(tmp_path, "{}")
     assert agent.detect("Show my scheduled tasks") is True
 
+def test_detect_schedule_add_via_scheduler_noun(tmp_path):
+    agent = _make_agent(tmp_path, "{}")
+    assert agent.detect("please add a scaffold task to synthadoc scheduler and run it at 7 PM on every Saturday") is True
+
+def test_detect_schedule_add_via_create(tmp_path):
+    agent = _make_agent(tmp_path, "{}")
+    assert agent.detect("Create a scheduled ingest job for every Monday at 9 AM") is True
+
+def test_detect_schedule_add_via_register(tmp_path):
+    agent = _make_agent(tmp_path, "{}")
+    assert agent.detect("Register a weekly scaffold in the schedule") is True
+
 def test_detect_lifecycle_activate(tmp_path):
     agent = _make_agent(tmp_path, "{}")
     assert agent.detect("Activate page grace-hopper") is True
