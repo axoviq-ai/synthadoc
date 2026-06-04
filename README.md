@@ -258,7 +258,7 @@ Get a free key at [tavily.com](https://tavily.com). Without it, web search jobs 
 ```bash
 git clone https://github.com/paulmchen/synthadoc.git
 cd synthadoc
-pip3 install -e ".[dev]"
+pip install -e ".[dev]"
 ```
 
 If you already have Synthadoc wikis installed, upgrade the Obsidian plugin in all registered wikis to keep them in sync:
