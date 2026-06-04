@@ -366,6 +366,57 @@ class QueryAgent:
             logger.debug("live wiki data fetch failed: %s", exc)
             return ""
 
+    def _build_synthesis_prompt(
+        self,
+        question: str,
+        context: str,
+        *,
+        gap: bool,
+        system_ctx: str,
+        is_live_data: bool,
+        gap_sentinel: bool = False,
+    ) -> str:
+        """Build the LLM synthesis prompt. gap_sentinel=True adds the [GAP] marker
+        instruction used by run() for post-synthesis gap override; run_stream() omits it."""
+        if gap:
+            return (
+                f"The wiki does not yet have a page on this topic. "
+                f"Answer the question using your general knowledge, then note in one sentence "
+                f"that the wiki does not currently cover this topic and suggest the user enriches it.\n\n"
+                f"Question: {question}\n\n"
+                f"Wiki pages available (unrelated to this question):\n{context}"
+            )
+        if system_ctx:
+            return (
+                f"Answer the question using the Synthadoc Help documentation and Live Wiki Data below. "
+                f"If Live Wiki Data is present, use it to give concrete, specific answers "
+                f"(e.g. list the actual page names, show real counts). "
+                f"After answering, include a short 'To verify or investigate further' section "
+                f"with the relevant CLI commands copied VERBATIM from the code blocks in the documentation — "
+                f"do not rephrase or generate command names from memory. "
+                f"When commands appear in a Markdown table, use inline code (single backticks) "
+                f"not fenced code blocks — fenced blocks do not render inside table cells. "
+                f"Do not reference or cite wiki pages.\n\n"
+                f"Question: {question}\n\nDocumentation:\n{context}"
+            )
+        if is_live_data:
+            return (
+                f"Answer using the Live Wiki Data below. "
+                f"The data is fetched directly from Synthadoc's audit log and page state database — "
+                f"give specific, concrete answers using the actual page names, dates, and counts shown. "
+                f"Do not reference or cite wiki page content.\n\n"
+                f"Question: {question}\n\nData:\n{context}"
+            )
+        gap_instruction = (
+            "If the pages do not contain enough information to answer the question, "
+            "start your response with exactly '[GAP]' on its own line, then explain what's missing.\n\n"
+        ) if gap_sentinel else ""
+        return (
+            f"Answer using ONLY these wiki pages. Cite with [[PageTitle]].\n\n"
+            f"{gap_instruction}"
+            f"Question: {question}\n\nPages:\n{context}"
+        )
+
     def _load_purpose_context(self) -> str:
         """Return purpose.md as a pinned preamble for synthesis, or '' if absent."""
         page = self._store.read_page("purpose")
@@ -722,42 +773,11 @@ class QueryAgent:
             _ctx_parts.append(_pages_ctx)
         context = "\n\n".join(_ctx_parts)
 
-        if _gap:
-            synthesis_prompt = (
-                f"The wiki does not yet have a page on this topic. "
-                f"Answer the question using your general knowledge, then note in one sentence "
-                f"that the wiki does not currently cover this topic and suggest the user enriches it.\n\n"
-                f"Question: {question}\n\n"
-                f"Wiki pages available (unrelated to this question):\n{context}"
-            )
-        elif _system_ctx:
-            synthesis_prompt = (
-                f"Answer the question using the Synthadoc Help documentation and Live Wiki Data below. "
-                f"If Live Wiki Data is present, use it to give concrete, specific answers "
-                f"(e.g. list the actual page names, show real counts). "
-                f"After answering, include a short 'To verify or investigate further' section "
-                f"with the relevant CLI commands copied VERBATIM from the code blocks in the documentation — "
-                f"do not rephrase or generate command names from memory. "
-                f"When commands appear in a Markdown table, use inline code (single backticks) "
-                f"not fenced code blocks — fenced blocks do not render inside table cells. "
-                f"Do not reference or cite wiki pages.\n\n"
-                f"Question: {question}\n\nDocumentation:\n{context}"
-            )
-        elif _is_live_data:
-            synthesis_prompt = (
-                f"Answer using the Live Wiki Data below. "
-                f"The data is fetched directly from Synthadoc's audit log and page state database — "
-                f"give specific, concrete answers using the actual page names, dates, and counts shown. "
-                f"Do not reference or cite wiki page content.\n\n"
-                f"Question: {question}\n\nData:\n{context}"
-            )
-        else:
-            synthesis_prompt = (
-                f"Answer using ONLY these wiki pages. Cite with [[PageTitle]].\n\n"
-                f"If the pages do not contain enough information to answer the question, "
-                f"start your response with exactly '[GAP]' on its own line, then explain what's missing.\n\n"
-                f"Question: {question}\n\nPages:\n{context}"
-            )
+        synthesis_prompt = self._build_synthesis_prompt(
+            question, context,
+            gap=_gap, system_ctx=_system_ctx, is_live_data=_is_live_data,
+            gap_sentinel=True,
+        )
 
         resp2 = await self._provider.complete(
             messages=[Message(role="user", content=synthesis_prompt)],
@@ -984,40 +1004,10 @@ class QueryAgent:
         ):
             _gap = False
 
-        if _gap:
-            synthesis_prompt = (
-                f"The wiki does not yet have a page on this topic. "
-                f"Answer the question using your general knowledge, then note in one sentence "
-                f"that the wiki does not currently cover this topic and suggest the user enriches it.\n\n"
-                f"Question: {question}\n\n"
-                f"Wiki pages available (unrelated to this question):\n{context}"
-            )
-        elif _system_ctx:
-            synthesis_prompt = (
-                f"Answer the question using the Synthadoc Help documentation and Live Wiki Data below. "
-                f"If Live Wiki Data is present, use it to give concrete, specific answers "
-                f"(e.g. list the actual page names, show real counts). "
-                f"After answering, include a short 'To verify or investigate further' section "
-                f"with the relevant CLI commands copied VERBATIM from the code blocks in the documentation — "
-                f"do not rephrase or generate command names from memory. "
-                f"When commands appear in a Markdown table, use inline code (single backticks) "
-                f"not fenced code blocks — fenced blocks do not render inside table cells. "
-                f"Do not reference or cite wiki pages.\n\n"
-                f"Question: {question}\n\nDocumentation:\n{context}"
-            )
-        elif _is_live_data:
-            synthesis_prompt = (
-                f"Answer using the Live Wiki Data below. "
-                f"The data is fetched directly from Synthadoc's audit log and page state database — "
-                f"give specific, concrete answers using the actual page names, dates, and counts shown. "
-                f"Do not reference or cite wiki page content.\n\n"
-                f"Question: {question}\n\nData:\n{context}"
-            )
-        else:
-            synthesis_prompt = (
-                f"Answer using ONLY these wiki pages. Cite with [[PageTitle]].\n\n"
-                f"Question: {question}\n\nPages:\n{context}"
-            )
+        synthesis_prompt = self._build_synthesis_prompt(
+            question, context,
+            gap=_gap, system_ctx=_system_ctx, is_live_data=_is_live_data,
+        )
 
         yield {"event": "status", "data": {"phase": "synthesizing", "sources": len(citations)}}
 
