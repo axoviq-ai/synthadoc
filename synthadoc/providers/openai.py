@@ -227,6 +227,13 @@ class OpenAIProvider(LLMProvider):
                 f"(code={err_code}): {err_msg}"
             )
         choice = resp.choices[0]
+        if choice.finish_reason == "length":
+            logger.warning(
+                "complete: response truncated by token limit "
+                "(finish_reason=length, max_tokens=%d, model=%s). "
+                "Increase query_max_tokens in [agents] of config.toml.",
+                max_tokens, self._config.model,
+            )
         original_content = choice.message.content or ""
         # Reasoning models (MiniMax M2, DeepSeek R1, Qwen QwQ) wrap their chain-of-thought
         # in <think> blocks, but the </think> tag can appear mid-JSON (e.g. inside a key
@@ -303,14 +310,30 @@ class OpenAIProvider(LLMProvider):
                     for m in messages)
         buf = ""
         in_think = False
+        _think_chars = 0
+        _answer_chars = 0
+        logger.info("complete_stream: max_tokens=%d model=%s", max_tokens, self._config.model)
         async for chunk in await self._client.chat.completions.create(
             model=self._config.model, messages=msgs,
             temperature=temperature, max_tokens=max_tokens,
             timeout=self._timeout, stream=True,
         ):
+            if chunk.choices and chunk.choices[0].finish_reason == "length":
+                logger.warning(
+                    "complete_stream: response truncated by token limit "
+                    "(finish_reason=length, max_tokens=%d, model=%s). "
+                    "think_chars=%d answer_chars=%d. "
+                    "Increase query_max_tokens in [agents] of config.toml.",
+                    max_tokens, self._config.model, _think_chars, _answer_chars,
+                )
             if not (chunk.choices and chunk.choices[0].delta.content):
                 continue
-            buf += chunk.choices[0].delta.content
+            delta = chunk.choices[0].delta.content
+            if in_think:
+                _think_chars += len(delta)
+            else:
+                _answer_chars += len(delta)
+            buf += delta
             # Suppress <think>...</think> reasoning blocks (e.g. MiniMax M2.5).
             # Tags may arrive split across tokens, so we scan a rolling buffer.
             while True:
@@ -336,5 +359,18 @@ class OpenAIProvider(LLMProvider):
                     else:
                         buf = buf[idx + 8:].lstrip()  # skip "</think>" + leading whitespace
                         in_think = False
+        if in_think:
+            logger.warning(
+                "complete_stream: stream ended inside <think> block — think block was never closed "
+                "(think_chars=%d, answer_chars=%d, max_tokens=%d, model=%s). "
+                "The model exhausted its token budget during reasoning. "
+                "Increase query_max_tokens in [agents] of config.toml.",
+                _think_chars, _answer_chars, max_tokens, self._config.model,
+            )
+        else:
+            logger.info(
+                "complete_stream: done (think_chars=%d, answer_chars=%d, max_tokens=%d, model=%s)",
+                _think_chars, _answer_chars, max_tokens, self._config.model,
+            )
         if buf and not in_think:
             yield buf
