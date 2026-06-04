@@ -20,31 +20,49 @@ _FM_STRIP_RE = re.compile(r"^---\s*\n.*?\n---\s*\n+", re.DOTALL)
 _H1_STRIP_RE = re.compile(r"^#[^#][^\n]*\n+")
 
 
+def _coerce_scaffold_dict(value: object) -> dict | None:
+    """Coerce a parsed JSON value to the expected scaffold dict shape.
+
+    Some models (e.g. MiniMax) return the top-level array directly or wrap the
+    dict inside a single-element array.  Accept and normalise both.
+    """
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, list):
+        # [{"categories": [...], ...}] — single wrapped dict
+        if value and isinstance(value[0], dict) and "categories" in value[0]:
+            return value[0]
+        # [{"heading": ..., "slugs": [...]}] — categories array returned directly
+        if value and isinstance(value[0], dict) and "heading" in value[0]:
+            return {"categories": value}
+    return None
+
+
 def _parse_scaffold_json(raw: str) -> dict | None:
     """Try progressively looser strategies to extract the scaffold JSON object."""
     # 1. Direct parse
     try:
-        return json.loads(raw)
+        return _coerce_scaffold_dict(json.loads(raw))
     except json.JSONDecodeError:
         pass
     # 2. Find the outermost {...} block
     m = re.search(r"\{.*\}", raw, re.DOTALL)
     if m:
         try:
-            return json.loads(m.group(0))
+            return _coerce_scaffold_dict(json.loads(m.group(0)))
         except json.JSONDecodeError:
             pass
     # 3. Fix the most common MiniMax JSON defect: missing comma between adjacent
     #    array objects ("} {" → "}, {") then retry
     fixed = re.sub(r"}\s*\n(\s*){", r"},\n\1{", raw)
     try:
-        return json.loads(fixed)
+        return _coerce_scaffold_dict(json.loads(fixed))
     except json.JSONDecodeError:
         pass
     m = re.search(r"\{.*\}", fixed, re.DOTALL)
     if m:
         try:
-            return json.loads(m.group(0))
+            return _coerce_scaffold_dict(json.loads(m.group(0)))
         except json.JSONDecodeError:
             pass
     return None
@@ -70,8 +88,11 @@ Return ONLY valid JSON:
     ...
   ],
   "agents_guidelines": "2-4 bullet points of domain-specific ingest and query guidelines (plain text, not markdown list syntax)",
-  "purpose_include": "one sentence: what topics belong in this wiki",
-  "purpose_exclude": "one sentence: what topics to exclude",
+  "purpose_overview": "2-3 sentences describing the domain, its importance, and what this wiki is for",
+  "purpose_include": "3-5 bullet points (plain text, not markdown) listing the types of topics, concepts, and artefacts that belong in this wiki",
+  "purpose_exclude": "3-5 bullet points (plain text, not markdown) listing what is explicitly out of scope",
+  "purpose_audience": "1-2 sentences describing who will use this wiki and how",
+  "purpose_use_cases": "3-5 bullet points (plain text, not markdown) of the primary questions or tasks this wiki is meant to answer",
   "dashboard_intro": "one sentence describing what this wiki tracks"
 }}
 
@@ -106,12 +127,27 @@ This wiki captures knowledge about: {domain}.
 """
 
 _PURPOSE_MD_TEMPLATE = """\
-# Wiki Purpose
+# Wiki Purpose — {domain}
 
-This wiki covers: {domain}.
+## Overview
 
-Include: {include}
-Exclude: {exclude}
+{overview}
+
+## What Belongs in This Wiki
+
+{include}
+
+## What Is Out of Scope
+
+{exclude}
+
+## Intended Audience
+
+{audience}
+
+## Primary Use Cases
+
+{use_cases}
 """
 
 
@@ -242,8 +278,33 @@ class ScaffoldAgent:
         return _AGENTS_MD_TEMPLATE.format(domain=domain, guidelines=guidelines)
 
     def _build_purpose_md(self, domain: str, data: dict) -> str:
+        def _bullets(raw: str | list, fallback: str) -> str:
+            if isinstance(raw, list):
+                items = [str(i).strip().lstrip("-•* ") for i in raw if str(i).strip()]
+            else:
+                items = [
+                    line.strip().lstrip("-•* ")
+                    for line in str(raw).splitlines()
+                    if line.strip()
+                ]
+            if not items:
+                items = [fallback]
+            return "\n".join(f"- {i}" for i in items)
+
         return _PURPOSE_MD_TEMPLATE.format(
             domain=domain,
-            include=data.get("purpose_include", f"Topics directly related to {domain}."),
-            exclude=data.get("purpose_exclude", "Unrelated domains."),
+            overview=data.get("purpose_overview", f"This wiki captures knowledge about {domain}."),
+            include=_bullets(
+                data.get("purpose_include", ""),
+                f"Topics directly related to {domain}.",
+            ),
+            exclude=_bullets(
+                data.get("purpose_exclude", ""),
+                "Unrelated domains and off-topic material.",
+            ),
+            audience=data.get("purpose_audience", f"Anyone working with or researching {domain}."),
+            use_cases=_bullets(
+                data.get("purpose_use_cases", ""),
+                f"Answer questions about {domain}.",
+            ),
         )

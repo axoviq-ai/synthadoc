@@ -103,7 +103,11 @@ class Orchestrator:
         self._log    = LogWriter(wiki_root / "log.md")
         self._cost   = CostGuard(self._cfg.cost)
         self._hooks  = HookExecutor(self._cfg.hooks)
+        self._wiki_epoch: int = 0
         setup_telemetry(sd / "logs" / "traces.jsonl")
+
+    def _bump_epoch(self) -> None:
+        self._wiki_epoch += 1
 
     async def init(self) -> None:
         await self._queue.init()
@@ -266,6 +270,7 @@ class Orchestrator:
                 await self._queue.skip(job_id, result.skip_reason or "skipped")
             else:
                 await self._queue.complete(job_id, result=job_result)
+                self._bump_epoch()
                 # Embed newly written pages for vector search
                 if self._cfg.search.vector:
                     for slug in result.pages_created + result.pages_updated:
@@ -392,6 +397,7 @@ class Orchestrator:
                 provider=_provider,
                 store=self._store, search=self._search,
                 gap_score_threshold=self._cfg.query.gap_score_threshold,
+                orchestrator=self,
             ).query(question),
             timeout=timeout_seconds if timeout_seconds > 0 else None,
         )
@@ -416,6 +422,26 @@ class Orchestrator:
             cost_usd=cost_usd,
         )
         return result
+
+    async def query_stream(
+        self, question: str, session_id: str | None = None,
+        session_mode: str = "POWER_USER",
+    ):
+        """Async generator yielding SSE event dicts for streaming query response."""
+        from synthadoc.agents.query_agent import QueryAgent
+        _provider = make_provider("query", self._cfg)
+        _routing_path = self._root / "ROUTING.md"
+        agent = QueryAgent(
+            provider=_provider,
+            store=self._store, search=self._search,
+            gap_score_threshold=self._cfg.query.gap_score_threshold,
+            routing_path=_routing_path if _routing_path.exists() else None,
+            orchestrator=self,
+        )
+        async for evt in agent.run_stream(
+            question, session_id=session_id, session_mode=session_mode
+        ):
+            yield evt
 
     async def lint(self, scope: str = "all", auto_resolve: bool = False) -> str:
         """Enqueue a lint job. The server worker loop executes it."""

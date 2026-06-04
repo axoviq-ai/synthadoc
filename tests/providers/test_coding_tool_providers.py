@@ -133,6 +133,27 @@ def test_claude_is_quota_exhausted_false():
     assert provider._is_quota_exhausted("some other error") is False
 
 
+@pytest.mark.asyncio
+async def test_coding_tool_complete_stream_yields_words():
+    """complete_stream() shim delegates to complete() and yields word-by-word."""
+    import json
+    from synthadoc.providers.base import Message
+    provider = _make_claude_provider()
+    raw = json.dumps({
+        "result": "Hello world answer",
+        "total_input_tokens": 10,
+        "total_output_tokens": 5,
+        "is_error": False,
+    })
+    mock_proc = _make_mock_proc(raw.encode(), b"", returncode=0)
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)):
+        tokens = []
+        async for tok in provider.complete_stream([Message(role="user", content="hi")]):
+            tokens.append(tok)
+    assert "".join(tokens) == "Hello world answer"
+    assert len(tokens) == 3  # three words
+
+
 def test_claude_build_command_no_model():
     provider = _make_claude_provider()
     cmd = provider._build_command(provider._resolved_binary)
@@ -185,6 +206,29 @@ def test_opencode_parse_output_no_text_events_raises():
     ]
     with pytest.raises(ValueError, match="no text content"):
         provider._parse_output("\n".join(lines))
+
+
+def test_opencode_error_event_fatal_when_no_text():
+    """error event with no prior text → RuntimeError."""
+    import json
+    provider = _make_opencode_provider()
+    lines = [
+        json.dumps({"type": "error", "error": {"name": "invalid api key"}}),
+    ]
+    with pytest.raises(RuntimeError, match="invalid api key"):
+        provider._parse_output("\n".join(lines))
+
+
+def test_opencode_error_event_nonfatal_when_text_collected():
+    """error event after text has been collected → warning logged, text returned."""
+    import json
+    provider = _make_opencode_provider()
+    lines = [
+        json.dumps({"type": "text", "data": "The answer is 42."}),
+        json.dumps({"type": "error", "error": {"name": "tool call failed"}}),
+    ]
+    resp = provider._parse_output("\n".join(lines))
+    assert resp.text == "The answer is 42."
 
 
 def test_opencode_parse_output_step_finish_error_raises():

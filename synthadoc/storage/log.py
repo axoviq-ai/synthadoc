@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -130,6 +130,21 @@ class AuditDB:
                     error       TEXT,
                     output      TEXT DEFAULT ''
                 )""")
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS chat_sessions (
+                    session_id   TEXT PRIMARY KEY,
+                    mode         TEXT NOT NULL,
+                    created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+                    last_active  TEXT NOT NULL DEFAULT (datetime('now'))
+                )""")
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS chat_messages (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id   TEXT NOT NULL REFERENCES chat_sessions(session_id),
+                    role         TEXT NOT NULL,
+                    content      TEXT NOT NULL,
+                    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+                )""")
             # Migrations for existing installs
             for migration in (
                 "ALTER TABLE scheduled_runs ADD COLUMN entry_id TEXT NOT NULL DEFAULT ''",
@@ -202,6 +217,19 @@ class AuditDB:
                 "SELECT source_path, wiki_page, tokens, cost_usd, ingested_at "
                 "FROM ingests ORDER BY id ASC LIMIT ?",
                 (limit,),
+            ) as cur:
+                rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+    async def list_ingests_since(self, days: int = 7) -> list[dict]:
+        """Return ingest records from the last `days` days, newest first."""
+        since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT source_path, wiki_page, ingested_at "
+                "FROM ingests WHERE ingested_at >= ? ORDER BY id DESC",
+                (since,),
             ) as cur:
                 rows = await cur.fetchall()
         return [dict(r) for r in rows]
@@ -537,3 +565,40 @@ class AuditDB:
             ) as cur:
                 rows = await cur.fetchall()
         return {r["entry_id"]: dict(r) for r in rows}
+
+    async def create_session(self, session_id: str, mode: str) -> None:
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute(
+                "INSERT OR IGNORE INTO chat_sessions (session_id, mode) VALUES (?,?)",
+                (session_id, mode),
+            )
+            await db.commit()
+
+    async def append_message(self, session_id: str, role: str, content: str) -> None:
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute(
+                "INSERT INTO chat_messages (session_id, role, content) VALUES (?,?,?)",
+                (session_id, role, content),
+            )
+            await db.execute(
+                "UPDATE chat_sessions SET last_active=datetime('now') WHERE session_id=?",
+                (session_id,),
+            )
+            await db.commit()
+
+    async def get_session_messages(self, session_id: str, limit: int = 20) -> list[dict]:
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT role, content FROM chat_messages WHERE session_id=? "
+                "ORDER BY id DESC LIMIT ?",
+                (session_id, limit),
+            ) as cur:
+                rows = await cur.fetchall()
+        return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
+
+    async def has_prior_sessions(self) -> bool:
+        async with aiosqlite.connect(self._path) as db:
+            async with db.execute("SELECT COUNT(*) FROM chat_sessions") as cur:
+                row = await cur.fetchone()
+        return (row[0] if row else 0) > 0

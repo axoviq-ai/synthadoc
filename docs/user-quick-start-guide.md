@@ -37,6 +37,8 @@ major engine feature. No setup beyond following the steps below is required.
 19. [Build a context pack](#step-19--build-a-context-pack)
 20. [Establish claim-level provenance](#claim-provenance)
 21. [Export your wiki](#step-21--export-your-wiki)
+22. [Use the web chat UI](#step-22--use-the-web-chat-ui)
+23. [Query caching](#step-23--query-caching)
 
 **Appendices**
 
@@ -235,7 +237,11 @@ synthadoc query "What is Moore's Law and why does it matter?"
 synthadoc query "How did Unix influence the open-source movement?"
 ```
 
-Each answer cites `[[wikilinks]]` pointing to the source pages.
+Each answer streams to your terminal token-by-token as the LLM generates it. Citations to source pages appear at the end of the answer. For scripts or pipes that need buffered output, add `--no-stream`:
+
+```bash
+synthadoc query "How did Alan Turing influence modern computers?" --no-stream
+```
 
 ### Compound and multi-part queries
 
@@ -1706,6 +1712,93 @@ The exported `.graphml` file can be loaded in any of these free tools:
 
 ---
 
+<a name="web-chat-ui"></a>
+
+## Step 22 — Use the web chat UI
+
+The `synthadoc web` command opens a browser-based chat interface for your wiki. Unlike the CLI query command, the web UI supports multi-turn conversation and shows contextual hint chips based on your session history.
+
+### Open the web UI
+
+```bash
+synthadoc web -w history-of-computing
+```
+
+Your browser opens automatically to the web chat interface.
+
+![Synthadoc Query Agent Web UI](png/synthadoc-query-agent-web-UI.png)
+
+### Session modes
+
+The UI detects the state of your wiki and your session history, then adapts:
+
+| Mode badge | When it appears | Hint chips shown |
+|---|---|---|
+| **New Wiki** | Fewer than 5 wiki pages exist | Onboarding — guides you through ingesting your first documents |
+| **Explorer** | ≥5 pages, first time opening the UI for this wiki | Discovery — broad overview questions to explore the wiki |
+| **Health Check** | ≥5 pages, returning user, ≥1 stale page in the wiki | Lifecycle review — suggests running lint or inspecting stale pages |
+| **Power User** | ≥5 pages, returning user, no stale pages | Context-sensitive follow-ups based on your last answer |
+
+The mode badge appears in the top-right corner of the chat interface. It reflects the wiki's current state — after you run lint and promote pages, a **Health Check** session will become **Power User** on the next session open.
+
+### Asking questions
+
+Type a question in the text box and press **Enter** (or click **Ask**). The answer streams in word-by-word as the LLM generates it — no waiting for the full response.
+
+Below each answer:
+
+- **Citations** — links to the wiki pages that contributed to the answer
+- **Knowledge gap callout** — appears when the wiki lacks coverage; suggests `search for:` ingest commands to fill the gap
+- **Hint chips** — suggested follow-up questions based on the current answer and your session history
+
+### Multi-turn conversation
+
+Each question in a session builds on the previous ones. The UI maintains conversation context so follow-up questions like "What came before that?" resolve correctly against the previous answer.
+
+### Stopping
+
+Close the browser tab when done. The engine keeps running — use `synthadoc serve` background mode or stop the server manually when finished.
+
+---
+
+<a name="query-caching"></a>
+
+## Step 23 — Query caching
+
+`synthadoc query` (and the web chat UI) cache answers automatically. The second time you ask the same question against the same wiki, the answer returns instantly from cache without an LLM call.
+
+### How the cache works
+
+The cache key is a hash of:
+- The question text (after normalisation)
+- The current wiki **epoch** — a version counter that increments whenever you ingest new content or change a page's lifecycle state
+
+This means cached answers are always consistent with the current wiki. A new ingest automatically invalidates old cached answers so you never see a stale result.
+
+### Bypassing the cache
+
+```bash
+# Always call the LLM, even if the answer is cached
+synthadoc query "What is Moore's Law?" --no-cache
+```
+
+Use `--no-cache` when:
+- You want to verify the answer is still correct after an ingest
+- You are debugging a query or testing a new LLM provider
+- You suspect the cache entry is stale for any reason
+
+The `--no-cache` flag works on both `synthadoc query` and with the `synthadoc web` UI (pass it when starting the server, or use the flag on an individual `query` CLI call).
+
+### Cache management
+
+The query cache lives in the same `cache.db` as the ingest response cache. Clear all cached answers at once:
+
+```bash
+synthadoc cache clear -w history-of-computing
+```
+
+> **Note:** The query cache is separate from the ingest cache layers. Clearing the cache removes both query answers and LLM responses cached during ingest — the next lint run and the next ingest of any source will re-run LLM calls.
+
 ## What's next?
 
 You have now walked through every major Synthadoc feature on the demo wiki. When you're
@@ -1740,7 +1833,7 @@ All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synt
 
 | Command                             | What it does                                                                                                                                                                                                                                 |
 | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Synthadoc: Query: ask the wiki...` | Responsive modal — ask a natural-language question, get a markdown answer with clickable`[[wikilinks]]` to source pages. `Ctrl/Cmd+Enter` to submit. If a knowledge gap is detected, shows a callout with suggested `search for:` commands. |
+| `Synthadoc: Query: ask the wiki...` | Responsive modal — ask a natural-language question; the answer streams in token-by-token as the LLM generates it. Clickable `[[wikilinks]]` link to source pages. `Ctrl/Cmd+Enter` to submit. If a knowledge gap is detected, shows a callout with suggested `search for:` commands. |
 
 ### Lint
 

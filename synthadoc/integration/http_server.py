@@ -294,6 +294,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         orch = Orchestrator(wiki_root=wiki_root, config=cfg)
         await orch.init()
         app.state.orch = orch
+        from synthadoc.agents.hint_engine import HintEngine as _HE
+        _HE.configure(wiki_root / "hints.json")
         worker = asyncio.create_task(_worker_loop(orch))
 
         from synthadoc.core.scheduler import run_scheduler_loop
@@ -315,6 +317,9 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
 
     app = FastAPI(title="synthadoc", version=synthadoc.__version__, lifespan=lifespan)
     app.add_middleware(ContentSizeLimitMiddleware, max_bytes=max_body_bytes)
+
+    # Per-session state: mode + hint rotation cursor
+    _session_state: dict[str, dict] = {}  # session_id -> {"mode": str, "cursor": int}
 
     from fastapi.middleware.cors import CORSMiddleware
     app.add_middleware(
@@ -389,17 +394,154 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             "citations": result.citations,
             "knowledge_gap": result.knowledge_gap,
             "suggested_searches": result.suggested_searches,
+            "cacheable": result.cacheable,
         }
 
     @app.get("/query")
-    async def query(q: str, timeout_seconds: int = 60):
+    async def query(q: str, timeout_seconds: int = 60, no_cache: bool = False):
         if not q.strip():
             raise HTTPException(status_code=400, detail="q must not be empty")
-        return await _run_query(q, timeout_seconds=timeout_seconds)
+        orch = app.state.orch
+        from synthadoc.core.cache import make_query_cache_key
+        _qcfg = orch._cfg.agents.resolve("query")
+        _query_model = f"{_qcfg.provider}/{_qcfg.model}"
+        cache_key = make_query_cache_key(q, orch._wiki_epoch, _query_model)
+        if not no_cache:
+            cached = await orch._cache.get_query(cache_key)
+            if cached is not None:
+                return cached
+        result = await _run_query(q, timeout_seconds=timeout_seconds)
+        if result.get("cacheable", True):
+            await orch._cache.set_query(cache_key, orch._wiki_epoch, result)
+        return result
 
     @app.post("/query")
     async def query_post(req: QueryRequest):
         return await _run_query(req.question, timeout_seconds=req.timeout_seconds)
+
+    @app.get("/query/stream")
+    async def query_stream(q: str, session_id: str | None = None, no_cache: bool = False):
+        import json as _json
+        from fastapi.responses import StreamingResponse
+        if not q.strip():
+            raise HTTPException(status_code=400, detail="q must not be empty")
+        orch = app.state.orch
+
+        _sstate = _session_state.get(session_id or "", {"mode": "POWER_USER", "cursor": 0})
+        session_mode: str = _sstate["mode"]
+
+        if not no_cache:
+            from synthadoc.core.cache import make_query_cache_key
+            _qcfg = orch._cfg.agents.resolve("query")
+            _query_model = f"{_qcfg.provider}/{_qcfg.model}"
+            cache_key = make_query_cache_key(q, orch._wiki_epoch, _query_model)
+            cached = await orch._cache.get_query(cache_key)
+            if cached is not None:
+                async def _cached_stream():
+                    events = [
+                        {"event": "status", "data": {"phase": "synthesizing", "sources": len(cached.get("citations", []))}},
+                    ]
+                    for word in cached["answer"].split(" "):
+                        events.append({"event": "token", "data": {"text": word + " "}})
+                    events.append({"event": "citations", "data": {"citations": cached.get("citations", [])}})
+                    if cached.get("knowledge_gap") and cached.get("suggested_searches"):
+                        events.append({"event": "gap", "data": {"suggested_searches": cached["suggested_searches"]}})
+                    from synthadoc.agents.hint_engine import HintEngine
+                    _ss = _session_state.get(session_id or "", {})
+                    cursor = _ss.get("cursor", 0)
+                    prev_hints = _ss.get("last_hints", [])
+                    next_hints, new_cursor = HintEngine.after_response_windowed(
+                        cached.get("answer", ""), session_mode, cursor,
+                        previous_hints=prev_hints,
+                    )
+                    if session_id and session_id in _session_state:
+                        _session_state[session_id]["cursor"] = new_cursor
+                        _session_state[session_id]["last_hints"] = next_hints
+                    events.append({"event": "done", "data": {"next_hints": next_hints}})
+                    for evt in events:
+                        yield f"event: {evt['event']}\ndata: {_json.dumps(evt['data'])}\n\n"
+                return StreamingResponse(_cached_stream(), media_type="text/event-stream")
+
+        async def _live_stream():
+            full_answer = ""
+            citations = []
+            _is_cacheable = True
+            _knowledge_gap = False
+            _suggested_searches: list[str] = []
+            try:
+                async for evt in orch.query_stream(q, session_id=session_id, session_mode=session_mode):
+                    if evt["event"] == "token":
+                        full_answer += evt["data"].get("text", "")
+                    elif evt["event"] == "citations":
+                        citations = evt["data"].get("citations", [])
+                    elif evt["event"] == "gap":
+                        _knowledge_gap = True
+                        _suggested_searches = evt["data"].get("suggested_searches", [])
+                    elif evt["event"] == "done":
+                        _is_cacheable = evt["data"].get("cacheable", True)
+                        from synthadoc.agents.hint_engine import HintEngine
+                        _ss = _session_state.get(session_id or "", {})
+                        cursor = _ss.get("cursor", 0)
+                        prev_hints = _ss.get("last_hints", [])
+                        next_hints, new_cursor = HintEngine.after_response_windowed(
+                            full_answer, session_mode, cursor,
+                            previous_hints=prev_hints,
+                        )
+                        if session_id and session_id in _session_state:
+                            _session_state[session_id]["cursor"] = new_cursor
+                            _session_state[session_id]["last_hints"] = next_hints
+                        yield f"event: done\ndata: {_json.dumps({'next_hints': next_hints})}\n\n"
+                        continue
+                    yield f"event: {evt['event']}\ndata: {_json.dumps(evt['data'])}\n\n"
+            except Exception as exc:
+                known = _classify_llm_error(exc)
+                if not known:
+                    logger.exception("Streaming query failed")
+                msg = known.detail if known else "LLM provider unavailable"
+                yield f"event: error\ndata: {_json.dumps({'message': msg})}\n\n"
+                return
+            if full_answer and _is_cacheable:
+                from synthadoc.core.cache import make_query_cache_key
+                _qcfg = orch._cfg.agents.resolve("query")
+                _query_model = f"{_qcfg.provider}/{_qcfg.model}"
+                cache_key = make_query_cache_key(q, orch._wiki_epoch, _query_model)
+                await orch._cache.set_query(cache_key, orch._wiki_epoch, {
+                    "answer": full_answer, "citations": citations,
+                    "knowledge_gap": _knowledge_gap,
+                    "suggested_searches": _suggested_searches,
+                })
+            if session_id and full_answer:
+                await orch._audit.append_message(session_id, "user", q)
+                await orch._audit.append_message(session_id, "assistant", full_answer)
+
+        return StreamingResponse(_live_stream(), media_type="text/event-stream")
+
+    @app.post("/sessions")
+    async def create_session():
+        import uuid as _uuid
+        orch = app.state.orch
+        session_id = str(_uuid.uuid4())
+        page_count = len(orch._store.list_pages())
+        if page_count < 5:
+            mode = "NEW_WIKI"
+        elif not await orch._audit.has_prior_sessions():
+            mode = "EXPLORER"
+        else:
+            pages = [orch._store.read_page(s) for s in orch._store.list_pages()]
+            has_health_issues = any(
+                p and p.status in ("stale", "contradicted")
+                for p in pages
+            )
+            mode = "HEALTH_CHECK" if has_health_issues else "POWER_USER"
+        await orch._audit.create_session(session_id, mode)
+        from synthadoc.agents.hint_engine import HintEngine
+        _session_state[session_id] = {"mode": mode, "cursor": 0, "last_hints": []}
+        return {
+            "session_id": session_id,
+            "mode": mode,
+            "initial_hints": HintEngine.initial_hints(mode),
+            "wiki_name": wiki_root.name,
+        }
 
     @app.post("/analyse")
     async def analyse_source(req: AnalyseRequest):
@@ -937,6 +1079,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         await audit.set_page_state(req.slug, req.to_state, TriggerSource.USER)
         await audit.record_lifecycle_event(req.slug, from_state, req.to_state,
                                             req.reason, TriggerSource.USER)
+        orch._bump_epoch()
         return {"ok": True, "slug": req.slug, "from_state": from_state, "to_state": req.to_state}
 
     # ── Export ────────────────────────────────────────────────────────────────
@@ -965,5 +1108,32 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             "json":          "application/json",
         }
         return Response(content=content, media_type=_CONTENT_TYPES[req.format])
+
+    # Serve the React web UI for /app and /app/* paths
+    _web_dist = Path(__file__).parent.parent.parent / "web-ui" / "dist"
+    if _web_dist.exists() and (_web_dist / "index.html").is_file():
+        from fastapi.staticfiles import StaticFiles
+        from fastapi.responses import FileResponse, RedirectResponse
+        _assets = _web_dist / "assets"
+        if _assets.exists():
+            app.mount("/app/assets", StaticFiles(directory=str(_assets)), name="web_assets")
+
+        @app.get("/app")
+        async def spa_root():
+            return RedirectResponse(url="/app/", status_code=307)
+
+        @app.get("/app/")
+        @app.get("/app/{path:path}")
+        async def spa(path: str = ""):
+            return FileResponse(str(_web_dist / "index.html"))
+    else:
+        @app.get("/app")
+        @app.get("/app/{path:path}")
+        async def spa_not_built(path: str = ""):
+            return Response(
+                content="Web UI not built. Run: cd web-ui && npm run build",
+                status_code=503,
+                media_type="text/plain",
+            )
 
     return app

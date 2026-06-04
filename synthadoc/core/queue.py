@@ -240,3 +240,21 @@ class JobQueue:
                         result=json.loads(r["result"]) if r["result"] else None,
                         progress=json.loads(r["progress"]) if r["progress"] else None,
                         ) for r in rows]
+
+    async def get_job(self, job_id: str) -> Optional[Job]:
+        """Return a single job by ID, or None if not found."""
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)) as cur:
+                row = await cur.fetchone()
+        if row is None:
+            return None
+        return Job(
+            id=row["id"], operation=row["operation"],
+            payload=json.loads(row["payload"]),
+            status=JobStatus(row["status"]),
+            retries=row["retries"], error=row["error"],
+            created_at=row["created_at"],
+            result=json.loads(row["result"]) if row["result"] else None,
+            progress=json.loads(row["progress"]) if row["progress"] else None,
+        )

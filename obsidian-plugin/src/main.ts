@@ -2133,15 +2133,28 @@ class QueryModal extends Modal {
         input.style.cssText = "width:100%;min-height:72px;padding:6px 8px;resize:vertical;margin-bottom:8px;box-sizing:border-box";
 
         const row = contentEl.createEl("div");
-        row.style.cssText = "display:flex;align-items:center;gap:8px;justify-content:flex-end;margin-bottom:12px";
-        const timeoutLabel = row.createEl("label", { text: "Timeout (s):" });
+        row.style.cssText = "display:flex;align-items:center;justify-content:space-between;margin-bottom:12px";
+
+        const settingsGroup = row.createEl("div");
+        settingsGroup.style.cssText = "display:flex;align-items:center;gap:16px";
+
+        const noCacheLabel = settingsGroup.createEl("label");
+        noCacheLabel.style.cssText = "display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-muted);white-space:nowrap;cursor:pointer";
+        const noCacheCheckbox = noCacheLabel.createEl("input", { type: "checkbox" }) as HTMLInputElement;
+        noCacheCheckbox.checked = false;
+        noCacheLabel.appendText("Bypass cache");
+
+        const timeoutGroup = settingsGroup.createEl("div");
+        timeoutGroup.style.cssText = "display:flex;align-items:center;gap:6px";
+        const timeoutLabel = timeoutGroup.createEl("label", { text: "Timeout (s):" });
         timeoutLabel.style.cssText = "font-size:12px;color:var(--text-muted);white-space:nowrap";
-        const timeoutInput = row.createEl("input", { type: "number" }) as HTMLInputElement;
+        const timeoutInput = timeoutGroup.createEl("input", { type: "number" }) as HTMLInputElement;
         timeoutInput.value = "60";
         timeoutInput.min = "10";
         timeoutInput.max = "300";
         timeoutInput.step = "10";
         timeoutInput.style.cssText = "width:60px;padding:4px 6px;font-size:12px";
+
         const btn = row.createEl("button", { text: "Ask" });
 
         const out = contentEl.createEl("div");
@@ -2165,46 +2178,109 @@ class QueryModal extends Modal {
             if (!input.value.trim()) return;
             btn.disabled = true;
             out.empty();
-            out.createEl("p", { text: "Searching…", cls: "synthadoc-muted" });
-            try {
-                const timeoutSecs = Math.min(300, Math.max(10, parseInt(timeoutInput.value) || 60));
-                const r = await api.query(input.value, timeoutSecs) as any;
+            const statusEl = out.createEl("p", { text: "Streaming…", cls: "synthadoc-muted" });
+            const streamEl = out.createEl("span");
+            let fullAnswer = "";
+            let citations: string[] = [];
+            let knowledgeGap = false;
+            let suggestedSearches: string[] = [];
+
+            const renderFinal = async () => {
                 out.empty();
-                await MarkdownRenderer.render(this.app, r.answer, out, "", this);
-                if (r.citations?.length) {
+                if (fullAnswer) {
+                    await MarkdownRenderer.render(this.app, fullAnswer, out, "", this);
+                }
+                if (citations.length) {
                     const cite = out.createEl("p");
                     cite.style.cssText = "font-size:11px;color:var(--text-muted);margin-top:8px";
-                    cite.setText("Sources: " + r.citations.join(", "));
+                    cite.setText("Sources: " + citations.join(", "));
                 }
-                if (r.knowledge_gap && r.suggested_searches?.length) {
-                    const searchCmds = (r.suggested_searches as string[])
-                        .map((s: string) => `synthadoc ingest "search for: ${s}"`)
-                        .join("\n");
-                    const callout = [
-                        "> [!tip] Knowledge Gap Detected",
-                        "> Your wiki doesn't have enough on this topic yet. Enrich it with a web search:",
-                        ">",
-                        "> **From Obsidian:** Open Command Palette (`Cmd+P` / `Ctrl+P`) → **Synthadoc: Ingest...** → Web search tab",
-                        ">",
-                        "> **From the terminal:**",
-                        "> ```bash",
-                        ...searchCmds.split("\n").map((cmd: string) => `> ${cmd}`),
-                        "> ```",
-                        ">",
-                        "> After ingesting, re-run your query to get a richer answer.",
-                    ].join("\n");
-                    const gapEl = out.createEl("div");
-                    gapEl.style.cssText = "margin-top:16px";
-                    await MarkdownRenderer.render(this.app, callout, gapEl, "", this);
+                if (knowledgeGap && suggestedSearches.length) {
+                    await this._renderGapSection(out, suggestedSearches);
                 }
+                btn.disabled = false;
+            };
+
+            try {
+                await api.queryStream(input.value.trim(), undefined, {
+                    onStatus: (phase) => { statusEl.setText(phase === "retrieving" ? "Searching…" : "Generating…"); },
+                    onToken: (text) => {
+                        fullAnswer += text;
+                        streamEl.textContent = (streamEl.textContent ?? "") + text;
+                    },
+                    onCitations: (c) => { citations = c; },
+                    onGap: (s) => { knowledgeGap = true; suggestedSearches = s; },
+                    onDone: async () => { await renderFinal(); },
+                    onError: (msg) => {
+                        out.empty();
+                        out.createEl("p", { text: `Error: ${msg}` });
+                        btn.disabled = false;
+                    },
+                }, noCacheCheckbox.checked);
             } catch {
-                out.empty();
-                out.createEl("p", { text: "Error: is synthadoc serve running?" });
-            } finally { btn.disabled = false; }
+                // Fallback to blocking query if streaming fails
+                try {
+                    const timeoutSecs = Math.min(300, Math.max(10, parseInt(timeoutInput.value) || 60));
+                    const r = await api.query(input.value, timeoutSecs) as any;
+                    out.empty();
+                    await MarkdownRenderer.render(this.app, r.answer, out, "", this);
+                    if (r.citations?.length) {
+                        const cite = out.createEl("p");
+                        cite.style.cssText = "font-size:11px;color:var(--text-muted);margin-top:8px";
+                        cite.setText("Sources: " + r.citations.join(", "));
+                    }
+                    if (r.knowledge_gap && r.suggested_searches?.length) {
+                        await this._renderGapSection(out, r.suggested_searches as string[]);
+                    }
+                } catch {
+                    out.empty();
+                    out.createEl("p", { text: "Error: is synthadoc serve running?" });
+                } finally { btn.disabled = false; }
+            }
         };
 
         btn.onclick = submit;
         input.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) submit(); });
+    }
+    private async _renderGapSection(container: HTMLElement, suggestions: string[]): Promise<void> {
+        const commands = suggestions
+            .map((s) => `synthadoc ingest "search for: ${s}"`)
+            .join("\n");
+        const callout = [
+            "> [!tip] Knowledge Gap Detected",
+            "> Your wiki doesn't have enough on this topic yet. Enrich it with a web search:",
+            ">",
+            "> **From Obsidian:** Open Command Palette (`Cmd+P` / `Ctrl+P`) → **Synthadoc: Ingest...** → Web search tab",
+            ">",
+            "> **From the terminal:**",
+        ].join("\n");
+        const gapEl = container.createEl("div");
+        gapEl.style.cssText = "margin-top:16px";
+        await MarkdownRenderer.render(this.app, callout, gapEl, "", this);
+
+        const calloutContent = gapEl.querySelector(".callout-content") as HTMLElement | null;
+        const target = calloutContent ?? gapEl;
+
+        const row = target.createEl("div");
+        row.style.cssText = "display:flex;align-items:flex-start;gap:8px;margin:6px 0";
+
+        const pre = row.createEl("pre");
+        pre.style.cssText = "flex:1;margin:0;padding:6px 10px;background:var(--background-secondary);border-radius:4px;font-family:var(--font-monospace);font-size:12px;white-space:pre;overflow-x:auto;color:var(--text-normal)";
+        pre.setText(commands);
+
+        const copyBtn = row.createEl("button");
+        copyBtn.style.cssText = "flex-shrink:0;align-self:flex-start;padding:3px 10px;font-size:11px;cursor:pointer";
+        copyBtn.setText("Copy");
+        copyBtn.onclick = () => {
+            navigator.clipboard.writeText(commands).then(() => {
+                copyBtn.setText("Copied!");
+                setTimeout(() => copyBtn.setText("Copy"), 2000);
+            }).catch(() => {});
+        };
+
+        const footer = target.createEl("p");
+        footer.style.cssText = "font-size:12px;color:var(--text-muted);margin-top:6px";
+        footer.setText("After ingesting, re-run your query to get a richer answer.");
     }
     onClose() { this.contentEl.empty(); }
 }

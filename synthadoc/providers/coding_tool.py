@@ -185,6 +185,19 @@ class CodingToolCLIProvider(LLMProvider):
 
         return self._parse_output(raw)
 
+    async def complete_stream(
+        self, messages: list[Message], system: Optional[str] = None,
+        temperature: float = 0.0, max_tokens: int = 4096,
+    ):
+        # CLI tools produce output only after the subprocess exits — no native streaming.
+        # Run complete() and yield the result word-by-word so callers get a valid async
+        # generator without having to special-case non-streaming providers.
+        resp = await self.complete(messages, system=system,
+                                   temperature=temperature, max_tokens=max_tokens)
+        words = resp.text.split(" ")
+        for i, word in enumerate(words):
+            yield word if i == len(words) - 1 else word + " "
+
 
 class ClaudeCodeCLIProvider(CodingToolCLIProvider):
     """LLM provider that delegates to the Claude Code CLI.
@@ -294,7 +307,12 @@ class OpencodeProvider(CodingToolCLIProvider):
             elif etype == "error":
                 err = event.get("error") or {}
                 msg = (err.get("data") or {}).get("message") or err.get("name") or "unknown error"
-                raise RuntimeError(f"opencode: API error — {msg}")
+                if text_parts:
+                    # A tool-call or sub-request failed but the model still produced text.
+                    # Log and continue rather than discarding a good answer.
+                    _logger.warning("opencode: non-fatal error event (text collected): %s", msg)
+                else:
+                    raise RuntimeError(f"opencode: API error — {msg}")
 
             # --- token counts ---
             elif etype == "step_finish":

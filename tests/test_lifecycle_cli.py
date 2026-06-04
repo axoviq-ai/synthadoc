@@ -66,3 +66,52 @@ def test_lifecycle_log_calls_events():
         result = runner.invoke(app, ["lifecycle", "log", "-w", "test-wiki"])
         assert result.exit_code == 0
         mock_get.assert_called_once()
+
+
+def test_lifecycle_log_shows_events_table():
+    """lifecycle log must display a formatted table when events are returned."""
+    events = [
+        {
+            "slug": "alan-turing",
+            "from_state": "draft",
+            "to_state": "active",
+            "triggered_by": "user",
+            "timestamp": "2026-06-02T10:00:00",
+            "reason": "reviewed",
+        }
+    ]
+    with patch("synthadoc.cli.lifecycle.get") as mock_get, \
+         patch("synthadoc.cli.lifecycle.resolve_wiki", return_value="test-wiki"):
+        mock_get.return_value = {"events": events, "total": 1}
+        result = runner.invoke(app, ["lifecycle", "log", "-w", "test-wiki"])
+    assert result.exit_code == 0
+    assert "alan-turing" in result.output
+    assert "active" in result.output
+    assert "reviewed" in result.output
+
+
+def test_lifecycle_log_with_slug_and_state_filter():
+    """lifecycle log --slug and --state must be forwarded as query params."""
+    with patch("synthadoc.cli.lifecycle.get") as mock_get, \
+         patch("synthadoc.cli.lifecycle.resolve_wiki", return_value="test-wiki"):
+        mock_get.return_value = {"events": [], "total": 0}
+        result = runner.invoke(app, [
+            "lifecycle", "log", "alan-turing", "-w", "test-wiki",
+            "--state", "active",
+        ])
+    assert result.exit_code == 0
+    _, kwargs = mock_get.call_args
+    assert kwargs.get("slug") == "alan-turing"
+    assert kwargs.get("to_state") == "active"
+
+
+def test_lifecycle_transition_error_exits():
+    """_transition_cmd must print an error and exit(1) when ok is False."""
+    with patch("synthadoc.cli.lifecycle.post") as mock_post, \
+         patch("synthadoc.cli.lifecycle.resolve_wiki", return_value="test-wiki"):
+        mock_post.return_value = {"ok": False, "detail": "invalid transition"}
+        result = runner.invoke(app, [
+            "lifecycle", "activate", "bad-page",
+            "-w", "test-wiki", "--reason", "test"
+        ])
+    assert result.exit_code != 0
