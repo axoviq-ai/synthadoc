@@ -207,6 +207,122 @@ async def test_none_action_returns_none(tmp_path):
     assert result is None
 
 
+# ── schedule_history dispatch ────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_schedule_history_no_audit_db(tmp_path):
+    """Returns graceful message when audit.db doesn't exist yet."""
+    extraction = '{"action": "schedule_history", "params": {}}'
+    agent = _make_agent(tmp_path, extraction)
+    result = await agent.run("show scheduler history")
+    assert result is not None
+    assert result.success is True
+    assert "no scheduled run history" in result.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_schedule_history_with_runs(tmp_path):
+    extraction = '{"action": "schedule_history", "params": {}}'
+    agent = _make_agent(tmp_path, extraction)
+    audit_path = tmp_path / ".synthadoc" / "audit.db"
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    audit_path.touch()
+    mock_runs = [
+        {"run_id": "r1", "op": "lint run", "started_at": "2026-06-04T09:00:00",
+         "duration_s": 12.5, "status": "success", "error": None},
+        {"run_id": "r2", "op": "ingest", "started_at": "2026-06-04T10:00:00",
+         "duration_s": None, "status": "failed", "error": "timeout"},
+    ]
+    with patch("synthadoc.storage.log.AuditDB") as MockAudit:
+        inst = AsyncMock()
+        inst.init = AsyncMock()
+        inst.list_scheduled_runs = AsyncMock(return_value=mock_runs)
+        MockAudit.return_value = inst
+        result = await agent.run("show scheduler history")
+    assert result is not None
+    assert result.success is True
+    assert "r1" in result.message
+    assert "lint run" in result.message
+    assert "❌" in result.message  # failed run shows error icon
+
+
+# ── wiki_status dispatch ──────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_wiki_status_no_audit_db(tmp_path):
+    """Falls back to page count when audit.db absent."""
+    extraction = '{"action": "wiki_status", "params": {}}'
+    agent = _make_agent(tmp_path, extraction)
+    agent._orch._store.list_pages.return_value = ["page-a", "page-b"]
+    result = await agent.run("show wiki status")
+    assert result is not None
+    assert result.success is True
+    assert "2 pages" in result.message
+
+
+@pytest.mark.asyncio
+async def test_wiki_status_with_audit_db(tmp_path):
+    extraction = '{"action": "wiki_status", "params": {}}'
+    agent = _make_agent(tmp_path, extraction)
+    audit_path = tmp_path / ".synthadoc" / "audit.db"
+    audit_path.parent.mkdir(parents=True, exist_ok=True)
+    audit_path.touch()
+    counts = {"draft": 3, "active": 42, "stale": 5, "contradicted": 2, "archived": 1}
+    with patch("synthadoc.storage.log.AuditDB") as MockAudit:
+        inst = AsyncMock()
+        inst.init = AsyncMock()
+        inst.get_lifecycle_summary = AsyncMock(return_value=counts)
+        MockAudit.return_value = inst
+        result = await agent.run("show wiki status")
+    assert result is not None
+    assert result.success is True
+    assert "active" in result.message
+    assert "42" in result.message
+    assert "53 pages" in result.message
+
+
+# ── detect: orphan / contradiction / lint-report ──────────────────────────────
+
+def test_detect_orphan_pages_query(tmp_path):
+    agent = _make_agent(tmp_path, "{}")
+    assert agent.detect("What pages in this wiki domain are orphan pages?") is True
+
+def test_detect_show_contradictions(tmp_path):
+    agent = _make_agent(tmp_path, "{}")
+    assert agent.detect("list contradicted pages") is True
+
+def test_detect_adversarial_pages(tmp_path):
+    agent = _make_agent(tmp_path, "{}")
+    assert agent.detect("are there any adversarial pages?") is True
+
+def test_detect_lint_report(tmp_path):
+    agent = _make_agent(tmp_path, "{}")
+    assert agent.detect("show lint report") is True
+
+def test_detect_wiki_status(tmp_path):
+    agent = _make_agent(tmp_path, "{}")
+    assert agent.detect("show synthadoc status") is True
+
+def test_detect_what_contradictions(tmp_path):
+    agent = _make_agent(tmp_path, "{}")
+    assert agent.detect("what contradictions exist?") is True
+
+
+# ── schedule_add lint normalisation ──────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_schedule_add_normalises_lint_op(tmp_path):
+    """'lint' op is normalised to 'lint run' before saving."""
+    extraction = ('{"action": "schedule_add", "params": {'
+                  '"op": "lint", "cron": "0 21 * * *",'
+                  '"schedule_description": "every night at 9 PM"}}')
+    agent = _make_agent(tmp_path, extraction)
+    result = await agent.run("Schedule lint run every night at 9 PM")
+    assert result is not None
+    assert result.success is True
+    assert "lint run" in result.message
+
+
 # ── format helper ─────────────────────────────────────────────────────────────
 
 def test_format_schedule_list_empty():

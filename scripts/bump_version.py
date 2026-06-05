@@ -94,8 +94,15 @@ def main() -> None:
         f"**Version: v{new_version} (Community Edition)**",
     )
 
+    # 5. Design document version header
+    _patch_text(
+        ROOT / "docs" / "design.md",
+        f"**Version:** {old_version}  ",
+        f"**Version:** {new_version}  ",
+    )
+
     print("Done. Remember to:")
-    print("  git add VERSION obsidian-plugin/manifest.json obsidian-plugin/package.json README.md docs/user-quick-start-guide.md")
+    print("  git add VERSION obsidian-plugin/manifest.json obsidian-plugin/package.json README.md docs/user-quick-start-guide.md docs/design.md")
     print(f"  git commit -m 'chore: bump version to {new_version}'")
     print("  git tag v" + new_version)
 
