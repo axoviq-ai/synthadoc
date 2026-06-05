@@ -27,7 +27,18 @@ _ACTION_RE = re.compile(
     r"|\bschedul\w*.{0,30}\b(histor|run|log)\w*\b"
     r"|(?<![a-zA-Z0-9])schedul\w*.{0,150}(?<![a-zA-Z0-9])(scaffold|ingest|lint)(?![a-zA-Z0-9])"
     r"|(?<![a-zA-Z0-9])(scaffold|ingest|lint)(?![a-zA-Z0-9]).{0,150}(?<![a-zA-Z0-9])schedul\w*"
-    r"|\b(activate|archive|restore)\s+\w",
+    r"|\b(activate|archive|restore)\s+\w"
+    r"|\borphan\s+page"
+    r"|\bpage\w*.{0,20}\borphan"
+    r"|\b(list|show|what|which|find|are there).{0,60}\b(orphan|contradict|adversarial).{0,40}\bpage"
+    r"|\blint\s+(report|state|status|result|summary)"
+    r"|\b(show|display|view|get)\b.{0,30}\blint\s+report"
+    r"|\bwhat.{0,30}\b(orphan|contradict|adversarial)"
+    r"|\bsynthadoc\s+status\b"
+    r"|\b(show|display|view|get)\b.{0,40}\b(wiki|synthadoc)\s+status\b"
+    r"|\b(wiki|page)\s+(health|summary|overview|status)\b"
+    r"|\bhow many pages.{0,40}\b(draft|active|stale|contradict|archive)"
+    r"|\b(draft|active|stale|contradicted|archived)\s+page\w*\s+(count|summary|stat)",
     re.IGNORECASE,
 )
 
@@ -37,11 +48,17 @@ _EXTRACT_PROMPT_TEMPLATE = (
     "You are an action parser for Synthadoc. Extract the intended action and its "
     "parameters from the user request below.\n\n"
     "Return ONLY a JSON object — no explanation, no markdown fences.\n\n"
-    'Schema: {{"action": "<lint|lint_report|ingest|scaffold|schedule_add|schedule_list|'
+    'Schema: {{"action": "<lint|lint_report|wiki_status|ingest|scaffold|schedule_add|schedule_list|'
     'schedule_history|lifecycle_activate|lifecycle_archive|lifecycle_restore|none>", "params": {{...}}}}\n\n'
     "params keys by action:\n"
     "  lint          : scope (all|contradictions|orphans|stale|citations), auto_resolve (bool)\n"
     "  lint_report   : (no params — shows current contradictions, orphans and adversarial warnings; no server needed)\n"
+    "                  Use lint_report for ANY question asking what orphan/contradicted/adversarial pages exist NOW.\n"
+    "                  Examples: 'what pages are orphans?', 'show contradictions', 'list orphan pages',\n"
+    "                  'are there any contradicted pages?', 'show lint report'\n"
+    "  wiki_status   : (no params — live page counts grouped by lifecycle state: draft/active/stale/contradicted/archived)\n"
+    "                  Use wiki_status for: 'show synthadoc status', 'wiki health', 'how many pages are active?',\n"
+    "                  'page lifecycle summary', 'synthadoc status result'\n"
     "  ingest        : source (URL or path), force (bool)\n"
     "  scaffold      : domain (string or null)\n"
     "  schedule_add  : op (full synthadoc subcommand, e.g. 'scaffold', 'lint run', "
@@ -132,6 +149,8 @@ class ActionAgent:
             return await self._do_lint(params)
         if action == "lint_report":
             return await self._do_lint_report()
+        if action == "wiki_status":
+            return await self._do_wiki_status()
         if action == "ingest":
             return await self._do_ingest(params)
         if action == "scaffold":
@@ -188,6 +207,48 @@ class ActionAgent:
         else:
             message = "\n\n".join(parts)
         return ActionResult(action_type="lint_report", success=True, message=message)
+
+    async def _do_wiki_status(self) -> ActionResult:
+        from synthadoc.storage.log import AuditDB
+        from synthadoc.storage.wiki import LifecycleState
+        audit_path = self._wiki_root / ".synthadoc" / "audit.db"
+        if not audit_path.exists():
+            total = len(self._orch._store.list_pages())
+            return ActionResult(
+                action_type="wiki_status",
+                success=True,
+                message=(
+                    f"**Wiki status** — {total} page{'s' if total != 1 else ''} total\n\n"
+                    "No lifecycle data yet. Run `synthadoc lint run` to initialise lifecycle states."
+                ),
+            )
+        audit = AuditDB(audit_path)
+        await audit.init()
+        counts = await audit.get_lifecycle_summary()
+        total = sum(counts.values())
+        state_order = [
+            LifecycleState.DRAFT,
+            LifecycleState.ACTIVE,
+            LifecycleState.STALE,
+            LifecycleState.CONTRADICTED,
+            LifecycleState.ARCHIVED,
+        ]
+        _NOTES = {
+            LifecycleState.DRAFT:        "awaiting lint review",
+            LifecycleState.ACTIVE:       "published, included in queries and exports",
+            LifecycleState.STALE:        "source changed — re-ingest to refresh",
+            LifecycleState.CONTRADICTED: "conflicting sources — manual review required",
+            LifecycleState.ARCHIVED:     "excluded from queries and exports",
+        }
+        lines = [f"**Wiki status** — {total} page{'s' if total != 1 else ''} total\n",
+                 "| State | Count | Note |", "|---|---|---|"]
+        for state in state_order:
+            n = counts.get(state, 0)
+            lines.append(f"| {state} | {n} | {_NOTES[state]} |")
+        other = {s: c for s, c in counts.items() if s not in state_order}
+        for state, n in sorted(other.items()):
+            lines.append(f"| {state} | {n} | — |")
+        return ActionResult(action_type="wiki_status", success=True, message="\n".join(lines))
 
     async def _do_lint(self, params: dict) -> ActionResult:
         scope = params.get("scope", "all")

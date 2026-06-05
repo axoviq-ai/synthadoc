@@ -10,13 +10,18 @@
     "EXPLORER": [
       "What topics does this wiki cover?",
       "What are the key topics in this wiki?",
+      "Show wiki status",
       "What are the stale pages in my wiki?",
+      "What pages are orphan pages?",
       "Ingest a new source into the wiki",
       "Run a full lint check"
     ],
     "HEALTH_CHECK": [
+      "Show wiki status",
       "Which pages are marked stale?",
+      "What pages are orphan pages?",
       "Show me pages with contradictions",
+      "Which pages have adversarial warnings?",
       "How do I run a lint check?",
       "Run lint with auto-resolve enabled",
       "Show my scheduled tasks"
@@ -26,6 +31,10 @@
       "What changed in the wiki this month?",
       "What pages were added this year?",
       "Which pages have adversarial warnings?",
+      "What pages are orphan pages?",
+      "Activate a draft page",
+      "Archive a stale page",
+      "Restore an archived page to draft",
       "Export my wiki as llms.txt",
       "Run lint on contradictions only",
       "Schedule a daily ingest at 6 AM",
@@ -60,19 +69,33 @@
       ]
     },
     {
-      "keywords": ["lifecycle", "active", "archive", "draft"],
+      "keywords": ["lifecycle", "active", "archive", "draft", "restore", "activate"],
       "hints": [
-        "How do lifecycle states work?",
-        "How do I archive a page?",
-        "What is candidates staging?"
+        "Activate a draft page",
+        "Archive a stale page",
+        "Restore an archived page to draft",
+        "What is candidates staging?",
+        "Show wiki status",
+        "How do lifecycle states work?"
       ]
     },
     {
-      "keywords": ["lint", "contradiction", "orphan", "dangling"],
+      "keywords": ["orphan", "no inbound", "isolated", "unlinked"],
       "hints": [
-        "Run lint with auto-resolve enabled",
+        "What pages are orphan pages?",
+        "Run lint on orphans only",
+        "Show my lint report"
+      ]
+    },
+    {
+      "keywords": ["lint", "contradiction", "dangling"],
+      "hints": [
+        "What pages are orphan pages?",
+        "List contradicted pages",
         "Run lint on contradictions only",
-        "How do I run a lint check?"
+        "Run lint with auto-resolve enabled",
+        "How do I run a lint check?",
+        "Show my lint report"
       ]
     },
     {
@@ -96,6 +119,7 @@
       "keywords": ["adversarial", "warning", "flagged", "overstated", "claim concern"],
       "hints": [
         "Which pages have adversarial warnings?",
+        "What pages are orphan pages?",
         "Run the adversarial lint pass",
         "How do I review a flagged claim?"
       ]
