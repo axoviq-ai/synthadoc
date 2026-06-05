@@ -1,6 +1,6 @@
 ﻿# Synthadoc User Quick-Start Guide
 
-**Version: v0.6.0 (Community Edition)**
+**Version: v0.7.0 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
@@ -1739,7 +1739,7 @@ The UI detects the state of your wiki and your session history, then adapts:
 | **Health Check** | ≥5 pages, returning user, ≥1 stale page in the wiki | Lifecycle review — suggests running lint or inspecting stale pages |
 | **Power User** | ≥5 pages, returning user, no stale pages | Context-sensitive follow-ups based on your last answer |
 
-The mode badge appears in the top-right corner of the chat interface. It reflects the wiki's current state — after you run lint and promote pages, a **Health Check** session will become **Power User** on the next session open.
+The mode badge appears in the top-right corner of the chat interface. It reflects the wiki's current state at the moment the session was created — the mode is determined when you open the browser tab, not updated mid-session. To see an updated mode after running lint and promoting pages, open a new browser tab.
 
 ### Asking questions
 
@@ -1754,10 +1754,6 @@ Below each answer:
 ### Multi-turn conversation
 
 Each question in a session builds on the previous ones. The UI maintains conversation context so follow-up questions like "What came before that?" resolve correctly against the previous answer.
-
-### Stopping
-
-Close the browser tab when done. The engine keeps running — use `synthadoc serve` background mode or stop the server manually when finished.
 
 ---
 
@@ -1787,7 +1783,7 @@ Use `--no-cache` when:
 - You are debugging a query or testing a new LLM provider
 - You suspect the cache entry is stale for any reason
 
-The `--no-cache` flag works on both `synthadoc query` and with the `synthadoc web` UI (pass it when starting the server, or use the flag on an individual `query` CLI call).
+The `--no-cache` flag is available on `synthadoc query`. The web chat UI always uses the cache automatically; use `synthadoc cache clear` to force a full refresh for all subsequent queries.
 
 ### Cache management
 
