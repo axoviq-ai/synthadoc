@@ -1,6 +1,6 @@
 # Synthadoc — Design Document
 
-**Version:** 0.6.0  
+**Version:** 0.7.0  
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -2320,7 +2320,7 @@ Hint chips are rendered below each answer and in the empty-state panel before th
 
 The UI sends the full conversation history with each request as a `context` array (array of `{role, content}` objects). `QueryAgent` prepends this history to the system prompt so follow-up questions resolve correctly.
 
-History is stored in the browser's session state (JavaScript array); it is not persisted server-side. Closing the browser tab or refreshing the page starts a new conversation turn sequence (but `session_id` is preserved via `localStorage`).
+History is stored in the browser's React state (JavaScript array); it is not persisted server-side. Closing the browser tab or refreshing the page starts a new session — `POST /sessions` is called on every page load and a new `session_id` is assigned. Query history (the list of past questions shown in the sidebar) is persisted in `localStorage` keyed by origin, so it is shared across tabs in the same browser but isolated between different browsers.
 
 ### CLI command
 
@@ -2434,4 +2434,6 @@ Opens the default browser to `http://localhost:{port}/app`. The server must alre
 - **Web chat UI** — React SPA served at `GET /app` by the existing HTTP server (no extra port or process). Features: session-aware mode detection (`NEW_WIKI` / `EXPLORER` / `HEALTH_CHECK` / `POWER_USER`) based on wiki page count, prior session history, and stale-page presence; streaming answers via SSE; citation links; knowledge-gap callouts; contextual hint chips with windowed pool rotation; and multi-turn conversation history. Server maintains a lightweight in-memory session store (session_id, mode, hint cursor, last_hints).
 - **Session management and hint engine** — hint chip sets are derived from wiki index headings (new mode), recent citation graph (explorer mode), and uncovered BM25 top pages (power-user mode). Mode badge displayed in the UI header.
 - **Obsidian plugin streaming** — the Query command streams the answer into the modal as tokens arrive, matching the CLI and web UI streaming experience. No change to the Obsidian command count.
-- **`synthadoc web` CLI command** — opens the default browser to `http://localhost:{port}/app`; thin wrapper around OS open/start/xdg-open; server must already be running.
+- **`synthadoc web` CLI command** — opens the default browser to `http://localhost:{port}/app`; thin wrapper around OS open/start/xdg-open; server must already be running. The web UI is local-only; network access and authentication are not available in the Community Edition.
+- **Action Agent** — regex pre-filter + LLM extraction layer that detects action-intent queries ("run lint", "schedule ingest every night", "what pages are orphans?") and dispatches them to live Synthadoc operations without going through the query pipeline. Supports: `lint`, `lint_report`, `wiki_status`, `ingest`, `scaffold`, `schedule_add`, `schedule_list`, `schedule_history`, `lifecycle_activate`, `lifecycle_archive`, `lifecycle_restore`. Returns structured `ActionResult` rendered directly in the web UI and CLI.
+- **Expanded hint coverage** — built-in `hints.json` extended with lifecycle action hints ("Activate a draft page", "Archive a stale page", "Restore an archived page to draft"), orphan/contradiction/adversarial patterns, and "Show wiki status" in EXPLORER and HEALTH_CHECK modes.
