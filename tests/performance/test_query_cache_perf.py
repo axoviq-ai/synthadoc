@@ -117,12 +117,12 @@ async def test_cache_read_latency_p99(tmp_path):
 @pytest.mark.asyncio
 async def test_cache_write_latency_p95(tmp_path):
     """
-    set_query() P95 must be under 30ms.
+    set_query() P95 must be under 30ms on Linux, 60ms on Windows/macOS.
 
     Each call opens a connection, inserts or replaces, and commits.
-    The 30ms SLO is generous — real SQLite WAL writes are typically 2–8ms
-    on SSD.  On network drives or spinning disks the number can spike;
-    the SLO is set conservatively to avoid flaky CI.
+    Linux bare-metal SSD: typically 2–8ms.  Windows CI hosted runners have
+    significantly slower disk I/O — P50 can reach 30ms — so we apply 2×
+    headroom on non-Linux platforms, matching the pattern in test_concurrent_cache_reads.
     """
     cache = await _make_cache(tmp_path)
     latencies_ms = []
@@ -135,7 +135,9 @@ async def test_cache_write_latency_p95(tmp_path):
     p50 = statistics.median(latencies_ms)
     p95 = _percentile(latencies_ms, 0.95)
     print(f"\n  [cache write] P50={p50:.2f}ms  P95={p95:.2f}ms  (n=200)")
-    assert p95 < 30.0, f"Cache write P95 {p95:.2f}ms exceeds 30ms SLO"
+    import platform
+    slo = 30.0 if platform.system() == "Linux" else 60.0
+    assert p95 < slo, f"Cache write P95 {p95:.2f}ms exceeds {slo:.0f}ms SLO"
 
 
 # ── Group 2: Hit vs miss latency (simulated LLM) ──────────────────────────────
