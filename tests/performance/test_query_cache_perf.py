@@ -611,17 +611,17 @@ async def test_generate_cache_performance_charts(tmp_path):
                     ha="center", fontsize=9)
     ax.set_xlabel("Concurrent Readers", fontsize=12)
     ax.set_ylabel("P95 Latency per Query (ms)", fontsize=12)
-    ax.set_title("Concurrent Cache Readers — SQLite WAL Degradation Curve\n"
-                 "(one connection per call — aiosqlite default)", fontsize=12)
+    ax.set_title("Concurrent Cache Readers — Persistent Connection Scaling\n"
+                 "(single aiosqlite connection, shared across all concurrent reads)", fontsize=12)
     ax.legend(fontsize=11)
     ax.set_xticks(concurrency_levels)
     ax.set_ylim(bottom=0)
     ax.annotate(
-        "aiosqlite opens a new connection\nper call. WAL allows concurrent\n"
-        "reads but connection-open overhead\naccumulates at high concurrency.",
+        "One persistent connection shared\nacross all concurrent reads.\n"
+        "Requests queue through aiosqlite's\nbackground thread — smooth\nmonotonic scaling.",
         xy=(0.97, 0.05), xycoords="axes fraction", ha="right", va="bottom",
         fontsize=9, color="#555",
-        bbox=dict(boxstyle="round,pad=0.4", fc="#fffde7", ec="#f0c000"),
+        bbox=dict(boxstyle="round,pad=0.4", fc="#e8f5e9", ec="#4CAF50"),
     )
     plt.tight_layout()
     out = CHART_DIR / "concurrent-readers.png"
