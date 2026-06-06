@@ -126,6 +126,9 @@ class Orchestrator:
                     "Falling back to BM25 search."
                 )
 
+    async def close(self) -> None:
+        await self._cache.close()
+
     async def _run_vector_migration(self) -> None:
         """Embed all existing wiki pages not yet in embeddings.db (background task)."""
         import time

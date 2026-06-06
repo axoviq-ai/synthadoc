@@ -93,49 +93,54 @@ async def test_cache_read_latency_p99(tmp_path):
     compared to any real LLM call (2–10s).
     """
     cache = await _make_cache(tmp_path)
-    keys = []
-    for i in range(200):
-        k = make_query_cache_key(QUESTIONS[i % len(QUESTIONS)], epoch=i % 20)
-        await cache.set_query(k, epoch=i % 20, result=_RESULT)
-        keys.append(k)
+    try:
+        keys = []
+        for i in range(200):
+            k = make_query_cache_key(QUESTIONS[i % len(QUESTIONS)], epoch=i % 20)
+            await cache.set_query(k, epoch=i % 20, result=_RESULT)
+            keys.append(k)
 
-    latencies_ms = []
-    for i in range(500):
-        k = keys[i % len(keys)]
-        t0 = time.perf_counter()
-        result = await cache.get_query(k)
-        latencies_ms.append((time.perf_counter() - t0) * 1000)
-        assert result is not None
+        latencies_ms = []
+        for i in range(500):
+            k = keys[i % len(keys)]
+            t0 = time.perf_counter()
+            result = await cache.get_query(k)
+            latencies_ms.append((time.perf_counter() - t0) * 1000)
+            assert result is not None
 
-    p50 = statistics.median(latencies_ms)
-    p95 = _percentile(latencies_ms, 0.95)
-    p99 = _percentile(latencies_ms, 0.99)
-    print(f"\n  [cache read] P50={p50:.2f}ms  P95={p95:.2f}ms  P99={p99:.2f}ms  (n=500)")
-    assert p99 < 10.0, f"Cache read P99 {p99:.2f}ms exceeds 10ms SLO"
+        p50 = statistics.median(latencies_ms)
+        p95 = _percentile(latencies_ms, 0.95)
+        p99 = _percentile(latencies_ms, 0.99)
+        print(f"\n  [cache read] P50={p50:.2f}ms  P95={p95:.2f}ms  P99={p99:.2f}ms  (n=500)")
+        assert p99 < 10.0, f"Cache read P99 {p99:.2f}ms exceeds 10ms SLO"
+    finally:
+        await cache.close()
 
 
 @pytest.mark.asyncio
 async def test_cache_write_latency_p95(tmp_path):
     """
-    Measures set_query() write latency and prints P50/P95 (n=200).
+    set_query() P95 must be under 15ms.
 
-    No SLO assertion: each write calls db.commit() which flushes to disk.
-    On shared CI runners another job's disk I/O can spike P95 to 70ms+ even
-    when P50 is under 2ms. This test characterises write performance for
-    local development reference; use the pytest-benchmark results for
-    authoritative write timing.
+    With a persistent connection, each write reuses the open connection so
+    only the INSERT + commit cost is paid. Typical SSD: 1–5ms per write.
+    The 15ms SLO gives headroom for occasional disk pressure on CI runners.
     """
     cache = await _make_cache(tmp_path)
-    latencies_ms = []
-    for i in range(200):
-        k = make_query_cache_key(QUESTIONS[i % len(QUESTIONS)], epoch=0)
-        t0 = time.perf_counter()
-        await cache.set_query(k, epoch=0, result=_RESULT)
-        latencies_ms.append((time.perf_counter() - t0) * 1000)
+    try:
+        latencies_ms = []
+        for i in range(200):
+            k = make_query_cache_key(QUESTIONS[i % len(QUESTIONS)], epoch=0)
+            t0 = time.perf_counter()
+            await cache.set_query(k, epoch=0, result=_RESULT)
+            latencies_ms.append((time.perf_counter() - t0) * 1000)
 
-    p50 = statistics.median(latencies_ms)
-    p95 = _percentile(latencies_ms, 0.95)
-    print(f"\n  [cache write] P50={p50:.2f}ms  P95={p95:.2f}ms  (n=200)")
+        p50 = statistics.median(latencies_ms)
+        p95 = _percentile(latencies_ms, 0.95)
+        print(f"\n  [cache write] P50={p50:.2f}ms  P95={p95:.2f}ms  (n=200)")
+        assert p95 < 15.0, f"Cache write P95 {p95:.2f}ms exceeds 15ms SLO"
+    finally:
+        await cache.close()
 
 
 # ── Group 2: Hit vs miss latency (simulated LLM) ──────────────────────────────
@@ -155,21 +160,24 @@ async def test_cache_hit_makes_zero_llm_calls(tmp_path):
         return _RESULT.copy()
 
     cache = await _make_cache(tmp_path)
-    k = make_query_cache_key("What is Moore's Law?", epoch=0)
+    try:
+        k = make_query_cache_key("What is Moore's Law?", epoch=0)
 
-    # Miss — LLM fires
-    if await cache.get_query(k) is None:
-        result = await fake_llm()
-        await cache.set_query(k, epoch=0, result=result)
-    first_calls = llm_calls
+        # Miss — LLM fires
+        if await cache.get_query(k) is None:
+            result = await fake_llm()
+            await cache.set_query(k, epoch=0, result=result)
+        first_calls = llm_calls
 
-    llm_calls = 0
-    # Hit — LLM must NOT fire
-    if await cache.get_query(k) is None:
-        await fake_llm()
+        llm_calls = 0
+        # Hit — LLM must NOT fire
+        if await cache.get_query(k) is None:
+            await fake_llm()
 
-    assert first_calls == 1, f"First query should call LLM once, called {first_calls}"
-    assert llm_calls == 0, f"Cache hit should make 0 LLM calls, made {llm_calls}"
+        assert first_calls == 1, f"First query should call LLM once, called {first_calls}"
+        assert llm_calls == 0, f"Cache hit should make 0 LLM calls, made {llm_calls}"
+    finally:
+        await cache.close()
 
 
 @pytest.mark.asyncio
@@ -183,35 +191,38 @@ async def test_cache_hit_vs_miss_latency(tmp_path):
     cache speedups of 100x+.
     """
     cache = await _make_cache(tmp_path)
-    k = make_query_cache_key("What is Moore's Law?", epoch=0)
+    try:
+        k = make_query_cache_key("What is Moore's Law?", epoch=0)
 
-    async def simulate(use_cache: bool) -> float:
-        t0 = time.perf_counter()
-        if use_cache:
-            hit = await cache.get_query(k)
-            if hit is not None:
-                return (time.perf_counter() - t0) * 1000
-        await asyncio.sleep(SIMULATED_PHASE1_MS / 1000)
-        await asyncio.sleep(SIMULATED_LLM_MS / 1000)
-        await cache.set_query(k, epoch=0, result=_RESULT.copy())
-        return (time.perf_counter() - t0) * 1000
+        async def simulate(use_cache: bool) -> float:
+            t0 = time.perf_counter()
+            if use_cache:
+                hit = await cache.get_query(k)
+                if hit is not None:
+                    return (time.perf_counter() - t0) * 1000
+            await asyncio.sleep(SIMULATED_PHASE1_MS / 1000)
+            await asyncio.sleep(SIMULATED_LLM_MS / 1000)
+            await cache.set_query(k, epoch=0, result=_RESULT.copy())
+            return (time.perf_counter() - t0) * 1000
 
-    miss_samples = [await simulate(use_cache=False) for _ in range(10)]
-    hit_samples = [await simulate(use_cache=True) for _ in range(30)]
+        miss_samples = [await simulate(use_cache=False) for _ in range(10)]
+        hit_samples = [await simulate(use_cache=True) for _ in range(30)]
 
-    miss_p50 = statistics.median(miss_samples)
-    hit_p50 = statistics.median(hit_samples)
-    speedup = miss_p50 / max(hit_p50, 0.001)
+        miss_p50 = statistics.median(miss_samples)
+        hit_p50 = statistics.median(hit_samples)
+        speedup = miss_p50 / max(hit_p50, 0.001)
 
-    print(
-        f"\n  [hit vs miss]"
-        f"  miss P50={miss_p50:.1f}ms"
-        f"  hit P50={hit_p50:.1f}ms"
-        f"  speedup={speedup:.1f}x"
-        f"  (simulated LLM={SIMULATED_LLM_MS}ms)"
-    )
-    assert hit_p50 < 10.0, f"Cache hit P50 {hit_p50:.1f}ms exceeds 10ms SLO"
-    assert speedup > 5.0, f"Speedup {speedup:.1f}x is below 5x minimum"
+        print(
+            f"\n  [hit vs miss]"
+            f"  miss P50={miss_p50:.1f}ms"
+            f"  hit P50={hit_p50:.1f}ms"
+            f"  speedup={speedup:.1f}x"
+            f"  (simulated LLM={SIMULATED_LLM_MS}ms)"
+        )
+        assert hit_p50 < 10.0, f"Cache hit P50 {hit_p50:.1f}ms exceeds 10ms SLO"
+        assert speedup > 5.0, f"Speedup {speedup:.1f}x is below 5x minimum"
+    finally:
+        await cache.close()
 
 
 # ── Group 3: Concurrent readers ───────────────────────────────────────────────
@@ -222,39 +233,45 @@ async def test_concurrent_cache_reads(tmp_path, concurrency):
     """
     N concurrent get_query() calls.  Measures per-query P95 under load.
 
-    aiosqlite opens a new connection per call — this test surfaces the
-    WAL serialization overhead as concurrency grows.  The degradation
-    curve informs whether a connection pool is needed before v0.8.0.
+    With a persistent connection, all concurrent reads go through one
+    aiosqlite connection (serialised by its background thread). The
+    connection-open overhead is paid once at init(), not per-call.
 
-    No P95 SLO assertion: connection-open cost depends entirely on disk I/O
-    speed and varies too much across machines and CI runners to be stable.
-    The only assertion is correctness (all reads return a hit, no data race).
+    SLOs (single persistent connection, SSD):
+      10  concurrent → P95 < 10ms
+      50  concurrent → P95 < 20ms
+      100 concurrent → P95 < 40ms
     """
     cache = await _make_cache(tmp_path)
-    k = make_query_cache_key("What is Moore's Law?", epoch=0)
-    await cache.set_query(k, epoch=0, result=_RESULT)
+    try:
+        k = make_query_cache_key("What is Moore's Law?", epoch=0)
+        await cache.set_query(k, epoch=0, result=_RESULT)
 
-    async def one_read() -> tuple[float, bool]:
-        t0 = time.perf_counter()
-        result = await cache.get_query(k)
-        return (time.perf_counter() - t0) * 1000, result is not None
+        async def one_read() -> tuple[float, bool]:
+            t0 = time.perf_counter()
+            result = await cache.get_query(k)
+            return (time.perf_counter() - t0) * 1000, result is not None
 
-    wall_t0 = time.perf_counter()
-    outcomes = await asyncio.gather(*[one_read() for _ in range(concurrency)])
-    wall_ms = (time.perf_counter() - wall_t0) * 1000
+        wall_t0 = time.perf_counter()
+        outcomes = await asyncio.gather(*[one_read() for _ in range(concurrency)])
+        wall_ms = (time.perf_counter() - wall_t0) * 1000
 
-    latencies = [o[0] for o in outcomes]
-    all_hits = all(o[1] for o in outcomes)
-    p50 = statistics.median(latencies)
-    p95 = _percentile(latencies, 0.95)
-    throughput = concurrency / (wall_ms / 1000)
+        latencies = [o[0] for o in outcomes]
+        all_hits = all(o[1] for o in outcomes)
+        p50 = statistics.median(latencies)
+        p95 = _percentile(latencies, 0.95)
+        throughput = concurrency / (wall_ms / 1000)
 
-    print(
-        f"\n  [concurrent reads n={concurrency:>3}]"
-        f"  P50={p50:.1f}ms  P95={p95:.1f}ms"
-        f"  wall={wall_ms:.0f}ms  throughput={throughput:.0f} q/s"
-    )
-    assert all_hits, "One or more concurrent reads returned a cache miss (data race?)"
+        print(
+            f"\n  [concurrent reads n={concurrency:>3}]"
+            f"  P50={p50:.1f}ms  P95={p95:.1f}ms"
+            f"  wall={wall_ms:.0f}ms  throughput={throughput:.0f} q/s"
+        )
+        assert all_hits, "One or more concurrent reads returned a cache miss (data race?)"
+        slo = {10: 10.0, 50: 20.0, 100: 40.0}[concurrency]
+        assert p95 < slo, f"P95 {p95:.1f}ms exceeds {slo:.0f}ms SLO at concurrency={concurrency}"
+    finally:
+        await cache.close()
 
 
 # ── Group 4: Cache vs no-cache throughput ─────────────────────────────────────
@@ -274,55 +291,51 @@ async def test_concurrent_cache_vs_no_cache_throughput(tmp_path, concurrency):
     starts to erode the cache advantage.
     """
     cache = await _make_cache(tmp_path)
-    questions = (QUESTIONS * ((concurrency // len(QUESTIONS)) + 1))[:concurrency]
+    try:
+        questions = (QUESTIONS * ((concurrency // len(QUESTIONS)) + 1))[:concurrency]
 
-    for q in set(questions):
-        k = make_query_cache_key(q, epoch=0)
-        await cache.set_query(k, epoch=0, result=_RESULT.copy())
-
-    async def with_cache(q: str) -> float:
-        t0 = time.perf_counter()
-        k = make_query_cache_key(q, epoch=0)
-        if await cache.get_query(k) is None:
-            await asyncio.sleep((SIMULATED_PHASE1_MS + SIMULATED_LLM_MS) / 1000)
+        for q in set(questions):
+            k = make_query_cache_key(q, epoch=0)
             await cache.set_query(k, epoch=0, result=_RESULT.copy())
-        return (time.perf_counter() - t0) * 1000
 
-    async def no_cache(q: str) -> float:
+        async def with_cache(q: str) -> float:
+            t0 = time.perf_counter()
+            k = make_query_cache_key(q, epoch=0)
+            if await cache.get_query(k) is None:
+                await asyncio.sleep((SIMULATED_PHASE1_MS + SIMULATED_LLM_MS) / 1000)
+                await cache.set_query(k, epoch=0, result=_RESULT.copy())
+            return (time.perf_counter() - t0) * 1000
+
+        async def no_cache(q: str) -> float:
+            t0 = time.perf_counter()
+            await asyncio.sleep((SIMULATED_PHASE1_MS + SIMULATED_LLM_MS) / 1000)
+            return (time.perf_counter() - t0) * 1000
+
         t0 = time.perf_counter()
-        await asyncio.sleep((SIMULATED_PHASE1_MS + SIMULATED_LLM_MS) / 1000)
-        return (time.perf_counter() - t0) * 1000
+        cached_lats = await asyncio.gather(*[with_cache(q) for q in questions])
+        cached_wall = (time.perf_counter() - t0) * 1000
 
-    t0 = time.perf_counter()
-    cached_lats = await asyncio.gather(*[with_cache(q) for q in questions])
-    cached_wall = (time.perf_counter() - t0) * 1000
+        t0 = time.perf_counter()
+        nocache_lats = await asyncio.gather(*[no_cache(q) for q in questions])
+        nocache_wall = (time.perf_counter() - t0) * 1000
 
-    t0 = time.perf_counter()
-    nocache_lats = await asyncio.gather(*[no_cache(q) for q in questions])
-    nocache_wall = (time.perf_counter() - t0) * 1000
+        cached_qps = concurrency / (cached_wall / 1000)
+        nocache_qps = concurrency / (nocache_wall / 1000)
+        cached_p95 = _percentile(list(cached_lats), 0.95)
+        nocache_p95 = _percentile(list(nocache_lats), 0.95)
+        speedup = nocache_wall / max(cached_wall, 0.001)
 
-    cached_qps = concurrency / (cached_wall / 1000)
-    nocache_qps = concurrency / (nocache_wall / 1000)
-    cached_p95 = _percentile(list(cached_lats), 0.95)
-    nocache_p95 = _percentile(list(nocache_lats), 0.95)
-    speedup = nocache_wall / max(cached_wall, 0.001)
-
-    print(
-        f"\n  [throughput n={concurrency:>3}]"
-        f"  cache: {cached_qps:6.0f} q/s  P95={cached_p95:.1f}ms"
-        f"  | no-cache: {nocache_qps:6.0f} q/s  P95={nocache_p95:.1f}ms"
-        f"  | speedup={speedup:.1f}x"
-    )
-    import platform
-    if platform.system() == "Linux":
+        print(
+            f"\n  [throughput n={concurrency:>3}]"
+            f"  cache: {cached_qps:6.0f} q/s  P95={cached_p95:.1f}ms"
+            f"  | no-cache: {nocache_qps:6.0f} q/s  P95={nocache_p95:.1f}ms"
+            f"  | speedup={speedup:.1f}x"
+        )
         assert cached_qps > nocache_qps, (
             f"Cache ({cached_qps:.0f} q/s) not faster than no-cache ({nocache_qps:.0f} q/s)"
         )
-    else:
-        # On Windows/macOS CI, SQLite connection-open cost per read can approach
-        # the simulated LLM sleep time, making the cache advantage unreliable.
-        # Numbers are printed above for reference; no assertion is made.
-        pass
+    finally:
+        await cache.close()
 
 
 # ── Group 5: Epoch invalidation cost ──────────────────────────────────────────
@@ -334,22 +347,25 @@ async def test_epoch_bump_invalidates_instantly(tmp_path):
     Old epoch key becomes unreachable immediately; no database write needed.
     """
     cache = await _make_cache(tmp_path)
-    q = "What is Moore's Law?"
+    try:
+        q = "What is Moore's Law?"
 
-    k0 = make_query_cache_key(q, epoch=0)
-    await cache.set_query(k0, epoch=0, result=_RESULT)
+        k0 = make_query_cache_key(q, epoch=0)
+        await cache.set_query(k0, epoch=0, result=_RESULT)
 
-    t0 = time.perf_counter()
-    k1 = make_query_cache_key(q, epoch=1)   # simulates wiki_epoch += 1
-    bump_ms = (time.perf_counter() - t0) * 1000
+        t0 = time.perf_counter()
+        k1 = make_query_cache_key(q, epoch=1)   # simulates wiki_epoch += 1
+        bump_ms = (time.perf_counter() - t0) * 1000
 
-    old_via_new_key = await cache.get_query(k1)  # epoch=1 key doesn't exist
-    old_still_present = await cache.get_query(k0)  # epoch=0 entry physically still there
+        old_via_new_key = await cache.get_query(k1)  # epoch=1 key doesn't exist
+        old_still_present = await cache.get_query(k0)  # epoch=0 entry physically still there
 
-    print(f"\n  [epoch bump]  key recomputation={bump_ms:.4f}ms  (sub-ms O(1) operation)")
-    assert old_via_new_key is None,     "New epoch key should not exist before first fresh query"
-    assert old_still_present is not None, "Old epoch key still physically present — lazy cleanup"
-    assert bump_ms < 1.0,               f"Key recomputation took {bump_ms:.3f}ms — should be sub-ms"
+        print(f"\n  [epoch bump]  key recomputation={bump_ms:.4f}ms  (sub-ms O(1) operation)")
+        assert old_via_new_key is None,     "New epoch key should not exist before first fresh query"
+        assert old_still_present is not None, "Old epoch key still physically present — lazy cleanup"
+        assert bump_ms < 1.0,               f"Key recomputation took {bump_ms:.3f}ms — should be sub-ms"
+    finally:
+        await cache.close()
 
 
 # ── Group 6: pytest-benchmark steady-state variants ───────────────────────────
@@ -365,6 +381,7 @@ def test_cache_read_benchmark(benchmark, tmp_path):
         return loop.run_until_complete(cache.get_query(k))
 
     result = benchmark(_read)
+    loop.run_until_complete(cache.close())
     loop.close()
     assert result is not None
 
@@ -381,6 +398,7 @@ def test_cache_write_benchmark(benchmark, tmp_path):
         loop.run_until_complete(cache.set_query(k, epoch=counter[0], result=_RESULT))
 
     benchmark(_write)
+    loop.run_until_complete(cache.close())
     loop.close()
 
 
