@@ -23,6 +23,7 @@ Run modes:
   pytest tests/performance/test_query_cache_perf.py -m charts -v -s
 """
 import asyncio
+import platform
 import statistics
 import time
 from pathlib import Path
@@ -120,12 +121,14 @@ async def test_cache_read_latency_p99(tmp_path):
 @pytest.mark.asyncio
 async def test_cache_write_latency_p95(tmp_path):
     """
-    set_query() P95 must be under 15ms.
+    set_query() P95 must be under 15ms on Linux, 50ms on Windows/macOS.
 
     With a persistent connection, each write reuses the open connection so
-    only the INSERT + commit cost is paid. Typical SSD: 1–5ms per write.
-    The 15ms SLO gives headroom for occasional disk pressure on CI runners.
+    only the INSERT + commit cost is paid. Typical SSD: 1–5ms per write on
+    Linux bare-metal. Windows/macOS CI runners have higher virtual-disk
+    overhead (SQLite fsync ~20ms+), so a 3× multiplier is applied.
     """
+    slo_ms = 15.0 if platform.system() == "Linux" else 50.0
     cache = await _make_cache(tmp_path)
     try:
         latencies_ms = []
@@ -137,8 +140,8 @@ async def test_cache_write_latency_p95(tmp_path):
 
         p50 = statistics.median(latencies_ms)
         p95 = _percentile(latencies_ms, 0.95)
-        print(f"\n  [cache write] P50={p50:.2f}ms  P95={p95:.2f}ms  (n=200)")
-        assert p95 < 15.0, f"Cache write P95 {p95:.2f}ms exceeds 15ms SLO"
+        print(f"\n  [cache write] P50={p50:.2f}ms  P95={p95:.2f}ms  (n=200, SLO={slo_ms:.0f}ms)")
+        assert p95 < slo_ms, f"Cache write P95 {p95:.2f}ms exceeds {slo_ms:.0f}ms SLO"
     finally:
         await cache.close()
 
@@ -238,9 +241,8 @@ async def test_concurrent_cache_reads(tmp_path, concurrency):
     connection-open overhead is paid once at init(), not per-call.
 
     SLOs (single persistent connection, SSD):
-      10  concurrent → P95 < 10ms
-      50  concurrent → P95 < 20ms
-      100 concurrent → P95 < 40ms
+      Linux bare-metal: 10→<10ms, 50→<20ms, 100→<40ms
+      Windows/macOS CI: 3× headroom — 10→<30ms, 50→<60ms, 100→<120ms
     """
     cache = await _make_cache(tmp_path)
     try:
@@ -268,7 +270,10 @@ async def test_concurrent_cache_reads(tmp_path, concurrency):
             f"  wall={wall_ms:.0f}ms  throughput={throughput:.0f} q/s"
         )
         assert all_hits, "One or more concurrent reads returned a cache miss (data race?)"
-        slo = {10: 10.0, 50: 20.0, 100: 40.0}[concurrency]
+        # Linux bare-metal SLOs; Windows/macOS CI runners apply 3× headroom for
+        # virtual-disk SQLite overhead (same pattern as test_performance.py).
+        base_slo = {10: 10.0, 50: 20.0, 100: 40.0}[concurrency]
+        slo = base_slo if platform.system() == "Linux" else base_slo * 3
         assert p95 < slo, f"P95 {p95:.1f}ms exceeds {slo:.0f}ms SLO at concurrency={concurrency}"
     finally:
         await cache.close()
