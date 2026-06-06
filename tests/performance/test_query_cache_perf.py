@@ -226,10 +226,9 @@ async def test_concurrent_cache_reads(tmp_path, concurrency):
     WAL serialization overhead as concurrency grows.  The degradation
     curve informs whether a connection pool is needed before v0.8.0.
 
-    SLOs (conservative — based on SQLite WAL on SSD):
-      10  concurrent → P95 < 20ms
-      50  concurrent → P95 < 60ms
-      100 concurrent → P95 < 120ms
+    No P95 SLO assertion: connection-open cost depends entirely on disk I/O
+    speed and varies too much across machines and CI runners to be stable.
+    The only assertion is correctness (all reads return a hit, no data race).
     """
     cache = await _make_cache(tmp_path)
     k = make_query_cache_key("What is Moore's Law?", epoch=0)
@@ -256,13 +255,6 @@ async def test_concurrent_cache_reads(tmp_path, concurrency):
         f"  wall={wall_ms:.0f}ms  throughput={throughput:.0f} q/s"
     )
     assert all_hits, "One or more concurrent reads returned a cache miss (data race?)"
-
-    import platform
-    # Windows/macOS have higher SQLite connection-open overhead than Linux bare-metal.
-    # Apply 2× headroom on non-Linux runners (same pattern as existing BM25 SLO tests).
-    multiplier = 1.0 if platform.system() == "Linux" else 2.0
-    slo = {10: 20.0, 50: 60.0, 100: 120.0}[concurrency] * multiplier
-    assert p95 < slo, f"P95 {p95:.1f}ms exceeds {slo:.0f}ms SLO at concurrency={concurrency}"
 
 
 # ── Group 4: Cache vs no-cache throughput ─────────────────────────────────────
