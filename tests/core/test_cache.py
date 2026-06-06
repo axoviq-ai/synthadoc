@@ -57,6 +57,20 @@ async def test_clear_on_empty_cache_returns_zero(tmp_wiki):
 
 
 @pytest.mark.asyncio
+async def test_clear_also_wipes_query_cache(tmp_wiki):
+    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
+    await cache.init()
+    await cache.set("r1", {"v": 1})
+    await cache.set_query("q1", epoch=1, result={"answer": "x"})
+    await cache.set_query("q2", epoch=1, result={"answer": "y"})
+    removed = await cache.clear()
+    assert removed == 3
+    assert await cache.get("r1") is None
+    assert await cache.get_query("q1") is None
+    assert await cache.get_query("q2") is None
+
+
+@pytest.mark.asyncio
 async def test_get_query_returns_none_on_miss(tmp_path):
     """get_query returns None when no matching entry exists."""
     from synthadoc.core.cache import CacheManager

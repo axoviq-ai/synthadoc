@@ -64,11 +64,12 @@ class CacheManager:
             await db.commit()
 
     async def clear(self) -> int:
-        """Delete all cached entries. Returns the number of rows removed."""
+        """Delete all cached entries (both response and query caches). Returns total rows removed."""
         async with aiosqlite.connect(self._path) as db:
-            cur = await db.execute("DELETE FROM response_cache")
+            cur1 = await db.execute("DELETE FROM response_cache")
+            cur2 = await db.execute("DELETE FROM query_cache")
             await db.commit()
-            return cur.rowcount
+            return cur1.rowcount + cur2.rowcount
 
     async def get_query(self, key: str) -> Optional[Any]:
         async with aiosqlite.connect(self._path) as db:
