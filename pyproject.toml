@@ -44,6 +44,7 @@ dev = [
     "pytest-benchmark>=4.0",
     "respx>=0.21",
     "mcp>=1.0",
+    "matplotlib>=3.8",
 ]
 
 [project.scripts]
@@ -57,13 +58,15 @@ synthadoc = "synthadoc.cli.main:app"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "-m 'not integration'"
+addopts = "-m 'not integration and not charts'"
 markers = [
     "integration: marks tests that require real external tools (run explicitly with '-m integration')",
     "windows: marks tests that run only on Windows",
     "linux: marks tests that run only on Linux",
     "macos: marks tests that run only on macOS",
     "posix: marks tests that run only on Linux or macOS",
+    "charts: marks tests that generate performance charts (run explicitly with '-m charts')",
+    "benchmark: marks pytest-benchmark tests (run with --benchmark-only)",
 ]
 
 [tool.hatch.version]
