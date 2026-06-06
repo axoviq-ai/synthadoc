@@ -97,13 +97,16 @@ async def test_cache_hit_makes_zero_llm_calls(tmp_wiki):
     async def _noop_annotate(self, section, source_text, filename):
         return section, []
 
-    with patch.object(IngestAgent, "_update_overview", _noop_overview), \
-         patch.object(IngestAgent, "_annotate_citations", _noop_annotate):
-        await agent.ingest(str(source))
-        first_count = call_count
-        call_count = 0
-        await agent.ingest(str(source), force=True)
-        second_count = call_count
+    try:
+        with patch.object(IngestAgent, "_update_overview", _noop_overview), \
+             patch.object(IngestAgent, "_annotate_citations", _noop_annotate):
+            await agent.ingest(str(source))
+            first_count = call_count
+            call_count = 0
+            await agent.ingest(str(source), force=True)
+            second_count = call_count
+    finally:
+        await cache.close()
 
     assert first_count > 0, "First ingest should have called LLM"
     assert second_count == 0, f"Cache hit should make 0 LLM calls, made {second_count}"
@@ -199,25 +202,28 @@ async def test_web_search_fanout_processing_is_fast(tmp_wiki):
 
     # Process all jobs through IngestAgent with mocked provider and skill
     start = time.perf_counter()
-    with patch.object(IngestAgent, "_update_overview", AsyncMock()):
-        with patch("synthadoc.agents.skill_agent.SkillAgent.extract", fake_extract):
-            while True:
-                job = await queue.dequeue()
-                if not job:
-                    break
-                agent = IngestAgent(
-                    provider=provider, store=store, search=search,
-                    log_writer=log, audit_db=audit, cache=cache,
-                    max_pages=15, wiki_root=tmp_wiki,
-                )
-                try:
-                    result = await agent.ingest(job.payload["source"], force=True)
-                    await queue.complete(job.id, result={
-                        "pages_created": result.pages_created,
-                        "pages_updated": result.pages_updated,
-                    })
-                except Exception as e:
-                    await queue.fail(job.id, str(e))
+    try:
+        with patch.object(IngestAgent, "_update_overview", AsyncMock()):
+            with patch("synthadoc.agents.skill_agent.SkillAgent.extract", fake_extract):
+                while True:
+                    job = await queue.dequeue()
+                    if not job:
+                        break
+                    agent = IngestAgent(
+                        provider=provider, store=store, search=search,
+                        log_writer=log, audit_db=audit, cache=cache,
+                        max_pages=15, wiki_root=tmp_wiki,
+                    )
+                    try:
+                        result = await agent.ingest(job.payload["source"], force=True)
+                        await queue.complete(job.id, result={
+                            "pages_created": result.pages_created,
+                            "pages_updated": result.pages_updated,
+                        })
+                    except Exception as e:
+                        await queue.fail(job.id, str(e))
+    finally:
+        await cache.close()
     elapsed = time.perf_counter() - start
 
     assert elapsed < 30.0, f"Processing 20 web search jobs took {elapsed:.1f}s — exceeds 30s SLO"

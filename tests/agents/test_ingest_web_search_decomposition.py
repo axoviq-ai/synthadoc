@@ -7,18 +7,15 @@ from synthadoc.providers.base import CompletionResponse
 from synthadoc.skills.base import ExtractedContent
 
 
-async def _make_ingest_agent(tmp_wiki, provider):
+async def _make_ingest_agent(tmp_wiki, provider, cache):
     from synthadoc.agents.ingest_agent import IngestAgent
     from synthadoc.storage.wiki import WikiStorage
     from synthadoc.storage.search import HybridSearch
     from synthadoc.storage.log import AuditDB, LogWriter
-    from synthadoc.core.cache import CacheManager
     store = WikiStorage(tmp_wiki / "wiki")
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
     log = LogWriter(tmp_wiki / "log.md")
     return IngestAgent(
         provider=provider, store=store, search=search,
@@ -37,7 +34,7 @@ def _fake_search_result(urls: list[str]) -> ExtractedContent:
 # ── decomposition fires parallel Tavily calls ─────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_web_search_fires_parallel_skill_calls(tmp_wiki):
+async def test_web_search_fires_parallel_skill_calls(tmp_wiki, cache):
     """IngestAgent must call skill_agent.extract() once per decomposed sub-query."""
     provider = AsyncMock()
     # Call 1: SearchDecomposeAgent → 3 sub-queries
@@ -45,7 +42,7 @@ async def test_web_search_fires_parallel_skill_calls(tmp_wiki):
         text='["query A", "query B", "query C"]',
         input_tokens=10, output_tokens=10,
     )
-    agent = await _make_ingest_agent(tmp_wiki, provider)
+    agent = await _make_ingest_agent(tmp_wiki, provider, cache)
 
     call_log: list[str] = []
 
@@ -64,13 +61,13 @@ async def test_web_search_fires_parallel_skill_calls(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_web_search_deduplicates_urls_across_results(tmp_wiki):
+async def test_web_search_deduplicates_urls_across_results(tmp_wiki, cache):
     """URLs returned by multiple sub-searches must be deduplicated."""
     provider = AsyncMock()
     provider.complete.return_value = CompletionResponse(
         text='["query A", "query B"]', input_tokens=10, output_tokens=10,
     )
-    agent = await _make_ingest_agent(tmp_wiki, provider)
+    agent = await _make_ingest_agent(tmp_wiki, provider, cache)
 
     call_count = 0
 
@@ -92,13 +89,13 @@ async def test_web_search_deduplicates_urls_across_results(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_web_search_preserves_url_order(tmp_wiki):
+async def test_web_search_preserves_url_order(tmp_wiki, cache):
     """First-seen URL wins; order is preserved (first sub-search URLs come first)."""
     provider = AsyncMock()
     provider.complete.return_value = CompletionResponse(
         text='["query A", "query B"]', input_tokens=10, output_tokens=10,
     )
-    agent = await _make_ingest_agent(tmp_wiki, provider)
+    agent = await _make_ingest_agent(tmp_wiki, provider, cache)
 
     async def fake_extract(source: str) -> ExtractedContent:
         if "query A" in source:
@@ -115,7 +112,7 @@ async def test_web_search_preserves_url_order(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_non_web_search_source_not_decomposed(tmp_wiki):
+async def test_non_web_search_source_not_decomposed(tmp_wiki, cache):
     """A regular file source must not trigger search decomposition."""
     import itertools
     provider = AsyncMock()
@@ -129,7 +126,7 @@ async def test_non_web_search_source_not_decomposed(tmp_wiki):
         input_tokens=10, output_tokens=10,
     )
     provider.complete.side_effect = itertools.cycle([_analysis, _decision])
-    agent = await _make_ingest_agent(tmp_wiki, provider)
+    agent = await _make_ingest_agent(tmp_wiki, provider, cache)
 
     fake_md = tmp_wiki / "wiki" / "test.md"
     fake_md.write_text("# Test\nSome content about gardening.", encoding="utf-8")
@@ -144,12 +141,12 @@ async def test_non_web_search_source_not_decomposed(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_web_search_fallback_single_query_still_works(tmp_wiki):
+async def test_web_search_fallback_single_query_still_works(tmp_wiki, cache):
     """If decompose returns [query] (fallback), a single Tavily call must still fire."""
     provider = AsyncMock()
     # decompose falls back → returns single item
     provider.complete.side_effect = RuntimeError("LLM unavailable")
-    agent = await _make_ingest_agent(tmp_wiki, provider)
+    agent = await _make_ingest_agent(tmp_wiki, provider, cache)
 
     call_log: list[str] = []
 
@@ -167,13 +164,13 @@ async def test_web_search_fallback_single_query_still_works(tmp_wiki):
 # ── performance ───────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_web_search_gather_arity_matches_decompose_count(tmp_wiki):
+async def test_web_search_gather_arity_matches_decompose_count(tmp_wiki, cache):
     """asyncio.gather() must receive exactly N coroutines for N sub-queries."""
     provider = AsyncMock()
     provider.complete.return_value = CompletionResponse(
         text='["q1", "q2", "q3"]', input_tokens=10, output_tokens=10,
     )
-    agent = await _make_ingest_agent(tmp_wiki, provider)
+    agent = await _make_ingest_agent(tmp_wiki, provider, cache)
 
     gather_arities: list[int] = []
     original_gather = asyncio.gather
@@ -193,13 +190,13 @@ async def test_web_search_gather_arity_matches_decompose_count(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_search_decompose_called_exactly_once_per_ingest(tmp_wiki):
+async def test_search_decompose_called_exactly_once_per_ingest(tmp_wiki, cache):
     """SearchDecomposeAgent.decompose() must be called exactly once per ingest."""
     provider = AsyncMock()
     provider.complete.return_value = CompletionResponse(
         text='["q1", "q2"]', input_tokens=10, output_tokens=10,
     )
-    agent = await _make_ingest_agent(tmp_wiki, provider)
+    agent = await _make_ingest_agent(tmp_wiki, provider, cache)
 
     decompose_calls: list[str] = []
     original_decompose_cls = __import__(

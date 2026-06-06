@@ -120,9 +120,12 @@ def test_cache_clear_removes_entries(tmp_path):
     async def _seed():
         cm = CacheManager(sd / "cache.db")
         await cm.init()
-        await cm.set("k1", {"v": 1})
-        await cm.set("k2", {"v": 2})
-        await cm.set("k3", {"v": 3})
+        try:
+            await cm.set("k1", {"v": 1})
+            await cm.set("k2", {"v": 2})
+            await cm.set("k3", {"v": 3})
+        finally:
+            await cm.close()
 
     asyncio.run(_seed())
 

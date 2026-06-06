@@ -99,7 +99,7 @@ def test_ingest_result_has_child_sources_field():
 
 
 @pytest.mark.asyncio
-async def test_ingest_agent_returns_child_sources_for_web_search(tmp_wiki, monkeypatch):
+async def test_ingest_agent_returns_child_sources_for_web_search(tmp_wiki, monkeypatch, cache):
     """When extract() returns child_sources, ingest() returns them after decomposition."""
     from unittest.mock import AsyncMock, patch
     from synthadoc.agents.ingest_agent import IngestAgent
@@ -120,8 +120,6 @@ async def test_ingest_agent_returns_child_sources_for_web_search(tmp_wiki, monke
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     child_urls = ["https://example.com/a", "https://example.com/b"]
     mock_extracted = ExtractedContent(
