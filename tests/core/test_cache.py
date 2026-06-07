@@ -8,16 +8,22 @@ from synthadoc.core.cache import CacheManager, make_cache_key, CACHE_VERSION
 async def test_miss_returns_none(tmp_wiki):
     cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
     await cache.init()
-    assert await cache.get("missing") is None
+    try:
+        assert await cache.get("missing") is None
+    finally:
+        await cache.close()
 
 
 @pytest.mark.asyncio
 async def test_set_and_get(tmp_wiki):
     cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
     await cache.init()
-    await cache.set("k1", {"result": "Paris"})
-    result = await cache.get("k1")
-    assert result["result"] == "Paris"
+    try:
+        await cache.set("k1", {"result": "Paris"})
+        result = await cache.get("k1")
+        assert result["result"] == "Paris"
+    finally:
+        await cache.close()
 
 
 def test_cache_key_deterministic():
@@ -39,35 +45,44 @@ def test_cache_version_changes_key():
 async def test_clear_deletes_all_entries(tmp_wiki):
     cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
     await cache.init()
-    await cache.set("a", {"v": 1})
-    await cache.set("b", {"v": 2})
-    await cache.set("c", {"v": 3})
+    try:
+        await cache.set("a", {"v": 1})
+        await cache.set("b", {"v": 2})
+        await cache.set("c", {"v": 3})
 
-    removed = await cache.clear()
-    assert removed == 3
-    assert await cache.get("a") is None
-    assert await cache.get("b") is None
+        removed = await cache.clear()
+        assert removed == 3
+        assert await cache.get("a") is None
+        assert await cache.get("b") is None
+    finally:
+        await cache.close()
 
 
 @pytest.mark.asyncio
 async def test_clear_on_empty_cache_returns_zero(tmp_wiki):
     cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
     await cache.init()
-    assert await cache.clear() == 0
+    try:
+        assert await cache.clear() == 0
+    finally:
+        await cache.close()
 
 
 @pytest.mark.asyncio
 async def test_clear_also_wipes_query_cache(tmp_wiki):
     cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
     await cache.init()
-    await cache.set("r1", {"v": 1})
-    await cache.set_query("q1", epoch=1, result={"answer": "x"})
-    await cache.set_query("q2", epoch=1, result={"answer": "y"})
-    removed = await cache.clear()
-    assert removed == 3
-    assert await cache.get("r1") is None
-    assert await cache.get_query("q1") is None
-    assert await cache.get_query("q2") is None
+    try:
+        await cache.set("r1", {"v": 1})
+        await cache.set_query("q1", epoch=1, result={"answer": "x"})
+        await cache.set_query("q2", epoch=1, result={"answer": "y"})
+        removed = await cache.clear()
+        assert removed == 3
+        assert await cache.get("r1") is None
+        assert await cache.get_query("q1") is None
+        assert await cache.get_query("q2") is None
+    finally:
+        await cache.close()
 
 
 @pytest.mark.asyncio
@@ -76,8 +91,11 @@ async def test_get_query_returns_none_on_miss(tmp_path):
     from synthadoc.core.cache import CacheManager
     cm = CacheManager(tmp_path / "cache.db")
     await cm.init()
-    result = await cm.get_query("nonexistent-key")
-    assert result is None
+    try:
+        result = await cm.get_query("nonexistent-key")
+        assert result is None
+    finally:
+        await cm.close()
 
 
 @pytest.mark.asyncio
@@ -86,10 +104,13 @@ async def test_set_and_get_query_round_trip(tmp_path):
     from synthadoc.core.cache import CacheManager
     cm = CacheManager(tmp_path / "cache.db")
     await cm.init()
-    payload = {"answer": "42", "citations": ["page-a"], "knowledge_gap": False}
-    await cm.set_query("abc123", epoch=1, result=payload)
-    stored = await cm.get_query("abc123")
-    assert stored == payload
+    try:
+        payload = {"answer": "42", "citations": ["page-a"], "knowledge_gap": False}
+        await cm.set_query("abc123", epoch=1, result=payload)
+        stored = await cm.get_query("abc123")
+        assert stored == payload
+    finally:
+        await cm.close()
 
 
 @pytest.mark.asyncio
@@ -98,11 +119,14 @@ async def test_query_cache_cleanup_removes_old_epochs(tmp_path):
     from synthadoc.core.cache import CacheManager
     cm = CacheManager(tmp_path / "cache.db")
     await cm.init()
-    await cm.set_query("old-key", epoch=1, result={"answer": "old"})
-    await cm.set_query("new-key", epoch=10, result={"answer": "new"})
-    await cm.cleanup_query_cache(current_epoch=10)
-    assert await cm.get_query("old-key") is None
-    assert await cm.get_query("new-key") is not None
+    try:
+        await cm.set_query("old-key", epoch=1, result={"answer": "old"})
+        await cm.set_query("new-key", epoch=10, result={"answer": "new"})
+        await cm.cleanup_query_cache(current_epoch=10)
+        assert await cm.get_query("old-key") is None
+        assert await cm.get_query("new-key") is not None
+    finally:
+        await cm.close()
 
 
 def test_make_query_cache_key_normalises_whitespace():
@@ -146,10 +170,13 @@ async def test_query_cache_cleanup_keeps_boundary_entry(tmp_path):
     from synthadoc.core.cache import CacheManager
     cm = CacheManager(tmp_path / "cache.db")
     await cm.init()
-    # At current_epoch=10, threshold is 5. epoch=5 is NOT < 5, so it should be kept.
-    await cm.set_query("boundary-key", epoch=5, result={"answer": "boundary"})
-    await cm.cleanup_query_cache(current_epoch=10)
-    assert await cm.get_query("boundary-key") is not None
+    try:
+        # At current_epoch=10, threshold is 5. epoch=5 is NOT < 5, so it should be kept.
+        await cm.set_query("boundary-key", epoch=5, result={"answer": "boundary"})
+        await cm.cleanup_query_cache(current_epoch=10)
+        assert await cm.get_query("boundary-key") is not None
+    finally:
+        await cm.close()
 
 
 @pytest.mark.asyncio
@@ -158,10 +185,13 @@ async def test_query_cache_cleanup_removes_below_boundary(tmp_path):
     from synthadoc.core.cache import CacheManager
     cm = CacheManager(tmp_path / "cache.db")
     await cm.init()
-    # At current_epoch=10, threshold is 5. epoch=4 IS < 5, so it should be removed.
-    await cm.set_query("below-key", epoch=4, result={"answer": "below"})
-    await cm.cleanup_query_cache(current_epoch=10)
-    assert await cm.get_query("below-key") is None
+    try:
+        # At current_epoch=10, threshold is 5. epoch=4 IS < 5, so it should be removed.
+        await cm.set_query("below-key", epoch=4, result={"answer": "below"})
+        await cm.cleanup_query_cache(current_epoch=10)
+        assert await cm.get_query("below-key") is None
+    finally:
+        await cm.close()
 
 
 @pytest.mark.asyncio
@@ -170,7 +200,10 @@ async def test_set_query_overwrites_existing_entry(tmp_path):
     from synthadoc.core.cache import CacheManager
     cm = CacheManager(tmp_path / "cache.db")
     await cm.init()
-    await cm.set_query("key-x", epoch=1, result={"answer": "first"})
-    await cm.set_query("key-x", epoch=2, result={"answer": "second"})
-    stored = await cm.get_query("key-x")
-    assert stored == {"answer": "second"}
+    try:
+        await cm.set_query("key-x", epoch=1, result={"answer": "first"})
+        await cm.set_query("key-x", epoch=2, result={"answer": "second"})
+        stored = await cm.get_query("key-x")
+        assert stored == {"answer": "second"}
+    finally:
+        await cm.close()

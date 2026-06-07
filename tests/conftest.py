@@ -15,3 +15,13 @@ def tmp_wiki(tmp_path: Path) -> Path:
     sd.mkdir()
     (sd / "logs").mkdir()
     return tmp_path
+
+
+@pytest.fixture
+async def cache(tmp_wiki: Path):
+    """CacheManager bound to tmp_wiki, auto-closed after each test."""
+    from synthadoc.core.cache import CacheManager
+    c = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
+    await c.init()
+    yield c
+    await c.close()
