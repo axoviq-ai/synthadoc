@@ -38,7 +38,10 @@ def cache_cmd(
     async def _clear() -> int:
         cm = CacheManager(db_path)
         await cm.init()
-        return await cm.clear()
+        try:
+            return await cm.clear()
+        finally:
+            await cm.close()
 
     count = asyncio.run(_clear())
     typer.echo(f"Cache cleared: {count} entr{'y' if count == 1 else 'ies'} removed.")

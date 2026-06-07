@@ -85,14 +85,12 @@ def mock_provider():
 
 
 @pytest.mark.asyncio
-async def test_ingest_creates_page(tmp_wiki, mock_provider):
+async def test_ingest_creates_page(tmp_wiki, mock_provider, cache):
     store = WikiStorage(tmp_wiki / "wiki")
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     source = tmp_wiki / "raw_sources" / "test.md"
     source.write_text("# AI Safety\nAlignment is important.", encoding="utf-8")
@@ -106,14 +104,12 @@ async def test_ingest_creates_page(tmp_wiki, mock_provider):
 
 
 @pytest.mark.asyncio
-async def test_ingest_skips_duplicate(tmp_wiki, mock_provider):
+async def test_ingest_skips_duplicate(tmp_wiki, mock_provider, cache):
     store = WikiStorage(tmp_wiki / "wiki")
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     source = tmp_wiki / "raw_sources" / "dup.md"
     source.write_text("# Duplicate\nContent.", encoding="utf-8")
@@ -126,14 +122,12 @@ async def test_ingest_skips_duplicate(tmp_wiki, mock_provider):
 
 
 @pytest.mark.asyncio
-async def test_ingest_nonexistent_path_raises(tmp_wiki, mock_provider):
+async def test_ingest_nonexistent_path_raises(tmp_wiki, mock_provider, cache):
     store = WikiStorage(tmp_wiki / "wiki")
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
     agent = IngestAgent(provider=mock_provider, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15)
     with pytest.raises(FileNotFoundError):
@@ -141,14 +135,12 @@ async def test_ingest_nonexistent_path_raises(tmp_wiki, mock_provider):
 
 
 @pytest.mark.asyncio
-async def test_ingest_zero_byte_file_raises(tmp_wiki, mock_provider):
+async def test_ingest_zero_byte_file_raises(tmp_wiki, mock_provider, cache):
     store = WikiStorage(tmp_wiki / "wiki")
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
     empty = tmp_wiki / "raw_sources" / "empty.md"
     empty.write_bytes(b"")
     agent = IngestAgent(provider=mock_provider, store=store, search=search,
@@ -158,15 +150,13 @@ async def test_ingest_zero_byte_file_raises(tmp_wiki, mock_provider):
 
 
 @pytest.mark.asyncio
-async def test_force_busts_cache(tmp_wiki, mock_provider):
+async def test_force_busts_cache(tmp_wiki, mock_provider, cache):
     """force=True must call the LLM even when a cached response exists."""
     store = WikiStorage(tmp_wiki / "wiki")
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     source = tmp_wiki / "raw_sources" / "bust.md"
     source.write_text("# Force bust test\nContent.", encoding="utf-8")
@@ -194,15 +184,13 @@ async def test_force_busts_cache(tmp_wiki, mock_provider):
 
 
 @pytest.mark.asyncio
-async def test_new_page_appended_to_index(tmp_wiki, mock_provider):
+async def test_new_page_appended_to_index(tmp_wiki, mock_provider, cache):
     """New pages created by ingest must be appended to index.md under 'Recently Added'."""
     store = WikiStorage(tmp_wiki / "wiki")
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     index_content = (
         "---\ntitle: Index\ntags: [index]\nstatus: active\nconfidence: high\n"
@@ -226,7 +214,7 @@ async def test_new_page_appended_to_index(tmp_wiki, mock_provider):
 
 
 @pytest.mark.asyncio
-async def test_ingest_flags_contradiction(tmp_wiki):
+async def test_ingest_flags_contradiction(tmp_wiki, cache):
     """When LLM returns action='flag', the target page status becomes 'contradicted'."""
     from unittest.mock import AsyncMock
     p = AsyncMock()
@@ -252,8 +240,6 @@ async def test_ingest_flags_contradiction(tmp_wiki):
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     source = tmp_wiki / "raw_sources" / "controversy.md"
     source.write_text("A-0 was a loader, not a compiler. FORTRAN was the first.", encoding="utf-8")
@@ -268,7 +254,7 @@ async def test_ingest_flags_contradiction(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_ingest_flag_ignores_skip_slugs(tmp_wiki):
+async def test_ingest_flag_ignores_skip_slugs(tmp_wiki, cache):
     """LLM targeting a skip slug (e.g. 'index') with action='flag' must be silently ignored."""
     from unittest.mock import AsyncMock
     import itertools
@@ -294,8 +280,6 @@ async def test_ingest_flag_ignores_skip_slugs(tmp_wiki):
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     source = tmp_wiki / "raw_sources" / "rewrite.md"
     source.write_text("Completely different index content.", encoding="utf-8")
@@ -310,7 +294,7 @@ async def test_ingest_flag_ignores_skip_slugs(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_ingest_updates_existing_page(tmp_wiki):
+async def test_ingest_updates_existing_page(tmp_wiki, cache):
     """When LLM returns action='update', content is appended to the target page."""
     from unittest.mock import AsyncMock
     p = AsyncMock()
@@ -335,8 +319,6 @@ async def test_ingest_updates_existing_page(tmp_wiki):
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     source = tmp_wiki / "raw_sources" / "enigma.md"
     source.write_text("Turing broke Enigma at Bletchley Park.", encoding="utf-8")
@@ -352,7 +334,7 @@ async def test_ingest_updates_existing_page(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_ingest_hash_size_mismatch_warns_and_proceeds(tmp_wiki, mock_provider, caplog):
+async def test_ingest_hash_size_mismatch_warns_and_proceeds(tmp_wiki, mock_provider, caplog, cache):
     """Hash match + size differs → log warning, treat as new source (not a skip)."""
     import logging
     from synthadoc.storage.log import AuditDB
@@ -362,8 +344,6 @@ async def test_ingest_hash_size_mismatch_warns_and_proceeds(tmp_wiki, mock_provi
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
     source = tmp_wiki / "raw_sources" / "collision.md"
     source.write_text("# Collision test", encoding="utf-8")
 
@@ -388,7 +368,7 @@ async def test_ingest_hash_size_mismatch_warns_and_proceeds(tmp_wiki, mock_provi
 
 
 @pytest.mark.asyncio
-async def test_purpose_md_filters_out_of_scope_source(tmp_wiki, mock_provider):
+async def test_purpose_md_filters_out_of_scope_source(tmp_wiki, mock_provider, cache):
     """When purpose.md is present and LLM returns action=skip, result is skipped."""
     import itertools
     from synthadoc.providers.base import CompletionResponse
@@ -401,8 +381,6 @@ async def test_purpose_md_filters_out_of_scope_source(tmp_wiki, mock_provider):
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     source = tmp_wiki / "raw_sources" / "cooking.md"
     source.write_text("# Pasta Recipes\nHow to make carbonara.", encoding="utf-8")
@@ -424,7 +402,7 @@ async def test_purpose_md_filters_out_of_scope_source(tmp_wiki, mock_provider):
 
 
 @pytest.mark.asyncio
-async def test_purpose_md_absent_does_not_break_ingest(tmp_wiki, mock_provider):
+async def test_purpose_md_absent_does_not_break_ingest(tmp_wiki, mock_provider, cache):
     """No purpose.md — ingest proceeds normally."""
     assert not (tmp_wiki / "wiki" / "purpose.md").exists()
     store = WikiStorage(tmp_wiki / "wiki")
@@ -432,8 +410,6 @@ async def test_purpose_md_absent_does_not_break_ingest(tmp_wiki, mock_provider):
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
     source = tmp_wiki / "raw_sources" / "test.md"
     source.write_text("# AI Safety\nAlignment research.", encoding="utf-8")
     agent = IngestAgent(provider=mock_provider, store=store, search=search,
@@ -453,7 +429,7 @@ def test_init_wiki_creates_purpose_md(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_overview_md_created_after_ingest(tmp_wiki):
+async def test_overview_md_created_after_ingest(tmp_wiki, cache):
     """overview.md must be written after a successful page creation."""
     import itertools
     from synthadoc.providers.base import CompletionResponse
@@ -477,8 +453,6 @@ async def test_overview_md_created_after_ingest(tmp_wiki):
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     source = tmp_wiki / "raw_sources" / "ai.md"
     source.write_text("# AI Safety\nAlignment is important.", encoding="utf-8")
@@ -495,7 +469,7 @@ async def test_overview_md_created_after_ingest(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_overview_md_not_written_on_skip(tmp_wiki):
+async def test_overview_md_not_written_on_skip(tmp_wiki, cache):
     """overview.md must NOT be written when ingest is skipped."""
     import itertools
     from synthadoc.providers.base import CompletionResponse
@@ -516,8 +490,6 @@ async def test_overview_md_not_written_on_skip(tmp_wiki):
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     source = tmp_wiki / "raw_sources" / "cooking.md"
     source.write_text("# Pasta\nHow to cook.", encoding="utf-8")
@@ -530,7 +502,7 @@ async def test_overview_md_not_written_on_skip(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_analyse_returns_structured_result(tmp_wiki):
+async def test_analyse_returns_structured_result(tmp_wiki, cache):
     """_analyse() returns entities, tags, and a summary string."""
     from synthadoc.providers.base import CompletionResponse
     from unittest.mock import AsyncMock
@@ -545,8 +517,6 @@ async def test_analyse_returns_structured_result(tmp_wiki):
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     agent = IngestAgent(provider=provider, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache,
@@ -558,7 +528,7 @@ async def test_analyse_returns_structured_result(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_analyse_is_cached_on_second_call(tmp_wiki):
+async def test_analyse_is_cached_on_second_call(tmp_wiki, cache):
     """Second call with same text must hit cache with 0 additional LLM calls."""
     from synthadoc.providers.base import CompletionResponse
     from unittest.mock import AsyncMock
@@ -580,8 +550,6 @@ async def test_analyse_is_cached_on_second_call(tmp_wiki):
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     agent = IngestAgent(provider=provider, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache,
@@ -593,7 +561,7 @@ async def test_analyse_is_cached_on_second_call(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_ingest_uses_page_content_for_new_pages(tmp_wiki):
+async def test_ingest_uses_page_content_for_new_pages(tmp_wiki, cache):
     """When decision includes page_content, new page body uses it (not raw source text)."""
     import itertools
     from unittest.mock import AsyncMock
@@ -617,8 +585,6 @@ async def test_ingest_uses_page_content_for_new_pages(tmp_wiki):
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     source = tmp_wiki / "raw_sources" / "ada.md"
     source.write_text("Ada Lovelace raw text", encoding="utf-8")
@@ -638,7 +604,7 @@ async def test_ingest_uses_page_content_for_new_pages(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_ingest_preserves_wikilinks_in_update_content(tmp_wiki):
+async def test_ingest_preserves_wikilinks_in_update_content(tmp_wiki, cache):
     """update_content from decision is written to page verbatim — [[wikilinks]] preserved."""
     import itertools
     from unittest.mock import AsyncMock
@@ -663,8 +629,6 @@ async def test_ingest_preserves_wikilinks_in_update_content(tmp_wiki):
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     source = tmp_wiki / "raw_sources" / "enigma.md"
     source.write_text("Turing broke Enigma at Bletchley Park.", encoding="utf-8")
@@ -720,7 +684,7 @@ def test_coerce_str_list_non_list_input_returns_empty():
 
 
 @pytest.mark.asyncio
-async def test_analyse_coerces_dict_entities_to_strings(tmp_wiki):
+async def test_analyse_coerces_dict_entities_to_strings(tmp_wiki, cache):
     """_analyse() must return entities as strings even if the LLM returns dicts."""
     provider = AsyncMock()
     provider.complete = AsyncMock(return_value=CompletionResponse(
@@ -733,8 +697,6 @@ async def test_analyse_coerces_dict_entities_to_strings(tmp_wiki):
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     agent = IngestAgent(provider=provider, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache,
@@ -750,7 +712,7 @@ async def test_analyse_coerces_dict_entities_to_strings(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_ingest_vision_path_extracts_text_from_image(tmp_wiki):
+async def test_ingest_vision_path_extracts_text_from_image(tmp_wiki, cache):
     """ImageSkill returns extracted text; IngestAgent ingests it and accounts for vision tokens."""
     import itertools
     from unittest.mock import AsyncMock, patch
@@ -771,8 +733,6 @@ async def test_ingest_vision_path_extracts_text_from_image(tmp_wiki):
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     img_path = tmp_wiki / "raw_sources" / "diagram.png"
     img_path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
@@ -801,7 +761,7 @@ async def test_ingest_vision_path_extracts_text_from_image(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_ingest_slug_collision_appends_as_update(tmp_wiki):
+async def test_ingest_slug_collision_appends_as_update(tmp_wiki, cache):
     """When the target slug already exists for a 'create' action, content is appended instead."""
     import itertools
     from unittest.mock import AsyncMock, patch
@@ -828,8 +788,6 @@ async def test_ingest_slug_collision_appends_as_update(tmp_wiki):
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     source = tmp_wiki / "raw_sources" / "turing2.md"
     source.write_text("More facts about Alan Turing.", encoding="utf-8")
@@ -848,7 +806,7 @@ async def test_ingest_slug_collision_appends_as_update(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_no_extractable_text_produces_skip(tmp_wiki, mock_provider):
+async def test_no_extractable_text_produces_skip(tmp_wiki, mock_provider, cache):
     """Empty extracted text on a create action skips with skip_reason='no extractable text'."""
     from unittest.mock import patch
     from synthadoc.skills.base import ExtractedContent
@@ -858,8 +816,6 @@ async def test_no_extractable_text_produces_skip(tmp_wiki, mock_provider):
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     source = tmp_wiki / "raw_sources" / "blank.md"
     source.write_text("some bytes so it passes the size check", encoding="utf-8")
@@ -875,7 +831,7 @@ async def test_no_extractable_text_produces_skip(tmp_wiki, mock_provider):
 
 
 @pytest.mark.asyncio
-async def test_youtube_has_summary_uses_skill_body(tmp_wiki, mock_provider):
+async def test_youtube_has_summary_uses_skill_body(tmp_wiki, mock_provider, cache):
     """When has_summary=True, page body must equal extracted.text, not LLM page_content."""
     from unittest.mock import patch
     from synthadoc.skills.base import ExtractedContent
@@ -889,8 +845,6 @@ async def test_youtube_has_summary_uses_skill_body(tmp_wiki, mock_provider):
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     skill_text = (
         "## Executive Summary\n\n"
@@ -925,7 +879,7 @@ async def test_youtube_has_summary_uses_skill_body(tmp_wiki, mock_provider):
 
 
 @pytest.mark.asyncio
-async def test_youtube_no_summary_falls_back_to_existing_flow(tmp_wiki, mock_provider):
+async def test_youtube_no_summary_falls_back_to_existing_flow(tmp_wiki, mock_provider, cache):
     """Without has_summary, page creation uses the existing LLM synthesis flow."""
     from unittest.mock import patch
     from synthadoc.skills.base import ExtractedContent
@@ -939,8 +893,6 @@ async def test_youtube_no_summary_falls_back_to_existing_flow(tmp_wiki, mock_pro
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     mock_extracted = ExtractedContent(
         text="[0:00] Hello world. [0:02] This is a test.",
@@ -960,7 +912,7 @@ async def test_youtube_no_summary_falls_back_to_existing_flow(tmp_wiki, mock_pro
 
 
 @pytest.mark.asyncio
-async def test_youtube_rerun_same_url_is_skipped(tmp_wiki, mock_provider):
+async def test_youtube_rerun_same_url_is_skipped(tmp_wiki, mock_provider, cache):
     """Re-ingesting the same YouTube URL must be skipped (deduped by URL hash)."""
     from unittest.mock import patch
     from synthadoc.skills.base import ExtractedContent
@@ -974,8 +926,6 @@ async def test_youtube_rerun_same_url_is_skipped(tmp_wiki, mock_provider):
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     url = "https://www.youtube.com/watch?v=O5nskjZ_GoI"
     mock_extracted = ExtractedContent(
@@ -999,7 +949,7 @@ async def test_youtube_rerun_same_url_is_skipped(tmp_wiki, mock_provider):
 
 
 @pytest.mark.asyncio
-async def test_youtube_rerun_allowed_after_page_deleted(tmp_wiki, mock_provider):
+async def test_youtube_rerun_allowed_after_page_deleted(tmp_wiki, mock_provider, cache):
     """Re-ingesting a URL must succeed (not be skipped) if the wiki page was deleted."""
     from unittest.mock import patch
     from synthadoc.skills.base import ExtractedContent
@@ -1009,8 +959,6 @@ async def test_youtube_rerun_allowed_after_page_deleted(tmp_wiki, mock_provider)
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     url = "https://www.youtube.com/watch?v=O5nskjZ_GoI"
     mock_extracted = ExtractedContent(
@@ -1041,15 +989,13 @@ async def test_youtube_rerun_allowed_after_page_deleted(tmp_wiki, mock_provider)
 # ── CJK (Chinese / Japanese / Korean) coverage ───────────────────────────────
 
 @pytest.mark.asyncio
-async def test_ingest_cjk_source_creates_page(tmp_wiki):
+async def test_ingest_cjk_source_creates_page(tmp_wiki, cache):
     """Source file with Chinese content → page created with CJK slug and content preserved."""
     store = WikiStorage(tmp_wiki / "wiki")
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     source = tmp_wiki / "raw_sources" / "量子计算.md"
     source.write_text(
@@ -1081,7 +1027,7 @@ async def test_ingest_cjk_source_creates_page(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_ingest_cjk_page_update_appends_content(tmp_wiki):
+async def test_ingest_cjk_page_update_appends_content(tmp_wiki, cache):
     """Ingest with action=update appends a CJK section to an existing CJK page."""
     store = WikiStorage(tmp_wiki / "wiki")
     store.write_page("人工智能", WikiPage(
@@ -1093,8 +1039,6 @@ async def test_ingest_cjk_page_update_appends_content(tmp_wiki):
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     source = tmp_wiki / "raw_sources" / "ml-update.md"
     source.write_text("机器学习是人工智能的重要子领域。", encoding="utf-8")
@@ -1122,15 +1066,13 @@ async def test_ingest_cjk_page_update_appends_content(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_ingest_cjk_tags_stored_in_page(tmp_wiki):
+async def test_ingest_cjk_tags_stored_in_page(tmp_wiki, cache):
     """CJK tags from the entity extraction response are stored in the created WikiPage."""
     store = WikiStorage(tmp_wiki / "wiki")
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     source = tmp_wiki / "raw_sources" / "深度学习.md"
     source.write_text("深度学习通过多层神经网络学习数据特征。", encoding="utf-8")
@@ -1157,7 +1099,7 @@ async def test_ingest_cjk_tags_stored_in_page(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_ingest_adds_slug_to_routing(tmp_wiki):
+async def test_ingest_adds_slug_to_routing(tmp_wiki, cache):
     """After a CREATE action, IngestAgent places the new slug in ROUTING.md."""
     from synthadoc.core.routing import RoutingIndex
 
@@ -1166,8 +1108,6 @@ async def test_ingest_adds_slug_to_routing(tmp_wiki):
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     routing_path = tmp_wiki / "ROUTING.md"
     RoutingIndex({"People": ["alan-turing"]}).save(routing_path)
@@ -1207,15 +1147,13 @@ async def test_ingest_adds_slug_to_routing(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_ingest_no_routing_path_skips_routing(tmp_wiki):
+async def test_ingest_no_routing_path_skips_routing(tmp_wiki, cache):
     """When routing_path is not set, IngestAgent creates pages without touching routing."""
     store = WikiStorage(tmp_wiki / "wiki")
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
     await audit.init()
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     source = tmp_wiki / "raw_sources" / "ada-lovelace.md"
     source.write_text("Ada Lovelace wrote the first algorithm.", encoding="utf-8")
@@ -1528,7 +1466,7 @@ async def test_sidecar_not_written_for_txt_source(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_pass4_result_recorded_in_claim_citations(tmp_wiki, db):
+async def test_pass4_result_recorded_in_claim_citations(tmp_wiki, db, cache):
     """After successful Pass 4, claim_citations rows are written to AuditDB."""
     import itertools
     from unittest.mock import AsyncMock, patch
@@ -1554,8 +1492,6 @@ async def test_pass4_result_recorded_in_claim_citations(tmp_wiki, db):
     store = WikiStorage(tmp_wiki / "wiki")
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
-    cache = CacheManager(tmp_wiki / ".synthadoc" / "cache.db")
-    await cache.init()
 
     agent = IngestAgent(
         provider=provider, store=store, search=search,
