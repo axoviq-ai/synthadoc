@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 William Johnason / axoviq.com
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Message } from "../useQueryStream";
@@ -64,7 +64,7 @@ function escapePlaceholders(text: string): string {
     return parts.join("");
 }
 
-export function MessageBubble({ msg, wikiName }: Props) {
+export const MessageBubble = memo(function MessageBubble({ msg, wikiName }: Props) {
     const isUser = msg.role === "user";
     return (
         <div className={`bubble ${isUser ? "bubble-user" : "bubble-assistant"}`}>
@@ -84,4 +84,4 @@ export function MessageBubble({ msg, wikiName }: Props) {
             )}
         </div>
     );
-}
+});
