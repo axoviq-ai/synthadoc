@@ -1857,6 +1857,19 @@ def test_get_relevant_system_pages_no_match(tmp_wiki):
     assert result == ""
 
 
+def test_get_relevant_system_pages_history_domain_query_no_match(tmp_wiki):
+    """'history of computing' must NOT match the schedule guide (history is a domain word)."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    from unittest.mock import AsyncMock as _AsMock
+    provider = _AsMock()
+    agent = QueryAgent(provider=provider, store=store, search=search)
+    result = agent._get_relevant_system_pages(
+        "What exactly was Alan Turing's contribution to the history of computing?"
+    )
+    assert result == "", f"Domain 'history' query should not trigger system knowledge, got: {result[:100]!r}"
+
+
 def test_get_relevant_system_pages_lint_keyword(tmp_wiki):
     """'lint' in question must match the lint guide page."""
     store = WikiStorage(tmp_wiki / "wiki")

@@ -41,17 +41,20 @@ def _stream_query(wiki: str, question: str, no_cache: bool, timeout: int) -> Non
     params: dict = {"q": question}
     if no_cache:
         params["no_cache"] = "true"
-    for event_name, data in get_stream(wiki, "/query/stream", timeout=timeout, **params):
-        if event_name == "token":
-            typer.echo(data.get("text", ""), nl=False)
-        elif event_name == "citations":
-            citations = data.get("citations", [])
-        elif event_name == "gap":
-            knowledge_gap = True
-            suggested = data.get("suggested_searches", [])
-        elif event_name == "error":
-            typer.echo(f"\nError: {data.get('message', 'unknown error')}", err=True)
-            return
+    try:
+        for event_name, data in get_stream(wiki, "/query/stream", timeout=timeout, **params):
+            if event_name == "token":
+                typer.echo(data.get("text", ""), nl=False)
+            elif event_name == "citations":
+                citations = data.get("citations", [])
+            elif event_name == "gap":
+                knowledge_gap = True
+                suggested = data.get("suggested_searches", [])
+            elif event_name == "error":
+                typer.echo(f"\nError: {data.get('message', 'unknown error')}", err=True)
+                return
+    except Exception as _exc:
+        typer.echo(f"\nError: stream interrupted ({type(_exc).__name__}: {_exc})", err=True)
     typer.echo("")  # newline after streamed tokens
     if citations:
         typer.echo("\nSources: " + ", ".join(f"[[{c}]]" for c in citations))

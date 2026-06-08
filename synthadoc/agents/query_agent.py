@@ -825,6 +825,7 @@ class QueryAgent:
             except Exception as _exc:
                 logger.warning("run_stream: gap decompose failed, falling back to original question: %s", _exc)
                 _suggested = [question]
+            logger.debug("run_stream: yielding gap event (%d searches)", len(_suggested))
             yield {"event": "gap", "data": {"suggested_searches": _suggested}}
 
         next_hints = HintEngine.after_response(full_answer, session_mode)
