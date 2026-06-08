@@ -389,11 +389,8 @@ class ActionAgent:
         from synthadoc.storage.log import AuditDB
         from synthadoc.storage.wiki import LifecycleState
 
-        slug = params.get("slug", "").strip()
-        reason = params.get("reason", "requested via chat")
-        if not slug:
-            return ActionResult(action_type=action, success=False,
-                                message="No page slug provided.")
+        slug = (params.get("slug") or "").strip()
+        reason = (params.get("reason") or "requested via chat").strip() or "requested via chat"
 
         _TO_STATE = {
             "lifecycle_activate": LifecycleState.ACTIVE,
@@ -410,6 +407,37 @@ class ActionAgent:
             (LifecycleState.STALE,        LifecycleState.ARCHIVED),
             (LifecycleState.ARCHIVED,     LifecycleState.DRAFT),
         }
+
+        if not slug:
+            # List pages that are valid sources for this transition so the user
+            # can clarify which one they mean.
+            to_state = _TO_STATE[action]
+            _SOURCE_STATES = {
+                "lifecycle_activate": [LifecycleState.DRAFT],
+                "lifecycle_archive":  [LifecycleState.ACTIVE, LifecycleState.STALE,
+                                       LifecycleState.DRAFT, LifecycleState.CONTRADICTED],
+                "lifecycle_restore":  [LifecycleState.ARCHIVED],
+            }
+            _VERB = {
+                "lifecycle_activate": "activate", "lifecycle_archive": "archive",
+                "lifecycle_restore": "restore",
+            }
+            candidates = sorted(
+                s for s in self._orch._store.list_pages()
+                if (pg := self._orch._store.read_page(s)) and pg.status in _SOURCE_STATES[action]
+            )
+            if candidates:
+                page_list = "\n".join(f"- `{c}`" for c in candidates)
+                return ActionResult(
+                    action_type=action, success=False,
+                    message=(
+                        f"Which page would you like to {_VERB[action]}? "
+                        f"Pages eligible for this action:\n{page_list}\n\n"
+                        f"Say something like: \"Archive the page `{candidates[0]}`\""
+                    ),
+                )
+            return ActionResult(action_type=action, success=False,
+                                message="No page slug provided and no eligible pages found.")
 
         to_state = _TO_STATE[action]
         page = self._orch._store.read_page(slug)
