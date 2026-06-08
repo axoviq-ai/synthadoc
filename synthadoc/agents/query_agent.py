@@ -701,7 +701,7 @@ class QueryAgent:
                 and len(_term_doc_freq) >= 2
                 and any(
                     _term_qualifying_pages[t] == 0
-                    and _specific[t] < _signal5_doc_freq_cap
+                    and _specific[t] <= _signal5_doc_freq_cap
                     for t in _term_qualifying_pages
                 )
             )
