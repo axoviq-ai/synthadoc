@@ -820,7 +820,11 @@ class QueryAgent:
         yield {"event": "citations", "data": {"citations": citations}}
 
         if _gap:
-            _suggested = await SearchDecomposeAgent(self._provider).decompose(question)
+            try:
+                _suggested = await SearchDecomposeAgent(self._provider).decompose(question)
+            except Exception as _exc:
+                logger.warning("run_stream: gap decompose failed, falling back to original question: %s", _exc)
+                _suggested = [question]
             yield {"event": "gap", "data": {"suggested_searches": _suggested}}
 
         next_hints = HintEngine.after_response(full_answer, session_mode)
