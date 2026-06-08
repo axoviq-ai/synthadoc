@@ -639,7 +639,7 @@ class QueryAgent:
         _key_terms = set() if _contains_cjk else {
             w.lower().rstrip("s'?!.,").replace("-", " ")
             for w in question.split()
-            if len(w) > 4 and w.lower().rstrip("s'?!.,").replace("-", " ") not in _STOPWORDS
+            if len(w) >= 4 and w.lower().rstrip("s'?!.,").replace("-", " ") not in _STOPWORDS
         }
 
         if _key_terms and candidates:
