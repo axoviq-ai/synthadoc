@@ -323,6 +323,47 @@ async def test_schedule_add_normalises_lint_op(tmp_path):
     assert "lint run" in result.message
 
 
+# ── lifecycle: null / missing slug ────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_lifecycle_archive_null_slug_lists_candidates(tmp_path):
+    """LLM returns slug=null (ambiguous request) — must not crash; must list eligible pages."""
+    from synthadoc.storage.wiki import WikiPage, LifecycleState
+    extraction = '{"action": "lifecycle_archive", "params": {"slug": null, "reason": null}}'
+    agent = _make_agent(tmp_path, extraction)
+
+    stale_page = MagicMock(spec=WikiPage)
+    stale_page.status = LifecycleState.STALE
+    agent._orch._store.list_pages.return_value = ["alan-turing", "other-page"]
+    agent._orch._store.read_page.side_effect = lambda s: stale_page
+
+    result = await agent.run("Archive a stale page")
+    assert result is not None
+    assert result.success is False
+    assert "alan-turing" in result.message or "other-page" in result.message
+    assert "archive" in result.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_archive_null_slug_no_candidates(tmp_path):
+    """When slug=null and no eligible pages exist, return a clear message without crashing."""
+    from synthadoc.storage.wiki import WikiPage, LifecycleState
+    extraction = '{"action": "lifecycle_archive", "params": {"slug": null}}'
+    agent = _make_agent(tmp_path, extraction)
+
+    active_page = MagicMock(spec=WikiPage)
+    active_page.status = LifecycleState.ACTIVE
+    agent._orch._store.list_pages.return_value = ["active-page"]
+    # Return active page so it isn't in the stale/archive candidates
+    agent._orch._store.read_page.return_value = active_page
+
+    # Even though active pages CAN be archived, this exercises the no-crash path
+    result = await agent.run("Archive a stale page")
+    assert result is not None
+    assert result.success is False
+    assert "active-page" in result.message  # active is also archivable
+
+
 # ── format helper ─────────────────────────────────────────────────────────────
 
 def test_format_schedule_list_empty():

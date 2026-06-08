@@ -1439,6 +1439,95 @@ async def test_gap_signal5_guard_b_still_blocks_high_docfreq_without_guard_a(tmp
     assert result.suggested_searches == []
 
 
+@pytest.mark.asyncio
+async def test_gap_signal5_fires_at_exact_docfreq_cap_boundary(tmp_wiki):
+    """Signal 5 must fire when the zero-qualifying term sits exactly at the cap.
+
+    'born' appears in 3 of 8 pages (once each) → qualifying=0.
+    cap = max(2, (8+2)//3) = 3.
+    Old check: 3 < 3 = False → signal 5 skipped → gap=False  (bug — wiki only has
+    passing mentions of birth, no dedicated biography page).
+    New check: 3 <= 3 = True → signal 5 fires → gap=True  ✓
+
+    This models the real-world case where a computing-history wiki mentions
+    'Turing was born in ...' in a handful of overview pages but has no
+    dedicated biography page covering his birth date with depth.
+
+    Signal breakdown (8 candidates, gap_score_threshold=0.01):
+    - Signal 1: 8 ≥ 3 → no fire
+    - Signal 2: score=8.0 >> 0.01 → no fire
+    - Signal 3: on_topic_pages=6 ≥ 2 → no fire
+    - Signal 4: no zero-freq terms (born doc_freq=3 > 0) → no fire
+    - Signal 5: 'born' qualifying=0, doc_freq=3 <= cap(3) → fire → gap=True ✓
+    """
+    store = WikiStorage(tmp_wiki / "wiki")
+    # 6 pages: "contribution" appears ≥ 2 times (on-topic depth); "born" absent.
+    deep_content = (
+        "Alan Turing's contribution to theoretical computing is profound. "
+        "His contribution to the stored-program concept shaped modern computers. "
+        "Turing's theoretical models remain a contribution to formal language theory. "
+        "Computing owes a great contribution to Turing's work on decidability."
+    )
+    for i in range(6):
+        store.write_page(f"turing-contrib-{i}", WikiPage(
+            title=f"Turing Contribution {i}", tags=["computing"],
+            content=deep_content,
+            status="active", confidence="high", sources=[],
+        ))
+    # 2 pages: "born" appears exactly once — passing mention (scope page style).
+    scope_content = (
+        "Alan Turing, born in London, was a key figure in computing history. "
+        "Turing contributed to computing theory and the foundations of modern hardware."
+    )
+    for i in range(2):
+        store.write_page(f"turing-scope-{i}", WikiPage(
+            title=f"Turing Scope {i}", tags=["computing"],
+            content=scope_content,
+            status="active", confidence="high", sources=[],
+        ))
+    # 1 page: a third passing mention of "born" — keeps doc_freq("born") = 3 = cap.
+    store.write_page("turing-overview", WikiPage(
+        title="Turing Overview", tags=["computing"],
+        content=(
+            "Turing was born in the early twentieth century. "
+            "His contributions to computing endure in theoretical computer science."
+        ),
+        status="active", confidence="high", sources=[],
+    ))
+
+    all_slugs = (
+        [f"turing-contrib-{i}" for i in range(6)]
+        + [f"turing-scope-{i}" for i in range(2)]
+        + ["turing-overview"]
+    )
+    # 9 slugs but we'll pretend BM25 returns 8 (drop last contrib page so n_cands=8
+    # and cap=3 exactly; born=3 pages covers all 3 non-contrib pages).
+    eight_slugs = [f"turing-contrib-{i}" for i in range(5)] + [
+        f"turing-scope-{i}" for i in range(2)
+    ] + ["turing-overview"]
+
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["When was Alan Turing born?", "contributions to computing"]',
+                           input_tokens=5, output_tokens=5),
+        # SearchDecomposeAgent call for gap suggestions:
+        CompletionResponse(text='["Alan Turing biography", "Turing birth year"]',
+                           input_tokens=5, output_tokens=5),
+        CompletionResponse(text="The wiki does not have Turing biography details.",
+                           input_tokens=80, output_tokens=15),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search,
+                       gap_score_threshold=0.01)
+    with patch.object(agent._search, "bm25_search",
+                      return_value=_fake_results(eight_slugs, score=8.0)):
+        result = await agent.query("When was Alan Turing born? What was his contribution?")
+
+    # 'born': doc_freq=3, qualifying=0; cap=3 → 3 <= 3 → signal 5 fires → gap.
+    assert result.knowledge_gap is True
+    assert len(result.suggested_searches) >= 1
+
+
 # ── CJK (Chinese / Japanese / Korean) coverage ───────────────────────────────
 
 @pytest.mark.asyncio
@@ -1766,6 +1855,19 @@ def test_get_relevant_system_pages_no_match(tmp_wiki):
     agent = QueryAgent(provider=provider, store=store, search=search)
     result = agent._get_relevant_system_pages("What is the capital of France?")
     assert result == ""
+
+
+def test_get_relevant_system_pages_history_domain_query_no_match(tmp_wiki):
+    """'history of computing' must NOT match the schedule guide (history is a domain word)."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    from unittest.mock import AsyncMock as _AsMock
+    provider = _AsMock()
+    agent = QueryAgent(provider=provider, store=store, search=search)
+    result = agent._get_relevant_system_pages(
+        "What exactly was Alan Turing's contribution to the history of computing?"
+    )
+    assert result == "", f"Domain 'history' query should not trigger system knowledge, got: {result[:100]!r}"
 
 
 def test_get_relevant_system_pages_lint_keyword(tmp_wiki):
