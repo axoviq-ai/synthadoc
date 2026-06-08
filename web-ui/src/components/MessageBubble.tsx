@@ -70,9 +70,16 @@ export const MessageBubble = memo(function MessageBubble({ msg, wikiName }: Prop
         <div className={`bubble ${isUser ? "bubble-user" : "bubble-assistant"}`}>
             {isUser
                 ? <p className="bubble-text">{msg.text}</p>
-                : <div className="bubble-md">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{escapePlaceholders(msg.text)}</ReactMarkdown>
-                  </div>
+                : !msg.text
+                    ? (
+                        <div className="bubble-thinking" aria-label="Synthadoc is thinking">
+                            <span /><span /><span />
+                            <span className="bubble-thinking-label">Searching your wiki…</span>
+                        </div>
+                    )
+                    : <div className="bubble-md">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{escapePlaceholders(msg.text)}</ReactMarkdown>
+                      </div>
             }
             {msg.citations && msg.citations.length > 0 && (
                 <p className="bubble-citations">
