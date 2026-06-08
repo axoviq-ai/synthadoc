@@ -416,7 +416,10 @@ class QueryAgent:
             "start your response with exactly '[GAP]' on its own line, then explain what's missing.\n\n"
         ) if gap_sentinel else ""
         return (
-            f"Answer using ONLY these wiki pages. Cite with [[PageTitle]].\n\n"
+            f"Answer using ONLY these wiki pages. Cite with [[PageTitle]].\n"
+            f"Extract and include all specific facts from the pages — dates, years, numbers, and names — "
+            f"even when they appear briefly or in passing. Do not claim a fact is absent unless it is "
+            f"genuinely missing from every page below.\n\n"
             f"{gap_instruction}"
             f"Question: {question}\n\nPages:\n{context}"
         )
