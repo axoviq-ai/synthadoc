@@ -74,7 +74,6 @@ export const MessageBubble = memo(function MessageBubble({ msg, wikiName }: Prop
                     ? (
                         <div className="bubble-thinking" aria-label="Synthadoc is thinking">
                             <span /><span /><span />
-                            <span className="bubble-thinking-label">Searching your wiki…</span>
                         </div>
                     )
                     : <div className="bubble-md">
