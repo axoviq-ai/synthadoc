@@ -416,7 +416,10 @@ class QueryAgent:
             "start your response with exactly '[GAP]' on its own line, then explain what's missing.\n\n"
         ) if gap_sentinel else ""
         return (
-            f"Answer using ONLY these wiki pages. Cite with [[PageTitle]].\n\n"
+            f"Answer using ONLY these wiki pages. Cite with [[PageTitle]].\n"
+            f"Extract and include all specific facts from the pages — dates, years, numbers, and names — "
+            f"even when they appear briefly or in passing. Do not claim a fact is absent unless it is "
+            f"genuinely missing from every page below.\n\n"
             f"{gap_instruction}"
             f"Question: {question}\n\nPages:\n{context}"
         )
@@ -639,7 +642,7 @@ class QueryAgent:
         _key_terms = set() if _contains_cjk else {
             w.lower().rstrip("s'?!.,").replace("-", " ")
             for w in question.split()
-            if len(w) > 4 and w.lower().rstrip("s'?!.,").replace("-", " ") not in _STOPWORDS
+            if len(w) >= 4 and w.lower().rstrip("s'?!.,").replace("-", " ") not in _STOPWORDS
         }
 
         if _key_terms and candidates:
@@ -698,7 +701,7 @@ class QueryAgent:
                 and len(_term_doc_freq) >= 2
                 and any(
                     _term_qualifying_pages[t] == 0
-                    and _specific[t] < _signal5_doc_freq_cap
+                    and _specific[t] <= _signal5_doc_freq_cap
                     for t in _term_qualifying_pages
                 )
             )
@@ -817,7 +820,12 @@ class QueryAgent:
         yield {"event": "citations", "data": {"citations": citations}}
 
         if _gap:
-            _suggested = await SearchDecomposeAgent(self._provider).decompose(question)
+            try:
+                _suggested = await SearchDecomposeAgent(self._provider).decompose(question)
+            except Exception as _exc:
+                logger.warning("run_stream: gap decompose failed, falling back to original question: %s", _exc)
+                _suggested = [question]
+            logger.debug("run_stream: yielding gap event (%d searches)", len(_suggested))
             yield {"event": "gap", "data": {"suggested_searches": _suggested}}
 
         next_hints = HintEngine.after_response(full_answer, session_mode)

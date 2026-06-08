@@ -17,10 +17,16 @@ export function useQueryStream(sessionId: string | null, onHints: (hints: string
     const [error, setError] = useState<string | null>(null);
     const abortRef = useRef<AbortController | null>(null);
     const streamingRef = useRef(false);
+    // RAF handle and accumulated text ref — kept outside send() so they survive re-renders
+    const rafRef = useRef<number | null>(null);
+    const partialRef = useRef("");
 
-    // Cancel any in-flight stream on unmount
+    // Cancel any in-flight stream and pending RAF flush on unmount
     useEffect(() => {
-        return () => { abortRef.current?.abort(); };
+        return () => {
+            abortRef.current?.abort();
+            if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+        };
     }, []);
 
     const send = useCallback(async (question: string, noCache = false) => {
@@ -28,6 +34,9 @@ export function useQueryStream(sessionId: string | null, onHints: (hints: string
         setError(null);
         setStreaming(true);
         streamingRef.current = true;
+
+        // Cancel any pending RAF flush from a previous stream
+        if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
 
         // Cancel any previous in-flight stream
         abortRef.current?.abort();
@@ -38,24 +47,41 @@ export function useQueryStream(sessionId: string | null, onHints: (hints: string
         setMessages((prev) => [...prev, { role: "assistant", text: "" }]);
 
         let partial = "";
+        partialRef.current = "";
         let citations: string[] = [];
         let gapSuggestions: string[] = [];
+
+        // Coalesce rapid token callbacks into one React state update per animation frame.
+        // Without this, every token triggers setMessages → full re-render + layout flush.
+        const scheduleFlush = () => {
+            if (rafRef.current !== null) return; // already scheduled for this frame
+            rafRef.current = requestAnimationFrame(() => {
+                rafRef.current = null;
+                setMessages((prev) => {
+                    const next = [...prev];
+                    next[next.length - 1] = { role: "assistant", text: partialRef.current };
+                    return next;
+                });
+            });
+        };
+
+        const cancelFlush = () => {
+            if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+        };
 
         try {
             await streamQuery(question, sessionId, {
                 onToken: (text) => {
                     if (controller.signal.aborted) return;
                     partial += text;
-                    setMessages((prev) => {
-                        const next = [...prev];
-                        next[next.length - 1] = { role: "assistant", text: partial };
-                        return next;
-                    });
+                    partialRef.current = partial;
+                    scheduleFlush();
                 },
                 onCitations: (c) => { if (!controller.signal.aborted) citations = c; },
                 onGap: (s) => { if (!controller.signal.aborted) gapSuggestions = s; },
                 onDone: (nextHints) => {
                     if (controller.signal.aborted) return;
+                    cancelFlush(); // final update carries citations + gap, skip the pending token flush
                     setMessages((prev) => {
                         const next = [...prev];
                         next[next.length - 1] = { role: "assistant", text: partial, citations, gapSuggestions };
@@ -67,6 +93,7 @@ export function useQueryStream(sessionId: string | null, onHints: (hints: string
                 },
                 onError: (msg) => {
                     if (controller.signal.aborted) return;
+                    cancelFlush();
                     setError(msg);
                     setMessages((prev) => prev.slice(0, -1));
                     setStreaming(false);
@@ -75,6 +102,7 @@ export function useQueryStream(sessionId: string | null, onHints: (hints: string
             }, controller.signal, noCache);
         } catch {
             if (!controller.signal.aborted) {
+                cancelFlush();
                 setError("Unexpected error");
                 setMessages((prev) => prev.slice(0, -1));
                 setStreaming(false);
