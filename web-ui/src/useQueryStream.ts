@@ -127,7 +127,7 @@ export function useQueryStream(sessionId: string | null, onHints: (hints: string
                         const placeholder = prev[prev.length - 1];
                         return [
                             ...prev.slice(0, -1),
-                            { role: "assistant", text, type: "notice" as const },
+                            { role: "assistant", text, type: "notice" },
                             placeholder,
                         ];
                     });

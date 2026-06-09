@@ -6,9 +6,9 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Message } from "../useQueryStream";
 
-interface Props { msg: Message; wikiName: string; onChipClick?: (value: string) => void; }
+interface Props { msg: Message; wikiName?: string; onChipClick?: (value: string) => void; }
 
-function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName: string }) {
+function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName?: string }) {
     const [copied, setCopied] = useState(false);
     const wikiFlag = wikiName ? ` -w ${wikiName}` : "";
     const commands = suggestions
@@ -77,20 +77,16 @@ function ClarifyBubble({
         <div className="clarify-bubble">
             <p>{content}</p>
             {candidates.length > 0 && (
-                <div className="chip-list">
-                    {candidates.map((c, i) => (
-                        <button
-                            key={c}
-                            className="chip"
-                            onClick={() => onChipClick?.(c)}
-                        >
-                            {i + 1}. {c}
-                        </button>
-                    ))}
-                </div>
-            )}
-            {candidates.length > 0 && (
-                <p className="chip-hint">or type a name / number above ↑</p>
+                <>
+                    <div className="chip-list">
+                        {candidates.map((c, i) => (
+                            <button key={c} className="chip" onClick={() => onChipClick?.(c)}>
+                                {i + 1}. {c}
+                            </button>
+                        ))}
+                    </div>
+                    <p className="chip-hint">or type a name / number above ↑</p>
+                </>
             )}
         </div>
     );

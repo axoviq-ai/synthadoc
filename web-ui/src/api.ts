@@ -70,6 +70,8 @@ export async function streamQuery(
                         if (evt === "done" || evt === "error") terminated = true;
                         dispatch(evt, data, callbacks);
                     } catch { /* ignore */ }
+                } else if (line === "") {
+                    // Blank line signals end of one SSE event record; reset event name for next record.
                     evt = "message";
                 }
             }

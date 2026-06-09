@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 William Johnason / axoviq.com
 
-import { useRef, useEffect, useLayoutEffect, useState } from "react";
+import { useRef, useEffect, useLayoutEffect, useState, useCallback } from "react";
 import { MessageBubble } from "./MessageBubble";
 import { HintChips } from "./HintChips";
 import { Hero } from "./Hero";
@@ -50,6 +50,11 @@ export function ChatWindow({
         onQuerySent(q);
     };
 
+    const handleChipClick = useCallback((value: string) => {
+        send(value, noCache);
+        onQuerySent(value);
+    }, [send, noCache, onQuerySent]);
+
     const handleKey = (e: React.KeyboardEvent) => {
         if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
     };
@@ -66,10 +71,7 @@ export function ChatWindow({
                                     key={i}
                                     msg={m}
                                     wikiName={wikiName}
-                                    onChipClick={(value) => {
-                                        send(value, noCache);
-                                        onQuerySent(value);
-                                    }}
+                                    onChipClick={handleChipClick}
                                 />
                             ))}
                         </div>
