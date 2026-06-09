@@ -340,7 +340,7 @@ async def test_lifecycle_archive_null_slug_lists_candidates(tmp_path):
     result = await agent.run("Archive a stale page")
     assert result is not None
     assert result.success is False
-    assert "alan-turing" in result.message or "other-page" in result.message
+    assert "alan-turing" in result.clarify_candidates or "other-page" in result.clarify_candidates
     assert "archive" in result.message.lower()
 
 
@@ -361,7 +361,74 @@ async def test_lifecycle_archive_null_slug_no_candidates(tmp_path):
     result = await agent.run("Archive a stale page")
     assert result is not None
     assert result.success is False
-    assert "active-page" in result.message  # active is also archivable
+    assert "active-page" in result.clarify_candidates  # active is also archivable
+
+
+# ── clarify path: new ActionResult fields ────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_lifecycle_archive_null_slug_returns_clarify_result(tmp_path):
+    """needs_clarification=True and candidates populated when slug=null."""
+    from synthadoc.storage.wiki import WikiPage, LifecycleState
+    extraction = '{"action": "lifecycle_archive", "params": {"slug": null}}'
+    agent = _make_agent(tmp_path, extraction)
+    stale = MagicMock(spec=WikiPage)
+    stale.status = LifecycleState.STALE
+    agent._orch._store.list_pages.return_value = ["page-a", "page-b"]
+    agent._orch._store.read_page.return_value = stale
+    result = await agent.run("Archive a stale page")
+    assert result is not None
+    assert result.needs_clarification is True
+    assert "page-a" in result.clarify_candidates
+    assert result.clarify_prompt != ""
+    assert result.action_type == "lifecycle_archive"
+
+
+@pytest.mark.asyncio
+async def test_schedule_add_missing_cron_returns_clarify(tmp_path):
+    """needs_clarification=True with empty candidates when cron is null."""
+    extraction = '{"action": "schedule_add", "params": {"op": "lint run", "cron": null}}'
+    agent = _make_agent(tmp_path, extraction)
+    result = await agent.run("Schedule a lint run")
+    assert result is not None
+    assert result.needs_clarification is True
+    assert result.clarify_candidates == []
+    assert result.clarify_prompt != ""
+
+
+@pytest.mark.asyncio
+async def test_history_context_passed_to_extraction(tmp_path):
+    """History is appended to the extraction prompt when provided."""
+    from synthadoc.providers.base import CompletionResponse
+    extraction = '{"action": "lifecycle_archive", "params": {"slug": "page-a", "reason": null}}'
+    provider = MagicMock()
+    provider.complete = AsyncMock(return_value=CompletionResponse(
+        text=extraction, input_tokens=10, output_tokens=5,
+    ))
+    orch = MagicMock()
+    orch.lint = AsyncMock()
+    orch.ingest = AsyncMock()
+    orch._queue = MagicMock()
+    orch._queue.enqueue = AsyncMock()
+    orch._store = MagicMock()
+    orch._bump_epoch = MagicMock()
+    from synthadoc.storage.wiki import WikiPage, LifecycleState
+    page = MagicMock(spec=WikiPage)
+    page.status = LifecycleState.STALE
+    orch._store.list_pages.return_value = ["page-a"]
+    orch._store.read_page.return_value = page
+    from synthadoc.agents.action_agent import ActionAgent
+    agent = ActionAgent(provider=provider, orchestrator=orch, wiki_root=tmp_path)
+    history = [
+        {"role": "user", "content": "Archive a stale page"},
+        {"role": "assistant", "content": "Which page? 1. page-a"},
+    ]
+    result = await agent.run("1", history=history)
+    assert result is not None
+    # Verify history was injected into the LLM prompt
+    call_args = provider.complete.call_args
+    prompt_content = call_args.kwargs["messages"][0].content if call_args.kwargs else call_args.args[0][0].content
+    assert "page-a" in prompt_content or "history" in prompt_content.lower() or "User:" in prompt_content
 
 
 # ── format helper ─────────────────────────────────────────────────────────────

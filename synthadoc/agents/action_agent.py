@@ -83,6 +83,9 @@ class ActionResult:
     message: str
     job_id: Optional[str] = None
     data: dict = field(default_factory=dict)
+    needs_clarification: bool = False
+    clarify_prompt: str = ""
+    clarify_candidates: list[str] = field(default_factory=list)
 
 
 # ── agent ─────────────────────────────────────────────────────────────────────
@@ -106,9 +109,9 @@ class ActionAgent:
         """Fast regex pre-check — True if the question looks like an action request."""
         return bool(_ACTION_RE.search(question))
 
-    async def run(self, question: str) -> Optional[ActionResult]:
+    async def run(self, question: str, history: list[dict] | None = None) -> Optional[ActionResult]:
         """Extract action + params from question and execute. Returns None if not an action."""
-        extraction = await self._extract(question)
+        extraction = await self._extract(question, history=history or [])
         if not extraction:
             return None
         action = extraction.get("action", "none")
@@ -127,8 +130,15 @@ class ActionAgent:
 
     # ── private ───────────────────────────────────────────────────────────────
 
-    async def _extract(self, question: str) -> Optional[dict]:
-        prompt = _EXTRACT_PROMPT_TEMPLATE.format(question=question)
+    async def _extract(self, question: str, history: list[dict] | None = None) -> Optional[dict]:
+        history_block = ""
+        if history:
+            lines = "\n".join(f"{m['role'].capitalize()}: {m['content']}" for m in history)
+            history_block = (
+                f"\nConversation history (use to resolve references like '1', '2', or page names):\n"
+                f"{lines}\n"
+            )
+        prompt = _EXTRACT_PROMPT_TEMPLATE.format(question=question) + history_block
         resp = await self._provider.complete(
             messages=[Message(role="user", content=prompt)],
             temperature=0.0,
@@ -313,7 +323,16 @@ class ActionAgent:
         # Normalise known ops that require a subcommand: "lint" → "lint run"
         if op.strip() == "lint":
             op = "lint run"
-        cron = params.get("cron", "")
+        cron = (params.get("cron") or "").strip()
+        if not cron:
+            return ActionResult(
+                action_type="schedule_add",
+                success=False,
+                needs_clarification=True,
+                clarify_prompt="What schedule should this run on? (e.g. 'every night at 9 PM', 'daily at 6 AM')",
+                clarify_candidates=[],
+                message="What schedule should this run on?",
+            )
         desc = params.get("schedule_description", cron)
         if not op or not cron:
             return ActionResult(action_type="schedule_add", success=False,
@@ -427,14 +446,13 @@ class ActionAgent:
                 if (pg := self._orch._store.read_page(s)) and pg.status in _SOURCE_STATES[action]
             )
             if candidates:
-                page_list = "\n".join(f"- `{c}`" for c in candidates)
                 return ActionResult(
-                    action_type=action, success=False,
-                    message=(
-                        f"Which page would you like to {_VERB[action]}? "
-                        f"Pages eligible for this action:\n{page_list}\n\n"
-                        f"Say something like: \"Archive the page `{candidates[0]}`\""
-                    ),
+                    action_type=action,
+                    success=False,
+                    needs_clarification=True,
+                    clarify_prompt=f"Which page would you like to {_VERB[action]}?",
+                    clarify_candidates=candidates,
+                    message=f"Which page would you like to {_VERB[action]}?",
                 )
             return ActionResult(action_type=action, success=False,
                                 message="No page slug provided and no eligible pages found.")
