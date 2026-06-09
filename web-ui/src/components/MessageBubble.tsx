@@ -93,11 +93,20 @@ function NoticeBubble({ content }: { content: string }) {
     return <div className="notice-bubble">{content}</div>;
 }
 
+const CLARIFY_ACTION_VERB: Record<string, string> = {
+    lifecycle_activate: "Activate",
+    lifecycle_archive:  "Archive",
+    lifecycle_restore:  "Restore",
+};
+
 export const MessageBubble = memo(function MessageBubble({ msg, wikiName, onChipClick }: Props) {
     const isUser = msg.role === "user";
 
     if (msg.type === "clarify") {
-        return <ClarifyBubble content={msg.text} candidates={msg.candidates ?? []} onChipClick={onChipClick} />;
+        const verb = CLARIFY_ACTION_VERB[msg.action ?? ""];
+        const handleClarifyChip = (slug: string) =>
+            onChipClick?.(verb ? `${verb} ${slug}` : slug);
+        return <ClarifyBubble content={msg.text} candidates={msg.candidates ?? []} onChipClick={handleClarifyChip} />;
     }
     if (msg.type === "notice") {
         return <NoticeBubble content={msg.text} />;
