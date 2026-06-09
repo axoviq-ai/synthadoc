@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
+import asyncio
 import logging
 import logging.handlers
 import json
@@ -113,4 +114,54 @@ def test_rotation_settings_applied(tmp_path):
               if isinstance(h, logging.handlers.RotatingFileHandler))
     assert fh.maxBytes == 2 * 1024 * 1024
     assert fh.backupCount == 7
+    _reset_root_logger()
+
+
+def test_suppress_shutdown_noise_blocks_cancelled_error(tmp_path):
+    """CancelledError tracebacks from uvicorn.error are silenced on shutdown."""
+    _reset_root_logger()
+    from synthadoc.core.logging_config import setup_logging
+    setup_logging(tmp_path, cfg=_cfg())
+    uvicorn_logger = logging.getLogger("uvicorn.error")
+
+    class _Sink(logging.Handler):
+        records: list[logging.LogRecord] = []
+        def emit(self, r: logging.LogRecord) -> None:
+            self.records.append(r)
+
+    sink = _Sink()
+    sink.setLevel(logging.DEBUG)
+    uvicorn_logger.addHandler(sink)
+
+    try:
+        raise asyncio.CancelledError()
+    except asyncio.CancelledError:
+        uvicorn_logger.error("lifespan receive failed", exc_info=True)
+
+    assert not sink.records, "CancelledError record should be filtered out"
+    _reset_root_logger()
+
+
+def test_suppress_shutdown_noise_passes_other_errors(tmp_path):
+    """Non-shutdown errors from uvicorn.error are still visible."""
+    _reset_root_logger()
+    from synthadoc.core.logging_config import setup_logging
+    setup_logging(tmp_path, cfg=_cfg())
+    uvicorn_logger = logging.getLogger("uvicorn.error")
+
+    class _Sink(logging.Handler):
+        records: list[logging.LogRecord] = []
+        def emit(self, r: logging.LogRecord) -> None:
+            self.records.append(r)
+
+    sink = _Sink()
+    sink.setLevel(logging.DEBUG)
+    uvicorn_logger.addHandler(sink)
+
+    try:
+        raise OSError("address already in use")
+    except OSError:
+        uvicorn_logger.error("startup failed", exc_info=True)
+
+    assert len(sink.records) == 1, "OSError should not be filtered"
     _reset_root_logger()
