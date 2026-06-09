@@ -2176,3 +2176,118 @@ async def test_live_data_month_lookback(tmp_wiki):
     assert "month" in synthesis_prompt  # window label in section heading
     assert result.knowledge_gap is False
     assert result.cacheable is False
+
+
+# ── history injection / RewriteAgent integration ─────────────────────────────
+
+def _make_stream_agent(tmp_wiki, stream_tokens=("The answer.",)):
+    """Return (store, search, provider, agent) wired for run_stream() with a
+    single wiki page so BM25 returns at least one candidate."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("topic-a", WikiPage(
+        title="Topic A", tags=[],
+        content="topic alpha beta gamma delta epsilon zeta eta theta iota kappa",
+        status="active", confidence="high", sources=[],
+    ))
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    # decompose() call → single sub-question
+    provider.complete.return_value = CompletionResponse(
+        text='["topic alpha question?"]', input_tokens=5, output_tokens=5,
+    )
+    # complete_stream() yields the given tokens
+    async def _fake_stream(**kw):
+        for tok in stream_tokens:
+            yield tok
+    provider.complete_stream = _fake_stream
+    agent = QueryAgent(provider=provider, store=store, search=search,
+                       gap_score_threshold=0.0)
+    return store, search, provider, agent
+
+
+async def _collect_events(gen) -> list[dict]:
+    events = []
+    async for ev in gen:
+        events.append(ev)
+    return events
+
+
+@pytest.mark.asyncio
+async def test_run_stream_history_calls_rewrite_agent(tmp_wiki):
+    """RewriteAgent.rewrite() is called when history is provided."""
+    store, search, provider, agent = _make_stream_agent(tmp_wiki)
+    question = "What is it?"
+    history = [{"role": "user", "content": "prior question about topic alpha"}]
+
+    with patch("synthadoc.agents.query_agent.RewriteAgent") as mock_cls:
+        mock_cls.return_value.rewrite = AsyncMock(return_value="rewritten question about topic alpha")
+        await _collect_events(agent.run_stream(question, history=history))
+        mock_cls.return_value.rewrite.assert_called_once_with(question, history)
+
+
+@pytest.mark.asyncio
+async def test_run_stream_no_history_skips_rewrite(tmp_wiki):
+    """RewriteAgent.rewrite() is NOT called when history=None."""
+    store, search, provider, agent = _make_stream_agent(tmp_wiki)
+
+    with patch("synthadoc.agents.query_agent.RewriteAgent") as mock_cls:
+        mock_cls.return_value.rewrite = AsyncMock(return_value="should not be called")
+        await _collect_events(agent.run_stream("What is topic alpha?"))
+        mock_cls.return_value.rewrite.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_run_stream_action_clarify_yields_clarify_event(tmp_wiki):
+    """When action_result.needs_clarification=True, a clarify event is yielded."""
+    from synthadoc.agents.action_agent import ActionResult
+    store, search, provider, agent = _make_stream_agent(tmp_wiki)
+
+    clarify_result = ActionResult(
+        action_type="schedule_add",
+        success=False,
+        message="",
+        needs_clarification=True,
+        clarify_prompt="Which schedule interval?",
+        clarify_candidates=["daily", "weekly"],
+    )
+
+    # Give the agent a mock orchestrator so the action pre-flight executes
+    mock_orchestrator = object()
+    agent._orchestrator = mock_orchestrator
+
+    with patch("synthadoc.agents.query_agent.ActionAgent") as mock_action_cls:
+        mock_action_cls.return_value.detect.return_value = True
+        mock_action_cls.return_value.run = AsyncMock(return_value=clarify_result)
+        events = await _collect_events(agent.run_stream("schedule ingest daily"))
+
+    event_types = [e["event"] for e in events]
+    assert "clarify" in event_types
+    assert "done" in event_types
+    # Must NOT emit a token event for a clarification
+    assert "token" not in event_types
+
+    clarify_ev = next(e for e in events if e["event"] == "clarify")
+    assert clarify_ev["data"]["prompt"] == "Which schedule interval?"
+    assert clarify_ev["data"]["candidates"] == ["daily", "weekly"]
+    assert clarify_ev["data"]["action"] == "schedule_add"
+
+
+@pytest.mark.asyncio
+async def test_run_stream_history_injected_into_synthesis_prompt(tmp_wiki):
+    """History block appears in the synthesis prompt sent to the LLM."""
+    store, search, provider, agent = _make_stream_agent(tmp_wiki)
+    history = [{"role": "user", "content": "what about earlier?"}]
+
+    captured_messages: list = []
+
+    async def _capturing_stream(messages, **kw):
+        captured_messages.extend(messages)
+        yield "answer"
+
+    provider.complete_stream = _capturing_stream
+
+    await _collect_events(agent.run_stream("Tell me more.", history=history))
+
+    assert captured_messages, "complete_stream was never called"
+    prompt_text = captured_messages[0].content
+    assert "Conversation so far" in prompt_text or "what about earlier?" in prompt_text

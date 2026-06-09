@@ -9,7 +9,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from synthadoc.agents._utils import parse_json_string_array
+from synthadoc.agents.action_agent import ActionAgent
 from synthadoc.agents.hint_engine import HintEngine, SessionMode
+from synthadoc.agents.rewrite_agent import RewriteAgent
 from synthadoc.agents.search_decompose_agent import SearchDecomposeAgent
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.log import AuditDB
@@ -66,6 +68,14 @@ def _load_system_knowledge() -> list[_SystemPage]:
 
 _SYSTEM_KNOWLEDGE: list[_SystemPage] = _load_system_knowledge()
 _MAX_QUESTION_CHARS = 4000
+
+
+def _history_block(history: list[dict]) -> str:
+    """Format conversation history as a preamble block for the synthesis prompt."""
+    if not history:
+        return ""
+    lines = "\n".join(f"{m['role'].capitalize()}: {m['content']}" for m in history)
+    return f"\n[Conversation so far]\n{lines}\n"
 
 # Stopwords excluded when extracting key terms for the content-overlap gap check.
 # Keep this list lean — a false positive (treating a content word as a stopword)
@@ -517,7 +527,6 @@ class QueryAgent:
 
         # Action pre-flight: if orchestrator is available and question is an action, dispatch it
         if self._orchestrator is not None:
-            from synthadoc.agents.action_agent import ActionAgent
             _action_agent = ActionAgent(self._provider, self._orchestrator,
                                         self._store._root.parent)
             if _action_agent.detect(question):
@@ -722,7 +731,10 @@ class QueryAgent:
         return gap, _discriminating_term, _pages_with_overlap, _min_specific_qualifying
 
     async def run_stream(
-        self, question: str, session_id: str | None = None,  # reserved for future session history
+        self,
+        question: str,
+        session_id: str | None = None,
+        history: list[dict] | None = None,
         session_mode: SessionMode = "POWER_USER",
     ):
         """Stream query response as an async generator of SSE event dicts.
@@ -731,12 +743,22 @@ class QueryAgent:
         """
         # Action pre-flight: dispatch action requests before entering the query pipeline
         if self._orchestrator is not None:
-            from synthadoc.agents.action_agent import ActionAgent
             _action_agent = ActionAgent(self._provider, self._orchestrator,
                                         self._store._root.parent)
             if _action_agent.detect(question):
-                _result = await _action_agent.run(question)
+                _result = await _action_agent.run(question, history=history or [])
                 if _result is not None:
+                    if _result.needs_clarification:
+                        yield {
+                            "event": "clarify",
+                            "data": {
+                                "prompt": _result.clarify_prompt,
+                                "candidates": _result.clarify_candidates,
+                                "action": _result.action_type,
+                            },
+                        }
+                        yield {"event": "done", "data": {}}
+                        return
                     yield {"event": "status", "data": {"phase": "acting"}}
                     yield {"event": "token", "data": {"text": _result.message}}
                     yield {"event": "citations", "data": {"citations": []}}
@@ -750,7 +772,14 @@ class QueryAgent:
         yield {"event": "status", "data": {"phase": "retrieving"}}
 
         question = self._expand_aliases(question)
-        sub_questions, candidates = await self._run_search(question)
+
+        # Rewrite question for retrieval when history is present
+        retrieval_question = question
+        if history:
+            rewritten = await RewriteAgent(self._provider).rewrite(question, history)
+            retrieval_question = rewritten
+
+        sub_questions, candidates = await self._run_search(retrieval_question)
 
         citations = [r.slug for r in candidates]
         _purpose_ctx = self._load_purpose_context()
@@ -799,6 +828,8 @@ class QueryAgent:
             question, context,
             gap=_gap, system_ctx=_system_ctx, is_live_data=_is_live_data,
         )
+        if history:
+            synthesis_prompt = _history_block(history) + synthesis_prompt
 
         yield {"event": "status", "data": {"phase": "synthesizing", "sources": len(citations)}}
 
