@@ -17,7 +17,7 @@ def _make_app(tmp_wiki):
 # ---------------------------------------------------------------------------
 
 def test_query_stream_loads_history_when_session_id_present(tmp_wiki):
-    """get_history must be called with (session_id, 5) when session_id is in the request."""
+    """get_all_messages must be called with (session_id,) when session_id is in the request."""
     from fastapi.testclient import TestClient
 
     app = _make_app(tmp_wiki)
@@ -31,17 +31,15 @@ def test_query_stream_loads_history_when_session_id_present(tmp_wiki):
 
     with patch("synthadoc.core.orchestrator.Orchestrator.query_stream",
                new=_fake_stream):
-        with patch("synthadoc.storage.log.AuditDB.get_history",
-                   new=AsyncMock(return_value=fake_history)) as mock_get_history:
-            with patch("synthadoc.storage.log.AuditDB.get_summary",
-                       new=AsyncMock(return_value=(None, 0))):
-                with patch("synthadoc.storage.log.AuditDB.get_all_messages",
-                           new=AsyncMock(return_value=fake_history)):
-                    with TestClient(app) as client:
-                        resp = client.get("/query/stream?q=hello&session_id=test-session-123")
+        with patch("synthadoc.storage.log.AuditDB.get_summary",
+                   new=AsyncMock(return_value=(None, 0))):
+            with patch("synthadoc.storage.log.AuditDB.get_all_messages",
+                       new=AsyncMock(return_value=fake_history)) as mock_get_all_messages:
+                with TestClient(app) as client:
+                    resp = client.get("/query/stream?q=hello&session_id=test-session-123")
 
     assert resp.status_code == 200
-    mock_get_history.assert_awaited_once_with("test-session-123", 5)
+    mock_get_all_messages.assert_awaited_once_with("test-session-123")
 
 
 # ---------------------------------------------------------------------------
@@ -49,7 +47,7 @@ def test_query_stream_loads_history_when_session_id_present(tmp_wiki):
 # ---------------------------------------------------------------------------
 
 def test_query_stream_no_history_when_turns_zero(tmp_wiki):
-    """get_history must NOT be called when conversation_history_turns=0."""
+    """get_all_messages must NOT be called when conversation_history_turns=0."""
     from fastapi.testclient import TestClient
     from synthadoc.config import load_config
 
@@ -68,19 +66,18 @@ def test_query_stream_no_history_when_turns_zero(tmp_wiki):
         yield {"event": "token", "data": {"text": "hello"}}
         yield {"event": "done", "data": {"cacheable": False}}
 
-    with patch("synthadoc.integration.http_server.load_config" if False else
-               "synthadoc.config.load_config", side_effect=_patched_load):
+    with patch("synthadoc.config.load_config", side_effect=_patched_load):
         app2 = _make_app(tmp_wiki)
 
     with patch("synthadoc.core.orchestrator.Orchestrator.query_stream",
                new=_fake_stream):
-        with patch("synthadoc.storage.log.AuditDB.get_history",
-                   new=AsyncMock(return_value=[])) as mock_get_history:
+        with patch("synthadoc.storage.log.AuditDB.get_all_messages",
+                   new=AsyncMock(return_value=[])) as mock_get_all_messages:
             with TestClient(app2) as client:
                 resp = client.get("/query/stream?q=hello&session_id=test-session-456")
 
     assert resp.status_code == 200
-    mock_get_history.assert_not_awaited()
+    mock_get_all_messages.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
