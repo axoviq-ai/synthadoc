@@ -77,16 +77,13 @@ function ClarifyBubble({
         <div className="clarify-bubble">
             <p className="clarify-header">{content}</p>
             {candidates.length > 0 && (
-                <>
-                    <div className="chip-list">
-                        {candidates.map((c, i) => (
-                            <button key={c} className="chip" onClick={() => onChipClick?.(c)}>
-                                {i + 1}. {c}
-                            </button>
-                        ))}
-                    </div>
-                    <p className="chip-hint">or type a name / number above ↑</p>
-                </>
+                <div className="chip-list">
+                    {candidates.map((c, i) => (
+                        <button key={c} className="chip" onClick={() => onChipClick?.(c)}>
+                            {i + 1}. {c}
+                        </button>
+                    ))}
+                </div>
             )}
         </div>
     );

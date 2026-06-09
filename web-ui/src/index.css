@@ -537,12 +537,6 @@ body {
 
 .clarify-bubble .chip:hover { opacity: 0.85; }
 
-.clarify-bubble .chip-hint {
-    color: var(--text-muted, #64748b);
-    font-size: 0.8rem;
-    margin-top: 8px;
-}
-
 /* ─── Notice bubble ────────────────────────────── */
 .notice-bubble {
     background: var(--bg-notice, #141826);

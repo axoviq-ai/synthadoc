@@ -481,15 +481,16 @@ class ActionAgent:
             overflow = len(all_candidates) - _MAX_CLARIFY_CANDIDATES
             candidates = all_candidates[:_MAX_CLARIFY_CANDIDATES]
 
-            state_part = f" **{state_filter_str}**" if filtered_state is not None else ""
+            article = "an" if state_filter_str[:1].lower() in "aeiou" else "a"
+            state_label = f"{article} {state_filter_str} " if filtered_state is not None else "a "
             overflow_note = (
-                f" Showing {_MAX_CLARIFY_CANDIDATES} of {len(all_candidates)} — "
-                f"type a page name directly to reach others."
+                f" Showing {_MAX_CLARIFY_CANDIDATES} of {len(all_candidates)} pages —"
+                f" type a name to reach the rest."
                 if overflow > 0 else ""
             )
             prompt = (
-                f"To {_VERB[action]} a{state_part} page, please select one below."
-                + (f" {overflow_note}" if overflow_note else "")
+                f"Select {state_label}page to {_VERB[action]} below, "
+                f"or type a name or number in the box above.{overflow_note}"
             )
             return ActionResult(
                 action_type=action,
