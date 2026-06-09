@@ -75,7 +75,7 @@ function ClarifyBubble({
 }) {
     return (
         <div className="clarify-bubble">
-            <p>{content}</p>
+            <p className="clarify-header">{content}</p>
             {candidates.length > 0 && (
                 <>
                     <div className="chip-list">

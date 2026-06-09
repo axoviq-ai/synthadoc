@@ -384,6 +384,71 @@ async def test_lifecycle_archive_null_slug_returns_clarify_result(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_lifecycle_archive_state_filter_narrows_candidates(tmp_path):
+    """state_filter='stale' must exclude ACTIVE pages even though active is a valid archive source."""
+    from synthadoc.storage.wiki import WikiPage, LifecycleState
+    extraction = '{"action": "lifecycle_archive", "params": {"slug": null, "state_filter": "stale"}}'
+    agent, _ = _make_agent(tmp_path, extraction)
+
+    stale_page = MagicMock(spec=WikiPage)
+    stale_page.status = LifecycleState.STALE
+    active_page = MagicMock(spec=WikiPage)
+    active_page.status = LifecycleState.ACTIVE
+
+    agent._orch._store.list_pages.return_value = ["stale-pg", "active-pg"]
+    agent._orch._store.read_page.side_effect = lambda s: (
+        stale_page if s == "stale-pg" else active_page
+    )
+
+    result = await agent.run("Archive a stale page")
+    assert result is not None
+    assert result.needs_clarification is True
+    assert "stale-pg" in result.clarify_candidates
+    assert "active-pg" not in result.clarify_candidates
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_archive_state_filter_no_match_returns_message(tmp_path):
+    """state_filter='stale' with zero stale pages → helpful 'no stale pages' message, not clarify."""
+    from synthadoc.storage.wiki import WikiPage, LifecycleState
+    extraction = '{"action": "lifecycle_archive", "params": {"slug": null, "state_filter": "stale"}}'
+    agent, _ = _make_agent(tmp_path, extraction)
+
+    active_page = MagicMock(spec=WikiPage)
+    active_page.status = LifecycleState.ACTIVE
+    agent._orch._store.list_pages.return_value = ["active-pg"]
+    agent._orch._store.read_page.return_value = active_page
+
+    result = await agent.run("Archive a stale page")
+    assert result is not None
+    assert result.needs_clarification is False
+    assert result.success is False
+    assert "stale" in result.message.lower()
+    assert "lint run" in result.message
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_archive_candidates_capped(tmp_path):
+    """More than _MAX_CLARIFY_CANDIDATES eligible pages must be capped in clarify_candidates."""
+    from synthadoc.agents.action_agent import _MAX_CLARIFY_CANDIDATES
+    from synthadoc.storage.wiki import WikiPage, LifecycleState
+    extraction = '{"action": "lifecycle_archive", "params": {"slug": null}}'
+    agent, _ = _make_agent(tmp_path, extraction)
+
+    active_page = MagicMock(spec=WikiPage)
+    active_page.status = LifecycleState.ACTIVE
+    many_pages = [f"page-{i:02d}" for i in range(_MAX_CLARIFY_CANDIDATES + 5)]
+    agent._orch._store.list_pages.return_value = many_pages
+    agent._orch._store.read_page.return_value = active_page
+
+    result = await agent.run("Archive a page")
+    assert result is not None
+    assert result.needs_clarification is True
+    assert len(result.clarify_candidates) == _MAX_CLARIFY_CANDIDATES
+    assert str(_MAX_CLARIFY_CANDIDATES) in result.clarify_prompt
+
+
+@pytest.mark.asyncio
 async def test_schedule_add_missing_cron_returns_clarify(tmp_path):
     """needs_clarification=True with empty candidates when cron is null."""
     extraction = '{"action": "schedule_add", "params": {"op": "lint run", "cron": null}}'

@@ -33,6 +33,16 @@ _VERB: dict[str, str] = {
     "lifecycle_archive":  "archive",
     "lifecycle_restore":  "restore",
 }
+_MAX_CLARIFY_CANDIDATES = 15
+
+_STATE_FILTER_MAP: dict[str, LifecycleState] = {
+    "draft":        LifecycleState.DRAFT,
+    "active":       LifecycleState.ACTIVE,
+    "stale":        LifecycleState.STALE,
+    "contradicted": LifecycleState.CONTRADICTED,
+    "archived":     LifecycleState.ARCHIVED,
+}
+
 _ALLOWED: set[tuple[LifecycleState, LifecycleState]] = {
     (LifecycleState.DRAFT,        LifecycleState.ACTIVE),
     (LifecycleState.DRAFT,        LifecycleState.ARCHIVED),
@@ -98,7 +108,9 @@ _EXTRACT_PROMPT_TEMPLATE = (
     "cron (parsed cron expression), schedule_description (original natural language)\n"
     "  schedule_list    : (no params)\n"
     "  schedule_history : (no params — shows recent scheduled run history)\n"
-    "  lifecycle_activate / lifecycle_archive / lifecycle_restore : slug, reason\n"
+    "  lifecycle_activate / lifecycle_archive / lifecycle_restore : slug, reason, "
+    "state_filter (optional — set only when user explicitly names a lifecycle state, "
+    "e.g. 'Archive a stale page' → state_filter='stale'; valid: draft|active|stale|contradicted|archived)\n"
     "  none          : (no params)\n\n"
     "Cron parsing: 'daily at 6am'='0 6 * * *', 'every Sunday at 7pm'='0 19 * * 0', "
     "'every weekday at 9am'='0 9 * * 1-5', 'every hour'='0 * * * *'\n\n"
@@ -443,22 +455,50 @@ class ActionAgent:
         reason = (params.get("reason") or "requested via chat").strip() or "requested via chat"
 
         if not slug:
-            candidates = sorted(
+            state_filter_str = (params.get("state_filter") or "").strip().lower()
+            source_states = _SOURCE_STATES[action]
+            filtered_state = _STATE_FILTER_MAP.get(state_filter_str)
+            if filtered_state is not None and filtered_state in source_states:
+                source_states = [filtered_state]
+
+            all_candidates = sorted(
                 s for s in self._orch._store.list_pages()
-                if (pg := self._orch._store.read_page(s)) and pg.status in _SOURCE_STATES[action]
+                if (pg := self._orch._store.read_page(s)) and pg.status in source_states
             )
-            if candidates:
-                prompt = f"Which page would you like to {_VERB[action]}?"
-                return ActionResult(
-                    action_type=action,
-                    success=False,
-                    needs_clarification=True,
-                    clarify_prompt=prompt,
-                    clarify_candidates=candidates,
-                    message=prompt,
-                )
-            return ActionResult(action_type=action, success=False,
-                                message="No page slug provided and no eligible pages found.")
+
+            if not all_candidates:
+                if filtered_state is not None:
+                    return ActionResult(
+                        action_type=action, success=False,
+                        message=(
+                            f"There are no **{state_filter_str}** pages to {_VERB[action]}. "
+                            f"Run `synthadoc lint run` to update lifecycle states."
+                        ),
+                    )
+                return ActionResult(action_type=action, success=False,
+                                    message="No page slug provided and no eligible pages found.")
+
+            overflow = len(all_candidates) - _MAX_CLARIFY_CANDIDATES
+            candidates = all_candidates[:_MAX_CLARIFY_CANDIDATES]
+
+            state_part = f" **{state_filter_str}**" if filtered_state is not None else ""
+            overflow_note = (
+                f" Showing {_MAX_CLARIFY_CANDIDATES} of {len(all_candidates)} — "
+                f"type a page name directly to reach others."
+                if overflow > 0 else ""
+            )
+            prompt = (
+                f"To {_VERB[action]} a{state_part} page, please select one below."
+                + (f" {overflow_note}" if overflow_note else "")
+            )
+            return ActionResult(
+                action_type=action,
+                success=False,
+                needs_clarification=True,
+                clarify_prompt=prompt,
+                clarify_candidates=candidates,
+                message=prompt,
+            )
 
         to_state = _TO_STATE[action]
         page = self._orch._store.read_page(slug)

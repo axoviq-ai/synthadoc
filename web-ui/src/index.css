@@ -507,6 +507,15 @@ body {
 
 .clarify-bubble p { margin: 0; color: #e2e8f0; }
 
+.clarify-bubble .clarify-header {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #cbd5e1;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-color, #2d4080);
+    margin-bottom: 2px;
+}
+
 .clarify-bubble .chip-list {
     display: flex;
     flex-wrap: wrap;
