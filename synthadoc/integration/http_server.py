@@ -271,6 +271,19 @@ async def _worker_loop(orch) -> None:
                 logger.exception("Worker loop error — job recorded in jobs.db; continuing")
                 sleep_secs = _WORKER_POLL_SECONDS
 
+        # Change 5: periodic session purge
+        _worker_cfg = getattr(orch, "_cfg", None)
+        _worker_audit = getattr(orch, "_audit", None)
+        if _worker_cfg and _worker_audit:
+            try:
+                _retention = _worker_cfg.chat.session_retention_days
+                if _retention > 0:
+                    _purged = await _worker_audit.purge_old_sessions(_retention)
+                    if _purged:
+                        logger.info("Purged %d stale sessions.", _purged)
+            except Exception as _pe:
+                logger.error("Session purge failed: %s", _pe)
+
         await asyncio.sleep(sleep_secs)
 
 
@@ -424,12 +437,56 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
     async def query_stream(q: str, session_id: str | None = None, no_cache: bool = False):
         import json as _json
         from fastapi.responses import StreamingResponse
+        from synthadoc.agents.summarize_agent import SummarizeAgent as _SummarizeAgent
+        from synthadoc.providers import make_provider as _make_provider
         if not q.strip():
             raise HTTPException(status_code=400, detail="q must not be empty")
         orch = app.state.orch
+        _audit = orch._audit
+        _chat_cfg = cfg.chat  # ChatConfig instance
 
         _sstate = _session_state.get(session_id or "", {"mode": "POWER_USER", "cursor": 0})
         session_mode: str = _sstate["mode"]
+
+        # Change 1: Load conversation history before cache check
+        _history: list[dict] = []
+        if session_id and _chat_cfg.conversation_history_turns > 0:
+            try:
+                _history = await _audit.get_history(session_id, _chat_cfg.conversation_history_turns)
+            except Exception as _he:
+                logger.error("Failed to load history for session %s: %s", session_id, _he)
+                _history = []
+
+        # Change 3: Detect overflow and trigger SummarizeAgent lazily
+        _summary_notice: str | None = None
+        if session_id and _chat_cfg.conversation_history_turns > 0:
+            try:
+                _existing_summary, _summary_turn_count = await _audit.get_summary(session_id)
+                _all_messages = await _audit.get_all_messages(session_id)
+                _total_turns = len(_all_messages) // 2  # rough: pairs of user/assistant
+                _overflow_turns = _total_turns - _chat_cfg.conversation_history_turns
+                if _overflow_turns > 0 and _overflow_turns > _summary_turn_count:
+                    # New overflow since last summary — compress
+                    _overflow_msgs = _all_messages[: len(_all_messages) - _chat_cfg.conversation_history_turns * 2]
+                    try:
+                        _provider = _make_provider("query", cfg)
+                        _new_summary = await _SummarizeAgent(_provider).summarize(_overflow_msgs)
+                        if _new_summary:
+                            await _audit.update_summary(session_id, _new_summary, _overflow_turns)
+                            if not _existing_summary:
+                                _summary_notice = (
+                                    "Earlier conversation has been summarized to stay within context limits. "
+                                    "To retain more context, increase conversation_history_turns in "
+                                    ".synthadoc/config.toml."
+                                )
+                            logger.info(
+                                "Session %s: history compressed (%d turns → summary).",
+                                session_id, _total_turns
+                            )
+                    except Exception as _se:
+                        logger.warning("SummarizeAgent failed for session %s: %s", session_id, _se)
+            except Exception as _oe:
+                logger.warning("Overflow check failed for session %s: %s", session_id, _oe)
 
         if not no_cache:
             from synthadoc.core.cache import make_query_cache_key
@@ -464,14 +521,26 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                 return StreamingResponse(_cached_stream(), media_type="text/event-stream")
 
         async def _live_stream():
+            nonlocal _summary_notice
             full_answer = ""
             citations = []
             _is_cacheable = True
             _knowledge_gap = False
             _suggested_searches: list[str] = []
             try:
-                async for evt in orch.query_stream(q, session_id=session_id, session_mode=session_mode):
-                    if evt["event"] == "token":
+                async for evt in orch.query_stream(q, session_id=session_id,
+                                                   session_mode=session_mode,
+                                                   history=_history):
+                    # Change 4: emit notice SSE before first token/clarify
+                    if _summary_notice:
+                        yield f"event: notice\ndata: {_json.dumps({'text': _summary_notice})}\n\n"
+                        _summary_notice = None
+
+                    if evt["event"] == "clarify":
+                        # Change 4: forward clarify events as-is
+                        yield f"event: clarify\ndata: {_json.dumps(evt['data'])}\n\n"
+                        continue
+                    elif evt["event"] == "token":
                         full_answer += evt["data"].get("text", "")
                     elif evt["event"] == "citations":
                         citations = evt["data"].get("citations", [])
