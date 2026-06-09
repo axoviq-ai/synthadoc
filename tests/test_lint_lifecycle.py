@@ -115,3 +115,45 @@ async def test_no_lifecycle_flag_skips_checks(tmp_path):
     page = store.read_page("alan-turing")
     assert page is not None
     assert page.status == LifecycleState.DRAFT  # unchanged
+
+
+async def test_scope_stale_detects_stale_pages(tmp_path):
+    """--scope stale must mark pages as stale when source file hash changed."""
+    from synthadoc.agents.lint_agent import LintAgent
+    wiki_dir = tmp_path / "wiki"
+    raw_dir = tmp_path / "raw_sources"
+    wiki_dir.mkdir(parents=True)
+    raw_dir.mkdir()
+    src = raw_dir / "source.txt"
+    src.write_text("original content", encoding="utf-8")
+    store = WikiStorage(wiki_dir)
+    page = WikiPage(
+        title="Test", tags=[], content="# Test\n\nContent.", status=LifecycleState.ACTIVE,
+        confidence="medium",
+        sources=[SourceRef(file="source.txt", hash="", size=0, ingested="2026-05-23")],
+    )
+    store.write_page("test-page", page)
+    db = await _make_db(tmp_path)
+    await db.record_ingest("oldhash123abc", 100, str(raw_dir / "source.txt"), "test-page", 0, 0.0)
+    src.write_text("updated content", encoding="utf-8")
+    agent = LintAgent(AsyncMock(), store, _make_log(), audit_db=db, wiki_root=tmp_path)
+    report = await agent.lint(scope="stale", adversarial=False)
+    page = store.read_page("test-page")
+    assert page is not None
+    assert page.status == LifecycleState.STALE
+    assert report.lifecycle_stale == 1
+
+
+async def test_scope_stale_does_not_promote_drafts(tmp_path):
+    """--scope stale must not promote draft pages to active."""
+    from synthadoc.agents.lint_agent import LintAgent
+    wiki_dir = tmp_path / "wiki"
+    wiki_dir.mkdir(parents=True)
+    store = WikiStorage(wiki_dir)
+    _write_page(store, "alan-turing", status=LifecycleState.DRAFT)
+    db = await _make_db(tmp_path)
+    agent = LintAgent(AsyncMock(), store, _make_log(), audit_db=db, wiki_root=tmp_path)
+    await agent.lint(scope="stale", adversarial=False)
+    page = store.read_page("alan-turing")
+    assert page is not None
+    assert page.status == LifecycleState.DRAFT  # must remain draft
