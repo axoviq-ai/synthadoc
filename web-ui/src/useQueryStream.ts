@@ -5,6 +5,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { streamQuery } from "./api";
 
 export interface Message {
+    id: string;
     role: "user" | "assistant";
     text: string;
     citations?: string[];
@@ -46,8 +47,8 @@ export function useQueryStream(sessionId: string | null, onHints: (hints: string
         const controller = new AbortController();
         abortRef.current = controller;
 
-        setMessages((prev) => [...prev, { role: "user", text: question }]);
-        setMessages((prev) => [...prev, { role: "assistant", text: "" }]);
+        setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "user", text: question }]);
+        setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", text: "" }]);
 
         let partial = "";
         partialRef.current = "";
@@ -62,7 +63,7 @@ export function useQueryStream(sessionId: string | null, onHints: (hints: string
                 rafRef.current = null;
                 setMessages((prev) => {
                     const next = [...prev];
-                    next[next.length - 1] = { role: "assistant", text: partialRef.current };
+                    next[next.length - 1] = { ...next[next.length - 1], text: partialRef.current };
                     return next;
                 });
             });
@@ -87,7 +88,7 @@ export function useQueryStream(sessionId: string | null, onHints: (hints: string
                     cancelFlush(); // final update carries citations + gap, skip the pending token flush
                     setMessages((prev) => {
                         const next = [...prev];
-                        next[next.length - 1] = { role: "assistant", text: partial, citations, gapSuggestions };
+                        next[next.length - 1] = { ...next[next.length - 1], text: partial, citations, gapSuggestions };
                         return next;
                     });
                     onHints(nextHints);
@@ -109,7 +110,7 @@ export function useQueryStream(sessionId: string | null, onHints: (hints: string
                     setMessages((prev) => {
                         const next = [...prev];
                         next[next.length - 1] = {
-                            role: "assistant",
+                            ...next[next.length - 1],
                             text: data.prompt,
                             type: "clarify",
                             candidates: data.candidates,
@@ -127,7 +128,7 @@ export function useQueryStream(sessionId: string | null, onHints: (hints: string
                         const placeholder = prev[prev.length - 1];
                         return [
                             ...prev.slice(0, -1),
-                            { role: "assistant", text, type: "notice" },
+                            { id: crypto.randomUUID(), role: "assistant", text, type: "notice" },
                             placeholder,
                         ];
                     });
