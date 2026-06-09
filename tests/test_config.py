@@ -197,3 +197,28 @@ def test_adversarial_agent_config_fallback_to_default(tmp_path):
     adv = cfg.agents.resolve("adversarial")
     assert adv.provider == "anthropic"
     assert adv.model == "claude-opus-4-6"
+
+
+def test_chat_config_defaults():
+    from synthadoc.config import ChatConfig
+    cfg = ChatConfig()
+    assert cfg.conversation_history_turns == 5
+    assert cfg.session_retention_days == 30
+
+
+def test_chat_config_from_toml(tmp_path):
+    from synthadoc.config import load_config
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents.default]\nprovider="gemini"\nmodel="gemini-2.5-flash"\n'
+        '[chat]\nconversation_history_turns = 10\nsession_retention_days = 7\n'
+    )
+    cfg = load_config(project_config=cfg_file)
+    assert cfg.chat.conversation_history_turns == 10
+    assert cfg.chat.session_retention_days == 7
+
+
+def test_chat_config_zero_disables():
+    from synthadoc.config import ChatConfig
+    cfg = ChatConfig(conversation_history_turns=0)
+    assert cfg.conversation_history_turns == 0
