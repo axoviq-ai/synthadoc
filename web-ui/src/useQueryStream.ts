@@ -9,6 +9,9 @@ export interface Message {
     text: string;
     citations?: string[];
     gapSuggestions?: string[];
+    type?: "clarify" | "notice";
+    candidates?: string[];
+    action?: string;
 }
 
 export function useQueryStream(sessionId: string | null, onHints: (hints: string[]) => void) {
@@ -98,6 +101,36 @@ export function useQueryStream(sessionId: string | null, onHints: (hints: string
                     setMessages((prev) => prev.slice(0, -1));
                     setStreaming(false);
                     streamingRef.current = false;
+                },
+                onClarify: (data) => {
+                    if (controller.signal.aborted) return;
+                    cancelFlush();
+                    // Replace the placeholder assistant message with the clarify message
+                    setMessages((prev) => {
+                        const next = [...prev];
+                        next[next.length - 1] = {
+                            role: "assistant",
+                            text: data.prompt,
+                            type: "clarify",
+                            candidates: data.candidates,
+                            action: data.action,
+                        };
+                        return next;
+                    });
+                    setStreaming(false);
+                    streamingRef.current = false;
+                },
+                onNotice: (text) => {
+                    if (controller.signal.aborted) return;
+                    // Insert a notice message before the current placeholder
+                    setMessages((prev) => {
+                        const placeholder = prev[prev.length - 1];
+                        return [
+                            ...prev.slice(0, -1),
+                            { role: "assistant", text, type: "notice" as const },
+                            placeholder,
+                        ];
+                    });
                 },
             }, controller.signal, noCache);
         } catch {

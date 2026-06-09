@@ -6,7 +6,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Message } from "../useQueryStream";
 
-interface Props { msg: Message; wikiName: string; }
+interface Props { msg: Message; wikiName: string; onChipClick?: (value: string) => void; }
 
 function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName: string }) {
     const [copied, setCopied] = useState(false);
@@ -64,8 +64,52 @@ function escapePlaceholders(text: string): string {
     return parts.join("");
 }
 
-export const MessageBubble = memo(function MessageBubble({ msg, wikiName }: Props) {
+function ClarifyBubble({
+    content,
+    candidates,
+    onChipClick,
+}: {
+    content: string;
+    candidates: string[];
+    onChipClick?: (value: string) => void;
+}) {
+    return (
+        <div className="clarify-bubble">
+            <p>{content}</p>
+            {candidates.length > 0 && (
+                <div className="chip-list">
+                    {candidates.map((c, i) => (
+                        <button
+                            key={c}
+                            className="chip"
+                            onClick={() => onChipClick?.(c)}
+                        >
+                            {i + 1}. {c}
+                        </button>
+                    ))}
+                </div>
+            )}
+            {candidates.length > 0 && (
+                <p className="chip-hint">or type a name / number above ↑</p>
+            )}
+        </div>
+    );
+}
+
+function NoticeBubble({ content }: { content: string }) {
+    return <div className="notice-bubble">{content}</div>;
+}
+
+export const MessageBubble = memo(function MessageBubble({ msg, wikiName, onChipClick }: Props) {
     const isUser = msg.role === "user";
+
+    if (msg.type === "clarify") {
+        return <ClarifyBubble content={msg.text} candidates={msg.candidates ?? []} onChipClick={onChipClick} />;
+    }
+    if (msg.type === "notice") {
+        return <NoticeBubble content={msg.text} />;
+    }
+
     return (
         <div className={`bubble ${isUser ? "bubble-user" : "bubble-assistant"}`}>
             {isUser

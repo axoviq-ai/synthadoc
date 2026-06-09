@@ -10,12 +10,20 @@ export interface SessionInfo {
     wiki_name?: string;
 }
 
+export interface ClarifyData {
+    prompt: string;
+    candidates: string[];
+    action: string;
+}
+
 export interface StreamCallbacks {
     onToken: (text: string) => void;
     onCitations: (citations: string[]) => void;
     onGap: (suggestions: string[]) => void;
     onDone: (nextHints: string[]) => void;
     onError: (msg: string) => void;
+    onClarify?: (data: ClarifyData) => void;
+    onNotice?: (text: string) => void;
 }
 
 export async function createSession(): Promise<SessionInfo> {
@@ -103,6 +111,24 @@ function dispatch(event: string, data: Record<string, unknown>, cb: StreamCallba
         case "error": {
             const msg = typeof data.message === "string" ? data.message : "unknown error";
             cb.onError(msg);
+            break;
+        }
+        case "clarify": {
+            if (cb.onClarify) {
+                const prompt = typeof data.prompt === "string" ? data.prompt : "";
+                const candidates = Array.isArray(data.candidates)
+                    ? (data.candidates as unknown[]).filter((c): c is string => typeof c === "string")
+                    : [];
+                const action = typeof data.action === "string" ? data.action : "";
+                cb.onClarify({ prompt, candidates, action });
+            }
+            break;
+        }
+        case "notice": {
+            if (cb.onNotice) {
+                const text = typeof data.text === "string" ? data.text : "";
+                cb.onNotice(text);
+            }
             break;
         }
     }

@@ -61,7 +61,17 @@ export function ChatWindow({
                     ? <Hero mode={mode} />
                     : (
                         <div className="messages-list">
-                            {messages.map((m, i) => <MessageBubble key={i} msg={m} wikiName={wikiName} />)}
+                            {messages.map((m, i) => (
+                                <MessageBubble
+                                    key={i}
+                                    msg={m}
+                                    wikiName={wikiName}
+                                    onChipClick={(value) => {
+                                        send(value, noCache);
+                                        onQuerySent(value);
+                                    }}
+                                />
+                            ))}
                         </div>
                     )
                 }
