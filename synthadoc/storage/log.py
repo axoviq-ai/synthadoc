@@ -149,6 +149,8 @@ class AuditDB:
             for migration in (
                 "ALTER TABLE scheduled_runs ADD COLUMN entry_id TEXT NOT NULL DEFAULT ''",
                 "ALTER TABLE scheduled_runs ADD COLUMN output TEXT DEFAULT ''",
+                "ALTER TABLE chat_sessions ADD COLUMN history_summary TEXT DEFAULT NULL",
+                "ALTER TABLE chat_sessions ADD COLUMN summary_turn_count INTEGER NOT NULL DEFAULT 0",
             ):
                 try:
                     await db.execute(migration)
@@ -602,3 +604,67 @@ class AuditDB:
             async with db.execute("SELECT COUNT(*) FROM chat_sessions") as cur:
                 row = await cur.fetchone()
         return (row[0] if row else 0) > 0
+
+    async def get_history(self, session_id: str, turns: int) -> list[dict]:
+        """Return last `turns` conversation turns (user+assistant pairs), oldest first."""
+        if turns <= 0:
+            return []
+        limit = turns * 2  # each turn = 1 user + 1 assistant message
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT role, content FROM chat_messages WHERE session_id=? "
+                "ORDER BY id DESC LIMIT ?",
+                (session_id, limit),
+            ) as cur:
+                rows = await cur.fetchall()
+        return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
+
+    async def get_all_messages(self, session_id: str) -> list[dict]:
+        """Return all messages for a session, oldest first."""
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT role, content FROM chat_messages WHERE session_id=? ORDER BY id ASC",
+                (session_id,),
+            ) as cur:
+                rows = await cur.fetchall()
+        return [{"role": r["role"], "content": r["content"]} for r in rows]
+
+    async def get_summary(self, session_id: str) -> tuple[str | None, int]:
+        """Return (history_summary, summary_turn_count) for a session."""
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT history_summary, summary_turn_count FROM chat_sessions WHERE session_id=?",
+                (session_id,),
+            ) as cur:
+                row = await cur.fetchone()
+        if row is None:
+            return None, 0
+        return row["history_summary"], row["summary_turn_count"]
+
+    async def update_summary(self, session_id: str, summary: str, covered_turns: int) -> None:
+        """Store the conversation summary and how many turns it covers."""
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute(
+                "UPDATE chat_sessions SET history_summary=?, summary_turn_count=? WHERE session_id=?",
+                (summary, covered_turns, session_id),
+            )
+            await db.commit()
+
+    async def purge_old_sessions(self, retention_days: int) -> int:
+        """Delete sessions inactive for more than retention_days. Returns count deleted."""
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute(
+                "DELETE FROM chat_messages WHERE session_id IN "
+                "(SELECT session_id FROM chat_sessions WHERE last_active < ?)",
+                (cutoff,),
+            )
+            async with db.execute(
+                "DELETE FROM chat_sessions WHERE last_active < ?", (cutoff,)
+            ) as cur:
+                count = cur.rowcount
+            await db.commit()
+        return count
