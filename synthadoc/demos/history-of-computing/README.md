@@ -231,7 +231,7 @@ conversation_history_turns = 10   # set to 0 to disable conversation memory
 
 ---
 
-## Step 5 — Check status and jobs
+## Step 6 — Check status and jobs
 
 ```
 synthadoc status -w history-of-computing
@@ -241,7 +241,7 @@ synthadoc lint report -w history-of-computing
 
 ---
 
-## Step 6 — Export your wiki
+## Step 7 — Export your wiki
 
 All four formats are available once the server is running.
 
