@@ -88,7 +88,11 @@ export function useQueryStream(sessionId: string | null, onHints: (hints: string
                     cancelFlush(); // final update carries citations + gap, skip the pending token flush
                     setMessages((prev) => {
                         const next = [...prev];
-                        next[next.length - 1] = { ...next[next.length - 1], text: partial, citations, gapSuggestions };
+                        const last = next[next.length - 1];
+                        // Don't overwrite a clarify/notice message — it was already finalised by its handler
+                        if (last.type !== "clarify" && last.type !== "notice") {
+                            next[next.length - 1] = { ...last, text: partial, citations, gapSuggestions };
+                        }
                         return next;
                     });
                     onHints(nextHints);
