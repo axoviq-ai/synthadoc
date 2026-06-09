@@ -10,8 +10,39 @@ from pathlib import Path
 from typing import Any, Optional
 
 from synthadoc.providers.base import LLMProvider, Message
+from synthadoc.storage.wiki import LifecycleState
 
 logger = logging.getLogger(__name__)
+
+# ── lifecycle constants ───────────────────────────────────────────────────────
+# Defined at module level so _do_lifecycle() doesn't rebuild them on every call.
+
+_TO_STATE: dict[str, LifecycleState] = {
+    "lifecycle_activate": LifecycleState.ACTIVE,
+    "lifecycle_archive":  LifecycleState.ARCHIVED,
+    "lifecycle_restore":  LifecycleState.DRAFT,
+}
+_SOURCE_STATES: dict[str, list[LifecycleState]] = {
+    "lifecycle_activate": [LifecycleState.DRAFT],
+    "lifecycle_archive":  [LifecycleState.ACTIVE, LifecycleState.STALE,
+                           LifecycleState.DRAFT, LifecycleState.CONTRADICTED],
+    "lifecycle_restore":  [LifecycleState.ARCHIVED],
+}
+_VERB: dict[str, str] = {
+    "lifecycle_activate": "activate",
+    "lifecycle_archive":  "archive",
+    "lifecycle_restore":  "restore",
+}
+_ALLOWED: set[tuple[LifecycleState, LifecycleState]] = {
+    (LifecycleState.DRAFT,        LifecycleState.ACTIVE),
+    (LifecycleState.DRAFT,        LifecycleState.ARCHIVED),
+    (LifecycleState.ACTIVE,       LifecycleState.ARCHIVED),
+    (LifecycleState.ACTIVE,       LifecycleState.STALE),
+    (LifecycleState.CONTRADICTED, LifecycleState.ARCHIVED),
+    (LifecycleState.STALE,        LifecycleState.DRAFT),
+    (LifecycleState.STALE,        LifecycleState.ARCHIVED),
+    (LifecycleState.ARCHIVED,     LifecycleState.DRAFT),
+}
 
 # ── action detection ───────────────────────────────────────────────────────────
 # Matches imperative action requests. Excludes interrogative phrases
@@ -325,16 +356,17 @@ class ActionAgent:
             op = "lint run"
         cron = (params.get("cron") or "").strip()
         if not cron:
+            prompt = "What schedule should this run on? (e.g. 'every night at 9 PM', 'daily at 6 AM')"
             return ActionResult(
                 action_type="schedule_add",
                 success=False,
                 needs_clarification=True,
-                clarify_prompt="What schedule should this run on? (e.g. 'every night at 9 PM', 'daily at 6 AM')",
+                clarify_prompt=prompt,
                 clarify_candidates=[],
-                message="What schedule should this run on?",
+                message=prompt,
             )
         desc = params.get("schedule_description", cron)
-        if not op or not cron:
+        if not op:
             return ActionResult(action_type="schedule_add", success=False,
                                 message="Could not parse the schedule — please provide the command and time.")
         wiki_name = self._wiki_root.name
@@ -406,53 +438,24 @@ class ActionAgent:
 
     async def _do_lifecycle(self, action: str, params: dict) -> ActionResult:
         from synthadoc.storage.log import AuditDB
-        from synthadoc.storage.wiki import LifecycleState
 
         slug = (params.get("slug") or "").strip()
         reason = (params.get("reason") or "requested via chat").strip() or "requested via chat"
 
-        _TO_STATE = {
-            "lifecycle_activate": LifecycleState.ACTIVE,
-            "lifecycle_archive":  LifecycleState.ARCHIVED,
-            "lifecycle_restore":  LifecycleState.DRAFT,
-        }
-        _ALLOWED: set[tuple[str, str]] = {
-            (LifecycleState.DRAFT,        LifecycleState.ACTIVE),
-            (LifecycleState.DRAFT,        LifecycleState.ARCHIVED),
-            (LifecycleState.ACTIVE,       LifecycleState.ARCHIVED),
-            (LifecycleState.ACTIVE,       LifecycleState.STALE),
-            (LifecycleState.CONTRADICTED, LifecycleState.ARCHIVED),
-            (LifecycleState.STALE,        LifecycleState.DRAFT),
-            (LifecycleState.STALE,        LifecycleState.ARCHIVED),
-            (LifecycleState.ARCHIVED,     LifecycleState.DRAFT),
-        }
-
         if not slug:
-            # List pages that are valid sources for this transition so the user
-            # can clarify which one they mean.
-            to_state = _TO_STATE[action]
-            _SOURCE_STATES = {
-                "lifecycle_activate": [LifecycleState.DRAFT],
-                "lifecycle_archive":  [LifecycleState.ACTIVE, LifecycleState.STALE,
-                                       LifecycleState.DRAFT, LifecycleState.CONTRADICTED],
-                "lifecycle_restore":  [LifecycleState.ARCHIVED],
-            }
-            _VERB = {
-                "lifecycle_activate": "activate", "lifecycle_archive": "archive",
-                "lifecycle_restore": "restore",
-            }
             candidates = sorted(
                 s for s in self._orch._store.list_pages()
                 if (pg := self._orch._store.read_page(s)) and pg.status in _SOURCE_STATES[action]
             )
             if candidates:
+                prompt = f"Which page would you like to {_VERB[action]}?"
                 return ActionResult(
                     action_type=action,
                     success=False,
                     needs_clarification=True,
-                    clarify_prompt=f"Which page would you like to {_VERB[action]}?",
+                    clarify_prompt=prompt,
                     clarify_candidates=candidates,
-                    message=f"Which page would you like to {_VERB[action]}?",
+                    message=prompt,
                 )
             return ActionResult(action_type=action, success=False,
                                 message="No page slug provided and no eligible pages found.")
