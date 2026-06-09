@@ -484,8 +484,8 @@ class ActionAgent:
             article = "an" if state_filter_str[:1].lower() in "aeiou" else "a"
             state_label = f"{article} {state_filter_str} " if filtered_state is not None else "a "
             overflow_note = (
-                f" Showing {_MAX_CLARIFY_CANDIDATES} of {len(all_candidates)} pages —"
-                f" type a name to reach the rest."
+                f" ({_MAX_CLARIFY_CANDIDATES} of {len(all_candidates)} shown —"
+                f" type a name if yours is not listed)"
                 if overflow > 0 else ""
             )
             prompt = (
