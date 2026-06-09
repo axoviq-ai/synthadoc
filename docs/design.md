@@ -2231,6 +2231,8 @@ data: {"event": "done", "data": {"next_hints": ["What came after Turing?", ...]}
 | `token` | `{"text": "…"}` | Each LLM token |
 | `citations` | `{"citations": […]}` | After last token |
 | `gap` | `{"suggested_searches": […]}` | If knowledge gap detected |
+| `clarify` | `{"prompt": "…", "candidates": ["slug-1", …], "action": "…"}` | Action agent needs disambiguation (e.g. which page to activate) |
+| `notice` | `{"text": "…"}` | System message (e.g. conversation history was compressed) |
 | `done` | `{"next_hints": […]}` | Stream complete |
 | `error` | `{"message": "…"}` | On any exception |
 
@@ -2318,9 +2320,22 @@ Hint chips are rendered below each answer and in the empty-state panel before th
 
 ### Multi-turn Conversation
 
-The UI sends the full conversation history with each request as a `context` array (array of `{role, content}` objects). `QueryAgent` prepends this history to the system prompt so follow-up questions resolve correctly.
+Each `GET /query/stream` call may include a `session_id` (UUID from `POST /sessions`). When a session_id is present, the HTTP server loads conversation history from `audit.db` (up to `conversation_history_turns` most recent turns, default 10) and passes it to `QueryAgent.run_stream()`.
 
-History is stored in the browser's React state (JavaScript array); it is not persisted server-side. Closing the browser tab or refreshing the page starts a new session — `POST /sessions` is called on every page load and a new `session_id` is assigned. Query history (the list of past questions shown in the sidebar) is persisted in `localStorage` keyed by origin, so it is shared across tabs in the same browser but isolated between different browsers.
+**Follow-up question rewriting.** When history is non-empty, a `RewriteAgent` rewrites the user's follow-up question into a self-contained form before BM25 retrieval. This converts context-dependent phrases ("What came after that?" or "Tell me more about his early life") into standalone questions ("What came after Alan Turing's work at Bletchley Park?") so keyword retrieval targets the right pages.
+
+**History overflow compression.** When the accumulated session exceeds `conversation_history_turns`, a `SummarizeAgent` compresses the oldest turns into a single `[Session summary: …]` assistant turn. A `notice` SSE event is emitted the first time compression occurs in a session, so the user can see that earlier context was condensed.
+
+**Clarify events.** When the action agent detects an action-intent query (e.g. "Activate a draft page") but cannot resolve which specific page the user means, it sets `needs_clarification=True` and returns a prompt and candidate list. The HTTP server emits a `clarify` SSE event instead of routing to the synthesis pipeline. The web UI renders this as numbered chip buttons (one per candidate page) plus a free-text hint, letting the user tap a chip or type a page name directly.
+
+**History persistence.** Conversation turns are written to `audit.db` per session. This means history survives a server restart — the same session_id can resume where it left off. Sessions older than `session_max_age_hours` (default 24 h) are purged by the hourly background cleanup task.
+
+**Configuration:**
+
+```toml
+[query]
+conversation_history_turns = 10   # turns to include in each request (default: 10; 0 = disable history)
+```
 
 ### CLI command
 
@@ -2437,3 +2452,10 @@ Opens the default browser to `http://localhost:{port}/app`. The server must alre
 - **`synthadoc web` CLI command** — opens the default browser to `http://localhost:{port}/app`; thin wrapper around OS open/start/xdg-open; server must already be running. The web UI is local-only; network access and authentication are not available in the Community Edition.
 - **Action Agent** — regex pre-filter + LLM extraction layer that detects action-intent queries ("run lint", "schedule ingest every night", "what pages are orphans?") and dispatches them to live Synthadoc operations without going through the query pipeline. Supports: `lint`, `lint_report`, `wiki_status`, `ingest`, `scaffold`, `schedule_add`, `schedule_list`, `schedule_history`, `lifecycle_activate`, `lifecycle_archive`, `lifecycle_restore`. Returns structured `ActionResult` rendered directly in the web UI and CLI.
 - **Expanded hint coverage** — built-in `hints.json` extended with lifecycle action hints ("Activate a draft page", "Archive a stale page", "Restore an archived page to draft"), orphan/contradiction/adversarial patterns, and "Show wiki status" in EXPLORER and HEALTH_CHECK modes.
+
+### v0.8.0 (Community Edition)
+
+- **Multi-turn conversation** — the web chat UI maintains conversation history across turns within a session. History is stored in `audit.db` per session and loaded server-side on each request (up to `conversation_history_turns` turns, default 10). Follow-up questions are rewritten into standalone form by a dedicated rewrite component before BM25 retrieval, so context-dependent phrases ("What came after that?") resolve correctly. When the session exceeds the turn limit, a summarization component compresses the oldest turns into a `[Session summary]` entry; a `notice` SSE event is emitted the first time compression occurs.
+- **Clarify event** — when an action-intent query is ambiguous (e.g. "activate a draft page" without specifying which page), the server emits a `clarify` SSE event with a disambiguation prompt and candidate page list instead of routing to the synthesis pipeline. The web UI renders candidates as numbered chip buttons; the user can tap a chip or type a page name to complete the action.
+- **Two new SSE events** — `clarify` (`{prompt, candidates, action}`) for action disambiguation; `notice` (`{text}`) for system messages such as history compression.
+- **Configuration** — `[query] conversation_history_turns = 10` controls how many prior turns are included in each request. Set to `0` to disable conversation history.
