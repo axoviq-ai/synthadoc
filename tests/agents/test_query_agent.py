@@ -21,12 +21,6 @@ def _make_agent(tmp_wiki, answer_text="The answer.", decompose_json='["term"]'):
     return store, search, provider
 
 
-def _make_agent_no_gap(tmp_wiki, **kw):
-    """Like _make_agent but disables gap detection (gap_score_threshold=0.0)."""
-    store, search, provider = _make_agent(tmp_wiki, **kw)
-    return store, search, provider
-
-
 # ── decompose() unit tests ────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
@@ -1632,8 +1626,7 @@ def test_expand_aliases_replaces_known_term(tmp_wiki):
     store = WikiStorage(tmp_wiki / "wiki")
     store.write_page("spatula", _page_with_aliases(["flat flippy thing", "flipper"]))
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
-    from unittest.mock import AsyncMock as _AsyncMock
-    provider = _AsyncMock()
+    provider = AsyncMock()
     qa = QueryAgent(provider=provider, store=store, search=search)
     result = qa._expand_aliases("tell me about the flat flippy thing")
     assert "spatula" in result
@@ -1643,8 +1636,7 @@ def test_expand_aliases_no_match_returns_original(tmp_wiki):
     store = WikiStorage(tmp_wiki / "wiki")
     store.write_page("spatula", _page_with_aliases(["flipper"]))
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
-    from unittest.mock import AsyncMock as _AsyncMock
-    provider = _AsyncMock()
+    provider = AsyncMock()
     qa = QueryAgent(provider=provider, store=store, search=search)
     result = qa._expand_aliases("what is a spoon?")
     assert result == "what is a spoon?"
@@ -1653,8 +1645,7 @@ def test_expand_aliases_no_match_returns_original(tmp_wiki):
 def test_expand_aliases_empty_wiki_returns_original(tmp_wiki):
     store = WikiStorage(tmp_wiki / "wiki")
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
-    from unittest.mock import AsyncMock as _AsyncMock
-    provider = _AsyncMock()
+    provider = AsyncMock()
     qa = QueryAgent(provider=provider, store=store, search=search)
     result = qa._expand_aliases("what is a spatula?")
     assert result == "what is a spatula?"
@@ -1665,8 +1656,7 @@ def test_expand_aliases_longer_alias_replaced_first(tmp_wiki):
     store = WikiStorage(tmp_wiki / "wiki")
     store.write_page("spatula", _page_with_aliases(["flat flippy thing", "flat"]))
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
-    from unittest.mock import AsyncMock as _AsyncMock
-    provider = _AsyncMock()
+    provider = AsyncMock()
     qa = QueryAgent(provider=provider, store=store, search=search)
     result = qa._expand_aliases("the flat flippy thing is useful")
     assert "spatula" in result
@@ -1678,8 +1668,7 @@ def test_expand_aliases_case_insensitive(tmp_wiki):
     store = WikiStorage(tmp_wiki / "wiki")
     store.write_page("alan-turing", _page_with_aliases(["Ada", "Lady Lovelace"]))
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
-    from unittest.mock import AsyncMock as _AsyncMock
-    provider = _AsyncMock()
+    provider = AsyncMock()
     qa = QueryAgent(provider=provider, store=store, search=search)
     # Mixed-case in query must match alias stored as "ada" in the map
     result = qa._expand_aliases("What did Ada contribute to computing?")
@@ -1838,8 +1827,7 @@ def test_get_relevant_system_pages_ingest_keyword(tmp_wiki):
     """'ingest' in question must match the ingest guide page."""
     store = WikiStorage(tmp_wiki / "wiki")
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
-    from unittest.mock import AsyncMock as _AsMock
-    provider = _AsMock()
+    provider = AsyncMock()
     agent = QueryAgent(provider=provider, store=store, search=search)
     result = agent._get_relevant_system_pages("What file types can I ingest?")
     assert result != ""
@@ -1850,8 +1838,7 @@ def test_get_relevant_system_pages_no_match(tmp_wiki):
     """A question with no Synthadoc keywords must return an empty string."""
     store = WikiStorage(tmp_wiki / "wiki")
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
-    from unittest.mock import AsyncMock as _AsMock
-    provider = _AsMock()
+    provider = AsyncMock()
     agent = QueryAgent(provider=provider, store=store, search=search)
     result = agent._get_relevant_system_pages("What is the capital of France?")
     assert result == ""
@@ -1861,8 +1848,7 @@ def test_get_relevant_system_pages_history_domain_query_no_match(tmp_wiki):
     """'history of computing' must NOT match the schedule guide (history is a domain word)."""
     store = WikiStorage(tmp_wiki / "wiki")
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
-    from unittest.mock import AsyncMock as _AsMock
-    provider = _AsMock()
+    provider = AsyncMock()
     agent = QueryAgent(provider=provider, store=store, search=search)
     result = agent._get_relevant_system_pages(
         "What exactly was Alan Turing's contribution to the history of computing?"
@@ -1874,8 +1860,7 @@ def test_get_relevant_system_pages_lint_keyword(tmp_wiki):
     """'lint' in question must match the lint guide page."""
     store = WikiStorage(tmp_wiki / "wiki")
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
-    from unittest.mock import AsyncMock as _AsMock
-    provider = _AsMock()
+    provider = AsyncMock()
     agent = QueryAgent(provider=provider, store=store, search=search)
     result = agent._get_relevant_system_pages("How do I run lint checks?")
     assert result != ""
@@ -1885,7 +1870,6 @@ def test_get_relevant_system_pages_lint_keyword(tmp_wiki):
 @pytest.mark.asyncio
 async def test_fetch_live_wiki_data_recent_changes(tmp_wiki):
     """'What changed this week?' must include recent ingest history."""
-    from unittest.mock import AsyncMock as _AsMock, patch
     from synthadoc.storage.log import AuditDB
 
     audit_path = tmp_wiki / ".synthadoc" / "audit.db"
@@ -1895,7 +1879,7 @@ async def test_fetch_live_wiki_data_recent_changes(tmp_wiki):
 
     store = WikiStorage(tmp_wiki / "wiki")
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
-    agent = QueryAgent(provider=_AsMock(), store=store, search=search)
+    agent = QueryAgent(provider=AsyncMock(), store=store, search=search)
 
     recent_row = [{"wiki_page": "alan-turing", "source_path": "turing.pdf",
                    "ingested_at": "2026-06-03T10:00:00+00:00"}]
@@ -2290,4 +2274,4 @@ async def test_run_stream_history_injected_into_synthesis_prompt(tmp_wiki):
 
     assert captured_messages, "complete_stream was never called"
     prompt_text = captured_messages[0].content
-    assert "Conversation so far" in prompt_text or "what about earlier?" in prompt_text
+    assert "Conversation so far" in prompt_text and "what about earlier?" in prompt_text

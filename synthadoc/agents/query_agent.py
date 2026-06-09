@@ -187,6 +187,22 @@ _WIKI_INTROSPECTIVE_TRIGGERS: frozenset[str] = frozenset({
     "this wiki contain",
 })
 
+# ── Hints used in _fetch_live_wiki_data for lifecycle state display ────────────
+_HINTS: dict[str, str] = {
+    "draft":        "← run `synthadoc lint run` to promote",
+    "stale":        "← re-ingest needed",
+    "contradicted": "← review required",
+}
+
+
+def _is_introspective(question: str) -> bool:
+    """Return True when a question asks about the wiki's own content or scope,
+    or is a Synthadoc CLI invocation — both should suppress gap detection."""
+    q = question.lower()
+    return any(t in q for t in _WIKI_INTROSPECTIVE_TRIGGERS) or any(
+        q.startswith(c) for c in _SYNTHADOC_CLI_SUBCOMMANDS
+    )
+
 
 def _parse_lookback_days(question: str) -> int:
     """Return a lookback window in days parsed from natural language time phrases.
@@ -281,11 +297,6 @@ class QueryAgent:
             lines: list[str] = []
 
             if counts:
-                _HINTS = {
-                    "draft":       "← run `synthadoc lint run` to promote",
-                    "stale":       "← re-ingest needed",
-                    "contradicted": "← review required",
-                }
                 lines.append("### Current page counts")
                 for state in ("active", "draft", "stale", "contradicted", "archived"):
                     n = counts.get(state, 0)
@@ -390,11 +401,14 @@ class QueryAgent:
         system_ctx: str,
         is_live_data: bool,
         gap_sentinel: bool = False,
+        history: list[dict] | None = None,
     ) -> str:
         """Build the LLM synthesis prompt. gap_sentinel=True adds the [GAP] marker
-        instruction used by run() for post-synthesis gap override; run_stream() omits it."""
+        instruction used by run() for post-synthesis gap override; run_stream() omits it.
+        When history is provided it is prepended as a conversation context block."""
+        prefix = _history_block(history) if history else ""
         if gap:
-            return (
+            return prefix + (
                 f"The wiki does not yet have a page on this topic. "
                 f"Answer the question using your general knowledge, then note in one sentence "
                 f"that the wiki does not currently cover this topic and suggest the user enriches it.\n\n"
@@ -402,7 +416,7 @@ class QueryAgent:
                 f"Wiki pages available (unrelated to this question):\n{context}"
             )
         if system_ctx:
-            return (
+            return prefix + (
                 f"Answer the question using the Synthadoc Help documentation and Live Wiki Data below. "
                 f"If Live Wiki Data is present, use it to give concrete, specific answers "
                 f"(e.g. list the actual page names, show real counts). "
@@ -414,7 +428,7 @@ class QueryAgent:
                 f"Question: {question}\n\nDocumentation:\n{context}"
             )
         if is_live_data:
-            return (
+            return prefix + (
                 f"Answer using the Live Wiki Data below. "
                 f"The data is fetched directly from Synthadoc's audit log and page state database — "
                 f"give specific, concrete answers using the actual page names, dates, and counts shown. "
@@ -425,7 +439,7 @@ class QueryAgent:
             "If the pages do not contain enough information to answer the question, "
             "start your response with exactly '[GAP]' on its own line, then explain what's missing.\n\n"
         ) if gap_sentinel else ""
-        return (
+        return prefix + (
             f"Answer using ONLY these wiki pages. Cite with [[PageTitle]].\n"
             f"Extract and include all specific facts from the pages — dates, years, numbers, and names — "
             f"even when they appear briefly or in passing. Do not claim a fact is absent unless it is "
@@ -553,11 +567,7 @@ class QueryAgent:
         _live_data = await self._fetch_live_wiki_data(question)
         if _system_ctx or _live_data:
             _gap = False
-        _q_lower = question.lower()
-        if _gap and (
-            any(kw in _q_lower for kw in _WIKI_INTROSPECTIVE_TRIGGERS)
-            or any(cmd in _q_lower for cmd in _SYNTHADOC_CLI_SUBCOMMANDS)
-        ):
+        if _gap and _is_introspective(question):
             _gap = False
         if _gap:
             _suggested = await SearchDecomposeAgent(self._provider).decompose(question)
@@ -817,19 +827,14 @@ class QueryAgent:
 
         if _system_ctx or _live_data:
             _gap = False
-        _q_lower_s = question.lower()
-        if _gap and (
-            any(kw in _q_lower_s for kw in _WIKI_INTROSPECTIVE_TRIGGERS)
-            or any(cmd in _q_lower_s for cmd in _SYNTHADOC_CLI_SUBCOMMANDS)
-        ):
+        if _gap and _is_introspective(question):
             _gap = False
 
         synthesis_prompt = self._build_synthesis_prompt(
             question, context,
             gap=_gap, system_ctx=_system_ctx, is_live_data=_is_live_data,
+            history=history,
         )
-        if history:
-            synthesis_prompt = _history_block(history) + synthesis_prompt
 
         yield {"event": "status", "data": {"phase": "synthesizing", "sources": len(citations)}}
 
