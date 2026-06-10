@@ -19,6 +19,11 @@ def _make_sessions_app(db: AuditDB) -> FastAPI:
     async def get_session_messages(session_id: str):
         return await db.get_all_messages(session_id)
 
+    @app.get("/hints")
+    async def get_hints(mode: str = "POWER_USER"):
+        from synthadoc.agents.hint_engine import HintEngine
+        return {"hints": HintEngine.initial_hints(mode)}
+
     return app
 
 
@@ -93,3 +98,21 @@ def test_get_sessions_multi_turn_lists_all_user_turns(client_and_db):
     assert resp.status_code == 200
     data = resp.json()
     assert data[0]["turns"] == ["first question", "follow-up question"]
+
+
+def test_get_hints_returns_list_for_known_mode(client_and_db):
+    client, _ = client_and_db
+    for mode in ("NEW_WIKI", "EXPLORER", "HEALTH_CHECK", "POWER_USER"):
+        resp = client.get(f"/hints?mode={mode}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "hints" in data
+        assert isinstance(data["hints"], list)
+        assert len(data["hints"]) > 0
+
+
+def test_get_hints_defaults_to_power_user(client_and_db):
+    client, _ = client_and_db
+    resp = client.get("/hints")
+    assert resp.status_code == 200
+    assert "hints" in resp.json()

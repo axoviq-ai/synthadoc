@@ -626,6 +626,11 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
     async def get_session_messages(session_id: str):
         return await app.state.orch._audit.get_all_messages(session_id)
 
+    @app.get("/hints")
+    async def get_hints(mode: str = "POWER_USER"):
+        from synthadoc.agents.hint_engine import HintEngine
+        return {"hints": HintEngine.initial_hints(mode)}
+
     @app.post("/analyse")
     async def analyse_source(req: AnalyseRequest):
         """Run analysis pass on a source and return structured result without writing pages."""

@@ -4,7 +4,7 @@
 import { useState, useCallback } from "react";
 import { useSession } from "./useSession";
 import { useSessions } from "./useSessions";
-import { getSessionMessages } from "./api";
+import { getSessionMessages, getHints } from "./api";
 import { Sidebar } from "./components/Sidebar";
 import { ChatWindow } from "./components/ChatWindow";
 import type { Message } from "./useQueryStream";
@@ -26,20 +26,22 @@ export default function App() {
 
     const handleSelectSession = useCallback(async (sessionId: string, mode: string) => {
         resumeSession(sessionId, mode);
-        try {
-            const msgs = await getSessionMessages(sessionId);
-            const mapped: Message[] = msgs.map((m) => ({
+        const [msgs, hints] = await Promise.allSettled([
+            getSessionMessages(sessionId),
+            getHints(mode),
+        ]);
+        const mapped: Message[] = msgs.status === "fulfilled"
+            ? msgs.value.map((m) => ({
                 id: crypto.randomUUID(),
                 role: m.role as "user" | "assistant",
                 text: m.content,
-            }));
-            setInitialMessages(mapped);
-        } catch {
-            setInitialMessages([]);
-        }
+            }))
+            : [];
+        setInitialMessages(mapped);
+        if (hints.status === "fulfilled") updateHints(hints.value);
         setActiveSessionId(sessionId);
         setResetKey((k) => k + 1);
-    }, [resumeSession]);
+    }, [resumeSession, updateHints]);
 
     const handleQuerySent = useCallback(() => {
         refreshSessions();

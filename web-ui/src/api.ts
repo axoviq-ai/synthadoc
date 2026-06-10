@@ -57,6 +57,13 @@ export async function getSessionMessages(sessionId: string): Promise<SessionMess
     return resp.json();
 }
 
+export async function getHints(mode: string): Promise<string[]> {
+    const resp = await fetch(`${BASE}/hints?mode=${encodeURIComponent(mode)}`);
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    return data.hints ?? [];
+}
+
 export async function streamQuery(
     question: string,
     sessionId: string,
