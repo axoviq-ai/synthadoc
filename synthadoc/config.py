@@ -31,6 +31,7 @@ class AgentConfig:
     provider: str
     model: str
     base_url: str = ""
+    thinking: str = ""  # "disabled" | "enabled" | "adaptive" | "" (provider default)
 
 
 @dataclass
@@ -60,6 +61,7 @@ class AgentsConfig:
             provider=override.provider,
             model=override.model,
             base_url=override.base_url,
+            thinking=override.thinking,
         )
 
 
@@ -189,11 +191,21 @@ class Config:
 # ---------------------------------------------------------------------------
 
 
+_VALID_THINKING_VALUES = frozenset({"", "disabled", "enabled", "adaptive"})
+
+
 def _parse_agent(raw: dict) -> AgentConfig:
+    thinking = raw.get("thinking", "")
+    if thinking not in _VALID_THINKING_VALUES:
+        raise ValueError(
+            f"Invalid thinking value '{thinking}'. "
+            f"Must be one of: disabled, enabled, adaptive (or omit for provider default)."
+        )
     return AgentConfig(
         provider=raw["provider"],
         model=raw.get("model", ""),
         base_url=raw.get("base_url", ""),
+        thinking=thinking,
     )
 
 
@@ -270,6 +282,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
                 "provider": default_agent.provider,
                 "model": default_agent.model,
                 "base_url": default_agent.base_url,
+                "thinking": default_agent.thinking,
             }
             base_vals.update(a[name])
             parsed = _parse_agent(base_vals)
