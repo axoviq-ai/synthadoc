@@ -29,7 +29,17 @@ export function useSession() {
         await initSession();
     }, [initSession]);
 
+    const resumeSession = useCallback((sessionId: string, mode: string) => {
+        setSession(prev => ({
+            session_id: sessionId,
+            mode,
+            initial_hints: [],
+            wiki_name: prev?.wiki_name ?? "",
+        }));
+        setHints([]);
+    }, []);
+
     const updateHints = useCallback((next: string[]) => setHints(next), []);
 
-    return { session, hints, updateHints, sessionError, resetSession };
+    return { session, hints, updateHints, sessionError, resetSession, resumeSession };
 }

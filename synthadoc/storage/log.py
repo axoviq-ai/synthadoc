@@ -151,6 +151,8 @@ class AuditDB:
                 "ALTER TABLE scheduled_runs ADD COLUMN output TEXT DEFAULT ''",
                 "ALTER TABLE chat_sessions ADD COLUMN history_summary TEXT DEFAULT NULL",
                 "ALTER TABLE chat_sessions ADD COLUMN summary_turn_count INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE chat_messages ADD COLUMN citations TEXT DEFAULT NULL",
+                "ALTER TABLE chat_messages ADD COLUMN gap_suggestions TEXT DEFAULT NULL",
             ):
                 try:
                     await db.execute(migration)
@@ -576,11 +578,23 @@ class AuditDB:
             )
             await db.commit()
 
-    async def append_message(self, session_id: str, role: str, content: str) -> None:
+    async def append_message(
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        citations: list[str] | None = None,
+        gap_suggestions: list[str] | None = None,
+    ) -> None:
         async with aiosqlite.connect(self._path) as db:
             await db.execute(
-                "INSERT INTO chat_messages (session_id, role, content) VALUES (?,?,?)",
-                (session_id, role, content),
+                "INSERT INTO chat_messages (session_id, role, content, citations, gap_suggestions)"
+                " VALUES (?,?,?,?,?)",
+                (
+                    session_id, role, content,
+                    json.dumps(citations) if citations else None,
+                    json.dumps(gap_suggestions) if gap_suggestions else None,
+                ),
             )
             await db.execute(
                 "UPDATE chat_sessions SET last_active=datetime('now') WHERE session_id=?",
@@ -621,15 +635,24 @@ class AuditDB:
         return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
 
     async def get_all_messages(self, session_id: str) -> list[dict]:
-        """Return all messages for a session, oldest first."""
+        """Return all messages for a session, oldest first, including citations and gap suggestions."""
         async with aiosqlite.connect(self._path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT role, content FROM chat_messages WHERE session_id=? ORDER BY id ASC",
+                "SELECT role, content, citations, gap_suggestions"
+                " FROM chat_messages WHERE session_id=? ORDER BY id ASC",
                 (session_id,),
             ) as cur:
                 rows = await cur.fetchall()
-        return [{"role": r["role"], "content": r["content"]} for r in rows]
+        return [
+            {
+                "role": r["role"],
+                "content": r["content"],
+                "citations": json.loads(r["citations"]) if r["citations"] else [],
+                "gap_suggestions": json.loads(r["gap_suggestions"]) if r["gap_suggestions"] else [],
+            }
+            for r in rows
+        ]
 
     async def get_summary(self, session_id: str) -> tuple[str | None, int]:
         """Return (history_summary, summary_turn_count) for a session."""
@@ -652,6 +675,40 @@ class AuditDB:
                 (summary, covered_turns, session_id),
             )
             await db.commit()
+
+    async def list_sessions(self, limit: int = 20) -> list[dict]:
+        """Return recent sessions that have messages, with user turns for sidebar display."""
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """SELECT DISTINCT s.session_id, s.mode, s.created_at, s.last_active
+                   FROM chat_sessions s
+                   INNER JOIN chat_messages m ON s.session_id = m.session_id
+                   ORDER BY s.last_active DESC LIMIT ?""",
+                (limit,),
+            ) as cur:
+                sessions = [dict(r) for r in await cur.fetchall()]
+
+            if not sessions:
+                return []
+
+            sids = [s["session_id"] for s in sessions]
+            placeholders = ",".join("?" * len(sids))
+            async with db.execute(
+                f"SELECT session_id, content FROM chat_messages "
+                f"WHERE session_id IN ({placeholders}) AND role='user' ORDER BY id ASC",
+                sids,
+            ) as cur:
+                rows = await cur.fetchall()
+
+        turns_by_session: dict[str, list[str]] = {}
+        for row in rows:
+            turns_by_session.setdefault(row["session_id"], []).append(row["content"])
+
+        for s in sessions:
+            s["turns"] = turns_by_session.get(s["session_id"], [])
+
+        return [s for s in sessions if s["turns"]]
 
     async def purge_old_sessions(self, retention_days: int) -> int:
         """Delete sessions inactive for more than retention_days. Returns count deleted."""

@@ -1,49 +1,62 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 William Johnason / axoviq.com
+// Copyright (C) 2026 Paul Chen / axoviq.com
 
 import { useState, useCallback } from "react";
 import { useSession } from "./useSession";
-import { useQueryHistory } from "./useQueryHistory";
+import { useSessions } from "./useSessions";
+import { getSessionMessages, getHints } from "./api";
 import { Sidebar } from "./components/Sidebar";
 import { ChatWindow } from "./components/ChatWindow";
+import type { Message } from "./useQueryStream";
 import heroBg from "./assets/hero-bg.png";
 
 export default function App() {
-    const { session, hints, updateHints, sessionError, resetSession } = useSession();
-    const { history, addEntry } = useQueryHistory();
+    const { session, hints, updateHints, sessionError, resetSession, resumeSession } = useSession();
+    const { sessions, refresh: refreshSessions } = useSessions();
     const [resetKey, setResetKey] = useState(0);
-    const [injectedQuery, setInjectedQuery] = useState<string | null>(null);
-    const [lastQuestion, setLastQuestion] = useState<string | null>(null);
+    const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+    const [initialMessages, setInitialMessages] = useState<Message[]>([]);
 
     const handleNewRun = useCallback(async () => {
         setResetKey((k) => k + 1);
-        setInjectedQuery(null);
-        setLastQuestion(null);
+        setInitialMessages([]);
+        setActiveSessionId(null);
         await resetSession();
     }, [resetSession]);
 
-    const handleSelect = useCallback((question: string) => {
-        setInjectedQuery(question);
-        setLastQuestion(question);
-    }, []);
+    const handleSelectSession = useCallback(async (sessionId: string, mode: string) => {
+        resumeSession(sessionId, mode);
+        const [msgs, hints] = await Promise.allSettled([
+            getSessionMessages(sessionId),
+            getHints(mode),
+        ]);
+        const mapped: Message[] = msgs.status === "fulfilled"
+            ? msgs.value.map((m) => ({
+                id: crypto.randomUUID(),
+                role: m.role as "user" | "assistant",
+                text: m.content,
+                citations: m.citations.length > 0 ? m.citations : undefined,
+                gapSuggestions: m.gap_suggestions.length > 0 ? m.gap_suggestions : undefined,
+            }))
+            : [];
+        setInitialMessages(mapped);
+        if (hints.status === "fulfilled") updateHints(hints.value);
+        setActiveSessionId(sessionId);
+        setResetKey((k) => k + 1);
+    }, [resumeSession, updateHints]);
 
-    const handleQuerySent = useCallback((question: string) => {
-        addEntry(question);
-        setLastQuestion(question);
-    }, [addEntry]);
-
-    const handleInjected = useCallback(() => {
-        setInjectedQuery(null);
-    }, []);
+    const handleQuerySent = useCallback(() => {
+        refreshSessions();
+    }, [refreshSessions]);
 
     return (
         <div className="app-layout">
             <Sidebar
                 wikiName={session?.wiki_name ?? ""}
                 connected={!!session}
-                history={history}
-                activeQuestion={lastQuestion}
-                onSelect={handleSelect}
+                sessions={sessions}
+                activeSessionId={activeSessionId}
+                onSelectSession={handleSelectSession}
                 onNewRun={handleNewRun}
             />
             <main className="main-panel" style={{ backgroundImage: `url(${heroBg})` }}>
@@ -57,10 +70,11 @@ export default function App() {
                     hints={hints}
                     onHints={updateHints}
                     wikiName={session?.wiki_name ?? ""}
-                    injectedQuery={injectedQuery}
-                    onInjected={handleInjected}
+                    injectedQuery={null}
+                    onInjected={() => {}}
                     onQuerySent={handleQuerySent}
-                    showTip={history.length > 0}
+                    showTip={sessions.length > 0}
+                    initialMessages={initialMessages}
                 />
             </main>
         </div>

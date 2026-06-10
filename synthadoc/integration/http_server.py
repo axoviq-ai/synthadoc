@@ -587,7 +587,11 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                 })
             if session_id and full_answer:
                 await orch._audit.append_message(session_id, "user", q)
-                await orch._audit.append_message(session_id, "assistant", full_answer)
+                await orch._audit.append_message(
+                    session_id, "assistant", full_answer,
+                    citations=citations or None,
+                    gap_suggestions=_suggested_searches if _knowledge_gap else None,
+                )
 
         return StreamingResponse(_live_stream(), media_type="text/event-stream")
 
@@ -617,6 +621,19 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             "initial_hints": HintEngine.initial_hints(mode),
             "wiki_name": wiki_root.name,
         }
+
+    @app.get("/sessions")
+    async def list_sessions(limit: int = 20):
+        return await app.state.orch._audit.list_sessions(limit=limit)
+
+    @app.get("/sessions/{session_id}/messages")
+    async def get_session_messages(session_id: str):
+        return await app.state.orch._audit.get_all_messages(session_id)
+
+    @app.get("/hints")
+    async def get_hints(mode: str = "POWER_USER"):
+        from synthadoc.agents.hint_engine import HintEngine
+        return {"hints": HintEngine.initial_hints(mode)}
 
     @app.post("/analyse")
     async def analyse_source(req: AnalyseRequest):

@@ -2330,6 +2330,25 @@ Each `GET /query/stream` call may include a `session_id` (UUID from `POST /sessi
 
 **History persistence.** Conversation turns are written to `audit.db` per session. This means history survives a server restart — the same session_id can resume where it left off. Sessions older than `session_max_age_hours` (default 24 h) are purged by the hourly background cleanup task.
 
+### Session history sidebar
+
+The left navigation bar in the web UI is driven by `GET /sessions` (returns up to 20 recent sessions, ordered by `last_active DESC`) rather than `localStorage`, so history is consistent across browser tabs and survives page refreshes.
+
+**2-level collapsible tree:**
+- Sessions with a single user turn appear as a flat entry showing the question text and relative timestamp.
+- Sessions with two or more user turns render as a collapsible group: the root row shows the first question plus a turn count badge (e.g. `3 turns`); a **▸** chevron toggles expansion; expanded child rows show each follow-up question with a `↳` indent.
+
+**Session restore:** clicking any session root or child turn calls `GET /sessions/{session_id}/messages` to hydrate the full message list, then sets the active `session_id` in the query stream hook so subsequent questions continue the same conversation thread.
+
+**New Run:** the **+ New Run** button calls `POST /sessions` to allocate a fresh `session_id` and resets the chat window to the empty-state hero screen.
+
+**API surface:**
+
+| Endpoint | Description |
+|---|---|
+| `GET /sessions?limit=N` | Returns `[{session_id, mode, created_at, last_active, turns: [str]}]` — `turns` is the list of user message contents in chronological order |
+| `GET /sessions/{session_id}/messages` | Returns `[{role, content}]` for every message in the session, oldest first |
+
 **Configuration:**
 
 ```toml
@@ -2459,3 +2478,7 @@ Opens the default browser to `http://localhost:{port}/app`. The server must alre
 - **Clarify event** — when an action-intent query is ambiguous (e.g. "activate a draft page" without specifying which page), the server emits a `clarify` SSE event with a disambiguation prompt and candidate page list instead of routing to the synthesis pipeline. The web UI renders candidates as numbered chip buttons; the user can tap a chip or type a page name to complete the action.
 - **Two new SSE events** — `clarify` (`{prompt, candidates, action}`) for action disambiguation; `notice` (`{text}`) for system messages such as history compression.
 - **Configuration** — `[query] conversation_history_turns = 10` controls how many prior turns are included in each request. Set to `0` to disable conversation history.
+- **MiniMax M3 support** — `provider = "minimax"` with `model = "MiniMax-Text-01"` or `"MiniMax-M3"` (thinking mode configurable; off by default).
+- **Settings gear** — web UI chat window now has a ⚙ gear button that opens a popover to configure the per-request query timeout (10–600 s, default 60 s). Value persisted in `localStorage`.
+- **Query timeout** — `GET /query/stream` accepts `?timeout_seconds=N`; a `TimeoutError` emits an SSE `error` event to the browser.
+- **Session history sidebar** — the left navigation bar is now server-driven (`GET /sessions`) and shows sessions as a 2-level collapsible tree. Multi-turn sessions display a turn count badge and expand to show each follow-up question. Clicking any item restores the full conversation history via `GET /sessions/{id}/messages`. Two new API endpoints: `GET /sessions` and `GET /sessions/{session_id}/messages`.
