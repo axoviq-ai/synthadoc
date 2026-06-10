@@ -21,6 +21,7 @@ from synthadoc.storage.wiki import WikiStorage
 logger = logging.getLogger(__name__)
 
 _MAX_SUB_QUESTIONS = 4
+_MIN_TERM_FREQ = 2
 
 # ── bundled system knowledge (answers Synthadoc product questions) ────────────
 _KNOWLEDGE_DIR = Path(__file__).parent.parent / "knowledge"
@@ -645,7 +646,6 @@ class QueryAgent:
         Returns (gap, discriminating_term, pages_with_overlap, min_specific_qualifying).
         Called by both run() and run_stream() so they share identical detection logic.
         """
-        _MIN_TERM_FREQ = 2
         _any_term_missing = False
         _defining_term_absent = False
         _discriminating_term = ""

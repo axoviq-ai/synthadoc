@@ -34,9 +34,25 @@ _VERB: dict[str, str] = {
     "lifecycle_restore":  "restore",
 }
 _MAX_CLARIFY_CANDIDATES = 15
+
 _SCHEDULE_CRON_PROMPT = (
     "What schedule should this run on? (e.g. 'every night at 9 PM', 'daily at 6 AM')"
 )
+
+_MSG_LINT_ALL_CLEAR = (
+    "All clear — no contradictions, orphan pages, or adversarial warnings."
+)
+_MSG_NO_LIFECYCLE_DATA = (
+    "No lifecycle data yet. Run `synthadoc lint run` to initialise lifecycle states."
+)
+_MSG_NO_INGEST_SOURCE = "No source specified. Please provide a URL or file path."
+_MSG_NO_SCHEDULE_PARAMS = (
+    "Could not parse the schedule — please provide the command and time."
+)
+_MSG_NO_SCHEDULE_HISTORY = (
+    "No scheduled run history yet — jobs will appear here after their first run."
+)
+_MSG_NO_LIFECYCLE_CANDIDATES = "No page slug provided and no eligible pages found."
 
 _STATE_FILTER_MAP: dict[str, LifecycleState] = {
     "draft":        LifecycleState.DRAFT,
@@ -259,7 +275,7 @@ class ActionAgent:
             parts.append("\n".join(lines))
 
         if not parts:
-            message = "All clear — no contradictions, orphan pages, or adversarial warnings."
+            message = _MSG_LINT_ALL_CLEAR
         else:
             message = "\n\n".join(parts)
         return ActionResult(action_type="lint_report", success=True, message=message)
@@ -275,7 +291,7 @@ class ActionAgent:
                 success=True,
                 message=(
                     f"**Wiki status** — {total} page{'s' if total != 1 else ''} total\n\n"
-                    "No lifecycle data yet. Run `synthadoc lint run` to initialise lifecycle states."
+                    + _MSG_NO_LIFECYCLE_DATA
                 ),
             )
         audit = AuditDB(audit_path)
@@ -332,7 +348,7 @@ class ActionAgent:
         source = params.get("source", "")
         if not source:
             return ActionResult(action_type="ingest", success=False,
-                                message="No source specified. Please provide a URL or file path.")
+                                message=_MSG_NO_INGEST_SOURCE)
         force = bool(params.get("force", False))
         job_id = await self._orch.ingest(source=source, force=force)
         flag_str = " --force" if force else ""
@@ -382,7 +398,7 @@ class ActionAgent:
         desc = params.get("schedule_description", cron)
         if not op:
             return ActionResult(action_type="schedule_add", success=False,
-                                message="Could not parse the schedule — please provide the command and time.")
+                                message=_MSG_NO_SCHEDULE_PARAMS)
         wiki_name = self._wiki_root.name
         db = ScheduleDB(wiki=wiki_name, wiki_root=str(self._wiki_root))
         entry_id = db.add(op=op, cron=cron)
@@ -418,7 +434,7 @@ class ActionAgent:
             return ActionResult(
                 action_type="schedule_history",
                 success=True,
-                message="No scheduled run history yet — jobs will appear here after their first run.",
+                message=_MSG_NO_SCHEDULE_HISTORY,
             )
         audit = AuditDB(audit_path)
         await audit.init()
@@ -427,7 +443,7 @@ class ActionAgent:
             return ActionResult(
                 action_type="schedule_history",
                 success=True,
-                message="No scheduled run history yet — jobs will appear here after their first run.",
+                message=_MSG_NO_SCHEDULE_HISTORY,
             )
         lines = [
             "**Recent scheduled runs:**\n",
@@ -478,7 +494,7 @@ class ActionAgent:
                         ),
                     )
                 return ActionResult(action_type=action, success=False,
-                                    message="No page slug provided and no eligible pages found.")
+                                    message=_MSG_NO_LIFECYCLE_CANDIDATES)
 
             overflow = len(all_candidates) - _MAX_CLARIFY_CANDIDATES
             candidates = all_candidates[:_MAX_CLARIFY_CANDIDATES]
