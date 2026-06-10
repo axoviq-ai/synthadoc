@@ -34,6 +34,9 @@ _VERB: dict[str, str] = {
     "lifecycle_restore":  "restore",
 }
 _MAX_CLARIFY_CANDIDATES = 15
+_SCHEDULE_CRON_PROMPT = (
+    "What schedule should this run on? (e.g. 'every night at 9 PM', 'daily at 6 AM')"
+)
 
 _STATE_FILTER_MAP: dict[str, LifecycleState] = {
     "draft":        LifecycleState.DRAFT,
@@ -368,14 +371,13 @@ class ActionAgent:
             op = "lint run"
         cron = (params.get("cron") or "").strip()
         if not cron:
-            prompt = "What schedule should this run on? (e.g. 'every night at 9 PM', 'daily at 6 AM')"
             return ActionResult(
                 action_type="schedule_add",
                 success=False,
                 needs_clarification=True,
-                clarify_prompt=prompt,
+                clarify_prompt=_SCHEDULE_CRON_PROMPT,
                 clarify_candidates=[],
-                message=prompt,
+                message=_SCHEDULE_CRON_PROMPT,
             )
         desc = params.get("schedule_description", cron)
         if not op:
