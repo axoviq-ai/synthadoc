@@ -543,6 +543,14 @@ body {
     text-align: center;
 }
 
+.session-resume-tip {
+    margin-top: 0.45rem;
+    font-size: 0.73rem;
+    color: #a78bfa;
+    text-align: center;
+    opacity: 0.85;
+}
+
 .error-banner { color: #f87171; font-size: 0.85rem; padding: 0.4rem 1.25rem; }
 
 /* ─── Message bubbles ──────────────────────────── */

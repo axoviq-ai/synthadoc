@@ -136,6 +136,11 @@ export function ChatWindow({
                         {streaming ? "…" : "Ask"}
                     </button>
                 </div>
+                {initialMessages.length > 0 && messages.length === initialMessages.length && (
+                    <p className="session-resume-tip">
+                        Session restored — type a follow-up to continue this conversation.
+                    </p>
+                )}
                 {showTip && messages.length === 0 && (
                     <p className="input-tip">
                         Tip: Select a recent run from the sidebar to load it into the prompt.
