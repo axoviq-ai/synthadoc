@@ -15,8 +15,12 @@ export interface Message {
     action?: string;
 }
 
-export function useQueryStream(sessionId: string | null, onHints: (hints: string[]) => void) {
-    const [messages, setMessages] = useState<Message[]>([]);
+export function useQueryStream(
+    sessionId: string | null,
+    onHints: (hints: string[]) => void,
+    initialMessages: Message[] = [],
+) {
+    const [messages, setMessages] = useState<Message[]>(initialMessages);
     const [streaming, setStreaming] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const abortRef = useRef<AbortController | null>(null);

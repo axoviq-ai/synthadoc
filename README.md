@@ -728,6 +728,8 @@ The UI detects whether you are new to the wiki, exploring, or a returning user a
 
 **Multi-turn conversation:** each session maintains a conversation history so follow-up questions resolve against earlier answers. Follow-up questions are automatically rewritten into standalone form before retrieval. When an action request is ambiguous (e.g. "Activate a draft page"), the assistant responds with a numbered list of candidate pages — click a chip to complete the action. Long sessions compress older turns automatically and show an inline notice when compression occurs.
 
+**Session history sidebar:** the left navigation bar shows recent runs grouped by session. Single-turn sessions show as a flat entry; multi-turn sessions show as a collapsible group with a turn count badge — click the chevron to expand and see each follow-up turn. Clicking any session or turn restores the full conversation history into the chat window, letting you pick up any previous thread exactly where you left off. Start a fresh session at any time with the **+ New Run** button.
+
 ### Linting
 
 ```bash

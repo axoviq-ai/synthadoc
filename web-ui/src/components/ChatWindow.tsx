@@ -6,6 +6,7 @@ import { MessageBubble } from "./MessageBubble";
 import { HintChips } from "./HintChips";
 import { Hero } from "./Hero";
 import { useQueryStream } from "../useQueryStream";
+import type { Message } from "../useQueryStream";
 import { SettingsPopover, readTimeoutSetting } from "./SettingsPopover";
 
 interface Props {
@@ -18,13 +19,15 @@ interface Props {
     onInjected: () => void;
     onQuerySent: (question: string) => void;
     showTip: boolean;
+    initialMessages?: Message[];
 }
 
 export function ChatWindow({
     sessionId, mode, hints, onHints, wikiName,
     injectedQuery, onInjected, onQuerySent, showTip,
+    initialMessages = [],
 }: Props) {
-    const { messages, streaming, error, send } = useQueryStream(sessionId, onHints);
+    const { messages, streaming, error, send } = useQueryStream(sessionId, onHints, initialMessages);
     const [input, setInput] = useState("");
     const [noCache, setNoCache] = useState(false);
     const [timeoutSeconds, setTimeoutSeconds] = useState(readTimeoutSetting);
@@ -133,6 +136,11 @@ export function ChatWindow({
                         {streaming ? "…" : "Ask"}
                     </button>
                 </div>
+                {initialMessages.length > 0 && messages.length === initialMessages.length && (
+                    <p className="session-resume-tip">
+                        Session restored — type a follow-up to continue this conversation.
+                    </p>
+                )}
                 {showTip && messages.length === 0 && (
                     <p className="input-tip">
                         Tip: Select a recent run from the sidebar to load it into the prompt.

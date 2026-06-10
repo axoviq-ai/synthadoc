@@ -857,10 +857,13 @@ class QueryAgent:
 
         if _gap:
             try:
-                _suggested = await SearchDecomposeAgent(self._provider).decompose(question)
+                # Use the standalone retrieval_question so gap suggestions are meaningful
+                # when the user asked a context-dependent follow-up (e.g. "tell me more
+                # about his death" → rewritten to "How did Alan Turing die?").
+                _suggested = await SearchDecomposeAgent(self._provider).decompose(retrieval_question)
             except Exception as _exc:
                 logger.warning("run_stream: gap decompose failed, falling back to original question: %s", _exc)
-                _suggested = [question]
+                _suggested = [retrieval_question]
             logger.debug("run_stream: yielding gap event (%d searches)", len(_suggested))
             yield {"event": "gap", "data": {"suggested_searches": _suggested}}
 
