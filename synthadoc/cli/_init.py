@@ -33,6 +33,7 @@ default = {{ provider = "gemini", model = "gemini-2.5-flash-lite" }}
 # default = {{ provider = "gemini",    model = "gemini-2.5-flash" }}         # free tier: 10 RPM / 250 RPD
 # default = {{ provider = "gemini",    model = "gemini-1.5-flash" }}         # free tier: 15 RPM / 1,500 RPD
 # default = {{ provider = "minimax",   model = "MiniMax-M2.5" }}             # paid, cheapest text-only ($0.15/M in)
+# default = {{ provider = "minimax",   model = "MiniMax-M3",  thinking = "disabled" }}  # paid, M3 with thinking off (faster, cheaper)
 # default = {{ provider = "groq",      model = "llama-3.3-70b-versatile" }}  # free tier, 100K tokens/day
 # default = {{ provider = "anthropic", model = "claude-sonnet-4-6" }}        # paid, highest quality
 # default = {{ provider = "deepseek",  model = "deepseek-chat" }}             # paid, very cheap ($0.14/M in); text-only, no vision
@@ -40,7 +41,7 @@ default = {{ provider = "gemini", model = "gemini-2.5-flash-lite" }}
 # default = {{ provider = "claude-code" }}                                    # no API key — uses your Claude Code subscription
 # default = {{ provider = "opencode" }}                                       # no API key — uses your Opencode subscription
 #
-# LLM call timeout — useful for reasoning models (e.g. MiniMax-M2.5) that can
+# LLM call timeout — useful for reasoning models (e.g. MiniMax-M2.5, MiniMax-M3 with thinking enabled) that can
 # spend 2+ minutes on a single prompt and return an empty response instead of
 # raising an error.  Setting this causes synthadoc to fail fast with a clear
 # log message so you know to adjust the model or prompt size.
