@@ -25,6 +25,42 @@ def test_agent_override_inherits_default(tmp_path):
     assert lint.model == "claude-haiku-4-5"
 
 
+def test_agent_thinking_disabled_parsed(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents]\ndefault = { provider = "minimax", model = "MiniMax-M3", thinking = "disabled" }\n'
+    )
+    cfg = load_config(project_config=cfg_file)
+    assert cfg.agents.default.thinking == "disabled"
+
+
+def test_agent_thinking_defaults_to_empty(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text('[agents]\ndefault = { provider = "minimax", model = "MiniMax-M3" }\n')
+    cfg = load_config(project_config=cfg_file)
+    assert cfg.agents.default.thinking == ""
+
+
+def test_agent_thinking_invalid_value_raises(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents]\ndefault = { provider = "minimax", model = "MiniMax-M3", thinking = "always" }\n'
+    )
+    with pytest.raises(Exception, match="Invalid thinking value"):
+        load_config(project_config=cfg_file)
+
+
+def test_agent_thinking_propagates_through_resolve(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents]\ndefault = { provider = "minimax", model = "MiniMax-M3", thinking = "disabled" }\n'
+        'query = { model = "MiniMax-M3" }\n'
+    )
+    cfg = load_config(project_config=cfg_file)
+    resolved = cfg.agents.resolve("query")
+    assert resolved.thinking == "disabled"
+
+
 def test_cost_defaults():
     cfg = load_config()
     assert cfg.cost.soft_warn_usd == 0.50

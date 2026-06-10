@@ -42,6 +42,20 @@ _SERVER_ERROR_RETRY_DELAYS_S: tuple[int, ...] = (5, 15, 30)
 #   patch("synthadoc.providers.openai._sleep", new=AsyncMock())
 _sleep = asyncio.sleep
 
+_THINKING_EXTRA_BODY: dict[str, dict] = {
+    "disabled": {"thinking": {"type": "disabled"}},
+    "enabled":  {"thinking": {"type": "adaptive"}},
+    "adaptive": {"thinking": {"type": "adaptive"}},
+}
+
+
+def _build_extra_body(thinking: str) -> dict:
+    """Return the provider extra_body dict for the given thinking setting.
+
+    Empty string (unset) → no extra_body; provider default applies.
+    """
+    return _THINKING_EXTRA_BODY.get(thinking, {})
+
 
 def _extract_last_json(s: str) -> str:
     """Extract the last complete JSON object or array from s using brace matching.
@@ -100,6 +114,7 @@ class OpenAIProvider(LLMProvider):
         self._timeout: int | None = timeout if timeout > 0 else None
         base = str(config.base_url or "")
         self.supports_vision = not any(host in base for host in _NO_VISION_HOSTS)
+        self._extra_body: dict = _build_extra_body(config.thinking)
 
     @staticmethod
     def _to_openai_content(content):
@@ -154,6 +169,7 @@ class OpenAIProvider(LLMProvider):
                     model=self._config.model, messages=msgs,
                     temperature=temperature, max_tokens=max_tokens,
                     timeout=self._timeout,
+                    **({"extra_body": self._extra_body} if self._extra_body else {}),
                 )
             except _openai.APITimeoutError:
                 logger.error(
@@ -319,6 +335,7 @@ class OpenAIProvider(LLMProvider):
             model=self._config.model, messages=msgs,
             temperature=temperature, max_tokens=max_tokens,
             timeout=self._timeout, stream=True,
+            **({"extra_body": self._extra_body} if self._extra_body else {}),
         ):
             if chunk.choices and chunk.choices[0].finish_reason == "length":
                 logger.warning(
