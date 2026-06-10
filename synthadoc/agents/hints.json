@@ -5,12 +5,14 @@
       "What sources can Synthadoc ingest?",
       "How do I set up a scheduled ingest?",
       "Ingest a URL into my wiki",
-      "Run scaffold to generate starter pages"
+      "Run scaffold to generate starter pages",
+      "Run Synthadoc status"
     ],
     "EXPLORER": [
       "What topics does this wiki cover?",
       "What are the key topics in this wiki?",
       "Show wiki status",
+      "Run Synthadoc status",
       "What are the stale pages in my wiki?",
       "What pages are orphan pages?",
       "Ingest a new source into the wiki",
@@ -18,6 +20,7 @@
     ],
     "HEALTH_CHECK": [
       "Show wiki status",
+      "Run Synthadoc status",
       "Which pages are marked stale?",
       "What pages are orphan pages?",
       "Show me pages with contradictions",
@@ -32,6 +35,7 @@
       "What pages were added this year?",
       "Which pages have adversarial warnings?",
       "What pages are orphan pages?",
+      "Run Synthadoc status",
       "Activate a draft page",
       "Archive a stale page",
       "Restore an archived page to draft",

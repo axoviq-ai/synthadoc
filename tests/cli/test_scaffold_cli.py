@@ -101,3 +101,17 @@ def test_scaffold_exits_nonzero_when_job_fails():
 
     assert result.exit_code != 0
     assert "LLM timeout" in result.output
+
+
+def test_scaffold_exits_gracefully_when_poll_drops():
+    """scaffold_cmd catches connection errors during status polling and prints monitor hint."""
+    def _get(wiki, path, **kw):
+        if path == "/config":
+            return {"domain": "Robotics"}
+        raise Exception("Connection dropped")
+    get_mock = MagicMock(side_effect=_get)
+    post_mock = MagicMock(return_value={"job_id": "job-poll-err"})
+    result = _invoke_scaffold(get_mock=get_mock, post_mock=post_mock)
+
+    assert result.exit_code == 0
+    assert "Monitor progress" in result.output
