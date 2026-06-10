@@ -45,6 +45,7 @@ def make_provider(agent_name: str, config: Config) -> LLMProvider:
         cfg_with_url = AgentConfig(
             provider="gemini", model=agent_cfg.model,
             base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+            thinking=agent_cfg.thinking,
         )
         return OpenAIProvider(api_key=key, config=cfg_with_url, timeout=timeout)
     if name == "groq":
@@ -53,6 +54,7 @@ def make_provider(agent_name: str, config: Config) -> LLMProvider:
         cfg_with_url = AgentConfig(
             provider="groq", model=agent_cfg.model,
             base_url="https://api.groq.com/openai/v1",
+            thinking=agent_cfg.thinking,
         )
         return OpenAIProvider(api_key=key, config=cfg_with_url, timeout=timeout)
     if name == "minimax":
@@ -61,6 +63,7 @@ def make_provider(agent_name: str, config: Config) -> LLMProvider:
         cfg_with_url = AgentConfig(
             provider="minimax", model=agent_cfg.model,
             base_url="https://api.minimax.io/v1",
+            thinking=agent_cfg.thinking,
         )
         return OpenAIProvider(api_key=key, config=cfg_with_url, timeout=timeout)
     if name == "deepseek":
@@ -69,6 +72,7 @@ def make_provider(agent_name: str, config: Config) -> LLMProvider:
         cfg_with_url = AgentConfig(
             provider="deepseek", model=agent_cfg.model,
             base_url="https://api.deepseek.com/v1",
+            thinking=agent_cfg.thinking,
         )
         return OpenAIProvider(api_key=key, config=cfg_with_url, timeout=timeout)
     if name == "ollama":

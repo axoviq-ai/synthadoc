@@ -419,6 +419,20 @@ def test_make_provider_minimax_uses_openai_provider_with_base_url(monkeypatch):
     assert provider.supports_vision is True   # M2.5 is natively multimodal
 
 
+def test_make_provider_minimax_propagates_thinking(monkeypatch):
+    """thinking=disabled must survive the cfg_with_url rebind in make_provider."""
+    from synthadoc.config import Config, AgentsConfig, AgentConfig
+    from synthadoc.providers import make_provider
+    from synthadoc.providers.openai import OpenAIProvider
+    monkeypatch.setenv("MINIMAX_API_KEY", "test-minimax-key")
+    cfg = Config(agents=AgentsConfig(
+        default=AgentConfig(provider="minimax", model="MiniMax-M3", thinking="disabled")
+    ))
+    provider = make_provider("default", cfg)
+    assert isinstance(provider, OpenAIProvider)
+    assert provider._extra_body == {"thinking": {"type": "disabled"}}
+
+
 def test_make_provider_gemini_uses_openai_provider_with_base_url(monkeypatch):
     from synthadoc.providers import make_provider
     from synthadoc.providers.openai import OpenAIProvider
