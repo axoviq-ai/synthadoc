@@ -28,6 +28,7 @@ async def test_openai_provider_complete_stream_yields_tokens():
     provider = OpenAIProvider.__new__(OpenAIProvider)
     provider._config = cfg
     provider._timeout = None
+    provider._extra_body = {}
 
     chunk1 = MagicMock(); chunk1.choices = [MagicMock(delta=MagicMock(content="Hello"))]
     chunk2 = MagicMock(); chunk2.choices = [MagicMock(delta=MagicMock(content=" world"))]
@@ -60,6 +61,7 @@ async def test_openai_provider_complete_stream_strips_think_blocks():
     provider = OpenAIProvider.__new__(OpenAIProvider)
     provider._config = cfg
     provider._timeout = None
+    provider._extra_body = {}
 
     # Simulate MiniMax streaming: think block split across tokens
     raw_tokens = ["<think>", "some reasoning", "</think>", "\n\nThe answer is 42."]
@@ -109,6 +111,7 @@ async def test_openai_provider_complete_stream_strips_inline_think_blocks():
     provider = OpenAIProvider.__new__(OpenAIProvider)
     provider._config = cfg
     provider._timeout = None
+    provider._extra_body = {}
 
     # Streaming only produces "synthadoc" (truncated) — complete() gives the full answer
     raw_tokens = ["<think>initial reasoning</think>", "synthadoc"]
