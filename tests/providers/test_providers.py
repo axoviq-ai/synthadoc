@@ -69,6 +69,83 @@ async def test_anthropic_provider_includes_system_message():
     assert captured.get("system") == "You are a helpful assistant."
 
 
+# ── thinking / extra_body tests ───────────────────────────────────────────────
+
+def _make_openai_provider(thinking: str = "") -> "OpenAIProvider":
+    from synthadoc.providers.openai import OpenAIProvider
+    cfg = AgentConfig(provider="minimax", model="MiniMax-M3", thinking=thinking)
+    with patch("synthadoc.providers.openai.AsyncOpenAI"):
+        return OpenAIProvider(api_key="test-key", config=cfg)
+
+
+def test_openai_provider_extra_body_disabled():
+    from synthadoc.providers.openai import OpenAIProvider
+    cfg = AgentConfig(provider="minimax", model="MiniMax-M3", thinking="disabled")
+    with patch("synthadoc.providers.openai.AsyncOpenAI"):
+        p = OpenAIProvider(api_key="test-key", config=cfg)
+    assert p._extra_body == {"thinking": {"type": "disabled"}}
+
+
+def test_openai_provider_extra_body_enabled():
+    from synthadoc.providers.openai import OpenAIProvider
+    cfg = AgentConfig(provider="minimax", model="MiniMax-M3", thinking="enabled")
+    with patch("synthadoc.providers.openai.AsyncOpenAI"):
+        p = OpenAIProvider(api_key="test-key", config=cfg)
+    assert p._extra_body == {"thinking": {"type": "adaptive"}}
+
+
+def test_openai_provider_extra_body_empty_by_default():
+    from synthadoc.providers.openai import OpenAIProvider
+    cfg = AgentConfig(provider="minimax", model="MiniMax-M3")
+    with patch("synthadoc.providers.openai.AsyncOpenAI"):
+        p = OpenAIProvider(api_key="test-key", config=cfg)
+    assert p._extra_body == {}
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_passes_extra_body_on_complete():
+    from synthadoc.providers.openai import OpenAIProvider
+    cfg = AgentConfig(provider="minimax", model="MiniMax-M3", thinking="disabled")
+    with patch("synthadoc.providers.openai.AsyncOpenAI") as MockClient:
+        provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    captured: dict = {}
+    mock_resp = MagicMock()
+    mock_resp.choices = [MagicMock(finish_reason="stop",
+                                   message=MagicMock(content="hello", model_extra={}))]
+    mock_resp.usage = MagicMock(prompt_tokens=5, completion_tokens=3)
+
+    async def capture(**kwargs):
+        captured.update(kwargs)
+        return mock_resp
+
+    provider._client.chat.completions.create = capture
+    await provider.complete(messages=[Message(role="user", content="hi")])
+    assert captured.get("extra_body") == {"thinking": {"type": "disabled"}}
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_omits_extra_body_when_empty():
+    from synthadoc.providers.openai import OpenAIProvider
+    cfg = AgentConfig(provider="minimax", model="MiniMax-M3")  # thinking unset
+    with patch("synthadoc.providers.openai.AsyncOpenAI"):
+        provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    captured: dict = {}
+    mock_resp = MagicMock()
+    mock_resp.choices = [MagicMock(finish_reason="stop",
+                                   message=MagicMock(content="hello", model_extra={}))]
+    mock_resp.usage = MagicMock(prompt_tokens=5, completion_tokens=3)
+
+    async def capture(**kwargs):
+        captured.update(kwargs)
+        return mock_resp
+
+    provider._client.chat.completions.create = capture
+    await provider.complete(messages=[Message(role="user", content="hi")])
+    assert "extra_body" not in captured
+
+
 @pytest.mark.asyncio
 async def test_anthropic_provider_retries_on_internal_server_error():
     """InternalServerError is retried; a subsequent success must be returned."""
