@@ -183,3 +183,105 @@ def test_scaffold_marker_without_user_zone():
     assert SCAFFOLD_MARKER in result
     assert "## New Section" in result
     assert "## Old Section" not in result
+
+
+# ── _coerce_scaffold_dict ─────────────────────────────────────────────────────
+
+def test_coerce_scaffold_dict_with_wrapped_list():
+    """[{...categories...}] — single wrapped dict is unwrapped."""
+    from synthadoc.agents.scaffold_agent import _coerce_scaffold_dict
+    inner = {"categories": [{"heading": "A", "slugs": []}], "dashboard_intro": "x"}
+    assert _coerce_scaffold_dict([inner]) == inner
+
+
+def test_coerce_scaffold_dict_with_categories_array():
+    """[{heading, slugs}, ...] — bare categories array is wrapped in a dict."""
+    from synthadoc.agents.scaffold_agent import _coerce_scaffold_dict
+    cats = [{"heading": "A", "slugs": []}, {"heading": "B", "slugs": ["foo"]}]
+    result = _coerce_scaffold_dict(cats)
+    assert result == {"categories": cats}
+
+
+def test_coerce_scaffold_dict_returns_none_for_unrecognised_list():
+    from synthadoc.agents.scaffold_agent import _coerce_scaffold_dict
+    assert _coerce_scaffold_dict([1, 2, 3]) is None
+
+
+def test_coerce_scaffold_dict_returns_none_for_string():
+    from synthadoc.agents.scaffold_agent import _coerce_scaffold_dict
+    assert _coerce_scaffold_dict("just a string") is None
+
+
+# ── _parse_scaffold_json tiers ────────────────────────────────────────────────
+
+def test_parse_scaffold_json_tier2_extracts_embedded_object():
+    """Tier 2: valid JSON object buried in surrounding text."""
+    from synthadoc.agents.scaffold_agent import _parse_scaffold_json
+    payload = '{"categories": [{"heading": "A", "slugs": []}]}'
+    raw = f"Here is the scaffold:\n{payload}\nDone."
+    result = _parse_scaffold_json(raw)
+    assert result is not None
+    assert result["categories"][0]["heading"] == "A"
+
+
+def test_parse_scaffold_json_tier2_and_4_invalid_embedded_returns_none():
+    """Tier 2 and 4 both find a {…} block but it is not valid JSON → return None."""
+    from synthadoc.agents.scaffold_agent import _parse_scaffold_json
+    raw = "Some preamble {not valid json here} trailing text"
+    assert _parse_scaffold_json(raw) is None
+
+
+def test_parse_scaffold_json_tier3_fixes_minimax_comma_drop():
+    """Tier 3: missing comma between adjacent array objects is inserted and parsed."""
+    from synthadoc.agents.scaffold_agent import _parse_scaffold_json
+    raw = '{"categories": [{"heading": "A", "slugs": []}\n{"heading": "B", "slugs": []}]}'
+    result = _parse_scaffold_json(raw)
+    assert result is not None
+    assert len(result["categories"]) == 2
+
+
+# ── _build_purpose_md with list fields ───────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_scaffold_purpose_md_with_list_fields():
+    """purpose_include / purpose_exclude returned as lists are rendered as bullets."""
+    response_with_lists = {
+        **_VALID_RESPONSE,
+        "purpose_include": ["Core algorithms", "Benchmark datasets"],
+        "purpose_exclude": ["Unrelated biology topics"],
+    }
+    provider = _make_provider(response_with_lists)
+    agent = ScaffoldAgent(provider=provider)
+    result = await agent.scaffold(domain="ML")
+    assert "Core algorithms" in result.purpose_md
+    assert "Benchmark datasets" in result.purpose_md
+    assert "Unrelated biology topics" in result.purpose_md
+
+
+# ── Self-correction retry ─────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_scaffold_self_corrects_on_second_attempt():
+    """If attempt 1 returns invalid JSON, the agent sends a correction prompt and retries."""
+    valid_json = json.dumps(_VALID_RESPONSE)
+    provider = AsyncMock()
+    provider.complete = AsyncMock(side_effect=[
+        CompletionResponse(text="not json at all", input_tokens=10, output_tokens=5),
+        CompletionResponse(text=valid_json, input_tokens=20, output_tokens=100),
+    ])
+    agent = ScaffoldAgent(provider=provider)
+    result = await agent.scaffold(domain="ML")
+    assert provider.complete.call_count == 2
+    assert "Key Concepts" in result.index_md
+
+
+@pytest.mark.asyncio
+async def test_scaffold_raises_after_two_failed_attempts():
+    """If both attempts return invalid JSON, ValueError is raised."""
+    provider = AsyncMock()
+    provider.complete = AsyncMock(return_value=CompletionResponse(
+        text="still not json", input_tokens=10, output_tokens=5
+    ))
+    agent = ScaffoldAgent(provider=provider)
+    with pytest.raises(ValueError, match="scaffold"):
+        await agent.scaffold(domain="ML")

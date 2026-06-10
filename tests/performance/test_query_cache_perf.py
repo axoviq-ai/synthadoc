@@ -272,10 +272,12 @@ async def test_concurrent_cache_reads(tmp_path, concurrency):
             f"  wall={wall_ms:.0f}ms  throughput={throughput:.0f} q/s"
         )
         assert all_hits, "One or more concurrent reads returned a cache miss (data race?)"
-        # Linux bare-metal SLOs; Windows/macOS CI runners apply 3× headroom for
-        # virtual-disk SQLite overhead (same pattern as test_performance.py).
+        # Bare-metal Linux SLOs; CI runners (Linux VMs, macOS, Windows) get 3× headroom
+        # for shared-disk / virtualised SQLite overhead.
+        import os as _os
         base_slo = {10: 10.0, 50: 20.0, 100: 40.0}[concurrency]
-        slo = base_slo if platform.system() == "Linux" else base_slo * 3
+        on_ci = _os.environ.get("CI") == "true" or platform.system() != "Linux"
+        slo = base_slo * 3 if on_ci else base_slo
         assert p95 < slo, f"P95 {p95:.1f}ms exceeds {slo:.0f}ms SLO at concurrency={concurrency}"
     finally:
         await cache.close()

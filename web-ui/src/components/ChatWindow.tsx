@@ -6,6 +6,7 @@ import { MessageBubble } from "./MessageBubble";
 import { HintChips } from "./HintChips";
 import { Hero } from "./Hero";
 import { useQueryStream } from "../useQueryStream";
+import { SettingsPopover, readTimeoutSetting } from "./SettingsPopover";
 
 interface Props {
     sessionId: string | null;
@@ -26,6 +27,8 @@ export function ChatWindow({
     const { messages, streaming, error, send } = useQueryStream(sessionId, onHints);
     const [input, setInput] = useState("");
     const [noCache, setNoCache] = useState(false);
+    const [timeoutSeconds, setTimeoutSeconds] = useState(readTimeoutSetting);
+    const [showSettings, setShowSettings] = useState(false);
     const messagesRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -46,14 +49,14 @@ export function ChatWindow({
         const q = input.trim();
         if (!q) return;
         setInput("");
-        send(q, noCache);
+        send(q, noCache, timeoutSeconds);
         onQuerySent(q);
     };
 
     const handleChipClick = useCallback((value: string) => {
-        send(value, noCache);
+        send(value, noCache, timeoutSeconds);
         onQuerySent(value);
-    }, [send, noCache, onQuerySent]);
+    }, [send, noCache, timeoutSeconds, onQuerySent]);
 
     const handleKey = (e: React.KeyboardEvent) => {
         if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
@@ -91,6 +94,23 @@ export function ChatWindow({
                         />
                         Bypass cache
                     </label>
+                    <div className="settings-anchor">
+                        <button
+                            className="settings-gear-btn"
+                            aria-label="Settings"
+                            aria-expanded={showSettings}
+                            onClick={() => setShowSettings((s) => !s)}
+                        >
+                            ⚙
+                        </button>
+                        {showSettings && (
+                            <SettingsPopover
+                                timeoutSeconds={timeoutSeconds}
+                                onChangeTimeout={setTimeoutSeconds}
+                                onClose={() => setShowSettings(false)}
+                            />
+                        )}
+                    </div>
                 </div>
                 <div className="input-row">
                     <textarea

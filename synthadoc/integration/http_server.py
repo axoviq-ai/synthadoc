@@ -441,7 +441,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         return await _run_query(req.question, timeout_seconds=req.timeout_seconds)
 
     @app.get("/query/stream")
-    async def query_stream(q: str, session_id: str | None = None, no_cache: bool = False):
+    async def query_stream(q: str, session_id: str | None = None, no_cache: bool = False, timeout_seconds: int = 60):
         import json as _json
         from fastapi.responses import StreamingResponse
         if not q.strip():
@@ -521,6 +521,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                 return StreamingResponse(_cached_stream(), media_type="text/event-stream")
 
         async def _live_stream():
+            import asyncio as _asyncio
             nonlocal _summary_notice
             full_answer = ""
             citations = []
@@ -528,41 +529,45 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             _knowledge_gap = False
             _suggested_searches: list[str] = []
             try:
-                async for evt in orch.query_stream(q, session_id=session_id,
-                                                   session_mode=session_mode,
-                                                   history=_history):
-                    # Change 4: emit notice SSE before first token/clarify
-                    if _summary_notice:
-                        yield f"event: notice\ndata: {_json.dumps({'text': _summary_notice})}\n\n"
-                        _summary_notice = None
+                async with _asyncio.timeout(timeout_seconds if timeout_seconds > 0 else None):
+                    async for evt in orch.query_stream(q, session_id=session_id,
+                                                       session_mode=session_mode,
+                                                       history=_history):
+                        # Change 4: emit notice SSE before first token/clarify
+                        if _summary_notice:
+                            yield f"event: notice\ndata: {_json.dumps({'text': _summary_notice})}\n\n"
+                            _summary_notice = None
 
-                    if evt["event"] == "clarify":
-                        # Change 4: forward clarify events as-is
-                        yield f"event: clarify\ndata: {_json.dumps(evt['data'])}\n\n"
-                        continue
-                    elif evt["event"] == "token":
-                        full_answer += evt["data"].get("text", "")
-                    elif evt["event"] == "citations":
-                        citations = evt["data"].get("citations", [])
-                    elif evt["event"] == "gap":
-                        _knowledge_gap = True
-                        _suggested_searches = evt["data"].get("suggested_searches", [])
-                    elif evt["event"] == "done":
-                        _is_cacheable = evt["data"].get("cacheable", True)
-                        from synthadoc.agents.hint_engine import HintEngine
-                        _ss = _session_state.get(session_id or "", {})
-                        cursor = _ss.get("cursor", 0)
-                        prev_hints = _ss.get("last_hints", [])
-                        next_hints, new_cursor = HintEngine.after_response_windowed(
-                            full_answer, session_mode, cursor,
-                            previous_hints=prev_hints,
-                        )
-                        if session_id and session_id in _session_state:
-                            _session_state[session_id]["cursor"] = new_cursor
-                            _session_state[session_id]["last_hints"] = next_hints
-                        yield f"event: done\ndata: {_json.dumps({'next_hints': next_hints})}\n\n"
-                        continue
-                    yield f"event: {evt['event']}\ndata: {_json.dumps(evt['data'])}\n\n"
+                        if evt["event"] == "clarify":
+                            # Change 4: forward clarify events as-is
+                            yield f"event: clarify\ndata: {_json.dumps(evt['data'])}\n\n"
+                            continue
+                        elif evt["event"] == "token":
+                            full_answer += evt["data"].get("text", "")
+                        elif evt["event"] == "citations":
+                            citations = evt["data"].get("citations", [])
+                        elif evt["event"] == "gap":
+                            _knowledge_gap = True
+                            _suggested_searches = evt["data"].get("suggested_searches", [])
+                        elif evt["event"] == "done":
+                            _is_cacheable = evt["data"].get("cacheable", True)
+                            from synthadoc.agents.hint_engine import HintEngine
+                            _ss = _session_state.get(session_id or "", {})
+                            cursor = _ss.get("cursor", 0)
+                            prev_hints = _ss.get("last_hints", [])
+                            next_hints, new_cursor = HintEngine.after_response_windowed(
+                                full_answer, session_mode, cursor,
+                                previous_hints=prev_hints,
+                            )
+                            if session_id and session_id in _session_state:
+                                _session_state[session_id]["cursor"] = new_cursor
+                                _session_state[session_id]["last_hints"] = next_hints
+                            yield f"event: done\ndata: {_json.dumps({'next_hints': next_hints})}\n\n"
+                            continue
+                        yield f"event: {evt['event']}\ndata: {_json.dumps(evt['data'])}\n\n"
+            except TimeoutError:
+                yield f"event: error\ndata: {_json.dumps({'message': f'Query timed out after {timeout_seconds}s. Increase the timeout in Settings (⚙) if your model is slow.'})}\n\n"
+                return
             except Exception as exc:
                 known = _classify_llm_error(exc)
                 if not known:
