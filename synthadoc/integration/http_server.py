@@ -618,6 +618,14 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             "wiki_name": wiki_root.name,
         }
 
+    @app.get("/sessions")
+    async def list_sessions(limit: int = 20):
+        return await app.state.orch._audit.list_sessions(limit=limit)
+
+    @app.get("/sessions/{session_id}/messages")
+    async def get_session_messages(session_id: str):
+        return await app.state.orch._audit.get_all_messages(session_id)
+
     @app.post("/analyse")
     async def analyse_source(req: AnalyseRequest):
         """Run analysis pass on a source and return structured result without writing pages."""

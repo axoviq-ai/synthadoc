@@ -1783,6 +1783,15 @@ You click chip "1" → page is activated
 ℹ Earlier conversation turns were summarised to fit the session window.
 ```
 
+### Session history sidebar
+
+The left navigation bar shows your recent runs grouped by session. Synthadoc persists sessions on the server, so your history survives page refreshes and restarts.
+
+- **Single-turn sessions** appear as a flat entry showing the first question and the time elapsed since the last activity.
+- **Multi-turn sessions** appear as a collapsible group with a turn count badge (e.g. `3 turns`). Click the **▸** chevron to expand and see each follow-up question indented below the root.
+- **Restoring a session** — click any session root or child turn to reload the full conversation history into the chat window. The context is fully restored so you can continue asking follow-up questions as if you never left.
+- **New Run** — click **+ New Run** at the top of the sidebar to start a fresh session with a new session ID.
+
 ### Configure conversation history depth
 
 The number of prior turns included in each request is configurable via `config.toml`. The default (10 turns) covers most sessions:

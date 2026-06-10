@@ -653,6 +653,40 @@ class AuditDB:
             )
             await db.commit()
 
+    async def list_sessions(self, limit: int = 20) -> list[dict]:
+        """Return recent sessions that have messages, with user turns for sidebar display."""
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """SELECT DISTINCT s.session_id, s.mode, s.created_at, s.last_active
+                   FROM chat_sessions s
+                   INNER JOIN chat_messages m ON s.session_id = m.session_id
+                   ORDER BY s.last_active DESC LIMIT ?""",
+                (limit,),
+            ) as cur:
+                sessions = [dict(r) for r in await cur.fetchall()]
+
+            if not sessions:
+                return []
+
+            sids = [s["session_id"] for s in sessions]
+            placeholders = ",".join("?" * len(sids))
+            async with db.execute(
+                f"SELECT session_id, content FROM chat_messages "
+                f"WHERE session_id IN ({placeholders}) AND role='user' ORDER BY id ASC",
+                sids,
+            ) as cur:
+                rows = await cur.fetchall()
+
+        turns_by_session: dict[str, list[str]] = {}
+        for row in rows:
+            turns_by_session.setdefault(row["session_id"], []).append(row["content"])
+
+        for s in sessions:
+            s["turns"] = turns_by_session.get(s["session_id"], [])
+
+        return [s for s in sessions if s["turns"]]
+
     async def purge_old_sessions(self, retention_days: int) -> int:
         """Delete sessions inactive for more than retention_days. Returns count deleted."""
         cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()

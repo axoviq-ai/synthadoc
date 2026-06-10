@@ -26,8 +26,33 @@ export interface StreamCallbacks {
     onNotice?: (text: string) => void;
 }
 
+export interface SessionSummary {
+    session_id: string;
+    mode: string;
+    created_at: string;
+    last_active: string;
+    turns: string[];
+}
+
+export interface SessionMessage {
+    role: string;
+    content: string;
+}
+
 export async function createSession(): Promise<SessionInfo> {
     const resp = await fetch(`${BASE}/sessions`, { method: "POST" });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.json();
+}
+
+export async function listSessions(limit = 20): Promise<SessionSummary[]> {
+    const resp = await fetch(`${BASE}/sessions?limit=${limit}`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.json();
+}
+
+export async function getSessionMessages(sessionId: string): Promise<SessionMessage[]> {
+    const resp = await fetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/messages`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     return resp.json();
 }

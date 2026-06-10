@@ -6,6 +6,7 @@ import { MessageBubble } from "./MessageBubble";
 import { HintChips } from "./HintChips";
 import { Hero } from "./Hero";
 import { useQueryStream } from "../useQueryStream";
+import type { Message } from "../useQueryStream";
 import { SettingsPopover, readTimeoutSetting } from "./SettingsPopover";
 
 interface Props {
@@ -18,13 +19,15 @@ interface Props {
     onInjected: () => void;
     onQuerySent: (question: string) => void;
     showTip: boolean;
+    initialMessages?: Message[];
 }
 
 export function ChatWindow({
     sessionId, mode, hints, onHints, wikiName,
     injectedQuery, onInjected, onQuerySent, showTip,
+    initialMessages = [],
 }: Props) {
-    const { messages, streaming, error, send } = useQueryStream(sessionId, onHints);
+    const { messages, streaming, error, send } = useQueryStream(sessionId, onHints, initialMessages);
     const [input, setInput] = useState("");
     const [noCache, setNoCache] = useState(false);
     const [timeoutSeconds, setTimeoutSeconds] = useState(readTimeoutSetting);

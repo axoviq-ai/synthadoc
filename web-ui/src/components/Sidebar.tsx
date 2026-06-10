@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Copyright (C) 2026 William Johnason / axoviq.com
+// Copyright (C) 2026 Paul Chen / axoviq.com
+import { useState, useEffect } from "react";
 import sidebarBg from "../assets/sidebar-bg.png";
-import type { HistoryEntry } from "../useQueryHistory";
+import type { SessionSummary } from "../useSessions";
 
-function formatRelativeTime(ts: number): string {
-    const diffMs = Date.now() - ts;
+function formatRelativeTime(ts: string): string {
+    const ms = new Date(ts.includes("T") ? ts : ts + "Z").getTime();
+    const diffMs = Date.now() - ms;
     const mins = Math.floor(diffMs / 60_000);
     if (mins < 1) return "just now";
     if (mins < 60) return `${mins}m ago`;
@@ -18,13 +20,31 @@ function formatRelativeTime(ts: number): string {
 interface Props {
     wikiName: string;
     connected: boolean;
-    history: HistoryEntry[];
-    activeQuestion: string | null;
-    onSelect: (question: string) => void;
+    sessions: SessionSummary[];
+    activeSessionId: string | null;
+    onSelectSession: (sessionId: string, mode: string) => void;
     onNewRun: () => void;
 }
 
-export function Sidebar({ wikiName, connected, history, activeQuestion, onSelect, onNewRun }: Props) {
+export function Sidebar({ wikiName, connected, sessions, activeSessionId, onSelectSession, onNewRun }: Props) {
+    const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+    // Auto-expand the active session
+    useEffect(() => {
+        if (activeSessionId) {
+            setExpandedIds(prev => new Set([...prev, activeSessionId]));
+        }
+    }, [activeSessionId]);
+
+    const toggleExpand = (sessionId: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setExpandedIds(prev => {
+            const next = new Set(prev);
+            next.has(sessionId) ? next.delete(sessionId) : next.add(sessionId);
+            return next;
+        });
+    };
+
     return (
         <aside className="sidebar" style={{ backgroundImage: `url(${sidebarBg})` }}>
             <div className="sidebar-logo">
@@ -38,24 +58,67 @@ export function Sidebar({ wikiName, connected, history, activeQuestion, onSelect
             </button>
 
             <section className="sidebar-history">
-                {history.length > 0 && (
+                {sessions.length > 0 && (
                     <p className="sidebar-section-label">Recent Runs</p>
                 )}
                 <ul className="history-list">
-                    {history.map((entry) => (
-                        <li
-                            key={entry.id}
-                            className={`history-item${activeQuestion === entry.question ? " history-item-active" : ""}`}
-                            onClick={() => onSelect(entry.question)}
-                            title={entry.question}
-                        >
-                            <span className="history-icon"><RunIcon /></span>
-                            <span className="history-details">
-                                <span className="history-question">{entry.question}</span>
-                                <span className="history-time">{formatRelativeTime(entry.timestamp)}</span>
-                            </span>
-                        </li>
-                    ))}
+                    {sessions.map((session) => {
+                        const isActive = session.session_id === activeSessionId;
+                        const isExpanded = expandedIds.has(session.session_id);
+                        const hasChildren = session.turns.length > 1;
+
+                        return (
+                            <li key={session.session_id} className="session-group">
+                                {/* Session root row */}
+                                <div
+                                    className={`history-item session-root${isActive ? " history-item-active" : ""}`}
+                                    onClick={() => onSelectSession(session.session_id, session.mode)}
+                                    title={session.turns[0]}
+                                >
+                                    {hasChildren ? (
+                                        <button
+                                            className="session-expand-btn"
+                                            onClick={(e) => toggleExpand(session.session_id, e)}
+                                            aria-label={isExpanded ? "Collapse" : "Expand"}
+                                            aria-expanded={isExpanded}
+                                        >
+                                            {isExpanded ? "▾" : "▸"}
+                                        </button>
+                                    ) : (
+                                        <span className="history-icon"><RunIcon /></span>
+                                    )}
+                                    <span className="history-details">
+                                        <span className="history-question">{session.turns[0]}</span>
+                                        <span className="history-time">
+                                            {formatRelativeTime(session.last_active)}
+                                            {hasChildren && (
+                                                <span className="session-turn-badge">
+                                                    {session.turns.length} turns
+                                                </span>
+                                            )}
+                                        </span>
+                                    </span>
+                                </div>
+
+                                {/* Child turns */}
+                                {hasChildren && isExpanded && (
+                                    <ul className="session-children">
+                                        {session.turns.slice(1).map((turn, idx) => (
+                                            <li
+                                                key={idx}
+                                                className={`session-child${isActive ? " session-child-active" : ""}`}
+                                                onClick={() => onSelectSession(session.session_id, session.mode)}
+                                                title={turn}
+                                            >
+                                                <span className="session-child-icon">↳</span>
+                                                <span className="session-child-text">{turn}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </li>
+                        );
+                    })}
                 </ul>
             </section>
 
@@ -93,11 +156,8 @@ function SynthadocLogo() {
                     <circle cx="14" cy="14" r="4.8" fill="black"/>
                 </mask>
             </defs>
-            {/* Dark circular background */}
             <circle cx="17" cy="17" r="16" fill="#0b0d1c"/>
-            {/* Upper-left ring (donut) */}
             <circle cx="14" cy="14" r="8.2" fill="url(#slg)" mask="url(#slm)"/>
-            {/* Lower-right solid orb, overlapping the ring */}
             <circle cx="21.5" cy="21.5" r="5.5" fill="url(#slg)"/>
         </svg>
     );
