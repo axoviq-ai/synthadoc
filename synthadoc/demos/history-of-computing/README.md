@@ -185,7 +185,53 @@ synthadoc lint report -w history-of-computing
 
 ---
 
-## Step 5 — Check status and jobs
+## Step 5 — Multi-turn conversation demo
+
+Open the web UI and try a multi-turn session to see how context carries across questions:
+
+```bash
+synthadoc web -w history-of-computing
+```
+
+**Follow-up resolution** — ask a question then follow up without repeating the subject:
+
+```
+Question 1:  "How did Alan Turing help break the Enigma code?"
+             → Answer covers the Bombe machine and Bletchley Park
+
+Question 2:  "Who else worked with him there?"
+             → "him" resolves to Alan Turing, "there" resolves to Bletchley Park
+```
+
+**Clarify prompt** — ask to perform an action without specifying a page:
+
+```
+You:         "Activate a draft page"
+Assistant:   "Which page would you like to activate?
+              1. konrad-zuse
+              2. quantum-computing
+              (or type a page name)"
+
+Click chip "1" and the page is activated immediately.
+```
+
+**Notice message** — after 10 or more turns the assistant compresses the oldest context
+and shows a banner:
+
+```
+ℹ Earlier conversation turns were summarised to fit the session window.
+```
+
+To adjust the history window, edit `config.toml`:
+
+```toml
+[query]
+conversation_history_turns = 10   # set to 0 to disable conversation memory
+```
+
+---
+
+## Step 6 — Check status and jobs
 
 ```
 synthadoc status -w history-of-computing
@@ -195,7 +241,7 @@ synthadoc lint report -w history-of-computing
 
 ---
 
-## Step 6 — Export your wiki
+## Step 7 — Export your wiki
 
 All four formats are available once the server is running.
 

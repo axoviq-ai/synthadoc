@@ -493,3 +493,58 @@ body {
 
 /* ─── Connecting state ─────────────────────────── */
 .connecting { padding: 1rem 1.25rem; color: #64748b; font-size: 0.9rem; }
+
+/* ─── Clarify bubble ───────────────────────────── */
+.clarify-bubble {
+    background: var(--bg-secondary, #1a1f2e);
+    border: 1px solid var(--border-color, #2d4080);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 4px 0;
+    align-self: flex-start;
+    max-width: 100%;
+}
+
+.clarify-bubble p { margin: 0; color: #e2e8f0; }
+
+.clarify-bubble .clarify-header {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #cbd5e1;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-color, #2d4080);
+    margin-bottom: 2px;
+}
+
+.clarify-bubble .chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.clarify-bubble .chip {
+    background: var(--accent, #4a7cf6);
+    color: white;
+    border: none;
+    border-radius: 16px;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-family: inherit;
+    transition: opacity 0.15s;
+}
+
+.clarify-bubble .chip:hover { opacity: 0.85; }
+
+/* ─── Notice bubble ────────────────────────────── */
+.notice-bubble {
+    background: var(--bg-notice, #141826);
+    color: var(--text-muted, #64748b);
+    border-left: 3px solid var(--border-muted, #2d3748);
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    margin: 4px 0;
+    align-self: flex-start;
+    max-width: 100%;
+}

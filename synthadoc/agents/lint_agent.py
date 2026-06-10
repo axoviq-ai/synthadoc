@@ -363,7 +363,8 @@ class LintAgent:
 
     async def _run_lifecycle_checks(self, slugs: list[str], report: LintReport,
                                      check_url_availability: bool = False,
-                                     url_staleness_days: int = 0) -> None:
+                                     url_staleness_days: int = 0,
+                                     promote_drafts: bool = True) -> None:
         raw_sources_dir = self._wiki_root / "raw_sources"
         for slug in slugs:
             if slug in LINT_SKIP_SLUGS:
@@ -441,8 +442,8 @@ class LintAgent:
                                 except (ValueError, TypeError):
                                     pass  # malformed timestamp — skip
 
-                # Check 3: draft promotion
-                if current == LifecycleState.DRAFT:
+                # Check 3: draft promotion (skipped for stale-only runs)
+                if promote_drafts and current == LifecycleState.DRAFT:
                     await self._transition(slug, page, LifecycleState.DRAFT,
                                            LifecycleState.ACTIVE, "lint passed")
                     report.lifecycle_promoted += 1
@@ -587,14 +588,17 @@ class LintAgent:
                         page.lint_warnings = []
                         self._store.write_page(slug, page)
 
-        if scope == "all" and lifecycle:
+        if scope in ("all", "stale") and lifecycle:
             _check_urls = (
                 check_url_availability
                 if check_url_availability is not None
                 else getattr(getattr(self._cfg, "lint", None), "check_url_availability", False)
             )
             _url_staleness = getattr(getattr(self._cfg, "audit", None), "url_staleness_days", 0)
-            await self._run_lifecycle_checks(slugs, report, _check_urls, _url_staleness)
+            await self._run_lifecycle_checks(
+                slugs, report, _check_urls, _url_staleness,
+                promote_drafts=(scope == "all"),
+            )
 
         self._log.log_lint(resolved=report.contradictions_resolved,
                            flagged=report.contradictions_found - report.contradictions_resolved,

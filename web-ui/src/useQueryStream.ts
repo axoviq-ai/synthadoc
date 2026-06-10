@@ -5,10 +5,14 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { streamQuery } from "./api";
 
 export interface Message {
+    id: string;
     role: "user" | "assistant";
     text: string;
     citations?: string[];
     gapSuggestions?: string[];
+    type?: "clarify" | "notice";
+    candidates?: string[];
+    action?: string;
 }
 
 export function useQueryStream(sessionId: string | null, onHints: (hints: string[]) => void) {
@@ -43,8 +47,8 @@ export function useQueryStream(sessionId: string | null, onHints: (hints: string
         const controller = new AbortController();
         abortRef.current = controller;
 
-        setMessages((prev) => [...prev, { role: "user", text: question }]);
-        setMessages((prev) => [...prev, { role: "assistant", text: "" }]);
+        setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "user", text: question }]);
+        setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", text: "" }]);
 
         let partial = "";
         partialRef.current = "";
@@ -59,7 +63,7 @@ export function useQueryStream(sessionId: string | null, onHints: (hints: string
                 rafRef.current = null;
                 setMessages((prev) => {
                     const next = [...prev];
-                    next[next.length - 1] = { role: "assistant", text: partialRef.current };
+                    next[next.length - 1] = { ...next[next.length - 1], text: partialRef.current };
                     return next;
                 });
             });
@@ -84,7 +88,11 @@ export function useQueryStream(sessionId: string | null, onHints: (hints: string
                     cancelFlush(); // final update carries citations + gap, skip the pending token flush
                     setMessages((prev) => {
                         const next = [...prev];
-                        next[next.length - 1] = { role: "assistant", text: partial, citations, gapSuggestions };
+                        const last = next[next.length - 1];
+                        // Don't overwrite a clarify/notice message — it was already finalised by its handler
+                        if (last.type !== "clarify" && last.type !== "notice") {
+                            next[next.length - 1] = { ...last, text: partial, citations, gapSuggestions };
+                        }
                         return next;
                     });
                     onHints(nextHints);
@@ -98,6 +106,36 @@ export function useQueryStream(sessionId: string | null, onHints: (hints: string
                     setMessages((prev) => prev.slice(0, -1));
                     setStreaming(false);
                     streamingRef.current = false;
+                },
+                onClarify: (data) => {
+                    if (controller.signal.aborted) return;
+                    cancelFlush();
+                    // Replace the placeholder assistant message with the clarify message
+                    setMessages((prev) => {
+                        const next = [...prev];
+                        next[next.length - 1] = {
+                            ...next[next.length - 1],
+                            text: data.prompt,
+                            type: "clarify",
+                            candidates: data.candidates,
+                            action: data.action,
+                        };
+                        return next;
+                    });
+                    setStreaming(false);
+                    streamingRef.current = false;
+                },
+                onNotice: (text) => {
+                    if (controller.signal.aborted) return;
+                    // Insert a notice message before the current placeholder
+                    setMessages((prev) => {
+                        const placeholder = prev[prev.length - 1];
+                        return [
+                            ...prev.slice(0, -1),
+                            { id: crypto.randomUUID(), role: "assistant", text, type: "notice" },
+                            placeholder,
+                        ];
+                    });
                 },
             }, controller.signal, noCache);
         } catch {

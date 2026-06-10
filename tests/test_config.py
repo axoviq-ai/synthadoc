@@ -2,7 +2,7 @@
 # Copyright (C) 2026 Paul Chen / axoviq.com
 import pytest
 from pathlib import Path
-from synthadoc.config import Config, AgentConfig, load_config
+from synthadoc.config import Config, AgentConfig, load_config, ChatConfig
 
 
 def test_load_minimal_config(tmp_path):
@@ -102,13 +102,11 @@ def test_query_config_can_be_set_from_toml():
 
 
 def test_search_config_defaults_to_vector_false(tmp_path):
-    from synthadoc.config import load_config
     cfg = load_config()
     assert cfg.search.vector is False
     assert cfg.search.vector_top_candidates == 20
 
 def test_search_config_vector_true_parsed(tmp_path):
-    from synthadoc.config import load_config
     toml = tmp_path / "config.toml"
     toml.write_text(
         '[agents]\ndefault = {provider = "gemini", model = "gemini-2.0-flash"}\n'
@@ -197,3 +195,39 @@ def test_adversarial_agent_config_fallback_to_default(tmp_path):
     adv = cfg.agents.resolve("adversarial")
     assert adv.provider == "anthropic"
     assert adv.model == "claude-opus-4-6"
+
+
+def test_chat_config_defaults():
+    cfg = ChatConfig()
+    assert cfg.conversation_history_turns == 5
+    assert cfg.session_retention_days == 30
+
+
+def test_chat_config_from_toml(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents.default]\nprovider="gemini"\nmodel="gemini-2.5-flash"\n'
+        '[chat]\nconversation_history_turns = 10\nsession_retention_days = 7\n'
+    )
+    cfg = load_config(project_config=cfg_file)
+    assert cfg.chat.conversation_history_turns == 10
+    assert cfg.chat.session_retention_days == 7
+
+
+def test_chat_config_zero_disables_history(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents.default]\nprovider="gemini"\nmodel="gemini-2.5-flash"\n'
+        '[chat]\nconversation_history_turns = 0\n'
+    )
+    cfg = load_config(project_config=cfg_file)
+    assert cfg.chat.conversation_history_turns == 0
+
+
+def test_chat_config_defaults_via_load_config(tmp_path):
+    """Round-trip test: defaults are exposed via load_config when not set in TOML."""
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text('[agents.default]\nprovider="gemini"\nmodel="gemini-2.5-flash"\n')
+    cfg = load_config(project_config=cfg_file)
+    assert cfg.chat.conversation_history_turns == 5
+    assert cfg.chat.session_retention_days == 30

@@ -10,8 +10,68 @@ from pathlib import Path
 from typing import Any, Optional
 
 from synthadoc.providers.base import LLMProvider, Message
+from synthadoc.storage.wiki import LifecycleState
 
 logger = logging.getLogger(__name__)
+
+# ── lifecycle constants ───────────────────────────────────────────────────────
+# Defined at module level so _do_lifecycle() doesn't rebuild them on every call.
+
+_TO_STATE: dict[str, LifecycleState] = {
+    "lifecycle_activate": LifecycleState.ACTIVE,
+    "lifecycle_archive":  LifecycleState.ARCHIVED,
+    "lifecycle_restore":  LifecycleState.DRAFT,
+}
+_SOURCE_STATES: dict[str, list[LifecycleState]] = {
+    "lifecycle_activate": [LifecycleState.DRAFT],
+    "lifecycle_archive":  [LifecycleState.ACTIVE, LifecycleState.STALE,
+                           LifecycleState.DRAFT, LifecycleState.CONTRADICTED],
+    "lifecycle_restore":  [LifecycleState.ARCHIVED],
+}
+_VERB: dict[str, str] = {
+    "lifecycle_activate": "activate",
+    "lifecycle_archive":  "archive",
+    "lifecycle_restore":  "restore",
+}
+_MAX_CLARIFY_CANDIDATES = 15
+
+_SCHEDULE_CRON_PROMPT = (
+    "What schedule should this run on? (e.g. 'every night at 9 PM', 'daily at 6 AM')"
+)
+
+_MSG_LINT_ALL_CLEAR = (
+    "All clear — no contradictions, orphan pages, or adversarial warnings."
+)
+_MSG_NO_LIFECYCLE_DATA = (
+    "No lifecycle data yet. Run `synthadoc lint run` to initialise lifecycle states."
+)
+_MSG_NO_INGEST_SOURCE = "No source specified. Please provide a URL or file path."
+_MSG_NO_SCHEDULE_PARAMS = (
+    "Could not parse the schedule — please provide the command and time."
+)
+_MSG_NO_SCHEDULE_HISTORY = (
+    "No scheduled run history yet — jobs will appear here after their first run."
+)
+_MSG_NO_LIFECYCLE_CANDIDATES = "No page slug provided and no eligible pages found."
+
+_STATE_FILTER_MAP: dict[str, LifecycleState] = {
+    "draft":        LifecycleState.DRAFT,
+    "active":       LifecycleState.ACTIVE,
+    "stale":        LifecycleState.STALE,
+    "contradicted": LifecycleState.CONTRADICTED,
+    "archived":     LifecycleState.ARCHIVED,
+}
+
+_ALLOWED: set[tuple[LifecycleState, LifecycleState]] = {
+    (LifecycleState.DRAFT,        LifecycleState.ACTIVE),
+    (LifecycleState.DRAFT,        LifecycleState.ARCHIVED),
+    (LifecycleState.ACTIVE,       LifecycleState.ARCHIVED),
+    (LifecycleState.ACTIVE,       LifecycleState.STALE),
+    (LifecycleState.CONTRADICTED, LifecycleState.ARCHIVED),
+    (LifecycleState.STALE,        LifecycleState.DRAFT),
+    (LifecycleState.STALE,        LifecycleState.ARCHIVED),
+    (LifecycleState.ARCHIVED,     LifecycleState.DRAFT),
+}
 
 # ── action detection ───────────────────────────────────────────────────────────
 # Matches imperative action requests. Excludes interrogative phrases
@@ -61,13 +121,24 @@ _EXTRACT_PROMPT_TEMPLATE = (
     "                  'page lifecycle summary', 'synthadoc status result'\n"
     "  ingest        : source (URL or path), force (bool)\n"
     "  scaffold      : domain (string or null)\n"
+    "                  Use scaffold for: 'run scaffold', 'rebuild scaffold', 'regenerate scaffold',\n"
+    "                  'scaffold a computing wiki', 'please scaffold'\n"
     "  schedule_add  : op (full synthadoc subcommand, e.g. 'scaffold', 'lint run', "
     "'ingest --batch sources/'; NOTE: lint requires the 'run' subcommand — op must be "
     "'lint run', never just 'lint'), "
     "cron (parsed cron expression), schedule_description (original natural language)\n"
-    "  schedule_list    : (no params)\n"
-    "  schedule_history : (no params — shows recent scheduled run history)\n"
-    "  lifecycle_activate / lifecycle_archive / lifecycle_restore : slug, reason\n"
+    "  schedule_list    : (no params) — use for 'list schedules', 'show scheduled tasks', 'what schedules exist'\n"
+    "  schedule_history : (no params) — use for 'schedule history', 'show schedule history',\n"
+    "                     'view scheduled run history', 'recent scheduled runs'\n"
+    "                     IMPORTANT: if the word 'history' or 'run' or 'log' appears with 'schedule', use schedule_history not schedule_list\n"
+    "  lifecycle_activate / lifecycle_archive / lifecycle_restore : slug, reason, "
+    "state_filter (optional — set only when user explicitly names a lifecycle state; "
+    "valid: draft|active|stale|contradicted|archived)\n"
+    "  IMPORTANT: 'Activate/Archive/Restore a/an <state> page' is ALWAYS a lifecycle action, never a question.\n"
+    "  Examples: 'Activate a draft page' → lifecycle_activate, state_filter='draft'\n"
+    "            'Archive a stale page'  → lifecycle_archive,  state_filter='stale'\n"
+    "            'Restore an archived page' → lifecycle_restore, state_filter='archived'\n"
+    "            'Archive the alan-turing page' → lifecycle_archive, slug='alan-turing'\n"
     "  none          : (no params)\n\n"
     "Cron parsing: 'daily at 6am'='0 6 * * *', 'every Sunday at 7pm'='0 19 * * 0', "
     "'every weekday at 9am'='0 9 * * 1-5', 'every hour'='0 * * * *'\n\n"
@@ -83,6 +154,9 @@ class ActionResult:
     message: str
     job_id: Optional[str] = None
     data: dict = field(default_factory=dict)
+    needs_clarification: bool = False
+    clarify_prompt: str = ""
+    clarify_candidates: list[str] = field(default_factory=list)
 
 
 # ── agent ─────────────────────────────────────────────────────────────────────
@@ -106,9 +180,9 @@ class ActionAgent:
         """Fast regex pre-check — True if the question looks like an action request."""
         return bool(_ACTION_RE.search(question))
 
-    async def run(self, question: str) -> Optional[ActionResult]:
+    async def run(self, question: str, history: list[dict] | None = None) -> Optional[ActionResult]:
         """Extract action + params from question and execute. Returns None if not an action."""
-        extraction = await self._extract(question)
+        extraction = await self._extract(question, history=history or [])
         if not extraction:
             return None
         action = extraction.get("action", "none")
@@ -127,8 +201,15 @@ class ActionAgent:
 
     # ── private ───────────────────────────────────────────────────────────────
 
-    async def _extract(self, question: str) -> Optional[dict]:
-        prompt = _EXTRACT_PROMPT_TEMPLATE.format(question=question)
+    async def _extract(self, question: str, history: list[dict] | None = None) -> Optional[dict]:
+        history_block = ""
+        if history:
+            lines = "\n".join(f"{m['role'].capitalize()}: {m['content']}" for m in history)
+            history_block = (
+                f"\nConversation history (use to resolve references like '1', '2', or page names):\n"
+                f"{lines}\n"
+            )
+        prompt = _EXTRACT_PROMPT_TEMPLATE.format(question=question) + history_block
         resp = await self._provider.complete(
             messages=[Message(role="user", content=prompt)],
             temperature=0.0,
@@ -203,7 +284,7 @@ class ActionAgent:
             parts.append("\n".join(lines))
 
         if not parts:
-            message = "All clear — no contradictions, orphan pages, or adversarial warnings."
+            message = _MSG_LINT_ALL_CLEAR
         else:
             message = "\n\n".join(parts)
         return ActionResult(action_type="lint_report", success=True, message=message)
@@ -219,7 +300,7 @@ class ActionAgent:
                 success=True,
                 message=(
                     f"**Wiki status** — {total} page{'s' if total != 1 else ''} total\n\n"
-                    "No lifecycle data yet. Run `synthadoc lint run` to initialise lifecycle states."
+                    + _MSG_NO_LIFECYCLE_DATA
                 ),
             )
         audit = AuditDB(audit_path)
@@ -276,7 +357,7 @@ class ActionAgent:
         source = params.get("source", "")
         if not source:
             return ActionResult(action_type="ingest", success=False,
-                                message="No source specified. Please provide a URL or file path.")
+                                message=_MSG_NO_INGEST_SOURCE)
         force = bool(params.get("force", False))
         job_id = await self._orch.ingest(source=source, force=force)
         flag_str = " --force" if force else ""
@@ -313,11 +394,20 @@ class ActionAgent:
         # Normalise known ops that require a subcommand: "lint" → "lint run"
         if op.strip() == "lint":
             op = "lint run"
-        cron = params.get("cron", "")
+        cron = (params.get("cron") or "").strip()
+        if not cron:
+            return ActionResult(
+                action_type="schedule_add",
+                success=False,
+                needs_clarification=True,
+                clarify_prompt=_SCHEDULE_CRON_PROMPT,
+                clarify_candidates=[],
+                message=_SCHEDULE_CRON_PROMPT,
+            )
         desc = params.get("schedule_description", cron)
-        if not op or not cron:
+        if not op:
             return ActionResult(action_type="schedule_add", success=False,
-                                message="Could not parse the schedule — please provide the command and time.")
+                                message=_MSG_NO_SCHEDULE_PARAMS)
         wiki_name = self._wiki_root.name
         db = ScheduleDB(wiki=wiki_name, wiki_root=str(self._wiki_root))
         entry_id = db.add(op=op, cron=cron)
@@ -353,7 +443,7 @@ class ActionAgent:
             return ActionResult(
                 action_type="schedule_history",
                 success=True,
-                message="No scheduled run history yet — jobs will appear here after their first run.",
+                message=_MSG_NO_SCHEDULE_HISTORY,
             )
         audit = AuditDB(audit_path)
         await audit.init()
@@ -362,7 +452,7 @@ class ActionAgent:
             return ActionResult(
                 action_type="schedule_history",
                 success=True,
-                message="No scheduled run history yet — jobs will appear here after their first run.",
+                message=_MSG_NO_SCHEDULE_HISTORY,
             )
         lines = [
             "**Recent scheduled runs:**\n",
@@ -387,57 +477,56 @@ class ActionAgent:
 
     async def _do_lifecycle(self, action: str, params: dict) -> ActionResult:
         from synthadoc.storage.log import AuditDB
-        from synthadoc.storage.wiki import LifecycleState
 
         slug = (params.get("slug") or "").strip()
         reason = (params.get("reason") or "requested via chat").strip() or "requested via chat"
 
-        _TO_STATE = {
-            "lifecycle_activate": LifecycleState.ACTIVE,
-            "lifecycle_archive":  LifecycleState.ARCHIVED,
-            "lifecycle_restore":  LifecycleState.DRAFT,
-        }
-        _ALLOWED: set[tuple[str, str]] = {
-            (LifecycleState.DRAFT,        LifecycleState.ACTIVE),
-            (LifecycleState.DRAFT,        LifecycleState.ARCHIVED),
-            (LifecycleState.ACTIVE,       LifecycleState.ARCHIVED),
-            (LifecycleState.ACTIVE,       LifecycleState.STALE),
-            (LifecycleState.CONTRADICTED, LifecycleState.ARCHIVED),
-            (LifecycleState.STALE,        LifecycleState.DRAFT),
-            (LifecycleState.STALE,        LifecycleState.ARCHIVED),
-            (LifecycleState.ARCHIVED,     LifecycleState.DRAFT),
-        }
-
         if not slug:
-            # List pages that are valid sources for this transition so the user
-            # can clarify which one they mean.
-            to_state = _TO_STATE[action]
-            _SOURCE_STATES = {
-                "lifecycle_activate": [LifecycleState.DRAFT],
-                "lifecycle_archive":  [LifecycleState.ACTIVE, LifecycleState.STALE,
-                                       LifecycleState.DRAFT, LifecycleState.CONTRADICTED],
-                "lifecycle_restore":  [LifecycleState.ARCHIVED],
-            }
-            _VERB = {
-                "lifecycle_activate": "activate", "lifecycle_archive": "archive",
-                "lifecycle_restore": "restore",
-            }
-            candidates = sorted(
+            state_filter_str = (params.get("state_filter") or "").strip().lower()
+            source_states = _SOURCE_STATES[action]
+            filtered_state = _STATE_FILTER_MAP.get(state_filter_str)
+            if filtered_state is not None and filtered_state in source_states:
+                source_states = [filtered_state]
+
+            all_candidates = sorted(
                 s for s in self._orch._store.list_pages()
-                if (pg := self._orch._store.read_page(s)) and pg.status in _SOURCE_STATES[action]
+                if (pg := self._orch._store.read_page(s)) and pg.status in source_states
             )
-            if candidates:
-                page_list = "\n".join(f"- `{c}`" for c in candidates)
-                return ActionResult(
-                    action_type=action, success=False,
-                    message=(
-                        f"Which page would you like to {_VERB[action]}? "
-                        f"Pages eligible for this action:\n{page_list}\n\n"
-                        f"Say something like: \"Archive the page `{candidates[0]}`\""
-                    ),
-                )
-            return ActionResult(action_type=action, success=False,
-                                message="No page slug provided and no eligible pages found.")
+
+            if not all_candidates:
+                if filtered_state is not None:
+                    return ActionResult(
+                        action_type=action, success=False,
+                        message=(
+                            f"There are no **{state_filter_str}** pages to {_VERB[action]}. "
+                            f"Run `synthadoc lint run` to update lifecycle states."
+                        ),
+                    )
+                return ActionResult(action_type=action, success=False,
+                                    message=_MSG_NO_LIFECYCLE_CANDIDATES)
+
+            overflow = len(all_candidates) - _MAX_CLARIFY_CANDIDATES
+            candidates = all_candidates[:_MAX_CLARIFY_CANDIDATES]
+
+            article = "an" if state_filter_str[:1].lower() in "aeiou" else "a"
+            state_label = f"{article} {state_filter_str} " if filtered_state is not None else "a "
+            overflow_note = (
+                f" ({_MAX_CLARIFY_CANDIDATES} of {len(all_candidates)} shown —"
+                f" type a name if yours is not listed)"
+                if overflow > 0 else ""
+            )
+            prompt = (
+                f"Select {state_label}page to {_VERB[action]} below, "
+                f"or type a name or number in the box above.{overflow_note}"
+            )
+            return ActionResult(
+                action_type=action,
+                success=False,
+                needs_clarification=True,
+                clarify_prompt=prompt,
+                clarify_candidates=candidates,
+                message=prompt,
+            )
 
         to_state = _TO_STATE[action]
         page = self._orch._store.read_page(slug)

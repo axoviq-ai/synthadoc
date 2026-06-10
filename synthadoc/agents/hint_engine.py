@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 
 SessionMode = Literal["NEW_WIKI", "EXPLORER", "HEALTH_CHECK", "POWER_USER"]
 
+_INITIAL_HINT_COUNT = 3
+
 NEW_WIKI: SessionMode = "NEW_WIKI"
 EXPLORER: SessionMode = "EXPLORER"
 HEALTH_CHECK: SessionMode = "HEALTH_CHECK"
@@ -123,7 +125,7 @@ class HintEngine:
 
     @staticmethod
     def initial_hints(mode: SessionMode) -> list[str]:
-        return HintEngine.build_pool(mode)[:3]
+        return HintEngine.build_pool(mode)[:_INITIAL_HINT_COUNT]
 
     @staticmethod
     def after_response(answer: str, mode: SessionMode) -> list[str]:

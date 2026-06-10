@@ -1753,7 +1753,47 @@ Below each answer:
 
 ### Multi-turn conversation
 
-Each question in a session builds on the previous ones. The UI maintains conversation context so follow-up questions like "What came before that?" resolve correctly against the previous answer.
+Each question in a session builds on the previous ones. The server stores your conversation history and passes it to the query pipeline so follow-up questions like "What came before that?" resolve correctly against the previous answer. Follow-up questions are automatically rewritten into standalone form before retrieval — context-dependent phrases resolve against the right topic without you having to repeat it.
+
+**Try it now with the history-of-computing demo wiki:**
+
+```
+You:        "How did Alan Turing contribute to breaking the Enigma code?"
+Assistant:  "...Turing's Bombe machine at Bletchley Park..."
+
+You:        "Who else worked with him there?"
+            ↑ Resolves "him" → Alan Turing, "there" → Bletchley Park
+```
+
+**Clarify prompts.** When you ask to perform an action but don't specify which page — for example, "Activate a draft page" — the assistant responds with a numbered list of candidate pages. Click a chip or type a page name to complete the action:
+
+```
+You:        "Activate a draft page"
+Assistant:  "Which page would you like to activate?
+             1. konrad-zuse
+             2. quantum-computing
+             (or type a page name)"
+
+You click chip "1" → page is activated
+```
+
+**Notice messages.** Long sessions automatically compress older turns into a `[Session summary]` to keep the context window manageable. When this first happens you see an inline notice:
+
+```
+ℹ Earlier conversation turns were summarised to fit the session window.
+```
+
+### Configure conversation history depth
+
+The number of prior turns included in each request is configurable via `config.toml`. The default (10 turns) covers most sessions:
+
+```toml
+# <wiki-root>/.synthadoc/config.toml
+[query]
+conversation_history_turns = 10   # set to 0 to disable conversation memory
+```
+
+Each new browser tab starts a fresh session. History is not shared between tabs.
 
 ---
 

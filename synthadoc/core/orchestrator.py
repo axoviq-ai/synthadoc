@@ -430,6 +430,7 @@ class Orchestrator:
     async def query_stream(
         self, question: str, session_id: str | None = None,
         session_mode: str = "POWER_USER",
+        history: list[dict] | None = None,
     ):
         """Async generator yielding SSE event dicts for streaming query response."""
         from synthadoc.agents.query_agent import QueryAgent
@@ -444,7 +445,8 @@ class Orchestrator:
             max_tokens=self._cfg.agents.query_max_tokens,
         )
         async for evt in agent.run_stream(
-            question, session_id=session_id, session_mode=session_mode
+            question, session_id=session_id, session_mode=session_mode,
+            history=history or [],
         ):
             yield evt
 

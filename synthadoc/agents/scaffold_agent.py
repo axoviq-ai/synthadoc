@@ -14,6 +14,7 @@ from synthadoc.providers.base import LLMProvider, Message
 logger = logging.getLogger(__name__)
 
 SCAFFOLD_MARKER = "<!-- synthadoc:scaffold -->"
+_SCAFFOLD_RETRY_LIMIT = 2
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
 _FM_STRIP_RE = re.compile(r"^---\s*\n.*?\n---\s*\n+", re.DOTALL)
@@ -206,7 +207,7 @@ class ScaffoldAgent:
         data: dict | None = None
         last_exc: Exception | None = None
 
-        for attempt in range(2):
+        for attempt in range(_SCAFFOLD_RETRY_LIMIT):
             resp = await self._provider.complete(
                 messages=messages,
                 system=_SYSTEM_PROMPT,
