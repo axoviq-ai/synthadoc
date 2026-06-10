@@ -152,6 +152,12 @@ class AuditConfig:
     url_staleness_days: int = 0          # 0 = never; mark URL-sourced pages stale after N days since last ingest
 
 
+@dataclass
+class ChatConfig:
+    conversation_history_turns: int = 5   # 0 = disabled
+    session_retention_days: int = 30
+
+
 # ---------------------------------------------------------------------------
 # Root config
 # ---------------------------------------------------------------------------
@@ -173,6 +179,7 @@ class Config:
     search: SearchConfig = field(default_factory=SearchConfig)
     lint: LintConfig = field(default_factory=LintConfig)
     audit: AuditConfig = field(default_factory=AuditConfig)
+    chat: ChatConfig = field(default_factory=ChatConfig)
     hooks: dict = field(default_factory=dict)
     wikis: dict = field(default_factory=dict)
 
@@ -367,6 +374,13 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         url_staleness_days=int(at.get("url_staleness_days", 0)),
     )
 
+    # --- chat ---
+    ch = raw.get("chat", {})
+    chat = ChatConfig(
+        conversation_history_turns=int(ch.get("conversation_history_turns", 5)),
+        session_retention_days=int(ch.get("session_retention_days", 30)),
+    )
+
     return Config(
         agents=agents,
         cache=cache,
@@ -382,6 +396,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         search=search,
         lint=lint,
         audit=audit,
+        chat=chat,
         hooks=hooks,
         wikis=wikis,
     )

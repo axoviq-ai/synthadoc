@@ -192,7 +192,7 @@ As the wiki accumulates pages the `index.md` table of contents, domain scope (`p
 | Export formats               | **Yes** (llms.txt, llms-full.txt, GraphML, JSON — lifecycle-filtered, provenance-threaded, cost-annotated; inline graph viewer in Obsidian) | No | No | No |
 | Streaming query output       | **Yes** (token-by-token; `--no-stream` for pipe-friendly blocking mode) | No          | No         | No        |
 | Query result cache           | **Yes** (cache key = question + wiki version; auto-invalidates on ingest or lifecycle change; `--no-cache` to bypass) | No          | No         | No        |
-| Browser-based chat UI        | **Yes** (`synthadoc web` — session-aware, streaming, citations, knowledge-gap callouts) | No          | No         | No        |
+| Browser-based chat UI        | **Yes** (`synthadoc web` — session-aware, streaming, citations, knowledge-gap callouts, multi-turn conversation with follow-up rewriting and clarify prompts) | No          | No         | No        |
 
 ### Key differentiators vs. RAG
 
@@ -725,6 +725,8 @@ synthadoc web -w my-wiki
 This opens your browser to a **local chat interface** at `http://localhost:{port}/app`. The Web UI is local-only and is **not accessible from the network** — authentication and authorisation are not yet available in the Community Edition.
 
 The UI detects whether you are new to the wiki, exploring, or a returning user and shows contextual hint chips. Ask questions in the text box; answers stream in as the LLM generates them. Citations appear below each answer; knowledge-gap callouts suggest ingesting more content when the wiki lacks coverage.
+
+**Multi-turn conversation:** each session maintains a conversation history so follow-up questions resolve against earlier answers. Follow-up questions are automatically rewritten into standalone form before retrieval. When an action request is ambiguous (e.g. "Activate a draft page"), the assistant responds with a numbered list of candidate pages — click a chip to complete the action. Long sessions compress older turns automatically and show an inline notice when compression occurs.
 
 ### Linting
 

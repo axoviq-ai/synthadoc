@@ -95,6 +95,25 @@ class _JsonlFormatter(logging.Formatter):
 
 
 # ---------------------------------------------------------------------------
+# Filters
+# ---------------------------------------------------------------------------
+
+class _SuppressShutdownNoise(logging.Filter):
+    """Silences the CancelledError/KeyboardInterrupt traceback uvicorn emits on Ctrl+C.
+
+    Drops only records whose exception is CancelledError or KeyboardInterrupt
+    so genuine uvicorn.error messages (port conflicts, app crashes) still show.
+    """
+
+    _SUPPRESS = frozenset(("CancelledError", "KeyboardInterrupt"))
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.exc_info and record.exc_info[0] is not None:
+            return record.exc_info[0].__name__ not in self._SUPPRESS
+        return True
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -161,6 +180,13 @@ def setup_logging(
     for noisy in ("httpx", "httpcore", "uvicorn.access", "anthropic", "openai",
                   "aiosqlite", "asyncio"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
+
+    # Drop the CancelledError/KeyboardInterrupt traceback uvicorn logs on Ctrl+C.
+    # Python 3.12+ asyncio cancels the lifespan task on SIGINT, which surfaces as
+    # CancelledError through uvicorn's receive queue. Uvicorn logs it as ERROR —
+    # benign (server shuts down cleanly) but noisy. All other uvicorn.error
+    # messages (port conflicts, startup failures, etc.) still appear.
+    logging.getLogger("uvicorn.error").addFilter(_SuppressShutdownNoise())
 
     logging.getLogger(__name__).info(
         "Logging initialised — wiki: %s  level: %s  file: %s  "

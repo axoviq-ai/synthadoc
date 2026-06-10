@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -125,6 +126,12 @@ def _classify_llm_error(exc: Exception) -> "HTTPException | None":
         )
     return None
 _WORKER_POLL_SECONDS = 2
+_SESSION_PURGE_INTERVAL_SECONDS = 3600
+_HISTORY_OVERFLOW_NOTICE = (
+    "Earlier conversation has been summarized to stay within context limits. "
+    "To retain more context, increase conversation_history_turns in "
+    ".synthadoc/config.toml."
+)
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 _FM_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
 
@@ -226,6 +233,7 @@ def _parse_retry_after(exc: Exception, default: float = 60.0) -> float:
 async def _worker_loop(orch) -> None:
     """Background task: poll jobs.db and execute pending jobs."""
     sleep_secs = _WORKER_POLL_SECONDS
+    _last_purge_time: float = 0.0
     while True:
         try:
             job = await orch.queue.dequeue()
@@ -270,6 +278,18 @@ async def _worker_loop(orch) -> None:
             else:
                 logger.exception("Worker loop error — job recorded in jobs.db; continuing")
                 sleep_secs = _WORKER_POLL_SECONDS
+
+        # Periodic session purge — throttled to once per hour
+        if time.monotonic() - _last_purge_time >= _SESSION_PURGE_INTERVAL_SECONDS:
+            try:
+                _retention = orch._cfg.chat.session_retention_days
+                if _retention > 0:
+                    _purged = await orch._audit.purge_old_sessions(_retention)
+                    if _purged:
+                        logger.info("Purged %d stale sessions.", _purged)
+                _last_purge_time = time.monotonic()
+            except Exception as _pe:
+                logger.error("Session purge failed: %s", _pe)
 
         await asyncio.sleep(sleep_secs)
 
@@ -427,9 +447,44 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         if not q.strip():
             raise HTTPException(status_code=400, detail="q must not be empty")
         orch = app.state.orch
+        _audit = orch._audit
+        _chat_cfg = cfg.chat  # ChatConfig instance
 
         _sstate = _session_state.get(session_id or "", {"mode": "POWER_USER", "cursor": 0})
         session_mode: str = _sstate["mode"]
+
+        # Load conversation history and detect overflow in a single guard block
+        _history: list[dict] = []
+        _summary_notice: str | None = None
+        if session_id and _chat_cfg.conversation_history_turns > 0:
+            from synthadoc.agents.summarize_agent import SummarizeAgent as _SummarizeAgent
+            from synthadoc.providers import make_provider as _make_provider
+            turns = _chat_cfg.conversation_history_turns
+            try:
+                _all_messages = await _audit.get_all_messages(session_id)
+                _history = _all_messages[-(turns * 2):]
+                _existing_summary, _summary_turn_count = await _audit.get_summary(session_id)
+                _total_turns = len(_all_messages) // 2  # rough: pairs of user/assistant
+                _overflow_turns = _total_turns - turns
+                if _overflow_turns > 0 and _overflow_turns > _summary_turn_count:
+                    # New overflow since last summary — compress
+                    _overflow_msgs = _all_messages[: len(_all_messages) - turns * 2]
+                    try:
+                        _provider = _make_provider("query", cfg)
+                        _new_summary = await _SummarizeAgent(_provider).summarize(_overflow_msgs)
+                        if _new_summary:
+                            await _audit.update_summary(session_id, _new_summary, _overflow_turns)
+                            if not _existing_summary:
+                                _summary_notice = _HISTORY_OVERFLOW_NOTICE
+                            logger.info(
+                                "Session %s: history compressed (%d turns → summary).",
+                                session_id, _total_turns
+                            )
+                    except Exception as _se:
+                        logger.warning("SummarizeAgent failed for session %s: %s", session_id, _se)
+            except Exception as _oe:
+                logger.warning("Overflow check failed for session %s: %s", session_id, _oe)
+                _history = []
 
         if not no_cache:
             from synthadoc.core.cache import make_query_cache_key
@@ -439,6 +494,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             cached = await orch._cache.get_query(cache_key)
             if cached is not None:
                 async def _cached_stream():
+                    if _summary_notice:
+                        yield f"event: notice\ndata: {_json.dumps({'text': _summary_notice})}\n\n"
                     events = [
                         {"event": "status", "data": {"phase": "synthesizing", "sources": len(cached.get("citations", []))}},
                     ]
@@ -464,14 +521,26 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                 return StreamingResponse(_cached_stream(), media_type="text/event-stream")
 
         async def _live_stream():
+            nonlocal _summary_notice
             full_answer = ""
             citations = []
             _is_cacheable = True
             _knowledge_gap = False
             _suggested_searches: list[str] = []
             try:
-                async for evt in orch.query_stream(q, session_id=session_id, session_mode=session_mode):
-                    if evt["event"] == "token":
+                async for evt in orch.query_stream(q, session_id=session_id,
+                                                   session_mode=session_mode,
+                                                   history=_history):
+                    # Change 4: emit notice SSE before first token/clarify
+                    if _summary_notice:
+                        yield f"event: notice\ndata: {_json.dumps({'text': _summary_notice})}\n\n"
+                        _summary_notice = None
+
+                    if evt["event"] == "clarify":
+                        # Change 4: forward clarify events as-is
+                        yield f"event: clarify\ndata: {_json.dumps(evt['data'])}\n\n"
+                        continue
+                    elif evt["event"] == "token":
                         full_answer += evt["data"].get("text", "")
                     elif evt["event"] == "citations":
                         citations = evt["data"].get("citations", [])

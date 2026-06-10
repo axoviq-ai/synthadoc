@@ -122,7 +122,7 @@ def test_query_stream_with_session_updates_cursor(tmp_wiki):
     from fastapi.testclient import TestClient
     app = _make_app(tmp_wiki)
 
-    async def _fake_stream(question, session_id=None, session_mode="NEW_WIKI"):
+    async def _fake_stream(question, session_id=None, session_mode="NEW_WIKI", history=None):
         yield {"event": "status", "data": {"phase": "synthesizing", "sources": 0}}
         yield {"event": "token", "data": {"text": "your wiki covers several topics"}}
         yield {"event": "done", "data": {"cacheable": True}}
@@ -144,7 +144,7 @@ def test_query_stream_gap_stored_and_replayed_from_cache(tmp_wiki):
     from fastapi.testclient import TestClient
     app = _make_app(tmp_wiki)
 
-    async def _gap_stream(question, session_id=None, session_mode="POWER_USER"):
+    async def _gap_stream(question, session_id=None, session_mode="POWER_USER", history=None):
         yield {"event": "status", "data": {"phase": "retrieving"}}
         yield {"event": "token", "data": {"text": "No pages on this topic."}}
         yield {"event": "citations", "data": {"citations": []}}
