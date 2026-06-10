@@ -153,3 +153,54 @@ def test_query_stream_notice_emitted_on_first_overflow(tmp_wiki):
 
     assert resp.status_code == 200
     assert b"event: notice" in resp.content
+
+
+# ---------------------------------------------------------------------------
+# Test 5: streaming timeout emits error event
+# ---------------------------------------------------------------------------
+
+def test_query_stream_timeout_emits_error_event(tmp_wiki):
+    """When the streaming query times out, an error SSE event is yielded with a hint."""
+    from fastapi.testclient import TestClient
+
+    app = _make_app(tmp_wiki)
+
+    async def _slow_stream(question, session_id=None, session_mode="POWER_USER",
+                           history=None):
+        raise TimeoutError("simulated timeout")
+        yield  # makes it an async generator
+
+    with patch("synthadoc.storage.log.AuditDB.get_summary",
+               new=AsyncMock(return_value=(None, 0))):
+        with patch("synthadoc.storage.log.AuditDB.get_all_messages",
+                   new=AsyncMock(return_value=[])):
+            with TestClient(app) as client:
+                app.state.orch.query_stream = _slow_stream
+                resp = client.get("/query/stream?q=hello&timeout_seconds=5")
+
+    assert resp.status_code == 200
+    assert b"event: error" in resp.content
+    assert b"timed out" in resp.content
+
+
+def test_query_stream_passes_timeout_seconds_to_server(tmp_wiki):
+    """timeout_seconds URL param is accepted and non-default values reach the stream."""
+    from fastapi.testclient import TestClient
+
+    app = _make_app(tmp_wiki)
+
+    async def _ok_stream(question, session_id=None, session_mode="POWER_USER",
+                         history=None):
+        yield {"event": "token", "data": {"text": "ok"}}
+        yield {"event": "done", "data": {"cacheable": False}}
+
+    with patch("synthadoc.storage.log.AuditDB.get_summary",
+               new=AsyncMock(return_value=(None, 0))):
+        with patch("synthadoc.storage.log.AuditDB.get_all_messages",
+                   new=AsyncMock(return_value=[])):
+            with TestClient(app) as client:
+                app.state.orch.query_stream = _ok_stream
+                resp = client.get("/query/stream?q=hello&timeout_seconds=120")
+
+    assert resp.status_code == 200
+    assert b"event: done" in resp.content

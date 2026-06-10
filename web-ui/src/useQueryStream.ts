@@ -33,7 +33,7 @@ export function useQueryStream(sessionId: string | null, onHints: (hints: string
         };
     }, []);
 
-    const send = useCallback(async (question: string, noCache = false) => {
+    const send = useCallback(async (question: string, noCache = false, timeoutSeconds?: number) => {
         if (!sessionId || streamingRef.current) return;
         setError(null);
         setStreaming(true);
@@ -137,7 +137,7 @@ export function useQueryStream(sessionId: string | null, onHints: (hints: string
                         ];
                     });
                 },
-            }, controller.signal, noCache);
+            }, controller.signal, noCache, timeoutSeconds);
         } catch {
             if (!controller.signal.aborted) {
                 cancelFlush();
