@@ -37,6 +37,8 @@ export interface SessionSummary {
 export interface SessionMessage {
     role: string;
     content: string;
+    citations: string[];
+    gap_suggestions: string[];
 }
 
 export async function createSession(): Promise<SessionInfo> {

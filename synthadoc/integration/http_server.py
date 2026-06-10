@@ -587,7 +587,11 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                 })
             if session_id and full_answer:
                 await orch._audit.append_message(session_id, "user", q)
-                await orch._audit.append_message(session_id, "assistant", full_answer)
+                await orch._audit.append_message(
+                    session_id, "assistant", full_answer,
+                    citations=citations or None,
+                    gap_suggestions=_suggested_searches if _knowledge_gap else None,
+                )
 
         return StreamingResponse(_live_stream(), media_type="text/event-stream")
 

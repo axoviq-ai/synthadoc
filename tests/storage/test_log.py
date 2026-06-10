@@ -181,6 +181,56 @@ async def test_get_all_messages_returns_all_oldest_first(tmp_path):
     assert len(result) == 3
     assert result[0]["content"] == "first"
     assert result[2]["content"] == "third"
+    # new fields always present
+    assert result[0]["citations"] == []
+    assert result[0]["gap_suggestions"] == []
+
+
+@pytest.mark.asyncio
+async def test_append_message_stores_citations(tmp_path):
+    from synthadoc.storage.log import AuditDB
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+    await db.create_session("s1", "POWER_USER")
+    await db.append_message("s1", "user", "Who is Turing?")
+    await db.append_message(
+        "s1", "assistant", "Alan Turing was a mathematician.",
+        citations=["alan-turing", "computing-pioneers"],
+    )
+    result = await db.get_all_messages("s1")
+    assert result[1]["citations"] == ["alan-turing", "computing-pioneers"]
+    assert result[1]["gap_suggestions"] == []
+
+
+@pytest.mark.asyncio
+async def test_append_message_stores_gap_suggestions(tmp_path):
+    from synthadoc.storage.log import AuditDB
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+    await db.create_session("s1", "POWER_USER")
+    await db.append_message("s1", "user", "Why did Turing die?")
+    await db.append_message(
+        "s1", "assistant", "The wiki does not cover this.",
+        gap_suggestions=["Alan Turing death cause", "Alan Turing 1954 cyanide"],
+    )
+    result = await db.get_all_messages("s1")
+    assert result[1]["gap_suggestions"] == ["Alan Turing death cause", "Alan Turing 1954 cyanide"]
+    assert result[1]["citations"] == []
+
+
+@pytest.mark.asyncio
+async def test_append_message_no_metadata_returns_empty_lists(tmp_path):
+    from synthadoc.storage.log import AuditDB
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+    await db.create_session("s1", "POWER_USER")
+    await db.append_message("s1", "user", "hello")
+    await db.append_message("s1", "assistant", "hi")
+    result = await db.get_all_messages("s1")
+    assert result[0]["citations"] == []
+    assert result[0]["gap_suggestions"] == []
+    assert result[1]["citations"] == []
+    assert result[1]["gap_suggestions"] == []
 
 
 @pytest.mark.asyncio

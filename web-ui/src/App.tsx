@@ -35,6 +35,8 @@ export default function App() {
                 id: crypto.randomUUID(),
                 role: m.role as "user" | "assistant",
                 text: m.content,
+                citations: m.citations.length > 0 ? m.citations : undefined,
+                gapSuggestions: m.gap_suggestions.length > 0 ? m.gap_suggestions : undefined,
             }))
             : [];
         setInitialMessages(mapped);

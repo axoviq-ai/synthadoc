@@ -69,7 +69,11 @@ def test_get_session_messages_returns_all_messages(client_and_db):
     client, db = client_and_db
     asyncio.run(db.create_session("s1", "POWER_USER"))
     asyncio.run(db.append_message("s1", "user", "hello"))
-    asyncio.run(db.append_message("s1", "assistant", "hi there"))
+    asyncio.run(db.append_message(
+        "s1", "assistant", "hi there",
+        citations=["alan-turing"],
+        gap_suggestions=["Alan Turing cause of death"],
+    ))
     asyncio.run(db.append_message("s1", "user", "follow up"))
     resp = client.get("/sessions/s1/messages")
     assert resp.status_code == 200
@@ -77,7 +81,11 @@ def test_get_session_messages_returns_all_messages(client_and_db):
     assert len(msgs) == 3
     assert msgs[0]["role"] == "user"
     assert msgs[0]["content"] == "hello"
+    assert msgs[0]["citations"] == []
+    assert msgs[0]["gap_suggestions"] == []
     assert msgs[1]["role"] == "assistant"
+    assert msgs[1]["citations"] == ["alan-turing"]
+    assert msgs[1]["gap_suggestions"] == ["Alan Turing cause of death"]
     assert msgs[2]["content"] == "follow up"
 
 

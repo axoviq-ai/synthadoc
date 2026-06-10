@@ -151,6 +151,8 @@ class AuditDB:
                 "ALTER TABLE scheduled_runs ADD COLUMN output TEXT DEFAULT ''",
                 "ALTER TABLE chat_sessions ADD COLUMN history_summary TEXT DEFAULT NULL",
                 "ALTER TABLE chat_sessions ADD COLUMN summary_turn_count INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE chat_messages ADD COLUMN citations TEXT DEFAULT NULL",
+                "ALTER TABLE chat_messages ADD COLUMN gap_suggestions TEXT DEFAULT NULL",
             ):
                 try:
                     await db.execute(migration)
@@ -576,11 +578,23 @@ class AuditDB:
             )
             await db.commit()
 
-    async def append_message(self, session_id: str, role: str, content: str) -> None:
+    async def append_message(
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        citations: list[str] | None = None,
+        gap_suggestions: list[str] | None = None,
+    ) -> None:
         async with aiosqlite.connect(self._path) as db:
             await db.execute(
-                "INSERT INTO chat_messages (session_id, role, content) VALUES (?,?,?)",
-                (session_id, role, content),
+                "INSERT INTO chat_messages (session_id, role, content, citations, gap_suggestions)"
+                " VALUES (?,?,?,?,?)",
+                (
+                    session_id, role, content,
+                    json.dumps(citations) if citations else None,
+                    json.dumps(gap_suggestions) if gap_suggestions else None,
+                ),
             )
             await db.execute(
                 "UPDATE chat_sessions SET last_active=datetime('now') WHERE session_id=?",
@@ -621,15 +635,24 @@ class AuditDB:
         return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
 
     async def get_all_messages(self, session_id: str) -> list[dict]:
-        """Return all messages for a session, oldest first."""
+        """Return all messages for a session, oldest first, including citations and gap suggestions."""
         async with aiosqlite.connect(self._path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT role, content FROM chat_messages WHERE session_id=? ORDER BY id ASC",
+                "SELECT role, content, citations, gap_suggestions"
+                " FROM chat_messages WHERE session_id=? ORDER BY id ASC",
                 (session_id,),
             ) as cur:
                 rows = await cur.fetchall()
-        return [{"role": r["role"], "content": r["content"]} for r in rows]
+        return [
+            {
+                "role": r["role"],
+                "content": r["content"],
+                "citations": json.loads(r["citations"]) if r["citations"] else [],
+                "gap_suggestions": json.loads(r["gap_suggestions"]) if r["gap_suggestions"] else [],
+            }
+            for r in rows
+        ]
 
     async def get_summary(self, session_id: str) -> tuple[str | None, int]:
         """Return (history_summary, summary_turn_count) for a session."""
