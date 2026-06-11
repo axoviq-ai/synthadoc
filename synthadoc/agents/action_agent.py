@@ -154,9 +154,11 @@ _EXTRACT_PROMPT_TEMPLATE = (
     "            'Archive a stale page'  → lifecycle_archive,  state_filter='stale'\n"
     "            'Restore an archived page' → lifecycle_restore, state_filter='archived'\n"
     "            'Archive the alan-turing page' → lifecycle_archive, slug='alan-turing'\n"
-    "  job_list      : status_filter (pending|running|completed|failed|dead|skipped or null) —\n"
-    "                  use for 'list jobs', 'show all jobs', 'show failed jobs', 'list pending jobs'.\n"
-    "                  Set status_filter when user names a specific job state; otherwise null.\n"
+    "  job_list      : status_filter (list of pending|running|completed|failed|dead|skipped, or null) —\n"
+    "                  use for 'list jobs', 'show failed jobs', 'show failed and skipped jobs'.\n"
+    "                  Set status_filter to a JSON array when user names one or more states, e.g.\n"
+    "                  'failed jobs' → [\"failed\"], 'failed and skipped' → [\"failed\",\"skipped\"].\n"
+    "                  Use null for 'all jobs'.\n"
     "  job_status    : job_id (string or null) — use for 'show job status', 'check job <id>',\n"
     "                  'what is the status of my last job'. Resolve job_id from history when the user\n"
     "                  says 'the last job', 'that job', or picks a number from a previous list.\n"
@@ -601,11 +603,15 @@ class ActionAgent:
         return await self._orch.queue.list_jobs()
 
     async def _do_job_list(self, params: dict | None = None) -> ActionResult:
-        status_filter = ((params or {}).get("status_filter") or "").strip() or None
-        jobs = await self._orch.queue.list_jobs(
-            status=status_filter,  # type: ignore[arg-type]
-        )
-        label = f"{status_filter} " if status_filter else ""
+        from synthadoc.core.queue import JobStatus
+        raw_filter = (params or {}).get("status_filter")
+        if isinstance(raw_filter, str):
+            raw_filter = [raw_filter]
+        statuses: list[JobStatus] | None = None
+        if raw_filter:
+            statuses = [JobStatus(s) for s in raw_filter if s in JobStatus._value2member_map_]
+        jobs = await self._orch.queue.list_jobs(status=statuses or None)
+        label = "/".join(s.value for s in statuses) + " " if statuses else ""
         if not jobs:
             return ActionResult(action_type="job_list", success=True,
                                 message=f"No {label}jobs found.")

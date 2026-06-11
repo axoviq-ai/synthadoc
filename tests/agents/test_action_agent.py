@@ -415,6 +415,20 @@ async def test_job_status_no_id_triggers_clarify(tmp_path):
     assert "Which job" in result.clarify_prompt
 
 @pytest.mark.asyncio
+async def test_job_list_multi_status_filter(tmp_path):
+    job = MagicMock()
+    job.id = "abc-123"
+    job.operation = "ingest"
+    job.status = "failed"
+    job.created_at = "2026-06-11 16:36:00"
+    agent, _ = _make_agent(tmp_path, '{"action": "job_list", "params": {"status_filter": ["failed", "skipped"]}}')
+    agent._orch.queue.list_jobs = AsyncMock(return_value=[job])
+    result = await agent.run("show failed and skipped jobs")
+    assert result is not None
+    assert result.success is True
+    assert "abc-123" in result.message
+
+@pytest.mark.asyncio
 async def test_job_status_not_found(tmp_path):
     job = MagicMock()
     job.id = "abc-123"
