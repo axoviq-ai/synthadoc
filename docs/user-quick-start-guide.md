@@ -2051,13 +2051,13 @@ default = { provider = "groq", model = "llama-3.3-70b-versatile" }
 [agents]
 default = { provider = "minimax", model = "MiniMax-M2.5" }
 
-# Qwen via local Ollama (no API key — requires Ollama running with a Qwen model)
-[agents]
-default = { provider = "qwen", model = "qwen3.5" }
-
 # Qwen via DashScope cloud API (set QWEN_API_KEY — get at https://bailian.console.aliyun.com/)
 [agents]
 default = { provider = "qwen", model = "qwen-plus" }
+
+# Qwen via local Ollama (no API key — requires Ollama running with a Qwen model; GPU required)
+[agents]
+default = { provider = "qwen", model = "qwen3.5" }
 ```
 
 Restart `synthadoc serve`. The startup banner confirms `LLM: <provider>/<model>`.
