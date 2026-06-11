@@ -224,6 +224,26 @@ def test_stream_query_timeout_error_shows_cli_tip(monkeypatch):
     assert "Settings" not in combined_err
 
 
+def test_stream_query_exit_from_get_stream_propagates(monkeypatch):
+    """If get_stream raises typer.Exit (e.g. from _timeout_error), _stream_query
+    must NOT print 'stream interrupted' — it must re-raise so the exit is clean."""
+    import typer as _typer
+
+    def _raise_exit(*a, **kw):
+        raise _typer.Exit(1)
+
+    monkeypatch.setattr("synthadoc.cli.query.get_stream", _raise_exit)
+    from synthadoc.cli.query import _stream_query
+    interrupted_msgs = []
+    monkeypatch.setattr(
+        "typer.echo",
+        lambda msg, err=False, **kw: interrupted_msgs.append(str(msg)),
+    )
+    with pytest.raises(_typer.Exit):
+        _stream_query("my-wiki", "Question?", no_cache=False, timeout=60)
+    assert not any("stream interrupted" in m for m in interrupted_msgs)
+
+
 def test_stream_query_no_cache_flag_passed(monkeypatch):
     """_stream_query must pass no_cache=true param when no_cache=True."""
     received_params = {}

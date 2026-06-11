@@ -61,6 +61,8 @@ def _stream_query(wiki: str, question: str, no_cache: bool, timeout: int) -> Non
                         err=True,
                     )
                 return
+    except (typer.Exit, SystemExit):
+        raise
     except Exception as _exc:
         typer.echo(f"\nError: stream interrupted ({type(_exc).__name__}: {_exc})", err=True)
     typer.echo("")  # newline after streamed tokens
