@@ -2022,6 +2022,7 @@ Switch by editing `<wiki-root>/.synthadoc/config.toml` and restarting the server
 | `minimax`     | `MINIMAX_API_KEY`   | No — cheapest paid text rates                    | No              |
 | `anthropic`   | `ANTHROPIC_API_KEY` | No — highest quality, pay-per-token              | Yes             |
 | `openai`      | `OPENAI_API_KEY`    | No — pay-per-token                               | Yes             |
+| `qwen`        | `QWEN_API_KEY` (optional) | No key → local Ollama; key → DashScope (paid) | Model-dependent |
 | `claude-code` | _(none)_            | Yes — uses your Claude Code subscription, no key | Yes             |
 | `opencode`    | _(none)_            | Yes — uses your Opencode subscription, no key    | No              |
 
@@ -2045,6 +2046,14 @@ default = { provider = "groq", model = "llama-3.3-70b-versatile" }
 # MiniMax (cheapest paid, natively multimodal)
 [agents]
 default = { provider = "minimax", model = "MiniMax-M2.5" }
+
+# Qwen via local Ollama (no API key — requires Ollama running with a Qwen model)
+[agents]
+default = { provider = "qwen", model = "qwen3:8b" }
+
+# Qwen via DashScope cloud API (set QWEN_API_KEY — get at https://bailian.console.aliyun.com/)
+[agents]
+default = { provider = "qwen", model = "qwen-plus" }
 ```
 
 Restart `synthadoc serve`. The startup banner confirms `LLM: <provider>/<model>`.
@@ -2055,6 +2064,7 @@ Restart `synthadoc serve`. The startup banner confirms `LLM: <provider>/<model>`
 > - **Groq** free tier: 100K tokens/day — adequate for short demo sessions; heavy web search ingest can exhaust it.
 > - **MiniMax:** no free tier, but M2.5 input is ~$0.15/M tokens — roughly half the cost of Gemini 2.5 Flash. M2.5 and M2.7 are natively multimodal (text + image).
 > - **Ollama:** fully local, no rate limits. Install from [ollama.com](https://ollama.com); no API key needed.
+> - **Qwen:** two paths — local via Ollama (no key; run `ollama pull qwen3:8b` first) or DashScope cloud API (set `QWEN_API_KEY`; get one at [bailian.console.aliyun.com](https://bailian.console.aliyun.com/)). Without the key, Synthadoc automatically uses local Ollama.
 
 ---
 

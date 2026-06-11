@@ -1009,7 +1009,7 @@ otlp_endpoint = "http://localhost:4317"   # used when exporter = "otlp"
 
 ### Provider switching
 
-All seven supported providers (`anthropic`, `openai`, `gemini`, `groq`, `minimax`, `deepseek`, `ollama`) share the same config key. Gemini, Groq, MiniMax, and DeepSeek use OpenAI-compatible endpoints internally, so no custom provider class is needed — just set the provider name and supply the corresponding API key:
+All eight supported providers (`anthropic`, `openai`, `gemini`, `groq`, `minimax`, `deepseek`, `qwen`, `ollama`) share the same config key. Gemini, Groq, MiniMax, DeepSeek, and Qwen (DashScope) use OpenAI-compatible endpoints internally, so no custom provider class is needed — just set the provider name and supply the corresponding API key:
 
 ```toml
 # Switch from Claude to Gemini Flash (free tier available)
@@ -1027,6 +1027,7 @@ Required environment variables per provider:
 | `groq` | `GROQ_API_KEY` | **Yes** — generous free tier on Llama/Mixtral models | No |
 | `minimax` | `MINIMAX_API_KEY` | No (pay-per-token) | Yes (M2.5 / M2.7 natively multimodal) |
 | `deepseek` | `DEEPSEEK_API_KEY` | No (pay-per-token, very cheap) | No (text-only) |
+| `qwen` | `QWEN_API_KEY` (optional) | No key → local Ollama (free); key → DashScope (paid) | Model-dependent |
 | `ollama` | _(none)_ | **Yes** — fully local | Model-dependent |
 
 ### Coding tool CLI providers — no API key needed
@@ -1122,7 +1123,7 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `agents.default.provider` | str | `"gemini"` | LLM provider: `anthropic`, `openai`, `gemini`, `groq`, `minimax`, `deepseek`, `ollama` |
+| `agents.default.provider` | str | `"gemini"` | LLM provider: `anthropic`, `openai`, `gemini`, `groq`, `minimax`, `deepseek`, `qwen`, `ollama` |
 | `agents.default.model` | str | `"gemini-2.5-flash"` | Model ID |
 | `agents.adversarial.provider` | str | (inherits default) | Dedicated LLM provider for adversarial lint review. Falls back to `agents.default` when not set. Cross-model adversarial reduces self-serving bias — a different model family evaluates claims independently. |
 | `agents.adversarial.model` | str | (inherits default) | Model ID for the adversarial reviewer. For maximum independence, choose a model from a different family than the ingest model. |
@@ -1561,7 +1562,7 @@ class SlackExportSkill(BaseSkill):
 
 ### Writing a provider
 
-Built-in providers: `anthropic`, `openai`, `gemini`, `groq`, `minimax`, `deepseek`, `ollama`. For any provider that exposes an OpenAI-compatible API, no custom class is needed — the built-in `openai` provider with a custom `base_url` is sufficient.
+Built-in providers: `anthropic`, `openai`, `gemini`, `groq`, `minimax`, `deepseek`, `qwen`, `ollama`. For any provider that exposes an OpenAI-compatible API, no custom class is needed — the built-in `openai` provider with a custom `base_url` is sufficient.
 
 For a fully proprietary API, subclass `LLMProvider`:
 
@@ -2375,7 +2376,7 @@ Opens the default browser to `http://localhost:{port}/app`. The server must alre
 - **Folder-based skill system** — each skill is a self-contained folder with a `SKILL.md` manifest; intent-based dispatch alongside extension matching; drop a folder in `skills/` to add a new format without touching core code
 - **2 access surfaces** — CLI (thin HTTP client), HTTP REST API
 - **Obsidian plugin** — ingest (file picker, URL, all sources, web search), query modal, lint report, jobs list — all from the command palette; ribbon shows engine health + page count
-- **7 LLM providers** — Anthropic, OpenAI, Gemini (free tier), Groq (free tier), MiniMax (paid, multimodal), DeepSeek (paid, very cheap text-only), Ollama (local); switch with one config line
+- **8 LLM providers** — Anthropic, OpenAI, Gemini (free tier), Groq (free tier), MiniMax (paid, multimodal), DeepSeek (paid, very cheap text-only), Qwen (local via Ollama or paid DashScope), Ollama (local); switch with one config line
 - **Two-step ingest** — `_analyse()` caches entity extraction + summary; decision prompt uses summary instead of full text; reduces cost on large documents
 - **purpose.md scope filtering** — define what belongs in your wiki; the LLM skips out-of-scope sources cleanly
 - **overview.md auto-summary** — 2-paragraph wiki overview regenerated automatically after every ingest

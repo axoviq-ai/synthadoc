@@ -75,6 +75,19 @@ def make_provider(agent_name: str, config: Config) -> LLMProvider:
             thinking=agent_cfg.thinking,
         )
         return OpenAIProvider(api_key=key, config=cfg_with_url, timeout=timeout)
+    if name == "qwen":
+        key = os.environ.get("QWEN_API_KEY", "").strip()
+        if key:
+            from synthadoc.providers.openai import OpenAIProvider
+            cfg_with_url = AgentConfig(
+                provider="qwen", model=agent_cfg.model,
+                base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+                thinking=agent_cfg.thinking,
+            )
+            return OpenAIProvider(api_key=key, config=cfg_with_url, timeout=timeout)
+        else:
+            from synthadoc.providers.ollama import OllamaProvider
+            return OllamaProvider(config=agent_cfg)
     if name == "ollama":
         from synthadoc.providers.ollama import OllamaProvider
         return OllamaProvider(config=agent_cfg)
@@ -91,5 +104,5 @@ def make_provider(agent_name: str, config: Config) -> LLMProvider:
             timeout=timeout,
         )
     E.cli_error(E.CFG_UNKNOWN_PROVIDER, f"Unknown provider: {name!r}",
-                "Supported providers: anthropic, openai, gemini, groq, minimax, deepseek, ollama, "
+                "Supported providers: anthropic, openai, gemini, groq, minimax, deepseek, qwen, ollama, "
                 "claude-code, opencode")

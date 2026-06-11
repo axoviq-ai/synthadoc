@@ -48,12 +48,21 @@ _THINKING_EXTRA_BODY: dict[str, dict] = {
     "adaptive": {"thinking": {"type": "adaptive"}},
 }
 
+_QWEN_THINKING_EXTRA_BODY: dict[str, dict] = {
+    "disabled": {"enable_thinking": False},
+    "enabled":  {"enable_thinking": True},
+    "adaptive": {"enable_thinking": True},
+}
 
-def _build_extra_body(thinking: str) -> dict:
+
+def _build_extra_body(thinking: str, provider: str = "") -> dict:
     """Return the provider extra_body dict for the given thinking setting.
 
     Empty string (unset) → no extra_body; provider default applies.
+    DashScope (qwen) uses enable_thinking; MiniMax/others use thinking.type.
     """
+    if provider == "qwen":
+        return _QWEN_THINKING_EXTRA_BODY.get(thinking, {})
     return _THINKING_EXTRA_BODY.get(thinking, {})
 
 
@@ -114,7 +123,7 @@ class OpenAIProvider(LLMProvider):
         self._timeout: int | None = timeout if timeout > 0 else None
         base = str(config.base_url or "")
         self.supports_vision = not any(host in base for host in _NO_VISION_HOSTS)
-        self._extra_body: dict = _build_extra_body(config.thinking)
+        self._extra_body: dict = _build_extra_body(config.thinking, config.provider)
 
     @staticmethod
     def _to_openai_content(content):

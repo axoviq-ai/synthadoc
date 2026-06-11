@@ -182,6 +182,15 @@ def test_deepseek_is_a_valid_provider(tmp_path):
     assert cfg.agents.default.model == "deepseek-chat"
 
 
+def test_qwen_is_a_valid_provider(tmp_path):
+    """qwen must be accepted as a valid provider name without raising."""
+    toml = tmp_path / "config.toml"
+    toml.write_text('[agents]\ndefault = {provider = "qwen", model = "qwen-plus"}\n')
+    cfg = load_config(project_config=toml)
+    assert cfg.agents.default.provider == "qwen"
+    assert cfg.agents.default.model == "qwen-plus"
+
+
 def test_staging_policy_defaults_to_off(tmp_path):
     toml_file = tmp_path / "config.toml"
     toml_file.write_text('[server]\nport = 7070\n')
