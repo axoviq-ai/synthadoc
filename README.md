@@ -175,7 +175,7 @@ As the wiki accumulates pages the `index.md` table of contents, domain scope (`p
 | Offline browsable artifact   | **Yes**                                                               | No          | No         | No        |
 | Multi-wiki isolation         | **Yes**                                                               | No          | No         | No        |
 | Web search → wiki pages     | **Yes**                                                               | No          | No         | No        |
-| Multiple LLMs support       | **Yes** (Gemini, Groq, MiniMax, DeepSeek, Anthropic, OpenAI, Ollama)  | No          | No         | No        |
+| Multiple LLMs support       | **Yes** (Gemini, Groq, Qwen, MiniMax, DeepSeek, Anthropic, OpenAI, Ollama) | No          | No         | No        |
 | Auto wiki overview page      | **Yes**                                                               | No          | No         | No        |
 | Resumable job queue + retry  | **Yes**                                                               | No          | No         | No        |
 | Query decomposition          | **Yes** (parallel sub-queries)                                        | No          | No         | No        |
@@ -240,7 +240,8 @@ See [docs/design.md — Appendix A: Release Feature Index](docs/design.md#append
 | ---------------- | --------------------------------------------- | --------------- | --------------------------------------------------------------- |
 | **Gemini Flash** | Yes — 15 RPM / 1M tokens/day, no credit card | Yes             | [aistudio.google.com](https://aistudio.google.com/app/apikey)   |
 | Groq             | Yes — rate-limited                           | No              | [console.groq.com](https://console.groq.com/keys)               |
-| Ollama           | Yes — runs locally, no key                   | Model-dependent | [ollama.com](https://ollama.com)                                |
+| Ollama           | Yes — runs locally, no key (**GPU required**) | Model-dependent | [ollama.com](https://ollama.com)                                |
+| Qwen             | Yes — 1M free tokens (90-day trial), then paid DashScope | Model-dependent | [bailian.console.aliyun.com](https://bailian.console.aliyun.com/) |
 | MiniMax          | No — pay-per-token                           | Yes             | [platform.minimax.io](https://platform.minimax.io/)             |
 | DeepSeek         | No — pay-per-token (very cheap text rates)   | No              | [platform.deepseek.com](https://platform.deepseek.com/api_keys) |
 | Anthropic        | No                                            | Yes             | [console.anthropic.com](https://console.anthropic.com/)         |

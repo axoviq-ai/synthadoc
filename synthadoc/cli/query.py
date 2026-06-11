@@ -38,7 +38,7 @@ def _stream_query(wiki: str, question: str, no_cache: bool, timeout: int) -> Non
     citations = []
     suggested = []
     knowledge_gap = False
-    params: dict = {"q": question}
+    params: dict = {"q": question, "timeout_seconds": timeout}
     if no_cache:
         params["no_cache"] = "true"
     try:
@@ -51,8 +51,18 @@ def _stream_query(wiki: str, question: str, no_cache: bool, timeout: int) -> Non
                 knowledge_gap = True
                 suggested = data.get("suggested_searches", [])
             elif event_name == "error":
-                typer.echo(f"\nError: {data.get('message', 'unknown error')}", err=True)
+                msg = data.get("message", "unknown error")
+                typer.echo(f"\nError: {msg}", err=True)
+                if "timed out" in msg.lower():
+                    typer.echo(
+                        f"Tip: local models on CPU-only machines are significantly slower than GPU-accelerated "
+                        f"or cloud inference. Pass --timeout {timeout * 2} to allow more time, or switch to a "
+                        f"cloud provider (e.g. gemini-2.5-flash-lite is free).",
+                        err=True,
+                    )
                 return
+    except (typer.Exit, SystemExit):
+        raise
     except Exception as _exc:
         typer.echo(f"\nError: stream interrupted ({type(_exc).__name__}: {_exc})", err=True)
     typer.echo("")  # newline after streamed tokens
@@ -75,7 +85,7 @@ def query_cmd(
     from synthadoc.cli._wiki import resolve_wiki
     wiki = resolve_wiki(wiki)
     if no_stream:
-        params = {"q": question}
+        params = {"q": question, "timeout_seconds": timeout}
         if no_cache:
             params["no_cache"] = "true"
         result = get(wiki, "/query", timeout=timeout, **params)

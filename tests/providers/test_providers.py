@@ -373,6 +373,29 @@ def test_make_provider_ollama_requires_no_key(monkeypatch):
     assert isinstance(provider, OllamaProvider)
 
 
+def test_make_provider_ollama_forwards_timeout(monkeypatch):
+    """llm_timeout_seconds must be forwarded to OllamaProvider so --timeout on CLI works."""
+    from synthadoc.providers import make_provider
+    from synthadoc.providers.ollama import OllamaProvider
+    cfg = _make_cfg("ollama", "llama3")
+    cfg.agents.llm_timeout_seconds = 180
+    provider = make_provider("ingest", cfg)
+    assert isinstance(provider, OllamaProvider)
+    assert provider._timeout == 180
+
+
+def test_make_provider_qwen_ollama_forwards_timeout(monkeypatch):
+    """qwen without QWEN_API_KEY must forward llm_timeout_seconds to OllamaProvider."""
+    from synthadoc.providers import make_provider
+    from synthadoc.providers.ollama import OllamaProvider
+    monkeypatch.delenv("QWEN_API_KEY", raising=False)
+    cfg = _make_cfg("qwen", "qwen3.5")
+    cfg.agents.llm_timeout_seconds = 240
+    provider = make_provider("ingest", cfg)
+    assert isinstance(provider, OllamaProvider)
+    assert provider._timeout == 240
+
+
 def test_make_provider_missing_gemini_key_exits(monkeypatch, capsys):
     import click, typer
     from synthadoc.providers import make_provider
@@ -1206,3 +1229,58 @@ async def test_base_provider_embed_raises_not_implemented():
     provider = OpenAIProvider(api_key="fake", config=cfg)
     with pytest.raises(NotImplementedError):
         await provider.embed(["some text"])
+
+
+# ── qwen provider tests ───────────────────────────────────────────────────────
+
+def test_build_extra_body_qwen_disabled():
+    from synthadoc.providers.openai import _build_extra_body
+    assert _build_extra_body("disabled", "qwen") == {"enable_thinking": False}
+
+
+def test_build_extra_body_qwen_enabled():
+    from synthadoc.providers.openai import _build_extra_body
+    assert _build_extra_body("enabled", "qwen") == {"enable_thinking": True}
+
+
+def test_build_extra_body_qwen_empty_returns_no_extra():
+    from synthadoc.providers.openai import _build_extra_body
+    assert _build_extra_body("", "qwen") == {}
+
+
+def test_build_extra_body_non_qwen_still_uses_thinking_type():
+    from synthadoc.providers.openai import _build_extra_body
+    assert _build_extra_body("disabled", "minimax") == {"thinking": {"type": "disabled"}}
+
+
+def test_make_provider_qwen_dashscope(monkeypatch):
+    """With QWEN_API_KEY set, qwen provider uses DashScope OpenAI-compatible endpoint."""
+    from synthadoc.providers import make_provider
+    from synthadoc.providers.openai import OpenAIProvider
+    monkeypatch.setenv("QWEN_API_KEY", "test-qwen-key")
+    provider = make_provider("ingest", _make_cfg("qwen", "qwen-plus"))
+    assert isinstance(provider, OpenAIProvider)
+    assert "dashscope" in str(provider._client.base_url)
+
+
+def test_make_provider_qwen_ollama_when_no_key(monkeypatch):
+    """Without QWEN_API_KEY, qwen provider falls back to local Ollama."""
+    from synthadoc.providers import make_provider
+    from synthadoc.providers.ollama import OllamaProvider
+    monkeypatch.delenv("QWEN_API_KEY", raising=False)
+    provider = make_provider("ingest", _make_cfg("qwen", "qwen3:8b"))
+    assert isinstance(provider, OllamaProvider)
+
+
+def test_make_provider_qwen_propagates_thinking(monkeypatch):
+    """thinking=disabled must produce enable_thinking=False for the qwen DashScope path."""
+    from synthadoc.config import Config, AgentsConfig, AgentConfig
+    from synthadoc.providers import make_provider
+    from synthadoc.providers.openai import OpenAIProvider
+    monkeypatch.setenv("QWEN_API_KEY", "test-qwen-key")
+    cfg = Config(agents=AgentsConfig(
+        default=AgentConfig(provider="qwen", model="qwen-plus", thinking="disabled")
+    ))
+    provider = make_provider("default", cfg)
+    assert isinstance(provider, OpenAIProvider)
+    assert provider._extra_body == {"enable_thinking": False}

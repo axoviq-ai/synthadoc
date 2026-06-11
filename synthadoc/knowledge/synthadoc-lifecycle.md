@@ -1,6 +1,6 @@
 ---
 title: Synthadoc Lifecycle States
-keywords: [lifecycle, status, state, active, stale, archive, archived, draft, contradicted, contradictions, outdated, review, promote, transition, activate, restore]
+keywords: [lifecycle, status, stale, archive, archived, draft, contradicted, contradictions, activate, restore]
 ---
 
 # Synthadoc Lifecycle States

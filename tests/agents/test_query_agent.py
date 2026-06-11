@@ -415,6 +415,25 @@ async def test_decompose_provider_exception_falls_back(tmp_wiki):
 
 
 @pytest.mark.asyncio
+async def test_decompose_times_out_fast_and_falls_back(tmp_wiki, monkeypatch):
+    """decompose() must fall back to [question] within _DECOMPOSE_TIMEOUT_SECS if the
+    LLM is too slow — prevents slow local models from burning the whole query budget."""
+    import asyncio
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+
+    async def _hang(*a, **kw):
+        await asyncio.sleep(3600)  # never returns
+
+    provider.complete.side_effect = _hang
+    monkeypatch.setattr(QueryAgent, "_DECOMPOSE_TIMEOUT_SECS", 0.05)
+    agent = QueryAgent(provider=provider, store=store, search=search)
+    result = await agent.decompose("Who invented FORTRAN?")
+    assert result == ["Who invented FORTRAN?"]
+
+
+@pytest.mark.asyncio
 async def test_decompose_truncates_long_question(tmp_wiki):
     """Questions longer than 4000 chars must be truncated before the LLM call."""
     store = WikiStorage(tmp_wiki / "wiki")

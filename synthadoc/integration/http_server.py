@@ -45,6 +45,26 @@ def _install_win32_conn_reset_filter() -> None:
     loop.set_exception_handler(_handler)
 
 
+def _install_shutdown_noise_filter() -> None:
+    """Suppress CancelledError/KeyboardInterrupt tracebacks from uvicorn.error on Ctrl+C.
+
+    On Python 3.14, uvicorn's signal re-raise interacts with Starlette's lifespan
+    receive queue in a way that produces a CancelledError traceback logged at ERROR
+    level — even though the server shut down cleanly.  The filter drops only these
+    expected shutdown exceptions so the console stays quiet on normal Ctrl+C.
+    """
+    class _Filter(logging.Filter):
+        _shutdown_types = (asyncio.CancelledError, KeyboardInterrupt)
+
+        def filter(self, record: logging.LogRecord) -> bool:
+            if record.exc_info and record.exc_info[0] is not None:
+                if issubclass(record.exc_info[0], self._shutdown_types):
+                    return False
+            return True
+
+    logging.getLogger("uvicorn.error").addFilter(_Filter())
+
+
 def _classify_llm_error(exc: Exception) -> "HTTPException | None":
     """Return a meaningful HTTPException for known LLM API error codes, or None."""
     from synthadoc.errors import DailyQuotaExhaustedException, CodingToolQuotaExhaustedException
@@ -311,6 +331,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
     async def lifespan(app: FastAPI):
         if sys.platform == "win32":
             _install_win32_conn_reset_filter()
+        _install_shutdown_noise_filter()
         orch = Orchestrator(wiki_root=wiki_root, config=cfg)
         await orch.init()
         app.state.orch = orch
@@ -325,16 +346,17 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             run_scheduler_loop(wiki_root.name, wiki_root, audit_db)
         )
 
-        yield
-
-        worker.cancel()
-        scheduler.cancel()
-        for task in (worker, scheduler):
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-        await orch.close()
+        try:
+            yield
+        finally:
+            worker.cancel()
+            scheduler.cancel()
+            for task in (worker, scheduler):
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+            await orch.close()
 
     app = FastAPI(title="synthadoc", version=synthadoc.__version__, lifespan=lifespan)
     app.add_middleware(ContentSizeLimitMiddleware, max_bytes=max_body_bytes)
@@ -515,6 +537,14 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                     if session_id and session_id in _session_state:
                         _session_state[session_id]["cursor"] = new_cursor
                         _session_state[session_id]["last_hints"] = next_hints
+                    # Persist before done so the client's sidebar refresh sees fresh data
+                    if session_id:
+                        await orch._audit.append_message(session_id, "user", q)
+                        await orch._audit.append_message(
+                            session_id, "assistant", cached.get("answer", ""),
+                            citations=cached.get("citations") or None,
+                            gap_suggestions=cached.get("suggested_searches") or None,
+                        )
                     events.append({"event": "done", "data": {"next_hints": next_hints}})
                     for evt in events:
                         yield f"event: {evt['event']}\ndata: {_json.dumps(evt['data'])}\n\n"
@@ -539,7 +569,15 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                             _summary_notice = None
 
                         if evt["event"] == "clarify":
-                            # Change 4: forward clarify events as-is
+                            if session_id:
+                                await orch._audit.append_message(session_id, "user", q)
+                                clarify_text = evt["data"].get("prompt", "")
+                                cands = evt["data"].get("candidates", [])
+                                if cands:
+                                    clarify_text += "\n" + "\n".join(
+                                        f"{i+1}. {c}" for i, c in enumerate(cands)
+                                    )
+                                await orch._audit.append_message(session_id, "assistant", clarify_text)
                             yield f"event: clarify\ndata: {_json.dumps(evt['data'])}\n\n"
                             continue
                         elif evt["event"] == "token":
@@ -562,11 +600,19 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                             if session_id and session_id in _session_state:
                                 _session_state[session_id]["cursor"] = new_cursor
                                 _session_state[session_id]["last_hints"] = next_hints
+                            # Persist before yielding done so the client's sidebar refresh sees fresh data
+                            if session_id and full_answer:
+                                await orch._audit.append_message(session_id, "user", q)
+                                await orch._audit.append_message(
+                                    session_id, "assistant", full_answer,
+                                    citations=citations or None,
+                                    gap_suggestions=_suggested_searches if _knowledge_gap else None,
+                                )
                             yield f"event: done\ndata: {_json.dumps({'next_hints': next_hints})}\n\n"
                             continue
                         yield f"event: {evt['event']}\ndata: {_json.dumps(evt['data'])}\n\n"
             except TimeoutError:
-                yield f"event: error\ndata: {_json.dumps({'message': f'Query timed out after {timeout_seconds}s. Increase the timeout in Settings (⚙) if your model is slow.'})}\n\n"
+                yield f"event: error\ndata: {_json.dumps({'message': f'Query timed out after {timeout_seconds}s.'})}\n\n"
                 return
             except Exception as exc:
                 known = _classify_llm_error(exc)
@@ -585,13 +631,6 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                     "knowledge_gap": _knowledge_gap,
                     "suggested_searches": _suggested_searches,
                 })
-            if session_id and full_answer:
-                await orch._audit.append_message(session_id, "user", q)
-                await orch._audit.append_message(
-                    session_id, "assistant", full_answer,
-                    citations=citations or None,
-                    gap_suggestions=_suggested_searches if _knowledge_gap else None,
-                )
 
         return StreamingResponse(_live_stream(), media_type="text/event-stream")
 
@@ -624,7 +663,9 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
 
     @app.get("/sessions")
     async def list_sessions(limit: int = 20):
-        return await app.state.orch._audit.list_sessions(limit=limit)
+        from fastapi.responses import JSONResponse
+        data = await app.state.orch._audit.list_sessions(limit=limit)
+        return JSONResponse(content=data, headers={"Cache-Control": "no-store"})
 
     @app.get("/sessions/{session_id}/messages")
     async def get_session_messages(session_id: str):
@@ -1217,7 +1258,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         @app.get("/app/")
         @app.get("/app/{path:path}")
         async def spa(path: str = ""):
-            return FileResponse(str(_web_dist / "index.html"))
+            return FileResponse(
+                str(_web_dist / "index.html"),
+                headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+            )
     else:
         @app.get("/app")
         @app.get("/app/{path:path}")
