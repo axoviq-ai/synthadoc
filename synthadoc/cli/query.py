@@ -38,7 +38,7 @@ def _stream_query(wiki: str, question: str, no_cache: bool, timeout: int) -> Non
     citations = []
     suggested = []
     knowledge_gap = False
-    params: dict = {"q": question}
+    params: dict = {"q": question, "timeout_seconds": timeout}
     if no_cache:
         params["no_cache"] = "true"
     try:
@@ -75,7 +75,7 @@ def query_cmd(
     from synthadoc.cli._wiki import resolve_wiki
     wiki = resolve_wiki(wiki)
     if no_stream:
-        params = {"q": question}
+        params = {"q": question, "timeout_seconds": timeout}
         if no_cache:
             params["no_cache"] = "true"
         result = get(wiki, "/query", timeout=timeout, **params)

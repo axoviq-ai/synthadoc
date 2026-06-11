@@ -78,12 +78,13 @@ def test_query_cli_default_timeout_is_60():
 
 
 def test_query_cli_custom_timeout_forwarded():
-    """--timeout N must be forwarded to get() as timeout=N."""
+    """--timeout N must be forwarded as both the HTTP timeout and timeout_seconds query param."""
     ctx, mock = _capture_get({"answer": "ok", "citations": [], "knowledge_gap": False})
     with ctx:
         runner.invoke(app, ["query", "What is AI?", "-w", ".", "--timeout", "120", "--no-stream"])
     _, kwargs = mock.call_args
     assert kwargs.get("timeout") == 120
+    assert kwargs.get("timeout_seconds") == 120
 
 
 def test_query_cli_gap_includes_requery_hint():
@@ -214,3 +215,33 @@ def test_stream_query_no_cache_flag_passed(monkeypatch):
     from synthadoc.cli.query import _stream_query
     _stream_query("my-wiki", "Q?", no_cache=True, timeout=60)
     assert received_params.get("no_cache") == "true"
+
+
+def test_stream_query_forwards_timeout_seconds_to_server(monkeypatch):
+    """--timeout N must be forwarded as timeout_seconds=N query param so the server
+    honours the user's intent rather than defaulting to 60s internally."""
+    received_params = {}
+
+    def _fake_stream(wiki, path, timeout, **params):
+        received_params.update(params)
+        return iter([])
+
+    monkeypatch.setattr("synthadoc.cli.query.get_stream", _fake_stream)
+    from synthadoc.cli.query import _stream_query
+    _stream_query("my-wiki", "Q?", no_cache=False, timeout=180)
+    assert received_params.get("timeout_seconds") == 180
+
+
+def test_no_stream_query_forwards_timeout_seconds_to_server():
+    """--no-stream path must also forward timeout_seconds so the blocking endpoint
+    uses the user-supplied timeout rather than the server default of 60s."""
+    received_params = {}
+
+    def _fake_get(wiki, path, timeout, **params):
+        received_params.update(params)
+        return {"answer": "ok", "citations": [], "knowledge_gap": False}
+
+    from unittest.mock import patch
+    with patch("synthadoc.cli.query.get", side_effect=_fake_get):
+        runner.invoke(app, ["query", "Q?", "-w", "my-wiki", "--timeout", "180", "--no-stream"])
+    assert received_params.get("timeout_seconds") == 180
