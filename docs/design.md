@@ -1027,8 +1027,8 @@ Required environment variables per provider:
 | `groq` | `GROQ_API_KEY` | **Yes** — generous free tier on Llama/Mixtral models | No |
 | `minimax` | `MINIMAX_API_KEY` | No (pay-per-token) | Yes (M2.5 / M2.7 natively multimodal) |
 | `deepseek` | `DEEPSEEK_API_KEY` | No (pay-per-token, very cheap) | No (text-only) |
-| `qwen` | `QWEN_API_KEY` (optional) | No key → local Ollama (free); key → DashScope (paid) | Model-dependent |
-| `ollama` | _(none)_ | **Yes** — fully local | Model-dependent |
+| `qwen` | `QWEN_API_KEY` (optional) | No key → local Ollama (**GPU required** — CPU too slow); key → DashScope (paid) | Model-dependent |
+| `ollama` | _(none)_ | **Yes** — fully local; **GPU required** — CPU-only inference is too slow for interactive use | Model-dependent |
 
 ### Coding tool CLI providers — no API key needed
 
