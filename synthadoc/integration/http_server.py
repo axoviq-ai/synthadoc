@@ -515,6 +515,14 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                     if session_id and session_id in _session_state:
                         _session_state[session_id]["cursor"] = new_cursor
                         _session_state[session_id]["last_hints"] = next_hints
+                    # Persist before done so the client's sidebar refresh sees fresh data
+                    if session_id:
+                        await orch._audit.append_message(session_id, "user", q)
+                        await orch._audit.append_message(
+                            session_id, "assistant", cached.get("answer", ""),
+                            citations=cached.get("citations") or None,
+                            gap_suggestions=cached.get("suggested_searches") or None,
+                        )
                     events.append({"event": "done", "data": {"next_hints": next_hints}})
                     for evt in events:
                         yield f"event: {evt['event']}\ndata: {_json.dumps(evt['data'])}\n\n"
