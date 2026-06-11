@@ -74,11 +74,17 @@ _ALLOWED: set[tuple[LifecycleState, LifecycleState]] = {
 }
 
 # ── action detection ───────────────────────────────────────────────────────────
-# Matches imperative action requests. Excludes interrogative phrases
-# ("how do I run...", "can I run...") by anchoring verb+noun to the start.
 
 _ACTION_RE = re.compile(
     r"^(please\s+)?(run|execute|start|trigger|perform)\b.{0,50}\b(lint|ingest|scaffold)\b"
+    # "can/could you (please) run lint …"
+    r"|^(can|could|would)\s+(you\s+)?(please\s+)?(run|execute|start|trigger|perform)\b.{0,50}\b(lint|ingest|scaffold)\b"
+    # "auto-resolve" / "auto resolve" in any context → lint action
+    r"|\bauto.?resolv\b"
+    # "resolve contradiction(s)" / "resolve the contradicted page"
+    r"|\bresolv\w*.{0,50}\bcontradict"
+    # "fix/clear contradictions"
+    r"|\b(fix|clear)\b.{0,40}\bcontradict"
     r"|(?<![a-zA-Z-])ingest\s+\S"
     r"|\b(rebuild|regenerate)\b.{0,20}\bscaffold\b"
     r"|\bschedule\s+(add|a|an|daily|weekly|hourly|every|at)\b"
@@ -112,6 +118,11 @@ _EXTRACT_PROMPT_TEMPLATE = (
     'schedule_history|lifecycle_activate|lifecycle_archive|lifecycle_restore|none>", "params": {{...}}}}\n\n'
     "params keys by action:\n"
     "  lint          : scope (all|contradictions|orphans|stale|citations), auto_resolve (bool)\n"
+    "                  Use lint for ANY request to RUN the linter or auto-resolve issues:\n"
+    "                  'run lint', 'run lint and auto resolve', 'auto-resolve', 'auto resolve contradictions',\n"
+    "                  'resolve contradictions', 'fix contradictions', 'clear contradictions'.\n"
+    "                  When 'auto-resolve' / 'auto resolve' / 'resolve' appears → set auto_resolve=true.\n"
+    "                  When 'contradiction' appears → set scope='contradictions'.\n"
     "  lint_report   : (no params — shows current contradictions, orphans and adversarial warnings; no server needed)\n"
     "                  Use lint_report for ANY question asking what orphan/contradicted/adversarial pages exist NOW.\n"
     "                  Examples: 'what pages are orphans?', 'show contradictions', 'list orphan pages',\n"
