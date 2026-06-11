@@ -338,6 +338,25 @@ def test_detect_clear_contradictions(tmp_path):
     agent, _ = _make_agent(tmp_path, "{}")
     assert agent.detect("clear contradictions") is True
 
+def test_detect_clarify_continuation(tmp_path):
+    """Chip reply after a clarify turn must route back to the action agent."""
+    from synthadoc.agents.action_agent import CLARIFY_STORE_PREFIX
+    agent, _ = _make_agent(tmp_path, "{}")
+    history = [
+        {"role": "user", "content": "show me job status"},
+        {"role": "assistant", "content": CLARIFY_STORE_PREFIX + "Which job would you like to see the status for?\n1. abc-123"},
+    ]
+    assert agent.detect("abc-123", history=history) is True
+
+def test_detect_no_clarify_continuation_without_prefix(tmp_path):
+    """A plain assistant message does NOT trigger clarify continuation."""
+    agent, _ = _make_agent(tmp_path, "{}")
+    history = [
+        {"role": "user", "content": "who is Turing?"},
+        {"role": "assistant", "content": "Alan Turing was a mathematician..."},
+    ]
+    assert agent.detect("abc-123", history=history) is False
+
 def test_detect_show_job_status(tmp_path):
     agent, _ = _make_agent(tmp_path, "{}")
     assert agent.detect("show me job status") is True

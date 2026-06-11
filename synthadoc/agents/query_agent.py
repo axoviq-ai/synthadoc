@@ -552,7 +552,7 @@ class QueryAgent:
         if self._orchestrator is not None:
             _action_agent = ActionAgent(self._provider, self._orchestrator,
                                         self._store._root.parent)
-            if _action_agent.detect(question):
+            if _action_agent.detect(question, history=None):
                 _result = await _action_agent.run(question)
                 if _result is not None:
                     return QueryResult(
@@ -784,7 +784,7 @@ class QueryAgent:
         if self._orchestrator is not None:
             _action_agent = ActionAgent(self._provider, self._orchestrator,
                                         self._store._root.parent)
-            if _action_agent.detect(question):
+            if _action_agent.detect(question, history=history or []):
                 _result = await _action_agent.run(question, history=history or [])
                 if _result is not None:
                     if _result.needs_clarification:

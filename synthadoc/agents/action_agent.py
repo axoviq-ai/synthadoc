@@ -75,6 +75,10 @@ _ALLOWED: set[tuple[LifecycleState, LifecycleState]] = {
 
 # ── action detection ───────────────────────────────────────────────────────────
 
+# Prefix written into the stored assistant message for every clarify turn so
+# detect() can recognise a chip-reply in the very next turn without a regex match.
+CLARIFY_STORE_PREFIX = "[clarify] "
+
 _ACTION_RE = re.compile(
     r"^(please\s+)?(run|execute|start|trigger|perform)\b.{0,50}\b(lint|ingest|scaffold)\b"
     # "can/could you (please) run lint …"
@@ -200,9 +204,21 @@ class ActionAgent:
 
     # ── public ────────────────────────────────────────────────────────────────
 
-    def detect(self, question: str) -> bool:
-        """Fast regex pre-check — True if the question looks like an action request."""
-        return bool(_ACTION_RE.search(question))
+    def detect(self, question: str, history: list[dict] | None = None) -> bool:
+        """Fast regex pre-check — True if question looks like an action request.
+
+        Also returns True when the last assistant turn was a clarify (stored with
+        CLARIFY_STORE_PREFIX), so chip replies route back to the action agent.
+        """
+        if _ACTION_RE.search(question):
+            return True
+        if history:
+            for msg in reversed(history):
+                if msg.get("role") == "assistant":
+                    if msg.get("content", "").startswith(CLARIFY_STORE_PREFIX):
+                        return True
+                    break
+        return False
 
     async def run(self, question: str, history: list[dict] | None = None) -> Optional[ActionResult]:
         """Extract action + params from question and execute. Returns None if not an action."""
