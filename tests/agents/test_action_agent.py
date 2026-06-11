@@ -308,6 +308,34 @@ def test_detect_what_contradictions(tmp_path):
     agent, _ = _make_agent(tmp_path, "{}")
     assert agent.detect("what contradictions exist?") is True
 
+def test_detect_can_you_run_lint(tmp_path):
+    agent, _ = _make_agent(tmp_path, "{}")
+    assert agent.detect("Can you run lint and auto resolve the page grace-hopper") is True
+
+def test_detect_could_you_run_lint(tmp_path):
+    agent, _ = _make_agent(tmp_path, "{}")
+    assert agent.detect("Could you run lint on the wiki?") is True
+
+def test_detect_auto_resolve(tmp_path):
+    agent, _ = _make_agent(tmp_path, "{}")
+    assert agent.detect("auto-resolve the contradicted pages") is True
+
+def test_detect_auto_resolve_no_hyphen(tmp_path):
+    agent, _ = _make_agent(tmp_path, "{}")
+    assert agent.detect("please auto resolve contradictions") is True
+
+def test_detect_resolve_contradictions(tmp_path):
+    agent, _ = _make_agent(tmp_path, "{}")
+    assert agent.detect("resolve contradictions in grace-hopper") is True
+
+def test_detect_fix_contradictions(tmp_path):
+    agent, _ = _make_agent(tmp_path, "{}")
+    assert agent.detect("fix the contradictions on this page") is True
+
+def test_detect_clear_contradictions(tmp_path):
+    agent, _ = _make_agent(tmp_path, "{}")
+    assert agent.detect("clear contradictions") is True
+
 
 # ── schedule_add lint normalisation ──────────────────────────────────────────
 

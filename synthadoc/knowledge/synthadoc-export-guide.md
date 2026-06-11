@@ -1,6 +1,6 @@
 ---
 title: Synthadoc Export Guide
-keywords: [export, llms, llms.txt, graphml, graph, json, download, format, context, pack, filter, status]
+keywords: [export, llms, llms.txt, graphml, graphml export, json, download, context pack]
 ---
 
 # Synthadoc Export Guide
