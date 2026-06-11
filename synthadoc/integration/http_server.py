@@ -566,7 +566,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                             continue
                         yield f"event: {evt['event']}\ndata: {_json.dumps(evt['data'])}\n\n"
             except TimeoutError:
-                yield f"event: error\ndata: {_json.dumps({'message': f'Query timed out after {timeout_seconds}s. Increase the timeout in Settings (⚙) if your model is slow.'})}\n\n"
+                yield f"event: error\ndata: {_json.dumps({'message': f'Query timed out after {timeout_seconds}s.'})}\n\n"
                 return
             except Exception as exc:
                 known = _classify_llm_error(exc)

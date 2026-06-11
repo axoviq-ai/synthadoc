@@ -203,6 +203,27 @@ def test_stream_query_error_event_stops_stream(monkeypatch):
     assert "should not appear" not in combined_out
 
 
+def test_stream_query_timeout_error_shows_cli_tip(monkeypatch):
+    """When the server returns a 'timed out' error event, the CLI must print
+    a tip about --timeout and CPU-only inference (not 'Settings gear')."""
+    events = [
+        ("error", {"message": "Query timed out after 300s."}),
+    ]
+    monkeypatch.setattr("synthadoc.cli.query.get_stream", lambda *a, **kw: iter(events))
+    from synthadoc.cli.query import _stream_query
+    err_output = []
+    monkeypatch.setattr(
+        "typer.echo",
+        lambda msg, err=False, **kw: err_output.append(str(msg)) if err else None,
+    )
+    _stream_query("my-wiki", "Question?", no_cache=False, timeout=300)
+    combined_err = "".join(err_output)
+    assert "timed out after 300s" in combined_err
+    assert "--timeout 600" in combined_err
+    assert "CPU" in combined_err
+    assert "Settings" not in combined_err
+
+
 def test_stream_query_no_cache_flag_passed(monkeypatch):
     """_stream_query must pass no_cache=true param when no_cache=True."""
     received_params = {}

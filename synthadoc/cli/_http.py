@@ -106,8 +106,9 @@ def _timeout_error(path: str, timeout: int) -> NoReturn:
         E.cli_error(
             E.QUERY_TIMEOUT,
             f"The query timed out waiting for the LLM to respond ({timeout} s).",
-            "The wiki server is still running. Try again — if the wiki is large, "
-            "reduce your question scope or pass --timeout 120 to allow more time.",
+            f"The wiki server is still running. Try again with --timeout {timeout * 2}. "
+            "Local models on CPU-only machines are significantly slower than GPU-accelerated "
+            "or cloud inference — consider switching to a cloud provider (e.g. gemini-2.5-flash-lite, free).",
         )
     elif "/jobs" in path:
         E.cli_error(

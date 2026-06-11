@@ -106,7 +106,10 @@ export function useQueryStream(
                 onError: (msg) => {
                     if (controller.signal.aborted) return;
                     cancelFlush();
-                    setError(msg);
+                    const displayMsg = msg.toLowerCase().includes("timed out")
+                        ? `${msg} Increase the timeout in Settings (⚙).`
+                        : msg;
+                    setError(displayMsg);
                     setMessages((prev) => prev.slice(0, -1));
                     setStreaming(false);
                     streamingRef.current = false;
