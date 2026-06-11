@@ -348,6 +348,18 @@ def test_detect_clarify_continuation(tmp_path):
     ]
     assert agent.detect("abc-123", history=history) is True
 
+def test_detect_clarify_continuation_second_chip(tmp_path):
+    """Second chip click after one answer was already given must still route to action agent."""
+    from synthadoc.agents.action_agent import CLARIFY_STORE_PREFIX
+    agent, _ = _make_agent(tmp_path, "{}")
+    history = [
+        {"role": "user", "content": "show me job status"},
+        {"role": "assistant", "content": CLARIFY_STORE_PREFIX + "Which job?\n1. abc-123\n2. def-456"},
+        {"role": "user", "content": "abc-123"},
+        {"role": "assistant", "content": "**Job abc-123**\n- Status: completed"},
+    ]
+    assert agent.detect("def-456", history=history) is True
+
 def test_detect_no_clarify_continuation_without_prefix(tmp_path):
     """A plain assistant message does NOT trigger clarify continuation."""
     agent, _ = _make_agent(tmp_path, "{}")
