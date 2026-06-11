@@ -1123,14 +1123,34 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
+| `wiki.domain` | str | `"General"` | Topic scope of the wiki. Used in prompts to keep ingest focused. Example: `"Machine Learning"` or `"Quantum Computing"`. |
 | `agents.default.provider` | str | `"gemini"` | LLM provider: `anthropic`, `openai`, `gemini`, `groq`, `minimax`, `deepseek`, `qwen`, `ollama` |
-| `agents.default.model` | str | `"gemini-2.5-flash"` | Model ID |
+| `agents.default.model` | str | `"gemini-2.5-flash"` | Model ID passed to the provider API |
+| `agents.default.base_url` | str | `""` | Override the provider's API endpoint. Use this to point any OpenAI-compatible provider at a custom URL (e.g. a local proxy or a private deployment). |
 | `agents.default.thinking` | str | `""` | Reasoning mode: `"disabled"` turns off chain-of-thought (faster, cheaper on MiniMax M3 and Qwen); `"enabled"` or `"adaptive"` turns it on. Empty string uses the provider's default. Applies to `minimax` and `qwen` (DashScope) providers; ignored by others. |
+| `agents.ingest.provider` | str | (inherits default) | Override provider/model for the ingest agent only. Useful to use a cheap fast model for ingest while keeping a high-quality model for queries. |
+| `agents.ingest.model` | str | (inherits default) | Model ID for the ingest agent override. |
+| `agents.query.provider` | str | (inherits default) | Override provider/model for query answering only. |
+| `agents.query.model` | str | (inherits default) | Model ID for the query agent override. |
+| `agents.lint.provider` | str | (inherits default) | Override provider/model for the lint agent only. |
+| `agents.lint.model` | str | (inherits default) | Model ID for the lint agent override. |
 | `agents.adversarial.provider` | str | (inherits default) | Dedicated LLM provider for adversarial lint review. Falls back to `agents.default` when not set. Cross-model adversarial reduces self-serving bias — a different model family evaluates claims independently. |
 | `agents.adversarial.model` | str | (inherits default) | Model ID for the adversarial reviewer. For maximum independence, choose a model from a different family than the ingest model. |
-| `lint.adversarial_max_per_page` | int | `2` | Maximum adversarial warnings flagged per page. Raise to 3–5 for a thorough audit; lower to 1 to reduce noise on large wikis. |
 | `agents.llm_timeout_seconds` | int | `0` | Per-call LLM timeout in seconds; `0` = no limit. Set to e.g. `90` when using reasoning models (MiniMax-M2.5, DeepSeek-R1) that can exceed their internal generation budget silently. Restart required. |
-| `server.port` | int | `7070` | HTTP listen port |
+| `agents.scaffold_max_tokens` | int | `8192` | Max output tokens for the scaffold (page generation) agent. Increase to `16384`+ when using reasoning models on large wikis where the default budget is exhausted. |
+| `agents.query_max_tokens` | int | `8192` | Max output tokens for the query agent. Increase if reasoning models exhaust their budget before completing the answer. |
+| `lint.adversarial_max_per_page` | int | `2` | Maximum adversarial warnings flagged per page. Raise to 3–5 for a thorough audit; lower to 1 to reduce noise on large wikis. |
+| `lint.check_url_availability` | bool | `false` | When `true`, lint performs an HTTP HEAD check on every URL source and flags unreachable URLs. Adds network calls to each lint run; opt-in only. |
+| `server.host` | str | `"127.0.0.1"` | Bind address. Change to `"0.0.0.0"` to expose the server on all interfaces (e.g. for LAN access). No built-in auth — restrict via firewall when exposing. |
+| `server.port` | int | `7070` | HTTP listen port. Change when running multiple wikis simultaneously. |
+| `ingest.max_pages_per_ingest` | int | `15` | Max pages one ingest job may create or update. |
+| `ingest.chunk_size` | int | `1500` | Text chunk size in characters for BM25 indexing. |
+| `ingest.chunk_overlap` | int | `150` | Overlap between consecutive chunks. |
+| `ingest.fetch_timeout_seconds` | int | `30` | Seconds to wait for a URL response before failing the fetch. |
+| `ingest.staging_policy` | str | `"off"` | Candidate staging gate: `"off"` = commit pages immediately; `"all"` = stage all new pages for review; `"threshold"` = stage only pages below `staging_confidence_min`. |
+| `ingest.staging_confidence_min` | str | `"high"` | Minimum confidence to auto-commit when `staging_policy = "threshold"`. Values: `"high"`, `"medium"`, `"low"`. Pages below this threshold are held as candidates. |
+| `query.gap_score_threshold` | float | `2.0` | BM25 score below which a knowledge gap is detected and `suggested_searches` are returned instead of (or alongside) an answer. Lower = more sensitive gap detection. |
+| `query.context_token_budget` | int | `4000` | Token budget for context pack assembly. Increase for richer context on complex queries; decrease if hitting prompt size limits. |
 | `queue.max_parallel_ingest` | int | `4` | Max concurrent ingest agents |
 | `queue.max_retries` | int | `3` | Retries before job → dead |
 | `queue.backoff_base_seconds` | int | `5` | Exponential backoff base (±20% jitter) |
@@ -1138,18 +1158,17 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 | `cost.soft_warn_usd` | float | `0.50` | Log warning, continue _(configured but not yet enforced — cost_guard is wired to the config but check() is not called in the ingest path)_ |
 | `cost.hard_gate_usd` | float | `2.00` | Require explicit confirmation _(configured but not yet enforced — see above)_ |
 | `cost.auto_resolve_confidence_threshold` | float | `0.85` | Auto-apply lint resolutions above this score |
-| `ingest.max_pages_per_ingest` | int | `15` | Max pages one ingest may update |
-| `ingest.chunk_size` | int | `1500` | Text chunk size (characters) |
-| `ingest.chunk_overlap` | int | `150` | Overlap between chunks |
-| `ingest.fetch_timeout_seconds` | int | `30` | Seconds to wait for a URL response before retrying |
-| `logs.level` | str | `"INFO"` | Console log level |
-| `logs.max_file_mb` | int | `5` | Rotate `synthadoc.log` at this size |
-| `logs.backup_count` | int | `5` | Rotated files to keep |
+| `chat.conversation_history_turns` | int | `5` | Number of prior conversation turns injected into each query prompt for multi-turn context. Set to `0` to disable conversation history (each query answered independently). |
+| `chat.session_retention_days` | int | `30` | Days to retain chat session history in `audit.db`. Sessions older than this are pruned automatically. |
+| `audit.lifecycle_retention_days` | int | `0` | Days to retain lifecycle events in `audit.db`. `0` = keep forever. When set, events older than this threshold are pruned at the end of each lint run. |
+| `audit.url_staleness_days` | int | `0` | Days after which URL-sourced pages are automatically marked `stale` if the source URL has not been re-ingested. `0` = disabled. |
+| `logs.level` | str | `"INFO"` | Console log level: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| `logs.max_file_mb` | int | `5` | Rotate `synthadoc.log` at this size (MB) |
+| `logs.backup_count` | int | `5` | Rotated log files to keep; total disk ≈ `max_file_mb × backup_count` |
 | `web_search.provider` | str | `"tavily"` | Web search provider (currently only `tavily` supported) |
 | `web_search.max_results` | int | `20` | Maximum results fetched per web search query |
 | `search.vector` | bool | `false` | Enable semantic re-ranking; downloads `BAAI/bge-small-en-v1.5` (~130 MB) once on first enable |
 | `search.vector_top_candidates` | int | `20` | BM25 candidate pool size when vector re-ranking is active |
-| `audit.lifecycle_retention_days` | int | `0` | Days to retain lifecycle events in `audit.db`. `0` = keep forever (default). When set, events older than this threshold are pruned at the end of each lint run. |
 
 ---
 
