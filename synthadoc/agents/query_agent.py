@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -845,14 +846,32 @@ class QueryAgent:
 
         yield {"event": "status", "data": {"phase": "synthesizing", "sources": len(citations)}}
 
+        _synth_start = time.monotonic()
+        _first_token = True
+        logger.info(
+            "run_stream: synthesis starting — context %d chars, %d page(s)",
+            len(context), len(candidates),
+        )
         full_answer = ""
         async for token in self._provider.complete_stream(
             messages=[Message(role="user", content=synthesis_prompt)],
             temperature=0.0,
             max_tokens=self._max_tokens,
         ):
+            if _first_token:
+                logger.info(
+                    "run_stream: first token received after %.1fs",
+                    time.monotonic() - _synth_start,
+                )
+                _first_token = False
             full_answer += token
             yield {"event": "token", "data": {"text": token}}
+
+        if not _first_token:
+            logger.info(
+                "run_stream: synthesis complete — %.1fs, %d chars",
+                time.monotonic() - _synth_start, len(full_answer),
+            )
 
         if not full_answer:
             logger.warning("run_stream: LLM returned empty response for question %r", question)

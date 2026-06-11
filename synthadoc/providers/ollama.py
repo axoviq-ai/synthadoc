@@ -2,11 +2,13 @@
 # Copyright (C) 2026 Paul Chen / axoviq.com
 from __future__ import annotations
 import json as _json
+import logging
 from typing import AsyncGenerator, Optional
 import httpx
 from synthadoc.config import AgentConfig
 from synthadoc.providers.base import CompletionResponse, LLMProvider, Message
 
+logger = logging.getLogger(__name__)
 
 _DEFAULT_TIMEOUT = 300
 
@@ -17,6 +19,13 @@ class OllamaProvider(LLMProvider):
         self._config = config
         self._base_url = base_url
         self._timeout = timeout if timeout > 0 else _DEFAULT_TIMEOUT
+        logger.warning(
+            "Local Ollama model '%s' selected. GPU acceleration is required for "
+            "interactive use — CPU-only inference is typically 10-50× slower and "
+            "will time out on most queries. Switch to a cloud provider "
+            "(e.g. gemini-2.5-flash-lite, free) if you do not have a CUDA/Metal GPU.",
+            config.model,
+        )
 
     async def complete(self, messages: list[Message], system: Optional[str] = None,
                        temperature: float = 0.0, max_tokens: int = 4096) -> CompletionResponse:

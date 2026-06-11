@@ -38,8 +38,8 @@ default = {{ provider = "gemini", model = "gemini-2.5-flash-lite" }}
 # default = {{ provider = "anthropic", model = "claude-sonnet-4-6" }}        # paid, high quality
 # default = {{ provider = "anthropic", model = "claude-opus-4-8" }}          # paid, highest quality (most capable)
 # default = {{ provider = "deepseek",  model = "deepseek-chat" }}             # paid, very cheap ($0.14/M in); text-only, no vision
-# default = {{ provider = "ollama",    model = "llama3.2" }}                  # fully local, no API key
-# default = {{ provider = "qwen",      model = "qwen3.5" }}                   # local Ollama Qwen model (no API key); CPU-only machines are slow — use --timeout 120+
+# default = {{ provider = "ollama",    model = "llama3.2" }}                  # fully local, no API key; requires GPU — CPU-only is too slow for interactive use
+# default = {{ provider = "qwen",      model = "qwen3.5" }}                   # local Ollama Qwen model (no API key); requires GPU — CPU-only is too slow for interactive use
 # default = {{ provider = "qwen",      model = "qwen-plus" }}                 # DashScope cloud API — set QWEN_API_KEY (https://bailian.console.aliyun.com/)
 # default = {{ provider = "claude-code" }}                                    # no API key — uses your Claude Code subscription
 # default = {{ provider = "opencode" }}                                       # no API key — uses your Opencode subscription
