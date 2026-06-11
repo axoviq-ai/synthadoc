@@ -615,11 +615,21 @@ class ActionAgent:
         if not jobs:
             return ActionResult(action_type="job_list", success=True,
                                 message=f"No {label}jobs found.")
-        lines = ["| ID | Operation | Status | Started |", "|---|---|---|---|"]
-        for j in jobs:
-            lines.append(
-                f"| `{j.id}` | {j.operation} | {j.status} | {self._fmt_job_ts(str(j.created_at))} |"
-            )
+        has_errors = any(j.error for j in jobs)
+        if has_errors:
+            lines = ["| ID | Operation | Status | Started | Error |", "|---|---|---|---|---|"]
+            for j in jobs:
+                err = (j.error or "").replace("|", "\\|")
+                lines.append(
+                    f"| `{j.id}` | {j.operation} | {j.status}"
+                    f" | {self._fmt_job_ts(str(j.created_at))} | {err} |"
+                )
+        else:
+            lines = ["| ID | Operation | Status | Started |", "|---|---|---|---|"]
+            for j in jobs:
+                lines.append(
+                    f"| `{j.id}` | {j.operation} | {j.status} | {self._fmt_job_ts(str(j.created_at))} |"
+                )
         return ActionResult(action_type="job_list", success=True,
                             message="\n".join(lines))
 
