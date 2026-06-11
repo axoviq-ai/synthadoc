@@ -204,12 +204,6 @@ class ActionAgent:
 
     # ── public ────────────────────────────────────────────────────────────────
 
-    # How many assistant turns back to look for an open clarify context.
-    # Covers the case where the user picks multiple chips from the same list
-    # (each answer inserts a normal assistant turn between the original clarify
-    # and the next chip click).
-    _CLARIFY_LOOKBACK = 5
-
     def detect(self, question: str, history: list[dict] | None = None) -> bool:
         """Fast regex pre-check — True if question looks like an action request.
 
@@ -220,13 +214,18 @@ class ActionAgent:
         if _ACTION_RE.search(question):
             return True
         if history:
+            lookback = (
+                self._orch._cfg.chat.clarify_lookback
+                if self._orch is not None and hasattr(self._orch, "_cfg")
+                else 5
+            )
             checked = 0
             for msg in reversed(history):
                 if msg.get("role") == "assistant":
                     if msg.get("content", "").startswith(CLARIFY_STORE_PREFIX):
                         return True
                     checked += 1
-                    if checked >= self._CLARIFY_LOOKBACK:
+                    if checked >= lookback:
                         break
         return False
 

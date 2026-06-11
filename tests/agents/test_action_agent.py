@@ -22,6 +22,8 @@ def _make_agent(tmp_path, extraction_json: str, provider=None):
     orch.queue.list_jobs = AsyncMock(return_value=[])
     orch._store = MagicMock()
     orch._bump_epoch = MagicMock()
+    orch._cfg = MagicMock()
+    orch._cfg.chat.clarify_lookback = 5
     return ActionAgent(provider=provider, orchestrator=orch, wiki_root=tmp_path), provider
 
 
