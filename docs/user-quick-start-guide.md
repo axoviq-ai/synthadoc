@@ -2062,7 +2062,8 @@ Restart `synthadoc serve`. The startup banner confirms `LLM: <provider>/<model>`
 >
 > - **Gemini** free tier: 15 RPM. If you see `429 RateLimitError` during a long ingest, wait 60 s and retry, or switch to Groq or MiniMax.
 > - **Groq** free tier: 100K tokens/day — adequate for short demo sessions; heavy web search ingest can exhaust it.
-> - **MiniMax:** no free tier, but M2.5 input is ~$0.15/M tokens — roughly half the cost of Gemini 2.5 Flash. M2.5 and M2.7 are natively multimodal (text + image).
+> - **MiniMax:** no free tier, but M2.5 input is ~$0.15/M tokens — roughly half the cost of Gemini 2.5 Flash. M2.5 and M2.7 are natively multimodal (text + image). MiniMax M3 supports a `thinking` field: set `thinking = "disabled"` for faster, cheaper responses; omit it to use the model default.
+> - **Thinking field (MiniMax M3, Qwen DashScope):** Add `thinking = "disabled"` to your `agents.default` line to suppress chain-of-thought reasoning. Useful when you want lower latency and cost and don't need the model to reason step-by-step. Example: `default = { provider = "minimax", model = "MiniMax-M3", thinking = "disabled" }`
 > - **Ollama:** fully local, no rate limits. Install from [ollama.com](https://ollama.com); no API key needed.
 > - **Qwen:** two paths — local via Ollama (no key; run `ollama pull qwen3.5` first) or DashScope cloud API (set `QWEN_API_KEY`; get one at [bailian.console.aliyun.com](https://bailian.console.aliyun.com/)). Without the key, Synthadoc automatically uses local Ollama.
 
