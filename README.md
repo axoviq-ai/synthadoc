@@ -240,7 +240,8 @@ See [docs/design.md — Appendix A: Release Feature Index](docs/design.md#append
 | ---------------- | --------------------------------------------- | --------------- | --------------------------------------------------------------- |
 | **Gemini Flash** | Yes — 15 RPM / 1M tokens/day, no credit card | Yes             | [aistudio.google.com](https://aistudio.google.com/app/apikey)   |
 | Groq             | Yes — rate-limited                           | No              | [console.groq.com](https://console.groq.com/keys)               |
-| Ollama           | Yes — runs locally, no key                   | Model-dependent | [ollama.com](https://ollama.com)                                |
+| Ollama           | Yes — runs locally, no key (**GPU required**) | Model-dependent | [ollama.com](https://ollama.com)                                |
+| Qwen             | No key → local Ollama (**GPU required**); key → DashScope paid | Model-dependent | [bailian.console.aliyun.com](https://bailian.console.aliyun.com/) |
 | MiniMax          | No — pay-per-token                           | Yes             | [platform.minimax.io](https://platform.minimax.io/)             |
 | DeepSeek         | No — pay-per-token (very cheap text rates)   | No              | [platform.deepseek.com](https://platform.deepseek.com/api_keys) |
 | Anthropic        | No                                            | Yes             | [console.anthropic.com](https://console.anthropic.com/)         |
