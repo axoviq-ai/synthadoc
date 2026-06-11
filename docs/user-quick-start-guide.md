@@ -2031,9 +2031,13 @@ Switch by editing `<wiki-root>/.synthadoc/config.toml` and restarting the server
 **Change the provider** — edit `.synthadoc/config.toml`:
 
 ```toml
-# Anthropic
+# Anthropic Sonnet (high quality)
 [agents]
 default = { provider = "anthropic", model = "claude-sonnet-4-6" }
+
+# Anthropic Opus (highest quality, most capable)
+[agents]
+default = { provider = "anthropic", model = "claude-opus-4-8" }
 
 # Gemini Flash (default)
 [agents]

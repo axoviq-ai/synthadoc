@@ -35,7 +35,8 @@ default = {{ provider = "gemini", model = "gemini-2.5-flash-lite" }}
 # default = {{ provider = "minimax",   model = "MiniMax-M2.5" }}             # paid, cheapest text-only ($0.15/M in)
 # default = {{ provider = "minimax",   model = "MiniMax-M3",  thinking = "disabled" }}  # paid, M3 with thinking off (faster, cheaper)
 # default = {{ provider = "groq",      model = "llama-3.3-70b-versatile" }}  # free tier, 100K tokens/day
-# default = {{ provider = "anthropic", model = "claude-sonnet-4-6" }}        # paid, highest quality
+# default = {{ provider = "anthropic", model = "claude-sonnet-4-6" }}        # paid, high quality
+# default = {{ provider = "anthropic", model = "claude-opus-4-8" }}          # paid, highest quality (most capable)
 # default = {{ provider = "deepseek",  model = "deepseek-chat" }}             # paid, very cheap ($0.14/M in); text-only, no vision
 # default = {{ provider = "ollama",    model = "llama3.2" }}                  # fully local, no API key
 # default = {{ provider = "qwen",      model = "qwen3.5" }}                   # local Ollama Qwen model (no API key)

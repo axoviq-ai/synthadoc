@@ -996,7 +996,7 @@ Project config wins over global config. Unspecified keys inherit from global def
 
 ```toml
 [agents]
-default = { provider = "anthropic", model = "claude-opus-4-6" }
+default = { provider = "anthropic", model = "claude-opus-4-8" }
 lint    = { model = "claude-haiku-4-5-20251001" }
 
 [wikis]
@@ -1042,7 +1042,7 @@ If you have an active **Claude Code** or **Opencode** subscription, you can use 
 
 ```toml
 [agents]
-default = { provider = "claude-code", model = "claude-opus-4-7" }
+default = { provider = "claude-code", model = "claude-opus-4-8" }
 lint    = { provider = "claude-code", model = "claude-haiku-4-5-20251001" }
 ```
 
@@ -1050,7 +1050,7 @@ For Opencode:
 
 ```toml
 [agents]
-default = { provider = "opencode", model = "anthropic/claude-opus-4-7" }
+default = { provider = "opencode", model = "anthropic/claude-opus-4-8" }
 ```
 
 **Runtime override** — bypasses config.toml for the current server session:
@@ -1070,7 +1070,7 @@ synthadoc serve -w <wiki-name> --provider claude-code
 port = 7070
 
 [agents]
-default = { provider = "anthropic", model = "claude-opus-4-6" }
+default = { provider = "anthropic", model = "claude-opus-4-8" }
 lint    = { model = "claude-haiku-4-5-20251001" }
 skill   = { model = "claude-haiku-4-5-20251001" }
 # llm_timeout_seconds = 90  # set for reasoning models to fail fast instead of silent empty response
