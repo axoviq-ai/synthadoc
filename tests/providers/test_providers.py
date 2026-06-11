@@ -373,6 +373,29 @@ def test_make_provider_ollama_requires_no_key(monkeypatch):
     assert isinstance(provider, OllamaProvider)
 
 
+def test_make_provider_ollama_forwards_timeout(monkeypatch):
+    """llm_timeout_seconds must be forwarded to OllamaProvider so --timeout on CLI works."""
+    from synthadoc.providers import make_provider
+    from synthadoc.providers.ollama import OllamaProvider
+    cfg = _make_cfg("ollama", "llama3")
+    cfg.agents.llm_timeout_seconds = 180
+    provider = make_provider("ingest", cfg)
+    assert isinstance(provider, OllamaProvider)
+    assert provider._timeout == 180
+
+
+def test_make_provider_qwen_ollama_forwards_timeout(monkeypatch):
+    """qwen without QWEN_API_KEY must forward llm_timeout_seconds to OllamaProvider."""
+    from synthadoc.providers import make_provider
+    from synthadoc.providers.ollama import OllamaProvider
+    monkeypatch.delenv("QWEN_API_KEY", raising=False)
+    cfg = _make_cfg("qwen", "qwen3.5")
+    cfg.agents.llm_timeout_seconds = 240
+    provider = make_provider("ingest", cfg)
+    assert isinstance(provider, OllamaProvider)
+    assert provider._timeout == 240
+
+
 def test_make_provider_missing_gemini_key_exits(monkeypatch, capsys):
     import click, typer
     from synthadoc.providers import make_provider

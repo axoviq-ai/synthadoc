@@ -87,10 +87,10 @@ def make_provider(agent_name: str, config: Config) -> LLMProvider:
             return OpenAIProvider(api_key=key, config=cfg_with_url, timeout=timeout)
         else:
             from synthadoc.providers.ollama import OllamaProvider
-            return OllamaProvider(config=agent_cfg)
+            return OllamaProvider(config=agent_cfg, timeout=timeout)
     if name == "ollama":
         from synthadoc.providers.ollama import OllamaProvider
-        return OllamaProvider(config=agent_cfg)
+        return OllamaProvider(config=agent_cfg, timeout=timeout)
     if name == "claude-code":
         from synthadoc.providers.coding_tool import ClaudeCodeCLIProvider
         return ClaudeCodeCLIProvider(

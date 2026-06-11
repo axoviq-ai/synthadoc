@@ -471,6 +471,10 @@ class QueryAgent:
             q = re.sub(re.escape(alias), slug, q, flags=re.IGNORECASE)
         return q
 
+    # Decompose is an optional optimisation — cap it so slow local models fail fast
+    # and leave the full budget for synthesis.
+    _DECOMPOSE_TIMEOUT_SECS = 30
+
     async def decompose(self, question: str) -> list[str]:
         """Break a question into focused sub-questions for independent retrieval.
 
@@ -478,15 +482,18 @@ class QueryAgent:
         """
         truncated = question[:_MAX_QUESTION_CHARS]
         try:
-            resp = await self._provider.complete(
-                messages=[Message(role="user",
-                    content=(
-                        f"Break this question into focused sub-questions for a knowledge base lookup.\n"
-                        f"Simple questions should return a single-element list.\n"
-                        f"Return a JSON array of strings only. No explanation.\n\n"
-                        f"Question: {truncated}"
-                    ))],
-                temperature=0.0,
+            resp = await asyncio.wait_for(
+                self._provider.complete(
+                    messages=[Message(role="user",
+                        content=(
+                            f"Break this question into focused sub-questions for a knowledge base lookup.\n"
+                            f"Simple questions should return a single-element list.\n"
+                            f"Return a JSON array of strings only. No explanation.\n\n"
+                            f"Question: {truncated}"
+                        ))],
+                    temperature=0.0,
+                ),
+                timeout=self._DECOMPOSE_TIMEOUT_SECS,
             )
         except Exception as exc:
             logger.warning(

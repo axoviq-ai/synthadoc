@@ -8,10 +8,15 @@ from synthadoc.config import AgentConfig
 from synthadoc.providers.base import CompletionResponse, LLMProvider, Message
 
 
+_DEFAULT_TIMEOUT = 300
+
+
 class OllamaProvider(LLMProvider):
-    def __init__(self, config: AgentConfig, base_url: str = "http://localhost:11434") -> None:
+    def __init__(self, config: AgentConfig, base_url: str = "http://localhost:11434",
+                 timeout: int = _DEFAULT_TIMEOUT) -> None:
         self._config = config
         self._base_url = base_url
+        self._timeout = timeout if timeout > 0 else _DEFAULT_TIMEOUT
 
     async def complete(self, messages: list[Message], system: Optional[str] = None,
                        temperature: float = 0.0, max_tokens: int = 4096) -> CompletionResponse:
@@ -19,7 +24,7 @@ class OllamaProvider(LLMProvider):
         if system:
             msgs.append({"role": "system", "content": system})
         msgs.extend({"role": m.role, "content": m.content} for m in messages)
-        async with httpx.AsyncClient(timeout=120) as client:
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
             resp = await client.post(f"{self._base_url}/api/chat", json={
                 "model": self._config.model, "messages": msgs, "stream": False,
             })
@@ -37,7 +42,7 @@ class OllamaProvider(LLMProvider):
         if system:
             msgs.append({"role": "system", "content": system})
         msgs.extend({"role": m.role, "content": m.content} for m in messages)
-        async with httpx.AsyncClient(timeout=120) as client:
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
             async with client.stream("POST", f"{self._base_url}/api/chat", json={
                 "model": self._config.model, "messages": msgs, "stream": True,
             }) as resp:
