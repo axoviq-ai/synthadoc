@@ -48,7 +48,7 @@ export async function createSession(): Promise<SessionInfo> {
 }
 
 export async function listSessions(limit = 20): Promise<SessionSummary[]> {
-    const resp = await fetch(`${BASE}/sessions?limit=${limit}`);
+    const resp = await fetch(`${BASE}/sessions?limit=${limit}`, { cache: "no-store" });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     return resp.json();
 }

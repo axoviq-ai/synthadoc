@@ -641,7 +641,9 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
 
     @app.get("/sessions")
     async def list_sessions(limit: int = 20):
-        return await app.state.orch._audit.list_sessions(limit=limit)
+        from fastapi.responses import JSONResponse
+        data = await app.state.orch._audit.list_sessions(limit=limit)
+        return JSONResponse(content=data, headers={"Cache-Control": "no-store"})
 
     @app.get("/sessions/{session_id}/messages")
     async def get_session_messages(session_id: str):
