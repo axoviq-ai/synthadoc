@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Paul Chen / axoviq.com
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useSession } from "./useSession";
 import { useSessions } from "./useSessions";
 import { getSessionMessages, getHints } from "./api";
@@ -16,6 +16,11 @@ export default function App() {
     const [resetKey, setResetKey] = useState(0);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
     const [initialMessages, setInitialMessages] = useState<Message[]>([]);
+
+    // Keep the active highlight in sync with the current session (including the initial session on load)
+    useEffect(() => {
+        if (session?.session_id) setActiveSessionId(session.session_id);
+    }, [session?.session_id]);
 
     const handleNewRun = useCallback(async () => {
         setResetKey((k) => k + 1);

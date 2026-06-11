@@ -17,7 +17,7 @@ interface Props {
     wikiName: string;
     injectedQuery: string | null;
     onInjected: () => void;
-    onQuerySent: (question: string) => void;
+    onQuerySent: () => void;
     showTip: boolean;
     initialMessages?: Message[];
 }
@@ -27,7 +27,7 @@ export function ChatWindow({
     injectedQuery, onInjected, onQuerySent, showTip,
     initialMessages = [],
 }: Props) {
-    const { messages, streaming, error, send } = useQueryStream(sessionId, onHints, initialMessages);
+    const { messages, streaming, error, send } = useQueryStream(sessionId, onHints, initialMessages, onQuerySent);
     const [input, setInput] = useState("");
     const [noCache, setNoCache] = useState(false);
     const [timeoutSeconds, setTimeoutSeconds] = useState(readTimeoutSetting);
@@ -53,13 +53,11 @@ export function ChatWindow({
         if (!q) return;
         setInput("");
         send(q, noCache, timeoutSeconds);
-        onQuerySent(q);
     };
 
     const handleChipClick = useCallback((value: string) => {
         send(value, noCache, timeoutSeconds);
-        onQuerySent(value);
-    }, [send, noCache, timeoutSeconds, onQuerySent]);
+    }, [send, noCache, timeoutSeconds]);
 
     const handleKey = (e: React.KeyboardEvent) => {
         if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }

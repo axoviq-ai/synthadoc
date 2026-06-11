@@ -19,6 +19,7 @@ export function useQueryStream(
     sessionId: string | null,
     onHints: (hints: string[]) => void,
     initialMessages: Message[] = [],
+    onComplete?: () => void,
 ) {
     const [messages, setMessages] = useState<Message[]>(initialMessages);
     const [streaming, setStreaming] = useState(false);
@@ -102,6 +103,7 @@ export function useQueryStream(
                     onHints(nextHints);
                     setStreaming(false);
                     streamingRef.current = false;
+                    onComplete?.();
                 },
                 onError: (msg) => {
                     if (controller.signal.aborted) return;

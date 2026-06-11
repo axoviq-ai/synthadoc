@@ -539,7 +539,15 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                             _summary_notice = None
 
                         if evt["event"] == "clarify":
-                            # Change 4: forward clarify events as-is
+                            if session_id:
+                                await orch._audit.append_message(session_id, "user", q)
+                                clarify_text = evt["data"].get("prompt", "")
+                                cands = evt["data"].get("candidates", [])
+                                if cands:
+                                    clarify_text += "\n" + "\n".join(
+                                        f"{i+1}. {c}" for i, c in enumerate(cands)
+                                    )
+                                await orch._audit.append_message(session_id, "assistant", clarify_text)
                             yield f"event: clarify\ndata: {_json.dumps(evt['data'])}\n\n"
                             continue
                         elif evt["event"] == "token":
@@ -562,6 +570,14 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                             if session_id and session_id in _session_state:
                                 _session_state[session_id]["cursor"] = new_cursor
                                 _session_state[session_id]["last_hints"] = next_hints
+                            # Persist before yielding done so the client's sidebar refresh sees fresh data
+                            if session_id and full_answer:
+                                await orch._audit.append_message(session_id, "user", q)
+                                await orch._audit.append_message(
+                                    session_id, "assistant", full_answer,
+                                    citations=citations or None,
+                                    gap_suggestions=_suggested_searches if _knowledge_gap else None,
+                                )
                             yield f"event: done\ndata: {_json.dumps({'next_hints': next_hints})}\n\n"
                             continue
                         yield f"event: {evt['event']}\ndata: {_json.dumps(evt['data'])}\n\n"
@@ -585,13 +601,6 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                     "knowledge_gap": _knowledge_gap,
                     "suggested_searches": _suggested_searches,
                 })
-            if session_id and full_answer:
-                await orch._audit.append_message(session_id, "user", q)
-                await orch._audit.append_message(
-                    session_id, "assistant", full_answer,
-                    citations=citations or None,
-                    gap_suggestions=_suggested_searches if _knowledge_gap else None,
-                )
 
         return StreamingResponse(_live_stream(), media_type="text/event-stream")
 
