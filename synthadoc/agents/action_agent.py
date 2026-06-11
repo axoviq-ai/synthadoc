@@ -104,7 +104,11 @@ _ACTION_RE = re.compile(
     r"|\b(show|display|view|get)\b.{0,40}\b(wiki|synthadoc)\s+status\b"
     r"|\b(wiki|page)\s+(health|summary|overview|status)\b"
     r"|\bhow many pages.{0,40}\b(draft|active|stale|contradict|archive)"
-    r"|\b(draft|active|stale|contradicted|archived)\s+page\w*\s+(count|summary|stat)",
+    r"|\b(draft|active|stale|contradicted|archived)\s+page\w*\s+(count|summary|stat)"
+    # job status / job list
+    r"|\bjob\w*\s+(status|detail|list|progress|result)\b"
+    r"|\b(show|list|display|view|check|get)\b.{0,30}\bjob\w*\b"
+    r"|\bwhat.{0,20}\b(status|progress).{0,20}\bjob\b",
     re.IGNORECASE,
 )
 
@@ -115,7 +119,7 @@ _EXTRACT_PROMPT_TEMPLATE = (
     "parameters from the user request below.\n\n"
     "Return ONLY a JSON object — no explanation, no markdown fences.\n\n"
     'Schema: {{"action": "<lint|lint_report|wiki_status|ingest|scaffold|schedule_add|schedule_list|'
-    'schedule_history|lifecycle_activate|lifecycle_archive|lifecycle_restore|none>", "params": {{...}}}}\n\n'
+    'schedule_history|lifecycle_activate|lifecycle_archive|lifecycle_restore|job_list|job_status|none>", "params": {{...}}}}\n\n'
     "params keys by action:\n"
     "  lint          : scope (all|contradictions|orphans|stale|citations), auto_resolve (bool)\n"
     "                  Use lint for ANY request to RUN the linter or auto-resolve issues:\n"
@@ -150,6 +154,13 @@ _EXTRACT_PROMPT_TEMPLATE = (
     "            'Archive a stale page'  → lifecycle_archive,  state_filter='stale'\n"
     "            'Restore an archived page' → lifecycle_restore, state_filter='archived'\n"
     "            'Archive the alan-turing page' → lifecycle_archive, slug='alan-turing'\n"
+    "  job_list      : status_filter (pending|running|completed|failed|dead|skipped or null) —\n"
+    "                  use for 'list jobs', 'show all jobs', 'show failed jobs', 'list pending jobs'.\n"
+    "                  Set status_filter when user names a specific job state; otherwise null.\n"
+    "  job_status    : job_id (string or null) — use for 'show job status', 'check job <id>',\n"
+    "                  'what is the status of my last job'. Resolve job_id from history when the user\n"
+    "                  says 'the last job', 'that job', or picks a number from a previous list.\n"
+    "                  Leave job_id null when no specific job is mentioned.\n"
     "  none          : (no params)\n\n"
     "Cron parsing: 'daily at 6am'='0 6 * * *', 'every Sunday at 7pm'='0 19 * * 0', "
     "'every weekday at 9am'='0 9 * * 1-5', 'every hour'='0 * * * *'\n\n"
@@ -255,6 +266,10 @@ class ActionAgent:
             return await self._do_schedule_history()
         if action in ("lifecycle_activate", "lifecycle_archive", "lifecycle_restore"):
             return await self._do_lifecycle(action, params)
+        if action == "job_list":
+            return await self._do_job_list(params)
+        if action == "job_status":
+            return await self._do_job_status(params)
         return ActionResult(action_type=action, success=False,
                             message=f"Unknown action type: `{action}`")
 
@@ -567,6 +582,90 @@ class ActionAgent:
                 f"Page **`{slug}`** transitioned from **{from_state}** → **{to_state}**.\n\n"
                 f"Reason: {reason}"
             ),
+        )
+
+    # ── job helpers ───────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _fmt_job_ts(ts: str | None) -> str:
+        from datetime import datetime, timezone
+        if not ts:
+            return "—"
+        try:
+            dt = datetime.fromisoformat(ts).replace(tzinfo=timezone.utc)
+            return dt.astimezone().strftime("%Y-%m-%d %H:%M")
+        except ValueError:
+            return ts
+
+    async def _fetch_jobs(self):
+        return await self._orch.queue.list_jobs()
+
+    async def _do_job_list(self, params: dict | None = None) -> ActionResult:
+        status_filter = ((params or {}).get("status_filter") or "").strip() or None
+        jobs = await self._orch.queue.list_jobs(
+            status=status_filter,  # type: ignore[arg-type]
+        )
+        label = f"{status_filter} " if status_filter else ""
+        if not jobs:
+            return ActionResult(action_type="job_list", success=True,
+                                message=f"No {label}jobs found.")
+        lines = ["| ID | Operation | Status | Started |", "|---|---|---|---|"]
+        for j in jobs:
+            lines.append(
+                f"| `{j.id}` | {j.operation} | {j.status} | {self._fmt_job_ts(str(j.created_at))} |"
+            )
+        return ActionResult(action_type="job_list", success=True,
+                            message="\n".join(lines))
+
+    async def _do_job_status(self, params: dict) -> ActionResult:
+        job_id = (params.get("job_id") or "").strip()
+        jobs = await self._fetch_jobs()
+        if not jobs:
+            return ActionResult(action_type="job_status", success=True,
+                                message="No jobs found.")
+
+        if job_id:
+            job = next((j for j in jobs if j.id == job_id), None)
+            if not job:
+                return ActionResult(action_type="job_status", success=False,
+                                    message=f"Job `{job_id}` not found.")
+            lines = [
+                f"**Job `{job.id}`**\n",
+                f"- **Operation:** {job.operation}",
+                f"- **Status:** {job.status}",
+                f"- **Started:** {self._fmt_job_ts(str(job.created_at))}",
+            ]
+            if job.error:
+                lines.append(f"- **Error:** {job.error}")
+            result = job.result or {}
+            if result.get("pages_created"):
+                lines.append(f"- **Pages created:** {', '.join(f'`{p}`' for p in result['pages_created'])}")
+            if result.get("pages_updated"):
+                lines.append(f"- **Pages updated:** {', '.join(f'`{p}`' for p in result['pages_updated'])}")
+            if result.get("pages_flagged"):
+                lines.append(f"- **Pages flagged:** {', '.join(f'`{p}`' for p in result['pages_flagged'])}")
+            if result.get("tokens_used"):
+                lines.append(f"- **Tokens used:** {result['tokens_used']}")
+            return ActionResult(action_type="job_status", success=True,
+                                message="\n".join(lines))
+
+        # No job_id — show table and ask which one
+        table_lines = ["| ID | Operation | Status | Started |", "|---|---|---|---|"]
+        candidates: list[str] = []
+        for j in jobs:
+            table_lines.append(
+                f"| `{j.id}` | {j.operation} | {j.status} | {self._fmt_job_ts(str(j.created_at))} |"
+            )
+            candidates.append(j.id)
+        prompt = "Which job would you like to see the status for?"
+        message = "\n".join(table_lines) + f"\n\n{prompt}"
+        return ActionResult(
+            action_type="job_status",
+            success=False,
+            needs_clarification=True,
+            clarify_prompt=prompt,
+            clarify_candidates=candidates[:_MAX_CLARIFY_CANDIDATES],
+            message=message,
         )
 
 

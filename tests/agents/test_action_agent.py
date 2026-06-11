@@ -18,6 +18,8 @@ def _make_agent(tmp_path, extraction_json: str, provider=None):
     orch.ingest = AsyncMock(return_value="job-ingest-001")
     orch._queue = MagicMock()
     orch._queue.enqueue = AsyncMock(return_value="job-scaffold-001")
+    orch.queue = MagicMock()
+    orch.queue.list_jobs = AsyncMock(return_value=[])
     orch._store = MagicMock()
     orch._bump_epoch = MagicMock()
     return ActionAgent(provider=provider, orchestrator=orch, wiki_root=tmp_path), provider
@@ -335,6 +337,96 @@ def test_detect_fix_contradictions(tmp_path):
 def test_detect_clear_contradictions(tmp_path):
     agent, _ = _make_agent(tmp_path, "{}")
     assert agent.detect("clear contradictions") is True
+
+def test_detect_show_job_status(tmp_path):
+    agent, _ = _make_agent(tmp_path, "{}")
+    assert agent.detect("show me job status") is True
+
+def test_detect_job_list(tmp_path):
+    agent, _ = _make_agent(tmp_path, "{}")
+    assert agent.detect("list jobs") is True
+
+def test_detect_check_job(tmp_path):
+    agent, _ = _make_agent(tmp_path, "{}")
+    assert agent.detect("check job abc123") is True
+
+def test_detect_job_progress(tmp_path):
+    agent, _ = _make_agent(tmp_path, "{}")
+    assert agent.detect("what is the status of my job") is True
+
+
+# ── job_list / job_status ─────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_job_list_empty(tmp_path):
+    agent, _ = _make_agent(tmp_path, '{"action": "job_list", "params": {}}')
+    agent._orch.queue.list_jobs = AsyncMock(return_value=[])
+    result = await agent.run("list jobs")
+    assert result is not None
+    assert result.success is True
+    assert "No jobs" in result.message
+
+@pytest.mark.asyncio
+async def test_job_list_with_jobs(tmp_path):
+    job = MagicMock()
+    job.id = "abc-123"
+    job.operation = "lint"
+    job.status = "completed"
+    job.created_at = "2026-06-11 16:36:00"
+    agent, _ = _make_agent(tmp_path, '{"action": "job_list", "params": {}}')
+    agent._orch.queue.list_jobs = AsyncMock(return_value=[job])
+    result = await agent.run("list jobs")
+    assert result is not None
+    assert result.success is True
+    assert "abc-123" in result.message
+    assert "lint" in result.message
+
+@pytest.mark.asyncio
+async def test_job_status_with_id(tmp_path):
+    job = MagicMock()
+    job.id = "abc-123"
+    job.operation = "ingest"
+    job.status = "completed"
+    job.created_at = "2026-06-11 16:36:00"
+    job.error = None
+    job.result = {"pages_created": ["grace-hopper"], "tokens_used": 500}
+    agent, _ = _make_agent(tmp_path, '{"action": "job_status", "params": {"job_id": "abc-123"}}')
+    agent._orch.queue.list_jobs = AsyncMock(return_value=[job])
+    result = await agent.run("check job abc-123")
+    assert result is not None
+    assert result.success is True
+    assert "abc-123" in result.message
+    assert "grace-hopper" in result.message
+    assert result.needs_clarification is False
+
+@pytest.mark.asyncio
+async def test_job_status_no_id_triggers_clarify(tmp_path):
+    job = MagicMock()
+    job.id = "abc-123"
+    job.operation = "lint"
+    job.status = "running"
+    job.created_at = "2026-06-11 16:36:00"
+    agent, _ = _make_agent(tmp_path, '{"action": "job_status", "params": {"job_id": null}}')
+    agent._orch.queue.list_jobs = AsyncMock(return_value=[job])
+    result = await agent.run("show me job status")
+    assert result is not None
+    assert result.needs_clarification is True
+    assert "abc-123" in result.clarify_candidates
+    assert "Which job" in result.clarify_prompt
+
+@pytest.mark.asyncio
+async def test_job_status_not_found(tmp_path):
+    job = MagicMock()
+    job.id = "abc-123"
+    job.operation = "lint"
+    job.status = "completed"
+    job.created_at = "2026-06-11 16:36:00"
+    agent, _ = _make_agent(tmp_path, '{"action": "job_status", "params": {"job_id": "bad-id"}}')
+    agent._orch.queue.list_jobs = AsyncMock(return_value=[job])
+    result = await agent.run("check job bad-id")
+    assert result is not None
+    assert result.success is False
+    assert "not found" in result.message.lower()
 
 
 # ── schedule_add lint normalisation ──────────────────────────────────────────
