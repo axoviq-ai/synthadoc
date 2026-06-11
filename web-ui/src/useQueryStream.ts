@@ -29,6 +29,18 @@ export function useQueryStream(
     // RAF handle and accumulated text ref — kept outside send() so they survive re-renders
     const rafRef = useRef<number | null>(null);
     const partialRef = useRef("");
+    // Always-current ref for onComplete so the effect below never has a stale closure
+    const onCompleteRef = useRef(onComplete);
+    onCompleteRef.current = onComplete;
+    // Safety net: fire onComplete whenever streaming transitions true→false,
+    // in case the onDone path misses it (e.g. stale useCallback closure).
+    const prevStreamingRef = useRef(false);
+    useEffect(() => {
+        if (prevStreamingRef.current && !streaming) {
+            onCompleteRef.current?.();
+        }
+        prevStreamingRef.current = streaming;
+    }, [streaming]);
 
     // Cancel any in-flight stream and pending RAF flush on unmount
     useEffect(() => {
