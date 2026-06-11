@@ -2022,7 +2022,7 @@ Switch by editing `<wiki-root>/.synthadoc/config.toml` and restarting the server
 | `minimax`     | `MINIMAX_API_KEY`   | No — cheapest paid text rates                    | No              |
 | `anthropic`   | `ANTHROPIC_API_KEY` | No — highest quality, pay-per-token              | Yes             |
 | `openai`      | `OPENAI_API_KEY`    | No — pay-per-token                               | Yes             |
-| `qwen`        | `QWEN_API_KEY` (optional) | No key → local Ollama (**GPU required**); key → DashScope (paid) | Model-dependent |
+| `qwen`        | `QWEN_API_KEY`      | Yes — 1M free tokens (90-day trial), then paid   | Model-dependent |
 | `claude-code` | _(none)_            | Yes — uses your Claude Code subscription, no key | Yes             |
 | `opencode`    | _(none)_            | Yes — uses your Opencode subscription, no key    | No              |
 
@@ -2054,10 +2054,6 @@ default = { provider = "minimax", model = "MiniMax-M2.5" }
 # Qwen via DashScope cloud API (set QWEN_API_KEY — get at https://bailian.console.aliyun.com/)
 [agents]
 default = { provider = "qwen", model = "qwen-plus" }
-
-# Qwen via local Ollama (no API key — requires Ollama running with a Qwen model; GPU required)
-[agents]
-default = { provider = "qwen", model = "qwen3.5" }
 ```
 
 Restart `synthadoc serve`. The startup banner confirms `LLM: <provider>/<model>`.
@@ -2068,8 +2064,8 @@ Restart `synthadoc serve`. The startup banner confirms `LLM: <provider>/<model>`
 > - **Groq** free tier: 100K tokens/day — adequate for short demo sessions; heavy web search ingest can exhaust it.
 > - **MiniMax:** no free tier, but M2.5 input is ~$0.15/M tokens — roughly half the cost of Gemini 2.5 Flash. M2.5 and M2.7 are natively multimodal (text + image). MiniMax M3 supports a `thinking` field: set `thinking = "disabled"` for faster, cheaper responses; omit it to use the model default.
 > - **Thinking field (MiniMax M3, Qwen DashScope):** Add `thinking = "disabled"` to your `agents.default` line to suppress chain-of-thought reasoning. Useful when you want lower latency and cost and don't need the model to reason step-by-step. Example: `default = { provider = "minimax", model = "MiniMax-M3", thinking = "disabled" }`
-> - **Ollama / local Qwen — GPU required:** Local Ollama models (both `provider = "ollama"` and `provider = "qwen"` without an API key) require a CUDA or Metal GPU to be practically usable. On CPU-only machines, processing an 8 K-token context takes 5–10 minutes before the first token is generated — well beyond any reasonable timeout. If you do not have a GPU, use a cloud provider instead (Gemini 2.5 Flash Lite is free). Install Ollama from [ollama.com](https://ollama.com); no API key needed.
-> - **Qwen cloud (DashScope):** Set `QWEN_API_KEY` (get one at [bailian.console.aliyun.com](https://bailian.console.aliyun.com/)) and use `model = "qwen-plus"` or `"qwen-max"`. Synthadoc automatically routes to DashScope when the key is present, or falls back to local Ollama (GPU required, see above) when it is absent. DashScope supports a `thinking` field: set `thinking = "disabled"` for faster responses.
+> - **Ollama — GPU required:** Local Ollama models require a CUDA or Metal GPU to be practically usable. On CPU-only machines, processing an 8 K-token context takes 5–10 minutes before the first token is generated — well beyond any reasonable timeout. If you do not have a GPU, use a cloud provider instead (Gemini 2.5 Flash Lite is free). Install Ollama from [ollama.com](https://ollama.com); no API key needed.
+> - **Qwen cloud (DashScope):** New accounts get **1 million free tokens** (valid 90 days after activating Model Studio). Set `QWEN_API_KEY` (get one at [bailian.console.aliyun.com](https://bailian.console.aliyun.com/)) and use `model = "qwen-plus"` or `"qwen-max"`. DashScope supports a `thinking` field: set `thinking = "disabled"` for faster responses.
 
 ---
 

@@ -1027,7 +1027,7 @@ Required environment variables per provider:
 | `groq` | `GROQ_API_KEY` | **Yes** — generous free tier on Llama/Mixtral models | No |
 | `minimax` | `MINIMAX_API_KEY` | No (pay-per-token) | Yes (M2.5 / M2.7 natively multimodal) |
 | `deepseek` | `DEEPSEEK_API_KEY` | No (pay-per-token, very cheap) | No (text-only) |
-| `qwen` | `QWEN_API_KEY` (optional) | No key → local Ollama (**GPU required** — CPU too slow); key → DashScope (paid) | Model-dependent |
+| `qwen` | `QWEN_API_KEY` | Yes — 1M free tokens (90-day trial), then paid DashScope | Model-dependent |
 | `ollama` | _(none)_ | **Yes** — fully local; **GPU required** — CPU-only inference is too slow for interactive use | Model-dependent |
 
 ### Coding tool CLI providers — no API key needed
@@ -2396,7 +2396,7 @@ Opens the default browser to `http://localhost:{port}/app`. The server must alre
 - **Folder-based skill system** — each skill is a self-contained folder with a `SKILL.md` manifest; intent-based dispatch alongside extension matching; drop a folder in `skills/` to add a new format without touching core code
 - **2 access surfaces** — CLI (thin HTTP client), HTTP REST API
 - **Obsidian plugin** — ingest (file picker, URL, all sources, web search), query modal, lint report, jobs list — all from the command palette; ribbon shows engine health + page count
-- **8 LLM providers** — Anthropic, OpenAI, Gemini (free tier), Groq (free tier), MiniMax (paid, multimodal), DeepSeek (paid, very cheap text-only), Qwen (local via Ollama or paid DashScope), Ollama (local); switch with one config line
+- **8 LLM providers** — Anthropic, OpenAI, Gemini (free tier), Groq (free tier), MiniMax (paid, multimodal), DeepSeek (paid, very cheap text-only), Qwen (paid DashScope cloud), Ollama (local); switch with one config line
 - **Two-step ingest** — `_analyse()` caches entity extraction + summary; decision prompt uses summary instead of full text; reduces cost on large documents
 - **purpose.md scope filtering** — define what belongs in your wiki; the LLM skips out-of-scope sources cleanly
 - **overview.md auto-summary** — 2-paragraph wiki overview regenerated automatically after every ingest

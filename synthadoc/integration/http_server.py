@@ -45,6 +45,26 @@ def _install_win32_conn_reset_filter() -> None:
     loop.set_exception_handler(_handler)
 
 
+def _install_shutdown_noise_filter() -> None:
+    """Suppress CancelledError/KeyboardInterrupt tracebacks from uvicorn.error on Ctrl+C.
+
+    On Python 3.14, uvicorn's signal re-raise interacts with Starlette's lifespan
+    receive queue in a way that produces a CancelledError traceback logged at ERROR
+    level — even though the server shut down cleanly.  The filter drops only these
+    expected shutdown exceptions so the console stays quiet on normal Ctrl+C.
+    """
+    class _Filter(logging.Filter):
+        _shutdown_types = (asyncio.CancelledError, KeyboardInterrupt)
+
+        def filter(self, record: logging.LogRecord) -> bool:
+            if record.exc_info and record.exc_info[0] is not None:
+                if issubclass(record.exc_info[0], self._shutdown_types):
+                    return False
+            return True
+
+    logging.getLogger("uvicorn.error").addFilter(_Filter())
+
+
 def _classify_llm_error(exc: Exception) -> "HTTPException | None":
     """Return a meaningful HTTPException for known LLM API error codes, or None."""
     from synthadoc.errors import DailyQuotaExhaustedException, CodingToolQuotaExhaustedException
@@ -311,6 +331,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
     async def lifespan(app: FastAPI):
         if sys.platform == "win32":
             _install_win32_conn_reset_filter()
+        _install_shutdown_noise_filter()
         orch = Orchestrator(wiki_root=wiki_root, config=cfg)
         await orch.init()
         app.state.orch = orch
@@ -325,16 +346,17 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             run_scheduler_loop(wiki_root.name, wiki_root, audit_db)
         )
 
-        yield
-
-        worker.cancel()
-        scheduler.cancel()
-        for task in (worker, scheduler):
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-        await orch.close()
+        try:
+            yield
+        finally:
+            worker.cancel()
+            scheduler.cancel()
+            for task in (worker, scheduler):
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+            await orch.close()
 
     app = FastAPI(title="synthadoc", version=synthadoc.__version__, lifespan=lifespan)
     app.add_middleware(ContentSizeLimitMiddleware, max_bytes=max_body_bytes)

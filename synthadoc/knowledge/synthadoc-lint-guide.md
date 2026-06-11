@@ -1,6 +1,6 @@
 ---
 title: Synthadoc Lint Guide
-keywords: [lint, check, validate, quality, warning, contradiction, orphan, dangling, link, citation, adversarial, review, stale, lifecycle, url, broken]
+keywords: [lint, contradiction, orphan, dangling, citation, adversarial, stale, lifecycle, url]
 ---
 
 # Synthadoc Lint Guide

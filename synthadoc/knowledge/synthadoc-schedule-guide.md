@@ -1,6 +1,6 @@
 ---
 title: Synthadoc Schedule Guide
-keywords: [schedule, scheduled, recurring, cron, scheduler, remove, delete, unschedule, add, list, automate, job, task, weekly, daily, nightly, schedule history, job history]
+keywords: [schedule, scheduled, recurring, cron, scheduler, unschedule, automate, nightly, schedule history]
 ---
 
 # Synthadoc Schedule Guide

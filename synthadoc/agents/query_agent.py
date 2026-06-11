@@ -636,7 +636,7 @@ class QueryAgent:
         return QueryResult(
             question=question,
             answer=answer_text,
-            citations=citations,
+            citations=[] if _gap else citations,
             tokens_used=resp2.total_tokens,
             input_tokens=resp2.input_tokens,
             output_tokens=resp2.output_tokens,
@@ -666,11 +666,21 @@ class QueryAgent:
             or '가' <= c <= '힯'
             for c in question
         )
-        _key_terms = set() if _contains_cjk else {
-            w.lower().rstrip("s'?!.,").replace("-", " ")
-            for w in question.split()
-            if len(w) >= 4 and w.lower().rstrip("s'?!.,").replace("-", " ") not in _STOPWORDS
-        }
+        _key_terms: set[str] = set()
+        # All-uppercase terms with bare length 2-5 (USB, TCP, AI, ENIAC…).
+        # Tracked separately so signal 6 can fire when a specific acronym or
+        # proper-name abbreviation is completely absent from all retrieved pages
+        # even when general topic terms are well covered.
+        _acronym_key_terms: set[str] = set()
+        if not _contains_cjk:
+            for _w in question.split():
+                _bare = _w.lower().rstrip("s'?!.,").replace("-", " ")
+                if ((len(_w) >= 4 or (len(_w) >= 2 and _w.upper() == _w))
+                        and _bare not in _STOPWORDS):
+                    _key_terms.add(_bare)
+                    _stripped = _w.rstrip("s'?!.,")
+                    if _stripped and _stripped.upper() == _stripped and 2 <= len(_bare) <= 5:
+                        _acronym_key_terms.add(_bare)
 
         if _key_terms and candidates:
             _term_doc_freq = {
@@ -732,6 +742,16 @@ class QueryAgent:
                     for t in _term_qualifying_pages
                 )
             )
+            # Signal 6: a specific acronym or proper-name abbreviation typed
+            # ALL-CAPS in the query (USB, TCP, ENIAC, AI…) has zero occurrences
+            # across all retrieved pages — the wiki simply does not cover this
+            # entity regardless of how well the general topic is represented.
+            _acronym_absent = bool(_acronym_key_terms) and any(
+                _term_doc_freq.get(t, 0) == 0
+                for t in _acronym_key_terms
+            )
+        else:
+            _acronym_absent = False
 
         gap = self._gap_score_threshold > 0 and (
             len(candidates) < 3
@@ -739,6 +759,7 @@ class QueryAgent:
             or _pages_with_overlap < 2
             or _any_term_missing
             or _defining_term_absent
+            or _acronym_absent
         )
         logger.info(
             "query retrieval — pages=%d, max_score=%.2f, "
@@ -879,7 +900,7 @@ class QueryAgent:
             yield {"event": "token", "data": {"text": fallback}}
             full_answer = fallback
 
-        yield {"event": "citations", "data": {"citations": citations}}
+        yield {"event": "citations", "data": {"citations": [] if _gap else citations}}
 
         if _gap:
             try:

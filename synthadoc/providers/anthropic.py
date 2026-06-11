@@ -2,10 +2,19 @@
 # Copyright (C) 2026 Paul Chen / axoviq.com
 from __future__ import annotations
 import asyncio
+import re
 from typing import AsyncGenerator, Optional
 import anthropic as anthropic_lib
 from synthadoc.config import AgentConfig
 from synthadoc.providers.base import CompletionResponse, LLMProvider, Message
+
+# Claude 4.x models (claude-opus-4-8, claude-sonnet-4-6, claude-haiku-4-5, …) deprecated
+# the temperature parameter; earlier models still accept it.
+_CLAUDE4_RE = re.compile(r"^claude-(?:opus|sonnet|haiku)-4-")
+
+
+def _supports_temperature(model: str) -> bool:
+    return not bool(_CLAUDE4_RE.match(model))
 
 # RateLimitError (429) is not retried — quota exhaustion needs a provider switch or wait.
 # InternalServerError covers transient 500/529 overload; retry with backoff.
@@ -24,9 +33,10 @@ class AnthropicProvider(LLMProvider):
         kwargs: dict = {
             "model": self._config.model,
             "max_tokens": max_tokens,
-            "temperature": temperature,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
         }
+        if _supports_temperature(self._config.model):
+            kwargs["temperature"] = temperature
         if system:
             kwargs["system"] = system
         last_exc: Exception | None = None
@@ -56,9 +66,10 @@ class AnthropicProvider(LLMProvider):
         kwargs: dict = {
             "model": self._config.model,
             "max_tokens": max_tokens,
-            "temperature": temperature,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
         }
+        if _supports_temperature(self._config.model):
+            kwargs["temperature"] = temperature
         if system:
             kwargs["system"] = system
         async with self._client.messages.stream(**kwargs) as stream:

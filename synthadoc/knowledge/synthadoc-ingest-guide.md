@@ -1,6 +1,6 @@
 ---
 title: Synthadoc Ingest Guide
-keywords: [ingest, source, import, file, format, type, pdf, docx, pptx, xlsx, csv, markdown, txt, url, youtube, web, search, batch, bulk, force, re-ingest, reingest, reprocess, schedule, manifest, rescan, image, png, jpg]
+keywords: [ingest, import, pdf, docx, pptx, xlsx, csv, markdown, txt, url, youtube, re-ingest, reingest, reprocess, manifest, rescan, png, jpg]
 ---
 
 # Synthadoc Ingest Guide
