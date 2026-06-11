@@ -1226,7 +1226,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         @app.get("/app/")
         @app.get("/app/{path:path}")
         async def spa(path: str = ""):
-            return FileResponse(str(_web_dist / "index.html"))
+            return FileResponse(
+                str(_web_dist / "index.html"),
+                headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+            )
     else:
         @app.get("/app")
         @app.get("/app/{path:path}")
