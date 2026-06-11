@@ -76,8 +76,12 @@ def make_provider(agent_name: str, config: Config) -> LLMProvider:
         )
         return OpenAIProvider(api_key=key, config=cfg_with_url, timeout=timeout)
     if name == "qwen":
+        import re as _re
+        # DashScope model names: qwen-plus, qwen-max, qwen-turbo, qwq-32b …
+        # Ollama model names:    qwen3.5, qwen3:8b, qwen2.5:72b …
+        _is_dashscope = bool(_re.match(r'^(qwen|qwq)-[a-z]', agent_cfg.model or ""))
         key = os.environ.get("QWEN_API_KEY", "").strip()
-        if key:
+        if _is_dashscope and key:
             from synthadoc.providers.openai import OpenAIProvider
             cfg_with_url = AgentConfig(
                 provider="qwen", model=agent_cfg.model,
@@ -85,6 +89,13 @@ def make_provider(agent_name: str, config: Config) -> LLMProvider:
                 thinking=agent_cfg.thinking,
             )
             return OpenAIProvider(api_key=key, config=cfg_with_url, timeout=timeout)
+        elif _is_dashscope and not key:
+            E.cli_error(
+                E.CFG_MISSING_API_KEY,
+                "QWEN_API_KEY is not set. synthadoc uses Qwen (DashScope) as its LLM provider.",
+                "Set the env var: export QWEN_API_KEY=your_key  "
+                "(get one at https://bailian.console.aliyun.com/)",
+            )
         else:
             from synthadoc.providers.ollama import OllamaProvider
             return OllamaProvider(config=agent_cfg, timeout=timeout)
