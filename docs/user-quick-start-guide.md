@@ -1762,22 +1762,28 @@ Each question in a session builds on the previous ones. The server stores your c
 
 #### Single-turn queries to try first
 
-These work well as standalone queries with the history-of-computing demo wiki:
+Type any of these into the chat box and press **Enter**. They work well as standalone questions with the history-of-computing demo wiki:
 
-```bash
-# Factual retrieval
-synthadoc query "Who is Alan Turing and what was his most significant contribution?"
-synthadoc query "What is Moore's Law and has it held up over time?"
-synthadoc query "What was ENIAC and why was it significant?"
-
-# Multi-source reasoning
-synthadoc query "What are the differences between von Neumann and Harvard architectures?"
-synthadoc query "How did the transition from vacuum tubes to transistors change computing?"
-
-# Gap detection — should surface suggested_searches if the wiki doesn't have it yet
-synthadoc query "What is the history of quantum computing milestones?"
-synthadoc query "Who invented the USB standard?"
+**Factual retrieval:**
 ```
+Who is Alan Turing and what was his most significant contribution?
+What is Moore's Law and has it held up over time?
+What was ENIAC and why was it significant?
+```
+
+**Multi-source reasoning:**
+```
+What are the differences between von Neumann and Harvard architectures?
+How did the transition from vacuum tubes to transistors change computing?
+```
+
+**Gap detection** — these topics are not in the demo wiki yet; expect a knowledge gap callout with suggested ingest commands:
+```
+What is the history of quantum computing milestones?
+Who invented the USB standard?
+```
+
+> **CLI equivalent:** All of the above can also be run from the terminal with `synthadoc query "<question>"` if you prefer the command line. The web UI and CLI share the same query pipeline and cache.
 
 #### Multi-turn sequences (web UI or CLI)
 
