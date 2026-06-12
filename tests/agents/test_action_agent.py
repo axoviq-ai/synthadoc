@@ -475,6 +475,127 @@ async def test_job_status_not_found(tmp_path):
     assert result.success is False
     assert "not found" in result.message.lower()
 
+@pytest.mark.asyncio
+async def test_job_status_no_jobs_at_all(tmp_path):
+    agent, _ = _make_agent(tmp_path, '{"action": "job_status", "params": {"job_id": null}}')
+    agent._orch.queue.list_jobs = AsyncMock(return_value=[])
+    result = await agent.run("show me job status")
+    assert result is not None
+    assert result.success is True
+    assert "No jobs" in result.message
+
+@pytest.mark.asyncio
+async def test_job_status_with_error_and_flagged(tmp_path):
+    job = MagicMock()
+    job.id = "abc-123"
+    job.operation = "ingest"
+    job.status = "failed"
+    job.created_at = "2026-06-11 16:36:00"
+    job.error = "domain blocked"
+    job.result = {"pages_flagged": ["bad-page"], "pages_updated": ["ok-page"], "tokens_used": 100}
+    agent, _ = _make_agent(tmp_path, '{"action": "job_status", "params": {"job_id": "abc-123"}}')
+    agent._orch.queue.list_jobs = AsyncMock(return_value=[job])
+    result = await agent.run("check job abc-123")
+    assert result is not None
+    assert result.success is True
+    assert "domain blocked" in result.message
+    assert "bad-page" in result.message
+    assert "ok-page" in result.message
+    assert "100" in result.message
+
+@pytest.mark.asyncio
+async def test_job_list_with_errors_shows_error_column(tmp_path):
+    job = MagicMock()
+    job.id = "abc-123"
+    job.operation = "ingest"
+    job.status = "failed"
+    job.created_at = "2026-06-11 16:36:00"
+    job.error = "network timeout"
+    agent, _ = _make_agent(tmp_path, '{"action": "job_list", "params": {}}')
+    agent._orch.queue.list_jobs = AsyncMock(return_value=[job])
+    result = await agent.run("list jobs")
+    assert result is not None
+    assert "Error" in result.message
+    assert "network timeout" in result.message
+
+@pytest.mark.asyncio
+async def test_job_list_string_status_filter_coerced(tmp_path):
+    """A bare string status_filter (not a list) must be coerced to a list."""
+    job = MagicMock()
+    job.id = "abc-123"
+    job.operation = "lint"
+    job.status = "failed"
+    job.created_at = "2026-06-11 16:36:00"
+    job.error = None
+    agent, _ = _make_agent(tmp_path, '{"action": "job_list", "params": {"status_filter": "failed"}}')
+    agent._orch.queue.list_jobs = AsyncMock(return_value=[job])
+    result = await agent.run("show failed jobs")
+    assert result is not None
+    assert result.success is True
+    assert "abc-123" in result.message
+
+def test_fmt_job_ts_none():
+    from synthadoc.agents.action_agent import ActionAgent
+    assert ActionAgent._fmt_job_ts(None) == "—"
+
+def test_fmt_job_ts_invalid():
+    from synthadoc.agents.action_agent import ActionAgent
+    assert ActionAgent._fmt_job_ts("not-a-date") == "not-a-date"
+
+@pytest.mark.asyncio
+async def test_extract_strips_markdown_fences(tmp_path):
+    """_extract() must handle LLM responses wrapped in ```json fences."""
+    fenced = '```json\n{"action": "lint", "params": {"scope": "all", "auto_resolve": false}}\n```'
+    agent, _ = _make_agent(tmp_path, fenced)
+    result = await agent.run("run lint")
+    assert result is not None
+    assert result.action_type == "lint"
+
+@pytest.mark.asyncio
+async def test_extract_returns_none_on_bad_json(tmp_path):
+    """_extract() must return None when the LLM response is unparseable."""
+    agent, _ = _make_agent(tmp_path, "sorry I cannot help")
+    result = await agent.run("run lint")
+    assert result is None
+
+@pytest.mark.asyncio
+async def test_dispatch_exception_returns_failure_result(tmp_path):
+    """A hard exception inside dispatch must return a failure ActionResult, not raise."""
+    agent, _ = _make_agent(tmp_path, '{"action": "lint", "params": {}}')
+    agent._orch.lint = AsyncMock(side_effect=RuntimeError("db locked"))
+    result = await agent.run("run lint")
+    assert result is not None
+    assert result.success is False
+    assert "db locked" in result.message
+
+def test_detect_clarify_lookback_exhausted_without_match(tmp_path):
+    """When lookback is exhausted without finding a clarify prefix, detect returns False."""
+    from synthadoc.agents.action_agent import CLARIFY_STORE_PREFIX
+    agent, _ = _make_agent(tmp_path, "{}")
+    agent._orch._cfg.chat.clarify_lookback = 2
+    history = [
+        {"role": "user",      "content": "who is Turing?"},
+        {"role": "assistant", "content": "Alan Turing was a mathematician."},
+        {"role": "user",      "content": "tell me more"},
+        {"role": "assistant", "content": "He invented the Turing machine."},
+        # clarify is further back than lookback=2
+        {"role": "user",      "content": "show me job status"},
+        {"role": "assistant", "content": CLARIFY_STORE_PREFIX + "Which job?"},
+    ]
+    # reverse: last 2 assistant msgs are "He invented..." and "Alan Turing..."  — no prefix
+    # but wait, the clarify IS the most recent assistant here; let me restructure
+    history2 = [
+        {"role": "user",      "content": "show me job status"},
+        {"role": "assistant", "content": CLARIFY_STORE_PREFIX + "Which job?"},
+        {"role": "user",      "content": "abc-123"},
+        {"role": "assistant", "content": "Job abc-123 is completed."},
+        {"role": "user",      "content": "tell me more about it"},
+        {"role": "assistant", "content": "It ingested 3 pages."},
+    ]
+    # lookback=2: checks last 2 assistant msgs ("It ingested 3 pages.", "Job abc-123 is completed.")
+    # neither has CLARIFY_STORE_PREFIX → False
+    assert agent.detect("random question", history=history2) is False
+
 
 # ── schedule_add lint normalisation ──────────────────────────────────────────
 
