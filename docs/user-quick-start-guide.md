@@ -266,7 +266,7 @@ query decomposed into 2 sub-question(s):
 Simple single-topic questions decompose to one sub-question and behave identically to
 a direct query — no extra LLM cost.
 
-> **Slow provider?** Reasoning models (e.g. MiniMax M2.x) can take longer to respond.
+> **Slow provider?** If you have enabled thinking mode on a reasoning model (e.g. MiniMax M3 or Qwen with `thinking = "enabled"`), responses can take longer.
 > If you see a timeout error, pass `--timeout 120`:
 >
 > ```bash
