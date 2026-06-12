@@ -570,6 +570,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
 
                         if evt["event"] == "clarify":
                             if session_id:
+                                from synthadoc.agents.action_agent import CLARIFY_STORE_PREFIX
                                 await orch._audit.append_message(session_id, "user", q)
                                 clarify_text = evt["data"].get("prompt", "")
                                 cands = evt["data"].get("candidates", [])
@@ -577,7 +578,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                                     clarify_text += "\n" + "\n".join(
                                         f"{i+1}. {c}" for i, c in enumerate(cands)
                                     )
-                                await orch._audit.append_message(session_id, "assistant", clarify_text)
+                                await orch._audit.append_message(
+                                    session_id, "assistant",
+                                    CLARIFY_STORE_PREFIX + clarify_text,
+                                )
                             yield f"event: clarify\ndata: {_json.dumps(evt['data'])}\n\n"
                             continue
                         elif evt["event"] == "token":

@@ -77,6 +77,16 @@ adversarial_max_per_page = 2
 [search]
 vector = false             # set to true to enable semantic re-ranking (downloads ~130 MB model once)
 vector_top_candidates = 20
+
+[chat]
+# Number of recent conversation turns kept in memory for multi-turn queries (0 = disabled).
+conversation_history_turns = 5
+# Days before inactive sessions are pruned from the audit log.
+session_retention_days = 30
+# How many assistant turns to scan back to find an open clarify context.
+# Increase if users pick chips from a long multi-step clarify list; lower to
+# avoid routing unrelated follow-ups through the action agent.
+# clarify_lookback = 5
 """
 
 _GITIGNORE = ".synthadoc/\n__pycache__/\n*.pyc\n.env\n"

@@ -44,7 +44,10 @@
       "Schedule a daily ingest at 6 AM",
       "Schedule scaffold every Sunday at 11 PM",
       "Schedule lint run every night at 9 PM",
-      "Rebuild the wiki scaffold"
+      "Rebuild the wiki scaffold",
+      "Show me job status",
+      "List all jobs",
+      "Show failed and skipped jobs"
     ]
   },
   "topic_patterns": [
@@ -126,6 +129,16 @@
         "What pages are orphan pages?",
         "Run the adversarial lint pass",
         "How do I review a flagged claim?"
+      ]
+    },
+    {
+      "keywords": ["job", "jobs", "ingest status", "lint status", "background", "running", "failed job", "pending job"],
+      "hints": [
+        "Show me job status",
+        "List all jobs",
+        "Show failed and skipped jobs",
+        "Show pending jobs",
+        "Check job status"
       ]
     },
     {

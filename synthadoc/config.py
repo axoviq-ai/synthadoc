@@ -158,6 +158,7 @@ class AuditConfig:
 class ChatConfig:
     conversation_history_turns: int = 5   # 0 = disabled
     session_retention_days: int = 30
+    clarify_lookback: int = 5  # assistant turns to scan back for an open clarify context
 
 
 # ---------------------------------------------------------------------------
@@ -392,6 +393,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
     chat = ChatConfig(
         conversation_history_turns=int(ch.get("conversation_history_turns", 5)),
         session_retention_days=int(ch.get("session_retention_days", 30)),
+        clarify_lookback=int(ch.get("clarify_lookback", 5)),
     )
 
     return Config(

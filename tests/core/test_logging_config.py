@@ -165,3 +165,25 @@ def test_suppress_shutdown_noise_passes_other_errors(tmp_path):
 
     assert len(sink.records) == 1, "OSError should not be filtered"
     _reset_root_logger()
+
+
+def test_suppress_shutdown_noise_passes_records_without_exc_info():
+    """Records with no exc_info attached are always passed through."""
+    from synthadoc.core.logging_config import _SuppressShutdownNoise
+    f = _SuppressShutdownNoise()
+    record = logging.LogRecord(
+        name="test", level=logging.ERROR, pathname="", lineno=0,
+        msg="plain message", args=(), exc_info=None,
+    )
+    assert f.filter(record) is True
+
+
+def test_suppress_shutdown_noise_passes_records_with_none_exc_type():
+    """Records where exc_info[0] is None (cleared traceback) are always passed."""
+    from synthadoc.core.logging_config import _SuppressShutdownNoise
+    f = _SuppressShutdownNoise()
+    record = logging.LogRecord(
+        name="test", level=logging.ERROR, pathname="", lineno=0,
+        msg="cleared", args=(), exc_info=(None, None, None),
+    )
+    assert f.filter(record) is True
