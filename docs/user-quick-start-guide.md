@@ -1937,7 +1937,7 @@ Use `--no-cache` when:
 - You are debugging a query or testing a new LLM provider
 - You suspect the cache entry is stale for any reason
 
-The `--no-cache` flag is available on `synthadoc query`. The web chat UI always uses the cache automatically; use `synthadoc cache clear` to force a full refresh for all subsequent queries.
+The `--no-cache` flag is available on `synthadoc query`. The web chat UI uses the cache by default — tick the **Bypass cache** checkbox at the bottom of the chat window to skip the cache for that request. To force a full refresh for all subsequent queries, use `synthadoc cache clear`.
 
 ### Cache management
 
