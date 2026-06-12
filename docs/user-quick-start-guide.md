@@ -1,6 +1,6 @@
 ﻿# Synthadoc User Quick-Start Guide
 
-**Version: v0.7.0 (Community Edition)**
+**Version: v0.8.0 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
@@ -168,7 +168,7 @@ The plugin files are already in place from Step 2. Obsidian just needs to activa
 
 1. **Settings → Community plugins** → find **Synthadoc** → toggle **on**
 2. Click the gear icon next to the Synthadoc entry
-3. Set **Server URL** to `http://127.0.0.1:7070`
+3. Confirm **Server URL** is `http://127.0.0.1:7070` (set automatically during plugin install — only change this if your server runs on a different port)
 4. Close settings
 
 The **Synthadoc ribbon icon** (book icon on the far-left sidebar) confirms the plugin is
@@ -266,7 +266,7 @@ query decomposed into 2 sub-question(s):
 Simple single-topic questions decompose to one sub-question and behave identically to
 a direct query — no extra LLM cost.
 
-> **Slow provider?** Reasoning models (e.g. MiniMax M2.x) can take longer to respond.
+> **Slow provider?** If you have enabled thinking mode on a reasoning model (e.g. MiniMax M3 with `thinking = "enabled"`), responses can take longer.
 > If you see a timeout error, pass `--timeout 120`:
 >
 > ```bash
@@ -983,8 +983,13 @@ synthadoc jobs list
 >   server retries automatically when the rate limit is hit (you will see
 >   `Rate limit (429) — waiting 60 s` in the server log — this is normal). Expect
 >   **3–8 minutes** for both searches to fully complete.
-> - **Paid tier (Gemini paid, MiniMax, Anthropic, OpenAI):** No rate-limit retries.
+> - **Paid tier or free-trial tier (Gemini paid, MiniMax, Anthropic, OpenAI, Qwen DashScope):** No rate-limit retries.
 >   Both searches typically finish in **under 2 minutes**.
+>
+> **Recommendation:** Web search ingest works best with a paid or free-trial provider.
+> Qwen DashScope offers **1 million free tokens** (90-day trial) with no rate-limit delays —
+> a good option if you want free-tier speed without the wait.
+> See [Appendix C — Switching LLM providers](#appendix-c--switching-llm-providers).
 
 Pages such as `dennis-ritchie`, `eniac-history`, and related topics will be created or
 enriched. The `wiki/overview.md` page is regenerated automatically after each batch
@@ -1739,7 +1744,7 @@ The UI detects the state of your wiki and your session history, then adapts:
 | **Health Check** | ≥5 pages, returning user, ≥1 stale page in the wiki | Lifecycle review — suggests running lint or inspecting stale pages |
 | **Power User** | ≥5 pages, returning user, no stale pages | Context-sensitive follow-ups based on your last answer |
 
-The mode badge appears in the top-right corner of the chat interface. It reflects the wiki's current state at the moment the session was created — the mode is determined when you open the browser tab, not updated mid-session. To see an updated mode after running lint and promoting pages, open a new browser tab.
+The mode badge appears above the title on the welcome screen. It reflects the wiki's current state at the moment the session was created — the mode is determined when you open the browser tab, not updated mid-session. To see an updated mode after running lint and promoting pages, open a new browser tab.
 
 ### Asking questions
 
@@ -1755,6 +1760,67 @@ Below each answer:
 
 Each question in a session builds on the previous ones. The server stores your conversation history and passes it to the query pipeline so follow-up questions like "What came before that?" resolve correctly against the previous answer. Follow-up questions are automatically rewritten into standalone form before retrieval — context-dependent phrases resolve against the right topic without you having to repeat it.
 
+#### Single-turn queries to try first
+
+Type any of these into the chat box and press **Enter**. They work well as standalone questions with the history-of-computing demo wiki:
+
+**Factual retrieval:**
+```
+Who is Alan Turing and what was his most significant contribution?
+What is Moore's Law and has it held up over time?
+What was ENIAC and why was it significant?
+```
+
+**Multi-source reasoning:**
+```
+What are the differences between von Neumann and Harvard architectures?
+How did the transition from vacuum tubes to transistors change computing?
+```
+
+**Gap detection** — these topics are not in the demo wiki yet; expect a knowledge gap callout with suggested ingest commands:
+```
+What is the history of quantum computing milestones?
+Who invented the USB standard?
+```
+
+> **CLI equivalent:** All of the above can also be run from the terminal with `synthadoc query "<question>"` if you prefer the command line. The web UI and CLI share the same query pipeline and cache.
+
+#### Multi-turn sequences (web UI or CLI)
+
+**Thread 1 — context carry-over with pronouns** (best stress test for conversation memory):
+
+```
+Turn 1:  "Who invented the transistor?"
+         → Names the inventors at Bell Labs
+
+Turn 2:  "Which company did they work for?"
+         ↑ "they" resolves to the transistor inventors from Turn 1
+
+Turn 3:  "What other inventions came out of that same lab?"
+         ↑ "that same lab" resolves to Bell Labs — correct without repeating it
+```
+
+**Thread 2 — deepening on a topic**:
+
+```
+Turn 1:  "What was the significance of the 1936 Turing machine paper?"
+         → Covers computability, halting problem, foundations of CS
+
+Turn 2:  "How did that influence the design of the first real computers?"
+         ↑ "that" resolves to the Turing machine concept
+
+Turn 3:  "Which of those early computers had the most commercial impact?"
+         ↑ "those early computers" carries over from Turn 2's answer
+```
+
+**Thread 3 — pivot mid-conversation**:
+
+```
+Turn 1:  "Tell me about Claude Shannon and information theory"
+Turn 2:  "How does that relate to data compression?"
+Turn 3:  "What about its connection to cryptography?"
+```
+
 **Try it now with the history-of-computing demo wiki:**
 
 ```
@@ -1763,6 +1829,31 @@ Assistant:  "...Turing's Bombe machine at Bletchley Park..."
 
 You:        "Who else worked with him there?"
             ↑ Resolves "him" → Alan Turing, "there" → Bletchley Park
+```
+
+#### Synthadoc operation multi-turn
+
+The web UI also supports multi-turn for Synthadoc operations — not just wiki content queries.
+
+**Job status drill-down:**
+
+```
+You:        "Show me job status"
+Assistant:  Shows a table of all jobs with status, operation, and timing.
+            Presents chip buttons for each Job ID.
+
+You click chip "353958ca"
+            → Full detail for that job: status, operation, started/finished, error (if any)
+
+You click chip "6b7d1fa7" (from the same chip list)
+            → Full detail for the second job — no re-query needed
+```
+
+**Multi-status job filter:**
+
+```
+You:        "Show me failed and skipped jobs"
+            → Filtered job table showing only those two statuses
 ```
 
 **Clarify prompts.** When you ask to perform an action but don't specify which page — for example, "Activate a draft page" — the assistant responds with a numbered list of candidate pages. Click a chip or type a page name to complete the action:
@@ -1792,15 +1883,29 @@ The left navigation bar shows your recent runs grouped by session. Synthadoc per
 - **Restoring a session** — click any session root or child turn to reload the full conversation history into the chat window. The context is fully restored so you can continue asking follow-up questions as if you never left.
 - **New Run** — click **+ New Run** at the top of the sidebar to start a fresh session with a new session ID.
 
+### Settings — query timeout
+
+The ⚙ gear icon in the bottom-left corner of the chat window opens a settings popover. Use it to set the **per-request query timeout** (10–600 seconds, default 60 s) without editing `config.toml`. The value is saved in your browser's `localStorage` and persists across page refreshes.
+
+Increase the timeout when using a reasoning model (e.g. MiniMax M3, Qwen with thinking enabled) that takes longer on large or complex questions. Lower it to fail fast if you suspect the server is hanging.
+
 ### Configure conversation history depth
 
-The number of prior turns included in each request is configurable via `config.toml`. The default (10 turns) covers most sessions:
+The number of prior turns included in each request is configurable via `config.toml`. The default (5 turns) covers most sessions:
 
 ```toml
 # <wiki-root>/.synthadoc/config.toml
-[query]
-conversation_history_turns = 10   # set to 0 to disable conversation memory
+[chat]
+conversation_history_turns = 5   # set to 0 to disable conversation memory
 ```
+
+**When the session exceeds the limit**, the oldest turns are automatically compressed into a single `[Session summary]` entry by the summarization component. The summary preserves the key facts and context from those turns so follow-up questions still resolve correctly — no history is simply discarded. You will see an inline notice in the chat the first time compression occurs:
+
+```
+ℹ Earlier conversation turns were summarised to fit the session window.
+```
+
+Increase `conversation_history_turns` if you want more raw turns retained before compression kicks in. Set it to `0` to disable conversation memory entirely (each question is treated independently).
 
 Each new browser tab starts a fresh session. History is not shared between tabs.
 
@@ -1832,7 +1937,7 @@ Use `--no-cache` when:
 - You are debugging a query or testing a new LLM provider
 - You suspect the cache entry is stale for any reason
 
-The `--no-cache` flag is available on `synthadoc query`. The web chat UI always uses the cache automatically; use `synthadoc cache clear` to force a full refresh for all subsequent queries.
+The `--no-cache` flag is available on `synthadoc query`. The web chat UI uses the cache by default — tick the **Bypass cache** checkbox at the bottom of the chat window to skip the cache for that request. To force a full refresh for all subsequent queries, use `synthadoc cache clear`.
 
 ### Cache management
 

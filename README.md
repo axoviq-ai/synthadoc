@@ -14,7 +14,7 @@
       '-+###############+-'
 
        S Y N T H A D O C
-    Community Edition  v0.7.0
+    Community Edition  v0.8.0
   ────────────────────────────────
   Domain-agnostic LLM wiki engine
 ```
@@ -27,9 +27,9 @@
 [![Hooks](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.hooks&label=Hook%20events&color=teal)](https://github.com/axoviq-ai/synthadoc/tree/main/hooks)
 [![CLI](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.cli_commands&label=CLI%20commands&color=darkblue)](https://github.com/axoviq-ai/synthadoc)
 [![Obsidian](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.obsidian_commands&label=Obsidian%20commands&color=blueviolet)](https://github.com/axoviq-ai/synthadoc/tree/main/obsidian-plugin)
-[![Version](https://img.shields.io/badge/Community%20Edition-v0.7.0-brightgreen.svg)](https://github.com/axoviq-ai/synthadoc)
+[![Version](https://img.shields.io/badge/Community%20Edition-v0.8.0-brightgreen.svg)](https://github.com/axoviq-ai/synthadoc)
 
-**Document version: v0.7.0**
+**Document version: v0.8.0**
 
 **Engineered for solo users and enterprises alike, providing a domain-specific knowledge base that scales seamlessly while maintaining accuracy through autonomous self-optimization.**
 
@@ -97,7 +97,7 @@ Most knowledge-management tools retrieve and summarize at query time. Synthadoc 
 | LLM wiki vs. RAG         | Pre-compiled structured knowledge beats query-time synthesis for contradiction detection, graph traversal, and offline access                                                                                           |
 | CLI / HTTP               | A unified interface via CLI and RESTful endpoints, the system streamlines full-spectrum integration: from data ingestion and querying to automated linting, security auditing, and job orchestration                    |
 | Local-first              | All data stays on your machine; localhost-only network binding; no cloud dependency except the LLM API itself                                                                                                           |
-| Provider choice          | LLM backends including free-tier Gemini and Groq, paid Anthropic/OpenAI/DeepSeek/MiniMax, local Ollama, and coding-tool CLI providers (Claude Code, Opencode) — no API key required if you already have a subscription |
+| Provider choice          | LLM backends including free-tier Gemini and Groq, paid Anthropic/OpenAI/DeepSeek/MiniMax/Qwen (DashScope), local Ollama and Qwen, and coding-tool CLI providers (Claude Code, Opencode) — no API key required if you already have a subscription |
 
 ---
 
@@ -316,24 +316,30 @@ Web search uses **Tavily** (`TAVILY_API_KEY`) — optional, only needed for
 export GEMINI_API_KEY=AIza…          # default — free tier, 1M tokens/day
 export GROQ_API_KEY=gsk_…            # alternative free tier — 100K tokens/day
 export ANTHROPIC_API_KEY=sk-ant-…    # paid — highest quality
+export OPENAI_API_KEY=sk-…           # paid
 export MINIMAX_API_KEY=…             # paid — text rates (image support)
 export DEEPSEEK_API_KEY=…            # paid — text rates (no image support)
+export QWEN_API_KEY=…                # DashScope cloud — 1M free tokens trial
 export TAVILY_API_KEY=tvly-…         # web search (optional)
 
 # Windows cmd — current session only
 set GEMINI_API_KEY=AIza…
 set GROQ_API_KEY=gsk_…
 set ANTHROPIC_API_KEY=sk-ant-…
+set OPENAI_API_KEY=sk-…
 set MINIMAX_API_KEY=…
 set DEEPSEEK_API_KEY=…
+set QWEN_API_KEY=…
 set TAVILY_API_KEY=tvly-…
 
 # Windows cmd — permanent (open a new cmd window after running)
 setx GEMINI_API_KEY AIza…
 setx GROQ_API_KEY gsk_…
 setx ANTHROPIC_API_KEY sk-ant-…
+setx OPENAI_API_KEY sk-…
 setx MINIMAX_API_KEY …
 setx DEEPSEEK_API_KEY sk-…
+setx QWEN_API_KEY …
 setx TAVILY_API_KEY tvly-…
 ```
 

@@ -1,6 +1,6 @@
 # Synthadoc — Design Document
 
-**Version:** 0.7.0  
+**Version:** 0.8.0  
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -645,8 +645,10 @@ Note: BM25 IDF requires a minimum of 3 documents in the corpus for non-zero scor
 | `GET` | `/lifecycle/status` _(v0.6.0)_ | — | `{draft: int, active: int, contradicted: int, stale: int, archived: int}` |
 | `GET` | `/lifecycle/events` _(v0.6.0)_ | `?slug=<slug>&to_state=<state>&limit=N&offset=N` | `{total: int, events: [LifecycleEvent]}` |
 | `POST` | `/lifecycle/transition` _(v0.6.0)_ | `{slug: str, to_state: str, reason?: str}` | `{slug, from_state, to_state, timestamp}` |
-| `GET` | `/query/stream` _(v0.7.0)_ | `?q=<question>&no_cache=<bool>` | SSE stream of `data: <token>\n\n` events, terminated by `data: [DONE]\n\n` |
+| `GET` | `/query/stream` _(v0.7.0)_ | `?q=<question>&no_cache=<bool>&timeout_seconds=N` _(timeout added v0.8.0)_ | SSE stream of `data: <token>\n\n` events, terminated by `data: [DONE]\n\n` |
 | `GET` | `/app` _(v0.7.0)_ | — | Serves the React SPA (web chat UI) |
+| `GET` | `/sessions` _(v0.8.0)_ | — | `[{session_id, first_q, last_active, turn_count, questions: [str]}]` |
+| `GET` | `/sessions/{session_id}/messages` _(v0.8.0)_ | — | `[{role, content, timestamp}]` |
 
 **`GET /jobs` query parameters:**
 
@@ -2498,8 +2500,11 @@ Opens the default browser to `http://localhost:{port}/app`. The server must alre
 - **Multi-turn conversation** — the web chat UI maintains conversation history across turns within a session. History is stored in `audit.db` per session and loaded server-side on each request (up to `conversation_history_turns` turns, default 10). Follow-up questions are rewritten into standalone form by a dedicated rewrite component before BM25 retrieval, so context-dependent phrases ("What came after that?") resolve correctly. When the session exceeds the turn limit, a summarization component compresses the oldest turns into a `[Session summary]` entry; a `notice` SSE event is emitted the first time compression occurs.
 - **Clarify event** — when an action-intent query is ambiguous (e.g. "activate a draft page" without specifying which page), the server emits a `clarify` SSE event with a disambiguation prompt and candidate page list instead of routing to the synthesis pipeline. The web UI renders candidates as numbered chip buttons; the user can tap a chip or type a page name to complete the action.
 - **Two new SSE events** — `clarify` (`{prompt, candidates, action}`) for action disambiguation; `notice` (`{text}`) for system messages such as history compression.
-- **Configuration** — `[query] conversation_history_turns = 10` controls how many prior turns are included in each request. Set to `0` to disable conversation history.
+- **Configuration** — `[chat] conversation_history_turns = 5` controls how many prior turns are included in each request. Set to `0` to disable conversation history. `clarify_lookback = 5` controls how many prior assistant turns to scan when detecting a clarify continuation (chip click after an ambiguous action query); configurable independently of `conversation_history_turns`.
 - **MiniMax M3 support** — `provider = "minimax"` with `model = "MiniMax-Text-01"` or `"MiniMax-M3"` (thinking mode configurable; off by default).
 - **Settings gear** — web UI chat window now has a ⚙ gear button that opens a popover to configure the per-request query timeout (10–600 s, default 60 s). Value persisted in `localStorage`.
 - **Query timeout** — `GET /query/stream` accepts `?timeout_seconds=N`; a `TimeoutError` emits an SSE `error` event to the browser.
 - **Session history sidebar** — the left navigation bar is now server-driven (`GET /sessions`) and shows sessions as a 2-level collapsible tree. Multi-turn sessions display a turn count badge and expand to show each follow-up question. Clicking any item restores the full conversation history via `GET /sessions/{id}/messages`. Two new API endpoints: `GET /sessions` and `GET /sessions/{session_id}/messages`.
+- **Job status and list actions** — the Action Agent now handles `job_status` and `job_list` intent queries. `job_status` with a job ID returns a detailed job card; without an ID it returns a table of all jobs and emits a `clarify` event so the user can pick one via chip. `job_list` accepts an optional multi-status filter (e.g. "show failed and skipped jobs") and includes an Error column when any listed job has a non-null error. Built-in `hints.json` extended with job-status and job-list hints for POWER_USER mode.
+- **Multi-chip clarify continuation** — clarify chip replies (bare UUIDs) are now reliably routed back to the Action Agent across multiple chip clicks. The server tags every clarify message with a `[clarify] ` prefix in the audit log; `detect()` scans back `clarify_lookback` assistant turns to find an open clarify context.
+- **Qwen provider routing** — `qwen-<letter>` model names (e.g. `qwen-plus`, `qwen-max`) route to DashScope cloud API regardless of other config; all other Qwen models (e.g. `qwen3:8b`, `qwen3.5`) route to local Ollama. This decouples cloud/local routing from `QWEN_API_KEY` presence.
