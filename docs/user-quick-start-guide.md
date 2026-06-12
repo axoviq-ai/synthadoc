@@ -1899,6 +1899,14 @@ The number of prior turns included in each request is configurable via `config.t
 conversation_history_turns = 5   # set to 0 to disable conversation memory
 ```
 
+**When the session exceeds the limit**, the oldest turns are automatically compressed into a single `[Session summary]` entry by the summarization component. The summary preserves the key facts and context from those turns so follow-up questions still resolve correctly — no history is simply discarded. You will see an inline notice in the chat the first time compression occurs:
+
+```
+ℹ Earlier conversation turns were summarised to fit the session window.
+```
+
+Increase `conversation_history_turns` if you want more raw turns retained before compression kicks in. Set it to `0` to disable conversation memory entirely (each question is treated independently).
+
 Each new browser tab starts a fresh session. History is not shared between tabs.
 
 ---
