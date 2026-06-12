@@ -1744,7 +1744,7 @@ The UI detects the state of your wiki and your session history, then adapts:
 | **Health Check** | ≥5 pages, returning user, ≥1 stale page in the wiki | Lifecycle review — suggests running lint or inspecting stale pages |
 | **Power User** | ≥5 pages, returning user, no stale pages | Context-sensitive follow-ups based on your last answer |
 
-The mode badge appears in the top-right corner of the chat interface. It reflects the wiki's current state at the moment the session was created — the mode is determined when you open the browser tab, not updated mid-session. To see an updated mode after running lint and promoting pages, open a new browser tab.
+The mode badge appears above the title on the welcome screen. It reflects the wiki's current state at the moment the session was created — the mode is determined when you open the browser tab, not updated mid-session. To see an updated mode after running lint and promoting pages, open a new browser tab.
 
 ### Asking questions
 
