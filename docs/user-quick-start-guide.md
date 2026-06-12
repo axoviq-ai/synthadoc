@@ -168,7 +168,7 @@ The plugin files are already in place from Step 2. Obsidian just needs to activa
 
 1. **Settings → Community plugins** → find **Synthadoc** → toggle **on**
 2. Click the gear icon next to the Synthadoc entry
-3. Set **Server URL** to `http://127.0.0.1:7070`
+3. Confirm **Server URL** is `http://127.0.0.1:7070` (set automatically during plugin install — only change this if your server runs on a different port)
 4. Close settings
 
 The **Synthadoc ribbon icon** (book icon on the far-left sidebar) confirms the plugin is
