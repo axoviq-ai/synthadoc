@@ -216,17 +216,19 @@ class JobQueue:
 
     async def list_jobs(
         self,
-        status: Optional[JobStatus] = None,
+        status: Optional[JobStatus | list[JobStatus]] = None,
         sort_by: str = "created_at",
         order: str = "asc",
     ) -> list[Job]:
         col = sort_by if sort_by in self._SORT_COLUMNS else "created_at"
         direction = "DESC" if order.lower() == "desc" else "ASC"
+        statuses = ([status] if isinstance(status, JobStatus) else status) if status else None
         async with aiosqlite.connect(self._path) as db:
             db.row_factory = aiosqlite.Row
-            if status:
-                q = f"SELECT * FROM jobs WHERE status=? ORDER BY {col} {direction}"
-                args: tuple = (status.value,)
+            if statuses:
+                placeholders = ",".join("?" * len(statuses))
+                q = f"SELECT * FROM jobs WHERE status IN ({placeholders}) ORDER BY {col} {direction}"
+                args: tuple = tuple(s.value for s in statuses)
             else:
                 q = f"SELECT * FROM jobs ORDER BY {col} {direction}"
                 args = ()

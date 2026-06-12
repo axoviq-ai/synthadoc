@@ -1284,3 +1284,13 @@ def test_make_provider_qwen_propagates_thinking(monkeypatch):
     provider = make_provider("default", cfg)
     assert isinstance(provider, OpenAIProvider)
     assert provider._extra_body == {"enable_thinking": False}
+
+
+def test_make_provider_qwen_dashscope_model_no_key_errors(monkeypatch):
+    """DashScope qwen-* model with no QWEN_API_KEY must raise a CLI error."""
+    import pytest
+    import typer
+    from synthadoc.providers import make_provider
+    monkeypatch.delenv("QWEN_API_KEY", raising=False)
+    with pytest.raises(typer.Exit):
+        make_provider("ingest", _make_cfg("qwen", "qwen-plus"))
