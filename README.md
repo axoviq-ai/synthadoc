@@ -97,7 +97,7 @@ Most knowledge-management tools retrieve and summarize at query time. Synthadoc 
 | LLM wiki vs. RAG         | Pre-compiled structured knowledge beats query-time synthesis for contradiction detection, graph traversal, and offline access                                                                                           |
 | CLI / HTTP               | A unified interface via CLI and RESTful endpoints, the system streamlines full-spectrum integration: from data ingestion and querying to automated linting, security auditing, and job orchestration                    |
 | Local-first              | All data stays on your machine; localhost-only network binding; no cloud dependency except the LLM API itself                                                                                                           |
-| Provider choice          | LLM backends including free-tier Gemini and Groq, paid Anthropic/OpenAI/DeepSeek/MiniMax, local Ollama, and coding-tool CLI providers (Claude Code, Opencode) — no API key required if you already have a subscription |
+| Provider choice          | LLM backends including free-tier Gemini and Groq, paid Anthropic/OpenAI/DeepSeek/MiniMax/Qwen (DashScope), local Ollama and Qwen, and coding-tool CLI providers (Claude Code, Opencode) — no API key required if you already have a subscription |
 
 ---
 
