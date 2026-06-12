@@ -185,38 +185,98 @@ synthadoc lint report -w history-of-computing
 
 ---
 
-## Step 5 — Multi-turn conversation demo
+## Step 5 — Multi-turn conversation and web UI demo
 
-Open the web UI and try a multi-turn session to see how context carries across questions:
+Open the web UI and try these sequences to see how context carries across turns:
 
 ```bash
 synthadoc web -w history-of-computing
 ```
 
-**Follow-up resolution** — ask a question then follow up without repeating the subject:
+### Single-turn queries to try first
+
+These work well as standalone questions before exploring multi-turn:
 
 ```
-Question 1:  "How did Alan Turing help break the Enigma code?"
-             → Answer covers the Bombe machine and Bletchley Park
+"Who is Alan Turing and what was his most significant contribution?"
+"What is Moore's Law and has it held up over time?"
+"How did the transition from vacuum tubes to transistors change computing?"
+"What are the differences between von Neumann and Harvard architectures?"
+```
 
-Question 2:  "Who else worked with him there?"
-             → "him" resolves to Alan Turing, "there" resolves to Bletchley Park
+Knowledge gap detection — the wiki doesn't cover these yet:
+
+```
+"What is the history of quantum computing milestones?"
+"Who invented the USB standard?"
+```
+
+### Multi-turn: wiki content
+
+**Pronoun carry-over** (best stress test — "they" and "that same lab" only resolve
+correctly if conversation history is injected):
+
+```
+Turn 1:  "Who invented the transistor?"
+Turn 2:  "Which company did they work for?"
+Turn 3:  "What other inventions came out of that same lab?"
+```
+
+**Topic deepening:**
+
+```
+Turn 1:  "What was the significance of the 1936 Turing machine paper?"
+Turn 2:  "How did that influence the design of the first real computers?"
+Turn 3:  "Which of those early computers had the most commercial impact?"
+```
+
+**Pivot mid-conversation:**
+
+```
+Turn 1:  "Tell me about Claude Shannon and information theory"
+Turn 2:  "How does that relate to data compression?"
+Turn 3:  "What about its connection to cryptography?"
+```
+
+### Multi-turn: Synthadoc operations
+
+**Job status drill-down:**
+
+```
+You:     "Show me job status"
+         → Table of all jobs; chip buttons appear for each Job ID.
+
+Click chip "353958ca"
+         → Full detail: status, operation, started/finished, error if any.
+
+Click chip "6b7d1fa7" (from the same chip list)
+         → Detail for the second job — no re-query needed.
+```
+
+**Multi-status filter:**
+
+```
+You:     "Show me failed and skipped jobs"
+         → Filtered table for those two statuses only.
 ```
 
 **Clarify prompt** — ask to perform an action without specifying a page:
 
 ```
-You:         "Activate a draft page"
-Assistant:   "Which page would you like to activate?
-              1. konrad-zuse
-              2. quantum-computing
-              (or type a page name)"
-
-Click chip "1" and the page is activated immediately.
+You:     "Activate a draft page"
+         → "Which page? 1. konrad-zuse  2. quantum-computing (or type a name)"
+Click chip "1" → page is activated immediately.
 ```
 
-**Notice message** — after 10 or more turns the assistant compresses the oldest context
-and shows a banner:
+### Settings — query timeout
+
+Click the ⚙ gear icon (bottom-left of the chat window) to open Settings. Adjust the
+**query timeout** (10–600 s, default 60 s) if you are using a reasoning model that needs
+more time. The value persists across page refreshes.
+
+### Notice message
+
+After 5 or more turns the assistant compresses the oldest context and shows:
 
 ```
 ℹ Earlier conversation turns were summarised to fit the session window.
@@ -225,8 +285,8 @@ and shows a banner:
 To adjust the history window, edit `config.toml`:
 
 ```toml
-[query]
-conversation_history_turns = 10   # set to 0 to disable conversation memory
+[chat]
+conversation_history_turns = 5   # set to 0 to disable conversation memory
 ```
 
 ---

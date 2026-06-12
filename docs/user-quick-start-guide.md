@@ -1,6 +1,6 @@
 ﻿# Synthadoc User Quick-Start Guide
 
-**Version: v0.7.0 (Community Edition)**
+**Version: v0.8.0 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
@@ -1755,6 +1755,61 @@ Below each answer:
 
 Each question in a session builds on the previous ones. The server stores your conversation history and passes it to the query pipeline so follow-up questions like "What came before that?" resolve correctly against the previous answer. Follow-up questions are automatically rewritten into standalone form before retrieval — context-dependent phrases resolve against the right topic without you having to repeat it.
 
+#### Single-turn queries to try first
+
+These work well as standalone queries with the history-of-computing demo wiki:
+
+```bash
+# Factual retrieval
+synthadoc query "Who is Alan Turing and what was his most significant contribution?"
+synthadoc query "What is Moore's Law and has it held up over time?"
+synthadoc query "What was ENIAC and why was it significant?"
+
+# Multi-source reasoning
+synthadoc query "What are the differences between von Neumann and Harvard architectures?"
+synthadoc query "How did the transition from vacuum tubes to transistors change computing?"
+
+# Gap detection — should surface suggested_searches if the wiki doesn't have it yet
+synthadoc query "What is the history of quantum computing milestones?"
+synthadoc query "Who invented the USB standard?"
+```
+
+#### Multi-turn sequences (web UI or CLI)
+
+**Thread 1 — context carry-over with pronouns** (best stress test for conversation memory):
+
+```
+Turn 1:  "Who invented the transistor?"
+         → Names the inventors at Bell Labs
+
+Turn 2:  "Which company did they work for?"
+         ↑ "they" resolves to the transistor inventors from Turn 1
+
+Turn 3:  "What other inventions came out of that same lab?"
+         ↑ "that same lab" resolves to Bell Labs — correct without repeating it
+```
+
+**Thread 2 — deepening on a topic**:
+
+```
+Turn 1:  "What was the significance of the 1936 Turing machine paper?"
+         → Covers computability, halting problem, foundations of CS
+
+Turn 2:  "How did that influence the design of the first real computers?"
+         ↑ "that" resolves to the Turing machine concept
+
+Turn 3:  "Which of those early computers had the most commercial impact?"
+         ↑ "those early computers" carries over from Turn 2's answer
+```
+
+**Thread 3 — pivot mid-conversation**:
+
+```
+Turn 1:  "Tell me about Claude Shannon and information theory"
+Turn 2:  "How does that relate to data compression?"
+Turn 3:  "What about its connection to cryptography?"
+```
+
 **Try it now with the history-of-computing demo wiki:**
 
 ```
@@ -1763,6 +1818,31 @@ Assistant:  "...Turing's Bombe machine at Bletchley Park..."
 
 You:        "Who else worked with him there?"
             ↑ Resolves "him" → Alan Turing, "there" → Bletchley Park
+```
+
+#### Synthadoc operation multi-turn
+
+The web UI also supports multi-turn for Synthadoc operations — not just wiki content queries.
+
+**Job status drill-down:**
+
+```
+You:        "Show me job status"
+Assistant:  Shows a table of all jobs with status, operation, and timing.
+            Presents chip buttons for each Job ID.
+
+You click chip "353958ca"
+            → Full detail for that job: status, operation, started/finished, error (if any)
+
+You click chip "6b7d1fa7" (from the same chip list)
+            → Full detail for the second job — no re-query needed
+```
+
+**Multi-status job filter:**
+
+```
+You:        "Show me failed and skipped jobs"
+            → Filtered job table showing only those two statuses
 ```
 
 **Clarify prompts.** When you ask to perform an action but don't specify which page — for example, "Activate a draft page" — the assistant responds with a numbered list of candidate pages. Click a chip or type a page name to complete the action:
@@ -1792,14 +1872,20 @@ The left navigation bar shows your recent runs grouped by session. Synthadoc per
 - **Restoring a session** — click any session root or child turn to reload the full conversation history into the chat window. The context is fully restored so you can continue asking follow-up questions as if you never left.
 - **New Run** — click **+ New Run** at the top of the sidebar to start a fresh session with a new session ID.
 
+### Settings — query timeout
+
+The ⚙ gear icon in the bottom-left corner of the chat window opens a settings popover. Use it to set the **per-request query timeout** (10–600 seconds, default 60 s) without editing `config.toml`. The value is saved in your browser's `localStorage` and persists across page refreshes.
+
+Increase the timeout when using a reasoning model (e.g. MiniMax M3, Qwen with thinking enabled) that takes longer on large or complex questions. Lower it to fail fast if you suspect the server is hanging.
+
 ### Configure conversation history depth
 
-The number of prior turns included in each request is configurable via `config.toml`. The default (10 turns) covers most sessions:
+The number of prior turns included in each request is configurable via `config.toml`. The default (5 turns) covers most sessions:
 
 ```toml
 # <wiki-root>/.synthadoc/config.toml
-[query]
-conversation_history_turns = 10   # set to 0 to disable conversation memory
+[chat]
+conversation_history_turns = 5   # set to 0 to disable conversation memory
 ```
 
 Each new browser tab starts a fresh session. History is not shared between tabs.
