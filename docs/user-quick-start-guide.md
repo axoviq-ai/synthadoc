@@ -983,8 +983,13 @@ synthadoc jobs list
 >   server retries automatically when the rate limit is hit (you will see
 >   `Rate limit (429) — waiting 60 s` in the server log — this is normal). Expect
 >   **3–8 minutes** for both searches to fully complete.
-> - **Paid tier (Gemini paid, MiniMax, Anthropic, OpenAI):** No rate-limit retries.
+> - **Paid tier or free-trial tier (Gemini paid, MiniMax, Anthropic, OpenAI, Qwen DashScope):** No rate-limit retries.
 >   Both searches typically finish in **under 2 minutes**.
+>
+> **Recommendation:** Web search ingest works best with a paid or free-trial provider.
+> Qwen DashScope offers **1 million free tokens** (90-day trial) with no rate-limit delays —
+> a good option if you want free-tier speed without the wait.
+> See [Appendix C — Switching LLM providers](#appendix-c--switching-llm-providers).
 
 Pages such as `dennis-ritchie`, `eniac-history`, and related topics will be created or
 enriched. The `wiki/overview.md` page is regenerated automatically after each batch
