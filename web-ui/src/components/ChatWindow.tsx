@@ -59,8 +59,19 @@ export function ChatWindow({
         send(value, noCache, timeoutSeconds);
     }, [send, noCache, timeoutSeconds]);
 
-    const handleKey = (e: React.KeyboardEvent) => {
-        if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey) { e.preventDefault(); submit(); }
+    const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey) {
+            e.preventDefault();
+            submit();
+        } else if (e.key === "Enter" && e.ctrlKey) {
+            e.preventDefault();
+            const ta = e.currentTarget;
+            const start = ta.selectionStart;
+            const end = ta.selectionEnd;
+            const next = input.slice(0, start) + "\n" + input.slice(end);
+            setInput(next);
+            requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = start + 1; });
+        }
     };
 
     return (
