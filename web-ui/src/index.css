@@ -551,6 +551,13 @@ body {
     opacity: 0.85;
 }
 
+.input-keyboard-hint {
+    margin-top: 0.3rem;
+    font-size: 0.68rem;
+    color: #334155;
+    text-align: right;
+}
+
 .error-banner { color: #f87171; font-size: 0.85rem; padding: 0.4rem 1.25rem; }
 
 /* ─── Message bubbles ──────────────────────────── */
