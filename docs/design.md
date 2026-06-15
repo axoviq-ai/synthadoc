@@ -90,9 +90,11 @@ A Markdown file in `wiki/` with YAML frontmatter:
 ---
 title: Alan Turing
 tags: [computer-science, cryptography, turing-test]
+type: person            # OKF knowledge type — set by IngestAgent during compilation
 status: active          # active | contradicted | archived
 confidence: high        # high | medium | low
 created: '2026-04-10'
+resource: https://example.com/turing-bio  # OKF primary source URL (URL sources only)
 sources:
   - file: turing-biography.pdf
     hash: sha256:abc123…
@@ -104,6 +106,10 @@ sources:
 
 Content with [[wikilinks]] to related pages…
 ```
+
+**`type` values** _(added in v0.9.0, OKF-required field)_: `concept` (default), `person`, `organization`, `technology`, `event`, `location`, `product`. Set automatically by IngestAgent during the analysis pass; absent on pages ingested before v0.9.0.
+
+**`resource`** _(added in v0.9.0, OKF-optional field)_: the primary source URL for pages ingested from a URL source. Absent for local file sources and pre-v0.9.0 pages.
 
 **`status` values:**
 

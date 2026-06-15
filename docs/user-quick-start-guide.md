@@ -337,6 +337,17 @@ synthadoc query "What did Turing contribute to computing?"
 Aliases are matched case-insensitively. Longest match wins — so if two pages each define
 an alias and one is a longer substring of the query, the longer one takes precedence.
 
+### OKF compatibility fields
+
+Every page compiled by Synthadoc also carries two fields that align with Google's [Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md):
+
+| Field | What it contains | Set by |
+|-------|-----------------|--------|
+| `type` | Knowledge classifier: `concept`, `person`, `technology`, `event`, `organization`, `location`, or `product` | Ingest — LLM classifies during the analysis pass |
+| `resource` | Primary source URL (only present for URL-sourced pages) | Ingest — auto-populated from the URL |
+
+These fields make Synthadoc wikis directly consumable by any OKF-aware agent without an export step. Pages ingested from local files have no `resource` field. Pages ingested before v0.9.0 have no `type` field — re-ingest them to add it.
+
 ---
 
 <a name="batch-ingest"></a>

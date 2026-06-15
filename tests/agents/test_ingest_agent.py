@@ -333,6 +333,109 @@ async def test_ingest_updates_existing_page(tmp_wiki, cache):
     assert "New detail." in page.content
 
 
+# ── OKF type + resource fields ───────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_ingest_populates_okf_type(tmp_wiki, cache):
+    """type field from analysis LLM response is written to the created page."""
+    from unittest.mock import AsyncMock
+    import itertools
+    p = AsyncMock()
+    _entity = CompletionResponse(
+        text='{"entities":["Alan Turing"],"tags":["biography"],"type":"person","relevant":true}',
+        input_tokens=100, output_tokens=50,
+    )
+    _decision = CompletionResponse(
+        text='{"action":"create","target":"","new_slug":"alan-turing","update_content":"","page_content":"# Alan Turing\\n\\nBiography."}',
+        input_tokens=100, output_tokens=50,
+    )
+    p.complete.side_effect = itertools.cycle([_entity, _decision])
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+
+    source = tmp_wiki / "raw_sources" / "turing.md"
+    source.write_text("# Alan Turing\nBritish mathematician.", encoding="utf-8")
+
+    agent = IngestAgent(provider=p, store=store, search=search,
+                        log_writer=log, audit_db=audit, cache=cache, max_pages=15)
+    result = await agent.ingest(str(source))
+
+    assert result.pages_created
+    page = store.read_page(result.pages_created[0])
+    assert page is not None
+    assert page.type == "person"
+
+
+@pytest.mark.asyncio
+async def test_ingest_resource_set_for_url_source(tmp_wiki, cache):
+    """resource field is auto-populated from the source URL when ingesting a URL."""
+    from unittest.mock import AsyncMock, patch
+    import itertools
+    p = AsyncMock()
+    _entity = CompletionResponse(
+        text='{"entities":["Python"],"tags":["programming"],"type":"technology","relevant":true}',
+        input_tokens=100, output_tokens=50,
+    )
+    _decision = CompletionResponse(
+        text='{"action":"create","target":"","new_slug":"python-lang","update_content":"","page_content":"# Python\\n\\nA programming language."}',
+        input_tokens=100, output_tokens=50,
+    )
+    p.complete.side_effect = itertools.cycle([_entity, _decision])
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+
+    from synthadoc.skills.base import ExtractedContent
+    mock_extracted = ExtractedContent(
+        text="Python is a programming language.",
+        source_path="https://example.com/python",
+        metadata={},
+    )
+
+    agent = IngestAgent(provider=p, store=store, search=search,
+                        log_writer=log, audit_db=audit, cache=cache, max_pages=15,
+                        wiki_root=tmp_wiki)
+    with patch.object(agent._skill_agent, "extract", return_value=mock_extracted), \
+         patch.object(agent._skill_agent, "detect_skill") as mock_detect:
+        from synthadoc.skills.base import SkillMeta
+        mock_detect.return_value = SkillMeta(name="url", description="URL skill")
+        result = await agent.ingest("https://example.com/python")
+
+    assert result.pages_created
+    page = store.read_page(result.pages_created[0])
+    assert page is not None
+    assert page.resource == "https://example.com/python"
+
+
+@pytest.mark.asyncio
+async def test_ingest_resource_none_for_local_file(tmp_wiki, mock_provider, cache):
+    """resource field is None for local file sources."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+
+    source = tmp_wiki / "raw_sources" / "local.md"
+    source.write_text("# Local Doc\nSome local content.", encoding="utf-8")
+
+    agent = IngestAgent(provider=mock_provider, store=store, search=search,
+                        log_writer=log, audit_db=audit, cache=cache, max_pages=15)
+    result = await agent.ingest(str(source))
+
+    assert result.pages_created
+    page = store.read_page(result.pages_created[0])
+    assert page is not None
+    assert page.resource is None
+
+
 @pytest.mark.asyncio
 async def test_ingest_hash_size_mismatch_warns_and_proceeds(tmp_wiki, mock_provider, caplog, cache):
     """Hash match + size differs → log warning, treat as new source (not a skip)."""
