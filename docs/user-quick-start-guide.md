@@ -346,7 +346,17 @@ Every page compiled by Synthadoc also carries two fields that align with Google'
 | `type` | Knowledge classifier: `concept`, `person`, `technology`, `event`, `organization`, `location`, or `product` | Ingest — LLM classifies during the analysis pass |
 | `resource` | Primary source URL (only present for URL-sourced pages) | Ingest — auto-populated from the URL |
 
-These fields make Synthadoc wikis directly consumable by any OKF-aware agent without an export step. Pages ingested from local files have no `resource` field. Pages ingested before v0.9.0 have no `type` field — re-ingest them to add it.
+These fields make Synthadoc wikis directly consumable by any OKF-aware agent without an export step. Pages ingested from local files have no `resource` field.
+
+**Migrating pages created before v0.9.0** — older pages have no `type` field. Force re-ingest to backfill it:
+
+```bash
+synthadoc ingest path/to/source.pdf --force
+# or for a URL source
+synthadoc ingest "https://example.com/article" --force
+```
+
+The `--force` flag skips the duplicate check and re-runs the analysis pass, which classifies the knowledge type and writes it to the page's frontmatter. Existing content is appended to, not replaced. If `type` is already set, it is not overwritten.
 
 ---
 
