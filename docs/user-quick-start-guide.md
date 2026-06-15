@@ -1737,12 +1737,13 @@ Your browser opens automatically to the web chat interface.
 
 The UI detects the state of your wiki and your session history, then adapts:
 
-| Mode badge | When it appears | Hint chips shown |
-|---|---|---|
-| **New Wiki** | Fewer than 5 wiki pages exist | Onboarding — guides you through ingesting your first documents |
-| **Explorer** | ≥5 pages, first time opening the UI for this wiki | Discovery — broad overview questions to explore the wiki |
+
+| Mode badge       | When it appears                                       | Hint chips shown                                                    |
+| ---------------- | ----------------------------------------------------- | ------------------------------------------------------------------- |
+| **New Wiki**     | Fewer than 5 wiki pages exist                         | Onboarding — guides you through ingesting your first documents     |
+| **Explorer**     | ≥5 pages, first time opening the UI for this wiki    | Discovery — broad overview questions to explore the wiki           |
 | **Health Check** | ≥5 pages, returning user, ≥1 stale page in the wiki | Lifecycle review — suggests running lint or inspecting stale pages |
-| **Power User** | ≥5 pages, returning user, no stale pages | Context-sensitive follow-ups based on your last answer |
+| **Power User**   | ≥5 pages, returning user, no stale pages             | Context-sensitive follow-ups based on your last answer              |
 
 The mode badge appears above the title on the welcome screen. It reflects the wiki's current state at the moment the session was created — the mode is determined when you open the browser tab, not updated mid-session. To see an updated mode after running lint and promoting pages, open a new browser tab.
 
@@ -1765,6 +1766,7 @@ Each question in a session builds on the previous ones. The server stores your c
 Type any of these into the chat box and press **Enter**. They work well as standalone questions with the history-of-computing demo wiki:
 
 **Factual retrieval:**
+
 ```
 Who is Alan Turing and what was his most significant contribution?
 What is Moore's Law and has it held up over time?
@@ -1772,12 +1774,14 @@ What was ENIAC and why was it significant?
 ```
 
 **Multi-source reasoning:**
+
 ```
 What are the differences between von Neumann and Harvard architectures?
 How did the transition from vacuum tubes to transistors change computing?
 ```
 
 **Gap detection** — these topics are not in the demo wiki yet; expect a knowledge gap callout with suggested ingest commands:
+
 ```
 What is the history of quantum computing milestones?
 Who invented the USB standard?
@@ -1920,6 +1924,7 @@ Each new browser tab starts a fresh session. History is not shared between tabs.
 ### How the cache works
 
 The cache key is a hash of:
+
 - The question text (after normalisation)
 - The current wiki **epoch** — a version counter that increments whenever you ingest new content or change a page's lifecycle state
 
@@ -1933,6 +1938,7 @@ synthadoc query "What is Moore's Law?" --no-cache
 ```
 
 Use `--no-cache` when:
+
 - You want to verify the answer is still correct after an ingest
 - You are debugging a query or testing a new LLM provider
 - You suspect the cache entry is stale for any reason
@@ -1981,9 +1987,9 @@ All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synt
 ### Query
 
 
-| Command                             | What it does                                                                                                                                                                                                                                 |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Synthadoc: Query: ask the wiki...` | Responsive modal — ask a natural-language question; the answer streams in token-by-token as the LLM generates it. Clickable `[[wikilinks]]` link to source pages. `Ctrl/Cmd+Enter` to submit. If a knowledge gap is detected, shows a callout with suggested `search for:` commands. |
+| Command                             | What it does                                                                                                                                                                                                                                                                         |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Synthadoc: Query: ask the wiki...` | Responsive modal — ask a natural-language question; the answer streams in token-by-token as the LLM generates it. Clickable`[[wikilinks]]` link to source pages. `Ctrl/Cmd+Enter` to submit. If a knowledge gap is detected, shows a callout with suggested `search for:` commands. |
 
 ### Lint
 
@@ -2119,46 +2125,39 @@ Synthadoc defaults to **Gemini Flash** — free, no credit card, 1 million token
 Switch by editing `<wiki-root>/.synthadoc/config.toml` and restarting the server.
 
 
-| Provider      | Env var             | Free tier                                         | Vision          |
-| ------------- | ------------------- | ------------------------------------------------- | --------------- |
-| `gemini`      | `GEMINI_API_KEY`    | **Yes — default** · 15 RPM / 1M tokens/day      | Yes             |
-| `groq`        | `GROQ_API_KEY`      | Yes — fast Llama, 100K tokens/day                | No              |
-| `ollama`      | _(none)_            | Yes — fully local; **GPU required** (CPU too slow) | Model-dependent |
-| `minimax`     | `MINIMAX_API_KEY`   | No — cheapest paid text rates                    | No              |
-| `anthropic`   | `ANTHROPIC_API_KEY` | No — highest quality, pay-per-token              | Yes             |
-| `openai`      | `OPENAI_API_KEY`    | No — pay-per-token                               | Yes             |
-| `qwen`        | `QWEN_API_KEY`      | Yes — 1M free tokens (90-day trial), then paid   | Model-dependent |
-| `claude-code` | _(none)_            | Yes — uses your Claude Code subscription, no key | Yes             |
-| `opencode`    | _(none)_            | Yes — uses your Opencode subscription, no key    | No              |
+| Provider      | Env var             | Free tier                                          | Vision          |
+| ------------- | ------------------- | -------------------------------------------------- | --------------- |
+| `gemini`      | `GEMINI_API_KEY`    | **Yes — default** · 15 RPM / 1M tokens/day       | Yes             |
+| `groq`        | `GROQ_API_KEY`      | Yes — fast Llama, 100K tokens/day                 | No              |
+| `ollama`      | _(none)_            | Yes — fully local;**GPU required** (CPU too slow) | Model-dependent |
+| `minimax`     | `MINIMAX_API_KEY`   | No — cheapest paid text rates                     | No              |
+| `anthropic`   | `ANTHROPIC_API_KEY` | No — highest quality, pay-per-token               | Yes             |
+| `openai`      | `OPENAI_API_KEY`    | No — pay-per-token                                | Yes             |
+| `qwen`        | `QWEN_API_KEY`      | Yes — 1M free tokens (90-day trial), then paid    | Model-dependent |
+| `deepseek`    | `DEEPSEEK_API_KEY`  | No — very affordable pricing                      | No              |
+| `claude-code` | _(none)_            | Yes — uses your Claude Code subscription, no key  | Yes             |
+| `opencode`    | _(none)_            | Yes — uses your Opencode subscription, no key     | No              |
 
 > CLI providers (`claude-code`, `opencode`) require no API key but need the tool installed and authenticated in your terminal. Web search still requires `TAVILY_API_KEY`. See [Appendix G](#appendix-g--using-a-coding-tool-as-your-llm-provider) for setup details.
 
-**Change the provider** — edit `.synthadoc/config.toml`:
+**Change the provider** — edit `.synthadoc/config.toml`. Keep exactly one `default` line uncommented; comment out the rest with `#`:
 
 ```toml
-# Anthropic Sonnet (high quality)
 [agents]
-default = { provider = "anthropic", model = "claude-sonnet-4-6" }
+# Uncomment exactly one line — comment out all others
 
-# Anthropic Opus (highest quality, most capable)
-[agents]
-default = { provider = "anthropic", model = "claude-opus-4-8" }
-
-# Gemini Flash (default)
-[agents]
-default = { provider = "gemini", model = "gemini-2.5-flash" }
-
-# Groq (fast free tier)
-[agents]
-default = { provider = "groq", model = "llama-3.3-70b-versatile" }
-
-# MiniMax (cheapest paid, natively multimodal)
-[agents]
-default = { provider = "minimax", model = "MiniMax-M2.5" }
-
-# Qwen via DashScope cloud API (set QWEN_API_KEY — get at https://bailian.console.aliyun.com/)
-[agents]
-default = { provider = "qwen", model = "qwen-plus" }
+default = { provider = "gemini",    model = "gemini-2.5-flash" }                    # Gemini Flash (default, free tier)
+# default = { provider = "groq",      model = "llama-3.3-70b-versatile" }           # Groq (fast, free tier)
+# default = { provider = "qwen",      model = "qwen-plus" }                         # Qwen via DashScope (1M free tokens)
+# default = { provider = "deepseek",  model = "deepseek-chat" }                     # DeepSeek (very affordable)
+# default = { provider = "minimax",   model = "MiniMax-M2.5" }                      # MiniMax M2.5 (multimodal, cheapest paid)
+# default = { provider = "minimax",   model = "MiniMax-M3", thinking = "disabled" } # MiniMax M3 (fast, low-cost)
+# default = { provider = "anthropic", model = "claude-sonnet-4-6" }                 # Anthropic Sonnet (high quality)
+# default = { provider = "anthropic", model = "claude-opus-4-8" }                   # Anthropic Opus (highest quality)
+# default = { provider = "openai",    model = "gpt-4o-mini" }                       # OpenAI
+# default = { provider = "ollama",    model = "llama3.2" }                          # Ollama (local, GPU required)
+# default = { provider = "claude-code" }                                             # Claude Code CLI (no API key)
+# default = { provider = "opencode" }                                                # Opencode CLI (no API key)
 ```
 
 Restart `synthadoc serve`. The startup banner confirms `LLM: <provider>/<model>`.
@@ -2171,6 +2170,7 @@ Restart `synthadoc serve`. The startup banner confirms `LLM: <provider>/<model>`
 > - **Thinking field (MiniMax M3, Qwen DashScope):** Add `thinking = "disabled"` to your `agents.default` line to suppress chain-of-thought reasoning. Useful when you want lower latency and cost and don't need the model to reason step-by-step. Example: `default = { provider = "minimax", model = "MiniMax-M3", thinking = "disabled" }`
 > - **Ollama — GPU required:** Local Ollama models require a CUDA or Metal GPU to be practically usable. On CPU-only machines, processing an 8 K-token context takes 5–10 minutes before the first token is generated — well beyond any reasonable timeout. If you do not have a GPU, use a cloud provider instead (Gemini 2.5 Flash Lite is free). Install Ollama from [ollama.com](https://ollama.com); no API key needed.
 > - **Qwen cloud (DashScope):** New accounts get **1 million free tokens** (valid 90 days after activating Model Studio). Set `QWEN_API_KEY` (get one at [bailian.console.aliyun.com](https://bailian.console.aliyun.com/)) and use `model = "qwen-plus"` or `"qwen-max"`. DashScope supports a `thinking` field: set `thinking = "disabled"` for faster responses.
+> - **DeepSeek:** Very affordable cloud API — `deepseek-chat` works for all Synthadoc operations. Set `DEEPSEEK_API_KEY` (get one at [platform.deepseek.com](https://platform.deepseek.com/api_keys)).
 
 ---
 
