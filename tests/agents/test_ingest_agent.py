@@ -415,6 +415,48 @@ async def test_ingest_resource_set_for_url_source(tmp_wiki, cache):
 
 
 @pytest.mark.asyncio
+async def test_force_reingest_backfills_okf_fields(tmp_wiki, cache):
+    """Force re-ingest of an existing page backfills type/resource when they are absent."""
+    from unittest.mock import AsyncMock
+    import itertools
+    p = AsyncMock()
+    _entity_with_type = CompletionResponse(
+        text='{"entities":["Alan Turing"],"tags":["biography"],"type":"person","relevant":true}',
+        input_tokens=100, output_tokens=50,
+    )
+    _decision_update = CompletionResponse(
+        text='{"action":"update","target":"alan-turing","new_slug":"","update_content":"## Extra\\n\\nMore info."}',
+        input_tokens=100, output_tokens=50,
+    )
+    p.complete.side_effect = itertools.cycle([_entity_with_type, _decision_update])
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    # Pre-existing page with no type (simulates page created before v0.9.0)
+    from synthadoc.storage.wiki import WikiPage
+    store.write_page("alan-turing", WikiPage(
+        title="Alan Turing", tags=["biography"], content="# Alan Turing\n\nMathematician.",
+        status="active", confidence="high", sources=[], created="2026-01-01",
+    ))
+    assert store.read_page("alan-turing").type is None
+
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+
+    source = tmp_wiki / "raw_sources" / "turing.md"
+    source.write_text("Alan Turing biography.", encoding="utf-8")
+
+    agent = IngestAgent(provider=p, store=store, search=search,
+                        log_writer=log, audit_db=audit, cache=cache, max_pages=15)
+    result = await agent.ingest(str(source), force=True)
+
+    assert "alan-turing" in result.pages_updated
+    page = store.read_page("alan-turing")
+    assert page.type == "person"
+
+
+@pytest.mark.asyncio
 async def test_ingest_resource_none_for_local_file(tmp_wiki, mock_provider, cache):
     """resource field is None for local file sources."""
     store = WikiStorage(tmp_wiki / "wiki")

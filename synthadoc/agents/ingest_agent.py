@@ -687,6 +687,11 @@ class IngestAgent:
                         if page.status == LifecycleState.STALE:
                             page.status = LifecycleState.DRAFT
                             self._stale_to_draft_slug = target
+                        # Backfill OKF fields added in v0.9.0 if absent on older pages
+                        if page.type is None:
+                            page.type = analysis.get("type") or None
+                        if page.resource is None and is_url(source):
+                            page.resource = source
                         if extracted.metadata.get("has_summary"):
                             section = extracted.text
                         elif update_content:
@@ -735,6 +740,11 @@ class IngestAgent:
                             if page.status == LifecycleState.STALE:
                                 page.status = LifecycleState.DRAFT
                                 self._stale_to_draft_slug = slug
+                            # Backfill OKF fields added in v0.9.0 if absent on older pages
+                            if page.type is None:
+                                page.type = analysis.get("type") or None
+                            if page.resource is None and is_url(source):
+                                page.resource = source
                             if extracted.metadata.get("has_summary"):
                                 section = extracted.text
                             else:
