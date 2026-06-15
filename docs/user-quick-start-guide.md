@@ -348,6 +348,15 @@ Every page compiled by Synthadoc also carries two fields that align with Google'
 
 These fields make Synthadoc wikis directly consumable by any OKF-aware agent without an export step. Pages ingested from local files have no `resource` field.
 
+**`resource` vs `sources` — what's the difference?**
+
+Both point at source material, but for different audiences:
+
+- **`sources`** is Synthadoc's internal audit record — an array that grows as more files are ingested into the same page, storing the file path, SHA-256 hash, byte size, and ingestion timestamp. Used for dedup, stale detection, and cost tracking.
+- **`resource`** is the OKF citation — a single URL that any agent or human can follow to the original source, without needing to understand Synthadoc's schema.
+
+For URL sources both refer to the same URL; for local files only `sources` is present.
+
 **Migrating pages created before v0.9.0** — older pages have no `type` field. Force re-ingest to backfill it:
 
 ```bash

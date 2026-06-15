@@ -111,6 +111,17 @@ Content with [[wikilinks]] to related pages…
 
 **`resource`** _(added in v0.9.0, OKF-optional field)_: the primary source URL for pages ingested from a URL source. Absent for local file sources and pre-v0.9.0 pages.
 
+`resource` and `sources` are complementary, not duplicates:
+
+| | `resource` | `sources` |
+|---|---|---|
+| Purpose | OKF external citation — one clean URL for agents and humans to follow | Synthadoc internal provenance — full audit record per contributing file |
+| Cardinality | Single string (or absent) | Array — grows as more files are ingested into the same page |
+| Contents | URL only | File path, SHA-256 hash, byte size, ingestion timestamp |
+| Used for | OKF compatibility; agent consumption without Synthadoc-specific knowledge | Dedup, stale detection, cost audit trail |
+| Local file sources | Absent | Present (file path + hash) |
+| URL sources | Set to the source URL | Also present (URL + hash of URL string) |
+
 **`status` values:**
 
 | Value | Meaning |
