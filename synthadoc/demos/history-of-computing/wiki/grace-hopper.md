@@ -4,6 +4,7 @@ tags: [biography, compilers, cobol, navy]
 status: active
 confidence: high
 created: 2026-04-09
+updated: '2026-04-22'
 sources:
   - file: public-domain/hopper-biography-usn.txt
     hash: placeholder

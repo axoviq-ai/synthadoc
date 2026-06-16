@@ -2294,3 +2294,65 @@ async def test_run_stream_history_injected_into_synthesis_prompt(tmp_wiki):
     assert captured_messages, "complete_stream was never called"
     prompt_text = captured_messages[0].content
     assert "Conversation so far" in prompt_text and "what about earlier?" in prompt_text
+
+
+@pytest.mark.asyncio
+async def test_run_stream_followup_uses_rewritten_question_for_live_data(tmp_wiki):
+    """Ambiguous follow-up ('check it again') must not trigger a gap when
+    RewriteAgent resolves it to a job-status query.
+
+    Regression: live-data and system-knowledge lookups used the original question;
+    context-dependent phrases like 'check it again' have no live-data triggers,
+    so _live_data was empty → gap fired. Fix: use retrieval_question for lookups.
+    """
+    from unittest.mock import MagicMock
+    sd = tmp_wiki / ".synthadoc"
+    sd.mkdir(parents=True, exist_ok=True)
+    audit = AuditDB(sd / "audit.db")
+    await audit.init()
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+
+    provider = AsyncMock()
+    provider.complete.return_value = CompletionResponse(
+        text='["check job status a95c6a33"]', input_tokens=5, output_tokens=5
+    )
+    async def _fake_stream(**kw):
+        yield "Job a95c6a33 is now running."
+    provider.complete_stream = _fake_stream
+
+    mock_job = MagicMock()
+    mock_job.status = MagicMock()
+    mock_job.status.value = "running"
+    mock_job.operation = "lint"
+    mock_job.retries = 0
+    mock_job.error = None
+    mock_job.created_at = "2026-06-16T14:11:16"
+
+    mock_queue = AsyncMock()
+    mock_queue.get_job.return_value = mock_job
+
+    mock_orchestrator = MagicMock()
+    mock_orchestrator._queue = mock_queue
+
+    agent = QueryAgent(provider=provider, store=store, search=search,
+                       gap_score_threshold=2.0, orchestrator=mock_orchestrator)
+
+    history = [
+        {"role": "user", "content": "Job ID: a95c6a33"},
+        {"role": "assistant", "content": "Job a95c6a33 is pending."},
+    ]
+
+    with patch("synthadoc.agents.query_agent.RewriteAgent") as mock_rw_cls, \
+         patch("synthadoc.agents.query_agent.ActionAgent") as mock_action_cls:
+        mock_rw_cls.return_value.rewrite = AsyncMock(return_value="check job status a95c6a33")
+        mock_action_cls.return_value.detect.return_value = False
+
+        events = await _collect_events(agent.run_stream("check it again", history=history))
+
+    done_ev = next(e for e in events if e["event"] == "done")
+    assert done_ev["data"].get("gap", False) is False, (
+        "Knowledge Gap must not fire for a job follow-up resolved via retrieval_question"
+    )
+    mock_queue.get_job.assert_called_once_with("a95c6a33")
