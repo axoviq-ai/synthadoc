@@ -822,7 +822,10 @@ class QueryAgent:
 
         citations = [r.slug for r in candidates]
         _purpose_ctx = self._load_purpose_context()
-        _system_ctx = self._get_relevant_system_pages(question)
+        # Use retrieval_question (history-enriched) for keyword/trigger matching so
+        # follow-up messages like "check it again" resolve to the correct live data
+        # and system knowledge. The synthesis prompt still shows the original question.
+        _system_ctx = self._get_relevant_system_pages(retrieval_question)
         _pages_ctx = "\n\n".join(
             f"### {p.title}\n{p.content[:1000]}"
             for r in candidates
@@ -832,7 +835,7 @@ class QueryAgent:
         if _purpose_ctx:
             _ctx_parts.append(_purpose_ctx)
         _is_live_data = False
-        _live_data = await self._fetch_live_wiki_data(question)
+        _live_data = await self._fetch_live_wiki_data(retrieval_question)
         if _system_ctx:
             # System knowledge matched: answer from help pages only; wiki pages are irrelevant noise
             _ctx_parts.append(f"## Synthadoc Help\n{_system_ctx}")
@@ -856,7 +859,7 @@ class QueryAgent:
 
         if _system_ctx or _live_data:
             _gap = False
-        if _gap and _is_introspective(question):
+        if _gap and _is_introspective(retrieval_question):
             _gap = False
 
         synthesis_prompt = self._build_synthesis_prompt(
