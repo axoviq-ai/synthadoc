@@ -696,6 +696,7 @@ class IngestAgent:
                             page.status = LifecycleState.DRAFT
                             self._stale_to_draft_slug = target
                         _backfill_okf_fields(page, analysis, source)
+                        page.updated = date.today().isoformat()
                         if extracted.metadata.get("has_summary"):
                             section = extracted.text
                         elif update_content:
@@ -745,6 +746,7 @@ class IngestAgent:
                                 page.status = LifecycleState.DRAFT
                                 self._stale_to_draft_slug = slug
                             _backfill_okf_fields(page, analysis, source)
+                            page.updated = date.today().isoformat()
                             if extracted.metadata.get("has_summary"):
                                 section = extracted.text
                             else:

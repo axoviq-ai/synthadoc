@@ -284,3 +284,39 @@ def test_type_resource_missing_defaults_to_none(tmp_wiki):
     assert loaded is not None
     assert loaded.type is None
     assert loaded.resource is None
+
+
+# ── updated field ─────────────────────────────────────────────────────────────
+
+def test_updated_roundtrip(tmp_wiki):
+    """updated field must survive a write/read cycle."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    page = WikiPage(title="Test", tags=[], content="body",
+                    status="active", confidence="high", sources=[],
+                    updated="2026-06-01")
+    store.write_page("test-updated", page)
+    loaded = store.read_page("test-updated")
+    assert loaded is not None
+    assert loaded.updated == "2026-06-01"
+
+
+def test_updated_none_omitted_from_yaml(tmp_wiki):
+    """updated=None must not emit an 'updated:' key in YAML frontmatter."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("no-updated", WikiPage(title="X", tags=[], content="body",
+                     status="active", confidence="medium", sources=[]))
+    raw = (tmp_wiki / "wiki" / "no-updated.md").read_text()
+    assert "updated:" not in raw
+
+
+def test_updated_missing_defaults_to_none(tmp_wiki):
+    """Pages written without updated field must read back as None (backward compat)."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    (tmp_wiki / "wiki").mkdir(parents=True, exist_ok=True)
+    (tmp_wiki / "wiki" / "legacy.md").write_text(
+        "---\ntitle: Legacy\ntags: []\nstatus: active\nconfidence: high\nsources: []\n---\n\nbody",
+        encoding="utf-8"
+    )
+    loaded = store.read_page("legacy")
+    assert loaded is not None
+    assert loaded.updated is None

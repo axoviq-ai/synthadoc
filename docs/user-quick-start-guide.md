@@ -195,7 +195,7 @@ Open the vault explorer. The key files and folders:
 history-of-computing/
   wiki/                   ← compiled Markdown pages (open these in Obsidian)
     index.md              ← table of contents with [[wikilinks]] to every page
-    dashboard.md          ← live Dataview tables — orphans, contradictions, recent pages
+    dashboard.md          ← live Dataview tables — contradictions, orphans, recently added/updated/archived
     purpose.md            ← scope definition — what belongs in this wiki and what to skip
     overview.md           ← LLM-generated 2-paragraph summary of the entire wiki
     alan-turing.md        ← example pre-built topic page
@@ -216,7 +216,7 @@ history-of-computing/
 | File                  | What to look at                                                   |
 | --------------------- | ----------------------------------------------------------------- |
 | `wiki/index.md`       | Pre-generated category structure with`[[wikilinks]]` to each page |
-| `wiki/dashboard.md`   | Live Dataview tables — will populate after Steps 6–8            |
+| `wiki/dashboard.md`   | Live Dataview tables — contradictions, orphans, recently added / updated / archived |
 | `wiki/alan-turing.md` | YAML frontmatter:`status`, `confidence`, `tags`, `sources[]`      |
 | `AGENTS.md`           | Domain-specific guidelines the LLM reads on every ingest          |
 | `wiki/purpose.md`     | In-scope / out-of-scope definition for History of Computing       |

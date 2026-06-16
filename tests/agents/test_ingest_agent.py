@@ -457,6 +457,69 @@ async def test_force_reingest_backfills_okf_fields(tmp_wiki, cache):
 
 
 @pytest.mark.asyncio
+async def test_update_action_stamps_updated_field(tmp_wiki, cache):
+    """Re-ingesting an existing page via update action sets the updated field to today."""
+    from unittest.mock import AsyncMock
+    import itertools
+    from datetime import date
+    p = AsyncMock()
+    _entity = CompletionResponse(
+        text='{"entities":["Alan Turing"],"tags":["biography"],"type":"person","relevant":true}',
+        input_tokens=100, output_tokens=50,
+    )
+    _decision = CompletionResponse(
+        text='{"action":"update","target":"alan-turing","new_slug":"","update_content":"## Extra\\n\\nMore info."}',
+        input_tokens=100, output_tokens=50,
+    )
+    p.complete.side_effect = itertools.cycle([_entity, _decision])
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("alan-turing", WikiPage(
+        title="Alan Turing", tags=["biography"], content="# Alan Turing\n\nMathematician.",
+        status="active", confidence="high", sources=[], created="2026-01-01",
+    ))
+    assert store.read_page("alan-turing").updated is None
+
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+
+    source = tmp_wiki / "raw_sources" / "turing-extra.md"
+    source.write_text("More about Turing.", encoding="utf-8")
+
+    agent = IngestAgent(provider=p, store=store, search=search,
+                        log_writer=log, audit_db=audit, cache=cache, max_pages=15)
+    result = await agent.ingest(str(source), force=True)
+
+    assert "alan-turing" in result.pages_updated
+    page = store.read_page("alan-turing")
+    assert page.updated == date.today().isoformat()
+
+
+@pytest.mark.asyncio
+async def test_create_action_leaves_updated_none(tmp_wiki, mock_provider, cache):
+    """Initial ingest (create action) must NOT set the updated field."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+
+    source = tmp_wiki / "raw_sources" / "new.md"
+    source.write_text("# New Topic\nSome brand new content.", encoding="utf-8")
+
+    agent = IngestAgent(provider=mock_provider, store=store, search=search,
+                        log_writer=log, audit_db=audit, cache=cache, max_pages=15)
+    result = await agent.ingest(str(source))
+
+    assert result.pages_created
+    page = store.read_page(result.pages_created[0])
+    assert page is not None
+    assert page.updated is None
+
+
+@pytest.mark.asyncio
 async def test_ingest_resource_none_for_local_file(tmp_wiki, mock_provider, cache):
     """resource field is None for local file sources."""
     store = WikiStorage(tmp_wiki / "wiki")
