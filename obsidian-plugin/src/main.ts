@@ -4034,12 +4034,12 @@ class ExportModal extends Modal {
 
         // Status filter
         const statusRow = contentEl.createEl("div", { cls: "setting-item" });
-        statusRow.createEl("label", { text: "Status filter" });
+        const statusLabel = statusRow.createEl("label", { text: "Status filter" });
         const statusSel = statusRow.createEl("select");
-        [["all", "All pages"], ["active", "Active only"]].forEach(([val, label]) => {
-            const o = statusSel.createEl("option", { text: label, value: val });
-            if (val === this._statusFilter) o.selected = true;
-        });
+        const allOpt = statusSel.createEl("option", { text: "All pages", value: "all" }) as HTMLOptionElement;
+        const activeOpt = statusSel.createEl("option", { text: "Active only", value: "active" }) as HTMLOptionElement;
+        if (this._statusFilter === "all") allOpt.selected = true;
+        else activeOpt.selected = true;
 
         // Button row
         const btnRow = contentEl.createEl("div", { cls: "modal-button-container" });
@@ -4051,6 +4051,13 @@ class ExportModal extends Modal {
             const isOkf = this._format === "okf";
             pathLabel.textContent = isOkf ? "Output folder (outside vault)" : "Output path (in vault)";
             okfHint.style.display = isOkf ? "" : "none";
+            // Relabel status options to reflect OKF's actual behaviour
+            statusLabel.textContent = isOkf ? "Pages to include" : "Status filter";
+            allOpt.textContent = isOkf ? "Active + contradicted (default)" : "All pages";
+            if (isOkf && this._statusFilter !== "all") {
+                this._statusFilter = "all";
+                statusSel.value = "all";
+            }
             if (this._format === "graphml") {
                 if (!viewGraphBtn) {
                     viewGraphBtn = btnRow.createEl("button", { text: "View Graph" }) as HTMLButtonElement;
