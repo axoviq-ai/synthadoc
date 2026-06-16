@@ -136,6 +136,8 @@ A 3-layer cache (embedding, LLM response, provider prompt cache) means repeated 
 
 Every page is a plain Markdown file with YAML frontmatter. No proprietary format. Open the folder in any editor, put it in git, sync it with any cloud drive.
 
+Synthadoc wikis are also aligned with Google's [Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md). Each page carries a `type` field (`concept`, `person`, `technology`, `event`, …) and a `resource` field (primary source URL) that OKF agents can consume directly — no conversion step needed.
+
 ### 7. Wiki structure decays as content grows; Synthadoc regenerates it
 
 As the wiki accumulates pages the `index.md` table of contents, domain scope (`purpose.md`), and LLM behaviour guidelines (`AGENTS.md`) can drift out of sync with actual content. The `scaffold` command re-generates all three from the current wiki state using the LLM — creating category-aware index entries, refreshed scope boundaries, and updated terminology guidelines — without touching pages already linked in the index. Run it once after initial install to get a rich scaffold, then schedule it weekly as the wiki grows.

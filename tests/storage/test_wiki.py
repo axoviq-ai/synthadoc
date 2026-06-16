@@ -237,3 +237,86 @@ def test_lint_warnings_null_claim_round_trip(tmp_wiki):
     assert loaded is not None
     assert loaded.lint_warnings[0]["claim"] is None
     assert "rate limit" in loaded.lint_warnings[0]["concern"]
+
+
+# ── OKF fields ──────────────────────────────────────────────────────────────
+
+def test_type_resource_roundtrip(tmp_wiki):
+    """type and resource fields must survive a write/read cycle."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    page = WikiPage(title="Alan Turing", tags=[], content="Body.",
+                    status="active", confidence="high", sources=[],
+                    type="person", resource="https://example.com/turing")
+    store.write_page("alan-turing", page)
+    loaded = store.read_page("alan-turing")
+    assert loaded is not None
+    assert loaded.type == "person"
+    assert loaded.resource == "https://example.com/turing"
+
+
+def test_type_none_omitted_from_yaml(tmp_wiki):
+    """type=None must not emit a 'type:' key in the YAML frontmatter."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("no-type", WikiPage(title="X", tags=[], content="body",
+                     status="active", confidence="medium", sources=[]))
+    raw = (tmp_wiki / "wiki" / "no-type.md").read_text()
+    assert "type:" not in raw
+
+
+def test_resource_none_omitted_from_yaml(tmp_wiki):
+    """resource=None must not emit a 'resource:' key in the YAML frontmatter."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("no-resource", WikiPage(title="X", tags=[], content="body",
+                     status="active", confidence="medium", sources=[]))
+    raw = (tmp_wiki / "wiki" / "no-resource.md").read_text()
+    assert "resource:" not in raw
+
+
+def test_type_resource_missing_defaults_to_none(tmp_wiki):
+    """Pages written without type/resource fields must read back as None (backward compat)."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    (tmp_wiki / "wiki").mkdir(parents=True, exist_ok=True)
+    (tmp_wiki / "wiki" / "old-page.md").write_text(
+        "---\ntitle: Old\ntags: []\nstatus: active\nconfidence: high\nsources: []\n---\n\nbody",
+        encoding="utf-8"
+    )
+    loaded = store.read_page("old-page")
+    assert loaded is not None
+    assert loaded.type is None
+    assert loaded.resource is None
+
+
+# ── updated field ─────────────────────────────────────────────────────────────
+
+def test_updated_roundtrip(tmp_wiki):
+    """updated field must survive a write/read cycle."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    page = WikiPage(title="Test", tags=[], content="body",
+                    status="active", confidence="high", sources=[],
+                    updated="2026-06-01")
+    store.write_page("test-updated", page)
+    loaded = store.read_page("test-updated")
+    assert loaded is not None
+    assert loaded.updated == "2026-06-01"
+
+
+def test_updated_none_omitted_from_yaml(tmp_wiki):
+    """updated=None must not emit an 'updated:' key in YAML frontmatter."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("no-updated", WikiPage(title="X", tags=[], content="body",
+                     status="active", confidence="medium", sources=[]))
+    raw = (tmp_wiki / "wiki" / "no-updated.md").read_text()
+    assert "updated:" not in raw
+
+
+def test_updated_missing_defaults_to_none(tmp_wiki):
+    """Pages written without updated field must read back as None (backward compat)."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    (tmp_wiki / "wiki").mkdir(parents=True, exist_ok=True)
+    (tmp_wiki / "wiki" / "legacy.md").write_text(
+        "---\ntitle: Legacy\ntags: []\nstatus: active\nconfidence: high\nsources: []\n---\n\nbody",
+        encoding="utf-8"
+    )
+    loaded = store.read_page("legacy")
+    assert loaded is not None
+    assert loaded.updated is None

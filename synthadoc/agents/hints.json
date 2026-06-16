@@ -24,6 +24,8 @@
       "Which pages are marked stale?",
       "What pages are orphan pages?",
       "Show me pages with contradictions",
+      "Show me recently updated wiki pages",
+      "Show me recently archived wiki pages",
       "Which pages have adversarial warnings?",
       "How do I run a lint check?",
       "Run lint with auto-resolve enabled",
@@ -33,6 +35,8 @@
       "What changed in the wiki this week?",
       "What changed in the wiki this month?",
       "What pages were added this year?",
+      "Show me recently updated wiki pages",
+      "Show me recently archived wiki pages",
       "Which pages have adversarial warnings?",
       "What pages are orphan pages?",
       "Run Synthadoc status",
@@ -76,8 +80,10 @@
       ]
     },
     {
-      "keywords": ["lifecycle", "active", "archive", "draft", "restore", "activate"],
+      "keywords": ["lifecycle", "active", "archive", "archived", "draft", "restore", "activate"],
       "hints": [
+        "Show me recently updated wiki pages",
+        "Show me recently archived wiki pages",
         "Activate a draft page",
         "Archive a stale page",
         "Restore an archived page to draft",
@@ -142,10 +148,12 @@
       ]
     },
     {
-      "keywords": ["changed", "updated", "ingested", "added", "recently", "this week", "this month", "this year"],
+      "keywords": ["changed", "updated", "re-ingested", "ingested", "added", "archived", "recently", "this week", "this month", "this year"],
       "hints": [
         "What changed in the wiki this week?",
         "What changed in the wiki this month?",
+        "Show me recently updated wiki pages",
+        "Show me recently archived wiki pages",
         "What pages were added in the last 3 months?",
         "What pages were added this year?"
       ]

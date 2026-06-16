@@ -4,6 +4,7 @@ tags: [llm, transformers, gpt, language-models]
 status: active
 confidence: high
 created: 2026-05-09
+updated: '2026-05-21'
 sources:
   - file: ai-fundamentals-overview.md
     hash: a3f8c2d1e4b9071652340abc98def765a3f8c2d1e4b9071652340abc98def765

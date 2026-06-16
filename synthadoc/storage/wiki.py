@@ -11,8 +11,9 @@ from typing import Optional
 import yaml
 from filelock import FileLock
 
-_FRONTMATTER_FIELDS = ("title", "tags", "status", "confidence", "created", "sources", "orphan", "categories",
-                       "aliases", "contradiction_note", "unresolved_note", "lint_warnings")
+_FRONTMATTER_FIELDS = ("title", "tags", "status", "confidence", "created", "updated", "sources", "orphan",
+                       "categories", "aliases", "contradiction_note", "unresolved_note", "lint_warnings",
+                       "type", "resource")
 
 
 class LifecycleState:
@@ -62,6 +63,9 @@ class WikiPage:
     contradiction_note: Optional[str] = None   # why this page was flagged during ingest
     unresolved_note: Optional[str] = None      # why auto-resolve could not fix it
     lint_warnings: list[dict] = field(default_factory=list)
+    updated: Optional[str] = None               # ISO date of last re-ingest; absent on initial creation
+    type: Optional[str] = None                 # OKF knowledge type: concept|person|technology|event|…
+    resource: Optional[str] = None             # OKF primary source URL (URL sources only)
 
 
 def _sources_to_dicts(sources: list[SourceRef]) -> list[dict]:
@@ -132,6 +136,12 @@ class WikiStorage:
                 fm["unresolved_note"] = page.unresolved_note
             if page.lint_warnings:
                 fm["lint_warnings"] = page.lint_warnings
+            if page.updated:
+                fm["updated"] = page.updated
+            if page.type:
+                fm["type"] = page.type
+            if page.resource:
+                fm["resource"] = page.resource
             body = page.content
         else:
             fm = frontmatter or {}
@@ -179,6 +189,9 @@ class WikiStorage:
             contradiction_note=fm.get("contradiction_note") or None,
             unresolved_note=fm.get("unresolved_note") or None,
             lint_warnings=lint_warnings,
+            updated=fm.get("updated") or None,
+            type=fm.get("type") or None,
+            resource=fm.get("resource") or None,
         )
 
     def page_exists(self, slug: str) -> bool:

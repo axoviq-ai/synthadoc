@@ -45,8 +45,12 @@ class IngestResult:
 _ANALYSIS_PROMPT = (
     "Analyse the source text below. Return ONLY valid JSON with no markdown fences:\n"
     '{"entities": [...], "tags": [...], "summary": "One to three sentences describing '
-    'the main topic, key claims, and relevance.", "relevant": true}\n\n'
-    "Keep entities and tags under 10 items each.\n\n"
+    'the main topic, key claims, and relevance.", '
+    '"type": "concept|person|technology|event|organization|location|product", "relevant": true}\n\n'
+    "Keep entities and tags under 10 items each.\n"
+    'For "type", pick exactly one label: "person" for individuals, "organization" for companies/institutions, '
+    '"technology" for tools/systems/algorithms/standards, "event" for occurrences, '
+    '"location" for places, "product" for commercial products, "concept" for abstract ideas (default).\n\n'
 )
 
 _ENTITY_PROMPT = (
@@ -92,6 +96,7 @@ _OVERVIEW_PROMPT = (
 )
 
 CITATION_PASS4_CACHE_VERSION = "v1"
+ANALYSIS_CACHE_VERSION = "v2"  # bumped to include OKF type field
 _CITATION_EXCERPT_LEN = 100
 _CITATION_RE = re.compile(r'\^\[([^\]:]+):(\d+)-(\d+)\]')
 
@@ -108,6 +113,14 @@ _CITATION_PROMPT = (
 )
 
 _CONFIDENCE_RANK = {"high": 3, "medium": 2, "low": 1}
+
+
+def _backfill_okf_fields(page: "WikiPage", analysis: dict, source: str) -> None:
+    """Backfill type and resource on pages that predate v0.9.0. Never overwrites existing values."""
+    if page.type is None:
+        page.type = analysis.get("type") or None
+    if page.resource is None and is_url(source):
+        page.resource = source
 
 
 def _confidence_passes_threshold(confidence: str, min_confidence: str) -> bool:
@@ -324,9 +337,9 @@ class IngestAgent:
         return result[0] if result else next(iter(ri.branches))
 
     async def _analyse(self, text: str, bust_cache: bool = False) -> dict:
-        """Step 1 — analysis pass: entity extraction + summary. Cached by content hash."""
+        """Step 1 — analysis pass: entity extraction + summary + OKF type. Cached by content hash."""
         text_hash = hashlib.sha256(text.encode()).hexdigest()
-        ck = make_cache_key("analyse-v1", {"text_hash": text_hash}, version=self._cache_version)
+        ck = make_cache_key("analyse-v1", {"text_hash": text_hash}, version=ANALYSIS_CACHE_VERSION)
         if not bust_cache:
             cached = await self._cache.get(ck)
             if cached:
@@ -682,6 +695,8 @@ class IngestAgent:
                         if page.status == LifecycleState.STALE:
                             page.status = LifecycleState.DRAFT
                             self._stale_to_draft_slug = target
+                        _backfill_okf_fields(page, analysis, source)
+                        page.updated = date.today().isoformat()
                         if extracted.metadata.get("has_summary"):
                             section = extracted.text
                         elif update_content:
@@ -730,6 +745,8 @@ class IngestAgent:
                             if page.status == LifecycleState.STALE:
                                 page.status = LifecycleState.DRAFT
                                 self._stale_to_draft_slug = slug
+                            _backfill_okf_fields(page, analysis, source)
+                            page.updated = date.today().isoformat()
                             if extracted.metadata.get("has_summary"):
                                 section = extracted.text
                             else:
@@ -769,6 +786,8 @@ class IngestAgent:
                             ingested=today,
                         )],
                         created=today,
+                        type=analysis.get("type") or None,
+                        resource=source if is_url(source) else None,
                     )
 
                     # Staging fork: route to candidates/ based on policy

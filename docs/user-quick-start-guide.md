@@ -195,7 +195,7 @@ Open the vault explorer. The key files and folders:
 history-of-computing/
   wiki/                   ← compiled Markdown pages (open these in Obsidian)
     index.md              ← table of contents with [[wikilinks]] to every page
-    dashboard.md          ← live Dataview tables — orphans, contradictions, recent pages
+    dashboard.md          ← live Dataview tables — contradictions, orphans, recently added/updated/archived
     purpose.md            ← scope definition — what belongs in this wiki and what to skip
     overview.md           ← LLM-generated 2-paragraph summary of the entire wiki
     alan-turing.md        ← example pre-built topic page
@@ -216,10 +216,35 @@ history-of-computing/
 | File                  | What to look at                                                   |
 | --------------------- | ----------------------------------------------------------------- |
 | `wiki/index.md`       | Pre-generated category structure with`[[wikilinks]]` to each page |
-| `wiki/dashboard.md`   | Live Dataview tables — will populate after Steps 6–8            |
+| `wiki/dashboard.md`   | Live Dataview tables — contradictions, orphans, recently added / updated / archived |
 | `wiki/alan-turing.md` | YAML frontmatter:`status`, `confidence`, `tags`, `sources[]`      |
 | `AGENTS.md`           | Domain-specific guidelines the LLM reads on every ingest          |
 | `wiki/purpose.md`     | In-scope / out-of-scope definition for History of Computing       |
+
+### dashboard.md — what each section shows
+
+`wiki/dashboard.md` contains four live Dataview tables. Open it in Obsidian (Reading View) after installing the Dataview plugin to see them update automatically as you work through this guide.
+
+| Section | What it shows | Powered by |
+|---------|--------------|------------|
+| **Contradicted pages** | Pages whose sources conflict — need manual resolution | `status = "contradicted"` |
+| **Orphan pages** | Pages with no inbound `[[wikilinks]]` — run lint first to populate | `orphan = true` (set by lint) |
+| **Recently added** | The 10 most recently created pages, newest first | `created` frontmatter field |
+| **Recently updated** | Pages that have been re-ingested with new source material since their initial creation | `updated` frontmatter field — only present after a re-ingest |
+| **Recently archived** | Pages currently in `archived` state — retired from active use | `status = "archived"` |
+
+**Recently added vs. Recently updated** — these are intentionally separate:
+
+- **Recently added** lists every page by its `created` date. A freshly installed demo wiki shows all pages here because they were all created at install time.
+- **Recently updated** only appears for pages that have been re-ingested after their initial creation. The `updated` field is written by the ingest engine when it merges new source material into an existing page — it is absent on first creation. This means the table starts empty in a fresh install and grows as you re-ingest sources with `--force` or ingest new files that map to existing pages.
+
+**Recently archived** — to restore a page from this list, change its `status` back to `active` in Obsidian's Properties panel, or use the CLI:
+
+```bash
+synthadoc lifecycle restore <slug> --reason "source re-added"
+```
+
+> **Dataview cache:** If a table disagrees with `synthadoc status` or `synthadoc lint report`, drop the cache: `Ctrl/Cmd+P` → **Dataview: Drop all cached file metadata**, then reopen `dashboard.md`. The CLI is always authoritative.
 
 ---
 
@@ -336,6 +361,36 @@ synthadoc query "What did Turing contribute to computing?"
 
 Aliases are matched case-insensitively. Longest match wins — so if two pages each define
 an alias and one is a longer substring of the query, the longer one takes precedence.
+
+### OKF compatibility fields
+
+Every page compiled by Synthadoc also carries two fields that align with Google's [Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md):
+
+| Field | What it contains | Set by |
+|-------|-----------------|--------|
+| `type` | Knowledge classifier: `concept`, `person`, `technology`, `event`, `organization`, `location`, or `product` | Ingest — LLM classifies during the analysis pass |
+| `resource` | Primary source URL (only present for URL-sourced pages) | Ingest — auto-populated from the URL |
+
+These fields make Synthadoc wikis directly consumable by any OKF-aware agent without an export step. Pages ingested from local files have no `resource` field.
+
+**`resource` vs `sources` — what's the difference?**
+
+Both point at source material, but for different audiences:
+
+- **`sources`** is Synthadoc's internal audit record — an array that grows as more files are ingested into the same page, storing the file path, SHA-256 hash, byte size, and ingestion timestamp. Used for dedup, stale detection, and cost tracking.
+- **`resource`** is the OKF citation — a single URL that any agent or human can follow to the original source, without needing to understand Synthadoc's schema.
+
+For URL sources both refer to the same URL; for local files only `sources` is present.
+
+**Migrating pages created before v0.9.0** — older pages have no `type` field. Force re-ingest to backfill it:
+
+```bash
+synthadoc ingest path/to/source.pdf --force
+# or for a URL source
+synthadoc ingest "https://example.com/article" --force
+```
+
+The `--force` flag skips the duplicate check and re-runs the analysis pass, which classifies the knowledge type and writes it to the page's frontmatter. Existing content is appended to, not replaced. If `type` is already set, it is not overwritten.
 
 ---
 
