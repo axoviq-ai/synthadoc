@@ -221,6 +221,31 @@ history-of-computing/
 | `AGENTS.md`           | Domain-specific guidelines the LLM reads on every ingest          |
 | `wiki/purpose.md`     | In-scope / out-of-scope definition for History of Computing       |
 
+### dashboard.md — what each section shows
+
+`wiki/dashboard.md` contains four live Dataview tables. Open it in Obsidian (Reading View) after installing the Dataview plugin to see them update automatically as you work through this guide.
+
+| Section | What it shows | Powered by |
+|---------|--------------|------------|
+| **Contradicted pages** | Pages whose sources conflict — need manual resolution | `status = "contradicted"` |
+| **Orphan pages** | Pages with no inbound `[[wikilinks]]` — run lint first to populate | `orphan = true` (set by lint) |
+| **Recently added** | The 10 most recently created pages, newest first | `created` frontmatter field |
+| **Recently updated** | Pages that have been re-ingested with new source material since their initial creation | `updated` frontmatter field — only present after a re-ingest |
+| **Recently archived** | Pages currently in `archived` state — retired from active use | `status = "archived"` |
+
+**Recently added vs. Recently updated** — these are intentionally separate:
+
+- **Recently added** lists every page by its `created` date. A freshly installed demo wiki shows all pages here because they were all created at install time.
+- **Recently updated** only appears for pages that have been re-ingested after their initial creation. The `updated` field is written by the ingest engine when it merges new source material into an existing page — it is absent on first creation. This means the table starts empty in a fresh install and grows as you re-ingest sources with `--force` or ingest new files that map to existing pages.
+
+**Recently archived** — to restore a page from this list, change its `status` back to `active` in Obsidian's Properties panel, or use the CLI:
+
+```bash
+synthadoc lifecycle restore <slug> --reason "source re-added"
+```
+
+> **Dataview cache:** If a table disagrees with `synthadoc status` or `synthadoc lint report`, drop the cache: `Ctrl/Cmd+P` → **Dataview: Drop all cached file metadata**, then reopen `dashboard.md`. The CLI is always authoritative.
+
 ---
 
 <a name="query-wiki"></a>
