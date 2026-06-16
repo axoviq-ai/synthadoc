@@ -1686,7 +1686,7 @@ Synthadoc exports your wiki in five machine-readable formats — all assembled s
 | `llms-full.txt` | Full page content for all pages, separated by `---` dividers, with status and confidence headers. Provenance footnotes (`^[source.txt:42-58]`) are preserved verbatim. No size limit.                                                             | Large-context LLM prompts, RAG pipelines, offline reading        |
 | `graphml`       | Directed wikilink graph — one node per page, one edge per `[[wikilink]]`. Each node carries the page title, lifecycle state, confidence level, orphan flag, inbound link count, and routing branch. Compatible with yEd, Gephi, and Cytoscape.   | Visualising knowledge structure, detecting hub pages and orphans |
 | `json`          | Full structured dump per page: content, tags, sources, claims with source line ranges, lifecycle transition history, routing branch, and per-page ingest cost and token usage. Wiki-level: total compilation cost and routing branch memberships. | Agent pipelines, programmatic processing, compliance audits      |
-| `okf`           | [OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle directory — one Markdown file per page with conformant YAML frontmatter, an `index.md` grouped by knowledge type, and a `log.md` change log. `[[wikilinks]]` are rewritten to OKF relative paths. | Any OKF-aware agent or tool — **zero code changes needed**       |
+| `okf`           | [OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle directory — one Markdown file per page with conformant YAML frontmatter, an `index.md` grouped by knowledge type, and a `log.md` change log. `[[wikilinks]]` are rewritten to OKF relative paths. Default includes **active + contradicted** pages only; contradicted pages carry a `> **Contradiction:** …` blockquote in the body. | Any OKF-aware agent or tool — **zero code changes needed**       |
 
 ### Status filter — export only what you trust
 
@@ -1694,12 +1694,14 @@ The `--status` flag scopes the export to a specific lifecycle state:
 
 | Value           | What is included                  | When to use it                                                                    |
 | --------------- | --------------------------------- | --------------------------------------------------------------------------------- |
-| `all` (default) | Every non-archived page           | Full snapshot                                                                     |
+| `all` (default) | Every non-archived page¹          | Full snapshot                                                                     |
 | `active`        | Only lint-reviewed, trusted pages | **Recommended for AI consumption** — avoids feeding unreviewed content to an LLM |
 | `draft`         | Pages awaiting first lint pass    | Reviewing what has been ingested but not yet approved                             |
 | `stale`         | Pages whose source has changed    | Identifying content that needs re-ingest                                          |
 | `contradicted`  | Pages with detected conflicts     | Targeted review of known issues                                                   |
 | `archived`      | Retired pages                     | Audit or recovery                                                                 |
+
+¹ **OKF exception:** `--format okf` with the default `all` includes only `active` and `contradicted` pages — draft and stale are excluded because they carry unverified content. Pass `--status active` for a clean trusted-only bundle.
 
 ### CLI
 
@@ -1734,7 +1736,7 @@ Requires `synthadoc serve` to be running.
 
 Open the Command Palette (`Ctrl/Cmd+P`) → **Synthadoc: Export Wiki**.
 
-The modal opens with a description panel explaining each format, a format dropdown, a full-width output path field (pre-filled with today's date and the correct file extension), and a status filter. Click **Export** — the file is written to your vault's `exports/` folder and opened automatically.
+The modal opens with a description panel explaining each format, a format dropdown, a full-width output path field (pre-filled with today's date and the correct extension or folder name), and a status filter. Click **Export**. For all formats except `okf` the file is written inside the vault and opened automatically. For `okf`, the output field defaults to `~/exports/{vault-name}-okf-{date}/` — a folder outside the vault — and the bundle is written there directly via the filesystem.
 
 ![Synthadoc Export Wiki modal — format dropdown, description panel, output path field, status filter, and Export button](png/synthadoc-export-wiki.png)
 
@@ -1779,6 +1781,8 @@ The exported `.graphml` file can be loaded in any of these free tools:
 ### OKF bundle export — zero-code agent consumption
 
 The `okf` format produces a directory bundle that any [OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)-aware agent can read without knowing anything about Synthadoc. Every wiki page becomes a conformant Markdown file with YAML frontmatter; knowledge types, cross-links, and lifecycle history are all preserved.
+
+By default the bundle includes **active and contradicted pages only** — draft and stale pages are excluded because they contain unverified or outdated content. Contradicted pages are included deliberately: they carry `status: contradicted` in their frontmatter so OKF consumers that read metadata can filter them, and a `> **Contradiction:** …` blockquote appended to the body so consumers that only read Markdown text still see the conflict note.
 
 **Export the demo wiki as an OKF bundle:**
 

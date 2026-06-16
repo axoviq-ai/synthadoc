@@ -1001,9 +1001,11 @@ synthadoc export --format okf --output ~/exports/my-wiki-okf/ -w my-wiki
 
 > **OKF export requires `--output`** — the bundle is a directory tree, not a single file.
 
+> **OKF default pages:** `--format okf` with `--status all` (the default) includes only `active` and `contradicted` pages. Draft and stale are excluded — they carry unverified content. Contradicted pages appear with `status: contradicted` in their frontmatter and a `> **Contradiction:** …` blockquote in the body.
+
 > **Tip:** Keep the OKF bundle **outside** your wiki folder. The output path can be any absolute or relative path — `--output ~/exports/my-wiki-okf/` or `--output ../okf-bundles/my-wiki/` both work. Placing it inside the wiki folder risks Obsidian or the ingestor picking up the bundle files as source documents.
 
-In Obsidian: command palette → **Synthadoc: Export Wiki** — choose format and status filter, then click **Export**. The file is saved to the vault's `exports/` folder and opened automatically. For GraphML, a **View Graph** button renders an inline preview; export the file to load in a dedicated tool.
+In Obsidian: command palette → **Synthadoc: Export Wiki** — choose format and status filter, then click **Export**. For all formats except `okf`, the file is saved to the vault's `exports/` folder and opened automatically. For `okf`, the output path defaults to `~/exports/{vault-name}-okf-{date}/` outside the vault and is written via the filesystem. For GraphML, a **View Graph** button renders an inline preview.
 
 ### Removing a wiki
 
