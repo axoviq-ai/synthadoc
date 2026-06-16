@@ -55,10 +55,16 @@ def _install_shutdown_noise_filter() -> None:
     """
     class _Filter(logging.Filter):
         _shutdown_types = (asyncio.CancelledError, KeyboardInterrupt)
+        # uvicorn sometimes logs the full traceback as message text with no exc_info
+        _shutdown_msg_markers = ("asyncio.exceptions.CancelledError", "asyncio.CancelledError")
 
         def filter(self, record: logging.LogRecord) -> bool:
             if record.exc_info and record.exc_info[0] is not None:
                 if issubclass(record.exc_info[0], self._shutdown_types):
+                    return False
+            if record.levelno >= logging.ERROR:
+                msg = record.getMessage()
+                if any(msg.rstrip().endswith(m) for m in self._shutdown_msg_markers):
                     return False
             return True
 

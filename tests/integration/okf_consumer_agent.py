@@ -21,6 +21,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -81,9 +82,15 @@ def discover_types(bundle_dir: Path) -> list[str]:
     return types
 
 
-def build_context(concepts: list[dict]) -> str:
-    """Format OKF concepts as a grounded context block for the LLM prompt."""
+# ~4 chars per token; reserve ~10k tokens for system prompt + question + response
+_MAX_CONTEXT_CHARS = (200_000 - 10_000) * 4
+
+
+def build_context(concepts: list[dict], max_chars: int = _MAX_CONTEXT_CHARS) -> str:
+    """Format OKF concepts as a grounded context block, trimmed to fit the token limit."""
     sections = []
+    total_chars = 0
+    included = 0
     for c in concepts:
         fm = c["frontmatter"]
         header = (
@@ -93,7 +100,18 @@ def build_context(concepts: list[dict]) -> str:
         body = c["body"]
         if fm.get("description"):
             body = fm["description"] + "\n\n" + body
-        sections.append(f"{header}\n\n{body}")
+        section = f"{header}\n\n{body}"
+        if total_chars + len(section) > max_chars:
+            omitted = len(concepts) - included
+            print(
+                f"[consumer-agent] Context budget reached — included {included}/{len(concepts)} pages "
+                f"({omitted} omitted). Use --type to narrow the scope.",
+                file=sys.stderr,
+            )
+            break
+        sections.append(section)
+        total_chars += len(section)
+        included += 1
     return "\n\n---\n\n".join(sections)
 
 
@@ -123,6 +141,14 @@ def run(bundle_dir: Path, question: str, type_filter: str | None) -> str:
         f"Knowledge bundle context:\n\n{context}\n\n"
         f"---\n\nQuestion: {question}"
     )
+
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        sys.exit(
+            "Error: ANTHROPIC_API_KEY environment variable is not set.\n"
+            "Set it with:\n"
+            "  Windows:     set ANTHROPIC_API_KEY=your-key\n"
+            "  macOS/Linux: export ANTHROPIC_API_KEY='your-key'"
+        )
 
     client = anthropic.Anthropic()
     message = client.messages.create(

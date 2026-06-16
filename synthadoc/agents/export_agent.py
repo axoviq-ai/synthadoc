@@ -337,8 +337,14 @@ class ExportAgent:
                 "status": page.status,
                 "confidence": page.confidence or "",
             }
-            if page.resource:
-                fm["resource"] = page.resource
+            resource = page.resource
+            if not resource:
+                from synthadoc.storage.wiki import is_url
+                url_sources = [s.file for s in page.sources if is_url(s.file)]
+                if url_sources:
+                    resource = url_sources[0]
+            if resource:
+                fm["resource"] = resource
             fm = {k: v for k, v in fm.items() if v != ""}
 
             body = _rewrite_wikilinks(page.content or "", slug_to_title)
