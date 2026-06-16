@@ -16,16 +16,16 @@ from synthadoc import errors as E
 @app.command("export")
 def export_cmd(
     format: str = typer.Option(..., "--format", "-f",
-        help="Output format: llms.txt, llms-full.txt, graphml, json"),
+        help="Output format: llms.txt, llms-full.txt, graphml, json, okf"),
     output: Optional[str] = typer.Option(None, "--output", "-o",
-        help="Write to file. Defaults to stdout."),
+        help="Write to file (or directory for --format okf). Defaults to stdout."),
     status: str = typer.Option("all", "--status", "-s",
         help="Filter pages by lifecycle state: all, active, draft, stale, contradicted, archived"),
     context_pack: Optional[str] = typer.Option(None, "--context-pack", "-c",
         help="Export only pages in named context pack"),
     wiki: Optional[str] = typer.Option(None, "--wiki", "-w"),
 ):
-    """Export wiki as llms.txt, llms-full.txt, graphml, or json. Requires synthadoc serve."""
+    """Export wiki as llms.txt, llms-full.txt, graphml, json, or okf bundle directory."""
     wiki_name = resolve_wiki(wiki)
     url = server_url(wiki_name)
     body: dict = {"format": format, "status_filter": status}
@@ -45,6 +45,20 @@ def export_cmd(
         except Exception:
             detail = exc.response.text
         E.cli_error(E.SRV_HTTP_ERROR, f"Export failed: {detail}")
+
+    if format == "okf":
+        if not output:
+            typer.echo("Error: --output <directory> is required for --format okf.", err=True)
+            raise typer.Exit(1)
+        from pathlib import Path
+        manifest: dict = resp.json()
+        out_dir = Path(output)
+        for rel_path, content in manifest.items():
+            dest = out_dir / rel_path
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(content, encoding="utf-8", newline="\n")
+        typer.echo(f"OKF bundle written to {output} ({len(manifest)} files)", err=True)
+        return
 
     content = resp.text
     if output:

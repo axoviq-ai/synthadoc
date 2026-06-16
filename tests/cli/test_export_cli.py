@@ -124,3 +124,56 @@ def test_export_cmd_status_filter_forwarded():
         ])
     assert result.exit_code == 0
     assert captured_body.get("status_filter") == "active"
+
+
+# ── OKF CLI tests ──────────────────────────────────────────────────────────────
+
+import json as _json
+
+
+def _patch_httpx_post_okf(files: dict):
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.text = _json.dumps(files)
+    mock_resp.json.return_value = files
+    mock_resp.raise_for_status = MagicMock()
+    return patch("synthadoc.cli.export.httpx.post", return_value=mock_resp)
+
+
+def test_export_okf_writes_directory(tmp_path):
+    """--format okf must write each file in the manifest into the output directory."""
+    out_dir = tmp_path / "bundle"
+    manifest = {
+        "index.md": "---\ntype: index\n---\n\n# Wiki\n",
+        "wiki/alan-turing.md": "---\ntype: person\n---\n\nContent.\n",
+    }
+    with _patch_resolve_wiki(), _patch_server_url(), _patch_httpx_post_okf(manifest):
+        result = runner.invoke(app, [
+            "export", "-f", "okf", "-w", "my-wiki",
+            "-o", str(out_dir),
+        ])
+    assert result.exit_code == 0
+    assert (out_dir / "index.md").read_text(encoding="utf-8") == manifest["index.md"]
+    assert (out_dir / "wiki" / "alan-turing.md").read_text(encoding="utf-8") == manifest["wiki/alan-turing.md"]
+
+
+def test_export_okf_requires_output_flag():
+    """--format okf without --output must exit with a clear error message."""
+    manifest = {"index.md": "---\ntype: index\n---\n"}
+    with _patch_resolve_wiki(), _patch_server_url(), _patch_httpx_post_okf(manifest):
+        result = runner.invoke(app, ["export", "-f", "okf", "-w", "my-wiki"])
+    assert result.exit_code != 0
+    assert "--output" in result.output or "--output" in (result.stderr or "")
+
+
+def test_export_okf_creates_nested_directories(tmp_path):
+    """OKF export must create intermediate directories (wiki/) automatically."""
+    out_dir = tmp_path / "bundle"
+    manifest = {
+        "index.md": "---\ntype: index\n---\n",
+        "log.md": "---\ntype: log\n---\n",
+        "wiki/grace-hopper.md": "---\ntype: person\n---\n\nContent.\n",
+    }
+    with _patch_resolve_wiki(), _patch_server_url(), _patch_httpx_post_okf(manifest):
+        runner.invoke(app, ["export", "-f", "okf", "-w", "my-wiki", "-o", str(out_dir)])
+    assert (out_dir / "wiki" / "grace-hopper.md").exists()
