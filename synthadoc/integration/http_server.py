@@ -1238,6 +1238,12 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
             context_pack=req.context_pack,
         )
         content = await agent.export(opts)
+        if req.format == "okf":
+            import json as _json
+            return Response(
+                content=_json.dumps(content, ensure_ascii=False),
+                media_type="application/json",
+            )
         _CONTENT_TYPES = {
             "llms.txt":      "text/plain; charset=utf-8",
             "llms-full.txt": "text/plain; charset=utf-8",
