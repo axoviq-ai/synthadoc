@@ -59,9 +59,10 @@ class ExportAgent:
             return self._render_llms_full_txt(pages)
 
         if opts.format == "okf":
-            # Exclude archived pages unless explicitly requested
+            # Default: active + contradicted only — draft/stale/archived excluded
             if opts.status_filter == "all":
-                pages = {s: p for s, p in pages.items() if p.status != LifecycleState.ARCHIVED}
+                _OKF_DEFAULT = {LifecycleState.ACTIVE, LifecycleState.CONTRADICTED}
+                pages = {s: p for s, p in pages.items() if p.status in _OKF_DEFAULT}
             from synthadoc.storage.log import AuditDB
             audit = AuditDB(self._audit_db_path)
             await audit.init()
@@ -341,6 +342,8 @@ class ExportAgent:
             fm = {k: v for k, v in fm.items() if v != ""}
 
             body = _rewrite_wikilinks(page.content or "", slug_to_title)
+            if page.contradiction_note:
+                body += f"\n\n> **Contradiction:** {page.contradiction_note}"
             raw = _yaml.dump(fm, default_flow_style=False, allow_unicode=True)
             files[f"wiki/{slug}.md"] = f"---\n{raw}---\n\n{body}\n"
 

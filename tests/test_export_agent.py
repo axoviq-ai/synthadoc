@@ -523,6 +523,59 @@ async def test_okf_archived_pages_excluded_by_default(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_okf_draft_excluded_by_default(tmp_path):
+    """Draft pages must not appear in OKF bundle by default — unverified content."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "draft-page", "Draft Page", LifecycleState.DRAFT,
+                    content="Unverified.", type_="concept")
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    assert "wiki/draft-page.md" not in result
+
+
+@pytest.mark.asyncio
+async def test_okf_stale_excluded_by_default(tmp_path):
+    """Stale pages must not appear in OKF bundle by default — source has changed."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "stale-page", "Stale Page", LifecycleState.STALE,
+                    content="Outdated.", type_="concept")
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    assert "wiki/stale-page.md" not in result
+
+
+@pytest.mark.asyncio
+async def test_okf_contradicted_included_by_default(tmp_path):
+    """Contradicted pages must appear in OKF bundle — consumers see status: contradicted."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "conflict-page", "Conflict Page", LifecycleState.CONTRADICTED,
+                    content="Conflicting claim.", type_="concept")
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    assert "wiki/conflict-page.md" in result
+    fm = _parse_frontmatter(result["wiki/conflict-page.md"])
+    assert fm["status"] == "contradicted"
+
+
+@pytest.mark.asyncio
+async def test_okf_contradiction_note_appended_to_body(tmp_path):
+    """contradiction_note must be appended to body as a blockquote warning."""
+    store = _make_store(tmp_path)
+    page = WikiPage(
+        title="Conflict Page", tags=[], content="Original claim.",
+        status=LifecycleState.CONTRADICTED, confidence="low", sources=[],
+        created="2026-05-26", orphan=False, type="concept",
+        contradiction_note="Source B says the opposite.",
+    )
+    store.write_page("conflict-page", page)
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    body = result["wiki/conflict-page.md"].split("---", 2)[2]
+    assert "Source B says the opposite." in body
+    assert "> **Contradiction:**" in body
+
+
+@pytest.mark.asyncio
 async def test_okf_archived_pages_included_with_status_filter(tmp_path):
     store = _make_store(tmp_path)
     _write_okf_page(store, "old-page", "Old Page", LifecycleState.ARCHIVED,
