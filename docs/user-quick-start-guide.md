@@ -36,7 +36,7 @@ major engine feature. No setup beyond following the steps below is required.
 18. [Configure candidates staging](#step-18--configure-candidates-staging)
 19. [Build a context pack](#step-19--build-a-context-pack)
 20. [Establish claim-level provenance](#claim-provenance)
-21. [Export your wiki](#step-21--export-your-wiki)
+21. [Export your wiki — llms.txt, GraphML, JSON, OKF bundle](#step-21--export-your-wiki)
 22. [Use the web chat UI](#step-22--use-the-web-chat-ui)
 23. [Query caching](#step-23--query-caching)
 
@@ -1674,24 +1674,23 @@ synthadoc lint report
 
 ## Step 21 — Export your wiki
 
-Synthadoc exports your wiki in four machine-readable formats — all assembled server-side from cached data with **zero additional LLM calls**. Use exports to feed reviewed knowledge to an external AI assistant, load your wiki's link structure into a graph analysis tool, or integrate page content into an agent pipeline. Because exports respect the lifecycle filter, you can choose to export only `active` pages — the ones that have passed lint review — rather than everything that has ever been ingested.
+Synthadoc exports your wiki in five machine-readable formats — all assembled server-side from cached data with **zero additional LLM calls**. Use exports to feed reviewed knowledge to an external AI assistant, load your wiki's link structure into a graph analysis tool, or integrate page content into an agent pipeline. Because exports respect the lifecycle filter, you can choose to export only `active` pages — the ones that have passed lint review — rather than everything that has ever been ingested.
 
-> **Differentiation:** Unlike static document exports from other tools, Synthadoc's exports carry the full provenance chain. The `json` format includes the exact source lines that support every claim, the complete state transition history for each page, and the API cost that was spent compiling it. No other knowledge base tool produces an export this rich.
+> **Differentiation:** Unlike static document exports from other tools, Synthadoc's exports carry the full provenance chain. The `json` format includes the exact source lines that support every claim, the complete state transition history for each page, and the API cost that was spent compiling it. The `okf` format makes your wiki directly consumable by any OKF-aware agent — no code changes needed on the consumer side.
 
 ### What each format contains
 
-
 | Format          | What it exports                                                                                                                                                                                                                                   | Best used for                                                    |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `llms.txt`      | Page titles + one-line summaries, structured per the[llmstxt.org](https://llmstxt.org) spec. Contradicted/stale pages appear in a **Needs Review** section; archived pages are omitted.                                                           | Feeding AI assistants a compact, navigable wiki index            |
-| `llms-full.txt` | Full page content for all pages, separated by`---` dividers, with status and confidence headers. Provenance footnotes (`^[source.txt:42-58]`) are preserved verbatim. No size limit.                                                              | Large-context LLM prompts, RAG pipelines, offline reading        |
-| `graphml`       | Directed wikilink graph — one node per page, one edge per`[[wikilink]]`. Each node carries the page title, lifecycle state, confidence level, orphan flag, inbound link count, and routing branch. Compatible with yEd, Gephi, and Cytoscape.    | Visualising knowledge structure, detecting hub pages and orphans |
+| `llms.txt`      | Page titles + one-line summaries, structured per the [llmstxt.org](https://llmstxt.org) spec. Contradicted/stale pages appear in a **Needs Review** section; archived pages are omitted.                                                          | Feeding AI assistants a compact, navigable wiki index            |
+| `llms-full.txt` | Full page content for all pages, separated by `---` dividers, with status and confidence headers. Provenance footnotes (`^[source.txt:42-58]`) are preserved verbatim. No size limit.                                                             | Large-context LLM prompts, RAG pipelines, offline reading        |
+| `graphml`       | Directed wikilink graph — one node per page, one edge per `[[wikilink]]`. Each node carries the page title, lifecycle state, confidence level, orphan flag, inbound link count, and routing branch. Compatible with yEd, Gephi, and Cytoscape.   | Visualising knowledge structure, detecting hub pages and orphans |
 | `json`          | Full structured dump per page: content, tags, sources, claims with source line ranges, lifecycle transition history, routing branch, and per-page ingest cost and token usage. Wiki-level: total compilation cost and routing branch memberships. | Agent pipelines, programmatic processing, compliance audits      |
+| `okf`           | [OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle directory — one Markdown file per page with conformant YAML frontmatter, an `index.md` grouped by knowledge type, and a `log.md` change log. `[[wikilinks]]` are rewritten to OKF relative paths. | Any OKF-aware agent or tool — **zero code changes needed**       |
 
 ### Status filter — export only what you trust
 
 The `--status` flag scopes the export to a specific lifecycle state:
-
 
 | Value           | What is included                  | When to use it                                                                    |
 | --------------- | --------------------------------- | --------------------------------------------------------------------------------- |
@@ -1718,9 +1717,14 @@ synthadoc export --format graphml --output exports/history.graphml
 
 # Agent-ready JSON — claims, lifecycle history, per-page cost, routing
 synthadoc export --format json --output exports/history.json
+
+# OKF v0.1 bundle — consumable by any OKF-aware agent without code changes
+synthadoc export --format okf --output exports/history-okf/
 ```
 
-**Flags:** `--format/-f` (required: `llms.txt`, `llms-full.txt`, `graphml`, `json`), `--output/-o` (path relative to CWD; omit to print to stdout), `--status/-s` (default `all`).
+**Flags:** `--format/-f` (required: `llms.txt`, `llms-full.txt`, `graphml`, `json`, `okf`), `--output/-o` (path relative to CWD; omit to print to stdout; **required** for `okf`), `--status/-s` (default `all`).
+
+> **OKF export writes a directory**, not a single file — `--output` must point to a directory path (it will be created if it does not exist).
 
 Requires `synthadoc serve` to be running.
 
@@ -1769,6 +1773,67 @@ The exported `.graphml` file can be loaded in any of these free tools:
 1. Download from [cytoscape.org](https://cytoscape.org) (free)
 2. **File → Import → Network from File** → select your `.graphml`
 3. Apply a layout from the **Layout** menu
+
+### OKF bundle export — zero-code agent consumption
+
+The `okf` format produces a directory bundle that any [OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)-aware agent can read without knowing anything about Synthadoc. Every wiki page becomes a conformant Markdown file with YAML frontmatter; knowledge types, cross-links, and lifecycle history are all preserved.
+
+**Export the demo wiki as an OKF bundle:**
+
+```bash
+synthadoc export --format okf --output exports/history-okf/
+```
+
+The bundle looks like this:
+
+```
+exports/history-okf/
+  index.md              ← OKF index, pages grouped by type (person, technology, …)
+  log.md                ← lifecycle change history, newest first
+  wiki/
+    alan-turing.md      ← one OKF concept file per wiki page
+    grace-hopper.md
+    …
+```
+
+Each concept file carries a conformant frontmatter block — here is `alan-turing.md`:
+
+```yaml
+---
+type: person
+title: Alan Turing
+description: Father of theoretical computer science and pioneer of the Turing machine.
+tags: mathematics, computation, cryptography
+timestamp: '2026-04-22'
+status: active
+confidence: high
+---
+
+Alan Turing (1912–1954) developed the theoretical basis of modern computation…
+
+See also: [Von Neumann Architecture](von-neumann-architecture.md)
+```
+
+**Run the OKF consumer agent demo:**
+
+Synthadoc ships a standalone consumer agent at `tests/integration/okf_consumer_agent.py`. It imports nothing from Synthadoc — only `pathlib`, `yaml`, and the Anthropic SDK — proving that any OKF-aware tool works against the bundle without modification.
+
+```bash
+# Pattern A — grounded domain Q&A: answer questions from the bundle
+python tests/integration/okf_consumer_agent.py \
+    --bundle exports/history-okf \
+    --question "Who pioneered compiler development and what did they build?"
+
+# Pattern B — type-routed discovery: read index.md, filter by type, then answer
+python tests/integration/okf_consumer_agent.py \
+    --bundle exports/history-okf \
+    --question "List all computing pioneers and their key contributions" \
+    --type person
+```
+
+The agent reads `index.md` to discover available knowledge types, loads only the concept files that match the requested type (Pattern B), builds a grounded context, and asks Claude to answer using only the OKF bundle content — citing the source file path for every claim.
+
+> **Requirements:** `pip install anthropic pyyaml` and `ANTHROPIC_API_KEY` set. The Synthadoc server does not need to be running — the agent reads the exported bundle directly from disk.
 
 ---
 
