@@ -115,6 +115,14 @@ _CITATION_PROMPT = (
 _CONFIDENCE_RANK = {"high": 3, "medium": 2, "low": 1}
 
 
+def _backfill_okf_fields(page: "WikiPage", analysis: dict, source: str) -> None:
+    """Backfill type and resource on pages that predate v0.9.0. Never overwrites existing values."""
+    if page.type is None:
+        page.type = analysis.get("type") or None
+    if page.resource is None and is_url(source):
+        page.resource = source
+
+
 def _confidence_passes_threshold(confidence: str, min_confidence: str) -> bool:
     return _CONFIDENCE_RANK.get(confidence, 0) >= _CONFIDENCE_RANK.get(min_confidence, 0)
 
@@ -687,11 +695,7 @@ class IngestAgent:
                         if page.status == LifecycleState.STALE:
                             page.status = LifecycleState.DRAFT
                             self._stale_to_draft_slug = target
-                        # Backfill OKF fields added in v0.9.0 if absent on older pages
-                        if page.type is None:
-                            page.type = analysis.get("type") or None
-                        if page.resource is None and is_url(source):
-                            page.resource = source
+                        _backfill_okf_fields(page, analysis, source)
                         if extracted.metadata.get("has_summary"):
                             section = extracted.text
                         elif update_content:
@@ -740,11 +744,7 @@ class IngestAgent:
                             if page.status == LifecycleState.STALE:
                                 page.status = LifecycleState.DRAFT
                                 self._stale_to_draft_slug = slug
-                            # Backfill OKF fields added in v0.9.0 if absent on older pages
-                            if page.type is None:
-                                page.type = analysis.get("type") or None
-                            if page.resource is None and is_url(source):
-                                page.resource = source
+                            _backfill_okf_fields(page, analysis, source)
                             if extracted.metadata.get("has_summary"):
                                 section = extracted.text
                             else:
