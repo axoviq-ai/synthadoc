@@ -530,3 +530,42 @@ async def test_okf_archived_pages_included_with_status_filter(tmp_path):
     agent = _agent(tmp_path, store)
     result = await agent.export(ExportOptions(format="okf", status_filter="archived"))
     assert "wiki/old-page.md" in result
+
+
+# ── OKF helper unit tests ──────────────────────────────────────────────────────
+
+from synthadoc.agents.export_agent import _first_sentence, _rewrite_wikilinks
+
+
+def test_first_sentence_no_period_returns_truncated():
+    """Content with no sentence-ending period returns truncated text."""
+    result = _first_sentence("A long description without a period at all")
+    assert result == "A long description without a period at all"
+
+
+def test_first_sentence_skips_headings():
+    """Markdown headings are skipped when extracting first sentence."""
+    result = _first_sentence("# Section Title\nThe real content here. More follows.")
+    assert result == "The real content here."
+
+
+def test_rewrite_wikilinks_piped_form():
+    """[[slug|display]] must use custom display text, not slug_to_title lookup."""
+    result = _rewrite_wikilinks("See [[grace-hopper|Grace]] here.", {"grace-hopper": "Grace Hopper"})
+    assert "[Grace](grace-hopper.md)" in result
+
+
+def test_okf_log_rendered_when_events_present(tmp_path):
+    """log.md must appear in OKF bundle when lifecycle events exist."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
+                    content="Mathematician.", type_="person")
+    agent = _agent(tmp_path, store)
+    events = [
+        {"slug": "alan-turing", "from_state": "draft", "to_state": "active",
+         "reason": "lint passed", "timestamp": "2026-05-01T10:00:00"},
+    ]
+    result = agent._render_okf({"alan-turing": store.read_page("alan-turing")}, events)
+    assert "log.md" in result
+    assert "alan-turing" in result["log.md"]
+    assert "active" in result["log.md"]

@@ -78,3 +78,6 @@ path = "synthadoc/__init__.py"
 [tool.hatch.build.targets.wheel]
 packages = ["synthadoc"]
 artifacts = ["VERSION"]
+
+[tool.coverage.report]
+fail_under = 91
