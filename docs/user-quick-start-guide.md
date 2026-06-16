@@ -1703,7 +1703,7 @@ The `--status` flag scopes the export to a specific lifecycle state:
 
 ### CLI
 
-Run from your wiki root so `--output exports/…` writes inside your Obsidian vault.
+`--output` accepts any absolute or relative path and is resolved from your current working directory.
 
 ```bash
 # Active pages only — compact index of trusted knowledge (llms.txt spec)
@@ -1719,12 +1719,14 @@ synthadoc export --format graphml --output exports/history.graphml
 synthadoc export --format json --output exports/history.json
 
 # OKF v0.1 bundle — consumable by any OKF-aware agent without code changes
-synthadoc export --format okf --output exports/history-okf/
+synthadoc export --format okf --output ~/exports/history-okf/
 ```
 
-**Flags:** `--format/-f` (required: `llms.txt`, `llms-full.txt`, `graphml`, `json`, `okf`), `--output/-o` (path relative to CWD; omit to print to stdout; **required** for `okf`), `--status/-s` (default `all`).
+**Flags:** `--format/-f` (required: `llms.txt`, `llms-full.txt`, `graphml`, `json`, `okf`), `--output/-o` (file path or directory; omit to print to stdout; **required** for `okf`), `--status/-s` (default `all`).
 
 > **OKF export writes a directory**, not a single file — `--output` must point to a directory path (it will be created if it does not exist).
+
+> **Keep the OKF bundle outside your wiki folder.** Place it anywhere — `~/exports/history-okf/`, `../okf-bundles/history/`, an absolute path — as long as it is not inside the Obsidian vault. Files inside the vault are candidates for ingest; an OKF bundle contains derived Markdown that would be re-ingested as source material if left there.
 
 Requires `synthadoc serve` to be running.
 
@@ -1781,13 +1783,14 @@ The `okf` format produces a directory bundle that any [OKF v0.1](https://github.
 **Export the demo wiki as an OKF bundle:**
 
 ```bash
-synthadoc export --format okf --output exports/history-okf/
+# Write the bundle outside the wiki folder — keeps it away from Obsidian ingest
+synthadoc export --format okf --output ~/exports/history-okf/
 ```
 
 The bundle looks like this:
 
 ```
-exports/history-okf/
+~/exports/history-okf/
   index.md              ← OKF index, pages grouped by type (person, technology, …)
   log.md                ← lifecycle change history, newest first
   wiki/
@@ -1821,12 +1824,12 @@ Synthadoc ships a standalone consumer agent at `tests/integration/okf_consumer_a
 ```bash
 # Pattern A — grounded domain Q&A: answer questions from the bundle
 python tests/integration/okf_consumer_agent.py \
-    --bundle exports/history-okf \
+    --bundle ~/exports/history-okf \
     --question "Who pioneered compiler development and what did they build?"
 
 # Pattern B — type-routed discovery: read index.md, filter by type, then answer
 python tests/integration/okf_consumer_agent.py \
-    --bundle exports/history-okf \
+    --bundle ~/exports/history-okf \
     --question "List all computing pioneers and their key contributions" \
     --type person
 ```

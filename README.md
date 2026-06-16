@@ -993,14 +993,15 @@ synthadoc export --format graphml --output exports/wiki.graphml -w my-wiki
 synthadoc export --format json --output exports/wiki.json -w my-wiki
 
 # OKF v0.1 bundle — consumable by any OKF-aware agent without code changes
-synthadoc export --format okf --output exports/my-wiki-okf/ -w my-wiki
+# Write outside the wiki folder to avoid Obsidian picking up bundle files as source
+synthadoc export --format okf --output ~/exports/my-wiki-okf/ -w my-wiki
 ```
 
 **Flags:** `--format/-f` (required: `llms.txt`, `llms-full.txt`, `graphml`, `json`, `okf`), `--output/-o` (file path, or directory for `okf`; omit for stdout), `--status/-s` (`all`/`active`/`draft`/`stale`/`contradicted`/`archived`).
 
 > **OKF export requires `--output`** — the bundle is a directory tree, not a single file.
 
-> **Tip:** Run from your wiki root so `--output exports/…` lands inside your Obsidian vault.
+> **Tip:** Keep the OKF bundle **outside** your wiki folder. The output path can be any absolute or relative path — `--output ~/exports/my-wiki-okf/` or `--output ../okf-bundles/my-wiki/` both work. Placing it inside the wiki folder risks Obsidian or the ingestor picking up the bundle files as source documents.
 
 In Obsidian: command palette → **Synthadoc: Export Wiki** — choose format and status filter, then click **Export**. The file is saved to the vault's `exports/` folder and opened automatically. For GraphML, a **View Graph** button renders an inline preview; export the file to load in a dedicated tool.
 
