@@ -358,6 +358,9 @@ def serve_cmd(
             orch = Orchestrator(wiki_root=root, config=cfg)
             await orch.init()
             mcp = create_mcp_server(orchestrator=orch)
-            await mcp.run_stdio_async()
+            try:
+                await mcp.run_stdio_async()
+            finally:
+                await orch.close()
 
         asyncio.run(_stdio_main())
