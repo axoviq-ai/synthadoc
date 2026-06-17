@@ -10,7 +10,6 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, field_validator
-from starlette.middleware.base import BaseHTTPMiddleware
 from typing import Optional
 
 import logging
@@ -162,21 +161,22 @@ _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 _FM_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
 
 
-class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
+class ContentSizeLimitMiddleware:
     """Reject requests whose Content-Length exceeds the configured limit."""
 
     def __init__(self, app, max_bytes: int = _MAX_BODY_BYTES) -> None:
-        super().__init__(app)
+        self.app = app
         self._max_bytes = max_bytes
 
-    async def dispatch(self, request: Request, call_next):
-        if request.url.path.startswith("/mcp"):
-            return await call_next(request)
-        content_length = request.headers.get("content-length")
-        if content_length is not None:
-            if int(content_length) > self._max_bytes:
-                return Response(content="Request body too large", status_code=413)
-        return await call_next(request)
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and not scope.get("path", "").startswith("/mcp"):
+            headers = dict(scope.get("headers", []))
+            content_length = headers.get(b"content-length")
+            if content_length is not None and int(content_length) > self._max_bytes:
+                response = Response(content="Request body too large", status_code=413)
+                await response(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
 
 
 class QueryRequest(BaseModel):
