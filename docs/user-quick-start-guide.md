@@ -49,6 +49,7 @@ major engine feature. No setup beyond following the steps below is required.
 - [Appendix E — Configuration](#appendix-e--configuration)
 - [Appendix G — Using a Coding Tool as Your LLM Provider](#appendix-g--using-a-coding-tool-as-your-llm-provider)
 - [Appendix H — BM25 Routing Performance Benchmarks](#appendix-h--bm25-routing-performance-benchmarks)
+- [Appendix I — Connect Claude via MCP](#appendix-i--connect-claude-via-mcp)
 
 ---
 
@@ -2557,3 +2558,68 @@ Full-corpus BM25 scales roughly linearly with page count. At 10000 pages the med
 ### Takeaway
 
 For wikis under ~1000 pages the difference between scoped and full-corpus is negligible (both under 25 ms). At 10000 pages routing delivers a **4–5× speedup** (41 ms vs. 191 ms). Enable ROUTING.md ([Step 17](#step-17--set-up-routingmd--scoped-search)) once your wiki exceeds a few hundred pages.
+
+---
+
+<a name="appendix-i--connect-claude-via-mcp"></a>
+
+## Appendix I — Connect Claude via MCP
+
+Synthadoc exposes an MCP server so Claude Desktop, Claude Code, or any MCP-compatible agent can read and manage your wiki directly from a Claude conversation.
+
+### Claude Desktop
+
+Add to `claude_desktop_config.json` (macOS: `~/Library/Application Support/Claude/`, Windows: `%APPDATA%\Claude\`):
+
+```json
+{
+  "mcpServers": {
+    "my-wiki": {
+      "command": "synthadoc",
+      "args": ["serve", "-w", "history-of-computing", "--mcp-only"]
+    }
+  }
+}
+```
+
+Reload Claude Desktop. Synthadoc tools appear automatically in the tool panel.
+
+### Claude Code
+
+Add to `.claude/mcp.json` in your project root (or `~/.claude/mcp.json` globally):
+
+```json
+{
+  "mcpServers": {
+    "my-wiki": {
+      "command": "synthadoc",
+      "args": ["serve", "-w", "history-of-computing", "--mcp-only"]
+    }
+  }
+}
+```
+
+### HTTP/SSE (n8n, LangGraph, custom agents)
+
+If the Synthadoc server is already running (`synthadoc serve -w history-of-computing`), connect via:
+
+```
+MCP server URL: http://127.0.0.1:7070/mcp
+```
+
+No API key required. The MCP endpoint shares the same port as the REST API.
+
+### What Claude can do via MCP
+
+| Tool | What it does | Uses Synthadoc LLM? |
+|---|---|---|
+| `synthadoc_ingest` | Ingest a URL or file into the wiki | Yes |
+| `synthadoc_query` | Ask the wiki a question | Yes |
+| `synthadoc_lint` | Run adversarial lint checks | Yes |
+| `synthadoc_search` | BM25 keyword search | No |
+| `synthadoc_read_page` | Read a page's full content | No |
+| `synthadoc_lifecycle` | Change a page's lifecycle state | No |
+| `synthadoc_jobs` | List recent jobs with status | No |
+| `synthadoc_status` | Get wiki page count and path | No |
+
+**Key distinction:** Web UI — Synthadoc is the interface. MCP — Claude is the interface.
