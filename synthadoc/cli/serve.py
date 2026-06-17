@@ -321,7 +321,7 @@ def serve_cmd(
 
     _check_network(provider)
 
-    _print_banner = not os.environ.get(_NO_BANNER_ENV)
+    _print_banner = not os.environ.get(_NO_BANNER_ENV) and not mcp_only
     if _print_banner:
         mode = "MCP (stdio)" if mcp_only else "HTTP" if http_only else "HTTP + MCP"
         _agent_cfg = cfg.agents.resolve("default")
