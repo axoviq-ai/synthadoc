@@ -244,6 +244,30 @@ async def test_mcp_jobs_includes_error_for_failed(mock_orch):
     assert skipped_job["error"] == "out of scope (purpose.md)"
 
 
+@pytest.mark.asyncio
+async def test_mcp_lifecycle_page_not_found_returns_error(mock_orch):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    mcp = create_mcp_server(mock_orch)
+    with patch("synthadoc.storage.wiki.WikiStorage.read_page", return_value=None):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_lifecycle",
+            {"slug": "missing-page", "to_state": "active", "reason": "test"},
+            convert_result=False,
+        )
+    assert result == {"error": "page not found", "slug": "missing-page"}
+
+
+@pytest.mark.asyncio
+async def test_mcp_jobs_invalid_status_returns_error(mock_orch):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    mcp = create_mcp_server(mock_orch)
+    result = await mcp._tool_manager.call_tool(
+        "synthadoc_jobs", {"status": "invalid_status"}, convert_result=False
+    )
+    assert "error" in result
+    assert "invalid_status" in result["error"]
+
+
 # ── Integration: MCP mounted on HTTP app ─────────────────────────────────────
 
 def test_mcp_mounted_on_http_app(tmp_wiki):
