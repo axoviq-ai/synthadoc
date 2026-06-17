@@ -346,10 +346,18 @@ def serve_cmd(
 
     if not mcp_only:
         from synthadoc.integration.http_server import create_app
-        http_app = create_app(wiki_root=root)
+        http_app = create_app(wiki_root=root, enable_mcp=not http_only)
         uvicorn.run(http_app, host=cfg.server.host, port=effective_port,
                     log_level="warning", log_config=None)
     else:
+        import asyncio
+        from synthadoc.core.orchestrator import Orchestrator
         from synthadoc.integration.mcp_server import create_mcp_server
-        mcp = create_mcp_server(wiki_root=root)
-        mcp.run()
+
+        async def _stdio_main() -> None:
+            orch = Orchestrator(wiki_root=root, config=cfg)
+            await orch.init()
+            mcp = create_mcp_server(orchestrator=orch)
+            await mcp.run_stdio_async()
+
+        asyncio.run(_stdio_main())

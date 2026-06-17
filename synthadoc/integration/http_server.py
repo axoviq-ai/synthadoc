@@ -320,7 +320,7 @@ async def _worker_loop(orch) -> None:
         await asyncio.sleep(sleep_secs)
 
 
-def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAPI:
+def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mcp: bool = True) -> FastAPI:
     import os
     import synthadoc
     from synthadoc.config import load_config
@@ -333,12 +333,15 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
 
     cfg = load_config(project_config=wiki_root / ".synthadoc" / "config.toml")
 
+    # Create Orchestrator here so MCP server can reference it at mount time.
+    # init() is called inside the lifespan (requires event loop).
+    orch = Orchestrator(wiki_root=wiki_root, config=cfg)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         if sys.platform == "win32":
             _install_win32_conn_reset_filter()
         _install_shutdown_noise_filter()
-        orch = Orchestrator(wiki_root=wiki_root, config=cfg)
         await orch.init()
         app.state.orch = orch
         from synthadoc.agents.hint_engine import HintEngine as _HE
@@ -377,6 +380,11 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["Content-Type"],
     )
+
+    if enable_mcp:
+        from synthadoc.integration.mcp_server import create_mcp_server
+        _mcp = create_mcp_server(orchestrator=orch)
+        app.mount("/mcp", _mcp.sse_app())
 
     @app.get("/", response_class=Response)
     async def index():
