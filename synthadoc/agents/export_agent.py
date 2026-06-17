@@ -12,7 +12,7 @@ from synthadoc.storage.wiki import WikiStorage, WikiPage, LifecycleState
 
 _SKIP_SLUGS = frozenset({"index", "log", "dashboard", "overview", "purpose"})
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
-EXPORT_FORMATS = frozenset({"llms.txt", "llms-full.txt", "graphml", "json"})
+EXPORT_FORMATS = frozenset({"llms.txt", "llms-full.txt", "graphml", "json", "okf"})
 
 
 @dataclass
@@ -35,7 +35,7 @@ class ExportAgent:
         self._audit_db_path = Path(audit_db_path)
         self._routing_path = Path(routing_path)
 
-    async def export(self, opts: ExportOptions) -> str:
+    async def export(self, opts: ExportOptions) -> "str | dict[str, str]":
         if opts.format not in EXPORT_FORMATS:
             raise ValueError(
                 f"Unknown format: {opts.format!r}. Valid: {sorted(EXPORT_FORMATS)}"
@@ -57,6 +57,17 @@ class ExportAgent:
             return self._render_llms_txt(pages)
         if opts.format == "llms-full.txt":
             return self._render_llms_full_txt(pages)
+
+        if opts.format == "okf":
+            # Default: active + contradicted only — draft/stale/archived excluded
+            if opts.status_filter == "all":
+                _OKF_DEFAULT = {LifecycleState.ACTIVE, LifecycleState.CONTRADICTED}
+                pages = {s: p for s, p in pages.items() if p.status in _OKF_DEFAULT}
+            from synthadoc.storage.log import AuditDB
+            audit = AuditDB(self._audit_db_path)
+            await audit.init()
+            lc_events = await audit.get_lifecycle_events(limit=100_000)
+            return self._render_okf(pages, lc_events)
 
         # graphml and json both need routing
         from synthadoc.core.routing import RoutingIndex
@@ -302,3 +313,149 @@ class ExportAgent:
             })
 
         return _json.dumps(output, ensure_ascii=False, indent=2)
+
+    # ── OKF v0.1 export ───────────────────────────────────────────────────────
+
+    def _render_okf(
+        self,
+        pages: dict[str, WikiPage],
+        lc_events: list[dict],
+    ) -> dict[str, str]:
+        import yaml as _yaml
+
+        slug_to_title = {slug: page.title for slug, page in pages.items()}
+
+        files: dict[str, str] = {}
+
+        for slug, page in sorted(pages.items()):
+            fm: dict = {
+                "type": page.type or "concept",
+                "title": page.title,
+                "description": _first_sentence(page.content or ""),
+                "tags": ", ".join(page.tags) if page.tags else "",
+                "timestamp": page.updated or (str(page.created) if page.created else ""),
+                "status": page.status,
+                "confidence": page.confidence or "",
+            }
+            resource = page.resource
+            if not resource:
+                from synthadoc.storage.wiki import is_url
+                url_sources = [s.file for s in page.sources if is_url(s.file)]
+                if url_sources:
+                    resource = url_sources[0]
+            if resource:
+                fm["resource"] = resource
+            fm = {k: v for k, v in fm.items() if v != ""}
+
+            body = _rewrite_wikilinks(page.content or "", slug_to_title)
+            if page.contradiction_note:
+                body += f"\n\n> **Contradiction:** {page.contradiction_note}"
+            raw = _yaml.dump(fm, default_flow_style=False, allow_unicode=True)
+            files[f"wiki/{slug}.md"] = f"---\n{raw}---\n\n{body}\n"
+
+        files["index.md"] = self._render_okf_index(pages)
+
+        if lc_events:
+            files["log.md"] = self._render_okf_log(lc_events)
+
+        return files
+
+    def _render_okf_index(self, pages: dict[str, WikiPage]) -> str:
+        import yaml as _yaml
+
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        fm = {
+            "type": "index",
+            "title": self._wiki_name,
+            "description": f"OKF bundle exported from Synthadoc wiki '{self._wiki_name}' on {ts}.",
+            "timestamp": ts,
+        }
+        lines = [
+            "---",
+            _yaml.dump(fm, default_flow_style=False, allow_unicode=True).rstrip(),
+            "---",
+            "",
+            f"# {self._wiki_name}",
+            "",
+        ]
+        by_type: dict[str, list[tuple[str, WikiPage]]] = {}
+        for slug, page in sorted(pages.items()):
+            t = page.type or "concept"
+            by_type.setdefault(t, []).append((slug, page))
+
+        for type_name in sorted(by_type):
+            lines.append(f"## {type_name}")
+            for slug, page in by_type[type_name]:
+                desc = _first_sentence(page.content or "")
+                lines.append(f"- [{page.title}](wiki/{slug}.md) — {desc}")
+            lines.append("")
+
+        return "\n".join(lines)
+
+    def _render_okf_log(self, lc_events: list[dict]) -> str:
+        import yaml as _yaml
+        from collections import defaultdict
+
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        fm = {
+            "type": "log",
+            "title": f"{self._wiki_name} — Change Log",
+            "timestamp": ts,
+        }
+        lines = [
+            "---",
+            _yaml.dump(fm, default_flow_style=False, allow_unicode=True).rstrip(),
+            "---",
+            "",
+            f"# {self._wiki_name} — Change Log",
+            "",
+        ]
+        by_date: dict[str, list[str]] = defaultdict(list)
+        for e in sorted(lc_events, key=lambda x: x.get("timestamp", ""), reverse=True):
+            date = str(e.get("timestamp", ""))[:10]
+            slug = e.get("slug", "?")
+            to_state = e.get("to_state", "?")
+            reason = e.get("reason", "")
+            entry = f"- `{slug}` → {to_state}"
+            if reason:
+                entry += f" ({reason})"
+            by_date[date].append(entry)
+
+        for date in sorted(by_date.keys(), reverse=True):
+            lines.append(f"## {date}")
+            lines.extend(by_date[date])
+            lines.append("")
+
+        return "\n".join(lines)
+
+
+_CITATION_RE = re.compile(r"\^\[[^\]]*\]")
+
+
+def _first_sentence(text: str) -> str:
+    text = text.strip()
+    lines = [ln for ln in text.splitlines() if ln.strip() and not ln.strip().startswith("#")]
+    flat = " ".join(lines[:3])
+    flat = _CITATION_RE.sub("", flat)          # strip ^[...] citation markers
+    flat = _WIKILINK_RE.sub(                   # strip [[wikilinks]] → display text only
+        lambda m: m.group(1).split("|", 1)[-1].strip(), flat
+    )
+    flat = " ".join(flat.split())              # collapse extra whitespace
+    m = re.search(r"(.+?\.)\s", flat)
+    if m:
+        return m.group(1).strip()
+    return flat[:120].strip()
+
+
+def _rewrite_wikilinks(content: str, slug_to_title: dict[str, str]) -> str:
+    def _replace(m: re.Match) -> str:
+        inner = m.group(1).strip()
+        if "|" in inner:
+            slug, display = inner.split("|", 1)
+            slug = slug.strip()
+            display = display.strip()
+        else:
+            slug = inner
+            display = slug_to_title.get(slug, slug)
+        return f"[{display}]({slug}.md)"
+    return _WIKILINK_RE.sub(_replace, content)

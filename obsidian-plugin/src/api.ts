@@ -92,6 +92,9 @@ export const api = {
             ...(contextPack ? { context_pack: contextPack } : {}),
         }),
 
+    exportWikiOkf: (statusFilter = "all"): Promise<Record<string, string>> =>
+        call("/export", "POST", { format: "okf", status_filter: statusFilter }),
+
     queryStream: (question: string, sessionId: string | undefined, callbacks: import("./sse").SSECallbacks, noCache = false): Promise<void> => {
         const params = new URLSearchParams({ q: question });
         if (sessionId) params.set("session_id", sessionId);

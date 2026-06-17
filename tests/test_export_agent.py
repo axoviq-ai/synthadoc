@@ -355,3 +355,291 @@ async def test_json_date_object_ingested_serializes(tmp_path):
     agent = _agent(tmp_path, store)
     result = json.loads(await agent.export(ExportOptions(format="json")))
     assert result["pages"][0]["sources"][0]["ingested"] == "2026-05-26"
+
+
+# ── OKF export tests ───────────────────────────────────────────────────────────
+
+def _write_okf_page(store, slug, title, status, content="", type_=None,
+                    resource=None, tags=None, created="2026-05-26", updated=None):
+    page = WikiPage(
+        title=title, tags=tags or [], content=content, status=status,
+        confidence="high", sources=[], created=created, updated=updated,
+        orphan=False, type=type_, resource=resource,
+    )
+    store.write_page(slug, page)
+
+
+def _parse_frontmatter(text: str) -> dict:
+    import yaml
+    if text.startswith("---"):
+        parts = text.split("---", 2)
+        if len(parts) >= 3:
+            return yaml.safe_load(parts[1]) or {}
+    return {}
+
+
+@pytest.mark.asyncio
+async def test_okf_export_returns_dict(tmp_path):
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
+                    content="Father of computer science.", type_="person")
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    assert isinstance(result, dict)
+    assert "index.md" in result
+    assert "wiki/alan-turing.md" in result
+
+
+@pytest.mark.asyncio
+async def test_okf_concept_file_has_required_type_field(tmp_path):
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
+                    content="Father of computer science.", type_="person")
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    fm = _parse_frontmatter(result["wiki/alan-turing.md"])
+    assert fm["type"] == "person"
+
+
+@pytest.mark.asyncio
+async def test_okf_type_defaults_to_concept_when_none(tmp_path):
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "old-page", "Old Page", LifecycleState.ACTIVE,
+                    content="Some content.", type_=None)
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    fm = _parse_frontmatter(result["wiki/old-page.md"])
+    assert fm["type"] == "concept"
+
+
+@pytest.mark.asyncio
+async def test_okf_description_derived_from_first_sentence(tmp_path):
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
+                    content="Father of computer science. Much more detail here.", type_="person")
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    fm = _parse_frontmatter(result["wiki/alan-turing.md"])
+    assert fm["description"] == "Father of computer science."
+
+
+@pytest.mark.asyncio
+async def test_okf_resource_omitted_when_none(tmp_path):
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "local-page", "Local Page", LifecycleState.ACTIVE,
+                    content="Content.", type_="concept", resource=None)
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    fm = _parse_frontmatter(result["wiki/local-page.md"])
+    assert "resource" not in fm
+
+
+@pytest.mark.asyncio
+async def test_okf_resource_present_for_url_source(tmp_path):
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "web-page", "Web Page", LifecycleState.ACTIVE,
+                    content="Content.", type_="concept",
+                    resource="https://example.com/article")
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    fm = _parse_frontmatter(result["wiki/web-page.md"])
+    assert fm["resource"] == "https://example.com/article"
+
+
+@pytest.mark.asyncio
+async def test_okf_tags_as_comma_string(tmp_path):
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
+                    content="Content.", type_="person",
+                    tags=["mathematics", "computation"])
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    fm = _parse_frontmatter(result["wiki/alan-turing.md"])
+    assert fm["tags"] == "mathematics, computation"
+
+
+@pytest.mark.asyncio
+async def test_okf_timestamp_uses_updated_when_present(tmp_path):
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
+                    content="Content.", type_="person",
+                    created="2026-01-01", updated="2026-05-15")
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    fm = _parse_frontmatter(result["wiki/alan-turing.md"])
+    assert fm["timestamp"] == "2026-05-15"
+
+
+@pytest.mark.asyncio
+async def test_okf_timestamp_falls_back_to_created(tmp_path):
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
+                    content="Content.", type_="person",
+                    created="2026-01-01", updated=None)
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    fm = _parse_frontmatter(result["wiki/alan-turing.md"])
+    assert fm["timestamp"] == "2026-01-01"
+
+
+@pytest.mark.asyncio
+async def test_okf_wikilinks_rewritten_to_relative_paths(tmp_path):
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
+                    content="See [[grace-hopper]] for more.", type_="person")
+    _write_okf_page(store, "grace-hopper", "Grace Hopper", LifecycleState.ACTIVE,
+                    content="Compiler pioneer.", type_="person")
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    body = result["wiki/alan-turing.md"].split("---", 2)[2]
+    assert "[[grace-hopper]]" not in body
+    assert "[Grace Hopper](grace-hopper.md)" in body
+
+
+@pytest.mark.asyncio
+async def test_okf_index_groups_pages_by_type(tmp_path):
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
+                    content="Mathematician.", type_="person")
+    _write_okf_page(store, "eniac", "ENIAC", LifecycleState.ACTIVE,
+                    content="First computer.", type_="technology")
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    index = result["index.md"]
+    assert "## person" in index
+    assert "## technology" in index
+    assert "[Alan Turing](wiki/alan-turing.md)" in index
+    assert "[ENIAC](wiki/eniac.md)" in index
+
+
+@pytest.mark.asyncio
+async def test_okf_archived_pages_excluded_by_default(tmp_path):
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "old-page", "Old Page", LifecycleState.ARCHIVED,
+                    content="Retired.", type_="concept")
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    assert "wiki/old-page.md" not in result
+
+
+@pytest.mark.asyncio
+async def test_okf_draft_excluded_by_default(tmp_path):
+    """Draft pages must not appear in OKF bundle by default — unverified content."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "draft-page", "Draft Page", LifecycleState.DRAFT,
+                    content="Unverified.", type_="concept")
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    assert "wiki/draft-page.md" not in result
+
+
+@pytest.mark.asyncio
+async def test_okf_stale_excluded_by_default(tmp_path):
+    """Stale pages must not appear in OKF bundle by default — source has changed."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "stale-page", "Stale Page", LifecycleState.STALE,
+                    content="Outdated.", type_="concept")
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    assert "wiki/stale-page.md" not in result
+
+
+@pytest.mark.asyncio
+async def test_okf_contradicted_included_by_default(tmp_path):
+    """Contradicted pages must appear in OKF bundle — consumers see status: contradicted."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "conflict-page", "Conflict Page", LifecycleState.CONTRADICTED,
+                    content="Conflicting claim.", type_="concept")
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    assert "wiki/conflict-page.md" in result
+    fm = _parse_frontmatter(result["wiki/conflict-page.md"])
+    assert fm["status"] == "contradicted"
+
+
+@pytest.mark.asyncio
+async def test_okf_contradiction_note_appended_to_body(tmp_path):
+    """contradiction_note must be appended to body as a blockquote warning."""
+    store = _make_store(tmp_path)
+    page = WikiPage(
+        title="Conflict Page", tags=[], content="Original claim.",
+        status=LifecycleState.CONTRADICTED, confidence="low", sources=[],
+        created="2026-05-26", orphan=False, type="concept",
+        contradiction_note="Source B says the opposite.",
+    )
+    store.write_page("conflict-page", page)
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    body = result["wiki/conflict-page.md"].split("---", 2)[2]
+    assert "Source B says the opposite." in body
+    assert "> **Contradiction:**" in body
+
+
+@pytest.mark.asyncio
+async def test_okf_archived_pages_included_with_status_filter(tmp_path):
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "old-page", "Old Page", LifecycleState.ARCHIVED,
+                    content="Retired.", type_="concept")
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf", status_filter="archived"))
+    assert "wiki/old-page.md" in result
+
+
+# ── OKF helper unit tests ──────────────────────────────────────────────────────
+
+from synthadoc.agents.export_agent import _first_sentence, _rewrite_wikilinks
+
+
+def test_first_sentence_no_period_returns_truncated():
+    """Content with no sentence-ending period returns truncated text."""
+    result = _first_sentence("A long description without a period at all")
+    assert result == "A long description without a period at all"
+
+
+def test_first_sentence_skips_headings():
+    """Markdown headings are skipped when extracting first sentence."""
+    result = _first_sentence("# Section Title\nThe real content here. More follows.")
+    assert result == "The real content here."
+
+
+def test_first_sentence_strips_citation_markers():
+    """^[...] citation markers are removed from the extracted sentence."""
+    result = _first_sentence("Some content.^[source:1-2] More text.")
+    assert "^[" not in result
+    assert result == "Some content."
+
+
+def test_first_sentence_strips_wikilinks():
+    """[[wikilinks]] are replaced with display text only in the extracted sentence."""
+    result = _first_sentence("Traces to [[alan-turing]]'s 1950 paper. More follows.")
+    assert "[[" not in result
+    assert "alan-turing" in result
+
+
+def test_first_sentence_strips_piped_wikilinks():
+    """[[slug|display]] keeps only the display text."""
+    result = _first_sentence("Developed by [[grace-hopper|Grace Hopper]]. More follows.")
+    assert "[[" not in result
+    assert "Grace Hopper" in result
+
+
+def test_rewrite_wikilinks_piped_form():
+    """[[slug|display]] must use custom display text, not slug_to_title lookup."""
+    result = _rewrite_wikilinks("See [[grace-hopper|Grace]] here.", {"grace-hopper": "Grace Hopper"})
+    assert "[Grace](grace-hopper.md)" in result
+
+
+def test_okf_log_rendered_when_events_present(tmp_path):
+    """log.md must appear in OKF bundle when lifecycle events exist."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
+                    content="Mathematician.", type_="person")
+    agent = _agent(tmp_path, store)
+    events = [
+        {"slug": "alan-turing", "from_state": "draft", "to_state": "active",
+         "reason": "lint passed", "timestamp": "2026-05-01T10:00:00"},
+    ]
+    result = agent._render_okf({"alan-turing": store.read_page("alan-turing")}, events)
+    assert "log.md" in result
+    assert "alan-turing" in result["log.md"]
+    assert "active" in result["log.md"]

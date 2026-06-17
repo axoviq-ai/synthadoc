@@ -389,7 +389,7 @@ When a source is a URL or an intent phrase (e.g. `search for: Dennis Ritchie`), 
 
 ### ExportAgent
 
-Serialises the wiki to one of four formats with zero additional LLM calls. Invoked via `synthadoc export --format <fmt>` or the Obsidian **Export Wiki** command.
+Serialises the wiki to one of five formats with zero additional LLM calls. Invoked via `synthadoc export --format <fmt>` or the Obsidian **Export Wiki** command.
 
 | Format | Output |
 |--------|--------|
@@ -397,8 +397,11 @@ Serialises the wiki to one of four formats with zero additional LLM calls. Invok
 | `llms-full.txt` | Full page content for all pages, separated by `---` dividers with status and confidence headers; no size limit |
 | `graphml` | Directed wikilink graph — one node per page, one edge per `[[wikilink]]`; includes `label` (Gephi), `y:NodeLabel` (yEd), status, confidence, orphan flag, inbound link count, and routing branch per node |
 | `json` | Full structured dump: content, tags, sources, claims (from audit DB), lifecycle history, routing branch memberships, per-page `ingest_cost_usd` and `ingest_tokens`, and total compilation cost |
+| `okf` | [OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle directory — one Markdown file per page with conformant YAML frontmatter (`type`, `title`, `description`, `resource`, `tags`, `timestamp`); `index.md` grouped by knowledge type; `log.md` lifecycle history; `[[wikilinks]]` rewritten to relative OKF paths |
 
-**Status filter:** All formats accept `--status-filter active|contradicted|stale|archived|draft|all` (default `all`) to scope the export to a lifecycle subset.
+**Status filter:** All formats accept `--status-filter active|contradicted|stale|archived|draft|all` (default `all`) to scope the export to a lifecycle subset. For `okf`, the accepted values are `all` (active + contradicted, the default) or `active` only — draft, stale, and archived pages are always excluded from OKF bundles regardless of the flag.
+
+**OKF return type:** Unlike other formats (which return a single string), `okf` returns `dict[str, str]` — a map of relative file paths to file contents. The HTTP endpoint serialises this as a JSON manifest; the CLI writes the manifest as a directory tree. `--output` is required for `okf`.
 
 **GraphML tool compatibility:** The file includes both a standard `label` data key (read by Gephi and Cytoscape) and a `y:ShapeNode/y:NodeLabel` element (read by yEd). No position data is embedded — run the tool's own layout algorithm after import.
 
@@ -840,7 +843,7 @@ synthadoc
 │   └── discard <slug>|--all [--wiki-root <path>]
 ├── context
 │   └── build "<goal>" [-w wiki] [--tokens N] [--output <file>]
-├── export -f <fmt> [-o <path>] [-s <state>] [-w wiki]    — llms.txt, llms-full.txt, graphml, json
+├── export -f <fmt> [-o <path>] [-s <state>] [-w wiki]    — llms.txt, llms-full.txt, graphml, json, okf
 ├── status [-w wiki]
 ├── lifecycle
 │   ├── activate <slug> [-w wiki] [--reason "<str>"]
@@ -2184,7 +2187,7 @@ check_url_availability = true    # default: false — adds a network call per UR
 
 ## 24. Export Formats
 
-The `synthadoc export` command serializes the wiki in four machine-readable formats, assembled server-side from cached data with zero additional LLM calls. Requires `synthadoc serve` to be running.
+The `synthadoc export` command serializes the wiki in five machine-readable formats, assembled server-side from cached data with zero additional LLM calls. Requires `synthadoc serve` to be running.
 
 ### Formats
 
@@ -2220,23 +2223,60 @@ All edges carry `edge_type="wikilink"`. Self-links are suppressed. The file also
 
 Wiki-level fields: `total_compilation_cost_usd`, `routing.branch_memberships`, `exported_at`, `page_count`.
 
+**`okf`** — [Open Knowledge Format v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle directory. Unlike other formats, `okf` produces a **directory tree** rather than a single file. The bundle is directly consumable by any OKF-aware agent or tool without code changes.
+
+Bundle layout:
+```
+<output-dir>/
+  index.md        # OKF index — pages grouped by knowledge type
+  log.md          # lifecycle change history, newest first
+  wiki/
+    <slug>.md     # one OKF concept file per wiki page
+```
+
+Each concept file carries a conformant frontmatter block:
+
+```yaml
+type: person                  # from WikiPage.type; fallback "concept" for old pages
+title: Alan Turing
+description: Father of theoretical computer science and pioneer of the Turing machine.
+resource: https://example.com/turing-bio   # omitted for local-file sources
+tags: mathematics, computation, cryptography
+timestamp: '2026-04-22'       # WikiPage.updated ?? WikiPage.created
+status: active                # Synthadoc extension — OKF consumers tolerate unknown fields
+confidence: high              # Synthadoc extension
+```
+
+OKF conformance rules satisfied: (1) every `.md` has parseable frontmatter; (2) every frontmatter has a non-empty `type`; (3) reserved filenames follow spec structure. Synthadoc-specific fields (`status`, `confidence`) are preserved as extensions — the spec requires consumers to tolerate unknown keys.
+
+`[[wikilinks]]` in page bodies are rewritten to OKF-style relative paths (`[Title](slug.md)`) so cross-links are valid within the bundle.
+
 ### CLI
 
 ```bash
 synthadoc export --format <fmt> [--output <path>] [--status <state>] [--context-pack <name>] [--wiki <name>]
 ```
 
-Outputs to stdout by default; `--output` writes to a file. `--status` filters pages by lifecycle state (`all` / `active` / `draft` / `stale` / `contradicted` / `archived`).
+Outputs to stdout by default; `--output` writes to a file. For `--format okf`, `--output` is required and must be a directory path. `--status` filters pages by lifecycle state (`all` / `active` / `draft` / `stale` / `contradicted` / `archived`). For `--format okf`, only `all` (active + contradicted, the default) or `active` are meaningful — draft, stale, and archived pages are always excluded from OKF bundles.
 
 ### POST /export endpoint
 
-Accepts `{ format, status_filter }`. Returns raw content with appropriate `Content-Type` (`text/plain; charset=utf-8` for text formats, `application/xml` for graphml, `application/json` for json). Returns 422 for unknown format. No LLM calls.
+Accepts `{ format, status_filter }`. Returns raw content with appropriate `Content-Type`:
+
+| Format | Content-Type |
+|--------|-------------|
+| `llms.txt`, `llms-full.txt` | `text/plain; charset=utf-8` |
+| `graphml` | `application/xml` |
+| `json` | `application/json` |
+| `okf` | `application/json` — a JSON object mapping relative file paths to file contents (`{"index.md": "...", "wiki/alan-turing.md": "..."}`) |
+
+Returns 422 for unknown format. No LLM calls.
 
 ### Obsidian
 
 **`Synthadoc: Export Wiki`** opens a modal with:
 - A brief description panel explaining each format
-- Format dropdown (json / llms.txt / llms-full.txt / graphml)
+- Format dropdown (json / llms.txt / llms-full.txt / graphml / okf)
 - Output path field (full-width, pre-filled with today's date and correct extension, editable)
 - Status filter dropdown (`all` / `active` / `draft` / `stale` / `contradicted` / `archived`)
 - **Export** button — writes to the vault's `exports/` folder and opens the file automatically

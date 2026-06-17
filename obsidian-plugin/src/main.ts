@@ -3981,12 +3981,13 @@ class ExportModal extends Modal {
         const infoEl = contentEl.createEl("div");
         infoEl.style.cssText = "margin:0 0 14px;padding:8px 10px;background:var(--background-secondary);border-radius:6px;font-size:12px;color:var(--text-muted);line-height:1.7;";
         infoEl.innerHTML = [
-            "<b>Exports the wiki to your vault's <code>exports/</code> folder. No additional LLM calls.</b>",
+            "<b>Exports the wiki in machine-readable formats. No additional LLM calls.</b>",
             "<ul style='margin:6px 0 0 0;padding-left:18px;list-style:disc'>",
             "<li><b>json</b> — full structured dump with claims, lifecycle history, and routing</li>",
             "<li><b>llms.txt</b> — active pages in the <a href='https://llmstxt.org'>llmstxt.org</a> format (for AI tools)</li>",
             "<li><b>llms-full.txt</b> — full page content with provenance footnotes inline</li>",
             "<li><b>graphml</b> — wikilink graph — open in <b>yEd</b>, <b>Gephi</b>, or <b>Cytoscape</b></li>",
+            "<li><b>okf</b> — OKF v0.1 bundle (active + contradicted pages) written <em>outside</em> the vault — readable by any OKF-aware agent without code changes</li>",
             "</ul>",
         ].join("");
 
@@ -3994,14 +3995,22 @@ class ExportModal extends Modal {
         const fmtRow = contentEl.createEl("div", { cls: "setting-item" });
         fmtRow.createEl("label", { text: "Format" });
         const select = fmtRow.createEl("select");
-        ["json", "llms.txt", "llms-full.txt", "graphml"].forEach(fmt => {
+        ["json", "llms.txt", "llms-full.txt", "graphml", "okf"].forEach(fmt => {
             const opt = select.createEl("option", { text: fmt, value: fmt });
             if (fmt === this._format) opt.selected = true;
         });
 
         // Output path
         const today = new Date().toISOString().slice(0, 10);
+        const _nodeRequire = typeof (window as any).require === "function"
+            ? (window as any).require : null;
         const defaultPath = (fmt: string): string => {
+            if (fmt === "okf") {
+                const vaultName = this.app.vault.getName?.() ?? "wiki";
+                const home = _nodeRequire ? _nodeRequire("os").homedir() : "~";
+                const sep = _nodeRequire ? _nodeRequire("path").sep : "/";
+                return [home, "exports", `${vaultName}-okf-${today}`].join(sep);
+            }
             const stems: Record<string, string> = {
                 "json":          `wiki-${today}.json`,
                 "llms.txt":      `wiki-llms-${today}.txt`,
@@ -4019,15 +4028,18 @@ class ExportModal extends Modal {
             value: defaultPath(this._format),
         }) as HTMLInputElement;
         pathInput.style.cssText = "width:100%;box-sizing:border-box;font-family:var(--font-monospace);font-size:12px;";
+        const okfHint = pathRow.createEl("p");
+        okfHint.style.cssText = "margin:4px 0 0;font-size:11px;color:var(--text-muted);display:none;";
+        okfHint.textContent = "Written outside the vault via the filesystem. Directory created automatically.";
 
         // Status filter
         const statusRow = contentEl.createEl("div", { cls: "setting-item" });
-        statusRow.createEl("label", { text: "Status filter" });
+        const statusLabel = statusRow.createEl("label", { text: "Status filter" });
         const statusSel = statusRow.createEl("select");
-        [["all", "All pages"], ["active", "Active only"]].forEach(([val, label]) => {
-            const o = statusSel.createEl("option", { text: label, value: val });
-            if (val === this._statusFilter) o.selected = true;
-        });
+        const allOpt = statusSel.createEl("option", { text: "All pages", value: "all" }) as HTMLOptionElement;
+        const activeOpt = statusSel.createEl("option", { text: "Active only", value: "active" }) as HTMLOptionElement;
+        if (this._statusFilter === "all") allOpt.selected = true;
+        else activeOpt.selected = true;
 
         // Button row
         const btnRow = contentEl.createEl("div", { cls: "modal-button-container" });
@@ -4036,6 +4048,16 @@ class ExportModal extends Modal {
 
         const updateExtension = () => {
             pathInput.value = defaultPath(this._format);
+            const isOkf = this._format === "okf";
+            pathLabel.textContent = isOkf ? "Output folder (outside vault)" : "Output path (in vault)";
+            okfHint.style.display = isOkf ? "" : "none";
+            // Relabel status options to reflect OKF's actual behaviour
+            statusLabel.textContent = isOkf ? "Pages to include" : "Status filter";
+            allOpt.textContent = isOkf ? "Active + contradicted (default)" : "All pages";
+            if (isOkf && this._statusFilter !== "all") {
+                this._statusFilter = "all";
+                statusSel.value = "all";
+            }
             if (this._format === "graphml") {
                 if (!viewGraphBtn) {
                     viewGraphBtn = btnRow.createEl("button", { text: "View Graph" }) as HTMLButtonElement;
@@ -4060,6 +4082,27 @@ class ExportModal extends Modal {
             exportBtn.disabled = true;
             exportBtn.textContent = "Exporting…";
             try {
+                if (this._format === "okf") {
+                    if (!_nodeRequire) {
+                        new Notice("Synthadoc: OKF export requires Obsidian desktop.");
+                        exportBtn.disabled = false;
+                        exportBtn.textContent = "Export";
+                        return;
+                    }
+                    const fs = _nodeRequire("fs");
+                    const nodePath = _nodeRequire("path");
+                    const manifest = await api.exportWikiOkf(this._statusFilter);
+                    const outDir = pathInput.value.trim();
+                    for (const [relPath, fileContent] of Object.entries(manifest)) {
+                        const dest = nodePath.join(outDir, ...relPath.split("/"));
+                        fs.mkdirSync(nodePath.dirname(dest), { recursive: true });
+                        fs.writeFileSync(dest, fileContent, "utf8");
+                    }
+                    new Notice(`Synthadoc: OKF bundle written to ${outDir} (${Object.keys(manifest).length} files)`);
+                    this.close();
+                    return;
+                }
+
                 const content = await api.exportWiki(this._format, this._statusFilter);
                 const path = pathInput.value.trim() || `exports/wiki-export.${this._format}`;
 

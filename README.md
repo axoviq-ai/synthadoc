@@ -191,7 +191,7 @@ As the wiki accumulates pages the `index.md` table of contents, domain scope (`p
 | Query-scoped routing         | **Yes** (ROUTING.md — branch-scoped BM25, query auto-selects branch) | No          | No         | No        |
 | Candidates staging           | **Yes** (ingest to staging area, promote or discard)                  | No          | No         | No        |
 | Context packs                | **Yes** (goal → sub-questions → token-budget evidence pack)         | No          | No         | No        |
-| Export formats               | **Yes** (llms.txt, llms-full.txt, GraphML, JSON — lifecycle-filtered, provenance-threaded, cost-annotated; inline graph viewer in Obsidian) | No | No | No |
+| Export formats               | **Yes** (llms.txt, llms-full.txt, GraphML, JSON, **OKF bundle** — lifecycle-filtered, provenance-threaded, cost-annotated; inline graph viewer in Obsidian) | No | No | No |
 | Streaming query output       | **Yes** (token-by-token; `--no-stream` for pipe-friendly blocking mode) | No          | No         | No        |
 | Query result cache           | **Yes** (cache key = question + wiki version; auto-invalidates on ingest or lifecycle change; `--no-cache` to bypass) | No          | No         | No        |
 | Browser-based chat UI        | **Yes** (`synthadoc web` — session-aware, streaming, citations, knowledge-gap callouts, multi-turn conversation with follow-up rewriting and clarify prompts) | No          | No         | No        |
@@ -432,7 +432,7 @@ The guide covers:
 18. Stage and review candidate pages before promoting them
 19. Build a context pack for grounded LLM prompts
 20. Verify claim provenance — source-line citations, broken citation audit, global provenance table
-21. Export your wiki — llms.txt, llms-full.txt, GraphML wikilink graph, agent-ready JSON with provenance and lifecycle history
+21. Export your wiki — llms.txt, llms-full.txt, GraphML wikilink graph, agent-ready JSON with provenance and lifecycle history, OKF v0.1 bundle for zero-code agent consumption
 22. Use the web chat UI — streaming answers, session-aware hint chips, citations in-browser
 23. Query caching — understand how answers are cached and how to bypass with `--no-cache`
 
@@ -977,7 +977,7 @@ synthadoc context build "Rise of microprocessors" --output ~/drafts/computing-br
 
 ### Exporting
 
-Export your wiki in machine-readable formats for RAG pipelines, LLM context windows, and graph analysis tools. All formats are assembled server-side with zero additional LLM calls. Requires `synthadoc serve` to be running.
+Export your wiki in machine-readable formats for RAG pipelines, LLM context windows, graph analysis tools, and OKF-compliant agents. All formats are assembled server-side with zero additional LLM calls. Requires `synthadoc serve` to be running.
 
 ```bash
 # Active pages as LLM context (llms.txt spec)
@@ -991,13 +991,21 @@ synthadoc export --format graphml --output exports/wiki.graphml -w my-wiki
 
 # Agent-ready JSON with provenance, lifecycle history, and compilation cost
 synthadoc export --format json --output exports/wiki.json -w my-wiki
+
+# OKF v0.1 bundle — consumable by any OKF-aware agent without code changes
+# Write outside the wiki folder to avoid Obsidian picking up bundle files as source
+synthadoc export --format okf --output ~/exports/my-wiki-okf/ -w my-wiki
 ```
 
-**Flags:** `--format/-f` (required: `llms.txt`, `llms-full.txt`, `graphml`, `json`), `--output/-o` (write to file relative to CWD; omit for stdout), `--status/-s` (`all`/`active`/`draft`/`stale`/`contradicted`/`archived`).
+**Flags:** `--format/-f` (required: `llms.txt`, `llms-full.txt`, `graphml`, `json`, `okf`), `--output/-o` (file path, or directory for `okf`; omit for stdout), `--status/-s` (`all`/`active`/`draft`/`stale`/`contradicted`/`archived`).
 
-> **Tip:** Run from your wiki root so `--output exports/…` lands inside your Obsidian vault.
+> **OKF export requires `--output`** — the bundle is a directory tree, not a single file.
 
-In Obsidian: command palette → **Synthadoc: Export Wiki** — choose format and status filter, then click **Export**. The file is saved to the vault's `exports/` folder and opened automatically. For GraphML, a **View Graph** button renders an inline preview; export the file to load in a dedicated tool.
+> **OKF default pages:** `--format okf` with `--status all` (the default) includes only `active` and `contradicted` pages. Draft and stale are excluded — they carry unverified content. Contradicted pages appear with `status: contradicted` in their frontmatter and a `> **Contradiction:** …` blockquote in the body.
+
+> **Tip:** Keep the OKF bundle **outside** your wiki folder. The output path can be any absolute or relative path — `--output ~/exports/my-wiki-okf/` or `--output ../okf-bundles/my-wiki/` both work. Placing it inside the wiki folder risks Obsidian or the ingestor picking up the bundle files as source documents.
+
+In Obsidian: command palette → **Synthadoc: Export Wiki** — choose format and status filter, then click **Export**. For all formats except `okf`, the file is saved to the vault's `exports/` folder and opened automatically. For `okf`, the output path defaults to `~/exports/{vault-name}-okf-{date}/` outside the vault and is written via the filesystem. For GraphML, a **View Graph** button renders an inline preview.
 
 ### Removing a wiki
 
