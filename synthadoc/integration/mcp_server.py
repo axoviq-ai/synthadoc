@@ -75,7 +75,7 @@ def create_mcp_server(orchestrator):
         Valid to_state values: active, draft, stale, contradicted, archived.
         All transitions are permitted (no graph enforcement).
         """
-        from datetime import datetime
+        from datetime import datetime, timezone
         if to_state not in _VALID_STATES:
             return {
                 "error": (
@@ -95,7 +95,7 @@ def create_mcp_server(orchestrator):
             slug, from_state, to_state, reason, TriggerSource.USER
         )
         orchestrator._bump_epoch()
-        ts = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         return {
             "slug": slug,
             "from_state": from_state,
@@ -108,12 +108,12 @@ def create_mcp_server(orchestrator):
     async def synthadoc_jobs(status: str = "all") -> dict:
         """List recent jobs, optionally filtered by status.
 
-        Valid status values: all, pending, running, completed, failed, skipped.
+        Valid status values: all, pending, running, completed, failed, skipped, cancelled, dead.
         'running' maps to the internal 'in_progress' state.
         """
         from synthadoc.core.queue import JobStatus
 
-        _VALID = {"all", "pending", "running", "completed", "failed", "skipped"}
+        _VALID = {"all", "pending", "running", "completed", "failed", "skipped", "cancelled", "dead"}
         if status not in _VALID:
             return {"error": f"invalid status {status!r}. Valid: {', '.join(sorted(_VALID))}"}
 
@@ -124,7 +124,7 @@ def create_mcp_server(orchestrator):
             try:
                 queue_status = JobStatus(mapped)
             except ValueError:
-                pass
+                return {"error": f"internal: could not map {status!r} to a JobStatus value"}
 
         jobs = await orchestrator.queue.list_jobs(status=queue_status)
         result = []
