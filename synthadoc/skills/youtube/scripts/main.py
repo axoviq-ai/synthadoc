@@ -34,6 +34,23 @@ def _is_cjk_dominant(text: str) -> bool:
 logger = logging.getLogger(__name__)
 
 
+async def _fetch_video_title(video_id: str) -> str | None:
+    """Fetch video title from YouTube oEmbed — free, no API key required."""
+    import httpx
+    url = (
+        f"https://www.youtube.com/oembed"
+        f"?url=https://www.youtube.com/watch?v={video_id}&format=json"
+    )
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            resp = await client.get(url)
+            if resp.status_code == 200:
+                return resp.json().get("title") or None
+    except Exception:
+        pass
+    return None
+
+
 def _format_timestamp(seconds: float) -> str:
     """Convert seconds to MM:SS for embedding in transcript text."""
     mins, secs = divmod(int(seconds), 60)
@@ -126,6 +143,15 @@ class YoutubeSkill(BaseSkill):
             f"[{_format_timestamp(snippet.start)}] {snippet.text}" for snippet in fetched
         )
 
+        video_title = await _fetch_video_title(video_id)
+        base_meta: dict = {
+            "url": source,
+            "video_id": video_id,
+            "suggested_slug": f"youtube-{video_id}",
+        }
+        if video_title:
+            base_meta["title"] = video_title
+
         if self._provider is not None:
             try:
                 summary = await self._summarise(transcript_text)
@@ -136,10 +162,7 @@ class YoutubeSkill(BaseSkill):
                 return ExtractedContent(
                     text=structured,
                     source_path=source,
-                    metadata={
-                        "url": source, "video_id": video_id, "has_summary": True,
-                        "suggested_slug": f"youtube-{video_id}",
-                    },
+                    metadata={**base_meta, "has_summary": True},
                 )
             except Exception:
                 logger.warning(
@@ -149,5 +172,5 @@ class YoutubeSkill(BaseSkill):
         return ExtractedContent(
             text=transcript_text,
             source_path=source,
-            metadata={"url": source, "video_id": video_id, "suggested_slug": f"youtube-{video_id}"},
+            metadata=base_meta,
         )

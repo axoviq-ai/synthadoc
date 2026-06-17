@@ -657,7 +657,10 @@ class IngestAgent:
         new_slug = decisions.get("new_slug") or ""
         update_content = decisions.get("update_content", "")
         page_content = decisions.get("page_content", "")
-        title = p.stem.replace("-", " ").replace("_", " ").title()
+        title = (
+            extracted.metadata.get("title")
+            or p.stem.replace("-", " ").replace("_", " ").title()
+        )
 
         citations: list[dict] = []
         final_slug: str = ""
