@@ -2565,7 +2565,9 @@ For wikis under ~1000 pages the difference between scoped and full-corpus is neg
 
 ## Appendix I — Connect Claude via MCP
 
-Synthadoc exposes an MCP server so Claude Desktop, Claude Code, or any MCP-compatible agent can read and manage your wiki directly from a Claude conversation.
+Synthadoc exposes an MCP server so Claude Desktop, Claude Code, or any MCP-compatible agent can use your wiki as persistent domain memory.
+
+**Architecture:** Claude is the brain — it receives your questions, searches the wiki, reads pages, and synthesises answers using its own LLM. Synthadoc is the memory — it stores pages, runs keyword search, and manages lifecycle and jobs. Synthadoc does not call an LLM for content questions in MCP mode. The only exceptions are `synthadoc_ingest` (synthesis at write time) and `synthadoc_lint` (adversarial review), which are inherently wiki-side operations.
 
 **Key distinction:** Web UI — Synthadoc is the interface. MCP — Claude is the interface.
 
@@ -2647,14 +2649,14 @@ You should receive `HTTP/1.1 200 OK` with `content-type: text/event-stream` and 
 
 ### What to ask once connected
 
-**Wiki content questions** — Claude searches and synthesises from your pages:
+**Wiki content questions** — Claude fetches raw content and synthesises the answer itself (no LLM call on the Synthadoc side):
 
 | Example prompt | Tool used |
 |---|---|
 | "What's the status of my wiki?" | `synthadoc_status` |
 | "Search for Grace Hopper" | `synthadoc_search` |
 | "Read the grace-hopper page" | `synthadoc_read_page` |
-| "What does my wiki say about quantum error correction?" | `synthadoc_query` |
+| "What does my wiki say about quantum error correction?" | `synthadoc_search` + `synthadoc_read_page` |
 
 **Synthadoc operations** — Claude manages the wiki on your behalf:
 
@@ -2670,16 +2672,17 @@ You should receive `HTTP/1.1 200 OK` with `content-type: text/event-stream` and 
 
 ### Tool reference
 
-| Tool | What it does | Uses Synthadoc LLM? |
+Tools marked **Claude** mean Claude's LLM synthesises the result. Tools marked **Synthadoc** mean Synthadoc calls its configured LLM provider (e.g. MiniMax) — these consume tokens from your Synthadoc provider account.
+
+| Tool | What it does | Who calls LLM? |
 |---|---|---|
-| `synthadoc_ingest` | Ingest a URL or file into the wiki | Yes |
-| `synthadoc_query` | Ask the wiki a question (RAG) | Yes |
-| `synthadoc_lint` | Run adversarial lint checks | Yes |
-| `synthadoc_search` | BM25 keyword search | No |
-| `synthadoc_read_page` | Read a page's full content | No |
-| `synthadoc_lifecycle` | Change a page's lifecycle state | No |
-| `synthadoc_jobs` | List recent jobs with status | No |
-| `synthadoc_status` | Get wiki page count and path | No |
+| `synthadoc_search` | BM25 keyword search — returns titles, slugs, snippets | Claude |
+| `synthadoc_read_page` | Read a page's full content and metadata | Claude |
+| `synthadoc_status` | Get wiki page count and path | Neither |
+| `synthadoc_jobs` | List recent jobs with status | Neither |
+| `synthadoc_lifecycle` | Change a page's lifecycle state | Neither |
+| `synthadoc_ingest` | Ingest a URL or file into the wiki | Synthadoc |
+| `synthadoc_lint` | Run adversarial lint checks | Synthadoc |
 
 Tools marked **Yes** consume tokens from your configured LLM provider. Tools marked **No** are free — pure storage reads.
 
