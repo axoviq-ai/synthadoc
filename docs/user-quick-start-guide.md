@@ -2567,22 +2567,46 @@ For wikis under ~1000 pages the difference between scoped and full-corpus is neg
 
 Synthadoc exposes an MCP server so Claude Desktop, Claude Code, or any MCP-compatible agent can read and manage your wiki directly from a Claude conversation.
 
-### Claude Desktop
+**Key distinction:** Web UI — Synthadoc is the interface. MCP — Claude is the interface.
 
-Add to `claude_desktop_config.json` (macOS: `~/Library/Application Support/Claude/`, Windows: `%APPDATA%\Claude\`):
+---
+
+### Claude Desktop (recommended for first-time setup)
+
+**Step 1 — Find the config file**
+
+Open Claude Desktop → Settings → Developer → **Edit Config**. This opens `claude_desktop_config.json` in your editor. Use this button rather than navigating to the file manually — the path varies depending on how Claude Desktop was installed (direct installer vs. Windows Store).
+
+**Step 2 — Find the full path to `synthadoc.exe`**
+
+Claude Desktop uses a restricted PATH and will not find `synthadoc` by name alone. Get the full path:
+
+```powershell
+(Get-Command synthadoc).Source
+```
+
+Typical result on Windows: `C:\Users\<you>\AppData\Roaming\Python\Python314\Scripts\synthadoc.exe`
+
+**Step 3 — Add the server entry**
 
 ```json
 {
   "mcpServers": {
     "my-wiki": {
-      "command": "synthadoc",
-      "args": ["serve", "-w", "history-of-computing", "--mcp-only"]
+      "command": "C:\\Users\\<you>\\AppData\\Roaming\\Python\\Python314\\Scripts\\synthadoc.exe",
+      "args": ["serve", "-w", "C:\\Users\\<you>\\wikis\\history-of-computing", "--mcp-only"]
     }
   }
 }
 ```
 
-Reload Claude Desktop. Synthadoc tools appear automatically in the tool panel.
+Use the **absolute path** to both `synthadoc.exe` and the wiki root. Relative paths and wiki name aliases do not work from Claude Desktop.
+
+**Step 4 — Restart Claude Desktop**
+
+Fully quit from the system tray (right-click → Quit), then reopen. Go back to Settings → Developer — `my-wiki` should appear with a **running** badge.
+
+---
 
 ### Claude Code
 
@@ -2592,29 +2616,64 @@ Add to `.claude/mcp.json` in your project root (or `~/.claude/mcp.json` globally
 {
   "mcpServers": {
     "my-wiki": {
-      "command": "synthadoc",
-      "args": ["serve", "-w", "history-of-computing", "--mcp-only"]
+      "command": "C:\\Users\\<you>\\AppData\\Roaming\\Python\\Python314\\Scripts\\synthadoc.exe",
+      "args": ["serve", "-w", "C:\\Users\\<you>\\wikis\\history-of-computing", "--mcp-only"]
     }
   }
 }
 ```
+
+Same full-path requirement as Claude Desktop.
+
+---
 
 ### HTTP/SSE (n8n, LangGraph, custom agents)
 
 If the Synthadoc server is already running (`synthadoc serve -w history-of-computing`), connect via:
 
 ```
-MCP server URL: http://127.0.0.1:7070/mcp/sse
+MCP SSE endpoint: http://127.0.0.1:7070/mcp/sse
 ```
 
-No API key required. The MCP endpoint shares the same port as the REST API.
+No API key required. The MCP endpoint shares the same port as the REST API. Verify it is live:
 
-### What Claude can do via MCP
+```
+curl -i http://127.0.0.1:7070/mcp/sse
+```
+
+You should receive `HTTP/1.1 200 OK` with `content-type: text/event-stream` and the connection will hang open (that is correct — SSE streams stay open).
+
+---
+
+### What to ask once connected
+
+**Wiki content questions** — Claude searches and synthesises from your pages:
+
+| Example prompt | Tool used |
+|---|---|
+| "What's the status of my wiki?" | `synthadoc_status` |
+| "Search for Grace Hopper" | `synthadoc_search` |
+| "Read the grace-hopper page" | `synthadoc_read_page` |
+| "What does my wiki say about quantum error correction?" | `synthadoc_query` |
+
+**Synthadoc operations** — Claude manages the wiki on your behalf:
+
+| Example prompt | Tool used |
+|---|---|
+| "List recent jobs" | `synthadoc_jobs` |
+| "Show me any failed or skipped jobs" | `synthadoc_jobs` |
+| "Ingest this URL: https://example.com/paper" | `synthadoc_ingest` |
+| "Run a lint check on the wiki" | `synthadoc_lint` |
+| "Mark the grace-hopper page as stale — needs review" | `synthadoc_lifecycle` |
+
+---
+
+### Tool reference
 
 | Tool | What it does | Uses Synthadoc LLM? |
 |---|---|---|
 | `synthadoc_ingest` | Ingest a URL or file into the wiki | Yes |
-| `synthadoc_query` | Ask the wiki a question | Yes |
+| `synthadoc_query` | Ask the wiki a question (RAG) | Yes |
 | `synthadoc_lint` | Run adversarial lint checks | Yes |
 | `synthadoc_search` | BM25 keyword search | No |
 | `synthadoc_read_page` | Read a page's full content | No |
@@ -2622,4 +2681,21 @@ No API key required. The MCP endpoint shares the same port as the REST API.
 | `synthadoc_jobs` | List recent jobs with status | No |
 | `synthadoc_status` | Get wiki page count and path | No |
 
-**Key distinction:** Web UI — Synthadoc is the interface. MCP — Claude is the interface.
+Tools marked **Yes** consume tokens from your configured LLM provider. Tools marked **No** are free — pure storage reads.
+
+---
+
+### Troubleshooting
+
+**Server does not appear in the panel**
+- Use the full path to `synthadoc.exe`, not the bare command name
+- Use absolute paths for the wiki root — aliases and relative paths are not resolved by Claude Desktop
+- Fully quit Claude Desktop from the system tray before reopening (window close is not a full restart)
+
+**Server appears but shows an error badge**
+- Click **View Logs** in the Developer panel to see the startup error
+- Verify the wiki path exists and contains a `.synthadoc/` directory (run `synthadoc serve -w <path> --mcp-only` manually to confirm it starts)
+
+**SSE endpoint returns 404**
+- The correct URL is `/mcp/sse`, not `/mcp` or `/mcp/`
+- Verify the server is running with `curl -i http://127.0.0.1:7070/`
