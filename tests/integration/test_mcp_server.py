@@ -158,7 +158,7 @@ async def test_mcp_lifecycle_transitions_page(mock_orch):
         sources=[],
     )
     with patch("synthadoc.storage.wiki.WikiStorage.read_page", return_value=fake_page), \
-         patch("synthadoc.storage.wiki.WikiStorage.write_page"), \
+         patch("synthadoc.storage.wiki.WikiStorage.write_page") as mock_write, \
          patch("synthadoc.storage.log.AuditDB.set_page_state", new=AsyncMock()), \
          patch("synthadoc.storage.log.AuditDB.record_lifecycle_event", new=AsyncMock()):
         result = await mcp._tool_manager.call_tool(
@@ -171,6 +171,9 @@ async def test_mcp_lifecycle_transitions_page(mock_orch):
     assert result["to_state"] == "active"
     assert result["reason"] == "verified correct"
     assert "timestamp" in result
+    # Verify the page object was actually mutated before write_page was called
+    written_page = mock_write.call_args.args[1]
+    assert written_page.status == "active"
 
 
 @pytest.mark.asyncio
@@ -226,8 +229,8 @@ async def test_mcp_jobs_filtered_by_status(mock_orch):
         result = await mcp._tool_manager.call_tool(
             "synthadoc_jobs", {"status": "completed"}, convert_result=False
         )
-        call_kwargs = mock_list.call_args
-        assert call_kwargs is not None
+        from synthadoc.core.queue import JobStatus
+        mock_list.assert_called_once_with(status=JobStatus.COMPLETED)
     assert len(result["jobs"]) == 1
 
 
