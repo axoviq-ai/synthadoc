@@ -170,6 +170,8 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
         self._max_bytes = max_bytes
 
     async def dispatch(self, request: Request, call_next):
+        if request.url.path.startswith("/mcp"):
+            return await call_next(request)
         content_length = request.headers.get("content-length")
         if content_length is not None:
             if int(content_length) > self._max_bytes:
