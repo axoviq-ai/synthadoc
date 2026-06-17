@@ -438,7 +438,7 @@ def _first_sentence(text: str) -> str:
     flat = " ".join(lines[:3])
     flat = _CITATION_RE.sub("", flat)          # strip ^[...] citation markers
     flat = _WIKILINK_RE.sub(                   # strip [[wikilinks]] → display text only
-        lambda m: m.group(1).split("|")[-1].strip(), flat
+        lambda m: m.group(1).split("|", 1)[-1].strip(), flat
     )
     flat = " ".join(flat.split())              # collapse extra whitespace
     m = re.search(r"(.+?\.)\s", flat)
