@@ -126,13 +126,15 @@ def create_mcp_server(orchestrator):
             except ValueError:
                 return {"error": f"internal: could not map {status!r} to a JobStatus value"}
 
+        _DISPLAY_STATUS = {"in_progress": "running"}
         jobs = await orchestrator.queue.list_jobs(status=queue_status)
         result = []
         for j in jobs:
+            raw_status = j.status.value if hasattr(j.status, "value") else str(j.status)
             entry: dict = {
                 "id": j.id,
                 "operation": j.operation,
-                "status": j.status.value if hasattr(j.status, "value") else str(j.status),
+                "status": _DISPLAY_STATUS.get(raw_status, raw_status),
                 "created": str(j.created_at) if j.created_at else "",
             }
             source = (j.payload or {}).get("source")
