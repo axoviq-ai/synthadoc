@@ -23,25 +23,13 @@ def test_mcp_server_has_required_tools(mock_orch):
     mcp = create_mcp_server(mock_orch)
     tool_names = [t.name for t in mcp._tool_manager.list_tools()]
     for expected in (
-        "synthadoc_ingest", "synthadoc_query", "synthadoc_lint",
+        "synthadoc_ingest", "synthadoc_lint",
         "synthadoc_search", "synthadoc_status",
         "synthadoc_read_page", "synthadoc_lifecycle", "synthadoc_jobs",
     ):
         assert expected in tool_names
+    assert "synthadoc_query" not in tool_names
 
-
-@pytest.mark.asyncio
-async def test_mcp_query_tool_returns_answer(mock_orch):
-    from synthadoc.integration.mcp_server import create_mcp_server
-    from synthadoc.agents.query_agent import QueryResult
-    mcp = create_mcp_server(mock_orch)
-    mock_result = QueryResult(question="q", answer="the answer", citations=["p1"])
-    with patch("synthadoc.core.orchestrator.Orchestrator.query",
-               new=AsyncMock(return_value=mock_result)):
-        result = await mcp._tool_manager.call_tool(
-            "synthadoc_query", {"question": "What is AI?"}, convert_result=False
-        )
-    assert result["answer"] == "the answer"
 
 
 @pytest.mark.asyncio

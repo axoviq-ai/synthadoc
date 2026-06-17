@@ -20,12 +20,6 @@ def create_mcp_server(orchestrator):
         return {"job_id": job_id, "source": source}
 
     @mcp.tool()
-    async def synthadoc_query(question: str) -> dict:
-        """Query the wiki and return a synthesized answer with citations."""
-        result = await orchestrator.query(question)
-        return {"answer": result.answer, "citations": result.citations}
-
-    @mcp.tool()
     async def synthadoc_lint(scope: str = "all") -> dict:
         """Run lint checks on the wiki."""
         report = await orchestrator.lint(scope=scope)
@@ -34,7 +28,11 @@ def create_mcp_server(orchestrator):
 
     @mcp.tool()
     async def synthadoc_search(terms: str) -> dict:
-        """Search the wiki with BM25 hybrid search."""
+        """Search the wiki with BM25 keyword search. Returns page titles, slugs, and snippets.
+
+        Use this to find relevant pages, then synthadoc_read_page to get full content.
+        Synthesize the answer yourself — no LLM is called on the Synthadoc side.
+        """
         results = orchestrator._search.bm25_search(terms.split(), top_n=10)
         return {
             "results": [
