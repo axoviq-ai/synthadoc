@@ -2604,7 +2604,7 @@ Add to `.claude/mcp.json` in your project root (or `~/.claude/mcp.json` globally
 If the Synthadoc server is already running (`synthadoc serve -w history-of-computing`), connect via:
 
 ```
-MCP server URL: http://127.0.0.1:7070/mcp
+MCP server URL: http://127.0.0.1:7070/mcp/sse
 ```
 
 No API key required. The MCP endpoint shares the same port as the REST API.
