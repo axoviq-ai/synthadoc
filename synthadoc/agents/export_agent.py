@@ -429,10 +429,18 @@ class ExportAgent:
         return "\n".join(lines)
 
 
+_CITATION_RE = re.compile(r"\^\[[^\]]*\]")
+
+
 def _first_sentence(text: str) -> str:
     text = text.strip()
     lines = [ln for ln in text.splitlines() if ln.strip() and not ln.strip().startswith("#")]
     flat = " ".join(lines[:3])
+    flat = _CITATION_RE.sub("", flat)          # strip ^[...] citation markers
+    flat = _WIKILINK_RE.sub(                   # strip [[wikilinks]] → display text only
+        lambda m: m.group(1).split("|")[-1].strip(), flat
+    )
+    flat = " ".join(flat.split())              # collapse extra whitespace
     m = re.search(r"(.+?\.)\s", flat)
     if m:
         return m.group(1).strip()

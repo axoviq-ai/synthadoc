@@ -602,6 +602,27 @@ def test_first_sentence_skips_headings():
     assert result == "The real content here."
 
 
+def test_first_sentence_strips_citation_markers():
+    """^[...] citation markers are removed from the extracted sentence."""
+    result = _first_sentence("Some content.^[source:1-2] More text.")
+    assert "^[" not in result
+    assert result == "Some content."
+
+
+def test_first_sentence_strips_wikilinks():
+    """[[wikilinks]] are replaced with display text only in the extracted sentence."""
+    result = _first_sentence("Traces to [[alan-turing]]'s 1950 paper. More follows.")
+    assert "[[" not in result
+    assert "alan-turing" in result
+
+
+def test_first_sentence_strips_piped_wikilinks():
+    """[[slug|display]] keeps only the display text."""
+    result = _first_sentence("Developed by [[grace-hopper|Grace Hopper]]. More follows.")
+    assert "[[" not in result
+    assert "Grace Hopper" in result
+
+
 def test_rewrite_wikilinks_piped_form():
     """[[slug|display]] must use custom display text, not slug_to_title lookup."""
     result = _rewrite_wikilinks("See [[grace-hopper|Grace]] here.", {"grace-hopper": "Grace Hopper"})
