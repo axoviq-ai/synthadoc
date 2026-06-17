@@ -1719,3 +1719,51 @@ async def test_pass4_result_recorded_in_claim_citations(tmp_wiki, db, cache):
     assert citations[0]["source_file"] == "research.md"
     assert citations[0]["line_start"] == 1
     assert citations[0]["line_end"] == 3
+
+
+# --- _backfill_okf_fields unit tests ---
+
+def test_backfill_sets_type_when_absent():
+    """type is set from analysis when the page has no type attribute (pre-v0.9.0 page)."""
+    from synthadoc.agents.ingest_agent import _backfill_okf_fields
+    page = WikiPage(title="T", tags=[], content="", status="active", confidence="high", sources=[])
+    del page.__dict__["type"]   # simulate page loaded before type field existed
+    _backfill_okf_fields(page, {"type": "concept"}, "paper.pdf")
+    assert page.type == "concept"
+
+
+def test_backfill_does_not_overwrite_existing_type():
+    """type is not changed when the page already has a type value."""
+    from synthadoc.agents.ingest_agent import _backfill_okf_fields
+    page = WikiPage(title="T", tags=[], content="", status="active", confidence="high",
+                    sources=[], type="person")
+    _backfill_okf_fields(page, {"type": "concept"}, "paper.pdf")
+    assert page.type == "person"
+
+
+def test_backfill_sets_resource_for_url_source():
+    """resource is set to the URL when the page has no resource and source is a URL."""
+    from synthadoc.agents.ingest_agent import _backfill_okf_fields
+    page = WikiPage(title="T", tags=[], content="", status="active", confidence="high", sources=[])
+    del page.__dict__["resource"]   # simulate page loaded before resource field existed
+    _backfill_okf_fields(page, {}, "https://example.com/article")
+    assert page.resource == "https://example.com/article"
+
+
+def test_backfill_does_not_set_resource_for_file_source():
+    """resource is not set when the source is a local file path."""
+    from synthadoc.agents.ingest_agent import _backfill_okf_fields
+    page = WikiPage(title="T", tags=[], content="", status="active", confidence="high", sources=[])
+    _backfill_okf_fields(page, {}, "/path/to/paper.pdf")
+    assert page.resource is None
+
+
+def test_backfill_tolerates_page_missing_both_fields():
+    """No AttributeError when both type and resource are absent from the page object."""
+    from synthadoc.agents.ingest_agent import _backfill_okf_fields
+    page = WikiPage(title="T", tags=[], content="", status="active", confidence="high", sources=[])
+    del page.__dict__["type"]
+    del page.__dict__["resource"]
+    _backfill_okf_fields(page, {"type": "technology"}, "https://example.com/chip")
+    assert page.type == "technology"
+    assert page.resource == "https://example.com/chip"
