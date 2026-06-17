@@ -399,7 +399,7 @@ Serialises the wiki to one of five formats with zero additional LLM calls. Invok
 | `json` | Full structured dump: content, tags, sources, claims (from audit DB), lifecycle history, routing branch memberships, per-page `ingest_cost_usd` and `ingest_tokens`, and total compilation cost |
 | `okf` | [OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle directory — one Markdown file per page with conformant YAML frontmatter (`type`, `title`, `description`, `resource`, `tags`, `timestamp`); `index.md` grouped by knowledge type; `log.md` lifecycle history; `[[wikilinks]]` rewritten to relative OKF paths |
 
-**Status filter:** All formats accept `--status-filter active|contradicted|stale|archived|draft|all` (default `all`) to scope the export to a lifecycle subset.
+**Status filter:** All formats accept `--status-filter active|contradicted|stale|archived|draft|all` (default `all`) to scope the export to a lifecycle subset. For `okf`, the accepted values are `all` (active + contradicted, the default) or `active` only — draft, stale, and archived pages are always excluded from OKF bundles regardless of the flag.
 
 **OKF return type:** Unlike other formats (which return a single string), `okf` returns `dict[str, str]` — a map of relative file paths to file contents. The HTTP endpoint serialises this as a JSON manifest; the CLI writes the manifest as a directory tree. `--output` is required for `okf`.
 
@@ -2257,7 +2257,7 @@ OKF conformance rules satisfied: (1) every `.md` has parseable frontmatter; (2) 
 synthadoc export --format <fmt> [--output <path>] [--status <state>] [--context-pack <name>] [--wiki <name>]
 ```
 
-Outputs to stdout by default; `--output` writes to a file. For `--format okf`, `--output` is required and must be a directory path. `--status` filters pages by lifecycle state (`all` / `active` / `draft` / `stale` / `contradicted` / `archived`).
+Outputs to stdout by default; `--output` writes to a file. For `--format okf`, `--output` is required and must be a directory path. `--status` filters pages by lifecycle state (`all` / `active` / `draft` / `stale` / `contradicted` / `archived`). For `--format okf`, only `all` (active + contradicted, the default) or `active` are meaningful — draft, stale, and archived pages are always excluded from OKF bundles.
 
 ### POST /export endpoint
 
