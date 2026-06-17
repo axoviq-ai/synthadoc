@@ -116,10 +116,14 @@ _CONFIDENCE_RANK = {"high": 3, "medium": 2, "low": 1}
 
 
 def _backfill_okf_fields(page: "WikiPage", analysis: dict, source: str) -> None:
-    """Backfill type and resource on pages that predate v0.9.0. Never overwrites existing values."""
-    if page.type is None:
+    """Backfill type and resource on pages that predate v0.9.0. Never overwrites existing values.
+
+    Uses getattr so this is safe against pages loaded from stale bytecode or any
+    other path where WikiPage was instantiated before the type/resource fields existed.
+    """
+    if getattr(page, "type", None) is None:
         page.type = analysis.get("type") or None
-    if page.resource is None and is_url(source):
+    if getattr(page, "resource", None) is None and is_url(source):
         page.resource = source
 
 
