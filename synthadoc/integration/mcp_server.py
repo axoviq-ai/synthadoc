@@ -11,6 +11,18 @@ def create_mcp_server(orchestrator):
     first tool invocation arrives.
     """
     from mcp.server.fastmcp import FastMCP
+    from synthadoc.core.queue import JobStatus
+    from synthadoc.storage.wiki import LifecycleState, TriggerSource
+
+    # ── Lifecycle states ─────────────────────────────────────────────────
+    _VALID_STATES = LifecycleState.ALL          # single source of truth
+
+    # ── Job status constants ─────────────────────────────────────────────
+    # "running" is the user-facing alias for the internal IN_PROGRESS value.
+    # _DISPLAY_STATUS: internal → display; _STATUS_MAP: display → internal.
+    _DISPLAY_STATUS = {JobStatus.IN_PROGRESS.value: "running"}
+    _STATUS_MAP = {v: k for k, v in _DISPLAY_STATUS.items()}
+    _VALID_JOB_STATUS = {"all"} | {_DISPLAY_STATUS.get(j.value, j.value) for j in JobStatus}
 
     _root = getattr(orchestrator, "_root", None)
     _wiki_name = _root.name if isinstance(_root, Path) and _root.name else ""
@@ -91,8 +103,6 @@ def create_mcp_server(orchestrator):
             "tags": page.tags,
         }
 
-    _VALID_STATES = {"active", "draft", "stale", "contradicted", "archived"}
-
     @mcp.tool()
     async def synthadoc_lifecycle(slug: str, to_state: str, reason: str) -> dict:
         """Transition a wiki page's lifecycle state.
@@ -114,7 +124,6 @@ def create_mcp_server(orchestrator):
         from_state = page.status
         page.status = to_state
         orchestrator._store.write_page(slug, page)
-        from synthadoc.storage.wiki import TriggerSource
         await orchestrator._audit.set_page_state(slug, to_state, TriggerSource.USER)
         await orchestrator._audit.record_lifecycle_event(
             slug, from_state, to_state, reason, TriggerSource.USER
@@ -136,14 +145,10 @@ def create_mcp_server(orchestrator):
         Valid status values: all, pending, running, completed, failed, skipped, cancelled, dead.
         'running' maps to the internal 'in_progress' state.
         """
-        from synthadoc.core.queue import JobStatus
+        if status not in _VALID_JOB_STATUS:
+            return {"error": f"invalid status {status!r}. Valid: {', '.join(sorted(_VALID_JOB_STATUS))}"}
 
-        _VALID = {"all", "pending", "running", "completed", "failed", "skipped", "cancelled", "dead"}
-        if status not in _VALID:
-            return {"error": f"invalid status {status!r}. Valid: {', '.join(sorted(_VALID))}"}
-
-        _STATUS_MAP = {"running": "in_progress"}
-        queue_status: "JobStatus | None" = None
+        queue_status: JobStatus | None = None
         if status != "all":
             mapped = _STATUS_MAP.get(status, status)
             try:
@@ -151,7 +156,6 @@ def create_mcp_server(orchestrator):
             except ValueError:
                 return {"error": f"internal: could not map {status!r} to a JobStatus value"}
 
-        _DISPLAY_STATUS = {"in_progress": "running"}
         jobs = await orchestrator.queue.list_jobs(status=queue_status)
         result = []
         for j in jobs:
