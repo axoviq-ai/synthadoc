@@ -61,9 +61,21 @@ def _install_shutdown_noise_filter() -> None:
             if record.exc_info and record.exc_info[0] is not None:
                 if issubclass(record.exc_info[0], self._shutdown_types):
                     return False
+                # ASGI protocol violation caused by SSE connections (query stream or
+                # MCP /mcp/sse) that are still open when the server shuts down.
+                # uvicorn cancels the task → CancelledError propagates through the
+                # SSE generator → Starlette's error middleware tries to send a 500
+                # response → uvicorn rejects it because headers were already sent.
+                # This is always benign: the connection is already being torn down.
+                if issubclass(record.exc_info[0], RuntimeError):
+                    exc_val = record.exc_info[1]
+                    if exc_val is not None and "Expected ASGI message" in str(exc_val):
+                        return False
             if record.levelno >= logging.ERROR:
                 msg = record.getMessage()
                 if any(msg.rstrip().endswith(m) for m in self._shutdown_msg_markers):
+                    return False
+                if "Expected ASGI message" in msg and "http.response" in msg:
                     return False
             return True
 
