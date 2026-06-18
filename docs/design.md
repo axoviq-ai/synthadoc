@@ -1,6 +1,6 @@
 # Synthadoc — Design Document
 
-**Version:** 0.8.0  
+**Version:** 0.9.0  
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -2681,3 +2681,6 @@ Default (no flag): both MCP and HTTP start together on the same port.
 - **Transport support** — stdio (Claude Desktop), SSE via `--transport sse` (Claude Code CLI), HTTP/SSE direct connection (n8n, LangGraph, custom agents). Claude Desktop requires underscores in `mcpServers` key names (hyphens cause load failure).
 - **Brain/memory architecture** — Claude acts as the reasoning brain (editorial judgment, synthesis, tool chaining); Synthadoc MCP acts as persistent domain memory (BM25 search, 5-state lifecycle, immutable audit trail). `synthadoc_search` and `synthadoc_read_page` return raw data with no Synthadoc LLM call; only `synthadoc_ingest` and `synthadoc_lint` consume tokens from the configured provider.
 - **`--mcp-only` / `--http-only` serve flags** — deploy MCP-only (no web UI or REST API) or HTTP-only (no MCP mount) for constrained environments.
+- **OKF `type:` field** — IngestAgent now writes a `type:` frontmatter field on every compiled page (values: `concept`, `person`, `organization`, `technology`, `event`, `location`, `product`). The field is required by OKF v0.1 and enables type-grouped `index.md` in the export bundle. Pages ingested before v0.9.0 can be backfilled via `synthadoc demo sync` (demo wikis) or re-running `synthadoc ingest` (custom wikis).
+- **`synthadoc demo sync` — optional wiki name** — running `synthadoc demo sync` without a wiki name argument syncs all registered demo wikis in one pass. The sync step also backfills `type:` on existing pages that were compiled before v0.9.0 without the field.
+- **SSE shutdown stability** — a log filter installed on `uvicorn.error` at startup suppresses three benign error classes that appear when the server exits while SSE connections are open: `asyncio.CancelledError`, `KeyboardInterrupt`, and the `RuntimeError("Expected ASGI message 'http.response.body'…")` that Starlette's error middleware raises after cancellation. Actual errors during normal operation are unaffected.
