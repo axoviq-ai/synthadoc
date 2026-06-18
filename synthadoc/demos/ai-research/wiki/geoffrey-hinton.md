@@ -1,4 +1,4 @@
-﻿---
+---
 title: Geoffrey Hinton
 tags: [researcher, deep-learning, neural-networks, biography]
 status: active

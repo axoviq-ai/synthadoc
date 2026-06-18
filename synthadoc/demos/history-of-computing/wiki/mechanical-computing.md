@@ -1,4 +1,4 @@
-﻿---
+---
 title: Mechanical Computing
 tags: [history, mechanical, babbage, pre-electronic]
 status: archived

@@ -127,8 +127,14 @@ def sync_demo(
         typer.echo("Already up to date — nothing to sync.")
 
 
+def _strip_bom(text: str) -> str:
+    """Remove UTF-8 BOM (U+FEFF) if present at the start of text."""
+    return text.lstrip("﻿")
+
+
 def _extract_body(text: str) -> str:
     """Return everything after the closing '---' of a YAML frontmatter block."""
+    text = _strip_bom(text)
     if text.startswith("---"):
         parts = text.split("---", 2)
         if len(parts) >= 3:
@@ -138,6 +144,7 @@ def _extract_body(text: str) -> str:
 
 def _extract_frontmatter_block(text: str) -> str:
     """Return the YAML between '---' markers, normalized to exactly one leading/trailing newline."""
+    text = _strip_bom(text)
     if text.startswith("---"):
         parts = text.split("---", 2)
         if len(parts) >= 3:

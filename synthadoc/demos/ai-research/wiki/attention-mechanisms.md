@@ -1,4 +1,4 @@
-﻿---
+---
 title: Attention Mechanisms
 tags: [architecture, attention, transformers, nlp]
 status: active

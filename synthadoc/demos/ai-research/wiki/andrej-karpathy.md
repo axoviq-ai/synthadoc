@@ -1,4 +1,4 @@
-﻿---
+---
 title: Andrej Karpathy
 tags: [researcher, llm, pedagogy, biography]
 status: active

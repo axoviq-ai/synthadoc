@@ -1,4 +1,4 @@
-﻿---
+---
 title: Artificial Intelligence History
 tags: [artificial-intelligence, machine-learning, deep-learning, neural-networks]
 status: active

@@ -1,4 +1,4 @@
-﻿---
+---
 title: Unix History
 tags: [unix, operating-system, bell-labs, c-language]
 status: active

@@ -1,4 +1,4 @@
-﻿---
+---
 title: Programming Languages Overview
 tags: [programming-languages, history, compilers]
 status: active

@@ -1,4 +1,4 @@
-﻿---
+---
 title: Open Source Movement
 tags: [open-source, gnu, linux, licensing]
 status: active

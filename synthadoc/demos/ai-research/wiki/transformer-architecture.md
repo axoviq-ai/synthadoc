@@ -1,4 +1,4 @@
-﻿---
+---
 title: Transformer Architecture
 tags: [architecture, transformers, attention, nlp]
 status: active

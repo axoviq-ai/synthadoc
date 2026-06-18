@@ -1,4 +1,4 @@
-﻿---
+---
 title: Von Neumann Architecture
 tags: [architecture, hardware, stored-program]
 status: active

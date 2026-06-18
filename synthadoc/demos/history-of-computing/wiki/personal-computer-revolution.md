@@ -1,4 +1,4 @@
-﻿---
+---
 title: Personal Computer Revolution
 tags: [personal-computer, apple, ibm, microprocessor]
 status: active

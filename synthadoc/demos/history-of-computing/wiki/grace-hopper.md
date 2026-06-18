@@ -1,4 +1,4 @@
-﻿---
+---
 title: Grace Hopper
 tags: [biography, compilers, cobol, navy]
 status: active

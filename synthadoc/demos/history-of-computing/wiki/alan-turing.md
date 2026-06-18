@@ -1,4 +1,4 @@
-﻿---
+---
 title: Alan Turing
 tags: [biography, theory, cryptography]
 status: active

@@ -1,4 +1,4 @@
-﻿---
+---
 title: Transistor and Microchip
 tags: [hardware, transistor, integrated-circuit, moores-law]
 status: active

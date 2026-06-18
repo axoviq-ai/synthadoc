@@ -1,4 +1,4 @@
-﻿---
+---
 title: Early Neural Networks
 tags: [neural-networks, perceptron, history, deep-learning]
 status: archived

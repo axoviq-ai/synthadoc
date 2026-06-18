@@ -1,4 +1,4 @@
-﻿---
+---
 title: Reinforcement Learning from Human Feedback
 tags: [rlhf, alignment, training, llm]
 status: active

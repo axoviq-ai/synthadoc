@@ -1,4 +1,4 @@
-﻿---
+---
 title: Internet Origins
 tags: [internet, arpanet, networking, tcp-ip]
 status: active

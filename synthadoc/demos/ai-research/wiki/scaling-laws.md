@@ -1,4 +1,4 @@
-﻿---
+---
 title: Scaling Laws
 tags: [scaling, training, compute, llm]
 status: active

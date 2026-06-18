@@ -1,4 +1,4 @@
-﻿---
+---
 title: Training Techniques
 tags: [training, fine-tuning, alignment, llm]
 status: active
