@@ -2575,14 +2575,12 @@ Synthadoc exposes an MCP server so Claude Desktop, Claude Code, or any MCP-compa
 
 ### Transport options
 
-Synthadoc supports two MCP transports. **HTTP/SSE is recommended** for most users — it lets the web UI and Claude run simultaneously against the same server.
+| | Claude Desktop | Claude Code CLI | Custom agents (n8n, LangGraph…) |
+|---|---|---|---|
+| **stdio** (`--mcp-only`) | Yes — only option | Yes | No |
+| **HTTP/SSE** (`url`) | No — not supported | Yes | Yes |
 
-| | HTTP/SSE (recommended) | stdio (`--mcp-only`) |
-|---|---|---|
-| Start server manually? | Yes — `synthadoc serve` | No — Claude Desktop starts it |
-| Web UI available at same time? | **Yes** | No |
-| Claude Desktop manages lifecycle? | No | Yes |
-| Config complexity | Minimal — just a URL | Requires full exe path |
+Claude Desktop only supports stdio — it spawns Synthadoc as a subprocess and manages the process lifecycle. HTTP/SSE is available for Claude Code and any custom MCP client.
 
 ---
 
@@ -2599,7 +2597,26 @@ If you need remote access (e.g. connecting from a different machine), put Syntha
 
 ### Multiple wikis
 
-Run one server per wiki on its own port, then register each as a separate MCP server entry. Use `synthadoc-<wiki-name>` as the key — it matches the MCP protocol server name that Synthadoc advertises automatically.
+Register each wiki as a separate entry using `synthadoc-<wiki-name>` as the key. Synthadoc sets the MCP server name to `synthadoc-<wiki-name>` at startup and prefixes every tool description with `Wiki: <wiki-name>.` — so Claude knows which server covers which domain and routes correctly without you having to specify it.
+
+**Claude Desktop (stdio):**
+
+```json
+{
+  "mcpServers": {
+    "synthadoc-history-of-computing": {
+      "command": "C:\\Users\\<you>\\...\\synthadoc.exe",
+      "args": ["serve", "-w", "C:\\Users\\<you>\\wikis\\history-of-computing", "--mcp-only"]
+    },
+    "synthadoc-ai-research": {
+      "command": "C:\\Users\\<you>\\...\\synthadoc.exe",
+      "args": ["serve", "-w", "C:\\Users\\<you>\\wikis\\ai-research", "--mcp-only"]
+    }
+  }
+}
+```
+
+**Claude Code / custom agents (HTTP/SSE):**
 
 ```powershell
 synthadoc serve -w "C:\wikis\history-of-computing"   # port 7070
@@ -2615,43 +2632,11 @@ synthadoc serve -w "C:\wikis\ai-research"             # port 7071
 }
 ```
 
-Synthadoc sets the MCP server name to `synthadoc-<wiki-name>` at startup and prefixes every tool description with `Wiki: <wiki-name>.` — so Claude knows which server covers which domain and routes correctly without you having to specify it.
-
 ---
 
-### Claude Desktop — HTTP/SSE (recommended)
+### Claude Desktop
 
-**Step 1 — Start the Synthadoc server**
-
-```powershell
-synthadoc serve -w "C:\Users\<you>\wikis\history-of-computing"
-```
-
-The server must be running before Claude Desktop connects. Keep it running in a terminal or set it up as a background service.
-
-**Step 2 — Add the config entry**
-
-Open Claude Desktop → Settings → Developer → **Edit Config** and add:
-
-```json
-{
-  "mcpServers": {
-    "synthadoc": {
-      "url": "http://127.0.0.1:7070/mcp/sse"
-    }
-  }
-}
-```
-
-**Step 3 — Restart Claude Desktop**
-
-Fully quit from the system tray (right-click → Quit), then reopen. `synthadoc` should appear with a **running** badge in Settings → Developer.
-
----
-
-### Claude Desktop — stdio (`--mcp-only`)
-
-Use this if you want Claude Desktop to manage the server lifecycle and don't need the web UI running at the same time.
+Claude Desktop only supports stdio — it spawns Synthadoc as a subprocess and manages it automatically.
 
 **Step 1 — Find the full path to `synthadoc.exe`**
 
