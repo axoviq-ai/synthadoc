@@ -747,6 +747,54 @@ The LLM proposes a resolution, appends it as a `**Resolution:**` block, and sets
 
 Or from Obsidian: Command Palette → `Synthadoc: Lint: run with auto-resolve`.
 
+### Option 3 — Resolve via MCP (Claude Desktop or Claude Code)
+
+With Synthadoc connected as an MCP server, Claude can resolve contradictions using its own LLM — the brain/memory architecture in action. Claude reasons about the conflict, writes the resolution, then commits the lifecycle transition with a proper audit trail.
+
+Ask Claude in a single prompt:
+
+> "The grace-hopper page is contradicted. Read it, resolve the A-0 compiler controversy by presenting both scholarly views fairly, update the page, then mark it active with a reason."
+
+Claude will execute this as three tool calls in sequence:
+
+**1. Read the page**
+```
+synthadoc_read_page("grace-hopper")
+```
+
+**2. Write the resolved content**
+```
+synthadoc_write_page(
+  slug="grace-hopper",
+  content="<Claude's synthesized resolution>",
+)
+```
+This updates the content, clears the `contradiction_note`, and bumps the wiki epoch.
+
+**3. Transition the lifecycle state**
+```
+synthadoc_lifecycle(
+  slug="grace-hopper",
+  to_state="active",
+  reason="Resolved: A-0 compiler controversy — both scholarly views preserved",
+)
+```
+This writes a permanent audit record: who triggered it (`mcp`), when, and why.
+
+The audit trail for the full resolution looks like:
+
+```
+Slug          From          To      By    Timestamp            Reason
+grace-hopper  null          draft   ingest  2026-05-28T14:58:50  new page created
+grace-hopper  draft         active  lint    2026-05-28T17:54:51  lint passed
+grace-hopper  active  contradicted  lint    2026-05-28T18:30:00  conflict: A-0 compiler claim
+grace-hopper  contradicted  active  mcp     2026-06-18T21:45:00  Resolved: A-0 controversy — both views preserved
+```
+
+> **Why this is better than Option 1:** The audit trail records that the resolution was applied, when, and with what stated reason — not just that the file was edited. Option 1 (direct file edit) leaves no lifecycle record.
+>
+> **Why this is better than Option 2:** Claude's LLM (Anthropic) has stronger editorial reasoning than Synthadoc's configured provider, and can draw on conversation context — for example, if you've been discussing the controversy in the same session.
+
 > **Dashboard still showing the contradiction?** Dataview may be serving stale metadata.
 > Drop the cache: `Ctrl/Cmd+P` → **Dataview: Drop all cached file metadata**, then reopen
 > `dashboard.md`. If `synthadoc lint report` shows "all clear", the file is already
