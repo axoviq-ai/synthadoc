@@ -12,7 +12,10 @@ def create_mcp_server(orchestrator):
     """
     from mcp.server.fastmcp import FastMCP
 
-    mcp = FastMCP("synthadoc")
+    _root = getattr(orchestrator, "_root", None)
+    _wiki_name = _root.name if isinstance(_root, Path) and _root.name else ""
+    _server_name = f"synthadoc-{_wiki_name}" if _wiki_name else "synthadoc"
+    mcp = FastMCP(_server_name)
 
     @mcp.tool()
     async def synthadoc_ingest(source: str) -> dict:
@@ -146,9 +149,8 @@ def create_mcp_server(orchestrator):
 
     # Prepend "Wiki: <name>." to every tool description so Claude can route
     # correctly when multiple Synthadoc servers are connected simultaneously.
-    _root = getattr(orchestrator, "_root", None)
-    if isinstance(_root, Path) and _root.name:
-        _prefix = f"Wiki: {_root.name}. "
+    if _wiki_name:
+        _prefix = f"Wiki: {_wiki_name}. "
         for _tool in mcp._tool_manager._tools.values():
             _tool.description = _prefix + (_tool.description or "")
 
