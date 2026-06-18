@@ -54,6 +54,29 @@ def create_mcp_server(orchestrator):
         }
 
     @mcp.tool()
+    async def synthadoc_write_page(slug: str, content: str, title: str = "") -> dict:
+        """Update the content of an existing wiki page.
+
+        Only updates content (and optionally title) — lifecycle state is unchanged.
+        Use synthadoc_lifecycle to transition state after editing.
+        Clears contradiction_note if present, since a manual edit implies resolution.
+
+        Returns the updated slug, title, and status.
+        """
+        from datetime import date
+        page = orchestrator._store.read_page(slug)
+        if page is None:
+            return {"error": "page not found", "slug": slug}
+        page.content = content
+        if title:
+            page.title = title
+        page.contradiction_note = None
+        page.updated = date.today().isoformat()
+        orchestrator._store.write_page(slug, page)
+        orchestrator._bump_epoch()
+        return {"slug": slug, "title": page.title, "status": page.status}
+
+    @mcp.tool()
     async def synthadoc_read_page(slug: str) -> dict:
         """Read a wiki page by slug and return its full content and metadata."""
         page = orchestrator._store.read_page(slug)

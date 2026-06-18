@@ -25,7 +25,7 @@ def test_mcp_server_has_required_tools(mock_orch):
     for expected in (
         "synthadoc_ingest", "synthadoc_lint",
         "synthadoc_search", "synthadoc_status",
-        "synthadoc_read_page", "synthadoc_lifecycle", "synthadoc_jobs",
+        "synthadoc_read_page", "synthadoc_write_page", "synthadoc_lifecycle", "synthadoc_jobs",
     ):
         assert expected in tool_names
     assert "synthadoc_query" not in tool_names
@@ -128,6 +128,46 @@ async def test_mcp_read_page_not_found_returns_error(mock_orch):
         )
     assert "error" in result
     assert result["slug"] == "missing-page"
+
+
+# ── New tool: synthadoc_write_page ───────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_mcp_write_page_updates_content(mock_orch):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.storage.wiki import WikiPage
+    mcp = create_mcp_server(mock_orch)
+    fake_page = WikiPage(
+        title="Grace Hopper", tags=[], content="old content",
+        status="contradicted", confidence="high", sources=[],
+        contradiction_note="old note",
+    )
+    with patch("synthadoc.storage.wiki.WikiStorage.read_page", return_value=fake_page), \
+         patch("synthadoc.storage.wiki.WikiStorage.write_page") as mock_write:
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_write_page",
+            {"slug": "grace-hopper", "content": "new content", "title": "Grace Hopper (revised)"},
+            convert_result=False,
+        )
+    assert result["slug"] == "grace-hopper"
+    assert result["title"] == "Grace Hopper (revised)"
+    assert result["status"] == "contradicted"  # unchanged — use synthadoc_lifecycle for that
+    assert fake_page.content == "new content"
+    assert fake_page.contradiction_note is None  # cleared on write
+    mock_write.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_mcp_write_page_not_found_returns_error(mock_orch):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    mcp = create_mcp_server(mock_orch)
+    with patch("synthadoc.storage.wiki.WikiStorage.read_page", return_value=None):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_write_page",
+            {"slug": "missing", "content": "anything"},
+            convert_result=False,
+        )
+    assert result == {"error": "page not found", "slug": "missing"}
 
 
 # ── New tool: synthadoc_lifecycle ─────────────────────────────────────────────
