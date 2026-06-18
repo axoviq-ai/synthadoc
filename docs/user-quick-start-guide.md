@@ -2609,8 +2609,8 @@ synthadoc serve -w "C:\wikis\ai-research"             # port 7071
 ```json
 {
   "mcpServers": {
-    "synthadoc-computing": { "url": "http://127.0.0.1:7070/mcp/sse" },
-    "synthadoc-ai":        { "url": "http://127.0.0.1:7071/mcp/sse" }
+    "synthadoc-history-of-computing": { "url": "http://127.0.0.1:7070/mcp/sse" },
+    "synthadoc-ai-research":          { "url": "http://127.0.0.1:7071/mcp/sse" }
   }
 }
 ```
