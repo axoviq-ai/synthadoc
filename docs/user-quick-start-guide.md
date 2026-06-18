@@ -2573,15 +2573,67 @@ Synthadoc exposes an MCP server so Claude Desktop, Claude Code, or any MCP-compa
 
 ---
 
-### Claude Desktop (recommended for first-time setup)
+### Transport options
 
-**Step 1 — Find the config file**
+Synthadoc supports two MCP transports. **HTTP/SSE is recommended** for most users — it lets the web UI and Claude run simultaneously against the same server.
 
-Open Claude Desktop → Settings → Developer → **Edit Config**. This opens `claude_desktop_config.json` in your editor. Use this button rather than navigating to the file manually — the path varies depending on how Claude Desktop was installed (direct installer vs. Windows Store).
+| | HTTP/SSE (recommended) | stdio (`--mcp-only`) |
+|---|---|---|
+| Start server manually? | Yes — `synthadoc serve` | No — Claude Desktop starts it |
+| Web UI available at same time? | **Yes** | No |
+| Claude Desktop manages lifecycle? | No | Yes |
+| Config complexity | Minimal — just a URL | Requires full exe path |
 
-**Step 2 — Find the full path to `synthadoc.exe`**
+---
 
-Claude Desktop uses a restricted PATH and will not find `synthadoc` by name alone. Get the full path:
+### Security note
+
+Synthadoc binds to `127.0.0.1` (localhost) by default. This means:
+
+- **No remote access** — the server is only reachable from the same machine. Other hosts on your network cannot connect.
+- **No authentication** — any process on the same machine can reach the API. Do not change the bind address to `0.0.0.0` on a shared or networked machine without adding a reverse proxy with authentication in front.
+
+If you need remote access (e.g. connecting from a different machine), put Synthadoc behind a reverse proxy (nginx, Caddy) and require authentication at the proxy layer — do not expose port 7070 directly.
+
+---
+
+### Claude Desktop — HTTP/SSE (recommended)
+
+**Step 1 — Start the Synthadoc server**
+
+```powershell
+synthadoc serve -w "C:\Users\<you>\wikis\history-of-computing"
+```
+
+The server must be running before Claude Desktop connects. Keep it running in a terminal or set it up as a background service.
+
+**Step 2 — Add the config entry**
+
+Open Claude Desktop → Settings → Developer → **Edit Config** and add:
+
+```json
+{
+  "mcpServers": {
+    "my-wiki": {
+      "url": "http://127.0.0.1:7070/mcp/sse"
+    }
+  }
+}
+```
+
+**Step 3 — Restart Claude Desktop**
+
+Fully quit from the system tray (right-click → Quit), then reopen. `my-wiki` should appear with a **running** badge in Settings → Developer.
+
+---
+
+### Claude Desktop — stdio (`--mcp-only`)
+
+Use this if you want Claude Desktop to manage the server lifecycle and don't need the web UI running at the same time.
+
+**Step 1 — Find the full path to `synthadoc.exe`**
+
+Claude Desktop uses a restricted PATH and will not find `synthadoc` by name alone:
 
 ```powershell
 (Get-Command synthadoc).Source
@@ -2589,7 +2641,7 @@ Claude Desktop uses a restricted PATH and will not find `synthadoc` by name alon
 
 Typical result on Windows: `C:\Users\<you>\AppData\Roaming\Python\Python314\Scripts\synthadoc.exe`
 
-**Step 3 — Add the server entry**
+**Step 2 — Add the config entry**
 
 ```json
 {
@@ -2602,18 +2654,30 @@ Typical result on Windows: `C:\Users\<you>\AppData\Roaming\Python\Python314\Scri
 }
 ```
 
-Use the **absolute path** to both `synthadoc.exe` and the wiki root. Relative paths and wiki name aliases do not work from Claude Desktop.
+Use **absolute paths** for both `synthadoc.exe` and the wiki root. Relative paths and wiki name aliases do not work from Claude Desktop.
 
-**Step 4 — Restart Claude Desktop**
+**Step 3 — Restart Claude Desktop**
 
-Fully quit from the system tray (right-click → Quit), then reopen. Go back to Settings → Developer — `my-wiki` should appear with a **running** badge.
+Fully quit from the system tray, then reopen.
 
 ---
 
 ### Claude Code
 
-Add to `.claude/mcp.json` in your project root (or `~/.claude/mcp.json` globally):
+Add to `.claude/mcp.json` in your project root (or `~/.claude/mcp.json` globally).
 
+HTTP/SSE (requires server already running):
+```json
+{
+  "mcpServers": {
+    "my-wiki": {
+      "url": "http://127.0.0.1:7070/mcp/sse"
+    }
+  }
+}
+```
+
+stdio:
 ```json
 {
   "mcpServers": {
@@ -2625,25 +2689,23 @@ Add to `.claude/mcp.json` in your project root (or `~/.claude/mcp.json` globally
 }
 ```
 
-Same full-path requirement as Claude Desktop.
-
 ---
 
 ### HTTP/SSE (n8n, LangGraph, custom agents)
 
-If the Synthadoc server is already running (`synthadoc serve -w history-of-computing`), connect via:
+The same endpoint works for any MCP-compatible client:
 
 ```
 MCP SSE endpoint: http://127.0.0.1:7070/mcp/sse
 ```
 
-No API key required. The MCP endpoint shares the same port as the REST API. Verify it is live:
+No API key required. Verify it is live:
 
 ```
 curl -i http://127.0.0.1:7070/mcp/sse
 ```
 
-You should receive `HTTP/1.1 200 OK` with `content-type: text/event-stream` and the connection will hang open (that is correct — SSE streams stay open).
+You should receive `HTTP/1.1 200 OK` with `content-type: text/event-stream` and the connection will hang open (correct — SSE streams stay open).
 
 ---
 
