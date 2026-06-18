@@ -480,6 +480,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     @app.get("/query/stream")
     async def query_stream(q: str, session_id: str | None = None, no_cache: bool = False, timeout_seconds: int = 60):
+        import asyncio as _asyncio
         import json as _json
         from fastapi.responses import StreamingResponse
         if not q.strip():
@@ -554,20 +555,22 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                         _session_state[session_id]["cursor"] = new_cursor
                         _session_state[session_id]["last_hints"] = next_hints
                     # Persist before done so the client's sidebar refresh sees fresh data
-                    if session_id:
-                        await orch._audit.append_message(session_id, "user", q)
-                        await orch._audit.append_message(
-                            session_id, "assistant", cached.get("answer", ""),
-                            citations=cached.get("citations") or None,
-                            gap_suggestions=cached.get("suggested_searches") or None,
-                        )
+                    try:
+                        if session_id:
+                            await orch._audit.append_message(session_id, "user", q)
+                            await orch._audit.append_message(
+                                session_id, "assistant", cached.get("answer", ""),
+                                citations=cached.get("citations") or None,
+                                gap_suggestions=cached.get("suggested_searches") or None,
+                            )
+                    except _asyncio.CancelledError:
+                        return  # server shutdown or client disconnect — stop cleanly
                     events.append({"event": "done", "data": {"next_hints": next_hints}})
                     for evt in events:
                         yield f"event: {evt['event']}\ndata: {_json.dumps(evt['data'])}\n\n"
                 return StreamingResponse(_cached_stream(), media_type="text/event-stream")
 
         async def _live_stream():
-            import asyncio as _asyncio
             nonlocal _summary_notice
             full_answer = ""
             citations = []
@@ -631,6 +634,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                             yield f"event: done\ndata: {_json.dumps({'next_hints': next_hints})}\n\n"
                             continue
                         yield f"event: {evt['event']}\ndata: {_json.dumps(evt['data'])}\n\n"
+            except _asyncio.CancelledError:
+                return  # server shutdown or client disconnect — stop cleanly
             except TimeoutError:
                 yield f"event: error\ndata: {_json.dumps({'message': f'Query timed out after {timeout_seconds}s.'})}\n\n"
                 return
