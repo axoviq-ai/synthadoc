@@ -3,6 +3,7 @@ title: Grace Hopper
 tags: [biography, compilers, cobol, navy]
 status: active
 confidence: high
+type: person
 created: 2026-04-09
 updated: '2026-04-22'
 sources:

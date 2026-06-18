@@ -3,6 +3,7 @@ title: Open Source Movement
 tags: [open-source, gnu, linux, licensing]
 status: active
 confidence: high
+type: concept
 created: 2026-04-09
 sources:
   - file: public-domain/raymond-cathedral-bazaar-1999.txt

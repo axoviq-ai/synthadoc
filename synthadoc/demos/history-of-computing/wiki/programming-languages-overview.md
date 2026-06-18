@@ -3,6 +3,7 @@ title: Programming Languages Overview
 tags: [programming-languages, history, compilers]
 status: active
 confidence: high
+type: concept
 created: 2026-04-08
 sources:
   - file: public-domain/wexelblat-history-of-programming-languages-1981.txt

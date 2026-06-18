@@ -3,6 +3,7 @@ title: Artificial Intelligence History
 tags: [artificial-intelligence, machine-learning, deep-learning, neural-networks]
 status: active
 confidence: high
+type: concept
 created: 2026-04-09
 sources:
   - file: public-domain/mccorduck-machines-who-think.txt

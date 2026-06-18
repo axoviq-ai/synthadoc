@@ -10,7 +10,6 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, field_validator
-from starlette.middleware.base import BaseHTTPMiddleware
 from typing import Optional
 
 import logging
@@ -62,9 +61,21 @@ def _install_shutdown_noise_filter() -> None:
             if record.exc_info and record.exc_info[0] is not None:
                 if issubclass(record.exc_info[0], self._shutdown_types):
                     return False
+                # ASGI protocol violation caused by SSE connections (query stream or
+                # MCP /mcp/sse) that are still open when the server shuts down.
+                # uvicorn cancels the task → CancelledError propagates through the
+                # SSE generator → Starlette's error middleware tries to send a 500
+                # response → uvicorn rejects it because headers were already sent.
+                # This is always benign: the connection is already being torn down.
+                if issubclass(record.exc_info[0], RuntimeError):
+                    exc_val = record.exc_info[1]
+                    if exc_val is not None and "Expected ASGI message" in str(exc_val):
+                        return False
             if record.levelno >= logging.ERROR:
                 msg = record.getMessage()
                 if any(msg.rstrip().endswith(m) for m in self._shutdown_msg_markers):
+                    return False
+                if "Expected ASGI message" in msg and "http.response" in msg:
                     return False
             return True
 
@@ -162,19 +173,22 @@ _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 _FM_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
 
 
-class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
+class ContentSizeLimitMiddleware:
     """Reject requests whose Content-Length exceeds the configured limit."""
 
     def __init__(self, app, max_bytes: int = _MAX_BODY_BYTES) -> None:
-        super().__init__(app)
+        self.app = app
         self._max_bytes = max_bytes
 
-    async def dispatch(self, request: Request, call_next):
-        content_length = request.headers.get("content-length")
-        if content_length is not None:
-            if int(content_length) > self._max_bytes:
-                return Response(content="Request body too large", status_code=413)
-        return await call_next(request)
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and not scope.get("path", "").startswith("/mcp"):
+            headers = dict(scope.get("headers", []))
+            content_length = headers.get(b"content-length")
+            if content_length is not None and int(content_length) > self._max_bytes:
+                response = Response(content="Request body too large", status_code=413)
+                await response(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
 
 
 class QueryRequest(BaseModel):
@@ -320,7 +334,7 @@ async def _worker_loop(orch) -> None:
         await asyncio.sleep(sleep_secs)
 
 
-def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAPI:
+def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mcp: bool = True) -> FastAPI:
     import os
     import synthadoc
     from synthadoc.config import load_config
@@ -333,12 +347,15 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
 
     cfg = load_config(project_config=wiki_root / ".synthadoc" / "config.toml")
 
+    # Create Orchestrator here so MCP server can reference it at mount time.
+    # init() is called inside the lifespan (requires event loop).
+    orch = Orchestrator(wiki_root=wiki_root, config=cfg)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         if sys.platform == "win32":
             _install_win32_conn_reset_filter()
         _install_shutdown_noise_filter()
-        orch = Orchestrator(wiki_root=wiki_root, config=cfg)
         await orch.init()
         app.state.orch = orch
         from synthadoc.agents.hint_engine import HintEngine as _HE
@@ -377,6 +394,11 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
         allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["Content-Type"],
     )
+
+    if enable_mcp:
+        from synthadoc.integration.mcp_server import create_mcp_server
+        _mcp = create_mcp_server(orchestrator=orch)
+        app.mount("/mcp", _mcp.sse_app())
 
     @app.get("/", response_class=Response)
     async def index():
@@ -470,6 +492,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
 
     @app.get("/query/stream")
     async def query_stream(q: str, session_id: str | None = None, no_cache: bool = False, timeout_seconds: int = 60):
+        import asyncio as _asyncio
         import json as _json
         from fastapi.responses import StreamingResponse
         if not q.strip():
@@ -544,20 +567,22 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                         _session_state[session_id]["cursor"] = new_cursor
                         _session_state[session_id]["last_hints"] = next_hints
                     # Persist before done so the client's sidebar refresh sees fresh data
-                    if session_id:
-                        await orch._audit.append_message(session_id, "user", q)
-                        await orch._audit.append_message(
-                            session_id, "assistant", cached.get("answer", ""),
-                            citations=cached.get("citations") or None,
-                            gap_suggestions=cached.get("suggested_searches") or None,
-                        )
+                    try:
+                        if session_id:
+                            await orch._audit.append_message(session_id, "user", q)
+                            await orch._audit.append_message(
+                                session_id, "assistant", cached.get("answer", ""),
+                                citations=cached.get("citations") or None,
+                                gap_suggestions=cached.get("suggested_searches") or None,
+                            )
+                    except _asyncio.CancelledError:
+                        return  # server shutdown or client disconnect — stop cleanly
                     events.append({"event": "done", "data": {"next_hints": next_hints}})
                     for evt in events:
                         yield f"event: {evt['event']}\ndata: {_json.dumps(evt['data'])}\n\n"
                 return StreamingResponse(_cached_stream(), media_type="text/event-stream")
 
         async def _live_stream():
-            import asyncio as _asyncio
             nonlocal _summary_notice
             full_answer = ""
             citations = []
@@ -621,6 +646,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES) -> FastAP
                             yield f"event: done\ndata: {_json.dumps({'next_hints': next_hints})}\n\n"
                             continue
                         yield f"event: {evt['event']}\ndata: {_json.dumps(evt['data'])}\n\n"
+            except _asyncio.CancelledError:
+                return  # server shutdown or client disconnect — stop cleanly
             except TimeoutError:
                 yield f"event: error\ndata: {_json.dumps({'message': f'Query timed out after {timeout_seconds}s.'})}\n\n"
                 return

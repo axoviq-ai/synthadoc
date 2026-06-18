@@ -3,6 +3,7 @@ title: Von Neumann Architecture
 tags: [architecture, hardware, stored-program]
 status: active
 confidence: high
+type: technology
 created: 2026-04-08
 sources:
   - file: public-domain/vonneumann-firstdraft-1945.txt
