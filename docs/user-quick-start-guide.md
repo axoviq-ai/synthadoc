@@ -2614,7 +2614,7 @@ Open Claude Desktop → Settings → Developer → **Edit Config** and add:
 ```json
 {
   "mcpServers": {
-    "my-wiki": {
+    "synthadoc": {
       "url": "http://127.0.0.1:7070/mcp/sse"
     }
   }
@@ -2623,7 +2623,7 @@ Open Claude Desktop → Settings → Developer → **Edit Config** and add:
 
 **Step 3 — Restart Claude Desktop**
 
-Fully quit from the system tray (right-click → Quit), then reopen. `my-wiki` should appear with a **running** badge in Settings → Developer.
+Fully quit from the system tray (right-click → Quit), then reopen. `synthadoc` should appear with a **running** badge in Settings → Developer.
 
 ---
 
@@ -2646,7 +2646,7 @@ Typical result on Windows: `C:\Users\<you>\AppData\Roaming\Python\Python314\Scri
 ```json
 {
   "mcpServers": {
-    "my-wiki": {
+    "synthadoc": {
       "command": "C:\\Users\\<you>\\AppData\\Roaming\\Python\\Python314\\Scripts\\synthadoc.exe",
       "args": ["serve", "-w", "C:\\Users\\<you>\\wikis\\history-of-computing", "--mcp-only"]
     }
@@ -2670,7 +2670,7 @@ HTTP/SSE (requires server already running):
 ```json
 {
   "mcpServers": {
-    "my-wiki": {
+    "synthadoc": {
       "url": "http://127.0.0.1:7070/mcp/sse"
     }
   }
@@ -2681,7 +2681,7 @@ stdio:
 ```json
 {
   "mcpServers": {
-    "my-wiki": {
+    "synthadoc": {
       "command": "C:\\Users\\<you>\\AppData\\Roaming\\Python\\Python314\\Scripts\\synthadoc.exe",
       "args": ["serve", "-w", "C:\\Users\\<you>\\wikis\\history-of-computing", "--mcp-only"]
     }
