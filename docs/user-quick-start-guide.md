@@ -2673,29 +2673,46 @@ Fully quit from the system tray, then reopen.
 
 ### Claude Code
 
-Add to `.claude/mcp.json` in your project root (or `~/.claude/mcp.json` globally).
+Claude Code supports both SSE (recommended — connects to a running server) and stdio.
 
-HTTP/SSE (requires server already running):
-```json
-{
-  "mcpServers": {
-    "synthadoc": {
-      "url": "http://127.0.0.1:7070/mcp/sse"
-    }
-  }
-}
+#### SSE transport (recommended)
+
+**Step 1 — Start the Synthadoc server**
+
+```powershell
+synthadoc serve -w "C:\Users\<you>\wikis\history-of-computing"
 ```
 
-stdio:
-```json
-{
-  "mcpServers": {
-    "synthadoc": {
-      "command": "C:\\Users\\<you>\\AppData\\Roaming\\Python\\Python314\\Scripts\\synthadoc.exe",
-      "args": ["serve", "-w", "C:\\Users\\<you>\\wikis\\history-of-computing", "--mcp-only"]
-    }
-  }
-}
+**Step 2 — Register the MCP server**
+
+```powershell
+claude mcp add --transport sse synthadoc-history-of-computing http://127.0.0.1:7070/mcp/sse
+```
+
+> Use `--transport sse`, not `--transport http` — FastMCP uses the SSE protocol, not Streamable HTTP.
+
+**Step 3 — Verify**
+
+```powershell
+claude mcp list
+```
+
+`synthadoc-history-of-computing` should show `✔ Connected`.
+
+**Step 4 — Test in a Claude Code session**
+
+```powershell
+claude
+```
+
+Ask: `What's the status of my wiki?` — Claude Code calls `synthadoc_status` directly against the running server.
+
+#### stdio transport
+
+Use this if you don't want to manage a separate server process:
+
+```powershell
+claude mcp add synthadoc-history-of-computing "C:\Users\<you>\...\synthadoc.exe" -- serve -w "C:\Users\<you>\wikis\history-of-computing" --mcp-only
 ```
 
 ---
