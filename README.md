@@ -269,8 +269,8 @@ pip install -e ".[dev]"
 If you already have Synthadoc wikis installed, run both upgrade commands to keep everything in sync:
 
 ```bash
-synthadoc plugin upgrade          # upgrades the Obsidian plugin in all registered wikis
-synthadoc demo sync <wiki-name>   # picks up new demo pages and backfills new metadata fields (e.g. type:)
+synthadoc plugin upgrade   # upgrades the Obsidian plugin in all registered wikis
+synthadoc demo sync        # picks up new demo pages and backfills new metadata fields (e.g. type:)
 ```
 
 ### Step 2 — Run the Python test suite

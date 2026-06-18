@@ -168,7 +168,7 @@ def test_sync_is_idempotent(tmp_path):
         after_second = (inst / "wiki" / "dashboard.md").read_text(encoding="utf-8")
 
     assert after_first == after_second
-    assert "Already up to date" in result.output
+    assert "already up to date" in result.output.lower()
 
 
 def test_sync_copies_new_wiki_pages(tmp_path):
