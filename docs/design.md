@@ -35,6 +35,7 @@
 24. [Export Formats](#24-export-formats)
 25. [Streaming Query and Query Cache](#25-streaming-query-and-query-cache)
 26. [Web Chat UI and Session Management](#26-web-chat-ui-and-session-management)
+27. [MCP Server](#27-mcp-server)
 
 **Appendices**
 - [Appendix A — Release Feature Index](#appendix-a--release-feature-index)
@@ -50,7 +51,7 @@ Synthadoc is a **domain-agnostic LLM knowledge compilation engine**. It reads ra
 - **Ingest-time compilation** — synthesis, cross-referencing, and contradiction detection happen once per source, not on every query.
 - **Local-first** — all data stays on disk; the server binds only to `127.0.0.1`.
 - **Obsidian-native** — wiki pages are valid Obsidian notes with `[[wikilinks]]`, YAML frontmatter, and Dataview compatibility.
-- **Layered access** — CLI, HTTP REST API, and MCP server expose the same operations; the agent and storage logic is shared.
+- **Layered access** — CLI, HTTP REST API, and MCP server expose the same operations; the agent and storage logic is shared. The MCP layer positions Synthadoc as persistent domain memory: an AI client (Claude Desktop, Claude Code) acts as the reasoning brain while Synthadoc handles BM25 search, lifecycle, and the immutable audit trail.
 - **Extensible by design** — skills (file formats) and providers (LLM backends) are loaded as plugins; no core changes needed to add either.
 
 ---
@@ -2446,6 +2447,112 @@ Opens the default browser to `http://localhost:{port}/app`. The server must alre
 
 ---
 
+## 27. MCP Server
+
+Synthadoc exposes its core operations as an MCP (Model Context Protocol) server, allowing AI agents — Claude Desktop, Claude Code, n8n, LangGraph, or any MCP-compliant host — to read, write, and manage the wiki without running Synthadoc's own query LLM.
+
+### Architecture
+
+The MCP server is implemented with FastMCP and mounted at `/mcp/sse` on the existing HTTP server via ASGI mount. No extra port or process is required — the MCP endpoint and the HTTP REST API share the same Orchestrator singleton and storage layer.
+
+```
+synthadoc serve -w my-wiki --port 7070
+
+  ┌────────────────────────────────────────────┐
+  │  HTTP server (Starlette)  :7070            │
+  │   GET /query/stream  →  QueryAgent         │
+  │   POST /ingest       →  IngestAgent        │
+  │   GET /app           →  Web Chat UI        │
+  │   /mcp  (ASGI mount) →  FastMCP            │
+  │     /mcp/sse         →  SSE transport      │
+  └────────────────────────────────────────────┘
+         ↑ shared Orchestrator + WikiStorage
+```
+
+### Transport options
+
+| Client | Transport | Config mechanism |
+|---|---|---|
+| Claude Desktop | stdio | `command` + `args` in `mcpServers` JSON |
+| Claude Code CLI | SSE (`--transport sse`) | `claude mcp add --transport sse <name> <url>` |
+| n8n, LangGraph, custom agents | HTTP/SSE | Direct HTTP connection to `/mcp/sse` |
+
+Claude Desktop does not support `"url"`-based HTTP connections in its `mcpServers` config — stdio is the only supported transport. Claude Code supports both SSE and stdio. The SSE endpoint path is exactly `/mcp/sse` (not `/mcp` or `/mcp/`).
+
+The MCP and HTTP servers both bind to `127.0.0.1` — remote access requires an explicit reverse proxy (user-managed).
+
+### Multi-wiki naming
+
+When a wiki root is provided, the FastMCP server name is set to `synthadoc-{wiki-name}` (e.g. `synthadoc-history-of-computing` for a wiki rooted at `history-of-computing/`). This name appears in Claude Desktop's connected-servers UI and in `claude mcp list` output.
+
+Every tool description is automatically prefixed with `Wiki: {wiki-name}. ` at server startup. This allows Claude to route tool calls correctly when multiple Synthadoc servers are connected simultaneously — Claude reads the prefix in the tool description and routes to the matching wiki.
+
+For Claude Desktop, `mcpServers` key names must use underscores (e.g. `synthadoc_history_of_computing`) — hyphens cause a load failure.
+
+### Tool reference
+
+| Tool | Parameters | Returns | LLM cost |
+|---|---|---|---|
+| `synthadoc_search` | `terms: str` | `{results: [{slug, score, title, snippet}]}` | Claude only |
+| `synthadoc_read_page` | `slug: str` | `{slug, title, content, status, type, tags}` or `{error, slug}` | Claude only |
+| `synthadoc_write_page` | `slug: str`, `content: str`, `title?: str` | `{slug, title, status}` or `{error, slug}` | Neither |
+| `synthadoc_status` | *(none)* | `{pages: int, wiki: str}` | Neither |
+| `synthadoc_jobs` | `status?: str` (default `"all"`) | `{jobs: [{id, operation, status, created, source?, error?}]}` | Neither |
+| `synthadoc_lifecycle` | `slug: str`, `to_state: str`, `reason: str` | `{slug, from_state, to_state, reason, timestamp}` or `{error}` | Neither |
+| `synthadoc_ingest` | `source: str` | `{job_id, source}` | Synthadoc |
+| `synthadoc_lint` | `scope?: str` (default `"all"`) | `{contradictions_found: int, orphans: [str]}` | Synthadoc |
+
+Valid `to_state` values for `synthadoc_lifecycle`: `active`, `draft`, `stale`, `contradicted`, `archived`.
+
+Valid `status` values for `synthadoc_jobs`: `all`, `pending`, `running`, `completed`, `failed`, `skipped`, `cancelled`, `dead`. `running` maps to the internal `in_progress` state.
+
+`synthadoc_write_page` clears `contradiction_note` and bumps the wiki epoch (invalidating the query cache). It does not change `status` — use `synthadoc_lifecycle` to transition state after editing.
+
+### Brain/memory architecture
+
+The MCP integration separates reasoning from persistence:
+
+| Layer | Role | What it handles |
+|---|---|---|
+| Claude (Desktop or Code) | **Brain** — reasoning, synthesis, editorial judgment | Tool chaining, cross-domain inference, writing quality |
+| Synthadoc MCP | **Memory** — domain knowledge, lifecycle, audit | BM25 search, page storage, 5-state lifecycle, immutable event log |
+
+Practical consequences:
+
+- **No double-LLM cost** — `synthadoc_search` and `synthadoc_read_page` return raw data; Claude does the synthesis. Only `synthadoc_ingest` and `synthadoc_lint` call Synthadoc's configured LLM.
+- **Claude handles editorial quality** — synthesising contradictions, deciding what is authoritative, drafting resolved content.
+- **Synthadoc handles auditability** — every write goes through `WikiStorage.write_page()`; every lifecycle transition is recorded in `audit.db` with `triggered_by = mcp`, a timestamp, and the stated reason.
+- **Dynamic vs. static hints** — Claude's next tool call is driven by its own reasoning (dynamic); Synthadoc's `HintEngine` in the web UI is static (predefined patterns). This gap is a feature: Claude handles the editorial reasoning that would require complex heuristics to encode statically.
+
+### Contradiction resolution via MCP
+
+The canonical use case is MCP-driven contradiction resolution (documented in the user quick-start guide, Step 9, Option 3):
+
+```
+synthadoc_read_page("grace-hopper")
+  → returns page with status: contradicted, contradiction_note: "..."
+
+synthadoc_write_page(slug="grace-hopper", content="<resolved text>")
+  → clears contradiction_note, bumps epoch
+
+synthadoc_lifecycle(slug="grace-hopper", to_state="active",
+                   reason="Resolved: both views preserved, A-0 attribution corrected")
+  → audit.db: slug=grace-hopper, from=contradicted, to=active, triggered_by=mcp
+```
+
+The audit trail records the same fields as a manual CLI transition — the MCP path is a first-class lifecycle actor.
+
+### CLI flags
+
+| Flag | Effect |
+|---|---|
+| `--mcp-only` | Start only the MCP endpoint; suppress HTTP REST API and web UI |
+| `--http-only` | Start only the HTTP server; suppress the MCP mount |
+
+Default (no flag): both MCP and HTTP start together on the same port.
+
+---
+
 ## Appendix A — Release Feature Index
 
 ### v0.1.0 (Community Edition)
@@ -2565,3 +2672,12 @@ Opens the default browser to `http://localhost:{port}/app`. The server must alre
 - **Job status and list actions** — the Action Agent now handles `job_status` and `job_list` intent queries. `job_status` with a job ID returns a detailed job card; without an ID it returns a table of all jobs and emits a `clarify` event so the user can pick one via chip. `job_list` accepts an optional multi-status filter (e.g. "show failed and skipped jobs") and includes an Error column when any listed job has a non-null error. Built-in `hints.json` extended with job-status and job-list hints for POWER_USER mode.
 - **Multi-chip clarify continuation** — clarify chip replies (bare UUIDs) are now reliably routed back to the Action Agent across multiple chip clicks. The server tags every clarify message with a `[clarify] ` prefix in the audit log; `detect()` scans back `clarify_lookback` assistant turns to find an open clarify context.
 - **Qwen provider routing** — `qwen-<letter>` model names (e.g. `qwen-plus`, `qwen-max`) route to DashScope cloud API regardless of other config; all other Qwen models (e.g. `qwen3:8b`, `qwen3.5`) route to local Ollama. This decouples cloud/local routing from `QWEN_API_KEY` presence.
+
+### v0.9.0 (Community Edition)
+
+- **MCP server — 8 tools** — Synthadoc exposes `synthadoc_search`, `synthadoc_read_page`, `synthadoc_write_page`, `synthadoc_status`, `synthadoc_jobs`, `synthadoc_lifecycle`, `synthadoc_ingest`, and `synthadoc_lint` via the Model Context Protocol. Mounted at `/mcp/sse` on the existing HTTP server (no extra port or process). Tools share the same Orchestrator singleton as the HTTP REST API.
+- **`synthadoc_write_page`** — lifecycle-aware content editing: updates page body, clears `contradiction_note`, bumps the wiki epoch (cache invalidation). Proper MCP alternative to writing wiki files directly — every edit goes through `WikiStorage.write_page()` and is query-cache-coherent.
+- **Multi-wiki server naming** — FastMCP server name auto-set to `synthadoc-{wiki-name}` (e.g. `synthadoc-history-of-computing`). All tool descriptions prefixed with `Wiki: {wiki-name}.` at startup so Claude can route correctly when multiple Synthadoc servers are connected simultaneously.
+- **Transport support** — stdio (Claude Desktop), SSE via `--transport sse` (Claude Code CLI), HTTP/SSE direct connection (n8n, LangGraph, custom agents). Claude Desktop requires underscores in `mcpServers` key names (hyphens cause load failure).
+- **Brain/memory architecture** — Claude acts as the reasoning brain (editorial judgment, synthesis, tool chaining); Synthadoc MCP acts as persistent domain memory (BM25 search, 5-state lifecycle, immutable audit trail). `synthadoc_search` and `synthadoc_read_page` return raw data with no Synthadoc LLM call; only `synthadoc_ingest` and `synthadoc_lint` consume tokens from the configured provider.
+- **`--mcp-only` / `--http-only` serve flags** — deploy MCP-only (no web UI or REST API) or HTTP-only (no MCP mount) for constrained environments.

@@ -2808,19 +2808,22 @@ You should receive `HTTP/1.1 200 OK` with `content-type: text/event-stream` and 
 
 ### Tool reference
 
-Tools marked **Claude** mean Claude's LLM synthesises the result. Tools marked **Synthadoc** mean Synthadoc calls its configured LLM provider (e.g. MiniMax) — these consume tokens from your Synthadoc provider account.
+**Claude** = Claude's LLM synthesises the answer (no Synthadoc LLM call). **Synthadoc** = Synthadoc's configured LLM provider runs (tokens billed to your provider account). **Neither** = pure data read or write, no LLM involved.
 
-| Tool | What it does | Who calls LLM? |
-|---|---|---|
-| `synthadoc_search` | BM25 keyword search — returns titles, slugs, snippets | Claude |
-| `synthadoc_read_page` | Read a page's full content and metadata | Claude |
-| `synthadoc_status` | Get wiki page count and path | Neither |
-| `synthadoc_jobs` | List recent jobs with status | Neither |
-| `synthadoc_lifecycle` | Change a page's lifecycle state | Neither |
-| `synthadoc_ingest` | Ingest a URL or file into the wiki | Synthadoc |
-| `synthadoc_lint` | Run adversarial lint checks | Synthadoc |
+| Tool | Parameters | What it does | Who calls LLM? |
+|---|---|---|---|
+| `synthadoc_search` | `terms: str` | BM25 keyword search — returns ranked titles, slugs, and snippets | Claude |
+| `synthadoc_read_page` | `slug: str` | Read a page's full content, status, type, and tags | Claude |
+| `synthadoc_write_page` | `slug: str`, `content: str`, `title?: str` | Update page content (clears contradiction note, bumps epoch) | Neither |
+| `synthadoc_status` | *(none)* | Get wiki page count and path | Neither |
+| `synthadoc_jobs` | `status?: str` (`all`/`pending`/`running`/`completed`/`failed`/`skipped`/`cancelled`/`dead`) | List recent jobs, optionally filtered by status | Neither |
+| `synthadoc_lifecycle` | `slug: str`, `to_state: str`, `reason: str` | Transition a page's lifecycle state; writes an immutable audit record | Neither |
+| `synthadoc_ingest` | `source: str` | Enqueue a URL or file for ingest — returns a job ID | Synthadoc |
+| `synthadoc_lint` | `scope?: str` (default `"all"`) | Run lint checks — returns contradiction count and orphan list | Synthadoc |
 
-Tools marked **Yes** consume tokens from your configured LLM provider. Tools marked **No** are free — pure storage reads.
+Valid `to_state` values for `synthadoc_lifecycle`: `active`, `draft`, `stale`, `contradicted`, `archived`.
+
+For architecture details and the brain/memory use case framing, see [docs/design.md — MCP Server](design.md#27-mcp-server).
 
 ---
 
