@@ -2597,18 +2597,20 @@ If you need remote access (e.g. connecting from a different machine), put Syntha
 
 ### Multiple wikis
 
-Register each wiki as a separate entry using `synthadoc-<wiki-name>` as the key. Synthadoc sets the MCP server name to `synthadoc-<wiki-name>` at startup and prefixes every tool description with `Wiki: <wiki-name>.` — so Claude knows which server covers which domain and routes correctly without you having to specify it.
+Register each wiki as a separate entry. Synthadoc prefixes every tool description with `Wiki: <wiki-name>.` at startup — so Claude knows which server covers which domain and routes correctly without you having to specify it.
+
+> **Claude Desktop key names:** Claude Desktop does not accept hyphens in MCP server key names. Use underscores instead (e.g. `synthadoc_history_of_computing`, not `synthadoc-history-of-computing`).
 
 **Claude Desktop (stdio):**
 
 ```json
 {
   "mcpServers": {
-    "synthadoc-history-of-computing": {
+    "synthadoc_history_of_computing": {
       "command": "C:\\Users\\<you>\\...\\synthadoc.exe",
       "args": ["serve", "-w", "C:\\Users\\<you>\\wikis\\history-of-computing", "--mcp-only"]
     },
-    "synthadoc-ai-research": {
+    "synthadoc_ai_research": {
       "command": "C:\\Users\\<you>\\...\\synthadoc.exe",
       "args": ["serve", "-w", "C:\\Users\\<you>\\wikis\\ai-research", "--mcp-only"]
     }
@@ -2653,7 +2655,7 @@ Typical result on Windows: `C:\Users\<you>\AppData\Roaming\Python\Python314\Scri
 ```json
 {
   "mcpServers": {
-    "synthadoc": {
+    "synthadoc_history_of_computing": {
       "command": "C:\\Users\\<you>\\AppData\\Roaming\\Python\\Python314\\Scripts\\synthadoc.exe",
       "args": ["serve", "-w", "C:\\Users\\<you>\\wikis\\history-of-computing", "--mcp-only"]
     }
@@ -2661,7 +2663,7 @@ Typical result on Windows: `C:\Users\<you>\AppData\Roaming\Python\Python314\Scri
 }
 ```
 
-Use **absolute paths** for both `synthadoc.exe` and the wiki root. Relative paths and wiki name aliases do not work from Claude Desktop.
+Use **absolute paths** for both `synthadoc.exe` and the wiki root. Relative paths and wiki name aliases do not work from Claude Desktop. Key names must use underscores, not hyphens — Claude Desktop rejects hyphenated server names.
 
 **Step 3 — Restart Claude Desktop**
 
