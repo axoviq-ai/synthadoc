@@ -2599,7 +2599,7 @@ If you need remote access (e.g. connecting from a different machine), put Syntha
 
 ### Multiple wikis
 
-Run one server per wiki on its own port, then register each as a separate MCP server entry:
+Run one server per wiki on its own port, then register each as a separate MCP server entry. Use `synthadoc-<wiki-name>` as the key — it matches the MCP protocol server name that Synthadoc advertises automatically.
 
 ```powershell
 synthadoc serve -w "C:\wikis\history-of-computing"   # port 7070
@@ -2615,7 +2615,7 @@ synthadoc serve -w "C:\wikis\ai-research"             # port 7071
 }
 ```
 
-Each tool's description is automatically prefixed with its wiki name (e.g. `Wiki: history-of-computing.`), so Claude knows which server to call based on the domain of your question — no manual routing needed.
+Synthadoc sets the MCP server name to `synthadoc-<wiki-name>` at startup and prefixes every tool description with `Wiki: <wiki-name>.` — so Claude knows which server covers which domain and routes correctly without you having to specify it.
 
 ---
 
