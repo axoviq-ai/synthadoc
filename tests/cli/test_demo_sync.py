@@ -8,6 +8,7 @@ from synthadoc.cli.demo import (
     _extract_body,
     _extract_frontmatter_block,
     _inject_type_if_missing,
+    _strip_bom,
     sync_demo,
 )
 
@@ -43,6 +44,42 @@ def test_extract_frontmatter_block_normalizes_double_newline():
 def test_extract_frontmatter_block_no_frontmatter():
     text = "# No frontmatter\n"
     assert _extract_frontmatter_block(text) == ""
+
+
+def test_strip_bom_removes_bom():
+    assert _strip_bom("﻿---\ntitle: T\n") == "---\ntitle: T\n"
+
+
+def test_strip_bom_no_bom_unchanged():
+    assert _strip_bom("---\ntitle: T\n") == "---\ntitle: T\n"
+
+
+def test_extract_frontmatter_block_handles_bom():
+    text = "﻿---\ntitle: Test\nstatus: active\n---\n\n# Body\n"
+    fm = _extract_frontmatter_block(text)
+    assert fm == "\ntitle: Test\nstatus: active\n"
+
+
+def test_extract_body_handles_bom():
+    text = "﻿---\ntitle: Test\n---\n\n# Body\n"
+    body = _extract_body(text)
+    assert "# Body" in body
+    assert "﻿" not in body
+
+
+def test_inject_type_if_missing_handles_bom_in_template(tmp_path):
+    """Template file with UTF-8 BOM must still have its type: field detected."""
+    tmpl = tmp_path / "tmpl.md"
+    inst = tmp_path / "inst.md"
+    tmpl.write_bytes(
+        b"\xef\xbb\xbf---\ntitle: T\nconfidence: high\ntype: technology\n---\n\nBody.\n"
+    )
+    inst.write_text("---\ntitle: T\nconfidence: high\n---\n\nBody.\n", encoding="utf-8")
+
+    changed = _inject_type_if_missing(inst, tmpl)
+
+    assert changed is True
+    assert "type: technology" in inst.read_text(encoding="utf-8")
 
 
 # ── sync_demo integration tests ─────────────────────────────────────────────
