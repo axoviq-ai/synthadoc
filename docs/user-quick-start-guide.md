@@ -2597,6 +2597,28 @@ If you need remote access (e.g. connecting from a different machine), put Syntha
 
 ---
 
+### Multiple wikis
+
+Run one server per wiki on its own port, then register each as a separate MCP server entry:
+
+```powershell
+synthadoc serve -w "C:\wikis\history-of-computing"   # port 7070
+synthadoc serve -w "C:\wikis\ai-research"             # port 7071
+```
+
+```json
+{
+  "mcpServers": {
+    "synthadoc-computing": { "url": "http://127.0.0.1:7070/mcp/sse" },
+    "synthadoc-ai":        { "url": "http://127.0.0.1:7071/mcp/sse" }
+  }
+}
+```
+
+Each tool's description is automatically prefixed with its wiki name (e.g. `Wiki: history-of-computing.`), so Claude knows which server to call based on the domain of your question — no manual routing needed.
+
+---
+
 ### Claude Desktop — HTTP/SSE (recommended)
 
 **Step 1 — Start the Synthadoc server**

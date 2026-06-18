@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
 from __future__ import annotations
+from pathlib import Path
 
 
 def create_mcp_server(orchestrator):
@@ -142,5 +143,13 @@ def create_mcp_server(orchestrator):
                 entry["error"] = j.error
             result.append(entry)
         return {"jobs": result}
+
+    # Prepend "Wiki: <name>." to every tool description so Claude can route
+    # correctly when multiple Synthadoc servers are connected simultaneously.
+    _root = getattr(orchestrator, "_root", None)
+    if isinstance(_root, Path) and _root.name:
+        _prefix = f"Wiki: {_root.name}. "
+        for _tool in mcp._tool_manager._tools.values():
+            _tool.description = _prefix + (_tool.description or "")
 
     return mcp

@@ -268,6 +268,31 @@ async def test_mcp_jobs_invalid_status_returns_error(mock_orch):
     assert "invalid_status" in result["error"]
 
 
+# ── Wiki name injection ───────────────────────────────────────────────────────
+
+def test_mcp_tool_descriptions_include_wiki_name(tmp_path):
+    from pathlib import Path
+    from synthadoc.integration.mcp_server import create_mcp_server
+    orch = MagicMock()
+    orch._root = tmp_path / "history-of-computing"
+    mcp = create_mcp_server(orch)
+    for tool in mcp._tool_manager._tools.values():
+        assert tool.description.startswith("Wiki: history-of-computing. "), (
+            f"{tool.name} missing wiki prefix: {tool.description[:80]}"
+        )
+
+
+def test_mcp_tool_descriptions_no_prefix_without_path(tmp_path):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    orch = MagicMock()
+    orch._root = MagicMock()  # not a Path — no injection
+    mcp = create_mcp_server(orch)
+    for tool in mcp._tool_manager._tools.values():
+        assert not tool.description.startswith("Wiki: "), (
+            f"{tool.name} got unexpected wiki prefix: {tool.description[:80]}"
+        )
+
+
 # ── Integration: MCP mounted on HTTP app ─────────────────────────────────────
 
 def test_mcp_mounted_on_http_app(tmp_wiki):
