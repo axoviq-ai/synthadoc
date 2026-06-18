@@ -3,6 +3,7 @@ title: Internet Origins
 tags: [internet, arpanet, networking, tcp-ip]
 status: active
 confidence: high
+type: concept
 created: 2026-04-08
 sources:
   - file: public-domain/leiner-brief-history-internet-2009.txt

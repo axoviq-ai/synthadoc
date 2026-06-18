@@ -4,5 +4,6 @@
   "skills": 9,
   "hooks": 2,
   "coverage": 91,
-  "coverage_color": "brightgreen"
+  "coverage_color": "brightgreen",
+  "mcp_tools": 8
 }

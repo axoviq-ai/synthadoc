@@ -3,6 +3,7 @@ title: Early Neural Networks
 tags: [neural-networks, perceptron, history, deep-learning]
 status: archived
 confidence: medium
+type: concept
 created: 2026-05-09
 sources:
   - file: ai-fundamentals-overview.md

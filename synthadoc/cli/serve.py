@@ -321,7 +321,7 @@ def serve_cmd(
 
     _check_network(provider)
 
-    _print_banner = not os.environ.get(_NO_BANNER_ENV)
+    _print_banner = not os.environ.get(_NO_BANNER_ENV) and not mcp_only
     if _print_banner:
         mode = "MCP (stdio)" if mcp_only else "HTTP" if http_only else "HTTP + MCP"
         _agent_cfg = cfg.agents.resolve("default")
@@ -346,10 +346,21 @@ def serve_cmd(
 
     if not mcp_only:
         from synthadoc.integration.http_server import create_app
-        http_app = create_app(wiki_root=root)
+        http_app = create_app(wiki_root=root, enable_mcp=not http_only)
         uvicorn.run(http_app, host=cfg.server.host, port=effective_port,
                     log_level="warning", log_config=None)
     else:
+        import asyncio
+        from synthadoc.core.orchestrator import Orchestrator
         from synthadoc.integration.mcp_server import create_mcp_server
-        mcp = create_mcp_server(wiki_root=root)
-        mcp.run()
+
+        async def _stdio_main() -> None:
+            orch = Orchestrator(wiki_root=root, config=cfg)
+            await orch.init()
+            mcp = create_mcp_server(orchestrator=orch)
+            try:
+                await mcp.run_stdio_async()
+            finally:
+                await orch.close()
+
+        asyncio.run(_stdio_main())

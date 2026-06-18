@@ -3,6 +3,7 @@ title: Geoffrey Hinton
 tags: [researcher, deep-learning, neural-networks, biography]
 status: active
 confidence: high
+type: person
 created: 2026-05-09
 sources:
   - file: ai-fundamentals-overview.md

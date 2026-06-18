@@ -3,6 +3,7 @@ title: Personal Computer Revolution
 tags: [personal-computer, apple, ibm, microprocessor]
 status: active
 confidence: high
+type: event
 created: 2026-04-09
 sources:
   - file: public-domain/ceruzzi-history-modern-computing.txt

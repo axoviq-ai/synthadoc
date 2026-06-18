@@ -3,6 +3,7 @@ title: Andrej Karpathy
 tags: [researcher, llm, pedagogy, biography]
 status: active
 confidence: high
+type: person
 created: 2026-05-09
 sources:
   - file: ai-fundamentals-overview.md

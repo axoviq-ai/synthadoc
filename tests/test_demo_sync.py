@@ -78,7 +78,7 @@ def test_sync_skips_existing_files(tmp_path):
         result = runner.invoke(app, ["demo", "sync", name])
 
     assert result.exit_code == 0, result.output
-    assert "Already up to date" in result.output
+    assert "already up to date" in result.output.lower()
     assert dest_file.read_text(encoding="utf-8") == original_content, (
         "Existing file must not be overwritten"
     )

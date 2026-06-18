@@ -3,6 +3,7 @@ title: Transistor and Microchip
 tags: [hardware, transistor, integrated-circuit, moores-law]
 status: active
 confidence: high
+type: technology
 created: 2026-04-09
 sources:
   - file: public-domain/riordan-hoddeson-crystal-fire.txt

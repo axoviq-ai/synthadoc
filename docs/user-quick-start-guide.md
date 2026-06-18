@@ -49,6 +49,7 @@ major engine feature. No setup beyond following the steps below is required.
 - [Appendix E — Configuration](#appendix-e--configuration)
 - [Appendix G — Using a Coding Tool as Your LLM Provider](#appendix-g--using-a-coding-tool-as-your-llm-provider)
 - [Appendix H — BM25 Routing Performance Benchmarks](#appendix-h--bm25-routing-performance-benchmarks)
+- [Appendix I — Connect Claude via MCP](#appendix-i--connect-claude-via-mcp)
 
 ---
 
@@ -745,6 +746,54 @@ The LLM proposes a resolution, appends it as a `**Resolution:**` block, and sets
 `status: active`. Review the result in Obsidian and edit if needed.
 
 Or from Obsidian: Command Palette → `Synthadoc: Lint: run with auto-resolve`.
+
+### Option 3 — Resolve via MCP (Claude Desktop or Claude Code)
+
+With Synthadoc connected as an MCP server, Claude can resolve contradictions using its own LLM — the brain/memory architecture in action. Claude reasons about the conflict, writes the resolution, then commits the lifecycle transition with a proper audit trail.
+
+Ask Claude in a single prompt:
+
+> "The grace-hopper page is contradicted. Read it, resolve the A-0 compiler controversy by presenting both scholarly views fairly, update the page, then mark it active with a reason."
+
+Claude will execute this as three tool calls in sequence:
+
+**1. Read the page**
+```
+synthadoc_read_page("grace-hopper")
+```
+
+**2. Write the resolved content**
+```
+synthadoc_write_page(
+  slug="grace-hopper",
+  content="<Claude's synthesized resolution>",
+)
+```
+This updates the content, clears the `contradiction_note`, and bumps the wiki epoch.
+
+**3. Transition the lifecycle state**
+```
+synthadoc_lifecycle(
+  slug="grace-hopper",
+  to_state="active",
+  reason="Resolved: A-0 compiler controversy — both scholarly views preserved",
+)
+```
+This writes a permanent audit record: who triggered it (`mcp`), when, and why.
+
+The audit trail for the full resolution looks like:
+
+```
+Slug          From          To      By    Timestamp            Reason
+grace-hopper  null          draft   ingest  2026-05-28T14:58:50  new page created
+grace-hopper  draft         active  lint    2026-05-28T17:54:51  lint passed
+grace-hopper  active  contradicted  lint    2026-05-28T18:30:00  conflict: A-0 compiler claim
+grace-hopper  contradicted  active  mcp     2026-06-18T21:45:00  Resolved: A-0 controversy — both views preserved
+```
+
+> **Why this is better than Option 1:** The audit trail records that the resolution was applied, when, and with what stated reason — not just that the file was edited. Option 1 (direct file edit) leaves no lifecycle record.
+>
+> **Why this is better than Option 2:** Claude's LLM (Anthropic) has stronger editorial reasoning than Synthadoc's configured provider, and can draw on conversation context — for example, if you've been discussing the controversy in the same session.
 
 > **Dashboard still showing the contradiction?** Dataview may be serving stale metadata.
 > Drop the cache: `Ctrl/Cmd+P` → **Dataview: Drop all cached file metadata**, then reopen
@@ -2557,3 +2606,238 @@ Full-corpus BM25 scales roughly linearly with page count. At 10000 pages the med
 ### Takeaway
 
 For wikis under ~1000 pages the difference between scoped and full-corpus is negligible (both under 25 ms). At 10000 pages routing delivers a **4–5× speedup** (41 ms vs. 191 ms). Enable ROUTING.md ([Step 17](#step-17--set-up-routingmd--scoped-search)) once your wiki exceeds a few hundred pages.
+
+---
+
+<a name="appendix-i--connect-claude-via-mcp"></a>
+
+## Appendix I — Connect Claude via MCP
+
+Synthadoc exposes an MCP server so Claude Desktop, Claude Code, or any MCP-compatible agent can use your wiki as persistent domain memory.
+
+**Architecture:** Claude is the brain — it receives your questions, searches the wiki, reads pages, and synthesises answers using its own LLM. Synthadoc is the memory — it stores pages, runs keyword search, and manages lifecycle and jobs. Synthadoc does not call an LLM for content questions in MCP mode. The only exceptions are `synthadoc_ingest` (synthesis at write time) and `synthadoc_lint` (adversarial review), which are inherently wiki-side operations.
+
+**Key distinction:** Web UI — Synthadoc is the interface. MCP — Claude is the interface.
+
+---
+
+### Transport options
+
+| | Claude Desktop | Claude Code CLI | Custom agents (n8n, LangGraph…) |
+|---|---|---|---|
+| **stdio** (`--mcp-only`) | Yes — only option | Yes | No |
+| **HTTP/SSE** (`url`) | No — not supported | Yes | Yes |
+
+Claude Desktop only supports stdio — it spawns Synthadoc as a subprocess and manages the process lifecycle. HTTP/SSE is available for Claude Code and any custom MCP client.
+
+---
+
+### Security note
+
+Synthadoc binds to `127.0.0.1` (localhost) by default. This means:
+
+- **No remote access** — the server is only reachable from the same machine. Other hosts on your network cannot connect.
+- **No authentication** — any process on the same machine can reach the API. Do not change the bind address to `0.0.0.0` on a shared or networked machine without adding a reverse proxy with authentication in front.
+
+If you need remote access (e.g. connecting from a different machine), put Synthadoc behind a reverse proxy (nginx, Caddy) and require authentication at the proxy layer — do not expose port 7070 directly.
+
+---
+
+### Multiple wikis
+
+Register each wiki as a separate entry. Synthadoc prefixes every tool description with `Wiki: <wiki-name>.` at startup — so Claude knows which server covers which domain and routes correctly without you having to specify it.
+
+> **Claude Desktop key names:** Claude Desktop does not accept hyphens in MCP server key names. Use underscores instead (e.g. `synthadoc_history_of_computing`, not `synthadoc-history-of-computing`).
+
+**Claude Desktop (stdio):**
+
+```json
+{
+  "mcpServers": {
+    "synthadoc_history_of_computing": {
+      "command": "C:\\Users\\<you>\\...\\synthadoc.exe",
+      "args": ["serve", "-w", "C:\\Users\\<you>\\wikis\\history-of-computing", "--mcp-only"]
+    },
+    "synthadoc_ai_research": {
+      "command": "C:\\Users\\<you>\\...\\synthadoc.exe",
+      "args": ["serve", "-w", "C:\\Users\\<you>\\wikis\\ai-research", "--mcp-only"]
+    }
+  }
+}
+```
+
+**Claude Code / custom agents (HTTP/SSE):**
+
+```powershell
+synthadoc serve -w "C:\wikis\history-of-computing"   # port 7070
+synthadoc serve -w "C:\wikis\ai-research"             # port 7071
+```
+
+```json
+{
+  "mcpServers": {
+    "synthadoc-history-of-computing": { "url": "http://127.0.0.1:7070/mcp/sse" },
+    "synthadoc-ai-research":          { "url": "http://127.0.0.1:7071/mcp/sse" }
+  }
+}
+```
+
+---
+
+### Claude Desktop
+
+Claude Desktop only supports stdio — it spawns Synthadoc as a subprocess and manages it automatically.
+
+**Step 1 — Find the full path to `synthadoc.exe`**
+
+Claude Desktop uses a restricted PATH and will not find `synthadoc` by name alone:
+
+```powershell
+(Get-Command synthadoc).Source
+```
+
+Typical result on Windows: `C:\Users\<you>\AppData\Roaming\Python\Python314\Scripts\synthadoc.exe`
+
+**Step 2 — Add the config entry**
+
+```json
+{
+  "mcpServers": {
+    "synthadoc_history_of_computing": {
+      "command": "C:\\Users\\<you>\\AppData\\Roaming\\Python\\Python314\\Scripts\\synthadoc.exe",
+      "args": ["serve", "-w", "C:\\Users\\<you>\\wikis\\history-of-computing", "--mcp-only"]
+    }
+  }
+}
+```
+
+Use **absolute paths** for both `synthadoc.exe` and the wiki root. Relative paths and wiki name aliases do not work from Claude Desktop. Key names must use underscores, not hyphens — Claude Desktop rejects hyphenated server names.
+
+**Step 3 — Restart Claude Desktop**
+
+Fully quit from the system tray, then reopen.
+
+---
+
+### Claude Code
+
+Claude Code supports both SSE (recommended — connects to a running server) and stdio.
+
+#### SSE transport (recommended)
+
+**Step 1 — Start the Synthadoc server**
+
+```powershell
+synthadoc serve -w "C:\Users\<you>\wikis\history-of-computing"
+```
+
+**Step 2 — Register the MCP server**
+
+```powershell
+claude mcp add --transport sse synthadoc-history-of-computing http://127.0.0.1:7070/mcp/sse
+```
+
+> Use `--transport sse`, not `--transport http` — FastMCP uses the SSE protocol, not Streamable HTTP.
+
+**Step 3 — Verify**
+
+```powershell
+claude mcp list
+```
+
+`synthadoc-history-of-computing` should show `✔ Connected`.
+
+**Step 4 — Test in a Claude Code session**
+
+```powershell
+claude
+```
+
+Ask: `What's the status of my wiki?` — Claude Code calls `synthadoc_status` directly against the running server.
+
+#### stdio transport
+
+Use this if you don't want to manage a separate server process:
+
+```powershell
+claude mcp add synthadoc-history-of-computing "C:\Users\<you>\...\synthadoc.exe" -- serve -w "C:\Users\<you>\wikis\history-of-computing" --mcp-only
+```
+
+---
+
+### HTTP/SSE (n8n, LangGraph, custom agents)
+
+The same endpoint works for any MCP-compatible client:
+
+```
+MCP SSE endpoint: http://127.0.0.1:7070/mcp/sse
+```
+
+No API key required. Verify it is live:
+
+```
+curl -i http://127.0.0.1:7070/mcp/sse
+```
+
+You should receive `HTTP/1.1 200 OK` with `content-type: text/event-stream` and the connection will hang open (correct — SSE streams stay open).
+
+---
+
+### What to ask once connected
+
+**Wiki content questions** — Claude fetches raw content and synthesises the answer itself (no LLM call on the Synthadoc side):
+
+| Example prompt | Tool used |
+|---|---|
+| "What's the status of my wiki?" | `synthadoc_status` |
+| "Search for Grace Hopper" | `synthadoc_search` |
+| "Read the grace-hopper page" | `synthadoc_read_page` |
+| "What does my wiki say about quantum error correction?" | `synthadoc_search` + `synthadoc_read_page` |
+
+**Synthadoc operations** — Claude manages the wiki on your behalf:
+
+| Example prompt | Tool used |
+|---|---|
+| "List recent jobs" | `synthadoc_jobs` |
+| "Show me any failed or skipped jobs" | `synthadoc_jobs` |
+| "Ingest this URL: https://example.com/paper" | `synthadoc_ingest` |
+| "Run a lint check on the wiki" | `synthadoc_lint` |
+| "Mark the grace-hopper page as stale — needs review" | `synthadoc_lifecycle` |
+
+---
+
+### Tool reference
+
+**Claude** = Claude's LLM synthesises the answer (no Synthadoc LLM call). **Synthadoc** = Synthadoc's configured LLM provider runs (tokens billed to your provider account). **Neither** = pure data read or write, no LLM involved.
+
+| Tool | Parameters | What it does | Who calls LLM? |
+|---|---|---|---|
+| `synthadoc_search` | `terms: str` | BM25 keyword search — returns ranked titles, slugs, and snippets | Claude |
+| `synthadoc_read_page` | `slug: str` | Read a page's full content, status, type, and tags | Claude |
+| `synthadoc_write_page` | `slug: str`, `content: str`, `title?: str` | Update page content (clears contradiction note, bumps epoch) | Neither |
+| `synthadoc_status` | *(none)* | Get wiki page count and path | Neither |
+| `synthadoc_jobs` | `status?: str` (`all`/`pending`/`running`/`completed`/`failed`/`skipped`/`cancelled`/`dead`) | List recent jobs, optionally filtered by status | Neither |
+| `synthadoc_lifecycle` | `slug: str`, `to_state: str`, `reason: str` | Transition a page's lifecycle state; writes an immutable audit record | Neither |
+| `synthadoc_ingest` | `source: str` | Enqueue a URL or file for ingest — returns a job ID | Synthadoc |
+| `synthadoc_lint` | `scope?: str` (default `"all"`) | Run lint checks — returns contradiction count and orphan list | Synthadoc |
+
+Valid `to_state` values for `synthadoc_lifecycle`: `active`, `draft`, `stale`, `contradicted`, `archived`.
+
+For architecture details and the brain/memory use case framing, see [docs/design.md — MCP Server](design.md#27-mcp-server).
+
+---
+
+### Troubleshooting
+
+**Server does not appear in the panel**
+- Use the full path to `synthadoc.exe`, not the bare command name
+- Use absolute paths for the wiki root — aliases and relative paths are not resolved by Claude Desktop
+- Fully quit Claude Desktop from the system tray before reopening (window close is not a full restart)
+
+**Server appears but shows an error badge**
+- Click **View Logs** in the Developer panel to see the startup error
+- Verify the wiki path exists and contains a `.synthadoc/` directory (run `synthadoc serve -w <path> --mcp-only` manually to confirm it starts)
+
+**SSE endpoint returns 404**
+- The correct URL is `/mcp/sse`, not `/mcp` or `/mcp/`
+- Verify the server is running with `curl -i http://127.0.0.1:7070/`

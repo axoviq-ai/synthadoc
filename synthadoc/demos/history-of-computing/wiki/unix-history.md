@@ -3,6 +3,7 @@ title: Unix History
 tags: [unix, operating-system, bell-labs, c-language]
 status: active
 confidence: high
+type: technology
 created: 2026-04-08
 sources:
   - file: public-domain/ritchie-unix-history-1979.txt

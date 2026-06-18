@@ -3,6 +3,8 @@
 """Tests for http_server.py multi-turn conversation wiring (Task 7)."""
 from __future__ import annotations
 
+import asyncio
+import logging
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 
@@ -204,3 +206,73 @@ def test_query_stream_passes_timeout_seconds_to_server(tmp_wiki):
 
     assert resp.status_code == 200
     assert b"event: done" in resp.content
+
+
+# ---------------------------------------------------------------------------
+# _install_shutdown_noise_filter — log filter behaviour
+# ---------------------------------------------------------------------------
+
+def _make_filter():
+    """Return a fresh instance of the shutdown noise filter."""
+    from synthadoc.integration.http_server import _install_shutdown_noise_filter
+    logger = logging.getLogger("uvicorn.error.test_" + str(id(_make_filter)))
+    _install_shutdown_noise_filter.__wrapped__ = None  # reset any cached state
+    # Call the private installer and extract the filter it installs
+    _install_shutdown_noise_filter()
+    filters = logging.getLogger("uvicorn.error").filters
+    return filters[-1]  # the most recently installed _Filter instance
+
+
+def _make_record(exc_type=None, exc_val=None, msg="Exception in ASGI application", level=logging.ERROR):
+    record = logging.LogRecord(
+        name="uvicorn.error", level=level, pathname="", lineno=0,
+        msg=msg, args=(), exc_info=None,
+    )
+    if exc_type is not None:
+        record.exc_info = (exc_type, exc_val or exc_type(), None)
+    return record
+
+
+class TestShutdownNoiseFilter:
+    def setup_method(self):
+        from synthadoc.integration.http_server import _install_shutdown_noise_filter
+        _install_shutdown_noise_filter()
+        self.f = logging.getLogger("uvicorn.error").filters[-1]
+
+    def test_passes_unrelated_error(self):
+        record = _make_record(exc_type=ValueError, exc_val=ValueError("boom"))
+        assert self.f.filter(record) is True
+
+    def test_suppresses_cancelled_error(self):
+        record = _make_record(exc_type=asyncio.CancelledError)
+        assert self.f.filter(record) is False
+
+    def test_suppresses_keyboard_interrupt(self):
+        record = _make_record(exc_type=KeyboardInterrupt)
+        assert self.f.filter(record) is False
+
+    def test_suppresses_asgi_runtime_error_with_exc_info(self):
+        exc = RuntimeError("Expected ASGI message 'http.response.body', but got 'http.response.start'.")
+        record = _make_record(exc_type=RuntimeError, exc_val=exc)
+        assert self.f.filter(record) is False
+
+    def test_passes_unrelated_runtime_error(self):
+        exc = RuntimeError("something else went wrong")
+        record = _make_record(exc_type=RuntimeError, exc_val=exc)
+        assert self.f.filter(record) is True
+
+    def test_suppresses_asgi_error_in_message_text(self):
+        record = _make_record(msg="Expected ASGI message 'http.response.body' http.response")
+        assert self.f.filter(record) is False
+
+    def test_suppresses_cancelled_error_in_message_text(self):
+        record = _make_record(msg="some traceback ending in asyncio.CancelledError")
+        assert self.f.filter(record) is False
+
+    def test_passes_info_level(self):
+        record = _make_record(
+            exc_type=asyncio.CancelledError, level=logging.INFO,
+            msg="asyncio.CancelledError",
+        )
+        record.exc_info = None  # no exc_info, info level — should pass
+        assert self.f.filter(record) is True

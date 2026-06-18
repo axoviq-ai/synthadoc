@@ -3,6 +3,7 @@ title: Large Language Models
 tags: [llm, transformers, gpt, language-models]
 status: active
 confidence: high
+type: technology
 created: 2026-05-09
 updated: '2026-05-21'
 sources:

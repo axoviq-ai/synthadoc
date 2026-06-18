@@ -3,6 +3,7 @@ title: LLM Benchmarks
 tags: [benchmarks, evaluation, llm]
 status: active
 confidence: medium
+type: concept
 created: 2026-05-09
 sources:
   - file: model-capabilities-comparison.xlsx

@@ -27,6 +27,7 @@
 [![Hooks](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.hooks&label=Hook%20events&color=teal)](https://github.com/axoviq-ai/synthadoc/tree/main/hooks)
 [![CLI](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.cli_commands&label=CLI%20commands&color=darkblue)](https://github.com/axoviq-ai/synthadoc)
 [![Obsidian](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.obsidian_commands&label=Obsidian%20commands&color=blueviolet)](https://github.com/axoviq-ai/synthadoc/tree/main/obsidian-plugin)
+[![MCP](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.mcp_tools&label=MCP%20tools&color=orange)](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#appendix-i--connect-claude-via-mcp)
 [![Version](https://img.shields.io/badge/Community%20Edition-v0.8.0-brightgreen.svg)](https://github.com/axoviq-ai/synthadoc)
 
 **Document version: v0.8.0**
@@ -195,6 +196,7 @@ As the wiki accumulates pages the `index.md` table of contents, domain scope (`p
 | Streaming query output       | **Yes** (token-by-token; `--no-stream` for pipe-friendly blocking mode) | No          | No         | No        |
 | Query result cache           | **Yes** (cache key = question + wiki version; auto-invalidates on ingest or lifecycle change; `--no-cache` to bypass) | No          | No         | No        |
 | Browser-based chat UI        | **Yes** (`synthadoc web` — session-aware, streaming, citations, knowledge-gap callouts, multi-turn conversation with follow-up rewriting and clarify prompts) | No          | No         | No        |
+| MCP server for agent integration | **Yes** (8 tools; Claude Desktop via stdio, Claude Code via SSE, n8n/LangGraph via HTTP/SSE; brain+memory architecture — Claude reasons and edits, Synthadoc persists with immutable audit trail; no double-LLM cost for read operations) — [design](docs/design.md#27-mcp-server) · [quick-start](docs/user-quick-start-guide.md#appendix-i--connect-claude-via-mcp) | No          | No         | No        |
 
 ### Key differentiators vs. RAG
 
@@ -264,10 +266,11 @@ cd synthadoc
 pip install -e ".[dev]"
 ```
 
-If you already have Synthadoc wikis installed, upgrade the Obsidian plugin in all registered wikis to keep them in sync:
+If you already have Synthadoc wikis installed, run both upgrade commands to keep everything in sync:
 
 ```bash
-synthadoc plugin upgrade
+synthadoc plugin upgrade   # upgrades the Obsidian plugin in all registered wikis
+synthadoc demo sync        # picks up new demo pages and backfills new metadata fields (e.g. type:)
 ```
 
 ### Step 2 — Run the Python test suite

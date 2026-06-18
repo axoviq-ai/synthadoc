@@ -3,6 +3,7 @@ title: Alan Turing
 tags: [biography, theory, cryptography]
 status: active
 confidence: high
+type: person
 created: 2026-04-08
 sources:
   - file: public-domain/turing-wikipedia-cc0.txt

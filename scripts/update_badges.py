@@ -56,6 +56,15 @@ def count_obsidian_commands() -> int:
     return main_ts.read_text(encoding="utf-8").count("this.addCommand(")
 
 
+def count_mcp_tools() -> int:
+    """Count MCP tools registered in create_mcp_server()."""
+    sys.path.insert(0, str(ROOT))
+    from unittest.mock import MagicMock
+    from synthadoc.integration.mcp_server import create_mcp_server
+    mcp = create_mcp_server(MagicMock())
+    return len(mcp._tool_manager.list_tools())
+
+
 def count_skills() -> int:
     """Count skill directories that contain a scripts/main.py."""
     skills_dir = ROOT / "synthadoc" / "skills"
@@ -99,6 +108,7 @@ def main() -> None:
         "cli_commands": count_cli_commands(),
         "obsidian_commands": count_obsidian_commands(),
         "skills": count_skills(),
+        "mcp_tools": count_mcp_tools(),
     }
 
     badges_path = ROOT / "docs" / "badges.json"
