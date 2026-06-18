@@ -1,8 +1,9 @@
----
+﻿---
 title: Scaling Laws
 tags: [scaling, training, compute, llm]
 status: active
 confidence: high
+type: concept
 created: 2026-05-09
 sources:
   - file: ai-fundamentals-overview.md

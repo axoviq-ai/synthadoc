@@ -1,8 +1,9 @@
----
+﻿---
 title: Attention Mechanisms
 tags: [architecture, attention, transformers, nlp]
 status: active
 confidence: high
+type: concept
 created: 2026-05-09
 sources:
   - file: ai-fundamentals-overview.md

@@ -92,6 +92,14 @@ def sync_demo(
             shutil.copy2(src, dest)
             updated.append(f"  + wiki/{src.name}")
 
+    # ── 4. wiki/: backfill type: field into existing pages that lack it ───────
+    for src in demo_wiki.glob("*.md"):
+        if src.name in _SKIP_WIKI:
+            continue
+        dest = installed_wiki / src.name
+        if dest.exists() and _inject_type_if_missing(dest, src):
+            updated.append(f"  ~ wiki/{src.name}  (type: backfilled)")
+
     if updated:
         for line in sorted(updated):
             typer.echo(line)
@@ -115,3 +123,28 @@ def _extract_frontmatter_block(text: str) -> str:
         if len(parts) >= 3:
             return "\n" + parts[1].strip() + "\n"
     return ""
+
+
+def _inject_type_if_missing(installed_path: Path, template_path: Path) -> bool:
+    """Add type: field to an installed page if the template has one and the page lacks it.
+
+    Returns True if the file was modified.
+    """
+    tmpl_raw = template_path.read_text(encoding="utf-8")
+    tmpl_fm = _extract_frontmatter_block(tmpl_raw)
+    type_line = next(
+        (line.strip() for line in tmpl_fm.splitlines() if line.strip().startswith("type:")),
+        None,
+    )
+    if not type_line:
+        return False
+
+    inst_raw = installed_path.read_text(encoding="utf-8")
+    inst_fm = _extract_frontmatter_block(inst_raw)
+    if any(line.strip().startswith("type:") for line in inst_fm.splitlines()):
+        return False
+
+    inst_body = _extract_body(inst_raw)
+    new_fm = inst_fm.rstrip("\n") + f"\n{type_line}\n"
+    installed_path.write_text(f"---{new_fm}---{inst_body}", encoding="utf-8", newline="\n")
+    return True

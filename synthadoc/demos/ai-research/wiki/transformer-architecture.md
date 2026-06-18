@@ -1,8 +1,9 @@
----
+﻿---
 title: Transformer Architecture
 tags: [architecture, transformers, attention, nlp]
 status: active
 confidence: high
+type: technology
 created: 2026-05-09
 sources:
   - file: ai-fundamentals-overview.md
