@@ -2797,6 +2797,7 @@ You should receive `HTTP/1.1 200 OK` with `content-type: text/event-stream` and 
 | "What does my wiki say about quantum error correction?" | `synthadoc_search` + `synthadoc_read_page` |
 | "Show me the adversarial warnings for the early-neural-networks page" | `synthadoc_read_page` |
 | "Which pages have citations? Show me what they are." | `synthadoc_list_pages` + `synthadoc_read_page` |
+| "Build me a context pack on early neural networks within 4000 tokens" | `synthadoc_context` |
 
 **Wiki health — zero cost, instant:**
 
@@ -2832,6 +2833,7 @@ You should receive `HTTP/1.1 200 OK` with `content-type: text/event-stream` and 
 | `synthadoc_jobs` | `status?: str` (`all`/`pending`/`running`/`completed`/`failed`/`skipped`/`cancelled`/`dead`) | List recent jobs, optionally filtered by status | Neither |
 | `synthadoc_lifecycle` | `slug: str`, `to_state: str`, `reason: str` | Transition a page's lifecycle state; writes an immutable audit record | Neither |
 | `synthadoc_lint_report` | *(none)* | Instant wiki health read — contradicted pages, orphans, adversarial warning counts; **no job, no LLM** | Neither |
+| `synthadoc_context` | `goal: str`, `token_budget?: int` (default `4000`) | Build a token-budgeted context pack — ranked excerpts that fit within the budget; omitted slugs listed separately | Neither |
 | `synthadoc_ingest` | `source: str` | Enqueue a URL or file for ingest — returns a job ID | Synthadoc |
 | `synthadoc_lint` | `scope?: str` (default `"all"`) | Enqueue a full LLM lint analysis — returns a job ID; use `synthadoc_jobs` to poll | Synthadoc |
 

@@ -36,6 +36,28 @@ def create_mcp_server(orchestrator):
         return {"job_id": job_id, "source": source}
 
     @mcp.tool()
+    async def synthadoc_context(goal: str, token_budget: int = 4000) -> dict:
+        """Build a token-budgeted context pack for a goal or question.
+
+        Ranks and selects the most relevant page excerpts that fit within
+        token_budget tokens. Returns entries with slug, excerpt, score, and
+        estimated token count, plus a list of slugs that were omitted due to
+        the budget. Use this instead of search + multiple read_page calls when
+        you need a curated, budget-aware set of excerpts for synthesis.
+        """
+        from synthadoc.agents.context_agent import ContextAgent
+        from synthadoc.providers import make_provider
+        budget = token_budget or orchestrator._cfg.query.context_token_budget
+        agent = ContextAgent(
+            provider=make_provider("query", orchestrator._cfg),
+            store=orchestrator._store,
+            search=orchestrator._search,
+            token_budget=budget,
+        )
+        pack = await agent.build(goal, token_budget=budget)
+        return pack.to_dict()
+
+    @mcp.tool()
     async def synthadoc_lint(scope: str = "all") -> dict:
         """Enqueue a lint job (LLM analysis). Returns a job_id — poll with synthadoc_jobs.
 

@@ -26,6 +26,7 @@ def test_mcp_server_has_required_tools(mock_orch):
         "synthadoc_ingest", "synthadoc_lint", "synthadoc_lint_report",
         "synthadoc_search", "synthadoc_status", "synthadoc_list_pages",
         "synthadoc_read_page", "synthadoc_write_page", "synthadoc_lifecycle", "synthadoc_jobs",
+        "synthadoc_context",
     ):
         assert expected in tool_names
     assert "synthadoc_query" not in tool_names
@@ -202,6 +203,32 @@ async def test_mcp_list_pages_filters_by_status(mock_orch):
         )
     assert result["total"] == 1
     assert result["pages"][0]["slug"] == "page-a"
+
+
+@pytest.mark.asyncio
+async def test_mcp_context_tool_returns_pack(mock_orch):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.agents.context_agent import ContextPack, ContextPage
+    mcp = create_mcp_server(mock_orch)
+    fake_pack = ContextPack(
+        goal="early neural networks",
+        token_budget=4000,
+        tokens_used=120,
+        pages=[ContextPage(slug="perceptron", relevance=0.9, excerpt="The perceptron...",
+                           source="perceptron.pdf", confidence="high", tags=[], estimated_tokens=120)],
+        omitted=[],
+    )
+    with patch("synthadoc.providers.make_provider", return_value=MagicMock()), \
+         patch("synthadoc.agents.context_agent.ContextAgent.build",
+               new=AsyncMock(return_value=fake_pack)):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_context", {"goal": "early neural networks", "token_budget": 4000},
+            convert_result=False
+        )
+    assert result["goal"] == "early neural networks"
+    assert result["tokens_used"] == 120
+    assert len(result["pages"]) == 1
+    assert result["pages"][0]["slug"] == "perceptron"
 
 
 @pytest.mark.asyncio

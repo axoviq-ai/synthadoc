@@ -536,7 +536,7 @@ From this point, queries automatically scope to the 1–2 most relevant topic br
 synthadoc context build "Toronto GTA real estate market" --tokens 4000
 ```
 
-Returns ranked page excerpts with relevance scores, confidence levels, and source paths — no synthesis. The `POST /context/build` REST endpoint and MCP tool call make this callable from any agent pipeline. See [docs/design.md — Context packs](docs/design.md#context-packs) for the knowledge backend pattern.
+Returns ranked page excerpts with relevance scores, confidence levels, and source paths — no synthesis. The `POST /context/build` REST endpoint and `synthadoc_context` MCP tool make this callable from any agent pipeline. See [docs/design.md — Context packs](docs/design.md#context-packs) for the knowledge backend pattern.
 
 **7. Schedule recurring updates** — keep the wiki fresh and the routing table clean automatically:
 
