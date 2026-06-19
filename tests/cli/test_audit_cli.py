@@ -113,7 +113,13 @@ def test_audit_events_command(tmp_path):
 # ── additional coverage tests ────────────────────────────────────────────────
 
 def _make_wiki(tmp_path):
-    """Create a minimal wiki directory structure with an initialised audit.db."""
+    """Create a minimal wiki with seeded audit data.
+
+    Uses an explicit event loop that is created and closed here so aiosqlite's
+    thread executor is fully torn down before the CLI tests call asyncio.run()
+    internally. asyncio.run() cannot be called from a running event loop, so
+    this helper must stay sync (called from sync test functions).
+    """
     import asyncio
     from synthadoc.storage.log import AuditDB
 
@@ -132,7 +138,11 @@ def _make_wiki(tmp_path):
         await db.record_audit_event("job-x", "ingest_complete", {"pages": 1})
         await db.record_query("What is AI?", sub_questions_count=2, tokens=300, cost_usd=0.005)
 
-    asyncio.run(_seed())
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(_seed())
+    finally:
+        loop.close()
     return wiki
 
 
@@ -221,103 +231,102 @@ def test_audit_events_with_data_renders_table(tmp_path):
 
 # ── claim_citations tests ────────────────────────────────────────────────────
 
-import asyncio
 from synthadoc.storage.log import AuditDB
 
 
 @pytest.fixture
-def db(tmp_path):
+async def db(tmp_path):
     d = AuditDB(tmp_path / ".synthadoc" / "audit.db")
-    asyncio.run(d.init())
+    await d.init()
     return d
 
 
-def test_record_claim_citations_stores_rows(db):
+async def test_record_claim_citations_stores_rows(db):
     citations = [
         {"source_file": "foo.txt", "line_start": 1, "line_end": 10,
          "claim_excerpt": "First claim here"},
         {"source_file": "foo.txt", "line_start": 20, "line_end": 30,
          "claim_excerpt": "Second claim here"},
     ]
-    asyncio.run(db.record_claim_citations("alan-turing", citations))
-    rows = asyncio.run(db.list_citations())
+    await db.record_claim_citations("alan-turing", citations)
+    rows = await db.list_citations()
     assert len(rows) == 2
     assert rows[0]["page_slug"] == "alan-turing"
     assert rows[0]["source_file"] == "foo.txt"
     assert rows[0]["line_start"] == 1
 
 
-def test_list_citations_filter_by_page(db):
-    asyncio.run(db.record_claim_citations("alan-turing", [
+async def test_list_citations_filter_by_page(db):
+    await db.record_claim_citations("alan-turing", [
         {"source_file": "a.txt", "line_start": 1, "line_end": 5, "claim_excerpt": "x"}
-    ]))
-    asyncio.run(db.record_claim_citations("ada-lovelace", [
+    ])
+    await db.record_claim_citations("ada-lovelace", [
         {"source_file": "b.txt", "line_start": 1, "line_end": 5, "claim_excerpt": "y"}
-    ]))
-    rows = asyncio.run(db.list_citations(page_slug="alan-turing"))
+    ])
+    rows = await db.list_citations(page_slug="alan-turing")
     assert len(rows) == 1
     assert rows[0]["page_slug"] == "alan-turing"
 
 
-def test_list_citations_filter_by_source(db):
-    asyncio.run(db.record_claim_citations("alan-turing", [
+async def test_list_citations_filter_by_source(db):
+    await db.record_claim_citations("alan-turing", [
         {"source_file": "bio.txt", "line_start": 1, "line_end": 5, "claim_excerpt": "x"}
-    ]))
-    asyncio.run(db.record_claim_citations("alan-turing", [
+    ])
+    await db.record_claim_citations("alan-turing", [
         {"source_file": "other.txt", "line_start": 1, "line_end": 5, "claim_excerpt": "y"}
-    ]))
-    rows = asyncio.run(db.list_citations(source_file="bio.txt"))
+    ])
+    rows = await db.list_citations(source_file="bio.txt")
     assert len(rows) == 1
 
 
-def test_list_citation_failures_returns_failed_events(db):
-    asyncio.run(db.write_event(
+async def test_list_citation_failures_returns_failed_events(db):
+    await db.write_event(
         "citation_validation_failed",
         metadata={"slug": "p", "citation": "^[x.txt:1-2]", "reason": "broken_ref"}
-    ))
-    asyncio.run(db.write_event("ingest_started", metadata={"info": "ok"}))
-    rows = asyncio.run(db.list_citation_failures())
+    )
+    await db.write_event("ingest_started", metadata={"info": "ok"})
+    rows = await db.list_citation_failures()
     assert len(rows) == 1
     assert rows[0]["reason"] == "broken_ref"
 
 
-def test_list_citation_failures_filter_by_page_slug(db):
-    asyncio.run(db.write_event(
+async def test_list_citation_failures_filter_by_page_slug(db):
+    await db.write_event(
         "citation_validation_failed",
         metadata={"slug": "alan-turing", "citation": "^[a.txt:1]", "reason": "missing"}
-    ))
-    asyncio.run(db.write_event(
+    )
+    await db.write_event(
         "citation_validation_failed",
         metadata={"slug": "ada-lovelace", "citation": "^[b.txt:2]", "reason": "broken_ref"}
-    ))
-    rows = asyncio.run(db.list_citation_failures(page_slug="alan-turing"))
+    )
+    rows = await db.list_citation_failures(page_slug="alan-turing")
     assert len(rows) == 1
     assert rows[0]["page_slug"] == "alan-turing"
     assert rows[0]["reason"] == "missing"
 
 
-def test_list_citation_failures_multiple_events(db):
+async def test_list_citation_failures_multiple_events(db):
     for i in range(4):
-        asyncio.run(db.write_event(
+        await db.write_event(
             "citation_validation_failed",
             metadata={"slug": f"page-{i}", "citation": f"^[f{i}.txt:1]", "reason": "broken"}
-        ))
-    asyncio.run(db.write_event("ingest_started", metadata={}))
-    rows = asyncio.run(db.list_citation_failures())
+        )
+    await db.write_event("ingest_started", metadata={})
+    rows = await db.list_citation_failures()
     assert len(rows) == 4
     assert all(r["reason"] == "broken" for r in rows)
 
 
-def test_write_event_stores_event(db):
-    asyncio.run(db.write_event("citation_pass4_skipped",
-                               metadata={"slug": "p", "error": "timeout"}))
-    events = asyncio.run(db.list_events(limit=10))
+async def test_write_event_stores_event(db):
+    await db.write_event("citation_pass4_skipped",
+                         metadata={"slug": "p", "error": "timeout"})
+    events = await db.list_events(limit=10)
     assert any(e["event"] == "citation_pass4_skipped" for e in events)
 
 
-def test_write_event_accepts_dict_metadata(db):
-    asyncio.run(db.write_event("test_event", metadata={"key": "value", "num": 42}))
-    events = asyncio.run(db.list_events(limit=10))
+async def test_write_event_accepts_dict_metadata(db):
+    await db.write_event("test_event", metadata={"key": "value", "num": 42})
+    events = await db.list_events(limit=10)
     matching = [e for e in events if e["event"] == "test_event"]
     assert len(matching) == 1
     parsed = json.loads(matching[0]["metadata"])
@@ -325,9 +334,9 @@ def test_write_event_accepts_dict_metadata(db):
     assert parsed["num"] == 42
 
 
-def test_write_event_default_metadata_is_empty_dict(db):
-    asyncio.run(db.write_event("no_metadata_event"))
-    events = asyncio.run(db.list_events(limit=10))
+async def test_write_event_default_metadata_is_empty_dict(db):
+    await db.write_event("no_metadata_event")
+    events = await db.list_events(limit=10)
     matching = [e for e in events if e["event"] == "no_metadata_event"]
     assert len(matching) == 1
     parsed = json.loads(matching[0]["metadata"])
@@ -338,15 +347,20 @@ def test_write_event_default_metadata_is_empty_dict(db):
 
 def test_audit_citations_command_all(tmp_path, monkeypatch):
     """synthadoc audit citations shows all citations."""
+    import asyncio
     import synthadoc.cli.install as install_mod
     from synthadoc.storage.log import AuditDB as _AuditDB
     (tmp_path / ".synthadoc").mkdir()
     dbc = _AuditDB(tmp_path / ".synthadoc" / "audit.db")
-    asyncio.run(dbc.init())
-    asyncio.run(dbc.record_claim_citations("alan-turing", [
-        {"source_file": "bio.txt", "line_start": 1, "line_end": 10,
-         "claim_excerpt": "A claim about Turing"}
-    ]))
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(dbc.init())
+        loop.run_until_complete(dbc.record_claim_citations("alan-turing", [
+            {"source_file": "bio.txt", "line_start": 1, "line_end": 10,
+             "claim_excerpt": "A claim about Turing"}
+        ]))
+    finally:
+        loop.close()
     monkeypatch.setattr(install_mod, "_read_registry",
                         lambda: {"mywiki": {"path": str(tmp_path)}})
     from typer.testing import CliRunner
@@ -360,13 +374,20 @@ def test_audit_citations_command_all(tmp_path, monkeypatch):
 
 def test_audit_citations_broken_flag(tmp_path, monkeypatch):
     """--broken flag shows only validation failures."""
+    import asyncio
     import synthadoc.cli.install as install_mod
     from synthadoc.storage.log import AuditDB as _AuditDB
     (tmp_path / ".synthadoc").mkdir()
     dbc = _AuditDB(tmp_path / ".synthadoc" / "audit.db")
-    asyncio.run(dbc.init())
-    asyncio.run(dbc.write_event("citation_validation_failed",
-                                metadata={"slug": "p", "citation": "^[x:1-2]", "reason": "broken_ref"}))
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(dbc.init())
+        loop.run_until_complete(dbc.write_event(
+            "citation_validation_failed",
+            metadata={"slug": "p", "citation": "^[x:1-2]", "reason": "broken_ref"}
+        ))
+    finally:
+        loop.close()
     monkeypatch.setattr(install_mod, "_read_registry",
                         lambda: {"mywiki": {"path": str(tmp_path)}})
     from typer.testing import CliRunner
@@ -379,11 +400,16 @@ def test_audit_citations_broken_flag(tmp_path, monkeypatch):
 
 def test_audit_lifecycle_purge_command(tmp_path, monkeypatch):
     """audit lifecycle purge must call purge_lifecycle_events and print confirmation."""
+    import asyncio
     import synthadoc.cli.install as install_mod
     from synthadoc.storage.log import AuditDB as _AuditDB
     (tmp_path / ".synthadoc").mkdir()
     dbc = _AuditDB(tmp_path / ".synthadoc" / "audit.db")
-    asyncio.run(dbc.init())
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(dbc.init())
+    finally:
+        loop.close()
     monkeypatch.setattr(install_mod, "_read_registry",
                         lambda: {"mywiki": {"path": str(tmp_path)}})
     from typer.testing import CliRunner
@@ -398,11 +424,16 @@ def test_audit_lifecycle_purge_command(tmp_path, monkeypatch):
 
 def test_audit_lifecycle_purge_with_before(tmp_path, monkeypatch):
     """audit lifecycle purge --before must pass the date to purge_lifecycle_events."""
+    import asyncio
     import synthadoc.cli.install as install_mod
     from synthadoc.storage.log import AuditDB as _AuditDB
     (tmp_path / ".synthadoc").mkdir()
     dbc = _AuditDB(tmp_path / ".synthadoc" / "audit.db")
-    asyncio.run(dbc.init())
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(dbc.init())
+    finally:
+        loop.close()
     monkeypatch.setattr(install_mod, "_read_registry",
                         lambda: {"mywiki": {"path": str(tmp_path)}})
     from typer.testing import CliRunner
