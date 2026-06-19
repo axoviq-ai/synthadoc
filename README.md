@@ -461,13 +461,16 @@ synthadoc serve
 
 `wiki/dashboard.md` is also created during install (a static template — not LLM-generated). `ROUTING.md` is optional and generated separately via `synthadoc routing init` after pages accumulate.
 
-Then open the wiki folder in Obsidian as a new vault, install the Dataview community plugin, and copy the Synthadoc plugin files with one command:
+Then copy the Synthadoc plugin files into the wiki with one command:
 
 ```bash
 synthadoc plugin install market-condition-canada
 ```
 
-This automatically writes the correct server URL into the plugin's `data.json` — no manual configuration in Obsidian settings is needed.
+This writes the plugin files and the correct server URL into `data.json`. Then open the wiki folder in Obsidian as a new vault and do two things in **Settings → Community Plugins**:
+
+1. **Enable Synthadoc** — toggle it on in the installed plugins list
+2. **Install and enable Dataview** — Browse → search "Dataview" → Install → Enable
 
 The Quick-Start Guide covers the full Obsidian setup in detail — see [docs/user-quick-start-guide.md](docs/user-quick-start-guide.md).
 
