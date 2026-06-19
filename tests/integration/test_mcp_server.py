@@ -232,19 +232,51 @@ async def test_mcp_context_tool_returns_pack(mock_orch):
 
 
 @pytest.mark.asyncio
-async def test_mcp_export_tool_returns_okf(mock_orch):
+async def test_mcp_export_tool_okf_requires_output_path(mock_orch):
     from synthadoc.integration.mcp_server import create_mcp_server
     mcp = create_mcp_server(mock_orch)
-    fake_content = {"wiki": "history-of-computing", "pages": []}
+    result = await mcp._tool_manager.call_tool(
+        "synthadoc_export", {"format": "okf"},
+        convert_result=False
+    )
+    assert "error" in result
+    assert "output_path" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_mcp_export_tool_okf_writes_folder(mock_orch, tmp_path):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    mcp = create_mcp_server(mock_orch)
+    fake_files = {
+        "index.md": "# Index",
+        "wiki/perceptron.md": "---\ntitle: Perceptron\n---\nContent.",
+    }
+    out_dir = str(tmp_path / "okf-export")
     with patch("synthadoc.agents.export_agent.ExportAgent.export",
-               new=AsyncMock(return_value=fake_content)):
+               new=AsyncMock(return_value=fake_files)):
         result = await mcp._tool_manager.call_tool(
-            "synthadoc_export", {"format": "okf"},
+            "synthadoc_export", {"format": "okf", "output_path": out_dir},
             convert_result=False
         )
     assert result["format"] == "okf"
-    assert result["content"] == fake_content
-    assert "pages" in result
+    assert result["files_written"] == 2
+    assert (tmp_path / "okf-export" / "index.md").exists()
+    assert (tmp_path / "okf-export" / "wiki" / "perceptron.md").exists()
+
+
+@pytest.mark.asyncio
+async def test_mcp_export_tool_llms_txt_inline(mock_orch):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    mcp = create_mcp_server(mock_orch)
+    with patch("synthadoc.agents.export_agent.ExportAgent.export",
+               new=AsyncMock(return_value="# Wiki\nPage content.")):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_export", {"format": "llms.txt"},
+            convert_result=False
+        )
+    assert result["format"] == "llms.txt"
+    assert "content" in result
+    assert "Wiki" in result["content"]
 
 
 @pytest.mark.asyncio
