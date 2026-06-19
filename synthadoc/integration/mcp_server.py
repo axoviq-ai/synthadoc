@@ -36,6 +36,34 @@ def create_mcp_server(orchestrator):
         return {"job_id": job_id, "source": source}
 
     @mcp.tool()
+    async def synthadoc_export(format: str = "okf", status_filter: str = "all") -> dict:
+        """Export the wiki in a structured format.
+
+        format: one of "okf" (Open Knowledge Format — JSON bundle),
+                "llms.txt" (compact LLM-ready plain text),
+                "llms-full.txt" (full content), "json", "graphml".
+        status_filter: "all" (default) or any lifecycle state to limit which
+                pages are included (e.g. "active").
+
+        Returns {"format": ..., "content": ..., "pages": N} where content is
+        the full export string (or JSON object for okf). Use okf for structured
+        agent consumption; llms.txt for compact context injection.
+        """
+        from synthadoc.agents.export_agent import ExportAgent, ExportOptions, EXPORT_FORMATS
+        if format not in EXPORT_FORMATS:
+            return {"error": f"unknown format {format!r}. Valid: {sorted(EXPORT_FORMATS)}"}
+        agent = ExportAgent(
+            store=orchestrator._store,
+            wiki_name=orchestrator._root.name,
+            audit_db_path=orchestrator._root / ".synthadoc" / "audit.db",
+            routing_path=orchestrator._root / "ROUTING.md",
+        )
+        opts = ExportOptions(format=format, status_filter=status_filter)
+        content = await agent.export(opts)
+        page_count = len(orchestrator._store.list_pages())
+        return {"format": format, "content": content, "pages": page_count}
+
+    @mcp.tool()
     async def synthadoc_context(goal: str, token_budget: int = 10000) -> dict:
         """Build a token-budgeted context pack for a goal or question.
 

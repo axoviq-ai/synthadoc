@@ -196,7 +196,7 @@ As the wiki accumulates pages the `index.md` table of contents, domain scope (`p
 | Streaming query output       | **Yes** (token-by-token; `--no-stream` for pipe-friendly blocking mode) | No          | No         | No        |
 | Query result cache           | **Yes** (cache key = question + wiki version; auto-invalidates on ingest or lifecycle change; `--no-cache` to bypass) | No          | No         | No        |
 | Browser-based chat UI        | **Yes** (`synthadoc web` — session-aware, streaming, citations, knowledge-gap callouts, multi-turn conversation with follow-up rewriting and clarify prompts) | No          | No         | No        |
-| MCP server for agent integration | **Yes** (8 tools; Claude Desktop via stdio, Claude Code via SSE, n8n/LangGraph via HTTP/SSE; brain+memory architecture — Claude reasons and edits, Synthadoc persists with immutable audit trail; no double-LLM cost for read operations) — [design](docs/design.md#27-mcp-server) · [quick-start](docs/user-quick-start-guide.md#appendix-i--connect-claude-via-mcp) | No          | No         | No        |
+| MCP server for agent integration | **Yes** (12 tools; Claude Desktop via stdio, Claude Code via SSE, n8n/LangGraph via HTTP/SSE; brain+memory architecture — Claude reasons and edits, Synthadoc persists with immutable audit trail; no double-LLM cost for read operations) — [design](docs/design.md#27-mcp-server) · [quick-start](docs/user-quick-start-guide.md#appendix-i--connect-claude-via-mcp) | No          | No         | No        |
 
 ### Key differentiators vs. RAG
 

@@ -2497,6 +2497,7 @@ For Claude Desktop, `mcpServers` key names must use underscores (e.g. `synthadoc
 | `synthadoc_read_page` | `slug: str` | `{slug, title, content, status, type, tags, lint_warnings, sources}` or `{error, slug}` | Claude only |
 | `synthadoc_list_pages` | `status?: str` (default `"all"`) | `{pages: [{slug, title, status, type, has_sources}], total: int}` | Neither |
 | `synthadoc_context` | `goal: str`, `token_budget?: int` (default `10000`) | `{goal, token_budget, tokens_used, pages: [{slug, relevance, excerpt, source, confidence, tags, estimated_tokens}], omitted: [{slug, estimated_tokens}]}` | Neither |
+| `synthadoc_export` | `format?: str` (default `"okf"`), `status_filter?: str` (default `"all"`) | `{format, content, pages: N}` — content is the full export (JSON object for okf, string for others). Formats: `okf`, `llms.txt`, `llms-full.txt`, `json`, `graphml` | Neither |
 | `synthadoc_write_page` | `slug: str`, `content: str`, `title?: str` | `{slug, title, status}` or `{error, slug}` | Neither |
 | `synthadoc_status` | *(none)* | `{pages: int, wiki: str}` | Neither |
 | `synthadoc_jobs` | `status?: str` (default `"all"`) | `{jobs: [{id, operation, status, created, source?, error?}]}` | Neither |
@@ -2682,7 +2683,7 @@ Default (no flag): both MCP and HTTP start together on the same port.
 
 ### v0.9.0 (Community Edition)
 
-- **MCP server — 11 tools** — Synthadoc exposes `synthadoc_search`, `synthadoc_read_page`, `synthadoc_list_pages`, `synthadoc_write_page`, `synthadoc_status`, `synthadoc_jobs`, `synthadoc_lifecycle`, `synthadoc_lint_report`, `synthadoc_context`, `synthadoc_ingest`, and `synthadoc_lint` via the Model Context Protocol. Mounted at `/mcp/sse` on the existing HTTP server (no extra port or process). Tools share the same Orchestrator singleton as the HTTP REST API.
+- **MCP server — 12 tools** — Synthadoc exposes `synthadoc_search`, `synthadoc_read_page`, `synthadoc_list_pages`, `synthadoc_write_page`, `synthadoc_status`, `synthadoc_jobs`, `synthadoc_lifecycle`, `synthadoc_lint_report`, `synthadoc_context`, `synthadoc_export`, `synthadoc_ingest`, and `synthadoc_lint` via the Model Context Protocol. Mounted at `/mcp/sse` on the existing HTTP server (no extra port or process). Tools share the same Orchestrator singleton as the HTTP REST API.
 - **`synthadoc_write_page`** — lifecycle-aware content editing: updates page body, clears `contradiction_note`, bumps the wiki epoch (cache invalidation). Proper MCP alternative to writing wiki files directly — every edit goes through `WikiStorage.write_page()` and is query-cache-coherent.
 - **Multi-wiki server naming** — FastMCP server name auto-set to `synthadoc-{wiki-name}` (e.g. `synthadoc-history-of-computing`). All tool descriptions prefixed with `Wiki: {wiki-name}.` at startup so Claude can route correctly when multiple Synthadoc servers are connected simultaneously.
 - **Transport support** — stdio (Claude Desktop), SSE via `--transport sse` (Claude Code CLI), HTTP/SSE direct connection (n8n, LangGraph, custom agents). Claude Desktop requires underscores in `mcpServers` key names (hyphens cause load failure).

@@ -26,7 +26,7 @@ def test_mcp_server_has_required_tools(mock_orch):
         "synthadoc_ingest", "synthadoc_lint", "synthadoc_lint_report",
         "synthadoc_search", "synthadoc_status", "synthadoc_list_pages",
         "synthadoc_read_page", "synthadoc_write_page", "synthadoc_lifecycle", "synthadoc_jobs",
-        "synthadoc_context",
+        "synthadoc_context", "synthadoc_export",
     ):
         assert expected in tool_names
     assert "synthadoc_query" not in tool_names
@@ -229,6 +229,34 @@ async def test_mcp_context_tool_returns_pack(mock_orch):
     assert result["tokens_used"] == 120
     assert len(result["pages"]) == 1
     assert result["pages"][0]["slug"] == "perceptron"
+
+
+@pytest.mark.asyncio
+async def test_mcp_export_tool_returns_okf(mock_orch):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    mcp = create_mcp_server(mock_orch)
+    fake_content = {"wiki": "history-of-computing", "pages": []}
+    with patch("synthadoc.agents.export_agent.ExportAgent.export",
+               new=AsyncMock(return_value=fake_content)):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_export", {"format": "okf"},
+            convert_result=False
+        )
+    assert result["format"] == "okf"
+    assert result["content"] == fake_content
+    assert "pages" in result
+
+
+@pytest.mark.asyncio
+async def test_mcp_export_tool_invalid_format_returns_error(mock_orch):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    mcp = create_mcp_server(mock_orch)
+    result = await mcp._tool_manager.call_tool(
+        "synthadoc_export", {"format": "unsupported"},
+        convert_result=False
+    )
+    assert "error" in result
+    assert "unsupported" in result["error"]
 
 
 @pytest.mark.asyncio
