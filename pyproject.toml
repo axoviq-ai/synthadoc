@@ -41,6 +41,7 @@ dev = [
     "pytest>=8",
     "pytest-asyncio>=0.23",
     "pytest-cov>=5",
+    "pytest-timeout>=2.3",
     "pytest-benchmark>=4.0",
     "respx>=0.21",
     "mcp>=1.0",
@@ -57,6 +58,7 @@ synthadoc = "synthadoc.cli.main:app"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+timeout = 60
 testpaths = ["tests"]
 addopts = "-m 'not integration and not charts'"
 markers = [
