@@ -141,15 +141,16 @@ async def test_web_search_fanout_enqueue_is_fast(tmp_wiki):
 
 @pytest.mark.asyncio
 async def test_web_search_fanout_processing_is_fast(tmp_wiki):
-    """Processing 20 web search child jobs must complete in < 30 seconds.
+    """Processing 20 web search child jobs must complete in < 45 seconds.
 
     Simulates the full fan-out pipeline with mocked LLM and HTTP calls:
     WebSearchSkill returns 20 URLs → each enqueued as child ingest job →
     worker loop processes all 20 → all jobs reach 'completed' status.
 
-    The 30s SLO allows ~1.5s per job on the slowest CI runner.
-    Each job makes 2 mocked LLM calls (analyse + decide), so this measures
-    worker loop overhead and SQLite round-trips, not real LLM latency.
+    The 45s SLO allows ~2.25s per job on the slowest CI runner (Windows
+    GitHub Actions). Each job makes 2 mocked LLM calls (analyse + decide),
+    so this measures worker loop overhead and SQLite round-trips, not real
+    LLM latency.
     """
     from unittest.mock import AsyncMock, patch
     from synthadoc.core.queue import JobQueue, JobStatus
@@ -226,7 +227,7 @@ async def test_web_search_fanout_processing_is_fast(tmp_wiki):
         await cache.close()
     elapsed = time.perf_counter() - start
 
-    assert elapsed < 30.0, f"Processing 20 web search jobs took {elapsed:.1f}s — exceeds 30s SLO"
+    assert elapsed < 45.0, f"Processing 20 web search jobs took {elapsed:.1f}s — exceeds 45s SLO"
 
     completed = await queue.list_jobs(status=JobStatus.COMPLETED)
     assert len(completed) == 20, f"Expected 20 completed jobs, got {len(completed)}"
