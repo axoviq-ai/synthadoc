@@ -1698,6 +1698,18 @@ Set a permanent default in `config.toml`:
 context_token_budget = 6000
 ```
 
+### Build a context pack via MCP (Claude Code)
+
+With Synthadoc registered as an MCP server, you can ask Claude to build a context pack directly inside a Claude Code session — no CLI needed.
+
+> "Build me a context pack on early computing pioneers, budget 10,000 tokens."
+
+Claude calls `synthadoc_context`, receives the ranked excerpt bundle, and can immediately reason over it or feed it into a follow-up synthesis prompt — all within the same conversation.
+
+See the full step-by-step demo in [Appendix I — Demo: context pack via Claude Code](#appendix-i--connect-claude-via-mcp), including a real example output from the history-of-computing wiki (1,280 / 10,000 tokens used).
+
+> **Prerequisite:** Synthadoc must be registered as an MCP server. See [Appendix I — Connect Claude via MCP](#appendix-i--connect-claude-via-mcp) for the `claude mcp add` command.
+
 ---
 
 <a name="claim-provenance"></a>
