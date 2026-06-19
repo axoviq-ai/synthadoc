@@ -207,11 +207,11 @@ def test_staging_policy_reads_from_toml(tmp_path):
     assert cfg.ingest.staging_confidence_min == "medium"
 
 
-def test_context_token_budget_defaults_to_4000(tmp_path):
+def test_context_token_budget_defaults_to_10000(tmp_path):
     toml_file = tmp_path / "config.toml"
     toml_file.write_text('[server]\nport = 7070\n')
     cfg = load_config(project_config=toml_file)
-    assert cfg.query.context_token_budget == 4000
+    assert cfg.query.context_token_budget == 10000
 
 
 def test_context_token_budget_reads_from_toml(tmp_path):
