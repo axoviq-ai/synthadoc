@@ -540,7 +540,7 @@ Returns ranked page excerpts with relevance scores, confidence levels, and sourc
 
 ```bash
 # Replace 7070 with the port shown when you ran synthadoc serve
-claude mcp add --transport sse market-condition-canada http://127.0.0.1:7070/mcp/sse
+claude mcp add --transport sse synthadoc-market-condition-canada http://127.0.0.1:7070/mcp/sse
 ```
 
 Then ask Claude Code: *"Build a context pack on Toronto GTA real estate market"* and it will call `synthadoc_context` automatically. See [docs/design.md — Context packs](docs/design.md#context-packs) for the knowledge backend pattern.
