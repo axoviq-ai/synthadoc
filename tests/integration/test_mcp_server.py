@@ -232,15 +232,20 @@ async def test_mcp_context_tool_returns_pack(mock_orch):
 
 
 @pytest.mark.asyncio
-async def test_mcp_export_tool_okf_requires_output_path(mock_orch):
+async def test_mcp_export_tool_okf_uses_default_path(mock_orch, tmp_path):
     from synthadoc.integration.mcp_server import create_mcp_server
     mcp = create_mcp_server(mock_orch)
-    result = await mcp._tool_manager.call_tool(
-        "synthadoc_export", {"format": "okf"},
-        convert_result=False
-    )
-    assert "error" in result
-    assert "output_path" in result["error"]
+    fake_files = {"index.md": "# Index", "wiki/page.md": "Content."}
+    with patch("synthadoc.agents.export_agent.ExportAgent.export",
+               new=AsyncMock(return_value=fake_files)):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_export", {"format": "okf"},
+            convert_result=False
+        )
+    assert result["format"] == "okf"
+    assert "output_path" in result
+    assert "okf" in result["output_path"]
+    assert result["files_written"] == 2
 
 
 @pytest.mark.asyncio

@@ -2798,7 +2798,7 @@ You should receive `HTTP/1.1 200 OK` with `content-type: text/event-stream` and 
 | "Show me the adversarial warnings for the early-neural-networks page" | `synthadoc_read_page` |
 | "Which pages have citations? Show me what they are." | `synthadoc_list_pages` + `synthadoc_read_page` |
 | "Build me a context pack on early neural networks" | `synthadoc_context` |
-| "Export my wiki in OKF format to ~/exports/my-wiki" | `synthadoc_export` (okf — writes folder structure to disk) |
+| "Export my wiki in OKF format" | `synthadoc_export` (okf — writes folder to default path, tells you where) |
 | "Export only active pages as llms.txt" | `synthadoc_export` (format + status_filter, returns content inline) |
 
 **Wiki health — zero cost, instant:**
@@ -2878,7 +2878,7 @@ To request a tighter pack (forces prioritisation and shows omitted pages clearly
 | `synthadoc_lifecycle` | `slug: str`, `to_state: str`, `reason: str` | Transition a page's lifecycle state; writes an immutable audit record | Neither |
 | `synthadoc_lint_report` | *(none)* | Instant wiki health read — contradicted pages, orphans, adversarial warning counts; **no job, no LLM** | Neither |
 | `synthadoc_context` | `goal: str`, `token_budget?: int` (default `10000`) | Build a token-budgeted context pack — ranked excerpts that fit within the budget; omitted slugs listed separately | Neither |
-| `synthadoc_export` | `format?: str` (default `"okf"`), `output_path?: str` (**required** for okf), `status_filter?: str` (default `"all"`) | Export the wiki. okf writes a folder to disk; other formats return content inline or to a file. Formats: `okf`, `llms.txt`, `llms-full.txt`, `json`, `graphml` | Neither |
+| `synthadoc_export` | `format?: str` (default `"okf"`), `output_path?: str` (okf defaults to `<wiki>/exports/<name>-okf-<date>/`), `status_filter?: str` (default `"all"`) | Export the wiki. okf writes a folder to disk and tells you where; other formats return content inline or to a file. Formats: `okf`, `llms.txt`, `llms-full.txt`, `json`, `graphml` | Neither |
 | `synthadoc_ingest` | `source: str` | Enqueue a URL or file for ingest — returns a job ID | Synthadoc |
 | `synthadoc_lint` | `scope?: str` (default `"all"`) | Enqueue a full LLM lint analysis — returns a job ID; use `synthadoc_jobs` to poll | Synthadoc |
 

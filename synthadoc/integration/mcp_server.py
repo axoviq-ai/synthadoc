@@ -46,27 +46,21 @@ def create_mcp_server(orchestrator):
         format: "okf" (Open Knowledge Format — folder of Markdown files),
                 "llms.txt" (compact LLM-ready plain text),
                 "llms-full.txt" (full content), "json", "graphml".
-        output_path: directory (for okf) or file path (for other formats)
-                where the export will be written. Required for okf — okf
-                produces a folder structure that cannot be returned inline.
-                Optional for other formats; if omitted the content is returned
-                inline in the response.
+        output_path: directory (for okf) or file path (for other formats).
+                Optional — if omitted, okf defaults to
+                <wiki_root>/exports/<wiki_name>-okf-<date>/ and other formats
+                return content inline in the response.
         status_filter: "all" (default), or a lifecycle state such as "active".
 
         OKF returns: {"format", "output_path", "files_written": N, "pages": N}
         Other formats with output_path: {"format", "output_path", "pages": N}
         Other formats without output_path: {"format", "content": str, "pages": N}
         """
+        from datetime import date
         from synthadoc.agents.export_agent import ExportAgent, ExportOptions, EXPORT_FORMATS
         if format not in EXPORT_FORMATS:
             return {"error": f"unknown format {format!r}. Valid: {sorted(EXPORT_FORMATS)}"}
-        if format == "okf" and not output_path:
-            return {
-                "error": (
-                    "output_path is required for okf — it produces a folder structure. "
-                    "Example: output_path='/home/user/exports/my-wiki-okf'"
-                )
-            }
+
         agent = ExportAgent(
             store=orchestrator._store,
             wiki_name=orchestrator._root.name,
@@ -78,7 +72,10 @@ def create_mcp_server(orchestrator):
         page_count = len(orchestrator._store.list_pages())
 
         if format == "okf":
-            out = Path(output_path)
+            if output_path:
+                out = Path(output_path)
+            else:
+                out = orchestrator._root / "exports" / f"{orchestrator._root.name}-okf-{date.today()}"
             out.mkdir(parents=True, exist_ok=True)
             for rel_path, text in content.items():
                 target = out / rel_path
