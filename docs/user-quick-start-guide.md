@@ -1,6 +1,6 @@
 ﻿# Synthadoc User Quick-Start Guide
 
-**Version: v0.8.0 (Community Edition)**
+**Version: v0.9.0 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
@@ -749,6 +749,8 @@ Or from Obsidian: Command Palette → `Synthadoc: Lint: run with auto-resolve`.
 
 ### Option 3 — Resolve via MCP (Claude Desktop or Claude Code)
 
+> **Prerequisite:** Synthadoc must be registered as an MCP server in Claude. See [Appendix I — Connect Claude via MCP](#appendix-i--connect-claude-via-mcp) for the `claude mcp add` command and Claude Desktop config.
+
 With Synthadoc connected as an MCP server, Claude can resolve contradictions using its own LLM — the brain/memory architecture in action. Claude reasons about the conflict, writes the resolution, then commits the lifecycle transition with a proper audit trail.
 
 Ask Claude in a single prompt:
@@ -853,6 +855,48 @@ pull in a fresh source via web search:
 ```bash
 synthadoc ingest "search for: Ada Lovelace contributions to computing history"
 ```
+
+### Option 3 — Resolve via MCP (Claude Code)
+
+> **Prerequisite:** Synthadoc must be registered as an MCP server in Claude Code. See [Appendix I — Connect Claude via MCP](#appendix-i--connect-claude-via-mcp) for the `claude mcp add` command.
+
+With Synthadoc connected as an MCP server, Claude can fix orphans autonomously — it reads the wiki, finds a relevant page to add the link to, writes the change, and re-runs lint to confirm the fix.
+
+**Step 1 — Find orphans:**
+
+> "Are there any orphan pages in my history-of-computing wiki?"
+
+Claude calls `synthadoc_lint_report` for the authoritative orphan list (instant, no LLM cost). For the demo wiki this returns `mechanical-computing` among the orphans.
+
+**Step 2 — Fix the orphan:**
+
+> "The mechanical-computing page is an orphan. Find the most relevant page in the wiki and add a wikilink to it."
+
+Claude reads `mechanical-computing`, notices it already contains `[[von-neumann-architecture]]` in its body, and recognises this as a natural reciprocal — `von-neumann-architecture` should link back. It adds:
+
+```
+The concept of a general-purpose programmable machine with distinct memory,
+arithmetic, and control components was anticipated by Charles Babbage's
+Analytical Engine designs of the 1830s — see [[mechanical-computing]] for
+the pre-electronic tradition that foreshadowed this architecture by over a
+century.
+```
+
+Claude calls `synthadoc_write_page` to insert this into `von-neumann-architecture`.
+
+**Step 3 — Verify:**
+
+> "Re-run lint report and confirm mechanical-computing is no longer an orphan."
+
+Claude calls `synthadoc_lint_report` again — `mechanical-computing` is gone from the orphan list.
+
+> **Why Claude chose von-neumann-architecture:** `mechanical-computing` already contained `[[von-neumann-architecture]]` — making it a natural reciprocal link rather than a forced one. Claude read the page content before deciding, not just the slug names.
+
+To archive an orphan that is genuinely out of scope instead:
+
+> "Archive the mechanical-computing page — it's an orphan and not relevant to this wiki."
+
+Claude calls `synthadoc_lifecycle` with `to_state="archived"` and a reason, writing a permanent audit record.
 
 ### Deleting a page and cleaning up its references
 
@@ -1653,6 +1697,18 @@ Set a permanent default in `config.toml`:
 [query]
 context_token_budget = 6000
 ```
+
+### Build a context pack via MCP (Claude Code)
+
+With Synthadoc registered as an MCP server, you can ask Claude to build a context pack directly inside a Claude Code session — no CLI needed.
+
+> "Build me a context pack on early computing pioneers, budget 10,000 tokens."
+
+Claude calls `synthadoc_context`, receives the ranked excerpt bundle, and can immediately reason over it or feed it into a follow-up synthesis prompt — all within the same conversation.
+
+See the full step-by-step demo in [Appendix I — Demo: context pack via Claude Code](#appendix-i--connect-claude-via-mcp), including a real example output from the history-of-computing wiki (1,280 / 10,000 tokens used).
+
+> **Prerequisite:** Synthadoc must be registered as an MCP server. See [Appendix I — Connect Claude via MCP](#appendix-i--connect-claude-via-mcp) for the `claude mcp add` command.
 
 ---
 
@@ -2790,9 +2846,24 @@ You should receive `HTTP/1.1 200 OK` with `content-type: text/event-stream` and 
 | Example prompt | Tool used |
 |---|---|
 | "What's the status of my wiki?" | `synthadoc_status` |
+| "List all pages in the wiki" | `synthadoc_list_pages` |
+| "Show me only the active pages" | `synthadoc_list_pages` (status filter) |
 | "Search for Grace Hopper" | `synthadoc_search` |
 | "Read the grace-hopper page" | `synthadoc_read_page` |
 | "What does my wiki say about quantum error correction?" | `synthadoc_search` + `synthadoc_read_page` |
+| "Show me the adversarial warnings for the early-neural-networks page" | `synthadoc_read_page` |
+| "Which pages have citations? Show me what they are." | `synthadoc_list_pages` + `synthadoc_read_page` |
+| "Build me a context pack on early neural networks" | `synthadoc_context` |
+| "Export my wiki in OKF format" | `synthadoc_export` (okf — writes folder to default path, tells you where) |
+| "Export only active pages as llms.txt" | `synthadoc_export` (format + status_filter, returns content inline) |
+
+**Wiki health — zero cost, instant:**
+
+| Example prompt | Tool used |
+|---|---|
+| "Which pages are contradicted?" | `synthadoc_lint_report` |
+| "Are there any orphan pages?" | `synthadoc_lint_report` |
+| "Give me a wiki health summary" | `synthadoc_lint_report` |
 
 **Synthadoc operations** — Claude manages the wiki on your behalf:
 
@@ -2801,8 +2872,50 @@ You should receive `HTTP/1.1 200 OK` with `content-type: text/event-stream` and 
 | "List recent jobs" | `synthadoc_jobs` |
 | "Show me any failed or skipped jobs" | `synthadoc_jobs` |
 | "Ingest this URL: https://example.com/paper" | `synthadoc_ingest` |
-| "Run a lint check on the wiki" | `synthadoc_lint` |
+| "Run a full lint check on the wiki" | `synthadoc_lint` |
 | "Mark the grace-hopper page as stale — needs review" | `synthadoc_lifecycle` |
+
+---
+
+### Demo: context pack via Claude Code
+
+Once connected, ask Claude Code:
+
+> **"Build me a context pack on early neural networks"**
+
+Claude calls `synthadoc_context` automatically and returns something like:
+
+```
+Here's the context pack assembled for "early neural networks" (1,280 / 10,000 tokens used):
+
+Directly Relevant Pages
+
+| Slug                            | Relevance | Confidence | Tags                                              |
+|---------------------------------|-----------|------------|---------------------------------------------------|
+| artificial-intelligence-history | 9.65      | High       | neural-networks, deep-learning, machine-learning  |
+| computing-history-timeline      | 11.16     | Medium     | artificial-intelligence, deep-learning, algorithms|
+
+Key excerpts:
+
+artificial-intelligence-history — Covers Turing's 1950 Turing Test paper, the 1956 Dartmouth
+Conference (where "artificial intelligence" was coined), and the first AI winter (1974–1980).
+
+computing-history-timeline — Traces from Ada Lovelace (1843) through Turing (1936), von Neumann
+architecture (1945), and includes tags for deep-learning milestones.
+```
+
+**What the response tells you:**
+
+| Field | Meaning |
+|---|---|
+| `tokens_used / token_budget` | How much of the budget was consumed — pages stop being added once the budget is full |
+| `relevance` | BM25 score — higher means stronger keyword match to your goal |
+| `confidence` | LLM-assigned confidence in the page's coverage of the topic |
+| `omitted` | Pages that were relevant but didn't fit within the budget (none here — only 13% used) |
+
+To request a tighter pack (forces prioritisation and shows omitted pages clearly):
+
+> **"Build a context pack on early neural networks with a 2000 token budget"**
 
 ---
 
@@ -2813,15 +2926,27 @@ You should receive `HTTP/1.1 200 OK` with `content-type: text/event-stream` and 
 | Tool | Parameters | What it does | Who calls LLM? |
 |---|---|---|---|
 | `synthadoc_search` | `terms: str` | BM25 keyword search — returns ranked titles, slugs, and snippets | Claude |
-| `synthadoc_read_page` | `slug: str` | Read a page's full content, status, type, and tags | Claude |
+| `synthadoc_read_page` | `slug: str` | Read a page's full content, status, type, tags, adversarial warnings, and source citations | Claude |
+| `synthadoc_list_pages` | `status?: str` (default `"all"`) | List all pages with title, status, type, and `has_sources` flag; filterable by lifecycle state | Neither |
 | `synthadoc_write_page` | `slug: str`, `content: str`, `title?: str` | Update page content (clears contradiction note, bumps epoch) | Neither |
 | `synthadoc_status` | *(none)* | Get wiki page count and path | Neither |
 | `synthadoc_jobs` | `status?: str` (`all`/`pending`/`running`/`completed`/`failed`/`skipped`/`cancelled`/`dead`) | List recent jobs, optionally filtered by status | Neither |
 | `synthadoc_lifecycle` | `slug: str`, `to_state: str`, `reason: str` | Transition a page's lifecycle state; writes an immutable audit record | Neither |
+| `synthadoc_lint_report` | *(none)* | Instant wiki health read — contradicted pages, orphans, adversarial warning counts; **no job, no LLM** | Neither |
+| `synthadoc_context` | `goal: str`, `token_budget?: int` (default `10000`) | Build a token-budgeted context pack — ranked excerpts that fit within the budget; omitted slugs listed separately | Neither |
+| `synthadoc_export` | `format?: str` (default `"okf"`), `output_path?: str` (okf defaults to `<wiki>/exports/<name>-okf-<date>/`), `status_filter?: str` (default `"all"`) | Export the wiki. okf writes a folder to disk and tells you where; other formats return content inline or to a file. Formats: `okf`, `llms.txt`, `llms-full.txt`, `json`, `graphml` | Neither |
 | `synthadoc_ingest` | `source: str` | Enqueue a URL or file for ingest — returns a job ID | Synthadoc |
-| `synthadoc_lint` | `scope?: str` (default `"all"`) | Run lint checks — returns contradiction count and orphan list | Synthadoc |
+| `synthadoc_lint` | `scope?: str` (default `"all"`) | Enqueue a full LLM lint analysis — returns a job ID; use `synthadoc_jobs` to poll | Synthadoc |
 
 Valid `to_state` values for `synthadoc_lifecycle`: `active`, `draft`, `stale`, `contradicted`, `archived`.
+
+> **lint vs. lint_report:** Use `synthadoc_lint_report` to check current wiki health instantly (no tokens spent). Use `synthadoc_lint` when you want to run fresh LLM analysis — it enqueues a background job and returns a job ID.
+
+> **Tuning the context budget:** `synthadoc_context` defaults to 10 000 tokens per pack. Pass `token_budget` in the tool call to override for a single request (e.g. `token_budget: 20000`). To change the project-wide default, add this to `.synthadoc/config.toml`:
+> ```toml
+> [query]
+> context_token_budget = 20000
+> ```
 
 For architecture details and the brain/memory use case framing, see [docs/design.md — MCP Server](design.md#27-mcp-server).
 
