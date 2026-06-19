@@ -461,7 +461,7 @@ synthadoc serve
 
 `wiki/dashboard.md` is also created during install (a static template — not LLM-generated). `ROUTING.md` is optional and generated separately via `synthadoc routing init` after pages accumulate.
 
-Then open the wiki folder in Obsidian as a new vault, install the Dataview community plugin, and copy the Synthadoc plugin files with one command (requires the wiki to be registered via `synthadoc install` first):
+Then open the wiki folder in Obsidian as a new vault, install the Dataview community plugin, and copy the Synthadoc plugin files with one command:
 
 ```bash
 synthadoc plugin install market-condition-canada
