@@ -591,13 +591,10 @@ For the full configuration reference — layer precedence, global vs. per-projec
 ### Setting up a wiki
 
 ```bash
-# Create a new empty wiki (LLM scaffold runs automatically if API key is set)
+# Create a new wiki (LLM scaffold runs automatically; port is auto-assigned to avoid conflicts)
 synthadoc install my-wiki --target ~/wikis --domain "Machine Learning"
 
-# Port is auto-assigned (checks all existing wikis to avoid conflicts, even when stopped)
-synthadoc install my-wiki --target ~/wikis --domain "Machine Learning"
-
-# Or pin a specific port manually
+# Pin a specific port manually
 synthadoc install my-wiki --target ~/wikis --domain "Machine Learning" --port 7071
 
 # Install the demo (includes pre-built pages and raw sources — no LLM call needed)
