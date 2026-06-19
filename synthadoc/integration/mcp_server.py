@@ -37,9 +37,30 @@ def create_mcp_server(orchestrator):
 
     @mcp.tool()
     async def synthadoc_lint(scope: str = "all") -> dict:
-        """Enqueue a lint job. Returns a job_id — use synthadoc_jobs to check progress and results."""
+        """Enqueue a lint job (LLM analysis). Returns a job_id — poll with synthadoc_jobs.
+
+        scope: "all" to lint the whole wiki, or a page slug to lint one page.
+        Do NOT pass "report" here — use synthadoc_lint_report for a zero-cost status read.
+        """
         job_id = await orchestrator.lint(scope=scope)
         return {"job_id": job_id, "scope": scope}
+
+    @mcp.tool()
+    async def synthadoc_lint_report() -> dict:
+        """Read the current lint state: contradicted pages, orphans, adversarial warnings.
+
+        Zero cost — reads wiki files directly, no LLM call, no job enqueued.
+        Use this to check wiki health. Use synthadoc_lint to run a fresh analysis.
+        """
+        from synthadoc.agents.lint_agent import read_current_lint_state
+        state = read_current_lint_state(orchestrator._store)
+        adv_count = sum(len(p["warnings"]) for p in state.adv_pages)
+        return {
+            "contradicted": state.contradicted,
+            "orphans": state.orphans,
+            "adversarial_warnings": adv_count,
+            "adversarial_pages": [p["slug"] for p in state.adv_pages],
+        }
 
     @mcp.tool()
     async def synthadoc_search(terms: str) -> dict:

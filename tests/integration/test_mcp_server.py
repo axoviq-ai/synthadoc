@@ -23,7 +23,7 @@ def test_mcp_server_has_required_tools(mock_orch):
     mcp = create_mcp_server(mock_orch)
     tool_names = [t.name for t in mcp._tool_manager.list_tools()]
     for expected in (
-        "synthadoc_ingest", "synthadoc_lint",
+        "synthadoc_ingest", "synthadoc_lint", "synthadoc_lint_report",
         "synthadoc_search", "synthadoc_status",
         "synthadoc_read_page", "synthadoc_write_page", "synthadoc_lifecycle", "synthadoc_jobs",
     ):
@@ -55,6 +55,26 @@ async def test_mcp_lint_tool_returns_result(mock_orch):
         )
     assert result["job_id"] == "job-lint-abc"
     assert result["scope"] == "all"
+
+
+@pytest.mark.asyncio
+async def test_mcp_lint_report_tool_returns_state(mock_orch):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.agents.lint_agent import LintStateSummary
+    mcp = create_mcp_server(mock_orch)
+    fake_state = LintStateSummary(
+        contradicted=["page-a"],
+        orphans=["page-b"],
+        adv_pages=[{"slug": "page-c", "warnings": [{"msg": "w1"}, {"msg": "w2"}]}],
+    )
+    with patch("synthadoc.agents.lint_agent.read_current_lint_state", return_value=fake_state):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_lint_report", {}, convert_result=False
+        )
+    assert result["contradicted"] == ["page-a"]
+    assert result["orphans"] == ["page-b"]
+    assert result["adversarial_warnings"] == 2
+    assert result["adversarial_pages"] == ["page-c"]
 
 
 @pytest.mark.asyncio
