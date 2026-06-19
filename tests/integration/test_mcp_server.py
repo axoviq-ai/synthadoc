@@ -133,6 +133,7 @@ async def test_mcp_read_page_returns_content(mock_orch):
     assert result["status"] == "active"
     assert result["type"] == "person"
     assert "biography" in result["tags"]
+    assert result["lint_warnings"] == []
 
 
 @pytest.mark.asyncio

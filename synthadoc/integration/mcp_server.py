@@ -121,6 +121,7 @@ def create_mcp_server(orchestrator):
             "status": page.status,
             "type": page.type or "",
             "tags": page.tags,
+            "lint_warnings": list(page.lint_warnings) if page.lint_warnings else [],
         }
 
     @mcp.tool()
