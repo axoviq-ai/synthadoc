@@ -2494,19 +2494,25 @@ For Claude Desktop, `mcpServers` key names must use underscores (e.g. `synthadoc
 | Tool | Parameters | Returns | LLM cost |
 |---|---|---|---|
 | `synthadoc_search` | `terms: str` | `{results: [{slug, score, title, snippet}]}` | Claude only |
-| `synthadoc_read_page` | `slug: str` | `{slug, title, content, status, type, tags}` or `{error, slug}` | Claude only |
+| `synthadoc_read_page` | `slug: str` | `{slug, title, content, status, type, tags, lint_warnings, sources}` or `{error, slug}` | Claude only |
+| `synthadoc_list_pages` | `status?: str` (default `"all"`) | `{pages: [{slug, title, status, type, has_sources}], total: int}` | Neither |
 | `synthadoc_write_page` | `slug: str`, `content: str`, `title?: str` | `{slug, title, status}` or `{error, slug}` | Neither |
 | `synthadoc_status` | *(none)* | `{pages: int, wiki: str}` | Neither |
 | `synthadoc_jobs` | `status?: str` (default `"all"`) | `{jobs: [{id, operation, status, created, source?, error?}]}` | Neither |
 | `synthadoc_lifecycle` | `slug: str`, `to_state: str`, `reason: str` | `{slug, from_state, to_state, reason, timestamp}` or `{error}` | Neither |
+| `synthadoc_lint_report` | *(none)* | `{contradicted: [str], orphans: [str], adversarial_warnings: int, adversarial_pages: [str]}` | Neither |
 | `synthadoc_ingest` | `source: str` | `{job_id, source}` | Synthadoc |
-| `synthadoc_lint` | `scope?: str` (default `"all"`) | `{contradictions_found: int, orphans: [str]}` | Synthadoc |
+| `synthadoc_lint` | `scope?: str` (default `"all"`) | `{job_id, scope}` | Synthadoc |
 
 Valid `to_state` values for `synthadoc_lifecycle`: `active`, `draft`, `stale`, `contradicted`, `archived`.
 
-Valid `status` values for `synthadoc_jobs`: `all`, `pending`, `running`, `completed`, `failed`, `skipped`, `cancelled`, `dead`. `running` maps to the internal `in_progress` state.
+Valid `status` values for `synthadoc_jobs` and `synthadoc_list_pages`: `all`, `pending`, `running`, `completed`, `failed`, `skipped`, `cancelled`, `dead`. `running` maps to the internal `in_progress` state.
 
 `synthadoc_write_page` clears `contradiction_note` and bumps the wiki epoch (invalidating the query cache). It does not change `status` — use `synthadoc_lifecycle` to transition state after editing.
+
+`synthadoc_lint` enqueues a background LLM analysis job; use `synthadoc_jobs` to poll progress. `synthadoc_lint_report` is the zero-cost alternative — reads current contradiction/orphan state from wiki files instantly, no job enqueued.
+
+`synthadoc_read_page` returns `sources` as `[{file, ingested}]` and `lint_warnings` as a list of adversarial warning strings — empty list when clean.
 
 ### Brain/memory architecture
 
@@ -2675,7 +2681,7 @@ Default (no flag): both MCP and HTTP start together on the same port.
 
 ### v0.9.0 (Community Edition)
 
-- **MCP server — 8 tools** — Synthadoc exposes `synthadoc_search`, `synthadoc_read_page`, `synthadoc_write_page`, `synthadoc_status`, `synthadoc_jobs`, `synthadoc_lifecycle`, `synthadoc_ingest`, and `synthadoc_lint` via the Model Context Protocol. Mounted at `/mcp/sse` on the existing HTTP server (no extra port or process). Tools share the same Orchestrator singleton as the HTTP REST API.
+- **MCP server — 10 tools** — Synthadoc exposes `synthadoc_search`, `synthadoc_read_page`, `synthadoc_list_pages`, `synthadoc_write_page`, `synthadoc_status`, `synthadoc_jobs`, `synthadoc_lifecycle`, `synthadoc_lint_report`, `synthadoc_ingest`, and `synthadoc_lint` via the Model Context Protocol. Mounted at `/mcp/sse` on the existing HTTP server (no extra port or process). Tools share the same Orchestrator singleton as the HTTP REST API.
 - **`synthadoc_write_page`** — lifecycle-aware content editing: updates page body, clears `contradiction_note`, bumps the wiki epoch (cache invalidation). Proper MCP alternative to writing wiki files directly — every edit goes through `WikiStorage.write_page()` and is query-cache-coherent.
 - **Multi-wiki server naming** — FastMCP server name auto-set to `synthadoc-{wiki-name}` (e.g. `synthadoc-history-of-computing`). All tool descriptions prefixed with `Wiki: {wiki-name}.` at startup so Claude can route correctly when multiple Synthadoc servers are connected simultaneously.
 - **Transport support** — stdio (Claude Desktop), SSE via `--transport sse` (Claude Code CLI), HTTP/SSE direct connection (n8n, LangGraph, custom agents). Claude Desktop requires underscores in `mcpServers` key names (hyphens cause load failure).

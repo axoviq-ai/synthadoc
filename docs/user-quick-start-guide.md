@@ -2790,9 +2790,21 @@ You should receive `HTTP/1.1 200 OK` with `content-type: text/event-stream` and 
 | Example prompt | Tool used |
 |---|---|
 | "What's the status of my wiki?" | `synthadoc_status` |
+| "List all pages in the wiki" | `synthadoc_list_pages` |
+| "Show me only the active pages" | `synthadoc_list_pages` (status filter) |
 | "Search for Grace Hopper" | `synthadoc_search` |
 | "Read the grace-hopper page" | `synthadoc_read_page` |
 | "What does my wiki say about quantum error correction?" | `synthadoc_search` + `synthadoc_read_page` |
+| "Show me the adversarial warnings for the early-neural-networks page" | `synthadoc_read_page` |
+| "Which pages have citations? Show me what they are." | `synthadoc_list_pages` + `synthadoc_read_page` |
+
+**Wiki health — zero cost, instant:**
+
+| Example prompt | Tool used |
+|---|---|
+| "Which pages are contradicted?" | `synthadoc_lint_report` |
+| "Are there any orphan pages?" | `synthadoc_lint_report` |
+| "Give me a wiki health summary" | `synthadoc_lint_report` |
 
 **Synthadoc operations** — Claude manages the wiki on your behalf:
 
@@ -2801,7 +2813,7 @@ You should receive `HTTP/1.1 200 OK` with `content-type: text/event-stream` and 
 | "List recent jobs" | `synthadoc_jobs` |
 | "Show me any failed or skipped jobs" | `synthadoc_jobs` |
 | "Ingest this URL: https://example.com/paper" | `synthadoc_ingest` |
-| "Run a lint check on the wiki" | `synthadoc_lint` |
+| "Run a full lint check on the wiki" | `synthadoc_lint` |
 | "Mark the grace-hopper page as stale — needs review" | `synthadoc_lifecycle` |
 
 ---
@@ -2813,15 +2825,19 @@ You should receive `HTTP/1.1 200 OK` with `content-type: text/event-stream` and 
 | Tool | Parameters | What it does | Who calls LLM? |
 |---|---|---|---|
 | `synthadoc_search` | `terms: str` | BM25 keyword search — returns ranked titles, slugs, and snippets | Claude |
-| `synthadoc_read_page` | `slug: str` | Read a page's full content, status, type, and tags | Claude |
+| `synthadoc_read_page` | `slug: str` | Read a page's full content, status, type, tags, adversarial warnings, and source citations | Claude |
+| `synthadoc_list_pages` | `status?: str` (default `"all"`) | List all pages with title, status, type, and `has_sources` flag; filterable by lifecycle state | Neither |
 | `synthadoc_write_page` | `slug: str`, `content: str`, `title?: str` | Update page content (clears contradiction note, bumps epoch) | Neither |
 | `synthadoc_status` | *(none)* | Get wiki page count and path | Neither |
 | `synthadoc_jobs` | `status?: str` (`all`/`pending`/`running`/`completed`/`failed`/`skipped`/`cancelled`/`dead`) | List recent jobs, optionally filtered by status | Neither |
 | `synthadoc_lifecycle` | `slug: str`, `to_state: str`, `reason: str` | Transition a page's lifecycle state; writes an immutable audit record | Neither |
+| `synthadoc_lint_report` | *(none)* | Instant wiki health read — contradicted pages, orphans, adversarial warning counts; **no job, no LLM** | Neither |
 | `synthadoc_ingest` | `source: str` | Enqueue a URL or file for ingest — returns a job ID | Synthadoc |
-| `synthadoc_lint` | `scope?: str` (default `"all"`) | Run lint checks — returns contradiction count and orphan list | Synthadoc |
+| `synthadoc_lint` | `scope?: str` (default `"all"`) | Enqueue a full LLM lint analysis — returns a job ID; use `synthadoc_jobs` to poll | Synthadoc |
 
 Valid `to_state` values for `synthadoc_lifecycle`: `active`, `draft`, `stale`, `contradicted`, `archived`.
+
+> **lint vs. lint_report:** Use `synthadoc_lint_report` to check current wiki health instantly (no tokens spent). Use `synthadoc_lint` when you want to run fresh LLM analysis — it enqueues a background job and returns a job ID.
 
 For architecture details and the brain/memory use case framing, see [docs/design.md — MCP Server](design.md#27-mcp-server).
 
