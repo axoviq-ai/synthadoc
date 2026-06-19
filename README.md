@@ -477,7 +477,7 @@ The Quick-Start Guide covers the full Obsidian setup in detail — see [docs/use
 **Local Web UI** — once the server is running, you can also query the wiki from your browser without Obsidian:
 
 ```bash
-synthadoc web -w market-condition-canada
+synthadoc web
 ```
 
 This opens a local chat interface at `http://localhost:{port}/app`. The Web UI is local-only and is **not accessible from the network** — authentication and authorisation are not yet available in the Community Edition.
