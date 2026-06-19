@@ -37,6 +37,7 @@ class TriggerSource:
     INGEST      = "ingest"
     LINT        = "lint"
     USER        = "user"
+    MCP         = "mcp"
     MANUAL_EDIT = "manual_edit"
 
 

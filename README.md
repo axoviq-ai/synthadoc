@@ -14,7 +14,7 @@
       '-+###############+-'
 
        S Y N T H A D O C
-    Community Edition  v0.8.0
+    Community Edition  v0.9.0
   ────────────────────────────────
   Domain-agnostic LLM wiki engine
 ```
@@ -28,9 +28,9 @@
 [![CLI](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.cli_commands&label=CLI%20commands&color=darkblue)](https://github.com/axoviq-ai/synthadoc)
 [![Obsidian](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.obsidian_commands&label=Obsidian%20commands&color=blueviolet)](https://github.com/axoviq-ai/synthadoc/tree/main/obsidian-plugin)
 [![MCP](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.mcp_tools&label=MCP%20tools&color=orange)](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#appendix-i--connect-claude-via-mcp)
-[![Version](https://img.shields.io/badge/Community%20Edition-v0.8.0-brightgreen.svg)](https://github.com/axoviq-ai/synthadoc)
+[![Version](https://img.shields.io/badge/Community%20Edition-v0.9.0-brightgreen.svg)](https://github.com/axoviq-ai/synthadoc)
 
-**Document version: v0.8.0**
+**Document version: v0.9.0**
 
 **Engineered for solo users and enterprises alike, providing a domain-specific knowledge base that scales seamlessly while maintaining accuracy through autonomous self-optimization.**
 
@@ -196,7 +196,7 @@ As the wiki accumulates pages the `index.md` table of contents, domain scope (`p
 | Streaming query output       | **Yes** (token-by-token; `--no-stream` for pipe-friendly blocking mode) | No          | No         | No        |
 | Query result cache           | **Yes** (cache key = question + wiki version; auto-invalidates on ingest or lifecycle change; `--no-cache` to bypass) | No          | No         | No        |
 | Browser-based chat UI        | **Yes** (`synthadoc web` — session-aware, streaming, citations, knowledge-gap callouts, multi-turn conversation with follow-up rewriting and clarify prompts) | No          | No         | No        |
-| MCP server for agent integration | **Yes** (8 tools; Claude Desktop via stdio, Claude Code via SSE, n8n/LangGraph via HTTP/SSE; brain+memory architecture — Claude reasons and edits, Synthadoc persists with immutable audit trail; no double-LLM cost for read operations) — [design](docs/design.md#27-mcp-server) · [quick-start](docs/user-quick-start-guide.md#appendix-i--connect-claude-via-mcp) | No          | No         | No        |
+| MCP server for agent integration | **Yes** (12 tools; Claude Desktop via stdio, Claude Code via SSE, n8n/LangGraph via HTTP/SSE; brain+memory architecture — Claude reasons and edits, Synthadoc persists with immutable audit trail; no double-LLM cost for read operations) — [design](docs/design.md#27-mcp-server) · [quick-start](docs/user-quick-start-guide.md#appendix-i--connect-claude-via-mcp) | No          | No         | No        |
 
 ### Key differentiators vs. RAG
 
@@ -261,7 +261,7 @@ Get a free key at [tavily.com](https://tavily.com). Without it, web search jobs 
 ### Step 1 — Clone and install
 
 ```bash
-git clone https://github.com/paulmchen/synthadoc.git
+git clone https://github.com/axoviq-ai/synthadoc.git
 cd synthadoc
 pip install -e ".[dev]"
 ```
@@ -451,33 +451,36 @@ synthadoc use market-condition-canada   # set as the default wiki — no -w need
 synthadoc serve
 ```
 
-`--domain` is a free-text description of the subject area — the LLM uses it to generate four domain-aware starter files via scaffold:
-
+`--domain` is a free-text description of the subject area — the LLM uses it to generate three domain-aware starter files via scaffold:
 
 | File                | Purpose                                                                     |
 | ------------------- | --------------------------------------------------------------------------- |
-| `wiki/index.md`     | Table of contents — domain-relevant categories with`[[wikilinks]]`         |
+| `wiki/index.md`     | Table of contents — domain-relevant categories with `[[wikilinks]]`        |
 | `wiki/purpose.md`   | Scope declaration — tells the ingest agent what belongs and what to ignore |
 | `AGENTS.md`         | LLM behaviour guidelines — tone, terminology, and synthesis style          |
-| `wiki/dashboard.md` | Live Dataview dashboard — orphan pages, contradictions, page count         |
 
-Then open the wiki folder in Obsidian as a new vault, install the Dataview community plugin, and copy the Synthadoc plugin files with one command (requires the wiki to be registered via `synthadoc install` first):
+`wiki/dashboard.md` is also created during install (a static template — not LLM-generated). `ROUTING.md` is optional and generated separately via `synthadoc routing init` after pages accumulate.
+
+Then copy the Synthadoc plugin files into the wiki with one command:
 
 ```bash
 synthadoc plugin install market-condition-canada
 ```
 
-This automatically writes the correct server URL into the plugin's `data.json` — no manual configuration in Obsidian settings is needed.
+This writes the plugin files and the correct server URL into `data.json`. Then open the wiki folder in Obsidian as a new vault and do two things in **Settings → Community Plugins**:
+
+1. **Enable Synthadoc** — toggle it on in the installed plugins list
+2. **Install and enable Dataview** — Browse → search "Dataview" → Install → Enable
 
 The Quick-Start Guide covers the full Obsidian setup in detail — see [docs/user-quick-start-guide.md](docs/user-quick-start-guide.md).
 
 **Local Web UI** — once the server is running, you can also query the wiki from your browser without Obsidian:
 
 ```bash
-synthadoc web -w market-condition-canada
+synthadoc web
 ```
 
-This opens a local chat interface at `http://localhost:{port}/app`. The Web UI is local-only and is **not accessible from the network** — authentication and authorisation are not yet available in the Community Edition.
+This opens a local chat interface at `http://localhost:{port}/app`. The Web UI is local-only and is **not accessible from the network** — authentication and authorisation are not configured by default in the Community Edition.
 
 **Recommended growth loop:**
 
@@ -533,7 +536,14 @@ From this point, queries automatically scope to the 1–2 most relevant topic br
 synthadoc context build "Toronto GTA real estate market" --tokens 4000
 ```
 
-Returns ranked page excerpts with relevance scores, confidence levels, and source paths — no synthesis. The `POST /context/build` REST endpoint and MCP tool call make this callable from any agent pipeline. See [docs/design.md — Context packs](docs/design.md#context-packs) for the knowledge backend pattern.
+Returns ranked page excerpts with relevance scores, confidence levels, and source paths — no synthesis. The `POST /context/build` REST endpoint and `synthadoc_context` MCP tool make this callable from any agent pipeline. To connect Claude Code to your wiki's MCP server:
+
+```bash
+# Replace 7070 with the port shown when you ran synthadoc serve
+claude mcp add --transport sse synthadoc-market-condition-canada http://127.0.0.1:7070/mcp/sse
+```
+
+Then ask Claude Code: *"Build a context pack on Toronto GTA real estate market"* and it will call `synthadoc_context` automatically. See [docs/design.md — Context packs](docs/design.md#context-packs) for the knowledge backend pattern.
 
 **7. Schedule recurring updates** — keep the wiki fresh and the routing table clean automatically:
 
@@ -581,13 +591,10 @@ For the full configuration reference — layer precedence, global vs. per-projec
 ### Setting up a wiki
 
 ```bash
-# Create a new empty wiki (LLM scaffold runs automatically if API key is set)
+# Create a new wiki (LLM scaffold runs automatically; port is auto-assigned to avoid conflicts)
 synthadoc install my-wiki --target ~/wikis --domain "Machine Learning"
 
-# Port is auto-assigned (checks all existing wikis to avoid conflicts, even when stopped)
-synthadoc install my-wiki --target ~/wikis --domain "Machine Learning"
-
-# Or pin a specific port manually
+# Pin a specific port manually
 synthadoc install my-wiki --target ~/wikis --domain "Machine Learning" --port 7071
 
 # Install the demo (includes pre-built pages and raw sources — no LLM call needed)
@@ -734,7 +741,7 @@ Query answers are **cached automatically** by question content and wiki version.
 synthadoc web -w my-wiki
 ```
 
-This opens your browser to a **local chat interface** at `http://localhost:{port}/app`. The Web UI is local-only and is **not accessible from the network** — authentication and authorisation are not yet available in the Community Edition.
+This opens your browser to a **local chat interface** at `http://localhost:{port}/app`. The Web UI is local-only and is **not accessible from the network** — authentication and authorisation are not configured by default in the Community Edition.
 
 The UI detects whether you are new to the wiki, exploring, or a returning user and shows contextual hint chips. Ask questions in the text box; answers stream in as the LLM generates them. Citations appear below each answer; knowledge-gap callouts suggest ingesting more content when the wiki lacks coverage.
 

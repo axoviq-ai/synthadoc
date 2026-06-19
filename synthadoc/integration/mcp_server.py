@@ -36,11 +36,113 @@ def create_mcp_server(orchestrator):
         return {"job_id": job_id, "source": source}
 
     @mcp.tool()
+    async def synthadoc_export(
+        format: str = "okf",
+        output_path: str = "",
+        status_filter: str = "all",
+    ) -> dict:
+        """Export the wiki to disk in a structured format.
+
+        format: "okf" (Open Knowledge Format — folder of Markdown files),
+                "llms.txt" (compact LLM-ready plain text),
+                "llms-full.txt" (full content), "json", "graphml".
+        output_path: directory (for okf) or file path (for other formats).
+                Optional — if omitted, okf defaults to
+                <wiki_root>/exports/<wiki_name>-okf-<date>/ and other formats
+                return content inline in the response.
+        status_filter: "all" (default), or a lifecycle state such as "active".
+
+        OKF returns: {"format", "output_path", "files_written": N, "pages": N}
+        Other formats with output_path: {"format", "output_path", "pages": N}
+        Other formats without output_path: {"format", "content": str, "pages": N}
+        """
+        from datetime import date
+        from synthadoc.agents.export_agent import ExportAgent, ExportOptions, EXPORT_FORMATS
+        if format not in EXPORT_FORMATS:
+            return {"error": f"unknown format {format!r}. Valid: {sorted(EXPORT_FORMATS)}"}
+
+        agent = ExportAgent(
+            store=orchestrator._store,
+            wiki_name=orchestrator._root.name,
+            audit_db_path=orchestrator._root / ".synthadoc" / "audit.db",
+            routing_path=orchestrator._root / "ROUTING.md",
+        )
+        opts = ExportOptions(format=format, status_filter=status_filter)
+        content = await agent.export(opts)
+        page_count = len(orchestrator._store.list_pages())
+
+        if format == "okf":
+            if output_path:
+                out = Path(output_path)
+            else:
+                out = orchestrator._root / "exports" / f"{orchestrator._root.name}-okf-{date.today()}"
+            out.mkdir(parents=True, exist_ok=True)
+            for rel_path, text in content.items():
+                target = out / rel_path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(text, encoding="utf-8")
+            return {"format": format, "output_path": str(out), "files_written": len(content), "pages": page_count}
+
+        if output_path:
+            out = Path(output_path)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(content if isinstance(content, str) else str(content), encoding="utf-8")
+            return {"format": format, "output_path": str(out), "pages": page_count}
+
+        return {"format": format, "content": content, "pages": page_count}
+
+    @mcp.tool()
+    async def synthadoc_context(goal: str, token_budget: int = 10000) -> dict:
+        """Build a token-budgeted context pack for a goal or question.
+
+        Ranks and selects the most relevant page excerpts that fit within
+        token_budget tokens (default: 10 000). Returns pages with slug, excerpt,
+        relevance, confidence, and estimated token count, plus omitted slugs that
+        exceeded the budget. Use this instead of search + multiple read_page calls
+        when you need a curated, budget-aware set of excerpts for synthesis.
+
+        To change the default permanently, set context_token_budget in config.toml:
+            [query]
+            context_token_budget = 20000
+        """
+        from synthadoc.agents.context_agent import ContextAgent
+        from synthadoc.providers import make_provider
+        budget = token_budget or orchestrator._cfg.query.context_token_budget
+        agent = ContextAgent(
+            provider=make_provider("query", orchestrator._cfg),
+            store=orchestrator._store,
+            search=orchestrator._search,
+            token_budget=budget,
+        )
+        pack = await agent.build(goal, token_budget=budget)
+        return pack.to_dict()
+
+    @mcp.tool()
     async def synthadoc_lint(scope: str = "all") -> dict:
-        """Run lint checks on the wiki."""
-        report = await orchestrator.lint(scope=scope)
-        return {"contradictions_found": report.contradictions_found,
-                "orphans": report.orphan_slugs}
+        """Enqueue a lint job (LLM analysis). Returns a job_id — poll with synthadoc_jobs.
+
+        scope: "all" to lint the whole wiki, or a page slug to lint one page.
+        Do NOT pass "report" here — use synthadoc_lint_report for a zero-cost status read.
+        """
+        job_id = await orchestrator.lint(scope=scope)
+        return {"job_id": job_id, "scope": scope}
+
+    @mcp.tool()
+    async def synthadoc_lint_report() -> dict:
+        """Read the current lint state: contradicted pages, orphans, adversarial warnings.
+
+        Zero cost — reads wiki files directly, no LLM call, no job enqueued.
+        Use this to check wiki health. Use synthadoc_lint to run a fresh analysis.
+        """
+        from synthadoc.agents.lint_agent import read_current_lint_state
+        state = read_current_lint_state(orchestrator._store)
+        adv_count = sum(len(p["warnings"]) for p in state.adv_pages)
+        return {
+            "contradicted": state.contradicted,
+            "orphans": state.orphans,
+            "adversarial_warnings": adv_count,
+            "adversarial_pages": [p["slug"] for p in state.adv_pages],
+        }
 
     @mcp.tool()
     async def synthadoc_search(terms: str) -> dict:
@@ -64,6 +166,31 @@ def create_mcp_server(orchestrator):
             "pages": len(orchestrator._store.list_pages()),
             "wiki": str(orchestrator._root),
         }
+
+    @mcp.tool()
+    async def synthadoc_list_pages(status: str = "all") -> dict:
+        """List all wiki pages with title, status, and type.
+
+        status: filter by lifecycle state — "all" (default), "active", "draft",
+        "contradicted", "stale", or "archived".
+        Use synthadoc_read_page to get full content and sources for a specific page.
+        """
+        slugs = orchestrator._store.list_pages()
+        pages = []
+        for slug in slugs:
+            page = orchestrator._store.read_page(slug)
+            if page is None:
+                continue
+            if status != "all" and page.status != status:
+                continue
+            pages.append({
+                "slug": slug,
+                "title": page.title,
+                "status": page.status,
+                "type": page.type or "",
+                "has_sources": bool(page.sources),
+            })
+        return {"pages": pages, "total": len(pages)}
 
     @mcp.tool()
     async def synthadoc_write_page(slug: str, content: str, title: str = "") -> dict:
@@ -101,6 +228,8 @@ def create_mcp_server(orchestrator):
             "status": page.status,
             "type": page.type or "",
             "tags": page.tags,
+            "lint_warnings": list(page.lint_warnings) if page.lint_warnings else [],
+            "sources": [{"file": s.file, "ingested": s.ingested} for s in (page.sources or [])],
         }
 
     @mcp.tool()
@@ -124,9 +253,9 @@ def create_mcp_server(orchestrator):
         from_state = page.status
         page.status = to_state
         orchestrator._store.write_page(slug, page)
-        await orchestrator._audit.set_page_state(slug, to_state, TriggerSource.USER)
+        await orchestrator._audit.set_page_state(slug, to_state, TriggerSource.MCP)
         await orchestrator._audit.record_lifecycle_event(
-            slug, from_state, to_state, reason, TriggerSource.USER
+            slug, from_state, to_state, reason, TriggerSource.MCP
         )
         orchestrator._bump_epoch()
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

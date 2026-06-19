@@ -23,9 +23,10 @@ def test_mcp_server_has_required_tools(mock_orch):
     mcp = create_mcp_server(mock_orch)
     tool_names = [t.name for t in mcp._tool_manager.list_tools()]
     for expected in (
-        "synthadoc_ingest", "synthadoc_lint",
-        "synthadoc_search", "synthadoc_status",
+        "synthadoc_ingest", "synthadoc_lint", "synthadoc_lint_report",
+        "synthadoc_search", "synthadoc_status", "synthadoc_list_pages",
         "synthadoc_read_page", "synthadoc_write_page", "synthadoc_lifecycle", "synthadoc_jobs",
+        "synthadoc_context", "synthadoc_export",
     ):
         assert expected in tool_names
     assert "synthadoc_query" not in tool_names
@@ -48,16 +49,33 @@ async def test_mcp_ingest_tool_returns_job_id(mock_orch):
 async def test_mcp_lint_tool_returns_result(mock_orch):
     from synthadoc.integration.mcp_server import create_mcp_server
     mcp = create_mcp_server(mock_orch)
-    mock_report = MagicMock()
-    mock_report.contradictions_found = 2
-    mock_report.orphan_slugs = ["orphan-page"]
     with patch("synthadoc.core.orchestrator.Orchestrator.lint",
-               new=AsyncMock(return_value=mock_report)):
+               new=AsyncMock(return_value="job-lint-abc")):
         result = await mcp._tool_manager.call_tool(
             "synthadoc_lint", {"scope": "all"}, convert_result=False
         )
-    assert result["contradictions_found"] == 2
-    assert "orphan-page" in result["orphans"]
+    assert result["job_id"] == "job-lint-abc"
+    assert result["scope"] == "all"
+
+
+@pytest.mark.asyncio
+async def test_mcp_lint_report_tool_returns_state(mock_orch):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.agents.lint_agent import LintStateSummary
+    mcp = create_mcp_server(mock_orch)
+    fake_state = LintStateSummary(
+        contradicted=["page-a"],
+        orphans=["page-b"],
+        adv_pages=[{"slug": "page-c", "warnings": [{"msg": "w1"}, {"msg": "w2"}]}],
+    )
+    with patch("synthadoc.agents.lint_agent.read_current_lint_state", return_value=fake_state):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_lint_report", {}, convert_result=False
+        )
+    assert result["contradicted"] == ["page-a"]
+    assert result["orphans"] == ["page-b"]
+    assert result["adversarial_warnings"] == 2
+    assert result["adversarial_pages"] == ["page-c"]
 
 
 @pytest.mark.asyncio
@@ -116,6 +134,166 @@ async def test_mcp_read_page_returns_content(mock_orch):
     assert result["status"] == "active"
     assert result["type"] == "person"
     assert "biography" in result["tags"]
+    assert result["lint_warnings"] == []
+    assert result["sources"] == []
+
+
+@pytest.mark.asyncio
+async def test_mcp_read_page_includes_sources(mock_orch):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.storage.wiki import WikiPage, SourceRef
+    mcp = create_mcp_server(mock_orch)
+    fake_page = WikiPage(
+        title="Backprop",
+        tags=[],
+        content="Backpropagation content.",
+        status="active",
+        confidence="high",
+        sources=[SourceRef(file="backprop.pdf", hash="abc", size=100, ingested="2026-06-01")],
+    )
+    with patch("synthadoc.storage.wiki.WikiStorage.read_page", return_value=fake_page):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_read_page", {"slug": "backprop"}, convert_result=False
+        )
+    assert len(result["sources"]) == 1
+    assert result["sources"][0]["file"] == "backprop.pdf"
+    assert result["sources"][0]["ingested"] == "2026-06-01"
+
+
+@pytest.mark.asyncio
+async def test_mcp_list_pages_returns_all(mock_orch):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.storage.wiki import WikiPage, SourceRef
+    mcp = create_mcp_server(mock_orch)
+    pages = {
+        "page-a": WikiPage(title="Page A", tags=[], content="", status="active",
+                           confidence="high", sources=[SourceRef("a.pdf","h",1,"2026-01-01")]),
+        "page-b": WikiPage(title="Page B", tags=[], content="", status="draft",
+                           confidence="low", sources=[]),
+    }
+    with patch("synthadoc.storage.wiki.WikiStorage.list_pages", return_value=list(pages)), \
+         patch("synthadoc.storage.wiki.WikiStorage.read_page", side_effect=lambda s: pages.get(s)):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_list_pages", {}, convert_result=False
+        )
+    assert result["total"] == 2
+    slugs = [p["slug"] for p in result["pages"]]
+    assert "page-a" in slugs and "page-b" in slugs
+    page_a = next(p for p in result["pages"] if p["slug"] == "page-a")
+    assert page_a["has_sources"] is True
+    page_b = next(p for p in result["pages"] if p["slug"] == "page-b")
+    assert page_b["has_sources"] is False
+
+
+@pytest.mark.asyncio
+async def test_mcp_list_pages_filters_by_status(mock_orch):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.storage.wiki import WikiPage
+    mcp = create_mcp_server(mock_orch)
+    pages = {
+        "page-a": WikiPage(title="A", tags=[], content="", status="active",
+                           confidence="high", sources=[]),
+        "page-b": WikiPage(title="B", tags=[], content="", status="draft",
+                           confidence="low", sources=[]),
+    }
+    with patch("synthadoc.storage.wiki.WikiStorage.list_pages", return_value=list(pages)), \
+         patch("synthadoc.storage.wiki.WikiStorage.read_page", side_effect=lambda s: pages.get(s)):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_list_pages", {"status": "active"}, convert_result=False
+        )
+    assert result["total"] == 1
+    assert result["pages"][0]["slug"] == "page-a"
+
+
+@pytest.mark.asyncio
+async def test_mcp_context_tool_returns_pack(mock_orch):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.agents.context_agent import ContextPack, ContextPage
+    mcp = create_mcp_server(mock_orch)
+    fake_pack = ContextPack(
+        goal="early neural networks",
+        token_budget=4000,
+        tokens_used=120,
+        pages=[ContextPage(slug="perceptron", relevance=0.9, excerpt="The perceptron...",
+                           source="perceptron.pdf", confidence="high", tags=[], estimated_tokens=120)],
+        omitted=[],
+    )
+    with patch("synthadoc.providers.make_provider", return_value=MagicMock()), \
+         patch("synthadoc.agents.context_agent.ContextAgent.build",
+               new=AsyncMock(return_value=fake_pack)):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_context", {"goal": "early neural networks", "token_budget": 10000},
+            convert_result=False
+        )
+    assert result["goal"] == "early neural networks"
+    assert result["tokens_used"] == 120
+    assert len(result["pages"]) == 1
+    assert result["pages"][0]["slug"] == "perceptron"
+
+
+@pytest.mark.asyncio
+async def test_mcp_export_tool_okf_uses_default_path(mock_orch, tmp_path):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    mcp = create_mcp_server(mock_orch)
+    fake_files = {"index.md": "# Index", "wiki/page.md": "Content."}
+    with patch("synthadoc.agents.export_agent.ExportAgent.export",
+               new=AsyncMock(return_value=fake_files)):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_export", {"format": "okf"},
+            convert_result=False
+        )
+    assert result["format"] == "okf"
+    assert "output_path" in result
+    assert "okf" in result["output_path"]
+    assert result["files_written"] == 2
+
+
+@pytest.mark.asyncio
+async def test_mcp_export_tool_okf_writes_folder(mock_orch, tmp_path):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    mcp = create_mcp_server(mock_orch)
+    fake_files = {
+        "index.md": "# Index",
+        "wiki/perceptron.md": "---\ntitle: Perceptron\n---\nContent.",
+    }
+    out_dir = str(tmp_path / "okf-export")
+    with patch("synthadoc.agents.export_agent.ExportAgent.export",
+               new=AsyncMock(return_value=fake_files)):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_export", {"format": "okf", "output_path": out_dir},
+            convert_result=False
+        )
+    assert result["format"] == "okf"
+    assert result["files_written"] == 2
+    assert (tmp_path / "okf-export" / "index.md").exists()
+    assert (tmp_path / "okf-export" / "wiki" / "perceptron.md").exists()
+
+
+@pytest.mark.asyncio
+async def test_mcp_export_tool_llms_txt_inline(mock_orch):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    mcp = create_mcp_server(mock_orch)
+    with patch("synthadoc.agents.export_agent.ExportAgent.export",
+               new=AsyncMock(return_value="# Wiki\nPage content.")):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_export", {"format": "llms.txt"},
+            convert_result=False
+        )
+    assert result["format"] == "llms.txt"
+    assert "content" in result
+    assert "Wiki" in result["content"]
+
+
+@pytest.mark.asyncio
+async def test_mcp_export_tool_invalid_format_returns_error(mock_orch):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    mcp = create_mcp_server(mock_orch)
+    result = await mcp._tool_manager.call_tool(
+        "synthadoc_export", {"format": "unsupported"},
+        convert_result=False
+    )
+    assert "error" in result
+    assert "unsupported" in result["error"]
 
 
 @pytest.mark.asyncio
