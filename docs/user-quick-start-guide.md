@@ -858,25 +858,41 @@ synthadoc ingest "search for: Ada Lovelace contributions to computing history"
 
 With Synthadoc connected as an MCP server, Claude can fix orphans autonomously — it reads the wiki, finds a relevant page to add the link to, writes the change, and re-runs lint to confirm the fix.
 
-Ask Claude Code:
+**Step 1 — Find orphans:**
 
-> **"Are there any orphan pages in my wiki? If so, fix them by adding wikilinks from related pages."**
+> "Are there any orphan pages in my history-of-computing wiki?"
 
-Claude will:
+Claude calls `synthadoc_lint_report` for the authoritative orphan list (instant, no LLM cost). For the demo wiki this returns `mechanical-computing` among the orphans.
 
-1. Call `synthadoc_lint_report` — identify orphaned slugs
-2. Call `synthadoc_search` — find pages topically related to each orphan
-3. Call `synthadoc_read_page` — read those candidate pages
-4. Call `synthadoc_write_page` — add `[[wikilink]]` references to the orphan
-5. Call `synthadoc_lint` — re-run lint to confirm the orphan is resolved
+**Step 2 — Fix the orphan:**
 
-Alternatively, to archive an orphan that is genuinely out of scope:
+> "The mechanical-computing page is an orphan. Find the most relevant page in the wiki and add a wikilink to it."
 
-> **"Archive the ada-lovelace page — it's an orphan and not relevant to this wiki."**
+Claude reads `mechanical-computing`, notices it already contains `[[von-neumann-architecture]]` in its body, and recognises this as a natural reciprocal — `von-neumann-architecture` should link back. It adds:
 
-Claude calls `synthadoc_lifecycle` with `to_state="archived"` and a reason, writing a permanent audit record. A follow-up `synthadoc_lint_report` confirms it no longer appears as an orphan.
+```
+The concept of a general-purpose programmable machine with distinct memory,
+arithmetic, and control components was anticipated by Charles Babbage's
+Analytical Engine designs of the 1830s — see [[mechanical-computing]] for
+the pre-electronic tradition that foreshadowed this architecture by over a
+century.
+```
 
-> **Why this works:** `synthadoc_lint_report` returns the `orphans` list directly. `synthadoc_write_page` edits page content so Claude can insert a `[[ada-lovelace]]` wikilink into a related page. The next lint run picks up the new inbound link and clears the orphan flag.
+Claude calls `synthadoc_write_page` to insert this into `von-neumann-architecture`.
+
+**Step 3 — Verify:**
+
+> "Re-run lint report and confirm mechanical-computing is no longer an orphan."
+
+Claude calls `synthadoc_lint_report` again — `mechanical-computing` is gone from the orphan list.
+
+> **Why Claude chose von-neumann-architecture:** `mechanical-computing` already contained `[[von-neumann-architecture]]` — making it a natural reciprocal link rather than a forced one. Claude read the page content before deciding, not just the slug names.
+
+To archive an orphan that is genuinely out of scope instead:
+
+> "Archive the mechanical-computing page — it's an orphan and not relevant to this wiki."
+
+Claude calls `synthadoc_lifecycle` with `to_state="archived"` and a reason, writing a permanent audit record.
 
 ### Deleting a page and cleaning up its references
 
