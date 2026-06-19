@@ -749,6 +749,8 @@ Or from Obsidian: Command Palette → `Synthadoc: Lint: run with auto-resolve`.
 
 ### Option 3 — Resolve via MCP (Claude Desktop or Claude Code)
 
+> **Prerequisite:** Synthadoc must be registered as an MCP server in Claude. See [Appendix I — Connect Claude via MCP](#appendix-i--connect-claude-via-mcp) for the `claude mcp add` command and Claude Desktop config.
+
 With Synthadoc connected as an MCP server, Claude can resolve contradictions using its own LLM — the brain/memory architecture in action. Claude reasons about the conflict, writes the resolution, then commits the lifecycle transition with a proper audit trail.
 
 Ask Claude in a single prompt:
@@ -855,6 +857,8 @@ synthadoc ingest "search for: Ada Lovelace contributions to computing history"
 ```
 
 ### Option 3 — Resolve via MCP (Claude Code)
+
+> **Prerequisite:** Synthadoc must be registered as an MCP server in Claude Code. See [Appendix I — Connect Claude via MCP](#appendix-i--connect-claude-via-mcp) for the `claude mcp add` command.
 
 With Synthadoc connected as an MCP server, Claude can fix orphans autonomously — it reads the wiki, finds a relevant page to add the link to, writes the change, and re-runs lint to confirm the fix.
 
