@@ -261,7 +261,7 @@ Get a free key at [tavily.com](https://tavily.com). Without it, web search jobs 
 ### Step 1 — Clone and install
 
 ```bash
-git clone https://github.com/paulmchen/synthadoc.git
+git clone https://github.com/axoviq-ai/synthadoc.git
 cd synthadoc
 pip install -e ".[dev]"
 ```
