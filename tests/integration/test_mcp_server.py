@@ -24,7 +24,7 @@ def test_mcp_server_has_required_tools(mock_orch):
     tool_names = [t.name for t in mcp._tool_manager.list_tools()]
     for expected in (
         "synthadoc_ingest", "synthadoc_lint", "synthadoc_lint_report",
-        "synthadoc_search", "synthadoc_status",
+        "synthadoc_search", "synthadoc_status", "synthadoc_list_pages",
         "synthadoc_read_page", "synthadoc_write_page", "synthadoc_lifecycle", "synthadoc_jobs",
     ):
         assert expected in tool_names
@@ -134,6 +134,74 @@ async def test_mcp_read_page_returns_content(mock_orch):
     assert result["type"] == "person"
     assert "biography" in result["tags"]
     assert result["lint_warnings"] == []
+    assert result["sources"] == []
+
+
+@pytest.mark.asyncio
+async def test_mcp_read_page_includes_sources(mock_orch):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.storage.wiki import WikiPage, SourceRef
+    mcp = create_mcp_server(mock_orch)
+    fake_page = WikiPage(
+        title="Backprop",
+        tags=[],
+        content="Backpropagation content.",
+        status="active",
+        confidence="high",
+        sources=[SourceRef(file="backprop.pdf", hash="abc", size=100, ingested="2026-06-01")],
+    )
+    with patch("synthadoc.storage.wiki.WikiStorage.read_page", return_value=fake_page):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_read_page", {"slug": "backprop"}, convert_result=False
+        )
+    assert len(result["sources"]) == 1
+    assert result["sources"][0]["file"] == "backprop.pdf"
+    assert result["sources"][0]["ingested"] == "2026-06-01"
+
+
+@pytest.mark.asyncio
+async def test_mcp_list_pages_returns_all(mock_orch):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.storage.wiki import WikiPage, SourceRef
+    mcp = create_mcp_server(mock_orch)
+    pages = {
+        "page-a": WikiPage(title="Page A", tags=[], content="", status="active",
+                           confidence="high", sources=[SourceRef("a.pdf","h",1,"2026-01-01")]),
+        "page-b": WikiPage(title="Page B", tags=[], content="", status="draft",
+                           confidence="low", sources=[]),
+    }
+    with patch("synthadoc.storage.wiki.WikiStorage.list_pages", return_value=list(pages)), \
+         patch("synthadoc.storage.wiki.WikiStorage.read_page", side_effect=lambda s: pages.get(s)):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_list_pages", {}, convert_result=False
+        )
+    assert result["total"] == 2
+    slugs = [p["slug"] for p in result["pages"]]
+    assert "page-a" in slugs and "page-b" in slugs
+    page_a = next(p for p in result["pages"] if p["slug"] == "page-a")
+    assert page_a["has_sources"] is True
+    page_b = next(p for p in result["pages"] if p["slug"] == "page-b")
+    assert page_b["has_sources"] is False
+
+
+@pytest.mark.asyncio
+async def test_mcp_list_pages_filters_by_status(mock_orch):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.storage.wiki import WikiPage
+    mcp = create_mcp_server(mock_orch)
+    pages = {
+        "page-a": WikiPage(title="A", tags=[], content="", status="active",
+                           confidence="high", sources=[]),
+        "page-b": WikiPage(title="B", tags=[], content="", status="draft",
+                           confidence="low", sources=[]),
+    }
+    with patch("synthadoc.storage.wiki.WikiStorage.list_pages", return_value=list(pages)), \
+         patch("synthadoc.storage.wiki.WikiStorage.read_page", side_effect=lambda s: pages.get(s)):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_list_pages", {"status": "active"}, convert_result=False
+        )
+    assert result["total"] == 1
+    assert result["pages"][0]["slug"] == "page-a"
 
 
 @pytest.mark.asyncio

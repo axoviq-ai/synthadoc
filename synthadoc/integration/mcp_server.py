@@ -86,6 +86,31 @@ def create_mcp_server(orchestrator):
         }
 
     @mcp.tool()
+    async def synthadoc_list_pages(status: str = "all") -> dict:
+        """List all wiki pages with title, status, and type.
+
+        status: filter by lifecycle state — "all" (default), "active", "draft",
+        "contradicted", "stale", or "archived".
+        Use synthadoc_read_page to get full content and sources for a specific page.
+        """
+        slugs = orchestrator._store.list_pages()
+        pages = []
+        for slug in slugs:
+            page = orchestrator._store.read_page(slug)
+            if page is None:
+                continue
+            if status != "all" and page.status != status:
+                continue
+            pages.append({
+                "slug": slug,
+                "title": page.title,
+                "status": page.status,
+                "type": page.type or "",
+                "has_sources": bool(page.sources),
+            })
+        return {"pages": pages, "total": len(pages)}
+
+    @mcp.tool()
     async def synthadoc_write_page(slug: str, content: str, title: str = "") -> dict:
         """Update the content of an existing wiki page.
 
@@ -122,6 +147,7 @@ def create_mcp_server(orchestrator):
             "type": page.type or "",
             "tags": page.tags,
             "lint_warnings": list(page.lint_warnings) if page.lint_warnings else [],
+            "sources": [{"file": s.file, "ingested": s.ingested} for s in (page.sources or [])],
         }
 
     @mcp.tool()
