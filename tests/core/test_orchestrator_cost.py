@@ -152,9 +152,12 @@ async def test_orchestrator_ingest_sets_nonzero_cost_for_known_model(tmp_wiki):
     cfg = _cfg("anthropic", "claude-haiku-4-5-20251001")
     orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
     await orch.init()
-    cost = await _run_and_capture_ingest_cost(orch, input_tokens=1000, output_tokens=500)
-    assert cost is not None, "queue.complete() must be called with cost_usd"
-    assert cost > 0.0, "Known paid model must produce non-zero ingest cost"
+    try:
+        cost = await _run_and_capture_ingest_cost(orch, input_tokens=1000, output_tokens=500)
+        assert cost is not None, "queue.complete() must be called with cost_usd"
+        assert cost > 0.0, "Known paid model must produce non-zero ingest cost"
+    finally:
+        await orch.close()
 
 
 @pytest.mark.asyncio
@@ -163,8 +166,11 @@ async def test_orchestrator_ingest_sets_zero_cost_for_ollama(tmp_wiki):
     cfg = _cfg("ollama", "llama3")
     orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
     await orch.init()
-    cost = await _run_and_capture_ingest_cost(orch, input_tokens=1000, output_tokens=500)
-    assert cost == 0.0, "Ollama must record $0.00 ingest cost"
+    try:
+        cost = await _run_and_capture_ingest_cost(orch, input_tokens=1000, output_tokens=500)
+        assert cost == 0.0, "Ollama must record $0.00 ingest cost"
+    finally:
+        await orch.close()
 
 
 @pytest.mark.asyncio
