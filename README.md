@@ -480,7 +480,7 @@ The Quick-Start Guide covers the full Obsidian setup in detail — see [docs/use
 synthadoc web
 ```
 
-This opens a local chat interface at `http://localhost:{port}/app`. The Web UI is local-only and is **not accessible from the network** — authentication and authorisation are not yet available in the Community Edition.
+This opens a local chat interface at `http://localhost:{port}/app`. The Web UI is local-only and is **not accessible from the network** — authentication and authorisation are not configured by default in the Community Edition.
 
 **Recommended growth loop:**
 
@@ -737,7 +737,7 @@ Query answers are **cached automatically** by question content and wiki version.
 synthadoc web -w my-wiki
 ```
 
-This opens your browser to a **local chat interface** at `http://localhost:{port}/app`. The Web UI is local-only and is **not accessible from the network** — authentication and authorisation are not yet available in the Community Edition.
+This opens your browser to a **local chat interface** at `http://localhost:{port}/app`. The Web UI is local-only and is **not accessible from the network** — authentication and authorisation are not configured by default in the Community Edition.
 
 The UI detects whether you are new to the wiki, exploring, or a returning user and shows contextual hint chips. Ask questions in the text box; answers stream in as the LLM generates them. Citations appear below each answer; knowledge-gap callouts suggest ingesting more content when the wiki lacks coverage.
 
