@@ -539,6 +539,7 @@ synthadoc context build "Toronto GTA real estate market" --tokens 4000
 Returns ranked page excerpts with relevance scores, confidence levels, and source paths — no synthesis. The `POST /context/build` REST endpoint and `synthadoc_context` MCP tool make this callable from any agent pipeline. To connect Claude Code to your wiki's MCP server:
 
 ```bash
+# Replace 7070 with the port shown when you ran synthadoc serve
 claude mcp add --transport sse market-condition-canada http://127.0.0.1:7070/mcp/sse
 ```
 
