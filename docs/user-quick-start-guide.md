@@ -2797,7 +2797,7 @@ You should receive `HTTP/1.1 200 OK` with `content-type: text/event-stream` and 
 | "What does my wiki say about quantum error correction?" | `synthadoc_search` + `synthadoc_read_page` |
 | "Show me the adversarial warnings for the early-neural-networks page" | `synthadoc_read_page` |
 | "Which pages have citations? Show me what they are." | `synthadoc_list_pages` + `synthadoc_read_page` |
-| "Build me a context pack on early neural networks within 4000 tokens" | `synthadoc_context` |
+| "Build me a context pack on early neural networks" | `synthadoc_context` |
 
 **Wiki health — zero cost, instant:**
 
@@ -2816,6 +2816,48 @@ You should receive `HTTP/1.1 200 OK` with `content-type: text/event-stream` and 
 | "Ingest this URL: https://example.com/paper" | `synthadoc_ingest` |
 | "Run a full lint check on the wiki" | `synthadoc_lint` |
 | "Mark the grace-hopper page as stale — needs review" | `synthadoc_lifecycle` |
+
+---
+
+### Demo: context pack via Claude Code
+
+Once connected, ask Claude Code:
+
+> **"Build me a context pack on early neural networks"**
+
+Claude calls `synthadoc_context` automatically and returns something like:
+
+```
+Here's the context pack assembled for "early neural networks" (1,280 / 10,000 tokens used):
+
+Directly Relevant Pages
+
+| Slug                            | Relevance | Confidence | Tags                                              |
+|---------------------------------|-----------|------------|---------------------------------------------------|
+| artificial-intelligence-history | 9.65      | High       | neural-networks, deep-learning, machine-learning  |
+| computing-history-timeline      | 11.16     | Medium     | artificial-intelligence, deep-learning, algorithms|
+
+Key excerpts:
+
+artificial-intelligence-history — Covers Turing's 1950 Turing Test paper, the 1956 Dartmouth
+Conference (where "artificial intelligence" was coined), and the first AI winter (1974–1980).
+
+computing-history-timeline — Traces from Ada Lovelace (1843) through Turing (1936), von Neumann
+architecture (1945), and includes tags for deep-learning milestones.
+```
+
+**What the response tells you:**
+
+| Field | Meaning |
+|---|---|
+| `tokens_used / token_budget` | How much of the budget was consumed — pages stop being added once the budget is full |
+| `relevance` | BM25 score — higher means stronger keyword match to your goal |
+| `confidence` | LLM-assigned confidence in the page's coverage of the topic |
+| `omitted` | Pages that were relevant but didn't fit within the budget (none here — only 13% used) |
+
+To request a tighter pack (forces prioritisation and shows omitted pages clearly):
+
+> **"Build a context pack on early neural networks with a 2000 token budget"**
 
 ---
 
