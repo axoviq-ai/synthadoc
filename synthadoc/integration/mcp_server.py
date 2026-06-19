@@ -37,10 +37,9 @@ def create_mcp_server(orchestrator):
 
     @mcp.tool()
     async def synthadoc_lint(scope: str = "all") -> dict:
-        """Run lint checks on the wiki."""
-        report = await orchestrator.lint(scope=scope)
-        return {"contradictions_found": report.contradictions_found,
-                "orphans": report.orphan_slugs}
+        """Enqueue a lint job. Returns a job_id — use synthadoc_jobs to check progress and results."""
+        job_id = await orchestrator.lint(scope=scope)
+        return {"job_id": job_id, "scope": scope}
 
     @mcp.tool()
     async def synthadoc_search(terms: str) -> dict:

@@ -48,16 +48,13 @@ async def test_mcp_ingest_tool_returns_job_id(mock_orch):
 async def test_mcp_lint_tool_returns_result(mock_orch):
     from synthadoc.integration.mcp_server import create_mcp_server
     mcp = create_mcp_server(mock_orch)
-    mock_report = MagicMock()
-    mock_report.contradictions_found = 2
-    mock_report.orphan_slugs = ["orphan-page"]
     with patch("synthadoc.core.orchestrator.Orchestrator.lint",
-               new=AsyncMock(return_value=mock_report)):
+               new=AsyncMock(return_value="job-lint-abc")):
         result = await mcp._tool_manager.call_tool(
             "synthadoc_lint", {"scope": "all"}, convert_result=False
         )
-    assert result["contradictions_found"] == 2
-    assert "orphan-page" in result["orphans"]
+    assert result["job_id"] == "job-lint-abc"
+    assert result["scope"] == "all"
 
 
 @pytest.mark.asyncio
