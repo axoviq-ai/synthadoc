@@ -451,15 +451,15 @@ synthadoc use market-condition-canada   # set as the default wiki — no -w need
 synthadoc serve
 ```
 
-`--domain` is a free-text description of the subject area — the LLM uses it to generate four domain-aware starter files via scaffold:
-
+`--domain` is a free-text description of the subject area — the LLM uses it to generate three domain-aware starter files via scaffold:
 
 | File                | Purpose                                                                     |
 | ------------------- | --------------------------------------------------------------------------- |
-| `wiki/index.md`     | Table of contents — domain-relevant categories with`[[wikilinks]]`         |
+| `wiki/index.md`     | Table of contents — domain-relevant categories with `[[wikilinks]]`        |
 | `wiki/purpose.md`   | Scope declaration — tells the ingest agent what belongs and what to ignore |
 | `AGENTS.md`         | LLM behaviour guidelines — tone, terminology, and synthesis style          |
-| `wiki/dashboard.md` | Live Dataview dashboard — orphan pages, contradictions, page count         |
+
+`wiki/dashboard.md` is also created during install (a static template — not LLM-generated). `ROUTING.md` is optional and generated separately via `synthadoc routing init` after pages accumulate.
 
 Then open the wiki folder in Obsidian as a new vault, install the Dataview community plugin, and copy the Synthadoc plugin files with one command (requires the wiki to be registered via `synthadoc install` first):
 
