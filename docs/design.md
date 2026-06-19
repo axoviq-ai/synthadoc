@@ -2496,7 +2496,7 @@ For Claude Desktop, `mcpServers` key names must use underscores (e.g. `synthadoc
 | `synthadoc_search` | `terms: str` | `{results: [{slug, score, title, snippet}]}` | Claude only |
 | `synthadoc_read_page` | `slug: str` | `{slug, title, content, status, type, tags, lint_warnings, sources}` or `{error, slug}` | Claude only |
 | `synthadoc_list_pages` | `status?: str` (default `"all"`) | `{pages: [{slug, title, status, type, has_sources}], total: int}` | Neither |
-| `synthadoc_context` | `goal: str`, `token_budget?: int` (default `4000`) | `{goal, token_budget, tokens_used, pages: [{slug, relevance, excerpt, source, confidence, tags, estimated_tokens}], omitted: [{slug, estimated_tokens}]}` | Neither |
+| `synthadoc_context` | `goal: str`, `token_budget?: int` (default `10000`) | `{goal, token_budget, tokens_used, pages: [{slug, relevance, excerpt, source, confidence, tags, estimated_tokens}], omitted: [{slug, estimated_tokens}]}` | Neither |
 | `synthadoc_write_page` | `slug: str`, `content: str`, `title?: str` | `{slug, title, status}` or `{error, slug}` | Neither |
 | `synthadoc_status` | *(none)* | `{pages: int, wiki: str}` | Neither |
 | `synthadoc_jobs` | `status?: str` (default `"all"`) | `{jobs: [{id, operation, status, created, source?, error?}]}` | Neither |

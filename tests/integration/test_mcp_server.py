@@ -222,7 +222,7 @@ async def test_mcp_context_tool_returns_pack(mock_orch):
          patch("synthadoc.agents.context_agent.ContextAgent.build",
                new=AsyncMock(return_value=fake_pack)):
         result = await mcp._tool_manager.call_tool(
-            "synthadoc_context", {"goal": "early neural networks", "token_budget": 4000},
+            "synthadoc_context", {"goal": "early neural networks", "token_budget": 10000},
             convert_result=False
         )
     assert result["goal"] == "early neural networks"

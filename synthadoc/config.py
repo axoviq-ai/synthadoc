@@ -90,7 +90,7 @@ class IngestConfig:
 @dataclass
 class QueryConfig:
     gap_score_threshold: float = 2.0   # BM25 score below which gap is detected
-    context_token_budget: int = 4000   # default token budget for context pack builds
+    context_token_budget: int = 10000  # default token budget for context pack builds
 
 
 @dataclass
@@ -313,7 +313,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
     q_section = raw.get("query", {})
     query = QueryConfig(
         gap_score_threshold=q_section.get("gap_score_threshold", 2.0),
-        context_token_budget=int(q_section.get("context_token_budget", 4000)),
+        context_token_budget=int(q_section.get("context_token_budget", 10000)),
     )
 
     # --- queue ---

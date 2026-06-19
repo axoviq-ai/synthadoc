@@ -36,14 +36,18 @@ def create_mcp_server(orchestrator):
         return {"job_id": job_id, "source": source}
 
     @mcp.tool()
-    async def synthadoc_context(goal: str, token_budget: int = 4000) -> dict:
+    async def synthadoc_context(goal: str, token_budget: int = 10000) -> dict:
         """Build a token-budgeted context pack for a goal or question.
 
         Ranks and selects the most relevant page excerpts that fit within
-        token_budget tokens. Returns entries with slug, excerpt, score, and
-        estimated token count, plus a list of slugs that were omitted due to
-        the budget. Use this instead of search + multiple read_page calls when
-        you need a curated, budget-aware set of excerpts for synthesis.
+        token_budget tokens (default: 10 000). Returns pages with slug, excerpt,
+        relevance, confidence, and estimated token count, plus omitted slugs that
+        exceeded the budget. Use this instead of search + multiple read_page calls
+        when you need a curated, budget-aware set of excerpts for synthesis.
+
+        To change the default permanently, set context_token_budget in config.toml:
+            [query]
+            context_token_budget = 20000
         """
         from synthadoc.agents.context_agent import ContextAgent
         from synthadoc.providers import make_provider
