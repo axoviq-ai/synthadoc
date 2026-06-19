@@ -854,6 +854,30 @@ pull in a fresh source via web search:
 synthadoc ingest "search for: Ada Lovelace contributions to computing history"
 ```
 
+### Option 3 — Resolve via MCP (Claude Code)
+
+With Synthadoc connected as an MCP server, Claude can fix orphans autonomously — it reads the wiki, finds a relevant page to add the link to, writes the change, and re-runs lint to confirm the fix.
+
+Ask Claude Code:
+
+> **"Are there any orphan pages in my wiki? If so, fix them by adding wikilinks from related pages."**
+
+Claude will:
+
+1. Call `synthadoc_lint_report` — identify orphaned slugs
+2. Call `synthadoc_search` — find pages topically related to each orphan
+3. Call `synthadoc_read_page` — read those candidate pages
+4. Call `synthadoc_write_page` — add `[[wikilink]]` references to the orphan
+5. Call `synthadoc_lint` — re-run lint to confirm the orphan is resolved
+
+Alternatively, to archive an orphan that is genuinely out of scope:
+
+> **"Archive the ada-lovelace page — it's an orphan and not relevant to this wiki."**
+
+Claude calls `synthadoc_lifecycle` with `to_state="archived"` and a reason, writing a permanent audit record. A follow-up `synthadoc_lint_report` confirms it no longer appears as an orphan.
+
+> **Why this works:** `synthadoc_lint_report` returns the `orphans` list directly. `synthadoc_write_page` edits page content so Claude can insert a `[[ada-lovelace]]` wikilink into a related page. The next lint run picks up the new inbound link and clears the orphan flag.
+
 ### Deleting a page and cleaning up its references
 
 When you delete a wiki page from Obsidian, any `[[wikilinks]]` pointing to it in other
