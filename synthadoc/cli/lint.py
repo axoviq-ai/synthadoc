@@ -210,16 +210,16 @@ def lint_report(
 
     if adv_pages:
         total_warnings = sum(len(p["warnings"]) for p in adv_pages)
-        typer.echo(f"\n\U0001f50d Adversarial Warnings ({total_warnings} across {len(adv_pages)} pages):\n")
+        typer.echo(f"\nAdversarial Warnings ({total_warnings} across {len(adv_pages)} pages):\n")
         for entry in adv_pages:
             typer.echo(f"  {entry['slug']} ({len(entry['warnings'])} warning(s))")
             for w in entry["warnings"]:
                 if w.get("claim"):
-                    typer.echo(f"    ⚠ \"{w['claim']}\"")
+                    typer.echo(f"    [!] \"{w['claim']}\"")
                 concern = w.get("concern") or "(no concern text)"
                 typer.echo(f"       Concern: {concern}")
             if entry["suggested_reingests"]:
-                typer.echo("    \U0001f4a1 If the source has updated content, re-ingest with --force to refresh:")
+                typer.echo("    Tip: If the source has updated content, re-ingest with --force to refresh:")
                 for cmd in entry["suggested_reingests"]:
                     typer.echo(f"       {cmd} --force")
 
