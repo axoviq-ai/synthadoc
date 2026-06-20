@@ -2011,7 +2011,7 @@ For PDF sources, if the pagemap sidecar exists and the target page is > 1, a **"
 
 ### Concept
 
-Every wiki page moves through a defined set of states that reflect its review status and the health of its source material. Pages start as `draft` — compiled but not yet validated — and advance to `active` when lint passes all checks. Subsequent changes to the source file on disk push the page to `stale`; a missing source file triggers `archived`. Manual transitions allow operators to override any state.
+Every wiki page moves through a defined set of states that reflect its review status and the health of its source material. Pages start as `draft` — compiled but not yet validated — and advance to `active` when lint passes all checks. Subsequent changes to the source file on disk push the page to `stale`; a missing source file triggers `archived`. Manual transitions follow a defined graph (see Transition rules below); only semantically valid paths are permitted. Lint and ingest write state directly and are not subject to the graph restriction.
 
 ### States
 
@@ -2025,17 +2025,25 @@ Every wiki page moves through a defined set of states that reflect its review st
 
 ### Transition rules
 
-| From | To | Trigger | Condition |
+Automated transitions (lint, ingest) write state directly and are not subject to the graph. User-driven transitions (CLI, HTTP API, MCP) are validated against `ALLOWED_LIFECYCLE_TRANSITIONS` in `synthadoc/storage/wiki.py`; invalid paths are rejected with HTTP 422 or an MCP error dict.
+
+| From | To | Trigger | Notes |
 |---|---|---|---|
-| _(none)_ | `draft` | `ingest` | New page created by ingest |
-| `draft` | `active` | `lint` | Page passes all lint checks |
-| `draft` / `stale` / `contradicted` | `active` | `cli` / `api` | Manual activate (`synthadoc lifecycle activate`) |
-| `active` | `contradicted` | `lint` | Contradiction detected between two or more sources |
-| `active` | `stale` | `lint` | Local source: SHA-256 hash mismatch; or URL source older than `url_staleness_days` |
-| `active` / `stale` | `archived` | `lint` | Local source no longer exists on disk; or URL source returns 404/410 (opt-in) |
-| any | `archived` | `cli` / `api` | Manual archive (`synthadoc lifecycle archive`) |
-| `archived` | `draft` | `cli` / `api` | Manual restore (`synthadoc lifecycle restore`) — places page back in review queue |
-| `contradicted` | `archived` | `cli` / `api` | Manual archive after reviewing the conflict |
+| _(none)_ | `draft` | ingest | New page created by ingest |
+| `draft` | `active` | lint, cli/api/mcp | Lint auto-promotes when all checks pass; or manual activate |
+| `draft` | `archived` | cli/api/mcp | Abandon a draft without publishing |
+| `active` | `contradicted` | lint, cli/api/mcp | Lint detects conflict automatically; or user manually flags |
+| `active` | `stale` | lint | Local source: SHA-256 hash mismatch; URL source older than `url_staleness_days` |
+| `active` | `archived` | lint, cli/api/mcp | Lint: local source missing or URL 404/410; or manual retire |
+| `stale` | `draft` | cli/api/mcp | Revise stale content — puts page back in review queue |
+| `stale` | `active` | cli/api/mcp | Re-validate without revision — user confirms content still accurate |
+| `stale` | `archived` | lint, cli/api/mcp | Lint: source gone; or manual archive |
+| `contradicted` | `draft` | cli/api/mcp | Revise contradicted content — resets to review queue |
+| `contradicted` | `active` | cli/api/mcp | Resolve contradiction and re-activate directly |
+| `contradicted` | `archived` | cli/api/mcp | Archive after reviewing the conflict |
+| `archived` | `draft` | cli/api/mcp | Restore for revision — places page back in review queue |
+
+Transitions not in this table are rejected. Notable blocked paths: `stale ↔ contradicted` (different issue types that should not be crossed directly), `archived → active/stale/contradicted` (must go through `draft` for re-review first), `draft → stale/contradicted` (unpublished pages cannot be in those states).
 
 ### Storage
 

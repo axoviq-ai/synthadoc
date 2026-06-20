@@ -12,12 +12,6 @@ export default defineConfig({
     },
     test: {
         environment: "node",
-        exclude: ["src/**/*.integration.test.ts", "**/node_modules/**", "**/dist/**"],
-        coverage: {
-            provider: "v8",
-            include: ["src/**/*.ts"],
-            exclude: ["src/**/*.test.ts"],
-            reporter: ["text", "html"],
-        },
+        include: ["src/**/*.integration.test.ts"],
     },
 });

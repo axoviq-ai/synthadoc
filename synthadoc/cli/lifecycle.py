@@ -17,7 +17,7 @@ def _transition_cmd(slug: str, to_state: str, wiki: str, reason: str) -> None:
     result = post(wiki, "/lifecycle/transition", {
         "slug": slug, "to_state": to_state, "reason": reason,
     })
-    if result.get("ok"):
+    if "slug" in result:  # success: {slug, from_state, to_state, timestamp}
         typer.echo(f"  {slug}: {result['from_state']} -> {result['to_state']}")
     else:
         typer.echo(f"  Error: {result.get('detail', 'unknown error')}", err=True)

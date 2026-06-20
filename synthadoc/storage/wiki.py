@@ -27,6 +27,43 @@ class LifecycleState:
     ORDERED = ("active", "draft", "stale", "contradicted", "archived")
 
 
+# Permitted user-driven lifecycle transitions.
+# Lint and ingest write status via write_page() directly and bypass this check.
+ALLOWED_LIFECYCLE_TRANSITIONS: frozenset[tuple[str, str]] = frozenset({
+    (LifecycleState.DRAFT,        LifecycleState.ACTIVE),        # publish
+    (LifecycleState.DRAFT,        LifecycleState.ARCHIVED),      # abandon draft
+    (LifecycleState.ACTIVE,       LifecycleState.CONTRADICTED),  # manually flag contradiction
+    (LifecycleState.ACTIVE,       LifecycleState.STALE),         # mark outdated
+    (LifecycleState.ACTIVE,       LifecycleState.ARCHIVED),      # retire
+    (LifecycleState.STALE,        LifecycleState.DRAFT),         # revise
+    (LifecycleState.STALE,        LifecycleState.ACTIVE),        # re-validate without revision
+    (LifecycleState.STALE,        LifecycleState.ARCHIVED),      # archive stale
+    (LifecycleState.CONTRADICTED, LifecycleState.DRAFT),         # revise contradiction
+    (LifecycleState.CONTRADICTED, LifecycleState.ACTIVE),        # resolve and re-activate
+    (LifecycleState.CONTRADICTED, LifecycleState.ARCHIVED),      # archive contradiction
+    (LifecycleState.ARCHIVED,     LifecycleState.DRAFT),         # restore for revision
+})
+
+
+def validate_lifecycle_transition(from_state: str, to_state: str) -> str | None:
+    """Return an error message if the transition is not permitted, else None.
+
+    Same-state transitions are also rejected here; call sites should not
+    duplicate that check.
+    """
+    if from_state == to_state:
+        return f"Page is already in state '{from_state}'."
+    if (from_state, to_state) not in ALLOWED_LIFECYCLE_TRANSITIONS:
+        allowed = ", ".join(
+            t for f, t in sorted(ALLOWED_LIFECYCLE_TRANSITIONS) if f == from_state
+        ) or "none"
+        return (
+            f"Transition from '{from_state}' to '{to_state}' is not permitted. "
+            f"Allowed from '{from_state}': {allowed}."
+        )
+    return None
+
+
 def is_url(path: str) -> bool:
     """Return True if path is an HTTP/HTTPS URL (not a local file reference)."""
     return path.startswith(("http://", "https://"))

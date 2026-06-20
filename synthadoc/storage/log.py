@@ -453,25 +453,30 @@ class AuditDB:
         to_state: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> list[dict]:
-        wheres, params = [], []
+    ) -> tuple[list[dict], int]:
+        """Return (events, total_count) where total_count is the full DB count before pagination."""
+        wheres, filter_params = [], []
         if slug:
             wheres.append("slug=?")
-            params.append(slug)
+            filter_params.append(slug)
         if to_state:
             wheres.append("to_state=?")
-            params.append(to_state)
+            filter_params.append(to_state)
         where = ("WHERE " + " AND ".join(wheres)) if wheres else ""
-        params += [limit, offset]
         async with aiosqlite.connect(self._path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
+                f"SELECT COUNT(*) as cnt FROM lifecycle_events {where}",
+                filter_params,
+            ) as cur:
+                total = (await cur.fetchone())["cnt"]
+            async with db.execute(
                 f"SELECT id,slug,from_state,to_state,reason,triggered_by,timestamp"
                 f" FROM lifecycle_events {where} ORDER BY id ASC LIMIT ? OFFSET ?",
-                params,
+                filter_params + [limit, offset],
             ) as cur:
                 rows = await cur.fetchall()
-        return [dict(r) for r in rows]
+        return [dict(r) for r in rows], total
 
     async def get_all_page_states(self) -> list:
         async with aiosqlite.connect(self._path) as db:
@@ -483,13 +488,18 @@ class AuditDB:
         return [dict(r) for r in rows]
 
     async def get_lifecycle_summary(self) -> dict:
+        """Return counts for all 5 lifecycle states; missing states default to 0."""
+        base = {"draft": 0, "active": 0, "contradicted": 0, "stale": 0, "archived": 0}
         async with aiosqlite.connect(self._path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
                 "SELECT state, COUNT(*) as cnt FROM page_states GROUP BY state"
             ) as cur:
                 rows = await cur.fetchall()
-        return {r["state"]: r["cnt"] for r in rows}
+        for r in rows:
+            if r["state"] in base:
+                base[r["state"]] = r["cnt"]
+        return base
 
     async def purge_lifecycle_events(
         self,
@@ -677,11 +687,14 @@ class AuditDB:
             await db.commit()
 
     async def list_sessions(self, limit: int = 20) -> list[dict]:
-        """Return recent sessions that have messages, with user turns for sidebar display."""
+        """Return recent sessions that have messages.
+
+        Shape: {session_id, first_q, last_active, turn_count, questions: [str]}
+        """
         async with aiosqlite.connect(self._path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                """SELECT DISTINCT s.session_id, s.mode, s.created_at, s.last_active
+                """SELECT DISTINCT s.session_id, s.last_active
                    FROM chat_sessions s
                    INNER JOIN chat_messages m ON s.session_id = m.session_id
                    ORDER BY s.last_active DESC LIMIT ?""",
@@ -701,14 +714,23 @@ class AuditDB:
             ) as cur:
                 rows = await cur.fetchall()
 
-        turns_by_session: dict[str, list[str]] = {}
+        questions_by_session: dict[str, list[str]] = {}
         for row in rows:
-            turns_by_session.setdefault(row["session_id"], []).append(row["content"])
+            questions_by_session.setdefault(row["session_id"], []).append(row["content"])
 
+        result = []
         for s in sessions:
-            s["turns"] = turns_by_session.get(s["session_id"], [])
-
-        return [s for s in sessions if s["turns"]]
+            qs = questions_by_session.get(s["session_id"], [])
+            if not qs:
+                continue
+            result.append({
+                "session_id": s["session_id"],
+                "first_q": qs[0],
+                "last_active": s["last_active"],
+                "turn_count": len(qs),
+                "questions": qs,
+            })
+        return result
 
     async def purge_old_sessions(self, retention_days: int) -> int:
         """Delete sessions inactive for more than retention_days. Returns count deleted."""

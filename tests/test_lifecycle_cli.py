@@ -21,7 +21,7 @@ def test_lifecycle_activate_requires_reason():
 def test_lifecycle_activate_calls_transition():
     with patch("synthadoc.cli.lifecycle.post") as mock_post, \
          patch("synthadoc.cli.lifecycle.resolve_wiki", return_value="test-wiki"):
-        mock_post.return_value = {"ok": True, "from_state": "draft", "to_state": "active"}
+        mock_post.return_value = {"slug": "alan-turing", "from_state": "draft", "to_state": "active", "timestamp": "2026-01-01T00:00:00Z"}
         result = runner.invoke(app, [
             "lifecycle", "activate", "alan-turing",
             "-w", "test-wiki", "--reason", "reviewed"
@@ -36,7 +36,7 @@ def test_lifecycle_activate_calls_transition():
 def test_lifecycle_archive_calls_transition():
     with patch("synthadoc.cli.lifecycle.post") as mock_post, \
          patch("synthadoc.cli.lifecycle.resolve_wiki", return_value="test-wiki"):
-        mock_post.return_value = {"ok": True, "from_state": "active", "to_state": "archived"}
+        mock_post.return_value = {"slug": "alan-turing", "from_state": "active", "to_state": "archived", "timestamp": "2026-01-01T00:00:00Z"}
         result = runner.invoke(app, [
             "lifecycle", "archive", "alan-turing",
             "-w", "test-wiki", "--reason", "source superseded"
@@ -49,7 +49,7 @@ def test_lifecycle_archive_calls_transition():
 def test_lifecycle_restore_calls_transition():
     with patch("synthadoc.cli.lifecycle.post") as mock_post, \
          patch("synthadoc.cli.lifecycle.resolve_wiki", return_value="test-wiki"):
-        mock_post.return_value = {"ok": True, "from_state": "archived", "to_state": "draft"}
+        mock_post.return_value = {"slug": "alan-turing", "from_state": "archived", "to_state": "draft", "timestamp": "2026-01-01T00:00:00Z"}
         result = runner.invoke(app, [
             "lifecycle", "restore", "alan-turing",
             "-w", "test-wiki", "--reason", "reinstated"

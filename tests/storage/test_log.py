@@ -263,8 +263,9 @@ async def test_list_sessions_returns_sessions_with_user_turns(tmp_path):
     result = await db.list_sessions()
     assert len(result) == 1
     assert result[0]["session_id"] == "s1"
-    assert result[0]["mode"] == "POWER_USER"
-    assert result[0]["turns"] == ["What is Turing?"]
+    assert result[0]["first_q"] == "What is Turing?"
+    assert result[0]["turn_count"] == 1
+    assert result[0]["questions"] == ["What is Turing?"]
 
 
 @pytest.mark.asyncio
@@ -279,7 +280,9 @@ async def test_list_sessions_multi_turn_collects_all_user_turns(tmp_path):
     await db.append_message("s1", "assistant", "A2")
     result = await db.list_sessions()
     assert len(result) == 1
-    assert result[0]["turns"] == ["Q1", "Q2"]
+    assert result[0]["questions"] == ["Q1", "Q2"]
+    assert result[0]["turn_count"] == 2
+    assert result[0]["first_q"] == "Q1"
 
 
 @pytest.mark.asyncio
