@@ -718,7 +718,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         """Run analysis pass on a source and return structured result without writing pages."""
         from synthadoc.agents.ingest_agent import IngestAgent
         from synthadoc.providers import make_provider
-        from synthadoc.agents.skill_agent import SkillAgent
+        from synthadoc.agents.skill_agent import SkillAgent, SkillNotFoundError
         orch = app.state.orch
         agent = IngestAgent(
             provider=make_provider("ingest", orch._cfg),
@@ -730,7 +730,13 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             fetch_timeout=orch._cfg.ingest.fetch_timeout_seconds,
         )
         skill = SkillAgent()
-        extracted = await skill.extract(req.source)
+        try:
+            extracted = await skill.extract(req.source)
+        except SkillNotFoundError:
+            raise HTTPException(
+                status_code=422,
+                detail="No matching source type for the given input. Provide a URL, file path, or search query.",
+            )
         text = extracted.text[:8000]
         analysis = await agent._analyse(text, bust_cache=False)
         analysis.pop("_tokens", None)
@@ -874,8 +880,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         for j in jobs:
             if j.id == job_id:
                 return {"id": j.id, "status": j.status, "operation": j.operation,
-                        "created_at": str(j.created_at), "error": j.error,
-                        "result": j.result, "progress": j.progress}
+                        "created_at": str(j.created_at), "payload": j.payload,
+                        "error": j.error, "result": j.result, "progress": j.progress}
         raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found")
 
     @app.delete("/jobs/{job_id}")

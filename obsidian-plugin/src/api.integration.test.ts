@@ -25,7 +25,10 @@ async function post(path: string, body: object) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
     });
-    return { status: r.status, body: await r.json() };
+    const text = await r.text();
+    let parsed: unknown;
+    try { parsed = JSON.parse(text); } catch { parsed = text; }
+    return { status: r.status, body: parsed };
 }
 
 // Skip all tests if the server is not reachable.
@@ -245,6 +248,39 @@ describe("GET /sessions", () => {
         for (const s of sessions) {
             expect(s.turn_count).toBe(s.questions.length);
         }
+    });
+});
+
+// ── Jobs — Bug 6 (payload missing from single-job endpoint) ──────────────────
+
+describe("GET /jobs and GET /jobs/:id", () => {
+    it("/jobs list includes payload field", async () => {
+        if (skipIfDown()) return;
+        const jobs = await get("/jobs");
+        expect(Array.isArray(jobs)).toBe(true);
+        if (jobs.length === 0) return;
+        expect(jobs[0]).toHaveProperty("payload");
+    });
+
+    it("/jobs/:id includes payload field matching the list", async () => {
+        if (skipIfDown()) return;
+        const jobs = await get("/jobs");
+        if (jobs.length === 0) return;
+        const job = jobs[0];
+        const single = await get(`/jobs/${job.id}`);
+        expect(single).toHaveProperty("payload");
+        expect(single.payload).toEqual(job.payload);
+    });
+});
+
+// ── Analyse — Bug 7 (plain text returned 500 instead of 422) ─────────────────
+
+describe("POST /analyse", () => {
+    it("returns 422 (not 500) when source is plain text with no matching skill", async () => {
+        if (skipIfDown()) return;
+        const { status } = await post("/analyse", { source: "Geoffrey Hinton is a deep learning pioneer." });
+        // Must be a client error, not a server crash
+        expect(status).toBe(422);
     });
 });
 
