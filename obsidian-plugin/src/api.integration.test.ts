@@ -162,13 +162,13 @@ describe("POST /lifecycle/transition", () => {
         expect(revert.status).toBe(200);
     });
 
-    it("allows any cross-state transition (no graph enforcement)", async () => {
+    it("allows active → contradicted (manual contradiction flag)", async () => {
         if (skipIfDown()) return;
         const pages = await get("/lifecycle/pages");
         const active = pages.pages?.find((p: any) => p.state === "active");
         if (!active) return;
 
-        // active → contradicted was previously blocked by graph enforcement
+        // active → contradicted is a valid user-driven transition
         const { status } = await post("/lifecycle/transition", {
             slug: active.slug,
             to_state: "contradicted",
@@ -176,12 +176,35 @@ describe("POST /lifecycle/transition", () => {
         });
         expect(status).toBe(200);
 
-        // Revert
+        // Revert: contradicted → active is also permitted
         await post("/lifecycle/transition", {
             slug: active.slug,
             to_state: "active",
             reason: "integration test revert",
         });
+    });
+
+    it("returns 422 for a blocked transition (graph enforcement)", async () => {
+        if (skipIfDown()) return;
+        const pages = await get("/lifecycle/pages");
+        const active = pages.pages?.find((p: any) => p.state === "active");
+        if (!active) return;
+
+        // active → stale → contradicted is blocked: stale and contradicted are
+        // different issue types and cannot be crossed directly
+        await post("/lifecycle/transition", {
+            slug: active.slug, to_state: "stale", reason: "mark outdated",
+        });
+        const { status, body } = await post("/lifecycle/transition", {
+            slug: active.slug,
+            to_state: "contradicted",
+            reason: "should be blocked",
+        });
+        expect(status).toBe(422);
+        expect((body as any).detail).toMatch(/not permitted/);
+
+        // Restore
+        await post("/lifecycle/transition", { slug: active.slug, to_state: "active", reason: "revert" });
     });
 
     it("returns 422 when transitioning to the same state", async () => {

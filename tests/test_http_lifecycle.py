@@ -38,15 +38,14 @@ def _make_test_app(store: WikiStorage, db: AuditDB) -> FastAPI:
 
     @app.post("/lifecycle/transition")
     async def lifecycle_transition(req: LifecycleTransitionRequest):
+        from synthadoc.storage.wiki import validate_lifecycle_transition
         page = store.read_page(req.slug)
         if not page:
             raise HTTPException(status_code=404, detail=f"Page not found: {req.slug}")
         from_state = page.status
-        if from_state == req.to_state:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Page '{req.slug}' is already in state '{from_state}'.",
-            )
+        err = validate_lifecycle_transition(from_state, req.to_state)
+        if err:
+            raise HTTPException(status_code=422, detail=err)
         page.status = req.to_state
         store.write_page(req.slug, page)
         ts = datetime.now(timezone.utc).isoformat()
@@ -120,12 +119,44 @@ def test_lifecycle_transition_same_state_returns_422(client):
     assert "already in state" in resp.json()["detail"]
 
 
-def test_lifecycle_transition_any_cross_state_allowed(client):
-    """All cross-state transitions must succeed (no graph enforcement)."""
-    # draft → contradicted was previously blocked by the graph enforcement
+def test_lifecycle_transition_valid_cross_state_allowed(client):
+    """A valid non-trivial cross-state transition must succeed."""
+    # draft → archived: abandon a draft without publishing
+    resp = client.post("/lifecycle/transition", json={
+        "slug": "alan-turing",
+        "to_state": LifecycleState.ARCHIVED,
+        "reason": "abandoned draft",
+    })
+    assert resp.status_code == 200, resp.json()
+    assert resp.json()["to_state"] == LifecycleState.ARCHIVED
+
+
+def test_lifecycle_transition_blocked_returns_422(client):
+    """Transitions not in the allowed graph must return 422."""
+    # draft → contradicted: a draft page cannot be contradicted (not published yet)
     resp = client.post("/lifecycle/transition", json={
         "slug": "alan-turing",
         "to_state": LifecycleState.CONTRADICTED,
-        "reason": "test cross-state",
+        "reason": "should be blocked",
+    })
+    assert resp.status_code == 422
+    assert "not permitted" in resp.json()["detail"]
+
+
+def test_lifecycle_transition_stale_to_active_allowed(client):
+    """stale → active must be permitted (re-validate without revision)."""
+    # First advance to active, then stale
+    client.post("/lifecycle/transition", json={
+        "slug": "alan-turing", "to_state": LifecycleState.ACTIVE, "reason": "publish"
+    })
+    client.post("/lifecycle/transition", json={
+        "slug": "alan-turing", "to_state": LifecycleState.STALE, "reason": "source changed"
+    })
+    resp = client.post("/lifecycle/transition", json={
+        "slug": "alan-turing",
+        "to_state": LifecycleState.ACTIVE,
+        "reason": "re-validated, still accurate",
     })
     assert resp.status_code == 200, resp.json()
+    assert resp.json()["from_state"] == LifecycleState.STALE
+    assert resp.json()["to_state"] == LifecycleState.ACTIVE
