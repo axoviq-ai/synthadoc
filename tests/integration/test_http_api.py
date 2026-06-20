@@ -529,12 +529,15 @@ def test_lifecycle_pages_endpoint_returns_list(tmp_wiki):
 
 
 def test_lifecycle_status_endpoint(tmp_wiki):
-    """GET /lifecycle/status returns state counts."""
+    """GET /lifecycle/status returns flat counts for all 5 lifecycle states."""
     from synthadoc.integration.http_server import create_app
     with TestClient(create_app(wiki_root=tmp_wiki)) as client:
         resp = client.get("/lifecycle/status")
     assert resp.status_code == 200
-    assert "counts" in resp.json()
+    data = resp.json()
+    for state in ("draft", "active", "contradicted", "stale", "archived"):
+        assert state in data, f"Missing state '{state}' in /lifecycle/status response"
+    assert "counts" not in data
 
 
 def test_lifecycle_events_endpoint(tmp_wiki):
@@ -549,7 +552,7 @@ def test_lifecycle_events_endpoint(tmp_wiki):
 
 
 def test_lifecycle_transition_valid(tmp_wiki):
-    """POST /lifecycle/transition moves a draft page to active."""
+    """POST /lifecycle/transition moves a draft page to active and returns slug/states/timestamp."""
     import asyncio
     from synthadoc.integration.http_server import create_app
     from synthadoc.storage.wiki import WikiStorage, WikiPage
@@ -568,7 +571,12 @@ def test_lifecycle_transition_valid(tmp_wiki):
             "slug": "test-page", "to_state": "active", "reason": "reviewed"
         })
     assert resp.status_code == 200
-    assert resp.json()["to_state"] == "active"
+    data = resp.json()
+    assert data["slug"] == "test-page"
+    assert data["from_state"] == "draft"
+    assert data["to_state"] == "active"
+    assert "timestamp" in data
+    assert "ok" not in data
 
 
 def test_lifecycle_transition_page_not_found(tmp_wiki):
@@ -592,8 +600,8 @@ def test_staging_policy_get(tmp_wiki):
     assert "confidence_min" in data
 
 
-def test_lifecycle_transition_invalid_transition_rejected(tmp_wiki):
-    """POST /lifecycle/transition returns 422 for disallowed state transitions."""
+def test_lifecycle_transition_same_state_rejected(tmp_wiki):
+    """POST /lifecycle/transition returns 422 when to_state equals current state."""
     import asyncio
     from synthadoc.integration.http_server import create_app
     from synthadoc.storage.wiki import WikiStorage, WikiPage
@@ -609,9 +617,40 @@ def test_lifecycle_transition_invalid_transition_rejected(tmp_wiki):
 
     with TestClient(create_app(wiki_root=tmp_wiki)) as client:
         resp = client.post("/lifecycle/transition", json={
-            "slug": "active-page", "to_state": "draft", "reason": "test"
+            "slug": "active-page", "to_state": "active", "reason": "test"
         })
     assert resp.status_code == 422
+    assert "already in state" in resp.json()["detail"]
+
+
+def test_lifecycle_transition_any_state_allowed(tmp_wiki):
+    """POST /lifecycle/transition permits any cross-state transition (no graph enforcement)."""
+    import asyncio
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.storage.wiki import WikiStorage, WikiPage
+
+    wiki_dir = tmp_wiki / "wiki"
+    for slug, status in [("page-a", "stale"), ("page-b", "contradicted")]:
+        page = WikiPage(title=slug, tags=[], content=f"# {slug}",
+                        status=status, confidence="medium", sources=[])
+        WikiStorage(wiki_dir).write_page(slug, page)
+
+    db = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    asyncio.run(db.init())
+    asyncio.run(db.set_page_state("page-a", "stale", "lint"))
+    asyncio.run(db.set_page_state("page-b", "contradicted", "lint"))
+
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        # stale → active (previously blocked)
+        r1 = client.post("/lifecycle/transition", json={
+            "slug": "page-a", "to_state": "active", "reason": "manual review"
+        })
+        # contradicted → active (previously blocked)
+        r2 = client.post("/lifecycle/transition", json={
+            "slug": "page-b", "to_state": "active", "reason": "contradiction resolved"
+        })
+    assert r1.status_code == 200, r1.json()
+    assert r2.status_code == 200, r2.json()
 
 
 def test_audit_events_endpoint(tmp_wiki):

@@ -52,7 +52,9 @@ def test_get_sessions_returns_session_with_turns(client_and_db):
     data = resp.json()
     assert len(data) == 1
     assert data[0]["session_id"] == "s1"
-    assert data[0]["turns"] == ["What is Turing?"]
+    assert data[0]["questions"] == ["What is Turing?"]
+    assert data[0]["first_q"] == "What is Turing?"
+    assert data[0]["turn_count"] == 1
 
 
 def test_get_sessions_limit_param(client_and_db):
@@ -105,7 +107,8 @@ def test_get_sessions_multi_turn_lists_all_user_turns(client_and_db):
     resp = client.get("/sessions")
     assert resp.status_code == 200
     data = resp.json()
-    assert data[0]["turns"] == ["first question", "follow-up question"]
+    assert data[0]["questions"] == ["first question", "follow-up question"]
+    assert data[0]["turn_count"] == 2
 
 
 def test_get_hints_returns_list_for_known_mode(client_and_db):

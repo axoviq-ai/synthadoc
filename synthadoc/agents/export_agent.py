@@ -66,7 +66,7 @@ class ExportAgent:
             from synthadoc.storage.log import AuditDB
             audit = AuditDB(self._audit_db_path)
             await audit.init()
-            lc_events = await audit.get_lifecycle_events(limit=100_000)
+            lc_events, _ = await audit.get_lifecycle_events(limit=100_000)
             return self._render_okf(pages, lc_events)
 
         # graphml and json both need routing
@@ -89,7 +89,7 @@ class ExportAgent:
         audit = AuditDB(self._audit_db_path)
         await audit.init()
         citations = await audit.list_citations(limit=100_000)
-        lc_events = await audit.get_lifecycle_events(limit=100_000)
+        lc_events, _ = await audit.get_lifecycle_events(limit=100_000)
         cost_data = await audit.cost_summary(days=3650)
         ingest_records = await audit.list_ingests(limit=100_000)
         return self._render_json(pages, citations, lc_events, cost_data, ingest_records, routing)

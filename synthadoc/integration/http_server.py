@@ -1169,17 +1169,6 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
-    _ALLOWED_LIFECYCLE_TRANSITIONS: set[tuple[str, str]] = {
-        (LifecycleState.DRAFT,        LifecycleState.ACTIVE),
-        (LifecycleState.DRAFT,        LifecycleState.ARCHIVED),
-        (LifecycleState.ACTIVE,       LifecycleState.ARCHIVED),
-        (LifecycleState.ACTIVE,       LifecycleState.STALE),
-        (LifecycleState.CONTRADICTED, LifecycleState.ARCHIVED),
-        (LifecycleState.STALE,        LifecycleState.DRAFT),
-        (LifecycleState.STALE,        LifecycleState.ARCHIVED),
-        (LifecycleState.ARCHIVED,     LifecycleState.DRAFT),
-    }
-
     @app.get("/lifecycle/pages")
     async def lifecycle_pages():
         audit = _AuditDB(wiki_root / ".synthadoc" / "audit.db")
@@ -1203,7 +1192,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             if in_cand:
                 counts["draft"] = counts["draft"] - in_cand
                 counts["draft_candidates"] = in_cand
-        return {"counts": counts}
+        return counts
 
     @app.get("/lifecycle/events")
     async def lifecycle_events(
@@ -1214,13 +1203,13 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
     ):
         audit = _AuditDB(wiki_root / ".synthadoc" / "audit.db")
         await audit.init()
-        events = await audit.get_lifecycle_events(
+        events, total = await audit.get_lifecycle_events(
             slug=slug or None,
             to_state=to_state or None,
             limit=limit,
             offset=offset,
         )
-        return {"events": events, "total": len(events)}
+        return {"events": events, "total": total}
 
     @app.post("/lifecycle/transition")
     async def lifecycle_transition(req: LifecycleTransitionRequest):
@@ -1237,20 +1226,22 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         if not page:
             raise HTTPException(status_code=404, detail=f"Page not found: {req.slug}")
         from_state = page.status
-        if (from_state, req.to_state) not in _ALLOWED_LIFECYCLE_TRANSITIONS:
+        if from_state == req.to_state:
             raise HTTPException(
                 status_code=422,
-                detail=f"Transition {from_state!r} -> {req.to_state!r} is not allowed.",
+                detail=f"Page '{req.slug}' is already in state '{from_state}'.",
             )
         page.status = req.to_state
         orch._store.write_page(req.slug, page)
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).isoformat()
         audit = _AuditDB(wiki_root / ".synthadoc" / "audit.db")
         await audit.init()
         await audit.set_page_state(req.slug, req.to_state, TriggerSource.USER)
         await audit.record_lifecycle_event(req.slug, from_state, req.to_state,
                                             req.reason, TriggerSource.USER)
         orch._bump_epoch()
-        return {"ok": True, "slug": req.slug, "from_state": from_state, "to_state": req.to_state}
+        return {"slug": req.slug, "from_state": from_state, "to_state": req.to_state, "timestamp": ts}
 
     # ── Export ────────────────────────────────────────────────────────────────
     @app.post("/export")
