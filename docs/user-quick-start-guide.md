@@ -578,16 +578,16 @@ Switch to the **Audit Log** tab to see the full history of every state transitio
 
 ### Manual state transitions (CLI)
 
-The CLI gives you full control over page state outside of lint automation:
+The CLI gives you control over page state outside of lint automation. Transitions follow the lifecycle graph — only semantically valid paths are accepted; invalid ones are rejected with a clear error:
 
 ```bash
-# Promote a page to active after manual review
+# Promote a page to active after manual review (draft/stale/contradicted → active)
 synthadoc lifecycle activate alan-turing --reason "reviewed and verified"
 
-# Retire a page whose source has been superseded
+# Retire a page whose source has been superseded (any non-archived state → archived)
 synthadoc lifecycle archive alan-turing --reason "replaced by v2 source"
 
-# Restore an archived page back to draft for re-review
+# Restore an archived page back to draft for re-review (archived → draft)
 synthadoc lifecycle restore alan-turing --reason "source re-added to raw_sources"
 
 # View the full transition history for a page
