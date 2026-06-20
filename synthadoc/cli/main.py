@@ -30,6 +30,12 @@ def _resolve_wiki_path(wiki: str) -> Path:
 def main(ctx: typer.Context,
          version: bool = typer.Option(False, "--version", "-v"),
          wiki: Optional[str] = typer.Option(None, "--wiki", "-w")):
+    import sys
+    # Ensure UTF-8 output on Windows where the default console encoding is cp1252.
+    # Wiki content (markdown, citations) may contain characters outside cp1252.
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8", errors="replace")
     if version:
         typer.echo(f"synthadoc {__version__}")
         raise typer.Exit()

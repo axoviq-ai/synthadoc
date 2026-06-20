@@ -1010,7 +1010,7 @@ class JobsModal extends Modal {
         (async () => {
             try {
                 const lcStatus = await api.lifecycleStatus() as any;
-                const counts = lcStatus.counts || {};
+                const counts = lcStatus.counts || lcStatus;
                 if ((counts.draft || 0) + (counts.stale || 0) > 0) {
                     const badge = contentEl.createDiv();
                     badge.style.cssText = "display:flex;gap:12px;font-size:12px;margin-top:4px";
@@ -1577,7 +1577,7 @@ class LintReportModal extends Modal {
         (async () => {
             try {
                 const lcStatus = await api.lifecycleStatus() as any;
-                const counts = lcStatus.counts || {};
+                const counts = lcStatus.counts || lcStatus;
                 if ((counts.draft || 0) + (counts.stale || 0) > 0) {
                     const badge = header.createDiv();
                     badge.style.cssText = "display:flex;gap:12px;font-size:12px;margin-top:4px";
