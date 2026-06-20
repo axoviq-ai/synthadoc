@@ -46,7 +46,7 @@ async def test_draft_promoted_to_active_on_clean_lint(tmp_path):
     state = await db.get_page_state("alan-turing")
     assert state is not None
     assert state["state"] == LifecycleState.ACTIVE
-    events = await db.get_lifecycle_events(slug="alan-turing")
+    events, _ = await db.get_lifecycle_events(slug="alan-turing")
     assert any(e["to_state"] == LifecycleState.ACTIVE for e in events)
 
 
@@ -76,7 +76,7 @@ async def test_stale_detection_on_hash_mismatch(tmp_path):
     page = store.read_page("test-page")
     assert page is not None
     assert page.status == LifecycleState.STALE
-    events = await db.get_lifecycle_events(slug="test-page")
+    events, _ = await db.get_lifecycle_events(slug="test-page")
     assert any(e["to_state"] == LifecycleState.STALE for e in events)
 
 
@@ -99,7 +99,7 @@ async def test_archived_detection_on_missing_source(tmp_path):
     page = store.read_page("test-page")
     assert page is not None
     assert page.status == LifecycleState.ARCHIVED
-    events = await db.get_lifecycle_events(slug="test-page")
+    events, _ = await db.get_lifecycle_events(slug="test-page")
     assert any(e["to_state"] == LifecycleState.ARCHIVED for e in events)
 
 

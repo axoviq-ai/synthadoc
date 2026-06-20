@@ -397,6 +397,29 @@ async def test_mcp_lifecycle_invalid_state_returns_error(mock_orch):
     assert "unknown_state" in result["error"]
 
 
+@pytest.mark.asyncio
+async def test_mcp_lifecycle_blocked_transition_returns_error(mock_orch):
+    """Transitions not in the allowed graph must return an error dict, not write the page."""
+    from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.storage.wiki import WikiPage
+    mcp = create_mcp_server(mock_orch)
+    # draft → contradicted is blocked (draft pages haven't been published yet)
+    fake_page = WikiPage(
+        title="Test Page", tags=[], content="content",
+        status="draft", confidence="medium", sources=[],
+    )
+    with patch("synthadoc.storage.wiki.WikiStorage.read_page", return_value=fake_page), \
+         patch("synthadoc.storage.wiki.WikiStorage.write_page") as mock_write:
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_lifecycle",
+            {"slug": "test-page", "to_state": "contradicted", "reason": "blocked test"},
+            convert_result=False,
+        )
+    assert "error" in result
+    assert "not permitted" in result["error"]
+    mock_write.assert_not_called()  # page must not be written on blocked transition
+
+
 # ── New tool: synthadoc_jobs ──────────────────────────────────────────────────
 
 @pytest.mark.asyncio

@@ -237,9 +237,10 @@ def create_mcp_server(orchestrator):
         """Transition a wiki page's lifecycle state.
 
         Valid to_state values: active, draft, stale, contradicted, archived.
-        All transitions are permitted (no graph enforcement).
+        Only permitted transitions are accepted; invalid paths return an error dict.
         """
         from datetime import datetime, timezone
+        from synthadoc.storage.wiki import validate_lifecycle_transition
         if to_state not in _VALID_STATES:
             return {
                 "error": (
@@ -251,6 +252,9 @@ def create_mcp_server(orchestrator):
         if page is None:
             return {"error": "page not found", "slug": slug}
         from_state = page.status
+        err = validate_lifecycle_transition(from_state, to_state)
+        if err:
+            return {"error": err, "slug": slug, "from_state": from_state}
         page.status = to_state
         orchestrator._store.write_page(slug, page)
         await orchestrator._audit.set_page_state(slug, to_state, TriggerSource.MCP)

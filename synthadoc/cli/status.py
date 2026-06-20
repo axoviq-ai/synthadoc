@@ -24,28 +24,30 @@ def status_cmd(wiki: Optional[str] = typer.Option(None, "--wiki", "-w")):
 
     try:
         lc = get(wiki, "/lifecycle/status")
-        counts = lc.get('counts', {})
+        counts = lc.get("counts") or lc  # server returns flat dict; tolerate old wrapped format
         typer.echo("\nPage lifecycle:")
         if not counts:
             typer.echo("  (none — run `synthadoc lint run` to initialise lifecycle states)")
-        else:
-            _HINTS = {
-                "draft":            "<- run `synthadoc lint run` to promote",
-                "draft_candidates": "<- promote from candidates/ first, then lint",
-                "stale":            "<- re-ingest needed",
-                "contradicted":     "<- review required",
-            }
-            _LABELS = {
-                "draft_candidates": "draft (staged)",
-            }
-            display_states = list(LifecycleState.ORDERED)
-            if counts.get("draft_candidates", 0) > 0:
-                idx = display_states.index("draft") + 1
-                display_states.insert(idx, "draft_candidates")
-            for state in display_states:
-                count = counts.get(state, 0)
-                label = _LABELS.get(state, state)
-                hint = f"  {_HINTS[state]}" if state in _HINTS and count > 0 else ""
-                typer.echo(f"  {label:<14} {count}{hint}")
+            return
+        _HINTS = {
+            "draft":            "<- run `synthadoc lint run` to promote",
+            "draft_candidates": "<- promote from candidates/ first, then lint",
+            "stale":            "<- re-ingest needed",
+            "contradicted":     "<- review required",
+        }
+        _LABELS = {
+            "draft_candidates": "draft (staged)",
+        }
+        display_states = list(LifecycleState.ORDERED)
+        if counts.get("draft_candidates", 0) > 0:
+            idx = display_states.index("draft") + 1
+            display_states.insert(idx, "draft_candidates")
+        for state in display_states:
+            count = counts.get(state, 0)
+            label = _LABELS.get(state, state)
+            hint = f"  {_HINTS[state]}" if state in _HINTS and count > 0 else ""
+            typer.echo(f"  {label:<14} {count}{hint}")
+        if not any(counts.get(s, 0) for s in LifecycleState.ORDERED):
+            typer.echo("  (run `synthadoc lint run` to initialise lifecycle states)")
     except Exception:
         pass  # server may not support lifecycle yet

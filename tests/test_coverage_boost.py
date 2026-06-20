@@ -1092,7 +1092,7 @@ def test_status_cmd_shows_lifecycle_counts():
     def fake_get(wiki, path):
         if path == "/status":
             return {"wiki": "test", "pages": 5, "jobs_pending": 0, "jobs_total": 3}
-        return {"counts": {"draft": 2, "active": 3, "stale": 1, "contradicted": 0}}
+        return {"draft": 2, "active": 3, "stale": 1, "contradicted": 0, "archived": 0}
 
     with patch("synthadoc.cli.status.get", side_effect=fake_get), \
          patch("synthadoc.cli._wiki.resolve_wiki", return_value="test"):
@@ -1104,7 +1104,7 @@ def test_status_cmd_shows_lifecycle_counts():
 
 
 def test_status_cmd_lifecycle_empty_counts():
-    """status shows 'none' prompt when lifecycle counts are empty."""
+    """status shows all states at 0 plus lint hint when lifecycle counts are all zero."""
     from typer.testing import CliRunner
     from synthadoc.cli.main import app
     runner = CliRunner()
@@ -1112,14 +1112,15 @@ def test_status_cmd_lifecycle_empty_counts():
     def fake_get(wiki, path):
         if path == "/status":
             return {"wiki": "test", "pages": 0, "jobs_pending": 0, "jobs_total": 0}
-        return {"counts": {}}
+        return {"draft": 0, "active": 0, "contradicted": 0, "stale": 0, "archived": 0}
 
     with patch("synthadoc.cli.status.get", side_effect=fake_get), \
          patch("synthadoc.cli._wiki.resolve_wiki", return_value="test"):
         result = runner.invoke(app, ["status", "--wiki", "test"])
 
     assert result.exit_code == 0
-    assert "none" in result.output.lower() or "lint" in result.output
+    assert "lint" in result.output  # hint line shown when all zero
+    assert "active" in result.output  # all states displayed
 
 
 def test_status_cmd_lifecycle_with_draft_candidates():
@@ -1131,7 +1132,7 @@ def test_status_cmd_lifecycle_with_draft_candidates():
     def fake_get(wiki, path):
         if path == "/status":
             return {"wiki": "test", "pages": 3, "jobs_pending": 0, "jobs_total": 1}
-        return {"counts": {"draft": 0, "draft_candidates": 2, "active": 1}}
+        return {"draft": 0, "draft_candidates": 2, "active": 1, "contradicted": 0, "stale": 0, "archived": 0}
 
     with patch("synthadoc.cli.status.get", side_effect=fake_get), \
          patch("synthadoc.cli._wiki.resolve_wiki", return_value="test"):
