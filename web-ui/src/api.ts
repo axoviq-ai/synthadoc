@@ -29,9 +29,10 @@ export interface StreamCallbacks {
 export interface SessionSummary {
     session_id: string;
     mode: string;
-    created_at: string;
+    first_q: string;
     last_active: string;
-    turns: string[];
+    turn_count: number;
+    questions: string[];
 }
 
 export interface SessionMessage {

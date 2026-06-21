@@ -689,12 +689,12 @@ class AuditDB:
     async def list_sessions(self, limit: int = 20) -> list[dict]:
         """Return recent sessions that have messages.
 
-        Shape: {session_id, first_q, last_active, turn_count, questions: [str]}
+        Shape: {session_id, mode, first_q, last_active, turn_count, questions: [str]}
         """
         async with aiosqlite.connect(self._path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                """SELECT DISTINCT s.session_id, s.last_active
+                """SELECT DISTINCT s.session_id, s.mode, s.last_active
                    FROM chat_sessions s
                    INNER JOIN chat_messages m ON s.session_id = m.session_id
                    ORDER BY s.last_active DESC LIMIT ?""",
@@ -725,6 +725,7 @@ class AuditDB:
                 continue
             result.append({
                 "session_id": s["session_id"],
+                "mode": s["mode"],
                 "first_q": qs[0],
                 "last_active": s["last_active"],
                 "turn_count": len(qs),
