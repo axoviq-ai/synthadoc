@@ -1197,7 +1197,7 @@ For full examples, API signatures, and intent-dispatch config see [docs/design.m
 
 ## Links
 
-- Blogs: [forem.com](https://forem.com/paul_chen_90371fe7426cb44)
+- Blogs & Media: [docs/media/](docs/media/README.md) — DEV.to, Medium, Coderlegion, YouTube
 - Design document: [docs/design.md](docs/design.md)
 - Quick-Start Guide: [docs/user-quick-start-guide.md](docs/user-quick-start-guide.md)
 - Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
