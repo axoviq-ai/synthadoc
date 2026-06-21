@@ -3205,6 +3205,8 @@ class ProvenanceModal extends Modal {
 
     async onOpen() {
         this.modalEl.style.width = "clamp(900px, 82vw, 1200px)";
+        const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
+        if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
         this.filter = this.initialSlug;
         this.setupTitleBar();
         await this.load();
@@ -3458,6 +3460,8 @@ class ReasonModal extends Modal {
         super(app);
     }
     onOpen() {
+        const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
+        if (bg) bg.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true });
         const { contentEl } = this;
         contentEl.createEl("h3", { text: this.label });
         const input = contentEl.createEl("input", { type: "text" }) as HTMLInputElement;
