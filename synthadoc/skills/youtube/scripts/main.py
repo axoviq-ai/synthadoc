@@ -109,6 +109,7 @@ class YoutubeSkill(BaseSkill):
         from youtube_transcript_api import (
             YouTubeTranscriptApi,
             NoTranscriptFound,
+            TranscriptsDisabled,
             VideoUnavailable,
         )
 
@@ -120,10 +121,10 @@ class YoutubeSkill(BaseSkill):
         api = YouTubeTranscriptApi()
         try:
             fetched = await asyncio.to_thread(api.fetch, video_id)
-        except NoTranscriptFound:
+        except (NoTranscriptFound, TranscriptsDisabled):
             logger.warning(
                 "youtube: no captions available for %s — "
-                "enable auto-generated captions or choose a different video",
+                "subtitles are disabled or unavailable for this video",
                 source,
             )
             return ExtractedContent(
