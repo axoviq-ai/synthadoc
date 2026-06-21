@@ -65,7 +65,7 @@ export function Sidebar({ wikiName, connected, sessions, activeSessionId, onSele
                     {sessions.map((session) => {
                         const isActive = session.session_id === activeSessionId;
                         const isExpanded = expandedIds.has(session.session_id);
-                        const hasChildren = session.turns.length > 1;
+                        const hasChildren = session.questions.length > 1;
 
                         return (
                             <li key={session.session_id} className="session-group">
@@ -73,7 +73,7 @@ export function Sidebar({ wikiName, connected, sessions, activeSessionId, onSele
                                 <div
                                     className={`history-item session-root${isActive ? " history-item-active" : ""}`}
                                     onClick={() => onSelectSession(session.session_id, session.mode)}
-                                    title={session.turns[0]}
+                                    title={session.first_q}
                                 >
                                     {hasChildren ? (
                                         <button
@@ -88,12 +88,12 @@ export function Sidebar({ wikiName, connected, sessions, activeSessionId, onSele
                                         <span className="history-icon"><RunIcon /></span>
                                     )}
                                     <span className="history-details">
-                                        <span className="history-question">{session.turns[0]}</span>
+                                        <span className="history-question">{session.first_q}</span>
                                         <span className="history-time">
                                             {formatRelativeTime(session.last_active)}
                                             {hasChildren && (
                                                 <span className="session-turn-badge">
-                                                    {session.turns.length} turns
+                                                    {session.turn_count} turns
                                                 </span>
                                             )}
                                         </span>
@@ -103,7 +103,7 @@ export function Sidebar({ wikiName, connected, sessions, activeSessionId, onSele
                                 {/* Child turns */}
                                 {hasChildren && isExpanded && (
                                     <ul className="session-children">
-                                        {session.turns.slice(1).map((turn, idx) => (
+                                        {session.questions.slice(1).map((turn, idx) => (
                                             <li
                                                 key={idx}
                                                 className={`session-child${isActive ? " session-child-active" : ""}`}
