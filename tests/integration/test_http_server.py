@@ -276,3 +276,88 @@ class TestShutdownNoiseFilter:
         )
         record.exc_info = None  # no exc_info, info level — should pass
         assert self.f.filter(record) is True
+
+
+# ---------------------------------------------------------------------------
+# New code path tests for v1.0 code quality fixes
+# ---------------------------------------------------------------------------
+
+def test_ingest_request_rejects_empty_source(tmp_wiki):
+    """POST /ingest with empty source must return 422 (Pydantic validation error)."""
+    from fastapi.testclient import TestClient
+    app = _make_app(tmp_wiki)
+    with TestClient(app) as client:
+        resp = client.post("/jobs/ingest", json={"source": ""})
+    assert resp.status_code == 422
+
+
+def test_ingest_request_rejects_whitespace_source(tmp_wiki):
+    """POST /ingest with whitespace-only source must return 422."""
+    from fastapi.testclient import TestClient
+    app = _make_app(tmp_wiki)
+    with TestClient(app) as client:
+        resp = client.post("/jobs/ingest", json={"source": "   "})
+    assert resp.status_code == 422
+
+
+def test_jobs_rejects_invalid_sort(tmp_wiki):
+    """GET /jobs with an invalid sort param must return 400."""
+    from fastapi.testclient import TestClient
+    app = _make_app(tmp_wiki)
+    with TestClient(app) as client:
+        resp = client.get("/jobs?sort=injected_column")
+    assert resp.status_code == 400
+    assert "sort" in resp.json()["detail"].lower()
+
+
+def test_jobs_rejects_invalid_order(tmp_wiki):
+    """GET /jobs with an invalid order param must return 400."""
+    from fastapi.testclient import TestClient
+    app = _make_app(tmp_wiki)
+    with TestClient(app) as client:
+        resp = client.get("/jobs?order=injected")
+    assert resp.status_code == 400
+    assert "order" in resp.json()["detail"].lower()
+
+
+def _fake_query_result():
+    from unittest.mock import MagicMock
+    r = MagicMock()
+    r.answer = "ok"
+    r.citations = []
+    r.knowledge_gap = False
+    r.suggested_searches = []
+    r.cacheable = False
+    return r
+
+
+def test_get_query_returns_no_store_header(tmp_wiki):
+    """GET /query must include Cache-Control: no-store in the response headers."""
+    from fastapi.testclient import TestClient
+    app = _make_app(tmp_wiki)
+    with TestClient(app) as client:
+        app.state.orch.query = AsyncMock(return_value=_fake_query_result())
+        resp = client.get("/query?q=test&no_cache=true")
+    assert resp.status_code == 200
+    assert resp.headers.get("cache-control") == "no-store"
+
+
+def test_post_query_returns_no_store_header(tmp_wiki):
+    """POST /query must include Cache-Control: no-store in the response headers."""
+    from fastapi.testclient import TestClient
+    app = _make_app(tmp_wiki)
+    with TestClient(app) as client:
+        app.state.orch.query = AsyncMock(return_value=_fake_query_result())
+        resp = client.post("/query", json={"question": "test", "no_cache": True})
+    assert resp.status_code == 200
+    assert resp.headers.get("cache-control") == "no-store"
+
+
+def test_content_size_middleware_blocks_large_body(tmp_wiki):
+    """POST with body exceeding the configured limit must return 413."""
+    from fastapi.testclient import TestClient
+    from synthadoc.integration.http_server import create_app
+    app = create_app(wiki_root=tmp_wiki, max_body_bytes=10)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        resp = client.post("/jobs/ingest", json={"source": "x" * 50})
+    assert resp.status_code == 413

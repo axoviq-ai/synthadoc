@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 from typing import Optional
 
@@ -174,7 +175,11 @@ _FM_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
 
 
 class ContentSizeLimitMiddleware:
-    """Reject requests whose Content-Length exceeds the configured limit."""
+    """Reject requests whose body exceeds the configured limit.
+
+    Checks Content-Length header first (fast path). For chunked transfers that
+    omit Content-Length, counts bytes as they arrive and rejects mid-stream.
+    """
 
     def __init__(self, app, max_bytes: int = _MAX_BODY_BYTES) -> None:
         self.app = app
@@ -184,10 +189,42 @@ class ContentSizeLimitMiddleware:
         if scope["type"] == "http" and not scope.get("path", "").startswith("/mcp"):
             headers = dict(scope.get("headers", []))
             content_length = headers.get(b"content-length")
-            if content_length is not None and int(content_length) > self._max_bytes:
-                response = Response(content="Request body too large", status_code=413)
-                await response(scope, receive, send)
-                return
+            if content_length is not None:
+                if int(content_length) > self._max_bytes:
+                    response = Response(content="Request body too large", status_code=413)
+                    await response(scope, receive, send)
+                    return
+            else:
+                # Chunked transfer body check: only applies to request methods that
+                # carry a body (POST/PUT/PATCH).  GET/HEAD/DELETE have no body; buffering
+                # them would intercept SSE disconnect receive() calls and prematurely
+                # terminate streaming responses.
+                method = scope.get("method", "").upper()
+                if method in ("POST", "PUT", "PATCH"):
+                    total = 0
+                    messages: list = []
+                    while True:
+                        message = await receive()
+                        total += len(message.get("body", b""))
+                        if total > self._max_bytes:
+                            response = Response(content="Request body too large", status_code=413)
+                            await response(scope, receive, send)
+                            return
+                        messages.append(message)
+                        if not message.get("more_body", False):
+                            break
+                    idx = 0
+
+                    async def _replay():
+                        nonlocal idx
+                        if idx < len(messages):
+                            msg = messages[idx]
+                            idx += 1
+                            return msg
+                        return {"type": "http.disconnect"}
+
+                    await self.app(scope, _replay, send)
+                    return
         await self.app(scope, receive, send)
 
 
@@ -195,6 +232,7 @@ class QueryRequest(BaseModel):
     question: str
     save: bool = False
     timeout_seconds: int = 60
+    no_cache: bool = False
 
     @field_validator("question")
     @classmethod
@@ -208,6 +246,13 @@ class IngestRequest(BaseModel):
     source: str
     force: bool = False
     max_results: int | None = None
+
+    @field_validator("source")
+    @classmethod
+    def source_not_empty(cls, v):
+        if not v.strip():
+            raise ValueError("source must not be empty")
+        return v
 
 
 class LintRequest(BaseModel):
@@ -327,6 +372,7 @@ async def _worker_loop(orch) -> None:
                     _purged = await orch._audit.purge_old_sessions(_retention)
                     if _purged:
                         logger.info("Purged %d stale sessions.", _purged)
+                        _session_state.clear()
                 _last_purge_time = time.monotonic()
             except Exception as _pe:
                 logger.error("Session purge failed: %s", _pe)
@@ -390,7 +436,11 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
     from fastapi.middleware.cors import CORSMiddleware
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["app://obsidian.md", "http://localhost", "http://127.0.0.1"],
+        allow_origins=[
+            "app://obsidian.md",
+            "http://localhost", "http://localhost:3000", "http://localhost:5173", "http://localhost:7070",
+            "http://127.0.0.1", "http://127.0.0.1:3000", "http://127.0.0.1:5173", "http://127.0.0.1:7070",
+        ],
         allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["Content-Type"],
     )
@@ -468,6 +518,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             "cacheable": result.cacheable,
         }
 
+    _NO_STORE = {"Cache-Control": "no-store"}
+
     @app.get("/query")
     async def query(q: str, timeout_seconds: int = 60, no_cache: bool = False):
         if not q.strip():
@@ -480,15 +532,27 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         if not no_cache:
             cached = await orch._cache.get_query(cache_key)
             if cached is not None:
-                return cached
+                return JSONResponse(content=cached, headers=_NO_STORE)
         result = await _run_query(q, timeout_seconds=timeout_seconds)
         if result.get("cacheable", True):
             await orch._cache.set_query(cache_key, orch._wiki_epoch, result)
-        return result
+        return JSONResponse(content=result, headers=_NO_STORE)
 
     @app.post("/query")
     async def query_post(req: QueryRequest):
-        return await _run_query(req.question, timeout_seconds=req.timeout_seconds)
+        orch = app.state.orch
+        from synthadoc.core.cache import make_query_cache_key
+        _qcfg = orch._cfg.agents.resolve("query")
+        _query_model = f"{_qcfg.provider}/{_qcfg.model}"
+        cache_key = make_query_cache_key(req.question, orch._wiki_epoch, _query_model)
+        if not req.no_cache:
+            cached = await orch._cache.get_query(cache_key)
+            if cached is not None:
+                return JSONResponse(content=cached, headers=_NO_STORE)
+        result = await _run_query(req.question, timeout_seconds=req.timeout_seconds)
+        if result.get("cacheable", True):
+            await orch._cache.set_query(cache_key, orch._wiki_epoch, result)
+        return JSONResponse(content=result, headers=_NO_STORE)
 
     @app.get("/query/stream")
     async def query_stream(q: str, session_id: str | None = None, no_cache: bool = False, timeout_seconds: int = 60):
@@ -860,13 +924,19 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             "adversarial_warnings": adversarial_warnings,
         }
 
+    _VALID_JOB_SORT = {"created_at", "status", "operation"}
+    _VALID_JOB_ORDER = {"asc", "desc"}
+
     @app.get("/jobs")
     async def list_jobs(status: str | None = None, sort: str = "created_at", order: str = "asc"):
         from synthadoc.core.queue import JobStatus
+        if sort not in _VALID_JOB_SORT:
+            raise HTTPException(status_code=400, detail=f"Invalid sort {sort!r}. Valid: {sorted(_VALID_JOB_SORT)}")
+        if order not in _VALID_JOB_ORDER:
+            raise HTTPException(status_code=400, detail=f"Invalid order {order!r}. Valid: asc, desc")
         try:
             job_status = JobStatus(status) if status else None
         except ValueError:
-            from fastapi import HTTPException
             raise HTTPException(status_code=400, detail=f"Invalid status {status!r}. Valid values: {[s.value for s in JobStatus]}")
         jobs = await app.state.orch.queue.list_jobs(status=job_status, sort_by=sort, order=order)
         return [{"id": j.id, "status": j.status, "operation": j.operation,
@@ -1150,8 +1220,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         sort: str = "ingested_at",
         order: str = "desc",
     ):
-        audit = _AuditDB(wiki_root / ".synthadoc" / "audit.db")
-        await audit.init()
+        audit = app.state.orch._audit
         if broken:
             all_failures = await audit.list_citation_failures(limit=100_000, offset=0)
             rows = await audit.list_citation_failures(limit=limit, offset=offset)
@@ -1177,8 +1246,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     @app.get("/lifecycle/pages")
     async def lifecycle_pages():
-        audit = _AuditDB(wiki_root / ".synthadoc" / "audit.db")
-        await audit.init()
+        audit = app.state.orch._audit
         pages = await audit.get_all_page_states()
         cdir = _cand_dir()
         pages = [p for p in pages if not (cdir / f"{p['slug']}.md").exists()]
@@ -1186,8 +1254,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     @app.get("/lifecycle/status")
     async def lifecycle_status():
-        audit = _AuditDB(wiki_root / ".synthadoc" / "audit.db")
-        await audit.init()
+        audit = app.state.orch._audit
         counts = await audit.get_lifecycle_summary()
         # Split draft into wiki-domain drafts vs staged-in-candidates drafts.
         if counts.get("draft", 0) > 0:
@@ -1207,8 +1274,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         limit: int = 50,
         offset: int = 0,
     ):
-        audit = _AuditDB(wiki_root / ".synthadoc" / "audit.db")
-        await audit.init()
+        audit = app.state.orch._audit
         events, total = await audit.get_lifecycle_events(
             slug=slug or None,
             to_state=to_state or None,
@@ -1240,8 +1306,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         orch._store.write_page(req.slug, page)
         from datetime import datetime, timezone
         ts = datetime.now(timezone.utc).isoformat()
-        audit = _AuditDB(wiki_root / ".synthadoc" / "audit.db")
-        await audit.init()
+        audit = app.state.orch._audit
         await audit.set_page_state(req.slug, req.to_state, TriggerSource.USER)
         await audit.record_lifecycle_event(req.slug, from_state, req.to_state,
                                             req.reason, TriggerSource.USER)

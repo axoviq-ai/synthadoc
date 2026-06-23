@@ -352,6 +352,20 @@ async def test_mcp_write_page_not_found_returns_error(mock_orch):
     assert result == {"error": "page not found", "slug": "missing"}
 
 
+@pytest.mark.asyncio
+async def test_mcp_write_page_rejects_empty_content(mock_orch):
+    """synthadoc_write_page with empty or whitespace-only content must return an error."""
+    from synthadoc.integration.mcp_server import create_mcp_server
+    mcp = create_mcp_server(mock_orch)
+    for bad in ("", "   "):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_write_page",
+            {"slug": "some-page", "content": bad},
+            convert_result=False,
+        )
+        assert result == {"error": "content must not be empty"}
+
+
 # ── New tool: synthadoc_lifecycle ─────────────────────────────────────────────
 
 @pytest.mark.asyncio

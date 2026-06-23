@@ -320,3 +320,23 @@ def test_updated_missing_defaults_to_none(tmp_wiki):
     loaded = store.read_page("legacy")
     assert loaded is not None
     assert loaded.updated is None
+
+
+def test_read_page_with_malformed_yaml_frontmatter(tmp_wiki):
+    """read_page must return a WikiPage (with empty frontmatter) when YAML is invalid.
+
+    Previously yaml.YAMLError was unhandled and would crash the caller. The fix
+    silently degrades to an empty fm dict so the page body is still accessible.
+    """
+    store = WikiStorage(tmp_wiki / "wiki")
+    (tmp_wiki / "wiki").mkdir(parents=True, exist_ok=True)
+    # YAML with a tab character in a quoted-flow-style context — triggers YAMLError
+    (tmp_wiki / "wiki" / "broken.md").write_text(
+        "---\ntitle: broken:\n  : invalid\n---\n\nsome body",
+        encoding="utf-8"
+    )
+    # Must not raise; must return a WikiPage with empty/default frontmatter
+    loaded = store.read_page("broken")
+    assert loaded is not None
+    assert isinstance(loaded, WikiPage)
+    assert "some body" in loaded.content
