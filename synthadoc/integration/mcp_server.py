@@ -32,7 +32,9 @@ def create_mcp_server(orchestrator):
     @mcp.tool()
     async def synthadoc_ingest(source: str) -> dict:
         """Ingest a source document or URL into the wiki."""
-        job_id = await orchestrator.ingest(source, auto_confirm=True)
+        if not source or not source.strip():
+            return {"error": "source must not be empty"}
+        job_id = await orchestrator.ingest(source)
         return {"job_id": job_id, "source": source}
 
     @mcp.tool()
@@ -124,6 +126,8 @@ def create_mcp_server(orchestrator):
         scope: "all" to lint the whole wiki, or a page slug to lint one page.
         Do NOT pass "report" here — use synthadoc_lint_report for a zero-cost status read.
         """
+        if scope != "all" and orchestrator._store.read_page(scope) is None:
+            return {"error": "page not found", "slug": scope}
         job_id = await orchestrator.lint(scope=scope)
         return {"job_id": job_id, "scope": scope}
 
@@ -161,10 +165,10 @@ def create_mcp_server(orchestrator):
 
     @mcp.tool()
     async def synthadoc_status() -> dict:
-        """Get wiki status: page count and path."""
+        """Get wiki status: page count and wiki name."""
         return {
             "pages": len(orchestrator._store.list_pages()),
-            "wiki": str(orchestrator._root),
+            "wiki": orchestrator._root.name,
         }
 
     @mcp.tool()
@@ -175,6 +179,8 @@ def create_mcp_server(orchestrator):
         "contradicted", "stale", or "archived".
         Use synthadoc_read_page to get full content and sources for a specific page.
         """
+        if status != "all" and status not in _VALID_STATES:
+            return {"error": f"invalid status {status!r}. Valid: all, {', '.join(sorted(_VALID_STATES))}"}
         slugs = orchestrator._store.list_pages()
         pages = []
         for slug in slugs:
