@@ -1,17 +1,26 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 William Johnason / axoviq.com
 """
-Live MCP integration test — history-of-computing wiki on port 7070.
-Tests all 12 MCP tools with real use cases in a realistic order.
+Live MCP integration test — exercises all 12 MCP tools against a running server.
 
-Run with:
-    python tests/live_mcp_test.py
+Prerequisites:
+    synthadoc serve -w history-of-computing   # starts HTTP + MCP on port 7070
+
+Run:
+    python -X utf8 tests/live_mcp_test.py
+
+    # Custom port or wiki:
+    MCP_URL=http://127.0.0.1:8080/mcp/sse python -X utf8 tests/live_mcp_test.py
+
+The -X utf8 flag is required on Windows to avoid encoding errors in terminal output.
+MCP_URL defaults to http://127.0.0.1:7070/mcp/sse if the env var is not set.
 """
 import asyncio
 import json
+import os
 import sys
 
-MCP_URL = "http://127.0.0.1:7070/mcp/sse"
+MCP_URL = os.environ.get("MCP_URL", "http://127.0.0.1:7070/mcp/sse")
 
 PASS = "\033[92m[PASS]\033[0m"
 FAIL = "\033[91m[FAIL]\033[0m"
