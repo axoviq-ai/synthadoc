@@ -106,6 +106,10 @@ async def test_mcp_status_tool_returns_page_count(mock_orch):
             "synthadoc_status", {}, convert_result=False
         )
     assert result["pages"] == 2
+    # wiki field must be the directory name, not the full path
+    assert result["wiki"] == mock_orch._root.name
+    assert "\\" not in result["wiki"]
+    assert "/" not in result["wiki"]
 
 
 # ── New tool: synthadoc_read_page ─────────────────────────────────────────────
@@ -507,6 +511,76 @@ async def test_mcp_jobs_invalid_status_returns_error(mock_orch):
     )
     assert "error" in result
     assert "invalid_status" in result["error"]
+
+
+# ── Bug fixes: input validation ──────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_mcp_ingest_empty_source_returns_error(mock_orch):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    mcp = create_mcp_server(mock_orch)
+    with patch("synthadoc.core.orchestrator.Orchestrator.ingest",
+               new=AsyncMock(return_value="job-xyz")) as mock_ingest:
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_ingest", {"source": ""}, convert_result=False
+        )
+    assert "error" in result
+    mock_ingest.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_mcp_ingest_calls_ingest_without_auto_confirm(mock_orch):
+    """Regression: auto_confirm was incorrectly passed to Orchestrator.ingest()."""
+    from synthadoc.integration.mcp_server import create_mcp_server
+    mcp = create_mcp_server(mock_orch)
+    with patch("synthadoc.core.orchestrator.Orchestrator.ingest",
+               new=AsyncMock(return_value="job-abc")) as mock_ingest:
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_ingest", {"source": "paper.pdf"}, convert_result=False
+        )
+    mock_ingest.assert_called_once_with("paper.pdf")
+    assert result["job_id"] == "job-abc"
+
+
+@pytest.mark.asyncio
+async def test_mcp_list_pages_invalid_status_returns_error(mock_orch):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    mcp = create_mcp_server(mock_orch)
+    result = await mcp._tool_manager.call_tool(
+        "synthadoc_list_pages", {"status": "nonexistent_state"}, convert_result=False
+    )
+    assert "error" in result
+    assert "nonexistent_state" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_mcp_lint_nonexistent_slug_returns_error(mock_orch):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    mcp = create_mcp_server(mock_orch)
+    with patch("synthadoc.storage.wiki.WikiStorage.read_page", return_value=None), \
+         patch("synthadoc.core.orchestrator.Orchestrator.lint",
+               new=AsyncMock(return_value="job-lint")) as mock_lint:
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_lint", {"scope": "does-not-exist"}, convert_result=False
+        )
+    assert "error" in result
+    assert result["error"] == "page not found"
+    mock_lint.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_mcp_lint_all_scope_skips_page_check(mock_orch):
+    from synthadoc.integration.mcp_server import create_mcp_server
+    mcp = create_mcp_server(mock_orch)
+    with patch("synthadoc.core.orchestrator.Orchestrator.lint",
+               new=AsyncMock(return_value="job-lint")) as mock_lint, \
+         patch("synthadoc.storage.wiki.WikiStorage.read_page") as mock_read:
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_lint", {"scope": "all"}, convert_result=False
+        )
+    mock_read.assert_not_called()  # read_page must not be called for scope="all"
+    mock_lint.assert_called_once_with(scope="all")
+    assert result["job_id"] == "job-lint"
 
 
 # ── Wiki name injection ───────────────────────────────────────────────────────
