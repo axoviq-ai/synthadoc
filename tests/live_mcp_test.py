@@ -6,11 +6,16 @@ Live MCP integration test — exercises all 12 MCP tools against a running serve
 Prerequisites:
     synthadoc serve -w history-of-computing   # starts HTTP + MCP on port 7070
 
-Run:
+Run (default port 7070):
     python -X utf8 tests/live_mcp_test.py
 
-    # Custom port or wiki:
-    MCP_URL=http://127.0.0.1:8080/mcp/sse python -X utf8 tests/live_mcp_test.py
+Run against a different port (PowerShell):
+    $env:MCP_URL = "http://127.0.0.1:8080/mcp/sse"
+    python -X utf8 tests/live_mcp_test.py
+
+Run against a different port (bash/macOS/Linux):
+    export MCP_URL=http://127.0.0.1:8080/mcp/sse
+    python -X utf8 tests/live_mcp_test.py
 
 The -X utf8 flag is required on Windows to avoid encoding errors in terminal output.
 MCP_URL defaults to http://127.0.0.1:7070/mcp/sse if the env var is not set.
