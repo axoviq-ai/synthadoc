@@ -2628,6 +2628,16 @@ Every backup contains a `manifest.json` at the zip root:
 | Demo wiki renamed via `--name` | Warn + `y/N` prompt (breaks `demo sync`) |
 | Port taken | System suggests the next available port; user confirms or overrides |
 
+### CLI commands
+
+```
+synthadoc backup -w <wiki> [--output <dir>] [--include-sources] [--no-exports] [--no-cache]
+
+synthadoc restore <backup.zip> [--name <new-name>] [--target <dir>] [--port <port>]
+```
+
+`backup` creates a timestamped `ZIP_DEFLATED` archive in the output directory (default: current directory). `restore` extracts the archive, rewrites host-specific config values (port, domain name), updates the global registry, and re-applies any scheduled jobs. Both commands print a summary on completion; `restore` also prints a post-restore checklist.
+
 ---
 
 ## Appendix A — Release Feature Index
