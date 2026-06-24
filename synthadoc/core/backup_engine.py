@@ -102,7 +102,6 @@ def create_backup(
     }
 
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
-        zf.writestr("manifest.json", json.dumps(manifest, indent=2))
         for abs_path, arc_name in _iter_wiki_files(
             wiki_root, include_sources, include_exports, include_cache
         ):

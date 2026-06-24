@@ -222,12 +222,15 @@ def test_restore_missing_zip_exits_nonzero(tmp_path):
 def test_restore_corrupt_checksum_exits_nonzero(tmp_path):
     wiki_root = _make_wiki(tmp_path)
     zip_path = _make_backup_zip(wiki_root, tmp_path / "zips")
-    # Corrupt the manifest checksum
-    import json, zipfile as zf_mod
+    # Corrupt the manifest checksum by appending a second entry — duplicate-name
+    # warning from zipfile is intentional here.
+    import json, warnings, zipfile as zf_mod
     manifest = read_manifest(zip_path)
     manifest["checksum_sha256"] = "deadbeef" * 8
-    with zf_mod.ZipFile(zip_path, "a") as zf:
-        zf.writestr("manifest.json", json.dumps(manifest))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        with zf_mod.ZipFile(zip_path, "a") as zf:
+            zf.writestr("manifest.json", json.dumps(manifest))
     result = runner.invoke(app, [
         "restore", str(zip_path), "--target", str(tmp_path / "r"), "--port", "7070",
     ])
