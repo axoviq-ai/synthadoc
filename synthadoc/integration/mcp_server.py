@@ -208,6 +208,8 @@ def create_mcp_server(orchestrator):
 
         Returns the updated slug, title, and status.
         """
+        if not content or not content.strip():
+            return {"error": "content must not be empty"}
         from datetime import date
         page = orchestrator._store.read_page(slug)
         if page is None:
@@ -317,7 +319,13 @@ def create_mcp_server(orchestrator):
     # correctly when multiple Synthadoc servers are connected simultaneously.
     if _wiki_name:
         _prefix = f"Wiki: {_wiki_name}. "
-        for _tool in mcp._tool_manager._tools.values():
-            _tool.description = _prefix + (_tool.description or "")
+        try:
+            for _tool in mcp._tool_manager._tools.values():
+                _tool.description = _prefix + (_tool.description or "")
+        except AttributeError:
+            logger.warning(
+                "Could not inject wiki name into tool descriptions — "
+                "FastMCP internal API changed; descriptions unchanged"
+            )
 
     return mcp

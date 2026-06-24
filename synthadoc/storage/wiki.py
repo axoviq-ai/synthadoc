@@ -203,7 +203,10 @@ class WikiStorage:
         if raw.startswith("---"):
             parts = raw.split("---", 2)
             if len(parts) >= 3:
-                fm = yaml.safe_load(parts[1]) or {}
+                try:
+                    fm = yaml.safe_load(parts[1]) or {}
+                except yaml.YAMLError:
+                    fm = {}
                 body = parts[2].lstrip("\n")
 
         sources = _sources_from_dicts(fm.get("sources", []))

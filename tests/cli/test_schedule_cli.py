@@ -2,7 +2,7 @@
 # Copyright (C) 2026 William Johnason / axoviq.com
 import subprocess
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from typer.testing import CliRunner
 from synthadoc.cli.main import app
 
@@ -95,6 +95,41 @@ def test_schedule_run_uses_wiki_root_as_cwd(tmp_path):
         ])
     assert result.exit_code == 0, result.output
     assert captured["cwd"] == str(wiki)
+
+
+def test_schedule_history_empty(tmp_path):
+    """schedule history with no runs must echo a 'no history' message."""
+    wiki = _make_wiki(tmp_path)
+    with patch("synthadoc.storage.log.AuditDB") as MockDB:
+        instance = MagicMock()
+        instance.init = AsyncMock()
+        instance.list_scheduled_runs = AsyncMock(return_value=[])
+        MockDB.return_value = instance
+        result = runner.invoke(app, ["schedule", "history", "--wiki", str(wiki)])
+    assert result.exit_code == 0, result.output
+    assert "No scheduled run history" in result.output
+
+
+def test_schedule_history_shows_entries(tmp_path):
+    """schedule history must render run rows when runs exist."""
+    wiki = _make_wiki(tmp_path)
+    run = {
+        "run_id": "run-001",
+        "op": "lint",
+        "started_at": "2026-06-01T02:00:00",
+        "duration_s": 4.2,
+        "status": "success",
+        "error": None,
+    }
+    with patch("synthadoc.storage.log.AuditDB") as MockDB:
+        instance = MagicMock()
+        instance.init = AsyncMock()
+        instance.list_scheduled_runs = AsyncMock(return_value=[run])
+        MockDB.return_value = instance
+        result = runner.invoke(app, ["schedule", "history", "--wiki", str(wiki)])
+    assert result.exit_code == 0, result.output
+    assert "run-001" in result.output
+    assert "lint" in result.output
 
 
 def test_schedule_apply_registers_jobs(tmp_path):
