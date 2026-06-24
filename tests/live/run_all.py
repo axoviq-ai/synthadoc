@@ -111,8 +111,8 @@ def main() -> None:
             print(f"    A) Run the server for the right wiki:")
             print(f"         synthadoc serve -w {args.wiki}")
             print(f"    B) Pass the wiki that IS running:")
-            print(f"         python -X utf8 tests/live/run_all.py --wiki {_serving}")
-            print(f"         python -X utf8 tests/live/run_all.py")
+            print(f"         {sys.executable} -X utf8 tests/live/run_all.py --wiki {_serving}")
+            print(f"         {sys.executable} -X utf8 tests/live/run_all.py")
             sys.exit(1)
     except Exception:
         pass  # server not yet up — individual suites will handle this gracefully

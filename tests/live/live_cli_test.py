@@ -460,7 +460,7 @@ def main() -> None:
                 print(f"    A) Run the server for the right wiki:")
                 print(f"         synthadoc serve -w {WIKI_NAME}")
                 print(f"    B) Run the tests against the wiki that IS running:")
-                print(f"         python3 -X utf8 tests/live/live_cli_test.py --wiki {_serving}")
+                print(f"         {PY} -X utf8 tests/live/live_cli_test.py --wiki {_serving}")
                 sys.exit(1)
         except Exception:
             pass  # if status probe fails for any reason, let the tests surface it
