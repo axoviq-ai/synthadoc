@@ -203,13 +203,31 @@ def test_restore_name_conflict_exits_nonzero(tmp_path):
     wiki_root = _make_wiki(tmp_path)
     zip_path = _make_backup_zip(wiki_root, tmp_path / "zips")
     restore_dir = tmp_path / "restore"
-    existing_registry = {"my-wiki": {"path": "/other/path", "port": 7070}}
+    # Use a path that actually exists so the conflict check blocks the restore
+    existing_live_path = tmp_path / "existing-live-wiki"
+    existing_live_path.mkdir()
+    existing_registry = {"my-wiki": {"path": str(existing_live_path), "port": 7070}}
     with patch("synthadoc.cli.backup._read_registry", return_value=existing_registry), \
          _patch_reserved_ports(), _patch_schedule_apply():
         result = runner.invoke(app, [
             "restore", str(zip_path), "--target", str(restore_dir), "--port", "7071",
         ])
     assert result.exit_code != 0
+
+
+def test_restore_stale_registry_entry_proceeds(tmp_path):
+    wiki_root = _make_wiki(tmp_path)
+    zip_path = _make_backup_zip(wiki_root, tmp_path / "zips")
+    restore_dir = tmp_path / "restore"
+    # Registry points to a path that no longer exists (user renamed the folder)
+    existing_registry = {"my-wiki": {"path": str(tmp_path / "my-wiki-old"), "port": 7070}}
+    with patch("synthadoc.cli.backup._read_registry", return_value=existing_registry), \
+         _patch_write_registry(), _patch_reserved_ports(), _patch_schedule_apply():
+        result = runner.invoke(app, [
+            "restore", str(zip_path), "--target", str(restore_dir), "--port", "7071",
+        ])
+    assert result.exit_code == 0, result.output
+    assert (restore_dir / "my-wiki" / "wiki" / "page1.md").exists()
 
 
 def test_restore_with_name_override(tmp_path):

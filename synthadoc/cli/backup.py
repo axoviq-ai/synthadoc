@@ -124,16 +124,23 @@ def restore_cmd(
     original_name: str = manifest["wiki_name"]
     wiki_name: str = name or original_name
 
-    # Name conflict check (step 6)
+    # Name conflict check
     registry = _read_registry()
     if wiki_name in registry:
         existing_path = registry[wiki_name]["path"]
-        E.cli_error(
-            E.WIKI_ALREADY_EXISTS,
-            f"Wiki '{wiki_name}' is already registered at {existing_path}.",
-            f"Use --name to choose a different name, or uninstall first:\n"
-            f"  synthadoc uninstall {wiki_name}",
-        )
+        if Path(existing_path).exists():
+            E.cli_error(
+                E.WIKI_ALREADY_EXISTS,
+                f"Wiki '{wiki_name}' is already registered at {existing_path}.",
+                f"Use --name to choose a different name, or uninstall first:\n"
+                f"  synthadoc uninstall {wiki_name}",
+            )
+        else:
+            typer.echo(
+                f"  Note: '{wiki_name}' was registered at {existing_path} "
+                f"but that path no longer exists — proceeding with restore.",
+                err=True,
+            )
 
     # Demo wiki rename warning
     if wiki_name != original_name and original_name in _DEMOS:
