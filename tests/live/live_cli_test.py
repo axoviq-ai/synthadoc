@@ -436,6 +436,35 @@ def main() -> None:
         info(f"Server reachable at {SYNTHADOC_URL} — running live (tier 2) tests")
         # Re-discover wiki_root with server up (status endpoint returns the path)
         wiki_root = discover_wiki_root() or wiki_root
+
+        # Validate that the running server is actually serving WIKI_NAME.
+        # The CLI reads the server port from the wiki's config.toml — if the
+        # server at SYNTHADOC_URL is serving a *different* wiki, all tier-2
+        # CLI commands will get ERR-SRV-001 on the wrong port.
+        try:
+            import json as _json
+            with urllib.request.urlopen(
+                SYNTHADOC_URL.rstrip("/") + "/status", timeout=5
+            ) as _r:
+                _status = _json.loads(_r.read())
+            _serving = pathlib.Path(_status.get("wiki", "")).name
+            if _serving and _serving != WIKI_NAME:
+                print()
+                print(f"  FATAL: wiki/URL mismatch detected.")
+                print(f"    Server at {SYNTHADOC_URL} is serving wiki '{_serving}',")
+                print(f"    but --wiki is set to '{WIKI_NAME}'.")
+                print(f"    The CLI reads the server port from '{WIKI_NAME}' config.toml,")
+                print(f"    so all server-dependent commands will fail.")
+                print()
+                print(f"  Fix one of the following:")
+                print(f"    A) Run the server for the right wiki:")
+                print(f"         synthadoc serve -w {WIKI_NAME}")
+                print(f"    B) Run the tests against the wiki that IS running:")
+                print(f"         {PY} -X utf8 tests/live/live_cli_test.py --wiki {_serving}")
+                sys.exit(1)
+        except Exception:
+            pass  # if status probe fails for any reason, let the tests surface it
+
         run_live_tests(wiki_root)
     else:
         warn("live tests (tier 2)",
