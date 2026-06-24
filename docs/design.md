@@ -2576,7 +2576,7 @@ The `synthadoc backup` and `synthadoc restore` commands package a running wiki d
 
 ### Architecture
 
-All file I/O is handled by `synthadoc/core/backup_engine.py` (pure stdlib — no new pip dependencies). The CLI layer in `synthadoc/cli/backup.py` handles Typer commands, registry operations, and interactive prompts, reusing existing port-allocation (`assign_wiki_port`) and registry helpers (`_read_registry`, `_write_registry`) from `install.py`.
+All file I/O is handled by a dedicated backup engine (pure stdlib — no new pip dependencies). The CLI layer manages Typer commands, registry operations, and interactive prompts, reusing existing port-allocation and registry helpers from the installation subsystem.
 
 ### Zip structure
 
