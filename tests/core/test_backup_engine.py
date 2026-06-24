@@ -155,7 +155,7 @@ def test_manifest_wiki_name_matches(wiki_root, tmp_path):
 
 def test_manifest_page_count(wiki_root, tmp_path):
     zip_path = _make_backup(wiki_root, tmp_path)
-    assert read_manifest(zip_path)["page_count"] == 1  # only wiki/*.md direct children
+    assert read_manifest(zip_path)["page_count"] == 1  # scaffold slugs (index, purpose…) excluded
 
 
 def test_manifest_includes_flags_correct(wiki_root, tmp_path):

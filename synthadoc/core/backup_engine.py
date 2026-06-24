@@ -52,10 +52,11 @@ def _iter_wiki_files(
 
 
 def _count_pages(wiki_root: Path) -> int:
+    from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
     wiki_dir = wiki_root / "wiki"
     if not wiki_dir.is_dir():
         return 0
-    return sum(1 for _ in wiki_dir.glob("*.md"))
+    return sum(1 for p in wiki_dir.glob("*.md") if p.stem not in LINT_SKIP_SLUGS)
 
 
 def _compute_content_checksum(zip_path: Path) -> str:
