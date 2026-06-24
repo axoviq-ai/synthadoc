@@ -91,7 +91,6 @@ def restore_cmd(
     name: Optional[str] = typer.Option(None, "--name", help="Override wiki name on restore"),
     target: Optional[str] = typer.Option(None, "--target", "-t", help="Parent directory for the restored wiki"),
     port: Optional[int] = typer.Option(None, "--port", help="Override server port"),
-    overwrite: bool = typer.Option(False, "--overwrite", help="Allow re-registering an existing name at the same path"),
 ) -> None:
     """Restore a wiki domain from a backup zip.
 
@@ -125,18 +124,16 @@ def restore_cmd(
     original_name: str = manifest["wiki_name"]
     wiki_name: str = name or original_name
 
-    # Name conflict check
+    # Name conflict check (step 6)
     registry = _read_registry()
     if wiki_name in registry:
         existing_path = registry[wiki_name]["path"]
-        target_resolved = str((Path(target) / wiki_name).resolve()) if target else None
-        if not overwrite or (target_resolved and target_resolved != existing_path):
-            E.cli_error(
-                E.WIKI_ALREADY_EXISTS,
-                f"Wiki '{wiki_name}' is already registered at {existing_path}.",
-                f"Use --name to choose a different name, or uninstall first:\n"
-                f"  synthadoc uninstall {wiki_name}",
-            )
+        E.cli_error(
+            E.WIKI_ALREADY_EXISTS,
+            f"Wiki '{wiki_name}' is already registered at {existing_path}.",
+            f"Use --name to choose a different name, or uninstall first:\n"
+            f"  synthadoc uninstall {wiki_name}",
+        )
 
     # Demo wiki rename warning
     if wiki_name != original_name and original_name in _DEMOS:
@@ -156,10 +153,10 @@ def restore_cmd(
     target_dir.mkdir(parents=True, exist_ok=True)
 
     # Port resolution
-    backed_up_port = _read_backed_up_port(zip_path)
     if port is not None:
         effective_port = port
     else:
+        backed_up_port = _read_backed_up_port(zip_path)
         effective_port = assign_wiki_port(_get_reserved_ports(), start=backed_up_port)
         if effective_port != backed_up_port:
             raw = typer.prompt(
@@ -183,7 +180,6 @@ def restore_cmd(
         rewrite_config(config_path, effective_port, new_domain)
 
     # Update registry
-    registry = _read_registry()
     registry[wiki_name] = {
         "path": str(wiki_root),
         "demo": wiki_name if wiki_name in _DEMOS else None,
