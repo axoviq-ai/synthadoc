@@ -2627,7 +2627,7 @@ Every backup contains a `manifest.json` at the zip root:
 | Name in registry, different path | Hard stop — error message with `--name` hint |
 | Name in registry, same path, `--overwrite` | Proceed — overwrite contents |
 | Demo wiki renamed via `--name` | Warn + `y/N` prompt (breaks `demo sync`) |
-| Port taken | `assign_wiki_port()` suggests next free port; user confirms |
+| Port taken | System suggests the next available port; user confirms or overrides |
 
 ---
 
