@@ -25,16 +25,16 @@ No mocks.  This script is run manually, not by CI.
 ────────────────────────────────────────────────────────────────────────────────
   # PowerShell
   $env:SYNTHADOC_URL = "http://127.0.0.1:7070/"
-  python -X utf8 tests/live_cli_test.py
+  python -X utf8 tests/live/live_cli_test.py
 
   # bash / macOS / Linux
   export SYNTHADOC_URL=http://127.0.0.1:7070/
-  python -X utf8 tests/live_cli_test.py
+  python -X utf8 tests/live/live_cli_test.py
 
   # Different wiki
   $env:WIKI_NAME = "ai-research"
   $env:SYNTHADOC_URL = "http://127.0.0.1:7072/"
-  python -X utf8 tests/live_cli_test.py
+  python -X utf8 tests/live/live_cli_test.py
 
 ────────────────────────────────────────────────────────────────────────────────
  TIERS
