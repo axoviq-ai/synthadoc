@@ -14,11 +14,14 @@ Options:
                    Choices: cli  mcp  plugin  (default: all three)
 
 Examples:
-    # Run all suites against default wiki + port
+    # Run all suites against the default wiki (history-of-computing, port 7070)
     python -X utf8 tests/live/run_all.py
 
-    # Run against a different wiki and port
-    python -X utf8 tests/live/run_all.py --wiki ai-research --url http://127.0.0.1:7071
+    # Server on a non-default port (wiki name must match what the server serves)
+    python -X utf8 tests/live/run_all.py --url http://127.0.0.1:7071
+
+    # Different wiki — server must be running for that wiki
+    python -X utf8 tests/live/run_all.py --wiki my-wiki --url http://127.0.0.1:7072
 
     # Run only the plugin suite
     python -X utf8 tests/live/run_all.py --suite plugin
@@ -87,6 +90,32 @@ def main() -> None:
     base    = args.url.rstrip("/")
     mcp_url = args.mcp_url or f"{base}/mcp/sse"
     to_run  = args.suite or list(SUITES)
+
+    # Pre-flight: verify the server is serving the expected wiki before
+    # spending time on any suite.  Mismatch causes the CLI suite to fail
+    # every server-dependent command with ERR-SRV-001.
+    import json as _json
+    import urllib.request as _urlreq
+    try:
+        with _urlreq.urlopen(f"{base}/status", timeout=5) as _r:
+            _status = _json.loads(_r.read())
+        _serving = Path(_status.get("wiki", "")).name
+        if _serving and _serving != args.wiki:
+            print(f"\nERROR: wiki/URL mismatch.")
+            print(f"  Server at {base} is serving wiki '{_serving}',")
+            print(f"  but --wiki is '{args.wiki}'.")
+            print(f"  The CLI reads the server port from '{args.wiki}' config.toml,")
+            print(f"  so all server-dependent CLI commands will fail with ERR-SRV-001.")
+            print()
+            print(f"  Fix one of the following:")
+            print(f"    A) Run the server for the right wiki:")
+            print(f"         synthadoc serve -w {args.wiki}")
+            print(f"    B) Pass the wiki that IS running:")
+            print(f"         {sys.executable} -X utf8 tests/live/run_all.py --wiki {_serving}")
+            print(f"         {sys.executable} -X utf8 tests/live/run_all.py")
+            sys.exit(1)
+    except Exception:
+        pass  # server not yet up — individual suites will handle this gracefully
 
     # Per-suite CLI args (override env vars for explicit invocation)
     suite_args = {
