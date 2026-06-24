@@ -2583,6 +2583,10 @@ All file I/O is handled by a dedicated backup engine (pure stdlib — no new pip
 ```
 synthadoc-backup-<wiki>-<YYYYMMDD-HHMMSS>.zip
 ├── manifest.json          ← always present; last entry wins if duplicated
+├── AGENTS.md              ← LLM agent instructions (if present)
+├── ROUTING.md             ← query routing index (if present)
+├── log.md                 ← human-readable activity log (if present)
+├── sources.txt            ← batch ingest manifest (if present)
 ├── wiki/
 │   ├── *.md
 │   └── candidates/*.md
