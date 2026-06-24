@@ -28,14 +28,12 @@ Manual integration tests that run against a live server and LLM.  Not run by CI.
    synthadoc install history-of-computing
    ```
 
-3. **Server running**
+3. **Server running** (the server needs the LLM API key, not the test client)
    ```
    synthadoc serve -w history-of-computing
    ```
 
-4. **LLM API key** — e.g. `ANTHROPIC_API_KEY` in the environment
-
-5. **MCP client library** (MCP test only)
+4. **MCP client library** — required only for the MCP suite (`live_mcp_test.py`)
    ```
    pip install mcp
    ```
