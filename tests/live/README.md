@@ -141,7 +141,7 @@ All tests are designed to leave the wiki in its original state:
 | CLI | `ingest` — uses `--analyse-only` | no wiki page written |
 | CLI | `schedule` — temp entry added | removed after test |
 | Plugin | `candidates/` — 2 temp pages created | deleted in `finally` block |
-| Plugin | lifecycle — 1 archived page round-trips | ends back in `archived` state |
+| Plugin | lifecycle — 1 archived page round-trips (creates one temporarily if none exist) | ends back in original state |
 | Plugin | staging policy — changed to `off` | restored before test ends |
 | MCP | `synthadoc_write_page` — content modified | original content restored |
 | MCP | lifecycle — 1 active page marked stale | restored to `active` |
