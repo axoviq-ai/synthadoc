@@ -3018,7 +3018,6 @@ Interactive restore: prompts for target directory if not given; detects port con
 --name <name>        Restore under a different wiki name
 --target <dir>       Parent directory for the restored wiki
 --port <N>           Use this port (skips interactive prompt)
---overwrite          Allow re-registering over an existing entry at the same path
 ```
 
 **Post-restore checklist (printed automatically):**

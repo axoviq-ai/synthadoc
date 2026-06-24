@@ -2624,8 +2624,7 @@ Every backup contains a `manifest.json` at the zip root:
 | Situation | Behaviour |
 |---|---|
 | Name not in registry | Register normally |
-| Name in registry, different path | Hard stop — error message with `--name` hint |
-| Name in registry, same path, `--overwrite` | Proceed — overwrite contents |
+| Name in registry | Hard stop — use `--name` or uninstall first |
 | Demo wiki renamed via `--name` | Warn + `y/N` prompt (breaks `demo sync`) |
 | Port taken | System suggests the next available port; user confirms or overrides |
 

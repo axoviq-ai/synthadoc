@@ -172,7 +172,7 @@ def rewrite_config(config_path: Path, new_port: int, new_domain: Optional[str] =
     if new_domain is not None:
         text = re.sub(
             r'^(domain\s*=\s*)"[^"]*"',
-            rf'\g<1>"{new_domain}"',
+            lambda m: f'{m.group(1)}"{new_domain}"',
             text,
             flags=re.MULTILINE,
         )
