@@ -2591,7 +2591,7 @@ synthadoc-backup-<wiki>-<YYYYMMDD-HHMMSS>.zip
 │   ├── audit.db
 │   └── cache.db           ← included by default; skip with --no-cache
 ├── exports/               ← included by default; skip with --no-exports
-└── raw_sources/           ← excluded by default; opt-in with --include-sources
+└── raw_sources/           ← included by default; skip with --no-sources
 ```
 
 Always excluded: `jobs.db`, `embeddings.db`, `server.pid`, `skill_registry.json`, `logs/`.
@@ -2631,7 +2631,7 @@ Every backup contains a `manifest.json` at the zip root:
 ### CLI commands
 
 ```
-synthadoc backup -w <wiki> [--output <dir>] [--include-sources] [--no-exports] [--no-cache]
+synthadoc backup -w <wiki> [--output <dir>] [--no-sources] [--no-exports] [--no-cache]
 
 synthadoc restore <backup.zip> [--name <new-name>] [--target <dir>] [--port <port>]
 ```

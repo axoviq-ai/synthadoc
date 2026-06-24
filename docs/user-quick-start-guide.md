@@ -2995,12 +2995,12 @@ Creates a timestamped compressed zip in the current directory:
 synthadoc-backup-history-of-computing-20260624-103000.zip
 ```
 
-**What's included by default:** wiki pages, candidates, config, audit database, exports, query cache.
+**What's included by default:** wiki pages, candidates, config, audit database, exports, query cache, raw sources.
 
 **Flags:**
 ```
 --output <dir>       Write zip to this directory (default: current directory)
---include-sources    Also include raw_sources/ (original PDFs, docs)
+--no-sources         Exclude raw_sources/ (reduces size for large crawled wikis)
 --no-exports         Exclude exports/ directory
 --no-cache           Exclude cache.db
 ```
@@ -3033,4 +3033,4 @@ Interactive restore: prompts for target directory if not given; detects port con
 | `jobs.db` | Stale job queue — meaningless on another machine |
 | `embeddings.db` | Large; rebuilt automatically on first search after restore |
 | `server.pid` | Stale process ID |
-| `raw_sources/` | Optional; excluded by default due to size (use `--include-sources`) |
+| `raw_sources/` | Included by default; skip with `--no-sources` to reduce zip size |

@@ -37,7 +37,7 @@ from synthadoc import errors as E
 def backup_cmd(
     wiki: Optional[str] = typer.Option(None, "--wiki", "-w"),
     output: str = typer.Option(".", "--output", "-o", help="Directory to write the backup zip"),
-    include_sources: bool = typer.Option(False, "--include-sources", help="Include raw_sources/"),
+    no_sources: bool = typer.Option(False, "--no-sources", help="Exclude raw_sources/"),
     no_exports: bool = typer.Option(False, "--no-exports", help="Exclude exports/"),
     no_cache: bool = typer.Option(False, "--no-cache", help="Exclude cache.db"),
 ) -> None:
@@ -46,7 +46,7 @@ def backup_cmd(
     \b
     Examples:
       synthadoc backup -w history-of-computing
-      synthadoc backup -w history-of-computing --output ~/backups --include-sources
+      synthadoc backup -w history-of-computing --output ~/backups --no-sources
     """
     wiki_name = resolve_wiki(wiki)
     wiki_root = resolve_wiki_path(wiki_name)
@@ -70,7 +70,7 @@ def backup_cmd(
         synthadoc_version=__version__,
         db_schema_version=DB_SCHEMA_VERSION,
         cache_version=CACHE_VERSION,
-        include_sources=include_sources,
+        include_sources=not no_sources,
         include_exports=not no_exports,
         include_cache=not no_cache,
     )
@@ -79,7 +79,7 @@ def backup_cmd(
     manifest = read_manifest(zip_path)
     typer.echo(f"\n✓ {zip_path.name}  ({size_mb:.1f} MB)")
     typer.echo(f"  Pages:    {manifest.get('page_count', '?')}")
-    typer.echo(f"  Sources:  {'included' if include_sources else 'excluded  (use --include-sources to add)'}")
+    typer.echo(f"  Sources:  {'excluded  (use --no-sources to skip next time)' if no_sources else 'included'}")
     typer.echo(f"  Exports:  {'excluded' if no_exports else 'included'}")
     typer.echo(f"  Cache:    {'excluded' if no_cache else 'included'}")
     typer.echo(f"  Path:     {zip_path}")

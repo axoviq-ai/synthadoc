@@ -90,18 +90,30 @@ def test_backup_no_exports_flag(tmp_path):
         assert not any("exports" in n for n in zf.namelist())
 
 
-def test_backup_include_sources_flag(tmp_path):
+def test_backup_sources_included_by_default(tmp_path):
+    wiki_root = _make_wiki(tmp_path)
+    (wiki_root / "raw_sources").mkdir()
+    (wiki_root / "raw_sources" / "doc.pdf").write_bytes(b"pdf")
+    out_dir = tmp_path / "backups"
+    with _patch_resolve_wiki(), _patch_registry(wiki_root):
+        runner.invoke(app, ["backup", "-w", "my-wiki", "--output", str(out_dir)])
+    zip_path = list(out_dir.glob("*.zip"))[0]
+    with zipfile.ZipFile(zip_path) as zf:
+        assert any("raw_sources" in n for n in zf.namelist())
+
+
+def test_backup_no_sources_flag(tmp_path):
     wiki_root = _make_wiki(tmp_path)
     (wiki_root / "raw_sources").mkdir()
     (wiki_root / "raw_sources" / "doc.pdf").write_bytes(b"pdf")
     out_dir = tmp_path / "backups"
     with _patch_resolve_wiki(), _patch_registry(wiki_root):
         runner.invoke(app, [
-            "backup", "-w", "my-wiki", "--output", str(out_dir), "--include-sources",
+            "backup", "-w", "my-wiki", "--output", str(out_dir), "--no-sources",
         ])
     zip_path = list(out_dir.glob("*.zip"))[0]
     with zipfile.ZipFile(zip_path) as zf:
-        assert any("raw_sources" in n for n in zf.namelist())
+        assert not any("raw_sources" in n for n in zf.namelist())
 
 
 def test_backup_missing_wiki_exits_nonzero(tmp_path):

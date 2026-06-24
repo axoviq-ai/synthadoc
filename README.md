@@ -1025,8 +1025,8 @@ Package a wiki domain into a portable compressed zip and re-register it on any m
 # Backup to the current directory
 synthadoc backup -w my-wiki
 
-# Backup to a specific directory, including raw source files
-synthadoc backup -w my-wiki --output ~/backups --include-sources
+# Backup to a specific directory, excluding raw source files to reduce size
+synthadoc backup -w my-wiki --output ~/backups --no-sources
 
 # Restore (prompts for target directory and confirms port)
 synthadoc restore synthadoc-backup-my-wiki-20260624-103000.zip
@@ -1035,7 +1035,7 @@ synthadoc restore synthadoc-backup-my-wiki-20260624-103000.zip
 synthadoc restore backup.zip --name my-wiki-staging --target ~/wikis --port 7071
 ```
 
-**Backup flags:** `--output/-o` (directory, default: current dir), `--include-sources` (add `raw_sources/`), `--no-exports` (skip `exports/`), `--no-cache` (skip `cache.db`).
+**Backup flags:** `--output/-o` (directory, default: current dir), `--no-sources` (skip `raw_sources/`), `--no-exports` (skip `exports/`), `--no-cache` (skip `cache.db`).
 
 **Restore flags:** `--name` (override wiki name), `--target/-t` (parent directory), `--port` (skip interactive port prompt).
 
