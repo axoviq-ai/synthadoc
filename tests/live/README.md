@@ -31,74 +31,83 @@ Manual integration tests that run against a live server and LLM.  Not run by CI.
 
 ## Run all suites together
 
-```powershell
-# PowerShell
-python -X utf8 tests/live/run_all.py
+The simplest invocation uses whichever wiki is set as your default
+(`synthadoc use`).  No flags required:
 
+```bash
 # bash / macOS / Linux
+python3 -X utf8 tests/live/run_all.py
+
+# PowerShell
 python -X utf8 tests/live/run_all.py
 ```
 
-### Different wiki or port
+The default wiki is `history-of-computing` and the default port is 7070.
+If your setup differs, override with `--wiki` and `--url` — but **the wiki
+name must match what the running server is actually serving**.  The runner
+validates this at startup and exits with a clear error if they don't match.
 
-```powershell
-python -X utf8 tests/live/run_all.py --wiki ai-research --url http://127.0.0.1:7071
+```bash
+# Example: server is on a non-default port for history-of-computing
+python3 -X utf8 tests/live/run_all.py --url http://127.0.0.1:7071
+
+# Example: testing a different wiki (server must be running for that wiki)
+python3 -X utf8 tests/live/run_all.py --wiki my-other-wiki --url http://127.0.0.1:7072
 ```
 
 ### One suite only
 
-```powershell
-python -X utf8 tests/live/run_all.py --suite cli
-python -X utf8 tests/live/run_all.py --suite mcp
-python -X utf8 tests/live/run_all.py --suite plugin
+```bash
+python3 -X utf8 tests/live/run_all.py --suite cli
+python3 -X utf8 tests/live/run_all.py --suite mcp
+python3 -X utf8 tests/live/run_all.py --suite plugin
 ```
 
 ### Two suites, skip one
 
-```powershell
-python -X utf8 tests/live/run_all.py --suite cli --suite plugin
+```bash
+python3 -X utf8 tests/live/run_all.py --suite cli --suite plugin
 ```
 
 ## Run suites individually
 
 ### CLI test
 
-```powershell
+```bash
+# bash / macOS / Linux — uses default wiki and port
+python3 -X utf8 tests/live/live_cli_test.py
+
+# Or set via environment variable
+SYNTHADOC_URL=http://127.0.0.1:7070/ python3 -X utf8 tests/live/live_cli_test.py
+
 # PowerShell
 $env:SYNTHADOC_URL = "http://127.0.0.1:7070/"
 python -X utf8 tests/live/live_cli_test.py
 
-# bash
-SYNTHADOC_URL=http://127.0.0.1:7070/ python -X utf8 tests/live/live_cli_test.py
-
-# With flags
-python -X utf8 tests/live/live_cli_test.py --wiki ai-research --url http://127.0.0.1:7071/
 python -X utf8 tests/live/live_cli_test.py --help
 ```
 
 ### MCP test
 
-```powershell
+```bash
+# bash / macOS / Linux
+MCP_URL=http://127.0.0.1:7070/mcp/sse python3 -X utf8 tests/live/live_mcp_test.py
+
 # PowerShell
 $env:MCP_URL = "http://127.0.0.1:7070/mcp/sse"
 python -X utf8 tests/live/live_mcp_test.py
-
-# bash
-MCP_URL=http://127.0.0.1:7070/mcp/sse python -X utf8 tests/live/live_mcp_test.py
 ```
 
 ### Plugin REST API test
 
-```powershell
+```bash
+# bash / macOS / Linux
+SYNTHADOC_URL=http://127.0.0.1:7070 python3 -X utf8 tests/live/live_plugin_test.py
+
 # PowerShell
 $env:SYNTHADOC_URL = "http://127.0.0.1:7070"
 python -X utf8 tests/live/live_plugin_test.py
 
-# bash
-SYNTHADOC_URL=http://127.0.0.1:7070 python -X utf8 tests/live/live_plugin_test.py
-
-# With flags
-python -X utf8 tests/live/live_plugin_test.py --url http://127.0.0.1:7071 --wiki ai-research
 python -X utf8 tests/live/live_plugin_test.py --help
 ```
 
