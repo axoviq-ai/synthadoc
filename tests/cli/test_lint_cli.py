@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
 import pytest
+from unittest.mock import patch
 from typer.testing import CliRunner
 from synthadoc.cli.main import app
 from synthadoc.cli.lint import _parse_frontmatter, _index_suggestion
@@ -332,6 +333,52 @@ def test_lint_report_shows_citation_issues(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert "Citation" in result.output
     assert "broken_ref" in result.output
+
+
+# ---------------------------------------------------------------------------
+# lint run command (enqueues a job via the HTTP API)
+# ---------------------------------------------------------------------------
+
+def test_lint_run_enqueues_job(tmp_path, monkeypatch):
+    """lint run must POST to /jobs/lint and echo the returned job_id."""
+    import synthadoc.cli.install as install_mod
+    monkeypatch.setattr(install_mod, "_read_registry",
+                        lambda: {"mywiki": {"path": str(tmp_path)}})
+    with patch("synthadoc.cli.lint.post", return_value={"job_id": "lint-001"}):
+        result = runner.invoke(app, ["lint", "run", "-w", "mywiki"])
+    assert result.exit_code == 0, result.output
+    assert "lint-001" in result.output
+
+
+def test_lint_run_no_adversarial_flag(tmp_path, monkeypatch):
+    """lint run --no-adversarial must pass adversarial=False in the payload."""
+    import synthadoc.cli.install as install_mod
+    monkeypatch.setattr(install_mod, "_read_registry",
+                        lambda: {"mywiki": {"path": str(tmp_path)}})
+    captured = {}
+    def fake_post(wiki, path, payload):
+        captured["payload"] = payload
+        return {"job_id": "lint-002"}
+    with patch("synthadoc.cli.lint.post", side_effect=fake_post):
+        result = runner.invoke(app, ["lint", "run", "--no-adversarial", "-w", "mywiki"])
+    assert result.exit_code == 0, result.output
+    assert captured["payload"]["adversarial"] is False
+    assert "lint_warnings cleared" in result.output.lower() or "adversarial pass skipped" in result.output.lower()
+
+
+def test_lint_run_scope_forwarded(tmp_path, monkeypatch):
+    """lint run --scope contradictions must forward scope in the payload."""
+    import synthadoc.cli.install as install_mod
+    monkeypatch.setattr(install_mod, "_read_registry",
+                        lambda: {"mywiki": {"path": str(tmp_path)}})
+    captured = {}
+    def fake_post(wiki, path, payload):
+        captured["payload"] = payload
+        return {"job_id": "lint-003"}
+    with patch("synthadoc.cli.lint.post", side_effect=fake_post):
+        result = runner.invoke(app, ["lint", "run", "--scope", "contradictions", "-w", "mywiki"])
+    assert result.exit_code == 0, result.output
+    assert captured["payload"]["scope"] == "contradictions"
 
 
 def test_lint_report_no_citation_section_when_clean(tmp_path, monkeypatch):

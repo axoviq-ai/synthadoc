@@ -80,3 +80,15 @@ def test_jobs_list_default_sort_is_created_at_asc(tmp_path):
     call_kwargs = mock_get.call_args
     assert call_kwargs.kwargs.get("sort") == "created_at" or "created_at" in str(call_kwargs)
     assert call_kwargs.kwargs.get("order") == "asc" or ("asc" in str(call_kwargs) and "desc" not in str(call_kwargs))
+
+
+def test_jobs_delete_calls_http_delete_and_echoes_id(tmp_path):
+    """jobs delete <id> must call DELETE /jobs/<id> and confirm the deletion."""
+    with patch("synthadoc.cli.jobs.http_delete") as mock_del:
+        mock_del.return_value = {}
+        result = runner.invoke(app, ["jobs", "delete", "job-abc", "--wiki", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    assert "job-abc" in result.output
+    mock_del.assert_called_once()
+    call_args = str(mock_del.call_args)
+    assert "job-abc" in call_args
