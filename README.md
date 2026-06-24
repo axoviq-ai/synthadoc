@@ -1017,6 +1017,30 @@ synthadoc export --format okf --output ~/exports/my-wiki-okf/ -w my-wiki
 
 In Obsidian: command palette → **Synthadoc: Export Wiki** — choose format and status filter, then click **Export**. For all formats except `okf`, the file is saved to the vault's `exports/` folder and opened automatically. For `okf`, the output path defaults to `~/exports/{vault-name}-okf-{date}/` outside the vault and is written via the filesystem. For GraphML, a **View Graph** button renders an inline preview.
 
+### Backup & Restore
+
+Package a wiki domain into a portable compressed zip and re-register it on any machine in one command. Useful for cross-machine migration, pre-risky-operation snapshots, CI test fixtures, and sharing exact wiki states with colleagues.
+
+```bash
+# Backup to the current directory
+synthadoc backup -w my-wiki
+
+# Backup to a specific directory, including raw source files
+synthadoc backup -w my-wiki --output ~/backups --include-sources
+
+# Restore (prompts for target directory and confirms port)
+synthadoc restore synthadoc-backup-my-wiki-20260624-103000.zip
+
+# Restore under a different name to a specific location on a specific port
+synthadoc restore backup.zip --name my-wiki-staging --target ~/wikis --port 7071
+```
+
+**Backup flags:** `--output/-o` (directory, default: current dir), `--include-sources` (add `raw_sources/`), `--no-exports` (skip `exports/`), `--no-cache` (skip `cache.db`).
+
+**Restore flags:** `--name` (override wiki name), `--target/-t` (parent directory), `--port` (skip interactive port prompt).
+
+**Always excluded from backup:** job queue, embeddings database, server PID file, and logs — these are rebuilt automatically after restore.
+
 ### Removing a wiki
 
 Stop the server for that wiki before uninstalling — the serve process must not be running
