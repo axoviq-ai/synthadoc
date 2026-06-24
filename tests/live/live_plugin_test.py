@@ -578,6 +578,24 @@ def main() -> None:
             archived_slug = p.get("slug")
             break
 
+    # If no archived page exists, promote an active page to archived temporarily
+    # so the round-trip can still run, then restore it to active at the end.
+    created_archived_slug: str | None = None
+    if not archived_slug:
+        for p in lc_pages:
+            if isinstance(p, dict) and p.get("status") == "active":
+                candidate = p.get("slug")
+                code, body = POST("/lifecycle/transition",
+                                  {"slug": candidate, "to_state": "archived",
+                                   "reason": "plugin-live-test setup (temp archive)"})
+                if code == 200:
+                    archived_slug = candidate
+                    created_archived_slug = candidate
+                    info(f"no archived page found — archived '{candidate}' temporarily for round-trip")
+                    break
+        if not archived_slug:
+            warn("POST /lifecycle/transition", "no active or archived page available — skipping round-trip")
+
     if archived_slug:
         info(f"lifecycle round-trip on: {archived_slug}")
 
@@ -604,8 +622,16 @@ def main() -> None:
             ok("POST /lifecycle/transition (active→archived)", "round-trip complete")
         else:
             fail("POST /lifecycle/transition (active→archived)", f"HTTP {code}: {str(body)[:120]}")
-    else:
-        warn("POST /lifecycle/transition", "no archived page found — skipping round-trip")
+
+        # Restore pages that were only archived as test setup back to active
+        if created_archived_slug:
+            POST("/lifecycle/transition",
+                 {"slug": created_archived_slug, "to_state": "draft",
+                  "reason": "plugin-live-test rollback"})
+            POST("/lifecycle/transition",
+                 {"slug": created_archived_slug, "to_state": "active",
+                  "reason": "plugin-live-test rollback"})
+            info(f"rolled back '{created_archived_slug}' to active")
 
     # ── [14] synthadoc-export-wiki ────────────────────────────────────────────
     print("\n[14] synthadoc-export-wiki — api.exportWiki(), api.exportWikiOkf()")
