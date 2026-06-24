@@ -574,7 +574,7 @@ def main() -> None:
     # round-trip: find an archived page and cycle it archived→draft→active→archived
     archived_slug: str | None = None
     for p in lc_pages:
-        if isinstance(p, dict) and p.get("status") == "archived":
+        if isinstance(p, dict) and p.get("state") == "archived":
             archived_slug = p.get("slug")
             break
 
@@ -583,7 +583,7 @@ def main() -> None:
     created_archived_slug: str | None = None
     if not archived_slug:
         for p in lc_pages:
-            if isinstance(p, dict) and p.get("status") == "active":
+            if isinstance(p, dict) and p.get("state") == "active":
                 candidate = p.get("slug")
                 code, body = POST("/lifecycle/transition",
                                   {"slug": candidate, "to_state": "archived",
