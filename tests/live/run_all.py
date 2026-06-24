@@ -15,19 +15,19 @@ Options:
 
 Examples:
     # Run all suites against the default wiki (history-of-computing, port 7070)
-    python3 -X utf8 tests/live/run_all.py
+    python -X utf8 tests/live/run_all.py
 
     # Server on a non-default port (wiki name must match what the server serves)
-    python3 -X utf8 tests/live/run_all.py --url http://127.0.0.1:7071
+    python -X utf8 tests/live/run_all.py --url http://127.0.0.1:7071
 
     # Different wiki — server must be running for that wiki
-    python3 -X utf8 tests/live/run_all.py --wiki my-wiki --url http://127.0.0.1:7072
+    python -X utf8 tests/live/run_all.py --wiki my-wiki --url http://127.0.0.1:7072
 
     # Run only the plugin suite
-    python3 -X utf8 tests/live/run_all.py --suite plugin
+    python -X utf8 tests/live/run_all.py --suite plugin
 
     # Run CLI and MCP only, skip plugin
-    python3 -X utf8 tests/live/run_all.py --suite cli --suite mcp
+    python -X utf8 tests/live/run_all.py --suite cli --suite mcp
 """
 import argparse
 import os
@@ -111,8 +111,8 @@ def main() -> None:
             print(f"    A) Run the server for the right wiki:")
             print(f"         synthadoc serve -w {args.wiki}")
             print(f"    B) Pass the wiki that IS running:")
-            print(f"         python3 -X utf8 tests/live/run_all.py --wiki {_serving}")
-            print(f"         python3 -X utf8 tests/live/run_all.py")
+            print(f"         python -X utf8 tests/live/run_all.py --wiki {_serving}")
+            print(f"         python -X utf8 tests/live/run_all.py")
             sys.exit(1)
     except Exception:
         pass  # server not yet up — individual suites will handle this gracefully
