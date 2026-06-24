@@ -2,8 +2,6 @@
 # Copyright (C) 2026 William Johnason / axoviq.com
 from __future__ import annotations
 
-import zipfile
-from datetime import date
 from pathlib import Path
 from typing import Optional
 
@@ -11,23 +9,9 @@ import typer
 
 from synthadoc import __version__
 from synthadoc.cli.main import app
-from synthadoc.cli.install import (
-    _read_registry,
-    _write_registry,
-    _get_reserved_ports,
-    resolve_wiki_path,
-    _DEMOS,
-)
-from synthadoc.cli._port import assign_wiki_port, _DEFAULT_PORT
+from synthadoc.cli.install import resolve_wiki_path
 from synthadoc.cli._wiki import resolve_wiki
-from synthadoc.core.backup_engine import (
-    create_backup,
-    read_manifest,
-    validate_manifest,
-    verify_checksum,
-    extract_backup,
-    rewrite_config,
-)
+from synthadoc.core.backup_engine import create_backup, read_manifest
 from synthadoc.core.cache import CACHE_VERSION
 from synthadoc.storage.log import DB_SCHEMA_VERSION
 from synthadoc import errors as E
