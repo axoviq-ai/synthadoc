@@ -165,6 +165,14 @@ def test_manifest_includes_flags_correct(wiki_root, tmp_path):
     assert m["includes_cache"] is False
 
 
+def test_read_manifest_raises_on_missing_manifest(tmp_path):
+    zip_path = tmp_path / "empty.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("somefile.txt", "content")
+    with pytest.raises(ValueError, match="No manifest.json"):
+        read_manifest(zip_path)
+
+
 # ── checksum ──────────────────────────────────────────────────────────────────
 
 def test_checksum_validates_good_backup(wiki_root, tmp_path):

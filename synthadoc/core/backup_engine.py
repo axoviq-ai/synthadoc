@@ -12,8 +12,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-_EXCLUDE_DOTSD = {"jobs.db", "embeddings.db", "server.pid", "skill_registry.json"}
-
 
 def _iter_wiki_files(
     wiki_root: Path,
@@ -154,6 +152,9 @@ def extract_backup(zip_path: Path, target_dir: Path, wiki_name: str) -> Path:
             if member == "manifest.json":
                 continue
             dest = wiki_root / member
+            dest = dest.resolve()
+            if not dest.is_relative_to(wiki_root.resolve()):
+                continue  # skip any member that would escape the target directory
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(zf.read(member))
 
