@@ -36,6 +36,7 @@
 25. [Streaming Query and Query Cache](#25-streaming-query-and-query-cache)
 26. [Web Chat UI and Session Management](#26-web-chat-ui-and-session-management)
 27. [MCP Server](#27-mcp-server)
+28. [Backup & Restore](#28-backup--restore)
 
 **Appendices**
 - [Appendix A — Release Feature Index](#appendix-a--release-feature-index)
@@ -2566,6 +2567,67 @@ The audit trail records the same fields as a manual CLI transition — the MCP p
 | `--http-only` | Start only the HTTP server; suppress the MCP mount |
 
 Default (no flag): both MCP and HTTP start together on the same port.
+
+---
+
+## 28. Backup & Restore
+
+The `synthadoc backup` and `synthadoc restore` commands package a running wiki domain into a portable compressed zip and re-register it on any machine.
+
+### Architecture
+
+All file I/O is handled by `synthadoc/core/backup_engine.py` (pure stdlib — no new pip dependencies). The CLI layer in `synthadoc/cli/backup.py` handles Typer commands, registry operations, and interactive prompts, reusing existing port-allocation (`assign_wiki_port`) and registry helpers (`_read_registry`, `_write_registry`) from `install.py`.
+
+### Zip structure
+
+```
+synthadoc-backup-<wiki>-<YYYYMMDD-HHMMSS>.zip
+├── manifest.json          ← always present; last entry wins if duplicated
+├── wiki/
+│   ├── *.md
+│   └── candidates/*.md
+├── .synthadoc/
+│   ├── config.toml
+│   ├── audit.db
+│   └── cache.db           ← included by default; skip with --no-cache
+├── exports/               ← included by default; skip with --no-exports
+└── raw_sources/           ← excluded by default; opt-in with --include-sources
+```
+
+Always excluded: `jobs.db`, `embeddings.db`, `server.pid`, `skill_registry.json`, `logs/`.
+
+### Manifest
+
+Every backup contains a `manifest.json` at the zip root:
+
+```json
+{
+  "synthadoc_version": "1.0.0",
+  "db_schema_version": 1,
+  "cache_version": "4",
+  "wiki_name": "history-of-computing",
+  "backed_up_at": "2026-06-24T10:30:00Z",
+  "source_os": "windows",
+  "source_hostname": "dev-machine",
+  "page_count": 87,
+  "includes_sources": false,
+  "includes_exports": true,
+  "includes_cache": true,
+  "checksum_sha256": "abc123..."
+}
+```
+
+`db_schema_version` is read from SQLite `PRAGMA user_version` in `audit.db`. The restore tool aborts if the backup's version exceeds the installed version. `checksum_sha256` is the SHA-256 of all non-manifest zip members in sorted name order.
+
+### Restore conflict rules
+
+| Situation | Behaviour |
+|---|---|
+| Name not in registry | Register normally |
+| Name in registry, different path | Hard stop — error message with `--name` hint |
+| Name in registry, same path, `--overwrite` | Proceed — overwrite contents |
+| Demo wiki renamed via `--name` | Warn + `y/N` prompt (breaks `demo sync`) |
+| Port taken | `assign_wiki_port()` suggests next free port; user confirms |
 
 ---
 

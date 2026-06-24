@@ -50,6 +50,7 @@ major engine feature. No setup beyond following the steps below is required.
 - [Appendix G — Using a Coding Tool as Your LLM Provider](#appendix-g--using-a-coding-tool-as-your-llm-provider)
 - [Appendix H — BM25 Routing Performance Benchmarks](#appendix-h--bm25-routing-performance-benchmarks)
 - [Appendix I — Connect Claude via MCP](#appendix-i--connect-claude-via-mcp)
+- [Appendix J — Backup & Restore](#appendix-j--backup--restore)
 
 ---
 
@@ -2966,3 +2967,71 @@ For architecture details and the brain/memory use case framing, see [docs/design
 **SSE endpoint returns 404**
 - The correct URL is `/mcp/sse`, not `/mcp` or `/mcp/`
 - Verify the server is running with `curl -i http://127.0.0.1:7070/`
+
+---
+
+<a name="appendix-j--backup--restore"></a>
+
+## Appendix J — Backup & Restore
+
+### When to use it
+
+| Scenario | Command |
+|---|---|
+| Move wiki to another machine | `backup` on old machine, `restore` on new |
+| Snapshot before a risky operation (routing clean, adversarial lint) | `backup` before running the operation |
+| Development workflow: freeze a good state, do risky dev, restore if needed | `backup` → dev work → `restore` |
+| CI/test fixture: start from a known state before each run | `restore` at test start |
+| Share an exact wiki state with a colleague | Send the zip, they run `restore` |
+
+### Backup
+
+```
+synthadoc backup -w <wiki>
+```
+
+Creates a timestamped compressed zip in the current directory:
+```
+synthadoc-backup-history-of-computing-20260624-103000.zip
+```
+
+**What's included by default:** wiki pages, candidates, config, audit database, exports, query cache.
+
+**Flags:**
+```
+--output <dir>       Write zip to this directory (default: current directory)
+--include-sources    Also include raw_sources/ (original PDFs, docs)
+--no-exports         Exclude exports/ directory
+--no-cache           Exclude cache.db
+```
+
+### Restore
+
+```
+synthadoc restore <backup.zip>
+```
+
+Interactive restore: prompts for target directory if not given; detects port conflicts and suggests the next free port.
+
+**Flags:**
+```
+--name <name>        Restore under a different wiki name
+--target <dir>       Parent directory for the restored wiki
+--port <N>           Use this port (skips interactive prompt)
+--overwrite          Allow re-registering over an existing entry at the same path
+```
+
+**Post-restore checklist (printed automatically):**
+1. Set your LLM API key in your environment
+2. `synthadoc serve -w <wiki-name>`
+3. If using the Obsidian plugin: update Server URL to `http://127.0.0.1:<port>`
+
+### What is NOT backed up
+
+| Item | Why excluded |
+|---|---|
+| LLM API keys | Never stored in config; set via environment variable |
+| `jobs.db` | Stale job queue — meaningless on another machine |
+| `embeddings.db` | Large; rebuilt automatically on first search after restore |
+| `server.pid` | Stale process ID |
+| `raw_sources/` | Optional; excluded by default due to size (use `--include-sources`) |
