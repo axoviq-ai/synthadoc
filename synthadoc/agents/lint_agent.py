@@ -401,6 +401,15 @@ class LintAgent:
                                 break
 
                 if current == LifecycleState.ARCHIVED:
+                    # Bootstrap DB entry for pages archived via frontmatter that have
+                    # never been through the lifecycle system (no page_states row yet).
+                    # Pages archived via _transition() already have a row, so this is a no-op for them.
+                    if self._audit:
+                        db_state = await self._audit.get_page_state(slug)
+                        if not db_state:
+                            await self._audit.set_page_state(
+                                slug, LifecycleState.ARCHIVED, TriggerSource.LINT
+                            )
                     continue
 
                 # Check 2: stale detection -- source file hash changed

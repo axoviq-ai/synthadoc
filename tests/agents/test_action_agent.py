@@ -273,6 +273,8 @@ async def test_wiki_status_with_audit_db(tmp_path):
     audit_path.parent.mkdir(parents=True, exist_ok=True)
     audit_path.touch()
     counts = {"draft": 3, "active": 42, "stale": 5, "contradicted": 2, "archived": 1}
+    # 53 linted + 2 unlinted on disk = 55 total
+    agent._orch._store.list_pages.return_value = [f"page-{i}" for i in range(55)]
     with patch("synthadoc.storage.log.AuditDB") as MockAudit:
         inst = AsyncMock()
         inst.init = AsyncMock()
@@ -283,7 +285,9 @@ async def test_wiki_status_with_audit_db(tmp_path):
     assert result.success is True
     assert "active" in result.message
     assert "42" in result.message
-    assert "53 pages" in result.message
+    assert "55 pages" in result.message
+    assert "unlinted" in result.message
+    assert "2" in result.message
 
 
 # ── detect: orphan / contradiction / lint-report ──────────────────────────────
@@ -370,6 +374,52 @@ def test_detect_no_clarify_continuation_without_prefix(tmp_path):
         {"role": "assistant", "content": "Alan Turing was a mathematician..."},
     ]
     assert agent.detect("abc-123", history=history) is False
+
+def test_detect_repeat_with_history_routes_to_action_agent(tmp_path):
+    """'run it again' with history containing a previous action response routes to action agent."""
+    agent, _ = _make_agent(tmp_path, "{}")
+    history = [
+        {"role": "user", "content": "show synthadoc status"},
+        {"role": "assistant", "content": "| State | Count |\n| active | 82 |"},
+    ]
+    assert agent.detect("run it again", history=history) is True
+
+
+def test_detect_repeat_phrases_with_history(tmp_path):
+    """All common repeat phrases route to action agent when history is present."""
+    agent, _ = _make_agent(tmp_path, "{}")
+    history = [{"role": "user", "content": "run lint"}, {"role": "assistant", "content": "Lint complete."}]
+    for phrase in ("run it again", "do it again", "repeat", "again", "redo", "try again once more"):
+        assert agent.detect(phrase, history=history) is True, f"Expected True for {phrase!r}"
+
+
+def test_detect_repeat_without_history_returns_false(tmp_path):
+    """'again' alone without history should NOT route to the action agent."""
+    agent, _ = _make_agent(tmp_path, "{}")
+    assert agent.detect("again") is False
+    assert agent.detect("run it again") is False
+
+
+@pytest.mark.asyncio
+async def test_run_repeat_resolves_previous_action_from_history(tmp_path):
+    """'run it again' should re-execute the previous action found in history, not ask the LLM."""
+    wiki_status_json = '{"action": "wiki_status", "params": {}}'
+    agent, provider = _make_agent(tmp_path, wiki_status_json)
+    agent._orch._store.get_lifecycle_summary = MagicMock(return_value={"active": 5})
+    agent._orch._store.list_pages = MagicMock(return_value=["page1", "page2", "page3", "page4", "page5"])
+
+    history = [
+        {"role": "user", "content": "show synthadoc status"},
+        {"role": "assistant", "content": "| State | Count |\n| active | 5 |"},
+    ]
+    result = await agent.run("run it again", history=history)
+    assert result is not None
+    assert result.action_type == "wiki_status"
+    # Provider was called with the resolved question, not the vague "run it again" phrase
+    call_prompt = provider.complete.call_args[1]["messages"][0].content
+    # The "User request:" line should show the resolved question, not the repeat phrase
+    assert "User request: show synthadoc status" in call_prompt
+
 
 def test_detect_show_job_status(tmp_path):
     agent, _ = _make_agent(tmp_path, "{}")

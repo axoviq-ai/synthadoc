@@ -19,41 +19,38 @@ def _http_status_error(status_code: int) -> httpx.HTTPStatusError:
 
 @pytest.mark.asyncio
 async def test_orchestrator_init_creates_dbs(tmp_wiki):
-    orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
-    await orch.init()
-    assert (tmp_wiki / ".synthadoc" / "jobs.db").exists()
-    assert (tmp_wiki / ".synthadoc" / "audit.db").exists()
-    assert (tmp_wiki / ".synthadoc" / "cache.db").exists()
+    async with Orchestrator(wiki_root=tmp_wiki, config=load_config()):
+        assert (tmp_wiki / ".synthadoc" / "jobs.db").exists()
+        assert (tmp_wiki / ".synthadoc" / "audit.db").exists()
+        assert (tmp_wiki / ".synthadoc" / "cache.db").exists()
 
 
 @pytest.mark.asyncio
 async def test_orchestrator_ingest_returns_job_id(tmp_wiki):
-    orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
-    await orch.init()
-    source = tmp_wiki / "raw_sources" / "test.md"
-    source.write_text("# Test\nContent.", encoding="utf-8")
-    with patch.object(orch, "_run_ingest", new=AsyncMock()):
-        job_id = await orch.ingest(str(source))
-    assert job_id
+    async with Orchestrator(wiki_root=tmp_wiki, config=load_config()) as orch:
+        source = tmp_wiki / "raw_sources" / "test.md"
+        source.write_text("# Test\nContent.", encoding="utf-8")
+        with patch.object(orch, "_run_ingest", new=AsyncMock()):
+            job_id = await orch.ingest(str(source))
+        assert job_id
 
 
 @pytest.mark.asyncio
 async def test_run_ingest_http_404_skips_job(tmp_wiki):
     """A 404 response must skip the job immediately with no retry and no exception raised."""
-    orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
-    await orch.init()
-    job_id = await orch._queue.enqueue("ingest", {"source": "https://example.com/gone", "force": False})
+    async with Orchestrator(wiki_root=tmp_wiki, config=load_config()) as orch:
+        job_id = await orch._queue.enqueue("ingest", {"source": "https://example.com/gone", "force": False})
 
-    mock_agent = MagicMock()
-    mock_agent.ingest = AsyncMock(side_effect=_http_status_error(404))
-    with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
-         patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
-        # Must NOT raise — the worker loop must continue cleanly
-        await orch._run_ingest(job_id, "https://example.com/gone", auto_confirm=True)
+        mock_agent = MagicMock()
+        mock_agent.ingest = AsyncMock(side_effect=_http_status_error(404))
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
+             patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
+            # Must NOT raise — the worker loop must continue cleanly
+            await orch._run_ingest(job_id, "https://example.com/gone", auto_confirm=True)
 
-    from synthadoc.core.queue import JobStatus
-    jobs = await orch._queue.list_jobs(status=JobStatus.SKIPPED)
-    assert any(j.id == job_id for j in jobs)
+        from synthadoc.core.queue import JobStatus
+        jobs = await orch._queue.list_jobs(status=JobStatus.SKIPPED)
+        assert any(j.id == job_id for j in jobs)
 
 
 @pytest.mark.asyncio
@@ -61,43 +58,41 @@ async def test_run_ingest_llm_skip_marks_job_skipped(tmp_wiki):
     """When IngestAgent returns result.skipped=True the job must be SKIPPED, not COMPLETED."""
     from synthadoc.agents.ingest_agent import IngestResult
 
-    orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
-    await orch.init()
-    job_id = await orch._queue.enqueue("ingest", {"source": "https://example.com/oos", "force": False})
+    async with Orchestrator(wiki_root=tmp_wiki, config=load_config()) as orch:
+        job_id = await orch._queue.enqueue("ingest", {"source": "https://example.com/oos", "force": False})
 
-    skipped_result = IngestResult(source="https://example.com/oos", skipped=True, skip_reason="out of scope (purpose.md)")
-    mock_agent = MagicMock()
-    mock_agent.ingest = AsyncMock(return_value=skipped_result)
-    with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
-         patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
-        await orch._run_ingest(job_id, "https://example.com/oos", auto_confirm=True)
+        skipped_result = IngestResult(source="https://example.com/oos", skipped=True, skip_reason="out of scope (purpose.md)")
+        mock_agent = MagicMock()
+        mock_agent.ingest = AsyncMock(return_value=skipped_result)
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
+             patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
+            await orch._run_ingest(job_id, "https://example.com/oos", auto_confirm=True)
 
-    from synthadoc.core.queue import JobStatus
-    skipped = await orch._queue.list_jobs(status=JobStatus.SKIPPED)
-    completed = await orch._queue.list_jobs(status=JobStatus.COMPLETED)
-    assert any(j.id == job_id for j in skipped), "LLM-skipped job must have SKIPPED status"
-    assert not any(j.id == job_id for j in completed), "LLM-skipped job must not be COMPLETED"
+        from synthadoc.core.queue import JobStatus
+        skipped = await orch._queue.list_jobs(status=JobStatus.SKIPPED)
+        completed = await orch._queue.list_jobs(status=JobStatus.COMPLETED)
+        assert any(j.id == job_id for j in skipped), "LLM-skipped job must have SKIPPED status"
+        assert not any(j.id == job_id for j in completed), "LLM-skipped job must not be COMPLETED"
 
 
 @pytest.mark.asyncio
 async def test_run_ingest_http_5xx_retries_job(tmp_wiki):
     """A 5xx response must re-queue the job for retry (PENDING), not skip it."""
-    orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
-    await orch.init()
-    job_id = await orch._queue.enqueue("ingest", {"source": "https://example.com/flaky", "force": False})
+    async with Orchestrator(wiki_root=tmp_wiki, config=load_config()) as orch:
+        job_id = await orch._queue.enqueue("ingest", {"source": "https://example.com/flaky", "force": False})
 
-    mock_agent = MagicMock()
-    mock_agent.ingest = AsyncMock(side_effect=_http_status_error(503))
-    with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
-         patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
-        await orch._run_ingest(job_id, "https://example.com/flaky", auto_confirm=True)
+        mock_agent = MagicMock()
+        mock_agent.ingest = AsyncMock(side_effect=_http_status_error(503))
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
+             patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
+            await orch._run_ingest(job_id, "https://example.com/flaky", auto_confirm=True)
 
-    from synthadoc.core.queue import JobStatus
-    # fail() with retries remaining → status becomes PENDING again (re-queued for retry)
-    pending_jobs = await orch._queue.list_jobs(status=JobStatus.PENDING)
-    skipped_jobs = await orch._queue.list_jobs(status=JobStatus.SKIPPED)
-    assert any(j.id == job_id for j in pending_jobs), "5xx job should be re-queued for retry"
-    assert not any(j.id == job_id for j in skipped_jobs), "5xx job must not be skipped"
+        from synthadoc.core.queue import JobStatus
+        # fail() with retries remaining → status becomes PENDING again (re-queued for retry)
+        pending_jobs = await orch._queue.list_jobs(status=JobStatus.PENDING)
+        skipped_jobs = await orch._queue.list_jobs(status=JobStatus.SKIPPED)
+        assert any(j.id == job_id for j in pending_jobs), "5xx job should be re-queued for retry"
+        assert not any(j.id == job_id for j in skipped_jobs), "5xx job must not be skipped"
 
 
 @pytest.mark.asyncio
@@ -178,20 +173,19 @@ async def test_run_ingest_domain_blocked_skips_job(tmp_wiki):
     """DomainBlockedException must skip the job without retrying."""
     from synthadoc.errors import DomainBlockedException
 
-    orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
-    await orch.init()
-    job_id = await orch._queue.enqueue("ingest", {"source": "https://blocked.com/page", "force": False})
+    async with Orchestrator(wiki_root=tmp_wiki, config=load_config()) as orch:
+        job_id = await orch._queue.enqueue("ingest", {"source": "https://blocked.com/page", "force": False})
 
-    exc = DomainBlockedException(domain="blocked.com", url="https://blocked.com/page", status_code=403)
-    mock_agent = MagicMock()
-    mock_agent.ingest = AsyncMock(side_effect=exc)
-    with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
-         patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
-        await orch._run_ingest(job_id, "https://blocked.com/page", auto_confirm=True)
+        exc = DomainBlockedException(domain="blocked.com", url="https://blocked.com/page", status_code=403)
+        mock_agent = MagicMock()
+        mock_agent.ingest = AsyncMock(side_effect=exc)
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
+             patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
+            await orch._run_ingest(job_id, "https://blocked.com/page", auto_confirm=True)
 
-    from synthadoc.core.queue import JobStatus
-    skipped = await orch._queue.list_jobs(status=JobStatus.SKIPPED)
-    assert any(j.id == job_id for j in skipped)
+        from synthadoc.core.queue import JobStatus
+        skipped = await orch._queue.list_jobs(status=JobStatus.SKIPPED)
+        assert any(j.id == job_id for j in skipped)
 
 
 @pytest.mark.asyncio
@@ -199,20 +193,19 @@ async def test_run_ingest_daily_quota_exhausted_fails_permanent(tmp_wiki):
     """DailyQuotaExhaustedException must permanently fail the job (no retry)."""
     from synthadoc.errors import DailyQuotaExhaustedException
 
-    orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
-    await orch.init()
-    job_id = await orch._queue.enqueue("ingest", {"source": "https://example.com", "force": False})
+    async with Orchestrator(wiki_root=tmp_wiki, config=load_config()) as orch:
+        job_id = await orch._queue.enqueue("ingest", {"source": "https://example.com", "force": False})
 
-    exc = DailyQuotaExhaustedException(provider="anthropic")
-    mock_agent = MagicMock()
-    mock_agent.ingest = AsyncMock(side_effect=exc)
-    with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
-         patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
-        await orch._run_ingest(job_id, "https://example.com", auto_confirm=True)
+        exc = DailyQuotaExhaustedException(provider="anthropic")
+        mock_agent = MagicMock()
+        mock_agent.ingest = AsyncMock(side_effect=exc)
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
+             patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
+            await orch._run_ingest(job_id, "https://example.com", auto_confirm=True)
 
-    from synthadoc.core.queue import JobStatus
-    failed = await orch._queue.list_jobs(status=JobStatus.FAILED)
-    assert any(j.id == job_id for j in failed)
+        from synthadoc.core.queue import JobStatus
+        failed = await orch._queue.list_jobs(status=JobStatus.FAILED)
+        assert any(j.id == job_id for j in failed)
 
 
 @pytest.mark.asyncio
@@ -220,56 +213,53 @@ async def test_run_ingest_coding_tool_quota_fails_permanent(tmp_wiki):
     """CodingToolQuotaExhaustedException must permanently fail the job."""
     from synthadoc.errors import CodingToolQuotaExhaustedException
 
-    orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
-    await orch.init()
-    job_id = await orch._queue.enqueue("ingest", {"source": "https://example.com", "force": False})
+    async with Orchestrator(wiki_root=tmp_wiki, config=load_config()) as orch:
+        job_id = await orch._queue.enqueue("ingest", {"source": "https://example.com", "force": False})
 
-    exc = CodingToolQuotaExhaustedException("claude-code")
-    mock_agent = MagicMock()
-    mock_agent.ingest = AsyncMock(side_effect=exc)
-    with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
-         patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
-        await orch._run_ingest(job_id, "https://example.com", auto_confirm=True)
+        exc = CodingToolQuotaExhaustedException("claude-code")
+        mock_agent = MagicMock()
+        mock_agent.ingest = AsyncMock(side_effect=exc)
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
+             patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
+            await orch._run_ingest(job_id, "https://example.com", auto_confirm=True)
 
-    from synthadoc.core.queue import JobStatus
-    failed = await orch._queue.list_jobs(status=JobStatus.FAILED)
-    assert any(j.id == job_id for j in failed)
+        from synthadoc.core.queue import JobStatus
+        failed = await orch._queue.list_jobs(status=JobStatus.FAILED)
+        assert any(j.id == job_id for j in failed)
 
 
 @pytest.mark.asyncio
 async def test_run_ingest_connect_error_retries_job(tmp_wiki):
     """httpx.ConnectError must re-queue the job for retry (PENDING)."""
-    orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
-    await orch.init()
-    job_id = await orch._queue.enqueue("ingest", {"source": "https://unreachable.com", "force": False})
+    async with Orchestrator(wiki_root=tmp_wiki, config=load_config()) as orch:
+        job_id = await orch._queue.enqueue("ingest", {"source": "https://unreachable.com", "force": False})
 
-    mock_agent = MagicMock()
-    mock_agent.ingest = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
-    with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
-         patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
-        await orch._run_ingest(job_id, "https://unreachable.com", auto_confirm=True)
+        mock_agent = MagicMock()
+        mock_agent.ingest = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
+             patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
+            await orch._run_ingest(job_id, "https://unreachable.com", auto_confirm=True)
 
-    from synthadoc.core.queue import JobStatus
-    pending = await orch._queue.list_jobs(status=JobStatus.PENDING)
-    assert any(j.id == job_id for j in pending)
+        from synthadoc.core.queue import JobStatus
+        pending = await orch._queue.list_jobs(status=JobStatus.PENDING)
+        assert any(j.id == job_id for j in pending)
 
 
 @pytest.mark.asyncio
 async def test_run_ingest_environment_error_fails_permanent(tmp_wiki):
     """EnvironmentError (missing provider binary) must permanently fail the job."""
-    orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
-    await orch.init()
-    job_id = await orch._queue.enqueue("ingest", {"source": "file.pdf", "force": False})
+    async with Orchestrator(wiki_root=tmp_wiki, config=load_config()) as orch:
+        job_id = await orch._queue.enqueue("ingest", {"source": "file.pdf", "force": False})
 
-    mock_agent = MagicMock()
-    mock_agent.ingest = AsyncMock(side_effect=EnvironmentError("binary not found"))
-    with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
-         patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
-        await orch._run_ingest(job_id, "file.pdf", auto_confirm=True)
+        mock_agent = MagicMock()
+        mock_agent.ingest = AsyncMock(side_effect=EnvironmentError("binary not found"))
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
+             patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
+            await orch._run_ingest(job_id, "file.pdf", auto_confirm=True)
 
-    from synthadoc.core.queue import JobStatus
-    failed = await orch._queue.list_jobs(status=JobStatus.FAILED)
-    assert any(j.id == job_id for j in failed)
+        from synthadoc.core.queue import JobStatus
+        failed = await orch._queue.list_jobs(status=JobStatus.FAILED)
+        assert any(j.id == job_id for j in failed)
 
 
 @pytest.mark.asyncio
@@ -279,34 +269,32 @@ async def test_run_ingest_sources_txt_is_expanded_into_child_jobs(tmp_wiki):
     from synthadoc.config import load_config
     from synthadoc.core.queue import JobStatus
 
-    orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
-    await orch.init()
+    async with Orchestrator(wiki_root=tmp_wiki, config=load_config()) as orch:
+        manifest = tmp_wiki / "sources.txt"
+        manifest.write_text(
+            "# batch ingest\n"
+            "https://example.com/page-one\n"
+            "https://example.com/page-two\n"
+            "search for: history of computing\n",
+            encoding="utf-8",
+        )
+        job_id = await orch._queue.enqueue("ingest", {"source": str(manifest), "force": False})
+        await orch._run_ingest(job_id, str(manifest), auto_confirm=True)
 
-    manifest = tmp_wiki / "sources.txt"
-    manifest.write_text(
-        "# batch ingest\n"
-        "https://example.com/page-one\n"
-        "https://example.com/page-two\n"
-        "search for: history of computing\n",
-        encoding="utf-8",
-    )
-    job_id = await orch._queue.enqueue("ingest", {"source": str(manifest), "force": False})
-    await orch._run_ingest(job_id, str(manifest), auto_confirm=True)
+        from synthadoc.core.queue import JobStatus
+        completed = await orch._queue.list_jobs(status=JobStatus.COMPLETED)
+        parent = next((j for j in completed if j.id == job_id), None)
+        assert parent is not None, "parent job should be completed"
+        assert parent.result is not None
+        assert parent.result["child_sources_enqueued"] == 3
+        assert len(parent.result["child_job_ids"]) == 3
 
-    from synthadoc.core.queue import JobStatus
-    completed = await orch._queue.list_jobs(status=JobStatus.COMPLETED)
-    parent = next((j for j in completed if j.id == job_id), None)
-    assert parent is not None, "parent job should be completed"
-    assert parent.result is not None
-    assert parent.result["child_sources_enqueued"] == 3
-    assert len(parent.result["child_job_ids"]) == 3
-
-    pending = await orch._queue.list_jobs(status=JobStatus.PENDING)
-    assert len(pending) == 3
-    sources = {j.payload["source"] for j in pending}
-    assert "https://example.com/page-one" in sources
-    assert "https://example.com/page-two" in sources
-    assert "search for: history of computing" in sources
+        pending = await orch._queue.list_jobs(status=JobStatus.PENDING)
+        assert len(pending) == 3
+        sources = {j.payload["source"] for j in pending}
+        assert "https://example.com/page-one" in sources
+        assert "https://example.com/page-two" in sources
+        assert "search for: history of computing" in sources
 
 
 @pytest.mark.asyncio
@@ -317,39 +305,36 @@ async def test_run_ingest_plain_txt_is_not_treated_as_manifest(tmp_wiki):
     from unittest.mock import AsyncMock, MagicMock, patch
     from synthadoc.agents.ingest_agent import IngestResult
 
-    orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
-    await orch.init()
+    async with Orchestrator(wiki_root=tmp_wiki, config=load_config()) as orch:
+        prose = tmp_wiki / "notes.txt"
+        prose.write_text(
+            "The history of computing spans several decades.\n"
+            "Key figures include Turing, Von Neumann, and Dijkstra.\n",
+            encoding="utf-8",
+        )
+        job_id = await orch._queue.enqueue("ingest", {"source": str(prose), "force": False})
 
-    prose = tmp_wiki / "notes.txt"
-    prose.write_text(
-        "The history of computing spans several decades.\n"
-        "Key figures include Turing, Von Neumann, and Dijkstra.\n",
-        encoding="utf-8",
-    )
-    job_id = await orch._queue.enqueue("ingest", {"source": str(prose), "force": False})
+        mock_agent = MagicMock()
+        normal_result = IngestResult(source=str(prose))
+        normal_result.pages_created = ["computing-history"]
+        mock_agent.ingest = AsyncMock(return_value=normal_result)
 
-    mock_agent = MagicMock()
-    normal_result = IngestResult(source=str(prose))
-    normal_result.pages_created = ["computing-history"]
-    mock_agent.ingest = AsyncMock(return_value=normal_result)
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
+             patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
+            await orch._run_ingest(job_id, str(prose), auto_confirm=True)
 
-    with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
-         patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
-        await orch._run_ingest(job_id, str(prose), auto_confirm=True)
-
-    mock_agent.ingest.assert_called_once()  # went through normal ingest, not manifest expansion
+        mock_agent.ingest.assert_called_once()  # went through normal ingest, not manifest expansion
 
 
 @pytest.mark.asyncio
 async def test_resume_returns_job_count(tmp_wiki):
     """resume() must re-queue all pending jobs and return the count."""
-    orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
-    await orch.init()
-    await orch._queue.enqueue("ingest", {"source": "file1.md", "force": False})
-    await orch._queue.enqueue("ingest", {"source": "file2.md", "force": False})
+    async with Orchestrator(wiki_root=tmp_wiki, config=load_config()) as orch:
+        await orch._queue.enqueue("ingest", {"source": "file1.md", "force": False})
+        await orch._queue.enqueue("ingest", {"source": "file2.md", "force": False})
 
-    count = await orch.resume()
-    assert count >= 2
+        count = await orch.resume()
+        assert count >= 2
 
 
 @pytest.mark.asyncio
@@ -385,29 +370,28 @@ async def test_wiki_epoch_increments_on_successful_ingest(tmp_wiki):
     """_wiki_epoch must increment after a successful ingest job."""
     from synthadoc.core.orchestrator import Orchestrator
     from synthadoc.agents.ingest_agent import IngestResult
-    orch = Orchestrator(wiki_root=tmp_wiki)
-    await orch.init()
-    assert orch._wiki_epoch == 0
+    async with Orchestrator(wiki_root=tmp_wiki) as orch:
+        assert orch._wiki_epoch == 0
 
-    job_id = await orch._queue.enqueue("ingest", {"source": "http://example.com", "force": False})
-    mock_result = IngestResult(
-        source="http://example.com",
-        pages_created=["new-page"],
-        pages_updated=[],
-        pages_flagged=[],
-        tokens_used=10,
-        input_tokens=8,
-        output_tokens=2,
-        cost_usd=0.0,
-        skipped=False,
-        skip_reason="",
-        child_sources=[],
-    )
-    with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
-         patch("synthadoc.agents.ingest_agent.IngestAgent.ingest", new=AsyncMock(return_value=mock_result)):
-        await orch._run_ingest(job_id, source="http://example.com", auto_confirm=True)
+        job_id = await orch._queue.enqueue("ingest", {"source": "http://example.com", "force": False})
+        mock_result = IngestResult(
+            source="http://example.com",
+            pages_created=["new-page"],
+            pages_updated=[],
+            pages_flagged=[],
+            tokens_used=10,
+            input_tokens=8,
+            output_tokens=2,
+            cost_usd=0.0,
+            skipped=False,
+            skip_reason="",
+            child_sources=[],
+        )
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
+             patch("synthadoc.agents.ingest_agent.IngestAgent.ingest", new=AsyncMock(return_value=mock_result)):
+            await orch._run_ingest(job_id, source="http://example.com", auto_confirm=True)
 
-    assert orch._wiki_epoch == 1
+        assert orch._wiki_epoch == 1
 
 
 @pytest.mark.asyncio
@@ -415,28 +399,26 @@ async def test_wiki_epoch_does_not_increment_on_skipped_ingest(tmp_wiki):
     """_wiki_epoch must NOT increment when ingest is skipped."""
     from synthadoc.core.orchestrator import Orchestrator
     from synthadoc.agents.ingest_agent import IngestResult
-    orch = Orchestrator(wiki_root=tmp_wiki)
-    await orch.init()
+    async with Orchestrator(wiki_root=tmp_wiki) as orch:
+        job_id = await orch._queue.enqueue("ingest", {"source": "http://example.com", "force": False})
+        mock_result = IngestResult(
+            source="http://example.com",
+            pages_created=[],
+            pages_updated=[],
+            pages_flagged=[],
+            tokens_used=0,
+            input_tokens=0,
+            output_tokens=0,
+            cost_usd=0.0,
+            skipped=True,
+            skip_reason="already cached",
+            child_sources=[],
+        )
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
+             patch("synthadoc.agents.ingest_agent.IngestAgent.ingest", new=AsyncMock(return_value=mock_result)):
+            await orch._run_ingest(job_id, source="http://example.com", auto_confirm=True)
 
-    job_id = await orch._queue.enqueue("ingest", {"source": "http://example.com", "force": False})
-    mock_result = IngestResult(
-        source="http://example.com",
-        pages_created=[],
-        pages_updated=[],
-        pages_flagged=[],
-        tokens_used=0,
-        input_tokens=0,
-        output_tokens=0,
-        cost_usd=0.0,
-        skipped=True,
-        skip_reason="already cached",
-        child_sources=[],
-    )
-    with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
-         patch("synthadoc.agents.ingest_agent.IngestAgent.ingest", new=AsyncMock(return_value=mock_result)):
-        await orch._run_ingest(job_id, source="http://example.com", auto_confirm=True)
-
-    assert orch._wiki_epoch == 0
+        assert orch._wiki_epoch == 0
 
 
 @pytest.mark.asyncio

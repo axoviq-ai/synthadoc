@@ -33,6 +33,7 @@ WIKI_NOT_WRITABLE    = "ERR-WIKI-003"  # wiki/ directory is not writable
 WIKI_ALREADY_EXISTS  = "ERR-WIKI-004"  # Install target already exists on disk
 WIKI_DEMO_NOT_FOUND  = "ERR-WIKI-005"  # Unknown demo template name
 WIKI_NOT_REGISTERED  = "ERR-WIKI-006"  # Name not in ~/.synthadoc/wikis.json
+BACKUP_INCOMPATIBLE  = "ERR-WIKI-007"  # Backup requires newer db_schema_version
 
 # ── Config / Environment ──────────────────────────────────────────────────────
 CFG_MISSING_API_KEY  = "ERR-CFG-001"   # Required env var (API key) not set

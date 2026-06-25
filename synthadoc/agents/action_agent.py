@@ -79,6 +79,14 @@ _ALLOWED: set[tuple[LifecycleState, LifecycleState]] = {
 # detect() can recognise a chip-reply in the very next turn without a regex match.
 CLARIFY_STORE_PREFIX = "[clarify] "
 
+_REPEAT_RE = re.compile(
+    r"^(run|do|execute|try)\s+(it\s+)?(again|once\s+more)\b"
+    r"|^(repeat|redo)\b"
+    r"|\bagain\b$"
+    r"|^(run|do)\s+that\b",
+    re.IGNORECASE,
+)
+
 _ACTION_RE = re.compile(
     r"^(please\s+)?(run|execute|start|trigger|perform)\b.{0,50}\b(lint|ingest|scaffold)\b"
     # "can/could you (please) run lint …"
@@ -170,6 +178,10 @@ _EXTRACT_PROMPT_TEMPLATE = (
     "  none          : (no params)\n\n"
     "Cron parsing: 'daily at 6am'='0 6 * * *', 'every Sunday at 7pm'='0 19 * * 0', "
     "'every weekday at 9am'='0 9 * * 1-5', 'every hour'='0 * * * *'\n\n"
+    "Repeat intents: if the user says 'run it again', 'do it again', 'again', 'repeat', "
+    "'try again', 'once more', 'do that', 'redo' etc. — look at the conversation history "
+    "to identify the last action performed and return that same action with the same params. "
+    "If you cannot determine the previous action from history, return action='none'.\n\n"
     "User request: {question}"
 )
 
@@ -213,6 +225,10 @@ class ActionAgent:
         """
         if _ACTION_RE.search(question):
             return True
+        if history and _REPEAT_RE.search(question):
+            # "run it again" / "repeat" / "again" — route to action agent so the
+            # LLM can look at history and re-run the previous action.
+            return True
         if history:
             lookback = (
                 self._orch._cfg.chat.clarify_lookback
@@ -231,7 +247,15 @@ class ActionAgent:
 
     async def run(self, question: str, history: list[dict] | None = None) -> Optional[ActionResult]:
         """Extract action + params from question and execute. Returns None if not an action."""
-        extraction = await self._extract(question, history=history or [])
+        # For repeat intents ("run it again", "repeat", etc.) resolve the previous action
+        # from history before calling the LLM, which cannot reliably infer it from vague phrasing.
+        effective_question = question
+        if _REPEAT_RE.search(question) and history:
+            for msg in reversed(history):
+                if msg.get("role") == "user" and _ACTION_RE.search(msg.get("content", "")):
+                    effective_question = msg["content"]
+                    break
+        extraction = await self._extract(effective_question, history=history or [])
         if not extraction:
             return None
         action = extraction.get("action", "none")
@@ -255,7 +279,8 @@ class ActionAgent:
         if history:
             lines = "\n".join(f"{m['role'].capitalize()}: {m['content']}" for m in history)
             history_block = (
-                f"\nConversation history (use to resolve references like '1', '2', or page names):\n"
+                f"\nConversation history (use to resolve references like '1', '2', page names, "
+                f"or to identify the last action when the user says 'again' / 'repeat'):\n"
                 f"{lines}\n"
             )
         prompt = _EXTRACT_PROMPT_TEMPLATE.format(question=question) + history_block
@@ -356,10 +381,15 @@ class ActionAgent:
                     + _MSG_NO_LIFECYCLE_DATA
                 ),
             )
+        from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
         audit = AuditDB(audit_path)
         await audit.init()
         counts = await audit.get_lifecycle_summary()
-        total = sum(counts.values())
+        all_pages = [s for s in self._orch._store.list_pages() if s not in LINT_SKIP_SLUGS]
+        total = len(all_pages)
+        unlinted = total - sum(counts.values())
+        if unlinted > 0:
+            counts["unlinted"] = unlinted
         state_order = [
             LifecycleState.DRAFT,
             LifecycleState.ACTIVE,
@@ -373,15 +403,15 @@ class ActionAgent:
             LifecycleState.STALE:        "source changed — re-ingest to refresh",
             LifecycleState.CONTRADICTED: "conflicting sources — manual review required",
             LifecycleState.ARCHIVED:     "excluded from queries and exports",
+            "unlinted":                  "never linted — run `synthadoc lint run`",
         }
         lines = [f"**Wiki status** — {total} page{'s' if total != 1 else ''} total\n",
                  "| State | Count | Note |", "|---|---|---|"]
         for state in state_order:
             n = counts.get(state, 0)
             lines.append(f"| {state} | {n} | {_NOTES[state]} |")
-        other = {s: c for s, c in counts.items() if s not in state_order}
-        for state, n in sorted(other.items()):
-            lines.append(f"| {state} | {n} | — |")
+        if unlinted > 0:
+            lines.append(f"| unlinted | {unlinted} | {_NOTES['unlinted']} |")
         return ActionResult(action_type="wiki_status", success=True, message="\n".join(lines))
 
     async def _do_lint(self, params: dict) -> ActionResult:
