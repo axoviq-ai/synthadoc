@@ -294,7 +294,7 @@ setx QWEN_API_KEY …
 setx TAVILY_API_KEY tvly-…
 ```
 
-To switch provider, edit `[agents]` in `<wiki-root>/.synthadoc/config.toml` and restart `synthadoc serve`. See [Appendix — Switching LLM providers](docs/user-quick-start-guide.md#appendix-c--switching-llm-providers) for step-by-step instructions.
+To switch provider, edit `[agents]` in `<wiki-root>/.synthadoc/config.toml` (created in Step 3) and start or restart `synthadoc serve`. See [Appendix — Switching LLM providers](docs/user-quick-start-guide.md#appendix-c--switching-llm-providers) for step-by-step instructions.
 
 #### Step 3 — Install a wiki and start the engine
 
