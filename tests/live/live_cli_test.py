@@ -67,6 +67,7 @@ import argparse
 import os
 import pathlib
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -303,6 +304,19 @@ def run_offline_tests(wiki_root: pathlib.Path) -> None:
     _bk_dir       = pathlib.Path(tempfile.mkdtemp(prefix="synthadoc_bk_"))
     _restore_dir  = pathlib.Path(tempfile.mkdtemp(prefix="synthadoc_rs_"))
 
+    def _db_page_states(db_path: pathlib.Path) -> int:
+        """Return row count from page_states; 0 if the table doesn't exist."""
+        try:
+            with sqlite3.connect(str(db_path)) as conn:
+                return conn.execute("SELECT COUNT(*) FROM page_states").fetchone()[0]
+        except Exception:
+            return 0
+
+    # Snapshot original wiki state before backup so we can compare after restore
+    _orig_db   = wiki_root / ".synthadoc" / "wiki.db"
+    _orig_md   = len(list((wiki_root / "wiki").glob("*.md")))
+    _orig_ps   = _db_page_states(_orig_db)
+
     try:
         # Backup to a temp directory
         r_bk = check(
@@ -354,7 +368,7 @@ def run_offline_tests(wiki_root: pathlib.Path) -> None:
                 fail("restore registered in registry",
                      f"{_RESTORE_NAME!r} not in `synthadoc list` output")
 
-            # Verify config.toml port was rewritten
+            # Verify config.toml port AND domain were rewritten
             cfg_path = restored_dir / ".synthadoc" / "config.toml"
             cfg_text = cfg_path.read_text(encoding="utf-8") if cfg_path.exists() else ""
             if "7099" in cfg_text:
@@ -362,6 +376,51 @@ def run_offline_tests(wiki_root: pathlib.Path) -> None:
             else:
                 fail("restore config.toml port rewritten",
                      "7099 not in restored config.toml")
+            if f'domain = "{_RESTORE_NAME}"' in cfg_text:
+                ok("restore config.toml domain rewritten", f'domain = "{_RESTORE_NAME}"')
+            else:
+                fail("restore config.toml domain rewritten",
+                     f'domain = "{_RESTORE_NAME}" not in restored config.toml')
+
+            # Verify registry shows the correct port for the restored wiki
+            _list_out = r_list.stdout + r_list.stderr
+            _restore_line = next(
+                (ln for ln in _list_out.splitlines() if _RESTORE_NAME in ln), ""
+            )
+            if "7099" in _restore_line:
+                ok("restore registry port correct", f"{_RESTORE_NAME} → port 7099")
+            else:
+                fail("restore registry port correct",
+                     f"7099 not on {_RESTORE_NAME!r} line in `synthadoc list`")
+
+            # Fidelity: wiki pages on disk match backup manifest
+            import zipfile, json as _json
+            with zipfile.ZipFile(zip_path) as _zf:
+                _manifest = _json.loads(_zf.read("manifest.json"))
+            _manifest_pages = _manifest.get("page_count", -1)
+            _restored_md    = len(list((restored_dir / "wiki").glob("*.md")))
+            if _restored_md == _manifest_pages:
+                ok("restore page count matches manifest",
+                   f"{_restored_md} pages")
+            else:
+                fail("restore page count matches manifest",
+                     f"disk={_restored_md}, manifest={_manifest_pages}")
+
+            # Fidelity: DB was restored and lifecycle rows are present
+            _restored_db = restored_dir / ".synthadoc" / "wiki.db"
+            if _restored_db.exists():
+                ok("restore wiki.db present", str(_restored_db.name))
+            else:
+                fail("restore wiki.db present", "wiki.db missing from restored wiki")
+            _restored_ps = _db_page_states(_restored_db)
+            if _orig_ps > 0 and _restored_ps == _orig_ps:
+                ok("restore page_states row count matches original",
+                   f"{_restored_ps} rows")
+            elif _orig_ps == 0:
+                ok("restore page_states row count", f"{_restored_ps} rows (original had 0)")
+            else:
+                fail("restore page_states row count matches original",
+                     f"restored={_restored_ps}, original={_orig_ps}")
 
             # Duplicate-name restore must fail with a clear error (not a crash).
             # Confirm the demo warning so the process reaches the conflict check.
