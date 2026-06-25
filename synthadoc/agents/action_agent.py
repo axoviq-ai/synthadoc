@@ -79,6 +79,14 @@ _ALLOWED: set[tuple[LifecycleState, LifecycleState]] = {
 # detect() can recognise a chip-reply in the very next turn without a regex match.
 CLARIFY_STORE_PREFIX = "[clarify] "
 
+_REPEAT_RE = re.compile(
+    r"^(run|do|execute|try)\s+(it\s+)?(again|once\s+more)\b"
+    r"|^(repeat|redo)\b"
+    r"|\bagain\b$"
+    r"|^(run|do)\s+that\b",
+    re.IGNORECASE,
+)
+
 _ACTION_RE = re.compile(
     r"^(please\s+)?(run|execute|start|trigger|perform)\b.{0,50}\b(lint|ingest|scaffold)\b"
     # "can/could you (please) run lint …"
@@ -170,6 +178,10 @@ _EXTRACT_PROMPT_TEMPLATE = (
     "  none          : (no params)\n\n"
     "Cron parsing: 'daily at 6am'='0 6 * * *', 'every Sunday at 7pm'='0 19 * * 0', "
     "'every weekday at 9am'='0 9 * * 1-5', 'every hour'='0 * * * *'\n\n"
+    "Repeat intents: if the user says 'run it again', 'do it again', 'again', 'repeat', "
+    "'try again', 'once more', 'do that', 'redo' etc. — look at the conversation history "
+    "to identify the last action performed and return that same action with the same params. "
+    "If you cannot determine the previous action from history, return action='none'.\n\n"
     "User request: {question}"
 )
 
@@ -213,6 +225,10 @@ class ActionAgent:
         """
         if _ACTION_RE.search(question):
             return True
+        if history and _REPEAT_RE.search(question):
+            # "run it again" / "repeat" / "again" — route to action agent so the
+            # LLM can look at history and re-run the previous action.
+            return True
         if history:
             lookback = (
                 self._orch._cfg.chat.clarify_lookback
@@ -255,7 +271,8 @@ class ActionAgent:
         if history:
             lines = "\n".join(f"{m['role'].capitalize()}: {m['content']}" for m in history)
             history_block = (
-                f"\nConversation history (use to resolve references like '1', '2', or page names):\n"
+                f"\nConversation history (use to resolve references like '1', '2', page names, "
+                f"or to identify the last action when the user says 'again' / 'repeat'):\n"
                 f"{lines}\n"
             )
         prompt = _EXTRACT_PROMPT_TEMPLATE.format(question=question) + history_block

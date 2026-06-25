@@ -375,6 +375,31 @@ def test_detect_no_clarify_continuation_without_prefix(tmp_path):
     ]
     assert agent.detect("abc-123", history=history) is False
 
+def test_detect_repeat_with_history_routes_to_action_agent(tmp_path):
+    """'run it again' with history containing a previous action response routes to action agent."""
+    agent, _ = _make_agent(tmp_path, "{}")
+    history = [
+        {"role": "user", "content": "show synthadoc status"},
+        {"role": "assistant", "content": "| State | Count |\n| active | 82 |"},
+    ]
+    assert agent.detect("run it again", history=history) is True
+
+
+def test_detect_repeat_phrases_with_history(tmp_path):
+    """All common repeat phrases route to action agent when history is present."""
+    agent, _ = _make_agent(tmp_path, "{}")
+    history = [{"role": "user", "content": "run lint"}, {"role": "assistant", "content": "Lint complete."}]
+    for phrase in ("run it again", "do it again", "repeat", "again", "redo", "try again once more"):
+        assert agent.detect(phrase, history=history) is True, f"Expected True for {phrase!r}"
+
+
+def test_detect_repeat_without_history_returns_false(tmp_path):
+    """'again' alone without history should NOT route to the action agent."""
+    agent, _ = _make_agent(tmp_path, "{}")
+    assert agent.detect("again") is False
+    assert agent.detect("run it again") is False
+
+
 def test_detect_show_job_status(tmp_path):
     agent, _ = _make_agent(tmp_path, "{}")
     assert agent.detect("show me job status") is True
