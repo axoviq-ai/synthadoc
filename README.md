@@ -230,9 +230,7 @@ See [docs/design.md — Appendix A: Release Feature Index](docs/design.md#append
 
 ### Production
 
-**Prerequisites:** Python 3.11+ and at least one LLM API key (see table below). No Node.js, no Git, no build steps.
-
-#### Step 1 — Install
+**Prerequisites:** Python 3.11+. No Node.js, no Git, no build steps.
 
 ```bash
 pip install synthadoc
@@ -241,7 +239,53 @@ synthadoc --version   # confirm it works
 
 The Obsidian plugin is bundled inside the package — `synthadoc plugin install` works immediately after this.
 
-#### Step 2 — Set your API keys
+---
+
+### Development
+
+For developers modifying the Python engine, running the test suite, or developing the Obsidian plugin TypeScript.
+
+**Additional prerequisites:** Git (any). Node.js 18+ only if modifying the plugin TypeScript source.
+
+#### Step 1 — Clone and install
+
+```bash
+git clone https://github.com/axoviq-ai/synthadoc.git
+cd synthadoc
+pip install -e ".[dev]"
+```
+
+`[dev]` adds `pytest`, `respx`, and the other test dependencies. Tests require a source checkout — they are not included in the pip wheel.
+
+#### Step 2 — Run the test suite
+
+```bash
+pytest --ignore=tests/performance/ -q
+```
+
+Expected: all tests pass, 0 failures. Performance benchmarks (optional — Linux/macOS):
+
+```bash
+pytest tests/performance/ -v --benchmark-disable
+```
+
+#### Step 3 — Obsidian plugin development (optional)
+
+The compiled plugin is bundled with the package and kept up to date by CI — no build step is needed to work on the Python side or run tests.
+
+To modify the TypeScript source:
+
+```bash
+cd obsidian-plugin
+npm install
+npm test              # Vitest unit tests
+# edit src/main.ts…
+# push your TypeScript changes — CI builds main.js and syncs it automatically on merge to main
+```
+
+---
+
+### Set your API keys
 
 **At least one LLM API key is required** — unless you use Claude Code or Opencode as your provider (no separate API key needed — see [Coding tool CLI providers](docs/design.md#coding-tool-cli-providers--no-api-key-needed)).
 
@@ -285,7 +329,9 @@ set TAVILY_API_KEY=tvly-…
 
 Web search uses **Tavily** (`TAVILY_API_KEY`) — optional, only needed for `synthadoc ingest "search for: …"` jobs. Get a free key at [tavily.com](https://tavily.com).
 
-#### Step 3 — Install a wiki and start the engine
+---
+
+### Install a wiki and start the engine
 
 A **wiki** is a self-contained knowledge base — a folder of Markdown pages maintained and cross-referenced automatically by Synthadoc. The fastest way to get started is the **History of Computing** demo (13 pre-built pages, no LLM API key required to browse).
 
@@ -323,58 +369,14 @@ taskkill /PID <PID> /F
 
 The PID is printed on start and saved to `<wiki-root>/.synthadoc/server.pid`.
 
-**Upgrading:** after `pip install --upgrade synthadoc`, run `synthadoc plugin upgrade` to push the updated Obsidian plugin binary into all registered wikis, then restart `synthadoc serve`.
-
----
-
-### Development
-
-For developers modifying the Python engine, running the test suite, or developing the Obsidian plugin TypeScript.
-
-**Additional prerequisites:** Git (any). Node.js 18+ only if modifying the plugin TypeScript source.
-
-#### Step 1 — Clone and install
+**Upgrading:** after updating synthadoc (via `pip install --upgrade synthadoc` or `git pull`), run these to keep registered wikis in sync:
 
 ```bash
-git clone https://github.com/axoviq-ai/synthadoc.git
-cd synthadoc
-pip install -e ".[dev]"
-```
-
-`[dev]` adds `pytest`, `respx`, and the other test dependencies. Tests require a source checkout — they are not included in the pip wheel.
-
-If you have existing wikis registered, run these after pulling:
-
-```bash
-synthadoc plugin upgrade   # update Obsidian plugin in all registered wikis
+synthadoc plugin upgrade   # push updated Obsidian plugin binary to all registered wikis
 synthadoc demo sync        # demo-installed wikis — pick up new pages and backfill metadata
 ```
 
-#### Step 2 — Run the test suite
-
-```bash
-pytest --ignore=tests/performance/ -q
-```
-
-Expected: all tests pass, 0 failures. Performance benchmarks (optional — Linux/macOS):
-
-```bash
-pytest tests/performance/ -v --benchmark-disable
-```
-
-#### Step 3 — Obsidian plugin development (optional)
-
-The compiled plugin is bundled with the package and kept up to date by CI — no build step is needed to work on the Python side or run tests.
-
-To modify the TypeScript source:
-
-```bash
-cd obsidian-plugin
-npm install
-npm test              # Vitest unit tests
-# edit src/main.ts…
-# push your TypeScript changes — CI builds main.js and syncs it automatically on merge to main
-```
+Then restart `synthadoc serve`.
 
 ---
 
