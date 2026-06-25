@@ -1010,7 +1010,11 @@ synthadoc restore backup.zip --name my-wiki-staging --target ~/wikis --port 7071
 
 **Obsidian plugin on restore:** The Obsidian plugin is reinstalled and pre-enabled automatically. Open the restored vault in Obsidian — both plugins are active with no manual toggling needed. Update **Server URL** in Synthadoc plugin settings only if the port changed.
 
-**Always excluded from backup:** job queue, embeddings database, server PID file, and logs — these are rebuilt automatically after restore.
+**Always excluded from backup:**
+- **Embeddings database** — vector representations of wiki pages, used only when vector search is enabled. Rebuilt automatically in the background on the next server start (pages not yet in the DB are re-embedded).
+- **Job queue** — pending and failed ingest/lint jobs. Job run *history* is preserved in `audit.db` (which is backed up); only in-flight or queued work items are lost. Re-queue manually with `synthadoc ingest` if needed after restore.
+- **Server PID file** — machine-specific, created fresh on each server start.
+- **Server logs** — application log files under `.synthadoc/logs/`. The human-readable activity log (`log.md`) is included in the backup.
 
 ### Removing a wiki
 
