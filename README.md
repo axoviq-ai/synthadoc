@@ -14,7 +14,7 @@
       '-+###############+-'
 
        S Y N T H A D O C
-    Community Edition  v0.9.0
+    Community Edition  v0.9.1
   ────────────────────────────────
   Domain-agnostic LLM wiki engine
 ```
@@ -28,9 +28,9 @@
 [![CLI](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.cli_commands&label=CLI%20commands&color=darkblue)](https://github.com/axoviq-ai/synthadoc)
 [![Obsidian](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.obsidian_commands&label=Obsidian%20commands&color=blueviolet)](https://github.com/axoviq-ai/synthadoc/tree/main/obsidian-plugin)
 [![MCP](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.mcp_tools&label=MCP%20tools&color=orange)](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#appendix-i--connect-claude-via-mcp)
-[![Version](https://img.shields.io/badge/Community%20Edition-v0.9.0-brightgreen.svg)](https://github.com/axoviq-ai/synthadoc)
+[![Version](https://img.shields.io/badge/Community%20Edition-v0.9.1-brightgreen.svg)](https://github.com/axoviq-ai/synthadoc)
 
-**Document version: v0.9.0**
+**Document version: v0.9.1**
 
 **Engineered for solo users and enterprises alike, providing a domain-specific knowledge base that scales seamlessly while maintaining accuracy through autonomous self-optimization.**
 
@@ -369,14 +369,14 @@ taskkill /PID <PID> /F
 
 The PID is printed on start and saved to `<wiki-root>/.synthadoc/server.pid`.
 
-**Upgrading:** after updating synthadoc (via `pip install --upgrade synthadoc` or `git pull`), run these to keep registered wikis in sync:
+**Upgrading:** after updating synthadoc (via `pip install --upgrade synthadoc` or `git pull`), restart the server to pick up the new code, then run these to keep registered wikis in sync:
 
 ```bash
 synthadoc plugin upgrade   # push updated Obsidian plugin binary to all registered wikis
 synthadoc demo sync        # demo-installed wikis — pick up new pages and backfill metadata
 ```
 
-Then restart `synthadoc serve`.
+Neither command requires the server to be running.
 
 ---
 
@@ -1010,7 +1010,11 @@ synthadoc restore backup.zip --name my-wiki-staging --target ~/wikis --port 7071
 
 **Obsidian plugin on restore:** The Obsidian plugin is reinstalled and pre-enabled automatically. Open the restored vault in Obsidian — both plugins are active with no manual toggling needed. Update **Server URL** in Synthadoc plugin settings only if the port changed.
 
-**Always excluded from backup:** job queue, embeddings database, server PID file, and logs — these are rebuilt automatically after restore.
+**Always excluded from backup:**
+- **Embeddings database** — vector representations of wiki pages, used only when vector search is enabled. Rebuilt automatically in the background on the next server start (pages not yet in the DB are re-embedded).
+- **Job queue** — pending and failed ingest/lint jobs. Job run *history* is preserved in `audit.db` (which is backed up); only in-flight or queued work items are lost. Re-queue manually with `synthadoc ingest` if needed after restore.
+- **Server PID file** — machine-specific, created fresh on each server start.
+- **Server logs** — application log files under `.synthadoc/logs/`. The human-readable activity log (`log.md`) is included in the backup.
 
 ### Removing a wiki
 
