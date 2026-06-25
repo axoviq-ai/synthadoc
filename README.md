@@ -392,28 +392,27 @@ The **History of Computing** demo includes 13 pre-built pages, raw source files 
 The guide covers:
 
 1. Verify the demo server started (banner, health check)
-2. Install Dataview in Obsidian
-3. Install the Synthadoc plugin and open the vault
-4. Review wiki structure and key files (index, purpose, AGENTS.md, dashboard)
-5. Query the pre-built wiki — including knowledge gap detection
-6. Batch ingest all demo source files
-7. Run lint — auto-promote clean pages to active
-8. Manage page lifecycle — 5-state machine (draft → active → stale/contradicted/archived), manual transitions, immutable audit trail
-9. Resolve a contradiction
-10. Fix an orphan page
-11. Run the adversarial lint pass — flag overstated claims across all pages
-12. Web search ingestion with automatic decomposition
-13. Ingest a YouTube video
-14. Enrich the wiki with scaffold (regenerate/update index, purpose, AGENTS.md)
-15. Audit features (token cost, history, events)
-16. Schedule recurring operations
-17. Set up query-scoped routing with ROUTING.md
-18. Stage and review candidate pages before promoting them
-19. Build a context pack for grounded LLM prompts
-20. Verify claim provenance — source-line citations, broken citation audit, global provenance table
-21. Export your wiki — llms.txt, llms-full.txt, GraphML wikilink graph, agent-ready JSON with provenance and lifecycle history, OKF v0.1 bundle for zero-code agent consumption
-22. Use the web chat UI — streaming answers, session-aware hint chips, citations in-browser
-23. Query caching — understand how answers are cached and how to bypass with `--no-cache`
+2. Install the Synthadoc plugin (auto-installs Dataview) and open the vault
+3. Review wiki structure and key files (index, purpose, AGENTS.md, dashboard)
+4. Query the pre-built wiki — including knowledge gap detection
+5. Batch ingest all demo source files
+6. Run lint — auto-promote clean pages to active
+7. Manage page lifecycle — 5-state machine (draft → active → stale/contradicted/archived), manual transitions, immutable audit trail
+8. Resolve a contradiction
+9. Fix an orphan page
+10. Run the adversarial lint pass — flag overstated claims across all pages
+11. Web search ingestion with automatic decomposition
+12. Ingest a YouTube video
+13. Enrich the wiki with scaffold (regenerate/update index, purpose, AGENTS.md)
+14. Audit features (token cost, history, events)
+15. Schedule recurring operations
+16. Set up query-scoped routing with ROUTING.md
+17. Stage and review candidate pages before promoting them
+18. Build a context pack for grounded LLM prompts
+19. Verify claim provenance — source-line citations, broken citation audit, global provenance table
+20. Export your wiki — llms.txt, llms-full.txt, GraphML wikilink graph, agent-ready JSON with provenance and lifecycle history, OKF v0.1 bundle for zero-code agent consumption
+21. Use the web chat UI — streaming answers, session-aware hint chips, citations in-browser
+22. Query caching — understand how answers are cached and how to bypass with `--no-cache`
 
 ---
 
@@ -443,10 +442,10 @@ Then copy the Synthadoc plugin files into the wiki with one command:
 synthadoc plugin install market-condition-canada
 ```
 
-This writes the plugin files and the correct server URL into `data.json`. Then open the wiki folder in Obsidian as a new vault and do two things in **Settings → Community Plugins**:
+This installs both the Synthadoc plugin and the Dataview plugin directly into the vault's plugins folder, and sets the correct server URL. Open the wiki folder in Obsidian as a new vault, go to **Settings → Community Plugins**, toggle **Turn on community plugins** if prompted, then enable both:
 
 1. **Enable Synthadoc** — toggle it on in the installed plugins list
-2. **Install and enable Dataview** — Browse → search "Dataview" → Install → Enable
+2. **Enable Dataview** — toggle it on in the installed plugins list
 
 The Quick-Start Guide covers the full Obsidian setup in detail — see [docs/user-quick-start-guide.md](docs/user-quick-start-guide.md).
 
@@ -1004,7 +1003,7 @@ synthadoc backup -w my-wiki
 # Backup to a specific directory, excluding raw source files to reduce size
 synthadoc backup -w my-wiki --output ~/backups --no-sources
 
-# Restore (prompts for target directory and confirms port)
+# Restore to the same folder as the zip (default), confirm port
 synthadoc restore synthadoc-backup-my-wiki-20260624-103000.zip
 
 # Restore under a different name to a specific location on a specific port
@@ -1013,7 +1012,9 @@ synthadoc restore backup.zip --name my-wiki-staging --target ~/wikis --port 7071
 
 **Backup flags:** `--output/-o` (directory, default: current dir), `--no-sources` (skip `raw_sources/`), `--no-exports` (skip `exports/`), `--no-cache` (skip `cache.db`).
 
-**Restore flags:** `--name` (override wiki name), `--target/-t` (parent directory), `--port` (skip interactive port prompt).
+**Restore flags:** `--name` (override wiki name), `--target/-t` (parent directory, default: same folder as zip), `--port` (skip interactive port prompt).
+
+**Obsidian plugin on restore:** The Obsidian plugin is reinstalled automatically. Open the restored vault in Obsidian and enable both Synthadoc and Dataview in **Settings → Community Plugins** (update Server URL if the port changed).
 
 **Always excluded from backup:** job queue, embeddings database, server PID file, and logs — these are rebuilt automatically after restore.
 

@@ -124,8 +124,7 @@ synthadoc use
 
 ## Step 2 — Install the Synthadoc plugin
 
-The plugin ships pre-built — no build step required. Run this command before opening
-Obsidian — it copies the plugin files directly into the vault's plugins folder:
+Run this command before opening Obsidian — it installs both the Synthadoc plugin and the Dataview plugin directly into the vault's plugins folder:
 
 ```bash
 synthadoc plugin install history-of-computing
@@ -155,23 +154,17 @@ In Obsidian: **Open folder as vault** → select the installed wiki folder:
 > natively understand (`.xlsx`, `.pptx`, etc.). To show them: **Settings → Files and
 > links → Show all file types → on**.
 
-### 2. Install Dataview
+### 2. Enable both plugins
 
-**Dataview** is an Obsidian community plugin that powers the live dashboard in `wiki/dashboard.md`.
+Both Synthadoc and Dataview were installed directly into the vault's plugins folder in Step 2 — no manual download required. Obsidian just needs to activate them:
 
 1. **Settings** (gear icon, bottom-left) → **Community plugins**
 2. Toggle **Turn on community plugins** if it is off
-3. Click **Browse** → search `Dataview` → **Install** → **Enable**
-4. Close settings
-
-### 3. Enable the Synthadoc plugin
-
-The plugin files are already in place from Step 2. Obsidian just needs to activate them:
-
-1. **Settings → Community plugins** → find **Synthadoc** → toggle **on**
-2. Click the gear icon next to the Synthadoc entry
-3. Confirm **Server URL** is `http://127.0.0.1:7070` (set automatically during plugin install — only change this if your server runs on a different port)
-4. Close settings
+3. Find **Synthadoc** → toggle **on**
+4. Find **Dataview** → toggle **on**
+5. Click the gear icon next to **Synthadoc**
+6. Confirm **Server URL** is `http://127.0.0.1:7070` (set automatically during plugin install — only change this if your server runs on a different port)
+7. Close settings
 
 The **Synthadoc ribbon icon** (book icon on the far-left sidebar) confirms the plugin is
 active. All Synthadoc commands are reachable via the Command Palette (`Ctrl/Cmd+P` →
@@ -3011,19 +3004,20 @@ synthadoc-backup-history-of-computing-20260624-103000.zip
 synthadoc restore <backup.zip>
 ```
 
-Interactive restore: prompts for target directory if not given; detects port conflicts and suggests the next free port.
+Restores to the same directory as the zip file by default. Detects port conflicts and suggests the next free port.
 
 **Flags:**
 ```
 --name <name>        Restore under a different wiki name
---target <dir>       Parent directory for the restored wiki
+--target <dir>       Parent directory for the restored wiki (default: zip's folder)
 --port <N>           Use this port (skips interactive prompt)
 ```
 
 **Post-restore checklist (printed automatically):**
 1. Set your LLM API key in your environment
 2. `synthadoc serve -w <wiki-name>`
-3. If using the Obsidian plugin: update Server URL to `http://127.0.0.1:<port>`
+3. Open the vault in Obsidian — the Obsidian plugin is reinstalled automatically; enable **Synthadoc** and **Dataview** in **Settings → Community Plugins** if prompted
+4. Update **Server URL** in the Synthadoc plugin settings if the port changed
 
 ### What is NOT backed up
 
