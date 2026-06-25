@@ -1161,6 +1161,26 @@ def test_status_cmd_lifecycle_exception_silenced():
     assert "Pages" in result.output
 
 
+def test_status_cmd_lifecycle_shows_unlinted_bucket():
+    """status shows 'unlinted' row when server returns unlinted count."""
+    from typer.testing import CliRunner
+    from synthadoc.cli.main import app
+    runner = CliRunner()
+
+    def fake_get(wiki, path):
+        if path == "/status":
+            return {"wiki": "test", "pages": 6, "jobs_pending": 0, "jobs_total": 0}
+        return {"draft": 0, "active": 5, "contradicted": 0, "stale": 0, "archived": 0, "unlinted": 1}
+
+    with patch("synthadoc.cli.status.get", side_effect=fake_get), \
+         patch("synthadoc.cli._wiki.resolve_wiki", return_value="test"):
+        result = runner.invoke(app, ["status", "--wiki", "test"])
+
+    assert result.exit_code == 0
+    assert "unlinted" in result.output
+    assert "lint run" in result.output
+
+
 # ── core/hooks.py — blocking fire and exception handler ───────────────────────
 
 def test_hook_fire_with_blocking_dict_config(tmp_path):

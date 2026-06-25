@@ -34,6 +34,7 @@ def status_cmd(wiki: Optional[str] = typer.Option(None, "--wiki", "-w")):
             "draft_candidates": "<- promote from candidates/ first, then lint",
             "stale":            "<- re-ingest needed",
             "contradicted":     "<- review required",
+            "unlinted":         "<- run `synthadoc lint run`",
         }
         _LABELS = {
             "draft_candidates": "draft (staged)",
@@ -42,6 +43,8 @@ def status_cmd(wiki: Optional[str] = typer.Option(None, "--wiki", "-w")):
         if counts.get("draft_candidates", 0) > 0:
             idx = display_states.index("draft") + 1
             display_states.insert(idx, "draft_candidates")
+        if counts.get("unlinted", 0) > 0:
+            display_states.append("unlinted")
         for state in display_states:
             count = counts.get(state, 0)
             label = _LABELS.get(state, state)
