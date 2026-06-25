@@ -324,7 +324,9 @@ def run_offline_tests(wiki_root: pathlib.Path) -> None:
         )
 
         if zip_path:
-            # Restore with all explicit flags
+            # Restore with all explicit flags.
+            # Pass input="y\n" because restoring a demo wiki under a new name triggers
+            # an interactive "Continue?" prompt — we want to confirm automatically.
             check(
                 "restore --name --target --port",
                 [
@@ -334,6 +336,7 @@ def run_offline_tests(wiki_root: pathlib.Path) -> None:
                     "--port",   "7099",
                 ],
                 contains=["✓ Restored", _RESTORE_NAME],
+                input="y\n",
             )
 
             # Verify wiki directory exists on disk
@@ -360,7 +363,8 @@ def run_offline_tests(wiki_root: pathlib.Path) -> None:
                 fail("restore config.toml port rewritten",
                      "7099 not in restored config.toml")
 
-            # Duplicate-name restore must fail with a clear error (not a crash)
+            # Duplicate-name restore must fail with a clear error (not a crash).
+            # Confirm the demo warning so the process reaches the conflict check.
             check(
                 "restore conflict exits non-zero",
                 [
@@ -371,13 +375,15 @@ def run_offline_tests(wiki_root: pathlib.Path) -> None:
                 ],
                 expect_exit=1,
                 contains=["already registered"],
+                input="y\n",
             )
 
             # Clean up _RESTORE_NAME so the default-target test gets a clean slate
             shutil.rmtree(_restore_dir / _RESTORE_NAME, ignore_errors=True)
             run(["uninstall", _RESTORE_NAME])  # path gone → auto-cleans registry entry
 
-            # Restore without --target → wiki lands in zip's parent folder
+            # Restore without --target → wiki lands in zip's parent folder.
+            # Also confirm the demo rename warning.
             check(
                 "restore default target (zip folder)",
                 [
@@ -386,6 +392,7 @@ def run_offline_tests(wiki_root: pathlib.Path) -> None:
                     "--port",  "7098",
                 ],
                 contains=["Restoring to:", "✓ Restored"],
+                input="y\n",
             )
             dflt_dir = _bk_dir / _RESTORE_DFLT
             if dflt_dir.exists():
@@ -460,16 +467,20 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
     check("jobs list --sort status",     ["jobs", "list", "--sort", "status"] + w)
     check("jobs list --order desc",      ["jobs", "list", "--order", "desc"]  + w)
 
-    job_id = delete_id = ""
+    job_id = ""
+    terminal_ids: list[str] = []
     for line in (r_list.stdout + r_list.stderr).splitlines():
         tokens = line.split()
         for t in tokens:
             if len(t) == 8 and all(c in "0123456789abcdef" for c in t):
                 if not job_id:
                     job_id = t
-                if not delete_id and any(s in line for s in ("completed", "failed", "cancelled")):
-                    delete_id = t
+                if any(s in line for s in ("completed", "failed", "cancelled")):
+                    terminal_ids.append(t)
                 break
+    # Pick a delete candidate that isn't job_id — retrying job_id turns it pending,
+    # and DELETE /jobs/{id} returns 409 for pending jobs.
+    delete_id = next((t for t in terminal_ids if t != job_id), "")
 
     if job_id:
         check("jobs status", ["jobs", "status", job_id] + w)
