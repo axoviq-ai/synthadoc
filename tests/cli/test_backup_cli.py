@@ -266,6 +266,32 @@ def test_restore_with_name_override(tmp_path):
     assert (restore_dir / "renamed-wiki" / "wiki" / "page1.md").exists()
 
 
+def test_restore_defaults_target_to_zip_parent(tmp_path):
+    wiki_root = _make_wiki(tmp_path)
+    zip_dir = tmp_path / "zips"
+    zip_path = _make_backup_zip(wiki_root, zip_dir)
+    with _patch_registry_for_restore(), _patch_write_registry(), \
+         _patch_reserved_ports(), _patch_schedule_apply():
+        result = runner.invoke(app, ["restore", str(zip_path), "--port", "7071"])
+    assert result.exit_code == 0, result.output
+    # Wiki should be restored inside the zip's parent directory
+    assert (zip_dir / "my-wiki" / "wiki" / "page1.md").exists()
+    assert "Restoring to:" in result.output
+
+
+def test_restore_bad_target_shows_clean_error(tmp_path):
+    wiki_root = _make_wiki(tmp_path)
+    zip_path = _make_backup_zip(wiki_root, tmp_path / "zips")
+    with _patch_registry_for_restore(), _patch_write_registry(), \
+         _patch_reserved_ports(), _patch_schedule_apply():
+        result = runner.invoke(app, [
+            "restore", str(zip_path),
+            "--target", "C:\\bad\x00path",   # null byte → invalid on Windows
+            "--port", "7071",
+        ])
+    assert result.exit_code != 0
+
+
 def test_restore_missing_zip_exits_nonzero(tmp_path):
     result = runner.invoke(app, ["restore", str(tmp_path / "nonexistent.zip")])
     assert result.exit_code != 0

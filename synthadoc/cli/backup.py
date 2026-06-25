@@ -89,7 +89,7 @@ def backup_cmd(
 def restore_cmd(
     backup_file: str = typer.Argument(help="Path to the backup zip file"),
     name: Optional[str] = typer.Option(None, "--name", help="Override wiki name on restore"),
-    target: Optional[str] = typer.Option(None, "--target", "-t", help="Parent directory for the restored wiki"),
+    target: Optional[str] = typer.Option(None, "--target", "-t", help="Parent directory for the restored wiki (default: same folder as the zip)"),
     port: Optional[int] = typer.Option(None, "--port", help="Override server port"),
 ) -> None:
     """Restore a wiki domain from a backup zip.
@@ -157,11 +157,20 @@ def restore_cmd(
             typer.echo("Restore aborted.")
             raise typer.Exit(0)
 
-    # Resolve target directory
+    # Resolve target directory — default to same folder as the zip
     if target is None:
-        target = typer.prompt("Parent directory for restored wiki")
-    target_dir = Path(target.strip()).resolve()
-    target_dir.mkdir(parents=True, exist_ok=True)
+        target_dir = zip_path.parent
+        typer.echo(f"Restoring to: {target_dir}")
+    else:
+        target_dir = Path(target.strip()).resolve()
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        E.cli_error(
+            E.WIKI_INVALID,
+            f"Cannot create target directory '{target_dir}': {exc.strerror}",
+            "Check the path is valid and you have write permission.",
+        )
 
     # Port resolution
     if port is not None:
