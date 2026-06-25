@@ -93,7 +93,7 @@ def test_plugin_install_missing_plugin_src(tmp_path):
         result = runner.invoke(app, ["plugin", "install", "mywiki"])
 
     assert result.exit_code != 0
-    assert "obsidian-plugin" in result.output
+    assert "plugin data not found" in result.output
 
 
 # ── plugin upgrade ────────────────────────────────────────────────────────────
@@ -181,4 +181,4 @@ def test_plugin_upgrade_missing_plugin_src(tmp_path):
         result = runner.invoke(app, ["plugin", "upgrade"])
 
     assert result.exit_code != 0
-    assert "obsidian-plugin" in result.output
+    assert "plugin data not found" in result.output

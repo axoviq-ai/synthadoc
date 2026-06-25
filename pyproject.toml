@@ -79,7 +79,7 @@ path = "synthadoc/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["synthadoc"]
-artifacts = ["VERSION"]
+artifacts = ["VERSION", "synthadoc/data/obsidian-plugin/*"]
 
 [tool.coverage.report]
 fail_under = 91

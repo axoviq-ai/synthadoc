@@ -16,8 +16,7 @@ from synthadoc.cli.main import app
 plugin_app = typer.Typer(name="plugin", help="Manage the Synthadoc Obsidian plugin.")
 app.add_typer(plugin_app)
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-_PLUGIN_SRC = _REPO_ROOT / "obsidian-plugin"
+_PLUGIN_SRC = Path(__file__).resolve().parent.parent / "data" / "obsidian-plugin"
 _PLUGIN_FILES = ("main.js", "manifest.json", "styles.css")
 _PLUGIN_ID = "synthadoc"
 
@@ -106,8 +105,8 @@ def plugin_install_cmd(
 
     if not _PLUGIN_SRC.exists():
         typer.echo(
-            f"Error: obsidian-plugin/ not found at '{_PLUGIN_SRC}'.\n"
-            "Run this command from the synthadoc repo root.",
+            f"Error: plugin data not found at '{_PLUGIN_SRC}'.\n"
+            "Reinstall synthadoc or run: python scripts/sync_plugin.py",
             err=True,
         )
         raise typer.Exit(1)
@@ -116,8 +115,8 @@ def plugin_install_cmd(
 
     if not copied:
         typer.echo(
-            "Error: no plugin files found in obsidian-plugin/.\n"
-            "Build the plugin first: cd obsidian-plugin && npm run build",
+            "Error: no plugin files found in synthadoc/data/obsidian-plugin/.\n"
+            "Run: python scripts/sync_plugin.py",
             err=True,
         )
         raise typer.Exit(1)
@@ -146,8 +145,8 @@ def plugin_upgrade_cmd():
     """
     if not _PLUGIN_SRC.exists():
         typer.echo(
-            f"Error: obsidian-plugin/ not found at '{_PLUGIN_SRC}'.\n"
-            "Run this command from the synthadoc repo root.",
+            f"Error: plugin data not found at '{_PLUGIN_SRC}'.\n"
+            "Reinstall synthadoc or run: python scripts/sync_plugin.py",
             err=True,
         )
         raise typer.Exit(1)
@@ -171,7 +170,7 @@ def plugin_upgrade_cmd():
             if copied:
                 upgraded.append(name)
             else:
-                skipped.append(f"  {name}: no plugin files to copy (build obsidian-plugin first)")
+                skipped.append(f"  {name}: no plugin files found — run: python scripts/sync_plugin.py")
         except Exception as exc:
             errors.append(f"  {name}: {exc}")
 
