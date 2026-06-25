@@ -601,7 +601,11 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                 logger.warning("Overflow check failed for session %s: %s", session_id, _oe)
                 _history = []
 
-        if not no_cache:
+        # Actions and repeat intents must never be served from cache — they run live
+        # operations whose result depends on current wiki state and session context.
+        from synthadoc.agents.action_agent import _ACTION_RE as _ARE, _REPEAT_RE as _RRE
+        _looks_like_action = bool(_ARE.search(q) or (_RRE.search(q) and _history))
+        if not no_cache and not _looks_like_action:
             from synthadoc.core.cache import make_query_cache_key
             _qcfg = orch._cfg.agents.resolve("query")
             _query_model = f"{_qcfg.provider}/{_qcfg.model}"
