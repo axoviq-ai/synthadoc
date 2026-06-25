@@ -40,11 +40,20 @@ No mocks.  This script is run manually, not by CI.
  TIERS
 ────────────────────────────────────────────────────────────────────────────────
   Tier 1 — Offline.  Runs always; no server or LLM key required.
+             [1]–[12] — use, list, demo, routing, staging, candidates,
+             context build, lint report, schedule, audit lifecycle purge,
+             plugin upgrade, backup/restore
   Tier 2 — Live.  Runs when server responds at SYNTHADOC_URL; calls LLM.
+             [13]–[23] — status, ingest, query, scaffold, export, jobs,
+             lint run, schedule run, lifecycle, cache clear, audit
 
 ────────────────────────────────────────────────────────────────────────────────
  SIDE EFFECTS & ROLLBACK
 ────────────────────────────────────────────────────────────────────────────────
+  • backup:     zip written to a temp dir, deleted after tests.
+  • restore:    two wikis registered under '_live-test-restore' and
+                '_live-test-restore-dflt'; directories deleted and registry
+                entries removed (via `synthadoc uninstall`) after tests.
   • candidates: two temp pages are created, tested, then deleted (rollback).
   • lifecycle:  one archived page is restored → activated → archived (round-trip;
                 page ends in the same archived state it started in).
@@ -287,6 +296,118 @@ def run_offline_tests(wiki_root: pathlib.Path) -> None:
     else:
         warn("plugin install", "vault not configured — " + pi_out.strip()[:120])
 
+    # ── backup / restore ──────────────────────────────────────────────────────
+    print("\n[12] backup / restore")
+    _RESTORE_NAME = "_live-test-restore"
+    _RESTORE_DFLT = "_live-test-restore-dflt"
+    _bk_dir       = pathlib.Path(tempfile.mkdtemp(prefix="synthadoc_bk_"))
+    _restore_dir  = pathlib.Path(tempfile.mkdtemp(prefix="synthadoc_rs_"))
+
+    try:
+        # Backup to a temp directory
+        r_bk = check(
+            "backup basic",
+            ["backup", "-w", WIKI_NAME, "--output", str(_bk_dir)],
+            contains=["✓"],
+        )
+        zips = sorted(_bk_dir.glob("synthadoc-backup-*.zip"))
+        zip_path = zips[0] if zips else None
+        if zip_path:
+            ok("backup zip created", zip_path.name)
+        else:
+            fail("backup zip created", f"no *.zip found in {_bk_dir}")
+
+        check(
+            "backup --no-sources",
+            ["backup", "-w", WIKI_NAME, "--output", str(_bk_dir), "--no-sources"],
+            contains=["excluded"],
+        )
+
+        if zip_path:
+            # Restore with all explicit flags
+            check(
+                "restore --name --target --port",
+                [
+                    "restore", str(zip_path),
+                    "--name",   _RESTORE_NAME,
+                    "--target", str(_restore_dir),
+                    "--port",   "7099",
+                ],
+                contains=["✓ Restored", _RESTORE_NAME],
+            )
+
+            # Verify wiki directory exists on disk
+            restored_dir = _restore_dir / _RESTORE_NAME
+            if restored_dir.exists():
+                ok("restore wiki dir created", str(restored_dir))
+            else:
+                fail("restore wiki dir created", f"not found: {restored_dir}")
+
+            # Verify registration
+            r_list = run(["list"])
+            if _RESTORE_NAME in (r_list.stdout + r_list.stderr):
+                ok("restore registered in registry", _RESTORE_NAME)
+            else:
+                fail("restore registered in registry",
+                     f"{_RESTORE_NAME!r} not in `synthadoc list` output")
+
+            # Verify config.toml port was rewritten
+            cfg_path = restored_dir / ".synthadoc" / "config.toml"
+            cfg_text = cfg_path.read_text(encoding="utf-8") if cfg_path.exists() else ""
+            if "7099" in cfg_text:
+                ok("restore config.toml port rewritten", "port = 7099")
+            else:
+                fail("restore config.toml port rewritten",
+                     "7099 not in restored config.toml")
+
+            # Duplicate-name restore must fail with a clear error (not a crash)
+            check(
+                "restore conflict exits non-zero",
+                [
+                    "restore", str(zip_path),
+                    "--name",   _RESTORE_NAME,
+                    "--target", str(_restore_dir),
+                    "--port",   "7099",
+                ],
+                expect_exit=1,
+                contains=["already registered"],
+            )
+
+            # Clean up _RESTORE_NAME so the default-target test gets a clean slate
+            shutil.rmtree(_restore_dir / _RESTORE_NAME, ignore_errors=True)
+            run(["uninstall", _RESTORE_NAME])  # path gone → auto-cleans registry entry
+
+            # Restore without --target → wiki lands in zip's parent folder
+            check(
+                "restore default target (zip folder)",
+                [
+                    "restore", str(zip_path),
+                    "--name",  _RESTORE_DFLT,
+                    "--port",  "7098",
+                ],
+                contains=["Restoring to:", "✓ Restored"],
+            )
+            dflt_dir = _bk_dir / _RESTORE_DFLT
+            if dflt_dir.exists():
+                ok("restore default target dir correct",
+                   f"{_RESTORE_DFLT} restored to zip's folder")
+            else:
+                fail("restore default target dir correct",
+                     f"{_RESTORE_DFLT} not found under {_bk_dir}")
+
+            shutil.rmtree(dflt_dir, ignore_errors=True)
+            run(["uninstall", _RESTORE_DFLT])
+        else:
+            warn("restore tests", "skipped — backup zip not found")
+
+    finally:
+        # Belt-and-suspenders cleanup: remove temp dirs then deregister
+        shutil.rmtree(_restore_dir, ignore_errors=True)
+        shutil.rmtree(_bk_dir,     ignore_errors=True)
+        for _rn in (_RESTORE_NAME, _RESTORE_DFLT):
+            run(["uninstall", _rn])  # no-op when already cleaned; removes stale registry entries
+        ok("backup/restore rollback")
+
 
 # ── Tier 2: Live server + LLM ─────────────────────────────────────────────────
 
@@ -294,11 +415,11 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
     w = ["-w", WIKI_NAME]
 
     # ── status ────────────────────────────────────────────────────────────────
-    print("\n[12] status")
+    print("\n[13] status")
     check("status", ["status"] + w, contains=["Pages:"])
 
     # ── ingest (analyse-only — writes no wiki pages) ──────────────────────────
-    print("\n[13] ingest")
+    print("\n[14] ingest")
     _src = pathlib.Path(tempfile.mktemp(suffix=".txt"))
     _src.write_text(
         "The ENIAC was the first general-purpose electronic computer, completed in 1945.\n",
@@ -312,17 +433,17 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
         _src.unlink(missing_ok=True)
 
     # ── query ─────────────────────────────────────────────────────────────────
-    print("\n[14] query")
+    print("\n[15] query")
     check("query (cached or live)",
           ["query", "What is ENIAC?", "--no-stream"] + w,
           contains=[])
 
     # ── scaffold ──────────────────────────────────────────────────────────────
-    print("\n[15] scaffold")
+    print("\n[16] scaffold")
     check("scaffold", ["scaffold"] + w, contains=["job"])
 
     # ── export ────────────────────────────────────────────────────────────────
-    print("\n[16] export")
+    print("\n[17] export")
     check("export llms.txt",      ["export", "-f", "llms.txt"]      + w)
     check("export llms-full.txt", ["export", "-f", "llms-full.txt"] + w)
     check("export json",          ["export", "-f", "json"]          + w)
@@ -334,7 +455,7 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
         shutil.rmtree(_okf_dir, ignore_errors=True)
 
     # ── jobs ──────────────────────────────────────────────────────────────────
-    print("\n[17] jobs")
+    print("\n[18] jobs")
     r_list = check("jobs list",          ["jobs", "list"]                     + w)
     check("jobs list --sort status",     ["jobs", "list", "--sort", "status"] + w)
     check("jobs list --order desc",      ["jobs", "list", "--order", "desc"]  + w)
@@ -365,16 +486,16 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
     check("jobs cancel --yes",           ["jobs", "cancel", "--yes"]              + w)
 
     # ── lint run ──────────────────────────────────────────────────────────────
-    print("\n[18] lint run")
+    print("\n[19] lint run")
     check("lint run", ["lint", "run"] + w, contains=["job"])
 
     # ── schedule run ──────────────────────────────────────────────────────────
-    print("\n[19] schedule run")
+    print("\n[20] schedule run")
     check("schedule run --op lint run",
           ["schedule", "run", "--op", "lint run"] + w)
 
     # ── lifecycle log + round-trip (restore → activate → archive) ─────────────
-    print("\n[20] lifecycle")
+    print("\n[21] lifecycle")
     check("lifecycle log", ["lifecycle", "log"] + w)
 
     archived_slugs = find_pages_by_status(wiki_root, "archived")
@@ -393,11 +514,11 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
              "no archived pages found — skipping round-trip")
 
     # ── cache clear ───────────────────────────────────────────────────────────
-    print("\n[21] cache clear")
+    print("\n[22] cache clear")
     check("cache clear", ["cache", "clear"] + w)
 
     # ── audit ─────────────────────────────────────────────────────────────────
-    print("\n[22] audit")
+    print("\n[23] audit")
     check("audit history",   ["audit", "history"]   + w)
     check("audit cost",      ["audit", "cost"]       + w)
     check("audit queries",   ["audit", "queries"]    + w)
