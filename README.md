@@ -174,6 +174,7 @@ As the wiki accumulates pages the `index.md` table of contents, domain scope (`p
 | Custom skill plugins         | **Yes**                                                               | Limited     | No         | No        |
 | Obsidian integration         | **Yes**                                                               | No          | No         | No        |
 | Cost guard + audit trail     | **Yes** (per-job token + cost log; claim citations DB; `audit citations` CLI; ingest/lint/citation event types; full audit history API) | No          | No         | No        |
+| Portable backup / restore    | **Yes** (single zip: wiki pages + audit/lifecycle DB + config; port and domain rewriting on restore; migrate across machines without re-ingesting) | No — re-ingest required | No — content only, AI metadata lost | No — audit log separate, no restore path |
 | Hook / CI integration        | **Yes** (2 events)                                                    | No          | No         | No        |
 | Offline browsable artifact   | **Yes**                                                               | No          | No         | No        |
 | Multi-wiki isolation         | **Yes**                                                               | No          | No         | No        |
@@ -207,6 +208,7 @@ RAG chunks documents and retrieves them at query time. Synthadoc **compiles** kn
 - **The artifact outlives the tool.** Close the server, open the wiki folder in any Markdown editor — the knowledge is all there, human-readable, no proprietary format.
 - **Cost-efficient at scale.** Two-step ingest with cached analysis means repeated ingest of similar sources costs near-zero tokens. Three cache layers stack for lint and query too.
 - **Ingest is durable, not fragile.** Every ingest request becomes a queued job with automatic retry and a persistent audit record. Batch a hundred documents and resume after a crash — no work is lost.
+- **The operational state travels with the wiki.** `synthadoc backup` captures wiki pages, audit history, lifecycle state, and server config in one portable zip. Typical RAG systems and cloud tools (NotebookLM, Notion AI) require full re-ingestion after a migration — Synthadoc restores in seconds on any machine, with port and domain rewriting handled automatically.
 
 ---
 
