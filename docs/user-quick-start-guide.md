@@ -1,6 +1,6 @@
 ﻿# Synthadoc User Quick-Start Guide
 
-**Version: v0.9.0 (Community Edition)**
+**Version: v0.9.1 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
