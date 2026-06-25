@@ -294,8 +294,6 @@ setx QWEN_API_KEY …
 setx TAVILY_API_KEY tvly-…
 ```
 
-To switch provider, edit `[agents]` in `<wiki-root>/.synthadoc/config.toml` (created in Step 3) and start or restart `synthadoc serve`. See [Appendix — Switching LLM providers](docs/user-quick-start-guide.md#appendix-c--switching-llm-providers) for step-by-step instructions.
-
 #### Step 3 — Install a wiki and start the engine
 
 A **wiki** is a self-contained knowledge base — a folder of Markdown pages maintained and cross-referenced automatically by Synthadoc. The fastest way to get started is the **History of Computing** demo (13 pre-built pages, no LLM API key required to browse).
@@ -319,6 +317,8 @@ synthadoc serve -w history-of-computing --background
 ```
 
 The server binds to `http://127.0.0.1:7070` (localhost-only). Leave it running while you work — the Obsidian plugin, CLI ingest commands, and query commands all talk to it.
+
+To switch LLM provider, edit `[agents]` in `<wiki-root>/.synthadoc/config.toml` and restart `synthadoc serve`. See [Appendix — Switching LLM providers](docs/user-quick-start-guide.md#appendix-c--switching-llm-providers) for step-by-step instructions.
 
 To stop a background server:
 
