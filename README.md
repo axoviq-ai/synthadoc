@@ -323,6 +323,8 @@ taskkill /PID <PID> /F
 
 The PID is printed on start and saved to `<wiki-root>/.synthadoc/server.pid`.
 
+**Upgrading:** after `pip install --upgrade synthadoc`, run `synthadoc plugin upgrade` to push the updated Obsidian plugin binary into all registered wikis, then restart `synthadoc serve`.
+
 ---
 
 ### Development
@@ -341,11 +343,11 @@ pip install -e ".[dev]"
 
 `[dev]` adds `pytest`, `respx`, and the other test dependencies. Tests require a source checkout — they are not included in the pip wheel.
 
-If you have existing wikis registered, keep them in sync after pulling:
+If you have existing wikis registered, run these after pulling:
 
 ```bash
 synthadoc plugin upgrade   # update Obsidian plugin in all registered wikis
-synthadoc demo sync        # pick up new demo pages and backfill new metadata fields
+synthadoc demo sync        # demo wikis only — pick up new pages and backfill metadata
 ```
 
 #### Step 2 — Run the test suite
