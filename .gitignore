@@ -13,6 +13,7 @@ venv/
 node_modules/
 obsidian-plugin/node_modules/
 obsidian-plugin/coverage/
+obsidian-plugin/main.js
 .VSCodeCounter/
 .claude/
 
