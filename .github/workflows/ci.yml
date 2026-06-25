@@ -53,3 +53,6 @@ jobs:
         with:
           node-version: "20"
       - run: cd obsidian-plugin && npm install && npm run build && npm test
+      - run: python scripts/sync_plugin.py
+      - name: Verify bundled plugin files are up to date
+        run: git diff --exit-code synthadoc/data/obsidian-plugin/
