@@ -228,17 +228,14 @@ See [docs/design.md — Appendix A: Release Feature Index](docs/design.md#append
 
 ### Prerequisites
 
-
 | Requirement    | Version | Notes                                                                     |
 | -------------- | ------- | ------------------------------------------------------------------------- |
 | Python         | 3.11+   |                                                                           |
-| Node.js        | 18+     | Obsidian plugin build only                                                |
-| Git            | any     |                                                                           |
 | LLM API key    | —      | At least one required — unless using Claude Code or Opencode (see below) |
 | Tavily API key | —      | Optional — web search feature only                                       |
+| Node.js        | 18+     | **Plugin development only** — not needed for normal use                  |
 
 **LLM API key — at least one required** (unless using Claude Code or Opencode — see the last two rows below):
-
 
 | Provider         | Free tier                                     | Vision          | Get key                                                         |
 | ---------------- | --------------------------------------------- | --------------- | --------------------------------------------------------------- |
@@ -258,13 +255,25 @@ Get a free key at [tavily.com](https://tavily.com). Without it, web search jobs 
 
 ---
 
-### Step 1 — Clone and install
+### Step 1 — Install
+
+**Production (most users):**
+
+```bash
+pip install synthadoc
+```
+
+The Obsidian plugin is bundled inside the package — no Node.js or separate build step needed.
+
+**Development (modifying source code or running tests):**
 
 ```bash
 git clone https://github.com/axoviq-ai/synthadoc.git
 cd synthadoc
 pip install -e ".[dev]"
 ```
+
+`[dev]` adds `pytest`, `respx`, and the other test dependencies. The unit test suite requires a source checkout and dev extras — tests are not included in the pip wheel, so `pip install synthadoc` alone is not enough to run them.
 
 If you already have Synthadoc wikis installed, run both upgrade commands to keep everything in sync:
 
@@ -273,36 +282,32 @@ synthadoc plugin upgrade   # upgrades the Obsidian plugin in all registered wiki
 synthadoc demo sync        # picks up new demo pages and backfills new metadata fields (e.g. type:)
 ```
 
-### Step 2 — Run the Python test suite
-
-Validate that the Python engine builds and all tests pass before proceeding:
+### Step 2 — Run the test suite (development installs only)
 
 ```bash
 pytest --ignore=tests/performance/ -q
 ```
 
-Expected: all tests pass, 0 failures. If any fail, check the error output before continuing.
+Expected: all tests pass, 0 failures.
 
-Performance benchmarks (optional — Linux/macOS, measures SLOs):
+Performance benchmarks (optional — Linux/macOS):
 
 ```bash
 pytest tests/performance/ -v --benchmark-disable
 ```
 
-### Step 3 — Test the Obsidian plugin
+### Step 3 — Obsidian plugin development (optional)
 
-The pre-built `main.js` is committed to the repo — you do not need to rebuild it unless you modify the plugin source code. To run the plugin unit tests:
+The compiled plugin is bundled with the package and kept up to date by CI — no build step needed for normal use or testing.
+
+To modify the plugin TypeScript source:
 
 ```bash
 cd obsidian-plugin
 npm install
-npm test         # runs Vitest unit tests
-```
-
-If you modify `src/main.ts`, rebuild the bundle before installing:
-
-```bash
-npm run build    # produces main.js
+npm test              # run Vitest unit tests
+# edit src/main.ts…
+# commit your TypeScript changes — CI builds and syncs main.js automatically on merge to main
 ```
 
 ### Step 4 — Set your API keys
