@@ -6,6 +6,7 @@ build-backend = "hatchling.build"
 name = "synthadoc"
 dynamic = ["version"]
 description = "Domain-agnostic LLM knowledge compilation engine"
+license = "AGPL-3.0-or-later"
 requires-python = ">=3.11"
 dependencies = [
     "typer>=0.12",
@@ -79,7 +80,7 @@ path = "synthadoc/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["synthadoc"]
-artifacts = ["VERSION"]
+artifacts = ["VERSION", "synthadoc/data/obsidian-plugin/*"]
 
 [tool.coverage.report]
 fail_under = 91

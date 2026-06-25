@@ -50,6 +50,7 @@ major engine feature. No setup beyond following the steps below is required.
 - [Appendix G — Using a Coding Tool as Your LLM Provider](#appendix-g--using-a-coding-tool-as-your-llm-provider)
 - [Appendix H — BM25 Routing Performance Benchmarks](#appendix-h--bm25-routing-performance-benchmarks)
 - [Appendix I — Connect Claude via MCP](#appendix-i--connect-claude-via-mcp)
+- [Appendix J — Backup & Restore](#appendix-j--backup--restore)
 
 ---
 
@@ -123,8 +124,7 @@ synthadoc use
 
 ## Step 2 — Install the Synthadoc plugin
 
-The plugin ships pre-built — no build step required. Run this command before opening
-Obsidian — it copies the plugin files directly into the vault's plugins folder:
+Run this command before opening Obsidian — it installs both the Synthadoc plugin and the Dataview plugin directly into the vault's plugins folder:
 
 ```bash
 synthadoc plugin install history-of-computing
@@ -154,23 +154,15 @@ In Obsidian: **Open folder as vault** → select the installed wiki folder:
 > natively understand (`.xlsx`, `.pptx`, etc.). To show them: **Settings → Files and
 > links → Show all file types → on**.
 
-### 2. Install Dataview
+### 2. Verify both plugins are active
 
-**Dataview** is an Obsidian community plugin that powers the live dashboard in `wiki/dashboard.md`.
+Both Synthadoc and Dataview are already installed **and enabled** by Step 2 — no manual toggling required. Obsidian picks them up automatically when you open the vault.
 
-1. **Settings** (gear icon, bottom-left) → **Community plugins**
-2. Toggle **Turn on community plugins** if it is off
-3. Click **Browse** → search `Dataview` → **Install** → **Enable**
-4. Close settings
+Go to **Settings → Community Plugins** to confirm both show a blue enabled toggle. While there:
 
-### 3. Enable the Synthadoc plugin
-
-The plugin files are already in place from Step 2. Obsidian just needs to activate them:
-
-1. **Settings → Community plugins** → find **Synthadoc** → toggle **on**
-2. Click the gear icon next to the Synthadoc entry
-3. Confirm **Server URL** is `http://127.0.0.1:7070` (set automatically during plugin install — only change this if your server runs on a different port)
-4. Close settings
+1. Click the gear icon next to **Synthadoc**
+2. Confirm **Server URL** is `http://127.0.0.1:7070` (set automatically — only change this if your server runs on a different port)
+3. Close settings
 
 The **Synthadoc ribbon icon** (book icon on the far-left sidebar) confirms the plugin is
 active. All Synthadoc commands are reachable via the Command Palette (`Ctrl/Cmd+P` →
@@ -2966,3 +2958,71 @@ For architecture details and the brain/memory use case framing, see [docs/design
 **SSE endpoint returns 404**
 - The correct URL is `/mcp/sse`, not `/mcp` or `/mcp/`
 - Verify the server is running with `curl -i http://127.0.0.1:7070/`
+
+---
+
+<a name="appendix-j--backup--restore"></a>
+
+## Appendix J — Backup & Restore
+
+### When to use it
+
+| Scenario | Command |
+|---|---|
+| Move wiki to another machine | `backup` on old machine, `restore` on new |
+| Snapshot before a risky operation (routing clean, adversarial lint) | `backup` before running the operation |
+| Development workflow: freeze a good state, do risky dev, restore if needed | `backup` → dev work → `restore` |
+| CI/test fixture: start from a known state before each run | `restore` at test start |
+| Share an exact wiki state with a colleague | Send the zip, they run `restore` |
+
+### Backup
+
+```
+synthadoc backup -w <wiki>
+```
+
+Creates a timestamped compressed zip in the current directory:
+```
+synthadoc-backup-history-of-computing-20260624-103000.zip
+```
+
+**What's included by default:** wiki pages, candidates, config, audit database, exports, query cache, raw sources, and root-level wiki files (`AGENTS.md`, `ROUTING.md`, `log.md`, `sources.txt`) when present.
+
+**Flags:**
+```
+--output <dir>       Write zip to this directory (default: current directory)
+--no-sources         Exclude raw_sources/ (reduces size for large crawled wikis)
+--no-exports         Exclude exports/ directory
+--no-cache           Exclude cache.db
+```
+
+### Restore
+
+```
+synthadoc restore <backup.zip>
+```
+
+Restores to the same directory as the zip file by default. Detects port conflicts and suggests the next free port.
+
+**Flags:**
+```
+--name <name>        Restore under a different wiki name
+--target <dir>       Parent directory for the restored wiki (default: zip's folder)
+--port <N>           Use this port (skips interactive prompt)
+```
+
+**Post-restore checklist (printed automatically):**
+1. Set your LLM API key in your environment
+2. `synthadoc serve -w <wiki-name>`
+3. Open the vault in Obsidian — the Obsidian plugin is reinstalled and pre-enabled automatically; no manual toggling needed
+4. Update **Server URL** in the Synthadoc plugin settings if the port changed
+
+### What is NOT backed up
+
+| Item | Why excluded |
+|---|---|
+| LLM API keys | Never stored in config; set via environment variable |
+| `jobs.db` | Stale job queue — meaningless on another machine |
+| `embeddings.db` | Large; rebuilt automatically on first search after restore |
+| `server.pid` | Stale process ID |
+| `raw_sources/` | Included by default; skip with `--no-sources` to reduce zip size |

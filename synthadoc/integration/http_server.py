@@ -601,7 +601,11 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                 logger.warning("Overflow check failed for session %s: %s", session_id, _oe)
                 _history = []
 
-        if not no_cache:
+        # Actions and repeat intents must never be served from cache — they run live
+        # operations whose result depends on current wiki state and session context.
+        from synthadoc.agents.action_agent import _ACTION_RE as _ARE, _REPEAT_RE as _RRE
+        _looks_like_action = bool(_ARE.search(q) or (_RRE.search(q) and _history))
+        if not no_cache and not _looks_like_action:
             from synthadoc.core.cache import make_query_cache_key
             _qcfg = orch._cfg.agents.resolve("query")
             _query_model = f"{_qcfg.provider}/{_qcfg.model}"
@@ -1254,7 +1258,9 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     @app.get("/lifecycle/status")
     async def lifecycle_status():
-        audit = app.state.orch._audit
+        from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
+        orch = app.state.orch
+        audit = orch._audit
         counts = await audit.get_lifecycle_summary()
         # Split draft into wiki-domain drafts vs staged-in-candidates drafts.
         if counts.get("draft", 0) > 0:
@@ -1265,6 +1271,11 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             if in_cand:
                 counts["draft"] = counts["draft"] - in_cand
                 counts["draft_candidates"] = in_cand
+        # Pages on disk that have never been linted have no page_states row.
+        all_pages = [s for s in orch._store.list_pages() if s not in LINT_SKIP_SLUGS]
+        unlinted = len(all_pages) - sum(counts.values())
+        if unlinted > 0:
+            counts["unlinted"] = unlinted
         return counts
 
     @app.get("/lifecycle/events")

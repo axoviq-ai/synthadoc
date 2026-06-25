@@ -3,11 +3,12 @@
 import json
 import shutil
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
 from synthadoc.cli.main import app
+from synthadoc.cli.plugin import _update_community_plugins, _install_dataview
 
 runner = CliRunner()
 
@@ -93,7 +94,7 @@ def test_plugin_install_missing_plugin_src(tmp_path):
         result = runner.invoke(app, ["plugin", "install", "mywiki"])
 
     assert result.exit_code != 0
-    assert "obsidian-plugin" in result.output
+    assert "plugin data not found" in result.output
 
 
 # ── plugin upgrade ────────────────────────────────────────────────────────────
@@ -181,4 +182,124 @@ def test_plugin_upgrade_missing_plugin_src(tmp_path):
         result = runner.invoke(app, ["plugin", "upgrade"])
 
     assert result.exit_code != 0
-    assert "obsidian-plugin" in result.output
+    assert "plugin data not found" in result.output
+
+
+# ── _update_community_plugins ─────────────────────────────────────────────────
+
+def test_update_community_plugins_creates_file(tmp_path):
+    wiki = _make_wiki(tmp_path)
+    _update_community_plugins(wiki, "synthadoc")
+    cp = wiki / ".obsidian" / "community-plugins.json"
+    assert cp.exists()
+    assert json.loads(cp.read_text()) == ["synthadoc"]
+
+
+def test_update_community_plugins_adds_to_existing(tmp_path):
+    wiki = _make_wiki(tmp_path)
+    obsidian_dir = wiki / ".obsidian"
+    obsidian_dir.mkdir(parents=True, exist_ok=True)
+    (obsidian_dir / "community-plugins.json").write_text('["dataview"]', encoding="utf-8")
+    _update_community_plugins(wiki, "synthadoc")
+    result = json.loads((obsidian_dir / "community-plugins.json").read_text())
+    assert "dataview" in result
+    assert "synthadoc" in result
+
+
+def test_update_community_plugins_idempotent(tmp_path):
+    wiki = _make_wiki(tmp_path)
+    _update_community_plugins(wiki, "synthadoc")
+    _update_community_plugins(wiki, "synthadoc")
+    cp = wiki / ".obsidian" / "community-plugins.json"
+    assert json.loads(cp.read_text()).count("synthadoc") == 1
+
+
+# ── _install_dataview ─────────────────────────────────────────────────────────
+
+def _make_mock_response(content: bytes = b"// js", status: int = 200):
+    resp = MagicMock()
+    resp.status_code = status
+    resp.content = content
+    resp.raise_for_status = MagicMock()
+    return resp
+
+
+def test_install_dataview_downloads_files(tmp_path):
+    wiki = _make_wiki(tmp_path)
+    with patch("synthadoc.cli.plugin.httpx") as mock_httpx:
+        mock_httpx.get.return_value = _make_mock_response()
+        result = _install_dataview(wiki)
+    assert result == "installed"
+    assert (wiki / ".obsidian" / "plugins" / "dataview" / "main.js").exists()
+
+
+def test_install_dataview_skipped_when_already_present(tmp_path):
+    wiki = _make_wiki(tmp_path)
+    dest = wiki / ".obsidian" / "plugins" / "dataview"
+    dest.mkdir(parents=True)
+    (dest / "main.js").write_text("// existing", encoding="utf-8")
+    with patch("synthadoc.cli.plugin.httpx") as mock_httpx:
+        result = _install_dataview(wiki)
+    mock_httpx.get.assert_not_called()
+    assert result == "skipped"
+
+
+def test_install_dataview_returns_failed_on_network_error(tmp_path):
+    wiki = _make_wiki(tmp_path)
+    with patch("synthadoc.cli.plugin.httpx") as mock_httpx:
+        mock_httpx.get.side_effect = Exception("network error")
+        result = _install_dataview(wiki)
+    assert result == "failed"
+
+
+# ── plugin install — integration with new helpers ─────────────────────────────
+
+def test_plugin_install_updates_community_plugins_json(tmp_path):
+    src = _make_plugin_src(tmp_path)
+    wiki = _make_wiki(tmp_path)
+
+    with (
+        patch("synthadoc.cli.plugin._PLUGIN_SRC", src),
+        patch("synthadoc.cli.plugin.resolve_wiki", return_value="mywiki"),
+        patch("synthadoc.cli.plugin.resolve_wiki_path", return_value=wiki),
+        patch("synthadoc.cli.plugin._install_dataview", return_value="skipped"),
+    ):
+        result = runner.invoke(app, ["plugin", "install", "mywiki"])
+
+    assert result.exit_code == 0, result.output
+    cp = wiki / ".obsidian" / "community-plugins.json"
+    assert cp.exists()
+    enabled = json.loads(cp.read_text())
+    assert "synthadoc" in enabled
+
+
+def test_plugin_install_shows_dataview_installed_message(tmp_path):
+    src = _make_plugin_src(tmp_path)
+    wiki = _make_wiki(tmp_path)
+
+    with (
+        patch("synthadoc.cli.plugin._PLUGIN_SRC", src),
+        patch("synthadoc.cli.plugin.resolve_wiki", return_value="mywiki"),
+        patch("synthadoc.cli.plugin.resolve_wiki_path", return_value=wiki),
+        patch("synthadoc.cli.plugin._install_dataview", return_value="installed"),
+    ):
+        result = runner.invoke(app, ["plugin", "install", "mywiki"])
+
+    assert result.exit_code == 0, result.output
+    assert "installed Dataview" in result.output
+
+
+def test_plugin_install_shows_dataview_failed_warning(tmp_path):
+    src = _make_plugin_src(tmp_path)
+    wiki = _make_wiki(tmp_path)
+
+    with (
+        patch("synthadoc.cli.plugin._PLUGIN_SRC", src),
+        patch("synthadoc.cli.plugin.resolve_wiki", return_value="mywiki"),
+        patch("synthadoc.cli.plugin.resolve_wiki_path", return_value=wiki),
+        patch("synthadoc.cli.plugin._install_dataview", return_value="failed"),
+    ):
+        result = runner.invoke(app, ["plugin", "install", "mywiki"])
+
+    assert result.exit_code == 0, result.output
+    assert "Dataview download failed" in result.output

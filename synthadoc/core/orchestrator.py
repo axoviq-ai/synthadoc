@@ -130,6 +130,13 @@ class Orchestrator:
         await self._cache.close()
         await asyncio.sleep(0)  # drain pending aiosqlite thread callbacks before loop teardown
 
+    async def __aenter__(self) -> "Orchestrator":
+        await self.init()
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        await self.close()
+
     async def _run_vector_migration(self) -> None:
         """Embed all existing wiki pages not yet in embeddings.db (background task)."""
         import time

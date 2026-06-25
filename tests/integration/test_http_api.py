@@ -540,6 +540,19 @@ def test_lifecycle_status_endpoint(tmp_wiki):
     assert "counts" not in data
 
 
+def test_lifecycle_status_includes_unlinted_for_new_pages(tmp_wiki):
+    """GET /lifecycle/status includes 'unlinted' count when pages exist with no state."""
+    from synthadoc.integration.http_server import create_app
+    # Write a page that has no page_states entry (never linted)
+    (tmp_wiki / "wiki" / "brand-new.md").write_text("# Brand New\nstatus: active\n", encoding="utf-8")
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.get("/lifecycle/status")
+    assert resp.status_code == 200
+    data = resp.json()
+    # The new page has no audit DB entry → should appear in unlinted
+    assert data.get("unlinted", 0) >= 1
+
+
 def test_lifecycle_events_endpoint(tmp_wiki):
     """GET /lifecycle/events returns paginated events."""
     from synthadoc.integration.http_server import create_app

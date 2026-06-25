@@ -9,6 +9,8 @@ from typing import Optional
 
 import aiosqlite
 
+DB_SCHEMA_VERSION: int = 1
+
 CITATION_EXCERPT_LEN = 100
 
 
@@ -159,6 +161,7 @@ class AuditDB:
                     await db.commit()
                 except Exception:
                     pass  # column already exists
+            await db.execute(f"PRAGMA user_version = {DB_SCHEMA_VERSION}")
             await db.commit()
 
     async def record_ingest(self, source_hash: str, source_size: int,

@@ -244,7 +244,7 @@ async def test_concurrent_cache_reads(tmp_path, concurrency):
 
     SLOs (single persistent connection, SSD):
       Linux bare-metal: 10→<10ms, 50→<20ms, 100→<40ms
-      CI (shared runners): 3× for n≤50, 4× for n=100 — tail latency is more
+      CI (shared runners): 3× for n≤50, 6× for n=100 — tail latency is more
       sensitive to runner load spikes at high concurrency.
     """
     cache = await _make_cache(tmp_path)
@@ -274,12 +274,12 @@ async def test_concurrent_cache_reads(tmp_path, concurrency):
         )
         assert all_hits, "One or more concurrent reads returned a cache miss (data race?)"
         # Bare-metal Linux SLOs; CI runners get extra headroom for shared-disk /
-        # virtualised SQLite overhead.  n=100 uses 5× because high-concurrency
+        # virtualised SQLite overhead.  n=100 uses 6× because high-concurrency
         # tail latency is more volatile on shared runners than low-concurrency cases.
         import os as _os
         base_slo = {10: 10.0, 50: 20.0, 100: 40.0}[concurrency]
         on_ci = _os.environ.get("CI") == "true" or platform.system() != "Linux"
-        ci_multiplier = 5 if concurrency == 100 else 3
+        ci_multiplier = 6 if concurrency == 100 else 3
         slo = base_slo * ci_multiplier if on_ci else base_slo
         assert p95 < slo, f"P95 {p95:.1f}ms exceeds {slo:.0f}ms SLO at concurrency={concurrency}"
     finally:

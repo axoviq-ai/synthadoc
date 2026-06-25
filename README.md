@@ -174,6 +174,7 @@ As the wiki accumulates pages the `index.md` table of contents, domain scope (`p
 | Custom skill plugins         | **Yes**                                                               | Limited     | No         | No        |
 | Obsidian integration         | **Yes**                                                               | No          | No         | No        |
 | Cost guard + audit trail     | **Yes** (per-job token + cost log; claim citations DB; `audit citations` CLI; ingest/lint/citation event types; full audit history API) | No          | No         | No        |
+| Portable backup / restore    | **Yes** (single zip: wiki pages + audit/lifecycle DB + config; port and domain rewriting on restore; migrate across machines without re-ingesting) | No — re-ingest required | No — content only, AI metadata lost | No — audit log separate, no restore path |
 | Hook / CI integration        | **Yes** (2 events)                                                    | No          | No         | No        |
 | Offline browsable artifact   | **Yes**                                                               | No          | No         | No        |
 | Multi-wiki isolation         | **Yes**                                                               | No          | No         | No        |
@@ -207,6 +208,7 @@ RAG chunks documents and retrieves them at query time. Synthadoc **compiles** kn
 - **The artifact outlives the tool.** Close the server, open the wiki folder in any Markdown editor — the knowledge is all there, human-readable, no proprietary format.
 - **Cost-efficient at scale.** Two-step ingest with cached analysis means repeated ingest of similar sources costs near-zero tokens. Three cache layers stack for lint and query too.
 - **Ingest is durable, not fragile.** Every ingest request becomes a queued job with automatic retry and a persistent audit record. Batch a hundred documents and resume after a crash — no work is lost.
+- **The operational state travels with the wiki.** `synthadoc backup` captures wiki pages, audit history, lifecycle state, and server config in one portable zip. Typical RAG systems and cloud tools (NotebookLM, Notion AI) require full re-ingestion after a migration — Synthadoc restores in seconds on any machine, with port and domain rewriting handled automatically.
 
 ---
 
@@ -226,39 +228,26 @@ See [docs/design.md — Appendix A: Release Feature Index](docs/design.md#append
 
 ## Installation
 
-### Prerequisites
+### Production
 
+**Prerequisites:** Python 3.11+. No Node.js, no Git, no build steps.
 
-| Requirement    | Version | Notes                                                                     |
-| -------------- | ------- | ------------------------------------------------------------------------- |
-| Python         | 3.11+   |                                                                           |
-| Node.js        | 18+     | Obsidian plugin build only                                                |
-| Git            | any     |                                                                           |
-| LLM API key    | —      | At least one required — unless using Claude Code or Opencode (see below) |
-| Tavily API key | —      | Optional — web search feature only                                       |
+```bash
+pip install synthadoc
+synthadoc --version   # confirm it works
+```
 
-**LLM API key — at least one required** (unless using Claude Code or Opencode — see the last two rows below):
-
-
-| Provider         | Free tier                                     | Vision          | Get key                                                         |
-| ---------------- | --------------------------------------------- | --------------- | --------------------------------------------------------------- |
-| **Gemini Flash** | Yes — 15 RPM / 1M tokens/day, no credit card | Yes             | [aistudio.google.com](https://aistudio.google.com/app/apikey)   |
-| Groq             | Yes — rate-limited                           | No              | [console.groq.com](https://console.groq.com/keys)               |
-| Ollama           | Yes — runs locally, no key (**GPU required**) | Model-dependent | [ollama.com](https://ollama.com)                                |
-| Qwen             | Yes — 1M free tokens (90-day trial), then paid DashScope | Model-dependent | [bailian.console.aliyun.com](https://bailian.console.aliyun.com/) |
-| MiniMax          | No — pay-per-token                           | Yes             | [platform.minimax.io](https://platform.minimax.io/)             |
-| DeepSeek         | No — pay-per-token (very cheap text rates)   | No              | [platform.deepseek.com](https://platform.deepseek.com/api_keys) |
-| Anthropic        | No                                            | Yes             | [console.anthropic.com](https://console.anthropic.com/)         |
-| OpenAI           | No                                            | Yes             | [platform.openai.com](https://platform.openai.com/api-keys)     |
-| **Claude Code**  | Included with subscription — no API key      | No              | Set`provider = "claude-code"` in config.toml                    |
-| **Opencode**     | Included with subscription — no API key      | No              | Set`provider = "opencode"` in config.toml                       |
-
-**Tavily API key (optional — enables web search):**
-Get a free key at [tavily.com](https://tavily.com). Without it, web search jobs will fail but all other features work normally.
+The Obsidian plugin is bundled inside the package — `synthadoc plugin install` works immediately after this.
 
 ---
 
-### Step 1 — Clone and install
+### Development
+
+For developers modifying the Python engine, running the test suite, or developing the Obsidian plugin TypeScript.
+
+**Additional prerequisites:** Git (any). Node.js 18+ only if modifying the plugin TypeScript source.
+
+#### Step 1 — Clone and install
 
 ```bash
 git clone https://github.com/axoviq-ai/synthadoc.git
@@ -266,55 +255,54 @@ cd synthadoc
 pip install -e ".[dev]"
 ```
 
-If you already have Synthadoc wikis installed, run both upgrade commands to keep everything in sync:
+`[dev]` adds `pytest`, `respx`, and the other test dependencies. Tests require a source checkout — they are not included in the pip wheel.
 
-```bash
-synthadoc plugin upgrade   # upgrades the Obsidian plugin in all registered wikis
-synthadoc demo sync        # picks up new demo pages and backfills new metadata fields (e.g. type:)
-```
-
-### Step 2 — Run the Python test suite
-
-Validate that the Python engine builds and all tests pass before proceeding:
+#### Step 2 — Run the test suite
 
 ```bash
 pytest --ignore=tests/performance/ -q
 ```
 
-Expected: all tests pass, 0 failures. If any fail, check the error output before continuing.
-
-Performance benchmarks (optional — Linux/macOS, measures SLOs):
+Expected: all tests pass, 0 failures. Performance benchmarks (optional — Linux/macOS):
 
 ```bash
 pytest tests/performance/ -v --benchmark-disable
 ```
 
-### Step 3 — Test the Obsidian plugin
+#### Step 3 — Obsidian plugin development (optional)
 
-The pre-built `main.js` is committed to the repo — you do not need to rebuild it unless you modify the plugin source code. To run the plugin unit tests:
+The compiled plugin is bundled with the package and kept up to date by CI — no build step is needed to work on the Python side or run tests.
+
+To modify the TypeScript source:
 
 ```bash
 cd obsidian-plugin
 npm install
-npm test         # runs Vitest unit tests
+npm test              # Vitest unit tests
+# edit src/main.ts…
+# push your TypeScript changes — CI builds main.js and syncs it automatically on merge to main
 ```
 
-If you modify `src/main.ts`, rebuild the bundle before installing:
+---
 
-```bash
-npm run build    # produces main.js
-```
+### Set your API keys
 
-### Step 4 — Set your API keys
+**At least one LLM API key is required** — unless you use Claude Code or Opencode as your provider (no separate API key needed — see [Coding tool CLI providers](docs/design.md#coding-tool-cli-providers--no-api-key-needed)).
 
-**At least one LLM API key is required** — unless you use Claude Code or Opencode as your provider, in which case no separate API key is needed (see [Coding tool CLI providers](docs/design.md#coding-tool-cli-providers--no-api-key-needed)).
+Synthadoc defaults to **Gemini Flash** — free tier, no credit card, 1 million tokens per day. Get a key at **aistudio.google.com/app/apikey** (click "Create API key").
 
-Synthadoc defaults to **Gemini Flash** as the LLM provider — it's free, requires no
-credit card, and offers 1 million tokens per day. Get a key at
-**aistudio.google.com/app/apikey** (click "Create API key").
-
-Web search uses **Tavily** (`TAVILY_API_KEY`) — optional, only needed for
-`synthadoc ingest "search for: …"` jobs.
+| Provider         | Free tier                                                | Vision          | Get key                                                           |
+| ---------------- | -------------------------------------------------------- | --------------- | ----------------------------------------------------------------- |
+| **Gemini Flash** | Yes — 15 RPM / 1M tokens/day, no credit card            | Yes             | [aistudio.google.com](https://aistudio.google.com/app/apikey)    |
+| Groq             | Yes — rate-limited                                       | No              | [console.groq.com](https://console.groq.com/keys)                |
+| Ollama           | Yes — runs locally, no key (**GPU required**)            | Model-dependent | [ollama.com](https://ollama.com)                                  |
+| Qwen             | Yes — 1M free tokens (90-day trial), then paid DashScope | Model-dependent | [bailian.console.aliyun.com](https://bailian.console.aliyun.com/) |
+| MiniMax          | No — pay-per-token                                       | Yes             | [platform.minimax.io](https://platform.minimax.io/)               |
+| DeepSeek         | No — pay-per-token (very cheap text rates)               | No              | [platform.deepseek.com](https://platform.deepseek.com/api_keys)  |
+| Anthropic        | No                                                       | Yes             | [console.anthropic.com](https://console.anthropic.com/)           |
+| OpenAI           | No                                                       | Yes             | [platform.openai.com](https://platform.openai.com/api-keys)      |
+| **Claude Code**  | Included with subscription — no API key                  | No              | Set `provider = "claude-code"` in config.toml                    |
+| **Opencode**     | Included with subscription — no API key                  | No              | Set `provider = "opencode"` in config.toml                       |
 
 ```bash
 # macOS / Linux — add to ~/.bashrc or ~/.zshrc to persist
@@ -337,33 +325,15 @@ set DEEPSEEK_API_KEY=…
 set QWEN_API_KEY=…
 set TAVILY_API_KEY=tvly-…
 
-# Windows cmd — permanent (open a new cmd window after running)
-setx GEMINI_API_KEY AIza…
-setx GROQ_API_KEY gsk_…
-setx ANTHROPIC_API_KEY sk-ant-…
-setx OPENAI_API_KEY sk-…
-setx MINIMAX_API_KEY …
-setx DEEPSEEK_API_KEY sk-…
-setx QWEN_API_KEY …
-setx TAVILY_API_KEY tvly-…
 ```
 
-To switch provider, edit `[agents]` in `<wiki-root>/.synthadoc/config.toml` and restart
-`synthadoc serve`. See [Appendix — Switching LLM providers](docs/user-quick-start-guide.md#appendix-c--switching-llm-providers) for step-by-step instructions.
+Web search uses **Tavily** (`TAVILY_API_KEY`) — optional, only needed for `synthadoc ingest "search for: …"` jobs. Get a free key at [tavily.com](https://tavily.com).
 
-### Step 5 — Verify
+---
 
-```bash
-synthadoc --version
-```
+### Install a wiki and start the engine
 
-### Step 6 — Install a demo wiki, then start the engine
-
-A **wiki** is a self-contained, structured knowledge base — a folder of Markdown pages linked by topic, maintained and cross-referenced automatically by Synthadoc. Think of it as a living document that grows smarter with every source you feed it: each ingest pass adds new pages, updates existing ones, and flags contradictions. For your own work, you can build and grow a domain-specific wiki — whether that's market research, a technical knowledge base, or a team handbook — and query it in plain English or other languages at any time.
-
-A wiki must be installed before the engine can serve it. The fastest way to get started is the **History of Computing** demo, which ships with 13 pre-built pages and sample source files — no LLM API key required to browse it.
-
-**First time — install the demo wiki:**
+A **wiki** is a self-contained knowledge base — a folder of Markdown pages maintained and cross-referenced automatically by Synthadoc. The fastest way to get started is the **History of Computing** demo (13 pre-built pages, no LLM API key required to browse).
 
 ```bash
 # Linux / macOS
@@ -373,25 +343,19 @@ synthadoc install history-of-computing --target ~/wikis --demo
 synthadoc install history-of-computing --target %USERPROFILE%\wikis --demo
 ```
 
-**Upgrading / already installed the demo — sync new source files instead:**
+Then start the engine:
 
 ```bash
-synthadoc demo sync history-of-computing
-```
-
-This copies any new source files added to the demo template into your existing wiki without overwriting anything you have already ingested or modified. Skip the `install` command above if you have previously installed this demo.
-
-**Then start the engine:**
-
-```bash
-# Foreground — keeps the terminal; logs stream to the console
+# Foreground — logs stream to the console
 synthadoc serve -w history-of-computing
 
-# Background — releases the terminal; logs go to the wiki log file
+# Background — releases the terminal
 synthadoc serve -w history-of-computing --background
 ```
 
-The server binds to `http://127.0.0.1:7070` by default (port is set in `<wiki-root>/.synthadoc/config.toml`). The server is **localhost-only** — it never binds to an external network interface. Leave it running while you work — the Obsidian plugin, CLI ingest commands, and query commands all talk to it.
+The server binds to `http://127.0.0.1:7070` (localhost-only). Leave it running while you work — the Obsidian plugin, CLI ingest commands, and query commands all talk to it.
+
+To switch LLM provider, edit `[agents]` in `<wiki-root>/.synthadoc/config.toml` and restart `synthadoc serve`. See [Appendix — Switching LLM providers](docs/user-quick-start-guide.md#appendix-c--switching-llm-providers) for step-by-step instructions.
 
 To stop a background server:
 
@@ -403,7 +367,16 @@ kill <PID>
 taskkill /PID <PID> /F
 ```
 
-The PID is printed when the background server starts and saved to `<wiki-root>/.synthadoc/server.pid`.
+The PID is printed on start and saved to `<wiki-root>/.synthadoc/server.pid`.
+
+**Upgrading:** after updating synthadoc (via `pip install --upgrade synthadoc` or `git pull`), run these to keep registered wikis in sync:
+
+```bash
+synthadoc plugin upgrade   # push updated Obsidian plugin binary to all registered wikis
+synthadoc demo sync        # demo-installed wikis — pick up new pages and backfill metadata
+```
+
+Then restart `synthadoc serve`.
 
 ---
 
@@ -416,28 +389,27 @@ The **History of Computing** demo includes 13 pre-built pages, raw source files 
 The guide covers:
 
 1. Verify the demo server started (banner, health check)
-2. Install Dataview in Obsidian
-3. Install the Synthadoc plugin and open the vault
-4. Review wiki structure and key files (index, purpose, AGENTS.md, dashboard)
-5. Query the pre-built wiki — including knowledge gap detection
-6. Batch ingest all demo source files
-7. Run lint — auto-promote clean pages to active
-8. Manage page lifecycle — 5-state machine (draft → active → stale/contradicted/archived), manual transitions, immutable audit trail
-9. Resolve a contradiction
-10. Fix an orphan page
-11. Run the adversarial lint pass — flag overstated claims across all pages
-12. Web search ingestion with automatic decomposition
-13. Ingest a YouTube video
-14. Enrich the wiki with scaffold (regenerate/update index, purpose, AGENTS.md)
-15. Audit features (token cost, history, events)
-16. Schedule recurring operations
-17. Set up query-scoped routing with ROUTING.md
-18. Stage and review candidate pages before promoting them
-19. Build a context pack for grounded LLM prompts
-20. Verify claim provenance — source-line citations, broken citation audit, global provenance table
-21. Export your wiki — llms.txt, llms-full.txt, GraphML wikilink graph, agent-ready JSON with provenance and lifecycle history, OKF v0.1 bundle for zero-code agent consumption
-22. Use the web chat UI — streaming answers, session-aware hint chips, citations in-browser
-23. Query caching — understand how answers are cached and how to bypass with `--no-cache`
+2. Install the Synthadoc plugin (auto-installs Dataview) and open the vault
+3. Review wiki structure and key files (index, purpose, AGENTS.md, dashboard)
+4. Query the pre-built wiki — including knowledge gap detection
+5. Batch ingest all demo source files
+6. Run lint — auto-promote clean pages to active
+7. Manage page lifecycle — 5-state machine (draft → active → stale/contradicted/archived), manual transitions, immutable audit trail
+8. Resolve a contradiction
+9. Fix an orphan page
+10. Run the adversarial lint pass — flag overstated claims across all pages
+11. Web search ingestion with automatic decomposition
+12. Ingest a YouTube video
+13. Enrich the wiki with scaffold (regenerate/update index, purpose, AGENTS.md)
+14. Audit features (token cost, history, events)
+15. Schedule recurring operations
+16. Set up query-scoped routing with ROUTING.md
+17. Stage and review candidate pages before promoting them
+18. Build a context pack for grounded LLM prompts
+19. Verify claim provenance — source-line citations, broken citation audit, global provenance table
+20. Export your wiki — llms.txt, llms-full.txt, GraphML wikilink graph, agent-ready JSON with provenance and lifecycle history, OKF v0.1 bundle for zero-code agent consumption
+21. Use the web chat UI — streaming answers, session-aware hint chips, citations in-browser
+22. Query caching — understand how answers are cached and how to bypass with `--no-cache`
 
 ---
 
@@ -467,10 +439,7 @@ Then copy the Synthadoc plugin files into the wiki with one command:
 synthadoc plugin install market-condition-canada
 ```
 
-This writes the plugin files and the correct server URL into `data.json`. Then open the wiki folder in Obsidian as a new vault and do two things in **Settings → Community Plugins**:
-
-1. **Enable Synthadoc** — toggle it on in the installed plugins list
-2. **Install and enable Dataview** — Browse → search "Dataview" → Install → Enable
+This installs both the Synthadoc plugin and the Dataview plugin directly into the vault's plugins folder, pre-enables them, and sets the correct server URL. Open the wiki folder in Obsidian — both plugins are active immediately, no manual toggling required.
 
 The Quick-Start Guide covers the full Obsidian setup in detail — see [docs/user-quick-start-guide.md](docs/user-quick-start-guide.md).
 
@@ -1016,6 +985,32 @@ synthadoc export --format okf --output ~/exports/my-wiki-okf/ -w my-wiki
 > **Tip:** Keep the OKF bundle **outside** your wiki folder. The output path can be any absolute or relative path — `--output ~/exports/my-wiki-okf/` or `--output ../okf-bundles/my-wiki/` both work. Placing it inside the wiki folder risks Obsidian or the ingestor picking up the bundle files as source documents.
 
 In Obsidian: command palette → **Synthadoc: Export Wiki** — choose format and status filter, then click **Export**. For all formats except `okf`, the file is saved to the vault's `exports/` folder and opened automatically. For `okf`, the output path defaults to `~/exports/{vault-name}-okf-{date}/` outside the vault and is written via the filesystem. For GraphML, a **View Graph** button renders an inline preview.
+
+### Backup & Restore
+
+Package a wiki domain into a portable compressed zip and re-register it on any machine in one command. Useful for cross-machine migration, pre-risky-operation snapshots, CI test fixtures, and sharing exact wiki states with colleagues.
+
+```bash
+# Backup to the current directory
+synthadoc backup -w my-wiki
+
+# Backup to a specific directory, excluding raw source files to reduce size
+synthadoc backup -w my-wiki --output ~/backups --no-sources
+
+# Restore to the same folder as the zip (default), confirm port
+synthadoc restore synthadoc-backup-my-wiki-20260624-103000.zip
+
+# Restore under a different name to a specific location on a specific port
+synthadoc restore backup.zip --name my-wiki-staging --target ~/wikis --port 7071
+```
+
+**Backup flags:** `--output/-o` (directory, default: current dir), `--no-sources` (skip `raw_sources/`), `--no-exports` (skip `exports/`), `--no-cache` (skip `cache.db`).
+
+**Restore flags:** `--name` (override wiki name), `--target/-t` (parent directory, default: same folder as zip), `--port` (skip interactive port prompt).
+
+**Obsidian plugin on restore:** The Obsidian plugin is reinstalled and pre-enabled automatically. Open the restored vault in Obsidian — both plugins are active with no manual toggling needed. Update **Server URL** in Synthadoc plugin settings only if the port changed.
+
+**Always excluded from backup:** job queue, embeddings database, server PID file, and logs — these are rebuilt automatically after restore.
 
 ### Removing a wiki
 
