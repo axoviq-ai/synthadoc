@@ -400,6 +400,27 @@ def test_detect_repeat_without_history_returns_false(tmp_path):
     assert agent.detect("run it again") is False
 
 
+@pytest.mark.asyncio
+async def test_run_repeat_resolves_previous_action_from_history(tmp_path):
+    """'run it again' should re-execute the previous action found in history, not ask the LLM."""
+    wiki_status_json = '{"action": "wiki_status", "params": {}}'
+    agent, provider = _make_agent(tmp_path, wiki_status_json)
+    agent._orch._store.get_lifecycle_summary = MagicMock(return_value={"active": 5})
+    agent._orch._store.list_pages = MagicMock(return_value=["page1", "page2", "page3", "page4", "page5"])
+
+    history = [
+        {"role": "user", "content": "show synthadoc status"},
+        {"role": "assistant", "content": "| State | Count |\n| active | 5 |"},
+    ]
+    result = await agent.run("run it again", history=history)
+    assert result is not None
+    assert result.action_type == "wiki_status"
+    # Provider was called with the resolved question, not the vague "run it again" phrase
+    call_prompt = provider.complete.call_args[1]["messages"][0].content
+    # The "User request:" line should show the resolved question, not the repeat phrase
+    assert "User request: show synthadoc status" in call_prompt
+
+
 def test_detect_show_job_status(tmp_path):
     agent, _ = _make_agent(tmp_path, "{}")
     assert agent.detect("show me job status") is True

@@ -247,7 +247,15 @@ class ActionAgent:
 
     async def run(self, question: str, history: list[dict] | None = None) -> Optional[ActionResult]:
         """Extract action + params from question and execute. Returns None if not an action."""
-        extraction = await self._extract(question, history=history or [])
+        # For repeat intents ("run it again", "repeat", etc.) resolve the previous action
+        # from history before calling the LLM, which cannot reliably infer it from vague phrasing.
+        effective_question = question
+        if _REPEAT_RE.search(question) and history:
+            for msg in reversed(history):
+                if msg.get("role") == "user" and _ACTION_RE.search(msg.get("content", "")):
+                    effective_question = msg["content"]
+                    break
+        extraction = await self._extract(effective_question, history=history or [])
         if not extraction:
             return None
         action = extraction.get("action", "none")
