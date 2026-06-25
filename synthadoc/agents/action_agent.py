@@ -356,10 +356,15 @@ class ActionAgent:
                     + _MSG_NO_LIFECYCLE_DATA
                 ),
             )
+        from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
         audit = AuditDB(audit_path)
         await audit.init()
         counts = await audit.get_lifecycle_summary()
-        total = sum(counts.values())
+        all_pages = [s for s in self._orch._store.list_pages() if s not in LINT_SKIP_SLUGS]
+        total = len(all_pages)
+        unlinted = total - sum(counts.values())
+        if unlinted > 0:
+            counts["unlinted"] = unlinted
         state_order = [
             LifecycleState.DRAFT,
             LifecycleState.ACTIVE,
@@ -373,15 +378,15 @@ class ActionAgent:
             LifecycleState.STALE:        "source changed — re-ingest to refresh",
             LifecycleState.CONTRADICTED: "conflicting sources — manual review required",
             LifecycleState.ARCHIVED:     "excluded from queries and exports",
+            "unlinted":                  "never linted — run `synthadoc lint run`",
         }
         lines = [f"**Wiki status** — {total} page{'s' if total != 1 else ''} total\n",
                  "| State | Count | Note |", "|---|---|---|"]
         for state in state_order:
             n = counts.get(state, 0)
             lines.append(f"| {state} | {n} | {_NOTES[state]} |")
-        other = {s: c for s, c in counts.items() if s not in state_order}
-        for state, n in sorted(other.items()):
-            lines.append(f"| {state} | {n} | — |")
+        if unlinted > 0:
+            lines.append(f"| unlinted | {unlinted} | {_NOTES['unlinted']} |")
         return ActionResult(action_type="wiki_status", success=True, message="\n".join(lines))
 
     async def _do_lint(self, params: dict) -> ActionResult:

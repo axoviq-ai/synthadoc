@@ -273,6 +273,8 @@ async def test_wiki_status_with_audit_db(tmp_path):
     audit_path.parent.mkdir(parents=True, exist_ok=True)
     audit_path.touch()
     counts = {"draft": 3, "active": 42, "stale": 5, "contradicted": 2, "archived": 1}
+    # 53 linted + 2 unlinted on disk = 55 total
+    agent._orch._store.list_pages.return_value = [f"page-{i}" for i in range(55)]
     with patch("synthadoc.storage.log.AuditDB") as MockAudit:
         inst = AsyncMock()
         inst.init = AsyncMock()
@@ -283,7 +285,9 @@ async def test_wiki_status_with_audit_db(tmp_path):
     assert result.success is True
     assert "active" in result.message
     assert "42" in result.message
-    assert "53 pages" in result.message
+    assert "55 pages" in result.message
+    assert "unlinted" in result.message
+    assert "2" in result.message
 
 
 # ── detect: orphan / contradiction / lint-report ──────────────────────────────
