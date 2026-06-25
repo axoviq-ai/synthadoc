@@ -347,7 +347,7 @@ If you have existing wikis registered, run these after pulling:
 
 ```bash
 synthadoc plugin upgrade   # update Obsidian plugin in all registered wikis
-synthadoc demo sync        # demo wikis only — pick up new pages and backfill metadata
+synthadoc demo sync        # demo-installed wikis — pick up new pages and backfill metadata
 ```
 
 #### Step 2 — Run the test suite
