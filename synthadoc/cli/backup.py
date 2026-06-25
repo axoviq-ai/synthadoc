@@ -160,7 +160,7 @@ def restore_cmd(
     # Resolve target directory
     if target is None:
         target = typer.prompt("Parent directory for restored wiki")
-    target_dir = Path(target).resolve()
+    target_dir = Path(target.strip()).resolve()
     target_dir.mkdir(parents=True, exist_ok=True)
 
     # Port resolution
