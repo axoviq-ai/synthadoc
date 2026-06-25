@@ -306,11 +306,15 @@ def run_offline_tests(wiki_root: pathlib.Path) -> None:
 
     def _db_page_states(db_path: pathlib.Path) -> int:
         """Return row count from page_states; 0 if the table doesn't exist."""
+        conn = None
         try:
-            with sqlite3.connect(str(db_path)) as conn:
-                return conn.execute("SELECT COUNT(*) FROM page_states").fetchone()[0]
+            conn = sqlite3.connect(str(db_path))
+            return conn.execute("SELECT COUNT(*) FROM page_states").fetchone()[0]
         except Exception:
             return 0
+        finally:
+            if conn:
+                conn.close()
 
     # Snapshot original wiki state before backup so we can compare after restore
     _orig_db   = wiki_root / ".synthadoc" / "audit.db"
@@ -433,9 +437,11 @@ def run_offline_tests(wiki_root: pathlib.Path) -> None:
                 input="y\n",
             )
 
-            # Clean up _RESTORE_NAME so the default-target test gets a clean slate
+            # Clean up _RESTORE_NAME so the default-target test gets a clean slate.
+            # rmtree first so uninstall auto-cleans without prompts; pass confirmations
+            # as belt-and-suspenders in case a file lock on Windows delays rmtree.
             shutil.rmtree(_restore_dir / _RESTORE_NAME, ignore_errors=True)
-            run(["uninstall", _RESTORE_NAME])  # path gone → auto-cleans registry entry
+            run(["uninstall", _RESTORE_NAME], input=f"y\n{_RESTORE_NAME}\n")
 
             # Restore without --target → wiki lands in zip's parent folder.
             # Also confirm the demo rename warning.
@@ -458,7 +464,7 @@ def run_offline_tests(wiki_root: pathlib.Path) -> None:
                      f"{_RESTORE_DFLT} not found under {_bk_dir}")
 
             shutil.rmtree(dflt_dir, ignore_errors=True)
-            run(["uninstall", _RESTORE_DFLT])
+            run(["uninstall", _RESTORE_DFLT], input=f"y\n{_RESTORE_DFLT}\n")
         else:
             warn("restore tests", "skipped — backup zip not found")
 
@@ -467,7 +473,7 @@ def run_offline_tests(wiki_root: pathlib.Path) -> None:
         shutil.rmtree(_restore_dir, ignore_errors=True)
         shutil.rmtree(_bk_dir,     ignore_errors=True)
         for _rn in (_RESTORE_NAME, _RESTORE_DFLT):
-            run(["uninstall", _rn])  # no-op when already cleaned; removes stale registry entries
+            run(["uninstall", _rn], input=f"y\n{_rn}\n")  # no-op if already cleaned; two-prompt path if path still exists
         ok("backup/restore rollback")
 
 
