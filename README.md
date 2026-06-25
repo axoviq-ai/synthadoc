@@ -226,100 +226,39 @@ See [docs/design.md — Appendix A: Release Feature Index](docs/design.md#append
 
 ## Installation
 
-### Prerequisites
+### Production
 
-| Requirement    | Version | Notes                                                                     |
-| -------------- | ------- | ------------------------------------------------------------------------- |
-| Python         | 3.11+   |                                                                           |
-| LLM API key    | —      | At least one required — unless using Claude Code or Opencode (see below) |
-| Tavily API key | —      | Optional — web search feature only                                       |
-| Node.js        | 18+     | **Plugin development only** — not needed for normal use                  |
+**Prerequisites:** Python 3.11+ and at least one LLM API key (see table below). No Node.js, no Git, no build steps.
 
-**LLM API key — at least one required** (unless using Claude Code or Opencode — see the last two rows below):
-
-| Provider         | Free tier                                     | Vision          | Get key                                                         |
-| ---------------- | --------------------------------------------- | --------------- | --------------------------------------------------------------- |
-| **Gemini Flash** | Yes — 15 RPM / 1M tokens/day, no credit card | Yes             | [aistudio.google.com](https://aistudio.google.com/app/apikey)   |
-| Groq             | Yes — rate-limited                           | No              | [console.groq.com](https://console.groq.com/keys)               |
-| Ollama           | Yes — runs locally, no key (**GPU required**) | Model-dependent | [ollama.com](https://ollama.com)                                |
-| Qwen             | Yes — 1M free tokens (90-day trial), then paid DashScope | Model-dependent | [bailian.console.aliyun.com](https://bailian.console.aliyun.com/) |
-| MiniMax          | No — pay-per-token                           | Yes             | [platform.minimax.io](https://platform.minimax.io/)             |
-| DeepSeek         | No — pay-per-token (very cheap text rates)   | No              | [platform.deepseek.com](https://platform.deepseek.com/api_keys) |
-| Anthropic        | No                                            | Yes             | [console.anthropic.com](https://console.anthropic.com/)         |
-| OpenAI           | No                                            | Yes             | [platform.openai.com](https://platform.openai.com/api-keys)     |
-| **Claude Code**  | Included with subscription — no API key      | No              | Set`provider = "claude-code"` in config.toml                    |
-| **Opencode**     | Included with subscription — no API key      | No              | Set`provider = "opencode"` in config.toml                       |
-
-**Tavily API key (optional — enables web search):**
-Get a free key at [tavily.com](https://tavily.com). Without it, web search jobs will fail but all other features work normally.
-
----
-
-### Step 1 — Install
-
-**Production (most users):**
+#### Step 1 — Install
 
 ```bash
 pip install synthadoc
+synthadoc --version   # confirm it works
 ```
 
-The Obsidian plugin is bundled inside the package — no Node.js or separate build step needed.
+The Obsidian plugin is bundled inside the package — `synthadoc plugin install` works immediately after this.
 
-**Development (modifying source code or running tests):**
+#### Step 2 — Set your API keys
 
-```bash
-git clone https://github.com/axoviq-ai/synthadoc.git
-cd synthadoc
-pip install -e ".[dev]"
-```
+**At least one LLM API key is required** — unless you use Claude Code or Opencode as your provider (no separate API key needed — see [Coding tool CLI providers](docs/design.md#coding-tool-cli-providers--no-api-key-needed)).
 
-`[dev]` adds `pytest`, `respx`, and the other test dependencies. The unit test suite requires a source checkout and dev extras — tests are not included in the pip wheel, so `pip install synthadoc` alone is not enough to run them.
+Synthadoc defaults to **Gemini Flash** — free tier, no credit card, 1 million tokens per day. Get a key at **aistudio.google.com/app/apikey** (click "Create API key").
 
-If you already have Synthadoc wikis installed, run both upgrade commands to keep everything in sync:
+| Provider         | Free tier                                                | Vision          | Get key                                                           |
+| ---------------- | -------------------------------------------------------- | --------------- | ----------------------------------------------------------------- |
+| **Gemini Flash** | Yes — 15 RPM / 1M tokens/day, no credit card            | Yes             | [aistudio.google.com](https://aistudio.google.com/app/apikey)    |
+| Groq             | Yes — rate-limited                                       | No              | [console.groq.com](https://console.groq.com/keys)                |
+| Ollama           | Yes — runs locally, no key (**GPU required**)            | Model-dependent | [ollama.com](https://ollama.com)                                  |
+| Qwen             | Yes — 1M free tokens (90-day trial), then paid DashScope | Model-dependent | [bailian.console.aliyun.com](https://bailian.console.aliyun.com/) |
+| MiniMax          | No — pay-per-token                                       | Yes             | [platform.minimax.io](https://platform.minimax.io/)               |
+| DeepSeek         | No — pay-per-token (very cheap text rates)               | No              | [platform.deepseek.com](https://platform.deepseek.com/api_keys)  |
+| Anthropic        | No                                                       | Yes             | [console.anthropic.com](https://console.anthropic.com/)           |
+| OpenAI           | No                                                       | Yes             | [platform.openai.com](https://platform.openai.com/api-keys)      |
+| **Claude Code**  | Included with subscription — no API key                  | No              | Set `provider = "claude-code"` in config.toml                    |
+| **Opencode**     | Included with subscription — no API key                  | No              | Set `provider = "opencode"` in config.toml                       |
 
-```bash
-synthadoc plugin upgrade   # upgrades the Obsidian plugin in all registered wikis
-synthadoc demo sync        # picks up new demo pages and backfills new metadata fields (e.g. type:)
-```
-
-### Step 2 — Run the test suite (development installs only)
-
-```bash
-pytest --ignore=tests/performance/ -q
-```
-
-Expected: all tests pass, 0 failures.
-
-Performance benchmarks (optional — Linux/macOS):
-
-```bash
-pytest tests/performance/ -v --benchmark-disable
-```
-
-### Step 3 — Obsidian plugin development (optional)
-
-The compiled plugin is bundled with the package and kept up to date by CI — no build step needed for normal use or testing.
-
-To modify the plugin TypeScript source:
-
-```bash
-cd obsidian-plugin
-npm install
-npm test              # run Vitest unit tests
-# edit src/main.ts…
-# commit your TypeScript changes — CI builds and syncs main.js automatically on merge to main
-```
-
-### Step 4 — Set your API keys
-
-**At least one LLM API key is required** — unless you use Claude Code or Opencode as your provider, in which case no separate API key is needed (see [Coding tool CLI providers](docs/design.md#coding-tool-cli-providers--no-api-key-needed)).
-
-Synthadoc defaults to **Gemini Flash** as the LLM provider — it's free, requires no
-credit card, and offers 1 million tokens per day. Get a key at
-**aistudio.google.com/app/apikey** (click "Create API key").
-
-Web search uses **Tavily** (`TAVILY_API_KEY`) — optional, only needed for
-`synthadoc ingest "search for: …"` jobs.
+Web search uses **Tavily** (`TAVILY_API_KEY`) — optional, only needed for `synthadoc ingest "search for: …"` jobs. Get a free key at [tavily.com](https://tavily.com).
 
 ```bash
 # macOS / Linux — add to ~/.bashrc or ~/.zshrc to persist
@@ -353,22 +292,11 @@ setx QWEN_API_KEY …
 setx TAVILY_API_KEY tvly-…
 ```
 
-To switch provider, edit `[agents]` in `<wiki-root>/.synthadoc/config.toml` and restart
-`synthadoc serve`. See [Appendix — Switching LLM providers](docs/user-quick-start-guide.md#appendix-c--switching-llm-providers) for step-by-step instructions.
+To switch provider, edit `[agents]` in `<wiki-root>/.synthadoc/config.toml` and restart `synthadoc serve`. See [Appendix — Switching LLM providers](docs/user-quick-start-guide.md#appendix-c--switching-llm-providers) for step-by-step instructions.
 
-### Step 5 — Verify
+#### Step 3 — Install a wiki and start the engine
 
-```bash
-synthadoc --version
-```
-
-### Step 6 — Install a demo wiki, then start the engine
-
-A **wiki** is a self-contained, structured knowledge base — a folder of Markdown pages linked by topic, maintained and cross-referenced automatically by Synthadoc. Think of it as a living document that grows smarter with every source you feed it: each ingest pass adds new pages, updates existing ones, and flags contradictions. For your own work, you can build and grow a domain-specific wiki — whether that's market research, a technical knowledge base, or a team handbook — and query it in plain English or other languages at any time.
-
-A wiki must be installed before the engine can serve it. The fastest way to get started is the **History of Computing** demo, which ships with 13 pre-built pages and sample source files — no LLM API key required to browse it.
-
-**First time — install the demo wiki:**
+A **wiki** is a self-contained knowledge base — a folder of Markdown pages maintained and cross-referenced automatically by Synthadoc. The fastest way to get started is the **History of Computing** demo (13 pre-built pages, no LLM API key required to browse).
 
 ```bash
 # Linux / macOS
@@ -378,25 +306,17 @@ synthadoc install history-of-computing --target ~/wikis --demo
 synthadoc install history-of-computing --target %USERPROFILE%\wikis --demo
 ```
 
-**Upgrading / already installed the demo — sync new source files instead:**
+Then start the engine:
 
 ```bash
-synthadoc demo sync history-of-computing
-```
-
-This copies any new source files added to the demo template into your existing wiki without overwriting anything you have already ingested or modified. Skip the `install` command above if you have previously installed this demo.
-
-**Then start the engine:**
-
-```bash
-# Foreground — keeps the terminal; logs stream to the console
+# Foreground — logs stream to the console
 synthadoc serve -w history-of-computing
 
-# Background — releases the terminal; logs go to the wiki log file
+# Background — releases the terminal
 synthadoc serve -w history-of-computing --background
 ```
 
-The server binds to `http://127.0.0.1:7070` by default (port is set in `<wiki-root>/.synthadoc/config.toml`). The server is **localhost-only** — it never binds to an external network interface. Leave it running while you work — the Obsidian plugin, CLI ingest commands, and query commands all talk to it.
+The server binds to `http://127.0.0.1:7070` (localhost-only). Leave it running while you work — the Obsidian plugin, CLI ingest commands, and query commands all talk to it.
 
 To stop a background server:
 
@@ -408,7 +328,58 @@ kill <PID>
 taskkill /PID <PID> /F
 ```
 
-The PID is printed when the background server starts and saved to `<wiki-root>/.synthadoc/server.pid`.
+The PID is printed on start and saved to `<wiki-root>/.synthadoc/server.pid`.
+
+---
+
+### Development
+
+For contributors modifying the Python engine, running the test suite, or developing the Obsidian plugin TypeScript.
+
+**Additional prerequisites:** Git (any). Node.js 18+ only if modifying the plugin TypeScript source.
+
+#### Step 1 — Clone and install
+
+```bash
+git clone https://github.com/axoviq-ai/synthadoc.git
+cd synthadoc
+pip install -e ".[dev]"
+```
+
+`[dev]` adds `pytest`, `respx`, and the other test dependencies. Tests require a source checkout — they are not included in the pip wheel.
+
+If you have existing wikis registered, keep them in sync after pulling:
+
+```bash
+synthadoc plugin upgrade   # update Obsidian plugin in all registered wikis
+synthadoc demo sync        # pick up new demo pages and backfill new metadata fields
+```
+
+#### Step 2 — Run the test suite
+
+```bash
+pytest --ignore=tests/performance/ -q
+```
+
+Expected: all tests pass, 0 failures. Performance benchmarks (optional — Linux/macOS):
+
+```bash
+pytest tests/performance/ -v --benchmark-disable
+```
+
+#### Step 3 — Obsidian plugin development (optional)
+
+The compiled plugin is bundled with the package and kept up to date by CI — no build step is needed to work on the Python side or run tests.
+
+To modify the TypeScript source:
+
+```bash
+cd obsidian-plugin
+npm install
+npm test              # Vitest unit tests
+# edit src/main.ts…
+# push your TypeScript changes — CI builds main.js and syncs it automatically on merge to main
+```
 
 ---
 
