@@ -6,8 +6,25 @@ build-backend = "hatchling.build"
 name = "synthadoc"
 dynamic = ["version"]
 description = "Domain-agnostic LLM knowledge compilation engine"
+readme = "README.md"
 license = "AGPL-3.0-or-later"
 requires-python = ">=3.11"
+keywords = ["knowledge management", "LLM", "wiki", "RAG", "obsidian", "knowledge base", "knowledge graph", "agentic AI"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Text Processing",
+    "Topic :: Text Processing :: Indexing",
+    "Topic :: Office/Business",
+]
 dependencies = [
     "typer>=0.12",
     "rich>=13",
@@ -33,6 +50,12 @@ dependencies = [
     "youtube-transcript-api>=0.6",
     "croniter>=2.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/axoviq-ai/synthadoc"
+Repository = "https://github.com/axoviq-ai/synthadoc"
+"Bug Tracker" = "https://github.com/axoviq-ai/synthadoc/issues"
+Changelog = "https://github.com/axoviq-ai/synthadoc/releases"
 
 [project.optional-dependencies]
 vectors = [
