@@ -327,7 +327,7 @@ The PID is printed on start and saved to `<wiki-root>/.synthadoc/server.pid`.
 
 ### Development
 
-For contributors modifying the Python engine, running the test suite, or developing the Obsidian plugin TypeScript.
+For developers modifying the Python engine, running the test suite, or developing the Obsidian plugin TypeScript.
 
 **Additional prerequisites:** Git (any). Node.js 18+ only if modifying the plugin TypeScript source.
 
