@@ -260,8 +260,6 @@ Synthadoc defaults to **Gemini Flash** — free tier, no credit card, 1 million 
 | **Claude Code**  | Included with subscription — no API key                  | No              | Set `provider = "claude-code"` in config.toml                    |
 | **Opencode**     | Included with subscription — no API key                  | No              | Set `provider = "opencode"` in config.toml                       |
 
-Web search uses **Tavily** (`TAVILY_API_KEY`) — optional, only needed for `synthadoc ingest "search for: …"` jobs. Get a free key at [tavily.com](https://tavily.com).
-
 ```bash
 # macOS / Linux — add to ~/.bashrc or ~/.zshrc to persist
 export GEMINI_API_KEY=AIza…          # default — free tier, 1M tokens/day
@@ -284,6 +282,8 @@ set QWEN_API_KEY=…
 set TAVILY_API_KEY=tvly-…
 
 ```
+
+Web search uses **Tavily** (`TAVILY_API_KEY`) — optional, only needed for `synthadoc ingest "search for: …"` jobs. Get a free key at [tavily.com](https://tavily.com).
 
 #### Step 3 — Install a wiki and start the engine
 
