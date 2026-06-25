@@ -126,6 +126,7 @@ def restore_cmd(
 
     # Name conflict check
     registry = _read_registry()
+    stale_port: int | None = None
     if wiki_name in registry:
         existing_path = registry[wiki_name]["path"]
         if Path(existing_path).exists():
@@ -136,6 +137,9 @@ def restore_cmd(
                 f"  synthadoc uninstall {wiki_name}",
             )
         else:
+            raw_port = registry[wiki_name].get("port")
+            if raw_port:
+                stale_port = int(raw_port)
             typer.echo(
                 f"  Note: '{wiki_name}' was registered at {existing_path} "
                 f"but that path no longer exists — proceeding with restore.",
@@ -164,7 +168,10 @@ def restore_cmd(
         effective_port = port
     else:
         backed_up_port = _read_backed_up_port(zip_path)
-        effective_port = assign_wiki_port(_get_reserved_ports(), start=backed_up_port)
+        reserved = _get_reserved_ports()
+        if stale_port is not None:
+            reserved.discard(stale_port)
+        effective_port = assign_wiki_port(reserved, start=backed_up_port)
         if effective_port != backed_up_port:
             raw = typer.prompt(
                 f"Port {backed_up_port} is taken. Suggested: {effective_port} "
