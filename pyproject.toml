@@ -7,9 +7,6 @@ name = "synthadoc"
 dynamic = ["version"]
 description = "Domain-agnostic LLM knowledge compilation engine"
 license = "AGPL-3.0-or-later"
-authors = [
-    {name = "William Johnason", email = "chenp02@gmail.com"},
-]
 requires-python = ">=3.11"
 dependencies = [
     "typer>=0.12",
