@@ -210,7 +210,9 @@ def restore_cmd(
     typer.echo(f"\nNext steps:")
     typer.echo(f"  • Set your LLM API key in your shell environment")
     typer.echo(f"  • Start the server:   synthadoc serve -w {wiki_name}")
-    typer.echo(f"  • If using Obsidian plugin, update Server URL to http://127.0.0.1:{effective_port}")
+    obsidian_plugin = wiki_root / ".obsidian" / "plugins" / "synthadoc"
+    if obsidian_plugin.exists():
+        typer.echo(f"  • Sync Obsidian plugin:   synthadoc plugin upgrade")
 
 
 def _read_backed_up_port(zip_path: Path) -> int:
