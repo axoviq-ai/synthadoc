@@ -313,7 +313,7 @@ def run_offline_tests(wiki_root: pathlib.Path) -> None:
             return 0
 
     # Snapshot original wiki state before backup so we can compare after restore
-    _orig_db   = wiki_root / ".synthadoc" / "wiki.db"
+    _orig_db   = wiki_root / ".synthadoc" / "audit.db"
     _orig_md   = len(list((wiki_root / "wiki").glob("*.md")))
     _orig_ps   = _db_page_states(_orig_db)
 
@@ -393,25 +393,21 @@ def run_offline_tests(wiki_root: pathlib.Path) -> None:
                 fail("restore registry port correct",
                      f"7099 not on {_RESTORE_NAME!r} line in `synthadoc list`")
 
-            # Fidelity: wiki pages on disk match backup manifest
-            import zipfile, json as _json
-            with zipfile.ZipFile(zip_path) as _zf:
-                _manifest = _json.loads(_zf.read("manifest.json"))
-            _manifest_pages = _manifest.get("page_count", -1)
-            _restored_md    = len(list((restored_dir / "wiki").glob("*.md")))
-            if _restored_md == _manifest_pages:
-                ok("restore page count matches manifest",
+            # Fidelity: wiki pages on disk match the original (raw glob, same method)
+            _restored_md = len(list((restored_dir / "wiki").glob("*.md")))
+            if _restored_md == _orig_md:
+                ok("restore page count matches original",
                    f"{_restored_md} pages")
             else:
-                fail("restore page count matches manifest",
-                     f"disk={_restored_md}, manifest={_manifest_pages}")
+                fail("restore page count matches original",
+                     f"restored={_restored_md}, original={_orig_md}")
 
-            # Fidelity: DB was restored and lifecycle rows are present
-            _restored_db = restored_dir / ".synthadoc" / "wiki.db"
+            # Fidelity: audit.db was restored and lifecycle rows are present
+            _restored_db = restored_dir / ".synthadoc" / "audit.db"
             if _restored_db.exists():
-                ok("restore wiki.db present", str(_restored_db.name))
+                ok("restore audit.db present", str(_restored_db.name))
             else:
-                fail("restore wiki.db present", "wiki.db missing from restored wiki")
+                fail("restore audit.db present", "audit.db missing from restored wiki")
             _restored_ps = _db_page_states(_restored_db)
             if _orig_ps > 0 and _restored_ps == _orig_ps:
                 ok("restore page_states row count matches original",
