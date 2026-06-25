@@ -369,14 +369,14 @@ taskkill /PID <PID> /F
 
 The PID is printed on start and saved to `<wiki-root>/.synthadoc/server.pid`.
 
-**Upgrading:** after updating synthadoc (via `pip install --upgrade synthadoc` or `git pull`), run these to keep registered wikis in sync:
+**Upgrading:** after updating synthadoc (via `pip install --upgrade synthadoc` or `git pull`), restart the server to pick up the new code, then run these to keep registered wikis in sync:
 
 ```bash
 synthadoc plugin upgrade   # push updated Obsidian plugin binary to all registered wikis
 synthadoc demo sync        # demo-installed wikis — pick up new pages and backfill metadata
 ```
 
-Then restart `synthadoc serve`.
+Neither command requires the server to be running.
 
 ---
 
