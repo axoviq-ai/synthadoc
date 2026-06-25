@@ -154,17 +154,15 @@ In Obsidian: **Open folder as vault** → select the installed wiki folder:
 > natively understand (`.xlsx`, `.pptx`, etc.). To show them: **Settings → Files and
 > links → Show all file types → on**.
 
-### 2. Enable both plugins
+### 2. Verify both plugins are active
 
-Both Synthadoc and Dataview were installed directly into the vault's plugins folder in Step 2 — no manual download required. Obsidian just needs to activate them:
+Both Synthadoc and Dataview are already installed **and enabled** by Step 2 — no manual toggling required. Obsidian picks them up automatically when you open the vault.
 
-1. **Settings** (gear icon, bottom-left) → **Community plugins**
-2. Toggle **Turn on community plugins** if it is off
-3. Find **Synthadoc** → toggle **on**
-4. Find **Dataview** → toggle **on**
-5. Click the gear icon next to **Synthadoc**
-6. Confirm **Server URL** is `http://127.0.0.1:7070` (set automatically during plugin install — only change this if your server runs on a different port)
-7. Close settings
+Go to **Settings → Community Plugins** to confirm both show a blue enabled toggle. While there:
+
+1. Click the gear icon next to **Synthadoc**
+2. Confirm **Server URL** is `http://127.0.0.1:7070` (set automatically — only change this if your server runs on a different port)
+3. Close settings
 
 The **Synthadoc ribbon icon** (book icon on the far-left sidebar) confirms the plugin is
 active. All Synthadoc commands are reachable via the Command Palette (`Ctrl/Cmd+P` →
@@ -3016,7 +3014,7 @@ Restores to the same directory as the zip file by default. Detects port conflict
 **Post-restore checklist (printed automatically):**
 1. Set your LLM API key in your environment
 2. `synthadoc serve -w <wiki-name>`
-3. Open the vault in Obsidian — the Obsidian plugin is reinstalled automatically; enable **Synthadoc** and **Dataview** in **Settings → Community Plugins** if prompted
+3. Open the vault in Obsidian — the Obsidian plugin is reinstalled and pre-enabled automatically; no manual toggling needed
 4. Update **Server URL** in the Synthadoc plugin settings if the port changed
 
 ### What is NOT backed up

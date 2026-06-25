@@ -442,10 +442,7 @@ Then copy the Synthadoc plugin files into the wiki with one command:
 synthadoc plugin install market-condition-canada
 ```
 
-This installs both the Synthadoc plugin and the Dataview plugin directly into the vault's plugins folder, and sets the correct server URL. Open the wiki folder in Obsidian as a new vault, go to **Settings → Community Plugins**, toggle **Turn on community plugins** if prompted, then enable both:
-
-1. **Enable Synthadoc** — toggle it on in the installed plugins list
-2. **Enable Dataview** — toggle it on in the installed plugins list
+This installs both the Synthadoc plugin and the Dataview plugin directly into the vault's plugins folder, pre-enables them, and sets the correct server URL. Open the wiki folder in Obsidian — both plugins are active immediately, no manual toggling required.
 
 The Quick-Start Guide covers the full Obsidian setup in detail — see [docs/user-quick-start-guide.md](docs/user-quick-start-guide.md).
 
@@ -1014,7 +1011,7 @@ synthadoc restore backup.zip --name my-wiki-staging --target ~/wikis --port 7071
 
 **Restore flags:** `--name` (override wiki name), `--target/-t` (parent directory, default: same folder as zip), `--port` (skip interactive port prompt).
 
-**Obsidian plugin on restore:** The Obsidian plugin is reinstalled automatically. Open the restored vault in Obsidian and enable both Synthadoc and Dataview in **Settings → Community Plugins** (update Server URL if the port changed).
+**Obsidian plugin on restore:** The Obsidian plugin is reinstalled and pre-enabled automatically. Open the restored vault in Obsidian — both plugins are active with no manual toggling needed. Update **Server URL** in Synthadoc plugin settings only if the port changed.
 
 **Always excluded from backup:** job queue, embeddings database, server PID file, and logs — these are rebuilt automatically after restore.
 

@@ -188,7 +188,7 @@ def plugin_install_cmd(
         typer.echo(f"  Note: Dataview download failed — install it manually via Obsidian Settings > Community Plugins")
     typer.echo(f"  community-plugins.json updated — both plugins pre-enabled")
     typer.echo()
-    typer.echo("Open Obsidian, open this vault, then go to Settings > Community Plugins and turn off Restricted Mode if prompted.")
+    typer.echo("Open Obsidian and open this vault — both plugins are already enabled, no manual steps required.")
 
 
 @plugin_app.command("upgrade")
