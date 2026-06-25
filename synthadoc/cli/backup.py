@@ -205,12 +205,22 @@ def restore_cmd(
     # Re-apply scheduled jobs (non-fatal)
     _apply_schedules(wiki_root, wiki_name)
 
+    # Auto-reinstall Obsidian plugin if it was present when the backup was made.
+    if manifest.get("obsidian_plugin"):
+        from synthadoc.cli.plugin import _install_plugin_into, _update_community_plugins, _PLUGIN_SRC, _DATAVIEW_ID, _PLUGIN_ID
+        if _PLUGIN_SRC.exists():
+            _install_plugin_into(wiki_root)
+            _update_community_plugins(wiki_root, _DATAVIEW_ID, _PLUGIN_ID)
+
     typer.echo(f"\n✓ Restored '{wiki_name}' on port {effective_port}")
     typer.echo(f"  Path: {wiki_root}")
+    if manifest.get("obsidian_plugin"):
+        typer.echo(f"  ✓ Obsidian plugin reinstalled")
     typer.echo(f"\nNext steps:")
     typer.echo(f"  • Set your LLM API key in your shell environment")
     typer.echo(f"  • Start the server:   synthadoc serve -w {wiki_name}")
-    typer.echo(f"  • If using Obsidian:   synthadoc plugin install -w {wiki_name}")
+    if manifest.get("obsidian_plugin"):
+        typer.echo(f"  • Open the vault in Obsidian — plugin is ready")
 
 
 def _read_backed_up_port(zip_path: Path) -> int:

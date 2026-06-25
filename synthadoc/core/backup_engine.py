@@ -104,6 +104,7 @@ def create_backup(
         "includes_sources": include_sources,
         "includes_exports": include_exports,
         "includes_cache": include_cache,
+        "obsidian_plugin": (wiki_root / ".obsidian" / "plugins" / "synthadoc" / "main.js").exists(),
         "checksum_sha256": "",
     }
 

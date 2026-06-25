@@ -189,6 +189,19 @@ def test_manifest_includes_flags_correct(wiki_root, tmp_path):
     assert m["includes_cache"] is False
 
 
+def test_manifest_obsidian_plugin_false_when_absent(wiki_root, tmp_path):
+    zip_path = _make_backup(wiki_root, tmp_path)
+    assert read_manifest(zip_path)["obsidian_plugin"] is False
+
+
+def test_manifest_obsidian_plugin_true_when_present(wiki_root, tmp_path):
+    plugin_dir = wiki_root / ".obsidian" / "plugins" / "synthadoc"
+    plugin_dir.mkdir(parents=True)
+    (plugin_dir / "main.js").write_text("// plugin", encoding="utf-8")
+    zip_path = _make_backup(wiki_root, tmp_path)
+    assert read_manifest(zip_path)["obsidian_plugin"] is True
+
+
 def test_read_manifest_raises_on_missing_manifest(tmp_path):
     zip_path = tmp_path / "empty.zip"
     with zipfile.ZipFile(zip_path, "w") as zf:

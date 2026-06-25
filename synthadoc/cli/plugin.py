@@ -7,6 +7,7 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
+import httpx
 import typer
 
 from synthadoc.cli._wiki import resolve_wiki
@@ -19,6 +20,8 @@ app.add_typer(plugin_app)
 _PLUGIN_SRC = Path(__file__).resolve().parent.parent / "data" / "obsidian-plugin"
 _PLUGIN_FILES = ("main.js", "manifest.json", "styles.css")
 _PLUGIN_ID = "synthadoc"
+_DATAVIEW_ID = "dataview"
+_DATAVIEW_RELEASE_URL = "https://github.com/blacksmithgu/obsidian-dataview/releases/latest/download"
 
 
 _LOOPBACK_ADDRS = frozenset({"127.0.0.1", "::1", "localhost"})
@@ -62,6 +65,54 @@ def _write_plugin_data(wiki_path: Path, plugin_dir: Path) -> None:
 
     existing["serverUrl"] = server_url
     data_json.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+
+
+def _update_community_plugins(wiki_path: Path, *plugin_ids: str) -> None:
+    """Add plugin IDs to .obsidian/community-plugins.json, creating the file if absent."""
+    obsidian_dir = wiki_path / ".obsidian"
+    obsidian_dir.mkdir(parents=True, exist_ok=True)
+    cp_file = obsidian_dir / "community-plugins.json"
+    enabled: list[str] = []
+    if cp_file.exists():
+        try:
+            parsed = json.loads(cp_file.read_text(encoding="utf-8"))
+            if isinstance(parsed, list):
+                enabled = parsed
+        except Exception:
+            pass
+    changed = False
+    for pid in plugin_ids:
+        if pid not in enabled:
+            enabled.append(pid)
+            changed = True
+    if changed:
+        cp_file.write_text(json.dumps(enabled, indent=2), encoding="utf-8")
+
+
+def _install_dataview(wiki_path: Path) -> str:
+    """Download and install the Dataview plugin from GitHub releases.
+
+    Returns 'installed', 'skipped' (already present), or 'failed'.
+    """
+    dest_dir = wiki_path / ".obsidian" / "plugins" / _DATAVIEW_ID
+    if (dest_dir / "main.js").exists():
+        return "skipped"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        for fname in ("main.js", "manifest.json"):
+            r = httpx.get(f"{_DATAVIEW_RELEASE_URL}/{fname}", follow_redirects=True, timeout=30)
+            r.raise_for_status()
+            (dest_dir / fname).write_bytes(r.content)
+        try:
+            r = httpx.get(f"{_DATAVIEW_RELEASE_URL}/styles.css", follow_redirects=True, timeout=30)
+            if r.status_code == 200:
+                (dest_dir / "styles.css").write_bytes(r.content)
+        except Exception:
+            pass
+        return "installed"
+    except Exception:
+        shutil.rmtree(dest_dir, ignore_errors=True)
+        return "failed"
 
 
 def _install_plugin_into(wiki_path: Path) -> list[str]:
@@ -121,13 +172,23 @@ def plugin_install_cmd(
         )
         raise typer.Exit(1)
 
+    dataview_status = _install_dataview(wiki_path)
+    _update_community_plugins(wiki_path, _DATAVIEW_ID, _PLUGIN_ID)
+
     dest_dir = wiki_path / ".obsidian" / "plugins" / _PLUGIN_ID
     typer.echo(f"Plugin installed into: {dest_dir}")
     for f in copied:
         typer.echo(f"  copied  {f}")
     typer.echo(f"  wrote   data.json (server URL configured automatically)")
+    if dataview_status == "installed":
+        typer.echo(f"  installed Dataview dependency")
+    elif dataview_status == "skipped":
+        typer.echo(f"  Dataview already installed — skipped")
+    else:
+        typer.echo(f"  Note: Dataview download failed — install it manually via Obsidian Settings > Community Plugins")
+    typer.echo(f"  community-plugins.json updated — both plugins pre-enabled")
     typer.echo()
-    typer.echo("Open Obsidian, go to Settings > Community Plugins, and enable 'Synthadoc'.")
+    typer.echo("Open Obsidian, open this vault, then go to Settings > Community Plugins and turn off Restricted Mode if prompted.")
 
 
 @plugin_app.command("upgrade")

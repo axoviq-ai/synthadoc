@@ -287,3 +287,54 @@ def test_restore_corrupt_checksum_exits_nonzero(tmp_path):
         "restore", str(zip_path), "--target", str(tmp_path / "r"), "--port", "7070",
     ])
     assert result.exit_code != 0
+
+
+def _make_backup_zip_with_plugin(wiki_root: Path, out_dir: Path) -> Path:
+    """Create a backup from a wiki that has the Obsidian plugin installed."""
+    plugin_dir = wiki_root / ".obsidian" / "plugins" / "synthadoc"
+    plugin_dir.mkdir(parents=True, exist_ok=True)
+    (plugin_dir / "main.js").write_text("// plugin", encoding="utf-8")
+    from synthadoc.core.backup_engine import create_backup
+    return create_backup(
+        wiki_root=wiki_root,
+        output_dir=out_dir,
+        wiki_name="my-wiki",
+        synthadoc_version="1.0.0",
+        db_schema_version=1,
+        cache_version="4",
+    )
+
+
+def test_restore_auto_installs_plugin_when_manifest_flag_set(tmp_path):
+    wiki_root = _make_wiki(tmp_path)
+    zip_path = _make_backup_zip_with_plugin(wiki_root, tmp_path / "zips")
+    restore_dir = tmp_path / "restore"
+    fake_src = tmp_path / "plugin-src"
+    fake_src.mkdir()
+    (fake_src / "main.js").write_text("// plugin", encoding="utf-8")
+    (fake_src / "manifest.json").write_text('{"id":"synthadoc"}', encoding="utf-8")
+    with _patch_registry_for_restore(), _patch_write_registry(), \
+         _patch_reserved_ports(), _patch_schedule_apply(), \
+         patch("synthadoc.cli.plugin._PLUGIN_SRC", fake_src):
+        result = runner.invoke(app, [
+            "restore", str(zip_path), "--target", str(restore_dir), "--port", "7071",
+        ])
+    assert result.exit_code == 0, result.output
+    plugin_dir = restore_dir / "my-wiki" / ".obsidian" / "plugins" / "synthadoc"
+    assert plugin_dir.exists()
+    assert "Obsidian plugin reinstalled" in result.output
+
+
+def test_restore_does_not_install_plugin_when_manifest_flag_false(tmp_path):
+    wiki_root = _make_wiki(tmp_path)
+    zip_path = _make_backup_zip(wiki_root, tmp_path / "zips")  # no plugin → flag is False
+    restore_dir = tmp_path / "restore"
+    with _patch_registry_for_restore(), _patch_write_registry(), \
+         _patch_reserved_ports(), _patch_schedule_apply():
+        result = runner.invoke(app, [
+            "restore", str(zip_path), "--target", str(restore_dir), "--port", "7071",
+        ])
+    assert result.exit_code == 0, result.output
+    plugin_dir = restore_dir / "my-wiki" / ".obsidian" / "plugins" / "synthadoc"
+    assert not plugin_dir.exists()
+    assert "Obsidian plugin reinstalled" not in result.output
