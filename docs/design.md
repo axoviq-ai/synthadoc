@@ -1585,8 +1585,9 @@ slack_export/
   SKILL.md
   scripts/
     main.py
-  references/
-    format-notes.md   ← optional; load with self.get_resource("format-notes.md")
+  assets/              ← primary resource dir; load with self.get_resource("format-notes.md")
+    format-notes.md
+  references/          ← secondary resource dir (also searched by get_resource)
 ```
 
 **`SKILL.md`:**
@@ -1633,24 +1634,28 @@ class SlackExportSkill(BaseSkill):
 
 **Error handling:** Raise `ValueError` with a clear message if the source cannot be processed. Raise `ImportError` if an optional dependency is missing (the agent will surface a helpful message to the user).
 
+**Skill discovery priority:** `extra_dirs` (passed at runtime) → `<wiki-root>/skills/` → `~/.synthadoc/skills/` → pip entry points (`synthadoc.skills` group) → built-ins. To distribute a skill as a pip package, declare an entry point pointing to the skill folder in your `pyproject.toml`.
+
 ### Writing a provider
 
 Built-in providers: `anthropic`, `openai`, `gemini`, `groq`, `minimax`, `deepseek`, `qwen`, `ollama`. For any provider that exposes an OpenAI-compatible API, no custom class is needed — the built-in `openai` provider with a custom `base_url` is sufficient.
 
-For a fully proprietary API, subclass `LLMProvider`:
+For a fully proprietary API, subclass `LLMProvider` and wire it into `synthadoc/providers/__init__.py`:
 
 ```python
 # SPDX-License-Identifier: MIT
 from synthadoc.providers.base import LLMProvider, Message, CompletionResponse
+from typing import Optional
 
 class MyProvider(LLMProvider):
+    supports_vision: bool = False   # set True only if the API accepts image inputs
 
     async def complete(
         self,
         messages: list[Message],
-        model: str,
+        system: Optional[str] = None,
         temperature: float = 0.0,
-        **kwargs,
+        max_tokens: int = 4096,
     ) -> CompletionResponse:
         # Call your API …
         return CompletionResponse(
@@ -1658,18 +1663,35 @@ class MyProvider(LLMProvider):
             input_tokens=N,
             output_tokens=M,
         )
+
+    async def complete_stream(self, messages, system=None, temperature=0.0, max_tokens=4096):
+        """Optional — override for streaming support."""
+        async for token in your_api_stream(...):
+            yield token
 ```
 
-Place in `~/.synthadoc/providers/` or the wiki `providers/` directory. Reference by name in config:
-
-```toml
-[agents]
-default = { provider = "my_provider", model = "my-model-id" }
-```
+Add the provider name to `KNOWN_PROVIDERS` in `synthadoc/config.py` and add an `if name == "my_provider":` branch in `synthadoc/providers/__init__.py` that imports and returns an instance of your class.
 
 ### Writing a hook
 
-Hooks can be in any language. They receive JSON on stdin and must exit 0 on success.
+Hooks fire after key operations. They can be in any language; the process receives JSON on stdin and must exit 0 on success.
+
+**Available events:**
+
+| Event | Fired after | JSON context fields |
+|---|---|---|
+| `on_ingest_complete` | Every completed ingest job | `event`, `wiki`, `source`, `pages_created`, `pages_updated`, `pages_flagged`, `tokens_used`, `cost_usd` |
+| `on_lint_complete` | Every completed lint run | `event`, `wiki`, `contradictions_found`, `orphans` |
+
+**Register hooks in `.synthadoc/config.toml`:**
+
+```toml
+[hooks]
+on_ingest_complete = "hooks/notify.sh"                       # non-blocking (default)
+on_lint_complete   = { cmd = "hooks/alert.sh", blocking = true }  # blocking: error aborts the run
+```
+
+**Example hook script:**
 
 ```bash
 #!/usr/bin/env bash
