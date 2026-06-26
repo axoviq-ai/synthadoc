@@ -285,8 +285,6 @@ cd ..
 python scripts/sync_plugin.py   # copy main.js into synthadoc/data/obsidian-plugin/
 ```
 
-On merge to `main`, CI repeats the build, sync, and commit automatically.
-
 ---
 
 ### Set your API keys
