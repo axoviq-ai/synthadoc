@@ -2641,15 +2641,19 @@ synthadoc-backup-<wiki>-<YYYYMMDD-HHMMSS>.zip
 ├── wiki/
 │   ├── *.md
 │   └── candidates/*.md
+├── hooks/                 ← user hook scripts (always included)
 ├── .synthadoc/
 │   ├── config.toml
 │   ├── audit.db
+│   ├── extracted/         ← text sidecars + PDF pagemaps (always included)
 │   └── cache.db           ← included by default; skip with --no-cache
 ├── exports/               ← included by default; skip with --no-exports
 └── raw_sources/           ← included by default; skip with --no-sources
 ```
 
-Always excluded: `jobs.db`, `embeddings.db`, `server.pid`, `skill_registry.json`, `logs/`.
+Always excluded: `jobs.db`, `embeddings.db`, `server.pid`, `logs/`.
+
+> **v0.9.3 fix:** `hooks/` and `.synthadoc/extracted/` were previously missing from backups. Omitting `extracted/` caused the Source Viewer and Provenance citation modal to show "Could not read source file" after restore.
 
 ### Manifest
 
@@ -2816,6 +2820,25 @@ synthadoc restore <backup.zip> [--name <new-name>] [--target <dir>] [--port <por
 - **Job status and list actions** — the Action Agent now handles `job_status` and `job_list` intent queries. `job_status` with a job ID returns a detailed job card; without an ID it returns a table of all jobs and emits a `clarify` event so the user can pick one via chip. `job_list` accepts an optional multi-status filter (e.g. "show failed and skipped jobs") and includes an Error column when any listed job has a non-null error. Built-in `hints.json` extended with job-status and job-list hints for POWER_USER mode.
 - **Multi-chip clarify continuation** — clarify chip replies (bare UUIDs) are now reliably routed back to the Action Agent across multiple chip clicks. The server tags every clarify message with a `[clarify] ` prefix in the audit log; `detect()` scans back `clarify_lookback` assistant turns to find an open clarify context.
 - **Qwen provider routing** — `qwen-<letter>` model names (e.g. `qwen-plus`, `qwen-max`) route to DashScope cloud API regardless of other config; all other Qwen models (e.g. `qwen3:8b`, `qwen3.5`) route to local Ollama. This decouples cloud/local routing from `QWEN_API_KEY` presence.
+
+### v0.9.3
+
+- **Backup now includes `hooks/` and `.synthadoc/extracted/`** — both directories were silently omitted from backups. `hooks/` contains user-customised hook scripts; `.synthadoc/extracted/` contains per-source text sidecars and PDF pagemaps written by the ingest agent. Without these, the Source Viewer and Provenance citation modal showed "Could not read source file" after restore.
+- **PyPI publish workflow** — `publish.yml` triggers on GitHub Release, builds the wheel with hatchling, and uploads to PyPI via OIDC trusted publishing (no API token stored). `pip install synthadoc` now works.
+- **Web UI bundled in pip package** — `synthadoc/data/web-ui/dist/` is now included in the wheel. `synthadoc web` previously returned 503 on pip-installed instances because the React dist was not packaged.
+- **CI sync checks** — PRs now fail if `synthadoc/data/obsidian-plugin/`, `synthadoc/data/web-ui/`, or `README-pypi.md` are out of sync with their source. All sync-check steps use `shell: bash` for Windows runner compatibility.
+- **`bump_version.py` extended** — now also updates `synthadoc/data/obsidian-plugin/manifest.json` alongside the source manifest, preventing version drift between the bundled copy and the plugin source.
+
+### v0.9.2
+
+- **`synthadoc/data/web-ui/dist/` packaged** — web UI dist files committed to the repo and bundled in the wheel via hatchling artifacts.
+- **`scripts/sync_web_ui.py`** — helper script to sync `web-ui/dist/` into `synthadoc/data/web-ui/dist/` after `npm run build`.
+
+### v0.9.1
+
+- **PyPI metadata** — added `readme`, `keywords`, `classifiers`, and `[project.urls]` to `pyproject.toml` for correct PyPI rendering.
+- **`README-pypi.md`** — generated from `README.md` by `scripts/prepare_pypi_readme.py`; strips `pypi-strip` blocks and rewrites relative links to absolute GitHub URLs.
+- **Branch protection compatibility** — removed post-merge `build-plugin` CI job that pushed compiled plugin directly to `main`. Plugin sync is now enforced in PRs: CI fails if `synthadoc/data/obsidian-plugin/` is out of sync.
 
 ### v0.9.0 (Community Edition)
 

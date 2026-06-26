@@ -3016,12 +3016,21 @@ Restores to the same directory as the zip file by default. Detects port conflict
 2. `synthadoc serve -w <wiki-name>`
 3. Open the vault in Obsidian — the Obsidian plugin is reinstalled and pre-enabled automatically; Server URL is updated to match the restored port, no manual steps needed
 
-### What is NOT backed up
+### What is and isn't backed up
 
-| Item | Why excluded |
-|---|---|
-| LLM API keys | Never stored in config; set via environment variable |
-| `jobs.db` | Stale job queue — meaningless on another machine |
-| `embeddings.db` | Large; rebuilt automatically on first search after restore |
-| `server.pid` | Stale process ID |
-| `raw_sources/` | Included by default; skip with `--no-sources` to reduce zip size |
+| Item | Included? | Notes |
+|---|---|---|
+| `wiki/*.md` | ✓ Always | All compiled wiki pages |
+| `AGENTS.md`, `ROUTING.md`, `log.md` | ✓ Always | Wiki root files |
+| `hooks/` | ✓ Always | User hook scripts |
+| `.synthadoc/config.toml` | ✓ Always | Server config |
+| `.synthadoc/audit.db` | ✓ Always | Full audit trail, lifecycle state, chat history |
+| `.synthadoc/extracted/` | ✓ Always | Text sidecars + PDF pagemaps — required by Source Viewer and Provenance modal |
+| `.synthadoc/cache.db` | ✓ Default | Skip with `--no-cache` |
+| `exports/` | ✓ Default | Skip with `--no-exports` |
+| `raw_sources/` | ✓ Default | Skip with `--no-sources` to reduce zip size |
+| LLM API keys | ✗ Never | Never stored in config; set via environment variable |
+| `jobs.db` | ✗ Never | Stale job queue; job *history* is in `audit.db` |
+| `embeddings.db` | ✗ Never | Rebuilt automatically on next server start |
+| `server.pid` | ✗ Never | Machine-specific process ID |
+| `logs/` | ✗ Never | Server application logs |

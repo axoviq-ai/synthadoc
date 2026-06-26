@@ -32,11 +32,27 @@ def _iter_wiki_files(
     for p in sorted(wiki_root.glob("*.txt")):
         yield p, p.name
 
+    # hooks/ — user-customisable scripts; lost silently if not backed up
+    hooks_dir = wiki_root / "hooks"
+    if hooks_dir.is_dir():
+        for f in sorted(hooks_dir.rglob("*")):
+            if f.is_file():
+                yield f, str(f.relative_to(wiki_root)).replace("\\", "/")
+
     sd = wiki_root / ".synthadoc"
     for name in ("config.toml", "audit.db"):
         p = sd / name
         if p.exists():
             yield p, f".synthadoc/{name}"
+
+    # extracted/ — text sidecars + PDF pagemaps written by ingest agent.
+    # Required by the Source Viewer and Provenance citation modal — without
+    # these files the plugin shows "Could not read source file for <name>".
+    extracted_dir = sd / "extracted"
+    if extracted_dir.is_dir():
+        for f in sorted(extracted_dir.rglob("*")):
+            if f.is_file():
+                yield f, str(f.relative_to(wiki_root)).replace("\\", "/")
 
     if include_cache:
         p = sd / "cache.db"
