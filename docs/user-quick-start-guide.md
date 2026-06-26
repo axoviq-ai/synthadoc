@@ -3014,8 +3014,7 @@ Restores to the same directory as the zip file by default. Detects port conflict
 **Post-restore checklist (printed automatically):**
 1. Set your LLM API key in your environment
 2. `synthadoc serve -w <wiki-name>`
-3. Open the vault in Obsidian — the Obsidian plugin is reinstalled and pre-enabled automatically; no manual toggling needed
-4. Update **Server URL** in the Synthadoc plugin settings if the port changed
+3. Open the vault in Obsidian — the Obsidian plugin is reinstalled and pre-enabled automatically; Server URL is updated to match the restored port, no manual steps needed
 
 ### What is NOT backed up
 

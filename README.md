@@ -1010,7 +1010,7 @@ synthadoc restore backup.zip --name my-wiki-staging --target ~/wikis --port 7071
 
 **Restore flags:** `--name` (override wiki name), `--target/-t` (parent directory, default: same folder as zip), `--port` (skip interactive port prompt).
 
-**Obsidian plugin on restore:** The Obsidian plugin is reinstalled and pre-enabled automatically. Open the restored vault in Obsidian — both plugins are active with no manual toggling needed. Update **Server URL** in Synthadoc plugin settings only if the port changed.
+**Obsidian plugin on restore:** The Obsidian plugin is reinstalled and pre-enabled automatically, with the Server URL updated to match the restored port. Open the restored vault in Obsidian — both plugins are active with no manual steps needed.
 
 **Always excluded from backup:**
 - **Embeddings database** — vector representations of wiki pages, used only when vector search is enabled. Rebuilt automatically in the background on the next server start (pages not yet in the DB are re-embedded).
