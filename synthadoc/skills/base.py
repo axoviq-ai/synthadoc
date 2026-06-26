@@ -1,12 +1,44 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (C) 2026 Paul Chen / axoviq.com
 # Plugin interface — third-party skills may extend these base classes under any licence.
+# This file is intentionally stdlib-only so skills/ can operate without the rest of
+# the synthadoc package (e.g. when installed standalone into Claude Code or another agent).
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
+
+
+@dataclass
+class Message:
+    """Minimal LLM message contract used by vision and summarisation skills.
+
+    Keeping this here (not in synthadoc.providers) means skills that call an
+    LLM (image, youtube) can do so without importing the full providers package.
+    synthadoc.providers.base re-exports this class so all existing code is
+    unaffected.
+    """
+    role: str
+    content: Union[str, list]  # list for vision: [{"type": "image", ...}, ...]
+
+
+class DomainBlockedException(Exception):
+    """Raised by UrlSkill when a site returns a bot-blocking HTTP status.
+
+    Defined here (not in synthadoc.errors) so the url skill stays decoupled
+    from Synthadoc core.  synthadoc.errors re-exports this class so the
+    orchestrator's isinstance() check continues to work unchanged.
+    """
+    def __init__(self, domain: str, url: str, status_code: int) -> None:
+        self.domain = domain
+        self.url = url
+        self.status_code = status_code
+        super().__init__(
+            f"[ERR-SKILL-003] Domain auto-blocked ({status_code}): {domain} — "
+            f"site blocked automated access. Future URLs from this domain will be skipped."
+        )
 
 
 @dataclass

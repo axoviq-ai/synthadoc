@@ -97,7 +97,7 @@ class YoutubeSkill(BaseSkill):
             limit=limit,
             transcript=transcript_text[:6000],
         )
-        from synthadoc.providers.base import Message
+        from synthadoc.skills.base import Message
         resp = await self._provider.complete(
             messages=[Message(role="user", content=prompt)],
             temperature=0.3,

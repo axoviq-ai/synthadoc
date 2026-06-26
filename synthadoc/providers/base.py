@@ -6,11 +6,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import AsyncGenerator, Optional, Union
 
-
-@dataclass
-class Message:
-    role: str
-    content: Union[str, list]  # list for vision: [{"type": "image", ...}, {"type": "text", ...}]
+# Message is defined in skills/base.py so skills remain standalone-importable
+# without pulling in the providers package. Re-exported here for backward compat.
+from synthadoc.skills.base import Message  # noqa: F401
 
 
 @dataclass
