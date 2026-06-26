@@ -1,0 +1,2 @@
+youtube-transcript-api
+# httpx is optional — used only for video title lookup; skill works without it

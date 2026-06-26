@@ -1,0 +1,2 @@
+openpyxl
+# csv is Python stdlib — no install needed
