@@ -993,6 +993,7 @@ Every user-facing error carries a stable code in the format `[ERR-<CATEGORY>-<NN
 | `ERR-WIKI-004` | Install target already exists on disk |
 | `ERR-WIKI-005` | Unknown demo template name |
 | `ERR-WIKI-006` | Name not in `~/.synthadoc/wikis.json` |
+| `ERR-WIKI-007` | Backup requires a newer `db_schema_version` than installed |
 | `ERR-CFG-001` | Required API key environment variable not set |
 | `ERR-CFG-002` | Provider name not recognised |
 | `ERR-SKILL-001` | No skill matched the source string |
@@ -1002,7 +1003,11 @@ Every user-facing error carries a stable code in the format `[ERR-<CATEGORY>-<NN
 | `ERR-INGEST-001` | Source file or directory not found |
 | `ERR-INGEST-002` | Source file exists but is empty |
 | `ERR-INGEST-003` | `--batch` target is not a directory |
+| `ERR-QUERY-001` | LLM synthesis timed out; retry the query |
 | `ERR-JOB-001` | Job ID does not exist in `jobs.db` |
+| `ERR-PROV-001` | Daily API quota exhausted for today |
+| `ERR-PROV-002` | Coding tool CLI usage quota exhausted |
+| `ERR-AGENT-001` | LLM agent call failed (empty response, bad JSON, timeout) |
 
 **CLI errors** go through the `cli_error(code, message, hint)` helper, which prints `[ERR-XXX-NNN] message` to stderr with an optional hint line and exits with code 1. **Agent and skill errors** embed the code directly in the exception message string so it surfaces in the job `error` field.
 
