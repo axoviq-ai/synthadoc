@@ -161,7 +161,7 @@ Both Synthadoc and Dataview are already installed **and enabled** by Step 2 — 
 Go to **Settings → Community Plugins** to confirm both show a blue enabled toggle. While there:
 
 1. Click the gear icon next to **Synthadoc**
-2. Confirm **Server URL** is `http://127.0.0.1:7070` (set automatically — only change this if your server runs on a different port)
+2. Confirm **Server URL** is `http://127.0.0.1:7070` (set automatically from `config.toml` — if the port ever changes, re-run `synthadoc plugin install` to update it)
 3. Close settings
 
 The **Synthadoc ribbon icon** (book icon on the far-left sidebar) confirms the plugin is
