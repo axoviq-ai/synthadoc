@@ -22,6 +22,25 @@ license: AGPL-3.0-or-later
 
 Reads a Markdown or plain text file and returns its content verbatim.
 
+## Setup
+
+No external dependencies — uses only the Python standard library.
+
+## Standalone usage
+
+```python
+import asyncio
+from synthadoc.skills.markdown.scripts.main import MarkdownSkill
+
+skill = MarkdownSkill()
+
+async def main():
+    result = await skill.extract("/path/to/notes.md")
+    print(result.text)      # file contents verbatim
+
+asyncio.run(main())
+```
+
 ## When this skill is used
 
 - Source path ends with `.md` or `.txt`

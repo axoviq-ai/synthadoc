@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse
 
-from synthadoc.skills.base import BaseSkill, ExtractedContent
+from synthadoc.skills.base import BaseSkill, ExtractedContent, SkillMeta, Triggers
 
 # Matches all generic intents declared in SKILL.md; colon and leading whitespace optional
 _INTENT_RE = re.compile(
@@ -76,6 +76,20 @@ def _load_dynamic_blocked() -> set[str]:
 
 
 class WebSearchSkill(BaseSkill):
+    meta = SkillMeta(
+        name="web_search",
+        description="Search the web and ingest results as wiki pages",
+        triggers=Triggers(
+            extensions=[],
+            intents=[
+                "search for", "find on the web", "look up",
+                "web search", "browse", "youtube",
+                "查找", "搜索", "网络搜索", "在网上查", "查一下",
+            ],
+        ),
+        requires=["tavily-python"],
+    )
+
     async def extract(self, source: str) -> ExtractedContent:
         api_key = os.environ.get("TAVILY_API_KEY", "").strip()
         if not api_key:

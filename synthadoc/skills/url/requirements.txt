@@ -1,0 +1,5 @@
+httpx
+beautifulsoup4
+# Optional — only needed for PDF URL ingestion:
+pypdf
+pdfminer.six

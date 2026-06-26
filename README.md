@@ -263,7 +263,7 @@ pip install -e ".[dev]"
 pytest --ignore=tests/performance/ -q
 ```
 
-Expected: all tests pass, 0 failures. Performance benchmarks (optional — Linux/macOS):
+Expected: all tests pass, 0 failures. Performance benchmarks (optional):
 
 ```bash
 pytest tests/performance/ -v --benchmark-disable
@@ -273,14 +273,16 @@ pytest tests/performance/ -v --benchmark-disable
 
 The compiled plugin is bundled with the package and kept up to date by CI — no build step is needed to work on the Python side or run tests.
 
-To modify the TypeScript source:
+If you modify the TypeScript source under `obsidian-plugin/src/`, recompile and sync it into the Python package manually:
 
 ```bash
 cd obsidian-plugin
-npm install
-npm test              # Vitest unit tests
-# edit src/main.ts…
-# push your TypeScript changes — CI builds main.js and syncs it automatically on merge to main
+npm install           # first time only, or after package.json changes
+# edit src/main.ts or other source files
+npm run build         # compile TypeScript → main.js
+npm test              # run Vitest unit tests
+cd ..
+python scripts/sync_plugin.py   # copy main.js into synthadoc/data/obsidian-plugin/
 ```
 
 ---
@@ -1008,7 +1010,7 @@ synthadoc restore backup.zip --name my-wiki-staging --target ~/wikis --port 7071
 
 **Restore flags:** `--name` (override wiki name), `--target/-t` (parent directory, default: same folder as zip), `--port` (skip interactive port prompt).
 
-**Obsidian plugin on restore:** The Obsidian plugin is reinstalled and pre-enabled automatically. Open the restored vault in Obsidian — both plugins are active with no manual toggling needed. Update **Server URL** in Synthadoc plugin settings only if the port changed.
+**Obsidian plugin on restore:** The Obsidian plugin is reinstalled and pre-enabled automatically, with the Server URL updated to match the restored port. Open the restored vault in Obsidian — both plugins are active with no manual steps needed.
 
 **Always excluded from backup:**
 - **Embeddings database** — vector representations of wiki pages, used only when vector search is enabled. Rebuilt automatically in the background on the next server start (pages not yet in the DB are re-embedded).

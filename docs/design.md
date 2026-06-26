@@ -860,6 +860,8 @@ synthadoc
 │   ├── citations [-w wiki] [--page <slug>] [--source <file>] [--broken] [--json]
 │   └── lifecycle
 │       └── purge -w wiki (--before <date> | --keep-latest <n>)
+├── backup [-w wiki] [--output <dir>] [--no-sources] [--no-exports] [--no-cache]
+├── restore <backup.zip> [--name <wiki>] [--target <dir>] [--port <N>]
 ├── cache clear [-w wiki]
 └── schedule
     ├── add --op "<cmd>" --cron "<expr>" [-w wiki]
@@ -991,6 +993,7 @@ Every user-facing error carries a stable code in the format `[ERR-<CATEGORY>-<NN
 | `ERR-WIKI-004` | Install target already exists on disk |
 | `ERR-WIKI-005` | Unknown demo template name |
 | `ERR-WIKI-006` | Name not in `~/.synthadoc/wikis.json` |
+| `ERR-WIKI-007` | Backup requires a newer `db_schema_version` than installed |
 | `ERR-CFG-001` | Required API key environment variable not set |
 | `ERR-CFG-002` | Provider name not recognised |
 | `ERR-SKILL-001` | No skill matched the source string |
@@ -1000,7 +1003,11 @@ Every user-facing error carries a stable code in the format `[ERR-<CATEGORY>-<NN
 | `ERR-INGEST-001` | Source file or directory not found |
 | `ERR-INGEST-002` | Source file exists but is empty |
 | `ERR-INGEST-003` | `--batch` target is not a directory |
+| `ERR-QUERY-001` | LLM synthesis timed out; retry the query |
 | `ERR-JOB-001` | Job ID does not exist in `jobs.db` |
+| `ERR-PROV-001` | Daily API quota exhausted for today |
+| `ERR-PROV-002` | Coding tool CLI usage quota exhausted |
+| `ERR-AGENT-001` | LLM agent call failed (empty response, bad JSON, timeout) |
 
 **CLI errors** go through the `cli_error(code, message, hint)` helper, which prints `[ERR-XXX-NNN] message` to stderr with an optional hint line and exits with code 1. **Agent and skill errors** embed the code directly in the exception message string so it surfaces in the job `error` field.
 
@@ -1270,11 +1277,11 @@ the full list of available scripts.
 
 ## 12. Cache System
 
-Three independent cache layers:
+Four independent cache layers:
 
-### Layer 1 — Embedding cache (`embeddings.db`)
+### Layer 1 — Vector embedding cache (`embeddings.db`) — optional
 
-Stores the BM25 index entry for each wiki page, keyed by page content SHA-256. When a page is updated, only that page's entry is refreshed.
+Stores fastembed vector embeddings for each wiki page, used to re-rank BM25 results by semantic similarity. Only active when `[search] vector = true` in `config.toml` and the `fastembed` optional dependency is installed (`pip install synthadoc[vectors]`). BM25 search is always computed in-memory and is never persisted to disk.
 
 ### Layer 2 — LLM response cache (`cache.db`)
 
@@ -1309,7 +1316,28 @@ The default (`"4"`) is defined in `synthadoc/core/cache.py`. Custom skill author
 | `ingest --force` | `bust_cache=True` → skips `cache.get()`, repopulates |
 | `cache clear` | Deletes all rows from `cache.db` |
 
-### Layer 3 — Provider prompt cache
+### Layer 3 — Query result cache (`cache.db` — `query_cache` table)
+
+Stores full query answers keyed by `question + wiki_epoch + model`. The `wiki_epoch` is a monotonic counter incremented on every ingest or lifecycle state change, so any wiki update automatically invalidates all cached answers.
+
+**Cache key:**
+
+```python
+def make_query_cache_key(question: str, epoch: int, model: str = "") -> str:
+    normalized = " ".join(question.lower().split())   # collapse whitespace, lowercase
+    payload = f"{normalized}|{epoch}|{model}"
+    return hashlib.sha256(payload.encode()).hexdigest()[:32]
+```
+
+**Invalidation triggers:**
+
+| Trigger | Behavior |
+|---------|----------|
+| Any `ingest` or lifecycle change | `wiki_epoch` incremented → all query cache entries for prior epoch bypassed |
+| `--no-cache` flag on query | Cache lookup skipped; fresh LLM call; result repopulated |
+| `cache clear` | Deletes all rows from both `response_cache` and `query_cache` tables |
+
+### Layer 4 — Provider prompt cache
 
 Anthropic, OpenAI, and compatible providers cache stable prompt segments server-side. Long system prompts and `AGENTS.md` content hit this cache on repeated calls, giving 50–90% token savings.
 
@@ -1319,9 +1347,9 @@ Anthropic, OpenAI, and compatible providers cache stable prompt segments server-
 
 ## 13. Cost Guard
 
-**File:** `synthadoc/core/cost_guard.py`
+**Files:** `synthadoc/core/cost_guard.py`, `synthadoc/providers/pricing.py`
 
-Enforces per-operation budget limits. Evaluated before every LLM call.
+Cost tracking is live: `estimate_cost()` is called after each ingest and query operation and the result is written to `audit.db`. The `CostGuard` threshold enforcement (soft warn / hard gate) is implemented and configurable but not yet wired into the LLM call path — it is infrastructure ready to activate.
 
 ### Thresholds
 
@@ -1353,6 +1381,7 @@ Separate input and output rates reflect real-world API pricing (output tokens co
 |---|---|---|---|
 | Anthropic | claude-haiku-4-5-20251001 | $0.000001 | $0.000005 |
 | Anthropic | claude-sonnet-4-6 | $0.000003 | $0.000015 |
+| Anthropic | claude-opus-4-7 | $0.000005 | $0.000025 |
 | OpenAI | gpt-4o-mini | $0.00000015 | $0.0000006 |
 | Gemini | gemini-2.5-flash | $0.0000003 | $0.0000025 |
 | Groq | llama-3.3-70b-versatile | $0.00000059 | $0.00000079 |
@@ -1556,8 +1585,9 @@ slack_export/
   SKILL.md
   scripts/
     main.py
-  references/
-    format-notes.md   ← optional; load with self.get_resource("format-notes.md")
+  assets/              ← primary resource dir; load with self.get_resource("format-notes.md")
+    format-notes.md
+  references/          ← secondary resource dir (also searched by get_resource)
 ```
 
 **`SKILL.md`:**
@@ -1604,24 +1634,28 @@ class SlackExportSkill(BaseSkill):
 
 **Error handling:** Raise `ValueError` with a clear message if the source cannot be processed. Raise `ImportError` if an optional dependency is missing (the agent will surface a helpful message to the user).
 
+**Skill discovery priority:** `extra_dirs` (passed at runtime) → `<wiki-root>/skills/` → `~/.synthadoc/skills/` → pip entry points (`synthadoc.skills` group) → built-ins. To distribute a skill as a pip package, declare an entry point pointing to the skill folder in your `pyproject.toml`.
+
 ### Writing a provider
 
 Built-in providers: `anthropic`, `openai`, `gemini`, `groq`, `minimax`, `deepseek`, `qwen`, `ollama`. For any provider that exposes an OpenAI-compatible API, no custom class is needed — the built-in `openai` provider with a custom `base_url` is sufficient.
 
-For a fully proprietary API, subclass `LLMProvider`:
+For a fully proprietary API, subclass `LLMProvider` and wire it into `synthadoc/providers/__init__.py`:
 
 ```python
 # SPDX-License-Identifier: MIT
 from synthadoc.providers.base import LLMProvider, Message, CompletionResponse
+from typing import Optional
 
 class MyProvider(LLMProvider):
+    supports_vision: bool = False   # set True only if the API accepts image inputs
 
     async def complete(
         self,
         messages: list[Message],
-        model: str,
+        system: Optional[str] = None,
         temperature: float = 0.0,
-        **kwargs,
+        max_tokens: int = 4096,
     ) -> CompletionResponse:
         # Call your API …
         return CompletionResponse(
@@ -1629,18 +1663,35 @@ class MyProvider(LLMProvider):
             input_tokens=N,
             output_tokens=M,
         )
+
+    async def complete_stream(self, messages, system=None, temperature=0.0, max_tokens=4096):
+        """Optional — override for streaming support."""
+        async for token in your_api_stream(...):
+            yield token
 ```
 
-Place in `~/.synthadoc/providers/` or the wiki `providers/` directory. Reference by name in config:
-
-```toml
-[agents]
-default = { provider = "my_provider", model = "my-model-id" }
-```
+Add the provider name to `KNOWN_PROVIDERS` in `synthadoc/config.py` and add an `if name == "my_provider":` branch in `synthadoc/providers/__init__.py` that imports and returns an instance of your class.
 
 ### Writing a hook
 
-Hooks can be in any language. They receive JSON on stdin and must exit 0 on success.
+Hooks fire after key operations. They can be in any language; the process receives JSON on stdin and must exit 0 on success.
+
+**Available events:**
+
+| Event | Fired after | JSON context fields |
+|---|---|---|
+| `on_ingest_complete` | Every completed ingest job | `event`, `wiki`, `source`, `pages_created`, `pages_updated`, `pages_flagged`, `tokens_used`, `cost_usd` |
+| `on_lint_complete` | Every completed lint run | `event`, `wiki`, `contradictions_found`, `orphans` |
+
+**Register hooks in `.synthadoc/config.toml`:**
+
+```toml
+[hooks]
+on_ingest_complete = "hooks/notify.sh"                       # non-blocking (default)
+on_lint_complete   = { cmd = "hooks/alert.sh", blocking = true }  # blocking: error aborts the run
+```
+
+**Example hook script:**
 
 ```bash
 #!/usr/bin/env bash
@@ -2586,7 +2637,7 @@ synthadoc-backup-<wiki>-<YYYYMMDD-HHMMSS>.zip
 ├── AGENTS.md              ← LLM agent instructions (if present)
 ├── ROUTING.md             ← query routing index (if present)
 ├── log.md                 ← human-readable activity log (if present)
-├── sources.txt            ← batch ingest manifest (if present)
+├── *.txt                  ← all batch ingest files at wiki root (if present)
 ├── wiki/
 │   ├── *.md
 │   └── candidates/*.md
@@ -2614,9 +2665,10 @@ Every backup contains a `manifest.json` at the zip root:
   "source_os": "windows",
   "source_hostname": "dev-machine",
   "page_count": 87,
-  "includes_sources": false,
+  "includes_sources": true,
   "includes_exports": true,
   "includes_cache": true,
+  "obsidian_plugin": true,
   "checksum_sha256": "abc123..."
 }
 ```
@@ -2628,7 +2680,8 @@ Every backup contains a `manifest.json` at the zip root:
 | Situation | Behaviour |
 |---|---|
 | Name not in registry | Register normally |
-| Name in registry | Hard stop — use `--name` or uninstall first |
+| Name in registry, path exists | Hard stop — use `--name` to rename or `synthadoc uninstall` first |
+| Name in registry, path gone (stale) | Proceed with a printed note; stale entry is overwritten |
 | Demo wiki renamed via `--name` | Warn + `y/N` prompt (breaks `demo sync`) |
 | Port taken | System suggests the next available port; user confirms or overrides |
 
@@ -2640,7 +2693,7 @@ synthadoc backup -w <wiki> [--output <dir>] [--no-sources] [--no-exports] [--no-
 synthadoc restore <backup.zip> [--name <new-name>] [--target <dir>] [--port <port>]
 ```
 
-`backup` creates a timestamped `ZIP_DEFLATED` archive in the output directory (default: current directory). `restore` extracts the archive, rewrites host-specific config values (port, domain name), updates the global registry, and re-applies any scheduled jobs. Both commands print a summary on completion; `restore` also prints a post-restore checklist.
+`backup` creates a timestamped `ZIP_DEFLATED` archive in `--output` (default: current directory). `restore` extracts the archive to `--target/<wiki-name>/` (default: same directory as the zip), rewrites host-specific config values (port, domain name), updates the global registry, re-applies scheduled jobs, and auto-reinstalls the Obsidian plugin if `obsidian_plugin` is `true` in the manifest. Both commands print a summary on completion.
 
 ---
 

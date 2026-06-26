@@ -21,6 +21,9 @@ obsidian-plugin/main.js
 .synthadoc/
 docs/plans/
 docs/blog/
+
+# skills CLI installs (project-local agent skill copies)
+.agents/
 docs/*.docx
 synthadoc/demos/*/log.md
 

@@ -45,7 +45,7 @@ class ImageSkill(BaseSkill):
         media_type = _MEDIA_MAP.get(suffix, "image/png")
         b64 = base64.b64encode(data).decode()
 
-        from synthadoc.providers.base import Message
+        from synthadoc.skills.base import Message
         resp = await self._provider.complete(
             messages=[Message(role="user", content=[
                 {"type": "image", "source": {

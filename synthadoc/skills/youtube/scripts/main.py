@@ -35,8 +35,16 @@ logger = logging.getLogger(__name__)
 
 
 async def _fetch_video_title(video_id: str) -> str | None:
-    """Fetch video title from YouTube oEmbed — free, no API key required."""
-    import httpx
+    """Fetch video title from YouTube oEmbed — free, no API key required.
+
+    httpx is used here but is not a hard requirement of the skill — the
+    transcript extraction works without it.  If httpx is absent the title
+    is simply omitted from the result metadata.
+    """
+    try:
+        import httpx
+    except ImportError:
+        return None
     url = (
         f"https://www.youtube.com/oembed"
         f"?url=https://www.youtube.com/watch?v={video_id}&format=json"
@@ -97,7 +105,7 @@ class YoutubeSkill(BaseSkill):
             limit=limit,
             transcript=transcript_text[:6000],
         )
-        from synthadoc.providers.base import Message
+        from synthadoc.skills.base import Message
         resp = await self._provider.complete(
             messages=[Message(role="user", content=prompt)],
             temperature=0.3,
