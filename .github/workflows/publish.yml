@@ -13,6 +13,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install build
+      - run: python scripts/prepare_pypi_readme.py
       - run: python -m build
       - uses: actions/upload-artifact@v4
         with:
