@@ -2986,7 +2986,7 @@ Creates a timestamped compressed zip in the current directory:
 synthadoc-backup-history-of-computing-20260624-103000.zip
 ```
 
-**What's included by default:** wiki pages, candidates, config, audit database, exports, query cache, raw sources, and root-level wiki files (`AGENTS.md`, `ROUTING.md`, `log.md`, `sources.txt`) when present.
+**What's included by default:** wiki pages, candidates, config, audit database, exports, query cache, raw sources, and root-level wiki files (`AGENTS.md`, `ROUTING.md`, `log.md`, and any `*.txt` batch ingest files) when present.
 
 **Flags:**
 ```
