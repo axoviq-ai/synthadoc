@@ -230,6 +230,41 @@ def test_restore_stale_registry_entry_proceeds(tmp_path):
     assert (restore_dir / "my-wiki" / "wiki" / "page1.md").exists()
 
 
+def test_backup_includes_all_txt_files(tmp_path):
+    wiki_root = _make_wiki(tmp_path)
+    (wiki_root / "sources.txt").write_text("# batch 1", encoding="utf-8")
+    (wiki_root / "sources-extra.txt").write_text("# batch 2", encoding="utf-8")
+    (wiki_root / "notes.txt").write_text("# notes", encoding="utf-8")
+    out_dir = tmp_path / "backups"
+    with _patch_resolve_wiki(), _patch_registry(wiki_root):
+        runner.invoke(app, ["backup", "-w", "my-wiki", "--output", str(out_dir)])
+    zip_path = list(out_dir.glob("*.zip"))[0]
+    with zipfile.ZipFile(zip_path) as zf:
+        names = zf.namelist()
+    assert "sources.txt" in names
+    assert "sources-extra.txt" in names
+    assert "notes.txt" in names
+
+
+def test_restore_preserves_all_txt_files(tmp_path):
+    wiki_root = _make_wiki(tmp_path)
+    (wiki_root / "sources.txt").write_text("# batch 1", encoding="utf-8")
+    (wiki_root / "sources-extra.txt").write_text("# batch 2", encoding="utf-8")
+    (wiki_root / "notes.txt").write_text("# notes", encoding="utf-8")
+    zip_path = _make_backup_zip(wiki_root, tmp_path / "zips")
+    restore_dir = tmp_path / "restore"
+    with _patch_registry_for_restore(), _patch_write_registry(), \
+         _patch_reserved_ports(), _patch_schedule_apply():
+        result = runner.invoke(app, [
+            "restore", str(zip_path), "--target", str(restore_dir), "--port", "7071",
+        ])
+    assert result.exit_code == 0, result.output
+    restored = restore_dir / "my-wiki"
+    assert (restored / "sources.txt").read_text(encoding="utf-8") == "# batch 1"
+    assert (restored / "sources-extra.txt").read_text(encoding="utf-8") == "# batch 2"
+    assert (restored / "notes.txt").read_text(encoding="utf-8") == "# notes"
+
+
 def test_restore_stale_registry_reuses_original_port(tmp_path):
     wiki_root = _make_wiki(tmp_path)
     zip_path = _make_backup_zip(wiki_root, tmp_path / "zips")
