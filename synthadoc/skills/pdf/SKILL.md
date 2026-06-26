@@ -25,6 +25,28 @@ Extracts text from PDF files using `pypdf` as the primary parser, with
 `pdfminer.six` as a fallback for CJK fonts that pypdf cannot decode
 (detected when pypdf yields fewer than 50 characters per page on average).
 
+## Setup
+
+```bash
+pip install pypdf pdfminer.six
+```
+
+## Standalone usage
+
+```python
+import asyncio
+from synthadoc.skills.pdf.scripts.main import PdfSkill
+
+skill = PdfSkill()
+
+async def main():
+    result = await skill.extract("/path/to/paper.pdf")
+    print(result.text)          # extracted text from all pages
+    print(result.metadata)      # {"pages": N, "cjk_fallback": bool, ...}
+
+asyncio.run(main())
+```
+
 ## When this skill is used
 
 - Source path ends with `.pdf`

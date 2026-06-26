@@ -23,7 +23,45 @@ license: AGPL-3.0-or-later
 # URL Skill
 
 Fetches a web URL using `httpx`, strips navigation/script/style tags with
-`BeautifulSoup`, and returns clean body text.
+`BeautifulSoup`, and returns clean body text. PDF URLs are extracted with
+`pypdf` (primary) and `pdfminer.six` (fallback).
+
+## Setup
+
+```bash
+pip install httpx beautifulsoup4
+
+# Optional — needed only if you ingest PDF URLs:
+pip install pypdf pdfminer.six
+```
+
+## Standalone usage
+
+```python
+import asyncio
+from synthadoc.skills.url.scripts.main import UrlSkill
+
+skill = UrlSkill()
+
+async def main():
+    result = await skill.extract("https://example.com/article")
+    print(result.text)          # clean body text
+    print(result.metadata)      # {"url": "https://..."}
+
+asyncio.run(main())
+```
+
+`DomainBlockedException` is raised when the site returns HTTP 401, 403, or
+429. Catch it to log and skip the domain:
+
+```python
+from synthadoc.skills.base import DomainBlockedException
+
+try:
+    result = await skill.extract(url)
+except DomainBlockedException as e:
+    print(f"Blocked: {e.domain} (HTTP {e.status_code})")
+```
 
 ## When this skill is used
 
