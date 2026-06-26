@@ -65,3 +65,16 @@ jobs:
             echo "  git add synthadoc/data/obsidian-plugin/"
             exit 1
           fi
+      - run: cd web-ui && npm install && npm run build
+      - run: python scripts/sync_web_ui.py
+      - name: Fail if compiled web UI files are not committed
+        run: |
+          if ! git diff --exit-code synthadoc/data/web-ui/; then
+            echo ""
+            echo "ERROR: compiled web UI files are out of sync."
+            echo "Run these locally and commit the result before opening a PR:"
+            echo "  cd web-ui && npm run build"
+            echo "  python scripts/sync_web_ui.py"
+            echo "  git add synthadoc/data/web-ui/"
+            exit 1
+          fi
