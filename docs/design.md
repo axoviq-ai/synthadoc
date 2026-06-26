@@ -2637,7 +2637,7 @@ synthadoc-backup-<wiki>-<YYYYMMDD-HHMMSS>.zip
 ├── AGENTS.md              ← LLM agent instructions (if present)
 ├── ROUTING.md             ← query routing index (if present)
 ├── log.md                 ← human-readable activity log (if present)
-├── sources.txt            ← batch ingest manifest (if present)
+├── *.txt                  ← all batch ingest files at wiki root (if present)
 ├── wiki/
 │   ├── *.md
 │   └── candidates/*.md
@@ -2665,9 +2665,10 @@ Every backup contains a `manifest.json` at the zip root:
   "source_os": "windows",
   "source_hostname": "dev-machine",
   "page_count": 87,
-  "includes_sources": false,
+  "includes_sources": true,
   "includes_exports": true,
   "includes_cache": true,
+  "obsidian_plugin": true,
   "checksum_sha256": "abc123..."
 }
 ```
@@ -2679,7 +2680,8 @@ Every backup contains a `manifest.json` at the zip root:
 | Situation | Behaviour |
 |---|---|
 | Name not in registry | Register normally |
-| Name in registry | Hard stop — use `--name` or uninstall first |
+| Name in registry, path exists | Hard stop — use `--name` to rename or `synthadoc uninstall` first |
+| Name in registry, path gone (stale) | Proceed with a printed note; stale entry is overwritten |
 | Demo wiki renamed via `--name` | Warn + `y/N` prompt (breaks `demo sync`) |
 | Port taken | System suggests the next available port; user confirms or overrides |
 
@@ -2691,7 +2693,7 @@ synthadoc backup -w <wiki> [--output <dir>] [--no-sources] [--no-exports] [--no-
 synthadoc restore <backup.zip> [--name <new-name>] [--target <dir>] [--port <port>]
 ```
 
-`backup` creates a timestamped `ZIP_DEFLATED` archive in the output directory (default: current directory). `restore` extracts the archive, rewrites host-specific config values (port, domain name), updates the global registry, and re-applies any scheduled jobs. Both commands print a summary on completion; `restore` also prints a post-restore checklist.
+`backup` creates a timestamped `ZIP_DEFLATED` archive in `--output` (default: current directory). `restore` extracts the archive to `--target/<wiki-name>/` (default: same directory as the zip), rewrites host-specific config values (port, domain name), updates the global registry, re-applies scheduled jobs, and auto-reinstalls the Obsidian plugin if `obsidian_plugin` is `true` in the manifest. Both commands print a summary on completion.
 
 ---
 
