@@ -277,6 +277,57 @@ async def test_summary_uses_limit_1000_for_latin():
 
 
 @pytest.mark.asyncio
+async def test_fetch_video_title_returns_none_when_httpx_missing():
+    """_fetch_video_title must return None (not raise) when httpx is not installed.
+
+    This guards the fix for the hidden dependency: the import statement was
+    previously outside try/except, meaning a missing httpx would propagate as
+    ImportError through extract() and break transcript ingestion entirely.
+    """
+    import sys
+    from synthadoc.skills.youtube.scripts.main import _fetch_video_title
+
+    saved = sys.modules.pop("httpx", None)
+    # Block httpx re-import for the duration of this test
+    sys.modules["httpx"] = None  # type: ignore[assignment]
+    try:
+        result = await _fetch_video_title("dQw4w9WgXcQ")
+    finally:
+        if saved is not None:
+            sys.modules["httpx"] = saved
+        else:
+            sys.modules.pop("httpx", None)
+
+    assert result is None, "Expected None when httpx is unavailable, got: %r" % result
+
+
+@pytest.mark.asyncio
+async def test_extract_succeeds_when_httpx_missing():
+    """extract() must succeed (returning transcript) even when httpx is absent.
+
+    Title fetch is best-effort; a missing httpx must not crash the skill.
+    """
+    import sys
+    from synthadoc.skills.youtube.scripts.main import YoutubeSkill
+
+    skill = YoutubeSkill()
+    saved = sys.modules.pop("httpx", None)
+    sys.modules["httpx"] = None  # type: ignore[assignment]
+    try:
+        with patch("synthadoc.skills.youtube.scripts.main.asyncio.to_thread",
+                   new=AsyncMock(return_value=_fake_transcript())):
+            result = await skill.extract("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+    finally:
+        if saved is not None:
+            sys.modules["httpx"] = saved
+        else:
+            sys.modules.pop("httpx", None)
+
+    assert result.text != "", "Expected transcript text even without httpx"
+    assert "title" not in result.metadata  # title lookup silently skipped
+
+
+@pytest.mark.asyncio
 async def test_summary_uses_limit_2000_for_cjk():
     """CJK transcript → prompt must contain '2000 words'."""
     from types import SimpleNamespace

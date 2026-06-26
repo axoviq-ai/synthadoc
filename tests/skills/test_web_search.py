@@ -406,6 +406,28 @@ def test_load_dynamic_blocked_returns_empty_on_invalid_json(tmp_path, monkeypatc
 
 # ── CJK (Chinese / Japanese / Korean) coverage ───────────────────────────────
 
+# ── WebSearchSkill.meta ───────────────────────────────────────────────────────
+
+def test_web_search_skill_has_meta_attribute():
+    """WebSearchSkill must expose a meta class attribute (used by standalone callers)."""
+    from synthadoc.skills.web_search.scripts.main import WebSearchSkill
+    from synthadoc.skills.base import SkillMeta
+    assert hasattr(WebSearchSkill, "meta"), "WebSearchSkill is missing the meta class attribute"
+    assert isinstance(WebSearchSkill.meta, SkillMeta)
+    assert WebSearchSkill.meta.name == "web_search"
+
+
+def test_web_search_meta_intents_cover_skill_md_triggers():
+    """meta.triggers.intents must include all intent strings declared in SKILL.md."""
+    from synthadoc.skills.web_search.scripts.main import WebSearchSkill
+    intents = WebSearchSkill.meta.triggers.intents
+    required = ["search for", "find on the web", "look up", "web search", "browse", "youtube"]
+    for intent in required:
+        assert intent in intents, f"meta.triggers.intents is missing: {intent!r}"
+
+
+# ── CJK (Chinese / Japanese / Korean) coverage ───────────────────────────────
+
 def test_web_search_pure_cjk_intent_not_matched():
     """A pure CJK intent prefix ('搜索：量子计算') is NOT matched as a web search intent.
 
