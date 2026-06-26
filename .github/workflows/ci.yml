@@ -45,33 +45,23 @@ jobs:
           git diff --staged --quiet || git commit -m "ci: update coverage badge"
           git push origin HEAD:badges --force
 
-  build-plugin:
+  build-plugin-pr:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
       - run: cd obsidian-plugin && npm install && npm run build && npm test
       - run: python scripts/sync_plugin.py
-      - run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add synthadoc/data/obsidian-plugin/
-          git diff --staged --quiet || git commit -m "ci: sync compiled Obsidian plugin"
-          git push
-
-  build-plugin-pr:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - run: cd obsidian-plugin && npm install && npm run build && npm test
+      - name: Fail if compiled plugin files are not committed
+        run: |
+          if ! git diff --exit-code synthadoc/data/obsidian-plugin/; then
+            echo ""
+            echo "ERROR: compiled Obsidian plugin files are out of sync."
+            echo "Run these locally and commit the result before opening a PR:"
+            echo "  cd obsidian-plugin && npm run build"
+            echo "  python scripts/sync_plugin.py"
+            echo "  git add synthadoc/data/obsidian-plugin/"
+            exit 1
+          fi
