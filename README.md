@@ -273,15 +273,19 @@ pytest tests/performance/ -v --benchmark-disable
 
 The compiled plugin is bundled with the package and kept up to date by CI — no build step is needed to work on the Python side or run tests.
 
-To modify the TypeScript source:
+If you modify the TypeScript source under `obsidian-plugin/src/`, recompile and sync it into the Python package manually:
 
 ```bash
 cd obsidian-plugin
-npm install
-npm test              # Vitest unit tests
-# edit src/main.ts…
-# push your TypeScript changes — CI builds main.js and syncs it automatically on merge to main
+npm install           # first time only, or after package.json changes
+# edit src/main.ts or other source files
+npm run build         # compile TypeScript → main.js
+npm test              # run Vitest unit tests
+cd ..
+python scripts/sync_plugin.py   # copy main.js into synthadoc/data/obsidian-plugin/
 ```
+
+Then commit both the TypeScript source changes and `synthadoc/data/obsidian-plugin/`. On merge to `main`, CI repeats the build, sync, and commit automatically.
 
 ---
 
