@@ -1277,11 +1277,11 @@ the full list of available scripts.
 
 ## 12. Cache System
 
-Three independent cache layers:
+Four independent cache layers:
 
-### Layer 1 — Embedding cache (`embeddings.db`)
+### Layer 1 — Vector embedding cache (`embeddings.db`) — optional
 
-Stores the BM25 index entry for each wiki page, keyed by page content SHA-256. When a page is updated, only that page's entry is refreshed.
+Stores fastembed vector embeddings for each wiki page, used to re-rank BM25 results by semantic similarity. Only active when `[search] vector = true` in `config.toml` and the `fastembed` optional dependency is installed (`pip install synthadoc[vectors]`). BM25 search is always computed in-memory and is never persisted to disk.
 
 ### Layer 2 — LLM response cache (`cache.db`)
 
@@ -1316,7 +1316,28 @@ The default (`"4"`) is defined in `synthadoc/core/cache.py`. Custom skill author
 | `ingest --force` | `bust_cache=True` → skips `cache.get()`, repopulates |
 | `cache clear` | Deletes all rows from `cache.db` |
 
-### Layer 3 — Provider prompt cache
+### Layer 3 — Query result cache (`cache.db` — `query_cache` table)
+
+Stores full query answers keyed by `question + wiki_epoch + model`. The `wiki_epoch` is a monotonic counter incremented on every ingest or lifecycle state change, so any wiki update automatically invalidates all cached answers.
+
+**Cache key:**
+
+```python
+def make_query_cache_key(question: str, epoch: int, model: str = "") -> str:
+    normalized = " ".join(question.lower().split())   # collapse whitespace, lowercase
+    payload = f"{normalized}|{epoch}|{model}"
+    return hashlib.sha256(payload.encode()).hexdigest()[:32]
+```
+
+**Invalidation triggers:**
+
+| Trigger | Behavior |
+|---------|----------|
+| Any `ingest` or lifecycle change | `wiki_epoch` incremented → all query cache entries for prior epoch bypassed |
+| `--no-cache` flag on query | Cache lookup skipped; fresh LLM call; result repopulated |
+| `cache clear` | Deletes all rows from both `response_cache` and `query_cache` tables |
+
+### Layer 4 — Provider prompt cache
 
 Anthropic, OpenAI, and compatible providers cache stable prompt segments server-side. Long system prompts and `AGENTS.md` content hit this cache on repeated calls, giving 50–90% token savings.
 
