@@ -263,7 +263,7 @@ pip install -e ".[dev]"
 pytest --ignore=tests/performance/ -q
 ```
 
-Expected: all tests pass, 0 failures. Performance benchmarks (optional — Linux/macOS):
+Expected: all tests pass, 0 failures. Performance benchmarks (optional):
 
 ```bash
 pytest tests/performance/ -v --benchmark-disable
