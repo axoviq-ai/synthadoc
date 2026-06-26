@@ -25,10 +25,12 @@ def _iter_wiki_files(
         for f in sorted(wiki_dir.rglob("*.md")):
             yield f, str(f.relative_to(wiki_root)).replace("\\", "/")
 
-    for name in ("AGENTS.md", "ROUTING.md", "log.md", "sources.txt"):
+    for name in ("AGENTS.md", "ROUTING.md", "log.md"):
         p = wiki_root / name
         if p.exists():
             yield p, name
+    for p in sorted(wiki_root.glob("*.txt")):
+        yield p, p.name
 
     sd = wiki_root / ".synthadoc"
     for name in ("config.toml", "audit.db"):
