@@ -46,21 +46,10 @@ SKILL_URL_BLOCKED = "ERR-SKILL-003"  # URL returned 403 (bot/paywall protection)
 SKILL_WEB_NO_KEY  = "ERR-SKILL-004"  # TAVILY_API_KEY not set for web search
 
 
-class DomainBlockedException(Exception):
-    """Raised by the URL skill when a domain returns a bot-blocking response.
-
-    The orchestrator catches this, auto-adds the domain to
-    ``.synthadoc/blocked_domains.json``, records an audit event, and
-    permanently fails the job (no retry).
-    """
-    def __init__(self, domain: str, url: str, status_code: int) -> None:
-        self.domain = domain
-        self.url = url
-        self.status_code = status_code
-        super().__init__(
-            f"[{SKILL_URL_BLOCKED}] Domain auto-blocked ({status_code}): {domain} — "
-            f"site blocked automated access. Future URLs from this domain will be skipped."
-        )
+# DomainBlockedException is defined in skills/base.py so the url skill stays
+# decoupled from synthadoc core. Re-exported here so all existing callers
+# (orchestrator, tests) continue to work unchanged.
+from synthadoc.skills.base import DomainBlockedException  # noqa: F401
 
 # ── Provider ──────────────────────────────────────────────────────────────────
 PROVIDER_DAILY_QUOTA = "ERR-PROV-001"  # Daily API quota exhausted for today

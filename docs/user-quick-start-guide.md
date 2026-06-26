@@ -6,8 +6,8 @@ This guide walks you through the **History of Computing** demo wiki — a fully 
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
 major engine feature. No setup beyond following the steps below is required.
 
-> **Before you start:** complete [README Installation Steps 1–6](../README.md#installation)
-> (clone, install, set your API key, install the demo wiki, and start the engine).
+> **Before you start:** complete the [README Installation](../README.md#installation) section —
+> install synthadoc (production or development), set your API key, install the demo wiki, and start the engine.
 > Then come back here.
 >
 > **Already installed the demo wiki?** Skip `synthadoc install` and run `synthadoc demo sync history-of-computing` instead. This copies any new source files added to the latest demo template into your existing wiki without overwriting anything you have already ingested or modified.
@@ -161,7 +161,7 @@ Both Synthadoc and Dataview are already installed **and enabled** by Step 2 — 
 Go to **Settings → Community Plugins** to confirm both show a blue enabled toggle. While there:
 
 1. Click the gear icon next to **Synthadoc**
-2. Confirm **Server URL** is `http://127.0.0.1:7070` (set automatically — only change this if your server runs on a different port)
+2. Confirm **Server URL** is `http://127.0.0.1:7070` (set automatically from `config.toml` — if the port ever changes, re-run `synthadoc plugin install` to update it)
 3. Close settings
 
 The **Synthadoc ribbon icon** (book icon on the far-left sidebar) confirms the plugin is
@@ -2986,7 +2986,7 @@ Creates a timestamped compressed zip in the current directory:
 synthadoc-backup-history-of-computing-20260624-103000.zip
 ```
 
-**What's included by default:** wiki pages, candidates, config, audit database, exports, query cache, raw sources, and root-level wiki files (`AGENTS.md`, `ROUTING.md`, `log.md`, `sources.txt`) when present.
+**What's included by default:** wiki pages, candidates, config, audit database, exports, query cache, raw sources, and root-level wiki files (`AGENTS.md`, `ROUTING.md`, `log.md`, and any `*.txt` batch ingest files) when present.
 
 **Flags:**
 ```
@@ -3014,8 +3014,7 @@ Restores to the same directory as the zip file by default. Detects port conflict
 **Post-restore checklist (printed automatically):**
 1. Set your LLM API key in your environment
 2. `synthadoc serve -w <wiki-name>`
-3. Open the vault in Obsidian — the Obsidian plugin is reinstalled and pre-enabled automatically; no manual toggling needed
-4. Update **Server URL** in the Synthadoc plugin settings if the port changed
+3. Open the vault in Obsidian — the Obsidian plugin is reinstalled and pre-enabled automatically; Server URL is updated to match the restored port, no manual steps needed
 
 ### What is NOT backed up
 

@@ -5,8 +5,7 @@ import tempfile
 import httpx
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
-from synthadoc.skills.base import BaseSkill, ExtractedContent, SkillMeta
-from synthadoc.errors import DomainBlockedException
+from synthadoc.skills.base import BaseSkill, ExtractedContent, SkillMeta, DomainBlockedException
 
 logger = logging.getLogger(__name__)
 

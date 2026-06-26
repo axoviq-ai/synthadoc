@@ -597,6 +597,29 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
     check("audit events",    ["audit", "events"]     + w)
     check("audit citations", ["audit", "citations"]  + w)
 
+    # ── logging ───────────────────────────────────────────────────────────────
+    print("\n[24] logging")
+    import json as _json
+    log_path = wiki_root / ".synthadoc" / "logs" / "synthadoc.log"
+    if not log_path.exists():
+        fail("log file exists", f"expected {log_path}")
+    else:
+        ok("log file exists", str(log_path))
+        lines = [l for l in log_path.read_text(encoding="utf-8", errors="replace").splitlines() if l.strip()]
+        if not lines:
+            fail("log file non-empty", "synthadoc.log contains no entries")
+        else:
+            ok("log file non-empty", f"{len(lines)} entries")
+            try:
+                record = _json.loads(lines[-1])
+                missing = [k for k in ("ts", "level", "msg") if k not in record]
+                if missing:
+                    fail("log JSON schema", f"missing keys: {missing}")
+                else:
+                    ok("log JSON schema", "ts, level, msg present")
+            except _json.JSONDecodeError as e:
+                fail("log JSON schema", f"last line not valid JSON: {e}")
+
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
