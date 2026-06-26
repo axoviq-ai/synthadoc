@@ -5,55 +5,55 @@
       "source": "axoviq-ai/synthadoc",
       "sourceType": "github",
       "skillPath": "synthadoc/skills/docx/SKILL.md",
-      "computedHash": "3536d8df3c0e7f9874e21a67325fd866f75e342cd181c34f3e11092ace39dd03"
+      "computedHash": "f0382b9466eac16e8faa2da47e5c2d65c3f40cd8c0398652e70eed6a704833dd"
     },
     "image": {
       "source": "axoviq-ai/synthadoc",
       "sourceType": "github",
       "skillPath": "synthadoc/skills/image/SKILL.md",
-      "computedHash": "440f5c625b83d51633b11765ea3a943fbc5bb293d0373df967cf60e51a68b252"
+      "computedHash": "735a3f96e2b0a2cf861c91927a750175c234919107e5712ec9afb2b6f1d5821a"
     },
     "markdown": {
       "source": "axoviq-ai/synthadoc",
       "sourceType": "github",
       "skillPath": "synthadoc/skills/markdown/SKILL.md",
-      "computedHash": "21d976863c7ae45dd907f13a6e4f16866ee06bd477699fe2cd2618493da6c078"
+      "computedHash": "5bfc0c1c5c34249ca7923cbff276a094453b033ae3de42aff6c531fbc2afa1ff"
     },
     "pdf": {
       "source": "axoviq-ai/synthadoc",
       "sourceType": "github",
       "skillPath": "synthadoc/skills/pdf/SKILL.md",
-      "computedHash": "ca51b1507cafc2350b4f595b2e854cc77999d97dee0fcf62596fb385055c5ff4"
+      "computedHash": "119d9f3f5af21b5a297f1879d281ca2a41dbfd1981e4e53d6b6f582b8d3657e3"
     },
     "pptx": {
       "source": "axoviq-ai/synthadoc",
       "sourceType": "github",
       "skillPath": "synthadoc/skills/pptx/SKILL.md",
-      "computedHash": "a3de5d01527806ce903f95816095712880fbab75228c35001a8c93a81d35730d"
+      "computedHash": "72fc7544332e7a3b77414adcdf845e9190a3a7f318a26829dca383502cd216e9"
     },
     "url": {
       "source": "axoviq-ai/synthadoc",
       "sourceType": "github",
       "skillPath": "synthadoc/skills/url/SKILL.md",
-      "computedHash": "b84afa511d116572772b598ddcf0078e524a872e1110791c60c743fe21bca117"
+      "computedHash": "e268f81fe8d38b0196b6fa11b1e7879e98d7b49dcbc3e9776f156e9476b68f54"
     },
     "web_search": {
       "source": "axoviq-ai/synthadoc",
       "sourceType": "github",
       "skillPath": "synthadoc/skills/web_search/SKILL.md",
-      "computedHash": "5c1917756e92fffa1e15b9a3626eaeb6d3f62e745009a3b10c73d5fc67d721f5"
+      "computedHash": "04c69b218f4c492e32d10d608b45bb38b7a6bb0325dfdf36ce0efa3e65b140cd"
     },
     "xlsx": {
       "source": "axoviq-ai/synthadoc",
       "sourceType": "github",
       "skillPath": "synthadoc/skills/xlsx/SKILL.md",
-      "computedHash": "3dd724188c3750c17e925038743c39e500bf38e4491df383ad2796b1101785b6"
+      "computedHash": "a232890d983be7779d3127c151ba9b1391ed7a90ee28659c976c653fbbd17028"
     },
     "youtube": {
       "source": "axoviq-ai/synthadoc",
       "sourceType": "github",
       "skillPath": "synthadoc/skills/youtube/SKILL.md",
-      "computedHash": "6c03606ecd14f9936b08d7fa986dd3aaa15c888e647c24a00c2743094b198c44"
+      "computedHash": "7ec87715ce12f5ed5c4c4b3ba6346b9a85aaeabe599f8fdc482358ee1244fd1f"
     }
   }
 }
