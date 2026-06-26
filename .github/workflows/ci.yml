@@ -19,6 +19,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Fail if README-pypi.md is out of sync
+        shell: bash
         run: |
           python scripts/prepare_pypi_readme.py
           if ! git diff --exit-code README-pypi.md; then
@@ -67,6 +68,7 @@ jobs:
       - run: cd obsidian-plugin && npm install && npm run build && npm test
       - run: python scripts/sync_plugin.py
       - name: Fail if compiled plugin files are not committed
+        shell: bash
         run: |
           if ! git diff --exit-code synthadoc/data/obsidian-plugin/; then
             echo ""
@@ -80,6 +82,7 @@ jobs:
       - run: cd web-ui && npm install && npm run build
       - run: python scripts/sync_web_ui.py
       - name: Fail if compiled web UI files are not committed
+        shell: bash
         run: |
           if ! git diff --exit-code synthadoc/data/web-ui/; then
             echo ""
