@@ -860,6 +860,8 @@ synthadoc
 │   ├── citations [-w wiki] [--page <slug>] [--source <file>] [--broken] [--json]
 │   └── lifecycle
 │       └── purge -w wiki (--before <date> | --keep-latest <n>)
+├── backup [-w wiki] [--output <dir>] [--no-sources] [--no-exports] [--no-cache]
+├── restore <backup.zip> [--name <wiki>] [--target <dir>] [--port <N>]
 ├── cache clear [-w wiki]
 └── schedule
     ├── add --op "<cmd>" --cron "<expr>" [-w wiki]
