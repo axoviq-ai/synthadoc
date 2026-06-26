@@ -1347,9 +1347,9 @@ Anthropic, OpenAI, and compatible providers cache stable prompt segments server-
 
 ## 13. Cost Guard
 
-**File:** `synthadoc/core/cost_guard.py`
+**Files:** `synthadoc/core/cost_guard.py`, `synthadoc/providers/pricing.py`
 
-Enforces per-operation budget limits. Evaluated before every LLM call.
+Cost tracking is live: `estimate_cost()` is called after each ingest and query operation and the result is written to `audit.db`. The `CostGuard` threshold enforcement (soft warn / hard gate) is implemented and configurable but not yet wired into the LLM call path — it is infrastructure ready to activate.
 
 ### Thresholds
 
@@ -1381,6 +1381,7 @@ Separate input and output rates reflect real-world API pricing (output tokens co
 |---|---|---|---|
 | Anthropic | claude-haiku-4-5-20251001 | $0.000001 | $0.000005 |
 | Anthropic | claude-sonnet-4-6 | $0.000003 | $0.000015 |
+| Anthropic | claude-opus-4-7 | $0.000005 | $0.000025 |
 | OpenAI | gpt-4o-mini | $0.00000015 | $0.0000006 |
 | Gemini | gemini-2.5-flash | $0.0000003 | $0.0000025 |
 | Groq | llama-3.3-70b-versatile | $0.00000059 | $0.00000079 |
