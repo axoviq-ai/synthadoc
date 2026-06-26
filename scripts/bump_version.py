@@ -80,9 +80,10 @@ def main() -> None:
     version_file.write_text(new_version + "\n", encoding="utf-8")
     print(f"  updated {version_file.relative_to(ROOT)}")
 
-    # 2. Obsidian plugin manifest + package
+    # 2. Obsidian plugin manifest + package (source and bundled data copy)
     _set_json_version(ROOT / "obsidian-plugin" / "manifest.json", new_version)
     _set_json_version(ROOT / "obsidian-plugin" / "package.json", new_version)
+    _set_json_version(ROOT / "synthadoc" / "data" / "obsidian-plugin" / "manifest.json", new_version)
 
     # 3. README.md badges and document version
     _patch_readme(ROOT / "README.md", old_version, new_version)
@@ -102,7 +103,7 @@ def main() -> None:
     )
 
     print("Done. Remember to:")
-    print("  git add VERSION obsidian-plugin/manifest.json obsidian-plugin/package.json README.md docs/user-quick-start-guide.md docs/design.md")
+    print("  git add VERSION obsidian-plugin/manifest.json obsidian-plugin/package.json synthadoc/data/obsidian-plugin/manifest.json README.md docs/user-quick-start-guide.md docs/design.md")
     print(f"  git commit -m 'chore: bump version to {new_version}'")
     print("  git tag v" + new_version)
 
