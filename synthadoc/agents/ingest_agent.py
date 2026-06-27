@@ -521,7 +521,24 @@ class IngestAgent:
                           "results_count": len(_merged_urls)},
             )
         else:
-            extracted = await self._skill_agent.extract(source)
+            _skill_timeout = (
+                self._cfg.agents.llm_timeout_seconds
+                if self._cfg and self._cfg.agents.llm_timeout_seconds > 0
+                else None
+            )
+            if _skill_timeout:
+                try:
+                    extracted = await asyncio.wait_for(
+                        self._skill_agent.extract(source), timeout=float(_skill_timeout)
+                    )
+                except asyncio.TimeoutError:
+                    raise TimeoutError(
+                        f"Skill extraction timed out after {_skill_timeout}s for source: {source}. "
+                        f"Increase [agents] llm_timeout_seconds in .synthadoc/config.toml "
+                        f"or skip image sources if your provider does not support vision."
+                    )
+            else:
+                extracted = await self._skill_agent.extract(source)
 
         # Web search fan-out: return child sources; orchestrator enqueues them as jobs
         if extracted.metadata.get("child_sources"):
