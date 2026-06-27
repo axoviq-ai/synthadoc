@@ -160,6 +160,53 @@ def test_create_backup_includes_raw_sources_when_requested(wiki_root, tmp_path):
         assert any("raw_sources" in n for n in zf.namelist())
 
 
+def test_create_backup_includes_hooks_directory(wiki_root, tmp_path):
+    hooks = wiki_root / "hooks"
+    hooks.mkdir()
+    (hooks / "notify.py").write_text("# hook", encoding="utf-8")
+    (hooks / "auto_commit.sh").write_text("#!/bin/sh", encoding="utf-8")
+    zip_path = _make_backup(wiki_root, tmp_path)
+    with zipfile.ZipFile(zip_path) as zf:
+        names = zf.namelist()
+    assert "hooks/notify.py" in names
+    assert "hooks/auto_commit.sh" in names
+
+
+def test_create_backup_skips_hooks_gracefully_when_absent(wiki_root, tmp_path):
+    assert not (wiki_root / "hooks").exists()
+    zip_path = _make_backup(wiki_root, tmp_path)
+    with zipfile.ZipFile(zip_path) as zf:
+        assert not any("hooks" in n for n in zf.namelist())
+
+
+def test_create_backup_includes_extracted_txt_sidecars(wiki_root, tmp_path):
+    extracted = wiki_root / ".synthadoc" / "extracted"
+    extracted.mkdir()
+    (extracted / "doc.txt").write_text("extracted text", encoding="utf-8")
+    (extracted / "video.txt").write_text("transcript", encoding="utf-8")
+    zip_path = _make_backup(wiki_root, tmp_path)
+    with zipfile.ZipFile(zip_path) as zf:
+        names = zf.namelist()
+    assert ".synthadoc/extracted/doc.txt" in names
+    assert ".synthadoc/extracted/video.txt" in names
+
+
+def test_create_backup_includes_extracted_pdf_pagemaps(wiki_root, tmp_path):
+    extracted = wiki_root / ".synthadoc" / "extracted"
+    extracted.mkdir()
+    (extracted / "report.pdf.pagemap").write_text('{"1": 1}', encoding="utf-8")
+    zip_path = _make_backup(wiki_root, tmp_path)
+    with zipfile.ZipFile(zip_path) as zf:
+        assert ".synthadoc/extracted/report.pdf.pagemap" in zf.namelist()
+
+
+def test_create_backup_skips_extracted_gracefully_when_absent(wiki_root, tmp_path):
+    assert not (wiki_root / ".synthadoc" / "extracted").exists()
+    zip_path = _make_backup(wiki_root, tmp_path)
+    with zipfile.ZipFile(zip_path) as zf:
+        assert not any("extracted" in n for n in zf.namelist())
+
+
 # ── manifest ──────────────────────────────────────────────────────────────────
 
 def test_manifest_contains_required_fields(wiki_root, tmp_path):
@@ -263,6 +310,27 @@ def test_extract_backup_supports_name_override(wiki_root, tmp_path):
     extracted = extract_backup(zip_path, tmp_path / "restore", "renamed-wiki")
     assert extracted.name == "renamed-wiki"
     assert (extracted / "wiki" / "page1.md").exists()
+
+
+def test_extract_backup_restores_hooks(wiki_root, tmp_path):
+    hooks = wiki_root / "hooks"
+    hooks.mkdir()
+    (hooks / "notify.py").write_text("# hook", encoding="utf-8")
+    zip_path = _make_backup(wiki_root, tmp_path)
+    restored = extract_backup(zip_path, tmp_path / "restore", "my-wiki")
+    assert (restored / "hooks" / "notify.py").exists()
+    assert (restored / "hooks" / "notify.py").read_text(encoding="utf-8") == "# hook"
+
+
+def test_extract_backup_restores_extracted_sidecars(wiki_root, tmp_path):
+    extracted_dir = wiki_root / ".synthadoc" / "extracted"
+    extracted_dir.mkdir()
+    (extracted_dir / "doc.txt").write_text("line 1\nline 2", encoding="utf-8")
+    (extracted_dir / "report.pdf.pagemap").write_text('{"1": 1}', encoding="utf-8")
+    zip_path = _make_backup(wiki_root, tmp_path)
+    restored = extract_backup(zip_path, tmp_path / "restore", "my-wiki")
+    assert (restored / ".synthadoc" / "extracted" / "doc.txt").read_text(encoding="utf-8") == "line 1\nline 2"
+    assert (restored / ".synthadoc" / "extracted" / "report.pdf.pagemap").exists()
 
 
 # ── rewrite_config ────────────────────────────────────────────────────────────
