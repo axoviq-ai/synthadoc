@@ -405,15 +405,15 @@ async def run_tests():
 
             # ── 13. synthadoc_ingest ─────────────────────────────────────────
             print("\n[13] synthadoc_ingest")
-            # ingest a plain text snippet — should enqueue and return job_id
+            # ingest via a search intent — enqueues a real job with a valid source type
             r = await call(session, "synthadoc_ingest",
-                           {"source": "The Harvard Mark I was an electromechanical computer completed in 1944."})
+                           {"source": "search for: Harvard Mark I electromechanical computer 1944"})
             if "job_id" in r and "source" in r:
-                ok("synthadoc_ingest(text snippet)", f"job_id={r['job_id']!r}")
+                ok("synthadoc_ingest(search intent)", f"job_id={r['job_id']!r}")
             elif "error" in r:
-                fail("synthadoc_ingest(text snippet)", r["error"])
+                fail("synthadoc_ingest(search intent)", r["error"])
             else:
-                fail("synthadoc_ingest(text snippet)", f"unexpected: {r}")
+                fail("synthadoc_ingest(search intent)", f"unexpected: {r}")
 
             # empty source — quality check
             r = await call(session, "synthadoc_ingest", {"source": ""})
