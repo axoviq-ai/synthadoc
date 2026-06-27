@@ -442,7 +442,15 @@ class IngestAgent:
         if self._needs_file_check(source):
             p = Path(source).resolve()
 
-            # Security: reject sources outside wiki_root
+            if not p.exists():
+                raise FileNotFoundError(f"Source not found: {source}")
+            if p.stat().st_size == 0:
+                raise ValueError(f"Source file is empty: {source}")
+
+            # Security: reject sources outside wiki_root.
+            # Existence is checked first so that plain-text strings or typos
+            # that get misclassified as paths produce FileNotFoundError (clear)
+            # rather than PermissionError "outside wiki root" (misleading).
             if self._wiki_root is not None:
                 root_resolved = self._wiki_root.resolve()
                 try:
@@ -451,11 +459,6 @@ class IngestAgent:
                     raise PermissionError(
                         f"Source {p} is outside wiki root {root_resolved}"
                     )
-
-            if not p.exists():
-                raise FileNotFoundError(f"Source not found: {source}")
-            if p.stat().st_size == 0:
-                raise ValueError(f"Source file is empty: {source}")
 
             # Dedup: hash + size (file sources only)
             src_hash, src_size = self._hash(str(p))
