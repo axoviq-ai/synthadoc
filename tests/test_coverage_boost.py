@@ -358,24 +358,26 @@ async def test_run_scaffold_completes_job(tmp_wiki):
 
     orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
     await orch.init()
+    try:
+        job_id = await orch._queue.enqueue("scaffold", {"domain": "Test Domain"})
 
-    job_id = await orch._queue.enqueue("scaffold", {"domain": "Test Domain"})
+        result = ScaffoldResult(
+            index_md="# Index\n",
+            agents_md="# Agents\n",
+            purpose_md="# Purpose\n",
+            dashboard_intro="intro",
+        )
 
-    result = ScaffoldResult(
-        index_md="# Index\n",
-        agents_md="# Agents\n",
-        purpose_md="# Purpose\n",
-        dashboard_intro="intro",
-    )
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
+             patch("synthadoc.agents.scaffold_agent.ScaffoldAgent") as MockAgent:
+            MockAgent.return_value.scaffold = AsyncMock(return_value=result)
+            await orch._run_scaffold(job_id, "Test Domain")
 
-    with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
-         patch("synthadoc.agents.scaffold_agent.ScaffoldAgent") as MockAgent:
-        MockAgent.return_value.scaffold = AsyncMock(return_value=result)
-        await orch._run_scaffold(job_id, "Test Domain")
-
-    from synthadoc.core.queue import JobStatus
-    completed = await orch._queue.list_jobs(status=JobStatus.COMPLETED)
-    assert any(j.id == job_id for j in completed)
+        from synthadoc.core.queue import JobStatus
+        completed = await orch._queue.list_jobs(status=JobStatus.COMPLETED)
+        assert any(j.id == job_id for j in completed)
+    finally:
+        await orch.close()
 
 
 @pytest.mark.asyncio
@@ -386,17 +388,20 @@ async def test_run_scaffold_fails_job_on_exception(tmp_wiki):
 
     orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
     await orch.init()
-    job_id = await orch._queue.enqueue("scaffold", {"domain": "Test Domain"})
+    try:
+        job_id = await orch._queue.enqueue("scaffold", {"domain": "Test Domain"})
 
-    with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
-         patch("synthadoc.agents.scaffold_agent.ScaffoldAgent") as MockAgent:
-        MockAgent.return_value.scaffold = AsyncMock(side_effect=RuntimeError("LLM error"))
-        with pytest.raises(RuntimeError):
-            await orch._run_scaffold(job_id, "Test Domain")
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
+             patch("synthadoc.agents.scaffold_agent.ScaffoldAgent") as MockAgent:
+            MockAgent.return_value.scaffold = AsyncMock(side_effect=RuntimeError("LLM error"))
+            with pytest.raises(RuntimeError):
+                await orch._run_scaffold(job_id, "Test Domain")
 
-    from synthadoc.core.queue import JobStatus
-    completed = await orch._queue.list_jobs(status=JobStatus.COMPLETED)
-    assert not any(j.id == job_id for j in completed), "Job must not be completed after exception"
+        from synthadoc.core.queue import JobStatus
+        completed = await orch._queue.list_jobs(status=JobStatus.COMPLETED)
+        assert not any(j.id == job_id for j in completed), "Job must not be completed after exception"
+    finally:
+        await orch.close()
 
 
 @pytest.mark.asyncio
@@ -408,17 +413,20 @@ async def test_run_lint_daily_quota_fails_permanent(tmp_wiki):
 
     orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
     await orch.init()
-    job_id = await orch._queue.enqueue("lint", {"scope": "all"})
+    try:
+        job_id = await orch._queue.enqueue("lint", {"scope": "all"})
 
-    with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
-         patch("synthadoc.agents.lint_agent.LintAgent") as MockLint:
-        MockLint.return_value.lint = AsyncMock(
-            side_effect=DailyQuotaExhaustedException(provider="gemini"))
-        await orch._run_lint(job_id)
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
+             patch("synthadoc.agents.lint_agent.LintAgent") as MockLint:
+            MockLint.return_value.lint = AsyncMock(
+                side_effect=DailyQuotaExhaustedException(provider="gemini"))
+            await orch._run_lint(job_id)
 
-    from synthadoc.core.queue import JobStatus
-    failed = await orch._queue.list_jobs(status=JobStatus.FAILED)
-    assert any(j.id == job_id for j in failed)
+        from synthadoc.core.queue import JobStatus
+        failed = await orch._queue.list_jobs(status=JobStatus.FAILED)
+        assert any(j.id == job_id for j in failed)
+    finally:
+        await orch.close()
 
 
 @pytest.mark.asyncio
@@ -429,17 +437,20 @@ async def test_run_lint_generic_exception_reraises(tmp_wiki):
 
     orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
     await orch.init()
-    job_id = await orch._queue.enqueue("lint", {"scope": "all"})
+    try:
+        job_id = await orch._queue.enqueue("lint", {"scope": "all"})
 
-    with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
-         patch("synthadoc.agents.lint_agent.LintAgent") as MockLint:
-        MockLint.return_value.lint = AsyncMock(side_effect=ValueError("unexpected"))
-        with pytest.raises(ValueError):
-            await orch._run_lint(job_id)
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
+             patch("synthadoc.agents.lint_agent.LintAgent") as MockLint:
+            MockLint.return_value.lint = AsyncMock(side_effect=ValueError("unexpected"))
+            with pytest.raises(ValueError):
+                await orch._run_lint(job_id)
 
-    from synthadoc.core.queue import JobStatus
-    completed = await orch._queue.list_jobs(status=JobStatus.COMPLETED)
-    assert not any(j.id == job_id for j in completed), "Job must not be completed after exception"
+        from synthadoc.core.queue import JobStatus
+        completed = await orch._queue.list_jobs(status=JobStatus.COMPLETED)
+        assert not any(j.id == job_id for j in completed), "Job must not be completed after exception"
+    finally:
+        await orch.close()
 
 
 @pytest.mark.asyncio
@@ -451,18 +462,21 @@ async def test_run_ingest_rate_limit_requeues_and_raises(tmp_wiki):
 
     orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
     await orch.init()
-    job_id = await orch._queue.enqueue("ingest", {"source": "https://example.com", "force": False})
+    try:
+        job_id = await orch._queue.enqueue("ingest", {"source": "https://example.com", "force": False})
 
-    # Build an exception with status_code=429
-    rate_exc = Exception("rate limited")
-    rate_exc.status_code = 429  # type: ignore
+        # Build an exception with status_code=429
+        rate_exc = Exception("rate limited")
+        rate_exc.status_code = 429  # type: ignore
 
-    mock_agent = MagicMock()
-    mock_agent.ingest = AsyncMock(side_effect=rate_exc)
-    with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
-         patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
-        with pytest.raises(Exception):
-            await orch._run_ingest(job_id, "https://example.com", auto_confirm=True)
+        mock_agent = MagicMock()
+        mock_agent.ingest = AsyncMock(side_effect=rate_exc)
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
+             patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
+            with pytest.raises(Exception):
+                await orch._run_ingest(job_id, "https://example.com", auto_confirm=True)
+    finally:
+        await orch.close()
 
 
 @pytest.mark.asyncio
@@ -474,15 +488,17 @@ async def test_auto_block_domain_writes_file(tmp_wiki):
 
     orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
     await orch.init()
+    try:
+        exc = DomainBlockedException(domain="blocked.com", url="https://blocked.com/page", status_code=403)
+        await orch._auto_block_domain(exc)
 
-    exc = DomainBlockedException(domain="blocked.com", url="https://blocked.com/page", status_code=403)
-    await orch._auto_block_domain(exc)
-
-    import json
-    blocked_file = tmp_wiki / ".synthadoc" / "blocked_domains.json"
-    assert blocked_file.exists()
-    domains = json.loads(blocked_file.read_text())
-    assert "blocked.com" in domains
+        import json
+        blocked_file = tmp_wiki / ".synthadoc" / "blocked_domains.json"
+        assert blocked_file.exists()
+        domains = json.loads(blocked_file.read_text())
+        assert "blocked.com" in domains
+    finally:
+        await orch.close()
 
 
 @pytest.mark.asyncio
@@ -495,15 +511,17 @@ async def test_auto_block_domain_does_not_duplicate(tmp_wiki):
 
     orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
     await orch.init()
+    try:
+        blocked_file = tmp_wiki / ".synthadoc" / "blocked_domains.json"
+        blocked_file.write_text('["blocked.com"]', encoding="utf-8")
 
-    blocked_file = tmp_wiki / ".synthadoc" / "blocked_domains.json"
-    blocked_file.write_text('["blocked.com"]', encoding="utf-8")
+        exc = DomainBlockedException(domain="blocked.com", url="https://blocked.com/p", status_code=403)
+        await orch._auto_block_domain(exc)
 
-    exc = DomainBlockedException(domain="blocked.com", url="https://blocked.com/p", status_code=403)
-    await orch._auto_block_domain(exc)
-
-    domains = json.loads(blocked_file.read_text())
-    assert domains.count("blocked.com") == 1
+        domains = json.loads(blocked_file.read_text())
+        assert domains.count("blocked.com") == 1
+    finally:
+        await orch.close()
 
 
 @pytest.mark.asyncio
@@ -522,40 +540,42 @@ async def test_run_ingest_vector_embed_on_complete(tmp_wiki):
     await orch._queue.init()
     await orch._audit.init()
     await orch._cache.init()
+    try:
+        # Write the page to the wiki store so read_page returns it
+        page = WikiPage(
+            title="New Page", tags=[], status="active", confidence="high",
+            content="Content.", sources=[],
+        )
+        orch._store.write_page("new-page", page)
 
-    # Write the page to the wiki store so read_page returns it
-    page = WikiPage(
-        title="New Page", tags=[], status="active", confidence="high",
-        content="Content.", sources=[],
-    )
-    orch._store.write_page("new-page", page)
+        job_id = await orch._queue.enqueue("ingest", {"source": "https://ex.com", "force": False})
 
-    job_id = await orch._queue.enqueue("ingest", {"source": "https://ex.com", "force": False})
+        result = IngestResult(source="https://ex.com")
+        result.pages_created = ["new-page"]
+        result.pages_updated = []
+        result.pages_flagged = []
+        result.child_sources = []
+        result.tokens_used = 10
+        result.input_tokens = 5
+        result.output_tokens = 5
+        result.skipped = False
 
-    result = IngestResult(source="https://ex.com")
-    result.pages_created = ["new-page"]
-    result.pages_updated = []
-    result.pages_flagged = []
-    result.child_sources = []
-    result.tokens_used = 10
-    result.input_tokens = 5
-    result.output_tokens = 5
-    result.skipped = False
+        embed_calls = []
 
-    embed_calls = []
+        async def fake_embed(slug, text):
+            embed_calls.append(slug)
 
-    async def fake_embed(slug, text):
-        embed_calls.append(slug)
+        mock_agent = MagicMock()
+        mock_agent.ingest = AsyncMock(return_value=result)
 
-    mock_agent = MagicMock()
-    mock_agent.ingest = AsyncMock(return_value=result)
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
+             patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent), \
+             patch.object(orch._search, "embed_page", side_effect=fake_embed):
+            await orch._run_ingest(job_id, "https://ex.com", auto_confirm=True)
 
-    with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
-         patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent), \
-         patch.object(orch._search, "embed_page", side_effect=fake_embed):
-        await orch._run_ingest(job_id, "https://ex.com", auto_confirm=True)
-
-    assert "new-page" in embed_calls
+        assert "new-page" in embed_calls
+    finally:
+        await orch.close()
 
 
 # ── cli/_http.py — server_url and happy paths ─────────────────────────────────
