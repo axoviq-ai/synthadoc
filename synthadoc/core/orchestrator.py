@@ -180,9 +180,13 @@ class Orchestrator:
                 seen[slot] = label
         logger.info("LLM agents — %s", " | ".join(parts))
 
-    async def ingest(self, source: str, force: bool = False) -> str:
+    async def ingest(self, source: str, force: bool = False,
+                     max_results: int | None = None) -> str:
         """Enqueue an ingest job. The server worker loop executes it."""
-        return await self._queue.enqueue("ingest", {"source": source, "force": force})
+        payload: dict = {"source": source, "force": force}
+        if max_results is not None:
+            payload["max_results"] = max_results
+        return await self._queue.enqueue("ingest", payload)
 
     async def resume(self) -> int:
         """Re-enqueue all pending and failed jobs."""
