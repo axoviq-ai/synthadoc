@@ -47,10 +47,11 @@ The simplest invocation uses whichever wiki is set as your default
 python -X utf8 tests/live/run_all.py
 ```
 
-The default wiki is `history-of-computing` and the default port is 7070.
-If your setup differs, override with `--wiki` and `--url` — but **the wiki
-name must match what the running server is actually serving**.  The runner
-validates this at startup and exits with a clear error if they don't match.
+The default wiki is whatever you have set with `synthadoc use` (falls back
+to `history-of-computing` if nothing is configured).  The default port is
+7070.  Override with `--wiki` / `-w` and `--url` — but **the wiki name must
+match what the running server is actually serving**.  The runner validates
+this at startup and exits with a clear error if they don't match.
 
 ```
 # Server on a non-default port
@@ -58,6 +59,7 @@ python -X utf8 tests/live/run_all.py --url http://127.0.0.1:7071
 
 # Different wiki (server must be running for that wiki)
 python -X utf8 tests/live/run_all.py --wiki my-other-wiki --url http://127.0.0.1:7072
+python -X utf8 tests/live/run_all.py -w my-other-wiki --url http://127.0.0.1:7072
 ```
 
 ### One suite only
@@ -136,10 +138,10 @@ SYNTHADOC_URL=http://127.0.0.1:7070 python -X utf8 tests/live/live_plugin_test.p
 | Variable | Default | Used by |
 |---|---|---|
 | `SYNTHADOC_URL` | `http://127.0.0.1:7070/` | CLI test, plugin test |
-| `WIKI_NAME` | `history-of-computing` | CLI test, plugin test |
+| `WIKI_NAME` | wiki set by `synthadoc use`, or `history-of-computing` | CLI test, plugin test |
 | `MCP_URL` | `http://127.0.0.1:7070/mcp/sse` | MCP test |
 
-CLI flags (`--url`, `--wiki`) override environment variables.
+CLI flags (`--url`, `--wiki` / `-w`) override environment variables.
 
 ## Output format
 
