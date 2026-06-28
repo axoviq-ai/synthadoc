@@ -442,7 +442,15 @@ class IngestAgent:
         if self._needs_file_check(source):
             p = Path(source).resolve()
 
-            # Security: reject sources outside wiki_root
+            if not p.exists():
+                raise FileNotFoundError(f"Source not found: {source}")
+            if p.stat().st_size == 0:
+                raise ValueError(f"Source file is empty: {source}")
+
+            # Security: reject sources outside wiki_root.
+            # Existence is checked first so that plain-text strings or typos
+            # that get misclassified as paths produce FileNotFoundError (clear)
+            # rather than PermissionError "outside wiki root" (misleading).
             if self._wiki_root is not None:
                 root_resolved = self._wiki_root.resolve()
                 try:
@@ -451,11 +459,6 @@ class IngestAgent:
                     raise PermissionError(
                         f"Source {p} is outside wiki root {root_resolved}"
                     )
-
-            if not p.exists():
-                raise FileNotFoundError(f"Source not found: {source}")
-            if p.stat().st_size == 0:
-                raise ValueError(f"Source file is empty: {source}")
 
             # Dedup: hash + size (file sources only)
             src_hash, src_size = self._hash(str(p))
@@ -518,7 +521,24 @@ class IngestAgent:
                           "results_count": len(_merged_urls)},
             )
         else:
-            extracted = await self._skill_agent.extract(source)
+            _skill_timeout = (
+                self._cfg.agents.llm_timeout_seconds
+                if self._cfg and self._cfg.agents.llm_timeout_seconds > 0
+                else None
+            )
+            if _skill_timeout:
+                try:
+                    extracted = await asyncio.wait_for(
+                        self._skill_agent.extract(source), timeout=float(_skill_timeout)
+                    )
+                except asyncio.TimeoutError:
+                    raise TimeoutError(
+                        f"Skill extraction timed out after {_skill_timeout}s for source: {source}. "
+                        f"Increase [agents] llm_timeout_seconds in .synthadoc/config.toml "
+                        f"or skip image sources if your provider does not support vision."
+                    )
+            else:
+                extracted = await self._skill_agent.extract(source)
 
         # Web search fan-out: return child sources; orchestrator enqueues them as jobs
         if extracted.metadata.get("child_sources"):

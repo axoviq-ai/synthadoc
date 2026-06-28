@@ -33,7 +33,7 @@ def make_provider(agent_name: str, config: Config) -> LLMProvider:
     if name == "anthropic":
         from synthadoc.providers.anthropic import AnthropicProvider
         key = _require_env("ANTHROPIC_API_KEY", "Anthropic", "https://console.anthropic.com/")
-        return AnthropicProvider(api_key=key, config=agent_cfg)
+        return AnthropicProvider(api_key=key, config=agent_cfg, timeout=timeout)
     if name == "openai":
         from synthadoc.providers.openai import OpenAIProvider
         key = _require_env("OPENAI_API_KEY", "OpenAI", "https://platform.openai.com/api-keys")

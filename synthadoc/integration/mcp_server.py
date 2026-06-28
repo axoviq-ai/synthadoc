@@ -30,11 +30,15 @@ def create_mcp_server(orchestrator):
     mcp = FastMCP(_server_name)
 
     @mcp.tool()
-    async def synthadoc_ingest(source: str) -> dict:
-        """Ingest a source document or URL into the wiki."""
+    async def synthadoc_ingest(source: str, max_results: int | None = None) -> dict:
+        """Ingest a source document or URL into the wiki.
+
+        max_results: limit child jobs spawned by web search (e.g. 2 keeps the
+        number of background jobs small during testing or quick imports).
+        """
         if not source or not source.strip():
             return {"error": "source must not be empty"}
-        job_id = await orchestrator.ingest(source)
+        job_id = await orchestrator.ingest(source, max_results=max_results)
         return {"job_id": job_id, "source": source}
 
     @mcp.tool()

@@ -83,13 +83,26 @@ import os
 import pathlib
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
 # ── Configuration ─────────────────────────────────────────────────────────────
+_DEFAULT_WIKI_FILE = pathlib.Path.home() / ".synthadoc" / "default_wiki"
+
+
+def _configured_wiki() -> str:
+    """Return the wiki set by `synthadoc use`, falling back to history-of-computing."""
+    try:
+        name = _DEFAULT_WIKI_FILE.read_text(encoding="utf-8").strip()
+        return name or "history-of-computing"
+    except FileNotFoundError:
+        return "history-of-computing"
+
+
 SYNTHADOC_URL = os.environ.get("SYNTHADOC_URL", "http://127.0.0.1:7070").rstrip("/")
-WIKI_NAME     = os.environ.get("WIKI_NAME", "history-of-computing")
+WIKI_NAME     = os.environ.get("WIKI_NAME", _configured_wiki())
 PY            = sys.executable
 
 PASS = "\033[92m[PASS]\033[0m"
@@ -154,6 +167,19 @@ def POST(path: str, body: dict | None = None, timeout: int = 60) -> tuple[int, d
 
 def DELETE(path: str, timeout: int = 10) -> tuple[int, dict | str]:
     return _call("DELETE", path, timeout=timeout)
+
+
+def _wait_for_terminal(job_id: str, max_wait: int = 120, interval: int = 3) -> str | None:
+    """Poll job status until terminal or max_wait seconds. Returns final status or None."""
+    deadline = time.monotonic() + max_wait
+    while time.monotonic() < deadline:
+        code, body = GET(f"/jobs/{job_id}")
+        if code == 200 and isinstance(body, dict):
+            status = body.get("status", "")
+            if status in ("completed", "failed", "cancelled"):
+                return status
+        time.sleep(interval)
+    return None
 
 
 def sse_probe(path: str, timeout: int = 12) -> tuple[int, str, str]:
@@ -247,6 +273,8 @@ def main() -> None:
     code, body = POST("/query", {"question": "What is ENIAC?", "timeout_seconds": 30})
     if code == 200 and isinstance(body, dict) and "answer" in body:
         ok("POST /query", f"answer_len={len(body.get('answer', ''))}")
+    elif code == 504 and "timed out" in str(body).lower():
+        ok("POST /query", "HTTP 504 — server correctly enforced 30 s cap (LLM slow; raise timeout_seconds if needed)")
     else:
         warn("POST /query", f"HTTP {code}: {str(body)[:120]}")
 
@@ -267,6 +295,12 @@ def main() -> None:
             ok("GET /jobs/{id}", f"status={body['status']}")
         else:
             fail("GET /jobs/{id}", f"HTTP {code}: {str(body)[:120]}")
+        # Poll until terminal so the delete test always has a target
+        if isinstance(body, dict) and body.get("status") not in ("completed", "failed", "cancelled"):
+            info("Waiting for ingest job to reach terminal state (max 120 s)…")
+            _final = _wait_for_terminal(ingest_job_id)
+            if _final:
+                info(f"Ingest job reached {_final}")
 
     code, body = GET("/jobs")
     if code == 200 and isinstance(body, list):
@@ -695,9 +729,9 @@ if __name__ == "__main__":
         help="Server base URL (overrides SYNTHADOC_URL env var)",
     )
     parser.add_argument(
-        "--wiki", metavar="NAME",
-        default=os.environ.get("WIKI_NAME", "history-of-computing"),
-        help="Wiki name for CLI fallback to discover wiki root (overrides WIKI_NAME env var)",
+        "--wiki", "-w", metavar="NAME",
+        default=os.environ.get("WIKI_NAME", _configured_wiki()),
+        help="Wiki name for CLI fallback to discover wiki root (overrides WIKI_NAME env var; default: `synthadoc use` setting)",
     )
     args = parser.parse_args()
     SYNTHADOC_URL = args.url.rstrip("/")

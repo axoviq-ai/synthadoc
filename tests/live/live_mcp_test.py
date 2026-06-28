@@ -24,8 +24,12 @@ import asyncio
 import json
 import os
 import sys
+import time
+import urllib.error
+import urllib.request
 
 MCP_URL = os.environ.get("MCP_URL", "http://127.0.0.1:7070/mcp/sse")
+_HTTP_BASE = MCP_URL.split("/mcp/sse")[0].rstrip("/")
 
 PASS = "\033[92m[PASS]\033[0m"
 FAIL = "\033[91m[FAIL]\033[0m"
@@ -55,6 +59,38 @@ def warn(tool, note):
 
 def info(msg):
     print(f"  {INFO} {msg}")
+
+
+_TERMINAL = {"completed", "failed", "cancelled", "skipped"}
+
+
+def _http_get_job(job_id: str) -> dict | None:
+    """Poll a single job via the HTTP REST API."""
+    try:
+        with urllib.request.urlopen(f"{_HTTP_BASE}/jobs/{job_id}", timeout=10) as r:
+            return json.loads(r.read().decode())
+    except Exception:
+        return None
+
+
+async def _wait_all_terminal(parent_job_id: str, max_wait: int = 180) -> bool:
+    """Wait for parent job and its child jobs to reach terminal state."""
+    deadline = time.monotonic() + max_wait
+    while time.monotonic() < deadline:
+        job = _http_get_job(parent_job_id)
+        if job and job.get("status") in _TERMINAL:
+            child_ids: list[str] = (job.get("result") or {}).get("child_job_ids", [])
+            if not child_ids:
+                return True
+            child_deadline = time.monotonic() + max_wait
+            while time.monotonic() < child_deadline:
+                children = [_http_get_job(cid) for cid in child_ids]
+                if all(c and c.get("status") in _TERMINAL for c in children):
+                    return True
+                await asyncio.sleep(4)
+            return False
+        await asyncio.sleep(4)
+    return False
 
 
 async def call(session, tool_name, args=None):
@@ -405,15 +441,23 @@ async def run_tests():
 
             # ── 13. synthadoc_ingest ─────────────────────────────────────────
             print("\n[13] synthadoc_ingest")
-            # ingest a plain text snippet — should enqueue and return job_id
+            # ingest via a search intent with max_results=2 to cap child jobs
             r = await call(session, "synthadoc_ingest",
-                           {"source": "The Harvard Mark I was an electromechanical computer completed in 1944."})
+                           {"source": "search for: Harvard Mark I electromechanical computer 1944",
+                            "max_results": 2})
             if "job_id" in r and "source" in r:
-                ok("synthadoc_ingest(text snippet)", f"job_id={r['job_id']!r}")
+                ok("synthadoc_ingest(search intent)", f"job_id={r['job_id']!r}")
+                info("Waiting for parent + ≤2 child jobs to reach terminal state (max 3 min)…")
+                _done = await _wait_all_terminal(r["job_id"])
+                if _done:
+                    info("All ingest jobs reached terminal state")
+                else:
+                    warn("synthadoc_ingest(search intent)",
+                         "Jobs still running after 3 min — check the Jobs panel")
             elif "error" in r:
-                fail("synthadoc_ingest(text snippet)", r["error"])
+                fail("synthadoc_ingest(search intent)", r["error"])
             else:
-                fail("synthadoc_ingest(text snippet)", f"unexpected: {r}")
+                fail("synthadoc_ingest(search intent)", f"unexpected: {r}")
 
             # empty source — quality check
             r = await call(session, "synthadoc_ingest", {"source": ""})
