@@ -75,7 +75,19 @@ import urllib.request
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-WIKI_NAME     = os.environ.get("WIKI_NAME", "history-of-computing")
+_DEFAULT_WIKI_FILE = pathlib.Path.home() / ".synthadoc" / "default_wiki"
+
+
+def _configured_wiki() -> str:
+    """Return the wiki set by `synthadoc use`, falling back to history-of-computing."""
+    try:
+        name = _DEFAULT_WIKI_FILE.read_text(encoding="utf-8").strip()
+        return name or "history-of-computing"
+    except FileNotFoundError:
+        return "history-of-computing"
+
+
+WIKI_NAME     = os.environ.get("WIKI_NAME", _configured_wiki())
 SYNTHADOC_URL = os.environ.get("SYNTHADOC_URL", "http://127.0.0.1:7070/")
 PY            = sys.executable
 
@@ -716,9 +728,9 @@ if __name__ == "__main__":
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "--wiki", metavar="NAME",
-        default=os.environ.get("WIKI_NAME", "history-of-computing"),
-        help="Wiki to test against (overrides WIKI_NAME env var)",
+        "--wiki", "-w", metavar="NAME",
+        default=os.environ.get("WIKI_NAME", _configured_wiki()),
+        help="Wiki to test against (overrides WIKI_NAME env var; default: `synthadoc use` setting)",
     )
     parser.add_argument(
         "--url", metavar="URL",

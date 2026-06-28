@@ -24,8 +24,12 @@ _MAX_RETRIES = 3
 
 
 class AnthropicProvider(LLMProvider):
-    def __init__(self, api_key: str, config: AgentConfig) -> None:
-        self._client = anthropic_lib.AsyncAnthropic(api_key=api_key)
+    def __init__(self, api_key: str, config: AgentConfig, timeout: int = 0) -> None:
+        # timeout=0 means "use the SDK default" (600 s); any positive value caps the call.
+        client_kwargs: dict = {"api_key": api_key}
+        if timeout > 0:
+            client_kwargs["timeout"] = float(timeout)
+        self._client = anthropic_lib.AsyncAnthropic(**client_kwargs)
         self._config = config
 
     async def complete(self, messages: list[Message], system: Optional[str] = None,

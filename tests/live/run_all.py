@@ -35,6 +35,17 @@ import subprocess
 import sys
 from pathlib import Path
 
+_DEFAULT_WIKI_FILE = Path.home() / ".synthadoc" / "default_wiki"
+
+
+def _configured_wiki() -> str:
+    """Return the wiki set by `synthadoc use`, falling back to history-of-computing."""
+    try:
+        name = _DEFAULT_WIKI_FILE.read_text(encoding="utf-8").strip()
+        return name or "history-of-computing"
+    except FileNotFoundError:
+        return "history-of-computing"
+
 HERE = Path(__file__).parent
 
 SUITES = {
@@ -70,9 +81,9 @@ def main() -> None:
         help="Server HTTP base URL (default: http://127.0.0.1:7070)",
     )
     parser.add_argument(
-        "--wiki", metavar="NAME",
-        default="history-of-computing",
-        help="Wiki name (default: history-of-computing)",
+        "--wiki", "-w", metavar="NAME",
+        default=_configured_wiki(),
+        help="Wiki name (default: wiki set by `synthadoc use`, or history-of-computing)",
     )
     parser.add_argument(
         "--mcp-url", metavar="URL",
