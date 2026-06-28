@@ -182,6 +182,85 @@ def _wait_for_terminal(job_id: str, max_wait: int = 120, interval: int = 3) -> s
     return None
 
 
+def _okf_validate(bundle: dict) -> None:
+    """Validate an OKF bundle dict against the OKF v0.1 spec.
+
+    Checks: index.md present, concept files have required `type`, tags are a
+    list (not a string), description has no newlines, wikilinks are rewritten.
+    Reports PASS/WARN per check; never raises so the test suite continues.
+    """
+    try:
+        import yaml as _yaml
+    except ImportError:
+        warn("POST /export (okf) spec-check", "PyYAML not available — skipping content validation")
+        return
+
+    def _fm(text: str) -> dict:
+        if text.startswith("---"):
+            parts = text.split("---", 2)
+            if len(parts) >= 3:
+                return _yaml.safe_load(parts[1]) or {}
+        return {}
+
+    # index.md present with type: index
+    if "index.md" in bundle:
+        fm = _fm(bundle["index.md"])
+        if fm.get("type") == "index":
+            ok("POST /export (okf) spec: index.md type=index")
+        else:
+            warn("POST /export (okf) spec: index.md", f"expected type=index, got {fm.get('type')!r}")
+    else:
+        warn("POST /export (okf) spec: index.md", "missing from bundle")
+
+    # concept files
+    concept_paths = [p for p in bundle if p.startswith("wiki/")]
+    if not concept_paths:
+        warn("POST /export (okf) spec: wiki/ files", "no concept files in bundle")
+        return
+
+    import re as _re
+    _WIKILINK_PAT = _re.compile(r"\[\[[^\]]+\]\]")
+    missing_type, bad_tags, newline_desc, has_wikilinks = [], [], [], []
+    for path in concept_paths:
+        fm = _fm(bundle[path])
+        if "type" not in fm:
+            missing_type.append(path)
+        tags = fm.get("tags")
+        if tags is not None and not isinstance(tags, list):
+            bad_tags.append(path)
+        desc = fm.get("description", "")
+        if desc and "\n" in desc:
+            newline_desc.append(path)
+        body = bundle[path].split("---", 2)[-1] if "---" in bundle[path] else bundle[path]
+        if _WIKILINK_PAT.search(body):
+            has_wikilinks.append(path)
+
+    if missing_type:
+        warn("POST /export (okf) spec: required `type` field",
+             f"missing in {len(missing_type)} file(s): {missing_type[:3]}")
+    else:
+        ok("POST /export (okf) spec: all concept files have `type`",
+           f"{len(concept_paths)} file(s) checked")
+
+    if bad_tags:
+        warn("POST /export (okf) spec: `tags` must be a YAML list",
+             f"string found in {len(bad_tags)} file(s): {bad_tags[:3]}")
+    else:
+        ok("POST /export (okf) spec: `tags` are YAML lists where present")
+
+    if newline_desc:
+        warn("POST /export (okf) spec: `description` must be single sentence",
+             f"newline found in {len(newline_desc)} file(s): {newline_desc[:3]}")
+    else:
+        ok("POST /export (okf) spec: `description` is single-line in all files")
+
+    if has_wikilinks:
+        warn("POST /export (okf) spec: wikilinks not fully rewritten",
+             f"[[...]] found in body of {len(has_wikilinks)} file(s): {has_wikilinks[:3]}")
+    else:
+        ok("POST /export (okf) spec: no raw wikilinks in concept bodies")
+
+
 def sse_probe(path: str, timeout: int = 12) -> tuple[int, str, str]:
     """GET an SSE endpoint; returns (status, content_type, first_chunk)."""
     parsed = urllib.parse.urlparse(SYNTHADOC_URL)
@@ -686,10 +765,11 @@ def main() -> None:
     else:
         fail("POST /export (json)", f"HTTP {code}: {str(body)[:120]}")
 
-    # exportWikiOkf (JSON object)
+    # exportWikiOkf (JSON object) + OKF spec conformance check
     code, body = POST("/export", {"format": "okf", "status_filter": "all"})
     if code == 200 and isinstance(body, dict):
         ok("POST /export (okf)", f"keys={list(body.keys())[:5]}")
+        _okf_validate(body)
     elif code == 200:
         warn("POST /export (okf)", f"HTTP 200 but body type={type(body).__name__} (expected dict)")
     else:
