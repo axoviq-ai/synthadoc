@@ -564,7 +564,10 @@ class IngestAgent:
             result.input_tokens += extracted.metadata["tokens_input"]
             result.output_tokens += extracted.metadata.get("tokens_output", 0)
 
-        text = extracted.text[:8000]
+        _max_chars = getattr(getattr(self._cfg, "ingest", None), "max_source_chars", 32000)
+        _source_len = len(extracted.text)
+        _truncated = _source_len > _max_chars
+        text = extracted.text[:_max_chars]
 
         # Step 1: analysis pass (cached separately from decision)
         analysis = await self._analyse(text, bust_cache=bust_cache)
@@ -811,6 +814,7 @@ class IngestAgent:
                             hash=src_hash or "",
                             size=src_size or 0,
                             ingested=today,
+                            truncated=_truncated,
                         )],
                         created=today,
                         type=analysis.get("type") or None,
