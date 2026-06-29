@@ -552,7 +552,7 @@ async def test_mcp_ingest_calls_ingest_without_auto_confirm(mock_orch):
         result = await mcp._tool_manager.call_tool(
             "synthadoc_ingest", {"source": "paper.pdf"}, convert_result=False
         )
-    mock_ingest.assert_called_once_with("paper.pdf", max_results=None)
+    mock_ingest.assert_called_once_with("paper.pdf", max_results=None, max_source_chars=None)
     assert result["job_id"] == "job-abc"
 
 

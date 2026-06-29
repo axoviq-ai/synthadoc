@@ -361,3 +361,21 @@ def test_content_size_middleware_blocks_large_body(tmp_wiki):
     with TestClient(app, raise_server_exceptions=False) as client:
         resp = client.post("/jobs/ingest", json={"source": "x" * 50})
     assert resp.status_code == 413
+
+
+# ---------------------------------------------------------------------------
+# Task 4: max_source_chars field on IngestRequest
+# ---------------------------------------------------------------------------
+
+def test_ingest_request_accepts_max_source_chars():
+    """IngestRequest must accept max_source_chars and store it."""
+    from synthadoc.integration.http_server import IngestRequest
+    req = IngestRequest(source="file.txt", max_source_chars=128000)
+    assert req.max_source_chars == 128000
+
+
+def test_ingest_request_max_source_chars_defaults_none():
+    """IngestRequest must default max_source_chars to None."""
+    from synthadoc.integration.http_server import IngestRequest
+    req = IngestRequest(source="file.txt")
+    assert req.max_source_chars is None

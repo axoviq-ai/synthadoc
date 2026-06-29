@@ -50,6 +50,10 @@ def ingest_cmd(
         help="Run analysis pass only; print result without writing wiki pages."),
     max_results: Optional[int] = typer.Option(None, "--max-results", "-n",
         help="Max URLs to ingest from a web search (overrides config default of 20)."),
+    max_source_chars: Optional[int] = typer.Option(
+        None, "--max-source-chars",
+        help="Override [ingest] max_source_chars for this run only (e.g. 128000 for large PDFs).",
+    ),
 ):
     """Enqueue a source for ingestion. Requires synthadoc serve to be running."""
     from synthadoc.cli._wiki import resolve_wiki
@@ -98,6 +102,8 @@ def ingest_cmd(
         body: dict = {"source": abs_source, "force": force}
         if max_results is not None:
             body["max_results"] = max_results
+        if max_source_chars is not None:
+            body["max_source_chars"] = max_source_chars
         result = post(wiki, "/jobs/ingest", body)
         typer.echo(f"Enqueued {s} -> job {result['job_id']}")
         w_flag = f" -w {wiki}" if wiki != "." else ""

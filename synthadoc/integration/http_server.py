@@ -246,6 +246,7 @@ class IngestRequest(BaseModel):
     source: str
     force: bool = False
     max_results: int | None = None
+    max_source_chars: int | None = None   # overrides [ingest] max_source_chars for this run
 
     @field_validator("source")
     @classmethod
@@ -328,8 +329,10 @@ async def _worker_loop(orch) -> None:
                     source = job.payload.get("source", "")
                     force = job.payload.get("force", False)
                     max_results = job.payload.get("max_results")
+                    max_source_chars = job.payload.get("max_source_chars")
                     await orch._run_ingest(job.id, source, auto_confirm=True, force=force,
-                                           max_results=max_results)
+                                           max_results=max_results,
+                                           max_source_chars=max_source_chars)
                 elif job.operation == "lint":
                     scope = job.payload.get("scope", "all")
                     auto_resolve = job.payload.get("auto_resolve", False)
@@ -830,6 +833,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         payload: dict = {"source": source, "force": req.force}
         if req.max_results is not None:
             payload["max_results"] = req.max_results
+        if req.max_source_chars is not None:
+            payload["max_source_chars"] = req.max_source_chars
         job_id = await app.state.orch.queue.enqueue("ingest", payload)
         return {"job_id": job_id}
 
