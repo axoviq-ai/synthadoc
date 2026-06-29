@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Copyright (C) 2026 Paul Chen / axoviq.com
+# Copyright (C) 2026 William Johnason / axoviq.com
 from synthadoc.storage.wiki import SourceRef, _sources_to_dicts, _sources_from_dicts
 
 
