@@ -40,6 +40,15 @@ export function ChatWindow({
         if (sessionId) setTimeout(() => inputRef.current?.focus(), 0);
     }, [sessionId]);
 
+    // Refocus textarea when streaming ends so the user can type the next query immediately
+    const prevStreamingRef = useRef(false);
+    useEffect(() => {
+        if (prevStreamingRef.current && !streaming) {
+            setTimeout(() => inputRef.current?.focus(), 0);
+        }
+        prevStreamingRef.current = streaming;
+    }, [streaming]);
+
     useEffect(() => {
         if (injectedQuery !== null) {
             setInput(injectedQuery);
