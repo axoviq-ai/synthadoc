@@ -38,6 +38,7 @@ class LintReport:
     lifecycle_stale: int = 0
     lifecycle_archived: int = 0
     lifecycle_synced: int = 0
+    warnings: list[str] = field(default_factory=list)
 
 
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
@@ -249,6 +250,24 @@ class LintAgent:
                 self._store.write_page(slug, page)
                 fixed += 1
         return fixed
+
+    def _check_truncated_sources(self, slug: str, page) -> list[str]:
+        """Return warning strings for any sources flagged as truncated."""
+        warnings = []
+        for src in (page.sources or []):
+            if getattr(src, "truncated", False):
+                max_chars = getattr(
+                    getattr(self._cfg, "ingest", None), "max_source_chars", 32000
+                )
+                warnings.append(
+                    f"[WARN] {slug}.md: source '{src.file}' was truncated at ingest "
+                    f"(source exceeded max_source_chars={max_chars} — {src.size:,} chars in source).\n"
+                    f"       To re-ingest with a higher limit (this source only):\n"
+                    f"         synthadoc ingest {src.file} --max-source-chars {src.size * 2}\n"
+                    f"       To raise the limit for all future ingests:\n"
+                    f"         set [ingest] max_source_chars = {src.size * 2} in your config"
+                )
+        return warnings
 
     async def _adversarial_single(self, slug: str, content: str) -> tuple[list[dict], int]:
         """Adversarially review one page. Always returns; never raises (rate-limits are caught)."""
@@ -581,6 +600,10 @@ class LintAgent:
                         await self._audit.record_audit_event(
                             job_id, "citation_validation_failed", issue,
                         )
+                # Check 6: truncated source warnings
+                truncation_warnings = self._check_truncated_sources(slug, page)
+                for warning in truncation_warnings:
+                    report.warnings.append(warning)
 
         # adversarial pass — runs only on full scope; default on
         if scope == "all":
