@@ -276,3 +276,25 @@ def test_chat_config_defaults_via_load_config(tmp_path):
     cfg = load_config(project_config=cfg_file)
     assert cfg.chat.conversation_history_turns == 5
     assert cfg.chat.session_retention_days == 30
+
+
+def test_ingest_config_max_source_chars_default():
+    from synthadoc.config import IngestConfig
+    cfg = IngestConfig()
+    assert cfg.max_source_chars == 32000
+
+
+def test_ingest_config_max_source_chars_custom():
+    from synthadoc.config import load_config
+    import tempfile, pathlib, textwrap
+    with tempfile.NamedTemporaryFile(suffix=".toml", delete=False, mode="w") as f:
+        f.write(textwrap.dedent("""
+            [agents.default]
+            provider = "openai"
+            model = "gpt-4o"
+            [ingest]
+            max_source_chars = 64000
+        """))
+        name = f.name
+    cfg = load_config(project_config=pathlib.Path(name))
+    assert cfg.ingest.max_source_chars == 64000
