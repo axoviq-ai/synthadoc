@@ -22,6 +22,7 @@ from synthadoc.storage.search import HybridSearch
 from synthadoc.storage.wiki import SourceRef, WikiPage, WikiStorage, LifecycleState, is_url, TriggerSource
 from synthadoc.skills.web_search.scripts.main import _INTENT_RE as _WEB_INTENT_RE
 from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
+from synthadoc.core.sanitizer import sanitize as _sanitize_source
 
 logger = logging.getLogger(__name__)
 
@@ -563,6 +564,15 @@ class IngestAgent:
             result.tokens_used += extracted.metadata["tokens_input"] + extracted.metadata.get("tokens_output", 0)
             result.input_tokens += extracted.metadata["tokens_input"]
             result.output_tokens += extracted.metadata.get("tokens_output", 0)
+
+        # Sanitize before any LLM call — strip injection vectors
+        _clean_text, _san_warnings = _sanitize_source(extracted.text)
+        if _san_warnings:
+            logger.warning(
+                "sanitizer stripped content from '%s': %s",
+                source, ", ".join(_san_warnings),
+            )
+        extracted.text = _clean_text
 
         _max_chars = getattr(getattr(self._cfg, "ingest", None), "max_source_chars", 32000)
         _source_len = len(extracted.text)
