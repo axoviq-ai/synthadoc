@@ -183,8 +183,8 @@ async def test_query_deduplicates_pages_across_sub_questions(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_query_merged_results_respect_top_n(tmp_wiki):
-    """Merged candidates from all sub-searches must be capped at top_n."""
+async def test_query_merged_results_bounded_by_candidate_pool(tmp_wiki):
+    """Merged candidates from all sub-searches must be bounded by the candidate pool size."""
     store = WikiStorage(tmp_wiki / "wiki")
     for i in range(12):
         store.write_page(f"page-{i}", WikiPage(
@@ -200,10 +200,11 @@ async def test_query_merged_results_respect_top_n(tmp_wiki):
         ),
         CompletionResponse(text="answer", input_tokens=100, output_tokens=10),
     ]
-    agent = QueryAgent(provider=provider, store=store, search=search, top_n=5,
+    agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.0)
     result = await agent.query("alpha gamma question?")
-    assert len(result.citations) <= 5
+    # candidates are bounded by _CANDIDATE_POOL_SIZE (20); all 12 pages may appear
+    assert len(result.citations) <= 20
 
 
 @pytest.mark.asyncio

@@ -416,10 +416,13 @@ class Orchestrator:
         import asyncio
         from synthadoc.agents.query_agent import QueryAgent
         _provider = make_provider("query", self._cfg)
+        _model = self._cfg.agents.resolve("query").model
         result = await asyncio.wait_for(
             QueryAgent(
                 provider=_provider,
                 store=self._store, search=self._search,
+                query_config=self._cfg.query,
+                model=_model,
                 gap_score_threshold=self._cfg.query.gap_score_threshold,
                 orchestrator=self,
                 max_tokens=self._cfg.agents.query_max_tokens,
@@ -457,9 +460,12 @@ class Orchestrator:
         from synthadoc.agents.query_agent import QueryAgent
         _provider = make_provider("query", self._cfg)
         _routing_path = self._root / "ROUTING.md"
+        _model = self._cfg.agents.resolve("query").model
         agent = QueryAgent(
             provider=_provider,
             store=self._store, search=self._search,
+            query_config=self._cfg.query,
+            model=_model,
             gap_score_threshold=self._cfg.query.gap_score_threshold,
             routing_path=_routing_path if _routing_path.exists() else None,
             orchestrator=self,
