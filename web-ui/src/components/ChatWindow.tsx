@@ -35,6 +35,20 @@ export function ChatWindow({
     const messagesRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
+    // Focus textarea when the session becomes ready (initial load, new run, session resume)
+    useEffect(() => {
+        if (sessionId) setTimeout(() => inputRef.current?.focus(), 0);
+    }, [sessionId]);
+
+    // Refocus textarea when streaming ends so the user can type the next query immediately
+    const prevStreamingRef = useRef(false);
+    useEffect(() => {
+        if (prevStreamingRef.current && !streaming) {
+            setTimeout(() => inputRef.current?.focus(), 0);
+        }
+        prevStreamingRef.current = streaming;
+    }, [streaming]);
+
     useEffect(() => {
         if (injectedQuery !== null) {
             setInput(injectedQuery);
@@ -95,7 +109,7 @@ export function ChatWindow({
                 {error && <p className="error-banner" role="alert">{error}</p>}
             </div>
             <div className="input-dock">
-                <HintChips hints={hints} onSelect={(h) => setInput(h)} />
+                <HintChips hints={hints} onSelect={(h) => { setInput(h); setTimeout(() => inputRef.current?.focus(), 0); }} />
                 <div className="input-options">
                     <label className="bypass-cache-label">
                         <input
