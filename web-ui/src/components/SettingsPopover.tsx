@@ -25,8 +25,15 @@ export function SettingsPopover({ timeoutSeconds, onChangeTimeout, onClose }: Pr
         function handleClick(e: MouseEvent) {
             if (ref.current && !ref.current.contains(e.target as Node)) onClose();
         }
+        function handleKey(e: KeyboardEvent) {
+            if (e.key === "Escape") onClose();
+        }
         document.addEventListener("mousedown", handleClick);
-        return () => document.removeEventListener("mousedown", handleClick);
+        document.addEventListener("keydown", handleKey);
+        return () => {
+            document.removeEventListener("mousedown", handleClick);
+            document.removeEventListener("keydown", handleKey);
+        };
     }, [onClose]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
