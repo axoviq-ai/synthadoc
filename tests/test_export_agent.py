@@ -447,7 +447,8 @@ async def test_okf_resource_present_for_url_source(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_okf_tags_as_comma_string(tmp_path):
+async def test_okf_tags_emitted_as_yaml_list(tmp_path):
+    """OKF spec requires tags to be a YAML list of short strings, not a comma-joined string."""
     store = _make_store(tmp_path)
     _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
                     content="Content.", type_="person",
@@ -455,7 +456,33 @@ async def test_okf_tags_as_comma_string(tmp_path):
     agent = _agent(tmp_path, store)
     result = await agent.export(ExportOptions(format="okf"))
     fm = _parse_frontmatter(result["wiki/alan-turing.md"])
-    assert fm["tags"] == "mathematics, computation"
+    assert fm["tags"] == ["mathematics", "computation"]
+
+
+@pytest.mark.asyncio
+async def test_okf_single_tag_emitted_as_list(tmp_path):
+    """A single tag must still be a YAML list, not a bare scalar string."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
+                    content="Content.", type_="person",
+                    tags=["pioneer"])
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    fm = _parse_frontmatter(result["wiki/alan-turing.md"])
+    assert fm["tags"] == ["pioneer"]
+    assert isinstance(fm["tags"], list)
+
+
+@pytest.mark.asyncio
+async def test_okf_tags_omitted_when_empty(tmp_path):
+    """No tags key must appear in frontmatter when the page has no tags."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
+                    content="Content.", type_="person", tags=[])
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    fm = _parse_frontmatter(result["wiki/alan-turing.md"])
+    assert "tags" not in fm
 
 
 @pytest.mark.asyncio
@@ -576,6 +603,27 @@ async def test_okf_contradiction_note_appended_to_body(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_okf_wikilinks_in_contradiction_note_are_rewritten(tmp_path):
+    """Wikilinks inside contradiction_note must be rewritten — the note is appended
+    after the main body rewrite, so it needs its own rewrite pass."""
+    store = _make_store(tmp_path)
+    page = WikiPage(
+        title="Conflict Page", tags=[], content="Original claim.",
+        status=LifecycleState.CONTRADICTED, confidence="low", sources=[],
+        created="2026-05-26", orphan=False, type="concept",
+        contradiction_note="See [[other-page]] for the corrected claim.",
+    )
+    store.write_page("conflict-page", page)
+    _write_okf_page(store, "other-page", "Other Page", LifecycleState.ACTIVE,
+                    content="Correct claim.")
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    body = result["wiki/conflict-page.md"].split("---", 2)[2]
+    assert "[[other-page]]" not in body, "wikilink in contradiction_note was not rewritten"
+    assert "[Other Page](other-page.md)" in body
+
+
+@pytest.mark.asyncio
 async def test_okf_archived_pages_included_with_status_filter(tmp_path):
     store = _make_store(tmp_path)
     _write_okf_page(store, "old-page", "Old Page", LifecycleState.ARCHIVED,
@@ -643,3 +691,106 @@ def test_okf_log_rendered_when_events_present(tmp_path):
     assert "log.md" in result
     assert "alan-turing" in result["log.md"]
     assert "active" in result["log.md"]
+
+
+# ── OKF spec conformance tests ─────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_okf_spec_required_type_field_always_present(tmp_path):
+    """Every concept file must have a `type` field — the only required OKF field."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "p1", "Page One", LifecycleState.ACTIVE,
+                    content="Content.", type_="concept")
+    _write_okf_page(store, "p2", "Page Two", LifecycleState.CONTRADICTED,
+                    content="Disputed.", type_=None)  # defaults to "concept"
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    for path, text in result.items():
+        if path.startswith("wiki/"):
+            fm = _parse_frontmatter(text)
+            assert "type" in fm, f"{path} missing required 'type' field"
+
+
+@pytest.mark.asyncio
+async def test_okf_spec_recommended_fields_present(tmp_path):
+    """OKF recommended fields (title, description, timestamp) must appear in concept files."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
+                    content="Father of computer science. Long description follows.",
+                    type_="person", created="2026-01-01", updated="2026-05-15")
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    fm = _parse_frontmatter(result["wiki/alan-turing.md"])
+    assert "title" in fm
+    assert "description" in fm
+    assert "timestamp" in fm
+
+
+@pytest.mark.asyncio
+async def test_okf_spec_description_is_single_line(tmp_path):
+    """OKF spec says description is 'a single sentence'. It must not contain newlines."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
+                    content="First sentence here. Second sentence. Third sentence.",
+                    type_="person")
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    fm = _parse_frontmatter(result["wiki/alan-turing.md"])
+    assert "\n" not in fm["description"]
+    assert fm["description"] == "First sentence here."
+
+
+@pytest.mark.asyncio
+async def test_okf_spec_index_has_type_index(tmp_path):
+    """index.md must have type: index in frontmatter — OKF reserved filename."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
+                    content="Content.", type_="person")
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    fm = _parse_frontmatter(result["index.md"])
+    assert fm.get("type") == "index"
+
+
+@pytest.mark.asyncio
+async def test_okf_spec_log_has_type_log(tmp_path):
+    """log.md must have type: log in frontmatter — OKF reserved filename."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
+                    content="Content.", type_="person")
+    agent = _agent(tmp_path, store)
+    events = [{"slug": "alan-turing", "from_state": "draft", "to_state": "active",
+               "reason": "ok", "timestamp": "2026-05-01T10:00:00"}]
+    result = agent._render_okf({"alan-turing": store.read_page("alan-turing")}, events)
+    fm = _parse_frontmatter(result["log.md"])
+    assert fm.get("type") == "log"
+
+
+@pytest.mark.asyncio
+async def test_okf_spec_tags_are_list_not_string(tmp_path):
+    """OKF spec: tags is 'YAML list of short strings'. Parsed value must be a Python list."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "ada", "Ada Lovelace", LifecycleState.ACTIVE,
+                    content="First programmer.", type_="person",
+                    tags=["pioneer", "mathematics", "history"])
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    fm = _parse_frontmatter(result["wiki/ada.md"])
+    assert isinstance(fm["tags"], list), "tags must be a YAML list, not a string"
+    assert fm["tags"] == ["pioneer", "mathematics", "history"]
+
+
+@pytest.mark.asyncio
+async def test_okf_spec_wikilinks_resolved_to_markdown(tmp_path):
+    """OKF spec: concepts link with normal markdown links, not [[wikilinks]]."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "ada", "Ada Lovelace", LifecycleState.ACTIVE,
+                    content="Worked with [[babbage|Charles Babbage]] on the Engine.",
+                    type_="person")
+    _write_okf_page(store, "babbage", "Charles Babbage", LifecycleState.ACTIVE,
+                    content="Designed the Difference Engine.", type_="person")
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="okf"))
+    body = result["wiki/ada.md"].split("---", 2)[2]
+    assert "[[" not in body, "wikilinks must be rewritten to markdown links"
+    assert "[Charles Babbage](babbage.md)" in body

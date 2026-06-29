@@ -332,7 +332,7 @@ class ExportAgent:
                 "type": page.type or "concept",
                 "title": page.title,
                 "description": _first_sentence(page.content or ""),
-                "tags": ", ".join(page.tags) if page.tags else "",
+                "tags": list(page.tags) if page.tags else [],
                 "timestamp": page.updated or (str(page.created) if page.created else ""),
                 "status": page.status,
                 "confidence": page.confidence or "",
@@ -345,11 +345,12 @@ class ExportAgent:
                     resource = url_sources[0]
             if resource:
                 fm["resource"] = resource
-            fm = {k: v for k, v in fm.items() if v != ""}
+            fm = {k: v for k, v in fm.items() if v not in ("", [], None)}
 
             body = _rewrite_wikilinks(page.content or "", slug_to_title)
             if page.contradiction_note:
-                body += f"\n\n> **Contradiction:** {page.contradiction_note}"
+                note = _rewrite_wikilinks(page.contradiction_note, slug_to_title)
+                body += f"\n\n> **Contradiction:** {note}"
             raw = _yaml.dump(fm, default_flow_style=False, allow_unicode=True)
             files[f"wiki/{slug}.md"] = f"---\n{raw}---\n\n{body}\n"
 
