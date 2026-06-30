@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 William Johnason / axoviq.com
 
-import { memo, useState, useRef } from "react";
+import { memo, useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Message } from "../useQueryStream";
@@ -11,6 +11,7 @@ interface Props { msg: Message; wikiName?: string; onChipClick?: (value: string)
 type EnrichState = "idle" | "loading" | "done" | "error";
 
 const _IS_URL = /^https?:\/\//i;
+const POLL_INTERVAL_MS = 3000;
 
 function shortUrl(url: string): string {
     try { return new URL(url).hostname.replace(/^www\./, "") + new URL(url).pathname; }
@@ -20,6 +21,9 @@ function shortUrl(url: string): string {
 function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName?: string }) {
     const [copied, setCopied] = useState(false);
     const [enrichStates, setEnrichStates] = useState<EnrichState[]>(() => suggestions.map(() => "idle"));
+    const [jobIds, setJobIds] = useState<(string | null)[]>(() => suggestions.map(() => null));
+    const [jobIdCopied, setJobIdCopied] = useState<number | null>(null);
+    const pollsRef = useRef<Map<number, ReturnType<typeof setInterval>>>(new Map());
     const wikiFlag = wikiName ? ` -w ${wikiName}` : "";
     const commands = suggestions
         .map((s) => _IS_URL.test(s)
@@ -27,11 +31,35 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
             : `synthadoc ingest "search for: ${s}"${wikiFlag}`)
         .join("\n");
 
+    // Clear all polls on unmount
+    useEffect(() => () => { pollsRef.current.forEach(id => clearInterval(id)); }, []);
+
     const handleCopy = () => {
         navigator.clipboard.writeText(commands).then(() => {
             setCopied(true);
             setTimeout(() => setCopied(false), 2000);
         }).catch(() => {});
+    };
+
+    const startPolling = (jobId: string, idx: number) => {
+        const id = setInterval(async () => {
+            try {
+                const r = await fetch(`/jobs/${jobId}`, { cache: "no-store" });
+                if (!r.ok) return;
+                const job = await r.json();
+                if (job.status === "done") {
+                    clearInterval(id);
+                    pollsRef.current.delete(idx);
+                    setEnrichStates(prev => { const next = [...prev]; next[idx] = "done"; return next; });
+                } else if (job.status === "error" || job.status === "cancelled") {
+                    clearInterval(id);
+                    pollsRef.current.delete(idx);
+                    setEnrichStates(prev => { const next = [...prev]; next[idx] = "error"; return next; });
+                }
+                // pending / in_progress — keep polling
+            } catch { /* network hiccup — keep polling */ }
+        }, POLL_INTERVAL_MS);
+        pollsRef.current.set(idx, id);
     };
 
     const handleEnrich = async (s: string, idx: number) => {
@@ -43,7 +71,13 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ source }),
             });
-            setEnrichStates(prev => { const next = [...prev]; next[idx] = resp.ok ? "done" : "error"; return next; });
+            if (!resp.ok) {
+                setEnrichStates(prev => { const next = [...prev]; next[idx] = "error"; return next; });
+                return;
+            }
+            const { job_id } = await resp.json();
+            setJobIds(prev => { const next = [...prev]; next[idx] = job_id; return next; });
+            startPolling(job_id, idx);
         } catch {
             setEnrichStates(prev => { const next = [...prev]; next[idx] = "error"; return next; });
         }
@@ -60,22 +94,43 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
                     const state = enrichStates[i] ?? "idle";
                     const isUrl = _IS_URL.test(s);
                     return (
-                        <li key={i} className="gap-suggestion-row">
-                            {isUrl
-                                ? <span className="gap-suggestion-type gap-type-url">URL</span>
-                                : <span className="gap-suggestion-type gap-type-search">search</span>}
-                            <code className="gap-suggestion-cmd" title={s}>
-                                {isUrl ? shortUrl(s) : s}
-                            </code>
-                            <button
-                                className={`gap-enrich-btn gap-enrich-${state}`}
-                                onClick={() => handleEnrich(s, i)}
-                                disabled={state !== "idle"}
-                            >
-                                {state === "idle" ? (isUrl ? "Ingest" : "Enrich") :
-                                 state === "loading" ? "…" :
-                                 state === "done" ? "Queued ✓" : "Failed"}
-                            </button>
+                        <li key={i} className="gap-suggestion-item">
+                            <div className="gap-suggestion-row">
+                                {isUrl
+                                    ? <span className="gap-suggestion-type gap-type-url">URL</span>
+                                    : <span className="gap-suggestion-type gap-type-search">search</span>}
+                                <code className="gap-suggestion-cmd" title={s}>
+                                    {isUrl ? shortUrl(s) : s}
+                                </code>
+                                <button
+                                    className={`gap-enrich-btn gap-enrich-${state}`}
+                                    onClick={() => handleEnrich(s, i)}
+                                    disabled={state !== "idle"}
+                                    title={state === "loading" ? "Ingesting in background — polls every 3 s" : undefined}
+                                >
+                                    {state === "idle" ? (isUrl ? "Ingest" : "Enrich") :
+                                     state === "loading" ? "Ingesting…" :
+                                     state === "done" ? "Done ✓" : "Failed"}
+                                </button>
+                            </div>
+                            {jobIds[i] && (
+                                <div className="gap-job-id-row">
+                                    <span className="gap-job-id-label">Job</span>
+                                    <code className="gap-job-id-code">{jobIds[i]}</code>
+                                    <button
+                                        className={`gap-job-id-copy${jobIdCopied === i ? " copied" : ""}`}
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(jobIds[i]!).then(() => {
+                                                setJobIdCopied(i);
+                                                setTimeout(() => setJobIdCopied(null), 2000);
+                                            }).catch(() => {});
+                                        }}
+                                        title="Copy job ID"
+                                    >
+                                        {jobIdCopied === i ? "✓" : "⎘"}
+                                    </button>
+                                </div>
+                            )}
                         </li>
                     );
                 })}

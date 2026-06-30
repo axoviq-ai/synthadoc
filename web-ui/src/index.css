@@ -624,6 +624,13 @@ body {
 .bubble-gap-callout .gap-enrich-loading { background: #374151; color: #9ca3af; cursor: default; }
 .bubble-gap-callout .gap-enrich-done { background: #14532d; color: #86efac; cursor: default; }
 .bubble-gap-callout .gap-enrich-error { background: #7f1d1d; color: #fca5a5; cursor: default; }
+.bubble-gap-callout .gap-suggestion-item { display: flex; flex-direction: column; gap: 0.2rem; }
+.bubble-gap-callout .gap-job-id-row { display: flex; align-items: center; gap: 0.4rem; padding-left: 0.2rem; }
+.bubble-gap-callout .gap-job-id-label { font-size: 0.65rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: #6b7280; flex-shrink: 0; }
+.bubble-gap-callout .gap-job-id-code { font-family: "Fira Code","Cascadia Code",monospace; font-size: 0.72rem; color: #64748b; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bubble-gap-callout .gap-job-id-copy { flex-shrink: 0; background: none; border: 1px solid #374151; border-radius: 3px; color: #6b7280; font-size: 0.7rem; padding: 0 4px; cursor: pointer; line-height: 1.4; }
+.bubble-gap-callout .gap-job-id-copy:hover { color: #94a3b8; border-color: #4b5563; }
+.bubble-gap-callout .gap-job-id-copy.copied { color: #4ade80; border-color: #166534; }
 .bubble-gap-callout .gap-cli-details { margin-top: 0.35rem; }
 .bubble-gap-callout .gap-cli-details summary { cursor: pointer; user-select: none; }
 
