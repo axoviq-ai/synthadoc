@@ -154,7 +154,7 @@ As the wiki accumulates pages the `index.md` table of contents, domain scope (`p
 
 ## Why Synthadoc?
 
-Every **Yes** below is a built-in Community Edition feature — no paid tier, no external plugin.
+Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 
 ### Knowledge Quality
 
