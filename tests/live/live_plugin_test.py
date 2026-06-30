@@ -72,6 +72,7 @@ no Obsidian runtime needed.  Organized by the 14 plugin commands + ribbon icon.
   [v1.0-c] sanitizer            : POST /jobs/ingest (injection phrase), page body check
   [v1.0-d] truncation flag      : POST /jobs/ingest (>32 k chars), frontmatter sources check
   [v1.0-e] blocked domain filter: GET /query/stream, gap suggestions contain no blocked domains
+  [v1.0-f] context budget       : GET /query/stream, citations non-empty and status count consistent
 
 ────────────────────────────────────────────────────────────────────────────────
  SIDE EFFECTS & ROLLBACK
@@ -441,6 +442,66 @@ def _test_sanitizer() -> None:
         print("[OK] sanitizer: injection phrase not found in any page body")
     finally:
         os.unlink(src)
+
+
+def _test_context_budget() -> None:
+    """Proportional context budget: broad query returns citations; status.sources is consistent.
+
+    Verifies:
+      - GET /query/stream completes without error
+      - The 'citations' event carries at least one slug
+      - The 'status(synthesizing).sources' count matches len(citations)
+      - If the wiki has >= 6 pages, at least 2 citations are returned (budget
+        allocates across multiple pages, not hard-capped at top_n=5)
+    """
+    code, body = POST("/sessions", {"mode": "query"})
+    assert code == 200, f"POST /sessions returned HTTP {code}"
+    session_id = body.get("session_id", "")
+
+    # Broad question — should touch as many wiki pages as possible
+    q = "Give me an overview of all the topics covered in this wiki"
+    path = (f"/query/stream?q={urllib.parse.quote(q)}"
+            f"&session_id={urllib.parse.quote(session_id)}&no_cache=true")
+    events = _read_full_sse(path, timeout=120)
+
+    # Check no error event
+    error_events = [e for e in events if e.get("event") == "error"]
+    assert not error_events, f"Query returned error: {error_events[0]['data']}"
+
+    # Extract status(synthesizing) sources count
+    synthesizing_sources: int | None = None
+    for e in events:
+        if e.get("event") == "status":
+            data = e.get("data", {})
+            if isinstance(data, dict) and data.get("phase") == "synthesizing":
+                synthesizing_sources = data.get("sources")
+
+    # Extract citations
+    citations: list[str] = []
+    for e in events:
+        if e.get("event") == "citations":
+            data = e.get("data", {})
+            if isinstance(data, dict):
+                citations = data.get("citations", [])
+
+    assert len(citations) > 0, \
+        "No citations returned — budget pipeline may not be passing sources to LLM"
+
+    assert synthesizing_sources == len(citations), (
+        f"status.sources={synthesizing_sources} does not match "
+        f"len(citations)={len(citations)} — budget count inconsistent"
+    )
+
+    # If the wiki is large enough, verify the budget includes more than 1 page
+    graph_code, graph_body = GET("/graph")
+    if graph_code == 200 and isinstance(graph_body, dict):
+        node_count = len(graph_body.get("nodes", []))
+        if node_count >= 6:
+            assert len(citations) >= 2, (
+                f"Wiki has {node_count} pages but only {len(citations)} citation(s) returned — "
+                "budget may be incorrectly capping sources"
+            )
+    print(f"[OK] context budget: {len(citations)} citation(s) from {synthesizing_sources} sources")
 
 
 def _test_blocked_domain_filter() -> None:
@@ -1092,6 +1153,12 @@ def main() -> None:
         ok("GET /query/stream (blocked domain filter)", "no blocked domains in gap suggestions")
     except AssertionError as e:
         fail("GET /query/stream (blocked domain filter)", str(e))
+
+    try:
+        _test_context_budget()
+        ok("GET /query/stream (context budget)", "citations non-empty, status.sources consistent")
+    except AssertionError as e:
+        fail("GET /query/stream (context budget)", str(e))
 
     # ── Summary ───────────────────────────────────────────────────────────────
     passes = sum(1 for r in results if r[0] == "PASS")
