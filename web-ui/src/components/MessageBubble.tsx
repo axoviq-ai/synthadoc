@@ -10,12 +10,21 @@ interface Props { msg: Message; wikiName?: string; onChipClick?: (value: string)
 
 type EnrichState = "idle" | "loading" | "done" | "error";
 
+const _IS_URL = /^https?:\/\//i;
+
+function shortUrl(url: string): string {
+    try { return new URL(url).hostname.replace(/^www\./, "") + new URL(url).pathname; }
+    catch { return url; }
+}
+
 function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName?: string }) {
     const [copied, setCopied] = useState(false);
     const [enrichStates, setEnrichStates] = useState<EnrichState[]>(() => suggestions.map(() => "idle"));
     const wikiFlag = wikiName ? ` -w ${wikiName}` : "";
     const commands = suggestions
-        .map((s) => `synthadoc ingest "search for: ${s}"${wikiFlag}`)
+        .map((s) => _IS_URL.test(s)
+            ? `synthadoc ingest "${s}"${wikiFlag}`
+            : `synthadoc ingest "search for: ${s}"${wikiFlag}`)
         .join("\n");
 
     const handleCopy = () => {
@@ -26,12 +35,13 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
     };
 
     const handleEnrich = async (s: string, idx: number) => {
+        const source = _IS_URL.test(s) ? s : `search for: ${s}`;
         setEnrichStates(prev => { const next = [...prev]; next[idx] = "loading"; return next; });
         try {
             const resp = await fetch("/jobs/ingest", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ source: `search for: ${s}` }),
+                body: JSON.stringify({ source }),
             });
             setEnrichStates(prev => { const next = [...prev]; next[idx] = resp.ok ? "done" : "error"; return next; });
         } catch {
@@ -43,20 +53,26 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
         <div className="bubble-gap-callout">
             <p className="gap-title">💡 Knowledge Gap Detected</p>
             <p className="gap-text">
-                Your wiki doesn't have enough on this topic yet. Click <strong>Enrich</strong> to ingest via web search:
+                Your wiki doesn't have enough on this topic yet. Click to ingest:
             </p>
             <ul className="gap-suggestions">
                 {suggestions.map((s, i) => {
                     const state = enrichStates[i] ?? "idle";
+                    const isUrl = _IS_URL.test(s);
                     return (
                         <li key={i} className="gap-suggestion-row">
-                            <code className="gap-suggestion-cmd">search for: {s}</code>
+                            {isUrl
+                                ? <span className="gap-suggestion-type gap-type-url">URL</span>
+                                : <span className="gap-suggestion-type gap-type-search">search</span>}
+                            <code className="gap-suggestion-cmd" title={s}>
+                                {isUrl ? shortUrl(s) : s}
+                            </code>
                             <button
                                 className={`gap-enrich-btn gap-enrich-${state}`}
                                 onClick={() => handleEnrich(s, i)}
                                 disabled={state !== "idle"}
                             >
-                                {state === "idle" ? "Enrich" :
+                                {state === "idle" ? (isUrl ? "Ingest" : "Enrich") :
                                  state === "loading" ? "…" :
                                  state === "done" ? "Queued ✓" : "Failed"}
                             </button>

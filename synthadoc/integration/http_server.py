@@ -732,6 +732,9 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                 msg = known.detail if known else "LLM provider unavailable"
                 yield f"event: error\ndata: {_json.dumps({'message': msg})}\n\n"
                 return
+            # Strip [GAP] sentinel the LLM may have prepended (guard B, streaming path)
+            if full_answer.startswith("[GAP]"):
+                full_answer = full_answer[len("[GAP]"):].lstrip("\n")
             if full_answer and _is_cacheable:
                 from synthadoc.core.cache import make_query_cache_key
                 _qcfg = orch._cfg.agents.resolve("query")

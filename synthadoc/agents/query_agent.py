@@ -909,6 +909,7 @@ class QueryAgent:
         synthesis_prompt = self._build_synthesis_prompt(
             question, context,
             gap=_gap, system_ctx=_system_ctx, is_live_data=_is_live_data,
+            gap_sentinel=True,
             history=_trimmed_history if _trimmed_history else None,
         )
 
@@ -946,6 +947,14 @@ class QueryAgent:
             fallback = "(No response was generated. Please try again.)"
             yield {"event": "token", "data": {"text": fallback}}
             full_answer = fallback
+
+        # Guard B: post-synthesis gap detection — same logic as run().
+        # Fires when _detect_gap() missed (pre-synthesis, guard A) but the LLM
+        # still could not answer from the available pages.
+        if not _gap and full_answer.startswith("[GAP]"):
+            _gap = True
+            full_answer = full_answer[len("[GAP]"):].lstrip("\n")
+            logger.debug("run_stream: guard B fired — post-synthesis gap detected")
 
         yield {"event": "citations", "data": {"citations": [] if _gap else citations}}
 
