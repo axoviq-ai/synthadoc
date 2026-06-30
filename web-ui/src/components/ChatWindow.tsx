@@ -7,7 +7,7 @@ import { HintChips } from "./HintChips";
 import { Hero } from "./Hero";
 import { useQueryStream } from "../useQueryStream";
 import type { Message } from "../useQueryStream";
-import { SettingsPopover, readTimeoutSetting } from "./SettingsPopover";
+import { SettingsPopover, readTimeoutSetting, readMaxResultsSetting } from "./SettingsPopover";
 
 interface Props {
     sessionId: string | null;
@@ -31,6 +31,7 @@ export function ChatWindow({
     const [input, setInput] = useState("");
     const [noCache, setNoCache] = useState(false);
     const [timeoutSeconds, setTimeoutSeconds] = useState(readTimeoutSetting);
+    const [maxResults, setMaxResults] = useState(readMaxResultsSetting);
     const [showSettings, setShowSettings] = useState(false);
     const messagesRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -99,6 +100,7 @@ export function ChatWindow({
                                     key={m.id}
                                     msg={m}
                                     wikiName={wikiName}
+                                    maxResults={maxResults}
                                     onChipClick={handleChipClick}
                                 />
                             ))}
@@ -132,6 +134,8 @@ export function ChatWindow({
                             <SettingsPopover
                                 timeoutSeconds={timeoutSeconds}
                                 onChangeTimeout={setTimeoutSeconds}
+                                maxResults={maxResults}
+                                onChangeMaxResults={setMaxResults}
                                 onClose={() => setShowSettings(false)}
                             />
                         )}

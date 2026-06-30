@@ -39,8 +39,9 @@ export const ENRICH_LABEL = {
     BTN_BLOCKED:     "Blocked ✗",      // "Blocked ✗"
     BTN_ERROR:       "Failed",
 
-    // Tooltip
-    TIP_LOADING: "Ingesting in background — polls every 3 s",
+    // Tooltips
+    TIP_LOADING:   "Ingesting in background — polls every 3 s",
+    TIP_INDEXING:  "Fetching pages found in search — polls every 3 s",
 
     // Fallback reason strings (used when the job carries no error message)
     REASON_HASH_SKIP:  "Content hash unchanged — no re-processing needed",

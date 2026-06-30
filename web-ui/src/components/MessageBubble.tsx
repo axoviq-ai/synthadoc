@@ -7,7 +7,7 @@ import remarkGfm from "remark-gfm";
 import type { Message } from "../useQueryStream";
 import { JOB, ENRICH, ENRICH_LABEL, type EnrichState } from "../jobStatus";
 
-interface Props { msg: Message; wikiName?: string; onChipClick?: (value: string) => void; }
+interface Props { msg: Message; wikiName?: string; maxResults?: number; onChipClick?: (value: string) => void; }
 
 const _IS_URL = /^https?:\/\//i;
 const POLL_INTERVAL_MS = 3000;
@@ -22,12 +22,15 @@ function shortUrl(url: string): string {
     catch { return url; }
 }
 
-function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName?: string }) {
+type ChildProgress = { done: number; total: number };
+
+function GapCallout({ suggestions, wikiName, maxResults }: { suggestions: string[]; wikiName?: string; maxResults?: number }) {
     const [copied, setCopied] = useState(false);
     const [enrichStates, setEnrichStates] = useState<EnrichState[]>(() => suggestions.map(() => ENRICH.IDLE));
     const [jobIds, setJobIds] = useState<(string | null)[]>(() => suggestions.map(() => null));
     const [jobReasons, setJobReasons] = useState<(string | null)[]>(() => suggestions.map(() => null));
     const [jobResults, setJobResults] = useState<(Record<string, string[]> | null)[]>(() => suggestions.map(() => null));
+    const [childProgress, setChildProgress] = useState<(ChildProgress | null)[]>(() => suggestions.map(() => null));
     const [jobIdCopied, setJobIdCopied] = useState<number | null>(null);
     const pollsRef = useRef<Map<number, ReturnType<typeof setInterval>>>(new Map());
     const wikiFlag = wikiName ? ` -w ${wikiName}` : "";
@@ -52,6 +55,32 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
         if (reason) setJobReasons(prev => { const next = [...prev]; next[idx] = reason; return next; });
     };
 
+    const _JOB_TERMINAL = new Set<string>([JOB.COMPLETED, JOB.SKIPPED, JOB.FAILED, JOB.DEAD, JOB.CANCELLED]);
+
+    const startChildMonitoring = (childIds: string[], idx: number) => {
+        const childSet = new Set(childIds);
+        setChildProgress(prev => { const next = [...prev]; next[idx] = { done: 0, total: childIds.length }; return next; });
+        const id = setInterval(async () => {
+            try {
+                const r = await fetch("/jobs", { cache: "no-store" });
+                if (!r.ok) return;
+                const allJobs: Array<{ id: string; status: string; result?: Record<string, string[]> }> = await r.json();
+                const children = allJobs.filter(j => childSet.has(j.id));
+                const done = children.filter(j => _JOB_TERMINAL.has(j.status)).length;
+                setChildProgress(prev => { const next = [...prev]; next[idx] = { done, total: childIds.length }; return next; });
+                if (done >= childIds.length) {
+                    clearInterval(id); pollsRef.current.delete(idx);
+                    const allCreated = children.flatMap(j => j.result?.pages_created ?? []);
+                    const allUpdated = children.flatMap(j => j.result?.pages_updated ?? []);
+                    setJobResults(prev => { const next = [...prev]; next[idx] = { pages_created: allCreated, pages_updated: allUpdated }; return next; });
+                    setChildProgress(prev => { const next = [...prev]; next[idx] = null; return next; });
+                    setTerminal(idx, ENRICH.DONE, null);
+                }
+            } catch { /* network hiccup — keep polling */ }
+        }, POLL_INTERVAL_MS);
+        pollsRef.current.set(idx, id);
+    };
+
     const startPolling = (jobId: string, idx: number) => {
         const id = setInterval(async () => {
             try {
@@ -60,6 +89,12 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
                 const job = await r.json();
                 if (job.status === JOB.COMPLETED) {
                     clearInterval(id); pollsRef.current.delete(idx);
+                    const childIds: string[] = job.result?.child_job_ids ?? [];
+                    if (childIds.length > 0) {
+                        // Parent spawned child jobs — monitor them before marking Done
+                        startChildMonitoring(childIds, idx);
+                        return;
+                    }
                     setJobResults(prev => { const next = [...prev]; next[idx] = job.result || null; return next; });
                     setTerminal(idx, ENRICH.DONE, null);
                 } else if (job.status === JOB.SKIPPED) {
@@ -89,11 +124,14 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
         setJobIds(prev => { const next = [...prev]; next[idx] = null; return next; });
         setJobReasons(prev => { const next = [...prev]; next[idx] = null; return next; });
         setJobResults(prev => { const next = [...prev]; next[idx] = null; return next; });
+        setChildProgress(prev => { const next = [...prev]; next[idx] = null; return next; });
         try {
+            const body: Record<string, unknown> = { source, force };
+            if (!_IS_URL.test(s) && maxResults !== undefined) body.max_results = maxResults;
             const resp = await fetch("/jobs/ingest", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ source, force }),
+                body: JSON.stringify(body),
             });
             if (!resp.ok) {
                 setTerminal(idx, ENRICH.ERROR, `HTTP ${resp.status}`);
@@ -119,12 +157,17 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
                     const isUrl = _IS_URL.test(s);
                     const reason = jobReasons[i];
                     const result = jobResults[i];
+                    const prog = childProgress[i];
                     const doneCount = result
                         ? (result.pages_created?.length ?? 0) + (result.pages_updated?.length ?? 0)
                         : 0;
                     const doneLabel = doneCount > 0
                         ? `${ENRICH_LABEL.BTN_DONE} ${doneCount} page${doneCount > 1 ? "s" : ""}`
                         : ENRICH_LABEL.BTN_DONE;
+                    const loadingLabel = prog
+                        ? `Indexing ${prog.done}/${prog.total}…`
+                        : ENRICH_LABEL.BTN_LOADING;
+                    const loadingTip = prog ? ENRICH_LABEL.TIP_INDEXING : ENRICH_LABEL.TIP_LOADING;
                     return (
                         <li key={i} className="gap-suggestion-item">
                             <div className="gap-suggestion-row">
@@ -138,10 +181,10 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
                                     className={`gap-enrich-btn gap-enrich-${state}`}
                                     onClick={() => handleEnrich(s, i)}
                                     disabled={state !== ENRICH.IDLE}
-                                    title={state === ENRICH.LOADING ? ENRICH_LABEL.TIP_LOADING : undefined}
+                                    title={state === ENRICH.LOADING ? loadingTip : undefined}
                                 >
                                     {state === ENRICH.IDLE    ? (isUrl ? ENRICH_LABEL.BTN_IDLE_URL : ENRICH_LABEL.BTN_IDLE_SEARCH) :
-                                     state === ENRICH.LOADING ? ENRICH_LABEL.BTN_LOADING :
+                                     state === ENRICH.LOADING ? loadingLabel :
                                      state === ENRICH.DONE    ? doneLabel :
                                      state === ENRICH.SKIPPED ? (isPermBlocked(reason) ? ENRICH_LABEL.BTN_BLOCKED : ENRICH_LABEL.BTN_SKIPPED)
                                                               : ENRICH_LABEL.BTN_ERROR}
@@ -270,7 +313,7 @@ const CLARIFY_ACTION_VERB: Record<string, string> = {
     lifecycle_restore:  "Restore",
 };
 
-export const MessageBubble = memo(function MessageBubble({ msg, wikiName, onChipClick }: Props) {
+export const MessageBubble = memo(function MessageBubble({ msg, wikiName, maxResults, onChipClick }: Props) {
     const isUser = msg.role === "user";
 
     if (msg.type === "clarify") {
@@ -305,7 +348,7 @@ export const MessageBubble = memo(function MessageBubble({ msg, wikiName, onChip
                 </p>
             )}
             {msg.gapSuggestions && msg.gapSuggestions.length > 0 && (
-                <GapCallout suggestions={msg.gapSuggestions} wikiName={wikiName} />
+                <GapCallout suggestions={msg.gapSuggestions} wikiName={wikiName} maxResults={maxResults} />
             )}
         </div>
     );
