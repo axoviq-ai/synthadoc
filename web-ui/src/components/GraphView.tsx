@@ -86,31 +86,36 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string) => void }) {
 
     const types = ["all", ...Array.from(new Set(nodes.map(n => n.type))).sort()];
 
-    if (status === "loading" || status === "computing") return (
-        <div className="graph-computing">
-            <div className="graph-spinner" />
-            <p>Building knowledge graph…</p>
-        </div>
-    );
-    if (status === "error") return <p className="error-banner">Failed to load graph.</p>;
-
     return (
         <div className="graph-view">
-            <div className="graph-controls">
-                <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
-                        aria-label="Filter by type">
-                    {types.map(t => <option key={t} value={t}>{t === "all" ? "All types" : t}</option>)}
-                </select>
-                <span className="graph-stats">{nodes.length} nodes · {edges.length} edges</span>
-            </div>
-            <div className="graph-canvas-wrap">
-                <svg ref={svgRef} className="graph-canvas" />
-                <GraphSidebar
-                    node={selected}
-                    onAsk={(q) => { onAskQuery(q); setSelected(null); }}
-                    onClose={() => setSelected(null)}
-                />
-            </div>
+            {(status === "loading" || status === "computing") && (
+                <div className="graph-computing">
+                    <div className="graph-spinner" />
+                    <p>Building knowledge graph…</p>
+                </div>
+            )}
+            {status === "error" && (
+                <p className="error-banner">Failed to load graph.</p>
+            )}
+            {status === "ready" && (
+                <>
+                    <div className="graph-controls">
+                        <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
+                                aria-label="Filter by type">
+                            {types.map(t => <option key={t} value={t}>{t === "all" ? "All types" : t}</option>)}
+                        </select>
+                        <span className="graph-stats">{nodes.length} nodes · {edges.length} edges</span>
+                    </div>
+                    <div className="graph-canvas-wrap">
+                        <svg ref={svgRef} className="graph-canvas" />
+                        <GraphSidebar
+                            node={selected}
+                            onAsk={(q) => { onAskQuery(q); setSelected(null); }}
+                            onClose={() => setSelected(null)}
+                        />
+                    </div>
+                </>
+            )}
         </div>
     );
 }
