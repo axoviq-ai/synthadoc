@@ -27,6 +27,7 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
     const [enrichStates, setEnrichStates] = useState<EnrichState[]>(() => suggestions.map(() => ENRICH.IDLE));
     const [jobIds, setJobIds] = useState<(string | null)[]>(() => suggestions.map(() => null));
     const [jobReasons, setJobReasons] = useState<(string | null)[]>(() => suggestions.map(() => null));
+    const [jobResults, setJobResults] = useState<(Record<string, string[]> | null)[]>(() => suggestions.map(() => null));
     const [jobIdCopied, setJobIdCopied] = useState<number | null>(null);
     const pollsRef = useRef<Map<number, ReturnType<typeof setInterval>>>(new Map());
     const wikiFlag = wikiName ? ` -w ${wikiName}` : "";
@@ -59,6 +60,7 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
                 const job = await r.json();
                 if (job.status === JOB.COMPLETED) {
                     clearInterval(id); pollsRef.current.delete(idx);
+                    setJobResults(prev => { const next = [...prev]; next[idx] = job.result || null; return next; });
                     setTerminal(idx, ENRICH.DONE, null);
                 } else if (job.status === JOB.SKIPPED) {
                     clearInterval(id); pollsRef.current.delete(idx);
@@ -86,6 +88,7 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
         setEnrichStates(prev => { const next = [...prev]; next[idx] = ENRICH.LOADING; return next; });
         setJobIds(prev => { const next = [...prev]; next[idx] = null; return next; });
         setJobReasons(prev => { const next = [...prev]; next[idx] = null; return next; });
+        setJobResults(prev => { const next = [...prev]; next[idx] = null; return next; });
         try {
             const resp = await fetch("/jobs/ingest", {
                 method: "POST",
@@ -115,6 +118,13 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
                     const state = enrichStates[i] ?? ENRICH.IDLE;
                     const isUrl = _IS_URL.test(s);
                     const reason = jobReasons[i];
+                    const result = jobResults[i];
+                    const doneCount = result
+                        ? (result.pages_created?.length ?? 0) + (result.pages_updated?.length ?? 0)
+                        : 0;
+                    const doneLabel = doneCount > 0
+                        ? `${ENRICH_LABEL.BTN_DONE} ${doneCount} page${doneCount > 1 ? "s" : ""}`
+                        : ENRICH_LABEL.BTN_DONE;
                     return (
                         <li key={i} className="gap-suggestion-item">
                             <div className="gap-suggestion-row">
@@ -132,7 +142,7 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
                                 >
                                     {state === ENRICH.IDLE    ? (isUrl ? ENRICH_LABEL.BTN_IDLE_URL : ENRICH_LABEL.BTN_IDLE_SEARCH) :
                                      state === ENRICH.LOADING ? ENRICH_LABEL.BTN_LOADING :
-                                     state === ENRICH.DONE    ? ENRICH_LABEL.BTN_DONE :
+                                     state === ENRICH.DONE    ? doneLabel :
                                      state === ENRICH.SKIPPED ? (isPermBlocked(reason) ? ENRICH_LABEL.BTN_BLOCKED : ENRICH_LABEL.BTN_SKIPPED)
                                                               : ENRICH_LABEL.BTN_ERROR}
                                 </button>

@@ -309,6 +309,34 @@ class ExportRequest(BaseModel):
     context_pack: str | None = None
 
 
+def _load_blocked_domains(wiki_root: Path) -> set[str]:
+    """Return the set of auto-blocked domains from .synthadoc/blocked_domains.json."""
+    import json as _json_mod
+    p = wiki_root / ".synthadoc" / "blocked_domains.json"
+    if not p.exists():
+        return set()
+    try:
+        return set(_json_mod.loads(p.read_text(encoding="utf-8")))
+    except Exception:
+        return set()
+
+
+_SUGGESTION_URL_RE = re.compile(r"^https?://([^/]+)", re.IGNORECASE)
+
+
+def _filter_blocked_suggestions(suggestions: list[str], blocked: set[str]) -> list[str]:
+    """Remove URL suggestions whose domain is in the blocked set; keep search queries."""
+    if not blocked:
+        return suggestions
+    filtered = []
+    for s in suggestions:
+        m = _SUGGESTION_URL_RE.match(s)
+        if m and m.group(1).lower().lstrip("www.") in blocked:
+            continue
+        filtered.append(s)
+    return filtered
+
+
 def _parse_retry_after(exc: Exception, default: float = 60.0) -> float:
     """Parse 'Please try again in Xm Y.Zs' from a rate-limit error message."""
     m = re.search(r"Please try again in (?:(\d+)m\s*)?(\d+(?:\.\d+)?)s", str(exc))
@@ -629,7 +657,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                         events.append({"event": "token", "data": {"text": word + " "}})
                     events.append({"event": "citations", "data": {"citations": cached.get("citations", [])}})
                     if cached.get("knowledge_gap") and cached.get("suggested_searches"):
-                        events.append({"event": "gap", "data": {"suggested_searches": cached["suggested_searches"]}})
+                        _filtered_cached = _filter_blocked_suggestions(
+                            cached["suggested_searches"], _load_blocked_domains(orch._root))
+                        if _filtered_cached:
+                            events.append({"event": "gap", "data": {"suggested_searches": _filtered_cached}})
                     from synthadoc.agents.hint_engine import HintEngine
                     _ss = _session_state.get(session_id or "", {})
                     cursor = _ss.get("cursor", 0)
@@ -696,7 +727,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                             citations = evt["data"].get("citations", [])
                         elif evt["event"] == "gap":
                             _knowledge_gap = True
-                            _suggested_searches = evt["data"].get("suggested_searches", [])
+                            _raw = evt["data"].get("suggested_searches", [])
+                            _suggested_searches = _filter_blocked_suggestions(
+                                _raw, _load_blocked_domains(orch._root))
+                            evt["data"]["suggested_searches"] = _suggested_searches
                         elif evt["event"] == "done":
                             _is_cacheable = evt["data"].get("cacheable", True)
                             from synthadoc.agents.hint_engine import HintEngine
