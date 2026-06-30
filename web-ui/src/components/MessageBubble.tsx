@@ -13,6 +13,15 @@ type EnrichState = "idle" | "loading" | "done" | "skipped" | "error";
 const _IS_URL = /^https?:\/\//i;
 const POLL_INTERVAL_MS = 3000;
 
+// Mirror of JobStatus enum in synthadoc/core/queue.py — keep in sync
+const JOB = {
+    COMPLETED:  "completed",
+    SKIPPED:    "skipped",
+    FAILED:     "failed",
+    DEAD:       "dead",
+    CANCELLED:  "cancelled",
+} as const;
+
 // Patterns that indicate a permanent skip — force re-index won't help
 const _PERM_BLOCK = /auto-blocked|err-skill-003|blocked automated|future urls.*skipped|\b40[34]\b/i;
 const isPermBlocked = (reason: string | null) => !!reason && _PERM_BLOCK.test(reason);
@@ -57,16 +66,16 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
                 const r = await fetch(`/jobs/${jobId}`, { cache: "no-store" });
                 if (!r.ok) return;
                 const job = await r.json();
-                if (job.status === "done") {
+                if (job.status === JOB.COMPLETED) {
                     clearInterval(id); pollsRef.current.delete(idx);
                     setTerminal(idx, "done", null);
-                } else if (job.status === "skipped") {
+                } else if (job.status === JOB.SKIPPED) {
                     clearInterval(id); pollsRef.current.delete(idx);
                     setTerminal(idx, "skipped", job.error || "Content hash unchanged — no re-processing needed");
-                } else if (job.status === "failed" || job.status === "dead") {
+                } else if (job.status === JOB.FAILED || job.status === JOB.DEAD) {
                     clearInterval(id); pollsRef.current.delete(idx);
                     setTerminal(idx, "error", job.error || "Ingest failed");
-                } else if (job.status === "cancelled") {
+                } else if (job.status === JOB.CANCELLED) {
                     clearInterval(id); pollsRef.current.delete(idx);
                     setTerminal(idx, "error", job.error || "Cancelled by user");
                 }

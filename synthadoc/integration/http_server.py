@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, Response
+from synthadoc.core.queue import JobStatus
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 from typing import Optional
@@ -485,7 +486,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
         orch = app.state.orch
         jobs = await orch.queue.list_jobs()
-        pending = sum(1 for j in jobs if j.status == "pending")
+        pending = sum(1 for j in jobs if j.status == JobStatus.PENDING)
         pages = [s for s in orch._store.list_pages() if s not in LINT_SKIP_SLUGS]
         return {
             "wiki": str(wiki_root),
@@ -1003,7 +1004,6 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     @app.get("/jobs")
     async def list_jobs(status: str | None = None, sort: str = "created_at", order: str = "asc"):
-        from synthadoc.core.queue import JobStatus
         if sort not in _VALID_JOB_SORT:
             raise HTTPException(status_code=400, detail=f"Invalid sort {sort!r}. Valid: {sorted(_VALID_JOB_SORT)}")
         if order not in _VALID_JOB_ORDER:
@@ -1034,7 +1034,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         job = next((j for j in jobs if j.id == job_id), None)
         if job is None:
             raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found")
-        if job.status in ("pending", "in_progress"):
+        if job.status in (JobStatus.PENDING, JobStatus.IN_PROGRESS):
             raise HTTPException(status_code=409, detail=f"Cannot delete a job with status {job.status!r}")
         await app.state.orch.queue.delete(job_id, app.state.orch._audit)
         return {"deleted": job_id}

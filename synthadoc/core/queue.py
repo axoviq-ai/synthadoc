@@ -131,7 +131,7 @@ class JobQueue:
             async with db.execute("SELECT retries FROM jobs WHERE id=?", (job_id,)) as cur:
                 row = await cur.fetchone()
             retries = (row["retries"] + 1) if row else 1
-            new_status = "dead" if retries >= self._max_retries else "pending"
+            new_status = JobStatus.DEAD if retries >= self._max_retries else JobStatus.PENDING
             await db.execute(
                 "UPDATE jobs SET status=?,retries=?,error=? WHERE id=?",
                 (new_status, retries, error, job_id),
