@@ -5,7 +5,7 @@ import { memo, useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Message } from "../useQueryStream";
-import { JOB, ENRICH, type EnrichState } from "../jobStatus";
+import { JOB, ENRICH, ENRICH_LABEL, type EnrichState } from "../jobStatus";
 
 interface Props { msg: Message; wikiName?: string; onChipClick?: (value: string) => void; }
 
@@ -62,13 +62,13 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
                     setTerminal(idx, ENRICH.DONE, null);
                 } else if (job.status === JOB.SKIPPED) {
                     clearInterval(id); pollsRef.current.delete(idx);
-                    setTerminal(idx, ENRICH.SKIPPED, job.error || "Content hash unchanged — no re-processing needed");
+                    setTerminal(idx, ENRICH.SKIPPED, job.error || ENRICH_LABEL.REASON_HASH_SKIP);
                 } else if (job.status === JOB.FAILED || job.status === JOB.DEAD) {
                     clearInterval(id); pollsRef.current.delete(idx);
-                    setTerminal(idx, ENRICH.ERROR, job.error || "Ingest failed");
+                    setTerminal(idx, ENRICH.ERROR, job.error || ENRICH_LABEL.REASON_INGEST_ERR);
                 } else if (job.status === JOB.CANCELLED) {
                     clearInterval(id); pollsRef.current.delete(idx);
-                    setTerminal(idx, ENRICH.ERROR, job.error || "Cancelled by user");
+                    setTerminal(idx, ENRICH.ERROR, job.error || ENRICH_LABEL.REASON_CANCELLED);
                 }
                 // pending / in_progress — keep polling
             } catch { /* network hiccup — keep polling */ }
@@ -100,7 +100,7 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
             setJobIds(prev => { const next = [...prev]; next[idx] = job_id; return next; });
             startPolling(job_id, idx);
         } catch {
-            setTerminal(idx, ENRICH.ERROR, "Network error — server unreachable");
+            setTerminal(idx, ENRICH.ERROR, ENRICH_LABEL.REASON_NETWORK);
         }
     };
 
@@ -128,12 +128,13 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
                                     className={`gap-enrich-btn gap-enrich-${state}`}
                                     onClick={() => handleEnrich(s, i)}
                                     disabled={state !== ENRICH.IDLE}
-                                    title={state === ENRICH.LOADING ? "Ingesting in background — polls every 3 s" : undefined}
+                                    title={state === ENRICH.LOADING ? ENRICH_LABEL.TIP_LOADING : undefined}
                                 >
-                                    {state === ENRICH.IDLE    ? (isUrl ? "Ingest" : "Enrich") :
-                                     state === ENRICH.LOADING ? "Ingesting…" :
-                                     state === ENRICH.DONE    ? "Done ✓" :
-                                     state === ENRICH.SKIPPED ? "Already indexed" : "Failed"}
+                                    {state === ENRICH.IDLE    ? (isUrl ? ENRICH_LABEL.BTN_IDLE_URL : ENRICH_LABEL.BTN_IDLE_SEARCH) :
+                                     state === ENRICH.LOADING ? ENRICH_LABEL.BTN_LOADING :
+                                     state === ENRICH.DONE    ? ENRICH_LABEL.BTN_DONE :
+                                     state === ENRICH.SKIPPED ? (isPermBlocked(reason) ? ENRICH_LABEL.BTN_BLOCKED : ENRICH_LABEL.BTN_SKIPPED)
+                                                              : ENRICH_LABEL.BTN_ERROR}
                                 </button>
                             </div>
                             {jobIds[i] && (

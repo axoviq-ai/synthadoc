@@ -26,3 +26,25 @@ export const ENRICH = {
 } as const;
 
 export type EnrichState = typeof ENRICH[keyof typeof ENRICH];
+
+// Display strings for the GapCallout ingest button and inline messages.
+// Centralised here so every label has one definition and is easy to update.
+export const ENRICH_LABEL = {
+    // Button face text per state
+    BTN_IDLE_URL:    "Ingest",
+    BTN_IDLE_SEARCH: "Enrich",
+    BTN_LOADING:     "Ingesting…",    // "Ingesting…"
+    BTN_DONE:        "Done ✓",         // "Done ✓"
+    BTN_SKIPPED:     "Already indexed",
+    BTN_BLOCKED:     "Blocked ✗",      // "Blocked ✗"
+    BTN_ERROR:       "Failed",
+
+    // Tooltip
+    TIP_LOADING: "Ingesting in background — polls every 3 s",
+
+    // Fallback reason strings (used when the job carries no error message)
+    REASON_HASH_SKIP:  "Content hash unchanged — no re-processing needed",
+    REASON_INGEST_ERR: "Ingest failed",
+    REASON_CANCELLED:  "Cancelled by user",
+    REASON_NETWORK:    "Network error — server unreachable",
+} as const;
