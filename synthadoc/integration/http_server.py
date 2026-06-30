@@ -383,6 +383,9 @@ async def _worker_loop(orch) -> None:
         await asyncio.sleep(sleep_secs)
 
 
+_graph_computing = False  # module-level flag prevents duplicate background tasks
+
+
 def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mcp: bool = True) -> FastAPI:
     import os
     import synthadoc
@@ -783,6 +786,65 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
     async def get_hints(mode: str = "POWER_USER"):
         from synthadoc.agents.hint_engine import HintEngine
         return {"hints": HintEngine.initial_hints(mode)}
+
+    @app.get("/graph")
+    async def get_graph():
+        global _graph_computing
+        orch = app.state.orch
+        graph_data = await orch._audit.read_graph()
+        if graph_data is None:
+            if not _graph_computing:
+                _graph_computing = True
+                logger.info("[graph] computation started (lazy hydration)")
+                asyncio.create_task(_background_build_graph())
+            return JSONResponse(content={"status": "computing"}, headers=_NO_STORE)
+        enriched_nodes = []
+        for n in graph_data["nodes"]:
+            page = orch._store.read_page(n["slug"])
+            enriched_nodes.append({
+                "slug": n["slug"],
+                "title": page.title if page else n["slug"],
+                "type": (page.type if page else None) or "concept",
+                "state": (page.status if page else "active"),
+                "cluster_id": n["cluster_id"],
+            })
+        clusters = len({n["cluster_id"] for n in graph_data["nodes"]}) if graph_data["nodes"] else 0
+        return JSONResponse(content={
+            "status": "ready",
+            "node_count": len(enriched_nodes),
+            "edge_count": len(graph_data["edges"]),
+            "cluster_count": clusters,
+            "nodes": enriched_nodes,
+            "edges": [
+                {"from": e["from_slug"], "to": e["to_slug"], "weight": e["weight"]}
+                for e in graph_data["edges"]
+            ],
+        }, headers=_NO_STORE)
+
+    async def _background_build_graph():
+        global _graph_computing
+        try:
+            from synthadoc.agents.lint_agent import LintAgent
+            from synthadoc.providers import make_provider as _make_provider
+            _orch = app.state.orch
+            lint = LintAgent(
+                provider=_make_provider("lint", _orch._cfg),
+                store=_orch._store,
+                log_writer=_orch._log,
+                audit_db=_orch._audit,
+                cfg=_orch._cfg,
+            )
+            nodes, edges = lint._build_graph()
+            await _orch._audit.write_graph(nodes, edges)
+            logger.info(
+                "[graph] complete — %d nodes, %d edges, %d clusters",
+                len(nodes), len(edges),
+                len({n["cluster_id"] for n in nodes}) if nodes else 0,
+            )
+        except Exception as exc:
+            logger.error("[graph] build failed: %s", exc)
+        finally:
+            _graph_computing = False
 
     @app.post("/analyse")
     async def analyse_source(req: AnalyseRequest):
