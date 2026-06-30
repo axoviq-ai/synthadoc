@@ -13,6 +13,10 @@ type EnrichState = "idle" | "loading" | "done" | "skipped" | "error";
 const _IS_URL = /^https?:\/\//i;
 const POLL_INTERVAL_MS = 3000;
 
+// Patterns that indicate a permanent skip — force re-index won't help
+const _PERM_BLOCK = /auto-blocked|err-skill-003|blocked automated|future urls.*skipped|\b40[34]\b/i;
+const isPermBlocked = (reason: string | null) => !!reason && _PERM_BLOCK.test(reason);
+
 function shortUrl(url: string): string {
     try { return new URL(url).hostname.replace(/^www\./, "") + new URL(url).pathname; }
     catch { return url; }
@@ -153,7 +157,7 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
                             {reason && (
                                 <p className="gap-job-reason">{reason}</p>
                             )}
-                            {state === "skipped" && (
+                            {state === "skipped" && !isPermBlocked(reason) && (
                                 <button
                                     className="gap-force-btn"
                                     onClick={() => handleEnrich(s, i, true)}
