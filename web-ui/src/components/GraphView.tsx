@@ -78,7 +78,7 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string) => void }) {
                 .on("drag", (e, d) => { d.fx=e.x; d.fy=e.y; })
                 .on("end", (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx=null; d.fy=null; }) as any);
 
-        node.append("title").text((d: any) => d.title);
+        node.append("title").text((d: any) => d.title || d.slug);
 
         sim.on("tick", () => {
             link.attr("x1", (d: any) => d.source.x).attr("y1", (d: any) => d.source.y)

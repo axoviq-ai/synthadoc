@@ -11,10 +11,11 @@ interface Props {
 }
 export function GraphSidebar({ node, clusterColor, onAsk, onClose }: Props) {
     if (!node) return null;
+    const displayTitle = node.title || node.slug;
     return (
         <div className="graph-sidebar">
             <button className="graph-sidebar-close" onClick={onClose} aria-label="Close">×</button>
-            <h3 className="graph-sidebar-title">{node.title}</h3>
+            <h3 className="graph-sidebar-title">{displayTitle}</h3>
             <div className="graph-sidebar-badges">
                 <span className={`badge badge-type badge-${node.type}`}>{node.type}</span>
                 <span className={`badge badge-state badge-${node.state}`}>{node.state}</span>
@@ -25,7 +26,7 @@ export function GraphSidebar({ node, clusterColor, onAsk, onClose }: Props) {
             </p>
             <button
                 className="graph-sidebar-ask-btn"
-                onClick={() => onAsk(`Tell me about ${node.title}`)}
+                onClick={() => onAsk(`Tell me about ${displayTitle}`)}
             >
                 Ask about this →
             </button>
