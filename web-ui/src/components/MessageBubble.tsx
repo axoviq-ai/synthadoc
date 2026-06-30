@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 William Johnason / axoviq.com
 
-import { memo, useState } from "react";
+import { memo, useState, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Message } from "../useQueryStream";
@@ -94,6 +94,27 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
     );
 }
 
+// Fenced code block wrapper with a one-click copy button
+function PreBlock({ children }: { children?: React.ReactNode }) {
+    const [copied, setCopied] = useState(false);
+    const preRef = useRef<HTMLPreElement>(null);
+    const copy = () => {
+        const text = preRef.current?.textContent ?? "";
+        navigator.clipboard.writeText(text).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        }).catch(() => {});
+    };
+    return (
+        <div className="code-block-wrap">
+            <pre ref={preRef}>{children}</pre>
+            <button className="code-copy-btn" onClick={copy} title="Copy to clipboard">
+                {copied ? "✓" : "Copy"}
+            </button>
+        </div>
+    );
+}
+
 // Escape CLI-style placeholders like <schedule-id> or <wiki-name> that appear
 // outside code spans. ReactMarkdown v10 drops unknown HTML tags silently, making
 // these placeholders invisible. We only target hyphenated names (not <br>, <em>, etc).
@@ -173,7 +194,9 @@ export const MessageBubble = memo(function MessageBubble({ msg, wikiName, onChip
                         </div>
                     )
                     : <div className="bubble-md">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{escapePlaceholders(msg.text)}</ReactMarkdown>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ pre: PreBlock }}>
+                            {escapePlaceholders(msg.text)}
+                        </ReactMarkdown>
                       </div>
             }
             {msg.citations && msg.citations.length > 0 && (

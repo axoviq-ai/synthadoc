@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node -e \"const{cpSync,rmSync}=require('fs');rmSync('../synthadoc/data/web-ui/dist',{recursive:true,force:true});cpSync('dist','../synthadoc/data/web-ui/dist',{recursive:true});console.log('synced to data/');\"",
     "lint": "eslint .",
     "preview": "vite preview"
   },

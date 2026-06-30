@@ -585,8 +585,13 @@ body {
 .bubble-md ul, .bubble-md ol { margin: 0.3rem 0 0.3rem 1.4rem; }
 .bubble-md li { margin: 0.15rem 0; }
 .bubble-md code { background: #0b0d18; border-radius: 4px; padding: 0.1em 0.35em; font-size: 0.85em; font-family: "Fira Code", "Cascadia Code", monospace; }
-.bubble-md pre { background: #0b0d18; border-radius: 6px; padding: 0.7rem 0.9rem; overflow-x: auto; margin: 0.5rem 0; }
+.bubble-md pre { background: #0b0d18; border-radius: 6px; padding: 0.7rem 0.9rem; overflow-x: auto; margin: 0; }
 .bubble-md pre code { background: none; padding: 0; font-size: 0.82rem; }
+.code-block-wrap { position: relative; margin: 0.5rem 0; }
+.code-block-wrap pre { border-radius: 6px; }
+.code-copy-btn { position: absolute; top: 6px; right: 8px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); color: #94a3b8; border-radius: 4px; padding: 2px 8px; font-size: 0.72rem; cursor: pointer; transition: background 0.15s; }
+.code-copy-btn:hover { background: rgba(255,255,255,0.15); color: #e2e8f0; }
+.code-copy-btn:active { background: rgba(255,255,255,0.2); }
 .bubble-md blockquote { border-left: 3px solid #374151; padding-left: 0.75rem; color: #94a3b8; margin: 0.4rem 0; }
 .bubble-md hr { border: none; border-top: 1px solid #2d3748; margin: 0.5rem 0; }
 .bubble-md table { border-collapse: collapse; width: 100%; margin: 0.5rem 0; font-size: 0.88rem; }
