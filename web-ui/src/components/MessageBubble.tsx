@@ -22,6 +22,7 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
     const [copied, setCopied] = useState(false);
     const [enrichStates, setEnrichStates] = useState<EnrichState[]>(() => suggestions.map(() => "idle"));
     const [jobIds, setJobIds] = useState<(string | null)[]>(() => suggestions.map(() => null));
+    const [jobReasons, setJobReasons] = useState<(string | null)[]>(() => suggestions.map(() => null));
     const [jobIdCopied, setJobIdCopied] = useState<number | null>(null);
     const pollsRef = useRef<Map<number, ReturnType<typeof setInterval>>>(new Map());
     const wikiFlag = wikiName ? ` -w ${wikiName}` : "";
@@ -41,6 +42,11 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
         }).catch(() => {});
     };
 
+    const setTerminal = (idx: number, state: EnrichState, reason: string | null) => {
+        setEnrichStates(prev => { const next = [...prev]; next[idx] = state; return next; });
+        if (reason) setJobReasons(prev => { const next = [...prev]; next[idx] = reason; return next; });
+    };
+
     const startPolling = (jobId: string, idx: number) => {
         const id = setInterval(async () => {
             try {
@@ -48,17 +54,17 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
                 if (!r.ok) return;
                 const job = await r.json();
                 if (job.status === "done") {
-                    clearInterval(id);
-                    pollsRef.current.delete(idx);
-                    setEnrichStates(prev => { const next = [...prev]; next[idx] = "done"; return next; });
+                    clearInterval(id); pollsRef.current.delete(idx);
+                    setTerminal(idx, "done", null);
                 } else if (job.status === "skipped") {
-                    clearInterval(id);
-                    pollsRef.current.delete(idx);
-                    setEnrichStates(prev => { const next = [...prev]; next[idx] = "skipped"; return next; });
-                } else if (job.status === "error" || job.status === "cancelled") {
-                    clearInterval(id);
-                    pollsRef.current.delete(idx);
-                    setEnrichStates(prev => { const next = [...prev]; next[idx] = "error"; return next; });
+                    clearInterval(id); pollsRef.current.delete(idx);
+                    setTerminal(idx, "skipped", job.error || "Content hash unchanged — no re-processing needed");
+                } else if (job.status === "failed" || job.status === "dead") {
+                    clearInterval(id); pollsRef.current.delete(idx);
+                    setTerminal(idx, "error", job.error || "Ingest failed");
+                } else if (job.status === "cancelled") {
+                    clearInterval(id); pollsRef.current.delete(idx);
+                    setTerminal(idx, "error", job.error || "Cancelled by user");
                 }
                 // pending / in_progress — keep polling
             } catch { /* network hiccup — keep polling */ }
@@ -66,24 +72,31 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
         pollsRef.current.set(idx, id);
     };
 
-    const handleEnrich = async (s: string, idx: number) => {
+    const handleEnrich = async (s: string, idx: number, force = false) => {
         const source = _IS_URL.test(s) ? s : `search for: ${s}`;
+        // Clear any existing poll for this slot (e.g. force re-index after skipped)
+        if (pollsRef.current.has(idx)) {
+            clearInterval(pollsRef.current.get(idx)!);
+            pollsRef.current.delete(idx);
+        }
         setEnrichStates(prev => { const next = [...prev]; next[idx] = "loading"; return next; });
+        setJobIds(prev => { const next = [...prev]; next[idx] = null; return next; });
+        setJobReasons(prev => { const next = [...prev]; next[idx] = null; return next; });
         try {
             const resp = await fetch("/jobs/ingest", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ source }),
+                body: JSON.stringify({ source, force }),
             });
             if (!resp.ok) {
-                setEnrichStates(prev => { const next = [...prev]; next[idx] = "error"; return next; });
+                setTerminal(idx, "error", `HTTP ${resp.status}`);
                 return;
             }
             const { job_id } = await resp.json();
             setJobIds(prev => { const next = [...prev]; next[idx] = job_id; return next; });
             startPolling(job_id, idx);
         } catch {
-            setEnrichStates(prev => { const next = [...prev]; next[idx] = "error"; return next; });
+            setTerminal(idx, "error", "Network error — server unreachable");
         }
     };
 
@@ -97,6 +110,7 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
                 {suggestions.map((s, i) => {
                     const state = enrichStates[i] ?? "idle";
                     const isUrl = _IS_URL.test(s);
+                    const reason = jobReasons[i];
                     return (
                         <li key={i} className="gap-suggestion-item">
                             <div className="gap-suggestion-row">
@@ -135,6 +149,17 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
                                         {jobIdCopied === i ? "✓" : "⎘"}
                                     </button>
                                 </div>
+                            )}
+                            {reason && (
+                                <p className="gap-job-reason">{reason}</p>
+                            )}
+                            {state === "skipped" && (
+                                <button
+                                    className="gap-force-btn"
+                                    onClick={() => handleEnrich(s, i, true)}
+                                >
+                                    ↻ Re-index with --force
+                                </button>
                             )}
                         </li>
                     );

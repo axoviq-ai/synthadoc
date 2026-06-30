@@ -632,6 +632,9 @@ body {
 .bubble-gap-callout .gap-job-id-copy { flex-shrink: 0; background: none; border: 1px solid #374151; border-radius: 3px; color: #6b7280; font-size: 0.7rem; padding: 0 4px; cursor: pointer; line-height: 1.4; }
 .bubble-gap-callout .gap-job-id-copy:hover { color: #94a3b8; border-color: #4b5563; }
 .bubble-gap-callout .gap-job-id-copy.copied { color: #4ade80; border-color: #166534; }
+.bubble-gap-callout .gap-job-reason { font-size: 0.72rem; color: #94a3b8; margin: 0.1rem 0 0 0.2rem; font-style: italic; line-height: 1.4; }
+.bubble-gap-callout .gap-force-btn { margin: 0.2rem 0 0 0.2rem; background: none; border: 1px solid #854d0e; color: #d97706; border-radius: 4px; padding: 2px 8px; font-size: 0.71rem; cursor: pointer; }
+.bubble-gap-callout .gap-force-btn:hover { background: rgba(133,77,14,0.15); }
 .bubble-gap-callout .gap-cli-details { margin-top: 0.35rem; }
 .bubble-gap-callout .gap-cli-details summary { cursor: pointer; user-select: none; }
 
