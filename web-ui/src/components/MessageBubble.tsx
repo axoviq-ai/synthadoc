@@ -8,7 +8,7 @@ import type { Message } from "../useQueryStream";
 
 interface Props { msg: Message; wikiName?: string; onChipClick?: (value: string) => void; }
 
-type EnrichState = "idle" | "loading" | "done" | "error";
+type EnrichState = "idle" | "loading" | "done" | "skipped" | "error";
 
 const _IS_URL = /^https?:\/\//i;
 const POLL_INTERVAL_MS = 3000;
@@ -51,6 +51,10 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
                     clearInterval(id);
                     pollsRef.current.delete(idx);
                     setEnrichStates(prev => { const next = [...prev]; next[idx] = "done"; return next; });
+                } else if (job.status === "skipped") {
+                    clearInterval(id);
+                    pollsRef.current.delete(idx);
+                    setEnrichStates(prev => { const next = [...prev]; next[idx] = "skipped"; return next; });
                 } else if (job.status === "error" || job.status === "cancelled") {
                     clearInterval(id);
                     pollsRef.current.delete(idx);
@@ -108,9 +112,10 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
                                     disabled={state !== "idle"}
                                     title={state === "loading" ? "Ingesting in background — polls every 3 s" : undefined}
                                 >
-                                    {state === "idle" ? (isUrl ? "Ingest" : "Enrich") :
+                                    {state === "idle"    ? (isUrl ? "Ingest" : "Enrich") :
                                      state === "loading" ? "Ingesting…" :
-                                     state === "done" ? "Done ✓" : "Failed"}
+                                     state === "done"    ? "Done ✓" :
+                                     state === "skipped" ? "Already indexed" : "Failed"}
                                 </button>
                             </div>
                             {jobIds[i] && (
