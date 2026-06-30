@@ -54,13 +54,16 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string) => void }) {
 
         svg.call(d3.zoom<SVGSVGElement, unknown>().on("zoom", e => g.attr("transform", e.transform)));
 
+        // D3 forceLink requires {source, target} — our API uses {from, to}
+        const d3Links = filteredEdges.map(e => ({ source: e.from, target: e.to, weight: e.weight }));
+
         const sim = d3.forceSimulation(filtered as d3.SimulationNodeDatum[])
-            .force("link", d3.forceLink(filteredEdges as any).id((d: any) => d.slug).distance(80))
+            .force("link", d3.forceLink(d3Links).id((d: any) => d.slug).distance(80))
             .force("charge", d3.forceManyBody().strength(-120))
             .force("center", d3.forceCenter(width / 2, height / 2));
 
         const link = g.append("g").selectAll("line")
-            .data(filteredEdges).join("line")
+            .data(d3Links).join("line")
             .attr("stroke", "#ccc").attr("stroke-width", (d: any) => Math.sqrt(d.weight));
 
         const node = g.append("g").selectAll("circle")
