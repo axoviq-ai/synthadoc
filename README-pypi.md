@@ -163,7 +163,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **Ingest-time synthesis** — sources compiled into the wiki at ingest; not re-summarised at query time | **Yes** | No | Partial | No |
 | **Contradiction detection & resolution** — conflicting claims flagged `status: contradicted`; auto-resolve available; full conflict history | **Yes** | No | No | No |
 | **Adversarial claim review** — concurrent second-LLM pass flags overstated claims, unsupported superlatives, and contestable facts per page | **Yes** | No | No | No |
-| **Claim-level provenance** — `^[file:L-L]` citation on every claim; Source Viewer in Obsidian; PDF page resolution; broken-citation lint | **Yes** | No | No | No |
+| **Claim-level provenance** — `^[file:L-L]` citation on every claim; Source Viewer in Obsidian; PDF page resolution; broken-citation lint | **Yes** | No | Partial | No |
 | **5-state lifecycle machine** — `draft → active → contradicted / stale → archived`; auto-transitions via lint; immutable event log | **Yes** | No | No | No |
 | **Pre-LLM source sanitizer** — strips zero-width chars, bidi overrides, hidden HTML, and instruction-override phrases before any LLM call | **Yes** | No | No | No |
 
@@ -171,7 +171,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 
 | Capability | Synthadoc | Typical RAG | NotebookLM | Notion AI |
 | --- | --- | --- | --- | --- |
-| **Wikilink graph + D3 visualisation** — `[[wikilinks]]` auto-built at ingest; force-directed graph in web UI; nodes coloured by Louvain cluster; click node to query | **Yes** | No | No | No |
+| **Wikilink graph + D3 visualisation** — `[[wikilinks]]` auto-built at ingest; force-directed graph in web UI; nodes coloured by Louvain cluster; click node to query | **Yes** | No | Partial | No |
 | **Orphan page detection** — unreferenced pages surfaced by lint with ready-to-paste index entries | **Yes** | No | No | No |
 | **Query-scoped routing** — ROUTING.md maps wiki branches to page slugs; queries auto-select relevant branches; new pages auto-slotted | **Yes** | No | No | No |
 | **Candidates staging** — ingest pages to a staging area first; review, promote, or discard before they enter the live wiki | **Yes** | No | No | No |
@@ -181,10 +181,10 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 
 | Capability | Synthadoc | Typical RAG | NotebookLM | Notion AI |
 | --- | --- | --- | --- | --- |
-| **Query decomposition + gap detection** — compound questions split into parallel BM25 sub-queries; thin results trigger a knowledge-gap callout with suggested web searches | **Yes** | No | No | No |
+| **Query decomposition + gap detection** — compound questions split into parallel BM25 sub-queries; thin results trigger a knowledge-gap callout with suggested web searches | **Yes** | Partial | No | No |
 | **Web search → wiki pages** — Tavily search fans out into parallel URL ingest jobs; gap callout in web UI suggests searches inline | **Yes** | No | No | No |
 | **Semantic re-ranking** — optional vector re-ranking (`BAAI/bge-small-en-v1.5`) improves recall on conceptually related queries; BM25 stays as fallback | **Yes** (optional) | Varies | No | No |
-| **Streaming output + query cache** — token-by-token streaming; cache key = question + wiki version; auto-invalidates on ingest or lifecycle change | **Yes** | No | No | No |
+| **Streaming output + query cache** — token-by-token streaming; cache key = question + wiki version; auto-invalidates on ingest or lifecycle change | **Yes** | Partial | Partial | Partial |
 | **Proportional context budget** — sources allocated proportionally to model context window (60 % wiki / 20 % history / 15 % system); not capped at a hard top-N | **Yes** | No | No | No |
 
 ### Interfaces & Integration
@@ -192,18 +192,18 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | Capability | Synthadoc | Typical RAG | NotebookLM | Notion AI |
 | --- | --- | --- | --- | --- |
 | **Obsidian integration** — native plugin: ingest modal, streaming query, lint report, lifecycle controls, context pack builder, provenance viewer, export modal | **Yes** | No | No | No |
-| **Web chat UI** — `synthadoc web`: streaming answers, session sidebar, multi-turn history, knowledge-gap callouts, knowledge graph tab | **Yes** | No | No | No |
+| **Web chat UI** — `synthadoc web`: streaming answers, session sidebar, multi-turn history, knowledge-gap callouts, knowledge graph tab | **Yes** | No | Yes | Yes |
 | **MCP server** — 12 tools; Claude Desktop (stdio), Claude Code (SSE), n8n/LangGraph (HTTP/SSE); brain+memory architecture; no double-LLM cost for reads | **Yes** | No | No | No |
 | **Context packs** — goal → sub-questions → token-budget evidence pack; REST + MCP callable; paste into any LLM chat as grounded context | **Yes** | No | No | No |
-| **Export formats** — `llms.txt`, `llms-full.txt`, GraphML, JSON (provenance + lifecycle), OKF v0.1 bundle; lifecycle-filtered; zero extra LLM calls | **Yes** | No | No | No |
+| **Export formats** — `llms.txt`, `llms-full.txt`, GraphML, JSON (provenance + lifecycle), OKF v0.1 bundle; lifecycle-filtered; zero extra LLM calls | **Yes** | No | Partial | No |
 
 ### Content Sources
 
 | Capability | Synthadoc | Typical RAG | NotebookLM | Notion AI |
 | --- | --- | --- | --- | --- |
-| **Multi-format ingest** — PDF, DOCX, PPTX, XLSX/CSV, Markdown, TXT, images (vision), web URLs, YouTube transcripts | **Yes** | Varies | Partial | No |
-| **Web search decomposition** — broad topics decomposed into focused Tavily keyword searches; results merged and deduplicated | **Yes** | No | No | No |
-| **YouTube transcript ingest** — timestamped transcript + executive summary; no API key; auto-generated captions supported | **Yes** | No | No | No |
+| **Multi-format ingest** — PDF, DOCX, PPTX, XLSX/CSV, Markdown, TXT, images (vision), web URLs, YouTube transcripts | **Yes** | Varies | Partial | Partial |
+| **Web search decomposition** — broad topics decomposed into focused Tavily keyword searches; results merged and deduplicated | **Yes** | No | No | Partial |
+| **YouTube transcript ingest** — timestamped transcript + executive summary; no API key; auto-generated captions supported | **Yes** | No | Yes | No |
 | **Multilingual / CJK queries** — Chinese, Japanese, Korean — no false knowledge gaps | **Yes** | Limited | No | No |
 | **Multiple LLM providers + coding tools** — Gemini, Groq, Qwen, MiniMax, DeepSeek, Anthropic, OpenAI, Ollama; Claude Code and Opencode (no API key needed) | **Yes** | No | No | No |
 
@@ -217,7 +217,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **Resumable job queue + retry** — every ingest/lint job persisted with status and error; batch a hundred documents and resume after a crash | **Yes** | No | No | No |
 | **Custom skills + CI hooks** — subclass `BaseSkill` for new file formats; 2 hook events on ingest and lint complete; blocking hooks can gate operations | **Yes** | Limited | No | No |
 | **Per-source truncation flag** — `--max-source-chars` caps oversized PDFs before the LLM call; truncated sources flagged in lint output | **Yes** | No | No | No |
-| **Multi-wiki isolation** — each wiki on its own port with independent config, audit trail, and job queue; switch with `synthadoc use` | **Yes** | No | No | No |
+| **Multi-wiki isolation** — each wiki on its own port with independent config, audit trail, and job queue; switch with `synthadoc use` | **Yes** | No | Partial | No |
 
 ### Key differentiators vs. RAG
 
