@@ -8,8 +8,11 @@ import type { Message } from "../useQueryStream";
 
 interface Props { msg: Message; wikiName?: string; onChipClick?: (value: string) => void; }
 
+type EnrichState = "idle" | "loading" | "done" | "error";
+
 function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName?: string }) {
     const [copied, setCopied] = useState(false);
+    const [enrichStates, setEnrichStates] = useState<EnrichState[]>(() => suggestions.map(() => "idle"));
     const wikiFlag = wikiName ? ` -w ${wikiName}` : "";
     const commands = suggestions
         .map((s) => `synthadoc ingest "search for: ${s}"${wikiFlag}`)
@@ -22,23 +25,54 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
         }).catch(() => {});
     };
 
+    const handleEnrich = async (s: string, idx: number) => {
+        setEnrichStates(prev => { const next = [...prev]; next[idx] = "loading"; return next; });
+        try {
+            const resp = await fetch("/jobs/ingest", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ source: `search for: ${s}` }),
+            });
+            setEnrichStates(prev => { const next = [...prev]; next[idx] = resp.ok ? "done" : "error"; return next; });
+        } catch {
+            setEnrichStates(prev => { const next = [...prev]; next[idx] = "error"; return next; });
+        }
+    };
+
     return (
         <div className="bubble-gap-callout">
             <p className="gap-title">💡 Knowledge Gap Detected</p>
             <p className="gap-text">
-                Your wiki doesn't have enough on this topic yet. Enrich it with a web search:
+                Your wiki doesn't have enough on this topic yet. Click <strong>Enrich</strong> to ingest via web search:
             </p>
-            <p className="gap-section">
-                <strong>From Obsidian:</strong> Open Command Palette (<code>Cmd+P</code> / <code>Ctrl+P</code>)
-                {" → "}<strong>Synthadoc: Ingest…</strong>{" → "}Web search tab
-            </p>
-            <p className="gap-section"><strong>From the terminal:</strong></p>
-            <div className="gap-pre-wrap">
-                <pre className="gap-pre"><code>{commands}</code></pre>
-                <button className="gap-copy-btn" onClick={handleCopy}>
-                    {copied ? "Copied!" : "Copy"}
-                </button>
-            </div>
+            <ul className="gap-suggestions">
+                {suggestions.map((s, i) => {
+                    const state = enrichStates[i] ?? "idle";
+                    return (
+                        <li key={i} className="gap-suggestion-row">
+                            <code className="gap-suggestion-cmd">search for: {s}</code>
+                            <button
+                                className={`gap-enrich-btn gap-enrich-${state}`}
+                                onClick={() => handleEnrich(s, i)}
+                                disabled={state !== "idle"}
+                            >
+                                {state === "idle" ? "Enrich" :
+                                 state === "loading" ? "…" :
+                                 state === "done" ? "Queued ✓" : "Failed"}
+                            </button>
+                        </li>
+                    );
+                })}
+            </ul>
+            <details className="gap-cli-details">
+                <summary className="gap-section">Run from terminal instead</summary>
+                <div className="gap-pre-wrap">
+                    <pre className="gap-pre"><code>{commands}</code></pre>
+                    <button className="gap-copy-btn" onClick={handleCopy}>
+                        {copied ? "Copied!" : "Copy"}
+                    </button>
+                </div>
+            </details>
             <p className="gap-footer">After ingesting, re-run your query to get a richer answer.</p>
         </div>
     );
