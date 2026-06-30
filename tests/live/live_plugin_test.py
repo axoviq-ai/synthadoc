@@ -477,8 +477,13 @@ def _test_context_budget() -> None:
     # Skip date-prefixed slugs (e.g. "2023-01-31-paper-title") — they produce
     # opaque query terms like "2023 01 31 ..." that confuse the LLM gap check.
     nodes = graph_body.get("nodes", []) if isinstance(graph_body, dict) else []
+
     def _topic_term(n: dict) -> str:
         return (n.get("title") or n["slug"].replace("-", " ")).strip()
+
+    def _query_term(n: dict) -> str:
+        # Cap to first 6 words so long YouTube/media titles don't overwhelm BM25
+        return " ".join(_topic_term(n).split()[:6])
 
     def _is_good_node(n: dict) -> bool:
         if not isinstance(n, dict) or not n.get("slug"):
@@ -494,13 +499,29 @@ def _test_context_budget() -> None:
 
     # Prefer active pages (linted, real content); fall back to any good node
     active_nodes = [n for n in nodes if _is_good_node(n) and n.get("state") == "active"]
-    topic_nodes = active_nodes if len(active_nodes) >= 3 else [n for n in nodes if _is_good_node(n)]
-    if not topic_nodes:                  # absolute fallback: any node with a slug
-        topic_nodes = [n for n in nodes if isinstance(n, dict) and n.get("slug")]
+    good_nodes = active_nodes if len(active_nodes) >= 3 else [n for n in nodes if _is_good_node(n)]
+    if not good_nodes:                   # absolute fallback: any node with a slug
+        good_nodes = [n for n in nodes if isinstance(n, dict) and n.get("slug")]
 
-    # Longer titles are more specific → stronger BM25 signal
-    topic_nodes.sort(key=lambda n: len(_topic_term(n)), reverse=True)
-    topics = ", ".join(_topic_term(n) for n in topic_nodes[:3])
+    # Pick one node per Louvain cluster for topic diversity; fill remaining slots
+    # from good_nodes if fewer than 3 clusters are represented
+    seen_clusters: set = set()
+    topic_nodes: list = []
+    for n in good_nodes:
+        cid = n.get("cluster_id", id(n))
+        if cid not in seen_clusters:
+            seen_clusters.add(cid)
+            topic_nodes.append(n)
+        if len(topic_nodes) == 3:
+            break
+    if len(topic_nodes) < 3:
+        for n in good_nodes:
+            if n not in topic_nodes:
+                topic_nodes.append(n)
+            if len(topic_nodes) == 3:
+                break
+
+    topics = ", ".join(_query_term(n) for n in topic_nodes[:3])
     q = f"Summarise what you know about: {topics}"
 
     code, body = POST("/sessions", {"mode": "query"})
