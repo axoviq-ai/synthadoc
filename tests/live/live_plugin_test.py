@@ -476,9 +476,9 @@ def _test_context_budget() -> None:
     # name 3 actual pages from the wiki so retrieval finds them.
     nodes = graph_body.get("nodes", []) if isinstance(graph_body, dict) else []
     topics = ", ".join(
-        n["id"].replace("-", " ")
+        n["slug"].replace("-", " ")
         for n in nodes[:3]
-        if isinstance(n, dict) and n.get("id")
+        if isinstance(n, dict) and n.get("slug")
     )
     q = f"Summarise what you know about: {topics}"
 
