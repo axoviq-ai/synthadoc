@@ -285,6 +285,8 @@ query decomposed into 2 sub-question(s):
 Simple single-topic questions decompose to one sub-question and behave identically to
 a direct query — no extra LLM cost.
 
+> **Proportional context budget (v1.0):** Synthadoc allocates sources proportionally to the model's context window rather than capping at a fixed top-N. A larger model context means more wiki pages included in the answer. You do not need to configure this — it adapts automatically to whichever LLM provider you have set.
+
 > **Slow provider?** If you have enabled thinking mode on a reasoning model (e.g. MiniMax M3 with `thinking = "enabled"`), responses can take longer.
 > If you see a timeout error, pass `--timeout 120`:
 >
@@ -451,6 +453,8 @@ synthadoc query "What did Konrad Zuse contribute to computing history?"
 ```
 
 > **Pages are created as `draft`.** Every page produced by ingest starts in the `draft` state — compiled but not yet reviewed. Run lint (Step 7) to promote clean pages to `active`.
+
+> **Pre-LLM sanitizer (v1.0):** Before sending any source to the LLM, Synthadoc strips zero-width characters, bidirectional text overrides, hidden HTML, and instruction-override phrases that could cause the model to misinterpret content. This runs automatically — no configuration needed.
 
 ---
 
@@ -2184,11 +2188,69 @@ synthadoc cache clear -w history-of-computing
 
 ## Step 24 — Knowledge Graph
 
-Run `synthadoc lint` to build the knowledge graph, then open `http://localhost:7070/app` and click the **Graph** tab. Nodes represent wiki pages, colored by detected knowledge cluster. Click any node to see its title, type, lifecycle state, and an "Ask about this →" button that opens a pre-filled chat query.
+The knowledge graph visualises how your wiki pages connect through `[[wikilinks]]`. Synthadoc builds it automatically during lint and detects knowledge clusters using the Louvain algorithm — pages that reference each other frequently appear in the same colour group.
 
-The graph updates automatically on every lint run. On first load, the server builds it in the background — the UI shows a spinner and switches to the graph automatically when ready.
+### Build the graph
 
-**Large sources:** If you have PDFs or documents larger than ~8,000 words, raise the per-source limit for that ingest:
+Run lint to trigger graph construction (if you completed Step 6, the graph is already ready):
+
+```bash
+synthadoc lint -w history-of-computing
+```
+
+Lint prints a summary line when the graph is built:
+
+```
+[graph] 13 nodes, 18 edges, 4 clusters
+```
+
+> **Note:** The graph builds automatically on every lint run. You never need to run a separate command to rebuild it.
+
+### Open the Graph tab
+
+1. Start the web UI (if not already running):
+   ```bash
+   synthadoc web
+   ```
+2. Open `http://localhost:7070/app` in your browser.
+3. Click the **Graph** tab in the top navigation bar.
+
+The force-directed graph appears: nodes are wiki pages, edges are `[[wikilinks]]`, and node colours represent detected knowledge clusters.
+
+> On first load, the server may need a moment to hydrate the graph from the database. A brief spinner shows while it loads — the tab switches to the graph automatically when ready.
+
+### Explore clusters
+
+Zoom and pan with your mouse or trackpad. Pages with more inbound links appear larger. Colour groups represent Louvain clusters — Synthadoc identified these as related knowledge neighbourhoods.
+
+In the history-of-computing demo you will see clusters forming around computing pioneers, hardware eras, and software history.
+
+### Click a node to query it
+
+Click any node to open its detail panel:
+
+- **Title** and **slug**
+- **Type** (`concept`, `person`, `event`, …)
+- **Lifecycle state** (`active`, `draft`, `stale`, …)
+- **"Ask about this →"** button
+
+Click **Ask about this →** to jump to the Chat tab with a pre-filled query about that page. The answer is drawn from the wiki and citations appear inline.
+
+### Inspect from the CLI
+
+You can also query graph data from the CLI without the browser:
+
+```bash
+# Show all nodes and their clusters
+synthadoc graph nodes -w history-of-computing
+
+# Show all edges (wikilinks)
+synthadoc graph edges -w history-of-computing
+```
+
+---
+
+**Large sources:** If you have PDFs or documents larger than ~8,000 words, raise the per-source character limit:
 
 ```bash
 synthadoc ingest papers/large-textbook.pdf --max-source-chars 128000
