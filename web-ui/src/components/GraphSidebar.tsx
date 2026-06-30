@@ -130,7 +130,7 @@ export function GraphSidebar({ node, clusterColor, edges, totalNodes, onAsk, onC
             <div className="graph-sidebar-hint-list">
                 <p className="graph-sidebar-hint-label">Questions to explore:</p>
                 {hints.map((h, i) => (
-                    <button key={i} className="graph-hint-chip" onClick={() => onAsk(`Tell me about ${displayTitle}`, hints)}>
+                    <button key={i} className="graph-hint-chip" onClick={() => onAsk(h, hints)}>
                         {h}
                     </button>
                 ))}
