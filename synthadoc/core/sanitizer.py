@@ -10,8 +10,8 @@ from __future__ import annotations
 import re
 
 # --- Compiled patterns ---
-_ZERO_WIDTH = re.compile(r"[​‌‍﻿]")
-_BIDI = re.compile(r"[‪-‮⁦-⁩]")
+_ZERO_WIDTH = re.compile("[​‌‍﻿]")
+_BIDI = re.compile("[‪-‮⁦-⁩]")
 _HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _HIDDEN_SPAN = re.compile(
     r'<[^>]+style\s*=\s*["\'][^"\']*(?:display\s*:\s*none|visibility\s*:\s*hidden)[^"\']*["\'][^>]*>.*?</[^>]+>',
