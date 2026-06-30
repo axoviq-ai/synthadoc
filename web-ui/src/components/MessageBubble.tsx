@@ -5,22 +5,13 @@ import { memo, useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Message } from "../useQueryStream";
+import { JOB, ENRICH, type EnrichState } from "../jobStatus";
 
 interface Props { msg: Message; wikiName?: string; onChipClick?: (value: string) => void; }
-
-type EnrichState = "idle" | "loading" | "done" | "skipped" | "error";
 
 const _IS_URL = /^https?:\/\//i;
 const POLL_INTERVAL_MS = 3000;
 
-// Mirror of JobStatus enum in synthadoc/core/queue.py — keep in sync
-const JOB = {
-    COMPLETED:  "completed",
-    SKIPPED:    "skipped",
-    FAILED:     "failed",
-    DEAD:       "dead",
-    CANCELLED:  "cancelled",
-} as const;
 
 // Patterns that indicate a permanent skip — force re-index won't help
 const _PERM_BLOCK = /auto-blocked|err-skill-003|blocked automated|future urls.*skipped|\b40[34]\b/i;
@@ -33,7 +24,7 @@ function shortUrl(url: string): string {
 
 function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName?: string }) {
     const [copied, setCopied] = useState(false);
-    const [enrichStates, setEnrichStates] = useState<EnrichState[]>(() => suggestions.map(() => "idle"));
+    const [enrichStates, setEnrichStates] = useState<EnrichState[]>(() => suggestions.map(() => ENRICH.IDLE));
     const [jobIds, setJobIds] = useState<(string | null)[]>(() => suggestions.map(() => null));
     const [jobReasons, setJobReasons] = useState<(string | null)[]>(() => suggestions.map(() => null));
     const [jobIdCopied, setJobIdCopied] = useState<number | null>(null);
@@ -68,16 +59,16 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
                 const job = await r.json();
                 if (job.status === JOB.COMPLETED) {
                     clearInterval(id); pollsRef.current.delete(idx);
-                    setTerminal(idx, "done", null);
+                    setTerminal(idx, ENRICH.DONE, null);
                 } else if (job.status === JOB.SKIPPED) {
                     clearInterval(id); pollsRef.current.delete(idx);
-                    setTerminal(idx, "skipped", job.error || "Content hash unchanged — no re-processing needed");
+                    setTerminal(idx, ENRICH.SKIPPED, job.error || "Content hash unchanged — no re-processing needed");
                 } else if (job.status === JOB.FAILED || job.status === JOB.DEAD) {
                     clearInterval(id); pollsRef.current.delete(idx);
-                    setTerminal(idx, "error", job.error || "Ingest failed");
+                    setTerminal(idx, ENRICH.ERROR, job.error || "Ingest failed");
                 } else if (job.status === JOB.CANCELLED) {
                     clearInterval(id); pollsRef.current.delete(idx);
-                    setTerminal(idx, "error", job.error || "Cancelled by user");
+                    setTerminal(idx, ENRICH.ERROR, job.error || "Cancelled by user");
                 }
                 // pending / in_progress — keep polling
             } catch { /* network hiccup — keep polling */ }
@@ -92,7 +83,7 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
             clearInterval(pollsRef.current.get(idx)!);
             pollsRef.current.delete(idx);
         }
-        setEnrichStates(prev => { const next = [...prev]; next[idx] = "loading"; return next; });
+        setEnrichStates(prev => { const next = [...prev]; next[idx] = ENRICH.LOADING; return next; });
         setJobIds(prev => { const next = [...prev]; next[idx] = null; return next; });
         setJobReasons(prev => { const next = [...prev]; next[idx] = null; return next; });
         try {
@@ -102,14 +93,14 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
                 body: JSON.stringify({ source, force }),
             });
             if (!resp.ok) {
-                setTerminal(idx, "error", `HTTP ${resp.status}`);
+                setTerminal(idx, ENRICH.ERROR, `HTTP ${resp.status}`);
                 return;
             }
             const { job_id } = await resp.json();
             setJobIds(prev => { const next = [...prev]; next[idx] = job_id; return next; });
             startPolling(job_id, idx);
         } catch {
-            setTerminal(idx, "error", "Network error — server unreachable");
+            setTerminal(idx, ENRICH.ERROR, "Network error — server unreachable");
         }
     };
 
@@ -121,7 +112,7 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
             </p>
             <ul className="gap-suggestions">
                 {suggestions.map((s, i) => {
-                    const state = enrichStates[i] ?? "idle";
+                    const state = enrichStates[i] ?? ENRICH.IDLE;
                     const isUrl = _IS_URL.test(s);
                     const reason = jobReasons[i];
                     return (
@@ -136,13 +127,13 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
                                 <button
                                     className={`gap-enrich-btn gap-enrich-${state}`}
                                     onClick={() => handleEnrich(s, i)}
-                                    disabled={state !== "idle"}
-                                    title={state === "loading" ? "Ingesting in background — polls every 3 s" : undefined}
+                                    disabled={state !== ENRICH.IDLE}
+                                    title={state === ENRICH.LOADING ? "Ingesting in background — polls every 3 s" : undefined}
                                 >
-                                    {state === "idle"    ? (isUrl ? "Ingest" : "Enrich") :
-                                     state === "loading" ? "Ingesting…" :
-                                     state === "done"    ? "Done ✓" :
-                                     state === "skipped" ? "Already indexed" : "Failed"}
+                                    {state === ENRICH.IDLE    ? (isUrl ? "Ingest" : "Enrich") :
+                                     state === ENRICH.LOADING ? "Ingesting…" :
+                                     state === ENRICH.DONE    ? "Done ✓" :
+                                     state === ENRICH.SKIPPED ? "Already indexed" : "Failed"}
                                 </button>
                             </div>
                             {jobIds[i] && (
@@ -166,7 +157,7 @@ function GapCallout({ suggestions, wikiName }: { suggestions: string[]; wikiName
                             {reason && (
                                 <p className="gap-job-reason">{reason}</p>
                             )}
-                            {state === "skipped" && !isPermBlocked(reason) && (
+                            {state === ENRICH.SKIPPED && !isPermBlocked(reason) && (
                                 <button
                                     className="gap-force-btn"
                                     onClick={() => handleEnrich(s, i, true)}
