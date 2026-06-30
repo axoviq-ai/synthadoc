@@ -482,8 +482,13 @@ def _test_context_budget() -> None:
         return (n.get("title") or n["slug"].replace("-", " ")).strip()
 
     def _query_term(n: dict) -> str:
-        # Cap to first 6 words so long YouTube/media titles don't overwhelm BM25
-        return " ".join(_topic_term(n).split()[:6])
+        # Use slug-derived words: designed to be concise keywords, no dangling
+        # conjunctions or YouTube series names from 6-word title truncation.
+        words = n.get("slug", "").replace("-", " ").split()
+        # Drop leading numeric segments from any residual date-prefixed slugs
+        while words and words[0].isdigit():
+            words.pop(0)
+        return " ".join(words[:5])
 
     def _is_good_node(n: dict) -> bool:
         if not isinstance(n, dict) or not n.get("slug"):
