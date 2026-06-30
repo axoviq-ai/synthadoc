@@ -69,8 +69,9 @@ no Obsidian runtime needed.  Organized by the 14 plugin commands + ribbon icon.
   v1.0 features:
   [v1.0-a] knowledge graph : POST /jobs/lint (to build), GET /graph (structure check)
   [v1.0-b] lazy hydration  : POST /jobs/lint, GET /graph (repeated poll until ready)
-  [v1.0-c] sanitizer       : POST /jobs/ingest (injection phrase), page body check
-  [v1.0-d] truncation flag : POST /jobs/ingest (>32 k chars), frontmatter sources check
+  [v1.0-c] sanitizer            : POST /jobs/ingest (injection phrase), page body check
+  [v1.0-d] truncation flag      : POST /jobs/ingest (>32 k chars), frontmatter sources check
+  [v1.0-e] blocked domain filter: GET /query/stream, gap suggestions contain no blocked domains
 
 ────────────────────────────────────────────────────────────────────────────────
  SIDE EFFECTS & ROLLBACK
@@ -267,6 +268,48 @@ def _okf_validate(bundle: dict) -> None:
         ok("POST /export (okf) spec: no raw wikilinks in concept bodies")
 
 
+def _read_full_sse(path: str, timeout: int = 90) -> list[dict]:
+    """Stream an SSE endpoint to completion; return all parsed events."""
+    parsed = urllib.parse.urlparse(SYNTHADOC_URL)
+    host = parsed.hostname or "127.0.0.1"
+    port = parsed.port or 7070
+    events: list[dict] = []
+    try:
+        conn = http.client.HTTPConnection(host, port, timeout=timeout)
+        conn.request("GET", path, headers={"Accept": "text/event-stream"})
+        resp = conn.getresponse()
+        if resp.status != 200:
+            return []
+        buf = ""
+        event_type: str | None = None
+        while True:
+            chunk = resp.read(512)
+            if not chunk:
+                break
+            buf += chunk.decode("utf-8", errors="replace")
+            while "\n\n" in buf:
+                block, buf = buf.split("\n\n", 1)
+                for line in block.splitlines():
+                    if line.startswith("event:"):
+                        event_type = line[6:].strip()
+                    elif line.startswith("data:"):
+                        try:
+                            data = json.loads(line[5:].strip())
+                        except Exception:
+                            data = line[5:].strip()
+                        events.append({"event": event_type, "data": data})
+                        if event_type in ("done", "error"):
+                            return events
+    except Exception:
+        pass
+    finally:
+        try:
+            conn.close()  # type: ignore[possibly-undefined]
+        except Exception:
+            pass
+    return events
+
+
 def sse_probe(path: str, timeout: int = 12) -> tuple[int, str, str]:
     """GET an SSE endpoint; returns (status, content_type, first_chunk)."""
     parsed = urllib.parse.urlparse(SYNTHADOC_URL)
@@ -398,6 +441,71 @@ def _test_sanitizer() -> None:
         print("[OK] sanitizer: injection phrase not found in any page body")
     finally:
         os.unlink(src)
+
+
+def _test_blocked_domain_filter() -> None:
+    """Blocked domains must not appear in gap suggested_searches from /query/stream.
+
+    Strategy:
+      1. Write a sentinel domain to blocked_domains.json.
+      2. Stream a query about a topic absent from the wiki (guaranteed gap).
+      3. Assert no suggestions contain a URL from any blocked domain.
+      4. Restore blocked_domains.json regardless of outcome.
+    """
+    SENTINEL = "blocked-sentinel-live-test.invalid"
+
+    wiki_root = _discover_wiki_root()
+    assert wiki_root, "Could not discover wiki root"
+
+    blocked_path = wiki_root / ".synthadoc" / "blocked_domains.json"
+    original_text: str | None = None
+    if blocked_path.exists():
+        original_text = blocked_path.read_text(encoding="utf-8")
+        existing: set[str] = set(json.loads(original_text))
+    else:
+        existing = set()
+
+    # Add sentinel + en.wikipedia.org (most likely to be suggested naturally)
+    to_block = existing | {SENTINEL, "en.wikipedia.org"}
+    blocked_path.parent.mkdir(parents=True, exist_ok=True)
+    blocked_path.write_text(json.dumps(sorted(to_block)), encoding="utf-8")
+
+    try:
+        code, body = POST("/sessions", {"mode": "query"})
+        assert code == 200, f"POST /sessions returned HTTP {code}"
+        session_id = body.get("session_id", "")
+
+        # Topic unlikely to be in any demo wiki → forces a knowledge gap
+        q = "blocked domain filter live test xyzzy nonexistent topic 2099"
+        path = (f"/query/stream?q={urllib.parse.quote(q)}"
+                f"&session_id={urllib.parse.quote(session_id)}&no_cache=true")
+        events = _read_full_sse(path, timeout=90)
+
+        gap_events = [e for e in events if e.get("event") == "gap"]
+        if not gap_events:
+            print("[OK] blocked domain filter: no gap triggered (wiki has no gap for this topic)")
+            return
+
+        suggestions: list[str] = gap_events[0]["data"].get("suggested_searches", [])
+        for s in suggestions:
+            for domain in to_block:
+                if domain in s:
+                    raise AssertionError(
+                        f"Blocked domain {domain!r} appeared in gap suggestion: {s!r}"
+                    )
+        print(f"[OK] blocked domain filter: {len(suggestions)} suggestion(s), "
+              f"none from {len(to_block)} blocked domains")
+    finally:
+        if original_text is not None:
+            blocked_path.write_text(original_text, encoding="utf-8")
+        elif SENTINEL in existing:
+            pass  # sentinel was already there; leave as-is
+        else:
+            # We created the file — restore to pre-test state
+            if existing:
+                blocked_path.write_text(json.dumps(sorted(existing)), encoding="utf-8")
+            else:
+                blocked_path.unlink(missing_ok=True)
 
 
 def _test_knowledge_graph() -> None:
@@ -953,7 +1061,7 @@ def main() -> None:
         fail("POST /export (okf)", f"HTTP {code}: {str(body)[:120]}")
 
     # ── v1.0 features ─────────────────────────────────────────────────────────
-    print("\n[v1.0] Knowledge graph, lazy hydration, sanitizer, truncation flag")
+    print("\n[v1.0] Knowledge graph, lazy hydration, sanitizer, truncation flag, blocked domain filter")
 
     try:
         _test_knowledge_graph()
@@ -978,6 +1086,12 @@ def main() -> None:
         ok("POST /jobs/ingest (truncation flag)", "truncated=true found in sources frontmatter")
     except AssertionError as e:
         fail("POST /jobs/ingest (truncation flag)", str(e))
+
+    try:
+        _test_blocked_domain_filter()
+        ok("GET /query/stream (blocked domain filter)", "no blocked domains in gap suggestions")
+    except AssertionError as e:
+        fail("GET /query/stream (blocked domain filter)", str(e))
 
     # ── Summary ───────────────────────────────────────────────────────────────
     passes = sum(1 for r in results if r[0] == "PASS")
