@@ -12,7 +12,7 @@ const CLUSTER_COLORS = [
 interface GraphNode { slug: string; title: string; type: string; state: string; cluster_id: number; }
 interface GraphEdge { from: string; to: string; weight: number; }
 
-export function GraphView({ onAskQuery }: { onAskQuery: (q: string) => void }) {
+export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: string[]) => void }) {
     const svgRef = useRef<SVGSVGElement>(null);
     const [status, setStatus] = useState<"loading" | "computing" | "ready" | "error">("loading");
     const [nodes, setNodes] = useState<GraphNode[]>([]);
@@ -40,6 +40,7 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string) => void }) {
 
     useEffect(() => { setSelected(null); }, [typeFilter]);
 
+    // Build the D3 force simulation when graph data changes
     useEffect(() => {
         if (status !== "ready" || !svgRef.current) return;
         const filtered = typeFilter === "all" ? nodes : nodes.filter(n => n.type === typeFilter);
@@ -87,6 +88,17 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string) => void }) {
         });
     }, [status, nodes, edges, typeFilter]);
 
+    // Highlight selected node without re-running the simulation
+    useEffect(() => {
+        if (!svgRef.current || status !== "ready") return;
+        d3.select(svgRef.current)
+            .selectAll<SVGCircleElement, GraphNode>("circle")
+            .attr("r", (d) => d.slug === selected?.slug ? 12 : 8)
+            .attr("stroke", (d) => d.slug === selected?.slug ? "#facc15" : "#fff")
+            .attr("stroke-width", (d) => d.slug === selected?.slug ? 3 : 1.5)
+            .attr("opacity", selected ? (d) => d.slug === selected.slug ? 1 : 0.45 : 1);
+    }, [selected, status]);
+
     const types = ["all", ...Array.from(new Set(nodes.map(n => n.type))).sort()];
 
     return (
@@ -114,7 +126,9 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string) => void }) {
                         <GraphSidebar
                             node={selected}
                             clusterColor={selected ? CLUSTER_COLORS[selected.cluster_id % CLUSTER_COLORS.length] : ""}
-                            onAsk={(q) => { onAskQuery(q); setSelected(null); }}
+                            edges={edges}
+                            totalNodes={nodes.length}
+                            onAsk={(q, hints) => { onAskQuery(q, hints); setSelected(null); }}
                             onClose={() => setSelected(null)}
                         />
                     </div>

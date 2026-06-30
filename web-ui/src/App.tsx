@@ -102,7 +102,11 @@ export default function App() {
                 )}
                 {activeTab === "graph" && (
                     <GraphView
-                        onAskQuery={(q) => { setInjectedQuery(q); setActiveTab("chat"); }}
+                        onAskQuery={(q, hints) => {
+                            setInjectedQuery(q);
+                            if (hints?.length) updateHints(hints);
+                            setActiveTab("chat");
+                        }}
                     />
                 )}
             </main>
