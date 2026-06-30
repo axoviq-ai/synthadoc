@@ -1,6 +1,6 @@
 ﻿# Synthadoc User Quick-Start Guide
 
-**Version: v0.9.3 (Community Edition)**
+**Version: v1.0.0 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
@@ -39,6 +39,7 @@ major engine feature. No setup beyond following the steps below is required.
 21. [Export your wiki — llms.txt, GraphML, JSON, OKF bundle](#step-21--export-your-wiki)
 22. [Use the web chat UI](#step-22--use-the-web-chat-ui)
 23. [Query caching](#step-23--query-caching)
+24. [Knowledge Graph](#knowledge-graph)
 
 **Appendices**
 
@@ -2178,6 +2179,29 @@ synthadoc cache clear -w history-of-computing
 ```
 
 > **Note:** The query cache is separate from the ingest cache layers. Clearing the cache removes both query answers and LLM responses cached during ingest — the next lint run and the next ingest of any source will re-run LLM calls.
+
+<a name="knowledge-graph"></a>
+
+## Step 24 — Knowledge Graph
+
+Run `synthadoc lint` to build the knowledge graph, then open `http://localhost:7070/app` and click the **Graph** tab. Nodes represent wiki pages, colored by detected knowledge cluster. Click any node to see its title, type, lifecycle state, and an "Ask about this →" button that opens a pre-filled chat query.
+
+The graph updates automatically on every lint run. On first load, the server builds it in the background — the UI shows a spinner and switches to the graph automatically when ready.
+
+**Large sources:** If you have PDFs or documents larger than ~8,000 words, raise the per-source limit for that ingest:
+
+```bash
+synthadoc ingest papers/large-textbook.pdf --max-source-chars 128000
+```
+
+Or set it globally in `.synthadoc/config.toml`:
+
+```toml
+[ingest]
+max_source_chars = 128000
+```
+
+---
 
 ## What's next?
 
