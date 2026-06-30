@@ -69,3 +69,78 @@ async def test_lint_no_warn_when_not_truncated(tmp_path):
     report = await agent.lint(scope="all", adversarial=False, lifecycle=False)
     warns = [w for w in report.warnings if "truncated" in w.lower()]
     assert len(warns) == 0
+
+
+# ---------------------------------------------------------------------------
+# Task 11: _build_graph() — wikilink extraction + Louvain clustering
+# ---------------------------------------------------------------------------
+
+def test_build_graph_basic_edges(tmp_path):
+    """_build_graph extracts directed edges from wikilinks."""
+    pages = {
+        "a": make_page(content="links to [[b]] and [[c]]"),
+        "b": make_page(content="links to [[a]]"),
+        "c": make_page(content="no links"),
+    }
+    store = make_store(tmp_path, pages)
+    agent = LintAgent(None, store, mock_log_writer())
+    nodes, edges = agent._build_graph()
+    slugs = {n["slug"] for n in nodes}
+    assert slugs == {"a", "b", "c"}
+    edge_pairs = {(e["from_slug"], e["to_slug"]) for e in edges}
+    assert ("a", "b") in edge_pairs
+    assert ("a", "c") in edge_pairs
+    assert ("b", "a") in edge_pairs
+
+
+def test_build_graph_multi_link_weight(tmp_path):
+    """Multiple [[slug]] references to same target accumulate weight."""
+    pages = {
+        "a": make_page(content="[[b]] and again [[b]]"),
+        "b": make_page(content=""),
+    }
+    store = make_store(tmp_path, pages)
+    agent = LintAgent(None, store, mock_log_writer())
+    nodes, edges = agent._build_graph()
+    ab = next(e for e in edges if e["from_slug"] == "a" and e["to_slug"] == "b")
+    assert ab["weight"] == 2
+
+
+def test_build_graph_empty_wiki(tmp_path):
+    """Empty wiki produces empty nodes and edges."""
+    store = make_store(tmp_path, {})
+    agent = LintAgent(None, store, mock_log_writer())
+    nodes, edges = agent._build_graph()
+    assert nodes == []
+    assert edges == []
+
+
+def test_build_graph_single_node_no_edges(tmp_path):
+    """Single page with no wikilinks — node present, no edges."""
+    store = make_store(tmp_path, {"a": make_page(content="no links here")})
+    agent = LintAgent(None, store, mock_log_writer())
+    nodes, edges = agent._build_graph()
+    assert len(nodes) == 1
+    assert edges == []
+
+
+def test_build_graph_self_link_ignored(tmp_path):
+    """[[self]] wikilink on a page is ignored."""
+    store = make_store(tmp_path, {"a": make_page(content="see [[a]] for details")})
+    agent = LintAgent(None, store, mock_log_writer())
+    nodes, edges = agent._build_graph()
+    assert edges == []
+
+
+def test_build_graph_cluster_ids_are_integers(tmp_path):
+    """All cluster_id values are non-negative integers."""
+    store = make_store(tmp_path, {
+        "a": make_page(content="[[b]]"),
+        "b": make_page(content="[[c]]"),
+        "c": make_page(content=""),
+    })
+    agent = LintAgent(None, store, mock_log_writer())
+    nodes, _ = agent._build_graph()
+    for n in nodes:
+        assert isinstance(n["cluster_id"], int)
+        assert n["cluster_id"] >= 0

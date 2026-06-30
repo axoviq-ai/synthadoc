@@ -49,6 +49,8 @@ dependencies = [
     "tavily-python>=0.5",
     "youtube-transcript-api>=0.6",
     "croniter>=2.0",
+    "networkx>=3.0",
+    "python-louvain>=0.16",
 ]
 
 [project.urls]

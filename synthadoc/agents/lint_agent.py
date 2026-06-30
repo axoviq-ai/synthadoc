@@ -11,6 +11,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+import networkx as nx
+try:
+    import community as community_louvain  # python-louvain
+    _LOUVAIN_AVAILABLE = True
+except ImportError:
+    _LOUVAIN_AVAILABLE = False
+
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.log import AuditDB, LogWriter
 from synthadoc.storage.wiki import WikiStorage, LifecycleState, is_url, TriggerSource
@@ -268,6 +275,52 @@ class LintAgent:
                     f"         set [ingest] max_source_chars = {src.size * 2} in your config"
                 )
         return warnings
+
+    def _build_graph(self) -> tuple[list[dict], list[dict]]:
+        """Extract wikilink graph from all pages and run Louvain clustering.
+
+        Returns (nodes, edges) where each node has {slug, cluster_id} and each
+        edge has {from_slug, to_slug, weight}.  Self-links are ignored.
+        """
+        from collections import defaultdict
+
+        slugs = self._store.list_pages()
+        if not slugs:
+            return [], []
+
+        all_slugs = set(slugs)
+        edge_counts: dict[tuple[str, str], int] = defaultdict(int)
+
+        for slug in slugs:
+            page = self._store.read_page(slug)
+            if page is None:
+                continue
+            for match in _WIKILINK_RE.finditer(page.content or ""):
+                target = match.group(1).strip()
+                if target and target != slug and target in all_slugs:
+                    edge_counts[(slug, target)] += 1
+
+        # Use DiGraph to preserve link direction (a→b and b→a are distinct edges)
+        G = nx.DiGraph()
+        G.add_nodes_from(slugs)
+        for (src, dst), weight in edge_counts.items():
+            G.add_edge(src, dst, weight=weight)
+
+        # Louvain requires undirected graph
+        if _LOUVAIN_AVAILABLE and G.number_of_nodes() > 0:
+            partition = community_louvain.best_partition(G.to_undirected())
+        else:
+            partition = {slug: 0 for slug in slugs}
+
+        nodes = [
+            {"slug": slug, "cluster_id": int(partition.get(slug, 0))}
+            for slug in slugs
+        ]
+        edges = [
+            {"from_slug": src, "to_slug": dst, "weight": data["weight"]}
+            for src, dst, data in G.edges(data=True)
+        ]
+        return nodes, edges
 
     async def _adversarial_single(self, slug: str, content: str) -> tuple[list[dict], int]:
         """Adversarially review one page. Always returns; never raises (rate-limits are caught)."""
@@ -631,6 +684,10 @@ class LintAgent:
                 slugs, report, _check_urls, _url_staleness,
                 promote_drafts=(scope == "all"),
             )
+
+        if scope == "all" and self._audit:
+            nodes, edges = self._build_graph()
+            await self._audit.write_graph(nodes, edges)
 
         self._log.log_lint(resolved=report.contradictions_resolved,
                            flagged=report.contradictions_found - report.contradictions_resolved,
