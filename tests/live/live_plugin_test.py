@@ -444,31 +444,46 @@ def _test_sanitizer() -> None:
         os.unlink(src)
 
 
+_CONTEXT_BUDGET_MIN_PAGES = 6
+
+
 def _test_context_budget() -> None:
     """Proportional context budget: broad query returns citations; status.sources is consistent.
 
+    Precondition: wiki must have >= _CONTEXT_BUDGET_MIN_PAGES indexed pages.
+    Run `synthadoc ingest` until GET /graph returns at least that many nodes,
+    or use the history-of-computing demo wiki which ships with 10+ pages.
+
     Verifies:
       - GET /query/stream completes without error
-      - The 'citations' event carries at least one slug
+      - The 'citations' event carries at least 2 slugs (budget allocates across
+        multiple pages, not hard-capped at the old top_n=5 limit)
       - The 'status(synthesizing).sources' count matches len(citations)
-      - If the wiki has >= 6 pages, at least 2 citations are returned (budget
-        allocates across multiple pages, not hard-capped at top_n=5)
     """
+    # ── Precondition: wiki must have enough pages ─────────────────────────────
+    graph_code, graph_body = GET("/graph")
+    assert graph_code == 200, f"GET /graph returned HTTP {graph_code}"
+    node_count = len(graph_body.get("nodes", [])) if isinstance(graph_body, dict) else 0
+    assert node_count >= _CONTEXT_BUDGET_MIN_PAGES, (
+        f"Wiki has only {node_count} indexed page(s); "
+        f"need >= {_CONTEXT_BUDGET_MIN_PAGES} to meaningfully test the context budget. "
+        f"Ingest more pages (e.g. use the history-of-computing demo wiki) and re-run."
+    )
+
+    # ── Run a broad query ─────────────────────────────────────────────────────
     code, body = POST("/sessions", {"mode": "query"})
     assert code == 200, f"POST /sessions returned HTTP {code}"
     session_id = body.get("session_id", "")
 
-    # Broad question — should touch as many wiki pages as possible
     q = "Give me an overview of all the topics covered in this wiki"
     path = (f"/query/stream?q={urllib.parse.quote(q)}"
             f"&session_id={urllib.parse.quote(session_id)}&no_cache=true")
     events = _read_full_sse(path, timeout=120)
 
-    # Check no error event
+    # ── Assertions ────────────────────────────────────────────────────────────
     error_events = [e for e in events if e.get("event") == "error"]
     assert not error_events, f"Query returned error: {error_events[0]['data']}"
 
-    # Extract status(synthesizing) sources count
     synthesizing_sources: int | None = None
     for e in events:
         if e.get("event") == "status":
@@ -476,7 +491,6 @@ def _test_context_budget() -> None:
             if isinstance(data, dict) and data.get("phase") == "synthesizing":
                 synthesizing_sources = data.get("sources")
 
-    # Extract citations
     citations: list[str] = []
     for e in events:
         if e.get("event") == "citations":
@@ -484,24 +498,18 @@ def _test_context_budget() -> None:
             if isinstance(data, dict):
                 citations = data.get("citations", [])
 
-    assert len(citations) > 0, \
-        "No citations returned — budget pipeline may not be passing sources to LLM"
+    assert len(citations) >= 2, (
+        f"Wiki has {node_count} pages but only {len(citations)} citation(s) returned — "
+        "budget may be incorrectly capping sources (old top_n=5 behaviour?)"
+    )
 
     assert synthesizing_sources == len(citations), (
         f"status.sources={synthesizing_sources} does not match "
         f"len(citations)={len(citations)} — budget count inconsistent"
     )
 
-    # If the wiki is large enough, verify the budget includes more than 1 page
-    graph_code, graph_body = GET("/graph")
-    if graph_code == 200 and isinstance(graph_body, dict):
-        node_count = len(graph_body.get("nodes", []))
-        if node_count >= 6:
-            assert len(citations) >= 2, (
-                f"Wiki has {node_count} pages but only {len(citations)} citation(s) returned — "
-                "budget may be incorrectly capping sources"
-            )
-    print(f"[OK] context budget: {len(citations)} citation(s) from {synthesizing_sources} sources")
+    print(f"[OK] context budget: {len(citations)} citation(s) from {node_count}-page wiki, "
+          f"status.sources={synthesizing_sources}")
 
 
 def _test_blocked_domain_filter() -> None:
