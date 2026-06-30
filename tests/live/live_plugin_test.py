@@ -470,12 +470,22 @@ def _test_context_budget() -> None:
         f"Ingest more pages (e.g. use the history-of-computing demo wiki) and re-run."
     )
 
-    # ── Run a broad query ─────────────────────────────────────────────────────
+    # ── Run a broad query built from real page slugs ──────────────────────────
+    # A generic meta-question ("overview of all topics") does not match any
+    # page semantically, triggering a gap and zeroing citations.  Instead,
+    # name 3 actual pages from the wiki so retrieval finds them.
+    nodes = graph_body.get("nodes", []) if isinstance(graph_body, dict) else []
+    topics = ", ".join(
+        n["id"].replace("-", " ")
+        for n in nodes[:3]
+        if isinstance(n, dict) and n.get("id")
+    )
+    q = f"Summarise what you know about: {topics}"
+
     code, body = POST("/sessions", {"mode": "query"})
     assert code == 200, f"POST /sessions returned HTTP {code}"
     session_id = body.get("session_id", "")
 
-    q = "Give me an overview of all the topics covered in this wiki"
     path = (f"/query/stream?q={urllib.parse.quote(q)}"
             f"&session_id={urllib.parse.quote(session_id)}&no_cache=true")
     events = _read_full_sse(path, timeout=120)
@@ -499,8 +509,10 @@ def _test_context_budget() -> None:
                 citations = data.get("citations", [])
 
     assert len(citations) >= 2, (
-        f"Wiki has {node_count} pages but only {len(citations)} citation(s) returned — "
-        "budget may be incorrectly capping sources (old top_n=5 behaviour?)"
+        f"Wiki has {node_count} pages, query asked about '{topics}', "
+        f"but only {len(citations)} citation(s) returned — "
+        "either the query triggered a gap (retrieval miss) or the budget is "
+        "capping sources (old top_n=5 behaviour?)"
     )
 
     assert synthesizing_sources == len(citations), (
