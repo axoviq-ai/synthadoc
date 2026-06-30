@@ -5,10 +5,11 @@ interface GraphNode {
 }
 interface Props {
     node: GraphNode | null;
+    clusterColor: string;
     onAsk: (query: string) => void;
     onClose: () => void;
 }
-export function GraphSidebar({ node, onAsk, onClose }: Props) {
+export function GraphSidebar({ node, clusterColor, onAsk, onClose }: Props) {
     if (!node) return null;
     return (
         <div className="graph-sidebar">
@@ -18,7 +19,10 @@ export function GraphSidebar({ node, onAsk, onClose }: Props) {
                 <span className={`badge badge-type badge-${node.type}`}>{node.type}</span>
                 <span className={`badge badge-state badge-${node.state}`}>{node.state}</span>
             </div>
-            <p className="graph-sidebar-cluster">Cluster {node.cluster_id}</p>
+            <p className="graph-sidebar-cluster">
+                <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: clusterColor, marginRight: 6, verticalAlign: "middle" }} />
+                Cluster {node.cluster_id}
+            </p>
             <button
                 className="graph-sidebar-ask-btn"
                 onClick={() => onAsk(`Tell me about ${node.title}`)}

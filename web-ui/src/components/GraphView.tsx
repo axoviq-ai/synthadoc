@@ -113,6 +113,7 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string) => void }) {
                         <svg ref={svgRef} className="graph-canvas" />
                         <GraphSidebar
                             node={selected}
+                            clusterColor={selected ? CLUSTER_COLORS[selected.cluster_id % CLUSTER_COLORS.length] : ""}
                             onAsk={(q) => { onAskQuery(q); setSelected(null); }}
                             onClose={() => setSelected(null)}
                         />
