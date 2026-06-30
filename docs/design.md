@@ -2856,6 +2856,40 @@ Controls: zoom in/out (scroll or pinch), drag nodes, filter by page type.
 
 ---
 
+## Customization
+
+Synthadoc exposes four extension points — all hot-loaded, no server restart required.
+
+### Custom skills (new file formats)
+
+Subclass `BaseSkill` (Apache-2.0 — no AGPL obligation on your skill code), drop the folder in `<wiki-root>/skills/` or `~/.synthadoc/skills/`, and Synthadoc picks it up on the next ingest. Skills match by file extension or intent prefix and support any Unicode text, including CJK prefixes.
+
+→ Full interface, manifest format, and examples: [§5 Skills System](#5-skills-system) and [§17 Plugin Development Guide](#17-plugin-development-guide)
+
+### Custom LLM providers
+
+Subclass `LLMProvider` from `synthadoc/providers/base.py` (Apache-2.0) and place the file in `~/.synthadoc/providers/` or the wiki `providers/` directory. Switch active provider with one config line.
+
+→ Full interface and wiring instructions: [§10 Configuration — Provider switching](#10-configuration)
+
+### Hooks
+
+Shell scripts (any language) that fire on `on_ingest_complete` and `on_lint_complete`. Receive a JSON context on stdin. Set `blocking = true` to gate the operation on the hook's exit code — useful for CI pipelines and quality gates.
+
+→ Full event schema, context JSON, and blocking behaviour: [§11 Hook System](#11-hook-system)
+
+### Cache control
+
+Three cache layers (embedding, LLM response, provider prompt cache) invalidate automatically on source-file change (SHA-256). Force a fresh call with `--force`, or wipe all cached responses with `synthadoc cache clear -w <wiki>`.
+
+→ Layer-by-layer breakdown and invalidation rules: [§12 Cache System](#12-cache-system)
+
+### Per-wiki AGENTS.md
+
+Edit `<wiki-root>/AGENTS.md` to give the LLM domain-specific instructions — terminology, page-naming conventions, what to cross-reference. This is the highest-priority instruction source for every agent run against this wiki; the `scaffold` command regenerates a starter version from current wiki state.
+
+---
+
 ## Appendix A — Release Feature Index
 
 ### v0.1.0 (Community Edition)
