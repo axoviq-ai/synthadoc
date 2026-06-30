@@ -2785,6 +2785,8 @@ context_system_pct    = 15
 context_index_pct     = 5
 ```
 
+> **Note:** `context_system_pct` and `context_index_pct` are parsed and validated but not yet enforced as hard caps in this release — the system prompt uses a conservative fixed limit, which is well within the configured 15% slice for all supported models. Full per-slice enforcement is planned for v1.1.
+
 ### Model context window map
 
 Synthadoc ships a built-in prefix-matched table:

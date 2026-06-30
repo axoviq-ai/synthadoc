@@ -60,6 +60,7 @@ def sanitize(text: str) -> tuple[str, list[str]]:
     if _BASE64_BLOB.search(text):
         warnings.append("base64 blob(s) removed")
         text = _BASE64_BLOB.sub("[base64 content removed]", text)
+    # Note: line-wrapped base64 (MIME/PEM style, 64–76 chars/line) is not detected.
 
     # 6. Instruction-override phrases — always warn
     if _OVERRIDE_PHRASES.search(text):

@@ -144,3 +144,16 @@ def test_build_graph_cluster_ids_are_integers(tmp_path):
     for n in nodes:
         assert isinstance(n["cluster_id"], int)
         assert n["cluster_id"] >= 0
+
+
+def test_build_graph_pipe_alias_link_resolved(tmp_path):
+    """[[slug|display]] links should produce edges using the slug, not 'slug|display'."""
+    pages = {
+        "a": make_page(content="see [[b|Page B]] for details"),
+        "b": make_page(content=""),
+    }
+    store = make_store(tmp_path, pages)
+    agent = LintAgent(None, store, mock_log_writer())
+    nodes, edges = agent._build_graph()
+    edge_pairs = {(e["from_slug"], e["to_slug"]) for e in edges}
+    assert ("a", "b") in edge_pairs, "pipe-alias link should produce edge a→b"

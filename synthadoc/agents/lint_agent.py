@@ -296,7 +296,7 @@ class LintAgent:
             if page is None:
                 continue
             for match in _WIKILINK_RE.finditer(page.content or ""):
-                target = match.group(1).strip()
+                target = match.group(1).split("|")[0].strip()
                 if target and target != slug and target in all_slugs:
                     edge_counts[(slug, target)] += 1
 
@@ -686,8 +686,11 @@ class LintAgent:
             )
 
         if scope == "all" and self._audit:
-            nodes, edges = self._build_graph()
-            await self._audit.write_graph(nodes, edges)
+            try:
+                nodes, edges = self._build_graph()
+                await self._audit.write_graph(nodes, edges)
+            except Exception as exc:
+                _log.warning("[graph] build failed during lint, skipping: %s", exc)
 
         self._log.log_lint(resolved=report.contradictions_resolved,
                            flagged=report.contradictions_found - report.contradictions_resolved,

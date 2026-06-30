@@ -459,6 +459,7 @@ class QueryAgent:
 
     def _load_purpose_context(self) -> str:
         """Return purpose.md as a pinned preamble for synthesis, or '' if absent."""
+        # system budget (context_system_pct) not yet enforced as a hard cap — reserved for v1.1
         page = self._store.read_page("purpose")
         if not page:
             return ""
