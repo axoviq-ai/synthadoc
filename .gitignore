@@ -31,3 +31,6 @@ synthadoc/demos/*/log.md
 
 # diagram sources — export to PNG/SVG and commit the image instead
 *.drawio
+
+# subagent test scratch directories
+test_tmp/
