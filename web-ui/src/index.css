@@ -726,7 +726,7 @@ body {
 .tab-btn.active { background: rgba(124,58,237,0.18); color: #e2e8f0; }
 
 /* ─── Graph view ───────────────────────────────────── */
-.graph-view { display: flex; flex-direction: column; flex: 1; height: 100%; overflow: hidden; }
+.graph-view { display: flex; flex-direction: column; flex: 1; height: 100%; overflow: hidden; background: linear-gradient(160deg, #05060e 0%, #080d1a 60%, #0a0818 100%); }
 .graph-controls { display: flex; align-items: center; gap: 12px; padding: 8px 16px; border-bottom: 1px solid rgba(124,58,237,0.18); }
 .graph-controls select { background: #1a1c2e; color: #e2e8f0; border: 1px solid rgba(124,58,237,0.3); border-radius: 6px; padding: 4px 8px; }
 .graph-stats { color: #94a3b8; font-size: 12px; }

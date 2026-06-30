@@ -65,7 +65,7 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: strin
 
         const link = g.append("g").selectAll("line")
             .data(d3Links).join("line")
-            .attr("stroke", "#ccc").attr("stroke-width", (d: any) => Math.sqrt(d.weight));
+            .attr("stroke", "rgba(160,170,220,0.35)").attr("stroke-width", (d: any) => Math.sqrt(d.weight));
 
         const node = g.append("g").selectAll("circle")
             .data(filtered).join("circle")
@@ -73,7 +73,7 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: strin
             .attr("fill", (d: any) => CLUSTER_COLORS[d.cluster_id % CLUSTER_COLORS.length])
             .attr("stroke", "#fff").attr("stroke-width", 1.5)
             .style("cursor", "pointer")
-            .on("click", (_: any, d: any) => setSelected(d))
+            .on("click", (_: any, d: any) => setSelected(prev => prev?.slug === d.slug ? null : d))
             .call(d3.drag<SVGCircleElement, any>()
                 .on("start", (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
                 .on("drag", (e, d) => { d.fx=e.x; d.fy=e.y; })
