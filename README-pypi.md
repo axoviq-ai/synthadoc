@@ -966,8 +966,6 @@ In Obsidian: command palette → **Synthadoc: Export Wiki** — choose format an
 
 ### Backup & Restore
 
-Package a wiki domain into a portable compressed zip and re-register it on any machine in one command. Useful for cross-machine migration, pre-risky-operation snapshots, CI test fixtures, and sharing exact wiki states with colleagues.
-
 ```bash
 # Backup to the current directory
 synthadoc backup -w my-wiki
@@ -975,24 +973,14 @@ synthadoc backup -w my-wiki
 # Backup to a specific directory, excluding raw source files to reduce size
 synthadoc backup -w my-wiki --output ~/backups --no-sources
 
-# Restore to the same folder as the zip (default), confirm port
+# Restore to the same folder as the zip (default)
 synthadoc restore synthadoc-backup-my-wiki-20260624-103000.zip
 
 # Restore under a different name to a specific location on a specific port
 synthadoc restore backup.zip --name my-wiki-staging --target ~/wikis --port 7071
 ```
 
-**Backup flags:** `--output/-o` (directory, default: current dir), `--no-sources` (skip `raw_sources/`), `--no-exports` (skip `exports/`), `--no-cache` (skip `cache.db`).
-
-**Restore flags:** `--name` (override wiki name), `--target/-t` (parent directory, default: same folder as zip), `--port` (skip interactive port prompt).
-
-**Obsidian plugin on restore:** The Obsidian plugin is reinstalled and pre-enabled automatically, with the Server URL updated to match the restored port. Open the restored vault in Obsidian — both plugins are active with no manual steps needed.
-
-**Always excluded from backup:**
-- **Embeddings database** — vector representations of wiki pages, used only when vector search is enabled. Rebuilt automatically in the background on the next server start (pages not yet in the DB are re-embedded).
-- **Job queue** — pending and failed ingest/lint jobs. Job run *history* is preserved in `audit.db` (which is backed up); only in-flight or queued work items are lost. Re-queue manually with `synthadoc ingest` if needed after restore.
-- **Server PID file** — machine-specific, created fresh on each server start.
-- **Server logs** — application log files under `.synthadoc/logs/`. The human-readable activity log (`log.md`) is included in the backup.
+→ Flags, use-case table, what is and isn't backed up, and post-restore checklist: [Quick-Start Guide — Appendix J](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#appendix-j--backup--restore)
 
 ### Removing a wiki
 
