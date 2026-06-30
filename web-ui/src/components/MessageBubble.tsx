@@ -75,9 +75,15 @@ function GapCallout({ suggestions, wikiName, maxResults }: { suggestions: string
                     setJobResults(prev => { const next = [...prev]; next[idx] = { pages_created: allCreated, pages_updated: allUpdated }; return next; });
                     setChildProgress(prev => { const next = [...prev]; next[idx] = null; return next; });
                     const pageCount = allCreated.length + allUpdated.length;
+                    const failCount = children.filter(j => j.status === JOB.FAILED || j.status === JOB.DEAD).length;
+                    const skipCount = children.filter(j => j.status === JOB.SKIPPED).length;
                     if (pageCount > 0) {
-                        setTerminal(idx, ENRICH.DONE, null);
-                    } else if (children.some(j => j.status === JOB.FAILED || j.status === JOB.DEAD)) {
+                        // Partial or full success — note any non-indexed children in the reason row
+                        const parts: string[] = [];
+                        if (failCount > 0) parts.push(`${failCount} failed`);
+                        if (skipCount > 0) parts.push(`${skipCount} skipped`);
+                        setTerminal(idx, ENRICH.DONE, parts.length > 0 ? parts.join(", ") : null);
+                    } else if (failCount > 0) {
                         setTerminal(idx, ENRICH.ERROR, ENRICH_LABEL.REASON_INGEST_ERR);
                     } else {
                         // All skipped — pass concatenated error reasons so isPermBlocked can classify
