@@ -477,16 +477,30 @@ def _test_context_budget() -> None:
     # Skip date-prefixed slugs (e.g. "2023-01-31-paper-title") — they produce
     # opaque query terms like "2023 01 31 ..." that confuse the LLM gap check.
     nodes = graph_body.get("nodes", []) if isinstance(graph_body, dict) else []
-    topic_nodes = [
-        n for n in nodes
-        if isinstance(n, dict) and n.get("slug") and not n["slug"][:1].isdigit()
-    ]
-    if not topic_nodes:  # fall back if every slug is date-prefixed
+    def _topic_term(n: dict) -> str:
+        return (n.get("title") or n["slug"].replace("-", " ")).strip()
+
+    def _is_good_node(n: dict) -> bool:
+        if not isinstance(n, dict) or not n.get("slug"):
+            return False
+        if n["slug"][:1].isdigit():      # date-prefixed slug (e.g. 2023-01-31-paper)
+            return False
+        term = _topic_term(n)
+        if term.isdigit():               # bare numeric title (e.g. "73")
+            return False
+        if len(term) < 5:                # too short to be meaningful
+            return False
+        return True
+
+    # Prefer active pages (linted, real content); fall back to any good node
+    active_nodes = [n for n in nodes if _is_good_node(n) and n.get("state") == "active"]
+    topic_nodes = active_nodes if len(active_nodes) >= 3 else [n for n in nodes if _is_good_node(n)]
+    if not topic_nodes:                  # absolute fallback: any node with a slug
         topic_nodes = [n for n in nodes if isinstance(n, dict) and n.get("slug")]
-    topics = ", ".join(
-        (n.get("title") or n["slug"].replace("-", " "))
-        for n in topic_nodes[:3]
-    )
+
+    # Longer titles are more specific → stronger BM25 signal
+    topic_nodes.sort(key=lambda n: len(_topic_term(n)), reverse=True)
+    topics = ", ".join(_topic_term(n) for n in topic_nodes[:3])
     q = f"Summarise what you know about: {topics}"
 
     code, body = POST("/sessions", {"mode": "query"})
