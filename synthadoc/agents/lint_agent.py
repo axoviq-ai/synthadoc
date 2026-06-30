@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json as _json
 import re
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -282,8 +283,6 @@ class LintAgent:
         Returns (nodes, edges) where each node has {slug, cluster_id} and each
         edge has {from_slug, to_slug, weight}.  Self-links are ignored.
         """
-        from collections import defaultdict
-
         slugs = self._store.list_pages()
         if not slugs:
             return [], []

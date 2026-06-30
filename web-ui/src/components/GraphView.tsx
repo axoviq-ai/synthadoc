@@ -38,6 +38,8 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string) => void }) {
 
     useEffect(() => { fetchGraph(); }, [fetchGraph]);
 
+    useEffect(() => { setSelected(null); }, [typeFilter]);
+
     useEffect(() => {
         if (status !== "ready" || !svgRef.current) return;
         const filtered = typeFilter === "all" ? nodes : nodes.filter(n => n.type === typeFilter);
