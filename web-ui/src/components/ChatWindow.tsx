@@ -51,11 +51,10 @@ export function ChatWindow({
 
     useEffect(() => {
         if (injectedQuery !== null) {
-            setInput(injectedQuery);
             onInjected();
-            setTimeout(() => inputRef.current?.focus(), 0);
+            send(injectedQuery, noCache, timeoutSeconds);
         }
-    }, [injectedQuery, onInjected]);
+    }, [injectedQuery, onInjected, send, noCache, timeoutSeconds]);
 
     useLayoutEffect(() => {
         const el = messagesRef.current;
