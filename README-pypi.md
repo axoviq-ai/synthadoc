@@ -174,6 +174,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **Wikilink graph + D3 visualisation** — `[[wikilinks]]` auto-built at ingest; force-directed graph in web UI; nodes coloured by Louvain cluster; click node to query | **Yes** | No | No | No |
 | **Orphan page detection** — unreferenced pages surfaced by lint with ready-to-paste index entries | **Yes** | No | No | No |
 | **Query-scoped routing** — ROUTING.md maps wiki branches to page slugs; queries auto-select relevant branches; new pages auto-slotted | **Yes** | No | No | No |
+| **Candidates staging** — ingest pages to a staging area first; review, promote, or discard before they enter the live wiki | **Yes** | No | No | No |
 | **Scaffold automation** — regenerates index categories, AGENTS.md, and purpose.md from current wiki state; protected pages never overwritten | **Yes** | No | No | No |
 
 ### Search & Query
@@ -210,11 +211,12 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 
 | Capability | Synthadoc | Typical RAG | NotebookLM | Notion AI |
 | --- | --- | --- | --- | --- |
-| **Local-first** — source documents and compiled knowledge never leave your machine; localhost-only binding; no cloud dependency except the LLM API | **Yes** | Varies | No | No |
+| **Local-first + offline artifact** — source documents never leave your machine; compiled wiki is plain Markdown, fully readable offline in any editor without the server | **Yes** | Varies | No | No |
 | **Portable backup / restore** — single zip: wiki pages + audit/lifecycle DB + config; port and domain rewriting on restore; migrate machines without re-ingesting | **Yes** | No — re-ingest required | No — AI metadata lost | No |
 | **Cost guard + full audit trail** — per-job token + cost log; soft-warn and hard-gate thresholds; `audit citations` validates every claim citation; immutable event log | **Yes** | No | No | No |
 | **Resumable job queue + retry** — every ingest/lint job persisted with status and error; batch a hundred documents and resume after a crash | **Yes** | No | No | No |
 | **Custom skills + CI hooks** — subclass `BaseSkill` for new file formats; 2 hook events on ingest and lint complete; blocking hooks can gate operations | **Yes** | Limited | No | No |
+| **Per-source truncation flag** — `--max-source-chars` caps oversized PDFs before the LLM call; truncated sources flagged in lint output | **Yes** | No | No | No |
 | **Multi-wiki isolation** — each wiki on its own port with independent config, audit trail, and job queue; switch with `synthadoc use` | **Yes** | No | No | No |
 
 ### Key differentiators vs. RAG
