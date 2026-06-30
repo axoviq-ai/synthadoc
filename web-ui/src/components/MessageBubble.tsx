@@ -64,7 +64,7 @@ function GapCallout({ suggestions, wikiName, maxResults }: { suggestions: string
             try {
                 const r = await fetch("/jobs", { cache: "no-store" });
                 if (!r.ok) return;
-                const allJobs: Array<{ id: string; status: string; result?: Record<string, string[]> }> = await r.json();
+                const allJobs: Array<{ id: string; status: string; error?: string | null; result?: Record<string, string[]> }> = await r.json();
                 const children = allJobs.filter(j => childSet.has(j.id));
                 const done = children.filter(j => _JOB_TERMINAL.has(j.status)).length;
                 setChildProgress(prev => { const next = [...prev]; next[idx] = { done, total: childIds.length }; return next; });
@@ -74,7 +74,16 @@ function GapCallout({ suggestions, wikiName, maxResults }: { suggestions: string
                     const allUpdated = children.flatMap(j => j.result?.pages_updated ?? []);
                     setJobResults(prev => { const next = [...prev]; next[idx] = { pages_created: allCreated, pages_updated: allUpdated }; return next; });
                     setChildProgress(prev => { const next = [...prev]; next[idx] = null; return next; });
-                    setTerminal(idx, ENRICH.DONE, null);
+                    const pageCount = allCreated.length + allUpdated.length;
+                    if (pageCount > 0) {
+                        setTerminal(idx, ENRICH.DONE, null);
+                    } else if (children.some(j => j.status === JOB.FAILED || j.status === JOB.DEAD)) {
+                        setTerminal(idx, ENRICH.ERROR, ENRICH_LABEL.REASON_INGEST_ERR);
+                    } else {
+                        // All skipped — pass concatenated error reasons so isPermBlocked can classify
+                        const combinedReason = children.map(j => j.error ?? "").join(" ") || ENRICH_LABEL.REASON_HASH_SKIP;
+                        setTerminal(idx, ENRICH.SKIPPED, combinedReason);
+                    }
                 }
             } catch { /* network hiccup — keep polling */ }
         }, POLL_INTERVAL_MS);
