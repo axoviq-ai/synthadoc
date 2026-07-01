@@ -402,7 +402,7 @@ def _test_truncation_flag() -> None:
     )
     src.write_text(para * 120, encoding="utf-8")  # ~33 600 chars — just over 32 000
     try:
-        code, body = POST("/jobs/ingest", {"source": str(src)})
+        code, body = POST("/jobs/ingest", {"source": str(src), "force": True})
         assert code == 200, f"POST /jobs/ingest returned HTTP {code}: {str(body)[:120]}"
         assert isinstance(body, dict) and "job_id" in body, \
             f"No job_id in response: {str(body)[:120]}"
