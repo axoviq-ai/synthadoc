@@ -803,10 +803,10 @@ def main() -> None:
             ok("GET /jobs/{id}", f"status={body['status']}")
         else:
             fail("GET /jobs/{id}", f"HTTP {code}: {str(body)[:120]}")
-        # Poll until terminal so the delete test always has a target
+        # Poll until terminal so later jobs aren't queued behind a running ingest
         if isinstance(body, dict) and body.get("status") not in ("completed", "failed", "cancelled"):
-            info("Waiting for ingest job to reach terminal state (max 120 s)…")
-            _final = _wait_for_terminal(ingest_job_id)
+            info("Waiting for ingest job to reach terminal state (max 300 s)…")
+            _final = _wait_for_terminal(ingest_job_id, max_wait=300)
             if _final:
                 info(f"Ingest job reached {_final}")
 
@@ -890,6 +890,7 @@ def main() -> None:
     code, body = POST("/jobs/lint", {"scope": "all", "auto_resolve": False, "adversarial": False})
     if code == 200 and isinstance(body, dict) and "job_id" in body:
         ok("POST /jobs/lint", f"job_id={body['job_id'][:8]}…")
+        _wait_for_terminal(body["job_id"], max_wait=300)  # drain before next section
     else:
         fail("POST /jobs/lint", f"HTTP {code}: {str(body)[:120]}")
 
@@ -899,6 +900,7 @@ def main() -> None:
     code, body = POST("/jobs/scaffold", {"domain": "history of computing"})
     if code == 200 and isinstance(body, dict) and "job_id" in body:
         ok("POST /jobs/scaffold", f"job_id={body['job_id'][:8]}…")
+        _wait_for_terminal(body["job_id"], max_wait=300)  # drain before next section
     else:
         fail("POST /jobs/scaffold", f"HTTP {code}: {str(body)[:120]}")
 
