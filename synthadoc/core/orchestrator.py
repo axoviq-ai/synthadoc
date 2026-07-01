@@ -110,7 +110,7 @@ class Orchestrator:
         self._wiki_epoch += 1
 
     async def init(self) -> None:
-        await self._queue.init()
+        await self._queue.init(stale_pending_seconds=self._cfg.server.job_timeout_seconds * 2)
         await self._audit.init()
         await self._cache.init()
         self._log_agent_config()

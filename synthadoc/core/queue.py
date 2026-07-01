@@ -41,7 +41,7 @@ class JobQueue:
         self._max_retries = max_retries
         self._lock = asyncio.Lock()
 
-    async def init(self) -> None:
+    async def init(self, stale_pending_seconds: int = 3600) -> None:
         async with aiosqlite.connect(self._path) as db:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS jobs (
@@ -69,6 +69,14 @@ class JobQueue:
             await db.execute(
                 "UPDATE jobs SET status='failed', error='server restarted while job was running' "
                 "WHERE status='in_progress'"
+            )
+            # Pending jobs older than the stale window are zombies from a previous
+            # server session — cancel them so they don't block fresh work.
+            await db.execute(
+                "UPDATE jobs SET status='cancelled', "
+                "error='expired — job was pending for too long before server restart' "
+                "WHERE status='pending' AND created_at < datetime('now', ?)",
+                (f"-{stale_pending_seconds} seconds",),
             )
             await db.commit()
 

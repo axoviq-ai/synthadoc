@@ -355,6 +355,49 @@ async def test_init_resets_in_progress_to_failed_on_restart(tmp_wiki):
 
 
 @pytest.mark.asyncio
+async def test_init_cancels_stale_pending_jobs_on_restart(tmp_wiki):
+    """Pending jobs older than stale_pending_seconds must be cancelled on init().
+
+    This prevents zombie jobs (e.g. from a week-old test run) from blocking fresh
+    work after a server restart.  Recent pending jobs must survive unchanged.
+    """
+    import aiosqlite
+    db_path = tmp_wiki / ".synthadoc" / "jobs.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute("""
+            CREATE TABLE jobs (
+                id TEXT PRIMARY KEY,
+                operation TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                retries INTEGER NOT NULL DEFAULT 0,
+                error TEXT,
+                result TEXT,
+                progress TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        # Old zombie job — submitted 2 hours ago
+        await db.execute(
+            "INSERT INTO jobs (id, operation, payload, status, created_at) "
+            "VALUES ('zombie1', 'lint', '{}', 'pending', datetime('now', '-7200 seconds'))"
+        )
+        # Fresh job — submitted 30 seconds ago (within the 60-second threshold)
+        await db.execute(
+            "INSERT INTO jobs (id, operation, payload, status, created_at) "
+            "VALUES ('fresh1', 'ingest', '{}', 'pending', datetime('now', '-30 seconds'))"
+        )
+        await db.commit()
+    q = JobQueue(db_path)
+    await q.init(stale_pending_seconds=60)
+    jobs = {j.id: j for j in await q.list_jobs()}
+    assert jobs["zombie1"].status.value == "cancelled"
+    assert "expired" in (jobs["zombie1"].error or "")
+    assert jobs["fresh1"].status.value == "pending"
+
+
+@pytest.mark.asyncio
 async def test_requeue_resets_to_pending_without_incrementing_retries(tmp_wiki):
     """requeue() must reset status to pending and leave retry counter unchanged."""
     q = JobQueue(tmp_wiki / ".synthadoc" / "jobs.db")
