@@ -154,7 +154,8 @@ class WikiConfig:
 
 @dataclass
 class LintConfig:
-    adversarial_max_per_page: int = 2  # max issues flagged per page by adversarial pass
+    adversarial_max_per_page: int = 2   # max issues flagged per page by adversarial pass
+    adversarial_concurrency: int = 8    # max parallel LLM calls during adversarial pass
     check_url_availability: bool = False  # HTTP HEAD check for URL sources (opt-in — adds network calls to lint)
 
 
@@ -400,6 +401,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
     lt = raw.get("lint", {})
     lint = LintConfig(
         adversarial_max_per_page=int(lt.get("adversarial_max_per_page", 2)),
+        adversarial_concurrency=int(lt.get("adversarial_concurrency", 8)),
         check_url_availability=bool(lt.get("check_url_availability", False)),
     )
 

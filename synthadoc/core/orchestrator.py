@@ -556,6 +556,7 @@ class Orchestrator:
                 confidence_threshold=self._cfg.cost.auto_resolve_confidence_threshold,
                 audit_db=self._audit,
                 adversarial_max_per_page=self._cfg.lint.adversarial_max_per_page,
+                adversarial_concurrency=self._cfg.lint.adversarial_concurrency,
                 wiki_root=self._root,
                 cfg=self._cfg,
             ).lint(scope=scope, auto_resolve=auto_resolve, adversarial=adversarial,
