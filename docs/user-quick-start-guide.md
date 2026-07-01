@@ -1,6 +1,6 @@
 ﻿# Synthadoc User Quick-Start Guide
 
-**Version: v0.9.3 (Community Edition)**
+**Version: v1.0.0 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
@@ -39,6 +39,7 @@ major engine feature. No setup beyond following the steps below is required.
 21. [Export your wiki — llms.txt, GraphML, JSON, OKF bundle](#step-21--export-your-wiki)
 22. [Use the web chat UI](#step-22--use-the-web-chat-ui)
 23. [Query caching](#step-23--query-caching)
+24. [Knowledge Graph](#knowledge-graph)
 
 **Appendices**
 
@@ -284,6 +285,8 @@ query decomposed into 2 sub-question(s):
 Simple single-topic questions decompose to one sub-question and behave identically to
 a direct query — no extra LLM cost.
 
+> **Proportional context budget (v1.0):** Synthadoc allocates sources proportionally to the model's context window rather than capping at a fixed top-N. A larger model context means more wiki pages included in the answer. You do not need to configure this — it adapts automatically to whichever LLM provider you have set.
+
 > **Slow provider?** If you have enabled thinking mode on a reasoning model (e.g. MiniMax M3 with `thinking = "enabled"`), responses can take longer.
 > If you see a timeout error, pass `--timeout 120`:
 >
@@ -450,6 +453,8 @@ synthadoc query "What did Konrad Zuse contribute to computing history?"
 ```
 
 > **Pages are created as `draft`.** Every page produced by ingest starts in the `draft` state — compiled but not yet reviewed. Run lint (Step 7) to promote clean pages to `active`.
+
+> **Pre-LLM sanitizer (v1.0):** Before sending any source to the LLM, Synthadoc strips zero-width characters, bidirectional text overrides, hidden HTML, and instruction-override phrases that could cause the model to misinterpret content. This runs automatically — no configuration needed. See [design.md §29](design.md#29-pre-llm-source-sanitizer) for the full table of sanitizer categories, actions, and warning behaviour.
 
 ---
 
@@ -2178,6 +2183,87 @@ synthadoc cache clear -w history-of-computing
 ```
 
 > **Note:** The query cache is separate from the ingest cache layers. Clearing the cache removes both query answers and LLM responses cached during ingest — the next lint run and the next ingest of any source will re-run LLM calls.
+
+<a name="knowledge-graph"></a>
+
+## Step 24 — Knowledge Graph
+
+The knowledge graph visualises how your wiki pages connect through `[[wikilinks]]`. Synthadoc builds it automatically during lint and detects knowledge clusters using the Louvain algorithm — pages that reference each other frequently appear in the same colour group.
+
+### Build the graph
+
+Run lint to trigger graph construction (if you completed Step 6, the graph is already ready):
+
+```bash
+synthadoc lint -w history-of-computing
+```
+
+Lint prints a summary line when the graph is built:
+
+```
+[graph] 13 nodes, 18 edges, 4 clusters
+```
+
+> **Note:** The graph builds automatically on every lint run. You never need to run a separate command to rebuild it.
+
+### Open the Graph tab
+
+1. Start the web UI (if not already running):
+   ```bash
+   synthadoc web
+   ```
+2. Open `http://localhost:7070/app` in your browser.
+3. Click the **Graph** tab in the top navigation bar.
+
+The force-directed graph appears: nodes are wiki pages, edges are `[[wikilinks]]`, and node colours represent detected knowledge clusters.
+
+> On first load, the server may need a moment to hydrate the graph from the database. A brief spinner shows while it loads — the tab switches to the graph automatically when ready.
+
+### Explore clusters
+
+Zoom and pan with your mouse or trackpad. Pages with more inbound links appear larger. Colour groups represent Louvain clusters — Synthadoc identified these as related knowledge neighbourhoods.
+
+In the history-of-computing demo you will see clusters forming around computing pioneers, hardware eras, and software history.
+
+### Click a node to query it
+
+Click any node to open its detail panel:
+
+- **Title** and **slug**
+- **Type** (`concept`, `person`, `event`, …)
+- **Lifecycle state** (`active`, `draft`, `stale`, …)
+- **"Ask about this →"** button
+
+Click **Ask about this →** to jump to the Chat tab with a pre-filled query about that page. The answer is drawn from the wiki and citations appear inline.
+
+### Inspect from the CLI
+
+You can also query graph data from the CLI without the browser:
+
+```bash
+# Show all nodes and their clusters
+synthadoc graph nodes -w history-of-computing
+
+# Show all edges (wikilinks)
+synthadoc graph edges -w history-of-computing
+```
+
+---
+
+**Large sources:** If you have PDFs or documents larger than ~8,000 words, raise the per-source character limit:
+
+```bash
+synthadoc ingest papers/large-textbook.pdf --max-source-chars 128000
+```
+
+Or set it globally in `.synthadoc/config.toml`:
+
+```toml
+[ingest]
+max_source_chars = 128000
+```
+
+---
 
 ## What's next?
 

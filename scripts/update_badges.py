@@ -36,16 +36,15 @@ def count_cli_commands() -> int:
     # Import the fully-registered app (all sub-modules register on import)
     from synthadoc.cli.main import app  # noqa: PLC0415
 
-    total = 0
-    for group in app.registered_groups:
-        # Each registered group is a sub-Typer (e.g. audit, jobs, lint, schedule)
-        sub_app = group.typer_instance
-        total += len(sub_app.registered_commands)
+    def _count(a: object) -> int:
+        n = len(a.registered_commands)  # type: ignore[attr-defined]
+        for g in a.registered_groups:   # type: ignore[attr-defined]
+            n += _count(g.typer_instance)
+        return n
 
-    # Leaf commands registered directly on the top-level app
-    total += len(app.registered_commands)
-
-    return total
+    # Top-level leaf commands + all subcommands (recursive — handles nested
+    # sub-apps such as `audit lifecycle purge`)
+    return _count(app)
 
 
 def count_obsidian_commands() -> int:

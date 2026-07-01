@@ -84,6 +84,7 @@ class SourceRef:
     hash: str
     size: int
     ingested: str
+    truncated: bool = False   # True when source exceeded max_source_chars at ingest time
 
 
 @dataclass
@@ -107,10 +108,13 @@ class WikiPage:
 
 
 def _sources_to_dicts(sources: list[SourceRef]) -> list[dict]:
-    return [
-        {"file": s.file, "hash": s.hash, "size": s.size, "ingested": s.ingested}
-        for s in sources
-    ]
+    result = []
+    for s in sources:
+        d = {"file": s.file, "hash": s.hash, "size": s.size, "ingested": s.ingested}
+        if s.truncated:
+            d["truncated"] = True
+        result.append(d)
+    return result
 
 
 def _sources_from_dicts(raw: list) -> list[SourceRef]:
@@ -122,6 +126,7 @@ def _sources_from_dicts(raw: list) -> list[SourceRef]:
                 hash=item.get("hash", ""),
                 size=item.get("size", 0),
                 ingested=item.get("ingested", ""),
+                truncated=bool(item.get("truncated", False)),
             ))
     return result
 

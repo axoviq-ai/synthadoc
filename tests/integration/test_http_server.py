@@ -361,3 +361,151 @@ def test_content_size_middleware_blocks_large_body(tmp_wiki):
     with TestClient(app, raise_server_exceptions=False) as client:
         resp = client.post("/jobs/ingest", json={"source": "x" * 50})
     assert resp.status_code == 413
+
+
+# ---------------------------------------------------------------------------
+# Task 4: max_source_chars field on IngestRequest
+# ---------------------------------------------------------------------------
+
+def test_ingest_request_accepts_max_source_chars():
+    """IngestRequest must accept max_source_chars and store it."""
+    from synthadoc.integration.http_server import IngestRequest
+    req = IngestRequest(source="file.txt", max_source_chars=128000)
+    assert req.max_source_chars == 128000
+
+
+def test_ingest_request_max_source_chars_defaults_none():
+    """IngestRequest must default max_source_chars to None."""
+    from synthadoc.integration.http_server import IngestRequest
+    req = IngestRequest(source="file.txt")
+    assert req.max_source_chars is None
+
+
+# ---------------------------------------------------------------------------
+# Task 12: GET /graph — lazy hydration
+# ---------------------------------------------------------------------------
+
+_SAMPLE_GRAPH = {
+    "nodes": [
+        {"slug": "alpha", "cluster_id": 0},
+        {"slug": "beta", "cluster_id": 0},
+        {"slug": "gamma", "cluster_id": 1},
+    ],
+    "edges": [
+        {"from_slug": "alpha", "to_slug": "beta", "weight": 2},
+        {"from_slug": "beta", "to_slug": "gamma", "weight": 1},
+    ],
+}
+
+
+@pytest.fixture(autouse=False)
+def reset_graph_flag():
+    """Reset the module-level _graph_computing flag before and after each test."""
+    import synthadoc.integration.http_server as _hs
+    _hs._graph_computing = False
+    yield
+    _hs._graph_computing = False
+
+
+@pytest.fixture
+def seeded_graph():
+    """Patch AuditDB.read_graph to return sample graph data."""
+    with patch(
+        "synthadoc.storage.log.AuditDB.read_graph",
+        new=AsyncMock(return_value=_SAMPLE_GRAPH),
+    ):
+        yield
+
+
+def test_get_graph_returns_computing_when_empty(tmp_wiki, reset_graph_flag):
+    """When graph tables are empty, GET /graph returns HTTP 200 with status == computing."""
+    from fastapi.testclient import TestClient
+    app = _make_app(tmp_wiki)
+
+    # Patch read_graph to return None (empty tables).
+    # The background build task is created but fails silently (no provider in test env)
+    # — the response is already sent before the task runs.
+    with patch("synthadoc.storage.log.AuditDB.read_graph", new=AsyncMock(return_value=None)):
+        with TestClient(app) as client:
+            resp = client.get("/graph")
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "computing"
+
+
+def test_get_graph_returns_ready_with_data(tmp_wiki, seeded_graph, reset_graph_flag):
+    """When graph is seeded, GET /graph returns status == ready with nodes and edges."""
+    from fastapi.testclient import TestClient
+
+    fake_page = MagicMock()
+    fake_page.title = "Alpha Page"
+    fake_page.type = "concept"
+    fake_page.status = "active"
+
+    app = _make_app(tmp_wiki)
+    with TestClient(app) as client:
+        with patch("synthadoc.storage.wiki.WikiStorage.read_page", return_value=fake_page):
+            resp = client.get("/graph")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "ready"
+    assert "nodes" in data
+    assert "edges" in data
+    assert isinstance(data["node_count"], int)
+    assert isinstance(data["cluster_count"], int)
+
+
+def test_get_graph_node_fields(tmp_wiki, seeded_graph, reset_graph_flag):
+    """Each node returned by GET /graph has slug, title, type, state, cluster_id."""
+    from fastapi.testclient import TestClient
+
+    fake_page = MagicMock()
+    fake_page.title = "Test Page"
+    fake_page.type = "concept"
+    fake_page.status = "active"
+
+    app = _make_app(tmp_wiki)
+    with TestClient(app) as client:
+        with patch("synthadoc.storage.wiki.WikiStorage.read_page", return_value=fake_page):
+            resp = client.get("/graph")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["nodes"]) > 0
+    node = data["nodes"][0]
+    assert "slug" in node
+    assert "title" in node
+    assert "type" in node
+    assert "state" in node
+    assert isinstance(node["cluster_id"], int)
+
+
+def test_get_graph_returns_no_store_header(tmp_wiki, seeded_graph, reset_graph_flag):
+    """GET /graph must include Cache-Control: no-store in the response headers."""
+    from fastapi.testclient import TestClient
+
+    fake_page = MagicMock()
+    fake_page.title = "Page"
+    fake_page.type = "concept"
+    fake_page.status = "active"
+
+    app = _make_app(tmp_wiki)
+    with TestClient(app) as client:
+        with patch("synthadoc.storage.wiki.WikiStorage.read_page", return_value=fake_page):
+            resp = client.get("/graph")
+
+    assert resp.headers.get("cache-control") == "no-store"
+
+
+def test_get_graph_computing_returns_no_store_header(tmp_wiki, reset_graph_flag):
+    """GET /graph computing response must also include Cache-Control: no-store."""
+    from fastapi.testclient import TestClient
+
+    app = _make_app(tmp_wiki)
+    with patch("synthadoc.storage.log.AuditDB.read_graph", new=AsyncMock(return_value=None)):
+        with TestClient(app) as client:
+            resp = client.get("/graph")
+
+    assert resp.status_code == 200
+    assert resp.headers.get("cache-control") == "no-store"

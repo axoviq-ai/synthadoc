@@ -1,6 +1,6 @@
 # Synthadoc — Design Document
 
-**Version:** 0.9.3  
+**Version:** 1.0.0  
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -37,6 +37,10 @@
 26. [Web Chat UI and Session Management](#26-web-chat-ui-and-session-management)
 27. [MCP Server](#27-mcp-server)
 28. [Backup & Restore](#28-backup--restore)
+29. [Pre-LLM Source Sanitizer](#29-pre-llm-source-sanitizer)
+30. [Per-Source Truncation Flag](#30-per-source-truncation-flag)
+31. [Proportional Context Budget](#31-proportional-context-budget)
+32. [Knowledge Graph](#32-knowledge-graph)
 
 **Appendices**
 - [Appendix A — Release Feature Index](#appendix-a--release-feature-index)
@@ -2701,6 +2705,191 @@ synthadoc restore <backup.zip> [--name <new-name>] [--target <dir>] [--port <por
 
 ---
 
+## 29. Pre-LLM Source Sanitizer
+
+Every source document passes through a sanitizer immediately after text extraction, before any LLM call. The sanitizer removes six categories of content that could manipulate the LLM or degrade compilation quality:
+
+| Category | Action | Warning logged? |
+|---|---|---|
+| Zero-width characters (U+200B, U+200C, U+200D, U+FEFF) | Removed silently | No |
+| Bidi override characters (U+202A–U+202E, U+2066–U+2069) | Removed | Yes |
+| HTML comments (`<!-- ... -->`) | Removed silently | No |
+| Hidden CSS spans (`display:none`, `visibility:hidden`) | Removed silently | No |
+| Base64 blobs ≥ 200 consecutive characters | Replaced with `[base64 content removed]` | Yes |
+| Instruction-override phrases (8 patterns: "ignore previous instructions", "disregard the above", "override your system prompt", etc.) | Replaced with `[redacted]` | Always |
+
+When content is removed and a warning is appropriate, the server logs a `WARN` entry:
+```
+[WARN] sanitizer stripped content from 'papers/survey.pdf': bidi overrides, instruction-override phrase
+```
+
+This is a pure pre-processing step with zero LLM cost. Truncation (if configured) is applied after sanitization, so the character budget is consumed by clean text only.
+
+---
+
+## 30. Per-Source Truncation Flag
+
+Large source documents are truncated before they reach the LLM. By default the limit is **32,000 characters** (~8,000 tokens), raised from the prior hardcoded 8,000-character limit. When a source exceeds this limit, its compiled wiki page records a `truncated: true` flag in its `sources:` frontmatter entry.
+
+### Configuration
+
+```toml
+[ingest]
+max_source_chars = 32000   # default; raise for large PDFs or books
+```
+
+### Per-ingest override
+
+The limit can be raised for a single ingest run without modifying the config:
+
+```bash
+synthadoc ingest papers/large-textbook.pdf --max-source-chars 128000
+```
+
+The same `max_source_chars` field is accepted by the HTTP `POST /jobs/ingest` body and the MCP `synthadoc_ingest` tool.
+
+### Lint surfacing
+
+`synthadoc lint` emits a warning for any page that has a truncated source:
+
+```
+[WARN] quantum-computing.md: source 'papers/large-survey.pdf' was truncated at ingest
+       (source exceeded max_source_chars=32000 — 87,412 chars in source).
+       To re-ingest with a higher limit (this source only):
+         synthadoc ingest papers/large-survey.pdf --max-source-chars 128000
+       To raise the limit for all future ingests:
+         set [ingest] max_source_chars = 128000 in your config
+```
+
+---
+
+## 31. Proportional Context Budget
+
+Query context is allocated proportionally to the configured model's context window, replacing the prior hard cap. The default allocation:
+
+| Slice | Default | Purpose |
+|---|---|---|
+| `context_wiki_pct` | 60% | Wiki page content (ranked by BM25 + vector score) |
+| `context_history_pct` | 20% | Chat turn history (newest-first, oldest dropped when over budget) |
+| `context_system_pct` | 15% | System prompt and purpose document |
+| `context_index_pct` | 5% | `ROUTING.md` and search index |
+
+Percentages must sum to ≤ 100. Configure in `[query]`:
+
+```toml
+[query]
+context_window = 0         # 0 = auto-detect from known model map
+context_wiki_pct      = 60
+context_history_pct   = 20
+context_system_pct    = 15
+context_index_pct     = 5
+```
+
+> **Note:** `context_system_pct` and `context_index_pct` are parsed and validated but not yet enforced as hard caps in this release — the system prompt uses a conservative fixed limit, which is well within the configured 15% slice for all supported models. Full per-slice enforcement is planned for v1.1.
+
+### Model context window map
+
+Synthadoc ships a built-in prefix-matched table:
+
+| Model | Context window |
+|---|---|
+| `claude-opus-4*`, `claude-sonnet-4*`, `claude-haiku-4*` | 200,000 tokens |
+| `gpt-4o*`, `gpt-4-turbo*` | 128,000 tokens |
+| `gpt-4` (exact) | 8,192 tokens |
+| `gpt-3.5-turbo*` | 16,385 tokens |
+| Unknown / fallback | 128,000 tokens |
+
+Set `context_window = N` in config to override the map (useful for local Ollama models with non-standard context sizes).
+
+At the defaults on a 200k-token model: wiki slice ≈ 480,000 chars — far more than any practical query needs. On constrained models, the budget scales down automatically so the same config works across model families.
+
+---
+
+## 32. Knowledge Graph
+
+Synthadoc computes a wikilink graph across all active and draft pages during every lint run. The graph is stored in two tables in `audit.db`:
+
+```sql
+CREATE TABLE graph_nodes (
+    slug        TEXT PRIMARY KEY,
+    cluster_id  INTEGER NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+
+CREATE TABLE graph_edges (
+    from_slug   TEXT NOT NULL,
+    to_slug     TEXT NOT NULL,
+    weight      INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (from_slug, to_slug)
+);
+```
+
+Edge weight equals the number of `[[wikilink]]` references from one page to another (most pairs: 1). Cluster IDs are assigned by Louvain community detection — pages that link densely to each other end up in the same cluster.
+
+### REST API
+
+**`GET /graph`** — returns the full graph with per-node enrichment:
+
+```json
+{
+  "status": "ready",
+  "node_count": 45,
+  "edge_count": 123,
+  "cluster_count": 4,
+  "nodes": [
+    {"slug": "quantum-error-correction", "title": "Quantum Error Correction",
+     "type": "concept", "state": "active", "cluster_id": 2}
+  ],
+  "edges": [
+    {"from": "quantum-error-correction", "to": "shor-algorithm", "weight": 1}
+  ]
+}
+```
+
+When the graph tables are empty (first call after upgrade, or before the first lint run), the server returns `{"status": "computing"}` and starts a background build immediately. The web UI polls every 2 seconds and renders the graph when the status becomes `"ready"`.
+
+### Web UI
+
+The **Graph** tab (alongside Chat in the top nav) renders a D3.js force-directed graph. Nodes are colored by cluster. Clicking a node opens a sidebar showing the page title, type and lifecycle state badges, cluster assignment, and an **"Ask about this →"** button that switches to the Chat tab with a pre-filled query.
+
+Controls: zoom in/out (scroll or pinch), drag nodes, filter by page type.
+
+---
+
+## Customization
+
+Synthadoc exposes four extension points — all hot-loaded, no server restart required.
+
+### Custom skills (new file formats)
+
+Subclass `BaseSkill` (Apache-2.0 — no AGPL obligation on your skill code), drop the folder in `<wiki-root>/skills/` or `~/.synthadoc/skills/`, and Synthadoc picks it up on the next ingest. Skills match by file extension or intent prefix and support any Unicode text, including CJK prefixes.
+
+→ Full interface, manifest format, and examples: [§5 Skills System](#5-skills-system) and [§17 Plugin Development Guide](#17-plugin-development-guide)
+
+### Custom LLM providers
+
+Subclass `LLMProvider` from `synthadoc/providers/base.py` (Apache-2.0) and place the file in `~/.synthadoc/providers/` or the wiki `providers/` directory. Switch active provider with one config line.
+
+→ Full interface and wiring instructions: [§10 Configuration — Provider switching](#10-configuration)
+
+### Hooks
+
+Shell scripts (any language) that fire on `on_ingest_complete` and `on_lint_complete`. Receive a JSON context on stdin. Set `blocking = true` to gate the operation on the hook's exit code — useful for CI pipelines and quality gates.
+
+→ Full event schema, context JSON, and blocking behaviour: [§11 Hook System](#11-hook-system)
+
+### Cache control
+
+Three cache layers (embedding, LLM response, provider prompt cache) invalidate automatically on source-file change (SHA-256). Force a fresh call with `--force`, or wipe all cached responses with `synthadoc cache clear -w <wiki>`.
+
+→ Layer-by-layer breakdown and invalidation rules: [§12 Cache System](#12-cache-system)
+
+### Per-wiki AGENTS.md
+
+Edit `<wiki-root>/AGENTS.md` to give the LLM domain-specific instructions — terminology, page-naming conventions, what to cross-reference. This is the highest-priority instruction source for every agent run against this wiki; the `scaffold` command regenerates a starter version from current wiki state.
+
+---
+
 ## Appendix A — Release Feature Index
 
 ### v0.1.0 (Community Edition)
@@ -2820,6 +3009,13 @@ synthadoc restore <backup.zip> [--name <new-name>] [--target <dir>] [--port <por
 - **Job status and list actions** — the Action Agent now handles `job_status` and `job_list` intent queries. `job_status` with a job ID returns a detailed job card; without an ID it returns a table of all jobs and emits a `clarify` event so the user can pick one via chip. `job_list` accepts an optional multi-status filter (e.g. "show failed and skipped jobs") and includes an Error column when any listed job has a non-null error. Built-in `hints.json` extended with job-status and job-list hints for POWER_USER mode.
 - **Multi-chip clarify continuation** — clarify chip replies (bare UUIDs) are now reliably routed back to the Action Agent across multiple chip clicks. The server tags every clarify message with a `[clarify] ` prefix in the audit log; `detect()` scans back `clarify_lookback` assistant turns to find an open clarify context.
 - **Qwen provider routing** — `qwen-<letter>` model names (e.g. `qwen-plus`, `qwen-max`) route to DashScope cloud API regardless of other config; all other Qwen models (e.g. `qwen3:8b`, `qwen3.5`) route to local Ollama. This decouples cloud/local routing from `QWEN_API_KEY` presence.
+
+### v1.0.0
+
+- **Pre-LLM source sanitizer** — every source document passes through a sanitizer before any LLM call; removes six categories of potentially harmful content (zero-width characters, bidi overrides, HTML comments, hidden CSS spans, base64 blobs ≥ 200 chars, instruction-override phrases); a `WARN` log entry is emitted when bidi overrides or instruction-override phrases are stripped; zero LLM cost; applied before truncation so the character budget is consumed by clean text only
+- **Per-source truncation flag** — default character limit raised from 8,000 to 32,000 characters per source (~8,000 tokens); truncated sources are flagged with `truncated: true` in the page's `sources:` frontmatter; `--max-source-chars N` CLI flag and matching `POST /jobs/ingest` body field and MCP `synthadoc_ingest` parameter override the limit per run; `synthadoc lint` emits a warning for any page with a truncated source and suggests the override command; configurable via `[ingest] max_source_chars` in `config.toml`
+- **Proportional context budget** — query context is allocated proportionally to the configured model's context window; four configurable slices: `context_wiki_pct` (60%), `context_history_pct` (20%), `context_system_pct` (15%), `context_index_pct` (5%); built-in prefix-matched model context window table covers Claude 4, GPT-4o/turbo/3.5, and GPT-4; unknown models fall back to 128,000 tokens; `context_window = N` in `[query]` overrides the table for local or custom models
+- **Knowledge graph** — wikilink graph computed across all active and draft pages during every lint run; stored in `graph_nodes` and `graph_edges` tables in `audit.db`; edge weight = number of `[[wikilink]]` references between two pages; cluster IDs assigned by Louvain community detection; `GET /graph` REST endpoint returns nodes with per-node enrichment (title, type, state, cluster) and edges; first call after upgrade triggers a background build and returns `{"status":"computing"}`; web UI **Graph** tab (D3.js force-directed graph) — nodes colored by cluster, click to see page details and an "Ask about this →" button that opens a pre-filled chat query
 
 ### v0.9.3
 

@@ -70,6 +70,7 @@ def _load_system_knowledge() -> list[_SystemPage]:
 
 _SYSTEM_KNOWLEDGE: list[_SystemPage] = _load_system_knowledge()
 _MAX_QUESTION_CHARS = 4000
+_CANDIDATE_POOL_SIZE = 20
 
 
 def _history_block(history: list[dict]) -> str:
@@ -228,18 +229,24 @@ def _parse_lookback_days(question: str) -> int:
 
 class QueryAgent:
     def __init__(self, provider: LLMProvider, store: WikiStorage,
-                 search: HybridSearch, top_n: int = 8,
+                 search: HybridSearch,
+                 query_config=None,
+                 model: str = "",
                  gap_score_threshold: float = 2.0,
                  routing_path: Path | None = None,
                  orchestrator: object | None = None,
                  max_tokens: int = 8192) -> None:
+        from synthadoc.config import QueryConfig
+        from synthadoc.core.context_budget import compute_char_budgets
         self._provider = provider
         self._store = store
         self._search = search
-        self._top_n = top_n
         self._gap_score_threshold = gap_score_threshold
         self._orchestrator = orchestrator
         self._max_tokens = max_tokens
+        self._model = model
+        self._query_config = query_config or QueryConfig()
+        self._char_budgets = compute_char_budgets(model, self._query_config)
         self._routing = None
         if routing_path:
             from synthadoc.core.routing import RoutingIndex
@@ -452,10 +459,52 @@ class QueryAgent:
 
     def _load_purpose_context(self) -> str:
         """Return purpose.md as a pinned preamble for synthesis, or '' if absent."""
+        # system budget (context_system_pct) not yet enforced as a hard cap — reserved for v1.1
         page = self._store.read_page("purpose")
         if not page:
             return ""
         return f"### Wiki Scope (purpose.md)\n{page.content[:12000]}"
+
+    def _build_wiki_context(self, candidates) -> str:
+        """Greedy-fill wiki context up to the wiki char budget.
+
+        Pages are appended in candidate score order until the budget is exhausted.
+        A partial page is included when enough remaining budget exists (>100 chars).
+        The 'purpose' page is always skipped — it is pinned separately.
+        """
+        budget = self._char_budgets["wiki"]
+        parts = []
+        used = 0
+        for r in candidates:
+            page = self._store.read_page(r.slug)
+            if not page or r.slug == "purpose":
+                continue
+            chunk = f"### {page.title}\n{page.content}"
+            if used + len(chunk) > budget:
+                remaining = budget - used
+                if remaining > 100:
+                    parts.append(chunk[:remaining])
+                break
+            parts.append(chunk)
+            used += len(chunk)
+        return "\n\n".join(parts)
+
+    def _trim_history(self, history: list[dict]) -> list[dict]:
+        """Return the most-recent turns that fit within the history char budget.
+
+        Iterates newest-first, accumulating turns until the budget is reached,
+        then reverses the result so turns remain in chronological order.
+        """
+        budget = self._char_budgets["history"]
+        result = []
+        used = 0
+        for turn in reversed(history):
+            size = len(turn.get("content", ""))
+            if used + size > budget:
+                break
+            result.append(turn)
+            used += size
+        return list(reversed(result))
 
     def _expand_aliases(self, question: str) -> str:
         """Replace alias matches in question with canonical slug names."""
@@ -533,7 +582,7 @@ class QueryAgent:
 
         async def _search_one(sub_q: str):
             return await self._search.hybrid_search(
-                sub_q.lower().split(), top_n=self._top_n, scoped_slugs=scoped_slugs
+                sub_q.lower().split(), top_n=_CANDIDATE_POOL_SIZE, scoped_slugs=scoped_slugs
             )
 
         results_per_sub = await asyncio.gather(*[_search_one(q) for q in sub_questions])
@@ -542,10 +591,10 @@ class QueryAgent:
             for r in results:
                 if r.slug not in best or r.score > best[r.slug].score:
                     best[r.slug] = r
-        candidates = sorted(best.values(), key=lambda r: r.score, reverse=True)[:self._top_n]
+        candidates = sorted(best.values(), key=lambda r: r.score, reverse=True)[:_CANDIDATE_POOL_SIZE]
         return sub_questions, candidates
 
-    async def query(self, question: str) -> QueryResult:
+    async def query(self, question: str, history: list[dict] | None = None) -> QueryResult:
         question = self._expand_aliases(question)
 
         # Action pre-flight: if orchestrator is available and question is an action, dispatch it
@@ -585,11 +634,7 @@ class QueryAgent:
 
         citations = [r.slug for r in candidates]
         _purpose_ctx = self._load_purpose_context()
-        _pages_ctx = "\n\n".join(
-            f"### {p.title}\n{p.content[:1000]}"
-            for r in candidates
-            if r.slug != "purpose" and (p := self._store.read_page(r.slug))
-        ) or "No relevant pages found."
+        _pages_ctx = self._build_wiki_context(candidates) or "No relevant pages found."
         _ctx_parts = []
         if _purpose_ctx:
             _ctx_parts.append(_purpose_ctx)
@@ -610,10 +655,12 @@ class QueryAgent:
             _ctx_parts.append(_pages_ctx)
         context = "\n\n".join(_ctx_parts)
 
+        _trimmed_history = self._trim_history(history or [])
         synthesis_prompt = self._build_synthesis_prompt(
             question, context,
             gap=_gap, system_ctx=_system_ctx, is_live_data=_is_live_data,
             gap_sentinel=True,
+            history=_trimmed_history if _trimmed_history else None,
         )
 
         resp2 = await self._provider.complete(
@@ -826,11 +873,7 @@ class QueryAgent:
         # follow-up messages like "check it again" resolve to the correct live data
         # and system knowledge. The synthesis prompt still shows the original question.
         _system_ctx = self._get_relevant_system_pages(retrieval_question)
-        _pages_ctx = "\n\n".join(
-            f"### {p.title}\n{p.content[:1000]}"
-            for r in candidates
-            if r.slug != "purpose" and (p := self._store.read_page(r.slug))
-        ) or "No relevant pages found."
+        _pages_ctx = self._build_wiki_context(candidates) or "No relevant pages found."
         _ctx_parts = []
         if _purpose_ctx:
             _ctx_parts.append(_purpose_ctx)
@@ -862,10 +905,12 @@ class QueryAgent:
         if _gap and _is_introspective(retrieval_question):
             _gap = False
 
+        _trimmed_history = self._trim_history(history or [])
         synthesis_prompt = self._build_synthesis_prompt(
             question, context,
             gap=_gap, system_ctx=_system_ctx, is_live_data=_is_live_data,
-            history=history,
+            gap_sentinel=True,
+            history=_trimmed_history if _trimmed_history else None,
         )
 
         yield {"event": "status", "data": {"phase": "synthesizing", "sources": len(citations)}}
@@ -902,6 +947,14 @@ class QueryAgent:
             fallback = "(No response was generated. Please try again.)"
             yield {"event": "token", "data": {"text": fallback}}
             full_answer = fallback
+
+        # Guard B: post-synthesis gap detection — same logic as run().
+        # Fires when _detect_gap() missed (pre-synthesis, guard A) but the LLM
+        # still could not answer from the available pages.
+        if not _gap and full_answer.startswith("[GAP]"):
+            _gap = True
+            full_answer = full_answer[len("[GAP]"):].lstrip("\n")
+            logger.debug("run_stream: guard B fired — post-synthesis gap detected")
 
         yield {"event": "citations", "data": {"citations": [] if _gap else citations}}
 

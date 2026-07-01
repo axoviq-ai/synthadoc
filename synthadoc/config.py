@@ -85,12 +85,28 @@ class IngestConfig:
     fetch_timeout_seconds: int = 30
     staging_policy: str = "off"           # "off" | "all" | "threshold"
     staging_confidence_min: str = "high"  # "high" | "medium" | "low"
+    max_source_chars: int = 32000         # chars read from a source before truncation (~8k tokens)
 
 
 @dataclass
 class QueryConfig:
     gap_score_threshold: float = 2.0   # BM25 score below which gap is detected
-    context_token_budget: int = 10000  # default token budget for context pack builds
+    context_token_budget: int = 10000  # legacy field — kept for context pack builds
+    context_window: int = 0            # 0 = auto-detect from model map
+    context_wiki_pct: int = 60
+    context_history_pct: int = 20
+    context_system_pct: int = 15
+    context_index_pct: int = 5
+
+    def __post_init__(self) -> None:
+        total = self.context_wiki_pct + self.context_history_pct + \
+                self.context_system_pct + self.context_index_pct
+        if total > 100:
+            raise ValueError(
+                f"[query] context percentages sum to {total} — must be ≤ 100. "
+                f"Current: wiki={self.context_wiki_pct}, history={self.context_history_pct}, "
+                f"system={self.context_system_pct}, index={self.context_index_pct}."
+            )
 
 
 @dataclass
@@ -307,6 +323,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         fetch_timeout_seconds=ig.get("fetch_timeout_seconds", 30),
         staging_policy=ig.get("staging_policy", "off"),
         staging_confidence_min=ig.get("staging_confidence_min", "high"),
+        max_source_chars=int(ig.get("max_source_chars", 32000)),
     )
 
     # --- query ---
@@ -314,6 +331,11 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
     query = QueryConfig(
         gap_score_threshold=q_section.get("gap_score_threshold", 2.0),
         context_token_budget=int(q_section.get("context_token_budget", 10000)),
+        context_window=int(q_section.get("context_window", 0)),
+        context_wiki_pct=int(q_section.get("context_wiki_pct", 60)),
+        context_history_pct=int(q_section.get("context_history_pct", 20)),
+        context_system_pct=int(q_section.get("context_system_pct", 15)),
+        context_index_pct=int(q_section.get("context_index_pct", 5)),
     )
 
     # --- queue ---

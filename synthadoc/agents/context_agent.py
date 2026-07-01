@@ -83,7 +83,7 @@ class ContextAgent:
     def __init__(self, provider: LLMProvider, store: WikiStorage,
                  search: HybridSearch, token_budget: int = 4000,
                  top_n: int = 8) -> None:
-        self._qa = QueryAgent(provider=provider, store=store, search=search, top_n=top_n)
+        self._qa = QueryAgent(provider=provider, store=store, search=search)
         self._store = store
         self._search = search
         self._token_budget = token_budget
