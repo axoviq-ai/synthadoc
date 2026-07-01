@@ -748,6 +748,13 @@ class IngestAgent:
                             section, extracted.text, p.name
                         )
                         page.content = page.content.rstrip() + f"\n\n{section}"
+                        page.sources.append(SourceRef(
+                            file=source,
+                            hash=src_hash or "",
+                            size=src_size or 0,
+                            ingested=date.today().isoformat(),
+                            truncated=_truncated,
+                        ))
                         staged = self._write_or_stage(target, page, policy)
                 if staged:
                     logger.info("ingest: staged update to candidates slug=%s source=%s", target, source[:80])
@@ -796,6 +803,13 @@ class IngestAgent:
                                 section, extracted.text, p.name
                             )
                             page.content = page.content.rstrip() + f"\n\n{section}"
+                            page.sources.append(SourceRef(
+                                file=source,
+                                hash=src_hash or "",
+                                size=src_size or 0,
+                                ingested=date.today().isoformat(),
+                                truncated=_truncated,
+                            ))
                             staged = self._write_or_stage(slug, page, policy)
                     if staged:
                         logger.info("ingest: staged update to candidates slug=%s source=%s", slug, source[:80])
