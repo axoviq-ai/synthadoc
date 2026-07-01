@@ -181,11 +181,14 @@ class Orchestrator:
         logger.info("LLM agents — %s", " | ".join(parts))
 
     async def ingest(self, source: str, force: bool = False,
-                     max_results: int | None = None) -> str:
+                     max_results: int | None = None,
+                     max_source_chars: int | None = None) -> str:
         """Enqueue an ingest job. The server worker loop executes it."""
         payload: dict = {"source": source, "force": force}
         if max_results is not None:
             payload["max_results"] = max_results
+        if max_source_chars is not None:
+            payload["max_source_chars"] = max_source_chars
         return await self._queue.enqueue("ingest", payload)
 
     async def resume(self) -> int:
@@ -198,7 +201,8 @@ class Orchestrator:
         return len(jobs)
 
     async def _run_ingest(self, job_id: str, source: str, auto_confirm: bool,
-                          force: bool = False, max_results: int | None = None) -> None:
+                          force: bool = False, max_results: int | None = None,
+                          max_source_chars: int | None = None) -> None:
         # auto_confirm is reserved for when user-facing confirmation prompts are added.
         from synthadoc.agents.ingest_agent import IngestAgent
         from synthadoc.skills.web_search.scripts.main import _INTENT_RE as _WEB_SEARCH_RE
@@ -207,6 +211,11 @@ class Orchestrator:
             # take effect without a server restart.
             _cfg_path = self._root / ".synthadoc" / "config.toml"
             cfg = load_config(project_config=_cfg_path) if _cfg_path.exists() else self._cfg
+            # Apply per-run override without mutating the global config object.
+            if max_source_chars is not None:
+                import copy as _copy
+                cfg = _copy.deepcopy(cfg)
+                cfg.ingest.max_source_chars = max_source_chars
 
             # Manifest expansion: a .txt file where every line is a URL / intent / path
             # is treated as a batch source list — fan out into one child job per line.
@@ -407,10 +416,13 @@ class Orchestrator:
         import asyncio
         from synthadoc.agents.query_agent import QueryAgent
         _provider = make_provider("query", self._cfg)
+        _model = self._cfg.agents.resolve("query").model
         result = await asyncio.wait_for(
             QueryAgent(
                 provider=_provider,
                 store=self._store, search=self._search,
+                query_config=self._cfg.query,
+                model=_model,
                 gap_score_threshold=self._cfg.query.gap_score_threshold,
                 orchestrator=self,
                 max_tokens=self._cfg.agents.query_max_tokens,
@@ -448,9 +460,12 @@ class Orchestrator:
         from synthadoc.agents.query_agent import QueryAgent
         _provider = make_provider("query", self._cfg)
         _routing_path = self._root / "ROUTING.md"
+        _model = self._cfg.agents.resolve("query").model
         agent = QueryAgent(
             provider=_provider,
             store=self._store, search=self._search,
+            query_config=self._cfg.query,
+            model=_model,
             gap_score_threshold=self._cfg.query.gap_score_threshold,
             routing_path=_routing_path if _routing_path.exists() else None,
             orchestrator=self,

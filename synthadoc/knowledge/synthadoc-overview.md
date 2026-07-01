@@ -1,6 +1,6 @@
 ---
 title: Synthadoc Overview
-keywords: [synthadoc, overview, about, introduction, features, open source, community, free, providers, wiki engine, knowledge base, capabilities, product]
+keywords: [overview, introduction, features, open source, community, free, providers, capabilities, product]
 ---
 
 # Synthadoc Overview

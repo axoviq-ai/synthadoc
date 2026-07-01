@@ -72,6 +72,9 @@ export function useQueryStream(
         let citations: string[] = [];
         let gapSuggestions: string[] = [];
 
+        // Strip [GAP] sentinel the LLM may prepend when guard B fires (post-synthesis gap).
+        const stripGap = (s: string) => s.startsWith("[GAP]") ? s.slice(5).replace(/^\n/, "") : s;
+
         // Coalesce rapid token callbacks into one React state update per animation frame.
         // Without this, every token triggers setMessages → full re-render + layout flush.
         const scheduleFlush = () => {
@@ -80,7 +83,7 @@ export function useQueryStream(
                 rafRef.current = null;
                 setMessages((prev) => {
                     const next = [...prev];
-                    next[next.length - 1] = { ...next[next.length - 1], text: partialRef.current };
+                    next[next.length - 1] = { ...next[next.length - 1], text: stripGap(partialRef.current) };
                     return next;
                 });
             });
@@ -108,7 +111,7 @@ export function useQueryStream(
                         const last = next[next.length - 1];
                         // Don't overwrite a clarify/notice message — it was already finalised by its handler
                         if (last.type !== "clarify" && last.type !== "notice") {
-                            next[next.length - 1] = { ...last, text: partial, citations, gapSuggestions };
+                            next[next.length - 1] = { ...last, text: stripGap(partial), citations, gapSuggestions };
                         }
                         return next;
                     });

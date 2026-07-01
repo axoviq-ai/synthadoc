@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, Response
+from synthadoc.core.queue import JobStatus
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 from typing import Optional
@@ -246,6 +247,7 @@ class IngestRequest(BaseModel):
     source: str
     force: bool = False
     max_results: int | None = None
+    max_source_chars: int | None = None   # overrides [ingest] max_source_chars for this run
 
     @field_validator("source")
     @classmethod
@@ -307,6 +309,34 @@ class ExportRequest(BaseModel):
     context_pack: str | None = None
 
 
+def _load_blocked_domains(wiki_root: Path) -> set[str]:
+    """Return the set of auto-blocked domains from .synthadoc/blocked_domains.json."""
+    import json as _json_mod
+    p = wiki_root / ".synthadoc" / "blocked_domains.json"
+    if not p.exists():
+        return set()
+    try:
+        return set(_json_mod.loads(p.read_text(encoding="utf-8")))
+    except Exception:
+        return set()
+
+
+_SUGGESTION_URL_RE = re.compile(r"^https?://([^/]+)", re.IGNORECASE)
+
+
+def _filter_blocked_suggestions(suggestions: list[str], blocked: set[str]) -> list[str]:
+    """Remove URL suggestions whose domain is in the blocked set; keep search queries."""
+    if not blocked:
+        return suggestions
+    filtered = []
+    for s in suggestions:
+        m = _SUGGESTION_URL_RE.match(s)
+        if m and m.group(1).lower().lstrip("www.") in blocked:
+            continue
+        filtered.append(s)
+    return filtered
+
+
 def _parse_retry_after(exc: Exception, default: float = 60.0) -> float:
     """Parse 'Please try again in Xm Y.Zs' from a rate-limit error message."""
     m = re.search(r"Please try again in (?:(\d+)m\s*)?(\d+(?:\.\d+)?)s", str(exc))
@@ -328,8 +358,10 @@ async def _worker_loop(orch) -> None:
                     source = job.payload.get("source", "")
                     force = job.payload.get("force", False)
                     max_results = job.payload.get("max_results")
+                    max_source_chars = job.payload.get("max_source_chars")
                     await orch._run_ingest(job.id, source, auto_confirm=True, force=force,
-                                           max_results=max_results)
+                                           max_results=max_results,
+                                           max_source_chars=max_source_chars)
                 elif job.operation == "lint":
                     scope = job.payload.get("scope", "all")
                     auto_resolve = job.payload.get("auto_resolve", False)
@@ -378,6 +410,9 @@ async def _worker_loop(orch) -> None:
                 logger.error("Session purge failed: %s", _pe)
 
         await asyncio.sleep(sleep_secs)
+
+
+_graph_computing = False  # module-level flag prevents duplicate background tasks
 
 
 def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mcp: bool = True) -> FastAPI:
@@ -479,7 +514,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
         orch = app.state.orch
         jobs = await orch.queue.list_jobs()
-        pending = sum(1 for j in jobs if j.status == "pending")
+        pending = sum(1 for j in jobs if j.status == JobStatus.PENDING)
         pages = [s for s in orch._store.list_pages() if s not in LINT_SKIP_SLUGS]
         return {
             "wiki": str(wiki_root),
@@ -622,7 +657,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                         events.append({"event": "token", "data": {"text": word + " "}})
                     events.append({"event": "citations", "data": {"citations": cached.get("citations", [])}})
                     if cached.get("knowledge_gap") and cached.get("suggested_searches"):
-                        events.append({"event": "gap", "data": {"suggested_searches": cached["suggested_searches"]}})
+                        _filtered_cached = _filter_blocked_suggestions(
+                            cached["suggested_searches"], _load_blocked_domains(orch._root))
+                        if _filtered_cached:
+                            events.append({"event": "gap", "data": {"suggested_searches": _filtered_cached}})
                     from synthadoc.agents.hint_engine import HintEngine
                     _ss = _session_state.get(session_id or "", {})
                     cursor = _ss.get("cursor", 0)
@@ -689,7 +727,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                             citations = evt["data"].get("citations", [])
                         elif evt["event"] == "gap":
                             _knowledge_gap = True
-                            _suggested_searches = evt["data"].get("suggested_searches", [])
+                            _raw = evt["data"].get("suggested_searches", [])
+                            _suggested_searches = _filter_blocked_suggestions(
+                                _raw, _load_blocked_domains(orch._root))
+                            evt["data"]["suggested_searches"] = _suggested_searches
                         elif evt["event"] == "done":
                             _is_cacheable = evt["data"].get("cacheable", True)
                             from synthadoc.agents.hint_engine import HintEngine
@@ -726,6 +767,9 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                 msg = known.detail if known else "LLM provider unavailable"
                 yield f"event: error\ndata: {_json.dumps({'message': msg})}\n\n"
                 return
+            # Strip [GAP] sentinel the LLM may have prepended (guard B, streaming path)
+            if full_answer.startswith("[GAP]"):
+                full_answer = full_answer[len("[GAP]"):].lstrip("\n")
             if full_answer and _is_cacheable:
                 from synthadoc.core.cache import make_query_cache_key
                 _qcfg = orch._cfg.agents.resolve("query")
@@ -781,6 +825,65 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         from synthadoc.agents.hint_engine import HintEngine
         return {"hints": HintEngine.initial_hints(mode)}
 
+    @app.get("/graph")
+    async def get_graph():
+        global _graph_computing
+        orch = app.state.orch
+        graph_data = await orch._audit.read_graph()
+        if graph_data is None:
+            if not _graph_computing:
+                _graph_computing = True
+                logger.info("[graph] computation started (lazy hydration)")
+                asyncio.create_task(_background_build_graph())
+            return JSONResponse(content={"status": "computing"}, headers=_NO_STORE)
+        enriched_nodes = []
+        for n in graph_data["nodes"]:
+            page = orch._store.read_page(n["slug"])
+            enriched_nodes.append({
+                "slug": n["slug"],
+                "title": page.title if page else n["slug"],
+                "type": (page.type if page else None) or "concept",
+                "state": (page.status if page else "active"),
+                "cluster_id": n["cluster_id"],
+            })
+        clusters = len({n["cluster_id"] for n in graph_data["nodes"]}) if graph_data["nodes"] else 0
+        return JSONResponse(content={
+            "status": "ready",
+            "node_count": len(enriched_nodes),
+            "edge_count": len(graph_data["edges"]),
+            "cluster_count": clusters,
+            "nodes": enriched_nodes,
+            "edges": [
+                {"from": e["from_slug"], "to": e["to_slug"], "weight": e["weight"]}
+                for e in graph_data["edges"]
+            ],
+        }, headers=_NO_STORE)
+
+    async def _background_build_graph():
+        global _graph_computing
+        try:
+            from synthadoc.agents.lint_agent import LintAgent
+            from synthadoc.providers import make_provider as _make_provider
+            _orch = app.state.orch
+            lint = LintAgent(
+                provider=_make_provider("lint", _orch._cfg),
+                store=_orch._store,
+                log_writer=_orch._log,
+                audit_db=_orch._audit,
+                cfg=_orch._cfg,
+            )
+            nodes, edges = lint._build_graph()
+            await _orch._audit.write_graph(nodes, edges)
+            logger.info(
+                "[graph] complete — %d nodes, %d edges, %d clusters",
+                len(nodes), len(edges),
+                len({n["cluster_id"] for n in nodes}) if nodes else 0,
+            )
+        except Exception as exc:
+            logger.error("[graph] build failed: %s", exc)
+        finally:
+            _graph_computing = False
+
     @app.post("/analyse")
     async def analyse_source(req: AnalyseRequest):
         """Run analysis pass on a source and return structured result without writing pages."""
@@ -830,6 +933,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         payload: dict = {"source": source, "force": req.force}
         if req.max_results is not None:
             payload["max_results"] = req.max_results
+        if req.max_source_chars is not None:
+            payload["max_source_chars"] = req.max_source_chars
         job_id = await app.state.orch.queue.enqueue("ingest", payload)
         return {"job_id": job_id}
 
@@ -933,7 +1038,6 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     @app.get("/jobs")
     async def list_jobs(status: str | None = None, sort: str = "created_at", order: str = "asc"):
-        from synthadoc.core.queue import JobStatus
         if sort not in _VALID_JOB_SORT:
             raise HTTPException(status_code=400, detail=f"Invalid sort {sort!r}. Valid: {sorted(_VALID_JOB_SORT)}")
         if order not in _VALID_JOB_ORDER:
@@ -964,7 +1068,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         job = next((j for j in jobs if j.id == job_id), None)
         if job is None:
             raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found")
-        if job.status in ("pending", "in_progress"):
+        if job.status in (JobStatus.PENDING, JobStatus.IN_PROGRESS):
             raise HTTPException(status_code=409, detail=f"Cannot delete a job with status {job.status!r}")
         await app.state.orch.queue.delete(job_id, app.state.orch._audit)
         return {"deleted": job_id}

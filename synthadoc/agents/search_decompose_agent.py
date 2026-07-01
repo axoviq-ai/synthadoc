@@ -14,30 +14,37 @@ _MAX_QUERY_CHARS = 2000
 
 
 class SearchDecomposeAgent:
-    """Decomposes a web search intent into focused keyword search strings.
+    """Decomposes a knowledge gap into actionable ingest suggestions.
 
-    Unlike QueryAgent.decompose() which produces natural-language sub-questions,
-    this agent produces terse keyword strings optimised for web search engines.
+    Each suggestion is either a terse keyword search query or a well-known
+    authoritative URL (Wikipedia, official docs, etc.) for the topic.
     """
 
     def __init__(self, provider: LLMProvider) -> None:
         self._provider = provider
 
     async def decompose(self, query: str) -> list[str]:
-        """Break a search query into focused keyword search strings.
+        """Return a list of search queries and/or well-known URLs for the gap topic.
 
+        Items that start with https?:// are direct URLs; others are search queries
+        that the ingest pipeline will treat as 'search for: {item}'.
         Returns [query] on any failure so callers always get a usable list.
         """
         truncated = query[:_MAX_QUERY_CHARS]
         try:
             resp = await self._provider.complete(
                 messages=[Message(role="user", content=(
-                    "You are a search query optimiser. "
-                    "Break the topic below into focused keyword search queries "
-                    "suitable for a web search engine. "
-                    "Each query should be terse (3-7 words), target a different aspect, "
-                    "and together provide comprehensive coverage of the topic. "
-                    "Simple topics should return a single-element list. "
+                    "You are an ingest suggestion generator for a personal knowledge wiki. "
+                    "Given the topic below, suggest up to 4 ways to enrich the wiki. "
+                    "For each suggestion, choose ONE of:\n"
+                    "  • A terse keyword search query (3-7 words) — just the query text, no prefix\n"
+                    "  • A well-known authoritative URL (official docs, company page, "
+                    "    GitHub repo, etc.) — return the full https:// URL if one obviously exists. "
+                    "    Do NOT suggest Wikipedia URLs — they block automated access.\n"
+                    "Prefer a direct URL for specific well-known entities (people, organisations, "
+                    "technologies) when an official non-Wikipedia page exists. "
+                    "Otherwise use a search query. "
+                    "Simple topics should return 1-2 items; complex topics up to 4. "
                     "Return a JSON array of strings only. No explanation.\n\n"
                     f"Topic: {truncated}"
                 ))],

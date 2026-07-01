@@ -9,7 +9,7 @@ from typing import Optional
 
 import aiosqlite
 
-DB_SCHEMA_VERSION: int = 1
+DB_SCHEMA_VERSION: int = 2
 
 CITATION_EXCERPT_LEN = 100
 
@@ -146,6 +146,19 @@ class AuditDB:
                     role         TEXT NOT NULL,
                     content      TEXT NOT NULL,
                     created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+                )""")
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS graph_nodes (
+                    slug        TEXT PRIMARY KEY,
+                    cluster_id  INTEGER NOT NULL,
+                    updated_at  TEXT NOT NULL
+                )""")
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS graph_edges (
+                    from_slug   TEXT NOT NULL,
+                    to_slug     TEXT NOT NULL,
+                    weight      INTEGER NOT NULL DEFAULT 1,
+                    PRIMARY KEY (from_slug, to_slug)
                 )""")
             # Migrations for existing installs
             for migration in (
@@ -751,3 +764,32 @@ class AuditDB:
                 count = cur.rowcount
             await db.commit()
         return count
+
+    async def write_graph(self, nodes: list[dict], edges: list[dict]) -> None:
+        """Full replace of graph_nodes and graph_edges."""
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).isoformat()
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute("DELETE FROM graph_nodes")
+            await db.execute("DELETE FROM graph_edges")
+            await db.executemany(
+                "INSERT INTO graph_nodes (slug, cluster_id, updated_at) VALUES (?,?,?)",
+                [(n["slug"], n["cluster_id"], ts) for n in nodes],
+            )
+            await db.executemany(
+                "INSERT INTO graph_edges (from_slug, to_slug, weight) VALUES (?,?,?)",
+                [(e["from_slug"], e["to_slug"], e["weight"]) for e in edges],
+            )
+            await db.commit()
+
+    async def read_graph(self) -> dict | None:
+        """Return graph data or None if tables are empty (graph not yet computed)."""
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            cur = await db.execute("SELECT slug, cluster_id FROM graph_nodes")
+            nodes = [dict(r) for r in await cur.fetchall()]
+            if not nodes:
+                return None
+            cur = await db.execute("SELECT from_slug, to_slug, weight FROM graph_edges")
+            edges = [dict(r) for r in await cur.fetchall()]
+        return {"nodes": nodes, "edges": edges}

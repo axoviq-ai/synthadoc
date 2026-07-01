@@ -49,6 +49,8 @@ dependencies = [
     "tavily-python>=0.5",
     "youtube-transcript-api>=0.6",
     "croniter>=2.0",
+    "networkx>=3.0",
+    "python-louvain>=0.16",
 ]
 
 [project.urls]
@@ -107,3 +109,11 @@ artifacts = ["VERSION", "synthadoc/data/obsidian-plugin/*", "synthadoc/data/web-
 
 [tool.coverage.report]
 fail_under = 91
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "@(abc\\.)?abstractmethod",
+    "\\.\\.\\.\\s*$",
+]

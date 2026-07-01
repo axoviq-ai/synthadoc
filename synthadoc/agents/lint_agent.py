@@ -6,10 +6,18 @@ import asyncio
 import hashlib
 import json as _json
 import re
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
+
+import networkx as nx
+try:
+    import community as community_louvain  # python-louvain
+    _LOUVAIN_AVAILABLE = True
+except ImportError:
+    _LOUVAIN_AVAILABLE = False
 
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.log import AuditDB, LogWriter
@@ -38,6 +46,7 @@ class LintReport:
     lifecycle_stale: int = 0
     lifecycle_archived: int = 0
     lifecycle_synced: int = 0
+    warnings: list[str] = field(default_factory=list)
 
 
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
@@ -249,6 +258,68 @@ class LintAgent:
                 self._store.write_page(slug, page)
                 fixed += 1
         return fixed
+
+    def _check_truncated_sources(self, slug: str, page) -> list[str]:
+        """Return warning strings for any sources flagged as truncated."""
+        warnings = []
+        for src in (page.sources or []):
+            if getattr(src, "truncated", False):
+                max_chars = getattr(
+                    getattr(self._cfg, "ingest", None), "max_source_chars", 32000
+                )
+                warnings.append(
+                    f"[WARN] {slug}.md: source '{src.file}' was truncated at ingest "
+                    f"(source exceeded max_source_chars={max_chars} — {src.size:,} chars in source).\n"
+                    f"       To re-ingest with a higher limit (this source only):\n"
+                    f"         synthadoc ingest {src.file} --max-source-chars {src.size * 2}\n"
+                    f"       To raise the limit for all future ingests:\n"
+                    f"         set [ingest] max_source_chars = {src.size * 2} in your config"
+                )
+        return warnings
+
+    def _build_graph(self) -> tuple[list[dict], list[dict]]:
+        """Extract wikilink graph from all pages and run Louvain clustering.
+
+        Returns (nodes, edges) where each node has {slug, cluster_id} and each
+        edge has {from_slug, to_slug, weight}.  Self-links are ignored.
+        """
+        slugs = self._store.list_pages()
+        if not slugs:
+            return [], []
+
+        all_slugs = set(slugs)
+        edge_counts: dict[tuple[str, str], int] = defaultdict(int)
+
+        for slug in slugs:
+            page = self._store.read_page(slug)
+            if page is None:
+                continue
+            for match in _WIKILINK_RE.finditer(page.content or ""):
+                target = match.group(1).split("|")[0].strip()
+                if target and target != slug and target in all_slugs:
+                    edge_counts[(slug, target)] += 1
+
+        # Use DiGraph to preserve link direction (a→b and b→a are distinct edges)
+        G = nx.DiGraph()
+        G.add_nodes_from(slugs)
+        for (src, dst), weight in edge_counts.items():
+            G.add_edge(src, dst, weight=weight)
+
+        # Louvain requires undirected graph
+        if _LOUVAIN_AVAILABLE and G.number_of_nodes() > 0:
+            partition = community_louvain.best_partition(G.to_undirected())
+        else:
+            partition = {slug: 0 for slug in slugs}
+
+        nodes = [
+            {"slug": slug, "cluster_id": int(partition.get(slug, 0))}
+            for slug in slugs
+        ]
+        edges = [
+            {"from_slug": src, "to_slug": dst, "weight": data["weight"]}
+            for src, dst, data in G.edges(data=True)
+        ]
+        return nodes, edges
 
     async def _adversarial_single(self, slug: str, content: str) -> tuple[list[dict], int]:
         """Adversarially review one page. Always returns; never raises (rate-limits are caught)."""
@@ -581,6 +652,10 @@ class LintAgent:
                         await self._audit.record_audit_event(
                             job_id, "citation_validation_failed", issue,
                         )
+                # Check 6: truncated source warnings
+                truncation_warnings = self._check_truncated_sources(slug, page)
+                for warning in truncation_warnings:
+                    report.warnings.append(warning)
 
         # adversarial pass — runs only on full scope; default on
         if scope == "all":
@@ -608,6 +683,13 @@ class LintAgent:
                 slugs, report, _check_urls, _url_staleness,
                 promote_drafts=(scope == "all"),
             )
+
+        if scope == "all" and self._audit:
+            try:
+                nodes, edges = self._build_graph()
+                await self._audit.write_graph(nodes, edges)
+            except Exception as exc:
+                _log.warning("[graph] build failed during lint, skipping: %s", exc)
 
         self._log.log_lint(resolved=report.contradictions_resolved,
                            flagged=report.contradictions_found - report.contradictions_resolved,

@@ -5,11 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node -e \"const{cpSync,rmSync}=require('fs');rmSync('../synthadoc/data/web-ui/dist',{recursive:true,force:true});cpSync('dist','../synthadoc/data/web-ui/dist',{recursive:true});console.log('synced to data/');\"",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
+    "d3": "^7.9.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-markdown": "^10.1.0",
@@ -17,6 +18,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/d3": "^7.4.3",
     "@types/node": "^24.12.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
