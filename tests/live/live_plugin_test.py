@@ -393,29 +393,19 @@ def _test_truncation_flag() -> None:
         assert final == "completed", \
             f"Ingest job did not complete (status={final!r}) — no page written, cannot check truncated flag"
 
-        # Read pages_created from job result — truncated flag is only written on
-        # new page creation, not on updates to existing pages.
-        _, job_body = GET(f"/jobs/{job_id}")
-        pages_created = job_body.get("result", {}).get("pages_created", []) if isinstance(job_body, dict) else []
-        if not pages_created:
-            print("[WARN] truncation flag: ingest updated an existing page (no new page created) — "
-                  "truncated flag only applies to new pages; skipping assertion")
-            return
-
+        # Check both wiki/ and wiki/candidates/ — staging policy may route the page there.
+        # Updates also write a SourceRef now, so any page touched by this ingest may have
+        # truncated=true if the source exceeded max_source_chars.
         wiki_dir = wiki_root / "wiki"
-        candidates_dir = wiki_dir / "candidates"
-        for slug in pages_created:
-            for d in (wiki_dir, candidates_dir):
-                p = d / f"{slug}.md"
-                if p.exists():
-                    fm = _read_frontmatter(p)
-                    for s in fm.get("sources", []):
-                        if isinstance(s, dict) and s.get("truncated"):
-                            print(f"[OK] truncation flag: {p.name} has truncated source")
-                            return
-        raise AssertionError(
-            f"Pages created {pages_created} but none has truncated=true in sources[] frontmatter"
-        )
+        pages = list(wiki_dir.glob("*.md")) + list((wiki_dir / "candidates").glob("*.md"))
+        assert pages, "No .md pages found in wiki dir"
+        for p in pages:
+            fm = _read_frontmatter(p)
+            for s in fm.get("sources", []):
+                if isinstance(s, dict) and s.get("truncated"):
+                    print(f"[OK] truncation flag: {p.name} has truncated source")
+                    return
+        raise AssertionError("No page has truncated=true in sources[] frontmatter")
     finally:
         src.unlink(missing_ok=True)
 
