@@ -847,12 +847,13 @@ def main() -> None:
     else:
         fail("GET /lifecycle/status (jobs badge)", f"HTTP {code}: {str(body)[:120]}")
 
-    # find a terminal job for retry + delete
+    # find a terminal job for retry + delete — iterate newest-first so we
+    # pick a recent job rather than a stale one from a previous test session.
     code, jobs_list = GET("/jobs")
     terminal_job: dict | None = None
     second_terminal: dict | None = None
     if code == 200 and isinstance(jobs_list, list):
-        for j in jobs_list:
+        for j in reversed(jobs_list):
             if j.get("status") in ("completed", "failed", "cancelled"):
                 if terminal_job is None:
                     terminal_job = j
