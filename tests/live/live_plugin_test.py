@@ -430,31 +430,32 @@ def _test_truncation_flag() -> None:
 
 def _test_sanitizer() -> None:
     """Ingest a source with an injection phrase; verify phrase absent from all page bodies."""
-    import tempfile
-    import os
+    wiki_root = _discover_wiki_root()
+    assert wiki_root, "Could not discover wiki root via CLI"
+
+    # Write inside raw_sources/ so the server process can read it (temp dir is outside wiki root)
+    raw_sources = wiki_root / "raw_sources"
+    raw_sources.mkdir(exist_ok=True)
+    src = raw_sources / "_live_test_sanitizer.txt"
 
     phrase = "ignore previous instructions"
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".txt", delete=False, encoding="utf-8"
-    ) as f:
-        f.write(
-            f"Legitimate knowledge content here. {phrase}. "
-            "More content about computing history."
-        )
-        src = f.name
+    src.write_text(
+        f"Legitimate knowledge content here. {phrase}. "
+        "More content about computing history.",
+        encoding="utf-8",
+    )
     try:
-        code, body = POST("/jobs/ingest", {"source": src})
+        code, body = POST("/jobs/ingest", {"source": str(src), "force": True})
         assert code == 200, f"POST /jobs/ingest returned HTTP {code}: {str(body)[:120]}"
         assert isinstance(body, dict) and "job_id" in body, \
             f"No job_id in response: {str(body)[:120]}"
         job_id = body["job_id"]
-        final = _wait_for_terminal(job_id)
-        assert final in ("completed", "failed"), \
-            f"Ingest job did not reach terminal state: {final!r}"
-        wiki_root = _discover_wiki_root()
-        assert wiki_root, "Could not discover wiki root via CLI"
+        final = _wait_for_terminal(job_id, max_wait=300)
+        assert final == "completed", \
+            f"Ingest job did not complete (status={final!r}) — sanitizer could not be verified"
         wiki_dir = wiki_root / "wiki"
-        for p in wiki_dir.glob("*.md"):
+        pages = list(wiki_dir.glob("*.md")) + list((wiki_dir / "candidates").glob("*.md"))
+        for p in pages:
             text = p.read_text(encoding="utf-8")
             # Strip frontmatter; only check page body
             if text.startswith("---"):
@@ -466,7 +467,7 @@ def _test_sanitizer() -> None:
                 f"Injection phrase found in body of {p.name} — sanitizer not working"
         print("[OK] sanitizer: injection phrase not found in any page body")
     finally:
-        os.unlink(src)
+        src.unlink(missing_ok=True)
 
 
 _CONTEXT_BUDGET_MIN_PAGES = 6
