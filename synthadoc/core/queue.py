@@ -167,7 +167,7 @@ class JobQueue:
         """Fail a job immediately with no retry — for non-transient errors."""
         async with aiosqlite.connect(self._path) as db:
             await db.execute(
-                "UPDATE jobs SET status='failed',error=? WHERE id=?",
+                "UPDATE jobs SET status='dead',error=? WHERE id=?",
                 (error, job_id),
             )
             await db.commit()

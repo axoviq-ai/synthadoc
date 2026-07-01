@@ -847,14 +847,21 @@ def main() -> None:
     else:
         fail("GET /lifecycle/status (jobs badge)", f"HTTP {code}: {str(body)[:120]}")
 
-    # find a terminal job for retry + delete — iterate newest-first so we
-    # pick a recent job rather than a stale one from a previous test session.
+    # find a terminal job for retry + delete — only consider jobs from the
+    # last 2 hours so stale zombie jobs from previous sessions are excluded.
+    import datetime as _dt
+    _cutoff = (
+        _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=2)
+    ).strftime("%Y-%m-%d %H:%M:%S")
     code, jobs_list = GET("/jobs")
     terminal_job: dict | None = None
     second_terminal: dict | None = None
     if code == 200 and isinstance(jobs_list, list):
         for j in reversed(jobs_list):
-            if j.get("status") in ("completed", "failed", "cancelled"):
+            if j.get("created_at", "") < _cutoff:
+                break  # list is ASC by created_at; nothing older will match
+            # dead jobs cannot be retried (409) — skip for retry target, ok for delete
+            if j.get("status") in ("completed", "cancelled", "skipped", "failed"):
                 if terminal_job is None:
                     terminal_job = j
                 elif second_terminal is None:

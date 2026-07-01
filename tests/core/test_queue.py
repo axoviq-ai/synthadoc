@@ -136,18 +136,18 @@ async def test_skip_does_not_retry(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_fail_permanent_goes_to_failed_not_dead(tmp_wiki):
-    """fail_permanent must set status=failed, not dead, regardless of retry count."""
+async def test_fail_permanent_goes_to_dead(tmp_wiki):
+    """fail_permanent must set status=dead — permanently non-retryable."""
     q = JobQueue(tmp_wiki / ".synthadoc" / "jobs.db", max_retries=3)
     await q.init()
     job_id = await q.enqueue("ingest", {"source": "stub.pdf"})
     job = await q.dequeue()
     assert job is not None
     await q.fail_permanent(job.id, "NotImplementedError: skill stub")
-    failed = await q.list_jobs(status=JobStatus.FAILED)
-    assert any(j.id == job_id for j in failed)
     dead = await q.list_jobs(status=JobStatus.DEAD)
-    assert not any(j.id == job_id for j in dead)
+    assert any(j.id == job_id for j in dead)
+    failed = await q.list_jobs(status=JobStatus.FAILED)
+    assert not any(j.id == job_id for j in failed)
 
 
 @pytest.mark.asyncio

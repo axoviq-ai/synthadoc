@@ -1090,8 +1090,11 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
     @app.post("/jobs/{job_id}/retry")
     async def retry_job(job_id: str):
         jobs = await app.state.orch.queue.list_jobs()
-        if not any(j.id == job_id for j in jobs):
+        job = next((j for j in jobs if j.id == job_id), None)
+        if job is None:
             raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found")
+        if job.status == JobStatus.DEAD:
+            raise HTTPException(status_code=409, detail=f"Job {job_id!r} is permanently dead and cannot be retried")
         await app.state.orch.queue.retry(job_id)
         return {"retried": job_id}
 
