@@ -862,6 +862,9 @@ def main() -> None:
         code, body = POST(f"/jobs/{tid}/retry")
         if code in (200, 409):
             ok("POST /jobs/{id}/retry", f"id={tid[:8]}…  HTTP={code}")
+            if code == 200:
+                info(f"Waiting for retried job {tid[:8]} to finish before continuing…")
+                _wait_for_terminal(tid, max_wait=600)
         else:
             fail("POST /jobs/{id}/retry", f"HTTP {code}: {str(body)[:120]}")
 
