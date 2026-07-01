@@ -747,6 +747,17 @@ def main() -> None:
     print(f"  wiki name  : {WIKI_NAME}")
     print("=" * 64)
 
+    # ── Pre-flight: cancel any pending jobs from previous test runs ──────────
+    # The worker queue is persistent across runs. Leftover pending jobs block
+    # new submissions because the worker executes strictly one job at a time.
+    _code, _all_jobs = GET("/jobs")
+    if _code == 200 and isinstance(_all_jobs, list):
+        _stale = [j for j in _all_jobs if isinstance(j, dict) and j.get("status") == "pending"]
+        for _j in _stale:
+            DELETE(f"/jobs/{_j['id']}")
+        if _stale:
+            print(f"  [pre-flight] cancelled {len(_stale)} pending job(s) from previous run(s)")
+
     # ── Ribbon icon ───────────────────────────────────────────────────────────
     print("\n[Ribbon] api.health() + api.status()")
 
