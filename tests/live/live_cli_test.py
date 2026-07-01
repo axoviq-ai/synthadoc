@@ -126,11 +126,11 @@ def _extract_job_id(text: str) -> str | None:
     return None
 
 
-_LINT_TIMEOUT = 600  # seconds — lint does graph, adversarial, lifecycle in v1.0
+_JOB_TIMEOUT = 1200  # seconds — jobs may queue behind a scaffold (5-10 min) then run (2-5 min)
 _TERMINAL = {"completed", "failed", "cancelled", "dead", "skipped"}
 
 
-def _wait_job_terminal(job_id: str, label: str, max_wait: int = _LINT_TIMEOUT) -> None:
+def _wait_job_terminal(job_id: str, label: str, max_wait: int = _JOB_TIMEOUT) -> None:
     """Poll GET /jobs/{job_id} until terminal state or timeout; print progress."""
     base = SYNTHADOC_URL.rstrip("/")
     deadline = time.monotonic() + max_wait
@@ -554,7 +554,12 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
 
     # ── scaffold ──────────────────────────────────────────────────────────────
     print("\n[16] scaffold")
-    check("scaffold", ["scaffold"] + w, contains=["job"])
+    r_scaffold = check("scaffold", ["scaffold"] + w, contains=["job"])
+    scaffold_job_id = _extract_job_id(r_scaffold.stdout + r_scaffold.stderr)
+    if scaffold_job_id:
+        _wait_job_terminal(scaffold_job_id, "scaffold — job complete")
+    else:
+        warn("scaffold", "could not extract job ID from output — not waiting")
 
     # ── export ────────────────────────────────────────────────────────────────
     print("\n[17] export")
