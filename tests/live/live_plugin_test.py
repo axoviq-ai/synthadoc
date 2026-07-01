@@ -548,8 +548,8 @@ def _test_context_budget() -> None:
     session_id = body.get("session_id", "")
 
     path = (f"/query/stream?q={urllib.parse.quote(q)}"
-            f"&session_id={urllib.parse.quote(session_id)}&no_cache=true")
-    events = _read_full_sse(path, timeout=120)
+            f"&session_id={urllib.parse.quote(session_id)}&no_cache=true&timeout_seconds=120")
+    events = _read_full_sse(path, timeout=150)
 
     # ── Assertions ────────────────────────────────────────────────────────────
     error_events = [e for e in events if e.get("event") == "error"]
