@@ -128,6 +128,7 @@ class ServerConfig:
     host: str = "127.0.0.1"
     port: int = 7070
     reload: bool = False
+    job_timeout_seconds: int = 600  # max time a single job runs before being killed
 
 
 @dataclass
@@ -361,6 +362,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         host=sv.get("host", "127.0.0.1"),
         port=sv.get("port", 7070),
         reload=sv.get("reload", False),
+        job_timeout_seconds=int(sv.get("job_timeout_seconds", 600)),
     )
 
     # --- cache ---

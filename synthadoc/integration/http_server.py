@@ -165,7 +165,6 @@ def _classify_llm_error(exc: Exception) -> "HTTPException | None":
         )
     return None
 _WORKER_POLL_SECONDS = 2
-_JOB_TIMEOUT_SECONDS = 600  # 10 min hard cap per job; prevents a hung LLM call from blocking the queue
 _SESSION_PURGE_INTERVAL_SECONDS = 3600
 _HISTORY_OVERFLOW_NOTICE = (
     "Earlier conversation has been summarized to stay within context limits. "
@@ -378,15 +377,16 @@ async def _worker_loop(orch) -> None:
                 else:
                     job_coro = None
                 if job_coro is not None:
+                    _timeout = orch._cfg.server.job_timeout_seconds
                     try:
-                        await asyncio.wait_for(job_coro, timeout=_JOB_TIMEOUT_SECONDS)
+                        await asyncio.wait_for(job_coro, timeout=_timeout)
                     except asyncio.TimeoutError:
                         logger.error(
                             "Job %s (%s) exceeded %ss timeout — marking dead",
-                            job.id, job.operation, _JOB_TIMEOUT_SECONDS,
+                            job.id, job.operation, _timeout,
                         )
                         await orch.queue.fail_permanent(
-                            job.id, f"timed out after {_JOB_TIMEOUT_SECONDS}s"
+                            job.id, f"timed out after {_timeout}s"
                         )
         except Exception as exc:
             known = _classify_llm_error(exc)
