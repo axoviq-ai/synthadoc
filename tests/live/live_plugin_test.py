@@ -177,7 +177,7 @@ def DELETE(path: str, timeout: int = 10) -> tuple[int, dict | str]:
     return _call("DELETE", path, timeout=timeout)
 
 
-def _wait_for_terminal(job_id: str, max_wait: int = 120, interval: int = 3) -> str | None:
+def _wait_for_terminal(job_id: str, max_wait: int = 300, interval: int = 3) -> str | None:
     """Poll job status until terminal or max_wait seconds. Returns final status or None."""
     deadline = time.monotonic() + max_wait
     while time.monotonic() < deadline:
@@ -188,6 +188,20 @@ def _wait_for_terminal(job_id: str, max_wait: int = 120, interval: int = 3) -> s
                 return status
         time.sleep(interval)
     return None
+
+
+def _submit_job(path: str, body: dict | None = None) -> tuple[int, dict | str, str | None]:
+    """POST a job and block until it reaches a terminal state.
+
+    Returns (http_code, response_body, final_status).
+    Ensures the worker queue is drained before the caller continues — no job
+    should ever be submitted while a previous job is still running.
+    """
+    code, resp = POST(path, body)
+    if code == 200 and isinstance(resp, dict) and "job_id" in resp:
+        final = _wait_for_terminal(resp["job_id"])
+        return code, resp, final
+    return code, resp, None
 
 
 def _okf_validate(bundle: dict) -> None:
@@ -658,12 +672,10 @@ def _test_knowledge_graph() -> None:
     # Trigger lint so the graph is built.
     # adversarial=false skips per-page LLM calls (concurrent across all pages)
     # which are the bottleneck on large wikis — graph building is pure Python.
-    code, body = POST("/jobs/lint", {"adversarial": False})
+    code, body, final = _submit_job("/jobs/lint", {"adversarial": False})
     assert code == 200, f"POST /jobs/lint returned HTTP {code}: {str(body)[:120]}"
     assert isinstance(body, dict) and "job_id" in body, \
         f"No job_id in lint response: {str(body)[:120]}"
-    job_id = body["job_id"]
-    final = _wait_for_terminal(job_id, max_wait=180)
     assert final in ("completed", "failed"), \
         f"Lint job did not reach terminal state: {final!r}"
 
@@ -708,12 +720,10 @@ def _test_knowledge_graph() -> None:
 def _test_graph_lazy_hydration() -> None:
     """After lint, repeated GET /graph calls eventually resolve to ready (lazy hydration)."""
     # Ensure graph is built; adversarial=false skips per-page LLM calls (the bottleneck)
-    code, body = POST("/jobs/lint", {"adversarial": False})
+    code, body, final = _submit_job("/jobs/lint", {"adversarial": False})
     assert code == 200, f"POST /jobs/lint returned HTTP {code}: {str(body)[:120]}"
     assert isinstance(body, dict) and "job_id" in body, \
         f"No job_id in lint response: {str(body)[:120]}"
-    job_id = body["job_id"]
-    final = _wait_for_terminal(job_id, max_wait=180)
     assert final in ("completed", "failed"), \
         f"Lint job did not reach terminal state: {final!r}"
 
@@ -789,11 +799,10 @@ def main() -> None:
     # ── [2] synthadoc-ingest ──────────────────────────────────────────────────
     print("\n[2] synthadoc-ingest — api.ingest(), api.job(), api.jobs()")
 
-    code, body = POST("/jobs/ingest", {"source": "https://en.wikipedia.org/wiki/ENIAC"})
-    ingest_job_id: str | None = None
-    if code == 200 and isinstance(body, dict) and "job_id" in body:
-        ok("POST /jobs/ingest", f"job_id={body['job_id'][:8]}…")
-        ingest_job_id = body["job_id"]
+    code, body, ingest_final = _submit_job("/jobs/ingest", {"source": "https://en.wikipedia.org/wiki/ENIAC"})
+    ingest_job_id: str | None = body.get("job_id") if isinstance(body, dict) else None
+    if code == 200 and ingest_job_id:
+        ok("POST /jobs/ingest", f"job_id={ingest_job_id[:8]}… status={ingest_final}")
     else:
         fail("POST /jobs/ingest", f"HTTP {code}: {str(body)[:120]}")
 
@@ -803,12 +812,6 @@ def main() -> None:
             ok("GET /jobs/{id}", f"status={body['status']}")
         else:
             fail("GET /jobs/{id}", f"HTTP {code}: {str(body)[:120]}")
-        # Poll until terminal so later jobs aren't queued behind a running ingest
-        if isinstance(body, dict) and body.get("status") not in ("completed", "failed", "cancelled"):
-            info("Waiting for ingest job to reach terminal state (max 300 s)…")
-            _final = _wait_for_terminal(ingest_job_id, max_wait=300)
-            if _final:
-                info(f"Ingest job reached {_final}")
 
     code, body = GET("/jobs")
     if code == 200 and isinstance(body, list):
@@ -887,20 +890,18 @@ def main() -> None:
     else:
         fail("GET /config", f"HTTP {code}: {str(body)[:120]}")
 
-    code, body = POST("/jobs/lint", {"scope": "all", "auto_resolve": False, "adversarial": False})
+    code, body, lint_final = _submit_job("/jobs/lint", {"scope": "all", "auto_resolve": False, "adversarial": False})
     if code == 200 and isinstance(body, dict) and "job_id" in body:
-        ok("POST /jobs/lint", f"job_id={body['job_id'][:8]}…")
-        _wait_for_terminal(body["job_id"], max_wait=300)  # drain before next section
+        ok("POST /jobs/lint", f"job_id={body['job_id'][:8]}… status={lint_final}")
     else:
         fail("POST /jobs/lint", f"HTTP {code}: {str(body)[:120]}")
 
     # ── [6] synthadoc-scaffold ────────────────────────────────────────────────
     print("\n[6] synthadoc-scaffold — api.scaffold()")
 
-    code, body = POST("/jobs/scaffold", {"domain": "history of computing"})
+    code, body, scaffold_final = _submit_job("/jobs/scaffold", {"domain": "history of computing"})
     if code == 200 and isinstance(body, dict) and "job_id" in body:
-        ok("POST /jobs/scaffold", f"job_id={body['job_id'][:8]}…")
-        _wait_for_terminal(body["job_id"], max_wait=300)  # drain before next section
+        ok("POST /jobs/scaffold", f"job_id={body['job_id'][:8]}… status={scaffold_final}")
     else:
         fail("POST /jobs/scaffold", f"HTTP {code}: {str(body)[:120]}")
 
