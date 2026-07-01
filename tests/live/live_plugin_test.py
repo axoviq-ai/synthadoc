@@ -655,8 +655,10 @@ def _test_knowledge_graph() -> None:
     import re
     _WIKILINK_PAT = re.compile(r"\[\[[^\]]+\]\]")
 
-    # Trigger lint so the graph is built
-    code, body = POST("/jobs/lint", {})
+    # Trigger lint so the graph is built.
+    # adversarial=false skips per-page LLM calls (concurrent across all pages)
+    # which are the bottleneck on large wikis — graph building is pure Python.
+    code, body = POST("/jobs/lint", {"adversarial": False})
     assert code == 200, f"POST /jobs/lint returned HTTP {code}: {str(body)[:120]}"
     assert isinstance(body, dict) and "job_id" in body, \
         f"No job_id in lint response: {str(body)[:120]}"
@@ -705,8 +707,8 @@ def _test_knowledge_graph() -> None:
 
 def _test_graph_lazy_hydration() -> None:
     """After lint, repeated GET /graph calls eventually resolve to ready (lazy hydration)."""
-    # Ensure graph is built
-    code, body = POST("/jobs/lint", {})
+    # Ensure graph is built; adversarial=false skips per-page LLM calls (the bottleneck)
+    code, body = POST("/jobs/lint", {"adversarial": False})
     assert code == 200, f"POST /jobs/lint returned HTTP {code}: {str(body)[:120]}"
     assert isinstance(body, dict) and "job_id" in body, \
         f"No job_id in lint response: {str(body)[:120]}"
