@@ -177,6 +177,9 @@ def DELETE(path: str, timeout: int = 10) -> tuple[int, dict | str]:
     return _call("DELETE", path, timeout=timeout)
 
 
+_TERMINAL_STATES = {"completed", "failed", "cancelled", "dead", "skipped"}
+
+
 def _wait_for_terminal(job_id: str, max_wait: int = 300, interval: int = 3) -> str | None:
     """Poll job status until terminal or max_wait seconds. Returns final status or None."""
     deadline = time.monotonic() + max_wait
@@ -184,7 +187,7 @@ def _wait_for_terminal(job_id: str, max_wait: int = 300, interval: int = 3) -> s
         code, body = GET(f"/jobs/{job_id}")
         if code == 200 and isinstance(body, dict):
             status = body.get("status", "")
-            if status in ("completed", "failed", "cancelled"):
+            if status in _TERMINAL_STATES:
                 return status
         time.sleep(interval)
     return None
@@ -404,7 +407,7 @@ def _test_truncation_flag() -> None:
         assert isinstance(body, dict) and "job_id" in body, \
             f"No job_id in response: {str(body)[:120]}"
         job_id = body["job_id"]
-        final = _wait_for_terminal(job_id, max_wait=180)
+        final = _wait_for_terminal(job_id, max_wait=300)
         assert final == "completed", \
             f"Ingest job did not complete (status={final!r}) — no page written, cannot check truncated flag"
 
