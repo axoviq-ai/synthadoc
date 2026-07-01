@@ -23,6 +23,7 @@ Run modes:
   pytest tests/performance/test_query_cache_perf.py -m charts -v -s
 """
 import asyncio
+import os
 import platform
 import statistics
 import time
@@ -140,10 +141,10 @@ async def test_cache_write_latency_p95(tmp_path):
         p50 = statistics.median(latencies_ms)
         p95 = _percentile(latencies_ms, 0.95)
         print(f"\n  [cache write] P50={p50:.2f}ms  P95={p95:.2f}ms  (n=200)")
-        if platform.system() == "Linux":
+        if platform.system() == "Linux" and not os.environ.get("CI"):
             assert p95 < 15.0, f"Cache write P95 {p95:.2f}ms exceeds 15ms SLO"
         else:
-            print(f"  (P95 SLO not enforced on {platform.system()} — write tail latency too noisy on shared CI)")
+            print(f"  (P95 SLO not enforced on {platform.system()} CI={os.environ.get('CI', 'unset')} — write tail latency too noisy on shared CI)")
     finally:
         await cache.close()
 

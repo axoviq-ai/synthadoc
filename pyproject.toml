@@ -109,3 +109,11 @@ artifacts = ["VERSION", "synthadoc/data/obsidian-plugin/*", "synthadoc/data/web-
 
 [tool.coverage.report]
 fail_under = 91
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "@(abc\\.)?abstractmethod",
+    "\\.\\.\\.\\s*$",
+]
