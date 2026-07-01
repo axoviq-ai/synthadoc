@@ -375,21 +375,22 @@ def _test_truncation_flag() -> None:
     raw_sources = wiki_root / "raw_sources"
     raw_sources.mkdir(exist_ok=True)
     src = raw_sources / "_live_test_truncation.txt"
-    # ~38 000 chars of varied but plausible content to avoid LLM rejection
+    # Write just enough to exceed max_source_chars (default 32 000) so truncation
+    # triggers, but keep the file small to minimise LLM processing time.
     para = (
         "The history of computing spans several decades of rapid innovation. "
         "Early pioneers developed foundational algorithms and hardware architectures. "
         "Semiconductor technology enabled exponential growth in processing power. "
         "Software engineering practices evolved to manage increasing complexity. "
     )
-    src.write_text(para * 160, encoding="utf-8")  # ~38 400 chars
+    src.write_text(para * 120, encoding="utf-8")  # ~33 600 chars — just over 32 000
     try:
         code, body = POST("/jobs/ingest", {"source": str(src)})
         assert code == 200, f"POST /jobs/ingest returned HTTP {code}: {str(body)[:120]}"
         assert isinstance(body, dict) and "job_id" in body, \
             f"No job_id in response: {str(body)[:120]}"
         job_id = body["job_id"]
-        final = _wait_for_terminal(job_id)
+        final = _wait_for_terminal(job_id, max_wait=180)
         assert final == "completed", \
             f"Ingest job did not complete (status={final!r}) — no page written, cannot check truncated flag"
 
