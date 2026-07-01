@@ -64,8 +64,12 @@ class JobQueue:
                 await db.execute("ALTER TABLE jobs ADD COLUMN progress TEXT")
             except Exception:
                 pass  # column already exists
-            # Reset any jobs left in_progress from a previous crashed session
-            await db.execute("UPDATE jobs SET status='pending' WHERE status='in_progress'")
+            # Jobs left in_progress from a crashed session can never complete —
+            # mark them failed so the worker isn't blocked indefinitely on restart.
+            await db.execute(
+                "UPDATE jobs SET status='failed', error='server restarted while job was running' "
+                "WHERE status='in_progress'"
+            )
             await db.commit()
 
     async def enqueue(self, operation: str, payload: dict) -> str:

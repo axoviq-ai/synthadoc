@@ -165,6 +165,7 @@ def _classify_llm_error(exc: Exception) -> "HTTPException | None":
         )
     return None
 _WORKER_POLL_SECONDS = 2
+_JOB_TIMEOUT_SECONDS = 600  # 10 min hard cap per job; prevents a hung LLM call from blocking the queue
 _SESSION_PURGE_INTERVAL_SECONDS = 3600
 _HISTORY_OVERFLOW_NOTICE = (
     "Earlier conversation has been summarized to stay within context limits. "
@@ -359,21 +360,34 @@ async def _worker_loop(orch) -> None:
                     force = job.payload.get("force", False)
                     max_results = job.payload.get("max_results")
                     max_source_chars = job.payload.get("max_source_chars")
-                    await orch._run_ingest(job.id, source, auto_confirm=True, force=force,
-                                           max_results=max_results,
-                                           max_source_chars=max_source_chars)
+                    job_coro = orch._run_ingest(job.id, source, auto_confirm=True, force=force,
+                                                max_results=max_results,
+                                                max_source_chars=max_source_chars)
                 elif job.operation == "lint":
                     scope = job.payload.get("scope", "all")
                     auto_resolve = job.payload.get("auto_resolve", False)
                     adversarial = job.payload.get("adversarial", True)
                     lifecycle = job.payload.get("lifecycle", True)
                     check_url_availability = job.payload.get("check_url_availability")  # None = use config
-                    await orch._run_lint(job.id, scope=scope, auto_resolve=auto_resolve,
-                                         adversarial=adversarial, lifecycle=lifecycle,
-                                         check_url_availability=check_url_availability)
+                    job_coro = orch._run_lint(job.id, scope=scope, auto_resolve=auto_resolve,
+                                              adversarial=adversarial, lifecycle=lifecycle,
+                                              check_url_availability=check_url_availability)
                 elif job.operation == "scaffold":
                     domain = job.payload.get("domain", "")
-                    await orch._run_scaffold(job.id, domain=domain)
+                    job_coro = orch._run_scaffold(job.id, domain=domain)
+                else:
+                    job_coro = None
+                if job_coro is not None:
+                    try:
+                        await asyncio.wait_for(job_coro, timeout=_JOB_TIMEOUT_SECONDS)
+                    except asyncio.TimeoutError:
+                        logger.error(
+                            "Job %s (%s) exceeded %ss timeout — marking dead",
+                            job.id, job.operation, _JOB_TIMEOUT_SECONDS,
+                        )
+                        await orch.queue.fail_permanent(
+                            job.id, f"timed out after {_JOB_TIMEOUT_SECONDS}s"
+                        )
         except Exception as exc:
             known = _classify_llm_error(exc)
             if known and known.status_code == 503 and (

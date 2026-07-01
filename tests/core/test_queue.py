@@ -319,8 +319,12 @@ async def test_dequeued_job_has_progress_field(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_init_resets_in_progress_to_pending_on_restart(tmp_wiki):
-    """Jobs left in_progress from a crashed session must be reset to pending on init()."""
+async def test_init_resets_in_progress_to_failed_on_restart(tmp_wiki):
+    """Jobs left in_progress from a crashed session must be reset to failed on init().
+
+    Resetting to failed (not pending) prevents the worker from re-running a job
+    that was likely hung when the server crashed.
+    """
     import aiosqlite
     db_path = tmp_wiki / ".synthadoc" / "jobs.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -346,7 +350,8 @@ async def test_init_resets_in_progress_to_pending_on_restart(tmp_wiki):
     await q.init()
     jobs = await q.list_jobs()
     stuck = next(j for j in jobs if j.id == "stuck1")
-    assert stuck.status.value == "pending"
+    assert stuck.status.value == "failed"
+    assert stuck.error == "server restarted while job was running"
 
 
 @pytest.mark.asyncio
