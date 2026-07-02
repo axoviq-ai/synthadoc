@@ -2357,3 +2357,65 @@ async def test_run_stream_followup_uses_rewritten_question_for_live_data(tmp_wik
         "Knowledge Gap must not fire for a job follow-up resolved via retrieval_question"
     )
     mock_queue.get_job.assert_called_once_with("a95c6a33")
+
+
+def test_detect_gap_signal1_suppressed_when_tf_fallback(tmp_wiki):
+    """Signal 1 (len<3) must not fire when used_tf_fallback=True."""
+    from synthadoc.agents.query_agent import QueryAgent
+    from synthadoc.storage.search import SearchResult
+    from unittest.mock import MagicMock
+
+    agent = MagicMock(spec=QueryAgent)
+    agent._gap_score_threshold = 0.5
+    agent._detect_gap = QueryAgent._detect_gap.__get__(agent, QueryAgent)
+
+    # Use 2 candidates with tf_fallback to test Signal 1 suppression
+    # (each term must appear 2+ times to count as on-topic, per _MIN_TERM_FREQ)
+    candidates = [
+        SearchResult(slug="plan1", score=0.8, title="Plan 1", snippet="", tf_fallback=True),
+        SearchResult(slug="plan2", score=0.7, title="Plan 2", snippet="", tf_fallback=True),
+    ]
+
+    # Mock store.read_page to return a page with overlapping content (terms 2+ times)
+    agent._store = MagicMock()
+    def mock_read_page(slug):
+        return MagicMock(content="capex maintenance capex maintenance budget")
+    agent._store.read_page.side_effect = mock_read_page
+
+    gap, _, _, _ = agent._detect_gap(
+        question="capex maintenance",
+        candidates=candidates,
+        max_score=0.8,
+        used_tf_fallback=True,
+    )
+    # Signal 1 suppressed → gap should be False
+    assert gap is False, "Signal 1 should be suppressed when tf_fallback=True"
+
+
+def test_detect_gap_signal1_fires_without_tf_fallback(tmp_wiki):
+    """Signal 1 fires normally when used_tf_fallback=False and len(candidates) < 3."""
+    from synthadoc.agents.query_agent import QueryAgent
+    from synthadoc.storage.search import SearchResult
+    from unittest.mock import MagicMock
+
+    agent = MagicMock(spec=QueryAgent)
+    agent._gap_score_threshold = 0.5
+    agent._detect_gap = QueryAgent._detect_gap.__get__(agent, QueryAgent)
+
+    # Use 2 candidates without tf_fallback (or just 1 to test len < 3)
+    candidates = [
+        SearchResult(slug="plan1", score=0.8, title="Plan 1", snippet="", tf_fallback=False),
+    ]
+
+    agent._store = MagicMock()
+    def mock_read_page(slug):
+        return MagicMock(content="capex maintenance capex maintenance budget")
+    agent._store.read_page.side_effect = mock_read_page
+
+    gap, _, _, _ = agent._detect_gap(
+        question="capex maintenance",
+        candidates=candidates,
+        max_score=0.8,
+        used_tf_fallback=False,
+    )
+    assert gap is True, "Signal 1 should fire when tf_fallback=False and len<3"

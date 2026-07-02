@@ -619,8 +619,9 @@ class QueryAgent:
         # ("please provide details of X") so key terms reflect the actual topic, not
         # the phrasing. Falls back to the original question if decomposition returned it.
         _gap_q = " ".join(sub_questions) if sub_questions else question
+        _used_tf_fallback = any(r.tf_fallback for r in candidates)
         _gap, _discriminating_term, _pages_with_overlap, _min_specific_qualifying = \
-            self._detect_gap(_gap_q, candidates, _max_score)
+            self._detect_gap(_gap_q, candidates, _max_score, used_tf_fallback=_used_tf_fallback)
         _system_ctx = self._get_relevant_system_pages(question)
         _live_data = await self._fetch_live_wiki_data(question)
         if _system_ctx or _live_data:
@@ -694,7 +695,8 @@ class QueryAgent:
         )
 
     def _detect_gap(
-        self, question: str, candidates: list[SearchResult], max_score: float
+        self, question: str, candidates: list[SearchResult], max_score: float,
+        used_tf_fallback: bool = False,
     ) -> tuple[bool, str, int, int]:
         """Full 5-signal knowledge gap detection.
 
@@ -801,7 +803,7 @@ class QueryAgent:
             _acronym_absent = False
 
         gap = self._gap_score_threshold > 0 and (
-            len(candidates) < 3
+            (len(candidates) < 3 and not used_tf_fallback)
             or (bool(_key_terms) and max_score < self._gap_score_threshold)  # skip when no content words
             or _pages_with_overlap < 2
             or _any_term_missing
@@ -897,8 +899,9 @@ class QueryAgent:
 
         _max_score = max((r.score for r in candidates), default=0.0)
         _gap_q = " ".join(sub_questions) if sub_questions else question
+        _used_tf_fallback = any(r.tf_fallback for r in candidates)
         _gap, _discriminating_term, _pages_with_overlap, _min_specific_qualifying = \
-            self._detect_gap(_gap_q, candidates, _max_score)
+            self._detect_gap(_gap_q, candidates, _max_score, used_tf_fallback=_used_tf_fallback)
 
         if _system_ctx or _live_data:
             _gap = False
