@@ -53,6 +53,8 @@ class LintReport:
 
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 
+_CITATION_MIN_WORDS = 50  # skip presence check on stub pages shorter than this
+
 # Auto-generated / directory pages whose outbound links must NOT count as real
 # references.  A page linked only from index/overview/dashboard is still an
 # orphan in the content graph — it is not integrated into the knowledge network.
@@ -116,6 +118,11 @@ def _check_page_citations(
             issues.append({"slug": slug, "citation": citation, "reason": "malformed"})
 
     return issues
+
+
+def _has_citations(page: "WikiPage") -> bool:
+    """Return True if the page body contains at least one ^[filename:L-L] marker."""
+    return bool(_CITATION_BODY_RE.search(page.content or ""))
 
 
 def _fix_dangling_wikilinks(content: str, existing_slugs: set[str]) -> str:
@@ -664,6 +671,22 @@ class LintAgent:
                 truncation_warnings = self._check_truncated_sources(slug, page)
                 for warning in truncation_warnings:
                     report.warnings.append(warning)
+
+                # Check 5b: citation presence warning
+                if not _has_citations(page):
+                    word_count = len((page.content or "").split())
+                    if word_count >= _CITATION_MIN_WORDS:
+                        warn = (
+                            f"Page '{slug}' has {word_count} words but no citations — "
+                            "the configured model may not support the ^[filename:L-L] format"
+                        )
+                        report.warnings.append(warn)
+                        if self._audit:
+                            await self._audit.record_audit_event(
+                                job_id,
+                                "citation_presence_warning",
+                                {"slug": slug, "word_count": word_count},
+                            )
 
         # adversarial pass — runs only on full scope; default on
         if scope == "all":
