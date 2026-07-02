@@ -682,7 +682,7 @@ async def test_lint_warns_when_no_citations_on_substantive_page(tmp_wiki):
     wiki.write_page("plan", WikiPage(title="Plan", tags=[], content=content, status="draft", confidence="high", sources=[]))
 
     agent = LintAgent(provider=AsyncMock(), store=wiki, log_writer=LogWriter(tmp_wiki / "wiki" / "log.md"), cfg=LintConfig())
-    report = await agent.lint()
+    report = await agent.lint(adversarial=False)
 
     assert any("plan" in w and "citation" in w.lower() for w in report.warnings), \
         f"Expected citation presence warning, got: {report.warnings}"
@@ -700,7 +700,7 @@ async def test_lint_no_warning_when_page_has_citations(tmp_wiki):
     wiki.write_page("plan", WikiPage(title="Plan", tags=[], content=content, status="draft", confidence="high", sources=[]))
 
     agent = LintAgent(provider=AsyncMock(), store=wiki, log_writer=LogWriter(tmp_wiki / "wiki" / "log.md"), cfg=LintConfig())
-    report = await agent.lint()
+    report = await agent.lint(adversarial=False)
 
     citation_warnings = [w for w in report.warnings if "citation" in w.lower() and "plan" in w]
     assert not citation_warnings, f"Unexpected warning: {citation_warnings}"
@@ -718,7 +718,7 @@ async def test_lint_no_warning_for_stub_page_below_min_words(tmp_wiki):
     wiki.write_page("stub", WikiPage(title="Stub", tags=[], content=content, status="draft", confidence="high", sources=[]))
 
     agent = LintAgent(provider=AsyncMock(), store=wiki, log_writer=LogWriter(tmp_wiki / "wiki" / "log.md"), cfg=LintConfig())
-    report = await agent.lint()
+    report = await agent.lint(adversarial=False)
 
     citation_warnings = [w for w in report.warnings if "citation" in w.lower() and "stub" in w]
     assert not citation_warnings, f"Stub page below min_words triggered unexpected warning"
@@ -736,6 +736,6 @@ async def test_lint_warns_at_exactly_min_words_boundary(tmp_wiki):
     wiki.write_page("boundary", WikiPage(title="Boundary", tags=[], content=content, status="draft", confidence="high", sources=[]))
 
     agent = LintAgent(provider=AsyncMock(), store=wiki, log_writer=LogWriter(tmp_wiki / "wiki" / "log.md"), cfg=LintConfig())
-    report = await agent.lint()
+    report = await agent.lint(adversarial=False)
 
     assert any("boundary" in w and "citation" in w.lower() for w in report.warnings)
