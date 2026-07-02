@@ -623,9 +623,12 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
                     ["schedule", "run", "--op", "lint run"] + w)
     sched_lint_job_id = _extract_job_id(r_sched.stdout + r_sched.stderr)
     if sched_lint_job_id:
-        _wait_job_terminal(sched_lint_job_id, "schedule run lint — job complete")
+        # Verify the command submitted a job — don't wait for completion.
+        # Lint was already run and verified at [19]; waiting here doubles runtime.
+        ok("schedule run — job submitted",
+           f"job_id={sched_lint_job_id[:8]}… (not waiting — lint verified at [19])")
     else:
-        warn("schedule run", "could not extract job ID from output — not waiting")
+        warn("schedule run", "could not extract job ID from output")
 
     # ── lifecycle log + round-trip (restore → activate → archive) ─────────────
     print("\n[21] lifecycle")

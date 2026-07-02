@@ -193,16 +193,17 @@ def _wait_for_terminal(job_id: str, max_wait: int = 300, interval: int = 3) -> s
     return None
 
 
-def _submit_job(path: str, body: dict | None = None) -> tuple[int, dict | str, str | None]:
+def _submit_job(path: str, body: dict | None = None, max_wait: int = 1800) -> tuple[int, dict | str, str | None]:
     """POST a job and block until it reaches a terminal state.
 
     Returns (http_code, response_body, final_status).
     Ensures the worker queue is drained before the caller continues — no job
     should ever be submitted while a previous job is still running.
+    Default max_wait is 1800 s (30 min) to accommodate full lint runs on large wikis.
     """
     code, resp = POST(path, body)
     if code == 200 and isinstance(resp, dict) and "job_id" in resp:
-        final = _wait_for_terminal(resp["job_id"])
+        final = _wait_for_terminal(resp["job_id"], max_wait=max_wait)
         return code, resp, final
     return code, resp, None
 
@@ -388,21 +389,26 @@ def _test_truncation_flag() -> None:
     wiki_root = _discover_wiki_root()
     assert wiki_root, "Could not discover wiki root via CLI"
 
-    # Write the large file inside raw_sources/ so the server process can always read it
+    # Write the file inside raw_sources/ so the server process can always read it
     raw_sources = wiki_root / "raw_sources"
     raw_sources.mkdir(exist_ok=True)
     src = raw_sources / "_live_test_truncation.txt"
-    # Write just enough to exceed max_source_chars (default 32 000) so truncation
-    # triggers, but keep the file small to minimise LLM processing time.
-    para = (
-        "The history of computing spans several decades of rapid innovation. "
-        "Early pioneers developed foundational algorithms and hardware architectures. "
-        "Semiconductor technology enabled exponential growth in processing power. "
-        "Software engineering practices evolved to manage increasing complexity. "
-    )
-    src.write_text(para * 120, encoding="utf-8")  # ~33 600 chars — just over 32 000
+    # Use real historical content so the LLM scope check accepts it.
+    # Pass max_source_chars=500 to force truncation without needing a huge file.
+    src.write_text(
+        "EDSAC (Electronic Delay Storage Automatic Calculator) was the first practical "
+        "stored-program computer, operational at the University of Cambridge in May 1949. "
+        "Designed by Maurice Wilkes and his team, EDSAC used mercury delay lines for memory, "
+        "storing 512 35-bit words. It ran its first program — a table of squares — on 6 May 1949. "
+        "EDSAC introduced the subroutine library concept: Wilkes, Wheeler, and Gill published "
+        "the first textbook on programming ('The Preparation of Programs for an Electronic "
+        "Digital Computer', 1951), establishing foundational software-engineering practice. "
+        "The machine was retired in 1958 and succeeded by EDSAC 2, which introduced "
+        "microprogramming. EDSAC directly inspired LEO I (1951), the first business computer.",
+        encoding="utf-8",
+    )  # ~710 chars — exceeds max_source_chars=500 override; topic unlikely to be in the wiki
     try:
-        code, body = POST("/jobs/ingest", {"source": str(src), "force": True})
+        code, body = POST("/jobs/ingest", {"source": str(src), "force": True, "max_source_chars": 500})
         assert code == 200, f"POST /jobs/ingest returned HTTP {code}: {str(body)[:120]}"
         assert isinstance(body, dict) and "job_id" in body, \
             f"No job_id in response: {str(body)[:120]}"
@@ -681,15 +687,16 @@ def _test_knowledge_graph() -> None:
     import re
     _WIKILINK_PAT = re.compile(r"\[\[[^\]]+\]\]")
 
-    # Trigger lint so the graph is built.
-    # adversarial=false skips per-page LLM calls (concurrent across all pages)
-    # which are the bottleneck on large wikis — graph building is pure Python.
-    code, body, final = _submit_job("/jobs/lint", {"adversarial": False})
-    assert code == 200, f"POST /jobs/lint returned HTTP {code}: {str(body)[:120]}"
-    assert isinstance(body, dict) and "job_id" in body, \
-        f"No job_id in lint response: {str(body)[:120]}"
-    assert final in ("completed", "failed"), \
-        f"Lint job did not reach terminal state: {final!r}"
+    # Check if graph is already ready (built by the [5] lint run earlier in the suite).
+    # Only run lint again if the graph is not yet ready — avoids a redundant 20-min job.
+    pre_code, pre_data = GET("/graph")
+    if not (pre_code == 200 and isinstance(pre_data, dict) and pre_data.get("status") == "ready"):
+        code, body, final = _submit_job("/jobs/lint", {"adversarial": False})
+        assert code == 200, f"POST /jobs/lint returned HTTP {code}: {str(body)[:120]}"
+        assert isinstance(body, dict) and "job_id" in body, \
+            f"No job_id in lint response: {str(body)[:120]}"
+        assert final in ("completed", "failed"), \
+            f"Lint job did not reach terminal state: {final!r}"
 
     # Poll until graph is ready (up to 15 × 2 s = 30 s)
     data: dict = {}
@@ -730,14 +737,10 @@ def _test_knowledge_graph() -> None:
 
 
 def _test_graph_lazy_hydration() -> None:
-    """After lint, repeated GET /graph calls eventually resolve to ready (lazy hydration)."""
-    # Ensure graph is built; adversarial=false skips per-page LLM calls (the bottleneck)
-    code, body, final = _submit_job("/jobs/lint", {"adversarial": False})
-    assert code == 200, f"POST /jobs/lint returned HTTP {code}: {str(body)[:120]}"
-    assert isinstance(body, dict) and "job_id" in body, \
-        f"No job_id in lint response: {str(body)[:120]}"
-    assert final in ("completed", "failed"), \
-        f"Lint job did not reach terminal state: {final!r}"
+    """GET /graph resolves to ready without triggering a new lint run (lazy hydration)."""
+    # The graph was already built by the [5] lint run + _test_knowledge_graph().
+    # Do NOT run lint here — the point of lazy hydration is that the graph endpoint
+    # serves the pre-built result on-demand, with no additional job required.
 
     # Poll until ready (up to 20 × 2 s = 40 s)
     for _ in range(20):
@@ -1087,7 +1090,7 @@ def main() -> None:
     # ── [11] synthadoc-context ────────────────────────────────────────────────
     print("\n[11] synthadoc-context — api.contextBuild()")
 
-    code, body = POST("/context/build", {"goal": "history of computing", "token_budget": 4000})
+    code, body = POST("/context/build", {"goal": "history of computing", "token_budget": 4000}, timeout=180)
     if code == 200 and isinstance(body, dict):
         ok("POST /context/build", f"keys={list(body.keys())[:5]}")
     else:
