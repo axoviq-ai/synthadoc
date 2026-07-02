@@ -128,6 +128,7 @@ class ServerConfig:
     host: str = "127.0.0.1"
     port: int = 7070
     reload: bool = False
+    job_timeout_seconds: int = 600  # max time a single job runs before being killed
 
 
 @dataclass
@@ -154,7 +155,8 @@ class WikiConfig:
 
 @dataclass
 class LintConfig:
-    adversarial_max_per_page: int = 2  # max issues flagged per page by adversarial pass
+    adversarial_max_per_page: int = 2   # max issues flagged per page by adversarial pass
+    adversarial_concurrency: int = 8    # max parallel LLM calls during adversarial pass
     check_url_availability: bool = False  # HTTP HEAD check for URL sources (opt-in — adds network calls to lint)
 
 
@@ -360,6 +362,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         host=sv.get("host", "127.0.0.1"),
         port=sv.get("port", 7070),
         reload=sv.get("reload", False),
+        job_timeout_seconds=int(sv.get("job_timeout_seconds", 600)),
     )
 
     # --- cache ---
@@ -400,6 +403,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
     lt = raw.get("lint", {})
     lint = LintConfig(
         adversarial_max_per_page=int(lt.get("adversarial_max_per_page", 2)),
+        adversarial_concurrency=int(lt.get("adversarial_concurrency", 8)),
         check_url_availability=bool(lt.get("check_url_availability", False)),
     )
 

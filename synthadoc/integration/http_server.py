@@ -359,21 +359,35 @@ async def _worker_loop(orch) -> None:
                     force = job.payload.get("force", False)
                     max_results = job.payload.get("max_results")
                     max_source_chars = job.payload.get("max_source_chars")
-                    await orch._run_ingest(job.id, source, auto_confirm=True, force=force,
-                                           max_results=max_results,
-                                           max_source_chars=max_source_chars)
+                    job_coro = orch._run_ingest(job.id, source, auto_confirm=True, force=force,
+                                                max_results=max_results,
+                                                max_source_chars=max_source_chars)
                 elif job.operation == "lint":
                     scope = job.payload.get("scope", "all")
                     auto_resolve = job.payload.get("auto_resolve", False)
                     adversarial = job.payload.get("adversarial", True)
                     lifecycle = job.payload.get("lifecycle", True)
                     check_url_availability = job.payload.get("check_url_availability")  # None = use config
-                    await orch._run_lint(job.id, scope=scope, auto_resolve=auto_resolve,
-                                         adversarial=adversarial, lifecycle=lifecycle,
-                                         check_url_availability=check_url_availability)
+                    job_coro = orch._run_lint(job.id, scope=scope, auto_resolve=auto_resolve,
+                                              adversarial=adversarial, lifecycle=lifecycle,
+                                              check_url_availability=check_url_availability)
                 elif job.operation == "scaffold":
                     domain = job.payload.get("domain", "")
-                    await orch._run_scaffold(job.id, domain=domain)
+                    job_coro = orch._run_scaffold(job.id, domain=domain)
+                else:
+                    job_coro = None
+                if job_coro is not None:
+                    _timeout = orch._cfg.server.job_timeout_seconds
+                    try:
+                        await asyncio.wait_for(job_coro, timeout=_timeout)
+                    except asyncio.TimeoutError:
+                        logger.error(
+                            "Job %s (%s) exceeded %ss timeout — marking dead",
+                            job.id, job.operation, _timeout,
+                        )
+                        await orch.queue.fail_permanent(
+                            job.id, f"timed out after {_timeout}s"
+                        )
         except Exception as exc:
             known = _classify_llm_error(exc)
             if known and known.status_code == 503 and (
@@ -1076,8 +1090,11 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
     @app.post("/jobs/{job_id}/retry")
     async def retry_job(job_id: str):
         jobs = await app.state.orch.queue.list_jobs()
-        if not any(j.id == job_id for j in jobs):
+        job = next((j for j in jobs if j.id == job_id), None)
+        if job is None:
             raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found")
+        if job.status == JobStatus.DEAD:
+            raise HTTPException(status_code=409, detail=f"Job {job_id!r} is permanently dead and cannot be retried")
         await app.state.orch.queue.retry(job_id)
         return {"retried": job_id}
 

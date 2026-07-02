@@ -423,8 +423,8 @@ async def test_run_lint_daily_quota_fails_permanent(tmp_wiki):
             await orch._run_lint(job_id)
 
         from synthadoc.core.queue import JobStatus
-        failed = await orch._queue.list_jobs(status=JobStatus.FAILED)
-        assert any(j.id == job_id for j in failed)
+        dead = await orch._queue.list_jobs(status=JobStatus.DEAD)
+        assert any(j.id == job_id for j in dead)
     finally:
         await orch.close()
 

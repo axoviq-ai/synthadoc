@@ -204,8 +204,8 @@ async def test_run_ingest_daily_quota_exhausted_fails_permanent(tmp_wiki):
             await orch._run_ingest(job_id, "https://example.com", auto_confirm=True)
 
         from synthadoc.core.queue import JobStatus
-        failed = await orch._queue.list_jobs(status=JobStatus.FAILED)
-        assert any(j.id == job_id for j in failed)
+        dead = await orch._queue.list_jobs(status=JobStatus.DEAD)
+        assert any(j.id == job_id for j in dead)
 
 
 @pytest.mark.asyncio
@@ -224,8 +224,8 @@ async def test_run_ingest_coding_tool_quota_fails_permanent(tmp_wiki):
             await orch._run_ingest(job_id, "https://example.com", auto_confirm=True)
 
         from synthadoc.core.queue import JobStatus
-        failed = await orch._queue.list_jobs(status=JobStatus.FAILED)
-        assert any(j.id == job_id for j in failed)
+        dead = await orch._queue.list_jobs(status=JobStatus.DEAD)
+        assert any(j.id == job_id for j in dead)
 
 
 @pytest.mark.asyncio
@@ -258,8 +258,8 @@ async def test_run_ingest_environment_error_fails_permanent(tmp_wiki):
             await orch._run_ingest(job_id, "file.pdf", auto_confirm=True)
 
         from synthadoc.core.queue import JobStatus
-        failed = await orch._queue.list_jobs(status=JobStatus.FAILED)
-        assert any(j.id == job_id for j in failed)
+        dead = await orch._queue.list_jobs(status=JobStatus.DEAD)
+        assert any(j.id == job_id for j in dead)
 
 
 @pytest.mark.asyncio
