@@ -84,6 +84,7 @@ class VectorStore:
 
 
 _EMBED_MODEL_NAME = "BAAI/bge-small-en-v1.5"
+_COMPOUND_RE = re.compile(r"[a-z0-9]+(?:_[a-z0-9]+)+")
 
 
 class HybridSearch:
@@ -142,11 +143,13 @@ class HybridSearch:
 
     @staticmethod
     def _tokenize(text: str) -> list[str]:
-        ascii_tokens = re.findall(r"[a-z0-9]+", text.lower())
-        cjk_tokens = re.findall(
-            r"[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]", text
+        lower = text.lower()
+        compound = _COMPOUND_RE.findall(lower)      # "total_mv_cny", "fcf_calc_v2"
+        ascii_t = re.findall(r"[a-z0-9]+", lower)   # individual parts
+        cjk_t = re.findall(
+            r"[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]", lower
         )
-        return ascii_tokens + cjk_tokens
+        return compound + ascii_t + cjk_t
 
     def invalidate_index(self) -> None:
         """Drop the in-memory corpus cache. Call after any page write."""

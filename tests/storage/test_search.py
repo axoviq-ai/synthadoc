@@ -63,6 +63,61 @@ def test_tokenize_includes_cjk_chars():
     assert "ai" in tokens
 
 
+def test_tokenize_compound_identifier():
+    """total_mv_cny → compound token plus parts, all lowercase."""
+    from synthadoc.storage.search import HybridSearch
+    tokens = HybridSearch._tokenize("total_mv_cny")
+    assert "total_mv_cny" in tokens
+    assert "total" in tokens
+    assert "mv" in tokens
+    assert "cny" in tokens
+
+
+def test_tokenize_compound_mixed_case():
+    """FCF_calc_v2 → lowercase compound plus parts."""
+    from synthadoc.storage.search import HybridSearch
+    tokens = HybridSearch._tokenize("FCF_calc_v2")
+    assert "fcf_calc_v2" in tokens
+    assert "fcf" in tokens
+    assert "calc" in tokens
+    assert "v2" in tokens
+
+
+def test_tokenize_no_regression_plain_text():
+    """Plain words without underscores → no compound tokens added."""
+    from synthadoc.storage.search import HybridSearch
+    tokens = HybridSearch._tokenize("plain text")
+    assert "plain" in tokens
+    assert "text" in tokens
+    # No compound token for plain words
+    assert not any("_" in t for t in tokens)
+
+
+def test_tokenize_empty_string_no_crash():
+    """Empty string → empty list."""
+    from synthadoc.storage.search import HybridSearch
+    assert HybridSearch._tokenize("") == []
+
+
+def test_tokenize_cjk_unchanged():
+    """CJK characters still tokenized individually."""
+    from synthadoc.storage.search import HybridSearch
+    tokens = HybridSearch._tokenize("现金桥")
+    assert "现" in tokens
+    assert "金" in tokens
+    assert "桥" in tokens
+
+
+def test_tokenize_formula_no_compound():
+    """Formulas without underscores produce no compound tokens."""
+    from synthadoc.storage.search import HybridSearch
+    tokens = HybridSearch._tokenize("fcf = cfo - capex")
+    assert "fcf" in tokens
+    assert "cfo" in tokens
+    assert "capex" in tokens
+    assert not any("_" in t for t in tokens)
+
+
 # ── corpus cache tests ────────────────────────────────────────────────────────
 
 def test_bm25_corpus_built_once_for_repeated_calls(tmp_wiki):
