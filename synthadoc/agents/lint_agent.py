@@ -19,6 +19,8 @@ try:
 except ImportError:
     _LOUVAIN_AVAILABLE = False
 
+from synthadoc.agents.citations import CITATION_RE as _CITATION_BODY_RE
+from synthadoc.agents.citations import MALFORMED_CITE_RE as _MALFORMED_CITE_RE
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.log import AuditDB, LogWriter
 from synthadoc.storage.wiki import WikiStorage, LifecycleState, is_url, TriggerSource
@@ -50,8 +52,6 @@ class LintReport:
 
 
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
-_CITATION_BODY_RE = re.compile(r'\^\[([^\]:]+):(\d+)-(\d+)\]')
-_MALFORMED_CITE_RE = re.compile(r'\^\[[^\]]*\]')
 
 # Auto-generated / directory pages whose outbound links must NOT count as real
 # references.  A page linked only from index/overview/dashboard is still an

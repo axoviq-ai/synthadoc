@@ -13,6 +13,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from synthadoc.agents.citations import CITATION_RE as _CITATION_RE
 from synthadoc.agents.search_decompose_agent import SearchDecomposeAgent
 from synthadoc.agents.skill_agent import SkillAgent
 from synthadoc.core.cache import CACHE_VERSION, CacheManager, make_cache_key
@@ -74,6 +75,11 @@ _DECISION_PROMPT = (
     "or sources that explicitly say an existing claim is wrong or a myth.\n"
     "Example: page says 'A-0 was the first compiler' + source says 'A-0 was a loader, not a compiler'\n"
     "-> action='flag', target=the slug of the page whose claim is disputed\n\n"
+    "RULE 1b — ACTIVE PAGE PROTECTION: A page with status='active' has been human-reviewed and is\n"
+    "authoritative. Treat its existing facts as correct. If the source gives a DIFFERENT value,\n"
+    "date, formula, or conclusion for something the active page already states — even if the source\n"
+    "seems more recent — use action='flag', not action='update'. Only use action='update' on an\n"
+    "active page when the source adds a section on a topic the page does not yet mention at all.\n\n"
     "RULE 2 — UPDATE: If the source adds new information about a subject ALREADY covered by an existing page,\n"
     "and there is no factual dispute, use action='update'.\n"
     "-> action='update', target=slug of page to extend,\n"
@@ -99,7 +105,6 @@ _OVERVIEW_PROMPT = (
 CITATION_PASS4_CACHE_VERSION = "v1"
 ANALYSIS_CACHE_VERSION = "v2"  # bumped to include OKF type field
 _CITATION_EXCERPT_LEN = 100
-_CITATION_RE = re.compile(r'\^\[([^\]:]+):(\d+)-(\d+)\]')
 
 _CITATION_PROMPT = (
     "You are a citation annotator. Given a wiki page section and the source text it was "
@@ -330,6 +335,18 @@ class IngestAgent:
             for m in _CITATION_RE.finditer(annotated)
             if m.group(1) == filename
         ]
+        if not citations:
+            logger.warning(
+                "Pass 4 produced no ^[filename:L-L] citations for %s — the configured model "
+                "may not reliably follow the citation format. Consider switching to a more "
+                "capable model (e.g. gemini-2.5-flash, minimax-m3, claude-haiku-4-5) for "
+                "reliable citation annotation.",
+                filename,
+            )
+            await self._audit.write_event(
+                "citation_pass4_no_markers",
+                metadata={"source": filename},
+            )
         return annotated, citations
 
     async def _pick_routing_branch(self, slug: str, page: WikiPage, ri) -> str:
@@ -610,7 +627,8 @@ class IngestAgent:
             page = self._store.read_page(r.slug)
             if page:
                 snippet = page.content[:600].replace("\n", " ")
-                pages_ctx.append(f"[{r.slug}]: {snippet}")
+                status_label = page.status if isinstance(page.status, str) else page.status.value
+                pages_ctx.append(f"[{r.slug}] status={status_label}: {snippet}")
         pages_str = "\n".join(pages_ctx) or "none"
 
         # Pass 3: decision (cached by summary hash + candidate slugs + prompt hash)
