@@ -41,7 +41,11 @@ class JobQueue:
         self._max_retries = max_retries
         self._lock = asyncio.Lock()
 
-    async def init(self, stale_pending_seconds: int = 3600) -> None:
+    _DEFAULT_JOB_TIMEOUT_SECONDS: int = 600  # matches [server] job_timeout_seconds default
+
+    async def init(self, stale_pending_seconds: int | None = None) -> None:
+        if stale_pending_seconds is None:
+            stale_pending_seconds = self._DEFAULT_JOB_TIMEOUT_SECONDS * 2
         async with aiosqlite.connect(self._path) as db:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS jobs (
