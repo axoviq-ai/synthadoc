@@ -567,6 +567,28 @@ class LintAgent:
                     "lifecycle check failed for %s: %s", slug, exc
                 )
 
+        # Ghost-draft sweep: DB entries in 'draft' with no corresponding wiki file.
+        # This happens when the server is restarted mid-ingest before the file is written.
+        if self._audit and promote_drafts:
+            fs_slugs = set(slugs)
+            all_states = await self._audit.get_all_page_states()
+            for entry in all_states:
+                if entry["state"] == LifecycleState.DRAFT and entry["slug"] not in fs_slugs:
+                    _log.warning(
+                        "lifecycle ghost-draft: slug=%s has no wiki file — archiving "
+                        "(ingest was interrupted before file was written)",
+                        entry["slug"],
+                    )
+                    await self._audit.set_page_state(
+                        entry["slug"], LifecycleState.ARCHIVED, TriggerSource.LINT
+                    )
+                    await self._audit.record_lifecycle_event(
+                        entry["slug"], LifecycleState.DRAFT, LifecycleState.ARCHIVED,
+                        "wiki file missing — ingest interrupted before file was written",
+                        TriggerSource.LINT,
+                    )
+                    report.lifecycle_archived += 1
+
         if self._audit and self._cfg:
             retention = getattr(getattr(self._cfg, "audit", None), "lifecycle_retention_days", 0)
             if retention > 0:

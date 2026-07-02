@@ -739,3 +739,32 @@ async def test_lint_warns_at_exactly_min_words_boundary(tmp_wiki):
     report = await agent.lint(adversarial=False)
 
     assert any("boundary" in w and "citation" in w.lower() for w in report.warnings)
+
+
+@pytest.mark.asyncio
+async def test_lint_archives_ghost_draft(tmp_wiki):
+    """A DB entry in 'draft' state with no corresponding wiki file (ghost draft from an
+    interrupted ingest) must be archived by lint, not silently ignored."""
+    from synthadoc.storage.log import AuditDB
+    from synthadoc.storage.wiki import WikiStorage, WikiPage
+
+    # Real page on disk in draft state (will be promoted normally)
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("real-page", WikiPage(
+        title="Real Page", tags=[], content="Real content.", status="draft",
+        confidence="high", sources=[]))
+
+    # Seed the DB with a ghost draft — no file exists for this slug
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+    await audit.set_page_state("ghost-draft", "draft", "ingest")
+
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log, audit_db=audit)
+    report = await agent.lint(adversarial=False)
+
+    ghost_state = await audit.get_page_state("ghost-draft")
+    assert ghost_state["state"] == "archived", "ghost draft must be archived by lint"
+    assert report.lifecycle_archived >= 1
+    # The real page should be promoted, not affected
+    assert report.lifecycle_promoted >= 1
