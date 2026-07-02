@@ -1822,6 +1822,188 @@ async def test_pass4_with_citation_does_not_warn(tmp_wiki, caplog):
     )
 
 
+# ── Bug A: sanity check ───────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_pass4_sanity_check_tolerates_heading_reformat(tmp_wiki):
+    """Bug A fix: LLM changing ## to # must NOT fail the sanity check."""
+    from unittest.mock import AsyncMock
+    from synthadoc.providers.base import CompletionResponse
+
+    section = "## CAPEX Classification\n\nContent with many words here."
+    lm_return = "# CAPEX Classification\n\nContent with many words here.^[file.md:1-2]"
+
+    provider = AsyncMock()
+    provider.complete = AsyncMock(return_value=CompletionResponse(
+        text=lm_return, input_tokens=10, output_tokens=10
+    ))
+
+    store, audit, agent = await _make_agent_async(tmp_wiki, provider)
+    annotated, citations = await agent._annotate_citations(
+        section, "line 1\nline 2\n", "file.md"
+    )
+    assert citations, f"Expected citations but got empty list. Annotated: {annotated!r}"
+
+
+@pytest.mark.asyncio
+async def test_pass4_sanity_check_rejects_too_short_response(tmp_wiki):
+    """Bug A fix: response shorter than 80% of section → skipped with audit event."""
+    import json as _json
+    from unittest.mock import AsyncMock
+    from synthadoc.providers.base import CompletionResponse
+
+    section = "## Section\n\n" + "A word. " * 40  # long section
+    lm_return = '{"error": "json"}'  # very short
+
+    provider = AsyncMock()
+    provider.complete = AsyncMock(return_value=CompletionResponse(
+        text=lm_return, input_tokens=10, output_tokens=10
+    ))
+
+    store, audit, agent = await _make_agent_async(tmp_wiki, provider)
+    annotated, citations = await agent._annotate_citations(
+        section, "line 1\nline 2\n", "file.md"
+    )
+    assert annotated == section
+    assert citations == []
+    events = await audit.list_events()
+    skipped = [
+        e for e in events
+        if e["event"] == "citation_pass4_skipped"
+        and _json.loads(e.get("metadata") or "{}").get("error") == "response_too_short"
+    ]
+    assert skipped, f"Expected citation_pass4_skipped with response_too_short, got: {events}"
+
+
+# ── Bug B: case-sensitive filename ────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_pass4_case_insensitive_filename_match(tmp_wiki):
+    """Bug B fix: LLM returning FILENAME.MD (uppercase) must still produce citations."""
+    from unittest.mock import AsyncMock
+    from synthadoc.providers.base import CompletionResponse
+
+    section = "# Section\n\nSome content."
+    lm_return = "# Section\n\nSome content.^[FILE.MD:1-2]"
+
+    provider = AsyncMock()
+    provider.complete = AsyncMock(return_value=CompletionResponse(
+        text=lm_return, input_tokens=10, output_tokens=10
+    ))
+
+    store, audit, agent = await _make_agent_async(tmp_wiki, provider)
+    annotated, citations = await agent._annotate_citations(
+        section, "line 1\nline 2\n", "file.md"
+    )
+    assert citations, f"Expected citations for uppercase FILENAME match, got: {citations}"
+
+
+# ── Bug C: line-based truncation ──────────────────────────────────────────────
+
+def test_pass4_numbered_source_truncates_by_lines():
+    """Bug C fix: numbered source must be truncated by line count, not character count."""
+    from synthadoc.agents.ingest_agent import _MAX_CITATION_LINES
+
+    lines = [f"Line {i}: content" for i in range(_MAX_CITATION_LINES + 50)]
+    source_text = "\n".join(lines)
+
+    numbered = "\n".join(
+        f"{i+1}: {line}"
+        for i, line in enumerate(source_text.splitlines()[:_MAX_CITATION_LINES])
+    )
+    numbered_lines = numbered.splitlines()
+    assert len(numbered_lines) <= _MAX_CITATION_LINES
+    for ln in numbered_lines:
+        assert ":" in ln  # format is "N: content"
+
+
+# ── Bug D: empty source_text audit event ─────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_pass4_empty_source_text_emits_audit_event(tmp_wiki):
+    """Bug D fix: empty source_text must emit citation_pass4_skipped audit event."""
+    import json as _json
+    from unittest.mock import AsyncMock
+    from synthadoc.providers.base import CompletionResponse
+
+    provider = AsyncMock()
+    provider.complete = AsyncMock(return_value=CompletionResponse(
+        text="", input_tokens=0, output_tokens=0
+    ))
+
+    store, audit, agent = await _make_agent_async(tmp_wiki, provider)
+    annotated, citations = await agent._annotate_citations(
+        "# Section\n\nContent.", "", "file.md"
+    )
+
+    assert citations == []
+    events = await audit.list_events()
+    assert any(
+        e["event"] == "citation_pass4_skipped"
+        and _json.loads(e.get("metadata") or "{}").get("error") == "empty_source_text"
+        for e in events
+    ), f"Expected empty_source_text audit event, got: {events}"
+
+
+# ── Bug E: bust_cache propagation ─────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_pass4_bust_cache_bypasses_annotation_cache(tmp_wiki):
+    """Bug E fix: bust_cache=True must bypass the annotation cache."""
+    from synthadoc.providers.base import CompletionResponse
+
+    section = "# Section\n\nSome content."
+    source = "line 1\nline 2\n"
+    call_count = {"n": 0}
+
+    class CountingProvider:
+        async def complete(self, messages, **kw):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return CompletionResponse(text=section, input_tokens=10, output_tokens=10)
+            return CompletionResponse(
+                text=section + "^[file.md:1-2]", input_tokens=10, output_tokens=10
+            )
+
+    store, audit, agent = await _make_agent_async(tmp_wiki, CountingProvider())
+
+    # First call: no citations → not cached (Bug F fix)
+    _, c1 = await agent._annotate_citations(section, source, "file.md", bust_cache=False)
+    assert c1 == []
+
+    # Second call with bust_cache=True: must call LLM again
+    _, c2 = await agent._annotate_citations(section, source, "file.md", bust_cache=True)
+    assert c2, f"Expected citations on second call with bust_cache=True, got: {c2}"
+    assert call_count["n"] == 2, f"Expected 2 LLM calls, got {call_count['n']}"
+
+
+# ── Bug F: zero-citation results not cached ────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_pass4_zero_citation_result_not_cached(tmp_wiki):
+    """Bug F fix: a 0-citation result must NOT be cached; next call retries the LLM."""
+    from synthadoc.providers.base import CompletionResponse
+
+    section = "# Section\n\nSome content."
+    source = "line 1\nline 2\n"
+    call_count = {"n": 0}
+
+    class CountingProvider:
+        async def complete(self, messages, **kw):
+            call_count["n"] += 1
+            return CompletionResponse(text=section, input_tokens=10, output_tokens=10)
+
+    store, audit, agent = await _make_agent_async(tmp_wiki, CountingProvider())
+
+    await agent._annotate_citations(section, source, "file.md")
+    await agent._annotate_citations(section, source, "file.md")
+
+    assert call_count["n"] == 2, (
+        f"0-citation result was cached — second call did not reach LLM. "
+        f"LLM calls: {call_count['n']}"
+    )
+
+
 # --- _backfill_okf_fields unit tests ---
 
 def test_backfill_sets_type_when_absent():

@@ -106,6 +106,8 @@ CITATION_PASS4_CACHE_VERSION = "v1"
 ANALYSIS_CACHE_VERSION = "v2"  # bumped to include OKF type field
 DECISION_CACHE_VERSION = "v2"  # bumped to use full source_text instead of summary
 _CITATION_EXCERPT_LEN = 100
+_MAX_CITATION_LINES = 120
+_MAX_CITE_LEN_RATIO = 0.8
 
 _CODE_BLOCK_RE = re.compile(r"```[^\n]*\n(.*?)```", re.DOTALL)
 _BOLD_BULLET_NUM_RE = re.compile(
@@ -308,7 +310,7 @@ class IngestAgent:
             )
 
     async def _annotate_citations(
-        self, section: str, source_text: str, filename: str
+        self, section: str, source_text: str, filename: str, bust_cache: bool = False
     ) -> tuple[str, list[dict]]:
         """Pass 4: annotate section with ^[filename:L-L] markers.
 
@@ -316,10 +318,21 @@ class IngestAgent:
         (original_section, []) so ingest always succeeds.
         """
         if not section.strip() or not source_text.strip():
+            if not source_text.strip():
+                logger.warning(
+                    "Pass 4 skipped for %s — source text is empty; no citations added",
+                    filename,
+                )
+                await self._audit.write_event(
+                    "citation_pass4_skipped",
+                    metadata={"source": filename, "error": "empty_source_text"},
+                )
             return section, []
 
+        # Bug C fix: truncate numbered source by line count, not character count
         numbered = "\n".join(
-            f"{i+1}: {line}" for i, line in enumerate(source_text.splitlines())
+            f"{i+1}: {line}"
+            for i, line in enumerate(source_text.splitlines()[:_MAX_CITATION_LINES])
         )
         body_hash = hashlib.sha256(section.encode()).hexdigest()
         ck = make_cache_key(
@@ -327,7 +340,8 @@ class IngestAgent:
             {"body_hash": body_hash, "filename": filename},
             version=CITATION_PASS4_CACHE_VERSION,
         )
-        cached = await self._cache.get(ck)
+        # Bug E fix: honour bust_cache flag
+        cached = None if bust_cache else await self._cache.get(ck)
         if cached:
             annotated = cached
         else:
@@ -337,29 +351,50 @@ class IngestAgent:
                         role="user",
                         content=_CITATION_PROMPT.format(
                             filename=filename,
-                            numbered_source=numbered[:6000],
+                            numbered_source=numbered,
                             section=section,
                         ),
                     )],
                     temperature=0.0,
                 )
                 raw = resp.text.strip() or section
-                # Sanity check: annotated text must preserve the original content.
-                # If the LLM returned something structurally different (e.g. JSON),
-                # fall back to original to avoid corrupting the page body.
-                _first_line = section.split("\n")[0][:40].strip()
-                if _first_line and _first_line not in raw:
+                # Bug A fix: length-based sanity check replaces exact first-line match.
+                # A response shorter than 80% of the section is likely structural garbage.
+                if len(raw) < len(section) * _MAX_CITE_LEN_RATIO:
                     logger.warning(
-                        "Pass 4 response for %s failed sanity check — using original section",
+                        "Pass 4 response for %s too short (%d vs %d chars) — using original section",
+                        filename, len(raw), len(section),
+                    )
+                    await self._audit.write_event(
+                        "citation_pass4_skipped",
+                        metadata={"source": filename, "error": "response_too_short"},
+                    )
+                    return section, []
+                # Structural check: if the response starts with JSON it is not a valid annotation.
+                if raw.lstrip().startswith(('{', '[')):
+                    logger.warning(
+                        "Pass 4 response for %s looks like structured data — using original section",
                         filename,
                     )
                     await self._audit.write_event(
                         "citation_pass4_skipped",
-                        metadata={"source": filename, "error": "sanity_check_failed"},
+                        metadata={"source": filename, "error": "response_not_markdown"},
+                    )
+                    return section, []
+                # Secondary check: a key word from the section must appear in the response.
+                _key_words = [w for w in section.replace("#", "").split() if len(w) >= 4]
+                _key_word = _key_words[0].lower() if _key_words else ""
+                if _key_word and _key_word not in raw.lower():
+                    logger.warning(
+                        "Pass 4 response for %s failed key-word check — using original section",
+                        filename,
+                    )
+                    await self._audit.write_event(
+                        "citation_pass4_skipped",
+                        metadata={"source": filename, "error": "key_word_mismatch"},
                     )
                     return section, []
                 annotated = raw
-                await self._cache.set(ck, annotated)
             except Exception as exc:
                 logger.warning("Pass 4 citation annotation failed for %s: %s", filename, exc)
                 await self._audit.write_event(
@@ -368,6 +403,7 @@ class IngestAgent:
                 )
                 return section, []
 
+        # Bug B fix: case-insensitive filename comparison
         citations = [
             {
                 "source_file": filename,
@@ -376,9 +412,12 @@ class IngestAgent:
                 "claim_excerpt": section.split("\n")[0][:_CITATION_EXCERPT_LEN],
             }
             for m in _CITATION_RE.finditer(annotated)
-            if m.group(1) == filename
+            if m.group(1).lower() == filename.lower()
         ]
-        if not citations:
+        # Bug F fix: only cache when citations were actually produced
+        if citations:
+            await self._cache.set(ck, annotated)
+        else:
             logger.warning(
                 "Pass 4 produced no ^[filename:L-L] citations for %s — the configured model "
                 "may not reliably follow the citation format. Consider switching to a more "
@@ -811,7 +850,7 @@ class IngestAgent:
                             section = section + key_section
                         # Pass 4: annotate only the new update section
                         section, citations = await self._annotate_citations(
-                            section, extracted.text, p.name
+                            section, extracted.text, p.name, bust_cache=bust_cache
                         )
                         page.content = page.content.rstrip() + f"\n\n{section}"
                         page.sources.append(SourceRef(
@@ -871,7 +910,7 @@ class IngestAgent:
                                 section = section + key_section
                             # Pass 4: annotate only the new section
                             section, citations = await self._annotate_citations(
-                                section, extracted.text, p.name
+                                section, extracted.text, p.name, bust_cache=bust_cache
                             )
                             page.content = page.content.rstrip() + f"\n\n{section}"
                             page.sources.append(SourceRef(
@@ -902,7 +941,7 @@ class IngestAgent:
                         body = body + key_section
                     # Pass 4: annotate the full new page body
                     body, citations = await self._annotate_citations(
-                        body, extracted.text, p.name
+                        body, extracted.text, p.name, bust_cache=bust_cache
                     )
                     today = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
                     new_page = WikiPage(
