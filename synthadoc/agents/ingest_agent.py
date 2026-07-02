@@ -107,6 +107,15 @@ ANALYSIS_CACHE_VERSION = "v2"  # bumped to include OKF type field
 DECISION_CACHE_VERSION = "v2"  # bumped to use full source_text instead of summary
 _CITATION_EXCERPT_LEN = 100
 
+_CODE_BLOCK_RE = re.compile(r"```[^\n]*\n(.*?)```", re.DOTALL)
+_BOLD_BULLET_NUM_RE = re.compile(
+    r"^\s*[-*+]\s+\*\*([^*]+)\*\*\s*[—–-]\s*(.+)$", re.MULTILINE
+)
+_FORMULA_LINE_RE = re.compile(
+    r"^[A-Za-z_]\w*(?:\s+\w+)?\s*=\s*[^\n]{5,80}$", re.MULTILINE
+)
+_KEY_DATA_MIN_ITEMS = 1  # only append section when at least this many items found
+
 _CITATION_PROMPT = (
     "You are a citation annotator. Given a wiki page section and the source text it was "
     "compiled from, insert ^[FILENAME:L-L] at the END of each paragraph that makes a "
@@ -224,6 +233,39 @@ def _slugify(title: str) -> str:
     ).strip("-")
     # Fallback: if title was entirely symbols with no slug-able chars, use a content hash
     return slug or "page-" + hashlib.md5(title.encode()).hexdigest()[:8]
+
+
+def _extract_key_data(source_text: str) -> list[str]:
+    """Extract numerical facts, formulas, and rates from source text deterministically.
+
+    Returns a deduplicated list of strings. Returns [] when nothing is found.
+    """
+    items: list[str] = []
+    seen: set[str] = set()
+
+    def _add(item: str) -> None:
+        item = item.strip()
+        if item and item not in seen:
+            seen.add(item)
+            items.append(item)
+
+    for m in _CODE_BLOCK_RE.finditer(source_text):
+        for line in m.group(1).splitlines():
+            line = line.strip()
+            if line:
+                _add(line)
+
+    for m in _BOLD_BULLET_NUM_RE.finditer(source_text):
+        _add(f"{m.group(1).strip()} — {m.group(2).strip()}")
+
+    for m in _FORMULA_LINE_RE.finditer(source_text):
+        candidate = m.group(0).strip()
+        # Skip lines already found in a code block (avoid duplicates from formula lines
+        # that appear both inside a block and as a standalone copy in the text)
+        if candidate not in seen:
+            _add(candidate)
+
+    return items
 
 
 class IngestAgent:
@@ -762,6 +804,11 @@ class IngestAgent:
                             section = update_content
                         else:
                             section = f"## From {p.name}\n\n{text[:1000]}"
+                        # Pass 0: append Key Data section for deterministic numerical preservation
+                        _key_items = _extract_key_data(text)
+                        if len(_key_items) >= _KEY_DATA_MIN_ITEMS:
+                            key_section = "\n\n## Key Data\n\n" + "\n".join(f"- {item}" for item in _key_items)
+                            section = section + key_section
                         # Pass 4: annotate only the new update section
                         section, citations = await self._annotate_citations(
                             section, extracted.text, p.name
@@ -817,6 +864,11 @@ class IngestAgent:
                                 section = extracted.text
                             else:
                                 section = f"## From {p.name}\n\n{text[:1500]}"
+                            # Pass 0: append Key Data section for deterministic numerical preservation
+                            _key_items = _extract_key_data(text)
+                            if len(_key_items) >= _KEY_DATA_MIN_ITEMS:
+                                key_section = "\n\n## Key Data\n\n" + "\n".join(f"- {item}" for item in _key_items)
+                                section = section + key_section
                             # Pass 4: annotate only the new section
                             section, citations = await self._annotate_citations(
                                 section, extracted.text, p.name
@@ -843,6 +895,11 @@ class IngestAgent:
                         body = page_content.strip()
                     else:
                         body = f"# {title}\n\n{text[:4000]}"
+                    # Pass 0: append Key Data section for deterministic numerical preservation
+                    _key_items = _extract_key_data(text)
+                    if len(_key_items) >= _KEY_DATA_MIN_ITEMS:
+                        key_section = "\n\n## Key Data\n\n" + "\n".join(f"- {item}" for item in _key_items)
+                        body = body + key_section
                     # Pass 4: annotate the full new page body
                     body, citations = await self._annotate_citations(
                         body, extracted.text, p.name

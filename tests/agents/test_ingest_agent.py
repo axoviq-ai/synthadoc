@@ -1956,3 +1956,59 @@ async def test_fix10_decision_receives_full_source_not_summary(tmp_wiki, cache):
         )
 
     assert "some full source text here" in filled
+
+
+# --- _extract_key_data unit tests ---
+
+def test_extract_key_data_code_block():
+    """Code blocks in source → extracted as formula items."""
+    from synthadoc.agents.ingest_agent import _extract_key_data
+    src = "Some text.\n\n```\nFCF = CFO - Maintenance_CAPEX\n```\n"
+    result = _extract_key_data(src)
+    assert "FCF = CFO - Maintenance_CAPEX" in result
+
+
+def test_extract_key_data_bold_bullet():
+    """Bold-bullet numeric entries → extracted."""
+    from synthadoc.agents.ingest_agent import _extract_key_data
+    src = "- **11%** — High-risk sectors\n- **10%** — Mid-risk\n"
+    result = _extract_key_data(src)
+    assert any("11%" in item for item in result)
+    assert any("10%" in item for item in result)
+
+
+def test_extract_key_data_no_numbers():
+    """Pure prose with no numbers → empty list."""
+    from synthadoc.agents.ingest_agent import _extract_key_data
+    src = "This document discusses methodology and approach in general terms."
+    assert _extract_key_data(src) == []
+
+
+def test_extract_key_data_empty():
+    """Empty string → empty list, no crash."""
+    from synthadoc.agents.ingest_agent import _extract_key_data
+    assert _extract_key_data("") == []
+
+
+def test_extract_key_data_deduplicates():
+    """Same formula in two code blocks → appears once."""
+    from synthadoc.agents.ingest_agent import _extract_key_data
+    src = "```\nFCF = CFO - CAPEX\n```\n\nSome text.\n\n```\nFCF = CFO - CAPEX\n```\n"
+    result = _extract_key_data(src)
+    assert result.count("FCF = CFO - CAPEX") == 1
+
+
+def test_extract_key_data_malformed_code_block():
+    """Unclosed code block — function does not raise, returns whatever was found."""
+    from synthadoc.agents.ingest_agent import _extract_key_data
+    src = "```\nFCF = CFO - CAPEX\n"  # unclosed
+    result = _extract_key_data(src)   # must not raise
+    assert isinstance(result, list)
+
+
+def test_extract_key_data_formula_line():
+    """Standalone formula lines (var = expr) are extracted."""
+    from synthadoc.agents.ingest_agent import _extract_key_data
+    src = "total_mv_cny = total_mv × 10,000\n"
+    result = _extract_key_data(src)
+    assert any("total_mv" in item for item in result)
