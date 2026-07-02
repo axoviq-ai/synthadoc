@@ -41,7 +41,11 @@ class JobQueue:
         self._max_retries = max_retries
         self._lock = asyncio.Lock()
 
-    async def init(self) -> None:
+    _DEFAULT_JOB_TIMEOUT_SECONDS: int = 600  # matches [server] job_timeout_seconds default
+
+    async def init(self, stale_pending_seconds: int | None = None) -> None:
+        if stale_pending_seconds is None:
+            stale_pending_seconds = self._DEFAULT_JOB_TIMEOUT_SECONDS * 2
         async with aiosqlite.connect(self._path) as db:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS jobs (
@@ -64,8 +68,20 @@ class JobQueue:
                 await db.execute("ALTER TABLE jobs ADD COLUMN progress TEXT")
             except Exception:
                 pass  # column already exists
-            # Reset any jobs left in_progress from a previous crashed session
-            await db.execute("UPDATE jobs SET status='pending' WHERE status='in_progress'")
+            # Jobs left in_progress from a crashed session can never complete —
+            # mark them failed so the worker isn't blocked indefinitely on restart.
+            await db.execute(
+                "UPDATE jobs SET status='failed', error='server restarted while job was running' "
+                "WHERE status='in_progress'"
+            )
+            # Pending jobs older than the stale window are zombies from a previous
+            # server session — cancel them so they don't block fresh work.
+            await db.execute(
+                "UPDATE jobs SET status='cancelled', "
+                "error='expired — job was pending for too long before server restart' "
+                "WHERE status='pending' AND created_at < datetime('now', ?)",
+                (f"-{stale_pending_seconds} seconds",),
+            )
             await db.commit()
 
     async def enqueue(self, operation: str, payload: dict) -> str:
@@ -155,7 +171,7 @@ class JobQueue:
         """Fail a job immediately with no retry — for non-transient errors."""
         async with aiosqlite.connect(self._path) as db:
             await db.execute(
-                "UPDATE jobs SET status='failed',error=? WHERE id=?",
+                "UPDATE jobs SET status='dead',error=? WHERE id=?",
                 (error, job_id),
             )
             await db.commit()

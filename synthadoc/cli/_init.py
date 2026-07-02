@@ -26,6 +26,7 @@ domain = "{domain}"
 [server]
 port = {port}  # change this if running multiple wikis simultaneously
 # host = "0.0.0.0"  # bind to all interfaces — no built-in auth, restrict via firewall
+# job_timeout_seconds = 600  # max seconds a single job runs before being killed (default: 600)
 
 [agents]
 default = {{ provider = "gemini", model = "gemini-2.5-flash-lite" }}
@@ -73,6 +74,9 @@ backup_count = 5
 # Maximum number of adversarial concerns flagged per page (default: 2).
 # Raise to 3-5 for a more thorough review; lower to 1 for a tighter signal-to-noise ratio.
 adversarial_max_per_page = 2
+# Maximum number of pages reviewed concurrently during adversarial pass (default: 8).
+# Lower to 2-4 on free-tier or rate-limited LLM providers; raise to 16+ on paid tiers.
+adversarial_concurrency = 8
 
 [search]
 vector = false             # set to true to enable semantic re-ranking (downloads ~130 MB model once)

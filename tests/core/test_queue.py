@@ -136,18 +136,18 @@ async def test_skip_does_not_retry(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_fail_permanent_goes_to_failed_not_dead(tmp_wiki):
-    """fail_permanent must set status=failed, not dead, regardless of retry count."""
+async def test_fail_permanent_goes_to_dead(tmp_wiki):
+    """fail_permanent must set status=dead — permanently non-retryable."""
     q = JobQueue(tmp_wiki / ".synthadoc" / "jobs.db", max_retries=3)
     await q.init()
     job_id = await q.enqueue("ingest", {"source": "stub.pdf"})
     job = await q.dequeue()
     assert job is not None
     await q.fail_permanent(job.id, "NotImplementedError: skill stub")
-    failed = await q.list_jobs(status=JobStatus.FAILED)
-    assert any(j.id == job_id for j in failed)
     dead = await q.list_jobs(status=JobStatus.DEAD)
-    assert not any(j.id == job_id for j in dead)
+    assert any(j.id == job_id for j in dead)
+    failed = await q.list_jobs(status=JobStatus.FAILED)
+    assert not any(j.id == job_id for j in failed)
 
 
 @pytest.mark.asyncio
@@ -319,8 +319,12 @@ async def test_dequeued_job_has_progress_field(tmp_wiki):
 
 
 @pytest.mark.asyncio
-async def test_init_resets_in_progress_to_pending_on_restart(tmp_wiki):
-    """Jobs left in_progress from a crashed session must be reset to pending on init()."""
+async def test_init_resets_in_progress_to_failed_on_restart(tmp_wiki):
+    """Jobs left in_progress from a crashed session must be reset to failed on init().
+
+    Resetting to failed (not pending) prevents the worker from re-running a job
+    that was likely hung when the server crashed.
+    """
     import aiosqlite
     db_path = tmp_wiki / ".synthadoc" / "jobs.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -346,7 +350,51 @@ async def test_init_resets_in_progress_to_pending_on_restart(tmp_wiki):
     await q.init()
     jobs = await q.list_jobs()
     stuck = next(j for j in jobs if j.id == "stuck1")
-    assert stuck.status.value == "pending"
+    assert stuck.status.value == "failed"
+    assert stuck.error == "server restarted while job was running"
+
+
+@pytest.mark.asyncio
+async def test_init_cancels_stale_pending_jobs_on_restart(tmp_wiki):
+    """Pending jobs older than stale_pending_seconds must be cancelled on init().
+
+    This prevents zombie jobs (e.g. from a week-old test run) from blocking fresh
+    work after a server restart.  Recent pending jobs must survive unchanged.
+    """
+    import aiosqlite
+    db_path = tmp_wiki / ".synthadoc" / "jobs.db"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute("""
+            CREATE TABLE jobs (
+                id TEXT PRIMARY KEY,
+                operation TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                retries INTEGER NOT NULL DEFAULT 0,
+                error TEXT,
+                result TEXT,
+                progress TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        # Old zombie job — submitted 2 hours ago
+        await db.execute(
+            "INSERT INTO jobs (id, operation, payload, status, created_at) "
+            "VALUES ('zombie1', 'lint', '{}', 'pending', datetime('now', '-7200 seconds'))"
+        )
+        # Fresh job — submitted 30 seconds ago (within the 60-second threshold)
+        await db.execute(
+            "INSERT INTO jobs (id, operation, payload, status, created_at) "
+            "VALUES ('fresh1', 'ingest', '{}', 'pending', datetime('now', '-30 seconds'))"
+        )
+        await db.commit()
+    q = JobQueue(db_path)
+    await q.init(stale_pending_seconds=60)
+    jobs = {j.id: j for j in await q.list_jobs()}
+    assert jobs["zombie1"].status.value == "cancelled"
+    assert "expired" in (jobs["zombie1"].error or "")
+    assert jobs["fresh1"].status.value == "pending"
 
 
 @pytest.mark.asyncio

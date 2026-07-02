@@ -226,6 +226,7 @@ class LintAgent:
                  audit_db: AuditDB | None = None,
                  adversarial_provider: LLMProvider | None = None,
                  adversarial_max_per_page: int = 2,
+                 adversarial_concurrency: int = 8,
                  wiki_root: "Path | str | None" = None,
                  cfg: "Config | None" = None) -> None:
         self._provider = provider
@@ -235,6 +236,7 @@ class LintAgent:
         self._audit = audit_db
         self._adversarial_provider = adversarial_provider or provider
         self._adversarial_max_per_page = adversarial_max_per_page
+        self._adversarial_concurrency = adversarial_concurrency
         self._wiki_root = Path(wiki_root) if wiki_root else self._store._root.parent
         self._cfg = cfg
 
@@ -365,8 +367,14 @@ class LintAgent:
         if not scan:
             return [], 0
 
+        sem = asyncio.Semaphore(self._adversarial_concurrency)
+
+        async def _bounded(slug: str, content: str) -> tuple[list[dict], int]:
+            async with sem:
+                return await self._adversarial_single(slug, content)
+
         results = await asyncio.gather(
-            *(self._adversarial_single(s, p.content) for s, p in scan)
+            *(_bounded(s, p.content) for s, p in scan)
         )
 
         all_warnings: list[dict] = []

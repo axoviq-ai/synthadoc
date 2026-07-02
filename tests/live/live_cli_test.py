@@ -64,6 +64,7 @@ No mocks.  This script is run manually, not by CI.
   All other commands are read-only or idempotent.
 """
 import argparse
+import json
 import os
 import pathlib
 import shutil
@@ -71,6 +72,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.request
 
 # ── Configuration ─────────────────────────────────────────────────────────────
@@ -114,6 +116,38 @@ def warn(label: str, note: str) -> None:
 
 def info(msg: str) -> None:
     print(f"  {INFO} {msg}")
+
+
+def _extract_job_id(text: str) -> str | None:
+    """Return the first 8-hex-char token from CLI output (job ID), or None."""
+    for token in text.split():
+        if len(token) == 8 and all(c in "0123456789abcdef" for c in token):
+            return token
+    return None
+
+
+_JOB_TIMEOUT = 1200  # seconds — jobs may queue behind a scaffold (5-10 min) then run (2-5 min)
+_TERMINAL = {"completed", "failed", "cancelled", "dead", "skipped"}
+
+
+def _wait_job_terminal(job_id: str, label: str, max_wait: int = _JOB_TIMEOUT) -> None:
+    """Poll GET /jobs/{job_id} until terminal state or timeout; print progress."""
+    base = SYNTHADOC_URL.rstrip("/")
+    deadline = time.monotonic() + max_wait
+    info(f"Waiting for job {job_id} to finish (max {max_wait}s)…")
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(f"{base}/jobs/{job_id}", timeout=10) as r:
+                body = json.loads(r.read().decode())
+            status = body.get("status", "")
+            if status in _TERMINAL:
+                ok(label, f"job {job_id} → {status}")
+                return
+        except Exception:
+            pass
+        time.sleep(5)
+    warn(label, f"job {job_id} still running after {max_wait}s — continuing")
+
 
 # ── CLI runner ────────────────────────────────────────────────────────────────
 
@@ -520,7 +554,12 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
 
     # ── scaffold ──────────────────────────────────────────────────────────────
     print("\n[16] scaffold")
-    check("scaffold", ["scaffold"] + w, contains=["job"])
+    r_scaffold = check("scaffold", ["scaffold"] + w, contains=["job"])
+    scaffold_job_id = _extract_job_id(r_scaffold.stdout + r_scaffold.stderr)
+    if scaffold_job_id:
+        _wait_job_terminal(scaffold_job_id, "scaffold — job complete")
+    else:
+        warn("scaffold", "could not extract job ID from output — not waiting")
 
     # ── export ────────────────────────────────────────────────────────────────
     print("\n[17] export")
@@ -571,12 +610,22 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
 
     # ── lint run ──────────────────────────────────────────────────────────────
     print("\n[19] lint run")
-    check("lint run", ["lint", "run"] + w, contains=["job"])
+    r_lint = check("lint run", ["lint", "run"] + w, contains=["job"])
+    lint_job_id = _extract_job_id(r_lint.stdout + r_lint.stderr)
+    if lint_job_id:
+        _wait_job_terminal(lint_job_id, "lint run — job complete")
+    else:
+        warn("lint run", "could not extract job ID from output — not waiting")
 
     # ── schedule run ──────────────────────────────────────────────────────────
     print("\n[20] schedule run")
-    check("schedule run --op lint run",
-          ["schedule", "run", "--op", "lint run"] + w)
+    r_sched = check("schedule run --op lint run",
+                    ["schedule", "run", "--op", "lint run"] + w)
+    sched_lint_job_id = _extract_job_id(r_sched.stdout + r_sched.stderr)
+    if sched_lint_job_id:
+        _wait_job_terminal(sched_lint_job_id, "schedule run lint — job complete")
+    else:
+        warn("schedule run", "could not extract job ID from output — not waiting")
 
     # ── lifecycle log + round-trip (restore → activate → archive) ─────────────
     print("\n[21] lifecycle")

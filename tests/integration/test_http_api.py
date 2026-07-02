@@ -112,17 +112,32 @@ def test_retry_job_endpoint(tmp_wiki):
     """POST /jobs/{id}/retry resets the job to pending."""
     from synthadoc.integration.http_server import create_app
     from synthadoc.core.queue import Job, JobStatus
-    fake_job = Job(id="dead-1", operation="ingest", payload={},
-                   status=JobStatus.DEAD, retries=3, error="timeout")
+    fake_job = Job(id="fail-1", operation="ingest", payload={},
+                   status=JobStatus.FAILED, retries=0, error="server restarted")
     with patch("synthadoc.core.queue.JobQueue.list_jobs",
                new=AsyncMock(return_value=[fake_job])):
         with patch("synthadoc.core.queue.JobQueue.retry",
                    new=AsyncMock()) as mock_retry:
             with TestClient(create_app(wiki_root=tmp_wiki)) as client:
-                resp = client.post("/jobs/dead-1/retry")
+                resp = client.post("/jobs/fail-1/retry")
     assert resp.status_code == 200
-    assert resp.json()["retried"] == "dead-1"
-    mock_retry.assert_awaited_once_with("dead-1")
+    assert resp.json()["retried"] == "fail-1"
+    mock_retry.assert_awaited_once_with("fail-1")
+
+
+def test_retry_dead_job_returns_409(tmp_wiki):
+    """POST /jobs/{id}/retry on a dead job must return 409 — dead jobs cannot be retried."""
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.core.queue import Job, JobStatus
+    fake_job = Job(id="dead-1", operation="ingest", payload={},
+                   status=JobStatus.DEAD, retries=3, error="timed out after 600s")
+    with patch("synthadoc.core.queue.JobQueue.list_jobs",
+               new=AsyncMock(return_value=[fake_job])):
+        with patch("synthadoc.core.queue.JobQueue.retry", new=AsyncMock()) as mock_retry:
+            with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+                resp = client.post("/jobs/dead-1/retry")
+    assert resp.status_code == 409
+    mock_retry.assert_not_awaited()
 
 
 def test_audit_queries_returns_empty_initially(tmp_wiki):
