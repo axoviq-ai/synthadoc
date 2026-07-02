@@ -66,6 +66,19 @@ def test_parse_json_response_handles_markdown_fence():
     assert result["entities"] == ["BERT"]
 
 
+def test_parse_json_response_invalid_json_in_code_fence_falls_through():
+    """If code fence contains invalid JSON, the except branch is hit and we fall through."""
+    result = _parse_json_response("```json\n{bad: 'json'}\n```")
+    assert isinstance(result, dict)
+
+
+def test_coerce_str_list_with_non_string_non_dict_item():
+    """Non-str, non-dict items (e.g. integers) reach the else branch and are str()-converted."""
+    result = _coerce_str_list([42, "valid"])
+    assert "42" in result
+    assert "valid" in result
+
+
 @pytest.fixture
 def mock_provider():
     """Provider that cycles: entity response, then decision response (repeating)."""
@@ -1721,6 +1734,289 @@ async def test_pass4_result_recorded_in_claim_citations(tmp_wiki, db, cache):
     assert citations[0]["line_end"] == 3
 
 
+@pytest.mark.asyncio
+async def test_pass4_no_citations_logs_warning(tmp_wiki, caplog):
+    """Pass 4 with no ^[filename:L-L] markers must log a WARNING and emit
+    citation_pass4_no_markers audit event."""
+    import itertools
+    import logging
+    from unittest.mock import AsyncMock, patch
+    from synthadoc.providers.base import CompletionResponse
+
+    provider = AsyncMock()
+    # Responses: analysis → decision → Pass 4 (section returned UNCHANGED, no markers) → overview
+    analyse_resp = CompletionResponse(
+        text='{"entities":["Plan"],"tags":["planning"],"summary":"A plan.","relevant":true}',
+        input_tokens=50, output_tokens=20)
+    decision_resp = CompletionResponse(
+        text='{"reasoning":"new plan","action":"create","target":"","new_slug":"plan",'
+             '"update_content":"","page_content":"# Plan\\n\\nSome plan content here."}',
+        input_tokens=80, output_tokens=40)
+    # Pass 4 returns the section UNCHANGED — no citations added
+    pass4_resp = CompletionResponse(
+        text="# Plan\n\nSome plan content here.",
+        input_tokens=30, output_tokens=15)
+    overview_resp = CompletionResponse(
+        text="Wiki overview.", input_tokens=10, output_tokens=5)
+
+    provider.complete = AsyncMock(side_effect=itertools.cycle(
+        [analyse_resp, decision_resp, pass4_resp, overview_resp]))
+
+    store, audit, agent = await _make_agent_async(tmp_wiki, provider)
+    source = tmp_wiki / "raw_sources" / "plan.md"
+    source.write_text("line 1\nline 2\n", encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING, logger="synthadoc.agents.ingest_agent"):
+        with patch.object(IngestAgent, "_update_overview", AsyncMock()):
+            await agent.ingest(str(source))
+
+    # Check that a WARNING was logged about zero citations
+    warning_records = [
+        r for r in caplog.records
+        if "citation_pass4_no_markers" in r.message or "produced no" in r.message
+    ]
+    assert warning_records, (
+        f"Expected a WARNING about 0 citations. Got records: "
+        f"{[(r.levelname, r.message) for r in caplog.records]}"
+    )
+
+    # Audit event must be recorded
+    events = await audit.list_events()
+    citation_events = [e for e in events if e["event"] == "citation_pass4_no_markers"]
+    assert citation_events, (
+        f"Expected citation_pass4_no_markers audit event. Got events: "
+        f"{[e['event'] for e in events]}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_pass4_with_citation_does_not_warn(tmp_wiki, caplog):
+    """When Pass 4 produces at least one ^[filename:L-L] marker, no warning is emitted."""
+    import itertools
+    import logging
+    from unittest.mock import AsyncMock, patch
+    from synthadoc.providers.base import CompletionResponse
+
+    provider = AsyncMock()
+    analyse_resp = CompletionResponse(
+        text='{"entities":["Plan2"],"tags":["planning"],"summary":"Another plan.","relevant":true}',
+        input_tokens=50, output_tokens=20)
+    decision_resp = CompletionResponse(
+        text='{"reasoning":"new plan","action":"create","target":"","new_slug":"plan2",'
+             '"update_content":"","page_content":"# Plan 2\\n\\nSome plan content."}',
+        input_tokens=80, output_tokens=40)
+    # Pass 4 returns body WITH a citation marker
+    pass4_resp = CompletionResponse(
+        text="# Plan 2\n\nSome plan content.^[plan2.md:1-2]",
+        input_tokens=30, output_tokens=15)
+    overview_resp = CompletionResponse(
+        text="Wiki overview.", input_tokens=10, output_tokens=5)
+
+    provider.complete = AsyncMock(side_effect=itertools.cycle(
+        [analyse_resp, decision_resp, pass4_resp, overview_resp]))
+
+    store, audit, agent = await _make_agent_async(tmp_wiki, provider)
+    source = tmp_wiki / "raw_sources" / "plan2.md"
+    source.write_text("line 1\nline 2\n", encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING, logger="synthadoc.agents.ingest_agent"):
+        with patch.object(IngestAgent, "_update_overview", AsyncMock()):
+            await agent.ingest(str(source))
+
+    # Check that NO WARNING was logged about zero citations
+    warning_msgs = [
+        r.message for r in caplog.records
+        if ("citation_pass4_no_markers" in r.message or "produced no" in r.message)
+        and r.levelno >= logging.WARNING
+    ]
+    assert not warning_msgs, (
+        f"Unexpected citation warning: {warning_msgs}. "
+        f"Full log records: {[(r.levelname, r.message) for r in caplog.records]}"
+    )
+
+
+# ── Bug A: sanity check ───────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_pass4_sanity_check_tolerates_heading_reformat(tmp_wiki):
+    """Bug A fix: LLM changing ## to # must NOT fail the sanity check."""
+    from unittest.mock import AsyncMock
+    from synthadoc.providers.base import CompletionResponse
+
+    section = "## CAPEX Classification\n\nContent with many words here."
+    lm_return = "# CAPEX Classification\n\nContent with many words here.^[file.md:1-2]"
+
+    provider = AsyncMock()
+    provider.complete = AsyncMock(return_value=CompletionResponse(
+        text=lm_return, input_tokens=10, output_tokens=10
+    ))
+
+    store, audit, agent = await _make_agent_async(tmp_wiki, provider)
+    annotated, citations = await agent._annotate_citations(
+        section, "line 1\nline 2\n", "file.md"
+    )
+    assert citations, f"Expected citations but got empty list. Annotated: {annotated!r}"
+
+
+@pytest.mark.asyncio
+async def test_pass4_sanity_check_rejects_too_short_response(tmp_wiki):
+    """Bug A fix: response shorter than 80% of section → skipped with audit event."""
+    import json as _json
+    from unittest.mock import AsyncMock
+    from synthadoc.providers.base import CompletionResponse
+
+    section = "## Section\n\n" + "A word. " * 40  # long section
+    lm_return = '{"error": "json"}'  # very short
+
+    provider = AsyncMock()
+    provider.complete = AsyncMock(return_value=CompletionResponse(
+        text=lm_return, input_tokens=10, output_tokens=10
+    ))
+
+    store, audit, agent = await _make_agent_async(tmp_wiki, provider)
+    annotated, citations = await agent._annotate_citations(
+        section, "line 1\nline 2\n", "file.md"
+    )
+    assert annotated == section
+    assert citations == []
+    events = await audit.list_events()
+    skipped = [
+        e for e in events
+        if e["event"] == "citation_pass4_skipped"
+        and _json.loads(e.get("metadata") or "{}").get("error") == "response_too_short"
+    ]
+    assert skipped, f"Expected citation_pass4_skipped with response_too_short, got: {events}"
+
+
+# ── Bug B: case-sensitive filename ────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_pass4_case_insensitive_filename_match(tmp_wiki):
+    """Bug B fix: LLM returning FILENAME.MD (uppercase) must still produce citations."""
+    from unittest.mock import AsyncMock
+    from synthadoc.providers.base import CompletionResponse
+
+    section = "# Section\n\nSome content."
+    lm_return = "# Section\n\nSome content.^[FILE.MD:1-2]"
+
+    provider = AsyncMock()
+    provider.complete = AsyncMock(return_value=CompletionResponse(
+        text=lm_return, input_tokens=10, output_tokens=10
+    ))
+
+    store, audit, agent = await _make_agent_async(tmp_wiki, provider)
+    annotated, citations = await agent._annotate_citations(
+        section, "line 1\nline 2\n", "file.md"
+    )
+    assert citations, f"Expected citations for uppercase FILENAME match, got: {citations}"
+
+
+# ── Bug C: line-based truncation ──────────────────────────────────────────────
+
+def test_pass4_numbered_source_truncates_by_lines():
+    """Bug C fix: numbered source must be truncated by line count, not character count."""
+    from synthadoc.agents.ingest_agent import _MAX_CITATION_LINES
+
+    lines = [f"Line {i}: content" for i in range(_MAX_CITATION_LINES + 50)]
+    source_text = "\n".join(lines)
+
+    numbered = "\n".join(
+        f"{i+1}: {line}"
+        for i, line in enumerate(source_text.splitlines()[:_MAX_CITATION_LINES])
+    )
+    numbered_lines = numbered.splitlines()
+    assert len(numbered_lines) <= _MAX_CITATION_LINES
+    for ln in numbered_lines:
+        assert ":" in ln  # format is "N: content"
+
+
+# ── Bug D: empty source_text audit event ─────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_pass4_empty_source_text_emits_audit_event(tmp_wiki):
+    """Bug D fix: empty source_text must emit citation_pass4_skipped audit event."""
+    import json as _json
+    from unittest.mock import AsyncMock
+    from synthadoc.providers.base import CompletionResponse
+
+    provider = AsyncMock()
+    provider.complete = AsyncMock(return_value=CompletionResponse(
+        text="", input_tokens=0, output_tokens=0
+    ))
+
+    store, audit, agent = await _make_agent_async(tmp_wiki, provider)
+    annotated, citations = await agent._annotate_citations(
+        "# Section\n\nContent.", "", "file.md"
+    )
+
+    assert citations == []
+    events = await audit.list_events()
+    assert any(
+        e["event"] == "citation_pass4_skipped"
+        and _json.loads(e.get("metadata") or "{}").get("error") == "empty_source_text"
+        for e in events
+    ), f"Expected empty_source_text audit event, got: {events}"
+
+
+# ── Bug E: bust_cache propagation ─────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_pass4_bust_cache_bypasses_annotation_cache(tmp_wiki):
+    """Bug E fix: bust_cache=True must bypass the annotation cache."""
+    from synthadoc.providers.base import CompletionResponse
+
+    section = "# Section\n\nSome content."
+    source = "line 1\nline 2\n"
+    call_count = {"n": 0}
+
+    class CountingProvider:
+        async def complete(self, messages, **kw):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return CompletionResponse(text=section, input_tokens=10, output_tokens=10)
+            return CompletionResponse(
+                text=section + "^[file.md:1-2]", input_tokens=10, output_tokens=10
+            )
+
+    store, audit, agent = await _make_agent_async(tmp_wiki, CountingProvider())
+
+    # First call: no citations → not cached (Bug F fix)
+    _, c1 = await agent._annotate_citations(section, source, "file.md", bust_cache=False)
+    assert c1 == []
+
+    # Second call with bust_cache=True: must call LLM again
+    _, c2 = await agent._annotate_citations(section, source, "file.md", bust_cache=True)
+    assert c2, f"Expected citations on second call with bust_cache=True, got: {c2}"
+    assert call_count["n"] == 2, f"Expected 2 LLM calls, got {call_count['n']}"
+
+
+# ── Bug F: zero-citation results not cached ────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_pass4_zero_citation_result_not_cached(tmp_wiki):
+    """Bug F fix: a 0-citation result must NOT be cached; next call retries the LLM."""
+    from synthadoc.providers.base import CompletionResponse
+
+    section = "# Section\n\nSome content."
+    source = "line 1\nline 2\n"
+    call_count = {"n": 0}
+
+    class CountingProvider:
+        async def complete(self, messages, **kw):
+            call_count["n"] += 1
+            return CompletionResponse(text=section, input_tokens=10, output_tokens=10)
+
+    store, audit, agent = await _make_agent_async(tmp_wiki, CountingProvider())
+
+    await agent._annotate_citations(section, source, "file.md")
+    await agent._annotate_citations(section, source, "file.md")
+
+    assert call_count["n"] == 2, (
+        f"0-citation result was cached — second call did not reach LLM. "
+        f"LLM calls: {call_count['n']}"
+    )
+
+
 # --- _backfill_okf_fields unit tests ---
 
 def test_backfill_sets_type_when_absent():
@@ -1767,3 +2063,147 @@ def test_backfill_tolerates_page_missing_both_fields():
     _backfill_okf_fields(page, {"type": "technology"}, "https://example.com/chip")
     assert page.type == "technology"
     assert page.resource == "https://example.com/chip"
+
+
+# --- Active page protection contract ---
+
+@pytest.mark.asyncio
+async def test_decision_prompt_includes_page_status(tmp_wiki, cache):
+    """The decision prompt must include status= for each candidate page so the LLM
+    can apply the RULE 1b active-page-protection contract."""
+    import itertools
+    from unittest.mock import AsyncMock, call
+    from synthadoc.providers.base import CompletionResponse
+
+    p = AsyncMock()
+    _entity = CompletionResponse(
+        text='{"entities":["CAPEX"],"concepts":[],"tags":["finance"],"relevant":true}',
+        input_tokens=100, output_tokens=50,
+    )
+    _decision = CompletionResponse(
+        text='{"action":"create","target":"","new_slug":"capex","update_content":"","page_content":"# CAPEX\\n\\nContent."}',
+        input_tokens=100, output_tokens=50,
+    )
+    _citation = CompletionResponse(text="# CAPEX\n\nContent.", input_tokens=10, output_tokens=5)
+    _overview = CompletionResponse(text="Overview.", input_tokens=10, output_tokens=5)
+    p.complete.side_effect = itertools.cycle([_entity, _decision, _citation, _overview])
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("finance-plan", WikiPage(
+        title="Finance Plan", tags=["finance"], content="# Finance Plan\n\nMedian of first 3 years.",
+        status="active", confidence="high", sources=[], created="2026-01-01",
+    ))
+    # Second page so BM25 corpus has 2+ docs (single-doc IDF is always ≤ 0)
+    store.write_page("unrelated-topic", WikiPage(
+        title="Unrelated Topic", tags=["other"], content="# Unrelated\n\nSomething else entirely.",
+        status="draft", confidence="medium", sources=[], created="2026-01-01",
+    ))
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+
+    source = tmp_wiki / "raw_sources" / "capex.md"
+    source.write_text("Finance CAPEX: median of first 3 years of fixed assets.", encoding="utf-8")
+
+    agent = IngestAgent(provider=p, store=store, search=search,
+                        log_writer=log, audit_db=audit, cache=cache, max_pages=15)
+    await agent.ingest(str(source))
+
+    # The decision call is the second complete() call (after entity extraction).
+    # Verify the prompt text passed to the LLM contains status= for the candidate page.
+    decision_call_prompt = None
+    for c in p.complete.call_args_list:
+        messages = c.kwargs.get("messages") or (c.args[0] if c.args else [])
+        if messages and "action" in messages[0].content and "RULE" in messages[0].content:
+            decision_call_prompt = messages[0].content
+            break
+
+    assert decision_call_prompt is not None, "Decision LLM call not found"
+    assert "status=active" in decision_call_prompt, (
+        "Page status must appear in the decision prompt so the LLM can apply "
+        "RULE 1b active-page-protection"
+    )
+    assert "RULE 1b" in decision_call_prompt, \
+        "Decision prompt must contain RULE 1b (active page protection contract)"
+    assert "action='flag'" in decision_call_prompt, \
+        "Decision prompt must reference action='flag' in RULE 1b"
+
+
+@pytest.mark.asyncio
+async def test_fix10_decision_receives_full_source_not_summary(tmp_wiki, cache):
+    """Fix 10: _DECISION_PROMPT must format with source_text, not summary.
+    The decision LLM call must receive the full source text."""
+    from synthadoc.agents.ingest_agent import _DECISION_PROMPT
+
+    # _DECISION_PROMPT must accept {source_text} as a format variable
+    # (not {summary} — if {summary} appears, the format call below raises KeyError)
+    try:
+        filled = _DECISION_PROMPT.format(
+            pages="page context",
+            source_text="some full source text here",
+            entities="entity1, entity2",
+        )
+    except KeyError as exc:
+        pytest.fail(
+            f"_DECISION_PROMPT still uses {{summary}} — got KeyError: {exc}. "
+            "Replace {{summary}} with {{source_text}} in _DECISION_PROMPT."
+        )
+
+    assert "some full source text here" in filled
+
+
+# --- _extract_key_data unit tests ---
+
+def test_extract_key_data_code_block():
+    """Code blocks in source → extracted as formula items."""
+    from synthadoc.agents.ingest_agent import _extract_key_data
+    src = "Some text.\n\n```\nFCF = CFO - Maintenance_CAPEX\n```\n"
+    result = _extract_key_data(src)
+    assert "FCF = CFO - Maintenance_CAPEX" in result
+
+
+def test_extract_key_data_bold_bullet():
+    """Bold-bullet numeric entries → extracted."""
+    from synthadoc.agents.ingest_agent import _extract_key_data
+    src = "- **11%** — High-risk sectors\n- **10%** — Mid-risk\n"
+    result = _extract_key_data(src)
+    assert any("11%" in item for item in result)
+    assert any("10%" in item for item in result)
+
+
+def test_extract_key_data_no_numbers():
+    """Pure prose with no numbers → empty list."""
+    from synthadoc.agents.ingest_agent import _extract_key_data
+    src = "This document discusses methodology and approach in general terms."
+    assert _extract_key_data(src) == []
+
+
+def test_extract_key_data_empty():
+    """Empty string → empty list, no crash."""
+    from synthadoc.agents.ingest_agent import _extract_key_data
+    assert _extract_key_data("") == []
+
+
+def test_extract_key_data_deduplicates():
+    """Same formula in two code blocks → appears once."""
+    from synthadoc.agents.ingest_agent import _extract_key_data
+    src = "```\nFCF = CFO - CAPEX\n```\n\nSome text.\n\n```\nFCF = CFO - CAPEX\n```\n"
+    result = _extract_key_data(src)
+    assert result.count("FCF = CFO - CAPEX") == 1
+
+
+def test_extract_key_data_malformed_code_block():
+    """Unclosed code block — function does not raise, returns whatever was found."""
+    from synthadoc.agents.ingest_agent import _extract_key_data
+    src = "```\nFCF = CFO - CAPEX\n"  # unclosed
+    result = _extract_key_data(src)   # must not raise
+    assert isinstance(result, list)
+
+
+def test_extract_key_data_formula_line():
+    """Standalone formula lines (var = expr) are extracted."""
+    from synthadoc.agents.ingest_agent import _extract_key_data
+    src = "total_mv_cny = total_mv × 10,000\n"
+    result = _extract_key_data(src)
+    assert any("total_mv" in item for item in result)

@@ -232,6 +232,13 @@ def test_assign_wiki_port_skips_reserved_contiguous_block():
     assert port == base + 3
 
 
+def test_assign_wiki_port_raises_when_scan_exhausted():
+    """Case h: assign_wiki_port raises RuntimeError when the reserved set contains 65535
+    and start=65535, exhausting the entire scan range immediately."""
+    with pytest.raises(RuntimeError, match="No free port found below 65536"):
+        assign_wiki_port({65535}, start=65535)
+
+
 # ── Case d: plugin install writes data.json ───────────────────────────────────
 
 def test_write_plugin_data_creates_data_json(tmp_path):

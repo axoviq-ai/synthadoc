@@ -19,6 +19,8 @@ try:
 except ImportError:
     _LOUVAIN_AVAILABLE = False
 
+from synthadoc.agents.citations import CITATION_RE as _CITATION_BODY_RE
+from synthadoc.agents.citations import MALFORMED_CITE_RE as _MALFORMED_CITE_RE
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.log import AuditDB, LogWriter
 from synthadoc.storage.wiki import WikiStorage, LifecycleState, is_url, TriggerSource
@@ -50,8 +52,8 @@ class LintReport:
 
 
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
-_CITATION_BODY_RE = re.compile(r'\^\[([^\]:]+):(\d+)-(\d+)\]')
-_MALFORMED_CITE_RE = re.compile(r'\^\[[^\]]*\]')
+
+_CITATION_MIN_WORDS = 50  # skip presence check on stub pages shorter than this
 
 # Auto-generated / directory pages whose outbound links must NOT count as real
 # references.  A page linked only from index/overview/dashboard is still an
@@ -116,6 +118,11 @@ def _check_page_citations(
             issues.append({"slug": slug, "citation": citation, "reason": "malformed"})
 
     return issues
+
+
+def _has_citations(page: "WikiPage") -> bool:
+    """Return True if the page body contains at least one ^[filename:L-L] marker."""
+    return bool(_CITATION_BODY_RE.search(page.content or ""))
 
 
 def _fix_dangling_wikilinks(content: str, existing_slugs: set[str]) -> str:
@@ -560,6 +567,28 @@ class LintAgent:
                     "lifecycle check failed for %s: %s", slug, exc
                 )
 
+        # Ghost-draft sweep: DB entries in 'draft' with no corresponding wiki file.
+        # This happens when the server is restarted mid-ingest before the file is written.
+        if self._audit and promote_drafts:
+            fs_slugs = set(slugs)
+            all_states = await self._audit.get_all_page_states()
+            for entry in all_states:
+                if entry["state"] == LifecycleState.DRAFT and entry["slug"] not in fs_slugs:
+                    _log.warning(
+                        "lifecycle ghost-draft: slug=%s has no wiki file — archiving "
+                        "(ingest was interrupted before file was written)",
+                        entry["slug"],
+                    )
+                    await self._audit.set_page_state(
+                        entry["slug"], LifecycleState.ARCHIVED, TriggerSource.LINT
+                    )
+                    await self._audit.record_lifecycle_event(
+                        entry["slug"], LifecycleState.DRAFT, LifecycleState.ARCHIVED,
+                        "wiki file missing — ingest interrupted before file was written",
+                        TriggerSource.LINT,
+                    )
+                    report.lifecycle_archived += 1
+
         if self._audit and self._cfg:
             retention = getattr(getattr(self._cfg, "audit", None), "lifecycle_retention_days", 0)
             if retention > 0:
@@ -664,6 +693,22 @@ class LintAgent:
                 truncation_warnings = self._check_truncated_sources(slug, page)
                 for warning in truncation_warnings:
                     report.warnings.append(warning)
+
+                # Check 5b: citation presence warning
+                if not _has_citations(page):
+                    word_count = len((page.content or "").split())
+                    if word_count >= _CITATION_MIN_WORDS:
+                        warn = (
+                            f"Page '{slug}' has {word_count} words but no citations — "
+                            "the configured model may not support the ^[filename:L-L] format"
+                        )
+                        report.warnings.append(warn)
+                        if self._audit:
+                            await self._audit.record_audit_event(
+                                job_id,
+                                "citation_presence_warning",
+                                {"slug": slug, "word_count": word_count},
+                            )
 
         # adversarial pass — runs only on full scope; default on
         if scope == "all":

@@ -617,3 +617,154 @@ def test_read_current_lint_state_skips_lint_skip_slugs(tmp_wiki):
     state = read_current_lint_state(store)
     assert state.contradicted == []
     assert state.adv_pages == []
+
+
+# ── Check 5b: citation presence ───────────────────────────────────────────────
+
+def test_has_citations_returns_true_when_present():
+    """_has_citations returns True when body contains ^[file.md:1-3]."""
+    from synthadoc.agents.lint_agent import _has_citations
+    from synthadoc.storage.wiki import WikiPage
+
+    page = WikiPage(
+        title="Test",
+        tags=[],
+        content="Some content.^[source.md:1-3] More content.",
+        status="active",
+        confidence="high",
+        sources=[],
+    )
+    assert _has_citations(page) is True
+
+
+def test_has_citations_returns_false_when_absent():
+    """_has_citations returns False when body has no ^[...] markers."""
+    from synthadoc.agents.lint_agent import _has_citations
+    from synthadoc.storage.wiki import WikiPage
+
+    page = WikiPage(
+        title="Test",
+        tags=[],
+        content="No citation here at all.",
+        status="active",
+        confidence="high",
+        sources=[],
+    )
+    assert _has_citations(page) is False
+
+
+def test_has_citations_empty_content():
+    """_has_citations handles None/empty content without crashing."""
+    from synthadoc.agents.lint_agent import _has_citations
+    from synthadoc.storage.wiki import WikiPage
+
+    page = WikiPage(
+        title="Test",
+        tags=[],
+        content=None,
+        status="active",
+        confidence="high",
+        sources=[],
+    )
+    assert _has_citations(page) is False
+
+
+@pytest.mark.asyncio
+async def test_lint_warns_when_no_citations_on_substantive_page(tmp_wiki):
+    """A page with >= 50 words and 0 citations must trigger a citation_presence_warning."""
+    from synthadoc.agents.lint_agent import LintAgent
+    from synthadoc.storage.wiki import WikiStorage, WikiPage
+    from synthadoc.config import LintConfig
+
+    wiki = WikiStorage(tmp_wiki / "wiki")
+    # 60 words, no citations
+    content = " ".join(["word"] * 60)
+    wiki.write_page("plan", WikiPage(title="Plan", tags=[], content=content, status="draft", confidence="high", sources=[]))
+
+    agent = LintAgent(provider=AsyncMock(), store=wiki, log_writer=LogWriter(tmp_wiki / "wiki" / "log.md"), cfg=LintConfig())
+    report = await agent.lint(adversarial=False)
+
+    assert any("plan" in w and "citation" in w.lower() for w in report.warnings), \
+        f"Expected citation presence warning, got: {report.warnings}"
+
+
+@pytest.mark.asyncio
+async def test_lint_no_warning_when_page_has_citations(tmp_wiki):
+    """A page with citations must NOT trigger citation_presence_warning."""
+    from synthadoc.agents.lint_agent import LintAgent
+    from synthadoc.storage.wiki import WikiStorage, WikiPage
+    from synthadoc.config import LintConfig
+
+    wiki = WikiStorage(tmp_wiki / "wiki")
+    content = " ".join(["word"] * 60) + "^[source.md:1-3]"
+    wiki.write_page("plan", WikiPage(title="Plan", tags=[], content=content, status="draft", confidence="high", sources=[]))
+
+    agent = LintAgent(provider=AsyncMock(), store=wiki, log_writer=LogWriter(tmp_wiki / "wiki" / "log.md"), cfg=LintConfig())
+    report = await agent.lint(adversarial=False)
+
+    citation_warnings = [w for w in report.warnings if "citation" in w.lower() and "plan" in w]
+    assert not citation_warnings, f"Unexpected warning: {citation_warnings}"
+
+
+@pytest.mark.asyncio
+async def test_lint_no_warning_for_stub_page_below_min_words(tmp_wiki):
+    """A page with fewer than _CITATION_MIN_WORDS words must not get citation_presence_warning."""
+    from synthadoc.agents.lint_agent import LintAgent
+    from synthadoc.storage.wiki import WikiStorage, WikiPage
+    from synthadoc.config import LintConfig
+
+    wiki = WikiStorage(tmp_wiki / "wiki")
+    content = " ".join(["word"] * 30)  # 30 words, below threshold
+    wiki.write_page("stub", WikiPage(title="Stub", tags=[], content=content, status="draft", confidence="high", sources=[]))
+
+    agent = LintAgent(provider=AsyncMock(), store=wiki, log_writer=LogWriter(tmp_wiki / "wiki" / "log.md"), cfg=LintConfig())
+    report = await agent.lint(adversarial=False)
+
+    citation_warnings = [w for w in report.warnings if "citation" in w.lower() and "stub" in w]
+    assert not citation_warnings, f"Stub page below min_words triggered unexpected warning"
+
+
+@pytest.mark.asyncio
+async def test_lint_warns_at_exactly_min_words_boundary(tmp_wiki):
+    """Boundary: a page with exactly _CITATION_MIN_WORDS words and 0 citations → warning."""
+    from synthadoc.agents.lint_agent import LintAgent, _CITATION_MIN_WORDS
+    from synthadoc.storage.wiki import WikiStorage, WikiPage
+    from synthadoc.config import LintConfig
+
+    wiki = WikiStorage(tmp_wiki / "wiki")
+    content = " ".join(["word"] * _CITATION_MIN_WORDS)
+    wiki.write_page("boundary", WikiPage(title="Boundary", tags=[], content=content, status="draft", confidence="high", sources=[]))
+
+    agent = LintAgent(provider=AsyncMock(), store=wiki, log_writer=LogWriter(tmp_wiki / "wiki" / "log.md"), cfg=LintConfig())
+    report = await agent.lint(adversarial=False)
+
+    assert any("boundary" in w and "citation" in w.lower() for w in report.warnings)
+
+
+@pytest.mark.asyncio
+async def test_lint_archives_ghost_draft(tmp_wiki):
+    """A DB entry in 'draft' state with no corresponding wiki file (ghost draft from an
+    interrupted ingest) must be archived by lint, not silently ignored."""
+    from synthadoc.storage.log import AuditDB
+    from synthadoc.storage.wiki import WikiStorage, WikiPage
+
+    # Real page on disk in draft state (will be promoted normally)
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("real-page", WikiPage(
+        title="Real Page", tags=[], content="Real content.", status="draft",
+        confidence="high", sources=[]))
+
+    # Seed the DB with a ghost draft — no file exists for this slug
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+    await audit.set_page_state("ghost-draft", "draft", "ingest")
+
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log, audit_db=audit)
+    report = await agent.lint(adversarial=False)
+
+    ghost_state = await audit.get_page_state("ghost-draft")
+    assert ghost_state["state"] == "archived", "ghost draft must be archived by lint"
+    assert report.lifecycle_archived >= 1
+    # The real page should be promoted, not affected
+    assert report.lifecycle_promoted >= 1

@@ -91,7 +91,7 @@ Most knowledge-management tools retrieve and summarize at query time. Synthadoc 
 
 | Direction                | How Synthadoc moves there                                                                                                                                                                                               |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Agent orchestration      | Orchestrator dispatches parallel IngestAgent, QueryAgent, LintAgent sub-agents with cost guards and retry backoff                                                                                                       |
+| Agent orchestration      | Orchestrator dispatches parallel ingest, query, and lint sub-agents with cost guards and retry backoff                                                                                                       |
 | Sub-agent skills/plugins | Featuring a 3-tier lazy-load capability system, the platform allows for the injection of custom skills and hooks via a plug-and-play interface, ensuring core stability is never compromised during extension           |
 | LLM wiki vs. RAG         | Pre-compiled structured knowledge beats query-time synthesis for contradiction detection, graph traversal, and offline access                                                                                           |
 | CLI / HTTP               | A unified interface via CLI and RESTful endpoints, the system streamlines full-spectrum integration: from data ingestion and querying to automated linting, security auditing, and job orchestration                    |
@@ -117,6 +117,10 @@ RAG retrieves document chunks at query time. Synthadoc **compiles** knowledge at
 | **Wiki structure drifts with growth** | `scaffold` regenerates index, AGENTS.md, and purpose.md from current wiki state without touching linked pages |
 | **Migration requires full re-ingestion** | Single-zip backup + restore with port/domain rewriting; no re-ingestion needed |
 | **Cost and compliance exposure** | Localhost-only; per-job token+cost log; configurable soft-warn and hard-gate thresholds |
+
+> **Citation quality:** Generated pages include inline citations linking every claim to its source lines. Pages without citations trigger a model-compatibility warning — use Gemini 2.5 Flash or higher for reliable citation annotation.
+>
+> **Active page protection:** Pages promoted to `active` status are protected — sources that contradict them are flagged for review rather than overwriting the human-reviewed content.
 
 ---
 
@@ -558,6 +562,9 @@ synthadoc demo list
 
 # Sync new source files into an existing demo install (additive only, no overwrites)
 synthadoc demo sync history-of-computing
+
+# Update existing demo pages from the latest template (overwrites demo pages)
+synthadoc demo sync history-of-computing --force
 
 # Install the Obsidian plugin directly into the active Obsidian vault
 synthadoc plugin install history-of-computing
@@ -1092,7 +1099,7 @@ synthadoc cache clear -w my-wiki
 Cache invalidation happens automatically when:
 
 - A source file's SHA-256 hash changes (content changed)
-- `CACHE_VERSION` is bumped in `core/cache.py` (after prompt template edits)
+- The internal cache version is bumped (after prompt template edits)
 - `--force` is passed to ingest
 
 ### OpenTelemetry integration

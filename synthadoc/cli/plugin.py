@@ -22,6 +22,8 @@ _PLUGIN_FILES = ("main.js", "manifest.json", "styles.css")
 _PLUGIN_ID = "synthadoc"
 _DATAVIEW_ID = "dataview"
 _DATAVIEW_RELEASE_URL = "https://github.com/blacksmithgu/obsidian-dataview/releases/latest/download"
+_OBSIDIAN_APP_JSON_KEY = "defaultViewMode"
+_OBSIDIAN_READING_VIEW = "preview"
 
 
 _LOOPBACK_ADDRS = frozenset({"127.0.0.1", "::1", "localhost"})
@@ -115,6 +117,31 @@ def _install_dataview(wiki_path: Path) -> str:
         return "failed"
 
 
+def _set_reading_view_default(wiki_path: Path) -> bool:
+    """Merge defaultViewMode=preview into .obsidian/app.json.
+
+    Returns True if written; False if no write was needed (setting already correct).
+    Treats malformed JSON as empty dict and heals the file.
+    Idempotent — does not write if the setting is already correct.
+    """
+    obsidian_dir = wiki_path / ".obsidian"
+    obsidian_dir.mkdir(parents=True, exist_ok=True)
+    app_json = obsidian_dir / "app.json"
+    config: dict = {}
+    if app_json.exists():
+        try:
+            config = json.loads(app_json.read_text(encoding="utf-8"))
+            if not isinstance(config, dict):
+                config = {}
+        except Exception:
+            config = {}
+    if config.get(_OBSIDIAN_APP_JSON_KEY) == _OBSIDIAN_READING_VIEW:
+        return False
+    config[_OBSIDIAN_APP_JSON_KEY] = _OBSIDIAN_READING_VIEW
+    app_json.write_text(json.dumps(config, indent=2), encoding="utf-8")
+    return True
+
+
 def _install_plugin_into(wiki_path: Path) -> list[str]:
     """Copy plugin files into wiki_path and write data.json.  Returns copied filenames."""
     dest_dir = wiki_path / ".obsidian" / "plugins" / _PLUGIN_ID
@@ -174,6 +201,7 @@ def plugin_install_cmd(
 
     dataview_status = _install_dataview(wiki_path)
     _update_community_plugins(wiki_path, _DATAVIEW_ID, _PLUGIN_ID)
+    _set_reading_view_default(wiki_path)
 
     dest_dir = wiki_path / ".obsidian" / "plugins" / _PLUGIN_ID
     typer.echo(f"Plugin installed into: {dest_dir}")
@@ -187,6 +215,8 @@ def plugin_install_cmd(
     else:
         typer.echo(f"  Note: Dataview download failed — install it manually via Obsidian Settings > Community Plugins")
     typer.echo(f"  community-plugins.json updated — both plugins pre-enabled")
+    typer.echo("  set     app.json defaultViewMode=preview (Reading View)")
+    typer.echo("          (Restart Obsidian or reopen this vault for the setting to take effect.)")
     typer.echo()
     typer.echo("Open Obsidian and open this vault — both plugins are already enabled, no manual steps required.")
 
@@ -229,6 +259,7 @@ def plugin_upgrade_cmd():
         try:
             copied = _install_plugin_into(wiki_path)
             if copied:
+                _set_reading_view_default(wiki_path)
                 upgraded.append(name)
             else:
                 skipped.append(f"  {name}: no plugin files found — run: python scripts/sync_plugin.py")
