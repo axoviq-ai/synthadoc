@@ -13,6 +13,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from synthadoc.agents.citations import CITATION_RE as _CITATION_RE
 from synthadoc.agents.search_decompose_agent import SearchDecomposeAgent
 from synthadoc.agents.skill_agent import SkillAgent
 from synthadoc.core.cache import CACHE_VERSION, CacheManager, make_cache_key
@@ -74,6 +75,11 @@ _DECISION_PROMPT = (
     "or sources that explicitly say an existing claim is wrong or a myth.\n"
     "Example: page says 'A-0 was the first compiler' + source says 'A-0 was a loader, not a compiler'\n"
     "-> action='flag', target=the slug of the page whose claim is disputed\n\n"
+    "RULE 1b — ACTIVE PAGE PROTECTION: A page with status='active' has been human-reviewed and is\n"
+    "authoritative. Treat its existing facts as correct. If the source gives a DIFFERENT value,\n"
+    "date, formula, or conclusion for something the active page already states — even if the source\n"
+    "seems more recent — use action='flag', not action='update'. Only use action='update' on an\n"
+    "active page when the source adds a section on a topic the page does not yet mention at all.\n\n"
     "RULE 2 — UPDATE: If the source adds new information about a subject ALREADY covered by an existing page,\n"
     "and there is no factual dispute, use action='update'.\n"
     "-> action='update', target=slug of page to extend,\n"
@@ -83,7 +89,7 @@ _DECISION_PROMPT = (
     "   page_content=full synthesized Markdown body (# Title + paragraphs with [[slug]] links)\n\n"
     'Return: {{"reasoning":"...","action":"...","target":"","new_slug":"","update_content":"","page_content":""}}\n\n'
     "Existing wiki pages (top matches):\n{pages}\n\n"
-    "New source:\n{summary}\n\n"
+    "New source:\n{source_text}\n\n"
     "Detected entities: {entities}"
 )
 
@@ -98,8 +104,19 @@ _OVERVIEW_PROMPT = (
 
 CITATION_PASS4_CACHE_VERSION = "v1"
 ANALYSIS_CACHE_VERSION = "v2"  # bumped to include OKF type field
+DECISION_CACHE_VERSION = "v2"  # bumped to use full source_text instead of summary
 _CITATION_EXCERPT_LEN = 100
-_CITATION_RE = re.compile(r'\^\[([^\]:]+):(\d+)-(\d+)\]')
+_MAX_CITATION_LINES = 120
+_MAX_CITE_LEN_RATIO = 0.8
+
+_CODE_BLOCK_RE = re.compile(r"```[^\n]*\n(.*?)```", re.DOTALL)
+_BOLD_BULLET_NUM_RE = re.compile(
+    r"^\s*[-*+]\s+\*\*([^*]+)\*\*\s*[—–-]\s*(.+)$", re.MULTILINE
+)
+_FORMULA_LINE_RE = re.compile(
+    r"^[A-Za-z_]\w*(?:\s+\w+)?\s*=\s*[^\n]{5,80}$", re.MULTILINE
+)
+_KEY_DATA_MIN_ITEMS = 1  # only append section when at least this many items found
 
 _CITATION_PROMPT = (
     "You are a citation annotator. Given a wiki page section and the source text it was "
@@ -220,11 +237,44 @@ def _slugify(title: str) -> str:
     return slug or "page-" + hashlib.md5(title.encode()).hexdigest()[:8]
 
 
+def _extract_key_data(source_text: str) -> list[str]:
+    """Extract numerical facts, formulas, and rates from source text deterministically.
+
+    Returns a deduplicated list of strings. Returns [] when nothing is found.
+    """
+    items: list[str] = []
+    seen: set[str] = set()
+
+    def _add(item: str) -> None:
+        item = item.strip()
+        if item and item not in seen:
+            seen.add(item)
+            items.append(item)
+
+    for m in _CODE_BLOCK_RE.finditer(source_text):
+        for line in m.group(1).splitlines():
+            line = line.strip()
+            if line:
+                _add(line)
+
+    for m in _BOLD_BULLET_NUM_RE.finditer(source_text):
+        _add(f"{m.group(1).strip()} — {m.group(2).strip()}")
+
+    for m in _FORMULA_LINE_RE.finditer(source_text):
+        candidate = m.group(0).strip()
+        # Skip lines already found in a code block (avoid duplicates from formula lines
+        # that appear both inside a block and as a standalone copy in the text)
+        if candidate not in seen:
+            _add(candidate)
+
+    return items
+
+
 class IngestAgent:
     def __init__(self, provider: LLMProvider, store: WikiStorage, search: HybridSearch,
                  log_writer: LogWriter, audit_db: AuditDB, cache: CacheManager,
                  max_pages: int = 15, wiki_root: Optional[Path] = None,
-                 cache_version: str = CACHE_VERSION,
+                 cache_version: str = DECISION_CACHE_VERSION,
                  fetch_timeout: int = 30,
                  routing_path: Optional[Path] = None,
                  cfg=None) -> None:
@@ -260,7 +310,7 @@ class IngestAgent:
             )
 
     async def _annotate_citations(
-        self, section: str, source_text: str, filename: str
+        self, section: str, source_text: str, filename: str, bust_cache: bool = False
     ) -> tuple[str, list[dict]]:
         """Pass 4: annotate section with ^[filename:L-L] markers.
 
@@ -268,10 +318,21 @@ class IngestAgent:
         (original_section, []) so ingest always succeeds.
         """
         if not section.strip() or not source_text.strip():
+            if not source_text.strip():
+                logger.warning(
+                    "Pass 4 skipped for %s — source text is empty; no citations added",
+                    filename,
+                )
+                await self._audit.write_event(
+                    "citation_pass4_skipped",
+                    metadata={"source": filename, "error": "empty_source_text"},
+                )
             return section, []
 
+        # Bug C fix: truncate numbered source by line count, not character count
         numbered = "\n".join(
-            f"{i+1}: {line}" for i, line in enumerate(source_text.splitlines())
+            f"{i+1}: {line}"
+            for i, line in enumerate(source_text.splitlines()[:_MAX_CITATION_LINES])
         )
         body_hash = hashlib.sha256(section.encode()).hexdigest()
         ck = make_cache_key(
@@ -279,7 +340,8 @@ class IngestAgent:
             {"body_hash": body_hash, "filename": filename},
             version=CITATION_PASS4_CACHE_VERSION,
         )
-        cached = await self._cache.get(ck)
+        # Bug E fix: honour bust_cache flag
+        cached = None if bust_cache else await self._cache.get(ck)
         if cached:
             annotated = cached
         else:
@@ -289,29 +351,50 @@ class IngestAgent:
                         role="user",
                         content=_CITATION_PROMPT.format(
                             filename=filename,
-                            numbered_source=numbered[:6000],
+                            numbered_source=numbered,
                             section=section,
                         ),
                     )],
                     temperature=0.0,
                 )
                 raw = resp.text.strip() or section
-                # Sanity check: annotated text must preserve the original content.
-                # If the LLM returned something structurally different (e.g. JSON),
-                # fall back to original to avoid corrupting the page body.
-                _first_line = section.split("\n")[0][:40].strip()
-                if _first_line and _first_line not in raw:
+                # Bug A fix: length-based sanity check replaces exact first-line match.
+                # A response shorter than 80% of the section is likely structural garbage.
+                if len(raw) < len(section) * _MAX_CITE_LEN_RATIO:
                     logger.warning(
-                        "Pass 4 response for %s failed sanity check — using original section",
+                        "Pass 4 response for %s too short (%d vs %d chars) — using original section",
+                        filename, len(raw), len(section),
+                    )
+                    await self._audit.write_event(
+                        "citation_pass4_skipped",
+                        metadata={"source": filename, "error": "response_too_short"},
+                    )
+                    return section, []
+                # Structural check: if the response starts with JSON it is not a valid annotation.
+                if raw.lstrip().startswith(('{', '[')):
+                    logger.warning(
+                        "Pass 4 response for %s looks like structured data — using original section",
                         filename,
                     )
                     await self._audit.write_event(
                         "citation_pass4_skipped",
-                        metadata={"source": filename, "error": "sanity_check_failed"},
+                        metadata={"source": filename, "error": "response_not_markdown"},
+                    )
+                    return section, []
+                # Secondary check: a key word from the section must appear in the response.
+                _key_words = [w for w in section.replace("#", "").split() if len(w) >= 4]
+                _key_word = _key_words[0].lower() if _key_words else ""
+                if _key_word and _key_word not in raw.lower():
+                    logger.warning(
+                        "Pass 4 response for %s failed key-word check — using original section",
+                        filename,
+                    )
+                    await self._audit.write_event(
+                        "citation_pass4_skipped",
+                        metadata={"source": filename, "error": "key_word_mismatch"},
                     )
                     return section, []
                 annotated = raw
-                await self._cache.set(ck, annotated)
             except Exception as exc:
                 logger.warning("Pass 4 citation annotation failed for %s: %s", filename, exc)
                 await self._audit.write_event(
@@ -320,6 +403,7 @@ class IngestAgent:
                 )
                 return section, []
 
+        # Bug B fix: case-insensitive filename comparison
         citations = [
             {
                 "source_file": filename,
@@ -328,8 +412,23 @@ class IngestAgent:
                 "claim_excerpt": section.split("\n")[0][:_CITATION_EXCERPT_LEN],
             }
             for m in _CITATION_RE.finditer(annotated)
-            if m.group(1) == filename
+            if m.group(1).lower() == filename.lower()
         ]
+        # Bug F fix: only cache when citations were actually produced
+        if citations:
+            await self._cache.set(ck, annotated)
+        else:
+            logger.warning(
+                "Pass 4 produced no ^[filename:L-L] citations for %s — the configured model "
+                "may not reliably follow the citation format. Consider switching to a more "
+                "capable model (e.g. gemini-2.5-flash, minimax-m3, claude-haiku-4-5) for "
+                "reliable citation annotation.",
+                filename,
+            )
+            await self._audit.write_event(
+                "citation_pass4_no_markers",
+                metadata={"source": filename},
+            )
         return annotated, citations
 
     async def _pick_routing_branch(self, slug: str, page: WikiPage, ri) -> str:
@@ -610,14 +709,15 @@ class IngestAgent:
             page = self._store.read_page(r.slug)
             if page:
                 snippet = page.content[:600].replace("\n", " ")
-                pages_ctx.append(f"[{r.slug}]: {snippet}")
+                status_label = page.status if isinstance(page.status, str) else page.status.value
+                pages_ctx.append(f"[{r.slug}] status={status_label}: {snippet}")
         pages_str = "\n".join(pages_ctx) or "none"
 
-        # Pass 3: decision (cached by summary hash + candidate slugs + prompt hash)
+        # Pass 3: decision (cached by text hash + candidate slugs + prompt hash)
         # prompt_hash is included so any change to purpose.md or the purpose_block
         # instructions automatically busts the cache.
         slugs = [r.slug for r in candidates]
-        summary_hash = hashlib.sha256(summary.encode()).hexdigest()
+        text_hash = hashlib.sha256(text.encode()).hexdigest()
         decision_prompt = _DECISION_PROMPT
         if self._purpose:
             purpose_block = (
@@ -636,7 +736,7 @@ class IngestAgent:
         prompt_hash = hashlib.sha256(decision_prompt.encode()).hexdigest()[:16]
         ck2 = make_cache_key(
             "make-decision",
-            {"text_hash": summary_hash, "slugs": slugs, "prompt_hash": prompt_hash},
+            {"text_hash": text_hash, "slugs": slugs, "prompt_hash": prompt_hash},
             version=self._cache_version,
         )
         cached2 = None if bust_cache else await self._cache.get(ck2)
@@ -647,7 +747,7 @@ class IngestAgent:
             resp2 = await self._provider.complete(
                 messages=[Message(role="user", content=decision_prompt.format(
                     pages=pages_str,
-                    summary=summary,
+                    source_text=text,
                     entities=entities,
                 ))],
                 temperature=0.0,
@@ -743,9 +843,14 @@ class IngestAgent:
                             section = update_content
                         else:
                             section = f"## From {p.name}\n\n{text[:1000]}"
+                        # Pass 0: append Key Data section for deterministic numerical preservation
+                        _key_items = _extract_key_data(text)
+                        if len(_key_items) >= _KEY_DATA_MIN_ITEMS:
+                            key_section = "\n\n## Key Data\n\n" + "\n".join(f"- {item}" for item in _key_items)
+                            section = section + key_section
                         # Pass 4: annotate only the new update section
                         section, citations = await self._annotate_citations(
-                            section, extracted.text, p.name
+                            section, extracted.text, p.name, bust_cache=bust_cache
                         )
                         page.content = page.content.rstrip() + f"\n\n{section}"
                         page.sources.append(SourceRef(
@@ -798,9 +903,14 @@ class IngestAgent:
                                 section = extracted.text
                             else:
                                 section = f"## From {p.name}\n\n{text[:1500]}"
+                            # Pass 0: append Key Data section for deterministic numerical preservation
+                            _key_items = _extract_key_data(text)
+                            if len(_key_items) >= _KEY_DATA_MIN_ITEMS:
+                                key_section = "\n\n## Key Data\n\n" + "\n".join(f"- {item}" for item in _key_items)
+                                section = section + key_section
                             # Pass 4: annotate only the new section
                             section, citations = await self._annotate_citations(
-                                section, extracted.text, p.name
+                                section, extracted.text, p.name, bust_cache=bust_cache
                             )
                             page.content = page.content.rstrip() + f"\n\n{section}"
                             page.sources.append(SourceRef(
@@ -824,9 +934,14 @@ class IngestAgent:
                         body = page_content.strip()
                     else:
                         body = f"# {title}\n\n{text[:4000]}"
+                    # Pass 0: append Key Data section for deterministic numerical preservation
+                    _key_items = _extract_key_data(text)
+                    if len(_key_items) >= _KEY_DATA_MIN_ITEMS:
+                        key_section = "\n\n## Key Data\n\n" + "\n".join(f"- {item}" for item in _key_items)
+                        body = body + key_section
                     # Pass 4: annotate the full new page body
                     body, citations = await self._annotate_citations(
-                        body, extracted.text, p.name
+                        body, extracted.text, p.name, bust_cache=bust_cache
                     )
                     today = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
                     new_page = WikiPage(

@@ -254,3 +254,12 @@ def test_install_fresh_wiki_falls_back_when_no_api_key(tmp_path):
     assert (tmp_path / "test-wiki2" / "wiki" / "index.md").exists()
     # Hint message must appear
     assert "scaffold" in result.output.lower()
+
+
+def test_status_shows_none_message_when_lifecycle_counts_empty():
+    """status must print '(none...)' when lifecycle/status returns empty counts."""
+    status_resp = {"wiki": "test", "pages": 0, "jobs_pending": 0, "jobs_total": 0}
+    with patch("synthadoc.cli.status.get", side_effect=[status_resp, {}]), \
+         patch("synthadoc.cli._wiki.resolve_wiki", return_value="test"):
+        result = runner.invoke(app, ["status", "-w", "test"])
+    assert "(none" in result.output

@@ -30,6 +30,9 @@ def sync_demo(
         None,
         help="Demo wiki name to sync (e.g. history-of-computing). Omit to sync all installed demos.",
     ),
+    force: bool = typer.Option(
+        False, "--force", help="Overwrite existing wiki pages from the latest template."
+    ),
 ) -> None:
     """Sync installed demo wiki(s) with the latest bundled template.
 
@@ -105,6 +108,9 @@ def sync_demo(
             if not dest.exists():
                 shutil.copy2(src, dest)
                 updated.append(f"  + wiki/{src.name}")
+            elif force:
+                shutil.copy2(src, dest)
+                updated.append(f"  ~ wiki/{src.name}  (updated from template)")
 
         # ── 4. wiki/: backfill missing metadata fields (e.g. type:) ──────────
         for src in demo_wiki.glob("*.md"):

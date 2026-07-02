@@ -273,6 +273,26 @@ function PreBlock({ children }: { children?: React.ReactNode }) {
     );
 }
 
+const OBSIDIAN_CITE_RE = /\^\[([^\]:]+):(\d+)-(\d+)\]/g;
+
+export function obsidianCitationsToGfm(text: string): string {
+    const refs = new Map<string, number>(); // raw marker → footnote number
+    let counter = 1;
+
+    for (const m of text.matchAll(OBSIDIAN_CITE_RE)) {
+        if (!refs.has(m[0])) refs.set(m[0], counter++);
+    }
+    if (refs.size === 0) return text;
+
+    const converted = text.replace(OBSIDIAN_CITE_RE, (match) => `[^${refs.get(match)!}]`);
+
+    const footnoteBlock = Array.from(refs.entries())
+        .map(([cite, n]) => `[^${n}]: ${cite.slice(2, -1)}`)  // strip ^[ and ]
+        .join("\n");
+
+    return `${converted}\n\n${footnoteBlock}`;
+}
+
 // Escape CLI-style placeholders like <schedule-id> or <wiki-name> that appear
 // outside code spans. ReactMarkdown v10 drops unknown HTML tags silently, making
 // these placeholders invisible. We only target hyphenated names (not <br>, <em>, etc).
@@ -353,7 +373,7 @@ export const MessageBubble = memo(function MessageBubble({ msg, wikiName, maxRes
                     )
                     : <div className="bubble-md">
                         <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ pre: PreBlock }}>
-                            {escapePlaceholders(msg.text)}
+                            {obsidianCitationsToGfm(escapePlaceholders(msg.text))}
                         </ReactMarkdown>
                       </div>
             }

@@ -63,6 +63,61 @@ def test_tokenize_includes_cjk_chars():
     assert "ai" in tokens
 
 
+def test_tokenize_compound_identifier():
+    """total_mv_cny → compound token plus parts, all lowercase."""
+    from synthadoc.storage.search import HybridSearch
+    tokens = HybridSearch._tokenize("total_mv_cny")
+    assert "total_mv_cny" in tokens
+    assert "total" in tokens
+    assert "mv" in tokens
+    assert "cny" in tokens
+
+
+def test_tokenize_compound_mixed_case():
+    """FCF_calc_v2 → lowercase compound plus parts."""
+    from synthadoc.storage.search import HybridSearch
+    tokens = HybridSearch._tokenize("FCF_calc_v2")
+    assert "fcf_calc_v2" in tokens
+    assert "fcf" in tokens
+    assert "calc" in tokens
+    assert "v2" in tokens
+
+
+def test_tokenize_no_regression_plain_text():
+    """Plain words without underscores → no compound tokens added."""
+    from synthadoc.storage.search import HybridSearch
+    tokens = HybridSearch._tokenize("plain text")
+    assert "plain" in tokens
+    assert "text" in tokens
+    # No compound token for plain words
+    assert not any("_" in t for t in tokens)
+
+
+def test_tokenize_empty_string_no_crash():
+    """Empty string → empty list."""
+    from synthadoc.storage.search import HybridSearch
+    assert HybridSearch._tokenize("") == []
+
+
+def test_tokenize_cjk_unchanged():
+    """CJK characters still tokenized individually."""
+    from synthadoc.storage.search import HybridSearch
+    tokens = HybridSearch._tokenize("现金桥")
+    assert "现" in tokens
+    assert "金" in tokens
+    assert "桥" in tokens
+
+
+def test_tokenize_formula_no_compound():
+    """Formulas without underscores produce no compound tokens."""
+    from synthadoc.storage.search import HybridSearch
+    tokens = HybridSearch._tokenize("fcf = cfo - capex")
+    assert "fcf" in tokens
+    assert "cfo" in tokens
+    assert "capex" in tokens
+    assert not any("_" in t for t in tokens)
+
+
 # ── corpus cache tests ────────────────────────────────────────────────────────
 
 def test_bm25_corpus_built_once_for_repeated_calls(tmp_wiki):
@@ -528,3 +583,65 @@ async def test_hybrid_search_scoped_slugs_limits_results(tmp_wiki):
     )
     slugs = [r.slug for r in results]
     assert "eniac" not in slugs
+
+
+# ── BM25 TF fallback tests ────────────────────────────────────────────────────
+
+def test_bm25_tf_fallback_single_page_corpus(tmp_wiki):
+    """1-page corpus: BM25 IDF ≤ 0 → TF fallback returns the page with tf_fallback=True."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    _write_page(store, "plan", "The maintenance capex ratio is the core metric.")
+
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    results = search.bm25_search(["maintenance", "capex"])
+
+    assert results, "Expected at least one result via TF fallback"
+    assert results[0].slug == "plan"
+    assert results[0].tf_fallback is True
+
+
+def test_bm25_tf_fallback_two_page_corpus(tmp_wiki):
+    """2-page corpus where query term is in one page → TF fallback returns that page."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    _write_page(store, "capex", "capex maintenance plan")
+    _write_page(store, "revenue", "revenue growth strategy")
+
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    results = search.bm25_search(["capex", "maintenance"])
+
+    assert results
+    assert results[0].slug == "capex"
+    assert results[0].tf_fallback is True
+
+
+def test_bm25_no_tf_fallback_when_query_absent(tmp_wiki):
+    """1-page corpus where query term is absent → TF = 0 for all → empty result (correct gap)."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    _write_page(store, "plan", "revenue and growth")
+
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    results = search.bm25_search(["capex", "maintenance"])
+
+    assert results == [], "Term not in corpus → should return empty (correct gap)"
+
+
+def test_bm25_three_page_corpus_no_tf_fallback(tmp_wiki):
+    """3-page corpus: BM25 IDF > 0 for discriminating terms → no TF fallback."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    _write_page(store, "capex", "capex maintenance plan formula")
+    _write_page(store, "revenue", "revenue growth strategy")
+    _write_page(store, "fcf", "free cash flow operating")
+
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    results = search.bm25_search(["capex"])
+
+    assert results
+    assert results[0].slug == "capex"
+    assert results[0].tf_fallback is False
+
+
+def test_searchresult_tf_fallback_defaults_false():
+    """SearchResult.tf_fallback defaults to False for backward compatibility."""
+    from synthadoc.storage.search import SearchResult
+    r = SearchResult(slug="test", score=1.0, title="T", snippet="s")
+    assert r.tf_fallback is False

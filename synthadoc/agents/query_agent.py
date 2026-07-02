@@ -72,6 +72,23 @@ _SYSTEM_KNOWLEDGE: list[_SystemPage] = _load_system_knowledge()
 _MAX_QUESTION_CHARS = 4000
 _CANDIDATE_POOL_SIZE = 20
 
+# Unicode ranges that indicate CJK / Japanese / Korean text.
+_CJK_RANGES: tuple[tuple[int, int], ...] = (
+    (0x4E00, 0x9FFF),   # CJK Unified Ideographs
+    (0x3400, 0x4DBF),   # CJK Extension A
+    (0xF900, 0xFAFF),   # CJK Compatibility Ideographs
+    (0x2E80, 0x2EFF),   # CJK Radicals Supplement
+    (0x3000, 0x303F),   # CJK Symbols and Punctuation
+    (0x3040, 0x309F),   # Hiragana
+    (0x30A0, 0x30FF),   # Katakana
+    (0xAC00, 0xD7AF),   # Hangul Syllables
+)
+
+
+def _has_cjk(text: str) -> bool:
+    """Return True if *text* contains at least one CJK / Japanese / Korean character."""
+    return any(any(lo <= ord(ch) <= hi for lo, hi in _CJK_RANGES) for ch in text)
+
 
 def _history_block(history: list[dict]) -> str:
     """Format conversation history as a preamble block for the synthesis prompt."""
@@ -567,16 +584,52 @@ class QueryAgent:
         )
         return [question]
 
+    async def _translate_for_retrieval(self, question: str) -> str:
+        """Translate a CJK query to English so BM25 can match English wiki content.
+
+        Only called when *question* contains CJK characters.  The original question
+        is preserved by the caller for answer synthesis, so the user still receives
+        a response in their language.
+        """
+        try:
+            resp = await asyncio.wait_for(
+                self._provider.complete(
+                    messages=[Message(
+                        role="user",
+                        content=(
+                            "Translate the following question to English for a knowledge-base search. "
+                            "Return only the English translation — no explanation, no quotes.\n\n"
+                            f"Question: {question}"
+                        ),
+                    )],
+                    max_tokens=200,
+                ),
+                timeout=20.0,
+            )
+            translated = (resp.text or "").strip()
+            if translated:
+                logger.info("cjk-translate: %r → %r", question, translated)
+                return translated
+        except Exception:
+            logger.warning("cjk-translate failed — using original question for retrieval", exc_info=True)
+        return question
+
     async def _run_search(self, question: str) -> tuple[list[str], list[SearchResult]]:
         """Decompose question, apply routing scope, run parallel BM25 search.
 
-        Returns (sub_questions, candidates).
+        Returns (sub_questions, candidates).  When *question* contains CJK characters
+        it is translated to English before retrieval so BM25 can find lexical matches
+        in English wiki content; the original question is untouched for synthesis.
         """
-        sub_questions = await self.decompose(question)
+        retrieval_question = question
+        if _has_cjk(question):
+            retrieval_question = await self._translate_for_retrieval(question)
+
+        sub_questions = await self.decompose(retrieval_question)
 
         scoped_slugs: list[str] | None = None
         if self._routing:
-            branches = await self._routing_branch_pick(question)
+            branches = await self._routing_branch_pick(retrieval_question)
             if branches:
                 scoped_slugs = self._routing.slugs_for_branches(branches)
 
@@ -615,12 +668,15 @@ class QueryAgent:
         sub_questions, candidates = await self._run_search(question)
 
         _max_score = max((r.score for r in candidates), default=0.0)
-        # Use sub-questions for gap detection: decomposition strips request framing
-        # ("please provide details of X") so key terms reflect the actual topic, not
-        # the phrasing. Falls back to the original question if decomposition returned it.
-        _gap_q = " ".join(sub_questions) if sub_questions else question
+        # Use sub-questions for gap detection so decomposition strips request framing.
+        # For CJK queries we keep the original question so _detect_gap's CJK guard
+        # continues to suppress key-term signals on non-English content.
+        _gap_q = question if _has_cjk(question) else (
+            " ".join(sub_questions) if sub_questions else question
+        )
+        _used_tf_fallback = any(r.tf_fallback for r in candidates)
         _gap, _discriminating_term, _pages_with_overlap, _min_specific_qualifying = \
-            self._detect_gap(_gap_q, candidates, _max_score)
+            self._detect_gap(_gap_q, candidates, _max_score, used_tf_fallback=_used_tf_fallback)
         _system_ctx = self._get_relevant_system_pages(question)
         _live_data = await self._fetch_live_wiki_data(question)
         if _system_ctx or _live_data:
@@ -694,7 +750,8 @@ class QueryAgent:
         )
 
     def _detect_gap(
-        self, question: str, candidates: list[SearchResult], max_score: float
+        self, question: str, candidates: list[SearchResult], max_score: float,
+        used_tf_fallback: bool = False,
     ) -> tuple[bool, str, int, int]:
         """Full 5-signal knowledge gap detection.
 
@@ -801,7 +858,7 @@ class QueryAgent:
             _acronym_absent = False
 
         gap = self._gap_score_threshold > 0 and (
-            len(candidates) < 3
+            (len(candidates) < 3 and not used_tf_fallback)
             or (bool(_key_terms) and max_score < self._gap_score_threshold)  # skip when no content words
             or _pages_with_overlap < 2
             or _any_term_missing
@@ -896,9 +953,12 @@ class QueryAgent:
         context = "\n\n".join(_ctx_parts)
 
         _max_score = max((r.score for r in candidates), default=0.0)
-        _gap_q = " ".join(sub_questions) if sub_questions else question
+        _gap_q = question if _has_cjk(question) else (
+            " ".join(sub_questions) if sub_questions else question
+        )
+        _used_tf_fallback = any(r.tf_fallback for r in candidates)
         _gap, _discriminating_term, _pages_with_overlap, _min_specific_qualifying = \
-            self._detect_gap(_gap_q, candidates, _max_score)
+            self._detect_gap(_gap_q, candidates, _max_score, used_tf_fallback=_used_tf_fallback)
 
         if _system_ctx or _live_data:
             _gap = False
