@@ -2265,6 +2265,49 @@ max_source_chars = 128000
 
 ---
 
+## Citation quality
+
+Generated pages include inline citation markers that link each claim to the
+source lines it came from. When you view a page in Obsidian's **Reading View**,
+these markers appear as clickable footnotes (`[1]`, `[2]`, etc.).
+
+If a generated page has no citations, Synthadoc logs a warning suggesting you
+switch to a more capable model. Models known to produce reliable citations:
+Gemini 2.5 Flash, Gemini 2.5 Pro, MiniMax-M3, Claude Haiku 4.5 or later.
+
+Cheaper flash-tier models may not follow the citation format — this is a known
+limitation of smaller models and is not a bug in Synthadoc.
+
+---
+
+## Protected pages
+
+Once you promote a page to `active` status, it is protected against silent
+overwriting. If a new source contradicts an active page, Synthadoc flags it
+for your review rather than replacing the page's content automatically.
+
+To promote a page: `synthadoc lifecycle promote <slug>`
+
+---
+
+## Updating demo wikis
+
+After upgrading Synthadoc, sync your demo wikis to pick up new content:
+
+    synthadoc demo sync                    # add new pages only
+    synthadoc demo sync --force            # also update existing pages from the latest template
+
+---
+
+## Query language
+
+Synthadoc searches by matching tokens in your source documents. Queries must
+be in the same language as the ingested source documents. Querying in Chinese
+against an English-content wiki will return zero results — this is correct
+behavior, not a bug. Ingest Chinese-language sources to answer Chinese queries.
+
+---
+
 ## What's next?
 
 You have now walked through every major Synthadoc feature on the demo wiki. When you're
