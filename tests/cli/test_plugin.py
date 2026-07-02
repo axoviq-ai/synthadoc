@@ -44,7 +44,7 @@ def test_set_reading_view_default_preserves_other_keys(tmp_path):
 
 
 def test_set_reading_view_default_idempotent(tmp_path):
-    """If app.json already has defaultViewMode=preview, returns True and does not rewrite."""
+    """If app.json already has defaultViewMode=preview, returns False (no-op) and does not rewrite."""
     wiki = tmp_path / "wiki"
     (wiki / ".obsidian").mkdir(parents=True)
     app_json = wiki / ".obsidian" / "app.json"
@@ -52,7 +52,7 @@ def test_set_reading_view_default_idempotent(tmp_path):
     app_json.write_text(original, encoding="utf-8")
 
     result = _set_reading_view_default(wiki)
-    assert result is True
+    assert result is False
     # File should be unchanged (or at minimum have the same content)
     data = json.loads(app_json.read_text(encoding="utf-8"))
     assert data["defaultViewMode"] == "preview"
@@ -60,14 +60,17 @@ def test_set_reading_view_default_idempotent(tmp_path):
 
 
 def test_set_reading_view_default_malformed_json(tmp_path):
-    """Malformed app.json returns False; function does not raise."""
+    """Malformed app.json is healed: treated as empty dict, written with defaultViewMode=preview."""
     wiki = tmp_path / "wiki"
     (wiki / ".obsidian").mkdir(parents=True)
     app_json = wiki / ".obsidian" / "app.json"
     app_json.write_text("{ not valid json }", encoding="utf-8")
 
     result = _set_reading_view_default(wiki)
-    assert result is False  # graceful failure
+    assert result is True  # file was written
+    # Verify the file now contains valid JSON with the setting
+    data = json.loads(app_json.read_text(encoding="utf-8"))
+    assert data["defaultViewMode"] == "preview"
 
 
 def test_set_reading_view_default_creates_obsidian_dir(tmp_path):

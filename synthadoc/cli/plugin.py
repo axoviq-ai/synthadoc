@@ -120,7 +120,8 @@ def _install_dataview(wiki_path: Path) -> str:
 def _set_reading_view_default(wiki_path: Path) -> bool:
     """Merge defaultViewMode=preview into .obsidian/app.json.
 
-    Returns True if written or already correct; False if the file could not be parsed.
+    Returns True if written; False if no write was needed (setting already correct).
+    Treats malformed JSON as empty dict and heals the file.
     Idempotent — does not write if the setting is already correct.
     """
     obsidian_dir = wiki_path / ".obsidian"
@@ -130,10 +131,12 @@ def _set_reading_view_default(wiki_path: Path) -> bool:
     if app_json.exists():
         try:
             config = json.loads(app_json.read_text(encoding="utf-8"))
+            if not isinstance(config, dict):
+                config = {}
         except Exception:
-            return False
+            config = {}
     if config.get(_OBSIDIAN_APP_JSON_KEY) == _OBSIDIAN_READING_VIEW:
-        return True
+        return False
     config[_OBSIDIAN_APP_JSON_KEY] = _OBSIDIAN_READING_VIEW
     app_json.write_text(json.dumps(config, indent=2), encoding="utf-8")
     return True
