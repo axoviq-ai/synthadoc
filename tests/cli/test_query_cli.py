@@ -244,6 +244,24 @@ def test_stream_query_exit_from_get_stream_propagates(monkeypatch):
     assert not any("stream interrupted" in m for m in interrupted_msgs)
 
 
+def test_stream_query_unexpected_exception_prints_interrupted(monkeypatch):
+    """Unexpected exceptions during streaming must print 'stream interrupted' and not re-raise."""
+    def _raise_unexpected(*a, **kw):
+        raise RuntimeError("connection dropped")
+
+    monkeypatch.setattr("synthadoc.cli.query.get_stream", _raise_unexpected)
+    from synthadoc.cli.query import _stream_query
+    err_msgs = []
+    monkeypatch.setattr(
+        "typer.echo",
+        lambda msg, err=False, **kw: err_msgs.append(str(msg)) if err else None,
+    )
+    _stream_query("my-wiki", "Question?", no_cache=False, timeout=60)
+    combined = "".join(err_msgs)
+    assert "stream interrupted" in combined
+    assert "RuntimeError" in combined
+
+
 def test_stream_query_no_cache_flag_passed(monkeypatch):
     """_stream_query must pass no_cache=true param when no_cache=True."""
     received_params = {}

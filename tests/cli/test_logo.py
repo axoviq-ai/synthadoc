@@ -58,3 +58,17 @@ def test_print_banner_includes_mode(monkeypatch, capsys):
     print_banner(port=7070, wiki="w", mode="HTTP only")
     captured = capsys.readouterr().out
     assert "HTTP only" in captured
+
+
+def test_color_supported_checks_isatty_when_no_env_overrides(monkeypatch):
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.delenv("TERM", raising=False)
+    result = _color_supported()
+    assert isinstance(result, bool)
+
+
+def test_print_banner_appends_llm_note(monkeypatch, capsys):
+    monkeypatch.setenv("NO_COLOR", "1")
+    print_banner(port=8080, wiki="w", provider="gemini", model="2.5-flash", llm_note="(streaming)")
+    captured = capsys.readouterr().out
+    assert "(streaming)" in captured

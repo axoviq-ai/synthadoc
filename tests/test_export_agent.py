@@ -106,6 +106,18 @@ async def test_llms_full_txt_has_header_with_count(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_export_skips_scaffold_slugs(tmp_path):
+    """Slugs in _SKIP_SLUGS (index, log, etc.) must be excluded from export output."""
+    store = _make_store(tmp_path)
+    _write_page(store, "index", "Index", LifecycleState.ACTIVE, "Index content")
+    _write_page(store, "real-page", "Real Page", LifecycleState.ACTIVE, "Actual content")
+    agent = _agent(tmp_path, store)
+    result = await agent.export(ExportOptions(format="llms.txt"))
+    assert "[Real Page]" in result
+    assert "[Index](" not in result
+
+
+@pytest.mark.asyncio
 async def test_empty_wiki_llms_txt(tmp_path):
     store = _make_store(tmp_path)
     agent = _agent(tmp_path, store)

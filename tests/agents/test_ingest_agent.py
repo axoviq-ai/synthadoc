@@ -66,6 +66,19 @@ def test_parse_json_response_handles_markdown_fence():
     assert result["entities"] == ["BERT"]
 
 
+def test_parse_json_response_invalid_json_in_code_fence_falls_through():
+    """If code fence contains invalid JSON, the except branch is hit and we fall through."""
+    result = _parse_json_response("```json\n{bad: 'json'}\n```")
+    assert isinstance(result, dict)
+
+
+def test_coerce_str_list_with_non_string_non_dict_item():
+    """Non-str, non-dict items (e.g. integers) reach the else branch and are str()-converted."""
+    result = _coerce_str_list([42, "valid"])
+    assert "42" in result
+    assert "valid" in result
+
+
 @pytest.fixture
 def mock_provider():
     """Provider that cycles: entity response, then decision response (repeating)."""

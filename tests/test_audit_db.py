@@ -41,6 +41,20 @@ async def test_graph_empty_returns_none(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_write_claim_citations_no_op_for_empty_list(tmp_path):
+    """write_claim_citations with an empty list must return without writing any rows."""
+    from synthadoc.storage.log import AuditDB
+    import aiosqlite as _aiosqlite
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+    await db.record_claim_citations("some-slug", [])
+    async with _aiosqlite.connect(tmp_path / "audit.db") as conn:
+        cur = await conn.execute("SELECT COUNT(*) FROM claim_citations")
+        count = (await cur.fetchone())[0]
+    assert count == 0
+
+
+@pytest.mark.asyncio
 async def test_schema_version_bumped(tmp_path):
     from synthadoc.storage.log import DB_SCHEMA_VERSION
     assert DB_SCHEMA_VERSION == 2

@@ -89,17 +89,20 @@ async def test_cache_hit_makes_zero_llm_calls(tmp_wiki):
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15,
                         wiki_root=tmp_wiki)
 
-    # Patch _update_overview and _annotate_citations so they don't consume LLM calls
-    # in this test — it focuses purely on analysis + decision cache behaviour.
+    # Patch _update_overview and _annotate_citations so they don't consume LLM calls.
+    # Also mock bm25_search to always return [] so the decision cache key is stable
+    # across both runs — without this, Task 7's TF fallback makes a 1-page corpus
+    # return the page created in run 1 as a candidate, changing slugs in the cache key.
     async def _noop_overview(self):
         pass
 
-    async def _noop_annotate(self, section, source_text, filename):
+    async def _noop_annotate(self, section, source_text, filename, bust_cache: bool = False):
         return section, []
 
     try:
         with patch.object(IngestAgent, "_update_overview", _noop_overview), \
-             patch.object(IngestAgent, "_annotate_citations", _noop_annotate):
+             patch.object(IngestAgent, "_annotate_citations", _noop_annotate), \
+             patch.object(search, "bm25_search", return_value=[]):
             await agent.ingest(str(source))
             first_count = call_count
             call_count = 0
