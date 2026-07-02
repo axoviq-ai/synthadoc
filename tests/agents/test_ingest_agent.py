@@ -1721,6 +1721,107 @@ async def test_pass4_result_recorded_in_claim_citations(tmp_wiki, db, cache):
     assert citations[0]["line_end"] == 3
 
 
+@pytest.mark.asyncio
+async def test_pass4_no_citations_logs_warning(tmp_wiki, caplog):
+    """Pass 4 with no ^[filename:L-L] markers must log a WARNING and emit
+    citation_pass4_no_markers audit event."""
+    import itertools
+    import logging
+    from unittest.mock import AsyncMock, patch
+    from synthadoc.providers.base import CompletionResponse
+
+    provider = AsyncMock()
+    # Responses: analysis → decision → Pass 4 (section returned UNCHANGED, no markers) → overview
+    analyse_resp = CompletionResponse(
+        text='{"entities":["Plan"],"tags":["planning"],"summary":"A plan.","relevant":true}',
+        input_tokens=50, output_tokens=20)
+    decision_resp = CompletionResponse(
+        text='{"reasoning":"new plan","action":"create","target":"","new_slug":"plan",'
+             '"update_content":"","page_content":"# Plan\\n\\nSome plan content here."}',
+        input_tokens=80, output_tokens=40)
+    # Pass 4 returns the section UNCHANGED — no citations added
+    pass4_resp = CompletionResponse(
+        text="# Plan\n\nSome plan content here.",
+        input_tokens=30, output_tokens=15)
+    overview_resp = CompletionResponse(
+        text="Wiki overview.", input_tokens=10, output_tokens=5)
+
+    provider.complete = AsyncMock(side_effect=itertools.cycle(
+        [analyse_resp, decision_resp, pass4_resp, overview_resp]))
+
+    store, audit, agent = await _make_agent_async(tmp_wiki, provider)
+    source = tmp_wiki / "raw_sources" / "plan.md"
+    source.write_text("line 1\nline 2\n", encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING, logger="synthadoc.agents.ingest_agent"):
+        with patch.object(IngestAgent, "_update_overview", AsyncMock()):
+            await agent.ingest(str(source))
+
+    # Check that a WARNING was logged about zero citations
+    warning_records = [
+        r for r in caplog.records
+        if "citation_pass4_no_markers" in r.message or "produced no" in r.message
+    ]
+    assert warning_records, (
+        f"Expected a WARNING about 0 citations. Got records: "
+        f"{[(r.levelname, r.message) for r in caplog.records]}"
+    )
+
+    # Audit event must be recorded
+    events = await audit.list_events()
+    citation_events = [e for e in events if e["event"] == "citation_pass4_no_markers"]
+    assert citation_events, (
+        f"Expected citation_pass4_no_markers audit event. Got events: "
+        f"{[e['event'] for e in events]}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_pass4_with_citation_does_not_warn(tmp_wiki, caplog):
+    """When Pass 4 produces at least one ^[filename:L-L] marker, no warning is emitted."""
+    import itertools
+    import logging
+    from unittest.mock import AsyncMock, patch
+    from synthadoc.providers.base import CompletionResponse
+
+    provider = AsyncMock()
+    analyse_resp = CompletionResponse(
+        text='{"entities":["Plan2"],"tags":["planning"],"summary":"Another plan.","relevant":true}',
+        input_tokens=50, output_tokens=20)
+    decision_resp = CompletionResponse(
+        text='{"reasoning":"new plan","action":"create","target":"","new_slug":"plan2",'
+             '"update_content":"","page_content":"# Plan 2\\n\\nSome plan content."}',
+        input_tokens=80, output_tokens=40)
+    # Pass 4 returns body WITH a citation marker
+    pass4_resp = CompletionResponse(
+        text="# Plan 2\n\nSome plan content.^[plan2.md:1-2]",
+        input_tokens=30, output_tokens=15)
+    overview_resp = CompletionResponse(
+        text="Wiki overview.", input_tokens=10, output_tokens=5)
+
+    provider.complete = AsyncMock(side_effect=itertools.cycle(
+        [analyse_resp, decision_resp, pass4_resp, overview_resp]))
+
+    store, audit, agent = await _make_agent_async(tmp_wiki, provider)
+    source = tmp_wiki / "raw_sources" / "plan2.md"
+    source.write_text("line 1\nline 2\n", encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING, logger="synthadoc.agents.ingest_agent"):
+        with patch.object(IngestAgent, "_update_overview", AsyncMock()):
+            await agent.ingest(str(source))
+
+    # Check that NO WARNING was logged about zero citations
+    warning_msgs = [
+        r.message for r in caplog.records
+        if ("citation_pass4_no_markers" in r.message or "produced no" in r.message)
+        and r.levelno >= logging.WARNING
+    ]
+    assert not warning_msgs, (
+        f"Unexpected citation warning: {warning_msgs}. "
+        f"Full log records: {[(r.levelname, r.message) for r in caplog.records]}"
+    )
+
+
 # --- _backfill_okf_fields unit tests ---
 
 def test_backfill_sets_type_when_absent():
