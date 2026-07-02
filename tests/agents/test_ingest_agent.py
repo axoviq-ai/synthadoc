@@ -1933,3 +1933,26 @@ async def test_decision_prompt_includes_page_status(tmp_wiki, cache):
         "Decision prompt must contain RULE 1b (active page protection contract)"
     assert "action='flag'" in decision_call_prompt, \
         "Decision prompt must reference action='flag' in RULE 1b"
+
+
+@pytest.mark.asyncio
+async def test_fix10_decision_receives_full_source_not_summary(tmp_wiki, cache):
+    """Fix 10: _DECISION_PROMPT must format with source_text, not summary.
+    The decision LLM call must receive the full source text."""
+    from synthadoc.agents.ingest_agent import _DECISION_PROMPT
+
+    # _DECISION_PROMPT must accept {source_text} as a format variable
+    # (not {summary} — if {summary} appears, the format call below raises KeyError)
+    try:
+        filled = _DECISION_PROMPT.format(
+            pages="page context",
+            source_text="some full source text here",
+            entities="entity1, entity2",
+        )
+    except KeyError as exc:
+        pytest.fail(
+            f"_DECISION_PROMPT still uses {{summary}} — got KeyError: {exc}. "
+            "Replace {{summary}} with {{source_text}} in _DECISION_PROMPT."
+        )
+
+    assert "some full source text here" in filled

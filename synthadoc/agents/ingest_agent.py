@@ -89,7 +89,7 @@ _DECISION_PROMPT = (
     "   page_content=full synthesized Markdown body (# Title + paragraphs with [[slug]] links)\n\n"
     'Return: {{"reasoning":"...","action":"...","target":"","new_slug":"","update_content":"","page_content":""}}\n\n'
     "Existing wiki pages (top matches):\n{pages}\n\n"
-    "New source:\n{summary}\n\n"
+    "New source:\n{source_text}\n\n"
     "Detected entities: {entities}"
 )
 
@@ -104,6 +104,7 @@ _OVERVIEW_PROMPT = (
 
 CITATION_PASS4_CACHE_VERSION = "v1"
 ANALYSIS_CACHE_VERSION = "v2"  # bumped to include OKF type field
+DECISION_CACHE_VERSION = "v2"  # bumped to use full source_text instead of summary
 _CITATION_EXCERPT_LEN = 100
 
 _CITATION_PROMPT = (
@@ -229,7 +230,7 @@ class IngestAgent:
     def __init__(self, provider: LLMProvider, store: WikiStorage, search: HybridSearch,
                  log_writer: LogWriter, audit_db: AuditDB, cache: CacheManager,
                  max_pages: int = 15, wiki_root: Optional[Path] = None,
-                 cache_version: str = CACHE_VERSION,
+                 cache_version: str = DECISION_CACHE_VERSION,
                  fetch_timeout: int = 30,
                  routing_path: Optional[Path] = None,
                  cfg=None) -> None:
@@ -631,11 +632,11 @@ class IngestAgent:
                 pages_ctx.append(f"[{r.slug}] status={status_label}: {snippet}")
         pages_str = "\n".join(pages_ctx) or "none"
 
-        # Pass 3: decision (cached by summary hash + candidate slugs + prompt hash)
+        # Pass 3: decision (cached by text hash + candidate slugs + prompt hash)
         # prompt_hash is included so any change to purpose.md or the purpose_block
         # instructions automatically busts the cache.
         slugs = [r.slug for r in candidates]
-        summary_hash = hashlib.sha256(summary.encode()).hexdigest()
+        text_hash = hashlib.sha256(text.encode()).hexdigest()
         decision_prompt = _DECISION_PROMPT
         if self._purpose:
             purpose_block = (
@@ -654,7 +655,7 @@ class IngestAgent:
         prompt_hash = hashlib.sha256(decision_prompt.encode()).hexdigest()[:16]
         ck2 = make_cache_key(
             "make-decision",
-            {"text_hash": summary_hash, "slugs": slugs, "prompt_hash": prompt_hash},
+            {"text_hash": text_hash, "slugs": slugs, "prompt_hash": prompt_hash},
             version=self._cache_version,
         )
         cached2 = None if bust_cache else await self._cache.get(ck2)
@@ -665,7 +666,7 @@ class IngestAgent:
             resp2 = await self._provider.complete(
                 messages=[Message(role="user", content=decision_prompt.format(
                     pages=pages_str,
-                    summary=summary,
+                    source_text=text,
                     entities=entities,
                 ))],
                 temperature=0.0,
