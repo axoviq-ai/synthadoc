@@ -1767,3 +1767,68 @@ def test_backfill_tolerates_page_missing_both_fields():
     _backfill_okf_fields(page, {"type": "technology"}, "https://example.com/chip")
     assert page.type == "technology"
     assert page.resource == "https://example.com/chip"
+
+
+# --- Active page protection contract ---
+
+@pytest.mark.asyncio
+async def test_decision_prompt_includes_page_status(tmp_wiki, cache):
+    """The decision prompt must include status= for each candidate page so the LLM
+    can apply the RULE 1b active-page-protection contract."""
+    import itertools
+    from unittest.mock import AsyncMock, call
+    from synthadoc.providers.base import CompletionResponse
+
+    p = AsyncMock()
+    _entity = CompletionResponse(
+        text='{"entities":["CAPEX"],"concepts":[],"tags":["finance"],"relevant":true}',
+        input_tokens=100, output_tokens=50,
+    )
+    _decision = CompletionResponse(
+        text='{"action":"create","target":"","new_slug":"capex","update_content":"","page_content":"# CAPEX\\n\\nContent."}',
+        input_tokens=100, output_tokens=50,
+    )
+    _citation = CompletionResponse(text="# CAPEX\n\nContent.", input_tokens=10, output_tokens=5)
+    _overview = CompletionResponse(text="Overview.", input_tokens=10, output_tokens=5)
+    p.complete.side_effect = itertools.cycle([_entity, _decision, _citation, _overview])
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("finance-plan", WikiPage(
+        title="Finance Plan", tags=["finance"], content="# Finance Plan\n\nMedian of first 3 years.",
+        status="active", confidence="high", sources=[], created="2026-01-01",
+    ))
+    # Second page so BM25 corpus has 2+ docs (single-doc IDF is always ≤ 0)
+    store.write_page("unrelated-topic", WikiPage(
+        title="Unrelated Topic", tags=["other"], content="# Unrelated\n\nSomething else entirely.",
+        status="draft", confidence="medium", sources=[], created="2026-01-01",
+    ))
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+
+    source = tmp_wiki / "raw_sources" / "capex.md"
+    source.write_text("Finance CAPEX: median of first 3 years of fixed assets.", encoding="utf-8")
+
+    agent = IngestAgent(provider=p, store=store, search=search,
+                        log_writer=log, audit_db=audit, cache=cache, max_pages=15)
+    await agent.ingest(str(source))
+
+    # The decision call is the second complete() call (after entity extraction).
+    # Verify the prompt text passed to the LLM contains status= for the candidate page.
+    decision_call_prompt = None
+    for c in p.complete.call_args_list:
+        messages = c.kwargs.get("messages") or (c.args[0] if c.args else [])
+        if messages and "action" in messages[0].content and "RULE" in messages[0].content:
+            decision_call_prompt = messages[0].content
+            break
+
+    assert decision_call_prompt is not None, "Decision LLM call not found"
+    assert "status=active" in decision_call_prompt, (
+        "Page status must appear in the decision prompt so the LLM can apply "
+        "RULE 1b active-page-protection"
+    )
+    assert "RULE 1b" in decision_call_prompt, \
+        "Decision prompt must contain RULE 1b (active page protection contract)"
+    assert "action='flag'" in decision_call_prompt, \
+        "Decision prompt must reference action='flag' in RULE 1b"
