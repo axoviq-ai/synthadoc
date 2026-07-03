@@ -46,7 +46,12 @@ def _load_hints_file(path: Path) -> tuple[dict[str, list[str]], list[tuple[list[
         for mode, hints in data.get("by_mode", {}).items()
     }
     patterns = [
-        (pat.get("keywords", []), pat.get("hints", []))
+        (
+            pat.get("keywords", []),
+            # answer_keywords: narrower list safe for body-scan; defaults to keywords
+            pat.get("answer_keywords", pat.get("keywords", [])),
+            pat.get("hints", []),
+        )
         for pat in data.get("topic_patterns", [])
         if pat.get("keywords") and pat.get("hints")
     ]
@@ -171,8 +176,8 @@ class HintEngine:
             _hints_by_mode[mode] = existing + [h for h in extras if h not in existing]
 
         # User patterns prepended so they fire before bundled ones
-        for kws, hints in reversed(extra_patterns):
-            _topic_patterns.insert(0, (kws, hints))
+        for q_kws, a_kws, hints in reversed(extra_patterns):
+            _topic_patterns.insert(0, (q_kws, a_kws, hints))
 
         logger.info(
             "HintEngine: merged %s (%d modes, %d patterns)",
@@ -232,15 +237,36 @@ class HintEngine:
         window = (pool * 2)[start:start + n]
         next_cursor = (start + n) % len(pool)
 
-        # Topic match: show contextually relevant hints but still advance cursor.
-        # Skip a match whose hints equal the previous set — breaks feedback loops
-        # where common words (e.g. "source", "active") repeatedly fire the same pattern.
-        answer_lower = answer.lower()
-        for keywords, hints in _topic_patterns:
-            if any(kw in answer_lower for kw in keywords):
-                topic = hints[:n]
-                if previous_hints is None or sorted(topic) != sorted(previous_hints):
-                    return topic, next_cursor
+        def _first_topic_match(text: str, use_answer_keywords: bool = False) -> list[str] | None:
+            """Return the first matching topic hint set for text, or None.
+
+            use_answer_keywords=True selects each pattern's answer_keywords list,
+            which may be narrower than its question keywords to avoid false
+            positives on common domain words (e.g. "draft" in financial reports).
+            """
+            text_lower = text.lower()
+            for q_kws, a_kws, hints in _topic_patterns:
+                keywords = a_kws if use_answer_keywords else q_kws
+                if any(kw in text_lower for kw in keywords):
+                    topic = hints[:n]
+                    if previous_hints is None or sorted(topic) != sorted(previous_hints):
+                        return topic
+            return None
+
+        # Question intent takes priority — the question is the user's actual goal
+        # and is far less likely to contain accidental domain keyword matches than
+        # the answer body (e.g. "draft" in "September Draft methodology").
+        if question:
+            topic = _first_topic_match(question, use_answer_keywords=False)
+            if topic is not None:
+                return topic, next_cursor
+
+        # Answer body: catches emergent signals the question didn't reveal
+        # (e.g. the answer surfaces "stale" or "contradiction"). Uses narrower
+        # answer_keywords to avoid false positives on common domain words.
+        topic = _first_topic_match(answer, use_answer_keywords=True)
+        if topic is not None:
+            return topic, next_cursor
 
         # Dynamic follow-up: replace the 3rd pool hint with a question synthesised
         # from the Q&A pair so at least one chip is always contextually relevant.

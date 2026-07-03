@@ -79,6 +79,7 @@ def test_windowed_topic_match_advances_cursor():
 
 
 def test_windowed_topic_match_returns_relevant_hints():
+    # answer-body match (no question supplied)
     hints, _ = HintEngine.after_response_windowed("your page is stale and outdated", "POWER_USER", 0)
     assert "How do I run a lint check?" in hints
 
@@ -104,6 +105,55 @@ def test_windowed_allows_topic_hints_after_different_previous():
     hints1, _ = HintEngine.after_response_windowed(stale_answer, "POWER_USER", 0,
                                                    previous_hints=["some", "other", "hints"])
     assert "How do I run a lint check?" in hints1
+
+
+# ── question-intent vs answer-body topic matching ─────────────────────────────
+
+def test_windowed_question_intent_fires_lifecycle_hints():
+    # "Activate a draft page" → question contains "draft" and "activate"
+    # → lifecycle hints, NOT domain content from the answer
+    hints, _ = HintEngine.after_response_windowed(
+        "The September draft proposed a 5-year methodology.",  # domain answer with "draft"
+        "POWER_USER", 0,
+        question="Activate a draft page",
+    )
+    assert "Activate a draft page" in hints or "Show me recently updated wiki pages" in hints
+
+
+def test_windowed_domain_answer_with_draft_does_not_fire_when_question_clean():
+    # "draft" in a financial analysis answer must NOT trigger lifecycle hints
+    # when the question itself contains no lifecycle keywords
+    pool = HintEngine.build_pool("POWER_USER")
+    answer = "The September draft proposed a 5-year averaging window for the sales-to-capital ratio."
+    question = "维护性资本支出的计算方法是什么？"  # no lifecycle keywords
+    hints, _ = HintEngine.after_response_windowed(answer, "POWER_USER", 0, question=question)
+    # Must not return lifecycle pattern hints
+    assert "Activate a draft page" not in hints
+    # Should be 2 pool + 1 dynamic (answer has no [[links]], so 3 pool)
+    assert hints == pool[:3]
+
+
+def test_windowed_answer_body_catches_emergent_stale_signal():
+    # Question is neutral; answer reveals "stale" — answer-body match should fire
+    hints, _ = HintEngine.after_response_windowed(
+        "This page is stale and has not been updated in 6 months.",
+        "POWER_USER", 0,
+        question="Tell me about the portfolio overview",
+    )
+    assert "How do I run a lint check?" in hints
+
+
+def test_windowed_question_intent_takes_priority_over_answer_body():
+    # Question matches lifecycle; answer matches ingest — question wins
+    hints, _ = HintEngine.after_response_windowed(
+        "You can ingest a PDF or URL into the wiki.",  # ingest keywords
+        "POWER_USER", 0,
+        question="Activate a draft page",  # lifecycle keywords
+    )
+    # Should return lifecycle hints (question match), not ingest hints
+    lifecycle_hints = {"Show me recently updated wiki pages", "Activate a draft page",
+                       "Show me recently archived wiki pages"}
+    assert any(h in lifecycle_hints for h in hints)
 
 
 # ── _slug_to_title ────────────────────────────────────────────────────────────

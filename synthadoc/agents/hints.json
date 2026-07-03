@@ -80,7 +80,8 @@
       ]
     },
     {
-      "keywords": ["lifecycle", "archived", "restore", "activate"],
+      "keywords": ["lifecycle", "active", "archive", "archived", "draft", "restore", "activate"],
+      "answer_keywords": ["lifecycle", "archived", "restore", "activate"],
       "hints": [
         "Show me recently updated wiki pages",
         "Show me recently archived wiki pages",
