@@ -66,6 +66,7 @@
     },
     {
       "keywords": ["ingest", "pdf", "url"],
+      "answer_keywords": ["ingest"],
       "hints": [
         "What file types can I ingest?",
         "How do I bulk ingest?",
@@ -97,6 +98,7 @@
     },
     {
       "keywords": ["orphan", "no inbound", "isolated", "unlinked"],
+      "answer_keywords": ["orphan", "no inbound"],
       "hints": [
         "What pages are orphan pages?",
         "Run lint on orphans only",
@@ -105,6 +107,7 @@
     },
     {
       "keywords": ["lint", "contradiction", "dangling"],
+      "answer_keywords": ["lint", "dangling"],
       "hints": [
         "What pages are orphan pages?",
         "List contradicted pages",
@@ -116,6 +119,7 @@
     },
     {
       "keywords": ["schedule", "scheduled", "recurring", "cron"],
+      "answer_keywords": ["cron"],
       "hints": [
         "Show my scheduled tasks",
         "Schedule scaffold every Sunday at 11 PM",
@@ -144,6 +148,7 @@
     },
     {
       "keywords": ["job", "jobs", "ingest status", "lint status", "background", "running", "failed job", "pending job"],
+      "answer_keywords": ["ingest status", "lint status"],
       "hints": [
         "Show me job status",
         "List all jobs",
@@ -154,6 +159,7 @@
     },
     {
       "keywords": ["changed", "updated", "re-ingested", "ingested", "added", "archived", "recently", "this week", "this month", "this year"],
+      "answer_keywords": ["re-ingested"],
       "hints": [
         "What changed in the wiki this week?",
         "What changed in the wiki this month?",

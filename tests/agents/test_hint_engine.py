@@ -178,6 +178,76 @@ def test_windowed_stale_as_whole_word_still_fires():
     assert "How do I run a lint check?" in hints
 
 
+def test_windowed_pdf_url_in_domain_answer_does_not_fire_ingest_hints():
+    # "pdf" and "url" in a financial answer (e.g. "the PDF report", "the filing URL")
+    # must NOT trigger ingest hints; only "ingest" is in answer_keywords.
+    pool = HintEngine.build_pool("POWER_USER")
+    answer = "The source PDF document and the URL to the SEC filing are referenced here."
+    question = "What does the annual report cover?"
+    hints, _ = HintEngine.after_response_windowed(answer, "POWER_USER", 0, question=question)
+    assert "What file types can I ingest?" not in hints
+    assert "How do I bulk ingest?" not in hints
+
+
+def test_windowed_isolated_in_domain_answer_does_not_fire_orphan_hints():
+    # "isolated" in a financial risk context must NOT trigger orphan hints.
+    pool = HintEngine.build_pool("POWER_USER")
+    answer = "GreenField's project debt is structured as isolated non-recourse financing."
+    question = "What are the main risks?"
+    hints, _ = HintEngine.after_response_windowed(answer, "POWER_USER", 0, question=question)
+    assert "What pages are orphan pages?" not in hints
+    assert "Run lint on orphans only" not in hints
+
+
+def test_windowed_contradiction_in_domain_answer_does_not_fire_lint_hints():
+    # "contradiction" in financial analysis must NOT trigger lint hints;
+    # only "lint" and "dangling" are in answer_keywords for the lint pattern.
+    pool = HintEngine.build_pool("POWER_USER")
+    answer = "There is a contradiction between the Q3 and Q4 revenue figures in the report."
+    question = "What does the revenue growth analysis cover?"
+    hints, _ = HintEngine.after_response_windowed(answer, "POWER_USER", 0, question=question)
+    assert "List contradicted pages" not in hints
+    assert "Run lint on contradictions only" not in hints
+
+
+def test_windowed_recurring_revenue_does_not_fire_schedule_hints():
+    # "recurring" and "schedule" in financial domain text must NOT trigger schedule hints;
+    # only "cron" is in answer_keywords for the schedule pattern.
+    pool = HintEngine.build_pool("POWER_USER")
+    answer = "TechNova's recurring SaaS revenue grew 24%. The payment schedule is quarterly."
+    question = "What does the revenue analysis show?"
+    hints, _ = HintEngine.after_response_windowed(answer, "POWER_USER", 0, question=question)
+    assert "Show my scheduled tasks" not in hints
+    assert "Schedule a daily ingest at 6 AM" not in hints
+
+
+def test_windowed_job_losses_in_domain_answer_does_not_fire_job_hints():
+    # "job" and "jobs" in an economic context must NOT trigger wiki job-status hints;
+    # only "ingest status" and "lint status" are in answer_keywords.
+    pool = HintEngine.build_pool("POWER_USER")
+    answer = "RetailPulse's restructuring resulted in 200 job losses across its distribution jobs."
+    question = "What are the operational risks?"
+    hints, _ = HintEngine.after_response_windowed(answer, "POWER_USER", 0, question=question)
+    assert "Show me job status" not in hints
+    assert "List all jobs" not in hints
+
+
+def test_windowed_updated_figures_do_not_fire_changed_hints():
+    # "updated", "recently", and "added" in a financial answer must NOT trigger
+    # the changed topic-pattern hints; only "re-ingested" is in answer_keywords.
+    # The changed pattern's 3rd hint is "Show me recently updated wiki pages";
+    # if the pattern fired it would appear at hints[2]. Pool[:3] has
+    # "What pages were added this year?" at [2] instead.
+    answer = (
+        "The updated figures show recently added capacity. "
+        "Management recently revised its guidance for this year."
+    )
+    question = "What is the 2026 outlook?"
+    hints, _ = HintEngine.after_response_windowed(answer, "POWER_USER", 0, question=question)
+    # Pattern-fire would produce "Show me recently updated wiki pages" at slot 2
+    assert "Show me recently updated wiki pages" not in hints
+
+
 def test_windowed_graph_in_domain_answer_does_not_fire_export_hints():
     # "graph" in "navigation graph" / "knowledge graph" must NOT trigger export hints;
     # only "export" and "llms" are in answer_keywords for the export pattern.
