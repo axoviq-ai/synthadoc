@@ -178,6 +178,30 @@ def test_windowed_stale_as_whole_word_still_fires():
     assert "How do I run a lint check?" in hints
 
 
+def test_windowed_structure_in_domain_answer_does_not_fire_scaffold_hints():
+    # "structure" in a financial context (e.g. "project finance structure") must NOT
+    # trigger scaffold hints; only "scaffold" is in answer_keywords for that pattern.
+    pool = HintEngine.build_pool("POWER_USER")
+    answer = (
+        "GreenField has the highest leverage due to its project finance structure. "
+        "Each asset is independently financed. See [[portfolio-risk-metrics-report-fy2025]]."
+    )
+    question = "What does portfolio risk metrics report cover?"
+    hints, _ = HintEngine.after_response_windowed(answer, "POWER_USER", 0, question=question)
+    assert "Rebuild the wiki scaffold" not in hints
+    assert "What does scaffold generate?" not in hints
+
+
+def test_windowed_scaffold_in_question_fires_scaffold_hints():
+    # "scaffold" in the QUESTION must still trigger scaffold hints
+    hints, _ = HintEngine.after_response_windowed(
+        "The scaffold creates starter pages for your wiki.",
+        "POWER_USER", 0,
+        question="How do I rebuild the wiki scaffold structure?",
+    )
+    assert "Rebuild the wiki scaffold" in hints or "What does scaffold generate?" in hints
+
+
 def test_windowed_flagged_in_domain_answer_does_not_fire_adversarial_hints():
     # "flagged" in a financial context must NOT trigger adversarial hints;
     # only "adversarial" and "claim concern" are in answer_keywords for that pattern.

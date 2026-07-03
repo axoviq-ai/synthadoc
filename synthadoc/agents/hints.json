@@ -124,6 +124,7 @@
     },
     {
       "keywords": ["scaffold", "template", "structure"],
+      "answer_keywords": ["scaffold"],
       "hints": [
         "Rebuild the wiki scaffold",
         "What does scaffold generate?",
