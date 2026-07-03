@@ -64,7 +64,7 @@
       ]
     },
     {
-      "keywords": ["ingest", "source", "document", "pdf", "url"],
+      "keywords": ["ingest", "pdf", "url"],
       "hints": [
         "What file types can I ingest?",
         "How do I bulk ingest?",
