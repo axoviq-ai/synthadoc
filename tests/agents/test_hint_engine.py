@@ -3,7 +3,7 @@
 import json
 import pytest
 from pathlib import Path
-from synthadoc.agents.hint_engine import HintEngine
+from synthadoc.agents.hint_engine import HintEngine, _dynamic_followup, _slug_to_title
 
 
 @pytest.fixture(autouse=True)
@@ -104,6 +104,124 @@ def test_windowed_allows_topic_hints_after_different_previous():
     hints1, _ = HintEngine.after_response_windowed(stale_answer, "POWER_USER", 0,
                                                    previous_hints=["some", "other", "hints"])
     assert "How do I run a lint check?" in hints1
+
+
+# ── _slug_to_title ────────────────────────────────────────────────────────────
+
+def test_slug_to_title_replaces_hyphens():
+    assert _slug_to_title("technova-inc") == "technova inc"
+
+
+def test_slug_to_title_strips_fy_year():
+    assert _slug_to_title("portfolio-valuation-report-fy2025") == "portfolio valuation report"
+
+
+def test_slug_to_title_strips_bare_year():
+    assert _slug_to_title("market-outlook-2026") == "market outlook"
+
+
+def test_slug_to_title_no_year():
+    assert _slug_to_title("capex-policy-analysis") == "capex policy analysis"
+
+
+# ── _dynamic_followup ─────────────────────────────────────────────────────────
+
+def test_dynamic_followup_none_when_no_links():
+    assert _dynamic_followup("What is X?", "Plain answer with no wiki links.") is None
+
+
+def test_dynamic_followup_none_when_only_scaffold_links():
+    answer = "See [[overview]] and [[index]] for orientation."
+    assert _dynamic_followup("What is X?", answer) is None
+
+
+def test_dynamic_followup_picks_first_non_scaffold_slug():
+    answer = "See [[overview]] then check [[technova-inc]] for details."
+    result = _dynamic_followup("What is the revenue growth?", answer)
+    assert result is not None
+    assert "technova inc" in result
+
+
+def test_dynamic_followup_strips_question_prefix():
+    answer = "Revenue grew 16%. See [[technova-inc]]."
+    result = _dynamic_followup("What is the revenue growth outlook?", answer)
+    # Subject extracted should not start with "what is"
+    assert result is not None
+    assert "what is" not in result.lower()
+
+
+def test_dynamic_followup_empty_question_uses_fallback_template():
+    answer = "See [[capex-policy-analysis]] for details."
+    result = _dynamic_followup("", answer)
+    assert result == "What else does capex policy analysis cover?"
+
+
+def test_dynamic_followup_overlap_uses_fallback_template():
+    # Subject "capex policy analysis" heavily overlaps with slug title
+    answer = "Refer to [[capex-policy-analysis]]."
+    result = _dynamic_followup("What is the capex policy analysis?", answer)
+    assert result == "What else does capex policy analysis cover?"
+
+
+def test_dynamic_followup_skips_pipe_alias():
+    # [[slug|Display text]] — should extract slug, not alias
+    answer = "Refer to [[technova-inc|TechNova]] for numbers."
+    result = _dynamic_followup("What is the revenue outlook?", answer)
+    assert result is not None
+    assert "technova inc" in result
+
+
+def test_dynamic_followup_strips_fy_year_in_output():
+    answer = "See [[portfolio-valuation-report-fy2025]]."
+    result = _dynamic_followup("What are valuations?", answer)
+    assert "fy2025" not in result.lower()
+    assert "2025" not in result
+
+
+# ── after_response_windowed — 2+1 composition ────────────────────────────────
+
+def test_windowed_with_question_returns_dynamic_as_third():
+    answer = "TechNova grew 16%. See [[technova-inc]] for details."
+    question = "What is the 2026 revenue growth outlook?"
+    hints, _ = HintEngine.after_response_windowed(answer, "POWER_USER", 0, question=question)
+    assert len(hints) == 3
+    pool = HintEngine.build_pool("POWER_USER")
+    # First two come from pool, third is dynamic (not in pool)
+    assert hints[:2] == pool[:2]
+    assert hints[2] not in pool
+
+
+def test_windowed_without_question_returns_3_pool_hints():
+    answer = "TechNova grew 16%. See [[technova-inc]] for details."
+    hints, _ = HintEngine.after_response_windowed(answer, "POWER_USER", 0)
+    pool = HintEngine.build_pool("POWER_USER")
+    assert hints == pool[:3]
+
+
+def test_windowed_no_links_in_answer_falls_back_to_pool():
+    answer = "The wiki does not cover this topic."
+    question = "What is the revenue growth?"
+    hints, _ = HintEngine.after_response_windowed(answer, "POWER_USER", 0, question=question)
+    pool = HintEngine.build_pool("POWER_USER")
+    assert hints == pool[:3]
+
+
+def test_windowed_topic_match_takes_priority_over_dynamic():
+    answer = "Your page is stale and outdated. See [[technova-inc]]."
+    question = "What pages are stale?"
+    hints, _ = HintEngine.after_response_windowed(answer, "POWER_USER", 0, question=question)
+    # Topic match fires; lint hint must be present regardless of dynamic
+    assert "How do I run a lint check?" in hints
+
+
+def test_windowed_dynamic_not_duplicated_in_pool_window():
+    # If _dynamic_followup returns a string already in the window, fall back to 3 pool hints
+    pool = HintEngine.build_pool("POWER_USER")
+    # Construct answer whose dynamic followup would clash with pool[2]
+    # (hard to force deterministically, so just verify length stays 3)
+    answer = "See [[technova-inc]]."
+    hints, _ = HintEngine.after_response_windowed(answer, "POWER_USER", 0, question="What is revenue?")
+    assert len(hints) == 3
 
 
 # ── after_response (backward compat) ─────────────────────────────────────────

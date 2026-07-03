@@ -682,6 +682,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                     prev_hints = _ss.get("last_hints", [])
                     next_hints, new_cursor = HintEngine.after_response_windowed(
                         cached.get("answer", ""), session_mode, cursor,
+                        question=q,
                         previous_hints=prev_hints,
                     )
                     if session_id and session_id in _session_state:
@@ -754,6 +755,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                             prev_hints = _ss.get("last_hints", [])
                             next_hints, new_cursor = HintEngine.after_response_windowed(
                                 full_answer, session_mode, cursor,
+                                question=q,
                                 previous_hints=prev_hints,
                             )
                             if session_id and session_id in _session_state:
