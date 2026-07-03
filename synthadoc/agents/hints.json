@@ -132,6 +132,7 @@
     },
     {
       "keywords": ["adversarial", "warning", "flagged", "overstated", "claim concern"],
+      "answer_keywords": ["adversarial", "claim concern"],
       "hints": [
         "Which pages have adversarial warnings?",
         "What pages are orphan pages?",

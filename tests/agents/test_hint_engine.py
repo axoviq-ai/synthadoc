@@ -178,6 +178,30 @@ def test_windowed_stale_as_whole_word_still_fires():
     assert "How do I run a lint check?" in hints
 
 
+def test_windowed_flagged_in_domain_answer_does_not_fire_adversarial_hints():
+    # "flagged" in a financial context must NOT trigger adversarial hints;
+    # only "adversarial" and "claim concern" are in answer_keywords for that pattern.
+    pool = HintEngine.build_pool("POWER_USER")
+    answer = (
+        "TechNova was flagged for overestimation under the 5-year methodology. "
+        "See [[capex-policy-analysis]] for details."
+    )
+    question = "How does capex policy analysis connect to technova inc?"
+    hints, _ = HintEngine.after_response_windowed(answer, "POWER_USER", 0, question=question)
+    assert "Which pages have adversarial warnings?" not in hints
+    assert "Run the adversarial lint pass" not in hints
+
+
+def test_windowed_adversarial_in_question_fires_adversarial_hints():
+    # "flagged" in the QUESTION (user intent, no other pattern matches) triggers adversarial hints
+    hints, _ = HintEngine.after_response_windowed(
+        "Page X has no issues.",
+        "POWER_USER", 0,
+        question="Which pages are flagged for overstated claims?",
+    )
+    assert "Which pages have adversarial warnings?" in hints or "Run the adversarial lint pass" in hints
+
+
 def test_windowed_outdated_in_question_fires_stale_hints():
     # "outdated" in the QUESTION (user intent) must still trigger stale hints
     hints, _ = HintEngine.after_response_windowed(
