@@ -328,6 +328,7 @@ def _fake_query_result():
     r.knowledge_gap = False
     r.suggested_searches = []
     r.cacheable = False
+    r.routing_warning = ""
     return r
 
 

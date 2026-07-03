@@ -502,6 +502,18 @@ class Orchestrator:
             (self._root / "wiki" / "purpose.md").write_text(
                 result.purpose_md, encoding="utf-8", newline="\n")
 
+            # Scaffold rewrites index.md — regenerate ROUTING.md so routing stays in sync.
+            routing_path = self._root / "ROUTING.md"
+            if routing_path.exists():
+                from synthadoc.core.routing import RoutingIndex as _RoutingIndex
+                _ri_new = _RoutingIndex.from_index_md(index_path)
+                _ri_new.save(routing_path)
+                logger.info(
+                    "scaffold: regenerated ROUTING.md (%d branches, %d slugs)",
+                    len(_ri_new.branches),
+                    sum(len(v) for v in _ri_new.branches.values()),
+                )
+
             # Stamp categories from index.md section headings onto linked pages
             slug_cats: dict[str, list[str]] = {}
             current_section: str | None = None

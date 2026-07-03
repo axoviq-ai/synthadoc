@@ -81,6 +81,15 @@ class RoutingIndex:
             result.extend(self.branches.get(b, []))
         return result
 
+    def unassigned_slugs(self, index_path: Path) -> list[str]:
+        """Return slugs present in index.md branches but not assigned to any ROUTING.md branch."""
+        if not index_path.exists():
+            return []
+        from_index = RoutingIndex.from_index_md(index_path)
+        assigned = {slug for slugs in self.branches.values() for slug in slugs}
+        all_index = {slug for slugs in from_index.branches.values() for slug in slugs}
+        return sorted(all_index - assigned)
+
     def save(self, path: Path) -> None:
         lines = []
         for branch, slugs in self.branches.items():

@@ -565,6 +565,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             "knowledge_gap": result.knowledge_gap,
             "suggested_searches": result.suggested_searches,
             "cacheable": result.cacheable,
+            "routing_warning": result.routing_warning,
         }
 
     _NO_STORE = {"Cache-Control": "no-store"}
@@ -1163,10 +1164,13 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         ri = _RI.parse(routing_path)
         exists = routing_path.exists()
         content = routing_path.read_text(encoding="utf-8") if exists else ""
+        index_path = root / "wiki" / "index.md"
+        unassigned_pages = len(ri.unassigned_slugs(index_path)) if index_path.exists() else 0
         return {
             "exists": exists,
             "branches": len(ri.branches),
             "slugs": sum(len(v) for v in ri.branches.values()),
+            "unassigned_pages": unassigned_pages,
             "content": content,
         }
 

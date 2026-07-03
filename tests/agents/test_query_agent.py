@@ -2495,7 +2495,7 @@ async def test_run_search_translates_cjk_before_bm25(tmp_wiki):
     ]
     agent = QueryAgent(provider=provider, store=store, search=search)
 
-    sub_qs, candidates = await agent._run_search("维护性资本支出")
+    sub_qs, candidates, _routing_warn = await agent._run_search("维护性资本支出")
 
     # Translation must have been called (2 LLM calls: translate + decompose)
     assert provider.complete.call_count == 2
@@ -2521,3 +2521,43 @@ async def test_run_search_skips_translation_for_ascii(tmp_wiki):
 
     # Only one LLM call (decompose only), no translate call
     assert provider.complete.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_run_search_fallback_to_full_corpus_when_routing_weak(tmp_wiki):
+    """When routing-scoped BM25 returns zero candidates, _run_search falls back to
+    full-corpus search and returns a non-empty routing_warning."""
+    from pathlib import Path
+    from synthadoc.core.routing import RoutingIndex
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("revenue-page", WikiPage(
+        title="Revenue Analysis", tags=[], status="active", confidence="high",
+        content="Portfolio revenue grew 14% year-over-year.", sources=[]))
+
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+
+    # Create a ROUTING.md that scopes to a non-existent slug — simulates stale routing
+    routing_path = tmp_wiki / "ROUTING.md"
+    ri = RoutingIndex({"Meta": ["stale-slug-that-does-not-exist"]})
+    ri.save(routing_path)
+
+    provider = AsyncMock()
+    # decompose returns one sub-question; branch pick returns the stale branch
+    provider.complete.side_effect = [
+        CompletionResponse(text='["revenue growth"]', input_tokens=10, output_tokens=5),
+        CompletionResponse(text='["Meta"]', input_tokens=10, output_tokens=5),
+    ]
+    agent = QueryAgent(
+        provider=provider, store=store, search=search, routing_path=routing_path,
+        gap_score_threshold=2.0,
+    )
+
+    sub_qs, candidates, routing_warning = await agent._run_search("revenue growth")
+
+    # Full-corpus fallback must have found the revenue-page
+    slugs = [c.slug for c in candidates]
+    assert "revenue-page" in slugs, f"Expected revenue-page in candidates, got {slugs}"
+    # Routing warning must be non-empty
+    assert routing_warning, "Expected a routing_warning when fallback triggered"
+    assert "ROUTING.md" in routing_warning

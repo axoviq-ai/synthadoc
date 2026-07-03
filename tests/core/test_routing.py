@@ -104,3 +104,45 @@ def test_from_index_md_parses_branches(tmp_path):
     assert "von-neumann-architecture" in ri.branches["Hardware"]
     assert "Recently Added" not in ri.branches
     assert "Index" not in ri.branches
+
+
+def test_unassigned_slugs_returns_missing(tmp_path):
+    """unassigned_slugs returns slugs in index.md not assigned in ROUTING.md."""
+    # ROUTING.md covers People only — Hardware slug is unassigned
+    routing = tmp_path / "ROUTING.md"
+    routing.write_text("## People\n- [[alan-turing]]\n- [[grace-hopper]]\n")
+    index = tmp_path / "index.md"
+    index.write_text(
+        "## People\n- [[alan-turing]]\n- [[grace-hopper]]\n\n"
+        "## Hardware\n- [[von-neumann-architecture]]\n",
+        encoding="utf-8",
+    )
+    ri = RoutingIndex.parse(routing)
+    unassigned = ri.unassigned_slugs(index)
+    assert unassigned == ["von-neumann-architecture"]
+
+
+def test_unassigned_slugs_empty_when_all_assigned(tmp_path):
+    """unassigned_slugs returns [] when every index.md slug has a ROUTING.md branch."""
+    routing = tmp_path / "ROUTING.md"
+    routing.write_text(
+        "## People\n- [[alan-turing]]\n- [[grace-hopper]]\n\n"
+        "## Hardware\n- [[von-neumann-architecture]]\n",
+    )
+    index = tmp_path / "index.md"
+    index.write_text(
+        "## People\n- [[alan-turing]]\n- [[grace-hopper]]\n\n"
+        "## Hardware\n- [[von-neumann-architecture]]\n",
+        encoding="utf-8",
+    )
+    ri = RoutingIndex.parse(routing)
+    assert ri.unassigned_slugs(index) == []
+
+
+def test_unassigned_slugs_missing_index(tmp_path):
+    """unassigned_slugs returns [] when index.md does not exist."""
+    routing = tmp_path / "ROUTING.md"
+    routing.write_text("## People\n- [[alan-turing]]\n")
+    ri = RoutingIndex.parse(routing)
+    # index.md does not exist
+    assert ri.unassigned_slugs(tmp_path / "index.md") == []
