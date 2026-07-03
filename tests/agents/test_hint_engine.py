@@ -251,11 +251,21 @@ def test_dynamic_followup_empty_question_uses_fallback_template():
     assert result == "What does capex policy analysis cover?"
 
 
-def test_dynamic_followup_overlap_uses_fallback_template():
-    # Subject "capex policy analysis" heavily overlaps with slug title
+def test_dynamic_followup_circular_single_link_is_none():
+    # When the generated hint would be identical to the question asked and no
+    # other non-scaffold links exist, _dynamic_followup returns None.
     answer = "Refer to [[capex-policy-analysis]]."
-    result = _dynamic_followup("What is the capex policy analysis?", answer)
-    assert result == "What does capex policy analysis cover?"
+    result = _dynamic_followup("What does capex policy analysis cover?", answer)
+    assert result is None
+
+
+def test_dynamic_followup_overlap_uses_second_link():
+    # When the first link is circular (overlaps the question subject),
+    # _dynamic_followup should fall through to the second link.
+    answer = "See [[capex-policy-analysis]] for policy. Also see [[technova-inc]] for an example."
+    result = _dynamic_followup("What does capex policy analysis cover?", answer)
+    assert result is not None
+    assert "technova inc" in result
 
 
 def test_dynamic_followup_skips_pipe_alias():
@@ -315,15 +325,26 @@ def test_windowed_topic_match_takes_priority_over_dynamic():
     assert "How do I run a lint check?" in hints
 
 
-def test_windowed_dynamic_not_same_as_question():
-    # When the question is about a specific page and the answer links only to
-    # that same page, _dynamic_followup may return the same question. In that
-    # case we must fall back to 3 pool hints, not show the circular chip.
+def test_windowed_dynamic_falls_back_to_pool_when_only_circular_link():
+    # Answer has only one non-scaffold link and it's the same page the question
+    # asks about — no valid dynamic hint exists → fall back to 3 pool hints.
     pool = HintEngine.build_pool("POWER_USER")
     answer = "See [[capex-policy-analysis]] for the full methodology. " * 3
     question = "What does capex policy analysis cover?"
     hints, _ = HintEngine.after_response_windowed(answer, "POWER_USER", 0, question=question)
     assert hints == pool[:3], "circular dynamic hint must be dropped in favour of pool window"
+
+
+def test_windowed_dynamic_uses_second_link_when_first_is_circular():
+    # Answer cites the same-page first, then another page — second link used.
+    answer = (
+        "See [[capex-policy-analysis]] for the framework. "
+        "[[technova-inc]] is an example company."
+    )
+    question = "What does capex policy analysis cover?"
+    hints, _ = HintEngine.after_response_windowed(answer, "POWER_USER", 0, question=question)
+    assert len(hints) == 3
+    assert any("technova inc" in h for h in hints), "second link should supply the dynamic hint"
 
 
 def test_windowed_dynamic_not_duplicated_in_pool_window():

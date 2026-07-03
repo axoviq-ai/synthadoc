@@ -89,6 +89,9 @@ _LEADING_ARTICLE_RE = re.compile(r"^(?:the|a|an)\s+", re.IGNORECASE)
 _TRAILING_STOP_WORDS = frozenset({
     "for", "of", "in", "at", "by", "from", "to",
     "the", "a", "an", "and", "or", "each", "every",
+    # Common question-final verbs that are not part of the subject phrase
+    "cover", "include", "contain", "discuss", "show",
+    "explain", "describe", "mean", "do",
 })
 _HAS_CJK_RE = re.compile(r"[一-鿿぀-ヿ가-힯]")
 
@@ -118,23 +121,12 @@ def _slug_to_title(slug: str) -> str:
 def _dynamic_followup(question: str, answer: str) -> str | None:
     """Return one contextual follow-up question derived from the Q&A pair.
 
-    Picks the first non-scaffold [[wiki-link]] from the answer and composes a
-    question that connects the core topic of the original question to that page.
-    Returns None when the answer contains no usable wiki links.
+    Iterates all non-scaffold [[wiki-links]] in the answer and returns the
+    first hint that is not identical to the question asked (avoids circular
+    chips when the answer only cites the same page the question is about).
+    Returns None when no usable, non-circular hint can be composed.
     """
-    slug = None
-    for m in re.finditer(r"\[\[([^\]|#]+?)(?:[|#][^\]]+)?\]\]", answer):
-        candidate = m.group(1).strip()
-        if candidate not in _SCAFFOLD_SLUGS:
-            slug = candidate
-            break
-
-    if not slug:
-        return None
-
-    title = _slug_to_title(slug)
-
-    # Extract core subject from the question
+    # Extract core subject from the question once — reused for every candidate.
     subject = _QUESTION_PREFIX_RE.sub("", question.strip().rstrip("?")).strip()
     subject = _LEADING_ARTICLE_RE.sub("", subject)
     words = subject.split()[:5]
@@ -142,16 +134,29 @@ def _dynamic_followup(question: str, answer: str) -> str | None:
         words.pop()
     subject = " ".join(words)
 
-    if not subject or _HAS_CJK_RE.search(subject):
-        return f"What does {title} cover?"
+    use_simple = not subject or bool(_HAS_CJK_RE.search(subject))
+    subject_words = set(subject.lower().split()) if not use_simple else set()
+    q_norm = question.strip().lower().rstrip("?")
 
-    # Avoid redundant template when subject and title share most of their words
-    subject_words = set(subject.lower().split())
-    title_words = set(title.lower().split())
-    if len(subject_words & title_words) >= min(2, len(subject_words)):
-        return f"What does {title} cover?"
+    seen_slugs: set[str] = set()
+    for m in re.finditer(r"\[\[([^\]|#]+?)(?:[|#][^\]]+)?\]\]", answer):
+        candidate = m.group(1).strip()
+        if candidate in _SCAFFOLD_SLUGS or candidate in seen_slugs:
+            continue
+        seen_slugs.add(candidate)
 
-    return f"How does {subject} connect to {title}?"
+        title = _slug_to_title(candidate)
+        title_words = set(title.lower().split())
+
+        if use_simple or len(subject_words & title_words) >= min(2, len(subject_words)):
+            hint = f"What does {title} cover?"
+        else:
+            hint = f"How does {subject} connect to {title}?"
+
+        if hint.lower().rstrip("?") != q_norm:
+            return hint
+
+    return None
 
 
 class HintEngine:
@@ -282,11 +287,9 @@ class HintEngine:
 
         # Dynamic follow-up: replace the 3rd pool hint with a question synthesised
         # from the Q&A pair so at least one chip is always contextually relevant.
-        # Skip if the generated question is identical to the one just asked (circular).
         if question:
             dynamic = _dynamic_followup(question, answer)
-            q_norm = question.strip().lower().rstrip("?")
-            if dynamic and dynamic not in window and dynamic.lower().rstrip("?") != q_norm:
+            if dynamic and dynamic not in window:
                 return window[:2] + [dynamic], next_cursor
 
         return window, next_cursor
