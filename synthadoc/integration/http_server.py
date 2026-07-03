@@ -418,7 +418,6 @@ async def _worker_loop(orch) -> None:
                     _purged = await orch._audit.purge_old_sessions(_retention)
                     if _purged:
                         logger.info("Purged %d stale sessions.", _purged)
-                        _session_state.clear()
                 _last_purge_time = time.monotonic()
             except Exception as _pe:
                 logger.error("Session purge failed: %s", _pe)
