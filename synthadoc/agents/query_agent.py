@@ -252,6 +252,30 @@ def _parse_lookback_days(question: str) -> int:
     return 7  # week / recently / default
 
 
+_GUARD_C_MIN_CHARS = 300
+_GUARD_C_MIN_CITATIONS = 3
+
+
+def _guard_c_suppress(gap: bool, answer: str, caller: str) -> bool:
+    """Return False (suppress gap) when the answer is substantial and well-cited.
+
+    Guards A/B detect gaps; Guard C is the corrective: if _detect_gap() fired
+    pre-synthesis but the LLM still produced a long, well-cited answer without
+    a [GAP] prefix, the wiki clearly covered the question and the gap was a
+    false positive.
+    """
+    if not gap or answer.startswith("[GAP]"):
+        return gap
+    cite_count = len(re.findall(r"\[\[[^\]]+\]\]", answer))
+    if len(answer) > _GUARD_C_MIN_CHARS and cite_count >= _GUARD_C_MIN_CITATIONS:
+        logger.debug(
+            "%s: guard C suppressed false-positive gap — %d chars, %d wiki citations",
+            caller, len(answer), cite_count,
+        )
+        return False
+    return gap
+
+
 class QueryAgent:
     def __init__(self, provider: LLMProvider, store: WikiStorage,
                  search: HybridSearch,
@@ -782,15 +806,7 @@ class QueryAgent:
                 question, domain_context=_purpose_ctx
             )
 
-        # Guard C: post-synthesis gap suppression — mirror of the run_stream() guard.
-        if _gap and not answer_text.startswith("[GAP]"):
-            _wiki_cite_count = len(re.findall(r"\[\[[^\]]+\]\]", answer_text))
-            if len(answer_text) > 300 and _wiki_cite_count >= 3:
-                _gap = False
-                logger.debug(
-                    "query: guard C suppressed false-positive gap — "
-                    "%d chars, %d wiki citations", len(answer_text), _wiki_cite_count,
-                )
+        _gap = _guard_c_suppress(_gap, answer_text, "query")
 
         logger.info("query answered — %d page(s) cited, %d tokens",
                     len(citations), resp2.total_tokens)
@@ -1075,17 +1091,7 @@ class QueryAgent:
             full_answer = full_answer[len("[GAP]"):].lstrip("\n")
             logger.debug("run_stream: guard B fired — post-synthesis gap detected")
 
-        # Guard C: post-synthesis gap suppression. When _detect_gap() signalled a gap
-        # but the LLM produced a substantial, well-cited answer without a [GAP] marker,
-        # the wiki clearly covered the question — suppress the false-positive gap event.
-        if _gap and not full_answer.startswith("[GAP]"):
-            _wiki_cite_count = len(re.findall(r"\[\[[^\]]+\]\]", full_answer))
-            if len(full_answer) > 300 and _wiki_cite_count >= 3:
-                _gap = False
-                logger.debug(
-                    "run_stream: guard C suppressed false-positive gap — "
-                    "%d chars, %d wiki citations", len(full_answer), _wiki_cite_count,
-                )
+        _gap = _guard_c_suppress(_gap, full_answer, "run_stream")
 
         yield {"event": "citations", "data": {"citations": [] if _gap else citations}}
 
