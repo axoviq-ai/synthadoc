@@ -2449,6 +2449,39 @@ def test_has_cjk_returns_false_for_empty():
     assert _has_cjk("") is False
 
 
+def test_guard_c_high_confidence_suppresses_single_citation_long_answer():
+    """Guard C high-confidence path: >800 chars + 1 wiki citation suppresses gap.
+
+    "What does X cover?" queries summarise a single page and naturally produce
+    only one [[wikilink]].  The standard path (≥2 citations) does not fire, but
+    the high-confidence path (>800 chars + ≥1 citation) must suppress the gap.
+    """
+    from synthadoc.agents.query_agent import _guard_c_suppress
+    long_answer = "A" * 801 + " [[market-outlook-2026-sector-analysis]]"
+    assert _guard_c_suppress(True, long_answer, "test") is False
+
+
+def test_guard_c_standard_path_suppresses_multi_citation_answer():
+    """Guard C standard path: >300 chars + ≥2 wiki citations suppresses gap."""
+    from synthadoc.agents.query_agent import _guard_c_suppress
+    answer = "A" * 301 + " [[page-a]] [[page-b]]"
+    assert _guard_c_suppress(True, answer, "test") is False
+
+
+def test_guard_c_does_not_suppress_short_single_citation():
+    """Guard C must not suppress a short answer with only one citation."""
+    from synthadoc.agents.query_agent import _guard_c_suppress
+    short_answer = "Some answer. [[page-a]]"
+    assert _guard_c_suppress(True, short_answer, "test") is True
+
+
+def test_guard_c_does_not_suppress_gap_prefix():
+    """Guard C never suppresses an answer that already has a [GAP] prefix."""
+    from synthadoc.agents.query_agent import _guard_c_suppress
+    long_answer = "[GAP] " + "A" * 900 + " [[page-a]] [[page-b]]"
+    assert _guard_c_suppress(True, long_answer, "test") is True
+
+
 @pytest.mark.asyncio
 async def test_translate_for_retrieval_returns_translation(tmp_wiki):
     """_translate_for_retrieval must call the LLM and return the translated string."""

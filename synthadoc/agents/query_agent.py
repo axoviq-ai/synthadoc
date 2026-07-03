@@ -254,6 +254,9 @@ def _parse_lookback_days(question: str) -> int:
 
 _GUARD_C_MIN_CHARS = 300
 _GUARD_C_MIN_CITATIONS = 2
+# "What does X cover?" queries cite exactly one page yet produce very long answers.
+# Suppress the gap when the answer is clearly comprehensive even with a single citation.
+_GUARD_C_HIGH_CONFIDENCE_CHARS = 800
 
 
 def _guard_c_suppress(gap: bool, answer: str, caller: str) -> bool:
@@ -263,14 +266,23 @@ def _guard_c_suppress(gap: bool, answer: str, caller: str) -> bool:
     pre-synthesis but the LLM still produced a long, well-cited answer without
     a [GAP] prefix, the wiki clearly covered the question and the gap was a
     false positive.
+
+    Two suppression paths:
+    - Standard: >300 chars + ≥2 wiki citations (multi-source answers).
+    - High-confidence: >800 chars + ≥1 wiki citation — covers single-source
+      queries like "What does X cover?" where the answer summarises one page
+      and naturally produces only one [[wikilink]] reference.
     """
     if not gap or answer.startswith("[GAP]"):
         return gap
+    n_chars = len(answer)
     cite_count = len(re.findall(r"\[\[[^\]]+\]\]", answer))
-    if len(answer) > _GUARD_C_MIN_CHARS and cite_count >= _GUARD_C_MIN_CITATIONS:
+    standard = n_chars > _GUARD_C_MIN_CHARS and cite_count >= _GUARD_C_MIN_CITATIONS
+    high_conf = n_chars > _GUARD_C_HIGH_CONFIDENCE_CHARS and cite_count >= 1
+    if standard or high_conf:
         logger.debug(
             "%s: guard C suppressed false-positive gap — %d chars, %d wiki citations",
-            caller, len(answer), cite_count,
+            caller, n_chars, cite_count,
         )
         return False
     return gap
