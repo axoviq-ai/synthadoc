@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from synthadoc.cli.main import app  # noqa: F401 - prevents circular import
-from synthadoc.cli.plugin import _set_reading_view_default
+from synthadoc.cli.plugin import _set_reading_view_default, _patch_workspace_reading_view
 
 
 def test_set_reading_view_default_creates_app_json(tmp_path):
@@ -82,3 +82,81 @@ def test_set_reading_view_default_creates_obsidian_dir(tmp_path):
     result = _set_reading_view_default(wiki)
     assert result is True
     assert (wiki / ".obsidian" / "app.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# _patch_workspace_reading_view
+# ---------------------------------------------------------------------------
+
+def _make_workspace(leaves: list[dict]) -> dict:
+    """Build a minimal workspace.json structure with the given leaf state dicts."""
+    children = [
+        {
+            "id": f"leaf{i}",
+            "type": "leaf",
+            "state": {
+                "type": leaf.get("type", "markdown"),
+                "state": {k: v for k, v in leaf.items() if k != "type"},
+            },
+        }
+        for i, leaf in enumerate(leaves)
+    ]
+    return {"main": {"id": "root", "type": "split", "children": children}}
+
+
+def test_patch_workspace_no_file(tmp_path):
+    """Returns False when workspace.json does not exist."""
+    wiki = tmp_path / "wiki"
+    (wiki / ".obsidian").mkdir(parents=True)
+    assert _patch_workspace_reading_view(wiki) is False
+
+
+def test_patch_workspace_patches_source_leaves(tmp_path):
+    """Markdown leaves with mode=source are switched to mode=preview."""
+    wiki = tmp_path / "wiki"
+    (wiki / ".obsidian").mkdir(parents=True)
+    ws_json = wiki / ".obsidian" / "workspace.json"
+    workspace = _make_workspace([{"mode": "source", "file": "wiki/note.md"}])
+    ws_json.write_text(json.dumps(workspace), encoding="utf-8")
+
+    result = _patch_workspace_reading_view(wiki)
+    assert result is True
+    data = json.loads(ws_json.read_text(encoding="utf-8"))
+    leaf_state = data["main"]["children"][0]["state"]["state"]
+    assert leaf_state["mode"] == "preview"
+
+
+def test_patch_workspace_idempotent(tmp_path):
+    """Already-preview leaves are left unchanged; returns False."""
+    wiki = tmp_path / "wiki"
+    (wiki / ".obsidian").mkdir(parents=True)
+    ws_json = wiki / ".obsidian" / "workspace.json"
+    workspace = _make_workspace([{"mode": "preview", "file": "wiki/note.md"}])
+    ws_json.write_text(json.dumps(workspace), encoding="utf-8")
+
+    result = _patch_workspace_reading_view(wiki)
+    assert result is False
+
+
+def test_patch_workspace_skips_non_markdown_leaves(tmp_path):
+    """Non-markdown leaves (e.g. file-explorer) are not touched."""
+    wiki = tmp_path / "wiki"
+    (wiki / ".obsidian").mkdir(parents=True)
+    ws_json = wiki / ".obsidian" / "workspace.json"
+    workspace = _make_workspace([{"type": "file-explorer"}])
+    ws_json.write_text(json.dumps(workspace), encoding="utf-8")
+
+    result = _patch_workspace_reading_view(wiki)
+    assert result is False
+
+
+def test_patch_workspace_malformed_json(tmp_path):
+    """Malformed workspace.json is left untouched; returns False."""
+    wiki = tmp_path / "wiki"
+    (wiki / ".obsidian").mkdir(parents=True)
+    ws_json = wiki / ".obsidian" / "workspace.json"
+    ws_json.write_text("{ not valid }", encoding="utf-8")
+
+    result = _patch_workspace_reading_view(wiki)
+    assert result is False
+    assert ws_json.read_text(encoding="utf-8") == "{ not valid }"

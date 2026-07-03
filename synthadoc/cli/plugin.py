@@ -142,6 +142,52 @@ def _set_reading_view_default(wiki_path: Path) -> bool:
     return True
 
 
+def _patch_workspace_reading_view(wiki_path: Path) -> bool:
+    """Set mode=preview on every markdown leaf in .obsidian/workspace.json.
+
+    Obsidian restores each file in its last-saved mode, so defaultViewMode
+    in app.json has no effect on files already in the workspace.  Patching
+    workspace.json here ensures they re-open in Reading View after an upgrade.
+
+    Returns True if workspace.json was rewritten; False if unchanged or absent.
+    Must be called while Obsidian is closed — Obsidian overwrites workspace.json
+    on exit with its current in-memory state.
+    """
+    ws_json = wiki_path / ".obsidian" / "workspace.json"
+    if not ws_json.exists():
+        return False
+    try:
+        workspace = json.loads(ws_json.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+
+    changed = False
+
+    def _patch(node: object) -> None:
+        nonlocal changed
+        if isinstance(node, dict):
+            state = node.get("state", {})
+            if (
+                node.get("type") == "leaf"
+                and isinstance(state, dict)
+                and state.get("type") == "markdown"
+            ):
+                inner = state.get("state", {})
+                if isinstance(inner, dict) and inner.get("mode") != _OBSIDIAN_READING_VIEW:
+                    inner["mode"] = _OBSIDIAN_READING_VIEW
+                    changed = True
+            for v in node.values():
+                _patch(v)
+        elif isinstance(node, list):
+            for item in node:
+                _patch(item)
+
+    _patch(workspace)
+    if changed:
+        ws_json.write_text(json.dumps(workspace, indent=2), encoding="utf-8")
+    return changed
+
+
 def _install_plugin_into(wiki_path: Path) -> list[str]:
     """Copy plugin files into wiki_path and write data.json.  Returns copied filenames."""
     dest_dir = wiki_path / ".obsidian" / "plugins" / _PLUGIN_ID
@@ -202,6 +248,7 @@ def plugin_install_cmd(
     dataview_status = _install_dataview(wiki_path)
     _update_community_plugins(wiki_path, _DATAVIEW_ID, _PLUGIN_ID)
     _set_reading_view_default(wiki_path)
+    _patch_workspace_reading_view(wiki_path)
 
     dest_dir = wiki_path / ".obsidian" / "plugins" / _PLUGIN_ID
     typer.echo(f"Plugin installed into: {dest_dir}")
@@ -260,6 +307,7 @@ def plugin_upgrade_cmd():
             copied = _install_plugin_into(wiki_path)
             if copied:
                 _set_reading_view_default(wiki_path)
+                _patch_workspace_reading_view(wiki_path)
                 upgraded.append(name)
             else:
                 skipped.append(f"  {name}: no plugin files found — run: python scripts/sync_plugin.py")
@@ -270,6 +318,8 @@ def plugin_upgrade_cmd():
         typer.echo(f"Upgraded {len(upgraded)} wiki(s):")
         for name in upgraded:
             typer.echo(f"  {name}")
+        typer.echo()
+        typer.echo("Restart Obsidian (or reopen each vault) for the changes to take effect.")
     if skipped:
         typer.echo("Skipped:")
         for msg in skipped:
