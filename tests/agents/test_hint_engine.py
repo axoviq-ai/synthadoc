@@ -315,6 +315,17 @@ def test_windowed_topic_match_takes_priority_over_dynamic():
     assert "How do I run a lint check?" in hints
 
 
+def test_windowed_dynamic_not_same_as_question():
+    # When the question is about a specific page and the answer links only to
+    # that same page, _dynamic_followup may return the same question. In that
+    # case we must fall back to 3 pool hints, not show the circular chip.
+    pool = HintEngine.build_pool("POWER_USER")
+    answer = "See [[capex-policy-analysis]] for the full methodology. " * 3
+    question = "What does capex policy analysis cover?"
+    hints, _ = HintEngine.after_response_windowed(answer, "POWER_USER", 0, question=question)
+    assert hints == pool[:3], "circular dynamic hint must be dropped in favour of pool window"
+
+
 def test_windowed_dynamic_not_duplicated_in_pool_window():
     # If _dynamic_followup returns a string already in the window, fall back to 3 pool hints
     pool = HintEngine.build_pool("POWER_USER")

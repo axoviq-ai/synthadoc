@@ -282,9 +282,11 @@ class HintEngine:
 
         # Dynamic follow-up: replace the 3rd pool hint with a question synthesised
         # from the Q&A pair so at least one chip is always contextually relevant.
+        # Skip if the generated question is identical to the one just asked (circular).
         if question:
             dynamic = _dynamic_followup(question, answer)
-            if dynamic and dynamic not in window:
+            q_norm = question.strip().lower().rstrip("?")
+            if dynamic and dynamic not in window and dynamic.lower().rstrip("?") != q_norm:
                 return window[:2] + [dynamic], next_cursor
 
         return window, next_cursor
