@@ -782,6 +782,16 @@ class QueryAgent:
                 question, domain_context=_purpose_ctx
             )
 
+        # Guard C: post-synthesis gap suppression — mirror of the run_stream() guard.
+        if _gap and not answer_text.startswith("[GAP]"):
+            _wiki_cite_count = len(re.findall(r"\[\[[^\]]+\]\]", answer_text))
+            if len(answer_text) > 300 and _wiki_cite_count >= 3:
+                _gap = False
+                logger.debug(
+                    "query: guard C suppressed false-positive gap — "
+                    "%d chars, %d wiki citations", len(answer_text), _wiki_cite_count,
+                )
+
         logger.info("query answered — %d page(s) cited, %d tokens",
                     len(citations), resp2.total_tokens)
         return QueryResult(
@@ -1064,6 +1074,18 @@ class QueryAgent:
             _gap = True
             full_answer = full_answer[len("[GAP]"):].lstrip("\n")
             logger.debug("run_stream: guard B fired — post-synthesis gap detected")
+
+        # Guard C: post-synthesis gap suppression. When _detect_gap() signalled a gap
+        # but the LLM produced a substantial, well-cited answer without a [GAP] marker,
+        # the wiki clearly covered the question — suppress the false-positive gap event.
+        if _gap and not full_answer.startswith("[GAP]"):
+            _wiki_cite_count = len(re.findall(r"\[\[[^\]]+\]\]", full_answer))
+            if len(full_answer) > 300 and _wiki_cite_count >= 3:
+                _gap = False
+                logger.debug(
+                    "run_stream: guard C suppressed false-positive gap — "
+                    "%d chars, %d wiki citations", len(full_answer), _wiki_cite_count,
+                )
 
         yield {"event": "citations", "data": {"citations": [] if _gap else citations}}
 
