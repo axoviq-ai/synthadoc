@@ -106,6 +106,15 @@ _TRAILING_STOP_WORDS = frozenset({
     # when the user re-asks a generated hint, "connect" lands in the subject slice.
     "connect", "relate", "link", "apply", "compare",
 })
+# Auxiliary / linking verbs that mark the start of a predicate in
+# "Which X has/is Y?" questions.  Words at or after these positions are not
+# part of the subject phrase and must be dropped before the phrase is used.
+_AUX_VERBS = frozenset({
+    "is", "are", "was", "were", "be",
+    "has", "have", "had",
+    "does", "do", "did",
+    "will", "would", "can", "could", "should", "may", "might", "must",
+})
 _HAS_CJK_RE = re.compile(r"[一-鿿぀-ヿ가-힯]")
 
 
@@ -145,11 +154,19 @@ def _dynamic_followup(question: str, answer: str) -> str | None:
     # Second pass: strip bare question words not caught above (e.g. "What raw…").
     subject = _LEADING_QUESTION_WORD_RE.sub("", subject)
     words = subject.split()[:5]
+    # Truncate at the first auxiliary verb — marks start of predicate in
+    # "Which X has/is Y?" questions (e.g. "portfolio company has the highest").
+    for i, w in enumerate(words):
+        if w.lower() in _AUX_VERBS:
+            words = words[:i]
+            break
     while words and words[-1].lower() in _TRAILING_STOP_WORDS:
         words.pop()
     subject = " ".join(words)
 
-    use_simple = not subject or bool(_HAS_CJK_RE.search(subject))
+    # Use simple template for CJK, empty, or single-word subjects (too generic
+    # for the "How does X connect to Y?" form).
+    use_simple = not subject or len(words) < 2 or bool(_HAS_CJK_RE.search(subject))
     subject_words = set(subject.lower().split()) if not use_simple else set()
     q_norm = question.strip().lower().rstrip("?")
 

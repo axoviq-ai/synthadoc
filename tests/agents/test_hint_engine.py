@@ -422,6 +422,18 @@ def test_dynamic_followup_generated_hint_as_question_no_duplicate_connect():
     assert "methodology" in result.lower()
 
 
+def test_dynamic_followup_which_has_truncates_at_aux_verb():
+    # "Which X has Y?" — prefix regex strips "Which " but "has" lands at
+    # position 2 in the 5-word slice.  Aux-verb truncation must stop there
+    # so the subject is just "portfolio company", not "portfolio company has…".
+    answer = "See [[portfolio-risk-metrics-report-fy2025]] and [[greenfield-energy-annual-report-2025]]."
+    question = "Which portfolio company has the highest leverage risk?"
+    result = _dynamic_followup(question, answer)
+    assert result is not None
+    assert "has" not in result.lower()
+    assert "highest" not in result.lower()
+
+
 def test_dynamic_followup_strips_question_prefix():
     answer = "Revenue grew 16%. See [[technova-inc]]."
     result = _dynamic_followup("What is the revenue growth outlook?", answer)
