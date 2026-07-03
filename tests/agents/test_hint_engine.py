@@ -407,6 +407,21 @@ def test_dynamic_followup_compound_question_strips_second_clause():
     assert "methodology" in result.lower()
 
 
+def test_dynamic_followup_generated_hint_as_question_no_duplicate_connect():
+    # When the user re-asks a generated "How does X connect to Y?" hint,
+    # "connect" lands at position 4 in the words[:5] slice.  It must be
+    # stripped as a trailing stop word so the next hint reads
+    # "How does X connect to Z?" not "How does X connect connect to Z?".
+    answer = (
+        "See [[portfolio-valuation-report-fy2025]] and [[technova-inc]]."
+    )
+    question = "How does maintenance CAPEX methodology connect to Capex Policy Analysis?"
+    result = _dynamic_followup(question, answer)
+    assert result is not None
+    assert "connect connect" not in result.lower()
+    assert "methodology" in result.lower()
+
+
 def test_dynamic_followup_strips_question_prefix():
     answer = "Revenue grew 16%. See [[technova-inc]]."
     result = _dynamic_followup("What is the revenue growth outlook?", answer)

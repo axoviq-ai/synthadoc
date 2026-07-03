@@ -102,6 +102,9 @@ _TRAILING_STOP_WORDS = frozenset({
     # Question words that appear after "and" in compound questions
     # (e.g. "What is X and what are Y?" → [:5] ends in "and what")
     "what", "which", "who", "why", "where", "when", "how",
+    # Relationship verbs from generated "How does X connect to Y?" hints —
+    # when the user re-asks a generated hint, "connect" lands in the subject slice.
+    "connect", "relate", "link", "apply", "compare",
 })
 _HAS_CJK_RE = re.compile(r"[一-鿿぀-ヿ가-힯]")
 
