@@ -74,6 +74,7 @@
     },
     {
       "keywords": ["export", "llms", "graph", "json"],
+      "answer_keywords": ["export", "llms"],
       "hints": [
         "Export as llms.txt for AI tools",
         "Export as GraphML",

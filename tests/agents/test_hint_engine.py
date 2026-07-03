@@ -178,6 +178,30 @@ def test_windowed_stale_as_whole_word_still_fires():
     assert "How do I run a lint check?" in hints
 
 
+def test_windowed_graph_in_domain_answer_does_not_fire_export_hints():
+    # "graph" in "navigation graph" / "knowledge graph" must NOT trigger export hints;
+    # only "export" and "llms" are in answer_keywords for the export pattern.
+    pool = HintEngine.build_pool("POWER_USER")
+    answer = (
+        "Cross-references available in the wiki's navigation graph link these pages. "
+        "See [[portfolio-valuation-report-fy2025]] for full details."
+    )
+    question = "What does portfolio valuation report cover?"
+    hints, _ = HintEngine.after_response_windowed(answer, "POWER_USER", 0, question=question)
+    assert "Export as llms.txt for AI tools" not in hints
+    assert "Export as GraphML" not in hints
+
+
+def test_windowed_export_in_question_fires_export_hints():
+    # "export" in the QUESTION must still trigger export hints
+    hints, _ = HintEngine.after_response_windowed(
+        "You can export the wiki in several formats.",
+        "POWER_USER", 0,
+        question="How do I export my wiki as a graph?",
+    )
+    assert "Export as llms.txt for AI tools" in hints or "Export as GraphML" in hints
+
+
 def test_windowed_structure_in_domain_answer_does_not_fire_scaffold_hints():
     # "structure" in a financial context (e.g. "project finance structure") must NOT
     # trigger scaffold hints; only "scaffold" is in answer_keywords for that pattern.
