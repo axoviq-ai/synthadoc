@@ -99,6 +99,9 @@ _TRAILING_STOP_WORDS = frozenset({
     # Common question-final verbs that are not part of the subject phrase
     "cover", "include", "contain", "discuss", "show",
     "explain", "describe", "mean", "do",
+    # Question words that appear after "and" in compound questions
+    # (e.g. "What is X and what are Y?" → [:5] ends in "and what")
+    "what", "which", "who", "why", "where", "when", "how",
 })
 _HAS_CJK_RE = re.compile(r"[一-鿿぀-ヿ가-힯]")
 

@@ -392,6 +392,21 @@ def test_dynamic_followup_picks_first_non_scaffold_slug():
     assert "technova inc" in result
 
 
+def test_dynamic_followup_compound_question_strips_second_clause():
+    # "What is X and what are Y?" — after prefix strip the 5-word slice ends in
+    # "and what".  Both "and" and "what" are trailing stop words so subject
+    # must be trimmed to just the first clause.
+    answer = "See [[capex-policy-analysis]] for details."
+    question = (
+        "What is the maintenance CAPEX methodology and what are the final "
+        "maintenance CAPEX estimates for each portfolio company?"
+    )
+    result = _dynamic_followup(question, answer)
+    assert result is not None
+    assert "and what" not in result.lower()
+    assert "methodology" in result.lower()
+
+
 def test_dynamic_followup_strips_question_prefix():
     answer = "Revenue grew 16%. See [[technova-inc]]."
     result = _dynamic_followup("What is the revenue growth outlook?", answer)
