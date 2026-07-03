@@ -4,7 +4,7 @@ import hashlib
 import pytest
 import aiosqlite
 from unittest.mock import AsyncMock
-from synthadoc.agents.ingest_agent import IngestAgent, IngestResult, _slugify, _coerce_str_list, _parse_json_response
+from synthadoc.agents.ingest_agent import IngestAgent, IngestResult, _slugify, _coerce_str_list, _parse_json_response, _strip_leading_frontmatter
 from synthadoc.providers.base import CompletionResponse
 from synthadoc.storage.wiki import WikiStorage, WikiPage
 from synthadoc.storage.search import HybridSearch
@@ -638,6 +638,83 @@ async def test_purpose_md_absent_does_not_break_ingest(tmp_wiki, mock_provider, 
                         max_pages=15, wiki_root=tmp_wiki)
     result = await agent.ingest(str(source))
     assert not result.skipped
+
+
+# --- _strip_leading_frontmatter unit tests ---
+
+def test_strip_leading_frontmatter_no_frontmatter():
+    content = "# My Page\n\nSome content."
+    assert _strip_leading_frontmatter(content) == content
+
+
+def test_strip_leading_frontmatter_with_frontmatter():
+    content = "---\ntitle: Capex Policy\nstatus: active\n---\n\n# Capex Policy\n\nContent here."
+    result = _strip_leading_frontmatter(content)
+    assert result.startswith("# Capex Policy")
+    assert "---" not in result.split("\n")[0]
+    assert "status: active" not in result
+
+
+def test_strip_leading_frontmatter_empty_frontmatter():
+    content = "---\n---\n\n# Empty FM\n\nBody text."
+    result = _strip_leading_frontmatter(content)
+    assert result.startswith("# Empty FM")
+
+
+def test_strip_leading_frontmatter_passthrough_no_closing():
+    """A lone opening --- with no closing --- is returned unchanged."""
+    content = "---\nno closing\n# Title"
+    result = _strip_leading_frontmatter(content)
+    assert result == content
+
+
+@pytest.mark.asyncio
+async def test_ingest_strips_llm_frontmatter_from_page_content(tmp_wiki, cache):
+    """LLM returning page_content with a leading ---...--- block must not produce double-frontmatter."""
+    import itertools
+
+    page_content_with_fm = (
+        "---\ntitle: Capex Policy\nstatus: active\n---\n\n"
+        "# Capex Policy\n\nMainline content about capex methodology."
+    )
+    provider = AsyncMock()
+    entity_resp = CompletionResponse(
+        text='{"entities":["CAPEX"],"tags":["finance"],"summary":"Capex policy.","relevant":true}',
+        input_tokens=50, output_tokens=20,
+    )
+    decision_resp = CompletionResponse(
+        text=(
+            '{"action":"create","new_slug":"capex-policy",'
+            f'"page_content":{__import__("json").dumps(page_content_with_fm)},'
+            '"update_content":"","target":""}'
+        ),
+        input_tokens=100, output_tokens=50,
+    )
+    provider.complete.side_effect = itertools.cycle([entity_resp, decision_resp])
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+
+    source = tmp_wiki / "raw_sources" / "capex.md"
+    source.write_text("Capex policy document content.", encoding="utf-8")
+
+    agent = IngestAgent(provider=provider, store=store, search=search,
+                        log_writer=log, audit_db=audit, cache=cache, max_pages=15)
+    result = await agent.ingest(str(source))
+    assert result.pages_created
+
+    slug = result.pages_created[0]
+    page = store.read_page(slug)
+    assert page is not None
+    # Body must not contain a YAML block — double-frontmatter would put "---" near the top
+    body_lines = page.content.splitlines()
+    assert not any(line.strip() == "---" for line in body_lines[:5]), (
+        "Double-frontmatter detected: page body starts with a YAML block"
+    )
+    assert "# Capex Policy" in page.content
 
 
 def test_init_wiki_creates_purpose_md(tmp_path):
