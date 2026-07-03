@@ -171,6 +171,12 @@ def test_dynamic_followup_skips_pipe_alias():
     assert "technova inc" in result
 
 
+def test_dynamic_followup_cjk_question_uses_simple_template():
+    answer = "Revenue grew 18.2%. See [[technova-inc]] for details."
+    result = _dynamic_followup("TechNova 在 2025 财年的收入增长率和 EBITDA 利润率是多少？", answer)
+    assert result == "What else does technova inc cover?"
+
+
 def test_dynamic_followup_strips_fy_year_in_output():
     answer = "See [[portfolio-valuation-report-fy2025]]."
     result = _dynamic_followup("What are valuations?", answer)

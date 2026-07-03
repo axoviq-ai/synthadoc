@@ -85,6 +85,7 @@ _TRAILING_STOP_WORDS = frozenset({
     "for", "of", "in", "at", "by", "from", "to",
     "the", "a", "an", "and", "or", "each", "every",
 })
+_HAS_CJK_RE = re.compile(r"[一-鿿぀-ヿ가-힯]")
 
 
 def _slug_to_title(slug: str) -> str:
@@ -124,7 +125,7 @@ def _dynamic_followup(question: str, answer: str) -> str | None:
         words.pop()
     subject = " ".join(words)
 
-    if not subject:
+    if not subject or _HAS_CJK_RE.search(subject):
         return f"What else does {title} cover?"
 
     # Avoid redundant template when subject and title share most of their words
