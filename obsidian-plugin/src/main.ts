@@ -1807,7 +1807,8 @@ class ScaffoldModal extends Modal {
                         input.disabled = false;
 
                         if (status === "completed") {
-                            out.setText("✅ Done — index.md, AGENTS.md, and purpose.md updated.");
+                            const routingMsg = job.result?.routing_regenerated ? " ROUTING.md regenerated." : "";
+                            out.setText(`✅ Done — index.md, AGENTS.md, and purpose.md updated.${routingMsg}`);
                             new Notice("Synthadoc: scaffold complete");
                         } else if (status === "skipped") {
                             out.setText("⏭️ Skipped — already up to date.");

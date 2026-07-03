@@ -504,10 +504,12 @@ class Orchestrator:
 
             # Scaffold rewrites index.md — regenerate ROUTING.md so routing stays in sync.
             routing_path = self._root / "ROUTING.md"
+            routing_regenerated = False
             if routing_path.exists():
                 from synthadoc.core.routing import RoutingIndex as _RoutingIndex
                 _ri_new = _RoutingIndex.from_index_md(index_path)
                 _ri_new.save(routing_path)
+                routing_regenerated = True
                 logger.info(
                     "scaffold: regenerated ROUTING.md (%d branches, %d slugs)",
                     len(_ri_new.branches),
@@ -537,6 +539,7 @@ class Orchestrator:
             await self._queue.complete(job_id, result={
                 "domain": domain,
                 "categories_updated": categories_updated,
+                "routing_regenerated": routing_regenerated,
             })
         except Exception as e:
             await self._queue.fail(job_id, str(e))
