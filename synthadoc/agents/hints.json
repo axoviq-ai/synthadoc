@@ -57,6 +57,7 @@
   "topic_patterns": [
     {
       "keywords": ["stale", "outdated", "old"],
+      "answer_keywords": ["stale"],
       "hints": [
         "How do I mark a page as active?",
         "How do I run a lint check?",
@@ -64,7 +65,8 @@
       ]
     },
     {
-      "keywords": ["ingest", "source", "document", "pdf", "url"],
+      "keywords": ["ingest", "pdf", "url"],
+      "answer_keywords": ["ingest"],
       "hints": [
         "What file types can I ingest?",
         "How do I bulk ingest?",
@@ -73,6 +75,7 @@
     },
     {
       "keywords": ["export", "llms", "graph", "json"],
+      "answer_keywords": ["export", "llms"],
       "hints": [
         "Export as llms.txt for AI tools",
         "Export as GraphML",
@@ -81,6 +84,7 @@
     },
     {
       "keywords": ["lifecycle", "active", "archive", "archived", "draft", "restore", "activate"],
+      "answer_keywords": ["lifecycle", "archived", "restore", "activate"],
       "hints": [
         "Show me recently updated wiki pages",
         "Show me recently archived wiki pages",
@@ -94,6 +98,7 @@
     },
     {
       "keywords": ["orphan", "no inbound", "isolated", "unlinked"],
+      "answer_keywords": ["no inbound"],
       "hints": [
         "What pages are orphan pages?",
         "Run lint on orphans only",
@@ -102,6 +107,7 @@
     },
     {
       "keywords": ["lint", "contradiction", "dangling"],
+      "answer_keywords": ["lint", "dangling"],
       "hints": [
         "What pages are orphan pages?",
         "List contradicted pages",
@@ -113,6 +119,7 @@
     },
     {
       "keywords": ["schedule", "scheduled", "recurring", "cron"],
+      "answer_keywords": ["cron"],
       "hints": [
         "Show my scheduled tasks",
         "Schedule scaffold every Sunday at 11 PM",
@@ -122,6 +129,7 @@
     },
     {
       "keywords": ["scaffold", "template", "structure"],
+      "answer_keywords": ["scaffold"],
       "hints": [
         "Rebuild the wiki scaffold",
         "What does scaffold generate?",
@@ -130,6 +138,7 @@
     },
     {
       "keywords": ["adversarial", "warning", "flagged", "overstated", "claim concern"],
+      "answer_keywords": ["adversarial", "claim concern"],
       "hints": [
         "Which pages have adversarial warnings?",
         "What pages are orphan pages?",
@@ -139,6 +148,7 @@
     },
     {
       "keywords": ["job", "jobs", "ingest status", "lint status", "background", "running", "failed job", "pending job"],
+      "answer_keywords": ["ingest status", "lint status"],
       "hints": [
         "Show me job status",
         "List all jobs",
@@ -149,6 +159,7 @@
     },
     {
       "keywords": ["changed", "updated", "re-ingested", "ingested", "added", "archived", "recently", "this week", "this month", "this year"],
+      "answer_keywords": ["re-ingested"],
       "hints": [
         "What changed in the wiki this week?",
         "What changed in the wiki this month?",

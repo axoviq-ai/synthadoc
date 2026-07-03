@@ -237,6 +237,22 @@ def _slugify(title: str) -> str:
     return slug or "page-" + hashlib.md5(title.encode()).hexdigest()[:8]
 
 
+def _strip_leading_frontmatter(content: str) -> str:
+    """Remove a leading YAML frontmatter block from LLM-generated page content.
+
+    Some models return page_content as a full Obsidian markdown file including
+    a ---...--- block.  write_page() adds its own block, producing double-frontmatter
+    that corrupts BM25 indexing (YAML syntax becomes the searchable body text).
+    """
+    content = content.strip()
+    if not content.startswith("---"):
+        return content
+    parts = content.split("---", 2)
+    if len(parts) >= 3:
+        return parts[2].lstrip("\n")
+    return content
+
+
 def _extract_key_data(source_text: str) -> list[str]:
     """Extract numerical facts, formulas, and rates from source text deterministically.
 
@@ -931,7 +947,7 @@ class IngestAgent:
                     if extracted.metadata.get("has_summary"):
                         body = extracted.text
                     elif page_content.strip():
-                        body = page_content.strip()
+                        body = _strip_leading_frontmatter(page_content)
                     else:
                         body = f"# {title}\n\n{text[:4000]}"
                     # Pass 0: append Key Data section for deterministic numerical preservation

@@ -30,7 +30,10 @@ async def pick_routing_branches(
     if not branches:
         return []
 
-    branch_list = "\n".join(f"- {b}" for b in branches)
+    branch_list = "\n".join(
+        f"- {b}: " + ", ".join(f"[[{s}]]" for s in slugs)
+        for b, slugs in branches.items()
+    )
     if multi:
         prompt = (
             f"Wiki topic branches:\n{branch_list}\n\n"

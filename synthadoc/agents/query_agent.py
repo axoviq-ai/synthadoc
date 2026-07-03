@@ -123,6 +123,13 @@ _STOPWORDS = frozenset({
     # "cover" describe the wiki's own structure, not page content, so they never
     # appear frequently in pages and always trigger false-positive gap detection.
     "topic", "cover", "scope", "about",
+    # Superlative/comparative query qualifiers: "Which company has the highest X?"
+    # These are framing words in questions but rarely repeat in content pages —
+    # a page saying "GreenField has the highest leverage" won't repeat "highest"
+    # twice, so gap Signal 5 fires falsely. These words carry no retrieval signal.
+    "highest", "lowest", "largest", "smallest", "biggest", "greater", "lesser",
+    "higher", "lower", "worst", "better", "worse", "fastest", "slowest",
+    "strongest", "weakest", "richest", "cheapest", "expensive",
 })
 
 
@@ -138,6 +145,7 @@ class QueryResult:
     suggested_searches: list[str] = field(default_factory=list)
     sub_questions_count: int = 0
     cacheable: bool = True  # False for action results and live-data answers
+    routing_warning: str = ""  # Non-empty when routing-scoped search fell back to full corpus
 
 
 # Keywords that indicate the question is asking about live wiki state
@@ -242,6 +250,42 @@ def _parse_lookback_days(question: str) -> int:
     if any(kw in q for kw in ("this month", "last month", "past month")):
         return 30
     return 7  # week / recently / default
+
+
+_GUARD_C_MIN_CHARS = 300
+_GUARD_C_MIN_CITATIONS = 2
+# "What does X cover?" queries cite exactly one page yet produce very long answers.
+# Suppress the gap when the answer is clearly comprehensive even with a single citation.
+_GUARD_C_HIGH_CONFIDENCE_CHARS = 800
+
+
+def _guard_c_suppress(gap: bool, answer: str, caller: str) -> bool:
+    """Return False (suppress gap) when the answer is substantial and well-cited.
+
+    Guards A/B detect gaps; Guard C is the corrective: if _detect_gap() fired
+    pre-synthesis but the LLM still produced a long, well-cited answer without
+    a [GAP] prefix, the wiki clearly covered the question and the gap was a
+    false positive.
+
+    Two suppression paths:
+    - Standard: >300 chars + ≥2 wiki citations (multi-source answers).
+    - High-confidence: >800 chars + ≥1 wiki citation — covers single-source
+      queries like "What does X cover?" where the answer summarises one page
+      and naturally produces only one [[wikilink]] reference.
+    """
+    if not gap or answer.startswith("[GAP]"):
+        return gap
+    n_chars = len(answer)
+    cite_count = len(re.findall(r"\[\[[^\]]+\]\]", answer))
+    standard = n_chars > _GUARD_C_MIN_CHARS and cite_count >= _GUARD_C_MIN_CITATIONS
+    high_conf = n_chars > _GUARD_C_HIGH_CONFIDENCE_CHARS and cite_count >= 1
+    if standard or high_conf:
+        logger.debug(
+            "%s: guard C suppressed false-positive gap — %d chars, %d wiki citations",
+            caller, n_chars, cite_count,
+        )
+        return False
+    return gap
 
 
 class QueryAgent:
@@ -614,12 +658,15 @@ class QueryAgent:
             logger.warning("cjk-translate failed — using original question for retrieval", exc_info=True)
         return question
 
-    async def _run_search(self, question: str) -> tuple[list[str], list[SearchResult]]:
+    async def _run_search(
+        self, question: str
+    ) -> tuple[list[str], list[SearchResult], str]:
         """Decompose question, apply routing scope, run parallel BM25 search.
 
-        Returns (sub_questions, candidates).  When *question* contains CJK characters
-        it is translated to English before retrieval so BM25 can find lexical matches
-        in English wiki content; the original question is untouched for synthesis.
+        Returns (sub_questions, candidates, routing_warning).  When *question* contains
+        CJK characters it is translated to English before retrieval.  If routing-scoped
+        results are too weak (max_score below threshold), falls back to full-corpus BM25
+        and returns a non-empty routing_warning string explaining the fallback.
         """
         retrieval_question = question
         if _has_cjk(question):
@@ -633,19 +680,52 @@ class QueryAgent:
             if branches:
                 scoped_slugs = self._routing.slugs_for_branches(branches)
 
-        async def _search_one(sub_q: str):
+        async def _search_one(sub_q: str, slugs: list[str] | None) -> list[SearchResult]:
             return await self._search.hybrid_search(
-                sub_q.lower().split(), top_n=_CANDIDATE_POOL_SIZE, scoped_slugs=scoped_slugs
+                sub_q.lower().split(), top_n=_CANDIDATE_POOL_SIZE, scoped_slugs=slugs
             )
 
-        results_per_sub = await asyncio.gather(*[_search_one(q) for q in sub_questions])
+        results_per_sub = await asyncio.gather(
+            *[_search_one(q, scoped_slugs) for q in sub_questions]
+        )
         best: dict[str, SearchResult] = {}
         for results in results_per_sub:
             for r in results:
                 if r.slug not in best or r.score > best[r.slug].score:
                     best[r.slug] = r
         candidates = sorted(best.values(), key=lambda r: r.score, reverse=True)[:_CANDIDATE_POOL_SIZE]
-        return sub_questions, candidates
+
+        routing_warning = ""
+        if scoped_slugs is not None:
+            max_score = max((r.score for r in candidates), default=0.0)
+            scoped_weak = max_score < self._gap_score_threshold
+            if scoped_weak:
+                # Routing-scoped results are below threshold — fall back to full corpus.
+                full_per_sub = await asyncio.gather(
+                    *[_search_one(q, None) for q in sub_questions]
+                )
+                full_best: dict[str, SearchResult] = {}
+                for results in full_per_sub:
+                    for r in results:
+                        if r.slug not in full_best or r.score > full_best[r.slug].score:
+                            full_best[r.slug] = r
+                full_candidates = sorted(
+                    full_best.values(), key=lambda r: r.score, reverse=True
+                )[:_CANDIDATE_POOL_SIZE]
+                if full_candidates:
+                    candidates = full_candidates
+                    routing_warning = (
+                        "ROUTING.md may be incomplete or stale — search scope was expanded "
+                        "to the full wiki. To fix: delete ROUTING.md and run "
+                        "`synthadoc routing init`."
+                    )
+                    logger.warning(
+                        "routing scope too weak (max_score=%.2f, scoped_slugs=%d) "
+                        "— fell back to full-corpus (%d candidates)",
+                        max_score, len(scoped_slugs), len(candidates),
+                    )
+
+        return sub_questions, candidates, routing_warning
 
     async def query(self, question: str, history: list[dict] | None = None) -> QueryResult:
         question = self._expand_aliases(question)
@@ -665,7 +745,7 @@ class QueryAgent:
                         cacheable=False,
                     )
 
-        sub_questions, candidates = await self._run_search(question)
+        sub_questions, candidates, routing_warning = await self._run_search(question)
 
         _max_score = max((r.score for r in candidates), default=0.0)
         # Use sub-questions for gap detection so decomposition strips request framing.
@@ -683,13 +763,15 @@ class QueryAgent:
             _gap = False
         if _gap and _is_introspective(question):
             _gap = False
+        _purpose_ctx = self._load_purpose_context()
         if _gap:
-            _suggested = await SearchDecomposeAgent(self._provider).decompose(question)
+            _suggested = await SearchDecomposeAgent(self._provider).decompose(
+                question, domain_context=_purpose_ctx
+            )
         else:
             _suggested = []
 
         citations = [r.slug for r in candidates]
-        _purpose_ctx = self._load_purpose_context()
         _pages_ctx = self._build_wiki_context(candidates) or "No relevant pages found."
         _ctx_parts = []
         if _purpose_ctx:
@@ -732,7 +814,11 @@ class QueryAgent:
         if not _gap and resp2.text.startswith("[GAP]"):
             _gap = True
             answer_text = resp2.text[len("[GAP]"):].lstrip("\n")
-            _suggested = await SearchDecomposeAgent(self._provider).decompose(question)
+            _suggested = await SearchDecomposeAgent(self._provider).decompose(
+                question, domain_context=_purpose_ctx
+            )
+
+        _gap = _guard_c_suppress(_gap, answer_text, "query")
 
         logger.info("query answered — %d page(s) cited, %d tokens",
                     len(citations), resp2.total_tokens)
@@ -747,6 +833,7 @@ class QueryAgent:
             suggested_searches=_suggested,
             sub_questions_count=len(sub_questions),
             cacheable=not _is_live_data,
+            routing_warning=routing_warning,
         )
 
     def _detect_gap(
@@ -922,7 +1009,7 @@ class QueryAgent:
             rewritten = await RewriteAgent(self._provider).rewrite(question, history)
             retrieval_question = rewritten
 
-        sub_questions, candidates = await self._run_search(retrieval_question)
+        sub_questions, candidates, routing_warning = await self._run_search(retrieval_question)
 
         citations = [r.slug for r in candidates]
         _purpose_ctx = self._load_purpose_context()
@@ -1016,6 +1103,8 @@ class QueryAgent:
             full_answer = full_answer[len("[GAP]"):].lstrip("\n")
             logger.debug("run_stream: guard B fired — post-synthesis gap detected")
 
+        _gap = _guard_c_suppress(_gap, full_answer, "run_stream")
+
         yield {"event": "citations", "data": {"citations": [] if _gap else citations}}
 
         if _gap:
@@ -1023,7 +1112,9 @@ class QueryAgent:
                 # Use the standalone retrieval_question so gap suggestions are meaningful
                 # when the user asked a context-dependent follow-up (e.g. "tell me more
                 # about his death" → rewritten to "How did Alan Turing die?").
-                _suggested = await SearchDecomposeAgent(self._provider).decompose(retrieval_question)
+                _suggested = await SearchDecomposeAgent(self._provider).decompose(
+                    retrieval_question, domain_context=_purpose_ctx
+                )
             except Exception as _exc:
                 logger.warning("run_stream: gap decompose failed, falling back to original question: %s", _exc)
                 _suggested = [retrieval_question]
@@ -1031,4 +1122,8 @@ class QueryAgent:
             yield {"event": "gap", "data": {"suggested_searches": _suggested}}
 
         next_hints = HintEngine.after_response(full_answer, session_mode)
-        yield {"event": "done", "data": {"next_hints": next_hints, "cacheable": not _is_live_data}}
+        yield {"event": "done", "data": {
+            "next_hints": next_hints,
+            "cacheable": not _is_live_data,
+            "routing_warning": routing_warning,
+        }}

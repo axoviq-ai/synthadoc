@@ -418,7 +418,6 @@ async def _worker_loop(orch) -> None:
                     _purged = await orch._audit.purge_old_sessions(_retention)
                     if _purged:
                         logger.info("Purged %d stale sessions.", _purged)
-                        _session_state.clear()
                 _last_purge_time = time.monotonic()
             except Exception as _pe:
                 logger.error("Session purge failed: %s", _pe)
@@ -565,6 +564,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             "knowledge_gap": result.knowledge_gap,
             "suggested_searches": result.suggested_searches,
             "cacheable": result.cacheable,
+            "routing_warning": result.routing_warning,
         }
 
     _NO_STORE = {"Cache-Control": "no-store"}
@@ -681,6 +681,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                     prev_hints = _ss.get("last_hints", [])
                     next_hints, new_cursor = HintEngine.after_response_windowed(
                         cached.get("answer", ""), session_mode, cursor,
+                        question=q,
                         previous_hints=prev_hints,
                     )
                     if session_id and session_id in _session_state:
@@ -753,6 +754,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                             prev_hints = _ss.get("last_hints", [])
                             next_hints, new_cursor = HintEngine.after_response_windowed(
                                 full_answer, session_mode, cursor,
+                                question=q,
                                 previous_hints=prev_hints,
                             )
                             if session_id and session_id in _session_state:
@@ -1163,10 +1165,13 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         ri = _RI.parse(routing_path)
         exists = routing_path.exists()
         content = routing_path.read_text(encoding="utf-8") if exists else ""
+        index_path = root / "wiki" / "index.md"
+        unassigned_pages = len(ri.unassigned_slugs(index_path)) if index_path.exists() else 0
         return {
             "exists": exists,
             "branches": len(ri.branches),
             "slugs": sum(len(v) for v in ri.branches.values()),
+            "unassigned_pages": unassigned_pages,
             "content": content,
         }
 
