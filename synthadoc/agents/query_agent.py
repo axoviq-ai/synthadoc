@@ -253,7 +253,7 @@ def _parse_lookback_days(question: str) -> int:
 
 
 _GUARD_C_MIN_CHARS = 300
-_GUARD_C_MIN_CITATIONS = 3
+_GUARD_C_MIN_CITATIONS = 2
 
 
 def _guard_c_suppress(gap: bool, answer: str, caller: str) -> bool:

@@ -147,11 +147,25 @@ def test_windowed_stale_keyword_does_not_match_inside_threshold():
     # "old" appears inside "threshold" — must NOT trigger stale topic hints
     pool = HintEngine.build_pool("POWER_USER")
     answer = "The minimum threshold is 10%. Exceed it to qualify."
-    question = "What else does capex policy analysis cover?"
+    question = "What does capex policy analysis cover?"
     hints, _ = HintEngine.after_response_windowed(answer, "POWER_USER", 0, question=question)
     # stale hints should NOT fire — "old" is only a substring of "threshold"
     assert "How do I run a lint check?" not in hints
     assert hints == pool[:3] or hints[2] not in pool  # pool window or dynamic hint
+
+
+def test_windowed_outdated_in_domain_answer_does_not_fire_stale_hints():
+    # "outdated" as a whole word inside a financial answer (e.g. "outdated build-out phases")
+    # must NOT trigger stale hints; only "stale" is in answer_keywords for the stale pattern
+    pool = HintEngine.build_pool("POWER_USER")
+    answer = (
+        "The September draft was withdrawn because years 4–5 captured "
+        "outdated build-out phases no longer reflecting current operations. "
+        "The final 3-year method corrects this. See [[capex-policy-analysis]]."
+    )
+    question = "What does capex policy analysis cover?"
+    hints, _ = HintEngine.after_response_windowed(answer, "POWER_USER", 0, question=question)
+    assert "How do I run a lint check?" not in hints
 
 
 def test_windowed_stale_as_whole_word_still_fires():
@@ -160,6 +174,16 @@ def test_windowed_stale_as_whole_word_still_fires():
         "This page is stale and has not been updated.",
         "POWER_USER", 0,
         question="What are the stale pages?",
+    )
+    assert "How do I run a lint check?" in hints
+
+
+def test_windowed_outdated_in_question_fires_stale_hints():
+    # "outdated" in the QUESTION (user intent) must still trigger stale hints
+    hints, _ = HintEngine.after_response_windowed(
+        "Several pages have not been updated recently.",
+        "POWER_USER", 0,
+        question="Which pages are outdated?",
     )
     assert "How do I run a lint check?" in hints
 

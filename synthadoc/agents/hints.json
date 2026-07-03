@@ -57,6 +57,7 @@
   "topic_patterns": [
     {
       "keywords": ["stale", "outdated", "old"],
+      "answer_keywords": ["stale"],
       "hints": [
         "How do I mark a page as active?",
         "How do I run a lint check?",
