@@ -123,6 +123,13 @@ _STOPWORDS = frozenset({
     # "cover" describe the wiki's own structure, not page content, so they never
     # appear frequently in pages and always trigger false-positive gap detection.
     "topic", "cover", "scope", "about",
+    # Superlative/comparative query qualifiers: "Which company has the highest X?"
+    # These are framing words in questions but rarely repeat in content pages —
+    # a page saying "GreenField has the highest leverage" won't repeat "highest"
+    # twice, so gap Signal 5 fires falsely. These words carry no retrieval signal.
+    "highest", "lowest", "largest", "smallest", "biggest", "greater", "lesser",
+    "higher", "lower", "worst", "better", "worse", "fastest", "slowest",
+    "strongest", "weakest", "richest", "cheapest", "expensive",
 })
 
 
