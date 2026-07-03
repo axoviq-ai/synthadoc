@@ -86,6 +86,13 @@ _QUESTION_PREFIX_RE = re.compile(
     re.IGNORECASE,
 )
 _LEADING_ARTICLE_RE = re.compile(r"^(?:the|a|an)\s+", re.IGNORECASE)
+# Second-pass: strip any remaining bare question word that _QUESTION_PREFIX_RE
+# missed because it was not followed by a recognised verb (e.g. "What raw…",
+# "What file types…", "Which documents…").
+_LEADING_QUESTION_WORD_RE = re.compile(
+    r"^(?:what|which|who|why|where|when|how)\s+",
+    re.IGNORECASE,
+)
 _TRAILING_STOP_WORDS = frozenset({
     "for", "of", "in", "at", "by", "from", "to",
     "the", "a", "an", "and", "or", "each", "every",
@@ -129,6 +136,8 @@ def _dynamic_followup(question: str, answer: str) -> str | None:
     # Extract core subject from the question once — reused for every candidate.
     subject = _QUESTION_PREFIX_RE.sub("", question.strip().rstrip("?")).strip()
     subject = _LEADING_ARTICLE_RE.sub("", subject)
+    # Second pass: strip bare question words not caught above (e.g. "What raw…").
+    subject = _LEADING_QUESTION_WORD_RE.sub("", subject)
     words = subject.split()[:5]
     while words and words[-1].lower() in _TRAILING_STOP_WORDS:
         words.pop()

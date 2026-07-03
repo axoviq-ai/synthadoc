@@ -387,6 +387,18 @@ def test_dynamic_followup_strips_question_prefix():
     assert "what is" not in result.lower()
 
 
+def test_dynamic_followup_strips_bare_what_before_noun():
+    # "What raw funding sources…" — prefix regex misses "what [noun]".
+    # _LEADING_QUESTION_WORD_RE must strip the bare "What" as a second pass.
+    answer = "See [[market-outlook-2026-sector-analysis]] for details."
+    question = "What raw funding sources does this wiki contain?"
+    result = _dynamic_followup(question, answer)
+    assert result is not None
+    assert not result.lower().startswith("what "), (
+        f"Subject still starts with 'What': {result}"
+    )
+
+
 def test_dynamic_followup_empty_question_uses_fallback_template():
     answer = "See [[capex-policy-analysis]] for details."
     result = _dynamic_followup("", answer)
