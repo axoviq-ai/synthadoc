@@ -93,6 +93,18 @@ _TRAILING_STOP_WORDS = frozenset({
 _HAS_CJK_RE = re.compile(r"[一-鿿぀-ヿ가-힯]")
 
 
+def _kw_match(text: str, keywords: list[str]) -> bool:
+    """Return True if any keyword appears as a whole word in text.
+
+    Uses word-boundary matching so 'old' does not fire inside 'threshold',
+    'bold', 'folder', etc.  Case-insensitive.
+    """
+    if not keywords:
+        return False
+    pattern = r"\b(?:" + "|".join(re.escape(kw) for kw in keywords) + r")\b"
+    return bool(re.search(pattern, text, re.IGNORECASE))
+
+
 def _slug_to_title(slug: str) -> str:
     """Convert a wiki slug to a short readable label.
 
@@ -243,11 +255,11 @@ class HintEngine:
             use_answer_keywords=True selects each pattern's answer_keywords list,
             which may be narrower than its question keywords to avoid false
             positives on common domain words (e.g. "draft" in financial reports).
+            Matching uses word boundaries so 'old' does not fire inside 'threshold'.
             """
-            text_lower = text.lower()
             for q_kws, a_kws, hints in _topic_patterns:
                 keywords = a_kws if use_answer_keywords else q_kws
-                if any(kw in text_lower for kw in keywords):
+                if _kw_match(text, keywords):
                     topic = hints[:n]
                     if previous_hints is None or sorted(topic) != sorted(previous_hints):
                         return topic

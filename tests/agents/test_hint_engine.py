@@ -143,6 +143,27 @@ def test_windowed_answer_body_catches_emergent_stale_signal():
     assert "How do I run a lint check?" in hints
 
 
+def test_windowed_stale_keyword_does_not_match_inside_threshold():
+    # "old" appears inside "threshold" — must NOT trigger stale topic hints
+    pool = HintEngine.build_pool("POWER_USER")
+    answer = "The minimum threshold is 10%. Exceed it to qualify."
+    question = "What else does capex policy analysis cover?"
+    hints, _ = HintEngine.after_response_windowed(answer, "POWER_USER", 0, question=question)
+    # stale hints should NOT fire — "old" is only a substring of "threshold"
+    assert "How do I run a lint check?" not in hints
+    assert hints == pool[:3] or hints[2] not in pool  # pool window or dynamic hint
+
+
+def test_windowed_stale_as_whole_word_still_fires():
+    # "stale" as a standalone word must still trigger the stale topic hints
+    hints, _ = HintEngine.after_response_windowed(
+        "This page is stale and has not been updated.",
+        "POWER_USER", 0,
+        question="What are the stale pages?",
+    )
+    assert "How do I run a lint check?" in hints
+
+
 def test_windowed_question_intent_takes_priority_over_answer_body():
     # Question matches lifecycle; answer matches ingest — question wins
     hints, _ = HintEngine.after_response_windowed(
