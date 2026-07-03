@@ -224,14 +224,14 @@ def test_dynamic_followup_strips_question_prefix():
 def test_dynamic_followup_empty_question_uses_fallback_template():
     answer = "See [[capex-policy-analysis]] for details."
     result = _dynamic_followup("", answer)
-    assert result == "What else does capex policy analysis cover?"
+    assert result == "What does capex policy analysis cover?"
 
 
 def test_dynamic_followup_overlap_uses_fallback_template():
     # Subject "capex policy analysis" heavily overlaps with slug title
     answer = "Refer to [[capex-policy-analysis]]."
     result = _dynamic_followup("What is the capex policy analysis?", answer)
-    assert result == "What else does capex policy analysis cover?"
+    assert result == "What does capex policy analysis cover?"
 
 
 def test_dynamic_followup_skips_pipe_alias():
@@ -245,7 +245,7 @@ def test_dynamic_followup_skips_pipe_alias():
 def test_dynamic_followup_cjk_question_uses_simple_template():
     answer = "Revenue grew 18.2%. See [[technova-inc]] for details."
     result = _dynamic_followup("TechNova 在 2025 财年的收入增长率和 EBITDA 利润率是多少？", answer)
-    assert result == "What else does technova inc cover?"
+    assert result == "What does technova inc cover?"
 
 
 def test_dynamic_followup_strips_fy_year_in_output():

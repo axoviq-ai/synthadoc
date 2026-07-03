@@ -143,13 +143,13 @@ def _dynamic_followup(question: str, answer: str) -> str | None:
     subject = " ".join(words)
 
     if not subject or _HAS_CJK_RE.search(subject):
-        return f"What else does {title} cover?"
+        return f"What does {title} cover?"
 
     # Avoid redundant template when subject and title share most of their words
     subject_words = set(subject.lower().split())
     title_words = set(title.lower().split())
     if len(subject_words & title_words) >= min(2, len(subject_words)):
-        return f"What else does {title} cover?"
+        return f"What does {title} cover?"
 
     return f"How does {subject} connect to {title}?"
 
