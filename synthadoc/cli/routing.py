@@ -60,20 +60,32 @@ def routing_init(
 def routing_validate(
     wiki: Optional[str] = typer.Option(None, "--wiki", "-w", help="Wiki name or path"),
 ) -> None:
-    """Report dangling slugs in ROUTING.md (dry run — no changes)."""
+    """Report dangling slugs and unassigned pages in ROUTING.md (dry run — no changes)."""
     _, routing_path, wiki_dir = _paths(wiki)
 
     ri = RoutingIndex.parse(routing_path)
     existing = {p.stem for p in wiki_dir.glob("*.md")} if wiki_dir.exists() else set()
     dangling = ri.validate(existing)
 
-    if not dangling:
-        typer.echo("ROUTING.md is clean — no dangling slugs or duplicates.")
+    index = wiki_dir / "index.md"
+    unassigned = ri.unassigned_slugs(index) if index.exists() else []
+
+    if not dangling and not unassigned:
+        typer.echo("ROUTING.md is clean — no dangling slugs, no unassigned pages.")
         return
 
-    typer.echo(f"Issues in ROUTING.md ({len(dangling)}):")
-    for branch, slug in dangling:
-        typer.echo(f"  [{branch}]  [[{slug}]]")
+    if dangling:
+        typer.echo(f"Dangling/duplicate entries in ROUTING.md ({len(dangling)}):")
+        for branch, slug in dangling:
+            typer.echo(f"  [{branch}]  [[{slug}]]")
+
+    if unassigned:
+        typer.echo(f"\nPages in index.md not assigned to any branch ({len(unassigned)}):")
+        for slug in unassigned:
+            typer.echo(f"  [[{slug}]]")
+        typer.echo(
+            "\nFix: delete ROUTING.md and run `synthadoc routing init` to rebuild from current index.md."
+        )
 
 
 @routing_app.command("clean")

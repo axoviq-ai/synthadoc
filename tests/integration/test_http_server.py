@@ -328,6 +328,7 @@ def _fake_query_result():
     r.knowledge_gap = False
     r.suggested_searches = []
     r.cacheable = False
+    r.routing_warning = ""
     return r
 
 
@@ -509,3 +510,19 @@ def test_get_graph_computing_returns_no_store_header(tmp_wiki, reset_graph_flag)
 
     assert resp.status_code == 200
     assert resp.headers.get("cache-control") == "no-store"
+
+
+def test_session_purge_does_not_reference_session_state(tmp_wiki):
+    """_worker_loop session purge must not raise NameError for _session_state.
+
+    Regression test: _session_state is defined inside create_app() and is not
+    accessible from the module-level _worker_loop.  The purge branch must not
+    call _session_state.clear() (or any other reference to that name).
+    """
+    import inspect
+    from synthadoc.integration import http_server
+
+    src = inspect.getsource(http_server._worker_loop)
+    assert "_session_state" not in src, (
+        "_worker_loop must not reference _session_state (it is out of scope)"
+    )
