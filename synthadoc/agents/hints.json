@@ -98,7 +98,7 @@
     },
     {
       "keywords": ["orphan", "no inbound", "isolated", "unlinked"],
-      "answer_keywords": ["orphan", "no inbound"],
+      "answer_keywords": ["no inbound"],
       "hints": [
         "What pages are orphan pages?",
         "Run lint on orphans only",

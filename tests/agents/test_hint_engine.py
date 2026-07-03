@@ -191,9 +191,22 @@ def test_windowed_pdf_url_in_domain_answer_does_not_fire_ingest_hints():
 
 def test_windowed_isolated_in_domain_answer_does_not_fire_orphan_hints():
     # "isolated" in a financial risk context must NOT trigger orphan hints.
-    pool = HintEngine.build_pool("POWER_USER")
     answer = "GreenField's project debt is structured as isolated non-recourse financing."
     question = "What are the main risks?"
+    hints, _ = HintEngine.after_response_windowed(answer, "POWER_USER", 0, question=question)
+    assert "What pages are orphan pages?" not in hints
+    assert "Run lint on orphans only" not in hints
+
+
+def test_windowed_orphan_in_dashboard_description_does_not_fire_orphan_hints():
+    # "orphan" mentioned as a dashboard feature ("surfacing contradicted, orphan,
+    # and recently updated pages") must NOT trigger orphan hints.
+    # answer_keywords is now ["no inbound"] — "orphan" alone is too common.
+    answer = (
+        "Dashboard (dashboard) — surfacing contradicted, orphan, and recently updated pages. "
+        "See [[dashboard]] for details."
+    )
+    question = "What raw funding sources does this wiki contain?"
     hints, _ = HintEngine.after_response_windowed(answer, "POWER_USER", 0, question=question)
     assert "What pages are orphan pages?" not in hints
     assert "Run lint on orphans only" not in hints
