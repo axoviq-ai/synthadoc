@@ -2238,6 +2238,7 @@ Click any node to open its detail panel:
 - **Title** and **slug**
 - **Type** (`concept`, `person`, `event`, …)
 - **Lifecycle state** (`active`, `draft`, `stale`, …)
+- **Questions to explore** — suggested follow-up questions for that page
 - **"Ask about this →"** button
 
 Click **Ask about this →** to jump to the Chat tab with a pre-filled query about that page. The answer is drawn from the wiki and citations appear inline.
