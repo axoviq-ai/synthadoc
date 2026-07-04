@@ -681,6 +681,7 @@ Note: BM25 IDF requires a minimum of 3 documents in the corpus for non-zero scor
 | `GET` | `/app` _(v0.7.0)_ | — | Serves the React SPA (web chat UI) |
 | `GET` | `/sessions` _(v0.8.0)_ | — | `[{session_id, first_q, last_active, turn_count, questions: [str]}]` |
 | `GET` | `/sessions/{session_id}/messages` _(v0.8.0)_ | — | `[{role, content, timestamp}]` |
+| `GET` | `/graph` _(v1.0.0)_ | — | `{status, node_count, edge_count, cluster_count, nodes: [...], edges: [...]}` or `{status: "computing"}` on first call |
 
 **`GET /jobs` query parameters:**
 
@@ -1212,6 +1213,12 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 | `web_search.max_results` | int | `20` | Maximum results fetched per web search query |
 | `search.vector` | bool | `false` | Enable semantic re-ranking; downloads `BAAI/bge-small-en-v1.5` (~130 MB) once on first enable |
 | `search.vector_top_candidates` | int | `20` | BM25 candidate pool size when vector re-ranking is active |
+| `ingest.max_source_chars` | int | `32000` | Character limit applied to each source before the LLM call. Sources exceeding this limit are truncated; the page's `sources:` frontmatter entry gets `truncated: true` and lint emits a warning. Override per-run with `--max-source-chars N`. _(v1.0.0)_ |
+| `query.context_wiki_pct` | float | `0.60` | Fraction of the model context window reserved for wiki source pages. _(v1.0.0)_ |
+| `query.context_history_pct` | float | `0.20` | Fraction reserved for conversation history. _(v1.0.0)_ |
+| `query.context_system_pct` | float | `0.15` | Fraction reserved for system prompt and instructions. Parsed and validated but not yet enforced as a hard cap in v1.0.0. _(v1.0.0)_ |
+| `query.context_index_pct` | float | `0.05` | Fraction reserved for the wiki index preamble. Parsed and validated but not yet enforced as a hard cap in v1.0.0. _(v1.0.0)_ |
+| `query.context_window` | int | _(auto)_ | Override the built-in context window lookup for the configured model. Use when running a local or custom model whose window size is not in the built-in table. _(v1.0.0)_ |
 
 ---
 
@@ -3024,6 +3031,7 @@ Edit `<wiki-root>/AGENTS.md` to give the LLM domain-specific instructions — te
 - **Per-source truncation flag** — default character limit raised from 8,000 to 32,000 characters per source (~8,000 tokens); truncated sources are flagged with `truncated: true` in the page's `sources:` frontmatter; `--max-source-chars N` CLI flag and matching `POST /jobs/ingest` body field and MCP `synthadoc_ingest` parameter override the limit per run; `synthadoc lint` emits a warning for any page with a truncated source and suggests the override command; configurable via `[ingest] max_source_chars` in `config.toml`
 - **Proportional context budget** — query context is allocated proportionally to the configured model's context window; four configurable slices: `context_wiki_pct` (60%), `context_history_pct` (20%), `context_system_pct` (15%), `context_index_pct` (5%); built-in prefix-matched model context window table covers Claude 4, GPT-4o/turbo/3.5, and GPT-4; unknown models fall back to 128,000 tokens; `context_window = N` in `[query]` overrides the table for local or custom models
 - **Knowledge graph** — wikilink graph computed across all active and draft pages during every lint run; stored in `graph_nodes` and `graph_edges` tables in `audit.db`; edge weight = number of `[[wikilink]]` references between two pages; cluster IDs assigned by Louvain community detection; `GET /graph` REST endpoint returns nodes with per-node enrichment (title, type, state, cluster) and edges; first call after upgrade triggers a background build and returns `{"status":"computing"}`; web UI **Graph** tab (D3.js force-directed graph) — nodes colored by cluster, click to see page details and an "Ask about this →" button that opens a pre-filled chat query
+- **Citation accuracy & rendering improvements** — six correctness fixes to the ingest citation pipeline: (1) full source text passed to the decision LLM so citations can reference any line in the document; (2) `_annotate_citations` bugs A–F resolved (false-positive matches, off-by-one line ranges, duplicate markers, escaped bracket handling, multi-paragraph span errors, and source filename normalisation); (3) `_has_citations` check added — lint warns and suggests a model upgrade when a page has zero citation markers after synthesis; (4) `Key Data` section extraction hardened so numerical facts, rates, and formulas are preserved verbatim across the annotation pass; (5) `obsidianCitationsToGfm` rendering fixed in the web UI — citation superscripts now display correctly in the chat panel alongside streamed answers; (6) reading view set as the default Obsidian display mode for wiki pages
 
 ### v0.9.3
 

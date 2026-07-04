@@ -160,7 +160,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **Web search → wiki pages** — Tavily search fans out into parallel URL ingest jobs; gap callout in web UI suggests searches inline | **Yes** | No | No | No |
 | **Semantic re-ranking** — optional vector re-ranking (`BAAI/bge-small-en-v1.5`) improves recall on conceptually related queries; BM25 stays as fallback | **Yes** (optional) | Varies | No | No |
 | **Streaming output + query cache** — token-by-token streaming; cache key = question + wiki version; auto-invalidates on ingest or lifecycle change | **Yes** | Partial | Partial | Partial |
-| **Proportional context budget** — sources allocated proportionally to model context window (60 % wiki / 20 % history / 15 % system); not capped at a hard top-N | **Yes** | No | No | No |
+| **Proportional context budget** — sources allocated proportionally to model context window (60 % wiki / 20 % history / 15 % system / 5 % index); replaces fixed top-N cap | **Yes** | No | No | No |
 
 ### Interfaces & Integration
 
@@ -191,7 +191,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **Cost guard + full audit trail** — per-job token + cost log; soft-warn and hard-gate thresholds; `audit citations` validates every claim citation; immutable event log | **Yes** | No | No | No |
 | **Resumable job queue + retry** — every ingest/lint job persisted with status and error; batch a hundred documents and resume after a crash | **Yes** | No | No | No |
 | **Custom skills + CI hooks** — subclass `BaseSkill` for new file formats; 2 hook events on ingest and lint complete; blocking hooks can gate operations | **Yes** | Limited | No | No |
-| **Per-source truncation flag** — `--max-source-chars` caps oversized PDFs before the LLM call; truncated sources flagged in lint output | **Yes** | No | No | No |
+| **Per-source truncation flag** — `--max-source-chars` caps any source (PDF, DOCX, web page, plain text) before the LLM call; truncated sources flagged with `truncated: true` in frontmatter and warned in lint output | **Yes** | No | No | No |
 | **Multi-wiki isolation** — each wiki on its own port with independent config, audit trail, and job queue; switch with `synthadoc use` | **Yes** | No | Partial | No |
 
 ### Business value

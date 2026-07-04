@@ -2254,7 +2254,7 @@ synthadoc graph edges -w history-of-computing
 
 ---
 
-**Large sources:** If you have PDFs or documents larger than ~8,000 words, raise the per-source character limit:
+**Large sources:** Synthadoc applies a default character limit of 32,000 characters per source before the LLM call. Sources that exceed this limit are truncated; the compiled page records `truncated: true` in its `sources:` frontmatter and `synthadoc lint` emits a warning with a suggested override command. To raise the limit for a single ingest:
 
 ```bash
 synthadoc ingest papers/large-textbook.pdf --max-source-chars 128000
