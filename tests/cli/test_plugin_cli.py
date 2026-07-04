@@ -120,6 +120,7 @@ def test_plugin_upgrade_single_wiki(tmp_path):
     with (
         patch("synthadoc.cli.plugin._PLUGIN_SRC", src),
         patch("synthadoc.cli.plugin._read_registry", return_value=registry),
+        patch("synthadoc.cli.plugin._install_dataview", return_value="installed") as mock_dv,
     ):
         result = runner.invoke(app, ["plugin", "upgrade"])
 
@@ -128,6 +129,13 @@ def test_plugin_upgrade_single_wiki(tmp_path):
     dest = wiki / ".obsidian" / "plugins" / "synthadoc"
     assert (dest / "main.js").exists()
     assert (dest / "data.json").exists()
+    # dataview must be installed and enabled during upgrade
+    mock_dv.assert_called_once_with(wiki)
+    cp = wiki / ".obsidian" / "community-plugins.json"
+    assert cp.exists()
+    enabled = json.loads(cp.read_text())
+    assert "dataview" in enabled
+    assert "synthadoc" in enabled
 
 
 def test_plugin_upgrade_multiple_wikis(tmp_path):
@@ -142,6 +150,7 @@ def test_plugin_upgrade_multiple_wikis(tmp_path):
     with (
         patch("synthadoc.cli.plugin._PLUGIN_SRC", src),
         patch("synthadoc.cli.plugin._read_registry", return_value=registry),
+        patch("synthadoc.cli.plugin._install_dataview", return_value="skipped"),
     ):
         result = runner.invoke(app, ["plugin", "upgrade"])
 
@@ -149,6 +158,11 @@ def test_plugin_upgrade_multiple_wikis(tmp_path):
     assert "2 wiki" in result.output
     for wiki in (wiki_a, wiki_b):
         assert (wiki / ".obsidian" / "plugins" / "synthadoc" / "main.js").exists()
+        cp = wiki / ".obsidian" / "community-plugins.json"
+        assert cp.exists()
+        enabled = json.loads(cp.read_text())
+        assert "dataview" in enabled
+        assert "synthadoc" in enabled
 
 
 def test_plugin_upgrade_stale_registry_entry(tmp_path):

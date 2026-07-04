@@ -24,6 +24,8 @@ _DATAVIEW_ID = "dataview"
 _DATAVIEW_RELEASE_URL = "https://github.com/blacksmithgu/obsidian-dataview/releases/latest/download"
 _OBSIDIAN_APP_JSON_KEY = "defaultViewMode"
 _OBSIDIAN_READING_VIEW = "preview"
+_OBSIDIAN_NEW_FILE_LOCATION = "folder"
+_OBSIDIAN_NEW_FILE_FOLDER = "wiki"
 
 
 _LOOPBACK_ADDRS = frozenset({"127.0.0.1", "::1", "localhost"})
@@ -135,9 +137,16 @@ def _set_reading_view_default(wiki_path: Path) -> bool:
                 config = {}
         except Exception:
             config = {}
-    if config.get(_OBSIDIAN_APP_JSON_KEY) == _OBSIDIAN_READING_VIEW:
+    needs_write = (
+        config.get(_OBSIDIAN_APP_JSON_KEY) != _OBSIDIAN_READING_VIEW
+        or config.get("newFileLocation") != _OBSIDIAN_NEW_FILE_LOCATION
+        or config.get("newFileFolderPath") != _OBSIDIAN_NEW_FILE_FOLDER
+    )
+    if not needs_write:
         return False
     config[_OBSIDIAN_APP_JSON_KEY] = _OBSIDIAN_READING_VIEW
+    config["newFileLocation"] = _OBSIDIAN_NEW_FILE_LOCATION
+    config["newFileFolderPath"] = _OBSIDIAN_NEW_FILE_FOLDER
     app_json.write_text(json.dumps(config, indent=2), encoding="utf-8")
     return True
 
@@ -306,6 +315,8 @@ def plugin_upgrade_cmd():
         try:
             copied = _install_plugin_into(wiki_path)
             if copied:
+                _install_dataview(wiki_path)
+                _update_community_plugins(wiki_path, _DATAVIEW_ID, _PLUGIN_ID)
                 _set_reading_view_default(wiki_path)
                 _patch_workspace_reading_view(wiki_path)
                 upgraded.append(name)
