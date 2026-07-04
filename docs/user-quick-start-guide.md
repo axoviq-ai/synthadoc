@@ -2205,7 +2205,7 @@ synthadoc lint -w history-of-computing
 Lint prints a summary line when the graph is built:
 
 ```
-[graph] 13 nodes, 18 edges, 4 clusters
+[graph] 110 nodes, 349 edges, 5 clusters
 ```
 
 > **Note:** The graph builds automatically on every lint run. You never need to run a separate command to rebuild it.
