@@ -344,6 +344,8 @@ class ActionAgent:
             for slug in state.orphans:
                 lines.append(f"- `{slug}`")
             parts.append("\n".join(lines))
+        else:
+            parts.append("**Orphan pages (0)** — all pages have at least one inbound link.")
 
         if state.adv_pages:
             total = sum(len(p["warnings"]) for p in state.adv_pages)
@@ -361,7 +363,8 @@ class ActionAgent:
                         lines.append(f"  - {concern}")
             parts.append("\n".join(lines))
 
-        if not parts:
+        _any_issues = bool(state.contradicted or state.orphans or state.adv_pages)
+        if not _any_issues:
             message = _MSG_LINT_ALL_CLEAR
         else:
             message = "\n\n".join(parts)

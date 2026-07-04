@@ -202,6 +202,27 @@ async def test_lint_report_action_with_issues(tmp_path):
     assert "page-c" in result.message
 
 
+@pytest.mark.asyncio
+async def test_lint_report_orphan_zero_shown_when_other_issues_exist(tmp_path):
+    """When there are no orphans but other issues exist, the report must explicitly
+    state 'Orphan pages (0)' so orphan-specific queries don't silently omit the answer."""
+    extraction = '{"action": "lint_report", "params": {}}'
+    agent, _ = _make_agent(tmp_path, extraction)
+    with patch("synthadoc.agents.lint_agent.read_current_lint_state") as mock_rcs:
+        mock_rcs.return_value = LintStateSummary(
+            contradicted=["page-a"],
+            orphans=[],
+            adv_pages=[{"slug": "page-b", "warnings": [{"claim": "x", "concern": "y"}]}],
+        )
+        result = await agent.run("What pages are orphan pages?")
+    assert result is not None
+    assert result.success is True
+    assert "page-a" in result.message
+    assert "Orphan pages (0)" in result.message
+    assert "all pages have at least one inbound link" in result.message
+    assert "page-b" in result.message
+
+
 # ── none action ───────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
