@@ -79,7 +79,7 @@ class SearchDecomposeAgent:
                 type(exc).__name__, exc,
             )
             return [query]
-        filtered = parse_json_string_array(resp.text, _MAX_SUB_QUERIES)
+        filtered = parse_json_string_array(resp.text, _MAX_SUB_QUERIES) or []
         filtered = [
             s for s in filtered
             if not _LOCAL_SITE_RE.match(s.strip()) and not _WIKIPEDIA_RE.search(s)
