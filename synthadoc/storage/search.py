@@ -158,13 +158,17 @@ class HybridSearch:
     def _corpus(self) -> tuple[list[str], list[list[str]]]:
         if self._cached_corpus is not None:
             return self._cached_corpus
-        slugs = self._store.list_pages()
+        from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
+        filtered_slugs = []
         tokenized = []
-        for slug in slugs:
+        for slug in self._store.list_pages():
+            if slug in LINT_SKIP_SLUGS:
+                continue
             page = self._store.read_page(slug)
             text = f"{page.title} {' '.join(page.tags)} {page.content}" if page else ""
             tokenized.append(self._tokenize(text))
-        self._cached_corpus = (slugs, tokenized)
+            filtered_slugs.append(slug)
+        self._cached_corpus = (filtered_slugs, tokenized)
         return self._cached_corpus
 
     def bm25_search(self, query_terms: list[str], top_n: int = 10,
