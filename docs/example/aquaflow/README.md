@@ -2,9 +2,9 @@
 
 **Domain:** Private equity M&A due diligence — LBO modeling, quality of earnings, covenant analysis, ESG, and legal DD
 
-This walkthrough builds a fully operational Synthadoc knowledge wiki from eight raw source documents covering a fictional private equity deal. By the end you will know how to install a wiki domain, configure an LLM provider, ingest source material, scaffold a navigation index, run automated lint and lifecycle promotion, query the wiki in natural language (including in Chinese), and maintain the wiki as your knowledge base evolves.
+The scenario: AquaFlow Capital is evaluating an LBO of AquaFlow Systems Inc., a mid-market water treatment equipment company. Eight deal documents are sitting in a folder — company profile, sector analysis, LBO mechanics, covenant framework, QoE guide, ESG standards, legal DD process, and exit benchmarks. By the end of this walkthrough, all eight are ingested into a working knowledge wiki, lint-validated, and queryable in natural language, including Chinese.
 
-Steps 1–10 follow a linear progression; each step explains what is happening and why. Install and configuration (Steps 1–3) require a terminal. From Step 6 onward, ingest, scaffold, and lint can be run from either the terminal or the Obsidian plugin command palette — both are shown where relevant. Queries in Step 10 are run through the Synthadoc web UI.
+Steps 1–3 (install, configure, register) require a terminal. From Step 6 onward, ingest, scaffold, and lint can all run from either the terminal or the Obsidian plugin command palette — both paths are shown where relevant. Queries run through the Synthadoc web UI in Step 10.
 
 ---
 
@@ -29,7 +29,7 @@ The ingest agent decides autonomously whether each source should create a new pa
 ## Prerequisites
 
 - Synthadoc installed (`pip install synthadoc` or editable dev install — see the [main README](../../../README.md#installation))
-- A supported LLM API key with sufficient quota — Anthropic, OpenAI, or MiniMax paid tiers are recommended. Free-tier models such as Gemini Free or Grok Free have daily rate limits that are too low to complete the batch ingest of eight documents in a single session and will cause jobs to fail mid-run.
+- A supported LLM API key with sufficient quota — Anthropic, OpenAI, or MiniMax paid tiers are recommended. Free-tier models such as Gemini Free or Groq Free have daily rate limits that are too low to complete the batch ingest of eight documents in a single session and will cause jobs to fail mid-run.
 - Python 3.11+
 
 ---
@@ -83,21 +83,22 @@ default = { provider = "gemini", model = "gemini-2.5-flash-lite" }
 1. Add a `#` at the start of the currently active `default = ...` line
 2. Remove the `#` from the provider you want to use
 3. Set the corresponding API key as an environment variable (see table below)
-4. Restart the server — see Step 5
+4. Start (or restart) the server — see Step 5
 
 Only one `default = ...` line may be uncommented at a time.
 
 **API key environment variables:**
 
-| Provider | Environment variable |
-|---|---|
-| Anthropic | `ANTHROPIC_API_KEY` |
-| MiniMax | `MINIMAX_API_KEY` |
-| Gemini | `GEMINI_API_KEY` |
-| DeepSeek | `DEEPSEEK_API_KEY` |
-| Groq | `GROQ_API_KEY` |
-| Qwen | `QWEN_API_KEY` |
-| Ollama | *(no key required — runs locally)* |
+
+| Provider               | Environment variable                          |
+| ---------------------- | --------------------------------------------- |
+| Anthropic              | `ANTHROPIC_API_KEY`                           |
+| MiniMax                | `MINIMAX_API_KEY`                             |
+| Gemini                 | `GEMINI_API_KEY`                              |
+| DeepSeek               | `DEEPSEEK_API_KEY`                            |
+| Groq                   | `GROQ_API_KEY`                                |
+| Qwen                   | `QWEN_API_KEY`                                |
+| Ollama                 | *(no key required — runs locally)*           |
 | claude-code / opencode | *(no key required — uses your subscription)* |
 
 Example — switching from the default Gemini to Anthropic Claude:
@@ -121,7 +122,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 synthadoc use aquaflow
 ```
 
-**What this does:** Records `aquaflow` as the active wiki so every subsequent command that accepts `-w <wiki>` works without the flag. You can always override with `-w` if you maintain multiple wikis.
+This records `aquaflow` as the active wiki so subsequent commands default to it. Override at any time with `-w <wiki>` if you maintain multiple wikis.
 
 Verify the wiki is registered and empty:
 
@@ -141,11 +142,13 @@ Pages:  0
 
 ## Step 4 — Copy the example raw sources
 
+Run this from the synthadoc repository root:
+
 ```bash
 cp docs/example/aquaflow/raw_sources/*.md ~/wikis/aquaflow/raw_sources/
 ```
 
-**What this does:** Drops the eight source documents into the `raw_sources/` directory. Synthadoc does not watch for files — ingestion is always an explicit command, so copying here does not trigger anything yet.
+Synthadoc does not watch for new files — ingestion is always an explicit command — so this copy does not trigger anything yet.
 
 > **Bringing your own documents:** Replace or supplement these files with your own PDFs, DOCX files, Markdown notes, or URLs. The ingest pipeline accepts any format the extraction layer supports.
 
@@ -188,7 +191,7 @@ synthadoc ingest raw_sources/
 
 **Obsidian plugin — batch ingest from the command palette:**
 
-1. Open the wiki vault in Obsidian (`~/wikis/aquaflow/wiki/`)
+1. Open the wiki vault in Obsidian — select the wiki root folder (`~/wikis/aquaflow/`)
 2. Press `Cmd/Ctrl+P` → search **Synthadoc: Ingest...** → Enter
 3. Select the **All raw_sources** tab → click **Run**
 
@@ -350,17 +353,21 @@ synthadoc audit citations --page leveraged-buyout-lbo
 synthadoc audit citations --broken
 ```
 
+![Page Provenance panel in Obsidian showing citation audit trail for the LBO page](png/page-level-citation.png)
+
 ---
 
 ## Sample queries and expected results
 
-Use these to verify your wiki is producing accurate, well-sourced answers. Type each query into the Chat tab of the web UI. The expected result describes what the answer should contain and which pages should be cited.
+Type each query into the Chat tab. The expected result tells you what to look for — specific facts, which pages get cited, and for the high-complexity queries, whether the answer correctly synthesises across multiple workstreams. If a query returns a noticeably weaker answer, the most common causes are a provider with insufficient context window, or a page that did not fully promote to `active` during lint.
 
 ### English — Medium complexity
 
 **Q1. What are AquaFlow Systems Inc.'s key financial metrics for FY2023?**
 
 Expected: Revenue $312.4M, LTM Adjusted EBITDA $74.8M, EBITDA margin 23.9%, ~1,240 employees, headquartered in Aurora, CO. Revenue mix: Equipment Sales 41%, Service Contracts 37%, Consumables/Parts 22%. Source cited: `aquaflow-systems-inc`.
+
+![Q1 answer in the web UI — financial metrics with inline citations](png/query-en1.png)
 
 ---
 
@@ -422,23 +429,25 @@ Expected: Strategic sale to industrial water majors (Xylem, Veolia comparable se
 
 ### Chinese — Cross-lingual retrieval
 
-The wiki is written in English. These queries are in Chinese. Correct answers confirm that the BM25 and embedding retrieval pipeline resolves Chinese queries against English-language content.
+All wiki pages are in English. These queries are in Chinese. Synthadoc's retrieval pipeline handles CJK input natively — character-level BM25 tokenisation matches Chinese query terms against English content, with cosine similarity reranking for precision. Answers come back in the language of the query; no translation step or separate index is needed.
 
 ---
 
-**Q11（中等）：AquaFlow Systems公司在美国水处理设备市场中的竞争定位如何？**
+**Q11：AquaFlow Systems公司在美国水处理设备市场中的竞争定位如何？**
 
 预期答案：涵盖AquaFlow的核心产品线（膜过滤、UV消毒、反渗透、PFAS修复系统），其在38个州的覆盖范围，以及与Evoqua（已被Xylem收购，交易额75亿美元）等大型竞争对手的市场差异化定位。引用来源：`aquaflow-systems-inc`，`us-water-treatment-equipment-market`。
 
+![Q11 Chinese query answer in the web UI — retrieved from English wiki, responded in Chinese](png/query-cn1.png)
+
 ---
 
-**Q12（中等）：杠杆收购模型的关键财务指标和运作机制是什么？**
+**Q12：杠杆收购模型的关键财务指标和运作机制是什么？**
 
 预期答案：说明EBITDA倍数（7–12倍）、债务/EBITDA杠杆比率、利息覆盖率、股权IRR等核心指标，以及典型LBO的资本结构（高级担保债务、夹层融资、股权）。引用来源：`leveraged-buyout-lbo`。
 
 ---
 
-**Q13（中等）：水务基础设施投资的ESG尽调重点关注哪些方面？**
+**Q13：水务基础设施投资的ESG尽调重点关注哪些方面？**
 
 预期答案：涵盖水资源管理、出水水质达标、排放许可合规、气候韧性、社区影响等ESG维度，以及ESG风险如何影响投资委员会批准决策和退出倍数。引用来源：`esg-due-diligence`。
 
@@ -469,7 +478,7 @@ Once the wiki is live, a small set of CLI commands covers all routine maintenanc
 | Promote drafts / check quality | `synthadoc lint run`                                        | Weekly, or after bulk ingest                      |
 | Review lint findings           | `synthadoc lint report`                                     | After every lint run                              |
 | Check wiki health              | `synthadoc status`                                          | Any time                                          |
-| Resolve a contradiction        | Edit the flagged page in Obsidian, then`synthadoc lint run` | When a new source conflicts with existing content |
+| Resolve a contradiction        | Edit the flagged page in Obsidian, then `synthadoc lint run` | When a new source conflicts with existing content |
 | Backup                         | `synthadoc backup`                                          | Before major changes                              |
 
 ### Re-ingest and source deduplication
@@ -486,4 +495,3 @@ Pages move through five states: `draft` → `active` → `stale` → `contradict
 
 - [User Quick-Start Guide](../../user-quick-start-guide.md) — full feature walkthrough including Obsidian plugin, scheduling, ROUTING.md, context packs, export formats, MCP, and backup/restore
 - [Design document](../../design.md) — architecture, data model, and system design
-- [Implementation reference](../plans/implementation-v1.md) — detailed implementation notes
