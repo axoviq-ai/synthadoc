@@ -850,6 +850,17 @@ async def test_ingest_title_uses_h1_from_generated_body(tmp_wiki, cache):
     )
 
 
+def test_decision_prompt_contains_entity_profile_rule():
+    """_DECISION_PROMPT must include the entity-profile rule so company profiles always create new pages."""
+    from synthadoc.agents.ingest_agent import _DECISION_PROMPT
+    assert "ENTITY PROFILE" in _DECISION_PROMPT, (
+        "_DECISION_PROMPT must contain RULE 2b (entity profile must create)"
+    )
+    assert "action='create'" in _DECISION_PROMPT or "action=\"create\"" in _DECISION_PROMPT
+    # Confirm the rule covers named companies
+    assert "company" in _DECISION_PROMPT.lower()
+
+
 @pytest.mark.asyncio
 async def test_analyse_returns_structured_result(tmp_wiki, cache):
     """_analyse() returns entities, tags, and a summary string."""

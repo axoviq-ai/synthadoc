@@ -84,6 +84,14 @@ _DECISION_PROMPT = (
     "and there is no factual dispute, use action='update'.\n"
     "-> action='update', target=slug of page to extend,\n"
     "   update_content=new ## section(s) to append (use [[slug]] links to related pages)\n\n"
+    "RULE 2b — ENTITY PROFILE MUST CREATE: If the source is primarily a profile, case study, or\n"
+    "comprehensive overview of ONE specific named entity — a company (with financials, team, products),\n"
+    "a person (biography, career), a product, or an organization — always use action='create' with the\n"
+    "entity's name as the slug, even if a thematically related page already exists.\n"
+    "Do NOT merge entity-specific data (revenue, EBITDA, headcount, management team, org structure)\n"
+    "into a broad thematic or market-level page.\n"
+    "Example: a company profile covering revenue, EBITDA, employees, management, and products\n"
+    "-> action='create', new_slug='company-name', NOT action='update' on a market analysis page.\n\n"
     "RULE 3 — CREATE: ONLY if the source covers a subject not in any existing page.\n"
     "-> action='create', new_slug=meaningful_topic_slug (e.g. 'history-of-computing', NOT 'watch' or URL path segments),\n"
     "   page_content=full synthesized Markdown body (# Title + paragraphs with [[slug]] links)\n\n"
@@ -104,7 +112,7 @@ _OVERVIEW_PROMPT = (
 
 CITATION_PASS4_CACHE_VERSION = "v1"
 ANALYSIS_CACHE_VERSION = "v2"  # bumped to include OKF type field
-DECISION_CACHE_VERSION = "v2"  # bumped to use full source_text instead of summary
+DECISION_CACHE_VERSION = "v3"  # bumped to add entity-profile must-create rule (RULE 2b)
 _CITATION_EXCERPT_LEN = 100
 _MAX_CITATION_LINES = 120
 _MAX_CITE_LEN_RATIO = 0.8
