@@ -90,6 +90,12 @@ def _run_scaffold(dest: Path, domain: str):
     }
     env_var = _KEY_ENV.get(provider_name)
     if env_var and not os.environ.get(env_var, "").strip():
+        typer.echo(
+            f"  [scaffold] Skipped — {env_var} is not set.\n"
+            f"  Edit .synthadoc/config.toml to choose a provider, then run:\n"
+            f"    synthadoc scaffold -w <wiki-name>",
+            err=False,
+        )
         return None  # no key — caller will fall back to static template
 
     try:
@@ -100,7 +106,9 @@ def _run_scaffold(dest: Path, domain: str):
     except Exception as exc:
         import logging
         logging.getLogger(__name__).warning("Scaffold LLM call failed: %s", exc)
-        typer.echo(f"  Warning: LLM scaffold failed ({exc})", err=True)
+        typer.echo(f"\n  [scaffold] FAILED — falling back to static template.", err=False)
+        typer.echo(f"  Reason: {exc}", err=False)
+        typer.echo(f"  Tip: run `synthadoc scaffold -w <wiki>` after the server is up to retry.\n", err=False)
         return None
 
 
