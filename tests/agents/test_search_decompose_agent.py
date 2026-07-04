@@ -135,6 +135,76 @@ async def test_decompose_prompt_requests_search_strings_not_questions():
     assert any(kw in prompt_text.lower() for kw in ["search string", "search query", "search queries", "keyword"])
 
 
+# ── site: local-file filter ──────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_decompose_filters_site_local_filename():
+    """Suggestions using site: with a local filename (e.g. site:purpose.md) must be removed."""
+    agent = _make_agent('["site:purpose.md artificial intelligence wiki topics", "large language models survey 2024"]')
+    result = await agent.decompose("What are the key topics in this wiki?")
+    assert result == ["large language models survey 2024"]
+
+
+@pytest.mark.asyncio
+async def test_decompose_filters_site_various_extensions():
+    """site: with .txt, .pdf, .json, .yaml, .toml, .py extensions must all be filtered."""
+    for ext in ("txt", "pdf", "json", "yaml", "toml", "py"):
+        agent = _make_agent(f'["site:config.{ext} topic query", "valid search query"]')
+        result = await agent.decompose("some topic")
+        assert f"site:config.{ext}" not in " ".join(result), f"site:config.{ext} should be filtered"
+        assert "valid search query" in result
+
+
+@pytest.mark.asyncio
+async def test_decompose_preserves_valid_site_searches():
+    """site: with a real web domain (e.g. site:arxiv.org) must NOT be filtered."""
+    agent = _make_agent('["site:arxiv.org transformer attention 2024", "attention mechanism survey"]')
+    result = await agent.decompose("transformer attention mechanisms")
+    assert result == ["site:arxiv.org transformer attention 2024", "attention mechanism survey"]
+
+
+@pytest.mark.asyncio
+async def test_decompose_all_local_site_falls_back():
+    """If all suggestions are site:local and none remain after filter, fall back to [query]."""
+    agent = _make_agent('["site:purpose.md topic", "site:config.toml settings"]')
+    result = await agent.decompose("What topics does this wiki cover?")
+    assert result == ["What topics does this wiki cover?"]
+
+
+# ── wikipedia URL filter ─────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_decompose_filters_wikipedia_url():
+    """Suggestions containing a Wikipedia URL must be removed."""
+    agent = _make_agent('["https://en.wikipedia.org/wiki/Knowledge_base", "knowledge base structure"]')
+    result = await agent.decompose("wiki knowledge base")
+    assert result == ["knowledge base structure"]
+
+
+@pytest.mark.asyncio
+async def test_decompose_filters_wikipedia_url_no_scheme():
+    """Wikipedia URL without https:// prefix must also be filtered."""
+    agent = _make_agent('["en.wikipedia.org/wiki/Machine_learning", "machine learning overview"]')
+    result = await agent.decompose("machine learning")
+    assert result == ["machine learning overview"]
+
+
+@pytest.mark.asyncio
+async def test_decompose_filters_other_language_wikipedia():
+    """Non-English Wikipedia domains (fr.wikipedia.org etc.) must also be filtered."""
+    agent = _make_agent('["fr.wikipedia.org/wiki/Apprentissage_automatique", "machine learning survey"]')
+    result = await agent.decompose("machine learning")
+    assert result == ["machine learning survey"]
+
+
+@pytest.mark.asyncio
+async def test_decompose_preserves_non_wikipedia_wiki_urls():
+    """URLs containing 'wiki' that are NOT Wikipedia must NOT be filtered."""
+    agent = _make_agent('["https://wiki.archlinux.org/title/Systemd", "systemd linux service"]')
+    result = await agent.decompose("systemd service management")
+    assert result == ["https://wiki.archlinux.org/title/Systemd", "systemd linux service"]
+
+
 # ── performance ───────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio

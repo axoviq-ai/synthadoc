@@ -196,6 +196,7 @@ _SYNTHADOC_CLI_SUBCOMMANDS: frozenset[str] = frozenset({
 
 _WIKI_INTROSPECTIVE_TRIGGERS: frozenset[str] = frozenset({
     "what topics",
+    "key topics",
     "what subject",
     "what does this wiki",
     "what's in this wiki",
@@ -210,10 +211,20 @@ _WIKI_INTROSPECTIVE_TRIGGERS: frozenset[str] = frozenset({
     "wiki know about",
     "topics covered",
     "subjects covered",
+    "topics in this wiki",
+    "topics in my wiki",
     "this wiki cover",
     "this wiki know",
     "this wiki includ",
     "this wiki contain",
+    # Wiki-purpose / scope meta-queries: "Summarize Wiki Purpose — General",
+    # "What is the purpose of this wiki?". These always resolve from purpose.md
+    # (pinned as _purpose_ctx) so gap detection would fire falsely on 0 candidates.
+    "wiki purpose",
+    "purpose of this wiki",
+    "purpose of my wiki",
+    "purpose of your wiki",
+    "summarize wiki",
 })
 
 # ── Hints used in _fetch_live_wiki_data for lifecycle state display ────────────

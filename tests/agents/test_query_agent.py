@@ -2093,6 +2093,111 @@ async def test_no_gap_for_wiki_introspective_queries(tmp_wiki):
     assert provider.complete.call_count == 2
 
 
+@pytest.mark.asyncio
+async def test_no_gap_for_key_topics_phrasing(tmp_wiki):
+    """'What are the key topics in this wiki?' must not trigger a gap.
+
+    Previously the trigger 'what topics' missed this because 'what' and 'topics'
+    are not adjacent — 'are the key' sits between them. The new 'key topics'
+    trigger must catch it.
+    """
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("transformer", WikiPage(
+        title="Transformer Architecture", tags=["ai"],
+        content="The transformer uses self-attention to process sequences in parallel.",
+        status="active", confidence="high", sources=[],
+    ))
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["What are the key topics in this wiki?"]',
+                           input_tokens=5, output_tokens=5),
+        CompletionResponse(text="This wiki covers transformers and attention mechanisms.",
+                           input_tokens=50, output_tokens=10),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search)
+    result = await agent.query("What are the key topics in this wiki?")
+
+    assert result.knowledge_gap is False
+    assert result.suggested_searches == []
+    assert provider.complete.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_no_gap_for_topics_in_this_wiki_phrasing(tmp_wiki):
+    """'What topics are covered in this wiki?' must not trigger a gap."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("llm", WikiPage(
+        title="Large Language Models", tags=["ai"],
+        content="Large language models are trained on vast text corpora using transformers.",
+        status="active", confidence="high", sources=[],
+    ))
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["topics in this wiki"]',
+                           input_tokens=5, output_tokens=5),
+        CompletionResponse(text="This wiki covers LLMs.",
+                           input_tokens=50, output_tokens=10),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search)
+    result = await agent.query("What topics are covered in this wiki?")
+
+    assert result.knowledge_gap is False
+    assert result.suggested_searches == []
+    assert provider.complete.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_no_gap_for_wiki_purpose_phrasing(tmp_wiki):
+    """'Summarize Wiki Purpose — General' must not trigger a gap (wiki-purpose introspective)."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("llm", WikiPage(
+        title="Large Language Models", tags=["ai"],
+        content="Large language models are trained on vast text corpora using transformers.",
+        status="active", confidence="high", sources=[],
+    ))
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["wiki purpose general"]',
+                           input_tokens=5, output_tokens=5),
+        CompletionResponse(text="This wiki serves as a knowledge base for AI research.",
+                           input_tokens=50, output_tokens=10),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search)
+    result = await agent.query("Summarize Wiki Purpose — General")
+
+    assert result.knowledge_gap is False
+    assert result.suggested_searches == []
+    assert provider.complete.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_no_gap_for_purpose_of_this_wiki(tmp_wiki):
+    """'What is the purpose of this wiki?' must not trigger a gap."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("llm", WikiPage(
+        title="Large Language Models", tags=["ai"],
+        content="Large language models are trained on vast text corpora using transformers.",
+        status="active", confidence="high", sources=[],
+    ))
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["ai wiki purpose"]',
+                           input_tokens=5, output_tokens=5),
+        CompletionResponse(text="This wiki covers AI and machine learning topics.",
+                           input_tokens=50, output_tokens=10),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search)
+    result = await agent.query("What is the purpose of this wiki?")
+
+    assert result.knowledge_gap is False
+    assert result.suggested_searches == []
+    assert provider.complete.call_count == 2
+
+
 # ── _parse_lookback_days ──────────────────────────────────────────────────────
 
 def test_parse_lookback_days_week():
