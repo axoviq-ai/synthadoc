@@ -2294,21 +2294,12 @@ After upgrading Synthadoc, sync your demo wikis to pick up new content:
 
 ---
 
-## Query language
-
-Synthadoc searches by matching tokens in your source documents. Queries must
-be in the same language as the ingested source documents. Querying in Chinese
-against an English-content wiki will return zero results — this is correct
-behavior, not a bug. Ingest Chinese-language sources to answer Chinese queries.
-
----
-
 ## What's next?
 
 You have now walked through every major Synthadoc feature on the demo wiki. When you're
 ready to build a wiki for your own domain:
 
-- **[README — Creating Your Own Wiki](../README.md#creating-your-own-wiki)** — two commands and you're running
+- **[README — Creating Your Own Wiki](../README.md#creating-your-own-wiki)** — step-by-step guide: install, configure, scaffold, ingest, and grow your wiki
 
 Key differences from the demo:
 
@@ -2617,16 +2608,16 @@ Full config reference including all keys, defaults, and multi-wiki setup: [docs/
 
 This appendix walks through creating a wiki for your own domain — no demo template.
 
-### 1. Install and scaffold
+### 1. Install
 
 ```bash
-synthadoc install my-research --target ~/wikis
-synthadoc scaffold -w my-research
+synthadoc install my-research --target ~/wikis --domain "My research domain"
 synthadoc use my-research
+synthadoc status
 ```
 
-`scaffold` prompts for a domain description and generates `wiki/index.md`,
-`wiki/purpose.md`, and `AGENTS.md` (the LLM's per-ingest context document).
+`--domain` is a free-text description of the subject area — the LLM uses it to generate
+domain-aware starter files: `wiki/index.md`, `wiki/purpose.md`, and `AGENTS.md`.
 
 ### 2. Start the server
 
@@ -2634,7 +2625,15 @@ synthadoc use my-research
 synthadoc serve -w my-research
 ```
 
-### 3. Ingest sources
+### 3. Scaffold
+
+Before ingesting any content, run scaffold once to build a clean, domain-aware index:
+
+```bash
+synthadoc scaffold
+```
+
+### 4. Ingest sources
 
 ```bash
 synthadoc ingest path/to/document.pdf
@@ -2643,20 +2642,20 @@ synthadoc ingest "search for: <your domain topic>"
 synthadoc jobs list
 ```
 
-### 4. Query
+### 5. Query
 
 ```bash
 synthadoc query "What are the key themes?"
 ```
 
-### 5. Lint
+### 6. Lint
 
 ```bash
 synthadoc lint report
 synthadoc lint run --auto-resolve
 ```
 
-### 6. Open in Obsidian
+### 7. Open in Obsidian
 
 Open `~/wikis/my-research` as an Obsidian vault.
 
