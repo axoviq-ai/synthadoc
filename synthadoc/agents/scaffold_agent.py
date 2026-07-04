@@ -208,6 +208,24 @@ class ScaffoldResult:
     dashboard_intro: str
 
 
+def _validate_routing_md(content: str) -> None:
+    """Raise ValueError if a scaffold-regenerated ROUTING.md has format issues.
+
+    Called in orchestrator._run_scaffold() after RoutingIndex.save() so the
+    job fails with a clear message rather than silently writing a broken file.
+    """
+    issues: list[str] = []
+    if not re.search(r"^## .+", content, re.MULTILINE):
+        issues.append("ROUTING.md: no branch headings (## ...) found")
+    if "[[" not in content:
+        issues.append("ROUTING.md: no [[slug]] entries found")
+    if issues:
+        raise ValueError(
+            "ScaffoldAgent: regenerated ROUTING.md has format issues:\n"
+            + "\n".join(f"  - {i}" for i in issues)
+        )
+
+
 def _validate_scaffold_result(result: "ScaffoldResult", domain: str) -> None:
     """Raise ValueError listing every format issue found in the scaffold output.
 

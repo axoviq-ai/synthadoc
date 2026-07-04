@@ -507,8 +507,10 @@ class Orchestrator:
             routing_regenerated = False
             if routing_path.exists():
                 from synthadoc.core.routing import RoutingIndex as _RoutingIndex
+                from synthadoc.agents.scaffold_agent import _validate_routing_md
                 _ri_new = _RoutingIndex.from_index_md(index_path)
                 _ri_new.save(routing_path)
+                _validate_routing_md(routing_path.read_text(encoding="utf-8"))
                 routing_regenerated = True
                 logger.info(
                     "scaffold: regenerated ROUTING.md (%d branches, %d slugs)",

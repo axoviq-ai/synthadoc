@@ -340,6 +340,35 @@ def _make_result(
     )
 
 
+# ── _validate_routing_md ─────────────────────────────────────────────────────
+
+def test_validate_routing_md_passes_on_valid_content():
+    from synthadoc.agents.scaffold_agent import _validate_routing_md
+    content = "## Due Diligence\n- [[lbo-model]]\n- [[covenant-analysis]]\n\n## Market\n- [[water-market]]\n"
+    _validate_routing_md(content)  # must not raise
+
+
+def test_validate_routing_md_fails_missing_headings():
+    from synthadoc.agents.scaffold_agent import _validate_routing_md
+    with pytest.raises(ValueError, match="branch headings"):
+        _validate_routing_md("- [[slug-one]]\n- [[slug-two]]\n")
+
+
+def test_validate_routing_md_fails_no_slugs():
+    from synthadoc.agents.scaffold_agent import _validate_routing_md
+    with pytest.raises(ValueError, match="\\[\\[slug\\]\\] entries"):
+        _validate_routing_md("## Due Diligence\n## Market\n")
+
+
+def test_validate_routing_md_reports_both_issues():
+    from synthadoc.agents.scaffold_agent import _validate_routing_md
+    with pytest.raises(ValueError) as exc_info:
+        _validate_routing_md("no structure at all")
+    msg = str(exc_info.value)
+    assert "branch headings" in msg
+    assert "[[slug]]" in msg
+
+
 def test_validate_scaffold_result_passes_on_valid_output():
     from synthadoc.agents.scaffold_agent import _validate_scaffold_result
     result = _make_result()
