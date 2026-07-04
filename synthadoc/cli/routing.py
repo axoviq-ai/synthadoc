@@ -1,4 +1,4 @@
-# Copyright (c) 2026 William Johnason / axoviq.com
+﻿# Copyright (c) 2026 William Johnason / axoviq.com
 from __future__ import annotations
 import re
 from pathlib import Path
@@ -7,7 +7,7 @@ from typing import Optional
 import typer
 
 from synthadoc.cli._wiki import resolve_wiki
-from synthadoc.cli.install import resolve_wiki_path
+from synthadoc.cli._wiki import resolve_wiki_path
 from synthadoc.core.routing import RoutingIndex
 
 routing_app = typer.Typer(name="routing", help="Manage ROUTING.md — scoped query routing.")

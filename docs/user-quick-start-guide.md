@@ -10,7 +10,7 @@ major engine feature. No setup beyond following the steps below is required.
 > install synthadoc (production or development), set your API key, install the demo wiki, and start the engine.
 > Then come back here.
 >
-> **Already installed the demo wiki?** Skip `synthadoc install` and run `synthadoc demo sync history-of-computing` instead. This copies any new source files added to the latest demo template into your existing wiki without overwriting anything you have already ingested or modified.
+> **Already installed the demo wiki?** Skip `synthadoc install` and run `synthadoc demo sync history-of-computing --force` instead. This updates all pre-built demo pages and source files to the latest template, including pages with citation markers added in recent releases. `--force` only overwrites demo template files — your own ingested pages and `.synthadoc/` config and audit data are never touched.
 
 ---
 
@@ -133,6 +133,8 @@ synthadoc plugin install history-of-computing
 
 > **Note:** The wiki must be registered first via `synthadoc install` before running
 > this command. The installer looks up the wiki's path from the registry.
+
+> **Reading View set automatically:** `plugin install` writes `"defaultViewMode": "preview"` to `.obsidian/app.json` in the vault, so Obsidian opens notes in Reading View by default. This is required for citation chips (`^[file:L-L]`) to render — they are invisible in Edit or Live Preview mode. You can change this later in Obsidian's Settings → Editor → Default view.
 
 That's it for the CLI steps. Now open Obsidian.
 
@@ -462,7 +464,9 @@ synthadoc query "What did Konrad Zuse contribute to computing history?"
 
 ## Step 7 — Run lint — promote pages to active
 
-Every page created by ingest in Step 6 starts as `draft`. A lint run validates each page — checking for contradictions, orphan pages, and dangling links — and automatically promotes clean pages to `active`.
+Every page created by ingest in Step 6 starts as `draft`. A lint run validates each page — checking for contradictions, orphan pages, dangling links, and citation presence — and automatically promotes clean pages to `active`.
+
+> **Citation presence warnings:** Lint Check 5b warns when a page has 50 or more words but no `^[filename:L-L]` citation markers. This is a diagnostic, not an error — the page is still promoted to `active`. It usually means the LLM did not follow the citation-format instruction precisely; re-ingesting the source with a more capable model (Gemini 2.5 Flash or higher) resolves it. See `synthadoc audit citations --broken` to review all citation failures.
 
 ### 1. Check status before running lint
 
@@ -1982,7 +1986,7 @@ Type a question in the text box and press **Enter** (or click **Ask**). The answ
 
 Below each answer:
 
-- **Citations** — links to the wiki pages that contributed to the answer
+- **Citations** — rendered as numbered footnotes (`[^1]`, `[^2]`, …) with source filename and line range. Each `^[filename:L-L]` marker in the answer is converted to a GFM footnote reference; the definitions appear at the bottom of the answer block. (In Obsidian, the same markers render as interactive citation chips in Reading View.)
 - **Knowledge gap callout** — appears when the wiki lacks coverage; suggests `search for:` ingest commands to fill the gap
 - **Hint chips** — suggested follow-up questions based on the current answer and your session history
 
@@ -2201,7 +2205,7 @@ synthadoc lint -w history-of-computing
 Lint prints a summary line when the graph is built:
 
 ```
-[graph] 13 nodes, 18 edges, 4 clusters
+[graph] 110 nodes, 349 edges, 5 clusters
 ```
 
 > **Note:** The graph builds automatically on every lint run. You never need to run a separate command to rebuild it.
@@ -2225,6 +2229,8 @@ Zoom and pan with your mouse or trackpad. Pages with more inbound links appear l
 
 In the history-of-computing demo you will see clusters forming around computing pioneers, hardware eras, and software history.
 
+![Knowledge graph for the history-of-computing wiki — nodes coloured by Louvain cluster](png/synthadoc-knowledge-graph.png)
+
 ### Click a node to query it
 
 Click any node to open its detail panel:
@@ -2232,25 +2238,14 @@ Click any node to open its detail panel:
 - **Title** and **slug**
 - **Type** (`concept`, `person`, `event`, …)
 - **Lifecycle state** (`active`, `draft`, `stale`, …)
+- **Questions to explore** — suggested follow-up questions for that page
 - **"Ask about this →"** button
 
 Click **Ask about this →** to jump to the Chat tab with a pre-filled query about that page. The answer is drawn from the wiki and citations appear inline.
 
-### Inspect from the CLI
-
-You can also query graph data from the CLI without the browser:
-
-```bash
-# Show all nodes and their clusters
-synthadoc graph nodes -w history-of-computing
-
-# Show all edges (wikilinks)
-synthadoc graph edges -w history-of-computing
-```
-
 ---
 
-**Large sources:** If you have PDFs or documents larger than ~8,000 words, raise the per-source character limit:
+**Large sources:** Synthadoc applies a default character limit of 32,000 characters per source before the LLM call. Sources that exceed this limit are truncated; the compiled page records `truncated: true` in its `sources:` frontmatter and `synthadoc lint` emits a warning with a suggested override command. To raise the limit for a single ingest:
 
 ```bash
 synthadoc ingest papers/large-textbook.pdf --max-source-chars 128000
@@ -2294,17 +2289,8 @@ To promote a page: `synthadoc lifecycle promote <slug>`
 
 After upgrading Synthadoc, sync your demo wikis to pick up new content:
 
-    synthadoc demo sync                    # add new pages only
-    synthadoc demo sync --force            # also update existing pages from the latest template
-
----
-
-## Query language
-
-Synthadoc searches by matching tokens in your source documents. Queries must
-be in the same language as the ingested source documents. Querying in Chinese
-against an English-content wiki will return zero results — this is correct
-behavior, not a bug. Ingest Chinese-language sources to answer Chinese queries.
+    synthadoc demo sync --force            # update all demo pages and source files (recommended)
+    synthadoc demo sync                    # additive only — skip if you need citation markers on pre-built pages
 
 ---
 
@@ -2313,7 +2299,7 @@ behavior, not a bug. Ingest Chinese-language sources to answer Chinese queries.
 You have now walked through every major Synthadoc feature on the demo wiki. When you're
 ready to build a wiki for your own domain:
 
-- **[README — Creating Your Own Wiki](../README.md#creating-your-own-wiki)** — two commands and you're running
+- **[README — Creating Your Own Wiki](../README.md#creating-your-own-wiki)** — step-by-step guide: install, configure, scaffold, ingest, and grow your wiki
 
 Key differences from the demo:
 
@@ -2622,16 +2608,16 @@ Full config reference including all keys, defaults, and multi-wiki setup: [docs/
 
 This appendix walks through creating a wiki for your own domain — no demo template.
 
-### 1. Install and scaffold
+### 1. Install
 
 ```bash
-synthadoc install my-research --target ~/wikis
-synthadoc scaffold -w my-research
+synthadoc install my-research --target ~/wikis --domain "My research domain"
 synthadoc use my-research
+synthadoc status
 ```
 
-`scaffold` prompts for a domain description and generates `wiki/index.md`,
-`wiki/purpose.md`, and `AGENTS.md` (the LLM's per-ingest context document).
+`--domain` is a free-text description of the subject area — the LLM uses it to generate
+domain-aware starter files: `wiki/index.md`, `wiki/purpose.md`, and `AGENTS.md`.
 
 ### 2. Start the server
 
@@ -2639,7 +2625,15 @@ synthadoc use my-research
 synthadoc serve -w my-research
 ```
 
-### 3. Ingest sources
+### 3. Scaffold
+
+Before ingesting any content, run scaffold once to build a clean, domain-aware index:
+
+```bash
+synthadoc scaffold
+```
+
+### 4. Ingest sources
 
 ```bash
 synthadoc ingest path/to/document.pdf
@@ -2648,20 +2642,20 @@ synthadoc ingest "search for: <your domain topic>"
 synthadoc jobs list
 ```
 
-### 4. Query
+### 5. Query
 
 ```bash
 synthadoc query "What are the key themes?"
 ```
 
-### 5. Lint
+### 6. Lint
 
 ```bash
 synthadoc lint report
 synthadoc lint run --auto-resolve
 ```
 
-### 6. Open in Obsidian
+### 7. Open in Obsidian
 
 Open `~/wikis/my-research` as an Obsidian vault.
 

@@ -251,37 +251,6 @@ def test_patch_toml_section_ends_before_next_section(tmp_path):
     assert "port = 7070" in content
 
 
-def test_install_run_scaffold_returns_none_when_no_api_key(tmp_path):
-    """install._run_scaffold returns None when the required API env var is unset."""
-    from synthadoc.cli.install import _run_scaffold
-    sd = tmp_path / ".synthadoc"
-    sd.mkdir()
-    (sd / "config.toml").write_text(
-        '[agents]\ndefault = { provider = "gemini", model = "gemini-2.5-flash" }\n',
-        encoding="utf-8",
-    )
-    with patch.dict("os.environ", {"GEMINI_API_KEY": ""}, clear=False):
-        result = _run_scaffold(tmp_path, "test domain")
-    assert result is None
-
-
-def test_install_run_scaffold_returns_none_on_exception(tmp_path):
-    """install._run_scaffold returns None when ScaffoldAgent raises."""
-    from synthadoc.cli.install import _run_scaffold
-    sd = tmp_path / ".synthadoc"
-    sd.mkdir()
-    (sd / "config.toml").write_text(
-        '[agents]\ndefault = { provider = "gemini", model = "gemini-2.5-flash" }\n',
-        encoding="utf-8",
-    )
-    with patch.dict("os.environ", {"GEMINI_API_KEY": "fake"}, clear=False), \
-         patch("synthadoc.providers.make_provider", return_value=MagicMock()), \
-         patch("synthadoc.agents.scaffold_agent.ScaffoldAgent") as MockAgent:
-        MockAgent.return_value.scaffold = AsyncMock(side_effect=RuntimeError("API error"))
-        result = _run_scaffold(tmp_path, "test domain")
-    assert result is None
-
-
 # ── cli/install.py — list_cmd and uninstall edge ──────────────────────────────
 
 def test_install_list_cmd_empty_registry():
@@ -336,7 +305,6 @@ def test_install_cmd_uses_explicit_port(tmp_path):
 
     with patch("synthadoc.cli.install._read_registry", return_value={}), \
          patch("synthadoc.cli.install._write_registry"), \
-         patch("synthadoc.cli.install._run_scaffold", return_value=None), \
          patch("synthadoc.cli._init.init_wiki"):
         result = runner.invoke(app, [
             "install", "test-wiki",
@@ -362,10 +330,18 @@ async def test_run_scaffold_completes_job(tmp_wiki):
         job_id = await orch._queue.enqueue("scaffold", {"domain": "Test Domain"})
 
         result = ScaffoldResult(
-            index_md="# Index\n",
-            agents_md="# Agents\n",
-            purpose_md="# Purpose\n",
-            dashboard_intro="intro",
+            index_md=(
+                "---\ntitle: Index\ncreated: '2026-01-01'\n---\n\n"
+                "# Test Domain — Index\n\n## Core\n*key ideas*\n\n- [[overview]]\n"
+            ),
+            agents_md=(
+                "# AGENTS.md — Test Domain Wiki\n\n## Purpose\nCaptures knowledge.\n\n"
+                "## Ingest Guidelines\n- Summarize.\n\n## Query Guidelines\n- Cite sources.\n"
+            ),
+            purpose_md=(
+                "# Wiki Purpose — Test Domain\n\n## Overview\n\nCovers Test Domain.\n"
+            ),
+            dashboard_intro="Tracks Test Domain knowledge.",
         )
 
         with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \

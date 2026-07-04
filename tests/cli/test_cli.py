@@ -28,11 +28,10 @@ def test_no_args_shows_help():
 def test_install_creates_fresh_wiki(tmp_path, monkeypatch):
     """install creates wiki structure and registers the path."""
     import synthadoc.cli.install as install_mod
+    import synthadoc.cli.plugin as plugin_mod
     monkeypatch.setattr(install_mod, "_REGISTRY", tmp_path / "wikis.json")
     monkeypatch.setattr(install_mod, "_assign_wiki_port", lambda reserved, start=7070: 7070)
-    # Prevent a real LLM call: _run_scaffold checks for API keys in the environment
-    # and will call the provider if one is set (e.g. GEMINI_API_KEY on a dev machine).
-    monkeypatch.setattr(install_mod, "_run_scaffold", lambda dest, domain: None)
+    monkeypatch.setattr(plugin_mod, "_install_dataview", lambda wiki_path: "skipped")
 
     result = runner.invoke(app, ["install", "my-wiki", "--target", str(tmp_path)])
     assert result.exit_code == 0, result.output
@@ -52,6 +51,7 @@ def test_install_creates_fresh_wiki(tmp_path, monkeypatch):
 def test_install_demo_copies_template(tmp_path, monkeypatch):
     """install --demo copies the demo template and flags it in the registry."""
     import synthadoc.cli.install as install_mod
+    import synthadoc.cli.plugin as plugin_mod
     source = tmp_path / "tpl"
     source.mkdir()
     (source / "wiki").mkdir()
@@ -59,6 +59,7 @@ def test_install_demo_copies_template(tmp_path, monkeypatch):
     monkeypatch.setattr(install_mod, "_DEMOS", {"my-demo": source})
     monkeypatch.setattr(install_mod, "_REGISTRY", tmp_path / "wikis.json")
     monkeypatch.setattr(install_mod, "_assign_wiki_port", lambda reserved, start=7070: 7070)
+    monkeypatch.setattr(plugin_mod, "_install_dataview", lambda wiki_path: "skipped")
 
     result = runner.invoke(app, ["install", "my-demo", "--target", str(tmp_path), "--demo"])
     assert result.exit_code == 0, result.output
@@ -108,17 +109,19 @@ def test_install_unknown_demo_exits_nonzero(tmp_path, monkeypatch):
 def test_install_output_instructs_parent_dir(tmp_path, monkeypatch):
     """install output must confirm installation and show the serve command."""
     import synthadoc.cli.install as install_mod
+    import synthadoc.cli.plugin as plugin_mod
+    monkeypatch.setattr(plugin_mod, "_install_dataview", lambda wiki_path: "skipped")
     monkeypatch.setattr(install_mod, "_REGISTRY", tmp_path / "wikis.json")
     monkeypatch.setattr(install_mod, "_assign_wiki_port", lambda reserved, start=7070: 7070)
-    monkeypatch.setattr(install_mod, "_run_scaffold", lambda dest, domain: None)
 
     result = runner.invoke(app, ["install", "my-research", "--target", str(tmp_path)])
     # No absolute paths in output
     assert str(tmp_path) not in result.output
     # Must confirm installation by name
     assert "my-research" in result.output
-    # Must show serve command
-    assert "synthadoc serve -w my-research" in result.output
+    # use + serve commands appear in Next Steps
+    assert "synthadoc use my-research" in result.output
+    assert "synthadoc serve" in result.output
 
 
 # ---------------------------------------------------------------------------

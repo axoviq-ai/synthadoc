@@ -12,6 +12,7 @@ from pathlib import Path
 from synthadoc.agents._utils import parse_json_string_array
 from synthadoc.agents.action_agent import ActionAgent
 from synthadoc.agents.hint_engine import HintEngine, SessionMode
+from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
 from synthadoc.agents.rewrite_agent import RewriteAgent
 from synthadoc.agents.search_decompose_agent import SearchDecomposeAgent
 from synthadoc.providers.base import LLMProvider, Message
@@ -513,7 +514,8 @@ class QueryAgent:
             f"Answer using ONLY these wiki pages. Cite with [[PageTitle]].\n"
             f"Extract and include all specific facts from the pages — dates, years, numbers, and names — "
             f"even when they appear briefly or in passing. Do not claim a fact is absent unless it is "
-            f"genuinely missing from every page below.\n\n"
+            f"genuinely missing from every page below.\n"
+            f"Do not cite the Wiki Scope section — it is background context only, not a citable source.\n\n"
             f"{gap_instruction}"
             f"Question: {question}\n\nPages:\n{context}"
         )
@@ -538,7 +540,7 @@ class QueryAgent:
         used = 0
         for r in candidates:
             page = self._store.read_page(r.slug)
-            if not page or r.slug == "purpose":
+            if not page or r.slug in LINT_SKIP_SLUGS:
                 continue
             chunk = f"### {page.title}\n{page.content}"
             if used + len(chunk) > budget:

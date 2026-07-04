@@ -14,7 +14,7 @@
       '-+###############+-'
 
        S Y N T H A D O C
-    Community Edition  v0.9.3
+    Community Edition  v1.0.0
   ────────────────────────────────
   Domain-agnostic LLM wiki engine
 ```
@@ -28,9 +28,9 @@
 [![CLI](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.cli_commands&label=CLI%20commands&color=darkblue)](https://github.com/axoviq-ai/synthadoc)
 [![Obsidian](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.obsidian_commands&label=Obsidian%20commands&color=blueviolet)](https://github.com/axoviq-ai/synthadoc/tree/main/obsidian-plugin)
 [![MCP](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.mcp_tools&label=MCP%20tools&color=orange)](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#appendix-i--connect-claude-via-mcp)
-[![Version](https://img.shields.io/badge/Community%20Edition-v0.9.3-brightgreen.svg)](https://github.com/axoviq-ai/synthadoc)
+[![Version](https://img.shields.io/badge/Community%20Edition-v1.0.0-brightgreen.svg)](https://github.com/axoviq-ai/synthadoc)
 
-**Document version: v0.9.3**
+**Document version: v1.0.0**
 
 **Engineered for solo users and enterprises alike, providing a domain-specific knowledge base that scales seamlessly while maintaining accuracy through autonomous self-optimization.**
 
@@ -156,16 +156,17 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | Capability | Synthadoc | Typical RAG | NotebookLM | Notion AI |
 | --- | --- | --- | --- | --- |
 | **Query decomposition + gap detection** — compound questions split into parallel BM25 sub-queries; thin results trigger a knowledge-gap callout with suggested web searches | **Yes** | Partial | No | No |
+| **BM25 TF fallback + compound identifier search** — reliable results on small corpora (IDF collapse → TF fallback); underscore identifiers expanded at index and query time so `capex growth` matches `capex_growth` | **Yes** | No | No | No |
 | **Web search → wiki pages** — Tavily search fans out into parallel URL ingest jobs; gap callout in web UI suggests searches inline | **Yes** | No | No | No |
 | **Semantic re-ranking** — optional vector re-ranking (`BAAI/bge-small-en-v1.5`) improves recall on conceptually related queries; BM25 stays as fallback | **Yes** (optional) | Varies | No | No |
 | **Streaming output + query cache** — token-by-token streaming; cache key = question + wiki version; auto-invalidates on ingest or lifecycle change | **Yes** | Partial | Partial | Partial |
-| **Proportional context budget** — sources allocated proportionally to model context window (60 % wiki / 20 % history / 15 % system); not capped at a hard top-N | **Yes** | No | No | No |
+| **Proportional context budget** — sources allocated proportionally to model context window (60 % wiki / 20 % history / 15 % system / 5 % index); replaces fixed top-N cap | **Yes** | No | No | No |
 
 ### Interfaces & Integration
 
 | Capability | Synthadoc | Typical RAG | NotebookLM | Notion AI |
 | --- | --- | --- | --- | --- |
-| **Obsidian integration** — native plugin: ingest modal, streaming query, lint report, lifecycle controls, context pack builder, provenance viewer, export modal | **Yes** | No | No | No |
+| **Obsidian integration** — native plugin: ingest modal, streaming query, lint report, lifecycle controls, context pack builder, provenance viewer, export modal; Reading View set as default on install so citation chips are visible immediately | **Yes** | No | No | No |
 | **Web chat UI** — `synthadoc web`: streaming answers, session sidebar, multi-turn history, knowledge-gap callouts, knowledge graph tab | **Yes** | No | Yes | Yes |
 | **MCP server** — 12 tools; Claude Desktop (stdio), Claude Code (SSE), n8n/LangGraph (HTTP/SSE); brain+memory architecture; no double-LLM cost for reads | **Yes** | No | No | No |
 | **Context packs** — goal → sub-questions → token-budget evidence pack; REST + MCP callable; paste into any LLM chat as grounded context | **Yes** | No | No | No |
@@ -190,7 +191,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **Cost guard + full audit trail** — per-job token + cost log; soft-warn and hard-gate thresholds; `audit citations` validates every claim citation; immutable event log | **Yes** | No | No | No |
 | **Resumable job queue + retry** — every ingest/lint job persisted with status and error; batch a hundred documents and resume after a crash | **Yes** | No | No | No |
 | **Custom skills + CI hooks** — subclass `BaseSkill` for new file formats; 2 hook events on ingest and lint complete; blocking hooks can gate operations | **Yes** | Limited | No | No |
-| **Per-source truncation flag** — `--max-source-chars` caps oversized PDFs before the LLM call; truncated sources flagged in lint output | **Yes** | No | No | No |
+| **Per-source truncation flag** — `--max-source-chars` caps any source (PDF, DOCX, web page, plain text) before the LLM call; truncated sources flagged with `truncated: true` in frontmatter and warned in lint output | **Yes** | No | No | No |
 | **Multi-wiki isolation** — each wiki on its own port with independent config, audit trail, and job queue; switch with `synthadoc use` | **Yes** | No | Partial | No |
 
 ### Business value
@@ -230,7 +231,7 @@ pip install synthadoc
 synthadoc --version   # confirm it works
 ```
 
-The Obsidian plugin is bundled inside the package — `synthadoc plugin install` works immediately after this.
+The Obsidian plugin is bundled inside the package. New wikis created with `synthadoc install` have it installed automatically. If you are upgrading an existing Synthadoc installation, run `synthadoc plugin upgrade` to push the updated plugin binary to all registered wikis.
 
 ---
 
@@ -366,8 +367,8 @@ The PID is printed on start and saved to `<wiki-root>/.synthadoc/server.pid`.
 **Upgrading:** after updating synthadoc (via `pip install --upgrade synthadoc` or `git pull`), restart the server to pick up the new code, then run these to keep registered wikis in sync:
 
 ```bash
-synthadoc plugin upgrade   # push updated Obsidian plugin binary to all registered wikis
-synthadoc demo sync        # demo-installed wikis — pick up new pages and backfill metadata
+synthadoc plugin upgrade         # push updated Obsidian plugin binary to all registered wikis
+synthadoc demo sync --force      # demo-installed wikis — update pages and pick up citation markers
 ```
 
 Neither command requires the server to be running.
@@ -411,11 +412,17 @@ The guide covers:
 
 ## Creating Your Own Wiki
 
-Unlike the demo (which ships with pre-built pages), your own wiki starts from a domain description and grows as you feed it sources. Three commands are all you need to get started:
+Unlike the demo (which ships with pre-built pages), your own wiki starts from a domain description and grows as you feed it sources:
 
 ```bash
 synthadoc install market-condition-canada --target ~/wikis --domain "Market conditions and trends in Canada"
 synthadoc use market-condition-canada   # set as the default wiki — no -w needed from here on
+synthadoc status                        # confirm the wiki registered correctly (should show 0 pages)
+```
+
+Before starting the server, open `~/wikis/market-condition-canada/.synthadoc/config.toml` and set your LLM provider — see [Appendix C in the Quick-Start Guide](docs/user-quick-start-guide.md#appendix-c--switching-llm-providers) for the full provider list and API key setup. Then start:
+
+```bash
 synthadoc serve
 ```
 
@@ -429,13 +436,13 @@ synthadoc serve
 
 `wiki/dashboard.md` is also created during install (a static template — not LLM-generated). `ROUTING.md` is optional and generated separately via `synthadoc routing init` after pages accumulate.
 
-Then copy the Synthadoc plugin files into the wiki with one command:
+Before ingesting any content, run scaffold once to build a clean starting index and purpose files based on your domain:
 
 ```bash
-synthadoc plugin install market-condition-canada
+synthadoc scaffold
 ```
 
-This installs both the Synthadoc plugin and the Dataview plugin directly into the vault's plugins folder, pre-enables them, and sets the correct server URL. Open the wiki folder in Obsidian — both plugins are active immediately, no manual toggling required.
+`synthadoc install` also copies both the Synthadoc plugin and the Dataview plugin directly into the vault's plugins folder, pre-enables them, and sets the correct server URL — no separate plugin step is required. Open the wiki folder in Obsidian — both plugins are active immediately, no manual toggling needed.
 
 The Quick-Start Guide covers the full Obsidian setup in detail — see [docs/user-quick-start-guide.md](docs/user-quick-start-guide.md).
 
@@ -471,7 +478,13 @@ synthadoc candidates discard punch-card-era           # discard pages that don't
 
 Skip this step if you trust all your sources — `staging policy off` is the default.
 
-**3. Lint and query** — check for contradictions, flag overstated claims, verify citations, and confirm the wiki answers your questions:
+**3. Re-run scaffold** — after pages accumulate, scaffold regenerates a richer index that reflects actual content. Pages already linked in `index.md` are never overwritten:
+
+```bash
+synthadoc scaffold
+```
+
+**4. Lint and query** — check for contradictions, flag overstated claims, verify citations, and confirm the wiki answers your questions:
 
 ```bash
 synthadoc lint run                          # full lint: structural checks + adversarial pass (default)
@@ -481,13 +494,7 @@ synthadoc audit citations --broken          # list claim citations that failed v
 synthadoc query "What are the current employment trends in the Toronto GTA?"
 ```
 
-**4. Re-run scaffold** — after pages accumulate, scaffold regenerates a richer index that reflects actual content. Pages already linked in `index.md` are never overwritten:
-
-```bash
-synthadoc scaffold
-```
-
-**5. Set up routing** — once the wiki has ~100+ pages across distinct topic areas, routing narrows each query to the relevant branch, cutting latency and reducing noise in synthesis:
+**5. Set up routing** — once the wiki spans distinct topic areas, routing narrows each query to the relevant branch, cutting latency and reducing noise in synthesis:
 
 ```bash
 synthadoc routing init   # generate ROUTING.md from current index.md (one-time)

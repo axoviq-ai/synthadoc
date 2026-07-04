@@ -13,7 +13,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from synthadoc.agents.citations import CITATION_RE as _CITATION_RE
+from synthadoc.agents.citations import CITATION_RE as _CITATION_RE, MALFORMED_CITE_RE as _MALFORMED_CITE_RE
 from synthadoc.agents.search_decompose_agent import SearchDecomposeAgent
 from synthadoc.agents.skill_agent import SkillAgent
 from synthadoc.core.cache import CACHE_VERSION, CacheManager, make_cache_key
@@ -84,6 +84,14 @@ _DECISION_PROMPT = (
     "and there is no factual dispute, use action='update'.\n"
     "-> action='update', target=slug of page to extend,\n"
     "   update_content=new ## section(s) to append (use [[slug]] links to related pages)\n\n"
+    "RULE 2b — ENTITY PROFILE MUST CREATE: If the source is primarily a profile, case study, or\n"
+    "comprehensive overview of ONE specific named entity — a company (with financials, team, products),\n"
+    "a person (biography, career), a product, or an organization — always use action='create' with the\n"
+    "entity's name as the slug, even if a thematically related page already exists.\n"
+    "Do NOT merge entity-specific data (revenue, EBITDA, headcount, management team, org structure)\n"
+    "into a broad thematic or market-level page.\n"
+    "Example: a company profile covering revenue, EBITDA, employees, management, and products\n"
+    "-> action='create', new_slug='company-name', NOT action='update' on a market analysis page.\n\n"
     "RULE 3 — CREATE: ONLY if the source covers a subject not in any existing page.\n"
     "-> action='create', new_slug=meaningful_topic_slug (e.g. 'history-of-computing', NOT 'watch' or URL path segments),\n"
     "   page_content=full synthesized Markdown body (# Title + paragraphs with [[slug]] links)\n\n"
@@ -104,7 +112,7 @@ _OVERVIEW_PROMPT = (
 
 CITATION_PASS4_CACHE_VERSION = "v1"
 ANALYSIS_CACHE_VERSION = "v2"  # bumped to include OKF type field
-DECISION_CACHE_VERSION = "v2"  # bumped to use full source_text instead of summary
+DECISION_CACHE_VERSION = "v3"  # bumped to add entity-profile must-create rule (RULE 2b)
 _CITATION_EXCERPT_LEN = 100
 _MAX_CITATION_LINES = 120
 _MAX_CITE_LEN_RATIO = 0.8
@@ -117,6 +125,34 @@ _FORMULA_LINE_RE = re.compile(
     r"^[A-Za-z_]\w*(?:\s+\w+)?\s*=\s*[^\n]{5,80}$", re.MULTILINE
 )
 _KEY_DATA_MIN_ITEMS = 1  # only append section when at least this many items found
+
+# Matches any ^[filename:spec] where spec is not already a canonical N-N range.
+_NONCANONICAL_CITE_RE = re.compile(r'\^\[([^:\]]+):([^\]]+)\]')
+
+
+def _normalize_citation_markers(text: str) -> str:
+    """Normalize LLM-emitted citation variants to canonical ^[file:N-N] format.
+
+    LLMs frequently produce ^[file:42] for single-line references and
+    ^[file:12,16-21] for multi-range references; neither matches CITATION_RE.
+    Single-line → ^[file:42-42].  Multi-range/comma → ^[file:first-last].
+    Already-canonical ^[file:N-N] markers pass through unchanged.
+    """
+    def _fix(m: re.Match) -> str:
+        filename, spec = m.group(1), m.group(2)
+        if re.fullmatch(r'\d+-\d+', spec):
+            return m.group(0)
+        if re.fullmatch(r'\d+', spec):
+            return f"^[{filename}:{spec}-{spec}]"
+        nums = [int(n) for n in re.findall(r'\d+', spec)]
+        if len(nums) >= 2:
+            return f"^[{filename}:{nums[0]}-{nums[-1]}]"
+        if len(nums) == 1:
+            return f"^[{filename}:{nums[0]}-{nums[0]}]"
+        return m.group(0)
+
+    return _NONCANONICAL_CITE_RE.sub(_fix, text)
+
 
 _CITATION_PROMPT = (
     "You are a citation annotator. Given a wiki page section and the source text it was "
@@ -251,6 +287,22 @@ def _strip_leading_frontmatter(content: str) -> str:
     if len(parts) >= 3:
         return parts[2].lstrip("\n")
     return content
+
+
+def _append_source_ref(page: "WikiPage", ref: "SourceRef") -> None:
+    """Append ref to page.sources only when (file, hash) is not already recorded.
+    Also compacts any duplicates that accumulated from prior --force runs.
+    """
+    seen: set[tuple[str, str]] = set()
+    clean: list["SourceRef"] = []
+    for s in page.sources:
+        key = (s.file, s.hash)
+        if key not in seen:
+            seen.add(key)
+            clean.append(s)
+    page.sources = clean
+    if (ref.file, ref.hash) not in seen:
+        page.sources.append(ref)
 
 
 def _extract_key_data(source_text: str) -> list[str]:
@@ -419,6 +471,10 @@ class IngestAgent:
                 )
                 return section, []
 
+        # Normalize single-line and multi-range citations to canonical N-N format
+        # before extraction so they are not silently dropped or flagged as malformed.
+        annotated = _normalize_citation_markers(annotated)
+
         # Bug B fix: case-insensitive filename comparison
         citations = [
             {
@@ -503,9 +559,10 @@ class IngestAgent:
             temperature=0.3,
             max_tokens=512,
         )
+        _today = date.today().isoformat()
         content = (
-            f"---\ntitle: Wiki Overview\nstatus: auto\n"
-            f"updated: {date.today().isoformat()}\n---\n\n"
+            f"---\ntitle: Wiki Overview\nstatus: active\nconfidence: high\n"
+            f"created: '{_today}'\nupdated: {_today}\n---\n\n"
             f"# Wiki Overview\n\n{resp.text.strip()}\n"
         )
         (wiki_dir / "overview.md").write_text(content, encoding="utf-8", newline="\n")
@@ -869,7 +926,7 @@ class IngestAgent:
                             section, extracted.text, p.name, bust_cache=bust_cache
                         )
                         page.content = page.content.rstrip() + f"\n\n{section}"
-                        page.sources.append(SourceRef(
+                        _append_source_ref(page, SourceRef(
                             file=source,
                             hash=src_hash or "",
                             size=src_size or 0,
@@ -929,7 +986,7 @@ class IngestAgent:
                                 section, extracted.text, p.name, bust_cache=bust_cache
                             )
                             page.content = page.content.rstrip() + f"\n\n{section}"
-                            page.sources.append(SourceRef(
+                            _append_source_ref(page, SourceRef(
                                 file=source,
                                 hash=src_hash or "",
                                 size=src_size or 0,
@@ -959,9 +1016,12 @@ class IngestAgent:
                     body, citations = await self._annotate_citations(
                         body, extracted.text, p.name, bust_cache=bust_cache
                     )
+                    # Prefer H1 from generated body over source-derived title
+                    _h1 = re.search(r"^# (.+)", body, re.MULTILINE)
+                    page_title = _h1.group(1).strip() if _h1 else title
                     today = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
                     new_page = WikiPage(
-                        title=title, tags=tags,
+                        title=page_title, tags=tags,
                         content=body,
                         status="draft", confidence="medium",
                         sources=[SourceRef(
