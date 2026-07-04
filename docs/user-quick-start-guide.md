@@ -2243,18 +2243,6 @@ Click any node to open its detail panel:
 
 Click **Ask about this →** to jump to the Chat tab with a pre-filled query about that page. The answer is drawn from the wiki and citations appear inline.
 
-### Inspect from the CLI
-
-You can also query graph data from the CLI without the browser:
-
-```bash
-# Show all nodes and their clusters
-synthadoc graph nodes -w history-of-computing
-
-# Show all edges (wikilinks)
-synthadoc graph edges -w history-of-computing
-```
-
 ---
 
 **Large sources:** Synthadoc applies a default character limit of 32,000 characters per source before the LLM call. Sources that exceed this limit are truncated; the compiled page records `truncated: true` in its `sources:` frontmatter and `synthadoc lint` emits a warning with a suggested override command. To raise the limit for a single ingest:
