@@ -412,11 +412,17 @@ The guide covers:
 
 ## Creating Your Own Wiki
 
-Unlike the demo (which ships with pre-built pages), your own wiki starts from a domain description and grows as you feed it sources. Three commands are all you need to get started:
+Unlike the demo (which ships with pre-built pages), your own wiki starts from a domain description and grows as you feed it sources:
 
 ```bash
 synthadoc install market-condition-canada --target ~/wikis --domain "Market conditions and trends in Canada"
 synthadoc use market-condition-canada   # set as the default wiki — no -w needed from here on
+synthadoc status                        # confirm the wiki registered correctly (should show 0 pages)
+```
+
+Before starting the server, open `~/wikis/market-condition-canada/.synthadoc/config.toml` and set your LLM provider — see [Appendix C in the Quick-Start Guide](docs/user-quick-start-guide.md#appendix-c--switching-llm-providers) for the full provider list and API key setup. Then start:
+
+```bash
 synthadoc serve
 ```
 
@@ -466,7 +472,13 @@ synthadoc candidates discard punch-card-era           # discard pages that don't
 
 Skip this step if you trust all your sources — `staging policy off` is the default.
 
-**3. Lint and query** — check for contradictions, flag overstated claims, verify citations, and confirm the wiki answers your questions:
+**3. Scaffold** — after pages accumulate, scaffold regenerates a richer index that reflects actual content. Pages already linked in `index.md` are never overwritten:
+
+```bash
+synthadoc scaffold
+```
+
+**4. Lint and query** — check for contradictions, flag overstated claims, verify citations, and confirm the wiki answers your questions:
 
 ```bash
 synthadoc lint run                          # full lint: structural checks + adversarial pass (default)
@@ -476,13 +488,7 @@ synthadoc audit citations --broken          # list claim citations that failed v
 synthadoc query "What are the current employment trends in the Toronto GTA?"
 ```
 
-**4. Re-run scaffold** — after pages accumulate, scaffold regenerates a richer index that reflects actual content. Pages already linked in `index.md` are never overwritten:
-
-```bash
-synthadoc scaffold
-```
-
-**5. Set up routing** — once the wiki has ~100+ pages across distinct topic areas, routing narrows each query to the relevant branch, cutting latency and reducing noise in synthesis:
+**5. Set up routing** — once the wiki spans distinct topic areas, routing narrows each query to the relevant branch, cutting latency and reducing noise in synthesis:
 
 ```bash
 synthadoc routing init   # generate ROUTING.md from current index.md (one-time)
