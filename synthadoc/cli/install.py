@@ -193,8 +193,8 @@ def install_cmd(
         typer.echo(f"  1. Edit .synthadoc/config.toml — set your LLM provider and API key")
         typer.echo(f"  2. Set as default wiki:   synthadoc use {name}")
         typer.echo(f"  3. Start the server:      synthadoc serve")
-        typer.echo(f"  4. Generate index:        synthadoc scaffold")
-        typer.echo(f"  5. Ingest your sources:   synthadoc ingest <file>")
+        typer.echo(f"  4. Ingest your sources:   synthadoc ingest <file>")
+        typer.echo(f"  5. Generate index:        synthadoc scaffold")
 
 
 @app.command("list")
