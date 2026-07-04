@@ -312,3 +312,121 @@ async def test_scaffold_raises_after_two_failed_attempts():
     agent = ScaffoldAgent(provider=provider)
     with pytest.raises(ValueError, match="scaffold"):
         await agent.scaffold(domain="ML")
+
+
+# ── _validate_scaffold_result ─────────────────────────────────────────────────
+
+def _make_result(
+    index_md: str | None = None,
+    agents_md: str | None = None,
+    purpose_md: str | None = None,
+    dashboard_intro: str = "x",
+    domain: str = "Machine Learning",
+) -> "ScaffoldResult":
+    from synthadoc.agents.scaffold_agent import ScaffoldResult
+    return ScaffoldResult(
+        index_md=index_md if index_md is not None else (
+            f"---\ntitle: Index\ncreated: '2026-01-01'\n---\n\n# {domain} — Index\n\n"
+            f"## Core Concepts\n*key ideas*\n\n- [[neural-networks]]\n"
+        ),
+        agents_md=agents_md if agents_md is not None else (
+            f"# AGENTS.md — {domain} Wiki\n\n## Purpose\nCaptures knowledge.\n\n"
+            f"## Ingest Guidelines\n- Summarize.\n\n## Query Guidelines\n- Cite sources.\n"
+        ),
+        purpose_md=purpose_md if purpose_md is not None else (
+            f"# Wiki Purpose — {domain}\n\n## Overview\n\nSome overview.\n"
+        ),
+        dashboard_intro=dashboard_intro,
+    )
+
+
+def test_validate_scaffold_result_passes_on_valid_output():
+    from synthadoc.agents.scaffold_agent import _validate_scaffold_result
+    result = _make_result()
+    _validate_scaffold_result(result, "Machine Learning")  # must not raise
+
+
+def test_validate_scaffold_result_fails_missing_frontmatter():
+    from synthadoc.agents.scaffold_agent import _validate_scaffold_result
+    result = _make_result(index_md="# Machine Learning — Index\n\n- [[page]]\n")
+    with pytest.raises(ValueError, match="YAML frontmatter"):
+        _validate_scaffold_result(result, "Machine Learning")
+
+
+def test_validate_scaffold_result_fails_missing_domain_in_index():
+    from synthadoc.agents.scaffold_agent import _validate_scaffold_result
+    result = _make_result(index_md="---\ntitle: Index\n---\n\n# Something Else — Index\n\n- [[page]]\n")
+    with pytest.raises(ValueError, match="H1 title"):
+        _validate_scaffold_result(result, "Machine Learning")
+
+
+def test_validate_scaffold_result_fails_no_wikilinks():
+    from synthadoc.agents.scaffold_agent import _validate_scaffold_result
+    result = _make_result(
+        index_md="---\ntitle: Index\n---\n\n# Machine Learning — Index\n\n## Core\n"
+    )
+    with pytest.raises(ValueError, match="no \\[\\[wikilinks\\]\\]"):
+        _validate_scaffold_result(result, "Machine Learning")
+
+
+def test_validate_scaffold_result_fails_missing_ingest_guidelines():
+    from synthadoc.agents.scaffold_agent import _validate_scaffold_result
+    result = _make_result(agents_md="# AGENTS.md\n\n## Query Guidelines\n- Cite.\n")
+    with pytest.raises(ValueError, match="Ingest Guidelines"):
+        _validate_scaffold_result(result, "Machine Learning")
+
+
+def test_validate_scaffold_result_fails_missing_query_guidelines():
+    from synthadoc.agents.scaffold_agent import _validate_scaffold_result
+    result = _make_result(agents_md="# AGENTS.md\n\n## Ingest Guidelines\n- Summarize.\n")
+    with pytest.raises(ValueError, match="Query Guidelines"):
+        _validate_scaffold_result(result, "Machine Learning")
+
+
+def test_validate_scaffold_result_fails_missing_overview():
+    from synthadoc.agents.scaffold_agent import _validate_scaffold_result
+    result = _make_result(purpose_md="# Wiki Purpose — Machine Learning\n\n## Something Else\n")
+    with pytest.raises(ValueError, match="Overview"):
+        _validate_scaffold_result(result, "Machine Learning")
+
+
+def test_validate_scaffold_result_fails_domain_not_in_purpose():
+    from synthadoc.agents.scaffold_agent import _validate_scaffold_result
+    result = _make_result(purpose_md="# Wiki Purpose\n\n## Overview\n\nSome generic text.\n")
+    with pytest.raises(ValueError, match="domain name"):
+        _validate_scaffold_result(result, "Machine Learning")
+
+
+def test_validate_scaffold_result_reports_all_issues_at_once():
+    """All issues are collected and reported together, not one at a time."""
+    from synthadoc.agents.scaffold_agent import _validate_scaffold_result, ScaffoldResult
+    bad = ScaffoldResult(
+        index_md="no frontmatter here",
+        agents_md="no sections",
+        purpose_md="no sections",
+        dashboard_intro="x",
+    )
+    with pytest.raises(ValueError) as exc_info:
+        _validate_scaffold_result(bad, "ML")
+    msg = str(exc_info.value)
+    assert "index.md" in msg
+    assert "AGENTS.md" in msg
+    assert "purpose.md" in msg
+
+
+@pytest.mark.asyncio
+async def test_scaffold_raises_on_validation_failure():
+    """scaffold() raises ValueError if built output fails format validation."""
+    # Return a response where LLM gives categories with no slugs at all
+    sparse = {
+        "categories": [],   # no slugs → index will have no [[wikilinks]]
+        "agents_guidelines": "Summarize.",
+        "purpose_overview": "A wiki.",
+        "purpose_include": "Topics.",
+        "purpose_exclude": "Unrelated.",
+        "dashboard_intro": "Tracks ML.",
+    }
+    provider = _make_provider(sparse)
+    agent = ScaffoldAgent(provider=provider)
+    with pytest.raises(ValueError, match="no \\[\\[wikilinks\\]\\]"):
+        await agent.scaffold(domain="Machine Learning")

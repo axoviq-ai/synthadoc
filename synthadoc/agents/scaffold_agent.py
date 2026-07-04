@@ -208,6 +208,41 @@ class ScaffoldResult:
     dashboard_intro: str
 
 
+def _validate_scaffold_result(result: "ScaffoldResult", domain: str) -> None:
+    """Raise ValueError listing every format issue found in the scaffold output.
+
+    Called before returning from scaffold() so callers (install and server job)
+    both see a clean failure with an actionable issue list.
+    """
+    issues: list[str] = []
+
+    # index.md checks
+    if not result.index_md.startswith("---"):
+        issues.append("index.md: missing YAML frontmatter")
+    if f"# {domain}" not in result.index_md:
+        issues.append("index.md: H1 title does not include the domain name")
+    if "[[" not in result.index_md:
+        issues.append("index.md: no [[wikilinks]] — LLM returned no category slugs")
+
+    # AGENTS.md checks
+    if "## Ingest Guidelines" not in result.agents_md:
+        issues.append("AGENTS.md: missing '## Ingest Guidelines' section")
+    if "## Query Guidelines" not in result.agents_md:
+        issues.append("AGENTS.md: missing '## Query Guidelines' section")
+
+    # purpose.md checks
+    if "## Overview" not in result.purpose_md:
+        issues.append("purpose.md: missing '## Overview' section")
+    if domain not in result.purpose_md:
+        issues.append("purpose.md: domain name not present in body")
+
+    if issues:
+        raise ValueError(
+            "ScaffoldAgent: generated files have format issues:\n"
+            + "\n".join(f"  - {i}" for i in issues)
+        )
+
+
 class ScaffoldAgent:
     def __init__(self, provider: LLMProvider, max_tokens: int = 8192) -> None:
         self._provider = provider
@@ -274,12 +309,14 @@ class ScaffoldAgent:
         if data is None:
             raise last_exc or ValueError("ScaffoldAgent: unparseable scaffold JSON")
 
-        return ScaffoldResult(
+        scaffold = ScaffoldResult(
             index_md=self._build_index_md(domain, data),
             agents_md=self._build_agents_md(domain, data),
             purpose_md=self._build_purpose_md(domain, data),
             dashboard_intro=data.get("dashboard_intro", f"A wiki tracking {domain} knowledge."),
         )
+        _validate_scaffold_result(scaffold, domain)
+        return scaffold
 
     def _build_index_md(self, domain: str, data: dict) -> str:
         today = date.today().isoformat()
