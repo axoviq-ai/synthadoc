@@ -191,7 +191,7 @@ The filename without extension, derived from the page title. ASCII-safe and CJK-
 5. Orchestrator instantiates IngestAgent, checks CostGuard
 6. SkillAgent detects `.pdf`, lazy-loads `PdfSkill`, extracts text
 7. IngestAgent Step 1 — Analysis: `_analyse()` extracts entities, tags, and a 3-sentence summary (cached under key `analyse-v1`)
-8. IngestAgent Step 2 — Decision: LLM reads the summary (not raw text) + BM25-retrieved candidate pages + `purpose.md` scope, decides per-page action (`create` / `update` / `skip` / `flag_contradiction`)
+8. IngestAgent Step 2 — Decision: LLM reads the full source text (bounded by `max_source_chars`) + BM25-retrieved candidate pages + `purpose.md` scope, decides per-page action (`create` / `update` / `flag` / `skip`). Pages with `status='active'` are protected — sources that conflict with them trigger `flag` rather than `update` (RULE 1b).
 9. IngestAgent Step 3 — Write: applies actions; updates frontmatter; writes `[[wikilinks]]`; fires hooks
 10. IngestAgent Step 4 — Overview: if any pages were created or updated, regenerates `wiki/overview.md`
 11. Job transitions to `completed`; `log.md` updated; `audit.db` record written
@@ -209,10 +209,11 @@ Five-pass pipeline:
 | Pass | Model | Purpose |
 |------|-------|---------|
 | 0 — Vision (optional) | Default | Extract text from image sources (`is_image=True`); requires a vision-capable provider |
+| 0b — Key Data Extraction | None (regex) | Deterministic pre-processor: extracts numbers, percentages, currency amounts, ratios, formulas, underscore identifiers, and date ranges from source text via regex; appends them as a `[Key Data — extracted by pre-processor]` section before any LLM sees the text. Zero token cost; cannot hallucinate. Anchors the synthesis LLM to all quantitative candidates. |
 | 1 — Analysis (`_analyse()`) | Default | Extract entities, tags, and a 3-sentence summary from raw text. Result cached under key `analyse-v1` keyed by SHA-256 of the text. |
 | 2 — Candidate search | None (BM25) | Find existing wiki pages related to extracted entities |
-| 3 — Decision | Default | LLM reads summary (not full text) + BM25 candidates + `purpose.md` scope. Outputs per-page action: `create`, `update`, `flag`, `skip` |
-| 4 — Citation annotation (`_annotate_citations()`) | Default | For each page section being written, the LLM reads the section alongside the numbered source text and inserts `^[filename:L-L]` inline citation markers at the end of substantive paragraphs. Results cached by section SHA-256. Falls back gracefully (returns original section) on any LLM or parse failure — ingest always completes. Citations are recorded in `audit.db` `claim_citations` table. |
+| 3 — Decision | Default | LLM reads the full source text (bounded by `max_source_chars`) + BM25 candidates + `purpose.md` scope + status of each candidate page. Outputs per-page action: `create`, `update`, `flag`, `skip`. **RULE 1b:** a page with `status='active'` is human-reviewed and authoritative — when the source provides a conflicting value, date, formula, or conclusion, the action must be `flag`, not `update`. The only exception is a source that adds a topic the page does not yet mention at all. Decision cache version: `v2`. |
+| 4 — Citation annotation (`_annotate_citations()`) | Default | For each page section being written, the LLM reads the section alongside the numbered source text and inserts `^[filename:L-L]` inline citation markers at the end of substantive paragraphs. Results cached by section SHA-256. Falls back gracefully (returns original section) on any LLM or parse failure — ingest always completes. Citations are recorded in `audit.db` `claim_citations` table. If no citation markers are present in the returned body, a `citation_pass4_no_markers` WARNING audit event is written — the page is still saved but the condition is flagged for re-ingest with a more capable model. Zero-citation results are not cached so a subsequent re-ingest can succeed. |
 | 5 — Write | None | Apply actions; update frontmatter; write `[[wikilinks]]`; fire hooks. For local sources, writes a `.txt` sidecar to `.synthadoc/extracted/` (all file types) and a pagemap JSON sidecar when PDF page boundaries are available. |
 | 6 — Overview | Default | Regenerate `wiki/overview.md` if any pages were created or updated |
 
@@ -272,7 +273,7 @@ Question
 
 After the BM25 merge step, a knowledge gap is detected when ANY of three independent signals fire (gap is skipped when `gap_score_threshold = 0`):
 
-1. `len(candidates) < 3` — wiki has almost nothing on the topic
+1. `len(candidates) < 3` — wiki has almost nothing on the topic. **Suppressed when TF fallback was used** (a small corpus with broad coverage may legitimately return fewer than 3 candidates — that is expected, not a gap).
 2. `max_score < gap_score_threshold` (default: `2.0`, configurable via `[query] gap_score_threshold` in `config.toml`) — low keyword overlap
 3. Fewer than 2 candidates contain any key noun from the question with sufficient frequency — corpus-relative BM25 scores can be inflated by shared vocabulary; this content-overlap check catches off-topic matches
 
@@ -376,6 +377,7 @@ Runs against the entire wiki or a scoped subset:
 | Lifecycle — stale detection _(v0.6.0)_ | SHA-256 hash of source on disk ≠ recorded ingest hash → transition page to `stale` |
 | Lifecycle — draft promotion _(v0.6.0)_ | `draft` page with no active issues → transition to `active` |
 | Lifecycle — manual-edit sync _(v0.6.0)_ | Frontmatter `status` differs from `page_states` DB record → reconcile DB to match |
+| Citation presence (Check 5b) | Page body has ≥ 50 words and zero `^[filename:L-L]` citation markers → WARNING. Diagnostic only — does not block promotion to `active`. Indicates the annotation pass failed to produce markers, usually a model-compatibility issue (use Gemini 2.5 Flash or higher for reliable citation annotation). |
 
 **Auto-resolution:** For contradictions, LintAgent asks the LLM to propose a resolution with a confidence score. If score ≥ `auto_resolve_confidence_threshold` (default 0.85), applies automatically. Below threshold, queues for human review.
 
@@ -640,6 +642,10 @@ def _tokenize(text: str) -> list[str]:
 
 Note: BM25 IDF requires a minimum of 3 documents in the corpus for non-zero scores when a term appears in exactly one document (formula: `log((N-df+0.5)/(df+0.5))`; N=2, df=1 → log(1) = 0).
 
+**Compound identifier expansion:** When a token contains underscores, the tokenizer emits both the compound form and each component as separate tokens (`capex_growth` → `["capex_growth", "capex", "growth"]`). This expansion is applied at both index time and query time so that human-friendly queries match programmatic identifiers and vice versa. Leading/trailing underscores are stripped before splitting; no empty strings are emitted.
+
+**TF fallback for small corpora:** When all BM25 scores in a result set are zero or negative (IDF collapse on a corpus of ≤ 2 documents, or a term present in every page), the search system falls back to normalised term frequency (TF) scoring: `TF(doc, query) = Σcount(term, doc) / len(doc_tokens)`. Results are returned in the same format as BM25 results with a `tf_fallback: True` flag on each `SearchResult`. This field is recorded in the audit trail and consumed by gap detection (see below).
+
 ---
 
 ## 7. HTTP API
@@ -766,6 +772,8 @@ Each vault configures its server URL in plugin settings (default `http://127.0.0
 **Installation:** Build with `npm run build` in `obsidian-plugin/`, then copy `main.js` and
 `manifest.json` to `<vault>/.obsidian/plugins/synthadoc/`. Enable in Settings → Community Plugins.
 Reload the plugin (toggle off/on) after copying — a full Obsidian restart is not required.
+
+**Reading View default:** `synthadoc plugin install` and `synthadoc plugin upgrade` write `"defaultViewMode": "preview"` to `.obsidian/app.json` after copying the plugin files. This causes Obsidian to open new notes in Reading View by default, which is required for `^[filename:L-L]` citation chips to render. Only `defaultViewMode` is written; all other keys in `app.json` are preserved. If `app.json` is malformed JSON the write is skipped and a warning is logged — the install still succeeds.
 
 ### Command palette
 

@@ -134,6 +134,8 @@ synthadoc plugin install history-of-computing
 > **Note:** The wiki must be registered first via `synthadoc install` before running
 > this command. The installer looks up the wiki's path from the registry.
 
+> **Reading View set automatically:** `plugin install` writes `"defaultViewMode": "preview"` to `.obsidian/app.json` in the vault, so Obsidian opens notes in Reading View by default. This is required for citation chips (`^[file:L-L]`) to render — they are invisible in Edit or Live Preview mode. You can change this later in Obsidian's Settings → Editor → Default view.
+
 That's it for the CLI steps. Now open Obsidian.
 
 ---
@@ -462,7 +464,9 @@ synthadoc query "What did Konrad Zuse contribute to computing history?"
 
 ## Step 7 — Run lint — promote pages to active
 
-Every page created by ingest in Step 6 starts as `draft`. A lint run validates each page — checking for contradictions, orphan pages, and dangling links — and automatically promotes clean pages to `active`.
+Every page created by ingest in Step 6 starts as `draft`. A lint run validates each page — checking for contradictions, orphan pages, dangling links, and citation presence — and automatically promotes clean pages to `active`.
+
+> **Citation presence warnings:** Lint Check 5b warns when a page has 50 or more words but no `^[filename:L-L]` citation markers. This is a diagnostic, not an error — the page is still promoted to `active`. It usually means the LLM did not follow the citation-format instruction precisely; re-ingesting the source with a more capable model (Gemini 2.5 Flash or higher) resolves it. See `synthadoc audit citations --broken` to review all citation failures.
 
 ### 1. Check status before running lint
 
@@ -1982,7 +1986,7 @@ Type a question in the text box and press **Enter** (or click **Ask**). The answ
 
 Below each answer:
 
-- **Citations** — links to the wiki pages that contributed to the answer
+- **Citations** — rendered as numbered footnotes (`[^1]`, `[^2]`, …) with source filename and line range. Each `^[filename:L-L]` marker in the answer is converted to a GFM footnote reference; the definitions appear at the bottom of the answer block. (In Obsidian, the same markers render as interactive citation chips in Reading View.)
 - **Knowledge gap callout** — appears when the wiki lacks coverage; suggests `search for:` ingest commands to fill the gap
 - **Hint chips** — suggested follow-up questions based on the current answer and your session history
 
