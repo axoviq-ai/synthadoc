@@ -214,8 +214,25 @@ def test_coerce_scaffold_dict_returns_none_for_string():
 
 # ── _parse_scaffold_json tiers ────────────────────────────────────────────────
 
+def test_extract_first_json_object_ignores_trailing_braces():
+    """Brace-balanced extractor stops at the closing } of the first object,
+    ignoring trailing prose that contains its own {braces}."""
+    from synthadoc.agents.scaffold_agent import _extract_first_json_object
+    payload = '{"key": "value"}'
+    raw = f'{payload}\nSee {{field}} for details.'
+    extracted = _extract_first_json_object(raw)
+    assert extracted == payload
+
+
+def test_extract_first_json_object_handles_braces_in_strings():
+    """String values that contain { or } must not confuse the depth counter."""
+    from synthadoc.agents.scaffold_agent import _extract_first_json_object
+    payload = '{"note": "see {example} here", "ok": true}'
+    assert _extract_first_json_object(payload) == payload
+
+
 def test_parse_scaffold_json_tier2_extracts_embedded_object():
-    """Tier 2: valid JSON object buried in surrounding text."""
+    """Tier 2 (brace-balanced): valid JSON object buried in surrounding text."""
     from synthadoc.agents.scaffold_agent import _parse_scaffold_json
     payload = '{"categories": [{"heading": "A", "slugs": []}]}'
     raw = f"Here is the scaffold:\n{payload}\nDone."
@@ -224,8 +241,18 @@ def test_parse_scaffold_json_tier2_extracts_embedded_object():
     assert result["categories"][0]["heading"] == "A"
 
 
+def test_parse_scaffold_json_tier2_trailing_prose_with_braces():
+    """Tier 2 must succeed even when trailing prose has its own {brace} patterns."""
+    from synthadoc.agents.scaffold_agent import _parse_scaffold_json
+    payload = '{"categories": [{"heading": "A", "slugs": []}], "dashboard_intro": "x"}'
+    raw = f"{payload}\nNote: use {{field}} syntax for placeholders."
+    result = _parse_scaffold_json(raw)
+    assert result is not None
+    assert result["categories"][0]["heading"] == "A"
+
+
 def test_parse_scaffold_json_tier2_and_4_invalid_embedded_returns_none():
-    """Tier 2 and 4 both find a {…} block but it is not valid JSON → return None."""
+    """All tiers find a {…} block but it is not valid JSON → return None."""
     from synthadoc.agents.scaffold_agent import _parse_scaffold_json
     raw = "Some preamble {not valid json here} trailing text"
     assert _parse_scaffold_json(raw) is None

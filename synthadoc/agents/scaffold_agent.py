@@ -39,6 +39,39 @@ def _coerce_scaffold_dict(value: object) -> dict | None:
     return None
 
 
+def _extract_first_json_object(text: str) -> str | None:
+    """Extract the first brace-balanced JSON object from text.
+
+    Unlike a greedy regex, this handles trailing prose that contains braces
+    (e.g. MiniMax adding "…see {field} for details" after the JSON object).
+    """
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    in_str = False
+    escape = False
+    for i, ch in enumerate(text[start:], start):
+        if escape:
+            escape = False
+            continue
+        if ch == "\\" and in_str:
+            escape = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
 def _parse_scaffold_json(raw: str) -> dict | None:
     """Try progressively looser strategies to extract the scaffold JSON object."""
     # 1. Direct parse
@@ -46,24 +79,24 @@ def _parse_scaffold_json(raw: str) -> dict | None:
         return _coerce_scaffold_dict(json.loads(raw))
     except json.JSONDecodeError:
         pass
-    # 2. Find the outermost {...} block
-    m = re.search(r"\{.*\}", raw, re.DOTALL)
-    if m:
+    # 2. Brace-balanced extraction — handles trailing prose with {braces}
+    extracted = _extract_first_json_object(raw)
+    if extracted:
         try:
-            return _coerce_scaffold_dict(json.loads(m.group(0)))
+            return _coerce_scaffold_dict(json.loads(extracted))
         except json.JSONDecodeError:
             pass
     # 3. Fix the most common MiniMax JSON defect: missing comma between adjacent
-    #    array objects ("} {" → "}, {") then retry
+    #    array objects ("} {" → "}, {") then retry on raw and on extracted
     fixed = re.sub(r"}\s*\n(\s*){", r"},\n\1{", raw)
     try:
         return _coerce_scaffold_dict(json.loads(fixed))
     except json.JSONDecodeError:
         pass
-    m = re.search(r"\{.*\}", fixed, re.DOTALL)
-    if m:
+    if extracted:
+        fixed_extracted = re.sub(r"}\s*\n(\s*){", r"},\n\1{", extracted)
         try:
-            return _coerce_scaffold_dict(json.loads(m.group(0)))
+            return _coerce_scaffold_dict(json.loads(fixed_extracted))
         except json.JSONDecodeError:
             pass
     return None
