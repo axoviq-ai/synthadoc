@@ -801,6 +801,56 @@ async def test_overview_md_not_written_on_skip(tmp_wiki, cache):
 
 
 @pytest.mark.asyncio
+async def test_ingest_title_uses_h1_from_generated_body(tmp_wiki, cache):
+    """WikiPage.title must be derived from the H1 in the LLM-generated body,
+    not from the source filename or its frontmatter title field."""
+    import itertools
+
+    provider = AsyncMock()
+    entity_resp = CompletionResponse(
+        text='{"entities":["water"],"tags":["infrastructure"],"summary":"Water market overview.","relevant":true}',
+        input_tokens=50, output_tokens=20)
+    # LLM generates body with a proper H1 different from the filename-derived title
+    decision_resp = CompletionResponse(
+        text=(
+            '{"reasoning":"New topic","action":"create","target":"",'
+            '"new_slug":"water-infrastructure-market",'
+            '"update_content":"",'
+            '"page_content":"# Water Infrastructure Market\\n\\nThis page covers the market."}'
+        ),
+        input_tokens=50, output_tokens=40)
+    # overview response
+    overview_resp = CompletionResponse(
+        text="This wiki covers water infrastructure.",
+        input_tokens=20, output_tokens=10)
+    provider.complete = AsyncMock(side_effect=itertools.cycle(
+        [entity_resp, decision_resp, overview_resp]))
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+
+    # Filename would derive title "02 Water Infrastructure Market" without the fix
+    source = tmp_wiki / "raw_sources" / "02_water_infrastructure_market.md"
+    source.write_text("# 02 Water Infrastructure Market\nMarket content.", encoding="utf-8")
+
+    agent = IngestAgent(provider=provider, store=store, search=search,
+                        log_writer=log, audit_db=audit, cache=cache,
+                        max_pages=15, wiki_root=tmp_wiki)
+    result = await agent.ingest(str(source))
+    assert result.pages_created
+
+    slug = result.pages_created[0]
+    page = store.read_page(slug)
+    assert page is not None
+    assert page.title == "Water Infrastructure Market", (
+        f"Expected H1-derived title 'Water Infrastructure Market', got '{page.title}'"
+    )
+
+
+@pytest.mark.asyncio
 async def test_analyse_returns_structured_result(tmp_wiki, cache):
     """_analyse() returns entities, tags, and a summary string."""
     from synthadoc.providers.base import CompletionResponse

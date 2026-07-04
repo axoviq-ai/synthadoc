@@ -285,6 +285,17 @@ async def test_scaffold_purpose_md_with_list_fields():
     assert "Unrelated biology topics" in result.purpose_md
 
 
+@pytest.mark.asyncio
+async def test_scaffold_purpose_md_has_frontmatter():
+    """purpose.md must include YAML frontmatter with status: active and a created date."""
+    provider = _make_provider(_VALID_RESPONSE)
+    agent = ScaffoldAgent(provider=provider)
+    result = await agent.scaffold(domain="Machine Learning")
+    assert result.purpose_md.startswith("---"), "purpose.md must start with YAML frontmatter"
+    assert "status: active" in result.purpose_md
+    assert "created:" in result.purpose_md
+
+
 # ── Self-correction retry ─────────────────────────────────────────────────────
 
 @pytest.mark.asyncio

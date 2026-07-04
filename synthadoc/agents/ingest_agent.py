@@ -991,9 +991,12 @@ class IngestAgent:
                     body, citations = await self._annotate_citations(
                         body, extracted.text, p.name, bust_cache=bust_cache
                     )
+                    # Prefer H1 from generated body over source-derived title
+                    _h1 = re.search(r"^# (.+)", body, re.MULTILINE)
+                    page_title = _h1.group(1).strip() if _h1 else title
                     today = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
                     new_page = WikiPage(
-                        title=title, tags=tags,
+                        title=page_title, tags=tags,
                         content=body,
                         status="draft", confidence="medium",
                         sources=[SourceRef(

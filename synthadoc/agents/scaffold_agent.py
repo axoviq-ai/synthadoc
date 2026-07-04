@@ -161,6 +161,19 @@ This wiki captures knowledge about: {domain}.
 """
 
 _PURPOSE_MD_TEMPLATE = """\
+---
+title: Wiki Purpose — {domain}
+status: active
+confidence: high
+created: '{created}'
+aliases: []
+categories:
+- Overview & Orientation
+tags: []
+orphan: false
+sources: []
+---
+
 # Wiki Purpose — {domain}
 
 ## Overview
@@ -382,6 +395,7 @@ class ScaffoldAgent:
 
         return _PURPOSE_MD_TEMPLATE.format(
             domain=domain,
+            created=date.today().isoformat(),
             overview=data.get("purpose_overview", f"This wiki captures knowledge about {domain}."),
             include=_bullets(
                 data.get("purpose_include", ""),
