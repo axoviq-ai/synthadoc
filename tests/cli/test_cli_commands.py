@@ -210,20 +210,57 @@ def test_jobs_status_shows_error_field():
 def test_install_writes_static_index_and_shows_scaffold_tip(tmp_path):
     """install writes static index.md and shows the scaffold next-step tip."""
     import synthadoc.cli.install as install_mod
+    import synthadoc.cli.plugin as plugin_mod
 
-    with patch("synthadoc.cli.install._assign_wiki_port", return_value=7070):
-        with patch.object(install_mod, "_REGISTRY", tmp_path / "wikis.json"):
-            result = runner.invoke(app, [
-                "install", "test-wiki2",
-                "--target", str(tmp_path),
-                "--domain", "Physics",
-            ])
+    with patch("synthadoc.cli.install._assign_wiki_port", return_value=7070), \
+         patch.object(install_mod, "_REGISTRY", tmp_path / "wikis.json"), \
+         patch.object(plugin_mod, "_install_dataview", return_value="skipped"):
+        result = runner.invoke(app, [
+            "install", "test-wiki2",
+            "--target", str(tmp_path),
+            "--domain", "Physics",
+        ])
 
     assert result.exit_code == 0, result.output
-    # Static index.md must be written by init_wiki
     assert (tmp_path / "test-wiki2" / "wiki" / "index.md").exists()
-    # Next steps must mention scaffold
     assert "scaffold" in result.output.lower()
+
+
+def test_install_reports_plugin_ready(tmp_path):
+    """install prints 'Obsidian plugin ready' when Dataview installs successfully."""
+    import synthadoc.cli.install as install_mod
+    import synthadoc.cli.plugin as plugin_mod
+
+    with patch("synthadoc.cli.install._assign_wiki_port", return_value=7070), \
+         patch.object(install_mod, "_REGISTRY", tmp_path / "wikis.json"), \
+         patch.object(plugin_mod, "_install_dataview", return_value="installed"):
+        result = runner.invoke(app, [
+            "install", "test-wiki3",
+            "--target", str(tmp_path),
+            "--domain", "Chemistry",
+        ])
+
+    assert result.exit_code == 0, result.output
+    assert "obsidian plugin ready" in result.output.lower()
+
+
+def test_install_shows_dataview_warning_on_network_failure(tmp_path):
+    """install exits 0 with a warning (not an error) when Dataview download fails."""
+    import synthadoc.cli.install as install_mod
+    import synthadoc.cli.plugin as plugin_mod
+
+    with patch("synthadoc.cli.install._assign_wiki_port", return_value=7070), \
+         patch.object(install_mod, "_REGISTRY", tmp_path / "wikis.json"), \
+         patch.object(plugin_mod, "_install_dataview", return_value="failed"):
+        result = runner.invoke(app, [
+            "install", "test-wiki4",
+            "--target", str(tmp_path),
+            "--domain", "Biology",
+        ])
+
+    assert result.exit_code == 0, result.output          # warning, not fatal
+    assert "dataview" in result.output.lower()
+    assert "synthadoc plugin install" in result.output.lower()
 
 
 def test_status_shows_none_message_when_lifecycle_counts_empty():

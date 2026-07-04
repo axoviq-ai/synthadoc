@@ -156,16 +156,45 @@ def install_cmd(
     }
     _write_registry(registry)
 
+    # ── Obsidian plugin ────────────────────────────────────────────────────
+    from synthadoc.cli.plugin import (
+        _install_plugin_into,
+        _install_dataview,
+        _update_community_plugins,
+        _set_reading_view_default,
+        _patch_workspace_reading_view,
+        _DATAVIEW_ID,
+        _PLUGIN_ID,
+        _PLUGIN_SRC,
+    )
+    _plugin_ok = False
+    _dataview_status = "skipped"
+    if _PLUGIN_SRC.exists():
+        copied = _install_plugin_into(dest)
+        if copied:
+            _dataview_status = _install_dataview(dest)
+            _update_community_plugins(dest, _DATAVIEW_ID, _PLUGIN_ID)
+            _set_reading_view_default(dest)
+            _patch_workspace_reading_view(dest)
+            _plugin_ok = True
+
     typer.echo(f"Wiki '{name}' installed.")
     typer.echo(f"  Port   {effective_port}")
-    typer.echo(f"Start:   synthadoc serve -w {name}")
+    if _plugin_ok:
+        if _dataview_status in ("installed", "skipped"):
+            typer.echo(f"  Plugin Obsidian plugin ready")
+        else:
+            typer.echo(f"  Plugin Obsidian plugin installed")
+            typer.echo(f"  Warn   Dataview unavailable (GitHub unreachable).")
+            typer.echo(f"         To complete setup: synthadoc plugin install -w {name}")
     if not demo:
         typer.echo()
         typer.echo(f"Next steps:")
         typer.echo(f"  1. Edit .synthadoc/config.toml — set your LLM provider and API key")
-        typer.echo(f"  2. Start the server:     synthadoc serve -w {name}")
-        typer.echo(f"  3. Generate index:       synthadoc scaffold -w {name}")
-        typer.echo(f"  4. Ingest your sources:  synthadoc ingest <file> -w {name}")
+        typer.echo(f"  2. Set as default wiki:   synthadoc use {name}")
+        typer.echo(f"  3. Start the server:      synthadoc serve")
+        typer.echo(f"  4. Generate index:        synthadoc scaffold")
+        typer.echo(f"  5. Ingest your sources:   synthadoc ingest <file>")
 
 
 @app.command("list")
