@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 SCAFFOLD_MARKER = "<!-- synthadoc:scaffold -->"
 _SCAFFOLD_RETRY_LIMIT = 2
+_META_SLUGS = frozenset({"index", "overview", "purpose", "dashboard", "log"})
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
 _FM_STRIP_RE = re.compile(r"^---\s*\n.*?\n---\s*\n+", re.DOTALL)
@@ -132,6 +133,8 @@ Return ONLY valid JSON:
 
 The "slugs" array must contain the kebab-case page slugs that belong in each category.
 {slugs_instruction}If a category has no known pages yet, use an empty array.
+Never include system/meta pages in any "slugs" array: index, overview, purpose, dashboard, log.
+These are auto-generated wiki infrastructure pages — they must not appear as category entries.
 """
 
 _INDEX_FRONTMATTER = """\
@@ -361,7 +364,7 @@ class ScaffoldAgent:
             if desc:
                 lines.append(f"*{desc}*\n")
             for slug in slugs:
-                if slug:
+                if slug and slug not in _META_SLUGS:
                     lines.append(f"- [[{slug}]]")
             if slugs:
                 lines.append("")

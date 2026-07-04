@@ -470,3 +470,31 @@ async def test_scaffold_raises_on_validation_failure():
     agent = ScaffoldAgent(provider=provider)
     with pytest.raises(ValueError, match="no \\[\\[wikilinks\\]\\]"):
         await agent.scaffold(domain="Machine Learning")
+
+
+def test_build_index_md_strips_meta_slugs():
+    """_build_index_md must never emit [[index]], [[overview]], [[purpose]], etc."""
+    from synthadoc.agents.scaffold_agent import ScaffoldAgent, _META_SLUGS
+    from unittest.mock import AsyncMock
+
+    agent = ScaffoldAgent(provider=AsyncMock())
+    data = {
+        "categories": [
+            {
+                "heading": "Wiki Meta",
+                "description": "System pages",
+                "slugs": list(_META_SLUGS) + ["real-topic"],
+            },
+            {
+                "heading": "Research",
+                "description": "Content",
+                "slugs": ["index", "overview", "another-real-page"],
+            },
+        ],
+    }
+    result = agent._build_index_md("Test Domain", data)
+
+    for slug in _META_SLUGS:
+        assert f"[[{slug}]]" not in result, f"meta slug [[{slug}]] must not appear in index.md"
+    assert "[[real-topic]]" in result
+    assert "[[another-real-page]]" in result
