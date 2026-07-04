@@ -2229,6 +2229,8 @@ Zoom and pan with your mouse or trackpad. Pages with more inbound links appear l
 
 In the history-of-computing demo you will see clusters forming around computing pioneers, hardware eras, and software history.
 
+![Knowledge graph for the history-of-computing wiki — nodes coloured by Louvain cluster](png/synthadoc-knowledge-graph.png)
+
 ### Click a node to query it
 
 Click any node to open its detail panel:
