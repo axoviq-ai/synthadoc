@@ -864,14 +864,16 @@ def test_decision_prompt_contains_entity_profile_rule():
 
 
 def test_append_source_ref_deduplicates():
-    """_append_source_ref must not add a duplicate (file, hash) entry."""
+    """_append_source_ref must not add a duplicate (file, hash) entry and must
+    compact any duplicates already present from prior --force runs."""
     from synthadoc.agents.ingest_agent import _append_source_ref
     from synthadoc.storage.wiki import SourceRef, WikiPage
 
-    page = WikiPage(title="T", tags=[], content="", status="draft", confidence="medium", sources=[])
-    ref = SourceRef(file="/a/b.md", hash="abc123", size=100, ingested="2026-07-04")
-    _append_source_ref(page, ref)
-    _append_source_ref(page, ref)
+    dup = SourceRef(file="/a/b.md", hash="abc123", size=100, ingested="2026-07-04")
+    # Pre-load page with 3 identical entries (simulates 3 prior --force runs)
+    page = WikiPage(title="T", tags=[], content="", status="draft", confidence="medium",
+                    sources=[dup, dup, dup])
+    # Appending the same ref should compact to 1 and not add a 4th
     _append_source_ref(page, SourceRef(file="/a/b.md", hash="abc123", size=100, ingested="2026-07-05"))
     assert len(page.sources) == 1
 

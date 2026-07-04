@@ -290,11 +290,19 @@ def _strip_leading_frontmatter(content: str) -> str:
 
 
 def _append_source_ref(page: "WikiPage", ref: "SourceRef") -> None:
-    """Append ref to page.sources only when (file, hash) is not already recorded."""
-    for existing in page.sources:
-        if existing.file == ref.file and existing.hash == ref.hash:
-            return
-    page.sources.append(ref)
+    """Append ref to page.sources only when (file, hash) is not already recorded.
+    Also compacts any duplicates that accumulated from prior --force runs.
+    """
+    seen: set[tuple[str, str]] = set()
+    clean: list["SourceRef"] = []
+    for s in page.sources:
+        key = (s.file, s.hash)
+        if key not in seen:
+            seen.add(key)
+            clean.append(s)
+    page.sources = clean
+    if (ref.file, ref.hash) not in seen:
+        page.sources.append(ref)
 
 
 def _extract_key_data(source_text: str) -> list[str]:
