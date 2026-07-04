@@ -10,7 +10,6 @@ from typing import Optional
 
 import typer
 
-from synthadoc.cli.main import app
 from synthadoc.cli._port import assign_wiki_port as _assign_wiki_port, _DEFAULT_PORT
 from synthadoc.cli._wiki import _normalise_wiki_name
 from synthadoc import errors as E
@@ -24,9 +23,19 @@ _DEMOS = {
 
 
 def _read_registry() -> dict:
+    """Read registry from this module's _REGISTRY path (monkeypatchable in tests)."""
     if _REGISTRY.exists():
         return json.loads(_REGISTRY.read_text(encoding="utf-8"))
     return {}
+
+
+def resolve_wiki_path(wiki: str) -> Path:
+    """Resolve a wiki name or path to an absolute Path via the install registry."""
+    wiki = _normalise_wiki_name(wiki)
+    registry = _read_registry()
+    if wiki in registry:
+        return Path(registry[wiki]["path"])
+    return Path(wiki)
 
 
 def _write_registry(data: dict) -> None:
@@ -60,6 +69,9 @@ def _get_reserved_ports() -> set[int]:
     return ports
 
 
+from synthadoc.cli.main import app  # noqa: E402
+
+
 def _run_scaffold(dest: Path, domain: str):
     """Try to run ScaffoldAgent. Returns ScaffoldResult or None if no API key is set."""
     import asyncio
@@ -90,23 +102,6 @@ def _run_scaffold(dest: Path, domain: str):
         logging.getLogger(__name__).warning("Scaffold LLM call failed: %s", exc)
         typer.echo(f"  Warning: LLM scaffold failed ({exc})", err=True)
         return None
-
-
-def resolve_wiki_path(wiki: str) -> Path:
-    """Resolve a --wiki value to an absolute Path.
-
-    Lookup order:
-    1. Registry name match  — ``synthadoc status -w history-of-computing``
-    2. Filesystem path      — ``synthadoc status -w ~/wikis/history-of-computing``
-
-    If neither resolves to an existing directory, returns the path as-is and
-    lets the caller surface the error (e.g. Orchestrator will fail clearly).
-    """
-    wiki = _normalise_wiki_name(wiki)
-    registry = _read_registry()
-    if wiki in registry:
-        return Path(registry[wiki]["path"])
-    return Path(wiki)
 
 
 @app.command("install")

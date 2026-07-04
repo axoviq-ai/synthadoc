@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-or-later
+﻿# SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
 from __future__ import annotations
 
@@ -11,13 +11,12 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from synthadoc.cli.install import resolve_wiki_path
-
 audit_app = typer.Typer(name="audit", help="Inspect ingest history and costs.")
 console = Console()
 
 
 def _get_audit_db(wiki: str):
+    from synthadoc.cli.install import resolve_wiki_path
     from synthadoc.storage.log import AuditDB
     root = resolve_wiki_path(wiki)
     return AuditDB(root / ".synthadoc" / "audit.db")

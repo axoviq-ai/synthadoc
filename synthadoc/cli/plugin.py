@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-or-later
+﻿# SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 William Johnason / axoviq.com
 from __future__ import annotations
 
@@ -11,11 +11,8 @@ import httpx
 import typer
 
 from synthadoc.cli._wiki import resolve_wiki
-from synthadoc.cli.install import resolve_wiki_path, _read_registry
-from synthadoc.cli.main import app
-
+from synthadoc.cli._wiki import resolve_wiki_path, _read_registry
 plugin_app = typer.Typer(name="plugin", help="Manage the Synthadoc Obsidian plugin.")
-app.add_typer(plugin_app)
 
 _PLUGIN_SRC = Path(__file__).resolve().parent.parent / "data" / "obsidian-plugin"
 _PLUGIN_FILES = ("main.js", "manifest.json", "styles.css")
