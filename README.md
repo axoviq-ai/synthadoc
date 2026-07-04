@@ -231,7 +231,7 @@ pip install synthadoc
 synthadoc --version   # confirm it works
 ```
 
-The Obsidian plugin is bundled inside the package — `synthadoc plugin install` works immediately after this.
+The Obsidian plugin is bundled inside the package. New wikis created with `synthadoc install` have it installed automatically. If you are upgrading an existing Synthadoc installation, run `synthadoc plugin upgrade` to push the updated plugin binary to all registered wikis.
 
 ---
 
@@ -430,13 +430,7 @@ synthadoc serve
 
 `wiki/dashboard.md` is also created during install (a static template — not LLM-generated). `ROUTING.md` is optional and generated separately via `synthadoc routing init` after pages accumulate.
 
-Then copy the Synthadoc plugin files into the wiki with one command:
-
-```bash
-synthadoc plugin install market-condition-canada
-```
-
-This installs both the Synthadoc plugin and the Dataview plugin directly into the vault's plugins folder, pre-enables them, and sets the correct server URL. Open the wiki folder in Obsidian — both plugins are active immediately, no manual toggling required.
+`synthadoc install` also copies both the Synthadoc plugin and the Dataview plugin directly into the vault's plugins folder, pre-enables them, and sets the correct server URL — no separate plugin step is required. Open the wiki folder in Obsidian — both plugins are active immediately, no manual toggling needed.
 
 The Quick-Start Guide covers the full Obsidian setup in detail — see [docs/user-quick-start-guide.md](docs/user-quick-start-guide.md).
 
