@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from synthadoc.agents._utils import parse_json_string_array
 from synthadoc.providers.base import LLMProvider, Message
@@ -11,6 +12,23 @@ logger = logging.getLogger(__name__)
 
 _MAX_SUB_QUERIES = 4
 _MAX_QUERY_CHARS = 2000
+
+# Reject suggestions that use the site: search operator with a local filename
+# extension rather than a real web domain (e.g. "site:purpose.md ...").
+# This happens when the LLM sees a filename in the domain_context and
+# hallucinates it as a web domain.
+_LOCAL_SITE_RE = re.compile(
+    r"^site:[^\s/]*\.(md|txt|pdf|json|yaml|toml|csv|py|js|ts)\b",
+    re.IGNORECASE,
+)
+
+# Reject Wikipedia URLs — they block automated ingest (403/bot detection),
+# and the prompt already instructs the LLM not to suggest them, but it sometimes
+# ignores the instruction.
+_WIKIPEDIA_RE = re.compile(
+    r"(?:https?://)?(?:\w+\.)?wikipedia\.org/",
+    re.IGNORECASE,
+)
 
 
 class SearchDecomposeAgent:
@@ -61,7 +79,11 @@ class SearchDecomposeAgent:
                 type(exc).__name__, exc,
             )
             return [query]
-        filtered = parse_json_string_array(resp.text, _MAX_SUB_QUERIES)
+        filtered = parse_json_string_array(resp.text, _MAX_SUB_QUERIES) or []
+        filtered = [
+            s for s in filtered
+            if not _LOCAL_SITE_RE.match(s.strip()) and not _WIKIPEDIA_RE.search(s)
+        ]
         if filtered:
             if len(filtered) == 1:
                 logger.info("web search is simple — no decomposition (1 query)")
