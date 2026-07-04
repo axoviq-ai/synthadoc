@@ -436,6 +436,12 @@ synthadoc serve
 
 `wiki/dashboard.md` is also created during install (a static template — not LLM-generated). `ROUTING.md` is optional and generated separately via `synthadoc routing init` after pages accumulate.
 
+Before ingesting any content, run scaffold once to build a clean starting index and purpose files based on your domain:
+
+```bash
+synthadoc scaffold
+```
+
 `synthadoc install` also copies both the Synthadoc plugin and the Dataview plugin directly into the vault's plugins folder, pre-enables them, and sets the correct server URL — no separate plugin step is required. Open the wiki folder in Obsidian — both plugins are active immediately, no manual toggling needed.
 
 The Quick-Start Guide covers the full Obsidian setup in detail — see [docs/user-quick-start-guide.md](docs/user-quick-start-guide.md).
@@ -472,7 +478,7 @@ synthadoc candidates discard punch-card-era           # discard pages that don't
 
 Skip this step if you trust all your sources — `staging policy off` is the default.
 
-**3. Scaffold** — after pages accumulate, scaffold regenerates a richer index that reflects actual content. Pages already linked in `index.md` are never overwritten:
+**3. Re-run scaffold** — after pages accumulate, scaffold regenerates a richer index that reflects actual content. Pages already linked in `index.md` are never overwritten:
 
 ```bash
 synthadoc scaffold
