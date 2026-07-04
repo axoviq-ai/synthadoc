@@ -764,6 +764,9 @@ async def test_overview_md_created_after_ingest(tmp_wiki, cache):
     assert overview.exists(), "overview.md should be created after page creation"
     text = overview.read_text(encoding="utf-8")
     assert "overview" in text.lower() or "wiki" in text.lower()
+    assert "status: active" in text, "overview.md must use status: active, not status: auto"
+    assert "confidence: high" in text, "overview.md must include confidence: high"
+    assert "created:" in text, "overview.md must include a created date"
 
 
 @pytest.mark.asyncio
@@ -797,6 +800,86 @@ async def test_overview_md_not_written_on_skip(tmp_wiki, cache):
                         max_pages=15, wiki_root=tmp_wiki)
     await agent.ingest(str(source))
     assert not (tmp_wiki / "wiki" / "overview.md").exists()
+
+
+@pytest.mark.asyncio
+async def test_ingest_title_uses_h1_from_generated_body(tmp_wiki, cache):
+    """WikiPage.title must be derived from the H1 in the LLM-generated body,
+    not from the source filename or its frontmatter title field."""
+    import itertools
+
+    provider = AsyncMock()
+    entity_resp = CompletionResponse(
+        text='{"entities":["water"],"tags":["infrastructure"],"summary":"Water market overview.","relevant":true}',
+        input_tokens=50, output_tokens=20)
+    # LLM generates body with a proper H1 different from the filename-derived title
+    decision_resp = CompletionResponse(
+        text=(
+            '{"reasoning":"New topic","action":"create","target":"",'
+            '"new_slug":"water-infrastructure-market",'
+            '"update_content":"",'
+            '"page_content":"# Water Infrastructure Market\\n\\nThis page covers the market."}'
+        ),
+        input_tokens=50, output_tokens=40)
+    # overview response
+    overview_resp = CompletionResponse(
+        text="This wiki covers water infrastructure.",
+        input_tokens=20, output_tokens=10)
+    provider.complete = AsyncMock(side_effect=itertools.cycle(
+        [entity_resp, decision_resp, overview_resp]))
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+
+    # Filename would derive title "02 Water Infrastructure Market" without the fix
+    source = tmp_wiki / "raw_sources" / "02_water_infrastructure_market.md"
+    source.write_text("# 02 Water Infrastructure Market\nMarket content.", encoding="utf-8")
+
+    agent = IngestAgent(provider=provider, store=store, search=search,
+                        log_writer=log, audit_db=audit, cache=cache,
+                        max_pages=15, wiki_root=tmp_wiki)
+    result = await agent.ingest(str(source))
+    assert result.pages_created
+
+    slug = result.pages_created[0]
+    page = store.read_page(slug)
+    assert page is not None
+    assert page.title == "Water Infrastructure Market", (
+        f"Expected H1-derived title 'Water Infrastructure Market', got '{page.title}'"
+    )
+
+
+def test_decision_prompt_contains_entity_profile_rule():
+    """_DECISION_PROMPT must include the entity-profile rule so company profiles always create new pages."""
+    from synthadoc.agents.ingest_agent import _DECISION_PROMPT
+    assert "ENTITY PROFILE" in _DECISION_PROMPT, (
+        "_DECISION_PROMPT must contain RULE 2b (entity profile must create)"
+    )
+    assert "action='create'" in _DECISION_PROMPT or "action=\"create\"" in _DECISION_PROMPT
+    # Confirm the rule covers named companies
+    assert "company" in _DECISION_PROMPT.lower()
+
+
+def test_append_source_ref_deduplicates():
+    """_append_source_ref must not add a duplicate (file, hash) entry and must
+    compact any duplicates already present from prior --force runs."""
+    from synthadoc.agents.ingest_agent import _append_source_ref
+    from synthadoc.storage.wiki import SourceRef, WikiPage
+
+    dup = SourceRef(file="/a/b.md", hash="abc123", size=100, ingested="2026-07-04")
+    # Pre-load page with 3 identical entries (simulates 3 prior --force runs)
+    page = WikiPage(title="T", tags=[], content="", status="draft", confidence="medium",
+                    sources=[dup, dup, dup])
+    # Appending the same ref should compact to 1 and not add a 4th
+    _append_source_ref(page, SourceRef(file="/a/b.md", hash="abc123", size=100, ingested="2026-07-05"))
+    assert len(page.sources) == 1
+
+    # Different hash on same file → allowed (genuinely updated source)
+    _append_source_ref(page, SourceRef(file="/a/b.md", hash="deadbeef", size=200, ingested="2026-07-05"))
+    assert len(page.sources) == 2
 
 
 @pytest.mark.asyncio
@@ -2284,3 +2367,50 @@ def test_extract_key_data_formula_line():
     src = "total_mv_cny = total_mv × 10,000\n"
     result = _extract_key_data(src)
     assert any("total_mv" in item for item in result)
+
+
+# ── _normalize_citation_markers ───────────────────────────────────────────────
+
+def test_normalize_single_line_citation():
+    """^[file:N] → ^[file:N-N]."""
+    from synthadoc.agents.ingest_agent import _normalize_citation_markers
+    result = _normalize_citation_markers("Some claim. ^[report.md:42]")
+    assert result == "Some claim. ^[report.md:42-42]"
+
+
+def test_normalize_comma_range_citation():
+    """^[file:N,M-P] → ^[file:N-P] (first-to-last number)."""
+    from synthadoc.agents.ingest_agent import _normalize_citation_markers
+    result = _normalize_citation_markers("Claim. ^[market.md:12,16-21]")
+    assert result == "Claim. ^[market.md:12-21]"
+
+
+def test_normalize_comma_pair_citation():
+    """^[file:N,M] → ^[file:N-M]."""
+    from synthadoc.agents.ingest_agent import _normalize_citation_markers
+    result = _normalize_citation_markers("Claim. ^[data.md:27,54]")
+    assert result == "Claim. ^[data.md:27-54]"
+
+
+def test_normalize_trailing_comma_range():
+    """^[file:N-M,P] → ^[file:N-P]."""
+    from synthadoc.agents.ingest_agent import _normalize_citation_markers
+    result = _normalize_citation_markers("Claim. ^[src.md:74-80,107]")
+    assert result == "Claim. ^[src.md:74-107]"
+
+
+def test_normalize_leaves_canonical_unchanged():
+    """Already-canonical ^[file:N-N] markers are not modified."""
+    from synthadoc.agents.ingest_agent import _normalize_citation_markers
+    text = "Claim. ^[report.md:10-15]"
+    assert _normalize_citation_markers(text) == text
+
+
+def test_normalize_multiple_citations_in_text():
+    """Multiple mixed citations in one string are all normalised."""
+    from synthadoc.agents.ingest_agent import _normalize_citation_markers
+    text = "A ^[a.md:5] B ^[b.md:10-12] C ^[c.md:7,9]"
+    result = _normalize_citation_markers(text)
+    assert "^[a.md:5-5]" in result
+    assert "^[b.md:10-12]" in result
+    assert "^[c.md:7-9]" in result

@@ -452,3 +452,52 @@ async def test_run_lint_passes_adversarial_false(tmp_wiki):
         await orch._run_lint("job-1", adversarial=False)
 
     assert captured_kwargs.get("adversarial") is False
+
+
+@pytest.mark.asyncio
+async def test_run_scaffold_excludes_meta_slugs_from_protected(tmp_wiki):
+    """_run_scaffold() must not pass meta slugs (index, overview, purpose, dashboard, log)
+    as protected_slugs — they must never appear as categorised content in the index."""
+    from synthadoc.config import load_config
+    from synthadoc.core.orchestrator import Orchestrator
+    from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
+    from synthadoc.agents.scaffold_agent import ScaffoldResult
+
+    cfg = load_config()
+    orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
+
+    # Create a mix of meta and real pages on disk
+    wiki_dir = tmp_wiki / "wiki"
+    for slug in ["overview", "purpose", "index", "dashboard", "real-topic"]:
+        (wiki_dir / f"{slug}.md").write_text(f"# {slug}\n", encoding="utf-8")
+
+    captured_slugs: list[str] = []
+
+    async def fake_scaffold(self, domain, protected_slugs=None):
+        captured_slugs.extend(protected_slugs or [])
+        return ScaffoldResult(
+            index_md=(
+                f"---\ntitle: Index\nstatus: active\nconfidence: high\n"
+                f"created: '2026-01-01'\n---\n\n# {domain} — Index\n\n"
+                "## Topics\n\n- [[real-topic]]\n"
+            ),
+            agents_md=(
+                "## Ingest Guidelines\nIngest.\n\n## Query Guidelines\nQuery.\n"
+            ),
+            purpose_md=f"# Wiki Purpose — {domain}\n\n## Overview\n\nText.\n",
+            dashboard_intro="A wiki.",
+        )
+
+    with patch("synthadoc.agents.scaffold_agent.ScaffoldAgent.scaffold", new=fake_scaffold), \
+         patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
+         patch.object(orch, "_queue") as mock_queue:
+        mock_queue.complete = AsyncMock()
+        mock_queue.fail = AsyncMock()
+        mock_queue.fail_permanent = AsyncMock()
+        await orch._run_scaffold("job-1", "TestDomain")
+
+    for meta in LINT_SKIP_SLUGS:
+        assert meta not in captured_slugs, (
+            f"Meta slug '{meta}' must be filtered out of protected_slugs passed to scaffold"
+        )
+    assert "real-topic" in captured_slugs

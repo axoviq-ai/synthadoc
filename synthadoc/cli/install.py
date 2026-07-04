@@ -10,7 +10,6 @@ from typing import Optional
 
 import typer
 
-from synthadoc.cli.main import app
 from synthadoc.cli._port import assign_wiki_port as _assign_wiki_port, _DEFAULT_PORT
 from synthadoc.cli._wiki import _normalise_wiki_name
 from synthadoc import errors as E
@@ -24,9 +23,19 @@ _DEMOS = {
 
 
 def _read_registry() -> dict:
+    """Read registry from this module's _REGISTRY path (monkeypatchable in tests)."""
     if _REGISTRY.exists():
         return json.loads(_REGISTRY.read_text(encoding="utf-8"))
     return {}
+
+
+def resolve_wiki_path(wiki: str) -> Path:
+    """Resolve a wiki name or path to an absolute Path via the install registry."""
+    wiki = _normalise_wiki_name(wiki)
+    registry = _read_registry()
+    if wiki in registry:
+        return Path(registry[wiki]["path"])
+    return Path(wiki)
 
 
 def _write_registry(data: dict) -> None:
@@ -60,53 +69,9 @@ def _get_reserved_ports() -> set[int]:
     return ports
 
 
-def _run_scaffold(dest: Path, domain: str):
-    """Try to run ScaffoldAgent. Returns ScaffoldResult or None if no API key is set."""
-    import asyncio
-    import os
-    from synthadoc.config import load_config
-    from synthadoc.providers import make_provider
-
-    cfg = load_config(project_config=dest / ".synthadoc" / "config.toml")
-    provider_name = cfg.agents.resolve("ingest").provider
-
-    _KEY_ENV = {
-        "anthropic": "ANTHROPIC_API_KEY",
-        "openai": "OPENAI_API_KEY",
-        "gemini": "GEMINI_API_KEY",
-        "groq": "GROQ_API_KEY",
-    }
-    env_var = _KEY_ENV.get(provider_name)
-    if env_var and not os.environ.get(env_var, "").strip():
-        return None  # no key — caller will fall back to static template
-
-    try:
-        provider = make_provider("ingest", cfg)
-        from synthadoc.agents.scaffold_agent import ScaffoldAgent
-        agent = ScaffoldAgent(provider=provider, max_tokens=cfg.agents.scaffold_max_tokens)
-        return asyncio.run(agent.scaffold(domain=domain))
-    except Exception as exc:
-        import logging
-        logging.getLogger(__name__).warning("Scaffold LLM call failed: %s", exc)
-        typer.echo(f"  Warning: LLM scaffold failed ({exc})", err=True)
-        return None
+from synthadoc.cli.main import app  # noqa: E402
 
 
-def resolve_wiki_path(wiki: str) -> Path:
-    """Resolve a --wiki value to an absolute Path.
-
-    Lookup order:
-    1. Registry name match  — ``synthadoc status -w history-of-computing``
-    2. Filesystem path      — ``synthadoc status -w ~/wikis/history-of-computing``
-
-    If neither resolves to an existing directory, returns the path as-is and
-    lets the caller surface the error (e.g. Orchestrator will fail clearly).
-    """
-    wiki = _normalise_wiki_name(wiki)
-    registry = _read_registry()
-    if wiki in registry:
-        return Path(registry[wiki]["path"])
-    return Path(wiki)
 
 
 @app.command("install")
@@ -182,32 +147,6 @@ def install_cmd(
         from synthadoc.cli._init import init_wiki
         init_wiki(dest, domain, port=effective_port)
 
-        # ── LLM scaffold ──────────────────────────────────────────────────────
-        typer.echo("Generating domain-specific scaffold...")
-        scaffold_result = _run_scaffold(dest, domain)
-        if scaffold_result:
-            (dest / "wiki" / "index.md").write_text(
-                scaffold_result.index_md, encoding="utf-8", newline="\n")
-            (dest / "AGENTS.md").write_text(
-                scaffold_result.agents_md, encoding="utf-8", newline="\n")
-            (dest / "wiki" / "purpose.md").write_text(
-                scaffold_result.purpose_md, encoding="utf-8", newline="\n")
-            dashboard_path = dest / "wiki" / "dashboard.md"
-            dash = dashboard_path.read_text(encoding="utf-8")
-            dash = dash.replace(
-                f"# {domain} — Dashboard",
-                f"# {domain} — Dashboard\n\n{scaffold_result.dashboard_intro}",
-                1,
-            )
-            dashboard_path.write_text(dash, encoding="utf-8", newline="\n")
-            typer.echo("  Scaffold complete — domain-specific content generated.")
-        else:
-            typer.echo(
-                "  Scaffold skipped — static templates written.\n"
-                f"  Run 'synthadoc scaffold -w {name}' after setting your LLM API key"
-                " to generate domain-specific content."
-            )
-
     registry = _read_registry()
     registry[name] = {
         "path": str(dest),
@@ -217,9 +156,45 @@ def install_cmd(
     }
     _write_registry(registry)
 
+    # ── Obsidian plugin ────────────────────────────────────────────────────
+    from synthadoc.cli.plugin import (
+        _install_plugin_into,
+        _install_dataview,
+        _update_community_plugins,
+        _set_reading_view_default,
+        _patch_workspace_reading_view,
+        _DATAVIEW_ID,
+        _PLUGIN_ID,
+        _PLUGIN_SRC,
+    )
+    _plugin_ok = False
+    _dataview_status = "skipped"
+    if _PLUGIN_SRC.exists():
+        copied = _install_plugin_into(dest)
+        if copied:
+            _dataview_status = _install_dataview(dest)
+            _update_community_plugins(dest, _DATAVIEW_ID, _PLUGIN_ID)
+            _set_reading_view_default(dest)
+            _patch_workspace_reading_view(dest)
+            _plugin_ok = True
+
     typer.echo(f"Wiki '{name}' installed.")
     typer.echo(f"  Port   {effective_port}")
-    typer.echo(f"Start:   synthadoc serve -w {name}")
+    if _plugin_ok:
+        if _dataview_status in ("installed", "skipped"):
+            typer.echo(f"  Plugin Obsidian plugin ready")
+        else:
+            typer.echo(f"  Plugin Obsidian plugin installed")
+            typer.echo(f"  Warn   Dataview unavailable (GitHub unreachable).")
+            typer.echo(f"         To complete setup: synthadoc plugin install -w {name}")
+    if not demo:
+        typer.echo()
+        typer.echo(f"Next steps:")
+        typer.echo(f"  1. Edit .synthadoc/config.toml — set your LLM provider and API key")
+        typer.echo(f"  2. Set as default wiki:   synthadoc use {name}")
+        typer.echo(f"  3. Start the server:      synthadoc serve")
+        typer.echo(f"  4. Ingest your sources:   synthadoc ingest <file>")
+        typer.echo(f"  5. Generate index:        synthadoc scaffold")
 
 
 @app.command("list")

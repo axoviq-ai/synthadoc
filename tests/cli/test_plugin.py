@@ -12,7 +12,7 @@ from synthadoc.cli.plugin import _set_reading_view_default, _patch_workspace_rea
 
 
 def test_set_reading_view_default_creates_app_json(tmp_path):
-    """When app.json is absent, it is created with defaultViewMode=preview."""
+    """When app.json is absent, it is created with all three Obsidian settings."""
     wiki = tmp_path / "wiki"
     wiki.mkdir()
     (wiki / ".obsidian").mkdir()
@@ -24,10 +24,12 @@ def test_set_reading_view_default_creates_app_json(tmp_path):
     assert app_json.exists()
     data = json.loads(app_json.read_text(encoding="utf-8"))
     assert data["defaultViewMode"] == "preview"
+    assert data["newFileLocation"] == "folder"
+    assert data["newFileFolderPath"] == "wiki"
 
 
 def test_set_reading_view_default_preserves_other_keys(tmp_path):
-    """Existing keys in app.json are preserved; only defaultViewMode is updated."""
+    """Existing keys in app.json are preserved alongside the three managed settings."""
     wiki = tmp_path / "wiki"
     (wiki / ".obsidian").mkdir(parents=True)
     app_json = wiki / ".obsidian" / "app.json"
@@ -39,38 +41,59 @@ def test_set_reading_view_default_preserves_other_keys(tmp_path):
 
     data = json.loads(app_json.read_text(encoding="utf-8"))
     assert data["defaultViewMode"] == "preview"
+    assert data["newFileLocation"] == "folder"
+    assert data["newFileFolderPath"] == "wiki"
     assert data["theme"] == "obsidian"
     assert data["fontSize"] == 14
 
 
 def test_set_reading_view_default_idempotent(tmp_path):
-    """If app.json already has defaultViewMode=preview, returns False (no-op) and does not rewrite."""
+    """Returns False (no-op) when all three managed settings are already correct."""
     wiki = tmp_path / "wiki"
     (wiki / ".obsidian").mkdir(parents=True)
     app_json = wiki / ".obsidian" / "app.json"
-    original = json.dumps({"defaultViewMode": "preview", "theme": "dark"})
+    original = json.dumps({
+        "defaultViewMode": "preview",
+        "newFileLocation": "folder",
+        "newFileFolderPath": "wiki",
+        "theme": "dark",
+    })
     app_json.write_text(original, encoding="utf-8")
 
     result = _set_reading_view_default(wiki)
     assert result is False
-    # File should be unchanged (or at minimum have the same content)
     data = json.loads(app_json.read_text(encoding="utf-8"))
     assert data["defaultViewMode"] == "preview"
     assert data["theme"] == "dark"
 
 
+def test_set_reading_view_default_writes_when_new_file_settings_missing(tmp_path):
+    """Returns True and writes when defaultViewMode is correct but new-file settings are absent."""
+    wiki = tmp_path / "wiki"
+    (wiki / ".obsidian").mkdir(parents=True)
+    app_json = wiki / ".obsidian" / "app.json"
+    app_json.write_text(json.dumps({"defaultViewMode": "preview"}), encoding="utf-8")
+
+    result = _set_reading_view_default(wiki)
+    assert result is True
+    data = json.loads(app_json.read_text(encoding="utf-8"))
+    assert data["newFileLocation"] == "folder"
+    assert data["newFileFolderPath"] == "wiki"
+
+
 def test_set_reading_view_default_malformed_json(tmp_path):
-    """Malformed app.json is healed: treated as empty dict, written with defaultViewMode=preview."""
+    """Malformed app.json is healed: treated as empty dict, written with all three settings."""
     wiki = tmp_path / "wiki"
     (wiki / ".obsidian").mkdir(parents=True)
     app_json = wiki / ".obsidian" / "app.json"
     app_json.write_text("{ not valid json }", encoding="utf-8")
 
     result = _set_reading_view_default(wiki)
-    assert result is True  # file was written
-    # Verify the file now contains valid JSON with the setting
+    assert result is True
     data = json.loads(app_json.read_text(encoding="utf-8"))
     assert data["defaultViewMode"] == "preview"
+    assert data["newFileLocation"] == "folder"
+    assert data["newFileFolderPath"] == "wiki"
 
 
 def test_set_reading_view_default_creates_obsidian_dir(tmp_path):

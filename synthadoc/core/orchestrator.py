@@ -487,7 +487,11 @@ class Orchestrator:
         _WIKILINK_RE = _re.compile(r"\[\[([^\]|#]+?)(?:\|[^\]]*)?\]\]")
         try:
             wiki_dir = self._root / "wiki"
-            protected_slugs = [p.stem for p in wiki_dir.glob("*.md")]
+            from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
+            protected_slugs = [
+                p.stem for p in wiki_dir.glob("*.md")
+                if p.stem not in LINT_SKIP_SLUGS
+            ]
             result = await ScaffoldAgent(
                 provider=make_provider("ingest", self._cfg),
                 max_tokens=self._cfg.agents.scaffold_max_tokens,
@@ -507,8 +511,10 @@ class Orchestrator:
             routing_regenerated = False
             if routing_path.exists():
                 from synthadoc.core.routing import RoutingIndex as _RoutingIndex
+                from synthadoc.agents.scaffold_agent import _validate_routing_md
                 _ri_new = _RoutingIndex.from_index_md(index_path)
                 _ri_new.save(routing_path)
+                _validate_routing_md(routing_path.read_text(encoding="utf-8"))
                 routing_regenerated = True
                 logger.info(
                     "scaffold: regenerated ROUTING.md (%d branches, %d slugs)",
@@ -532,7 +538,7 @@ class Orchestrator:
                             slug_cats[slug].append(current_section)
             categories_updated = 0
             for slug, cats in slug_cats.items():
-                if self._store.page_exists(slug):
+                if slug not in LINT_SKIP_SLUGS and self._store.page_exists(slug):
                     self._store.set_page_categories(slug, cats)
                     categories_updated += 1
 

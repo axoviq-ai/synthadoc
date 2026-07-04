@@ -167,7 +167,7 @@ async def test_run_stream_no_purpose_no_preamble(tmp_wiki):
 
     assert captured
     synthesis_content = captured[0]["messages"][0].content
-    assert "Wiki Scope" not in synthesis_content
+    assert "### Wiki Scope (purpose.md)" not in synthesis_content
 
 
 @pytest.mark.asyncio

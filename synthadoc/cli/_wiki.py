@@ -2,6 +2,7 @@
 # Copyright (C) 2026 William Johnason / axoviq.com
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Optional
@@ -10,6 +11,27 @@ import typer
 
 ENV_VAR = "SYNTHADOC_WIKI"
 DEFAULT_WIKI_FILE = Path.home() / ".synthadoc" / "default_wiki"
+_REGISTRY = Path.home() / ".synthadoc" / "wikis.json"
+
+
+def _read_registry() -> dict:
+    if _REGISTRY.exists():
+        return json.loads(_REGISTRY.read_text(encoding="utf-8"))
+    return {}
+
+
+def resolve_wiki_path(wiki: str) -> Path:
+    """Resolve a wiki name or path to an absolute Path.
+
+    Lookup order:
+    1. Registry name match  — ``synthadoc status -w history-of-computing``
+    2. Filesystem path      — ``synthadoc status -w ~/wikis/history-of-computing``
+    """
+    wiki = _normalise_wiki_name(wiki)
+    registry = _read_registry()
+    if wiki in registry:
+        return Path(registry[wiki]["path"])
+    return Path(wiki)
 
 
 def _normalise_wiki_name(name: str) -> str:

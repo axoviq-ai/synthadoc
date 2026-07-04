@@ -134,11 +134,12 @@ def test_get_reserved_ports_empty_when_no_wikis(tmp_path, monkeypatch):
 def test_install_stores_port_in_registry(tmp_path, monkeypatch):
     """install records the assigned port in the registry entry."""
     import synthadoc.cli.install as install_mod
+    import synthadoc.cli.plugin as plugin_mod
     from typer.testing import CliRunner
     from synthadoc.cli.main import app
     monkeypatch.setattr(install_mod, "_REGISTRY", tmp_path / "wikis.json")
     monkeypatch.setattr(install_mod, "_assign_wiki_port", lambda reserved, start=7070: 7072)
-    monkeypatch.setattr(install_mod, "_run_scaffold", lambda dest, domain: None)
+    monkeypatch.setattr(plugin_mod, "_install_dataview", lambda wiki_path: "skipped")
 
     runner = CliRunner()
     result = runner.invoke(app, ["install", "my-wiki", "--target", str(tmp_path)])
@@ -151,10 +152,11 @@ def test_install_stores_port_in_registry(tmp_path, monkeypatch):
 def test_install_second_wiki_gets_different_port(tmp_path, monkeypatch):
     """Case a/c: When wiki-a is on 7070, wiki-b gets the next available port."""
     import synthadoc.cli.install as install_mod
+    import synthadoc.cli.plugin as plugin_mod
     from typer.testing import CliRunner
     from synthadoc.cli.main import app
     monkeypatch.setattr(install_mod, "_REGISTRY", tmp_path / "wikis.json")
-    monkeypatch.setattr(install_mod, "_run_scaffold", lambda dest, domain: None)
+    monkeypatch.setattr(plugin_mod, "_install_dataview", lambda wiki_path: "skipped")
 
     # Wire assign_wiki_port to the real implementation but route it through a
     # counter so it picks 7070 for the first wiki, 7071 for the second.

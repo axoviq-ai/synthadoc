@@ -9,7 +9,7 @@ import typer
 from typing import NoReturn
 
 from synthadoc.config import load_config
-from synthadoc.cli.install import resolve_wiki_path
+from synthadoc.cli._wiki import resolve_wiki_path
 from synthadoc import errors as E
 
 
