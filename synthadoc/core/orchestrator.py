@@ -487,7 +487,11 @@ class Orchestrator:
         _WIKILINK_RE = _re.compile(r"\[\[([^\]|#]+?)(?:\|[^\]]*)?\]\]")
         try:
             wiki_dir = self._root / "wiki"
-            protected_slugs = [p.stem for p in wiki_dir.glob("*.md")]
+            from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
+            protected_slugs = [
+                p.stem for p in wiki_dir.glob("*.md")
+                if p.stem not in LINT_SKIP_SLUGS
+            ]
             result = await ScaffoldAgent(
                 provider=make_provider("ingest", self._cfg),
                 max_tokens=self._cfg.agents.scaffold_max_tokens,

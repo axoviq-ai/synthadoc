@@ -543,9 +543,10 @@ class IngestAgent:
             temperature=0.3,
             max_tokens=512,
         )
+        _today = date.today().isoformat()
         content = (
-            f"---\ntitle: Wiki Overview\nstatus: active\n"
-            f"updated: {date.today().isoformat()}\n---\n\n"
+            f"---\ntitle: Wiki Overview\nstatus: active\nconfidence: high\n"
+            f"created: '{_today}'\nupdated: {_today}\n---\n\n"
             f"# Wiki Overview\n\n{resp.text.strip()}\n"
         )
         (wiki_dir / "overview.md").write_text(content, encoding="utf-8", newline="\n")
