@@ -138,7 +138,6 @@ def test_install_stores_port_in_registry(tmp_path, monkeypatch):
     from synthadoc.cli.main import app
     monkeypatch.setattr(install_mod, "_REGISTRY", tmp_path / "wikis.json")
     monkeypatch.setattr(install_mod, "_assign_wiki_port", lambda reserved, start=7070: 7072)
-    monkeypatch.setattr(install_mod, "_run_scaffold", lambda dest, domain: None)
 
     runner = CliRunner()
     result = runner.invoke(app, ["install", "my-wiki", "--target", str(tmp_path)])
@@ -154,7 +153,6 @@ def test_install_second_wiki_gets_different_port(tmp_path, monkeypatch):
     from typer.testing import CliRunner
     from synthadoc.cli.main import app
     monkeypatch.setattr(install_mod, "_REGISTRY", tmp_path / "wikis.json")
-    monkeypatch.setattr(install_mod, "_run_scaffold", lambda dest, domain: None)
 
     # Wire assign_wiki_port to the real implementation but route it through a
     # counter so it picks 7070 for the first wiki, 7071 for the second.

@@ -72,44 +72,6 @@ def _get_reserved_ports() -> set[int]:
 from synthadoc.cli.main import app  # noqa: E402
 
 
-def _run_scaffold(dest: Path, domain: str):
-    """Try to run ScaffoldAgent. Returns ScaffoldResult or None if no API key is set."""
-    import asyncio
-    import os
-    from synthadoc.config import load_config
-    from synthadoc.providers import make_provider
-
-    cfg = load_config(project_config=dest / ".synthadoc" / "config.toml")
-    provider_name = cfg.agents.resolve("ingest").provider
-
-    _KEY_ENV = {
-        "anthropic": "ANTHROPIC_API_KEY",
-        "openai": "OPENAI_API_KEY",
-        "gemini": "GEMINI_API_KEY",
-        "groq": "GROQ_API_KEY",
-    }
-    env_var = _KEY_ENV.get(provider_name)
-    if env_var and not os.environ.get(env_var, "").strip():
-        typer.echo(
-            f"  [scaffold] Skipped — {env_var} is not set.\n"
-            f"  Edit .synthadoc/config.toml to choose a provider, then run:\n"
-            f"    synthadoc scaffold -w <wiki-name>",
-            err=False,
-        )
-        return None  # no key — caller will fall back to static template
-
-    try:
-        provider = make_provider("ingest", cfg)
-        from synthadoc.agents.scaffold_agent import ScaffoldAgent
-        agent = ScaffoldAgent(provider=provider, max_tokens=cfg.agents.scaffold_max_tokens)
-        return asyncio.run(agent.scaffold(domain=domain))
-    except Exception as exc:
-        import logging
-        logging.getLogger(__name__).warning("Scaffold LLM call failed: %s", exc)
-        typer.echo(f"\n  [scaffold] FAILED — falling back to static template.", err=False)
-        typer.echo(f"  Reason: {exc}", err=False)
-        typer.echo(f"  Tip: run `synthadoc scaffold -w <wiki>` after the server is up to retry.\n", err=False)
-        return None
 
 
 @app.command("install")
@@ -185,32 +147,6 @@ def install_cmd(
         from synthadoc.cli._init import init_wiki
         init_wiki(dest, domain, port=effective_port)
 
-        # ── LLM scaffold ──────────────────────────────────────────────────────
-        typer.echo("Generating domain-specific scaffold...")
-        scaffold_result = _run_scaffold(dest, domain)
-        if scaffold_result:
-            (dest / "wiki" / "index.md").write_text(
-                scaffold_result.index_md, encoding="utf-8", newline="\n")
-            (dest / "AGENTS.md").write_text(
-                scaffold_result.agents_md, encoding="utf-8", newline="\n")
-            (dest / "wiki" / "purpose.md").write_text(
-                scaffold_result.purpose_md, encoding="utf-8", newline="\n")
-            dashboard_path = dest / "wiki" / "dashboard.md"
-            dash = dashboard_path.read_text(encoding="utf-8")
-            dash = dash.replace(
-                f"# {domain} — Dashboard",
-                f"# {domain} — Dashboard\n\n{scaffold_result.dashboard_intro}",
-                1,
-            )
-            dashboard_path.write_text(dash, encoding="utf-8", newline="\n")
-            typer.echo("  Scaffold complete — domain-specific content generated.")
-        else:
-            typer.echo(
-                "  Scaffold skipped — static templates written.\n"
-                f"  Run 'synthadoc scaffold -w {name}' after setting your LLM API key"
-                " to generate domain-specific content."
-            )
-
     registry = _read_registry()
     registry[name] = {
         "path": str(dest),
@@ -226,9 +162,10 @@ def install_cmd(
     if not demo:
         typer.echo()
         typer.echo(f"Next steps:")
-        typer.echo(f"  1. Ingest your sources:  synthadoc ingest <file> -w {name}")
-        typer.echo(f"  2. Rebuild the index:    synthadoc scaffold -w {name}")
-        typer.echo(f"     (index.md links are placeholders until scaffold is re-run after ingest)")
+        typer.echo(f"  1. Edit .synthadoc/config.toml — set your LLM provider and API key")
+        typer.echo(f"  2. Start the server:     synthadoc serve -w {name}")
+        typer.echo(f"  3. Generate index:       synthadoc scaffold -w {name}")
+        typer.echo(f"  4. Ingest your sources:  synthadoc ingest <file> -w {name}")
 
 
 @app.command("list")

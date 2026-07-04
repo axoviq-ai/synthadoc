@@ -148,35 +148,6 @@ def test_cache_clear_unknown_action_exits_nonzero(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# install + LLM scaffold
-# ---------------------------------------------------------------------------
-
-def test_install_fresh_wiki_calls_scaffold_agent(tmp_path):
-    """install must call ScaffoldAgent when API key is available."""
-    from synthadoc.agents.scaffold_agent import ScaffoldResult
-    import synthadoc.cli.install as install_mod
-
-    mock_result = ScaffoldResult(
-        index_md="---\ntitle: Index\n---\n# Test Index\n",
-        agents_md="# AGENTS.md — Robotics Wiki\n",
-        purpose_md="# Wiki Purpose\nThis wiki covers: Robotics.\n",
-        dashboard_intro="A wiki tracking Robotics knowledge.",
-    )
-
-    with patch("synthadoc.cli.install._run_scaffold", return_value=mock_result) as mock_scaffold, \
-         patch("synthadoc.cli.install._assign_wiki_port", return_value=7070):
-        with patch.object(install_mod, "_REGISTRY", tmp_path / "wikis.json"):
-            result = runner.invoke(app, [
-                "install", "test-wiki",
-                "--target", str(tmp_path),
-                "--domain", "Robotics",
-            ])
-
-    assert result.exit_code == 0, result.output
-    mock_scaffold.assert_called_once()
-
-
-# ---------------------------------------------------------------------------
 # _fmt_ts — pure timestamp formatter in jobs.py
 # ---------------------------------------------------------------------------
 
@@ -236,12 +207,11 @@ def test_jobs_status_shows_error_field():
     assert "Something went wrong" in result.output
 
 
-def test_install_fresh_wiki_falls_back_when_no_api_key(tmp_path):
-    """install must fall back to static templates when scaffold returns None."""
+def test_install_writes_static_index_and_shows_scaffold_tip(tmp_path):
+    """install writes static index.md and shows the scaffold next-step tip."""
     import synthadoc.cli.install as install_mod
 
-    with patch("synthadoc.cli.install._run_scaffold", return_value=None), \
-         patch("synthadoc.cli.install._assign_wiki_port", return_value=7070):
+    with patch("synthadoc.cli.install._assign_wiki_port", return_value=7070):
         with patch.object(install_mod, "_REGISTRY", tmp_path / "wikis.json"):
             result = runner.invoke(app, [
                 "install", "test-wiki2",
@@ -250,9 +220,9 @@ def test_install_fresh_wiki_falls_back_when_no_api_key(tmp_path):
             ])
 
     assert result.exit_code == 0, result.output
-    # Static index.md fallback must still be written
+    # Static index.md must be written by init_wiki
     assert (tmp_path / "test-wiki2" / "wiki" / "index.md").exists()
-    # Hint message must appear
+    # Next steps must mention scaffold
     assert "scaffold" in result.output.lower()
 
 
