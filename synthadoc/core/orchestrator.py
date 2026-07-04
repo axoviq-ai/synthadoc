@@ -538,7 +538,7 @@ class Orchestrator:
                             slug_cats[slug].append(current_section)
             categories_updated = 0
             for slug, cats in slug_cats.items():
-                if self._store.page_exists(slug):
+                if slug not in LINT_SKIP_SLUGS and self._store.page_exists(slug):
                     self._store.set_page_categories(slug, cats)
                     categories_updated += 1
 
