@@ -220,6 +220,12 @@ def install_cmd(
     typer.echo(f"Wiki '{name}' installed.")
     typer.echo(f"  Port   {effective_port}")
     typer.echo(f"Start:   synthadoc serve -w {name}")
+    if not demo:
+        typer.echo()
+        typer.echo(f"Next steps:")
+        typer.echo(f"  1. Ingest your sources:  synthadoc ingest <file> -w {name}")
+        typer.echo(f"  2. Rebuild the index:    synthadoc scaffold -w {name}")
+        typer.echo(f"     (index.md links are placeholders until scaffold is re-run after ingest)")
 
 
 @app.command("list")
