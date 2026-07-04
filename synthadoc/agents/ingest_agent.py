@@ -536,7 +536,7 @@ class IngestAgent:
             max_tokens=512,
         )
         content = (
-            f"---\ntitle: Wiki Overview\nstatus: auto\n"
+            f"---\ntitle: Wiki Overview\nstatus: active\n"
             f"updated: {date.today().isoformat()}\n---\n\n"
             f"# Wiki Overview\n\n{resp.text.strip()}\n"
         )

@@ -764,6 +764,7 @@ async def test_overview_md_created_after_ingest(tmp_wiki, cache):
     assert overview.exists(), "overview.md should be created after page creation"
     text = overview.read_text(encoding="utf-8")
     assert "overview" in text.lower() or "wiki" in text.lower()
+    assert "status: active" in text, "overview.md must use status: active, not status: auto"
 
 
 @pytest.mark.asyncio
