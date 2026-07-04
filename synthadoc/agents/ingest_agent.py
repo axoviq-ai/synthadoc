@@ -289,6 +289,14 @@ def _strip_leading_frontmatter(content: str) -> str:
     return content
 
 
+def _append_source_ref(page: "WikiPage", ref: "SourceRef") -> None:
+    """Append ref to page.sources only when (file, hash) is not already recorded."""
+    for existing in page.sources:
+        if existing.file == ref.file and existing.hash == ref.hash:
+            return
+    page.sources.append(ref)
+
+
 def _extract_key_data(source_text: str) -> list[str]:
     """Extract numerical facts, formulas, and rates from source text deterministically.
 
@@ -910,7 +918,7 @@ class IngestAgent:
                             section, extracted.text, p.name, bust_cache=bust_cache
                         )
                         page.content = page.content.rstrip() + f"\n\n{section}"
-                        page.sources.append(SourceRef(
+                        _append_source_ref(page, SourceRef(
                             file=source,
                             hash=src_hash or "",
                             size=src_size or 0,
@@ -970,7 +978,7 @@ class IngestAgent:
                                 section, extracted.text, p.name, bust_cache=bust_cache
                             )
                             page.content = page.content.rstrip() + f"\n\n{section}"
-                            page.sources.append(SourceRef(
+                            _append_source_ref(page, SourceRef(
                                 file=source,
                                 hash=src_hash or "",
                                 size=src_size or 0,

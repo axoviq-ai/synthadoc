@@ -863,6 +863,23 @@ def test_decision_prompt_contains_entity_profile_rule():
     assert "company" in _DECISION_PROMPT.lower()
 
 
+def test_append_source_ref_deduplicates():
+    """_append_source_ref must not add a duplicate (file, hash) entry."""
+    from synthadoc.agents.ingest_agent import _append_source_ref
+    from synthadoc.storage.wiki import SourceRef, WikiPage
+
+    page = WikiPage(title="T", tags=[], content="", status="draft", confidence="medium", sources=[])
+    ref = SourceRef(file="/a/b.md", hash="abc123", size=100, ingested="2026-07-04")
+    _append_source_ref(page, ref)
+    _append_source_ref(page, ref)
+    _append_source_ref(page, SourceRef(file="/a/b.md", hash="abc123", size=100, ingested="2026-07-05"))
+    assert len(page.sources) == 1
+
+    # Different hash on same file → allowed (genuinely updated source)
+    _append_source_ref(page, SourceRef(file="/a/b.md", hash="deadbeef", size=200, ingested="2026-07-05"))
+    assert len(page.sources) == 2
+
+
 @pytest.mark.asyncio
 async def test_analyse_returns_structured_result(tmp_wiki, cache):
     """_analyse() returns entities, tags, and a summary string."""
