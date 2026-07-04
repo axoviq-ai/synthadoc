@@ -367,8 +367,8 @@ The PID is printed on start and saved to `<wiki-root>/.synthadoc/server.pid`.
 **Upgrading:** after updating synthadoc (via `pip install --upgrade synthadoc` or `git pull`), restart the server to pick up the new code, then run these to keep registered wikis in sync:
 
 ```bash
-synthadoc plugin upgrade   # push updated Obsidian plugin binary to all registered wikis
-synthadoc demo sync        # demo-installed wikis — pick up new pages and backfill metadata
+synthadoc plugin upgrade         # push updated Obsidian plugin binary to all registered wikis
+synthadoc demo sync --force      # demo-installed wikis — update pages and pick up citation markers
 ```
 
 Neither command requires the server to be running.

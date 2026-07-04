@@ -10,7 +10,7 @@ major engine feature. No setup beyond following the steps below is required.
 > install synthadoc (production or development), set your API key, install the demo wiki, and start the engine.
 > Then come back here.
 >
-> **Already installed the demo wiki?** Skip `synthadoc install` and run `synthadoc demo sync history-of-computing` instead. This copies any new source files added to the latest demo template into your existing wiki without overwriting anything you have already ingested or modified.
+> **Already installed the demo wiki?** Skip `synthadoc install` and run `synthadoc demo sync history-of-computing --force` instead. This updates all pre-built demo pages and source files to the latest template, including pages with citation markers added in recent releases. `--force` only overwrites demo template files — your own ingested pages and `.synthadoc/` config and audit data are never touched.
 
 ---
 
@@ -2298,8 +2298,8 @@ To promote a page: `synthadoc lifecycle promote <slug>`
 
 After upgrading Synthadoc, sync your demo wikis to pick up new content:
 
-    synthadoc demo sync                    # add new pages only
-    synthadoc demo sync --force            # also update existing pages from the latest template
+    synthadoc demo sync --force            # update all demo pages and source files (recommended)
+    synthadoc demo sync                    # additive only — skip if you need citation markers on pre-built pages
 
 ---
 
