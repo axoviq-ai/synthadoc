@@ -2284,3 +2284,50 @@ def test_extract_key_data_formula_line():
     src = "total_mv_cny = total_mv × 10,000\n"
     result = _extract_key_data(src)
     assert any("total_mv" in item for item in result)
+
+
+# ── _normalize_citation_markers ───────────────────────────────────────────────
+
+def test_normalize_single_line_citation():
+    """^[file:N] → ^[file:N-N]."""
+    from synthadoc.agents.ingest_agent import _normalize_citation_markers
+    result = _normalize_citation_markers("Some claim. ^[report.md:42]")
+    assert result == "Some claim. ^[report.md:42-42]"
+
+
+def test_normalize_comma_range_citation():
+    """^[file:N,M-P] → ^[file:N-P] (first-to-last number)."""
+    from synthadoc.agents.ingest_agent import _normalize_citation_markers
+    result = _normalize_citation_markers("Claim. ^[market.md:12,16-21]")
+    assert result == "Claim. ^[market.md:12-21]"
+
+
+def test_normalize_comma_pair_citation():
+    """^[file:N,M] → ^[file:N-M]."""
+    from synthadoc.agents.ingest_agent import _normalize_citation_markers
+    result = _normalize_citation_markers("Claim. ^[data.md:27,54]")
+    assert result == "Claim. ^[data.md:27-54]"
+
+
+def test_normalize_trailing_comma_range():
+    """^[file:N-M,P] → ^[file:N-P]."""
+    from synthadoc.agents.ingest_agent import _normalize_citation_markers
+    result = _normalize_citation_markers("Claim. ^[src.md:74-80,107]")
+    assert result == "Claim. ^[src.md:74-107]"
+
+
+def test_normalize_leaves_canonical_unchanged():
+    """Already-canonical ^[file:N-N] markers are not modified."""
+    from synthadoc.agents.ingest_agent import _normalize_citation_markers
+    text = "Claim. ^[report.md:10-15]"
+    assert _normalize_citation_markers(text) == text
+
+
+def test_normalize_multiple_citations_in_text():
+    """Multiple mixed citations in one string are all normalised."""
+    from synthadoc.agents.ingest_agent import _normalize_citation_markers
+    text = "A ^[a.md:5] B ^[b.md:10-12] C ^[c.md:7,9]"
+    result = _normalize_citation_markers(text)
+    assert "^[a.md:5-5]" in result
+    assert "^[b.md:10-12]" in result
+    assert "^[c.md:7-9]" in result

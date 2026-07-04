@@ -13,7 +13,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from synthadoc.agents.citations import CITATION_RE as _CITATION_RE
+from synthadoc.agents.citations import CITATION_RE as _CITATION_RE, MALFORMED_CITE_RE as _MALFORMED_CITE_RE
 from synthadoc.agents.search_decompose_agent import SearchDecomposeAgent
 from synthadoc.agents.skill_agent import SkillAgent
 from synthadoc.core.cache import CACHE_VERSION, CacheManager, make_cache_key
@@ -117,6 +117,34 @@ _FORMULA_LINE_RE = re.compile(
     r"^[A-Za-z_]\w*(?:\s+\w+)?\s*=\s*[^\n]{5,80}$", re.MULTILINE
 )
 _KEY_DATA_MIN_ITEMS = 1  # only append section when at least this many items found
+
+# Matches any ^[filename:spec] where spec is not already a canonical N-N range.
+_NONCANONICAL_CITE_RE = re.compile(r'\^\[([^:\]]+):([^\]]+)\]')
+
+
+def _normalize_citation_markers(text: str) -> str:
+    """Normalize LLM-emitted citation variants to canonical ^[file:N-N] format.
+
+    LLMs frequently produce ^[file:42] for single-line references and
+    ^[file:12,16-21] for multi-range references; neither matches CITATION_RE.
+    Single-line → ^[file:42-42].  Multi-range/comma → ^[file:first-last].
+    Already-canonical ^[file:N-N] markers pass through unchanged.
+    """
+    def _fix(m: re.Match) -> str:
+        filename, spec = m.group(1), m.group(2)
+        if re.fullmatch(r'\d+-\d+', spec):
+            return m.group(0)
+        if re.fullmatch(r'\d+', spec):
+            return f"^[{filename}:{spec}-{spec}]"
+        nums = [int(n) for n in re.findall(r'\d+', spec)]
+        if len(nums) >= 2:
+            return f"^[{filename}:{nums[0]}-{nums[-1]}]"
+        if len(nums) == 1:
+            return f"^[{filename}:{nums[0]}-{nums[0]}]"
+        return m.group(0)
+
+    return _NONCANONICAL_CITE_RE.sub(_fix, text)
+
 
 _CITATION_PROMPT = (
     "You are a citation annotator. Given a wiki page section and the source text it was "
@@ -418,6 +446,10 @@ class IngestAgent:
                     metadata={"source": filename, "error": type(exc).__name__},
                 )
                 return section, []
+
+        # Normalize single-line and multi-range citations to canonical N-N format
+        # before extraction so they are not silently dropped or flagged as malformed.
+        annotated = _normalize_citation_markers(annotated)
 
         # Bug B fix: case-insensitive filename comparison
         citations = [
