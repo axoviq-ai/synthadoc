@@ -16,17 +16,20 @@
       "What are the stale pages in my wiki?",
       "What pages are orphan pages?",
       "Ingest a new source into the wiki",
-      "Run a full lint check"
+      "Run a full lint check",
+      "Show my lint report"
     ],
     "HEALTH_CHECK": [
       "Show wiki status",
       "Run Synthadoc status",
+      "Show my lint report",
       "Which pages are marked stale?",
       "What pages are orphan pages?",
-      "Show me pages with contradictions",
+      "List contradicted pages",
+      "Which pages have adversarial warnings?",
+      "Which sources were truncated?",
       "Show me recently updated wiki pages",
       "Show me recently archived wiki pages",
-      "Which pages have adversarial warnings?",
       "How do I run a lint check?",
       "Run lint with auto-resolve enabled",
       "Show my scheduled tasks"
@@ -37,8 +40,11 @@
       "What pages were added this year?",
       "Show me recently updated wiki pages",
       "Show me recently archived wiki pages",
+      "Show my lint report",
       "Which pages have adversarial warnings?",
+      "Which sources were truncated?",
       "What pages are orphan pages?",
+      "List contradicted pages",
       "Run Synthadoc status",
       "Activate a draft page",
       "Archive a stale page",
@@ -111,10 +117,21 @@
       "hints": [
         "What pages are orphan pages?",
         "List contradicted pages",
+        "Show adversarial warnings",
+        "Which sources were truncated?",
         "Run lint on contradictions only",
         "Run lint with auto-resolve enabled",
         "How do I run a lint check?",
         "Show my lint report"
+      ]
+    },
+    {
+      "keywords": ["truncated", "truncation", "max_source_chars", "source limit"],
+      "answer_keywords": ["truncated", "max_source_chars"],
+      "hints": [
+        "Which sources were truncated?",
+        "Show my lint report",
+        "How do I re-ingest with --force?"
       ]
     },
     {
@@ -141,6 +158,7 @@
       "answer_keywords": ["adversarial", "claim concern"],
       "hints": [
         "Which pages have adversarial warnings?",
+        "Show adversarial warnings",
         "What pages are orphan pages?",
         "Run the adversarial lint pass",
         "How do I review a flagged claim?"
