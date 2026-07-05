@@ -194,15 +194,25 @@ def _parse_adversarial_response(text: str) -> list[dict]:
     return []
 
 
+class LintFocus:
+    """Named constants for lint report focus categories."""
+    CONTRADICTED = "contradicted"
+    ORPHANS      = "orphans"
+    ADVERSARIAL  = "adversarial"
+    TRUNCATED    = "truncated"
+    ALL: frozenset[str] = frozenset({"contradicted", "orphans", "adversarial", "truncated"})
+
+
 @dataclass
 class LintStateSummary:
     contradicted: list[str]
     orphans: list[str]
-    adv_pages: list[dict]  # [{slug, warnings: list[dict]}]
+    adv_pages: list[dict]                                   # [{slug, warnings: list[dict]}]
+    truncated_pages: list[dict] = field(default_factory=list)  # [{slug, file, size}]
 
 
 def read_current_lint_state(store: WikiStorage) -> LintStateSummary:
-    """Scan wiki pages and return contradictions, orphans, and adversarial warnings.
+    """Scan wiki pages and return contradictions, orphans, adversarial warnings, and truncated sources.
 
     Reads from WikiStorage directly — no LLM, no server required.
     """
@@ -210,6 +220,7 @@ def read_current_lint_state(store: WikiStorage) -> LintStateSummary:
     contradicted: list[str] = []
     page_bodies: dict[str, str] = {}
     adv_pages: list[dict] = []
+    truncated_pages: list[dict] = []
 
     for slug in slugs:
         page = store.read_page(slug)
@@ -222,9 +233,17 @@ def read_current_lint_state(store: WikiStorage) -> LintStateSummary:
             contradicted.append(slug)
         if page.lint_warnings:
             adv_pages.append({"slug": slug, "warnings": list(page.lint_warnings)})
+        for src in (page.sources or []):
+            if getattr(src, "truncated", False):
+                truncated_pages.append({"slug": slug, "file": src.file, "size": src.size})
 
     orphans = find_orphan_slugs(page_bodies)
-    return LintStateSummary(contradicted=contradicted, orphans=orphans, adv_pages=adv_pages)
+    return LintStateSummary(
+        contradicted=contradicted,
+        orphans=orphans,
+        adv_pages=adv_pages,
+        truncated_pages=truncated_pages,
+    )
 
 
 class LintAgent:

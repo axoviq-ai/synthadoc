@@ -1498,12 +1498,13 @@ class LintRunModal extends Modal {
                                 const contradictions: string[] = report.contradictions ?? [];
                                 const orphans: string[] = report.orphans ?? [];
                                 const adversarialWarnings: any[] = report.adversarial_warnings ?? [];
+                                const truncatedSources: any[] = report.truncated_sources ?? [];
                                 out.empty();
                                 const summary = out.createEl("p");
                                 summary.style.cssText = "font-weight:bold;margin-bottom:6px";
-                                summary.setText(`✅ Done — ${contradictions.length} contradiction(s), ${orphans.length} orphan(s), ${adversarialWarnings.length} adversarial warning(s).`);
-                                if (adversarialWarnings.length > 0) {
-                                    const advHint = out.createEl("p", { text: "Open Lint report → to see adversarial warning details." });
+                                summary.setText(`✅ Done — ${contradictions.length} contradiction(s), ${orphans.length} orphan(s), ${adversarialWarnings.length} adversarial warning(s), ${truncatedSources.length} truncated source(s).`);
+                                if (adversarialWarnings.length > 0 || truncatedSources.length > 0) {
+                                    const advHint = out.createEl("p", { text: "Open Lint report → to see full details." });
                                     advHint.style.cssText = "font-size:11px;color:var(--text-muted);margin-top:4px";
                                 }
                                 for (const d of details) {
@@ -1520,7 +1521,7 @@ class LintRunModal extends Modal {
                                 if (orphans.length > 0) {
                                     out.createEl("p", { text: `Orphans: ${orphans.join(", ")}` }).style.cssText = "font-size:12px;color:var(--text-muted)";
                                 }
-                                new Notice(`Synthadoc: lint done — ${contradictions.length} contradictions, ${orphans.length} orphans, ${adversarialWarnings.length} adversarial warnings`);
+                                new Notice(`Synthadoc: lint done — ${contradictions.length} contradictions, ${orphans.length} orphans, ${adversarialWarnings.length} adversarial warnings, ${truncatedSources.length} truncated sources`);
                             } catch {
                                 out.empty();
                                 out.createEl("p", { text: "✅ Lint complete. Could not load report." });
@@ -1618,6 +1619,7 @@ class LintReportModal extends Modal {
             const orphanDetails: any[] = r.orphan_details ??
                 (r.orphans ?? []).map((s: string) => ({ slug: s, index_suggestion: `- [[${s}]]` }));
             const adversarialWarnings: any[] = r.adversarial_warnings ?? [];
+            const truncatedSources: any[] = r.truncated_sources ?? [];
             const totalAdvWarnings = adversarialWarnings.reduce(
                 (sum: number, p: any) => sum + ((p.warnings as any[])?.length ?? 0), 0);
 
@@ -1625,12 +1627,13 @@ class LintReportModal extends Modal {
             const tabBar = out.createEl("div");
             tabBar.style.cssText = "display:flex;gap:0;margin-bottom:16px;border-bottom:1px solid var(--background-modifier-border)";
 
-            type TabName = "Contradictions" | "Orphans" | "Adversarial";
-            const tabNames: TabName[] = ["Contradictions", "Orphans", "Adversarial"];
+            type TabName = "Contradictions" | "Orphans" | "Adversarial" | "Truncated";
+            const tabNames: TabName[] = ["Contradictions", "Orphans", "Adversarial", "Truncated"];
             const tabLabels: Record<TabName, string> = {
                 "Contradictions": `❗ Contradictions (${details.length})`,
                 "Orphans": `🔗 Orphans (${orphanDetails.length})`,
                 "Adversarial": `🔍 Adversarial (${totalAdvWarnings})`,
+                "Truncated": `✂ Truncated (${truncatedSources.length})`,
             };
             const panels: Record<TabName, HTMLElement> = {} as any;
             const tabBtns: Record<TabName, HTMLElement> = {} as any;
@@ -1736,9 +1739,37 @@ class LintReportModal extends Modal {
                 });
             }
 
+            // Truncated sources panel
+            if (truncatedSources.length === 0) {
+                panels["Truncated"].createEl("p", { text: "✅ No truncated sources." });
+            } else {
+                const ul = panels["Truncated"].createEl("ul");
+                truncatedSources.forEach(({ slug, file, size, suggested_reingest }) => {
+                    const li = ul.createEl("li");
+                    const slugLink = li.createEl("a", { text: slug });
+                    slugLink.style.cssText = "cursor:pointer;font-family:var(--font-monospace);font-size:var(--font-smaller);font-weight:600";
+                    slugLink.onclick = () => this.app.workspace.openLinkText(slug, "", false);
+                    li.appendText(` — source exceeded limit (${(size as number).toLocaleString()} chars)`);
+                    const srcDiv = li.createEl("div");
+                    srcDiv.style.cssText = "font-size:11px;margin-top:2px";
+                    const srcLbl = srcDiv.createEl("span", { text: "Source: " });
+                    srcLbl.style.cssText = "color:var(--text-muted);font-weight:600";
+                    srcDiv.createEl("code", { text: file });
+                    if (suggested_reingest) {
+                        const reingestDiv = li.createEl("div");
+                        reingestDiv.style.cssText = "margin-top:4px";
+                        reingestDiv.createEl("div", { text: "💡 Re-ingest with a higher limit:" })
+                            .style.cssText = "font-size:11px;color:var(--text-muted)";
+                        reingestDiv.createEl("code", { text: suggested_reingest })
+                            .style.cssText = "font-size:11px;-webkit-user-select:text;user-select:text";
+                    }
+                });
+            }
+
             // Default to first tab with data, or Contradictions
             const defaultTab: TabName =
                 details.length > 0 ? "Contradictions" :
+                truncatedSources.length > 0 ? "Truncated" :
                 orphanDetails.length > 0 ? "Orphans" : "Adversarial";
             switchTab(defaultTab);
 

@@ -159,6 +159,7 @@ _LIVE_DATA_TRIGGERS: frozenset[str] = frozenset({
     "this month", "last month", "past month", "this year", "last year", "past year",
     "adversarial", "adversarial warning", "flagged", "overstated", "claim concern",
     "lint warning", "warnings",
+    "truncated", "truncation", "max_source_chars", "source limit",
     "job", "jobs", "job id", "job status", "ingest job", "queue",
     "pending jobs", "failed job", "dead job",
 })
@@ -172,6 +173,10 @@ _RECENT_CHANGE_TRIGGERS: frozenset[str] = frozenset({
 _ADVERSARIAL_TRIGGERS: frozenset[str] = frozenset({
     "adversarial", "adversarial warning", "flagged", "overstated", "claim concern",
     "lint warning", "warnings",
+})
+
+_TRUNCATION_TRIGGERS: frozenset[str] = frozenset({
+    "truncated", "truncation", "max_source_chars", "source limit",
 })
 
 _JOB_TRIGGERS: frozenset[str] = frozenset({
@@ -417,6 +422,23 @@ class QueryAgent:
                         lines.append(f"  - [[{slug}]]  ({n} warning{'s' if n != 1 else ''})")
                 else:
                     lines.append("\n### Pages with adversarial warnings\n  (none — run `synthadoc lint run` to check)")
+
+            # Truncated sources — read directly from page frontmatter
+            if any(kw in q_lower for kw in _TRUNCATION_TRIGGERS):
+                truncated: list[tuple[str, str, int]] = []
+                for slug in self._store.list_pages():
+                    page = self._store.read_page(slug)
+                    if not page:
+                        continue
+                    for src in (page.sources or []):
+                        if getattr(src, "truncated", False):
+                            truncated.append((slug, src.file, src.size))
+                if truncated:
+                    lines.append("\n### Sources truncated at ingest time")
+                    for slug, file, size in truncated:
+                        lines.append(f"  - [[{slug}]]  source: {file}  ({size:,} chars)")
+                else:
+                    lines.append("\n### Sources truncated at ingest time\n  (none)")
 
             # Recent ingest history when question asks about changes/updates
             if any(kw in q_lower for kw in _RECENT_CHANGE_TRIGGERS):

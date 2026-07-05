@@ -1019,27 +1019,39 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                 "index_suggestion": f"- [[{slug}]] — {hint}",
             })
 
-        # Build adversarial_warnings via WikiStorage.read_page() — same parse path
-        # as LintAgent._run_adversarial_pass() which writes the warnings.
+        # Build adversarial_warnings and truncated_sources via WikiStorage.read_page()
         orch = app.state.orch
         wiki_name = wiki_root.name
         adversarial_warnings = []
+        truncated_sources = []
         for slug in page_texts:
             if slug in LINT_SKIP_SLUGS:
                 continue
             page = orch._store.read_page(slug)
-            if not page or not page.lint_warnings:
+            if not page:
                 continue
-            suggested_reingests = [
-                f'synthadoc ingest "{s.file}" -w {wiki_name}'
-                for s in page.sources
-                if s.file and _is_reingestable(s.file)
-            ]
-            adversarial_warnings.append({
-                "slug": slug,
-                "warnings": page.lint_warnings,
-                "suggested_reingests": suggested_reingests,
-            })
+            if page.lint_warnings:
+                suggested_reingests = [
+                    f'synthadoc ingest "{s.file}" -w {wiki_name}'
+                    for s in page.sources
+                    if s.file and _is_reingestable(s.file)
+                ]
+                adversarial_warnings.append({
+                    "slug": slug,
+                    "warnings": page.lint_warnings,
+                    "suggested_reingests": suggested_reingests,
+                })
+            for src in (page.sources or []):
+                if getattr(src, "truncated", False):
+                    truncated_sources.append({
+                        "slug": slug,
+                        "file": src.file,
+                        "size": src.size,
+                        "suggested_reingest": (
+                            f'synthadoc ingest "{src.file}" -w {wiki_name}'
+                            f" --max-source-chars {src.size * 2}"
+                        ),
+                    })
 
         return {
             "contradictions": [d["slug"] for d in contradiction_details],
@@ -1047,6 +1059,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             "orphans": [d["slug"] for d in orphan_details],
             "orphan_details": orphan_details,
             "adversarial_warnings": adversarial_warnings,
+            "truncated_sources": truncated_sources,
         }
 
     _VALID_JOB_SORT = {"created_at", "status", "operation"}
