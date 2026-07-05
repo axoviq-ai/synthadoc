@@ -478,20 +478,19 @@ def test_lint_topic_pattern_includes_truncation_hints():
 
 # ── no-regression: existing LintStateSummary callsites ───────────────────────
 
-def test_existing_all_clear_construction_still_works(tmp_path):
+@pytest.mark.asyncio
+async def test_existing_all_clear_construction_still_works(tmp_path):
     """Existing test pattern (no truncated_pages) must still produce all-clear."""
     agent = _make_action_agent(tmp_path, '{"action":"lint_report","params":{}}')
     with patch("synthadoc.agents.lint_agent.read_current_lint_state") as m:
         m.return_value = LintStateSummary(contradicted=[], orphans=[], adv_pages=[])
-        import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
-            agent.run("show lint report")
-        )
+        result = await agent.run("show lint report")
     assert result.success is True
     assert "all clear" in result.message.lower()
 
 
-def test_existing_issues_construction_still_works(tmp_path):
+@pytest.mark.asyncio
+async def test_existing_issues_construction_still_works(tmp_path):
     """Existing test pattern with issues (no truncated_pages) still works."""
     agent = _make_action_agent(tmp_path, '{"action":"lint_report","params":{}}')
     with patch("synthadoc.agents.lint_agent.read_current_lint_state") as m:
@@ -500,10 +499,7 @@ def test_existing_issues_construction_still_works(tmp_path):
             orphans=["page-b"],
             adv_pages=[{"slug": "page-c", "warnings": [{"claim": "x", "concern": "y"}]}],
         )
-        import asyncio
-        result = asyncio.get_event_loop().run_until_complete(
-            agent.run("show lint report")
-        )
+        result = await agent.run("show lint report")
     assert result.success is True
     assert "page-a" in result.message
     assert "page-b" in result.message
