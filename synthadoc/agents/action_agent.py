@@ -139,10 +139,14 @@ _EXTRACT_PROMPT_TEMPLATE = (
     "                  'resolve contradictions', 'fix contradictions', 'clear contradictions'.\n"
     "                  When 'auto-resolve' / 'auto resolve' / 'resolve' appears → set auto_resolve=true.\n"
     "                  When 'contradiction' appears → set scope='contradictions'.\n"
-    "  lint_report   : (no params — shows current contradictions, orphans and adversarial warnings; no server needed)\n"
-    "                  Use lint_report for ANY question asking what orphan/contradicted/adversarial pages exist NOW.\n"
-    "                  Examples: 'what pages are orphans?', 'show contradictions', 'list orphan pages',\n"
-    "                  'are there any contradicted pages?', 'show lint report'\n"
+    "  lint_report   : focus (optional: 'contradicted'|'orphans'|'adversarial'|'truncated'|null)\n"
+    "                  Shows current lint state; no server needed. Set focus to the specific category the user asks about.\n"
+    "                  Use lint_report for ANY question asking what orphan/contradicted/adversarial/truncated pages exist NOW.\n"
+    "                  Examples: 'list contradicted pages' → focus='contradicted'\n"
+    "                            'what pages are orphans?' → focus='orphans'\n"
+    "                            'show adversarial warnings' → focus='adversarial'\n"
+    "                            'which sources were truncated?' → focus='truncated'\n"
+    "                            'show lint report' / 'full lint report' → focus=null (show all)\n"
     "  wiki_status   : (no params — live page counts grouped by lifecycle state: draft/active/stale/contradicted/archived)\n"
     "                  Use wiki_status for: 'show synthadoc status', 'wiki health', 'how many pages are active?',\n"
     "                  'page lifecycle summary', 'synthadoc status result'\n"
@@ -303,7 +307,7 @@ class ActionAgent:
         if action == "lint":
             return await self._do_lint(params)
         if action == "lint_report":
-            return await self._do_lint_report()
+            return await self._do_lint_report(params)
         if action == "wiki_status":
             return await self._do_wiki_status()
         if action == "ingest":
@@ -325,45 +329,69 @@ class ActionAgent:
         return ActionResult(action_type=action, success=False,
                             message=f"Unknown action type: `{action}`")
 
-    async def _do_lint_report(self) -> ActionResult:
-        from synthadoc.agents.lint_agent import read_current_lint_state
+    async def _do_lint_report(self, params: dict | None = None) -> ActionResult:
+        from synthadoc.agents.lint_agent import LintFocus, read_current_lint_state
         state = read_current_lint_state(self._orch._store)
+        focus = (params or {}).get("focus") or None
         parts: list[str] = []
 
-        if state.contradicted:
-            lines = [
-                f"**Contradicted pages ({len(state.contradicted)})** — "
-                f"resolve conflict and set `status: active`:\n"
-            ]
-            for slug in state.contradicted:
-                lines.append(f"- `{slug}`")
-            parts.append("\n".join(lines))
+        if focus in (None, LintFocus.CONTRADICTED):
+            if state.contradicted:
+                lines = [
+                    f"**Contradicted pages ({len(state.contradicted)})** — "
+                    f"resolve conflict and set `status: active`:\n"
+                ]
+                for slug in state.contradicted:
+                    lines.append(f"- `{slug}`")
+                parts.append("\n".join(lines))
+            elif focus == LintFocus.CONTRADICTED:
+                parts.append("**Contradicted pages (0)** — no contradictions found.")
 
-        if state.orphans:
-            lines = [f"**Orphan pages ({len(state.orphans)})** — no inbound links:\n"]
-            for slug in state.orphans:
-                lines.append(f"- `{slug}`")
-            parts.append("\n".join(lines))
-        else:
-            parts.append("**Orphan pages (0)** — all pages have at least one inbound link.")
+        if focus in (None, LintFocus.ORPHANS):
+            if state.orphans:
+                lines = [f"**Orphan pages ({len(state.orphans)})** — no inbound links:\n"]
+                for slug in state.orphans:
+                    lines.append(f"- `{slug}`")
+                parts.append("\n".join(lines))
+            else:
+                parts.append("**Orphan pages (0)** — all pages have at least one inbound link.")
 
-        if state.adv_pages:
-            total = sum(len(p["warnings"]) for p in state.adv_pages)
-            lines = [
-                f"**Adversarial warnings** ({total} across {len(state.adv_pages)} pages):\n"
-            ]
-            for entry in state.adv_pages:
-                lines.append(f"- `{entry['slug']}`:")
-                for w in entry["warnings"]:
-                    claim = w.get("claim") or ""
-                    concern = w.get("concern") or ""
-                    if claim:
-                        lines.append(f'  - "{claim}" — {concern}')
-                    else:
-                        lines.append(f"  - {concern}")
-            parts.append("\n".join(lines))
+        if focus in (None, LintFocus.ADVERSARIAL):
+            if state.adv_pages:
+                total = sum(len(p["warnings"]) for p in state.adv_pages)
+                lines = [
+                    f"**Adversarial warnings** ({total} across {len(state.adv_pages)} pages):\n"
+                ]
+                for entry in state.adv_pages:
+                    lines.append(f"- `{entry['slug']}`:")
+                    for w in entry["warnings"]:
+                        claim = w.get("claim") or ""
+                        concern = w.get("concern") or ""
+                        if claim:
+                            lines.append(f'  - "{claim}" — {concern}')
+                        else:
+                            lines.append(f"  - {concern}")
+                parts.append("\n".join(lines))
+            elif focus == LintFocus.ADVERSARIAL:
+                parts.append("**Adversarial warnings (0)** — no adversarial warnings found.")
 
-        _any_issues = bool(state.contradicted or state.orphans or state.adv_pages)
+        if focus in (None, LintFocus.TRUNCATED):
+            if state.truncated_pages:
+                lines = [
+                    f"**Truncated sources ({len(state.truncated_pages)})** — "
+                    f"source exceeded max_source_chars at ingest time:\n"
+                ]
+                for entry in state.truncated_pages:
+                    lines.append(
+                        f"- `{entry['slug']}` ← `{entry['file']}` ({entry['size']:,} chars)"
+                    )
+                parts.append("\n".join(lines))
+            elif focus == LintFocus.TRUNCATED:
+                parts.append("**Truncated sources (0)** — no sources were truncated.")
+
+        _any_issues = bool(
+            state.contradicted or state.orphans or state.adv_pages or state.truncated_pages
+        )
         if not _any_issues:
             message = _MSG_LINT_ALL_CLEAR
         else:
