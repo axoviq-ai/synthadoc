@@ -875,7 +875,7 @@ class QueryAgent:
         self, question: str, candidates: list[SearchResult], max_score: float,
         used_tf_fallback: bool = False,
     ) -> tuple[bool, str, int, int]:
-        """Full 5-signal knowledge gap detection.
+        """Full 7-signal knowledge gap detection.
 
         Returns (gap, discriminating_term, pages_with_overlap, min_specific_qualifying).
         Called by both run() and run_stream() so they share identical detection logic.
@@ -893,6 +893,9 @@ class QueryAgent:
             for c in question
         )
         _key_terms: set[str] = set()
+        # How many times each key term appears in the question / joined sub-questions.
+        # Used by Signal 7 to detect prominent absent entities.
+        _q_term_freq: dict[str, int] = {}
         # All-uppercase terms with bare length 2-5 (USB, TCP, AI, ENIAC…).
         # Tracked separately so signal 6 can fire when a specific acronym or
         # proper-name abbreviation is completely absent from all retrieved pages
@@ -904,6 +907,7 @@ class QueryAgent:
                 if ((len(_w) >= 4 or (len(_w) >= 2 and _w.upper() == _w))
                         and _bare not in _STOPWORDS):
                     _key_terms.add(_bare)
+                    _q_term_freq[_bare] = _q_term_freq.get(_bare, 0) + 1
                     _stripped = _w.rstrip("s'?!.,")
                     if _stripped and _stripped.upper() == _stripped and 2 <= len(_bare) <= 5:
                         _acronym_key_terms.add(_bare)
@@ -976,8 +980,25 @@ class QueryAgent:
                 _term_doc_freq.get(t, 0) == 0
                 for t in _acronym_key_terms
             )
+            # Signal 7: a key term appears in the query but has zero occurrences in
+            # every retrieved page, AND overall coverage is genuinely thin (< 65 % of
+            # candidates are on-topic).  The coverage gate distinguishes genuine gaps
+            # from word-form misses: if the wiki covers the topic but uses a different
+            # form (e.g. "Canadian" vs "Canada", "garden" vs "backyard"), most pages
+            # are still on-topic (≥ 65 %) and the gate stays closed.  65 % is
+            # deliberately lower than the 80 % used by Signal 4 — this catches the
+            # iPhone-style case where ~45–60 % of pages have generic term overlap (from
+            # "mobile", "computing" etc.) but the specific entity is absent.
+            _prominent_term_absent = (
+                _pages_with_overlap < _n_cands * 0.65
+                and any(
+                    _q_term_freq.get(t, 0) >= 1 and _term_doc_freq.get(t, 0) == 0
+                    for t in _key_terms
+                )
+            )
         else:
             _acronym_absent = False
+            _prominent_term_absent = False
 
         gap = self._gap_score_threshold > 0 and (
             (len(candidates) < 3 and not used_tf_fallback)
@@ -986,6 +1007,7 @@ class QueryAgent:
             or _any_term_missing
             or _defining_term_absent
             or _acronym_absent
+            or _prominent_term_absent
         )
         logger.info(
             "query retrieval — pages=%d, max_score=%.2f, "
