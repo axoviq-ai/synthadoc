@@ -623,6 +623,51 @@ async def test_purpose_md_filters_out_of_scope_source(tmp_wiki, mock_provider, c
 
 
 @pytest.mark.asyncio
+async def test_skip_records_ingest_in_audit_db(tmp_wiki, mock_provider, cache):
+    """action=skip must still call record_ingest so the audit DB hash stays current.
+
+    Without this, a subsequent lint run will see the audit hash != disk hash and
+    mark the page stale even though nothing actually changed.
+    """
+    import itertools
+    from synthadoc.providers.base import CompletionResponse
+
+    (tmp_wiki / "wiki" / "purpose.md").write_text(
+        "This wiki covers AI only.", encoding="utf-8")
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+
+    source = tmp_wiki / "raw_sources" / "cooking.md"
+    source.write_text("# Pasta Recipes\nHow to make carbonara.", encoding="utf-8")
+
+    entity_resp = CompletionResponse(
+        text='{"entities":["pasta"],"concepts":["cooking"],"tags":["food"]}',
+        input_tokens=10, output_tokens=5)
+    skip_resp = CompletionResponse(
+        text='{"reasoning":"Out of scope","action":"skip","target":"","new_slug":"","update_content":""}',
+        input_tokens=10, output_tokens=5)
+    mock_provider.complete.side_effect = itertools.cycle([entity_resp, skip_resp])
+
+    agent = IngestAgent(provider=mock_provider, store=store, search=search,
+                        log_writer=log, audit_db=audit, cache=cache, max_pages=15,
+                        wiki_root=tmp_wiki)
+    result = await agent.ingest(str(source))
+    assert result.skipped
+
+    # Audit DB must have a record for this source so future lint won't fire stale.
+    record = await audit.find_by_source_path(str(source))
+    assert record is not None, "skip action must still write an audit record"
+    import hashlib
+    expected_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+    assert record["source_hash"] == expected_hash, \
+        "audit record must store the current file hash so lint stale-check passes"
+
+
+@pytest.mark.asyncio
 async def test_purpose_md_absent_does_not_break_ingest(tmp_wiki, mock_provider, cache):
     """No purpose.md — ingest proceeds normally."""
     assert not (tmp_wiki / "wiki" / "purpose.md").exists()

@@ -768,3 +768,31 @@ async def test_lint_archives_ghost_draft(tmp_wiki):
     assert report.lifecycle_archived >= 1
     # The real page should be promoted, not affected
     assert report.lifecycle_promoted >= 1
+
+
+@pytest.mark.asyncio
+async def test_lint_does_not_archive_staged_candidates(tmp_wiki):
+    """A draft DB entry whose file exists in wiki/candidates/ is a staged candidate,
+    not a ghost draft — lint must leave it alone."""
+    from synthadoc.storage.log import AuditDB
+    from synthadoc.storage.wiki import WikiStorage
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+
+    # Create the candidate file on disk
+    candidates_dir = tmp_wiki / "wiki" / "candidates"
+    candidates_dir.mkdir(parents=True, exist_ok=True)
+    (candidates_dir / "my-candidate.md").write_text(
+        "---\ntitle: My Candidate\nstatus: draft\n---\n\nContent.\n"
+    )
+    # Seed the DB as draft (as ingest would)
+    await audit.set_page_state("my-candidate", "draft", "ingest")
+
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log, audit_db=audit)
+    await agent.lint(adversarial=False)
+
+    state = await audit.get_page_state("my-candidate")
+    assert state["state"] == "draft", "staged candidate must not be archived by ghost-draft sweep"
