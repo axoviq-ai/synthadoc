@@ -199,6 +199,11 @@ class SkillAgent:
         s = _normalize_url(source).lower()
         if s.startswith(("http://", "https://")):
             return False
+        # Absolute file paths must never be mis-classified as skill intents,
+        # even when the path contains words that match an intent trigger
+        # (e.g. "pdf" in "turing-enigma.pdf" matching the PDF skill intent).
+        if re.match(r'^[a-z]:[/\\]', s) or s.startswith('/'):
+            return True
         try:
             meta = self.detect_skill(source)
             if any(intent in s for intent in meta.triggers.intents):

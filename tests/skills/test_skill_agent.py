@@ -156,6 +156,23 @@ def test_needs_path_resolution_returns_true_for_relative_paths(tmp_wiki):
     assert agent.needs_path_resolution("uploads/batch-001") is True
 
 
+def test_needs_path_resolution_returns_true_for_absolute_paths_with_skill_extension(tmp_wiki):
+    """Absolute paths ending in .pdf (or .docx) must not be mis-classified as
+    skill intents even though 'pdf' is a registered intent trigger."""
+    from synthadoc.agents.skill_agent import SkillAgent
+    agent = SkillAgent(wiki_root=tmp_wiki)
+    # Windows absolute path
+    assert agent.needs_path_resolution(
+        r"C:\Users\user\wikis\my-wiki\raw_sources\report.pdf"
+    ) is True
+    # Unix absolute path
+    assert agent.needs_path_resolution(
+        "/home/user/wiki/raw_sources/paper.pdf"
+    ) is True
+    # Relative path with .pdf should still go through intent check (no change)
+    assert agent.needs_path_resolution("pdf document about AI") is False
+
+
 def test_needs_path_resolution_returns_false_for_web_search_intent(tmp_wiki):
     """Web search intent strings must never be resolved as local file paths."""
     from synthadoc.agents.skill_agent import SkillAgent
