@@ -862,6 +862,10 @@ class IngestAgent:
             )
             result.skipped = True
             result.skip_reason = "out of scope (purpose.md)"
+            # Record the current hash so lint doesn't mark the page stale on the
+            # next run just because the audit DB never saw this file version.
+            await self._audit.record_ingest(src_hash, src_size, source,
+                                            p.stem, result.tokens_used, result.cost_usd)
             return result
         target = decisions.get("target", "")
         new_slug = decisions.get("new_slug") or ""
