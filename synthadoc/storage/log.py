@@ -235,7 +235,7 @@ class AuditDB:
             db.row_factory = aiosqlite.Row
             async with db.execute(
                 "SELECT source_path, wiki_page, tokens, cost_usd, ingested_at "
-                "FROM ingests ORDER BY id ASC LIMIT ?",
+                "FROM ingests ORDER BY id DESC LIMIT ?",
                 (limit,),
             ) as cur:
                 rows = await cur.fetchall()

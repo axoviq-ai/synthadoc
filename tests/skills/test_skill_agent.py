@@ -52,6 +52,24 @@ def test_intent_dispatch_by_phrase(tmp_wiki):
     assert agent.detect_skill("web search quantum physics").name == "web_search"
 
 
+def test_web_search_intent_beats_pdf_documentation_substring(tmp_wiki):
+    """'search for: ... documentation ...' must route to web_search, not pdf.
+
+    The PDF skill's 'document' intent (now removed) matched 'documentation'
+    as a substring and stole routing from the more-specific 'search for' intent.
+    Longest-match in Pass 2 ensures the more-specific intent wins.
+    """
+    from synthadoc.agents.skill_agent import SkillAgent
+    agent = SkillAgent(wiki_root=tmp_wiki)
+    # Exact pattern from the live failure (search_decompose_agent sub-query)
+    assert agent.detect_skill(
+        "search for: IBM ASCC Harvard Mark I documentation site:ibm.com"
+    ).name == "web_search"
+    assert agent.detect_skill(
+        "search for: site:docs.python.org documentation"
+    ).name == "web_search"
+
+
 def test_intent_dispatch_no_match_raises(tmp_wiki):
     from synthadoc.agents.skill_agent import SkillAgent, SkillNotFoundError
     agent = SkillAgent(wiki_root=tmp_wiki)
@@ -154,6 +172,23 @@ def test_needs_path_resolution_returns_true_for_relative_paths(tmp_wiki):
     # Use paths with no extension and no skill intent keywords in the string.
     assert agent.needs_path_resolution("raw_sources/my-transcript") is True
     assert agent.needs_path_resolution("uploads/batch-001") is True
+
+
+def test_needs_path_resolution_returns_true_for_absolute_paths_with_skill_extension(tmp_wiki):
+    """Absolute paths ending in .pdf (or .docx) must not be mis-classified as
+    skill intents even though 'pdf' is a registered intent trigger."""
+    from synthadoc.agents.skill_agent import SkillAgent
+    agent = SkillAgent(wiki_root=tmp_wiki)
+    # Windows absolute path
+    assert agent.needs_path_resolution(
+        r"C:\Users\user\wikis\my-wiki\raw_sources\report.pdf"
+    ) is True
+    # Unix absolute path
+    assert agent.needs_path_resolution(
+        "/home/user/wiki/raw_sources/paper.pdf"
+    ) is True
+    # Relative path with .pdf should still go through intent check (no change)
+    assert agent.needs_path_resolution("pdf document about AI") is False
 
 
 def test_needs_path_resolution_returns_false_for_web_search_intent(tmp_wiki):

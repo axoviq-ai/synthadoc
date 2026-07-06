@@ -150,11 +150,18 @@ class SkillAgent:
                         return meta
         if best_url:
             return best_url[1]
-        # Pass 2: intent match
+        # Pass 2: intent match — longest match wins so that more-specific intents
+        # (e.g. "search for" at 9 chars) beat shorter ones (e.g. "pdf" at 3 chars)
+        # that happen to appear as substrings in the query.  Consistent with the
+        # longest-prefix rule already used for URL routing in Pass 1.
+        best_intent: tuple[int, SkillMeta] | None = None
         for meta in self._registry.values():
             for intent in meta.triggers.intents:
                 if intent in s:
-                    return meta
+                    if best_intent is None or len(intent) > best_intent[0]:
+                        best_intent = (len(intent), meta)
+        if best_intent:
+            return best_intent[1]
         raise SkillNotFoundError(source, list(self._registry.keys()))
 
     def get_skill(self, name: str) -> BaseSkill:
@@ -199,6 +206,11 @@ class SkillAgent:
         s = _normalize_url(source).lower()
         if s.startswith(("http://", "https://")):
             return False
+        # Absolute file paths must never be mis-classified as skill intents,
+        # even when the path contains words that match an intent trigger
+        # (e.g. "pdf" in "turing-enigma.pdf" matching the PDF skill intent).
+        if re.match(r'^[a-z]:[/\\]', s) or s.startswith('/'):
+            return True
         try:
             meta = self.detect_skill(source)
             if any(intent in s for intent in meta.triggers.intents):
