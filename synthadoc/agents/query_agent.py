@@ -305,7 +305,11 @@ def _guard_c_suppress(gap: bool, answer: str, caller: str) -> bool:
     return gap
 
 
-_MISSING_RE = re.compile(r'\[MISSING:\s*([^\]]+)\]\s*$', re.MULTILINE)
+# Matches [MISSING: slug1, slug2] on its own line.
+# ']' is optional — LLMs sometimes omit the closing bracket.
+# '^' anchor (MULTILINE) ensures we only match at the start of a line,
+# preventing accidental matches in mid-sentence wikilink patterns.
+_MISSING_RE = re.compile(r'^\[MISSING:\s*([^\]\n]+?)(?:\])?\s*$', re.MULTILINE)
 
 
 def _extract_missing_slugs(text: str) -> tuple[list[str], str]:
@@ -316,13 +320,21 @@ def _extract_missing_slugs(text: str) -> tuple[list[str], str]:
     _gap for a well-cited answer; this sentinel re-enables chip generation for
     the explicitly-identified missing pages regardless.
 
+    Handles two LLM failure modes:
+    - Missing closing ']' (']' is optional in the pattern).
+    - Sentinel placed mid-response (before a Sources section) rather than at
+      the very end; content after the sentinel is preserved in cleaned_text.
+
     Returns (slugs, cleaned_text).  Returns ([], text) when no sentinel is found.
     """
     m = _MISSING_RE.search(text)
     if not m:
         return [], text
     slugs = [s.strip() for s in m.group(1).split(",") if s.strip()]
-    return slugs, text[: m.start()].rstrip()
+    before = text[: m.start()].rstrip()
+    after = text[m.end() :].lstrip("\n")
+    cleaned = (before + "\n" + after).strip() if after else before
+    return slugs, cleaned
 
 
 class QueryAgent:
@@ -533,15 +545,18 @@ class QueryAgent:
         prefix = _history_block(history) if history else ""
         if gap:
             return prefix + (
-                f"The wiki does not yet have a page on this topic. "
-                f"Answer the question using your general knowledge, then note in one sentence "
-                f"that the wiki does not currently cover this topic and suggest the user enriches it.\n"
-                f"If the wiki is missing dedicated pages for specific topics central to this question, "
-                f"append on its own line at the very end: [MISSING: topic1, topic2] using short "
-                f"lowercase hyphenated slugs, e.g. [MISSING: iphone, mobile-computing]. "
-                f"Omit the [MISSING] line if the wiki already covers the topic adequately.\n\n"
+                f"The wiki does not yet have a dedicated page on this topic. "
+                f"Answer the question using the wiki pages below and your general knowledge. "
+                f"Note in one sentence that the wiki lacks a dedicated page and suggest the user enriches it.\n"
+                f"If specific topics central to this question have no dedicated wiki page, "
+                f"add this line as the ABSOLUTE LAST line of your response — after Sources, "
+                f"after all citations, after everything else:\n"
+                f"[MISSING: topic1, topic2]\n"
+                f"Use short lowercase hyphenated slugs. The closing ] is required. "
+                f"Example: [MISSING: iphone, mobile-computing]\n"
+                f"Omit the [MISSING] line if the wiki already covers all topics adequately.\n\n"
                 f"Question: {question}\n\n"
-                f"Wiki pages available (unrelated to this question):\n{context}"
+                f"Wiki pages available:\n{context}"
             )
         if system_ctx:
             return prefix + (

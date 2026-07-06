@@ -1701,6 +1701,31 @@ def test_extract_missing_slugs_single():
     assert cleaned == "Answer text."
 
 
+def test_extract_missing_slugs_missing_closing_bracket():
+    """LLMs sometimes omit the closing ']' — extraction must still succeed."""
+    from synthadoc.agents.query_agent import _extract_missing_slugs
+    text = "Good answer.\n\n[MISSING: iphone, mobile-computing"
+    slugs, cleaned = _extract_missing_slugs(text)
+    assert slugs == ["iphone", "mobile-computing"]
+    assert "[MISSING:" not in cleaned
+
+
+def test_extract_missing_slugs_mid_response_preserves_trailing_content():
+    """When the sentinel appears mid-response (e.g. before a Sources section),
+    text after the sentinel must be preserved in the cleaned answer."""
+    from synthadoc.agents.query_agent import _extract_missing_slugs
+    text = (
+        "Detailed answer.\n\n"
+        "[MISSING: iphone]\n\n"
+        "Sources: [[page1]], [[page2]]"
+    )
+    slugs, cleaned = _extract_missing_slugs(text)
+    assert slugs == ["iphone"]
+    assert "[MISSING:" not in cleaned
+    assert "Sources:" in cleaned
+    assert "Detailed answer" in cleaned
+
+
 @pytest.mark.asyncio
 async def test_missing_sentinel_generates_enrich_chips_after_guard_c(tmp_wiki):
     """[MISSING: ...] appended by the LLM re-enables gap chips even when Guard C
