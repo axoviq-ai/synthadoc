@@ -11,7 +11,6 @@ triggers:
   intents:
     - "pdf"
     - "research paper"
-    - "document"
 requires:
   - pypdf
   - pdfminer.six
@@ -50,7 +49,7 @@ asyncio.run(main())
 ## When this skill is used
 
 - Source path ends with `.pdf`
-- User intent contains: `pdf`, `research paper`, `document`
+- User intent contains: `pdf`, `research paper`
 
 ## Scripts
 

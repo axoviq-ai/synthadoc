@@ -52,6 +52,24 @@ def test_intent_dispatch_by_phrase(tmp_wiki):
     assert agent.detect_skill("web search quantum physics").name == "web_search"
 
 
+def test_web_search_intent_beats_pdf_documentation_substring(tmp_wiki):
+    """'search for: ... documentation ...' must route to web_search, not pdf.
+
+    The PDF skill's 'document' intent (now removed) matched 'documentation'
+    as a substring and stole routing from the more-specific 'search for' intent.
+    Longest-match in Pass 2 ensures the more-specific intent wins.
+    """
+    from synthadoc.agents.skill_agent import SkillAgent
+    agent = SkillAgent(wiki_root=tmp_wiki)
+    # Exact pattern from the live failure (search_decompose_agent sub-query)
+    assert agent.detect_skill(
+        "search for: IBM ASCC Harvard Mark I documentation site:ibm.com"
+    ).name == "web_search"
+    assert agent.detect_skill(
+        "search for: site:docs.python.org documentation"
+    ).name == "web_search"
+
+
 def test_intent_dispatch_no_match_raises(tmp_wiki):
     from synthadoc.agents.skill_agent import SkillAgent, SkillNotFoundError
     agent = SkillAgent(wiki_root=tmp_wiki)
