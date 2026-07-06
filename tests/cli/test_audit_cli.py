@@ -24,7 +24,7 @@ async def populated_audit_db(tmp_path):
 async def test_list_ingests_returns_records(populated_audit_db):
     records = await populated_audit_db.list_ingests(limit=10)
     assert len(records) == 3
-    assert records[0]["source_path"] == "/wiki/raw/doc0.pdf"
+    assert records[0]["source_path"] == "/wiki/raw/doc2.pdf"  # DESC order — newest first
     assert "tokens" in records[0]
     assert "cost_usd" in records[0]
     assert "ingested_at" in records[0]
