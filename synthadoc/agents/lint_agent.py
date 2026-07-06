@@ -588,21 +588,26 @@ class LintAgent:
 
         # Ghost-draft sweep: DB entries in 'draft' with no corresponding wiki file.
         # This happens when the server is restarted mid-ingest before the file is written.
+        # Candidate pages (wiki/candidates/<slug>.md) are legitimately draft — skip them.
         if self._audit and promote_drafts:
             fs_slugs = set(slugs)
+            candidates_dir = self._wiki_root / "wiki" / "candidates"
             all_states = await self._audit.get_all_page_states()
             for entry in all_states:
-                if entry["state"] == LifecycleState.DRAFT and entry["slug"] not in fs_slugs:
+                slug = entry["slug"]
+                if entry["state"] == LifecycleState.DRAFT and slug not in fs_slugs:
+                    if (candidates_dir / f"{slug}.md").exists():
+                        continue  # staged candidate — not a ghost
                     _log.warning(
                         "lifecycle ghost-draft: slug=%s has no wiki file — archiving "
                         "(ingest was interrupted before file was written)",
-                        entry["slug"],
+                        slug,
                     )
                     await self._audit.set_page_state(
-                        entry["slug"], LifecycleState.ARCHIVED, TriggerSource.LINT
+                        slug, LifecycleState.ARCHIVED, TriggerSource.LINT
                     )
                     await self._audit.record_lifecycle_event(
-                        entry["slug"], LifecycleState.DRAFT, LifecycleState.ARCHIVED,
+                        slug, LifecycleState.DRAFT, LifecycleState.ARCHIVED,
                         "wiki file missing — ingest interrupted before file was written",
                         TriggerSource.LINT,
                     )
