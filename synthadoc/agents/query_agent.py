@@ -305,6 +305,26 @@ def _guard_c_suppress(gap: bool, answer: str, caller: str) -> bool:
     return gap
 
 
+_MISSING_RE = re.compile(r'\[MISSING:\s*([^\]]+)\]\s*$', re.MULTILINE)
+
+
+def _extract_missing_slugs(text: str) -> tuple[list[str], str]:
+    """Extract and strip a [MISSING: slug1, slug2] sentinel appended by the LLM.
+
+    When the synthesis prompt (gap=True branch) asks the LLM to identify absent
+    topics, it appends this marker on its own line.  Guard C may still suppress
+    _gap for a well-cited answer; this sentinel re-enables chip generation for
+    the explicitly-identified missing pages regardless.
+
+    Returns (slugs, cleaned_text).  Returns ([], text) when no sentinel is found.
+    """
+    m = _MISSING_RE.search(text)
+    if not m:
+        return [], text
+    slugs = [s.strip() for s in m.group(1).split(",") if s.strip()]
+    return slugs, text[: m.start()].rstrip()
+
+
 class QueryAgent:
     def __init__(self, provider: LLMProvider, store: WikiStorage,
                  search: HybridSearch,
@@ -515,7 +535,11 @@ class QueryAgent:
             return prefix + (
                 f"The wiki does not yet have a page on this topic. "
                 f"Answer the question using your general knowledge, then note in one sentence "
-                f"that the wiki does not currently cover this topic and suggest the user enriches it.\n\n"
+                f"that the wiki does not currently cover this topic and suggest the user enriches it.\n"
+                f"If the wiki is missing dedicated pages for specific topics central to this question, "
+                f"append on its own line at the very end: [MISSING: topic1, topic2] using short "
+                f"lowercase hyphenated slugs, e.g. [MISSING: iphone, mobile-computing]. "
+                f"Omit the [MISSING] line if the wiki already covers the topic adequately.\n\n"
                 f"Question: {question}\n\n"
                 f"Wiki pages available (unrelated to this question):\n{context}"
             )
@@ -855,6 +879,16 @@ class QueryAgent:
 
         _gap = _guard_c_suppress(_gap, answer_text, "query")
 
+        # [MISSING: ...] sentinel — re-enable gap and chip generation even when
+        # Guard C suppressed it for a well-cited answer.  Strip the marker from
+        # the displayed text so clients never see it.
+        _missing_slugs, answer_text = _extract_missing_slugs(answer_text)
+        if _missing_slugs and not _gap:
+            _gap = True
+            if not _suggested:
+                _suggested = [s.replace("-", " ") for s in _missing_slugs]
+            logger.debug("query: [MISSING] sentinel re-enabled gap — %s", _missing_slugs)
+
         logger.info("query answered — %d page(s) cited, %d tokens",
                     len(citations), resp2.total_tokens)
         return QueryResult(
@@ -1126,6 +1160,10 @@ class QueryAgent:
             len(context), len(candidates),
         )
         full_answer = ""
+        # Hold-back buffer: text accumulated since the last newline, held only when
+        # the line starts with "[" — the sole prefix for "[MISSING: ...]" sentinels.
+        # Non-"[" fragments are flushed immediately so normal streaming is unaffected.
+        _last_line_buf = ""
         async for token in self._provider.complete_stream(
             messages=[Message(role="user", content=synthesis_prompt)],
             temperature=0.0,
@@ -1138,7 +1176,18 @@ class QueryAgent:
                 )
                 _first_token = False
             full_answer += token
-            yield {"event": "token", "data": {"text": token}}
+            combined = _last_line_buf + token
+            if "\n" in combined:
+                parts = combined.split("\n")
+                yield {"event": "token", "data": {"text": "\n".join(parts[:-1]) + "\n"}}
+                _last_line_buf = parts[-1]
+            elif not combined.startswith("["):
+                # Cannot be a [MISSING: ...] sentinel — yield immediately.
+                yield {"event": "token", "data": {"text": combined}}
+                _last_line_buf = ""
+            else:
+                # Starts with "[" — could be the sentinel; hold until newline or end.
+                _last_line_buf = combined
 
         if not _first_token:
             logger.info(
@@ -1151,6 +1200,14 @@ class QueryAgent:
             fallback = "(No response was generated. Please try again.)"
             yield {"event": "token", "data": {"text": fallback}}
             full_answer = fallback
+            _last_line_buf = ""
+
+        # Extract [MISSING: ...] sentinel before Guard B/C so they see clean text.
+        # If the sentinel is present, _last_line_buf holds it — don't emit that line.
+        # If absent, flush _last_line_buf to the client now.
+        _missing_slugs, full_answer = _extract_missing_slugs(full_answer)
+        if not _missing_slugs and _last_line_buf:
+            yield {"event": "token", "data": {"text": _last_line_buf}}
 
         # Guard B: post-synthesis gap detection — same logic as run().
         # Fires when _detect_gap() missed (pre-synthesis, guard A) but the LLM
@@ -1162,19 +1219,28 @@ class QueryAgent:
 
         _gap = _guard_c_suppress(_gap, full_answer, "run_stream")
 
+        # [MISSING: ...] sentinel — re-enable gap and chip generation even when
+        # Guard C suppressed it for a well-cited answer.
+        if _missing_slugs and not _gap:
+            _gap = True
+            logger.debug("run_stream: [MISSING] sentinel re-enabled gap — %s", _missing_slugs)
+
         yield {"event": "citations", "data": {"citations": [] if _gap else citations}}
 
         if _gap:
-            try:
-                # Use the standalone retrieval_question so gap suggestions are meaningful
-                # when the user asked a context-dependent follow-up (e.g. "tell me more
-                # about his death" → rewritten to "How did Alan Turing die?").
-                _suggested = await SearchDecomposeAgent(self._provider).decompose(
-                    retrieval_question, domain_context=_purpose_ctx
-                )
-            except Exception as _exc:
-                logger.warning("run_stream: gap decompose failed, falling back to original question: %s", _exc)
-                _suggested = [retrieval_question]
+            if _missing_slugs:
+                _suggested = [s.replace("-", " ") for s in _missing_slugs]
+            else:
+                try:
+                    # Use the standalone retrieval_question so gap suggestions are meaningful
+                    # when the user asked a context-dependent follow-up (e.g. "tell me more
+                    # about his death" → rewritten to "How did Alan Turing die?").
+                    _suggested = await SearchDecomposeAgent(self._provider).decompose(
+                        retrieval_question, domain_context=_purpose_ctx
+                    )
+                except Exception as _exc:
+                    logger.warning("run_stream: gap decompose failed, falling back to original question: %s", _exc)
+                    _suggested = [retrieval_question]
             logger.debug("run_stream: yielding gap event (%d searches)", len(_suggested))
             yield {"event": "gap", "data": {"suggested_searches": _suggested}}
 
