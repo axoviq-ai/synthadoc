@@ -1543,6 +1543,256 @@ async def test_gap_signal5_fires_at_exact_docfreq_cap_boundary(tmp_wiki):
     assert len(result.suggested_searches) >= 1
 
 
+@pytest.mark.asyncio
+async def test_gap_signal7_prominent_entity_absent(tmp_wiki):
+    """Signal 7: gap fires when a key entity term is present in the query but has
+    zero occurrences across all retrieved pages, and overall coverage is below 80%.
+
+    Real-world case: "iPhone" in a history-of-computing wiki.
+    8 of 15 pages mention "mobile" extensively (keeping on_topic_pages=8, which is
+    53% — below the 80% coverage gate). "iPhone" is completely absent (doc_freq=0),
+    mixed-case so Signal 6 (ALL-CAPS only) cannot fire, and appears once in the
+    sub-questions.  Signals 4 and 5 are both suppressed.  Signal 7 catches it.
+
+    Signal breakdown:
+    - Signal 1: 15 candidates ≥ 3 → no fire
+    - Signal 2: gap_score_threshold=0.01 → no fire
+    - Signal 3: on_topic_pages=8 ≥ 2 → no fire
+    - Signal 4: _signal4_active = 8 < 7 → False → no fire
+    - Signal 5: "iphone" doc_freq=0 → excluded from _covered → never seen → no fire
+    - Signal 6: "iphone" is mixed-case → not in _acronym_key_terms → no fire
+    - Signal 7: coverage 8/15=53% < 80%; "iphone" in query, doc_freq=0 → gap=True ✓
+    """
+    store = WikiStorage(tmp_wiki / "wiki")
+
+    # 8 pages with extensive "mobile" content — these count as on-topic for the query.
+    mobile_content = (
+        "Mobile computing transformed the technology industry. Mobile devices brought "
+        "computing to users everywhere. The computing industry adapted to mobile "
+        "platforms. Mobile interfaces changed how computing systems interact with users."
+    )
+    for i in range(8):
+        store.write_page(f"mobile-page-{i}", WikiPage(
+            title=f"Mobile Computing {i}", tags=["history"],
+            content=mobile_content,
+            status="active", confidence="high", sources=[],
+        ))
+    # 7 pages about general computing with no mobile-specific content.
+    for i in range(7):
+        store.write_page(f"general-page-{i}", WikiPage(
+            title=f"Computing History {i}", tags=["history"],
+            content=(
+                "Alan Turing proposed the Turing machine as a model of computation. "
+                "John von Neumann designed the stored-program architecture."
+            ),
+            status="active", confidence="high", sources=[],
+        ))
+
+    all_slugs = [f"mobile-page-{i}" for i in range(8)] + [f"general-page-{i}" for i in range(7)]
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    # decompose() returns 2 sub-questions; "iPhone" appears once (as in the live case).
+    provider.complete.side_effect = [
+        CompletionResponse(
+            text=(
+                '["What was the significance of the iPhone in the history of computing? '
+                'How did the rise of mobile computing impact the history of computing?"]'
+            ),
+            input_tokens=10, output_tokens=20,
+        ),
+        # SearchDecomposeAgent call for suggestions (gap triggered):
+        CompletionResponse(
+            text='["iPhone history timeline", "Apple mobile computing 2007"]',
+            input_tokens=8, output_tokens=8,
+        ),
+        CompletionResponse(
+            text="No iPhone information found in this wiki.",
+            input_tokens=80, output_tokens=15,
+        ),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search,
+                       gap_score_threshold=0.01)  # signal 2 disabled
+    with patch.object(agent._search, "bm25_search", return_value=_fake_results(all_slugs)):
+        result = await agent.query(
+            "What was the significance of the iPhone and the rise of mobile computing?"
+        )
+    # Signal 7: coverage 8/15 < 80%; "iphone" in query, doc_freq=0 across all pages.
+    assert result.knowledge_gap is True
+    assert len(result.suggested_searches) >= 1
+
+
+@pytest.mark.asyncio
+async def test_gap_signal7_no_false_positive_when_entity_present(tmp_wiki):
+    """Signal 7 must NOT fire when the repeated entity term exists in retrieved pages.
+
+    Same query structure (entity repeated ≥2× in sub-questions), but the wiki has
+    pages that actually contain the entity term — doc_freq > 0 → Signal 7 cannot fire.
+    All other signals also stay silent (adequate coverage), so gap=False.
+    """
+    store = WikiStorage(tmp_wiki / "wiki")
+
+    # Pages that actually cover "turing" (the entity in question).
+    turing_content = (
+        "Alan Turing proposed the Turing machine as a theoretical model of computation. "
+        "Turing's work on computability laid the foundation for modern computer science. "
+        "The Turing test remains a benchmark for machine intelligence. "
+        "Turing contributed to cryptography at Bletchley Park during World War II."
+    )
+    for i in range(8):
+        store.write_page(f"turing-page-{i}", WikiPage(
+            title=f"Alan Turing {i}", tags=["history"],
+            content=turing_content,
+            status="active", confidence="high", sources=[],
+        ))
+
+    all_slugs = [f"turing-page-{i}" for i in range(8)]
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    # Sub-questions repeat "turing" / "Turing" multiple times.
+    provider.complete.side_effect = [
+        CompletionResponse(
+            text=(
+                '["What did Turing contribute to computer science? '
+                'How did Turing develop the Turing machine? '
+                'What was Turing\'s role in World War II cryptography?"]'
+            ),
+            input_tokens=10, output_tokens=15,
+        ),
+        CompletionResponse(
+            text="Alan Turing was a pioneering computer scientist.",
+            input_tokens=80, output_tokens=15,
+        ),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search,
+                       gap_score_threshold=0.01)  # signal 2 disabled
+    with patch.object(agent._search, "bm25_search", return_value=_fake_results(all_slugs)):
+        result = await agent.query("What were Alan Turing's main contributions?")
+    # "turing" appears in all 8 pages → doc_freq=8 > 0 → Signal 7 does not fire.
+    assert result.knowledge_gap is False
+
+
+# ── [MISSING: ...] sentinel ───────────────────────────────────────────────────
+
+def test_extract_missing_slugs_present():
+    """[MISSING: slug1, slug2] is extracted and stripped from the answer text."""
+    from synthadoc.agents.query_agent import _extract_missing_slugs
+    text = "Good answer citing [[page]].\n\n[MISSING: iphone, mobile-computing]"
+    slugs, cleaned = _extract_missing_slugs(text)
+    assert slugs == ["iphone", "mobile-computing"]
+    assert "[MISSING:" not in cleaned
+    assert "Good answer" in cleaned
+
+
+def test_extract_missing_slugs_absent():
+    """Returns empty list and original text when no [MISSING:] sentinel is present."""
+    from synthadoc.agents.query_agent import _extract_missing_slugs
+    text = "Good answer with no sentinel."
+    slugs, cleaned = _extract_missing_slugs(text)
+    assert slugs == []
+    assert cleaned == "Good answer with no sentinel."
+
+
+def test_extract_missing_slugs_single():
+    """Single slug without comma is still extracted correctly."""
+    from synthadoc.agents.query_agent import _extract_missing_slugs
+    text = "Answer text.\n[MISSING: iphone]"
+    slugs, cleaned = _extract_missing_slugs(text)
+    assert slugs == ["iphone"]
+    assert cleaned == "Answer text."
+
+
+def test_extract_missing_slugs_missing_closing_bracket():
+    """LLMs sometimes omit the closing ']' — extraction must still succeed."""
+    from synthadoc.agents.query_agent import _extract_missing_slugs
+    text = "Good answer.\n\n[MISSING: iphone, mobile-computing"
+    slugs, cleaned = _extract_missing_slugs(text)
+    assert slugs == ["iphone", "mobile-computing"]
+    assert "[MISSING:" not in cleaned
+
+
+def test_extract_missing_slugs_mid_response_preserves_trailing_content():
+    """When the sentinel appears mid-response (e.g. before a Sources section),
+    text after the sentinel must be preserved in the cleaned answer."""
+    from synthadoc.agents.query_agent import _extract_missing_slugs
+    text = (
+        "Detailed answer.\n\n"
+        "[MISSING: iphone]\n\n"
+        "Sources: [[page1]], [[page2]]"
+    )
+    slugs, cleaned = _extract_missing_slugs(text)
+    assert slugs == ["iphone"]
+    assert "[MISSING:" not in cleaned
+    assert "Sources:" in cleaned
+    assert "Detailed answer" in cleaned
+
+
+@pytest.mark.asyncio
+async def test_missing_sentinel_generates_enrich_chips_after_guard_c(tmp_wiki):
+    """[MISSING: ...] appended by the LLM re-enables gap chips even when Guard C
+    suppressed _gap for a well-cited answer.  The sentinel must NOT appear in
+    the token stream emitted to clients."""
+    # Answer body: >800 chars + a [[wikilink]] citation → Guard C HIGH_CONF path.
+    body = "Detailed answer about mobile computing history. " * 22  # ~1056 chars
+    llm_tokens = [body + "[[some-page]]\n\n", "[MISSING: iphone, mobile-computing]"]
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    # Empty wiki → 0 candidates → Signal 1 fires → _gap=True pre-synthesis.
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.return_value = CompletionResponse(
+        text='["What was the significance of the iPhone?"]',
+        input_tokens=5, output_tokens=5,
+    )
+
+    async def _gap_stream(**kw):
+        for tok in llm_tokens:
+            yield tok
+
+    provider.complete_stream = _gap_stream
+    agent = QueryAgent(provider=provider, store=store, search=search,
+                       gap_score_threshold=0.01)
+
+    events = await _collect_events(agent.run_stream("What was the iPhone's significance?"))
+
+    token_text = "".join(
+        e["data"]["text"] for e in events if e.get("event") == "token"
+    )
+    gap_events = [e for e in events if e.get("event") == "gap"]
+
+    assert "[MISSING:" not in token_text, "sentinel must not be streamed to clients"
+    assert len(gap_events) == 1, "gap event must fire"
+    assert gap_events[0]["data"]["suggested_searches"] == ["iphone", "mobile computing"]
+
+
+@pytest.mark.asyncio
+async def test_missing_sentinel_absent_guard_c_suppresses_normally(tmp_wiki):
+    """When no [MISSING:] sentinel is present and Guard C suppresses, no gap chips appear."""
+    # Answer body: >800 chars + citation → Guard C HIGH_CONF suppresses gap.
+    body = "Detailed answer about computing history. " * 22
+    llm_tokens = [body + "[[some-page]]"]
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.return_value = CompletionResponse(
+        text='["What was the significance of mobile computing?"]',
+        input_tokens=5, output_tokens=5,
+    )
+
+    async def _gap_stream(**kw):
+        for tok in llm_tokens:
+            yield tok
+
+    provider.complete_stream = _gap_stream
+    agent = QueryAgent(provider=provider, store=store, search=search,
+                       gap_score_threshold=0.01)
+
+    events = await _collect_events(agent.run_stream("What is mobile computing?"))
+
+    gap_events = [e for e in events if e.get("event") == "gap"]
+    assert len(gap_events) == 0, "Guard C suppressed gap — no chips should appear"
+
+
 # ── CJK (Chinese / Japanese / Korean) coverage ───────────────────────────────
 
 @pytest.mark.asyncio
