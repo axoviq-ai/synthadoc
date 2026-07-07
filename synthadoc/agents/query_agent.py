@@ -143,6 +143,15 @@ _STOPWORDS = frozenset({
     "highest", "lowest", "largest", "smallest", "biggest", "greater", "lesser",
     "higher", "lower", "worst", "better", "worse", "fastest", "slowest",
     "strongest", "weakest", "richest", "cheapest", "expensive",
+    # Measurement-framing nouns: "What are the key metrics/KPIs/figures for X?"
+    # Users request data using these wrapper words; wiki pages contain the data
+    # itself (revenue, EBITDA, rates) without needing to repeat the wrapper ≥2 times.
+    "metric", "metrics", "kpi", "kpis", "indicator", "indicators",
+    "statistic", "statistics", "figure", "figures",
+    # Structural query framers: "Give me an overview/summary/breakdown/profile of X."
+    # These describe the requested form of the answer, not recurring page content.
+    "overview", "summary", "summaries", "breakdown", "breakdowns",
+    "profile", "profiles", "highlight", "highlights",
 })
 
 
