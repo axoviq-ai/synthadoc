@@ -1045,16 +1045,16 @@ class QueryAgent:
                     for _t in _specific:
                         if _t in _t_norm:
                             _title_covered.add(_t)
-            _defining_term_absent = (
-                bool(_specific)
-                and len(_term_doc_freq) >= 2
-                and any(
-                    _term_qualifying_pages[t] == 0
-                    and _specific[t] <= _signal5_doc_freq_cap
-                    and t not in _title_covered
-                    for t in _term_qualifying_pages
-                )
-            )
+            _signal5_triggers = [
+                t for t in _term_qualifying_pages
+                if _term_qualifying_pages[t] == 0
+                and _specific[t] <= _signal5_doc_freq_cap
+                and t not in _title_covered
+            ]
+            if _signal5_triggers:
+                logger.debug("signal5 candidates: %r (cap=%d, title_covered=%r)",
+                             _signal5_triggers, _signal5_doc_freq_cap, sorted(_title_covered))
+            _defining_term_absent = bool(_specific) and len(_term_doc_freq) >= 2 and bool(_signal5_triggers)
             # Signal 6: a specific acronym or proper-name abbreviation typed
             # ALL-CAPS in the query (USB, TCP, ENIAC, AI…) has zero occurrences
             # across all retrieved pages — the wiki simply does not cover this
