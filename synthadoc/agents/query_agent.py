@@ -149,9 +149,13 @@ _STOPWORDS = frozenset({
     "metric", "metrics", "kpi", "kpis", "indicator", "indicators",
     "statistic", "statistics", "figure", "figures",
     # Structural query framers: "Give me an overview/summary/breakdown/profile of X."
-    # These describe the requested form of the answer, not recurring page content.
+    # "What are the workstreams/considerations/criteria for Y?" — M&A jargon that
+    # describes how the user wants the answer structured, not recurring page content.
     "overview", "summary", "summaries", "breakdown", "breakdowns",
     "profile", "profiles", "highlight", "highlights",
+    "workstream", "workstreams",
+    "consideration", "considerations",
+    "criterion", "criteria",
     # Temporal-horizon qualifiers: "near-term", "long-term", "short-term" etc.
     # Hyphens are replaced with spaces during bare-form extraction, so these
     # become two-word key terms like "near term".  Wiki pages rarely repeat a
