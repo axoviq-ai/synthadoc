@@ -1024,12 +1024,25 @@ class QueryAgent:
                 min(_term_qualifying_pages.values()) if _term_qualifying_pages else 0
             )
             _signal5_doc_freq_cap = max(2, (_n_cands + 2) // 3)
+            # Pages whose title contains the term are considered dedicated to it even
+            # when the body doesn't repeat the term ≥ MIN_FREQ times.  This suppresses
+            # the false positive where a "Methodology Guide" page doesn't repeat the
+            # word "methodology" twice in its body — the title is sufficient coverage.
+            _title_covered: set[str] = set()
+            for _r in candidates:
+                _tp = self._store.read_page(_r.slug)
+                if _tp:
+                    _t_norm = _tp.title.lower().replace("-", " ")
+                    for _t in _specific:
+                        if _t in _t_norm:
+                            _title_covered.add(_t)
             _defining_term_absent = (
                 bool(_specific)
                 and len(_term_doc_freq) >= 2
                 and any(
                     _term_qualifying_pages[t] == 0
                     and _specific[t] <= _signal5_doc_freq_cap
+                    and t not in _title_covered
                     for t in _term_qualifying_pages
                 )
             )

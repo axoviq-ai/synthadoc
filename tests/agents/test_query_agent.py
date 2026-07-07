@@ -1028,9 +1028,9 @@ async def test_gap_signal5_defining_term_barely_present(tmp_wiki):
     - Signal 2: gap_score_threshold=0.01 → no fire
     - Signal 3: 2 pages have error/correction ≥ 2 → on_topic_pages=2 ≥ 2 → no fire
     - Signal 4: all 3 terms have doc_freq > 0 → no zero-freq → no fire
-    - Signal 5: guard A: on_topic_pages=2 < n_cands//2=4 → coverage is thin;
-                guard B: "quantum" doc_freq=2 < threshold(3) → genuinely absent;
-                → gap=True ✓
+    - Signal 5: "quantum" doc_freq=2 < threshold(3), qualifying=0, and "quantum"
+                does not appear in any page title → title_covered suppression
+                does not apply → gap=True ✓
 
     bm25_search is mocked so BM25 IDF behaviour does not affect this test.
     """
@@ -1087,9 +1087,12 @@ async def test_gap_signal5_defining_term_barely_present(tmp_wiki):
     ]
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.01)  # signal 2 disabled
-    with patch.object(agent._search, "bm25_search", return_value=_fake_results(all_slugs)):
+    # score=5.0 >> threshold: proves Signal 5 fires based on title coverage, not score.
+    # "quantum" is absent from every page title → title_covered does not suppress it.
+    with patch.object(agent._search, "bm25_search",
+                      return_value=_fake_results(all_slugs, score=5.0)):
         result = await agent.query("What is quantum error correction?")
-    # "quantum": doc_freq=2 < threshold(3), qualifying=0 → signal 5 fires.
+    # "quantum": doc_freq=2 < threshold(3), qualifying=0, not in any title → signal 5 fires.
     assert result.knowledge_gap is True
     assert len(result.suggested_searches) >= 1
 
