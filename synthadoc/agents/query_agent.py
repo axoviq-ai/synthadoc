@@ -116,6 +116,12 @@ _STOPWORDS = frozenset({
     "shape", "drive", "change", "enable", "allow", "improve", "evolve",
     "influence", "affect", "impact", "cause", "result", "matter", "relate",
     "connect", "involve", "emerge", "remain",
+    # Analysis/evaluation verbs introduced by sub-question decomposition
+    # ("How is X assessed?", "How do we evaluate Y?") — these never repeat
+    # twice in a wiki page about the topic and produce Signal 5 false positives.
+    "assess", "assessed", "evaluate", "evaluated", "determine", "determined",
+    "measure", "measured", "identify", "identified", "analyze", "analysed",
+    "analyze", "analyzed", "examine", "examined", "review", "reviewed",
     # Contribution/achievement verbs common in biographical queries
     # ("What did X contribute to Y?", "What did X achieve?") — wiki pages
     # describe actions with specific verbs ("invented", "built") instead.
