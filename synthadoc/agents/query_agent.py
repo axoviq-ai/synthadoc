@@ -595,9 +595,13 @@ class QueryAgent:
         gap_sentinel: bool = False,
         history: list[dict] | None = None,
     ) -> str:
-        """Build the LLM synthesis prompt. gap_sentinel=True adds the [GAP] marker
-        instruction used by run() for post-synthesis gap override; run_stream() omits it.
-        When history is provided it is prepended as a conversation context block."""
+        """Build the LLM synthesis prompt.
+
+        gap_sentinel adds the [GAP] marker instruction for post-synthesis gap override
+        (Guard B).  Callers leave it False so _detect_gap() is the sole gap arbiter —
+        instructing the LLM to self-signal gaps produces false positives when the query
+        framing is slightly different from the wiki's phrasing (e.g. "near-term demand"
+        vs. "regulatory drivers").  When history is provided it is prepended."""
         prefix = _history_block(history) if history else ""
         if gap:
             return prefix + (
@@ -931,7 +935,6 @@ class QueryAgent:
         synthesis_prompt = self._build_synthesis_prompt(
             question, context,
             gap=_gap, system_ctx=_system_ctx, is_live_data=_is_live_data,
-            gap_sentinel=True,
             history=_trimmed_history if _trimmed_history else None,
         )
 
@@ -1246,7 +1249,6 @@ class QueryAgent:
         synthesis_prompt = self._build_synthesis_prompt(
             question, context,
             gap=_gap, system_ctx=_system_ctx, is_live_data=_is_live_data,
-            gap_sentinel=True,
             history=_trimmed_history if _trimmed_history else None,
         )
 
