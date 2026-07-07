@@ -441,23 +441,24 @@ async def run_tests():
 
             # ── 13. synthadoc_ingest ─────────────────────────────────────────
             print("\n[13] synthadoc_ingest")
-            # ingest via a search intent with max_results=2 to cap child jobs
-            r = await call(session, "synthadoc_ingest",
-                           {"source": "search for: Harvard Mark I electromechanical computer 1944",
-                            "max_results": 2})
+            # ingest a direct, stable Wikipedia URL — avoids third-party timeouts
+            # that plagued the old "search for: Harvard Mark I" search-intent form
+            # (search results returned unreliable domains like devx.com that timed out)
+            _INGEST_URL = "https://en.wikipedia.org/wiki/Harvard_Mark_I"
+            r = await call(session, "synthadoc_ingest", {"source": _INGEST_URL})
             if "job_id" in r and "source" in r:
-                ok("synthadoc_ingest(search intent)", f"job_id={r['job_id']!r}")
-                info("Waiting for parent + ≤2 child jobs to reach terminal state (max 3 min)…")
+                ok("synthadoc_ingest(url)", f"job_id={r['job_id']!r}  source={r['source']!r}")
+                info("Waiting for ingest job to reach terminal state (max 3 min)…")
                 _done = await _wait_all_terminal(r["job_id"])
                 if _done:
-                    info("All ingest jobs reached terminal state")
+                    info("Ingest job reached terminal state")
                 else:
-                    warn("synthadoc_ingest(search intent)",
-                         "Jobs still running after 3 min — check the Jobs panel")
+                    warn("synthadoc_ingest(url)",
+                         "Job still running after 3 min — check the Jobs panel")
             elif "error" in r:
-                fail("synthadoc_ingest(search intent)", r["error"])
+                fail("synthadoc_ingest(url)", r["error"])
             else:
-                fail("synthadoc_ingest(search intent)", f"unexpected: {r}")
+                fail("synthadoc_ingest(url)", f"unexpected: {r}")
 
             # empty source — quality check
             r = await call(session, "synthadoc_ingest", {"source": ""})
