@@ -4,7 +4,7 @@
 
 The scenario: AquaFlow Capital is evaluating an LBO of AquaFlow Systems Inc., a mid-market water treatment equipment company. Eight deal documents are sitting in a folder — company profile, sector analysis, LBO mechanics, covenant framework, QoE guide, ESG standards, legal DD process, and exit benchmarks. By the end of this walkthrough, all eight are ingested into a working knowledge wiki, lint-validated, and queryable in natural language, including Chinese.
 
-Steps 1–3 (install, configure, register) require a terminal. From Step 6 onward, ingest, scaffold, and lint can all run from either the terminal or the Obsidian plugin command palette — both paths are shown where relevant. Queries run through the Synthadoc web UI in Step 10.
+Steps 1–3 (install, configure, register) require a terminal. From Step 6 onward, ingest, scaffold, and lint can all run from either the terminal or the Obsidian plugin command palette — both paths are shown where relevant. Queries run through the Synthadoc web UI in Step 11.
 
 ---
 
@@ -186,7 +186,7 @@ curl http://127.0.0.1:7070/health
 
 If you configured a different port in `config.toml`, substitute it: `curl http://127.0.0.1:<port>/health`.
 
-Keep the server running for the rest of this walkthrough. Steps 6–10 (ingest, scaffold, lint, routing, and query) all submit jobs through this server — they will fail with a connection error if it is stopped.
+Keep the server running for the rest of this walkthrough. Steps 6–11 (ingest, scaffold, lint, routing, citations, and query) all submit jobs through this server — they will fail with a connection error if it is stopped.
 
 ---
 
@@ -338,20 +338,7 @@ synthadoc routing clean
 
 ---
 
-## Step 10 — Open the web UI and run queries
-
-With the server running from Step 5, open the web UI:
-
-```bash
-synthadoc web
-```
-
-Your browser opens automatically at `http://127.0.0.1:7070`. The web UI has two entry points:
-
-- **Chat** — type a natural-language question; the answer streams back token by token with inline citations
-- **Knowledge Graph** — a D3.js visualisation of all pages and their wikilink relationships; click any node to use that page as the scoped entry point for your query
-
-### Citations
+## Step 10 — Review citations
 
 Every answer includes inline citations in the format `^[filename:L-L]`, where `filename` is the source document and `L-L` is the line range in that file. In the web UI these render as superscripts you can hover or click to see the original passage. In Obsidian they render as footnotes. Citations give you a direct audit trail from every claim back to the source line — essential for M&A due diligence where verifiability matters.
 
@@ -363,13 +350,28 @@ Open the command palette → **Synthadoc: View Page Provenance**. A sortable, pa
 
 ```bash
 # All citations for one page
-synthadoc audit citations --page leveraged-buyout-lbo
+synthadoc audit citations --page quality-of-earnings
 
 # Citations that failed validation across the whole wiki
 synthadoc audit citations --broken
 ```
 
-![Page Provenance panel in Obsidian showing citation audit trail for the LBO page](png/page-level-citation.png)
+![Page Provenance panel in Obsidian showing citation audit trail for the QoE page](png/page-level-citation.png)
+
+---
+
+## Step 11 — Open the web UI and run queries
+
+With the server running from Step 5, open the web UI:
+
+```bash
+synthadoc web
+```
+
+Your browser opens automatically at `http://127.0.0.1:7070`. The web UI has two entry points:
+
+- **Chat** — type a natural-language question; the answer streams back token by token with inline citations
+- **Knowledge Graph** — a D3.js visualisation of all pages and their wikilink relationships; click any node to use that page as the scoped entry point for your query
 
 ---
 
