@@ -28,18 +28,27 @@ The ingest agent decides autonomously whether each source should create a new pa
 
 ## Prerequisites
 
+- Python 3.11+ — [download at python.org](https://www.python.org/downloads/). `pip install synthadoc` will fail immediately on older versions; Python itself is never installed automatically by pip.
 - Synthadoc installed (`pip install synthadoc` or editable dev install — see the [main README](../../../README.md#installation))
-- A supported LLM API key with sufficient quota — Anthropic, OpenAI, or MiniMax paid tiers are recommended. Free-tier models such as Gemini Free or Groq Free have daily rate limits that are too low to complete the batch ingest of eight documents in a single session and will cause jobs to fail mid-run.
-- Python 3.11+
+- A supported LLM API key with sufficient quota — [MiniMax](https://platform.minimax.io/), [Qwen](https://bailian.console.aliyun.com/), [Anthropic](https://console.anthropic.com/), or [OpenAI](https://platform.openai.com/api-keys) paid tiers are recommended (ordered lowest to highest cost). Free-tier models such as Gemini Free or Groq Free have daily rate limits that are too low to complete the batch ingest of eight documents in a single session and will cause jobs to fail mid-run. See the [main README — Set your API keys](../../../README.md#set-your-api-keys) for the full provider list including free-tier options.
+- **Obsidian** *(optional)* — [download at obsidian.md](https://obsidian.md). Required only if you want to follow the Obsidian plugin path in Steps 6–10. Every step also provides an equivalent terminal command; Obsidian is not needed to complete the walkthrough.
+
+> **Windows users:** Commands in this walkthrough use Unix-style paths (`~/wikis`). In **Command Prompt** substitute `%USERPROFILE%\wikis`; in **PowerShell** `~\wikis` works directly. Multi-line `\` continuations used in the bash blocks do not work in Command Prompt — use the single-line Windows form shown where applicable.
 
 ---
 
 ## Step 1 — Install the wiki domain
 
+**macOS / Linux / PowerShell:**
 ```bash
 synthadoc install aquaflow \
   --target ~/wikis \
   --domain "Private equity M&A due diligence — LBO modeling, quality of earnings, covenant analysis, ESG, and legal DD"
+```
+
+**Windows Command Prompt:**
+```cmd
+synthadoc install aquaflow --target %USERPROFILE%\wikis --domain "Private equity M&A due diligence — LBO modeling, quality of earnings, covenant analysis, ESG, and legal DD"
 ```
 
 **What this does:**
@@ -168,14 +177,16 @@ To run in the background and keep your terminal free:
 synthadoc serve --background
 ```
 
-Verify the server is up:
+Verify the server is up. The startup banner prints the actual port on the **`Port:`** line — use that number in the URL. The default is `7070`:
 
 ```bash
 curl http://127.0.0.1:7070/health
 # → {"status":"ok"}
 ```
 
-Leave this running for the remaining steps.
+If you configured a different port in `config.toml`, substitute it: `curl http://127.0.0.1:<port>/health`.
+
+Keep the server running for the rest of this walkthrough. Steps 6–10 (ingest, scaffold, lint, routing, and query) all submit jobs through this server — they will fail with a connection error if it is stopped.
 
 ---
 
@@ -185,15 +196,20 @@ Ingest all eight sources. You can do this from the terminal or the Obsidian plug
 
 **Terminal — batch ingest the entire folder:**
 
+First change to the wiki root, then run the ingest:
+
 ```bash
+cd ~/wikis/aquaflow
 synthadoc ingest raw_sources/
 ```
+
+**Windows Command Prompt:** `cd %USERPROFILE%\wikis\aquaflow`
 
 **Obsidian plugin — batch ingest from the command palette:**
 
 1. Open the wiki vault in Obsidian — select the wiki root folder (`~/wikis/aquaflow/`)
 2. Press `Cmd/Ctrl+P` → search **Synthadoc: Ingest...** → Enter
-3. Select the **All raw_sources** tab → click **Run**
+3. Select the **All raw_sources** tab → click **Ingest all**
 
 The plugin sends the same ingest job to the running server — behaviour is identical to the CLI.
 
@@ -221,7 +237,7 @@ Page lifecycle:
   draft   8
 ```
 
-> **Force re-ingest:** If you update a source file or want to regenerate a page, the dedup guard is bypassed and the page is regenerated. Run it from the terminal with `synthadoc ingest <file> --force`, or from the Obsidian plugin: `Cmd/Ctrl+P` → **Synthadoc: Ingest...** → **All raw_sources** tab → check **Force re-ingest** → click **Run**. The `sources` list on the page automatically deduplicates by `(file, hash)` — re-ingesting the same unchanged file never adds a duplicate source entry.
+> **Force re-ingest:** If you update a source file or want to regenerate a page, the dedup guard is bypassed and the page is regenerated. Run it from the terminal with `synthadoc ingest <file> --force`, or from the Obsidian plugin: `Cmd/Ctrl+P` → **Synthadoc: Ingest...** → **All raw_sources** tab → check **Force re-ingest** → click **Ingest all**. The `sources` list on the page automatically deduplicates by `(file, hash)` — re-ingesting the same unchanged file never adds a duplicate source entry.
 
 ---
 
