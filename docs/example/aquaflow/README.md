@@ -409,7 +409,7 @@ Expected: Contract review (permits, concessions, service agreements), environmen
 
 **Q5. What EBITDA multiple range is cited for water infrastructure exit valuations?**
 
-Expected: 7–12x EBITDA depending on growth, margin quality, and revenue predictability. PFAS-exposed water treatment companies noted as commanding premiums to traditional industrial multiples given regulatory tailwinds. Sources cited: `leveraged-buyout-lbo`, `exit-strategies-and-valuation-benchmarks`.
+Expected: Sector range 7.0x (low) to 12.5x (high) with a 9.0x median; mid-market water treatment comparables cluster at 8.5–11x EV/EBITDA. PFAS-exposed companies command premiums to traditional industrial multiples given regulatory tailwinds. Source cited: `exit-strategies-and-valuation-benchmarks`.
 
 ---
 
