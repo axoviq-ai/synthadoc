@@ -116,6 +116,7 @@ _STOPWORDS = frozenset({
     "shape", "drive", "change", "enable", "allow", "improve", "evolve",
     "influence", "affect", "impact", "cause", "result", "matter", "relate",
     "connect", "involve", "emerge", "remain",
+    "consistent", "align", "reflect", "correspond",
     # Analysis/evaluation verbs and structural framing nouns introduced by
     # sub-question decomposition ("How is X assessed?", "What are the components
     # of Y?") — these never repeat twice in a wiki page and cause Signal 5
@@ -1079,7 +1080,15 @@ class QueryAgent:
             if _signal5_triggers:
                 logger.debug("signal5 candidates: %r (cap=%d, title_covered=%r)",
                              _signal5_triggers, _signal5_doc_freq_cap, sorted(_title_covered))
-            _defining_term_absent = bool(_specific) and len(_term_doc_freq) >= 2 and bool(_signal5_triggers)
+            # Signal 5 coverage gate: only fire when fewer than 75% of candidates are
+            # on-topic.  When the wiki broadly covers the query (≥ 75% on-topic pages
+            # and strong retrieval score), a term with qualifying_pages=0 is almost
+            # always a query-framing word, not a content gap — Guard B (post-synthesis)
+            # handles residual gaps in that regime.  The 75% threshold is higher than
+            # Signal 4's 50% gate so Signal 5 can still fire at moderate coverage
+            # (e.g., 4/8 on-topic pages) where the wiki has genuinely thin depth.
+            _signal5_active = _pages_with_overlap < _n_cands * 3 // 4
+            _defining_term_absent = _signal5_active and bool(_specific) and len(_term_doc_freq) >= 2 and bool(_signal5_triggers)
             # Signal 6: a specific acronym or proper-name abbreviation typed
             # ALL-CAPS in the query (USB, TCP, ENIAC, AI…) has zero occurrences
             # across all retrieved pages — the wiki simply does not cover this

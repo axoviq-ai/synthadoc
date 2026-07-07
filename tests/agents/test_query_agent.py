@@ -1364,29 +1364,28 @@ async def test_gap_signal5_high_docfreq_reference_term_does_not_fire(tmp_wiki):
 
 @pytest.mark.asyncio
 async def test_gap_signal5_fires_when_on_topic_pages_equals_half_and_term_low_docfreq(tmp_wiki):
-    """Regression: signal 5 must fire when on_topic_pages = n_cands//2 exactly
-    (old guard A blocked it) and the discriminating term has low doc_freq and
-    qualifying_pages=0.
+    """Signal 5 fires when on_topic_pages = n_cands//2 (50%) and the discriminating
+    term has low doc_freq and qualifying_pages=0.
 
     Real-world case: 'judge agent methodologies' query against a wiki that covers
     agent/judge well but never dedicates content to 'methodologies'.
     8 pages retrieved; 4 are on-topic for 'agent'/'judge' — exactly n_cands//2.
 
+    Signal 5's coverage gate fires when pages_with_overlap < n_cands * 3 // 4 (75%).
+    With 4/8 on-topic (50%), 4 < 6 → gate passes → Signal 5 can fire.
+    'methodologie' doc_freq=2 < cap(3), qualifying=0, not in any title → gap=True ✓
+
     NOTE: the query must NOT use 'agent-as-a-judge' (hyphenated) because the
     tokeniser turns the whole phrase into the compound key term 'agent as a judge',
     which won't match individual words in page content and fires signal 3 instead.
-
-    Old guard A: 4 < 4 = False → blocked signal 5 → gap=False (bug).
-    Fix: guard A removed from signal 5; guard B alone applies.
-    'methodologie' doc_freq=2 < threshold(3) and qualifying=0 → gap=True ✓
 
     Signal breakdown:
     - Signal 1: 8 candidates ≥ 3 → no fire
     - Signal 2: gap_score_threshold=0.01 → no fire
     - Signal 3: on_topic_pages=4 ≥ 2 → no fire
     - Signal 4: _signal4_active=False (4<4=False); also no term has doc_freq=0
-    - Signal 5 (fixed): guard A removed; 'methodologie' doc_freq=2 < cap(3),
-      qualifying=0 → gap=True ✓
+    - Signal 5: 75% gate passes (4<6); 'methodologie' doc_freq=2 < cap(3),
+      qualifying=0, not title-covered → gap=True ✓
     """
     store = WikiStorage(tmp_wiki / "wiki")
     # 4 pages: 'agent' ≥ 4 times, 'judge' ≥ 3 times; 'methodologie' absent.
