@@ -152,6 +152,13 @@ _STOPWORDS = frozenset({
     # These describe the requested form of the answer, not recurring page content.
     "overview", "summary", "summaries", "breakdown", "breakdowns",
     "profile", "profiles", "highlight", "highlights",
+    # Temporal-horizon qualifiers: "near-term", "long-term", "short-term" etc.
+    # Hyphens are replaced with spaces during bare-form extraction, so these
+    # become two-word key terms like "near term".  Wiki pages rarely repeat a
+    # horizon phrase ≥2 times and it carries no retrieval signal anyway.
+    "near term", "long term", "short term", "mid term", "medium term",
+    "near run", "long run", "short run",
+    "near future", "long future",
 })
 
 
