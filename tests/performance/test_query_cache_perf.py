@@ -77,6 +77,15 @@ async def _make_cache(tmp_path: Path) -> CacheManager:
     return db
 
 
+def _new_sync_loop() -> asyncio.AbstractEventLoop:
+    # ProactorEventLoop (IOCP) on Windows hangs when run_until_complete() is
+    # called repeatedly in a tight loop alongside aiosqlite's worker thread.
+    # SelectorEventLoop avoids this; it works correctly on all Python versions.
+    if platform.system() == "Windows":
+        return asyncio.SelectorEventLoop()
+    return asyncio.new_event_loop()
+
+
 def _percentile(data: list[float], pct: float) -> float:
     idx = max(0, int(pct * len(data)) - 1)
     return sorted(data)[idx]
@@ -383,7 +392,7 @@ async def test_epoch_bump_invalidates_instantly(tmp_path):
 
 def test_cache_read_benchmark(benchmark, tmp_path):
     """Steady-state get_query() throughput — run with --benchmark-only."""
-    loop = asyncio.new_event_loop()
+    loop = _new_sync_loop()
     cache = loop.run_until_complete(_make_cache(tmp_path))
     k = make_query_cache_key("What is Moore's Law?", epoch=0)
     loop.run_until_complete(cache.set_query(k, epoch=0, result=_RESULT))
@@ -399,7 +408,7 @@ def test_cache_read_benchmark(benchmark, tmp_path):
 
 def test_cache_write_benchmark(benchmark, tmp_path):
     """Steady-state set_query() throughput — run with --benchmark-only."""
-    loop = asyncio.new_event_loop()
+    loop = _new_sync_loop()
     cache = loop.run_until_complete(_make_cache(tmp_path))
     counter = [0]
 
