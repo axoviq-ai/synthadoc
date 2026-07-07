@@ -130,13 +130,19 @@ _STOPWORDS = frozenset({
     "approach", "approaches", "method", "methods", "technique", "techniques",
     "process", "processes", "procedure", "procedures",
     # Comparative/analytical framers: "How does X compare to Y?", "What does
-    # that imply for Z?", "What does X suggest about Y?" — these describe the
-    # type of reasoning requested, not content wiki pages repeat ≥2 times.
+    # that imply for Z?", "What does X suggest about Y?", "How do X translate
+    # into Y?" — these describe the type of reasoning requested, not content
+    # wiki pages repeat ≥2 times.
     "compare", "compares", "compared", "comparison", "comparisons",
     "imply", "implies", "implied", "implication", "implicates",
     "suggest", "suggests", "suggested", "suggestion",
     "indicate", "indicates", "indicated", "indication",
     "infer", "infers", "inferred", "inference",
+    "translate", "translates", "translated", "translation",
+    # Category abbreviations used in sub-questions by LLM decomposition but
+    # not specific named entities: "M&A deal", "ESG risks in M&A" etc.
+    # Signal 6 (acronym absent) should not fire for these domain category terms.
+    "m&a",
     # Contribution/achievement verbs common in biographical queries
     # ("What did X contribute to Y?", "What did X achieve?") — wiki pages
     # describe actions with specific verbs ("invented", "built") instead.
@@ -1000,8 +1006,11 @@ class QueryAgent:
         if not _contains_cjk:
             for _w in question.split():
                 _bare = _w.lower().rstrip("s'?!.,").replace("-", " ")
+                # Check both the bare form AND the original lowercased word: "does"
+                # strips to "doe" which is not in _STOPWORDS, but "does" is.
                 if ((len(_w) >= 4 or (len(_w) >= 2 and _w.upper() == _w))
-                        and _bare not in _STOPWORDS):
+                        and _bare not in _STOPWORDS
+                        and _w.lower() not in _STOPWORDS):
                     _key_terms.add(_bare)
                     _q_term_freq[_bare] = _q_term_freq.get(_bare, 0) + 1
                     _stripped = _w.rstrip("s'?!.,")
