@@ -128,6 +128,14 @@ _STOPWORDS = frozenset({
     "step", "steps", "stage", "stages", "phase", "phases",
     "approach", "approaches", "method", "methods", "technique", "techniques",
     "process", "processes", "procedure", "procedures",
+    # Comparative/analytical framers: "How does X compare to Y?", "What does
+    # that imply for Z?", "What does X suggest about Y?" — these describe the
+    # type of reasoning requested, not content wiki pages repeat ≥2 times.
+    "compare", "compares", "compared", "comparison", "comparisons",
+    "imply", "implies", "implied", "implication", "implicates",
+    "suggest", "suggests", "suggested", "suggestion",
+    "indicate", "indicates", "indicated", "indication",
+    "infer", "infers", "inferred", "inference",
     # Contribution/achievement verbs common in biographical queries
     # ("What did X contribute to Y?", "What did X achieve?") — wiki pages
     # describe actions with specific verbs ("invented", "built") instead.
