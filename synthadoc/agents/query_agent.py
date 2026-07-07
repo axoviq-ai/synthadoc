@@ -592,16 +592,9 @@ class QueryAgent:
         gap: bool,
         system_ctx: str,
         is_live_data: bool,
-        gap_sentinel: bool = False,
         history: list[dict] | None = None,
     ) -> str:
-        """Build the LLM synthesis prompt.
-
-        gap_sentinel adds the [GAP] marker instruction for post-synthesis gap override
-        (Guard B).  Callers leave it False so _detect_gap() is the sole gap arbiter —
-        instructing the LLM to self-signal gaps produces false positives when the query
-        framing is slightly different from the wiki's phrasing (e.g. "near-term demand"
-        vs. "regulatory drivers").  When history is provided it is prepended."""
+        """Build the LLM synthesis prompt. When history is provided it is prepended."""
         prefix = _history_block(history) if history else ""
         if gap:
             return prefix + (
@@ -638,17 +631,12 @@ class QueryAgent:
                 f"Do not reference or cite wiki page content.\n\n"
                 f"Question: {question}\n\nData:\n{context}"
             )
-        gap_instruction = (
-            "If the pages do not contain enough information to answer the question, "
-            "start your response with exactly '[GAP]' on its own line, then explain what's missing.\n\n"
-        ) if gap_sentinel else ""
         return prefix + (
             f"Answer using ONLY these wiki pages. Cite with [[PageTitle]].\n"
             f"Extract and include all specific facts from the pages — dates, years, numbers, and names — "
             f"even when they appear briefly or in passing. Do not claim a fact is absent unless it is "
             f"genuinely missing from every page below.\n"
             f"Do not cite the Wiki Scope section — it is background context only, not a citable source.\n\n"
-            f"{gap_instruction}"
             f"Question: {question}\n\nPages:\n{context}"
         )
 
