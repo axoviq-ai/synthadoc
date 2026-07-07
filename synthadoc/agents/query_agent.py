@@ -1052,7 +1052,7 @@ class QueryAgent:
         gap = self._gap_score_threshold > 0 and (
             (len(candidates) < 3 and not used_tf_fallback)
             or (bool(_key_terms) and max_score < self._gap_score_threshold)  # skip when no content words
-            or _pages_with_overlap < 2
+            or (_pages_with_overlap < 2 and max_score < self._gap_score_threshold)  # one strong page is enough
             or _any_term_missing
             or _defining_term_absent
             or _acronym_absent
