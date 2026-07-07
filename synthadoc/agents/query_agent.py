@@ -177,6 +177,9 @@ _STOPWORDS = frozenset({
     # general practice, not content that pages repeat ≥2 times.
     "typical", "standard", "common", "usual", "normal",
     "general", "generally", "typically", "commonly", "usually",
+    # Passive/auxiliary verb forms: "covenants are used to…" — past-tense auxiliaries
+    # don't strip to base form via rstrip and rarely appear ≥2 times in wiki pages.
+    "used", "uses", "use",
     # Temporal-horizon qualifiers: "near-term", "long-term", "short-term" etc.
     # Hyphens are replaced with spaces during bare-form extraction, so these
     # become two-word key terms like "near term".  Wiki pages rarely repeat a
@@ -825,7 +828,11 @@ class QueryAgent:
         routing_warning = ""
         if scoped_slugs is not None:
             max_score = max((r.score for r in candidates), default=0.0)
-            scoped_weak = max_score < self._gap_score_threshold
+            # Use 1.5× the gap threshold so borderline scoped results (score between
+            # gap_threshold and 1.5×) also fall back.  This avoids Signal 6 false
+            # positives where routing picks domain-A pages for a cross-domain query
+            # and the domain-B acronym has doc_freq=0 in those pages.
+            scoped_weak = max_score < self._gap_score_threshold * 1.5
             if scoped_weak:
                 # Routing-scoped results are below threshold — fall back to full corpus.
                 full_per_sub = await asyncio.gather(
