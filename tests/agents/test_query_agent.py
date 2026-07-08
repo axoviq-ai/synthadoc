@@ -866,13 +866,14 @@ async def test_gap_signal3_boundary_exactly_two_on_topic_pages(tmp_wiki):
 
 @pytest.mark.asyncio
 async def test_gap_signal3_boundary_one_on_topic_page(tmp_wiki):
-    """Signal 3 DOES trigger when only one retrieved page covers the discriminating
-    term with sufficient frequency (1 < 2 → gap).
+    """Signal 3 fires when only one retrieved page covers the discriminating term
+    AND max_score is below the gap threshold (weak overall match).
 
-    bm25_search is mocked so BM25 IDF behaviour does not affect this test.
+    score=0.005 < gap_score_threshold=0.01 so both Signal 2 and Signal 3 contribute.
+    The important invariant is: thin coverage + weak score → gap.
     """
     store = WikiStorage(tmp_wiki / "wiki")
-    # Only 1 page has "orchid" ≥ 3 times; 4 pages are off-topic.
+    # Only 1 page has "orchid" ≥ 2 times; 4 pages are off-topic.
     store.write_page("orchid-page", WikiPage(
         title="Orchid Care", tags=["orchid"],
         content=(
@@ -900,11 +901,61 @@ async def test_gap_signal3_boundary_one_on_topic_page(tmp_wiki):
     ]
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.01)
-    with patch.object(agent._search, "bm25_search", return_value=_fake_results(all_slugs)):
+    # score=0.005 is below the threshold — weak match + 1 on-topic page → gap fires.
+    with patch.object(agent._search, "bm25_search",
+                      return_value=_fake_results(all_slugs, score=0.005)):
         result = await agent.query("What orchid plants grow well indoors?")
-    # "orchid" is the discriminating term; only 1 page has it ≥ 2 times → 1 < 2 → gap.
     assert result.knowledge_gap is True
     assert len(result.suggested_searches) >= 1
+
+
+@pytest.mark.asyncio
+async def test_no_gap_single_dedicated_page_strong_score(tmp_wiki):
+    """Signal 3 must NOT fire when exactly one page covers the query topic but
+    that page scores strongly (max_score >= gap_score_threshold).
+
+    Regression for the QoE false-positive: a focused wiki with one dedicated page
+    per topic should not generate gap chips when that page is a strong match.
+    The old condition '_pages_with_overlap < 2' fired unconditionally; the fix
+    adds 'and max_score < threshold' so a high-scoring single page suppresses gap.
+    """
+    store = WikiStorage(tmp_wiki / "wiki")
+    # 1 dedicated QoE page; 4 unrelated finance pages.
+    store.write_page("quality-of-earnings-qoe", WikiPage(
+        title="Quality of Earnings (QoE) — Methodology Guide", tags=["qoe"],
+        content=(
+            "Quality of earnings methodology assesses sustainability of EBITDA. "
+            "The quality of earnings methodology normalizes revenue through a GAAP bridge. "
+            "Earnings quality red flags are identified in quality of earnings reports. "
+            "This earnings methodology produces a report used in LBO modeling."
+        ),
+        status="active", confidence="high", sources=[],
+    ))
+    for i in range(4):
+        store.write_page(f"finance-page-{i}", WikiPage(
+            title="LBO Model", tags=["lbo"],
+            content="Leveraged buyout model mechanics. Debt tranches and covenants.",
+            status="active", confidence="high", sources=[],
+        ))
+    all_slugs = ["quality-of-earnings-qoe"] + [f"finance-page-{i}" for i in range(4)]
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+    provider.complete.side_effect = [
+        CompletionResponse(text='["Quality of Earnings methodology"]',
+                           input_tokens=5, output_tokens=5),
+        CompletionResponse(
+            text="Quality of earnings is a methodology for assessing EBITDA sustainability.",
+            input_tokens=80, output_tokens=20,
+        ),
+    ]
+    agent = QueryAgent(provider=provider, store=store, search=search,
+                       gap_score_threshold=0.01)
+    # score=5.0 >> threshold — strong match, single dedicated page → no gap.
+    with patch.object(agent._search, "bm25_search",
+                      return_value=_fake_results(all_slugs, score=5.0)):
+        result = await agent.query("Quality of earnings methodology")
+    assert result.knowledge_gap is False
+    assert result.suggested_searches == []
 
 
 @pytest.mark.asyncio
@@ -977,9 +1028,9 @@ async def test_gap_signal5_defining_term_barely_present(tmp_wiki):
     - Signal 2: gap_score_threshold=0.01 → no fire
     - Signal 3: 2 pages have error/correction ≥ 2 → on_topic_pages=2 ≥ 2 → no fire
     - Signal 4: all 3 terms have doc_freq > 0 → no zero-freq → no fire
-    - Signal 5: guard A: on_topic_pages=2 < n_cands//2=4 → coverage is thin;
-                guard B: "quantum" doc_freq=2 < threshold(3) → genuinely absent;
-                → gap=True ✓
+    - Signal 5: "quantum" doc_freq=2 < threshold(3), qualifying=0, and "quantum"
+                does not appear in any page title → title_covered suppression
+                does not apply → gap=True ✓
 
     bm25_search is mocked so BM25 IDF behaviour does not affect this test.
     """
@@ -1036,9 +1087,12 @@ async def test_gap_signal5_defining_term_barely_present(tmp_wiki):
     ]
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.01)  # signal 2 disabled
-    with patch.object(agent._search, "bm25_search", return_value=_fake_results(all_slugs)):
+    # score=5.0 >> threshold: proves Signal 5 fires based on title coverage, not score.
+    # "quantum" is absent from every page title → title_covered does not suppress it.
+    with patch.object(agent._search, "bm25_search",
+                      return_value=_fake_results(all_slugs, score=5.0)):
         result = await agent.query("What is quantum error correction?")
-    # "quantum": doc_freq=2 < threshold(3), qualifying=0 → signal 5 fires.
+    # "quantum": doc_freq=2 < threshold(3), qualifying=0, not in any title → signal 5 fires.
     assert result.knowledge_gap is True
     assert len(result.suggested_searches) >= 1
 
@@ -1310,29 +1364,28 @@ async def test_gap_signal5_high_docfreq_reference_term_does_not_fire(tmp_wiki):
 
 @pytest.mark.asyncio
 async def test_gap_signal5_fires_when_on_topic_pages_equals_half_and_term_low_docfreq(tmp_wiki):
-    """Regression: signal 5 must fire when on_topic_pages = n_cands//2 exactly
-    (old guard A blocked it) and the discriminating term has low doc_freq and
-    qualifying_pages=0.
+    """Signal 5 fires when on_topic_pages = n_cands//2 (50%) and the discriminating
+    term has low doc_freq and qualifying_pages=0.
 
     Real-world case: 'judge agent methodologies' query against a wiki that covers
     agent/judge well but never dedicates content to 'methodologies'.
     8 pages retrieved; 4 are on-topic for 'agent'/'judge' — exactly n_cands//2.
 
+    Signal 5's coverage gate fires when pages_with_overlap < n_cands * 3 // 4 (75%).
+    With 4/8 on-topic (50%), 4 < 6 → gate passes → Signal 5 can fire.
+    'methodologie' doc_freq=2 < cap(3), qualifying=0, not in any title → gap=True ✓
+
     NOTE: the query must NOT use 'agent-as-a-judge' (hyphenated) because the
     tokeniser turns the whole phrase into the compound key term 'agent as a judge',
     which won't match individual words in page content and fires signal 3 instead.
-
-    Old guard A: 4 < 4 = False → blocked signal 5 → gap=False (bug).
-    Fix: guard A removed from signal 5; guard B alone applies.
-    'methodologie' doc_freq=2 < threshold(3) and qualifying=0 → gap=True ✓
 
     Signal breakdown:
     - Signal 1: 8 candidates ≥ 3 → no fire
     - Signal 2: gap_score_threshold=0.01 → no fire
     - Signal 3: on_topic_pages=4 ≥ 2 → no fire
     - Signal 4: _signal4_active=False (4<4=False); also no term has doc_freq=0
-    - Signal 5 (fixed): guard A removed; 'methodologie' doc_freq=2 < cap(3),
-      qualifying=0 → gap=True ✓
+    - Signal 5: 75% gate passes (4<6); 'methodologie' doc_freq=2 < cap(3),
+      qualifying=0, not title-covered → gap=True ✓
     """
     store = WikiStorage(tmp_wiki / "wiki")
     # 4 pages: 'agent' ≥ 4 times, 'judge' ≥ 3 times; 'methodologie' absent.
