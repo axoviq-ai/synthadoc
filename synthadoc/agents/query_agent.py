@@ -116,6 +116,33 @@ _STOPWORDS = frozenset({
     "shape", "drive", "change", "enable", "allow", "improve", "evolve",
     "influence", "affect", "impact", "cause", "result", "matter", "relate",
     "connect", "involve", "emerge", "remain",
+    "consistent", "align", "reflect", "correspond",
+    # Analysis/evaluation verbs and structural framing nouns introduced by
+    # sub-question decomposition ("How is X assessed?", "What are the components
+    # of Y?") — these never repeat twice in a wiki page and cause Signal 5
+    # false positives when they become the discriminating term.
+    "assess", "assessed", "evaluate", "evaluated", "determine", "determined",
+    "measure", "measured", "identify", "identified", "analyze", "analysed",
+    "analyze", "analyzed", "examine", "examined", "review", "reviewed",
+    "component", "components", "aspect", "aspects", "element", "elements",
+    "feature", "features", "factor", "factors", "part", "parts",
+    "step", "steps", "stage", "stages", "phase", "phases",
+    "approach", "approaches", "method", "methods", "technique", "techniques",
+    "process", "processes", "procedure", "procedures",
+    # Comparative/analytical framers: "How does X compare to Y?", "What does
+    # that imply for Z?", "What does X suggest about Y?", "How do X translate
+    # into Y?" — these describe the type of reasoning requested, not content
+    # wiki pages repeat ≥2 times.
+    "compare", "compares", "compared", "comparison", "comparisons",
+    "imply", "implies", "implied", "implication", "implicates",
+    "suggest", "suggests", "suggested", "suggestion",
+    "indicate", "indicates", "indicated", "indication",
+    "infer", "infers", "inferred", "inference",
+    "translate", "translates", "translated", "translation",
+    # Category abbreviations used in sub-questions by LLM decomposition but
+    # not specific named entities: "M&A deal", "ESG risks in M&A" etc.
+    # Signal 6 (acronym absent) should not fire for these domain category terms.
+    "m&a",
     # Contribution/achievement verbs common in biographical queries
     # ("What did X contribute to Y?", "What did X achieve?") — wiki pages
     # describe actions with specific verbs ("invented", "built") instead.
@@ -131,6 +158,35 @@ _STOPWORDS = frozenset({
     "highest", "lowest", "largest", "smallest", "biggest", "greater", "lesser",
     "higher", "lower", "worst", "better", "worse", "fastest", "slowest",
     "strongest", "weakest", "richest", "cheapest", "expensive",
+    # Measurement-framing nouns: "What are the key metrics/KPIs/figures for X?"
+    # Users request data using these wrapper words; wiki pages contain the data
+    # itself (revenue, EBITDA, rates) without needing to repeat the wrapper ≥2 times.
+    "metric", "metrics", "kpi", "kpis", "indicator", "indicators",
+    "statistic", "statistics", "figure", "figures",
+    # Structural query framers: "Give me an overview/summary/breakdown/profile of X."
+    # "What are the workstreams/considerations/criteria/package for Y?" — M&A jargon
+    # that describes how the user wants the answer structured, not recurring page content.
+    "overview", "summary", "summaries", "breakdown", "breakdowns",
+    "profile", "profiles", "highlight", "highlights",
+    "workstream", "workstreams",
+    "consideration", "considerations",
+    "criterion", "criteria",
+    "package", "packages",
+    "structure", "structures",
+    # Norm-seeking framers: "What is typical/standard/common for X?" — these ask for
+    # general practice, not content that pages repeat ≥2 times.
+    "typical", "standard", "common", "usual", "normal",
+    "general", "generally", "typically", "commonly", "usually",
+    # Passive/auxiliary verb forms: "covenants are used to…" — past-tense auxiliaries
+    # don't strip to base form via rstrip and rarely appear ≥2 times in wiki pages.
+    "used", "uses", "use",
+    # Temporal-horizon qualifiers: "near-term", "long-term", "short-term" etc.
+    # Hyphens are replaced with spaces during bare-form extraction, so these
+    # become two-word key terms like "near term".  Wiki pages rarely repeat a
+    # horizon phrase ≥2 times and it carries no retrieval signal anyway.
+    "near term", "long term", "short term", "mid term", "medium term",
+    "near run", "long run", "short run",
+    "near future", "long future",
 })
 
 
@@ -536,12 +592,9 @@ class QueryAgent:
         gap: bool,
         system_ctx: str,
         is_live_data: bool,
-        gap_sentinel: bool = False,
         history: list[dict] | None = None,
     ) -> str:
-        """Build the LLM synthesis prompt. gap_sentinel=True adds the [GAP] marker
-        instruction used by run() for post-synthesis gap override; run_stream() omits it.
-        When history is provided it is prepended as a conversation context block."""
+        """Build the LLM synthesis prompt. When history is provided it is prepended."""
         prefix = _history_block(history) if history else ""
         if gap:
             return prefix + (
@@ -578,17 +631,13 @@ class QueryAgent:
                 f"Do not reference or cite wiki page content.\n\n"
                 f"Question: {question}\n\nData:\n{context}"
             )
-        gap_instruction = (
-            "If the pages do not contain enough information to answer the question, "
-            "start your response with exactly '[GAP]' on its own line, then explain what's missing.\n\n"
-        ) if gap_sentinel else ""
         return prefix + (
             f"Answer using ONLY these wiki pages. Cite with [[PageTitle]].\n"
+            f"Respond in the same language as the Question.\n"
             f"Extract and include all specific facts from the pages — dates, years, numbers, and names — "
             f"even when they appear briefly or in passing. Do not claim a fact is absent unless it is "
             f"genuinely missing from every page below.\n"
             f"Do not cite the Wiki Scope section — it is background context only, not a citable source.\n\n"
-            f"{gap_instruction}"
             f"Question: {question}\n\nPages:\n{context}"
         )
 
@@ -772,7 +821,11 @@ class QueryAgent:
         routing_warning = ""
         if scoped_slugs is not None:
             max_score = max((r.score for r in candidates), default=0.0)
-            scoped_weak = max_score < self._gap_score_threshold
+            # Use 1.5× the gap threshold so borderline scoped results (score between
+            # gap_threshold and 1.5×) also fall back.  This avoids Signal 6 false
+            # positives where routing picks domain-A pages for a cross-domain query
+            # and the domain-B acronym has doc_freq=0 in those pages.
+            scoped_weak = max_score < self._gap_score_threshold * 1.5
             if scoped_weak:
                 # Routing-scoped results are below threshold — fall back to full corpus.
                 full_per_sub = await asyncio.gather(
@@ -871,7 +924,6 @@ class QueryAgent:
         synthesis_prompt = self._build_synthesis_prompt(
             question, context,
             gap=_gap, system_ctx=_system_ctx, is_live_data=_is_live_data,
-            gap_sentinel=True,
             history=_trimmed_history if _trimmed_history else None,
         )
 
@@ -953,8 +1005,11 @@ class QueryAgent:
         if not _contains_cjk:
             for _w in question.split():
                 _bare = _w.lower().rstrip("s'?!.,").replace("-", " ")
+                # Check both the bare form AND the original lowercased word: "does"
+                # strips to "doe" which is not in _STOPWORDS, but "does" is.
                 if ((len(_w) >= 4 or (len(_w) >= 2 and _w.upper() == _w))
-                        and _bare not in _STOPWORDS):
+                        and _bare not in _STOPWORDS
+                        and _w.lower() not in _STOPWORDS):
                     _key_terms.add(_bare)
                     _q_term_freq[_bare] = _q_term_freq.get(_bare, 0) + 1
                     _stripped = _w.rstrip("s'?!.,")
@@ -1012,15 +1067,36 @@ class QueryAgent:
                 min(_term_qualifying_pages.values()) if _term_qualifying_pages else 0
             )
             _signal5_doc_freq_cap = max(2, (_n_cands + 2) // 3)
-            _defining_term_absent = (
-                bool(_specific)
-                and len(_term_doc_freq) >= 2
-                and any(
-                    _term_qualifying_pages[t] == 0
-                    and _specific[t] <= _signal5_doc_freq_cap
-                    for t in _term_qualifying_pages
-                )
-            )
+            # Pages whose title contains the term are considered dedicated to it even
+            # when the body doesn't repeat the term ≥ MIN_FREQ times.  This suppresses
+            # the false positive where a "Methodology Guide" page doesn't repeat the
+            # word "methodology" twice in its body — the title is sufficient coverage.
+            _title_covered: set[str] = set()
+            for _r in candidates:
+                _tp = self._store.read_page(_r.slug)
+                if _tp:
+                    _t_norm = _tp.title.lower().replace("-", " ")
+                    for _t in _specific:
+                        if _t in _t_norm:
+                            _title_covered.add(_t)
+            _signal5_triggers = [
+                t for t in _term_qualifying_pages
+                if _term_qualifying_pages[t] == 0
+                and _specific[t] <= _signal5_doc_freq_cap
+                and t not in _title_covered
+            ]
+            if _signal5_triggers:
+                logger.debug("signal5 candidates: %r (cap=%d, title_covered=%r)",
+                             _signal5_triggers, _signal5_doc_freq_cap, sorted(_title_covered))
+            # Signal 5 coverage gate: only fire when fewer than 75% of candidates are
+            # on-topic.  When the wiki broadly covers the query (≥ 75% on-topic pages
+            # and strong retrieval score), a term with qualifying_pages=0 is almost
+            # always a query-framing word, not a content gap — Guard B (post-synthesis)
+            # handles residual gaps in that regime.  The 75% threshold is higher than
+            # Signal 4's 50% gate so Signal 5 can still fire at moderate coverage
+            # (e.g., 4/8 on-topic pages) where the wiki has genuinely thin depth.
+            _signal5_active = _pages_with_overlap < _n_cands * 3 // 4
+            _defining_term_absent = _signal5_active and bool(_specific) and len(_term_doc_freq) >= 2 and bool(_signal5_triggers)
             # Signal 6: a specific acronym or proper-name abbreviation typed
             # ALL-CAPS in the query (USB, TCP, ENIAC, AI…) has zero occurrences
             # across all retrieved pages — the wiki simply does not cover this
@@ -1052,7 +1128,7 @@ class QueryAgent:
         gap = self._gap_score_threshold > 0 and (
             (len(candidates) < 3 and not used_tf_fallback)
             or (bool(_key_terms) and max_score < self._gap_score_threshold)  # skip when no content words
-            or _pages_with_overlap < 2
+            or (_pages_with_overlap < 2 and max_score < self._gap_score_threshold)  # one strong page is enough
             or _any_term_missing
             or _defining_term_absent
             or _acronym_absent
@@ -1162,7 +1238,6 @@ class QueryAgent:
         synthesis_prompt = self._build_synthesis_prompt(
             question, context,
             gap=_gap, system_ctx=_system_ctx, is_live_data=_is_live_data,
-            gap_sentinel=True,
             history=_trimmed_history if _trimmed_history else None,
         )
 

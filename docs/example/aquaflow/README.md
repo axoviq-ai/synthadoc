@@ -4,7 +4,7 @@
 
 The scenario: AquaFlow Capital is evaluating an LBO of AquaFlow Systems Inc., a mid-market water treatment equipment company. Eight deal documents are sitting in a folder — company profile, sector analysis, LBO mechanics, covenant framework, QoE guide, ESG standards, legal DD process, and exit benchmarks. By the end of this walkthrough, all eight are ingested into a working knowledge wiki, lint-validated, and queryable in natural language, including Chinese.
 
-Steps 1–3 (install, configure, register) require a terminal. From Step 6 onward, ingest, scaffold, and lint can all run from either the terminal or the Obsidian plugin command palette — both paths are shown where relevant. Queries run through the Synthadoc web UI in Step 10.
+Steps 1–3 (install, configure, register) require a terminal. From Step 6 onward, ingest, scaffold, and lint can all run from either the terminal or the Obsidian plugin command palette — both paths are shown where relevant. Queries run through the Synthadoc web UI in Step 11.
 
 ---
 
@@ -28,18 +28,27 @@ The ingest agent decides autonomously whether each source should create a new pa
 
 ## Prerequisites
 
+- Python 3.11+ — [download at python.org](https://www.python.org/downloads/). `pip install synthadoc` will fail immediately on older versions; Python itself is never installed automatically by pip.
 - Synthadoc installed (`pip install synthadoc` or editable dev install — see the [main README](../../../README.md#installation))
-- A supported LLM API key with sufficient quota — Anthropic, OpenAI, or MiniMax paid tiers are recommended. Free-tier models such as Gemini Free or Groq Free have daily rate limits that are too low to complete the batch ingest of eight documents in a single session and will cause jobs to fail mid-run.
-- Python 3.11+
+- A supported LLM API key with sufficient quota — [MiniMax](https://platform.minimax.io/), [Qwen](https://bailian.console.aliyun.com/), [Anthropic](https://console.anthropic.com/), or [OpenAI](https://platform.openai.com/api-keys) paid tiers are recommended (ordered lowest to highest cost). Free-tier models such as Gemini Free or Groq Free have daily rate limits that are too low to complete the batch ingest of eight documents in a single session and will cause jobs to fail mid-run. See the [main README — Set your API keys](../../../README.md#set-your-api-keys) for the full provider list including free-tier options.
+- **Obsidian** *(optional)* — [download at obsidian.md](https://obsidian.md). Required only if you want to follow the Obsidian plugin path in Steps 6–10. Every step also provides an equivalent terminal command; Obsidian is not needed to complete the walkthrough.
+
+> **Windows users:** Commands in this walkthrough use Unix-style paths (`~/wikis`). In **Command Prompt** substitute `%USERPROFILE%\wikis`; in **PowerShell** `~\wikis` works directly. Multi-line `\` continuations used in the bash blocks do not work in Command Prompt — use the single-line Windows form shown where applicable.
 
 ---
 
 ## Step 1 — Install the wiki domain
 
+**macOS / Linux / PowerShell:**
 ```bash
 synthadoc install aquaflow \
   --target ~/wikis \
   --domain "Private equity M&A due diligence — LBO modeling, quality of earnings, covenant analysis, ESG, and legal DD"
+```
+
+**Windows Command Prompt:**
+```cmd
+synthadoc install aquaflow --target %USERPROFILE%\wikis --domain "Private equity M&A due diligence — LBO modeling, quality of earnings, covenant analysis, ESG, and legal DD"
 ```
 
 **What this does:**
@@ -168,14 +177,16 @@ To run in the background and keep your terminal free:
 synthadoc serve --background
 ```
 
-Verify the server is up:
+Verify the server is up. The startup banner prints the actual port on the **`Port:`** line — use that number in the URL. The default is `7070`:
 
 ```bash
 curl http://127.0.0.1:7070/health
 # → {"status":"ok"}
 ```
 
-Leave this running for the remaining steps.
+If you configured a different port in `config.toml`, substitute it: `curl http://127.0.0.1:<port>/health`.
+
+Keep the server running for the rest of this walkthrough. Steps 6–11 (ingest, scaffold, lint, routing, citations, and query) all submit jobs through this server — they will fail with a connection error if it is stopped.
 
 ---
 
@@ -185,15 +196,20 @@ Ingest all eight sources. You can do this from the terminal or the Obsidian plug
 
 **Terminal — batch ingest the entire folder:**
 
+First change to the wiki root, then run the ingest:
+
 ```bash
+cd ~/wikis/aquaflow
 synthadoc ingest raw_sources/
 ```
+
+**Windows Command Prompt:** `cd %USERPROFILE%\wikis\aquaflow`
 
 **Obsidian plugin — batch ingest from the command palette:**
 
 1. Open the wiki vault in Obsidian — select the wiki root folder (`~/wikis/aquaflow/`)
 2. Press `Cmd/Ctrl+P` → search **Synthadoc: Ingest...** → Enter
-3. Select the **All raw_sources** tab → click **Run**
+3. Select the **All raw_sources** tab → click **Ingest all**
 
 The plugin sends the same ingest job to the running server — behaviour is identical to the CLI.
 
@@ -221,7 +237,7 @@ Page lifecycle:
   draft   8
 ```
 
-> **Force re-ingest:** If you update a source file or want to regenerate a page, the dedup guard is bypassed and the page is regenerated. Run it from the terminal with `synthadoc ingest <file> --force`, or from the Obsidian plugin: `Cmd/Ctrl+P` → **Synthadoc: Ingest...** → **All raw_sources** tab → check **Force re-ingest** → click **Run**. The `sources` list on the page automatically deduplicates by `(file, hash)` — re-ingesting the same unchanged file never adds a duplicate source entry.
+> **Force re-ingest:** If you update a source file or want to regenerate a page, the dedup guard is bypassed and the page is regenerated. Run it from the terminal with `synthadoc ingest <file> --force`, or from the Obsidian plugin: `Cmd/Ctrl+P` → **Synthadoc: Ingest...** → **All raw_sources** tab → check **Force re-ingest** → click **Ingest all**. The `sources` list on the page automatically deduplicates by `(file, hash)` — re-ingesting the same unchanged file never adds a duplicate source entry.
 
 ---
 
@@ -322,20 +338,7 @@ synthadoc routing clean
 
 ---
 
-## Step 10 — Open the web UI and run queries
-
-With the server running from Step 5, open the web UI:
-
-```bash
-synthadoc web
-```
-
-Your browser opens automatically at `http://127.0.0.1:7070`. The web UI has two entry points:
-
-- **Chat** — type a natural-language question; the answer streams back token by token with inline citations
-- **Knowledge Graph** — a D3.js visualisation of all pages and their wikilink relationships; click any node to use that page as the scoped entry point for your query
-
-### Citations
+## Step 10 — Review citations
 
 Every answer includes inline citations in the format `^[filename:L-L]`, where `filename` is the source document and `L-L` is the line range in that file. In the web UI these render as superscripts you can hover or click to see the original passage. In Obsidian they render as footnotes. Citations give you a direct audit trail from every claim back to the source line — essential for M&A due diligence where verifiability matters.
 
@@ -347,13 +350,28 @@ Open the command palette → **Synthadoc: View Page Provenance**. A sortable, pa
 
 ```bash
 # All citations for one page
-synthadoc audit citations --page leveraged-buyout-lbo
+synthadoc audit citations --page quality-of-earnings
 
 # Citations that failed validation across the whole wiki
 synthadoc audit citations --broken
 ```
 
-![Page Provenance panel in Obsidian showing citation audit trail for the LBO page](png/page-level-citation.png)
+![Page Provenance panel in Obsidian showing citation audit trail for the QoE page](png/page-level-citation.png)
+
+---
+
+## Step 11 — Open the web UI and run queries
+
+With the server running from Step 5, open the web UI:
+
+```bash
+synthadoc web
+```
+
+Your browser opens automatically at `http://127.0.0.1:7070`. The web UI has two entry points:
+
+- **Chat** — type a natural-language question; the answer streams back token by token with inline citations
+- **Knowledge Graph** — a D3.js visualisation of all pages and their wikilink relationships; click any node to use that page as the scoped entry point for your query
 
 ---
 
@@ -391,7 +409,7 @@ Expected: Contract review (permits, concessions, service agreements), environmen
 
 **Q5. What EBITDA multiple range is cited for water infrastructure exit valuations?**
 
-Expected: 7–12x EBITDA depending on growth, margin quality, and revenue predictability. PFAS-exposed water treatment companies noted as commanding premiums to traditional industrial multiples given regulatory tailwinds. Sources cited: `leveraged-buyout-lbo`, `exit-strategies-and-valuation-benchmarks`.
+Expected: Sector range 7.0x (low) to 12.5x (high) with a 9.0x median; mid-market water treatment comparables cluster at 8.5–11x EV/EBITDA. PFAS-exposed companies command premiums to traditional industrial multiples given regulatory tailwinds. Source cited: `exit-strategies-and-valuation-benchmarks`.
 
 ---
 
