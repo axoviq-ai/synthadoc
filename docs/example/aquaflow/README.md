@@ -139,20 +139,6 @@ synthadoc use aquaflow
 
 This records `aquaflow` as the active wiki so subsequent commands default to it. Override at any time with `-w <wiki>` if you maintain multiple wikis.
 
-Verify the wiki is registered and empty:
-
-```bash
-synthadoc status
-```
-
-Expected output:
-
-```
-[wiki: aquaflow]
-Wiki:   ~/wikis/aquaflow
-Pages:  0
-```
-
 ---
 
 ## Step 4 — Copy the example raw sources
@@ -182,11 +168,18 @@ To run in the background and keep your terminal free:
 synthadoc serve --background
 ```
 
-Verify the server is up. The startup banner prints the port on the **`Port:`** line — the default is `7070`:
+Verify the server is up and the wiki is registered:
 
 ```bash
-curl http://127.0.0.1:7070/health
-# → {"status":"ok"}
+synthadoc status
+```
+
+Expected output:
+
+```
+[wiki: aquaflow]
+Wiki:   ~/wikis/aquaflow
+Pages:  0
 ```
 
 Keep the server running while you follow the remaining steps.
