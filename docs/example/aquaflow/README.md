@@ -427,31 +427,31 @@ Expected: Sector range 7.0x (low) to 12.5x (high) with a 9.0x median; mid-market
 
 **Q6. How do AquaFlow Systems' FY2023 financials compare to the valuation benchmarks, and what does that imply for entry price?**
 
-Expected: Cross-references AquaFlow's $74.8M EBITDA against the mid-market cohort range (8.5x–11x), implying a base-case EV of $673M–$711M at 9.0x–9.5x. Technology differentiation (14 patents, PurePath PFAS series) and regulatory tailwinds support upper-half positioning; 59% recurring revenue (just below the >60% upper-end threshold) and PFAS RWI exclusion cap the multiple below 11x. QoE-adjustment trap noted: a 10% QoE haircut compresses adjusted EBITDA to ~$67.3M and re-rates the same dollar entry to ~10x. Sources cited: `aquaflow-systems`, `lbo-model-structure-and-mechanics`, `pe-exit-strategies-and-valuation-benchmarks`, `quality-of-earnings`, `covenant-analysis`.
+Expected: Cross-references AquaFlow's $74.8M EBITDA against the mid-market cohort range (8.5x–11x), implying a base-case EV of $673M–$711M at 9.0x–9.5x. Technology differentiation (14 patents, PurePath PFAS series) and PFAS regulatory tailwinds (EPA NPDWR April 2024, 2,400 community water systems, $4–6B addressable cycle) support upper-half positioning; 59% recurring revenue (just below the >60% upper-end threshold) and ESG B- social score (turnover 18.4%, LTIR 1.8) and PFAS RWI exclusion asymmetry cap the multiple below 11x. QoE-adjustment trap noted: a 10% QoE haircut compresses adjusted EBITDA to ~$67.3M and re-rates the same dollar entry to ~10x. DMWA $19.4M contract (6.2% of LTM revenue, expires Dec 31 2024) flagged as re-bid risk. Sources cited: `aquaflow-systems`, `lbo-model-structure-and-mechanics`, `pe-exit-strategies-and-valuation-benchmarks`, `quality-of-earnings`, `covenant-analysis`, `esg-due-diligence`, `legal-due-diligence`.
 
 ---
 
 **Q7. What covenant package is consistent with AquaFlow Systems' financial profile for a typical water infrastructure LBO?**
 
-Expected: Synthesises AquaFlow's margin and revenue mix with the covenant framework — leverage ratio, interest coverage, capex limits. Recurring revenue base (3–7 year service contracts) supports tighter covenant headroom relative to a pure equipment-sales business. Sources cited: `aquaflow-systems`, `covenant-analysis`, `lbo-model-structure-and-mechanics`.
+Expected: Covenant-lite TLB ($318M @ SOFR+250–450 bps) with springing revolver maintenance test (>35% drawn), 5.0x entering leverage, 5.5x Total Net Leverage covenant (0.5x headroom = $37.4M EBITDA buffer), senior secured ≤4.5x, interest coverage ≥2.0x, FCCR ≥1.0x. Equity cure right (2–4 of 8 quarters), $50M undrawn revolver, 50–75% excess cash sweep. Downside stress: –9% EBITDA to $68M pushes leverage to 5.5x exactly at breach. Flags QoE haircut (5–15%) compressing headroom, DMWA $19.4M re-bid binary event, and PFAS RWI exclusion as key package risks. Sources cited: `aquaflow-systems`, `covenant-analysis`, `lbo-model-structure-and-mechanics`, `quality-of-earnings`, `legal-due-diligence`, `pe-exit-strategies-and-valuation-benchmarks`.
 
 ---
 
 **Q8. What risks does each of the three diligence workstreams — QoE, legal, and ESG — uniquely surface for a water treatment company?**
 
-Expected: QoE — normalisation of service contract revenue recognition, one-time equipment sale spikes, non-recurring cost add-backs; Legal — PFAS liability exposure, permit transferability, Clean Water Act compliance; ESG — water stewardship obligations, discharge permit conditions, climate resilience of physical assets, community impact. Each sourced from its dedicated page. Sources cited: `quality-of-earnings`, `legal-due-diligence`, `esg-due-diligence`.
+Expected: QoE — consumable-recurring reclassification (59% mix at risk), DMWA at 5% revenue-quality threshold, segment margin durability (service 55–65% vs equipment 35–45%), add-back validity (5–15% haircut), ASC 606 service recognition; Legal — DMWA change-of-control and re-bid risk, HydraFlo patent validity/expiration, PFAS regulatory screen (upside–downside asymmetry), RWI PFAS exclusion, debt change-of-control refinancing trigger, FLSA classification for 318 field technicians, Phase I ESA on 185,000 sq ft Aurora facility; ESG — PFAS waste-stream liability screen, Scope 1/2/3 carbon benchmarking (12.3 mtCO₂e/$1M, 16% below sector), LTIR vs. sector (1.8 vs 1.6), DEI gap at VP+, board independence (71%), LP mandate compliance. PFAS surfaces in all three streams (legal compliance, ESG waste-stream, RWI exclusion) with different mitigation paths. Sources cited: `quality-of-earnings`, `legal-due-diligence`, `esg-due-diligence`, `aquaflow-systems`, `covenant-analysis`, `pe-exit-strategies-and-valuation-benchmarks`, `lbo-model-structure-and-mechanics`.
 
 ---
 
 **Q9. How should ESG diligence findings on a water treatment target translate into deal structure — specifically covenants and exit multiple sensitivity?**
 
-Expected: ESG risks (discharge permits, effluent quality, water rights) translate into covenant carve-outs or capex reserve requirements. ESG performance is linked to exit multiple through buyer universe — infrastructure funds with ESG mandates pay premiums for well-documented compliance postures. Sources cited: `esg-due-diligence`, `covenant-analysis`, `pe-exit-strategies-and-valuation-benchmarks`.
+Expected: Three-channel translation — (i) Covenants: ESG findings (PFAS downside, carbon cost shock, social remediation costs) argue for lower entry leverage (4.5–4.75x), tighter TNL covenant (≤5.0–5.25x), larger revolver buffer, and tighter EBITDA add-back caps excluding ESG remediation; (ii) Purchase price / RWI / escrow: Phase I/II ESA on 185,000 sq ft Aurora facility, specific PFAS indemnity outside RWI (RWI excludes PFAS per legal-dd), environmental escrow for RECs; (iii) Exit multiple sensitivity by path: strategic sale ±0.5–1.0x turn ESG premium/discount (sustainability mandates), S2S secondary (ESG cleanliness expands buyer universe), IPO (B+/70 composite borderline — B- social must improve to A- for institutional screening). Net ~±$75M EV per turn on $74.8M EBITDA base. Sources cited: `esg-due-diligence`, `covenant-analysis`, `lbo-model-structure-and-mechanics`, `pe-exit-strategies-and-valuation-benchmarks`, `legal-due-diligence`, `quality-of-earnings`, `aquaflow-systems`.
 
 ---
 
 **Q10. If AquaFlow Capital exits AquaFlow Systems in 3–5 years, what exit pathways and valuation approach are most defensible?**
 
-Expected: Strategic sale to industrial water majors (Xylem, Veolia comparable set), secondary buyout to infrastructure fund, or refinancing/dividend recap. Valuation anchored to EBITDA multiple with upward adjustment for PFAS remediation positioning, margin trajectory, and recurring revenue quality. Sources cited: `pe-exit-strategies-and-valuation-benchmarks`, `aquaflow-systems`, `us-water-treatment-equipment-market`.
+Expected: Three probability-weighted exit paths — S2S secondary (50%, 8.5–10.0x, most likely given $312M revenue sub-platform scale), strategic sale (35%, 10.0–11.5x, Xylem/Veolia/Hydra Solutions universe), IPO (15%, 9.0–13.0x, borderline eligibility at $312M revenue). Year-4 base-case S2S: EBITDA $117M × 9.0x = $1,053M EV, $215M net debt, $838M equity vs. ~$280M check = ~3.2x MOIC / ~33% IRR. Return decomposition: ~64% EBITDA growth, ~27% debt paydown, 0% multiple expansion (conservative convention). Three key pre-exit risks: DMWA re-bid (Dec 31 2024), B- social ESG sub-score (turnover, LTIR, DEI), and 59% recurring revenue just below the 60% upper-end threshold. Sources cited: `pe-exit-strategies-and-valuation-benchmarks`, `lbo-model-structure-and-mechanics`, `aquaflow-systems`, `covenant-analysis`, `quality-of-earnings`, `esg-due-diligence`, `legal-due-diligence`.
 
 ---
 
@@ -463,7 +463,7 @@ All wiki pages are in English. These queries are in Chinese. Synthadoc's retriev
 
 **Q11：AquaFlow Systems公司在美国水处理设备市场中的竞争定位如何？**
 
-预期答案：涵盖AquaFlow的核心产品线（膜过滤、UV消毒、反渗透、PFAS修复系统），其在38个州的覆盖范围，以及与Evoqua（已被Xylem收购，交易额75亿美元）等大型竞争对手的市场差异化定位。引用来源：`aquaflow-systems`，`us-water-treatment-equipment-market`。
+预期答案（中文回答）：市场为适度分散结构；竞争对手：Hydra Solutions Corp.（$520M收入，Mountain West领导者）、Xylem（$7.5B/14.8x EBITDA收购Evoqua）、Veolia（$15B SUEZ交易）；AquaFlow $312.4M收入定位为补强收购级（非平台级）；差异化要素：22个区域服务中心+318名技术员、AquaView IoT平台78%渗透率、PurePath PFAS系列（2024 Q1新增3项临时专利）、市政客户关系；经常性收入59%略低于60%上端门槛；PFAS监管双向对称（EPA NPDWR顺风 vs. 产品监管逆风）。引用来源：`aquaflow-systems`，`pe-exit-strategies-and-valuation-benchmarks`，`quality-of-earnings`，`legal-due-diligence`，`lbo-model-structure-and-mechanics`，`covenant-analysis`，`esg-due-diligence`。
 
 ![Q11 Chinese query answer in the web UI — retrieved from English wiki, responded in Chinese](png/query-cn1.png)
 
@@ -471,25 +471,25 @@ All wiki pages are in English. These queries are in Chinese. Synthadoc's retriev
 
 **Q12：杠杆收购模型的关键财务指标和运作机制是什么？**
 
-预期答案：说明EBITDA倍数（7–12倍）、债务/EBITDA杠杆比率、利息覆盖率、股权IRR等核心指标，以及典型LBO的资本结构（高级担保债务、夹层融资、股权）。引用来源：`lbo-model-structure-and-mechanics`。
+预期答案（中文回答）：涵盖LBO核心机制——①Sources & Uses表（TLB $318M/50%、循环信贷$50M未提取、次级票据$56M、股权$261M/41%）；②进入倍数7–12x、目标杠杆4.0–6.0x；③EBITDA定义与加项（QoE标准削减5–15%）；④现金流瀑布与债务偿付（超额现金扫除50–75%，第4年Net Debt/EBITDA可从5.0x降至3.0x）；⑤维护性契约（TNL≤5.5x，高级担保≤4.5x，ICR≥2.0x，FCCR≥1.0x，cov-lite结构，缓冲1.0–2.0x为审慎范围）；⑥回报三驱动（EBITDA增长60–70%、债务偿付、倍数扩张，保守惯例：退出倍数≤进入倍数）；⑦MIP 5–15%股权池；⑧跨工作流集成。引用来源：`lbo-model-structure-and-mechanics`，`covenant-analysis`，`pe-exit-strategies-and-valuation-benchmarks`，`quality-of-earnings`，`aquaflow-systems`，`legal-due-diligence`，`esg-due-diligence`。
 
 ---
 
 **Q13：水务基础设施投资的ESG尽调重点关注哪些方面？**
 
-预期答案：涵盖水资源管理、出水水质达标、排放许可合规、气候韧性、社区影响等ESG维度，以及ESG风险如何影响投资委员会批准决策和退出倍数。引用来源：`esg-due-diligence`。
+预期答案（中文回答）：三维度九要点——①环境：Phase I/II ESA（Aurora 185,000 sq ft设施）、Scope 1/2/3碳强度（AquaFlow 12.3 mtCO₂e/$1M，低于行业16%）、PFAS双向筛查（产品监管逆风 vs. 治理业务顺风）、气候风险（物理+转型）；②社会：LTIR vs. 行业基准（1.8 vs. 1.6）、流失率18.4%、VP+ DEI缺口、供应链劳工标准；③治理：董事会独立性（71%，超65%优选门槛）、审计委员会100%独立、长期股权激励权重、可持续报告鉴证。ESG对退出倍数影响：B+/70综合分支撑LP筛查，B-社会子项是IPO和上端估值的阻碍；整改路径：DEI正式化、安全项目投入、SASB/TCFD报告。引用来源：`esg-due-diligence`，`aquaflow-systems`，`pe-exit-strategies-and-valuation-benchmarks`，`legal-due-diligence`，`lbo-model-structure-and-mechanics`，`quality-of-earnings`，`covenant-analysis`。
 
 ---
 
 **Q14（高复杂）：综合质量收益分析、法律尽调和ESG尽调，AquaFlow Systems作为LBO收购标的面临哪些主要风险，应如何在交易结构中加以应对？**
 
-预期答案：跨三个尽调维度整合——QoE方面关注服务合同收入可持续性和EBITDA正常化调整；法律方面关注PFAS责任敞口和许可证可转让性；ESG方面关注排放合规和水权问题。交易结构应对：价格调整条款、托管安排、契约储备金要求。引用来源：`quality-of-earnings`，`legal-due-diligence`，`esg-due-diligence`，`aquaflow-systems`。
+预期答案（中文回答）：14项风险聚类为三大风险簇——①EBITDA基础并发消耗（QoE减损5–15% + DMWA重新竞标场景 + ESG修复成本 + PFAS监管逆风，同步侵蚀0.5x契约缓冲）；②退出倍数同步压缩（耗材重分类→经常性从59%降至mid-50s，失标DMWA→集中度上升，B-社会子项，PFAS逆风，任三项同时显现≈$187M EV损失）；③退出端二阶冲击（进入时未解决的风险在S2S/战略买家重复尽调中被重新定价）。交易结构应对：收购价格以QoE-adjusted EBITDA为锚点；PFAS特殊赔偿（标准RWI外）+环境托管；TNL契约收紧至≤5.0–5.25x；进入杠杆降至4.5–4.75x；ESG修复成本不通过EBITDA加项体现；75%超额现金扫除；退出路径差异化（战略出售PFAS须托管，S2S ESG需达B+/A-，IPO需SASB/TCFD+B-社会子项修复）。引用来源：`quality-of-earnings`，`legal-due-diligence`，`esg-due-diligence`，`aquaflow-systems`，`covenant-analysis`，`lbo-model-structure-and-mechanics`，`pe-exit-strategies-and-valuation-benchmarks`。
 
 ---
 
 **Q15（高复杂）：基于当前水务基础设施市场环境，AquaFlow Capital应采取何种退出策略，预期回报率和估值倍数范围是多少？**
 
-预期答案：综合分析战略出售（工业水务龙头买方）、二次杠杆收购（基础设施基金）等退出路径；估值倍数参照7–12倍EBITDA区间，PFAS监管利好支持溢价；IRR目标结合进入价格、EBITDA增长和持有期分析。引用来源：`pe-exit-strategies-and-valuation-benchmarks`，`lbo-model-structure-and-mechanics`，`us-water-treatment-equipment-market`，`aquaflow-systems`。
+预期答案（中文回答）：概率加权三路径——S2S二级50%（8.0–10.0x，基础9.0x）、战略出售35%（9.0–11.5x，基础10.5x，Xylem/Veolia/Hydra Solutions买家宇宙）、IPO 15%（9.0–13.0x，基础11.0x，$312M收入处于可行区间下端）。预期回报：基础情景~3.0–3.6x MOIC / ~33–38% IRR（第4年退出），回报归因~64% EBITDA增长（$74.8M→$117M）+~27%债务偿还（$374M→$215M）+0%倍数扩张（保守惯例）。支撑上端倍数的因素：EPA NPDWR PFAS顺风、IoT 78%渗透率、技术差异化。倍数压力点：经常性收入59%仅差1pp达60%门槛、DMWA重新竞标（2024年12月31日）、B-社会子分、PFAS双向对称。引用来源：`pe-exit-strategies-and-valuation-benchmarks`，`lbo-model-structure-and-mechanics`，`aquaflow-systems`，`quality-of-earnings`，`covenant-analysis`，`esg-due-diligence`，`legal-due-diligence`。
 
 ---
 
