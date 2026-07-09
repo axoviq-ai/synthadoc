@@ -168,6 +168,8 @@ To run in the background and keep your terminal free:
 synthadoc serve --background
 ```
 
+If you started the server without `--background`, it occupies the terminal. Open a **second terminal window** for all remaining CLI commands in this walkthrough.
+
 Verify the server is up and the wiki is registered:
 
 ```bash
