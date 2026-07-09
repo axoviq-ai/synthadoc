@@ -304,13 +304,15 @@ Expected outcome for this example:
 
 ```
 Page lifecycle:
-  active   8
+  active   7
   draft    0
 
-0 contradiction(s), 0 orphan(s), 5 adversarial warning(s), 0 citation issue(s).
+0 contradiction(s), 2 orphan(s), 2 adversarial warning(s), 0 citation issue(s).
 ```
 
-The 5 adversarial warnings in this example are content-level precision issues in the source material (e.g., EBITDA multiple ranges presented as universal market norms). They do not block lifecycle promotion — they are surfaced for your review. If you correct the source file, re-ingest with `--force` and re-run lint.
+The 2 adversarial warnings are content-level precision issues in the source material (e.g., EBITDA multiple ranges presented as universal market norms). They do not block lifecycle promotion — they are surfaced for your review. If you correct the source file, re-ingest with `--force` and re-run lint.
+
+The 2 orphans are pages with no inbound wikilinks yet — scaffold (Step 7) and routing (Step 9) will wire them into the graph.
 
 > **Lint and scaffold on a schedule:** Both `synthadoc lint run` and `synthadoc scaffold` are good candidates for recurring scheduled runs — lint keeps lifecycle state current, scaffold keeps the index and category structure in sync as new pages are added. See [Scheduling recurring operations](../../user-quick-start-guide.md#step-16--scheduling-recurring-operations) in the quick-start guide.
 
