@@ -13,7 +13,7 @@ Steps 1–3 (install, configure, register) require a terminal. From Step 6 onwar
 
 | Source file                         | Wiki page created                                           |
 | ----------------------------------- | ----------------------------------------------------------- |
-| `01_aquaflow_company_profile.md`    | `aquaflow-systems-inc` — company profile with financials   |
+| `01_aquaflow_company_profile.md`    | `aquaflow-systems` — company profile with financials   |
 | `02_water_infrastructure_market.md` | `us-water-treatment-equipment-market` — sector analysis    |
 | `03_lbo_model_mechanics.md`         | `leveraged-buyout-lbo` — LBO methodology                   |
 | `04_covenant_analysis_framework.md` | `covenant-analysis-framework` — financial covenants        |
@@ -393,7 +393,7 @@ Type each query into the Chat tab. The expected result tells you what to look fo
 
 **Q1. What are AquaFlow Systems Inc.'s key financial metrics for FY2023?**
 
-Expected: Revenue $312.4M, LTM Adjusted EBITDA $74.8M, EBITDA margin 23.9%, ~1,240 employees, headquartered in Aurora, CO. Revenue mix: Equipment Sales 41%, Service Contracts 37%, Consumables/Parts 22%. Source cited: `aquaflow-systems-inc`.
+Expected: Revenue $312.4M, LTM Adjusted EBITDA $74.8M, EBITDA margin 23.9%, ~1,240 employees, headquartered in Aurora, CO. Revenue mix: Equipment Sales 41%, Service Contracts 37%, Consumables/Parts 22%. Source cited: `aquaflow-systems`.
 
 ![Q1 answer in the web UI — financial metrics with inline citations](png/query-en1.png)
 
@@ -427,13 +427,13 @@ Expected: Sector range 7.0x (low) to 12.5x (high) with a 9.0x median; mid-market
 
 **Q6. How do AquaFlow Systems' FY2023 financials compare to the valuation benchmarks, and what does that imply for entry price?**
 
-Expected: Cross-references AquaFlow's $74.8M EBITDA against the 7–12x range, implying an enterprise value of approximately $524M–$898M. Margin quality (23.9%) and recurring service contract revenue (37% of mix, 3–7 year terms) support positioning toward the higher end. Sources cited: `aquaflow-systems-inc`, `leveraged-buyout-lbo`, `exit-strategies-and-valuation-benchmarks`.
+Expected: Cross-references AquaFlow's $74.8M EBITDA against the 7–12x range, implying an enterprise value of approximately $524M–$898M. Margin quality (23.9%) and recurring service contract revenue (37% of mix, 3–7 year terms) support positioning toward the higher end. Sources cited: `aquaflow-systems`, `leveraged-buyout-lbo`, `exit-strategies-and-valuation-benchmarks`.
 
 ---
 
 **Q7. What covenant package is consistent with AquaFlow Systems' financial profile for a typical water infrastructure LBO?**
 
-Expected: Synthesises AquaFlow's margin and revenue mix with the covenant framework — leverage ratio, interest coverage, capex limits. Recurring revenue base (3–7 year service contracts) supports tighter covenant headroom relative to a pure equipment-sales business. Sources cited: `aquaflow-systems-inc`, `covenant-analysis-framework`, `leveraged-buyout-lbo`.
+Expected: Synthesises AquaFlow's margin and revenue mix with the covenant framework — leverage ratio, interest coverage, capex limits. Recurring revenue base (3–7 year service contracts) supports tighter covenant headroom relative to a pure equipment-sales business. Sources cited: `aquaflow-systems`, `covenant-analysis-framework`, `leveraged-buyout-lbo`.
 
 ---
 
@@ -451,7 +451,7 @@ Expected: ESG risks (discharge permits, effluent quality, water rights) translat
 
 **Q10. If AquaFlow Capital exits AquaFlow Systems in 3–5 years, what exit pathways and valuation approach are most defensible?**
 
-Expected: Strategic sale to industrial water majors (Xylem, Veolia comparable set), secondary buyout to infrastructure fund, or refinancing/dividend recap. Valuation anchored to EBITDA multiple with upward adjustment for PFAS remediation positioning, margin trajectory, and recurring revenue quality. Sources cited: `exit-strategies-and-valuation-benchmarks`, `aquaflow-systems-inc`, `us-water-treatment-equipment-market`.
+Expected: Strategic sale to industrial water majors (Xylem, Veolia comparable set), secondary buyout to infrastructure fund, or refinancing/dividend recap. Valuation anchored to EBITDA multiple with upward adjustment for PFAS remediation positioning, margin trajectory, and recurring revenue quality. Sources cited: `exit-strategies-and-valuation-benchmarks`, `aquaflow-systems`, `us-water-treatment-equipment-market`.
 
 ---
 
@@ -463,7 +463,7 @@ All wiki pages are in English. These queries are in Chinese. Synthadoc's retriev
 
 **Q11：AquaFlow Systems公司在美国水处理设备市场中的竞争定位如何？**
 
-预期答案：涵盖AquaFlow的核心产品线（膜过滤、UV消毒、反渗透、PFAS修复系统），其在38个州的覆盖范围，以及与Evoqua（已被Xylem收购，交易额75亿美元）等大型竞争对手的市场差异化定位。引用来源：`aquaflow-systems-inc`，`us-water-treatment-equipment-market`。
+预期答案：涵盖AquaFlow的核心产品线（膜过滤、UV消毒、反渗透、PFAS修复系统），其在38个州的覆盖范围，以及与Evoqua（已被Xylem收购，交易额75亿美元）等大型竞争对手的市场差异化定位。引用来源：`aquaflow-systems`，`us-water-treatment-equipment-market`。
 
 ![Q11 Chinese query answer in the web UI — retrieved from English wiki, responded in Chinese](png/query-cn1.png)
 
@@ -483,13 +483,13 @@ All wiki pages are in English. These queries are in Chinese. Synthadoc's retriev
 
 **Q14（高复杂）：综合质量收益分析、法律尽调和ESG尽调，AquaFlow Systems作为LBO收购标的面临哪些主要风险，应如何在交易结构中加以应对？**
 
-预期答案：跨三个尽调维度整合——QoE方面关注服务合同收入可持续性和EBITDA正常化调整；法律方面关注PFAS责任敞口和许可证可转让性；ESG方面关注排放合规和水权问题。交易结构应对：价格调整条款、托管安排、契约储备金要求。引用来源：`quality-of-earnings-qoe`，`legal-due-diligence`，`esg-due-diligence`，`aquaflow-systems-inc`。
+预期答案：跨三个尽调维度整合——QoE方面关注服务合同收入可持续性和EBITDA正常化调整；法律方面关注PFAS责任敞口和许可证可转让性；ESG方面关注排放合规和水权问题。交易结构应对：价格调整条款、托管安排、契约储备金要求。引用来源：`quality-of-earnings-qoe`，`legal-due-diligence`，`esg-due-diligence`，`aquaflow-systems`。
 
 ---
 
 **Q15（高复杂）：基于当前水务基础设施市场环境，AquaFlow Capital应采取何种退出策略，预期回报率和估值倍数范围是多少？**
 
-预期答案：综合分析战略出售（工业水务龙头买方）、二次杠杆收购（基础设施基金）等退出路径；估值倍数参照7–12倍EBITDA区间，PFAS监管利好支持溢价；IRR目标结合进入价格、EBITDA增长和持有期分析。引用来源：`exit-strategies-and-valuation-benchmarks`，`leveraged-buyout-lbo`，`us-water-treatment-equipment-market`，`aquaflow-systems-inc`。
+预期答案：综合分析战略出售（工业水务龙头买方）、二次杠杆收购（基础设施基金）等退出路径；估值倍数参照7–12倍EBITDA区间，PFAS监管利好支持溢价；IRR目标结合进入价格、EBITDA增长和持有期分析。引用来源：`exit-strategies-and-valuation-benchmarks`，`leveraged-buyout-lbo`，`us-water-treatment-equipment-market`，`aquaflow-systems`。
 
 ---
 
