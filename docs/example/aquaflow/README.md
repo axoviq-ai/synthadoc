@@ -230,10 +230,20 @@ Expected:
 
 ```
 [wiki: aquaflow]
-Pages:  8
+Wiki:         ~/wikis/aquaflow
+Pages:        7
+Jobs pending: 0
+Jobs total:   8
+
 Page lifecycle:
-  draft   8
+  active         0
+  draft          7  <- run `synthadoc lint run` to promote
+  stale          0
+  contradicted   0
+  archived       0
 ```
+
+7 pages from 8 sources is normal — the ingest agent merged one source into an existing page rather than creating a new one. All 8 jobs completed successfully.
 
 > **Force re-ingest:** If you update a source file or want to regenerate a page, the dedup guard is bypassed and the page is regenerated. Run it from the terminal with `synthadoc ingest <file> --force`, or from the Obsidian plugin: `Cmd/Ctrl+P` → **Synthadoc: Ingest...** → **All raw_sources** tab → check **Force re-ingest** → click **Ingest all**. The `sources` list on the page automatically deduplicates by `(file, hash)` — re-ingesting the same unchanged file never adds a duplicate source entry.
 
