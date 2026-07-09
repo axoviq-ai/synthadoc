@@ -401,7 +401,7 @@ Expected: Revenue $312.4M, LTM Adjusted EBITDA $74.8M, EBITDA margin 23.9%, ~1,2
 
 **Q2. What regulatory drivers are creating near-term demand in the US water treatment equipment market?**
 
-Expected: EPA's April 2024 PFAS National Primary Drinking Water Rule establishing maximum contaminant levels; lead service line replacement mandates; aging infrastructure replacement cycle. Evoqua's $7.5B acquisition by Xylem (2023) cited as sector consolidation signal. Source cited: `us-water-treatment-equipment-market`.
+Expected: EPA's April 2024 PFAS National Primary Drinking Water Regulation (2,400 utilities must install treatment by 2029; $4–6B addressable capital cycle); IIJA water infrastructure allocations supporting municipal capex; state-level PFAS rules in CA, MI, and NY exceeding federal minimums. Regulatory exposure noted as symmetric — PFAS tailwinds are an upside driver but adverse regulation of PFAS-containing products is a tracked downside risk. Sources cited: `aquaflow-systems`, `lbo-model-structure-and-mechanics`, `pe-exit-strategies-and-valuation-benchmarks`, `legal-due-diligence`, `esg-due-diligence`.
 
 ---
 
