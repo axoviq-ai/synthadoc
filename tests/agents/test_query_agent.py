@@ -1780,10 +1780,9 @@ def test_extract_missing_slugs_mid_response_preserves_trailing_content():
 
 
 @pytest.mark.asyncio
-async def test_missing_sentinel_generates_enrich_chips_after_guard_c(tmp_wiki):
-    """[MISSING: ...] appended by the LLM re-enables gap chips even when Guard C
-    suppressed _gap for a well-cited answer.  The sentinel must NOT appear in
-    the token stream emitted to clients."""
+async def test_missing_sentinel_stripped_guard_c_decision_preserved(tmp_wiki):
+    """[MISSING: ...] text is stripped from the token stream but must NOT re-enable
+    the gap chip when Guard C has suppressed it — Guard C's decision is final."""
     # Answer body: >800 chars + a [[wikilink]] citation → Guard C HIGH_CONF path.
     body = "Detailed answer about mobile computing history. " * 22  # ~1056 chars
     llm_tokens = [body + "[[some-page]]\n\n", "[MISSING: iphone, mobile-computing]"]
@@ -1813,8 +1812,7 @@ async def test_missing_sentinel_generates_enrich_chips_after_guard_c(tmp_wiki):
     gap_events = [e for e in events if e.get("event") == "gap"]
 
     assert "[MISSING:" not in token_text, "sentinel must not be streamed to clients"
-    assert len(gap_events) == 1, "gap event must fire"
-    assert gap_events[0]["data"]["suggested_searches"] == ["iphone", "mobile computing"]
+    assert len(gap_events) == 0, "Guard C suppressed gap — [MISSING] must not re-enable it"
 
 
 @pytest.mark.asyncio

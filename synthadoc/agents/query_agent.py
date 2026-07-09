@@ -600,14 +600,7 @@ class QueryAgent:
             return prefix + (
                 f"The wiki does not yet have a dedicated page on this topic. "
                 f"Answer the question using the wiki pages below and your general knowledge. "
-                f"Note in one sentence that the wiki lacks a dedicated page and suggest the user enriches it.\n"
-                f"If specific topics central to this question have no dedicated wiki page, "
-                f"add this line as the ABSOLUTE LAST line of your response — after Sources, "
-                f"after all citations, after everything else:\n"
-                f"[MISSING: topic1, topic2]\n"
-                f"Use short lowercase hyphenated slugs. The closing ] is required. "
-                f"Example: [MISSING: iphone, mobile-computing]\n"
-                f"Omit the [MISSING] line if the wiki already covers all topics adequately.\n\n"
+                f"Note in one sentence that the wiki lacks a dedicated page and suggest the user enriches it.\n\n"
                 f"Question: {question}\n\n"
                 f"Wiki pages available:\n{context}"
             )
@@ -949,12 +942,11 @@ class QueryAgent:
         # [MISSING: ...] sentinel — re-enable gap and chip generation even when
         # Guard C suppressed it for a well-cited answer.  Strip the marker from
         # the displayed text so clients never see it.
+        # Strip any stray [MISSING: ...] text the LLM may have written; do not
+        # use it to re-enable gap — Guard C's assessment is final.
         _missing_slugs, answer_text = _extract_missing_slugs(answer_text)
-        if _missing_slugs and not _gap:
-            _gap = True
-            if not _suggested:
-                _suggested = [s.replace("-", " ") for s in _missing_slugs]
-            logger.debug("query: [MISSING] sentinel re-enabled gap — %s", _missing_slugs)
+        if _missing_slugs:
+            logger.debug("query: [MISSING] text stripped (Guard C decision preserved) — %s", _missing_slugs)
 
         logger.info("query answered — %d page(s) cited, %d tokens",
                     len(citations), resp2.total_tokens)
@@ -1309,28 +1301,24 @@ class QueryAgent:
 
         _gap = _guard_c_suppress(_gap, full_answer, "run_stream")
 
-        # [MISSING: ...] sentinel — re-enable gap and chip generation even when
-        # Guard C suppressed it for a well-cited answer.
-        if _missing_slugs and not _gap:
-            _gap = True
-            logger.debug("run_stream: [MISSING] sentinel re-enabled gap — %s", _missing_slugs)
+        # Strip any stray [MISSING: ...] text the LLM may have written; do not
+        # use it to re-enable gap — Guard C's assessment is final.
+        if _missing_slugs:
+            logger.debug("run_stream: [MISSING] text stripped (Guard C decision preserved) — %s", _missing_slugs)
 
         yield {"event": "citations", "data": {"citations": [] if _gap else citations}}
 
         if _gap:
-            if _missing_slugs:
-                _suggested = [s.replace("-", " ") for s in _missing_slugs]
-            else:
-                try:
-                    # Use the standalone retrieval_question so gap suggestions are meaningful
-                    # when the user asked a context-dependent follow-up (e.g. "tell me more
-                    # about his death" → rewritten to "How did Alan Turing die?").
-                    _suggested = await SearchDecomposeAgent(self._provider).decompose(
-                        retrieval_question, domain_context=_purpose_ctx
-                    )
-                except Exception as _exc:
-                    logger.warning("run_stream: gap decompose failed, falling back to original question: %s", _exc)
-                    _suggested = [retrieval_question]
+            try:
+                # Use the standalone retrieval_question so gap suggestions are meaningful
+                # when the user asked a context-dependent follow-up (e.g. "tell me more
+                # about his death" → rewritten to "How did Alan Turing die?").
+                _suggested = await SearchDecomposeAgent(self._provider).decompose(
+                    retrieval_question, domain_context=_purpose_ctx
+                )
+            except Exception as _exc:
+                logger.warning("run_stream: gap decompose failed, falling back to original question: %s", _exc)
+                _suggested = [retrieval_question]
             logger.debug("run_stream: yielding gap event (%d searches)", len(_suggested))
             yield {"event": "gap", "data": {"suggested_searches": _suggested}}
 
