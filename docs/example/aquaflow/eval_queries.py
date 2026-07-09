@@ -319,12 +319,7 @@ def score_answer(answer: str, facts: list[str]) -> tuple[int, int, list[str]]:
 def grade(matched: int, total: int) -> str:
     if total == 0:
         return "N/A"
-    pct = matched / total
-    if pct >= 0.85:
-        return "PASS"
-    if pct >= 0.60:
-        return "WARN"
-    return "FAIL"
+    return "PASS" if matched / total >= 0.85 else "FAIL"
 
 
 # ---------------------------------------------------------------------------
