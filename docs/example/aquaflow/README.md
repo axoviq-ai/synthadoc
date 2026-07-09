@@ -146,7 +146,7 @@ This records `aquaflow` as the active wiki so subsequent commands default to it.
 The eight source documents for this walkthrough are in the Synthadoc repository under `docs/example/aquaflow/raw_sources/`. Copy them into your wiki's `raw_sources/` folder:
 
 - **If you cloned the repository:** copy the eight `.md` files from `docs/example/aquaflow/raw_sources/` into `~/wikis/aquaflow/raw_sources/` (or `%USERPROFILE%\wikis\aquaflow\raw_sources\` on Windows).
-- **If you haven't cloned the repository:** download the folder from [github.com/axoviq-ai/synthadoc](https://github.com/axoviq-ai/synthadoc/tree/main/docs/example/aquaflow/raw_sources) and place the files in your `raw_sources/` folder.
+- **If you haven't cloned the repository:** download the files from [github.com/axoviq-ai/synthadoc/docs/example/aquaflow/raw_sources](https://github.com/axoviq-ai/synthadoc/tree/main/docs/example/aquaflow/raw_sources) and place them in your `raw_sources/` folder.
 
 Synthadoc does not watch for new files — ingestion is always an explicit command — so dropping files into the folder does not trigger anything yet.
 
