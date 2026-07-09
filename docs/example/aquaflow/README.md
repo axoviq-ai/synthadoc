@@ -28,10 +28,10 @@ The ingest agent decides autonomously whether each source should create a new pa
 
 ## Prerequisites
 
-- Python 3.11+ — [download at python.org](https://www.python.org/downloads/). `pip install synthadoc` will fail immediately on older versions; Python itself is never installed automatically by pip.
+- Python 3.11+ — [download at python.org](https://www.python.org/downloads/)
 - Synthadoc installed (`pip install synthadoc` or editable dev install — see the [main README](../../../README.md#installation))
-- A supported LLM API key with sufficient quota — [MiniMax](https://platform.minimax.io/), [Qwen](https://bailian.console.aliyun.com/), [Anthropic](https://console.anthropic.com/), or [OpenAI](https://platform.openai.com/api-keys) paid tiers are recommended (ordered lowest to highest cost). Free-tier models such as Gemini Free or Groq Free have daily rate limits that are too low to complete the batch ingest of eight documents in a single session and will cause jobs to fail mid-run. See the [main README — Set your API keys](../../../README.md#set-your-api-keys) for the full provider list including free-tier options.
-- **Obsidian** *(optional)* — [download at obsidian.md](https://obsidian.md). Required only if you want to follow the Obsidian plugin path in Steps 6–10. Every step also provides an equivalent terminal command; Obsidian is not needed to complete the walkthrough.
+- A supported LLM API key — [MiniMax](https://platform.minimax.io/), [DeepSeek](https://platform.deepseek.com/), [Qwen](https://bailian.console.aliyun.com/), [Anthropic](https://console.anthropic.com/), or [OpenAI](https://platform.openai.com/api-keys) paid tiers are recommended for this walkthrough. Free-tier models (Gemini Free, Groq Free) have daily rate limits too low to finish a batch ingest of eight documents in one session. See the [main README — Set your API keys](../../../README.md#set-your-api-keys) for the full provider list.
+- **Obsidian** *(optional)* — [download at obsidian.md](https://obsidian.md). The Obsidian plugin uses the same CLI interfaces as the terminal commands and makes browsing, reviewing, and editing wiki pages more visual. Every step provides an equivalent terminal command — you can complete the full walkthrough without Obsidian installed.
 
 > **Windows users:** Commands in this walkthrough use Unix-style paths (`~/wikis`). In **Command Prompt** substitute `%USERPROFILE%\wikis`; in **PowerShell** `~\wikis` works directly. Multi-line `\` continuations used in the bash blocks do not work in Command Prompt — use the single-line Windows form shown where applicable.
 
@@ -110,18 +110,24 @@ Only one `default = ...` line may be uncommented at a time.
 | Ollama                 | *(no key required — runs locally)*           |
 | claude-code / opencode | *(no key required — uses your subscription)* |
 
-Example — switching from the default Gemini to Anthropic Claude:
+Example — switching from the default Gemini to DeepSeek:
 
 ```toml
 # default = { provider = "gemini", model = "gemini-2.5-flash-lite" }   ← commented out
-default = { provider = "anthropic", model = "claude-sonnet-4-6" }      ← active
+default = { provider = "deepseek", model = "deepseek-chat" }           ← active
 ```
 
+**macOS / Linux / PowerShell:**
 ```bash
-export ANTHROPIC_API_KEY="sk-ant-..."
+export DEEPSEEK_API_KEY="sk-..."
 ```
 
-> **For this workshop:** Use a paid provider (Anthropic, MiniMax, or DeepSeek). Free-tier Gemini and Groq quotas are exhausted by batch ingest of eight documents in a single session. See [Appendix C — Switching LLM providers](../../user-quick-start-guide.md#appendix-c--switching-llm-providers) for full configuration details.
+**Windows Command Prompt:**
+```cmd
+set DEEPSEEK_API_KEY=sk-...
+```
+
+> **For this workshop:** Use a paid provider (MiniMax, DeepSeek, or Anthropic). Free-tier Gemini and Groq quotas are exhausted by batch ingest of eight documents in a single session. See [Appendix C — Switching LLM providers](../../user-quick-start-guide.md#appendix-c--switching-llm-providers) for full configuration details.
 
 ---
 
@@ -151,13 +157,12 @@ Pages:  0
 
 ## Step 4 — Copy the example raw sources
 
-Run this from the synthadoc repository root:
+The eight source documents for this walkthrough are in the Synthadoc repository under `docs/example/aquaflow/raw_sources/`. Copy them into your wiki's `raw_sources/` folder:
 
-```bash
-cp docs/example/aquaflow/raw_sources/*.md ~/wikis/aquaflow/raw_sources/
-```
+- **If you cloned the repository:** copy the eight `.md` files from `docs/example/aquaflow/raw_sources/` into `~/wikis/aquaflow/raw_sources/` (or `%USERPROFILE%\wikis\aquaflow\raw_sources\` on Windows).
+- **If you haven't cloned the repository:** download the folder from [github.com/axoviq-ai/synthadoc](https://github.com/axoviq-ai/synthadoc/tree/main/docs/example/aquaflow/raw_sources) and place the files in your `raw_sources/` folder.
 
-Synthadoc does not watch for new files — ingestion is always an explicit command — so this copy does not trigger anything yet.
+Synthadoc does not watch for new files — ingestion is always an explicit command — so dropping files into the folder does not trigger anything yet.
 
 > **Bringing your own documents:** Replace or supplement these files with your own PDFs, DOCX files, Markdown notes, or URLs. The ingest pipeline accepts any format the extraction layer supports.
 
@@ -177,16 +182,14 @@ To run in the background and keep your terminal free:
 synthadoc serve --background
 ```
 
-Verify the server is up. The startup banner prints the actual port on the **`Port:`** line — use that number in the URL. The default is `7070`:
+Verify the server is up. The startup banner prints the port on the **`Port:`** line — the default is `7070`:
 
 ```bash
 curl http://127.0.0.1:7070/health
 # → {"status":"ok"}
 ```
 
-If you configured a different port in `config.toml`, substitute it: `curl http://127.0.0.1:<port>/health`.
-
-Keep the server running for the rest of this walkthrough. Steps 6–11 (ingest, scaffold, lint, routing, citations, and query) all submit jobs through this server — they will fail with a connection error if it is stopped.
+Keep the server running while you follow the remaining steps.
 
 ---
 
@@ -496,7 +499,7 @@ Once the wiki is live, a small set of CLI commands covers all routine maintenanc
 | Promote drafts / check quality | `synthadoc lint run`                                        | Weekly, or after bulk ingest                      |
 | Review lint findings           | `synthadoc lint report`                                     | After every lint run                              |
 | Check wiki health              | `synthadoc status`                                          | Any time                                          |
-| Resolve a contradiction        | Edit the flagged page in Obsidian, then `synthadoc lint run` | When a new source conflicts with existing content |
+| Resolve a contradiction        | Edit the flagged page, then `synthadoc lint run`            | When a new source conflicts with existing content |
 | Backup                         | `synthadoc backup`                                          | Before major changes                              |
 
 ### Re-ingest and source deduplication
