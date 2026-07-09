@@ -625,7 +625,7 @@ class QueryAgent:
                 f"Question: {question}\n\nData:\n{context}"
             )
         _lang_instr = (
-            "Respond in the same language as the Question. Do NOT respond in English.\n"
+            "The question is in Chinese. Respond in Chinese (Mandarin). Do not respond in English or any other language.\n"
             if _has_cjk(question)
             else "Respond in the same language as the Question.\n"
         )
@@ -635,6 +635,8 @@ class QueryAgent:
             f"Extract and include all specific facts from the pages — dates, years, numbers, and names — "
             f"even when they appear briefly or in passing. Do not claim a fact is absent unless it is "
             f"genuinely missing from every page below.\n"
+            f"When wiki pages contain tables or worked financial examples, reproduce the key rows and "
+            f"figures exactly — do not summarize or omit them.\n"
             f"Do not cite the Wiki Scope section — it is background context only, not a citable source.\n\n"
             f"Question: {question}\n\nPages:\n{context}"
         )
@@ -1123,7 +1125,7 @@ class QueryAgent:
             _prominent_term_absent = False
 
         gap = self._gap_score_threshold > 0 and (
-            (len(candidates) < 3 and not used_tf_fallback)
+            (len(candidates) < 3 and not used_tf_fallback and max_score < self._gap_score_threshold)
             or (bool(_key_terms) and max_score < self._gap_score_threshold)  # skip when no content words
             or (_pages_with_overlap < 2 and max_score < self._gap_score_threshold)  # one strong page is enough
             or _any_term_missing
