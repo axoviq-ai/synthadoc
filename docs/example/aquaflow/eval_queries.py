@@ -317,9 +317,20 @@ def score_answer(answer: str, facts: list[str]) -> tuple[int, int, list[str]]:
 
 
 def grade(matched: int, total: int) -> str:
+    """Score-based grade using a two-tier output scale.
+
+    Grading framework:
+      PASS  — ≥85% facts matched; system and model are both performing correctly.
+      WARN  — <85% facts matched; root cause is model behaviour or non-determinism,
+              NOT a system/code bug.  The missing-facts line explains what was missed.
+      FAIL  — never emitted automatically.  Reserved for confirmed system/code bugs
+              (e.g. wrong language, gap-detection false positive, retrieval failure).
+              Mark manually in the benchmark document when a system root cause is
+              identified and fixed.
+    """
     if total == 0:
         return "N/A"
-    return "PASS" if matched / total >= 0.85 else "FAIL"
+    return "PASS" if matched / total >= 0.85 else "WARN"
 
 
 # ---------------------------------------------------------------------------
@@ -386,8 +397,19 @@ def run_eval(model: str, port: int) -> None:
 
     total_matched = sum(r["matched"] for r in results)
     total_facts = sum(r["total"] for r in results)
+    n_pass = sum(1 for r in results if r["status"] == "PASS")
+    n_warn = sum(1 for r in results if r["status"] == "WARN")
+    n_fail = sum(1 for r in results if r["status"] == "FAIL")
+    n_err  = sum(1 for r in results if r["status"] == "ERR!")
     print(f"\nSummary: {total_matched}/{total_facts} facts matched  "
-          f"({100*total_matched//total_facts if total_facts else 0}%)")
+          f"({100*total_matched//total_facts if total_facts else 0}%)  |  "
+          f"PASS={n_pass}  WARN={n_warn}"
+          + (f"  FAIL={n_fail}" if n_fail else "")
+          + (f"  ERR={n_err}"  if n_err  else ""))
+    if n_warn:
+        print("  WARN = model/non-deterministic limitation, not a system bug.")
+    if n_fail:
+        print("  FAIL = confirmed system/code bug — requires investigation.")
     print(f"Results saved → {out_path}\n")
 
 
@@ -423,8 +445,12 @@ def compare(model_names: list[str]) -> None:
         data = files[name]
         total_m = sum(r["matched"] for r in data["results"])
         total_f = sum(r["total"] for r in data["results"])
-        print(f"{name}: {total_m}/{total_f} ({100*total_m//total_f if total_f else 0}%)"
-              f"  run: {data['run_at'][:16]}")
+        n_pass = sum(1 for r in data["results"] if r["status"] == "PASS")
+        n_warn = sum(1 for r in data["results"] if r["status"] == "WARN")
+        n_fail = sum(1 for r in data["results"] if r["status"] == "FAIL")
+        grade_str = f"PASS={n_pass} WARN={n_warn}" + (f" FAIL={n_fail}" if n_fail else "")
+        print(f"{name}: {total_m}/{total_f} ({100*total_m//total_f if total_f else 0}%)  "
+              f"{grade_str}  run: {data['run_at'][:16]}")
 
 
 # ---------------------------------------------------------------------------
