@@ -407,7 +407,7 @@ Expected: EPA's April 2024 PFAS National Primary Drinking Water Regulation (2,40
 
 **Q3. What adjustments does a quality of earnings analysis make to reported EBITDA?**
 
-Expected: Removes one-time items, normalises owner compensation, adjusts for revenue recognition timing, strips non-recurring costs. QoE is an advisory consulting service — not an audit-level attestation with PCAOB/AS standards. Framed as complementary to, not superior to, a GAAP audit. Source cited: `quality-of-earnings`.
+Expected: Covers standard addbacks (excess owner compensation, one-time legal/restructuring, impairments, non-cash charges) and deductions (premature revenue recognition, non-recurring contract revenue, divested-ops EBITDA). Revenue quality analysis — contracted vs. transactional mix, customer concentration, renewal rates, ASC 606 compliance. Working capital normalisation to TTM average. QoE typically reduces management's adjusted EBITDA by 5–15%. Sources cited: `quality-of-earnings`, `covenant-analysis`, `lbo-model-structure-and-mechanics`.
 
 ---
 
