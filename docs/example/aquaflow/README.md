@@ -419,7 +419,7 @@ Expected: Seven primary workstreams — (1) corporate & governance (cap table, c
 
 **Q5. What EBITDA multiple range is cited for water infrastructure exit valuations?**
 
-Expected: Sector range 7.0x (low) to 12.5x (high) with a 9.0x median; mid-market water treatment comparables cluster at 8.5–11x EV/EBITDA. PFAS-exposed companies command premiums to traditional industrial multiples given regulatory tailwinds. Source cited: `pe-exit-strategies-and-valuation-benchmarks`.
+Expected: Sector range 7.0x (low) to 12.5x (high) with a 9.0x median; mid-market water treatment ($150–500M revenue, 20–30% margin) comparables cluster at 8.5–11x EV/EBITDA (median 9.0–9.5x). Xylem/Evoqua (2023) cited at 14.8x as a premium strategic comp. Companies with >60% recurring revenue, technology differentiation, and PFAS/regulatory tailwinds trade at the upper end; customer concentration >15% and declining margins compress toward low end. Strategics pay 1–2x EBITDA turns above PE buyers. Sources cited: `pe-exit-strategies-and-valuation-benchmarks`, `lbo-model-structure-and-mechanics`.
 
 ---
 
