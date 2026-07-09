@@ -427,7 +427,7 @@ Expected: Sector range 7.0x (low) to 12.5x (high) with a 9.0x median; mid-market
 
 **Q6. How do AquaFlow Systems' FY2023 financials compare to the valuation benchmarks, and what does that imply for entry price?**
 
-Expected: Cross-references AquaFlow's $74.8M EBITDA against the 7–12x range, implying an enterprise value of approximately $524M–$898M. Margin quality (23.9%) and recurring service contract revenue (37% of mix, 3–7 year terms) support positioning toward the higher end. Sources cited: `aquaflow-systems`, `lbo-model-structure-and-mechanics`, `pe-exit-strategies-and-valuation-benchmarks`.
+Expected: Cross-references AquaFlow's $74.8M EBITDA against the mid-market cohort range (8.5x–11x), implying a base-case EV of $673M–$711M at 9.0x–9.5x. Technology differentiation (14 patents, PurePath PFAS series) and regulatory tailwinds support upper-half positioning; 59% recurring revenue (just below the >60% upper-end threshold) and PFAS RWI exclusion cap the multiple below 11x. QoE-adjustment trap noted: a 10% QoE haircut compresses adjusted EBITDA to ~$67.3M and re-rates the same dollar entry to ~10x. Sources cited: `aquaflow-systems`, `lbo-model-structure-and-mechanics`, `pe-exit-strategies-and-valuation-benchmarks`, `quality-of-earnings`, `covenant-analysis`.
 
 ---
 
