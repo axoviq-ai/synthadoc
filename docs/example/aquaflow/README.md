@@ -413,7 +413,7 @@ Expected: Covers standard addbacks (excess owner compensation, one-time legal/re
 
 **Q4. What are the primary legal workstreams in a water infrastructure LBO due diligence?**
 
-Expected: Contract review (permits, concessions, service agreements), environmental compliance and PFAS liability exposure, litigation review, IP and regulatory licence transferability. Source cited: `legal-due-diligence`.
+Expected: Seven primary workstreams — (1) corporate & governance (cap table, change-of-control consent rights); (2) material contracts (DMWA $19.4M contract at 6.2% of LTM revenue, top-10 customer concentration at 38%); (3) IP (14 U.S. patents, 3 provisional PFAS-series filings Q1 2024); (4) litigation & disputes; (5) regulatory compliance (Phase I ESA, NPDES, PFAS screen, NSF/ANSI 55); (6) real property (185,000 sq ft Aurora facility + 22 service centres); (7) debt & finance (credit facility change-of-control triggers). Cross-cutting: RWI at 3–4% premium with PFAS carved out, escrow 12–24 months. Sources cited: `legal-due-diligence`, `aquaflow-systems`, `quality-of-earnings`, `pe-exit-strategies-and-valuation-benchmarks`.
 
 ---
 
