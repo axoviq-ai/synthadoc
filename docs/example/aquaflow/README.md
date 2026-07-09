@@ -298,7 +298,7 @@ After lint, check the report:
 synthadoc lint report
 ```
 
-**Obsidian plugin:** `Cmd/Ctrl+P` → **Synthadoc: Show lint report**
+**Obsidian plugin:** `Cmd/Ctrl+P` → **Synthadoc: Lint: report**
 
 Expected outcome for this example:
 
