@@ -284,7 +284,7 @@ QUERIES = [
 # Helpers
 # ---------------------------------------------------------------------------
 
-EVAL_DIR = Path(__file__).parent / "eval_results"
+EVAL_DIR = Path(__file__).parent.parent / "report"
 
 
 def query_api(question: str, port: int, timeout: int = 90) -> dict:
