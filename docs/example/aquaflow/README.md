@@ -280,7 +280,7 @@ After scaffold, open `wiki/index.md` in Obsidian or your editor to review the ge
 synthadoc lint run
 ```
 
-**Obsidian plugin:** `Cmd/Ctrl+P` → **Synthadoc: Run lint**
+**Obsidian plugin:** `Cmd/Ctrl+P` → **Synthadoc: Lint: run...**
 
 **What this does:**
 
