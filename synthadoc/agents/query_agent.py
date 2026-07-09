@@ -624,9 +624,14 @@ class QueryAgent:
                 f"Do not reference or cite wiki page content.\n\n"
                 f"Question: {question}\n\nData:\n{context}"
             )
+        _lang_instr = (
+            "Respond in the same language as the Question. Do NOT respond in English.\n"
+            if _has_cjk(question)
+            else "Respond in the same language as the Question.\n"
+        )
         return prefix + (
             f"Answer using ONLY these wiki pages. Cite with [[PageTitle]].\n"
-            f"Respond in the same language as the Question.\n"
+            f"{_lang_instr}"
             f"Extract and include all specific facts from the pages — dates, years, numbers, and names — "
             f"even when they appear briefly or in passing. Do not claim a fact is absent unless it is "
             f"genuinely missing from every page below.\n"

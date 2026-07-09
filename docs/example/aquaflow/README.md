@@ -110,21 +110,21 @@ Only one `default = ...` line may be uncommented at a time.
 | Ollama                 | *(no key required — runs locally)*           |
 | claude-code / opencode | *(no key required — uses your subscription)* |
 
-Example — switching from the default Gemini to DeepSeek:
+Example — switching from the default Gemini to MiniMax:
 
 ```toml
 # default = { provider = "gemini", model = "gemini-2.5-flash-lite" }   ← commented out
-default = { provider = "deepseek", model = "deepseek-chat" }           ← active
+default = { provider = "minimax", model = "MiniMax-M3", thinking = "disabled" }  ← active
 ```
 
 **macOS / Linux / PowerShell:**
 ```bash
-export DEEPSEEK_API_KEY="sk-..."
+export MINIMAX_API_KEY="sk-..."
 ```
 
 **Windows Command Prompt:**
 ```cmd
-set DEEPSEEK_API_KEY=sk-...
+set MINIMAX_API_KEY=sk-...
 ```
 
 > **For this workshop:** Use a paid provider (MiniMax, DeepSeek, or Anthropic). Free-tier Gemini and Groq quotas are exhausted by batch ingest of eight documents in a single session. See [Appendix C — Switching LLM providers](../../user-quick-start-guide.md#appendix-c--switching-llm-providers) for full configuration details.
