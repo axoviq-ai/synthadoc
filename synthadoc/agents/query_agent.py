@@ -91,6 +91,20 @@ def _has_cjk(text: str) -> bool:
     return any(any(lo <= ord(ch) <= hi for lo, hi in _CJK_RANGES) for ch in text)
 
 
+def _detect_cjk_language(text: str) -> str:
+    """Return the display language name for the dominant script in *text*.
+
+    Hiragana/katakana → Japanese; hangul → Korean; CJK ideographs only → Chinese.
+    """
+    for ch in text:
+        cp = ord(ch)
+        if 0x3041 <= cp <= 0x309F or 0x30A1 <= cp <= 0x30FC:
+            return "Japanese"
+        if 0xAC00 <= cp <= 0xD7AF:
+            return "Korean"
+    return "Chinese (Mandarin)"
+
+
 def _history_block(history: list[dict]) -> str:
     """Format conversation history as a preamble block for the synthesis prompt."""
     if not history:
@@ -624,9 +638,10 @@ class QueryAgent:
                 f"Do not reference or cite wiki page content.\n\n"
                 f"Question: {question}\n\nData:\n{context}"
             )
+        _lang = _detect_cjk_language(question) if _has_cjk(question) else ""
         _lang_instr = (
-            "The question is in Chinese. Respond in Chinese (Mandarin). Do not respond in English or any other language.\n"
-            if _has_cjk(question)
+            f"The question is in {_lang}. Respond in {_lang}. Do not respond in English or any other language.\n"
+            if _lang
             else "Respond in the same language as the Question.\n"
         )
         return prefix + (
