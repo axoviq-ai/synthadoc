@@ -378,7 +378,7 @@ With the server running from Step 5, open the web UI:
 synthadoc web
 ```
 
-Your browser opens automatically at `http://127.0.0.1:7070`. The web UI has two entry points:
+Your browser opens automatically at the port shown in the server startup banner. The web UI has two entry points:
 
 - **Chat** — type a natural-language question; the answer streams back token by token with inline citations
 - **Knowledge Graph** — a D3.js visualisation of all pages and their wikilink relationships; click any node to use that page as the scoped entry point for your query
