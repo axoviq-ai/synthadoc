@@ -40,7 +40,7 @@ Grading follows a two-tier framework:
 
 `FAIL` is reserved exclusively for confirmed system or code bugs; none were found in this run.
 
-The questions span three complexity tiers as defined in the AquaFlow README:
+The questions span three complexity tiers as defined in the [AquaFlow README](../../README.md):
 
 - **English medium complexity** (Q1–Q5): single-workstream recall, specific figures
 - **English high complexity** (Q6–Q10): cross-workstream synthesis across 5–7 wiki pages
