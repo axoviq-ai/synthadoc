@@ -1,7 +1,7 @@
 # AquaFlow LLM Query Benchmark
 
 **Wiki:** AquaFlow Systems PE/M&A due diligence  
-**Date:** 2026-07-09 / 2026-07-10  
+**Date:** 2026-07-09 / 2026-07-10 / 2026-07-10  
 **Evaluator:** `docs/example/aquaflow/evaluation/scripts/eval_queries.py`
 
 ---
@@ -17,6 +17,7 @@
   - [Claude Opus 4.8](#claude-opus-48)
   - [Claude Sonnet 4.6](#claude-sonnet-46)
   - [DeepSeek-R1 (V3)](#deepseek-r1-v3)
+  - [Qwen Plus](#qwen-plus)
 - [Cross-Model Comparison](#cross-model-comparison)
 - [WARN Analysis](#warn-analysis)
 - [System Health Notes](#system-health-notes)
@@ -26,7 +27,7 @@
 
 ## Overview
 
-This report benchmarks four LLMs against 15 PE/M&A due diligence questions drawn from the
+This report benchmarks five LLMs against 15 PE/M&A due diligence questions drawn from the
 [AquaFlow wiki](../../README.md). Questions Q1–Q10 are in English; Q11–Q15 are in Mandarin
 Chinese. Each answer is scored by case-insensitive substring match against a curated fact list
 (282 facts total; defined per-question in [`eval_queries.py`](../scripts/eval_queries.py)).
@@ -50,12 +51,13 @@ The questions span three complexity tiers as defined in the AquaFlow README:
 
 ## Models Evaluated
 
-| Label | Provider | Model | Config | Run timestamp |
-|-------|----------|-------|--------|---------------|
+| Label | Provider | Model ID | Config | Run timestamp |
+|-------|----------|----------|--------|---------------|
 | MiniMax-Think (M3) | MiniMax | MiniMax-M3 | thinking=enabled | 2026-07-09 20:23 |
 | Claude Opus 4.8 | Anthropic | claude-opus-4-8 | — | 2026-07-10 11:14 |
 | Claude Sonnet 4.6 | Anthropic | claude-sonnet-4-6 | — | 2026-07-09 20:26 |
 | DeepSeek-R1 (V3) | DeepSeek | deepseek-reasoner | chain-of-thought | 2026-07-09 19:50 |
+| Qwen Plus | Alibaba / DashScope | qwen-plus → qwen-plus-2025-12-01 (Qwen 3) | — | 2026-07-10 12:00 |
 
 ---
 
@@ -67,6 +69,7 @@ The questions span three complexity tiers as defined in the AquaFlow README:
 | 2 | Claude Opus 4.8 | 253 / 282 | **89%** | 10 | 5 |
 | 3 | Claude Sonnet 4.6 | 244 / 282 | **86%** | 10 | 5 |
 | 4 | DeepSeek-R1 (V3) | 222 / 282 | **78%** | 6 | 9 |
+| 5 | Qwen Plus | 207 / 282 | **73%** | 4 | 11 |
 
 ---
 
@@ -186,25 +189,48 @@ The questions span three complexity tiers as defined in the AquaFlow README:
 
 ---
 
+### Qwen Plus
+
+| Q | Topic | Score | Status | Key misses |
+|---|-------|-------|--------|------------|
+| Q1 | LBO sources & uses | 13/14 (92%) | PASS | tlb |
+| Q2 | PFAS tailwinds | 16/16 (100%) | PASS | — |
+| Q3 | QoE EBITDA adjustments | 6/12 (50%) | WARN | addback, restructuring, non-cash, asc 606, working capital, 5-15% |
+| Q4 | Legal workstreams | 16/23 (69%) | WARN | 14 permits, 185000 sq ft, aurora, rwi, 318, 3-4% |
+| Q5 | Exit multiples | 6/10 (60%) | WARN | 9.0x, xylem, evoqua, 14.8x |
+| Q6 | Financials vs. benchmarks | 14/15 (93%) | PASS | 710 |
+| Q7 | Covenant package | 15/21 (71%) | WARN | cov-lite, fccr, 1.0x, 8 quarters, 68m, 9% |
+| Q8 | Cross-workstream risks | 14/23 (60%) | WARN | asc 606, 5-15%, flsa, 318, field technician, 1.8, 1.6 + 2 more |
+| Q9 | ESG → deal structure | 14/18 (77%) | WARN | 4.5x, aurora, 185,000 sq ft, environmental escrow |
+| Q10 | Exit strategy | 18/24 (75%) | WARN | 117m, 215m, 261m, 64%, 27%, dmwa |
+| Q11 | ZH competitive positioning | 17/18 (94%) | PASS | 顺风 |
+| Q12 | ZH LBO mechanics | 18/27 (66%) | WARN | 318m, 50m, revolver, 56m, subordinated, 261m, 41%, 64% + 1 more |
+| Q13 | ZH ESG priorities | 10/12 (83%) | WARN | 顺风, 逆风 |
+| Q14 | ZH integrated risks | 13/19 (68%) | WARN | 2.5x, 4.5x, 超额现金, s2s, 战略, ipo |
+| Q15 | ZH exit strategy | 17/30 (56%) | WARN | 8.0x, 10.0x, 11.5x, 13.0x, 3.0x, 3.6x, 38%, 117m + 5 more |
+| **Total** | | **207/282 (73%)** | | **PASS=4 WARN=11** |
+
+---
+
 ## Cross-Model Comparison
 
-| Q | Topic | MiniMax-Think (M3) | Claude Opus 4.8 | Sonnet 4.6 | DeepSeek-R1 (V3) |
-|---|-------|:------------------:|:---------------:|:----------:|:----------------:|
-| Q1 | LBO sources & uses | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 85% |
-| Q2 | PFAS tailwinds | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 87% |
-| Q3 | QoE EBITDA | ⚠️ 83% | ⚠️ 83% | ✅ 91% | ⚠️ 75% |
-| Q4 | Legal workstreams | ✅ 86% | ✅ 86% | ✅ 86% | ✅ 86% |
-| Q5 | Exit multiples | ✅ 100% | ✅ 100% | ✅ 100% | ⚠️ 70% |
-| Q6 | Financials vs. benchmarks | ⚠️ 80% | ✅ 93% | ⚠️ 80% | ⚠️ 66% |
-| Q7 | Covenant package | ✅ 95% | ⚠️ 71% | ✅ 90% | ⚠️ 80% |
-| Q8 | Cross-workstream risks | ✅ 100% | ✅ 86% | ✅ 91% | ✅ 91% |
-| Q9 | ESG → deal structure | ✅ 100% | ✅ 94% | ⚠️ 83% | ⚠️ 83% |
-| Q10 | Exit strategy | ✅ 91% | ✅ 100% | ✅ 100% | ✅ 91% |
-| Q11 | ZH competitive positioning | ✅ 100% | ✅ 100% | ✅ 88% | ✅ 88% |
-| Q12 | ZH LBO mechanics | ✅ 100% | ✅ 88% | ⚠️ 59% | ⚠️ 74% |
-| Q13 | ZH ESG priorities | ⚠️ 66% | ⚠️ 83% | ⚠️ 66% | ⚠️ 50% |
-| Q14 | ZH integrated risks | ⚠️ 84% | ⚠️ 84% | ⚠️ 84% | ⚠️ 57% |
-| Q15 | ZH exit strategy | ✅ 86% | ⚠️ 83% | ✅ 86% | ⚠️ 73% |
+| Q | Topic | MiniMax-Think (M3) | Claude Opus 4.8 | Sonnet 4.6 | DeepSeek-R1 (V3) | Qwen Plus |
+|---|-------|:------------------:|:---------------:|:----------:|:----------------:|:---------:|
+| Q1 | LBO sources & uses | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 85% | ✅ 92% |
+| Q2 | PFAS tailwinds | ✅ 100% | ✅ 100% | ✅ 100% | ✅ 87% | ✅ 100% |
+| Q3 | QoE EBITDA | ⚠️ 83% | ⚠️ 83% | ✅ 91% | ⚠️ 75% | ⚠️ 50% |
+| Q4 | Legal workstreams | ✅ 86% | ✅ 86% | ✅ 86% | ✅ 86% | ⚠️ 69% |
+| Q5 | Exit multiples | ✅ 100% | ✅ 100% | ✅ 100% | ⚠️ 70% | ⚠️ 60% |
+| Q6 | Financials vs. benchmarks | ⚠️ 80% | ✅ 93% | ⚠️ 80% | ⚠️ 66% | ✅ 93% |
+| Q7 | Covenant package | ✅ 95% | ⚠️ 71% | ✅ 90% | ⚠️ 80% | ⚠️ 71% |
+| Q8 | Cross-workstream risks | ✅ 100% | ✅ 86% | ✅ 91% | ✅ 91% | ⚠️ 60% |
+| Q9 | ESG → deal structure | ✅ 100% | ✅ 94% | ⚠️ 83% | ⚠️ 83% | ⚠️ 77% |
+| Q10 | Exit strategy | ✅ 91% | ✅ 100% | ✅ 100% | ✅ 91% | ⚠️ 75% |
+| Q11 | ZH competitive positioning | ✅ 100% | ✅ 100% | ✅ 88% | ✅ 88% | ✅ 94% |
+| Q12 | ZH LBO mechanics | ✅ 100% | ✅ 88% | ⚠️ 59% | ⚠️ 74% | ⚠️ 66% |
+| Q13 | ZH ESG priorities | ⚠️ 66% | ⚠️ 83% | ⚠️ 66% | ⚠️ 50% | ⚠️ 83% |
+| Q14 | ZH integrated risks | ⚠️ 84% | ⚠️ 84% | ⚠️ 84% | ⚠️ 57% | ⚠️ 68% |
+| Q15 | ZH exit strategy | ✅ 86% | ⚠️ 83% | ✅ 86% | ⚠️ 73% | ⚠️ 56% |
 
 ---
 
@@ -260,23 +286,52 @@ The other three models cite comparables reliably on both questions.
 
 ### Pattern 6 — Shared hard facts (Q4, all models)
 
-All four models miss the same three facts on Q4 (legal workstreams): `14` water permits,
+All five models miss the same three facts on Q4 (legal workstreams): `14` water permits,
 `aurora` (Aurora, CO facility), and `318` (318 field technicians covered by FLSA). These are
 incidental specifics embedded within long, otherwise correct answers. The consistency across all
-four models points to the fact set being very granular rather than a retrieval failure.
+five models points to the fact set being very granular rather than a retrieval failure.
+
+### Pattern 7 — QoE depth gap (Q3, Qwen Plus)
+
+Qwen Plus scored only 50% on Q3 (EBITDA adjustments), the weakest single result on this
+question across all five models (next lowest: DeepSeek-R1 at 75%). It misses not only `asc 606`
+and `working capital` (shared with two other models) but also the core mechanics — `addback`,
+`restructuring`, `non-cash` items, and the `5–15%` haircut range. This points to shallow
+QoE-specific retrieval synthesis: the model returns a correct-sounding response but anchors on
+generic adjustment categories rather than the specific items cited in the retrieved wiki page.
+
+### Pattern 8 — Cross-workstream synthesis gaps (Q8, Q10, Qwen Plus)
+
+Qwen Plus scored 60% on Q8 (cross-workstream risk synthesis across QoE + legal + ESG) — the
+only model to WARN on this question. It misses legal-specific specifics (`flsa`, `318 field
+technicians`, `5–15%` QoE haircut range) that all other models recall. On Q10 (exit strategy)
+it also drops financial specifics ($117m, $215m, $261m equity waterfall, `64%` / `27%` IRR
+return splits). The pattern is consistent with Q3: strong on simple single-source retrieval but
+loses precision when synthesising across multiple wiki pages simultaneously.
+
+### Pattern 9 — CJK exit multiples collapse (Q15, Qwen Plus)
+
+Qwen Plus scored 56% on Q15 (Chinese-language exit strategy) — the lowest Q15 score across all
+five models (next lowest: DeepSeek-R1 at 73%). It misses every specific exit multiple cited in
+the wiki (`8.0×`, `10.0×`, `11.5×`, `13.0×`, `3.0×`, `3.6×`) and the associated IRR figures
+(`38%`, `117m`, `78%`). This is a compounded failure: the CJK retrieval works (the model
+answers in Chinese), but it synthesises a qualitative exit narrative without anchoring to the
+numerical ranges in the retrieved context.
 
 ---
 
 ## System Health Notes
 
-- **Q3 BM25 gap fix** (Signal 1): confirmed working across all four models. The fix suppresses
+- **Q3 BM25 gap fix** (Signal 1): confirmed working across all five models. The fix suppresses
   Signal 1 when `max_score ≥ threshold`, preventing false gap triggers on ROUTING.md-scoped
   single-page searches. All models retrieved the QoE page correctly.
-- **CJK language instruction**: Chinese questions were answered in Mandarin by all four models.
+- **CJK language instruction**: Chinese questions were answered in Mandarin by all five models.
   The `_detect_cjk_language()` fix correctly assigns Chinese (not Japanese or Korean) for all
   Q11–Q15 queries.
 - **DeepSeek-R1 chain-of-thought**: `<think>` blocks are stripped correctly before answer
   extraction. No leakage observed across 15 answers.
+- **Qwen Plus**: DashScope API responded without errors on all 15 queries. No rate-limiting
+  observed on the paid tier (prior free-tier run was terminated at Q9 by a quota error).
 - **No FAIL grades**: all WARNs are attributable to model behaviour or non-determinism.
 
 ---
@@ -285,109 +340,108 @@ four models points to the fact set being very granular rather than a retrieval f
 
 ### Model Rankings
 
-| Rank | Model | Score | Tier |
-|------|-------|-------|------|
-| 1 | MiniMax-Think (M3) | 92% | Highest accuracy |
-| 2 | Claude Opus 4.8 | 89% | High accuracy |
-| 3 | Claude Sonnet 4.6 | 86% | Strong baseline |
-| 4 | DeepSeek-R1 (V3) | 78% | Domain-knowledgeable reasoner |
+| Rank | Model | Score | Input $/M | Output $/M | Overall value |
+|------|-------|-------|-----------|------------|---------------|
+| 1 | MiniMax-Think (M3) | 92% | $0.30 | $1.20 | Highest accuracy + low cost |
+| 2 | Claude Opus 4.8 | 89% | $15.00 | $75.00 | High accuracy, very high cost |
+| 3 | Claude Sonnet 4.6 | 86% | $3.00 | $15.00 | Strong baseline, moderate cost |
+| 4 | DeepSeek-R1 (V3) | 78% | $0.55 | $2.19 | Good synthesis, low cost |
+| 5 | Qwen Plus | 73% | $0.40 | $1.20 | Inconsistent, weak value |
 
-The 14-point gap between MiniMax-Think and DeepSeek-R1 is not a domain knowledge gap — all four
-models demonstrate strong PE/M&A expertise. The gap reflects how each model handles a retrieval-
-augmented synthesis task: faithfully reproducing specific figures and terms from retrieved wiki
-pages versus synthesising the concepts in its own words.
+The 19-point gap between MiniMax-Think (92%) and Qwen Plus (73%) is not a domain knowledge gap
+— all five models demonstrate PE/M&A familiarity. The gap reflects how faithfully each model
+reproduces specific figures and terms from retrieved wiki pages. Qwen Plus is the clearest
+outlier: its performance varies sharply by question type, strong on simple single-source recall
+but poor on cross-workstream synthesis and CJK exit numerics.
 
 ### Key Differentiators
 
-**Extended thinking wins on table-dense questions.** The clearest differentiator is Q12 (LBO
-mechanics table): MiniMax-Think (100%) vs. Opus 4.8 (88%) vs. DeepSeek-R1 (74%) vs. Sonnet 4.6
-(59%). MiniMax-Think's thinking pass appears to prompt systematic enumeration of all table rows.
-The other models explain the mechanics correctly but drop specific tranche amounts.
+**Extended thinking is the single strongest predictor of table recall.** The clearest
+differentiator across all five models is Q12 (LBO mechanics table): MiniMax-Think (100%) →
+Opus 4.8 (88%) → DeepSeek-R1 (74%) → Qwen Plus (66%) → Sonnet 4.6 (59%). MiniMax-Think's
+thinking pass prompts systematic row enumeration; the other models explain the mechanics in
+prose and omit specific tranche amounts.
 
-**Claude Opus 4.8 vs. Sonnet 4.6 trade-off.** Opus gains 3 percentage points overall with
-notable improvements on financials (Q6: 93% vs 80%), ESG deal structure (Q9: 94% vs 83%),
-LBO table (Q12: 88% vs 59%), and CJK ESG coverage (Q13: 83% vs 66%). However Opus regresses
-on covenant precision (Q7: 71% vs 90%) — it explains the covenant rationale well but misses
-specific terms (springing trigger, FCCR threshold) that Sonnet quotes reliably. Neither model
-is strictly dominant; the choice depends on whether LBO table reproduction or covenant
-terminology matters more for the use case.
+**Claude Opus 4.8 vs. Sonnet 4.6 trade-off.** Opus gains 3 points overall with notable
+improvements on financials (Q6: 93% vs 80%), ESG deal structure (Q9: 94% vs 83%), LBO table
+(Q12: 88% vs 59%), and CJK ESG (Q13: 83% vs 66%). However Opus regresses on covenant
+precision (Q7: 71% vs 90%) — it synthesises the covenant rationale well but misses specific
+contractual terms (springing trigger, FCCR threshold) that Sonnet quotes reliably.
 
-**DeepSeek-R1 is a synthesiser, not a quoter.** Its WARN rate (9 of 15) reflects a consistent
-style: it constructs well-reasoned, domain-accurate answers but prioritises argument over
-verbatim citation of figures. In a compiled knowledge engine where the retrieved context is the
-ground truth, this synthesis style depresses fact-match scores even when the underlying
-understanding is correct.
+**DeepSeek-R1 is a synthesiser, not a quoter.** Its 9/15 WARN rate reflects a consistent
+style: well-reasoned, domain-accurate answers that prioritise argument over verbatim figure
+citation. In a compiled knowledge engine where retrieved context is ground truth, this style
+depresses fact-match scores even when the underlying reasoning is correct.
 
-**CJK cross-lingual retrieval works well across all models.** The system retrieves English wiki
-content for Chinese queries and all four models respond in Chinese without hallucinating
-non-existent facts. The residual gaps (`顺风`/`逆风`, `竞标`) are lexical precision issues, not
+**Qwen Plus is inconsistent across complexity tiers.** It holds its own on straightforward
+single-source queries (Q2: 100%, Q6: 93%, Q11: 94%) but collapses on synthesis questions
+(Q3: 50%, Q8: 60%) and CJK exit numerics (Q15: 56%). The 44-point range between its best and
+worst question (Q2 vs Q15) is the widest swing of any model in this benchmark.
+
+**CJK cross-lingual retrieval works well across all models.** All five models answer Chinese
+questions in Mandarin using English-language wiki content without hallucinating non-existent
+facts. Residual gaps (`顺风`/`逆风`, `竞标`, `超额现金`) are lexical precision issues, not
 retrieval failures.
 
 ### Model Selection for a Knowledge Compiled Engine
 
 Synthadoc's query agent is a retrieval-augmented pipeline: BM25 retrieves relevant wiki pages,
-the LLM synthesises from that retrieved context. In this architecture, the key model capability
-is **faithful reproduction of specific facts and figures from a given context**, not general
-domain knowledge. This shifts the ranking compared to raw reasoning benchmarks.
+the LLM synthesises from that retrieved context. The key model capability is **faithful
+reproduction of specific facts and figures from a given context**, not general domain knowledge.
 
 #### Cost Analysis
 
-In this RAG architecture, **input context dominates token consumption.** Retrieved wiki pages
-for a complex query (e.g. Q15, a cross-workstream exit strategy question) can reach
-~100 K tokens per call; the LLM answer typically adds 1–2 K output tokens. Across the
-full 15-query benchmark, total output character counts were nearly identical between Opus 4.8
-and Sonnet 4.6 (63,390 vs 62,521 chars; 1.01× ratio), confirming that the answer volume is
-driven by the query, not the model.
+**Input context dominates token consumption.** Retrieved wiki pages for a complex query
+(e.g. Q15) can reach ~100 K tokens per call; the LLM answer typically adds 1–2 K output
+tokens. Non-Anthropic providers use different tokenizers — their observed ~60 K tokens for
+the same context is not directly comparable to Anthropic's ~100 K count.
 
-**Opus 4.8 vs. Sonnet 4.6 — same tokenizer, 5× price gap.**
-Both models are billed on Anthropic's tokenizer, so token counts are directly comparable.
-At standard Anthropic pricing (Opus 4.8: $15 / M input, $75 / M output;
-Sonnet 4.6: $3 / M input, $15 / M output):
+**Anthropic: same tokenizer, 5× price gap.** At standard pricing
+(Opus 4.8: $15/$75 per M; Sonnet 4.6: $3/$15 per M):
 
 | Query complexity | Approx. tokens | Opus 4.8 cost | Sonnet 4.6 cost | Ratio |
 |---|---|---|---|---|
 | Q15 (complex, ~103 K total) | 92 K in / 11 K out | ~$1.96 | ~$0.44 | 4.5× |
-| Typical query (~50 K total) | 45 K in / 5 K out | ~$1.05 | ~$0.225 | 4.7× |
+| Typical query (~50 K total) | 45 K in / 5 K out | ~$1.05 | ~$0.23 | 4.7× |
 | 15-query benchmark run | — | ~$15 | ~$3 | ~5× |
 | 1 000 queries / month | — | ~$1 050 | ~$210 | 5× |
 
-For a 3-percentage-point accuracy gain (89% vs. 86%), Opus 4.8 costs roughly 5× more per
-query. On production workloads — even modest volumes of 1 K queries / month — that
-translates to ~$840 / month in additional spend for marginal quality uplift. Opus 4.8 is
-cost-justified only for high-stakes, cost-insensitive queries (e.g. board-level deal memos)
-where the LBO table and CJK precision improvements are material.
+**Cross-provider cost vs. accuracy summary:**
 
-**Cross-provider comparison.** MiniMax-Think M3 and DeepSeek-R1 use different tokenizers;
-their raw token counts (observed ~60 K / query vs. Anthropic's ~100 K for the same context)
-are not directly comparable. On a per-query-cost basis, both are significantly cheaper than
-either Anthropic model. MiniMax-Think M3 achieves 92% accuracy while remaining well below
-Sonnet 4.6 in per-query cost. DeepSeek-R1 is the most cost-efficient option overall, though
-its synthesis-over-citation style lowers precision on exact figure recall.
+| Model | Score | Est. cost / 1 K queries | Value verdict |
+|---|---|---|---|
+| MiniMax-Think (M3) | 92% | ~$25–40 | Best — highest accuracy, near-lowest cost |
+| Claude Sonnet 4.6 | 86% | ~$210 | Best Anthropic option — cost-effective |
+| DeepSeek-R1 (V3) | 78% | ~$35–55 | Good budget option — synthesis-focused |
+| Qwen Plus | 73% | ~$30–50 | Poor value — lower accuracy than DeepSeek at similar cost |
+| Claude Opus 4.8 | 89% | ~$1 050 | Avoid as default — 5× Sonnet cost, 3 pts below MiniMax |
 
 #### Recommendations
 
 **Primary recommendation: MiniMax-Think (M3).** MiniMax-Think wins on both dimensions that
-matter for a compiled knowledge engine: it achieves the highest accuracy in this benchmark
-(92%, 3–14 points ahead of every other model) *and* its per-token cost sits well below both
-Anthropic models. There is no trade-off to navigate — it is simultaneously the most accurate
-and one of the cheapest options evaluated. The extended thinking pass is the key driver:
-it gives the best structured-data reproduction (Q12: 100%) and the highest English-language
-PASS rate (11/15), while remaining cost-effective because thinking tokens are priced modestly
-compared with the quality gain they deliver.
+matter for a compiled knowledge engine: highest accuracy in this benchmark (92%) *and*
+per-token cost well below both Anthropic models (~$0.30/$1.20 per M). There is no trade-off —
+it is simultaneously the most accurate and one of the cheapest options evaluated. The extended
+thinking pass drives the best structured-data reproduction (Q12: 100%) and the highest
+English-language PASS rate (11/15).
 
-**If you are locked into the Anthropic API — use Sonnet 4.6.** At 86% with strong breadth
-across all 15 question types, Sonnet delivers the best cost / quality ratio among Anthropic
-models (~$0.21 – $0.44 per complex query). Its covenant precision advantage over Opus 4.8 on
-Q7 makes it the better default for legal-focused diligence, and at ~$210 / 1 K queries it is
-a reasonable production cost.
+**If locked into the Anthropic API — use Sonnet 4.6.** At 86% with strong breadth across all
+15 question types, Sonnet delivers the best cost/quality ratio among Anthropic models
+(~$0.21–$0.44 per complex query). Its covenant precision advantage over Opus 4.8 on Q7 makes
+it the better default for legal-focused diligence.
 
 **Avoid Opus 4.8 as a default.** At ~$1,050 / 1 K queries — 5× Sonnet — Opus 4.8 costs
-more than MiniMax-Think while scoring 3 percentage points *lower* (89% vs. 92%). The
-accuracy gains it brings over Sonnet (LBO table fidelity on Q12, CJK precision on Q13) are
-real but narrow. Reserve Opus 4.8 for high-stakes, cost-insensitive queries where those
-specific improvements are explicitly required, such as board-level deal memos.
+more than MiniMax-Think while scoring 3 points *lower* (89% vs. 92%). Reserve it for
+high-stakes, cost-insensitive queries where LBO table fidelity (Q12) or CJK precision (Q13)
+are explicitly required.
 
-**Budget option: DeepSeek-R1 (V3).** At 78% it is the weakest on exact figure recall but
-the cheapest model evaluated. Suitable for exploratory queries where conceptual synthesis
-matters more than verbatim citation of specific figures. Not recommended as the primary model
-for due diligence requiring precise numerical retrieval.
+**DeepSeek-R1 (V3) — budget synthesis model.** At 78% and ~$35–55 / 1 K queries it is
+suitable for exploratory queries where conceptual synthesis matters more than verbatim figure
+citation. Not recommended as the primary model for due diligence requiring precise numerics.
+
+**Qwen Plus — not recommended for this use case.** At 73% with 11/15 WARNs it is the weakest
+model in this benchmark. Its cost (~$30–50 / 1 K queries) is similar to DeepSeek-R1 but its
+accuracy is 5 points lower, and its inconsistency across question types (50% on Q3, 56% on
+Q15) makes it unreliable for production PE/M&A diligence queries. A future Qwen 3.5-Plus or
+Qwen 3.6-Plus evaluation may change this picture, as those models represent the next generation
+above the `qwen-plus-2025-12-01` snapshot tested here.
