@@ -335,7 +335,7 @@ numerical ranges in the retrieved context.
 - **DeepSeek-R1 chain-of-thought**: `<think>` blocks are stripped correctly before answer
   extraction. No leakage observed across 15 answers.
 - **Qwen Plus**: DashScope API responded without errors on all 15 queries. No rate-limiting
-  observed on the paid tier (prior free-tier run was terminated at Q9 by a quota error).
+  observed on the paid tier.
 - **No FAIL grades**: all WARNs are attributable to model behaviour or non-determinism.
 
 ---
