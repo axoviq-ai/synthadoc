@@ -350,7 +350,7 @@ numerical ranges in the retrieved context.
 | 2 | Claude Opus 4.8 | 89% | $15.00 | $75.00 | High accuracy, very high cost |
 | 3 | Claude Sonnet 4.6 | 86% | $3.00 | $15.00 | Strong baseline, moderate cost |
 | 4 | DeepSeek-R1 (V3) | 78% | $0.55 | $2.19 | Good synthesis, low cost |
-| 5 | Qwen Plus | 73% | $0.40 | $1.20 | Inconsistent, weak value |
+| 5 | Qwen Plus | 73% | $0.40 | $1.20 | Variable — strong on simple queries, weaker on synthesis |
 
 The 19-point gap between MiniMax-Think (92%) and Qwen Plus (73%) is not a domain knowledge gap
 — all five models demonstrate PE/M&A familiarity. The gap reflects how faithfully each model
