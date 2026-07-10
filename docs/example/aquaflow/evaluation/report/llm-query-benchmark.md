@@ -1,6 +1,6 @@
 # AquaFlow LLM Query Benchmark
 
-**Wiki:** AquaFlow Systems PE/M&A due diligence demo  
+**Wiki:** AquaFlow Systems PE/M&A due diligence  
 **Date:** 2026-07-09  
 **Evaluator:** `docs/example/aquaflow/evaluation/scripts/eval_queries.py`
 
@@ -9,9 +9,9 @@
 ## Overview
 
 This report benchmarks three LLMs against 15 PE/M&A due diligence questions drawn from the
-AquaFlow demo wiki. Questions Q1–Q10 are in English; Q11–Q15 are in Mandarin Chinese. Each
+[AquaFlow wiki](../../readme.md). Questions Q1–Q10 are in English; Q11–Q15 are in Mandarin Chinese. Each
 answer is scored by case-insensitive substring match against a curated fact list (282 facts
-total). Grading follows a two-tier framework:
+total; defined per-question in [`eval_queries.py`](../scripts/eval_queries.py)). Grading follows a two-tier framework:
 
 | Grade | Threshold | Meaning |
 |-------|-----------|---------|
