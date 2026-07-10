@@ -521,5 +521,6 @@ Pages move through five states: `draft` → `active` → `stale` → `contradict
 
 ## Further reading
 
+- [AquaFlow LLM Query Benchmark](evaluation/report/llm-query-benchmark.md) — query accuracy evaluation across all 15 sample queries, scored by provider and complexity tier
 - [User Quick-Start Guide](../../user-quick-start-guide.md) — full feature walkthrough including Obsidian plugin, scheduling, ROUTING.md, context packs, export formats, MCP, and backup/restore
 - [Design document](../../design.md) — architecture, data model, and system design

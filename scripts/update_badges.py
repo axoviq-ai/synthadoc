@@ -73,6 +73,17 @@ def count_skills() -> int:
     )
 
 
+def count_agents() -> int:
+    """Count Agent classes defined in synthadoc/agents/*.py."""
+    import re
+    agents_dir = ROOT / "synthadoc" / "agents"
+    pattern = re.compile(r"^class \w+Agent[:(]", re.MULTILINE)
+    return sum(
+        len(pattern.findall(p.read_text(encoding="utf-8")))
+        for p in agents_dir.glob("*.py")
+    )
+
+
 def read_coverage(coverage_json: Path) -> int:
     """Return total coverage as an integer (e.g. 87).
 
@@ -108,6 +119,7 @@ def main() -> None:
         "obsidian_commands": count_obsidian_commands(),
         "skills": count_skills(),
         "mcp_tools": count_mcp_tools(),
+        "agents": count_agents(),
     }
 
     badges_path = ROOT / "docs" / "badges.json"
