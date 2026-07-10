@@ -330,21 +330,60 @@ the LLM synthesises from that retrieved context. In this architecture, the key m
 is **faithful reproduction of specific facts and figures from a given context**, not general
 domain knowledge. This shifts the ranking compared to raw reasoning benchmarks.
 
-**MiniMax-Think (M3) — recommended for highest accuracy.** The extended thinking pass gives it
-the best structured-data reproduction (Q12: 100%) and the highest English-language PASS rate
-(11/15). Best suited when query accuracy is the primary requirement and cost is secondary.
+#### Cost Analysis
 
-**Claude Opus 4.8 — recommended for Anthropic API users.** At 89% it is the best-performing
-model available on a direct Anthropic API key, outperforming Sonnet 4.6 by 3 points. The gains
-on financial table reproduction (Q12) and CJK precision (Q13) are meaningful for multi-lingual
-PE/M&A workloads. One caveat: Sonnet 4.6 remains preferable for covenant-heavy queries (Q7).
+In this RAG architecture, **input context dominates token consumption.** Retrieved wiki pages
+for a complex query (e.g. Q15, a cross-workstream exit strategy question) can reach
+~100 K tokens per call; the LLM answer typically adds 1–2 K output tokens. Across the
+full 15-query benchmark, total output character counts were nearly identical between Opus 4.8
+and Sonnet 4.6 (63,390 vs 62,521 chars; 1.01× ratio), confirming that the answer volume is
+driven by the query, not the model.
 
-**Claude Sonnet 4.6 — cost-efficient Anthropic option.** At 86% with 10 PASSes it offers strong
-breadth across all 15 question types. Its covenant precision advantage over Opus 4.8 on Q7 makes
-it the better default for legal-focused diligence queries. Suitable when token cost matters and
-query mix is balanced across workstreams.
+**Opus 4.8 vs. Sonnet 4.6 — same tokenizer, 5× price gap.**
+Both models are billed on Anthropic's tokenizer, so token counts are directly comparable.
+At standard Anthropic pricing (Opus 4.8: $15 / M input, $75 / M output;
+Sonnet 4.6: $3 / M input, $15 / M output):
 
-**DeepSeek-R1 (V3) — cost-efficient reasoning model.** At 78% it is weaker on precision
-recall but strong on conceptual synthesis. Appropriate for exploratory queries where the goal
-is understanding rather than exact figure retrieval, or where budget is a primary constraint.
-Not recommended as the primary model for due diligence queries requiring precise figure citation.
+| Query complexity | Approx. tokens | Opus 4.8 cost | Sonnet 4.6 cost | Ratio |
+|---|---|---|---|---|
+| Q15 (complex, ~103 K total) | 92 K in / 11 K out | ~$1.96 | ~$0.44 | 4.5× |
+| Typical query (~50 K total) | 45 K in / 5 K out | ~$1.05 | ~$0.225 | 4.7× |
+| 15-query benchmark run | — | ~$15 | ~$3 | ~5× |
+| 1 000 queries / month | — | ~$1 050 | ~$210 | 5× |
+
+For a 3-percentage-point accuracy gain (89% vs. 86%), Opus 4.8 costs roughly 5× more per
+query. On production workloads — even modest volumes of 1 K queries / month — that
+translates to ~$840 / month in additional spend for marginal quality uplift. Opus 4.8 is
+cost-justified only for high-stakes, cost-insensitive queries (e.g. board-level deal memos)
+where the LBO table and CJK precision improvements are material.
+
+**Cross-provider comparison.** MiniMax-Think M3 and DeepSeek-R1 use different tokenizers;
+their raw token counts (observed ~60 K / query vs. Anthropic's ~100 K for the same context)
+are not directly comparable. On a per-query-cost basis, both are significantly cheaper than
+either Anthropic model. MiniMax-Think M3 achieves 92% accuracy while remaining well below
+Sonnet 4.6 in per-query cost. DeepSeek-R1 is the most cost-efficient option overall, though
+its synthesis-over-citation style lowers precision on exact figure recall.
+
+#### Recommendations
+
+**MiniMax-Think (M3) — best overall value.** Highest accuracy (92%) combined with
+per-token pricing well below Anthropic's range. Best choice when both quality and cost
+efficiency matter. The extended thinking pass delivers the best structured-data reproduction
+(Q12: 100%) and the highest English-language PASS rate (11/15).
+
+**Claude Sonnet 4.6 — recommended Anthropic API choice.** At 86% with strong breadth across
+all 15 question types, Sonnet delivers the best cost / quality ratio among Anthropic models
+(~$0.21 – $0.44 per complex query). Its covenant precision advantage over Opus 4.8 on Q7
+makes it the better default for legal-focused diligence. Preferred over Opus 4.8 for any
+production workload where cost scales with query volume.
+
+**Claude Opus 4.8 — high accuracy, high cost.** At 89% it is the strongest Anthropic model
+in this benchmark, with notable gains on financial table reproduction (Q12) and CJK precision
+(Q13). At ~5× Sonnet's per-query cost, justify its use only for cost-insensitive, high-stakes
+queries where the incremental accuracy improvement is explicitly required.
+
+**DeepSeek-R1 (V3) — most cost-efficient, lower precision.** At 78% it is the weakest model
+on exact figure recall but strong on conceptual synthesis. Appropriate for exploratory queries
+where understanding matters more than verbatim citation, or where budget is the primary
+constraint. Not recommended as the primary model for due diligence requiring precise
+figure citation.
