@@ -137,7 +137,7 @@ total). Grading follows a two-tier framework:
 
 ## Cross-Model Comparison
 
-| Q | Topic | MiniMax-Think | Sonnet 4.6 | DeepSeek-R1 |
+| Q | Topic | MiniMax-Think (M3) | Sonnet 4.6 | DeepSeek-R1 (V3) |
 |---|-------|:-------------:|:----------:|:-----------:|
 | Q1 | LBO sources & uses | ✅ 100% | ✅ 100% | ✅ 85% |
 | Q2 | PFAS tailwinds | ✅ 100% | ✅ 100% | ✅ 87% |
