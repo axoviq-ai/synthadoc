@@ -14,7 +14,7 @@
       '-+###############+-'
 
        S Y N T H A D O C
-    Community Edition  v1.0.0
+    Community Edition  v1.0.1
   ────────────────────────────────
   Domain-agnostic LLM wiki engine
 ```
@@ -29,9 +29,9 @@
 [![CLI](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.cli_commands&label=CLI%20commands&color=darkblue)](https://github.com/axoviq-ai/synthadoc)
 [![Obsidian](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.obsidian_commands&label=Obsidian%20commands&color=blueviolet)](https://github.com/axoviq-ai/synthadoc/tree/main/obsidian-plugin)
 [![MCP](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.mcp_tools&label=MCP%20tools&color=orange)](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#appendix-i--connect-claude-via-mcp)
-[![Version](https://img.shields.io/badge/Community%20Edition-v1.0.0-brightgreen.svg)](https://github.com/axoviq-ai/synthadoc)
+[![Version](https://img.shields.io/badge/Community%20Edition-v1.0.1-brightgreen.svg)](https://github.com/axoviq-ai/synthadoc)
 
-**Document version: v1.0.0**
+**Document version: v1.0.1**
 
 **Engineered for solo users and enterprises alike, providing a domain-specific knowledge base that scales seamlessly while maintaining accuracy through autonomous self-optimization.**
 
