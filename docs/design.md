@@ -1,6 +1,6 @@
 # Synthadoc — Design Document
 
-**Version:** 1.0.0  
+**Version:** 1.0.1  
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -2906,6 +2906,15 @@ Edit `<wiki-root>/AGENTS.md` to give the LLM domain-specific instructions — te
 ---
 
 ## Appendix A — Release Feature Index
+
+### v1.0.1
+
+- **Scaffold JSON extraction hardened** — replaced the greedy regex used to extract the LLM's JSON response with a brace-balanced parser; eliminates false-positive matches on `[[wikilink]]` syntax that previously caused `json.loads()` failures and silent scaffold corruption
+- **Generated file validation** — scaffold now validates every LLM-generated file (index, purpose, AGENTS.md) for minimum length, required frontmatter, and `[[wikilink]]` presence before writing to disk; validation failure marks the job as failed with a structured error message rather than silently writing a malformed page
+- **ROUTING.md regeneration validation** — `routing init` and scheduled routing regeneration now validate the regenerated file for minimum line count and anchor presence before applying it; prevents a corrupt or truncated ROUTING.md from entering the wiki
+- **Scaffold failure reporting** — scaffold skip and failure reasons are now surfaced in the terminal output and job error field; previously silent failures (e.g. LLM timeout, JSON parse error) are now visible without tailing the JSON log
+- **Install-time scaffold removed** — `synthadoc install` no longer runs the LLM scaffold call during installation; scaffold is a separate step (`synthadoc scaffold`) that the user runs after setting their API key, avoiding confusing API-key-not-set errors at install time
+- **AquaFlow LLM evaluation** — 15-question M&A due-diligence benchmark across five models (MiniMax-Think M3, Claude Opus 4.8, Claude Sonnet 4.6, DeepSeek-R1, Qwen Plus); full report at `docs/example/aquaflow/evaluation/report/llm-query-benchmark.md`
 
 ### v1.0.0
 

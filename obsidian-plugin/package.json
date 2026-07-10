@@ -1,6 +1,6 @@
 {
   "name": "synthadoc-obsidian",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "scripts": {
     "build": "node esbuild.config.mjs production",
     "dev": "node esbuild.config.mjs",
