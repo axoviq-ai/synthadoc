@@ -417,7 +417,7 @@ the same context is not directly comparable to Anthropic's ~100 K count.
 | MiniMax-Think (M3) | 92% | ~$25–40 | Best — highest accuracy, near-lowest cost |
 | Claude Sonnet 4.6 | 86% | ~$210 | Best Anthropic option — cost-effective |
 | DeepSeek-R1 (V3) | 78% | ~$35–55 | Good budget option — synthesis-focused |
-| Qwen Plus | 73% | ~$30–50 | Poor value — lower accuracy than DeepSeek at similar cost |
+| Qwen Plus | 73% | ~$30–50 | Similar cost to DeepSeek-R1, lower accuracy on synthesis queries |
 | Claude Opus 4.8 | 89% | ~$1 050 | Avoid as default — 5× Sonnet cost, 3 pts below MiniMax |
 
 #### Recommendations
