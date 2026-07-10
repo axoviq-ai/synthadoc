@@ -30,9 +30,6 @@ total). Grading follows a two-tier framework:
 | Claude Sonnet 4.6 | Anthropic (claude-code) | claude-sonnet-4-6 | — | 2026-07-09 20:26 |
 | DeepSeek-R1 | DeepSeek | deepseek-reasoner | chain-of-thought | 2026-07-09 19:50 |
 
-> **Excluded:** Qwen Plus (free-tier quota exhausted at Q9) and Gemini Flash (rate-limited at Q4)
-> were dropped; neither produced a complete run. Partial results are not included in this report.
-
 ---
 
 ## Summary Leaderboard
