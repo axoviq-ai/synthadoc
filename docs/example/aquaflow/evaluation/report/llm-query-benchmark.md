@@ -425,23 +425,13 @@ it is simultaneously the most accurate and one of the cheapest options evaluated
 thinking pass drives the best structured-data reproduction (Q12: 100%) and the highest
 English-language PASS rate (11/15).
 
-**If locked into the Anthropic API — use Sonnet 4.6.** At 86% with strong breadth across all
-15 question types, Sonnet delivers the best cost/quality ratio among Anthropic models
-(~$0.21–$0.44 per complex query). Its covenant precision advantage over Opus 4.8 on Q7 makes
-it the better default for legal-focused diligence.
+**Anthropic API — use Sonnet 4.6.** At 86% with strong breadth across all 15 question types,
+Sonnet delivers the best cost/quality ratio among Anthropic models (~$0.21–$0.44 per complex
+query). Its covenant precision advantage on Q7 makes it the better default for legal-focused
+diligence. Opus 4.8 is worth considering for cost-insensitive, high-stakes queries where LBO
+table fidelity (Q12: 88%) or CJK numeric precision (Q13: 83%) are explicitly required —
+at ~5× the per-query cost, that trade-off is narrow but real.
 
-**Avoid Opus 4.8 as a default.** At ~$1,050 / 1 K queries — 5× Sonnet — Opus 4.8 costs
-more than MiniMax-Think while scoring 3 points *lower* (89% vs. 92%). Reserve it for
-high-stakes, cost-insensitive queries where LBO table fidelity (Q12) or CJK precision (Q13)
-are explicitly required.
-
-**DeepSeek-R1 (V3) — budget synthesis model.** At 78% and ~$35–55 / 1 K queries it is
-suitable for exploratory queries where conceptual synthesis matters more than verbatim figure
-citation. Not recommended as the primary model for due diligence requiring precise numerics.
-
-**Qwen Plus — not recommended for this use case.** At 73% with 11/15 WARNs it is the weakest
-model in this benchmark. Its cost (~$30–50 / 1 K queries) is similar to DeepSeek-R1 but its
-accuracy is 5 points lower, and its inconsistency across question types (50% on Q3, 56% on
-Q15) makes it unreliable for production PE/M&A diligence queries. A future Qwen 3.5-Plus or
-Qwen 3.6-Plus evaluation may change this picture, as those models represent the next generation
-above the `qwen-plus-2025-12-01` snapshot tested here.
+**Budget option — DeepSeek-R1 (V3).** At 78% and ~$35–55 / 1 K queries it is a strong
+choice for exploratory queries where conceptual synthesis matters more than verbatim figure
+citation.
