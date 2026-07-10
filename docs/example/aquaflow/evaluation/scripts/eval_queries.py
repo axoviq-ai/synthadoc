@@ -27,7 +27,8 @@ Models evaluated in the AquaFlow benchmark (config.toml snippets):
     minimax-think:      provider="minimax"   model="MiniMax-M3"                    (thinking=on, default)
     minimax:            provider="minimax"   model="MiniMax-M3"  thinking="disabled"
     deepseek:           provider="deepseek"  model="deepseek-chat"
-    claude-sonnet-4-6:  provider="claude-code"  model="claude-sonnet-4-6"
+    claude-opus-4-8:    provider="anthropic"  model="claude-opus-4-8"
+    claude-sonnet-4-6:  provider="anthropic"  model="claude-sonnet-4-6"
     qwen-plus:          provider="qwen"      model="qwen-plus"
     gemini-flash:       provider="gemini"    model="gemini-2.5-flash-lite"
 
