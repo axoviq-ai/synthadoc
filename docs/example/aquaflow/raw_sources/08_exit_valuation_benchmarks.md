@@ -69,6 +69,8 @@ PE sponsors are locked up (cannot sell shares) for 180 days post-IPO. Full liqui
 
 EV/EBITDA benchmark ranges for relevant sectors:
 
+> **Terminology note:** "Water infrastructure" in financial analysis refers to water treatment equipment manufacturers and service providers (filtration, UV disinfection, PFAS remediation systems). These companies benchmark against the **Water Treatment Equipment (US)** row below. The Infrastructure / Utility Services row applies to regulated utilities and pipeline operators — not to equipment manufacturers or service companies.
+
 | Sector | Low | Median | High |
 |--------|-----|--------|------|
 | Water Treatment Equipment (US) | 7.0x | 9.0x | 12.5x |
@@ -78,6 +80,8 @@ EV/EBITDA benchmark ranges for relevant sectors:
 | Technology-Enabled Industrial | 9.0x | 12.0x | 16.0x |
 
 Companies with >60% recurring revenue, technology differentiation, and PFAS/regulatory tailwinds tend to trade at the upper end of their sector range. Customer concentration >15% single customer, declining margins, or pending regulatory action compress multiples toward the low end.
+
+**Sector classification note:** Water treatment equipment manufacturers and service companies (membrane systems, UV disinfection, PFAS remediation equipment) benchmark against the **Water Treatment Equipment (US)** row (7.0x–12.5x). The Infrastructure / Utility Services row (8.0x–14.0x) applies to regulated utilities and infrastructure operators — not equipment manufacturers. Mid-market water treatment equipment companies with $150–500M revenue and 20–30% EBITDA margins benchmark to the Water Treatment Equipment cohort, with recent comparables clustering at 8.5–11x EV/EBITDA.
 
 ## Comparable Transaction Analysis
 
@@ -105,6 +109,66 @@ LBO returns decompose into three drivers:
 | Debt Paydown | Reduction of net debt increases equity residual |
 
 A healthy LBO return attribution has EBITDA growth as the primary driver (60–70%). Excessive reliance on leverage (debt paydown) or multiple expansion is a sign of financial engineering rather than value creation.
+
+## AquaFlow Exit Model — Worked Example
+
+The following illustrates a probability-weighted exit analysis for AquaFlow Systems (entry EV $635M / $74.8M LTM EBITDA / 8.5x entry multiple; sponsor equity check $261M; Net Debt $374M at entry).
+
+### Exit Path Probability Weights
+
+| Exit Path | Probability | Multiple Range | Base Case |
+|-----------|-------------|---------------|-----------|
+| S2S Secondary | 50% | 8.5–10.0x | 9.0x |
+| Strategic Sale | 35% | 10.0–11.5x | 10.5x |
+| IPO | 15% | 9.0–13.0x | 11.0x |
+
+**S2S secondary (50%):** Most probable given AquaFlow's $312.4M revenue — sub-platform scale positions it as a bolt-on rather than a standalone platform IPO candidate. An incoming sponsor acquires for further growth, PFAS platform build-out, or regional consolidation. Multiple range 8.5–10.0x reflects financial buyer pricing without strategic synergies.
+
+**Strategic sale (35%):** Xylem, Veolia Water Technologies, and Hydra Solutions Corp. (est. $520M revenue) represent the primary buyer universe. Strategics pay 1–2x EBITDA premium over financial buyers to capture synergies. Multiple range 10.0–11.5x; requires clean PFAS indemnity resolution and B+/A- ESG sub-score for sustainability-mandate buyers.
+
+**IPO (15%):** Borderline eligibility at $312M revenue (public market investor preference is >$300–500M). Requires EBITDA margins ≥20% (AquaFlow at 23.9% qualifies), favorable sector IPO window, and improvement in social sub-score from B- to A- for institutional LP screening. Multiple range 9.0–13.0x depending on market conditions.
+
+### Year-4 Base-Case Exit (S2S at 9.0x)
+
+| Item | Value |
+|------|-------|
+| Year-4 Adjusted EBITDA | $117M |
+| Exit Multiple | 9.0x |
+| Exit Enterprise Value | $1,053M |
+| Remaining Net Debt at Exit | $215M |
+| Equity Value at Exit | $838M |
+| Sponsor Equity Check (entry) | ~$261M |
+| MOIC | ~3.2x |
+| IRR (4-year hold) | ~33% |
+
+**Year-4 EBITDA derivation:** $74.8M base × ~8% revenue CAGR to ~$425M revenue, with margin expansion from 23.9% to ~27.5% (consistent with management's projected 26–28% by 2027), yields approximately $117M EBITDA.
+
+**Debt paydown:** From $374M net debt at entry to $215M at exit — a $159M reduction driven by 1% TLB amortization ($3.2M/year), plus excess cash sweep of 50–75% of FCF. By year 4, Net Debt/EBITDA contracts from 5.0x entry to approximately 1.8x, substantially expanding the equity cushion.
+
+**MOIC:** $838M exit equity / $261M equity check ≈ 3.2x MOIC. At 4-year hold: (3.2)^(1/4) – 1 ≈ 33% IRR.
+
+### Return Attribution
+
+| Driver | Contribution |
+|--------|-------------|
+| EBITDA Growth | ~64% |
+| Debt Paydown | ~27% |
+| Multiple Expansion | ~0% |
+| **Total** | **~91%** (remainder = hold-period effects) |
+
+EBITDA growth contribution: ($117M – $74.8M) × 9.0x = $379.8M incremental EV / $577M total equity gain ≈ 64%. Debt paydown contribution: $159M / $577M ≈ 27%. Multiple expansion: 0% (conservative convention: model exit = entry multiple of 9.0x; actual entry was 8.5x, so this is slightly conservative). A healthy LBO return attribution has EBITDA growth as the primary driver (60–70%).
+
+### Three Pre-Exit Risk Factors
+
+1. **DMWA re-bid (December 31, 2024):** The $19.4M Denver Metro Water Authority contract (6.2% of LTM revenue) is subject to competitive re-bid. Loss would compress EBITDA by ~$4–5M directly (service contract margin ~65%) and raise customer concentration for remaining top-10 customers — a binary event in years 1–2 that must be resolved before exit.
+
+2. **B- social ESG sub-score:** Turnover 18.4%, LTIR 1.8 vs. sector 1.6, DEI gap at VP+. Must improve to B+ by year 3–4 to access ESG-mandate strategic buyers and clear institutional LP screens for IPO. Failure to remediate compresses strategic exit multiple by 0.5–1.0x.
+
+3. **59% recurring revenue threshold:** AquaFlow's 59% recurring revenue is just below the >60% threshold that supports upper-end multiples. If QoE reclassifies any service revenue as transactional, the company falls further below 60%, compressing multiple support. Maintaining and growing the recurring base is the primary value-creation lever.
+
+### Downside Scenario — Combined Risk Impact
+
+If all three pre-exit risks materialize simultaneously (DMWA lost, ESG score remains B-, recurring revenue reclassified below 60%), the combined EV impact is approximately **$187M** (2.5x multiple turn × $74.8M EBITDA). This scenario reduces exit equity to ~$651M and MOIC to ~2.5x — below the typical ≥3.0x LP return threshold.
 
 ## Exit Readiness Checklist
 

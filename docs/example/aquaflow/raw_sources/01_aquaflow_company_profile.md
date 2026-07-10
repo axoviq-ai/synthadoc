@@ -19,6 +19,8 @@ AquaFlow's core product lines include membrane filtration systems, UV disinfecti
 
 Revenue mix: Equipment Sales 41%, Service Contracts 37%, Consumables/Parts 22%.
 
+**Key operational facts:** AquaView IoT Platform deployed on 78% of the installed base. PurePath PFAS Series: three provisional patents filed Q1 2024 on next-generation ion exchange media. Primary facility: 185,000 sq ft Aurora, CO. Field service workforce: 318 field technicians across 22 regional service centers. At $312.4M revenue, AquaFlow is sub-platform scale — positioned as a bolt-on acquisition target for larger PE platforms or strategics rather than a standalone platform.
+
 ## Business Model
 
 AquaFlow's recurring revenue engine is its service contract portfolio. As of Q1 2024, the company holds 847 active service contracts with weighted average remaining term of 4.1 years. Service contract customers exhibit 91% renewal rates and 8% annual revenue expansion from upsells.
@@ -44,6 +46,15 @@ Other notable customers include industrial facilities in the energy sector (refi
 ## Competitive Position
 
 The water treatment equipment market is moderately fragmented. AquaFlow's primary competitors include Hydra Solutions Corp. (privately held, est. revenue $520M, the market leader in the Mountain West), Xylem Inc. (NYSE: XYL, large-cap), Veolia Water Technologies (subsidiary of Veolia Environnement), and several regional service providers.
+
+### Recent Sector Consolidation
+
+The sector has seen significant large-cap consolidation that sets the upper-end valuation reference for mid-market peers:
+
+- **Xylem / Evoqua Water Technologies (2023):** Xylem acquired Evoqua for approximately $7.5B (14.8x LTM EBITDA), establishing Xylem as the dominant full-service water technology platform. This transaction is the primary large-cap comparable for recurring-revenue water service businesses.
+- **Veolia / SUEZ (2021):** Veolia completed its acquisition of SUEZ in a ~$15B global transaction, creating a dominant European-led water mega-platform. Not directly comparable at mid-market scale, but illustrates buyer demand for water infrastructure assets.
+
+Both transactions reflect premium valuations driven by high recurring revenue quality, regulatory tailwinds, and strategic platform value — consistent with the upper end of the 8.5–11x EV/EBITDA range applicable to mid-market peers like AquaFlow.
 
 AquaFlow's competitive differentiation rests on:
 - Depth of service network (22 regional service centers, 318 field technicians)
