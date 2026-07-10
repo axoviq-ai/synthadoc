@@ -26,9 +26,9 @@ total). Grading follows a two-tier framework:
 
 | Label | Provider | Model | Config | Run timestamp |
 |-------|----------|-------|--------|---------------|
-| MiniMax-Think | MiniMax | MiniMax-M3 | thinking=enabled | 2026-07-09 20:23 |
+| MiniMax-Think (M3) | MiniMax | MiniMax-M3 | thinking=enabled | 2026-07-09 20:23 |
 | Claude Sonnet 4.6 | Anthropic (claude-code) | claude-sonnet-4-6 | — | 2026-07-09 20:26 |
-| DeepSeek-R1 | DeepSeek | deepseek-reasoner | chain-of-thought | 2026-07-09 19:50 |
+| DeepSeek-R1 (V3) | DeepSeek | deepseek-reasoner | chain-of-thought | 2026-07-09 19:50 |
 
 ---
 
