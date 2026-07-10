@@ -71,6 +71,8 @@ The questions span three complexity tiers as defined in the AquaFlow README:
 | 4 | DeepSeek-R1 (V3) | 222 / 282 | **78%** | 6 | 9 |
 | 5 | Qwen Plus | 207 / 282 | **73%** | 4 | 11 |
 
+![Accuracy vs. Cost per 1K Queries](../../png/benchmark-scatter.png)
+
 ---
 
 ## Question Reference
@@ -231,6 +233,8 @@ The questions span three complexity tiers as defined in the AquaFlow README:
 | Q13 | ZH ESG priorities | ⚠️ 66% | ⚠️ 83% | ⚠️ 66% | ⚠️ 50% | ⚠️ 83% |
 | Q14 | ZH integrated risks | ⚠️ 84% | ⚠️ 84% | ⚠️ 84% | ⚠️ 57% | ⚠️ 68% |
 | Q15 | ZH exit strategy | ✅ 86% | ⚠️ 83% | ✅ 86% | ⚠️ 73% | ⚠️ 56% |
+
+![Per-Question Performance Q1–Q15](../../png/benchmark-lines.png)
 
 ---
 
