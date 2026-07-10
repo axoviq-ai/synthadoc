@@ -91,6 +91,20 @@ def _has_cjk(text: str) -> bool:
     return any(any(lo <= ord(ch) <= hi for lo, hi in _CJK_RANGES) for ch in text)
 
 
+def _detect_cjk_language(text: str) -> str:
+    """Return the display language name for the dominant script in *text*.
+
+    Hiragana/katakana → Japanese; hangul → Korean; CJK ideographs only → Chinese.
+    """
+    for ch in text:
+        cp = ord(ch)
+        if 0x3041 <= cp <= 0x309F or 0x30A1 <= cp <= 0x30FC:
+            return "Japanese"
+        if 0xAC00 <= cp <= 0xD7AF:
+            return "Korean"
+    return "Chinese (Mandarin)"
+
+
 def _history_block(history: list[dict]) -> str:
     """Format conversation history as a preamble block for the synthesis prompt."""
     if not history:
@@ -600,14 +614,7 @@ class QueryAgent:
             return prefix + (
                 f"The wiki does not yet have a dedicated page on this topic. "
                 f"Answer the question using the wiki pages below and your general knowledge. "
-                f"Note in one sentence that the wiki lacks a dedicated page and suggest the user enriches it.\n"
-                f"If specific topics central to this question have no dedicated wiki page, "
-                f"add this line as the ABSOLUTE LAST line of your response — after Sources, "
-                f"after all citations, after everything else:\n"
-                f"[MISSING: topic1, topic2]\n"
-                f"Use short lowercase hyphenated slugs. The closing ] is required. "
-                f"Example: [MISSING: iphone, mobile-computing]\n"
-                f"Omit the [MISSING] line if the wiki already covers all topics adequately.\n\n"
+                f"Note in one sentence that the wiki lacks a dedicated page and suggest the user enriches it.\n\n"
                 f"Question: {question}\n\n"
                 f"Wiki pages available:\n{context}"
             )
@@ -631,12 +638,20 @@ class QueryAgent:
                 f"Do not reference or cite wiki page content.\n\n"
                 f"Question: {question}\n\nData:\n{context}"
             )
+        _lang = _detect_cjk_language(question) if _has_cjk(question) else ""
+        _lang_instr = (
+            f"The question is in {_lang}. Respond in {_lang}. Do not respond in English or any other language.\n"
+            if _lang
+            else "Respond in the same language as the Question.\n"
+        )
         return prefix + (
             f"Answer using ONLY these wiki pages. Cite with [[PageTitle]].\n"
-            f"Respond in the same language as the Question.\n"
+            f"{_lang_instr}"
             f"Extract and include all specific facts from the pages — dates, years, numbers, and names — "
             f"even when they appear briefly or in passing. Do not claim a fact is absent unless it is "
             f"genuinely missing from every page below.\n"
+            f"When wiki pages contain tables or worked financial examples, reproduce the key rows and "
+            f"figures exactly — do not summarize or omit them.\n"
             f"Do not cite the Wiki Scope section — it is background context only, not a citable source.\n\n"
             f"Question: {question}\n\nPages:\n{context}"
         )
@@ -949,12 +964,11 @@ class QueryAgent:
         # [MISSING: ...] sentinel — re-enable gap and chip generation even when
         # Guard C suppressed it for a well-cited answer.  Strip the marker from
         # the displayed text so clients never see it.
+        # Strip any stray [MISSING: ...] text the LLM may have written; do not
+        # use it to re-enable gap — Guard C's assessment is final.
         _missing_slugs, answer_text = _extract_missing_slugs(answer_text)
-        if _missing_slugs and not _gap:
-            _gap = True
-            if not _suggested:
-                _suggested = [s.replace("-", " ") for s in _missing_slugs]
-            logger.debug("query: [MISSING] sentinel re-enabled gap — %s", _missing_slugs)
+        if _missing_slugs:
+            logger.debug("query: [MISSING] text stripped (Guard C decision preserved) — %s", _missing_slugs)
 
         logger.info("query answered — %d page(s) cited, %d tokens",
                     len(citations), resp2.total_tokens)
@@ -1126,7 +1140,7 @@ class QueryAgent:
             _prominent_term_absent = False
 
         gap = self._gap_score_threshold > 0 and (
-            (len(candidates) < 3 and not used_tf_fallback)
+            (len(candidates) < 3 and not used_tf_fallback and max_score < self._gap_score_threshold)
             or (bool(_key_terms) and max_score < self._gap_score_threshold)  # skip when no content words
             or (_pages_with_overlap < 2 and max_score < self._gap_score_threshold)  # one strong page is enough
             or _any_term_missing
@@ -1309,28 +1323,24 @@ class QueryAgent:
 
         _gap = _guard_c_suppress(_gap, full_answer, "run_stream")
 
-        # [MISSING: ...] sentinel — re-enable gap and chip generation even when
-        # Guard C suppressed it for a well-cited answer.
-        if _missing_slugs and not _gap:
-            _gap = True
-            logger.debug("run_stream: [MISSING] sentinel re-enabled gap — %s", _missing_slugs)
+        # Strip any stray [MISSING: ...] text the LLM may have written; do not
+        # use it to re-enable gap — Guard C's assessment is final.
+        if _missing_slugs:
+            logger.debug("run_stream: [MISSING] text stripped (Guard C decision preserved) — %s", _missing_slugs)
 
         yield {"event": "citations", "data": {"citations": [] if _gap else citations}}
 
         if _gap:
-            if _missing_slugs:
-                _suggested = [s.replace("-", " ") for s in _missing_slugs]
-            else:
-                try:
-                    # Use the standalone retrieval_question so gap suggestions are meaningful
-                    # when the user asked a context-dependent follow-up (e.g. "tell me more
-                    # about his death" → rewritten to "How did Alan Turing die?").
-                    _suggested = await SearchDecomposeAgent(self._provider).decompose(
-                        retrieval_question, domain_context=_purpose_ctx
-                    )
-                except Exception as _exc:
-                    logger.warning("run_stream: gap decompose failed, falling back to original question: %s", _exc)
-                    _suggested = [retrieval_question]
+            try:
+                # Use the standalone retrieval_question so gap suggestions are meaningful
+                # when the user asked a context-dependent follow-up (e.g. "tell me more
+                # about his death" → rewritten to "How did Alan Turing die?").
+                _suggested = await SearchDecomposeAgent(self._provider).decompose(
+                    retrieval_question, domain_context=_purpose_ctx
+                )
+            except Exception as _exc:
+                logger.warning("run_stream: gap decompose failed, falling back to original question: %s", _exc)
+                _suggested = [retrieval_question]
             logger.debug("run_stream: yielding gap event (%d searches)", len(_suggested))
             yield {"event": "gap", "data": {"suggested_searches": _suggested}}
 

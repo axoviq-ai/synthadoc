@@ -68,6 +68,7 @@ For each pending matter, counsel assesses:
 - RCRA, TSCA, CERCLA compliance
 - Permits: air quality, water discharge (NPDES), hazardous waste
 - PFAS exposure screen (manufacturing use; proximate contamination)
+- Applied to water treatment targets: Phase I/II ESA required for all owned manufacturing facilities (e.g., a 185,000 sq ft primary facility triggers full Phase I and likely Phase II given PFAS remediation product lines on-site).
 
 **Employment:**
 - FLSA (Fair Labor Standards Act) compliance: exempt vs. non-exempt classification
@@ -75,6 +76,7 @@ For each pending matter, counsel assesses:
 - I-9 compliance and immigration status of workforce
 - Pending NLRB charges or unionization efforts
 - State-specific employment regulations (California WARN Act, pay equity laws)
+- Applied to field-service businesses: technicians performing on-site maintenance and repair (e.g., a field workforce of 300+ technicians) typically qualify as non-exempt under FLSA; misclassification as exempt creates material wage-and-hour liability.
 
 **Industry-Specific (Water Treatment):**
 EPA Safe Drinking Water Act compliance, state environmental agency permits, NSF/ANSI certifications for products used in drinking water applications.
@@ -105,6 +107,8 @@ Where legal DD identifies uncertain but quantifiable exposures (pending litigati
 
 **Representations and Warranty Insurance (RWI):**
 RWI has become standard in PE transactions >$50M. It shifts the risk of unknown rep/warranty breaches from the seller to an insurer, allowing sellers to make clean exits. Premium is typically 3–4% of policy limits; buyer pays the premium in most cases. RWI excludes known issues (carved out), fraud, forward-looking statements, and certain categories (PFAS, FCPA in high-risk jurisdictions).
+
+Applied to water treatment companies: PFAS liability is a standard RWI exclusion. For companies with active PFAS remediation product lines (waste stream liability from treating PFAS-contaminated water), buyers must negotiate a specific PFAS indemnity outside the RWI policy and/or require a dedicated environmental escrow. The RWI PFAS exclusion creates an asymmetric deal-structuring risk: the buyer cannot rely on insurance for the most material environmental exposure, requiring direct seller indemnity or a price adjustment.
 
 ## Typical Legal DD Timeline
 

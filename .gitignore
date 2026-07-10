@@ -21,6 +21,7 @@ obsidian-plugin/main.js
 .synthadoc/
 docs/plans/
 docs/blog/
+docs/example/aquaflow/evaluation/report/*.json
 
 # skills CLI installs (project-local agent skill copies)
 .agents/

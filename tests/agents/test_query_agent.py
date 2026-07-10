@@ -1780,10 +1780,9 @@ def test_extract_missing_slugs_mid_response_preserves_trailing_content():
 
 
 @pytest.mark.asyncio
-async def test_missing_sentinel_generates_enrich_chips_after_guard_c(tmp_wiki):
-    """[MISSING: ...] appended by the LLM re-enables gap chips even when Guard C
-    suppressed _gap for a well-cited answer.  The sentinel must NOT appear in
-    the token stream emitted to clients."""
+async def test_missing_sentinel_stripped_guard_c_decision_preserved(tmp_wiki):
+    """[MISSING: ...] text is stripped from the token stream but must NOT re-enable
+    the gap chip when Guard C has suppressed it — Guard C's decision is final."""
     # Answer body: >800 chars + a [[wikilink]] citation → Guard C HIGH_CONF path.
     body = "Detailed answer about mobile computing history. " * 22  # ~1056 chars
     llm_tokens = [body + "[[some-page]]\n\n", "[MISSING: iphone, mobile-computing]"]
@@ -1813,8 +1812,7 @@ async def test_missing_sentinel_generates_enrich_chips_after_guard_c(tmp_wiki):
     gap_events = [e for e in events if e.get("event") == "gap"]
 
     assert "[MISSING:" not in token_text, "sentinel must not be streamed to clients"
-    assert len(gap_events) == 1, "gap event must fire"
-    assert gap_events[0]["data"]["suggested_searches"] == ["iphone", "mobile computing"]
+    assert len(gap_events) == 0, "Guard C suppressed gap — [MISSING] must not re-enable it"
 
 
 @pytest.mark.asyncio
@@ -2804,7 +2802,7 @@ def test_detect_gap_signal1_suppressed_when_tf_fallback(tmp_wiki):
 
 
 def test_detect_gap_signal1_fires_without_tf_fallback(tmp_wiki):
-    """Signal 1 fires normally when used_tf_fallback=False and len(candidates) < 3."""
+    """Signal 1 fires when used_tf_fallback=False, len<3, AND max_score<threshold."""
     from synthadoc.agents.query_agent import QueryAgent
     from synthadoc.storage.search import SearchResult
     from unittest.mock import MagicMock
@@ -2813,9 +2811,43 @@ def test_detect_gap_signal1_fires_without_tf_fallback(tmp_wiki):
     agent._gap_score_threshold = 0.5
     agent._detect_gap = QueryAgent._detect_gap.__get__(agent, QueryAgent)
 
-    # Use 2 candidates without tf_fallback (or just 1 to test len < 3)
+    # Weak match: score below threshold so signal 1 fires
     candidates = [
-        SearchResult(slug="plan1", score=0.8, title="Plan 1", snippet="", tf_fallback=False),
+        SearchResult(slug="plan1", score=0.3, title="Plan 1", snippet="", tf_fallback=False),
+    ]
+
+    agent._store = MagicMock()
+    def mock_read_page(slug):
+        return MagicMock(content="capex maintenance capex maintenance budget")
+    agent._store.read_page.side_effect = mock_read_page
+
+    gap, _, _, _ = agent._detect_gap(
+        question="capex maintenance",
+        candidates=candidates,
+        max_score=0.3,
+        used_tf_fallback=False,
+    )
+    assert gap is True, "Signal 1 should fire when tf_fallback=False, len<3, and max_score<threshold"
+
+
+def test_detect_gap_signal1_suppressed_by_strong_single_match(tmp_wiki):
+    """Signal 1 must NOT fire when a single routing-scoped page scores above threshold.
+
+    Guards the Q3 fix: a single quality-of-earnings page scored >= threshold via
+    ROUTING.md scoping, so len(candidates)==1 must not falsely trigger a gap.
+    """
+    from synthadoc.agents.query_agent import QueryAgent
+    from synthadoc.storage.search import SearchResult
+    from unittest.mock import MagicMock
+
+    agent = MagicMock(spec=QueryAgent)
+    agent._gap_score_threshold = 0.5
+    agent._detect_gap = QueryAgent._detect_gap.__get__(agent, QueryAgent)
+
+    # Single candidate with a strong score above threshold
+    candidates = [
+        SearchResult(slug="quality-of-earnings", score=0.8, title="Quality of Earnings",
+                     snippet="", tf_fallback=False),
     ]
 
     agent._store = MagicMock()
@@ -2829,7 +2861,10 @@ def test_detect_gap_signal1_fires_without_tf_fallback(tmp_wiki):
         max_score=0.8,
         used_tf_fallback=False,
     )
-    assert gap is True, "Signal 1 should fire when tf_fallback=False and len<3"
+    assert gap is False, (
+        "Signal 1 must not fire when a single page scores above threshold — "
+        "len<3 alone must not cause a false gap for a strong scoped match"
+    )
 
 
 # ── cross-lingual retrieval (CJK translation) ────────────────────────────────
