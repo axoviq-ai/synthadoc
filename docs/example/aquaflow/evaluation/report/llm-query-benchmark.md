@@ -347,7 +347,6 @@ Accuracy and cost are two dimensions — not the whole picture. Several factors 
 
 - **API availability and uptime** — a model that scores well in testing but has reliability issues in production is a different calculus entirely
 - **Response latency** — we measured answer quality, not time-to-first-token or end-to-end streaming latency, which affects user experience significantly in interactive query scenarios
-- **Rate limits and throughput** — free tiers and paid tiers differ widely; sustained batch workloads can hit rate ceilings that don't show up in a 15-question test
 - **Regional availability** — some providers have geographic restrictions or data residency constraints that may be relevant for compliance-sensitive deployments
 - **Support and SLA** — enterprise use cases may weight vendor support, contractual SLAs, and long-term model stability (version pinning, deprecation policy) heavily
 
