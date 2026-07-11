@@ -21,6 +21,7 @@
 - [Cross-Model Comparison](#cross-model-comparison)
 - [WARN Analysis](#warn-analysis)
 - [System Health Notes](#system-health-notes)
+- [What This Benchmark Doesn't Cover](#what-this-benchmark-doesnt-cover)
 - [Conclusion](#conclusion)
 
 ---
@@ -337,6 +338,19 @@ numerical ranges in the retrieved context.
 - **Qwen Plus**: DashScope API responded without errors on all 15 queries. No rate-limiting
   observed on the paid tier.
 - **No FAIL grades**: all WARNs are attributable to model behaviour or non-determinism.
+
+---
+
+## What This Benchmark Doesn't Cover
+
+Accuracy and cost are two dimensions — not the whole picture. Several factors that matter in production were outside the scope of this evaluation:
+
+- **API availability and uptime** — a model that scores well in testing but has reliability issues in production is a different calculus entirely
+- **Response latency** — we measured answer quality, not time-to-first-token or end-to-end streaming latency, which affects user experience significantly in interactive query scenarios
+- **Regional availability** — some providers have geographic restrictions or data residency constraints that may be relevant for compliance-sensitive deployments
+- **Support and SLA** — enterprise use cases may weight vendor support, contractual SLAs, and long-term model stability (version pinning, deprecation policy) heavily
+
+These factors can shift the ranking for a given deployment. The benchmark gives you a starting point on quality and cost — layer in your own constraints from there.
 
 ---
 
