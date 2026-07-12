@@ -67,6 +67,17 @@ def test_routing_validate_clean_reports_ok(tmp_path):
     assert "clean" in result.output
 
 
+def test_routing_validate_reports_unassigned(tmp_path):
+    w = _make_wiki(tmp_path)
+    # alan-turing is assigned; grace-hopper and von-neumann-architecture are not
+    (w / "ROUTING.md").write_text("## People\n- [[alan-turing]]\n")
+    result = runner.invoke(app, ["routing", "validate", "--wiki", str(w)])
+    assert result.exit_code == 0, result.output
+    assert "not assigned" in result.output
+    assert "grace-hopper" in result.output
+    assert "von-neumann-architecture" in result.output
+
+
 def test_routing_clean_removes_dangling(tmp_path):
     w = _make_wiki(tmp_path)
     (w / "ROUTING.md").write_text(ROUTING_WITH_DANGLING)

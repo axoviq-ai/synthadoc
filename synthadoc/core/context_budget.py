@@ -34,7 +34,14 @@ def resolve_context_window(model: str, config_override: int) -> int:
 
 
 def compute_char_budgets(model: str, cfg) -> dict[str, int]:
-    """Return char budgets for wiki/history/system/index given model + QueryConfig."""
+    """Return char budgets for wiki/history/system/index given model + QueryConfig.
+
+    wiki    — enforced in QueryAgent._build_wiki_context()
+    history — enforced in QueryAgent._trim_history()
+    system  — enforced in QueryAgent._load_purpose_context() (purpose.md preamble)
+    index   — computed but not yet enforced; routing index is a structured object,
+              not raw text injected into prompts
+    """
     window = resolve_context_window(model, cfg.context_window)
     return {
         "wiki":    int(window * (cfg.context_wiki_pct    / 100) * _CHARS_PER_TOKEN),

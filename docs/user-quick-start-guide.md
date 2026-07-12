@@ -2199,7 +2199,7 @@ The knowledge graph visualises how your wiki pages connect through `[[wikilinks]
 Run lint to trigger graph construction (if you completed Step 6, the graph is already ready):
 
 ```bash
-synthadoc lint -w history-of-computing
+synthadoc lint run -w history-of-computing
 ```
 
 Lint prints a summary line when the graph is built:
@@ -2281,7 +2281,7 @@ Once you promote a page to `active` status, it is protected against silent
 overwriting. If a new source contradicts an active page, Synthadoc flags it
 for your review rather than replacing the page's content automatically.
 
-To promote a page: `synthadoc lifecycle promote <slug>`
+To promote a page to active: `synthadoc lifecycle activate <slug>`
 
 ---
 
@@ -2397,7 +2397,7 @@ All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synt
 
 | Command                  | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Synthadoc: Export Wiki` | Modal with a format dropdown (`json`, `llms.txt`, `llms-full.txt`, `graphml`), a full-width output path field pre-filled with today's date and the correct extension, and a status filter selector. A brief description at the top explains what each format contains. Click **Export** to write the file to your vault's `exports/` folder; the file opens automatically. For GraphML format, a **View Graph** button also appears for an inline Cytoscape.js preview — nodes are coloured by lifecycle state (active=green, draft=yellow, stale=orange, contradicted=red, archived=grey) and edges represent wikilinks. To load the graph in a dedicated tool, export to file and open in **yEd**, **Gephi**, or **Cytoscape**. |
+| `Synthadoc: Export Wiki` | Modal with a format dropdown (`okf`, `json`, `llms.txt`, `llms-full.txt`, `graphml`), a full-width output path field pre-filled with today's date and the correct extension, and a status filter selector. A brief description at the top explains what each format contains. Click **Export** to write the file to your vault's `exports/` folder; the file opens automatically. For GraphML format, a **View Graph** button also appears for an inline Cytoscape.js preview — nodes are coloured by lifecycle state (active=green, draft=yellow, stale=orange, contradicted=red, archived=grey) and edges represent wikilinks. To load the graph in a dedicated tool, export to file and open in **yEd**, **Gephi**, or **Cytoscape**. |
 
 > **UX note:** All modals are draggable and support full text selection and copy-paste.
 
@@ -2474,7 +2474,7 @@ Switch by editing `<wiki-root>/.synthadoc/config.toml` and restarting the server
 | `openai`      | `OPENAI_API_KEY`    | No — pay-per-token                                | Yes             |
 | `qwen`        | `QWEN_API_KEY`      | Yes — 1M free tokens (90-day trial), then paid    | Model-dependent |
 | `deepseek`    | `DEEPSEEK_API_KEY`  | No — very affordable pricing                      | No              |
-| `claude-code` | _(none)_            | Yes — uses your Claude Code subscription, no key  | Yes             |
+| `claude-code` | _(none)_            | Yes — uses your Claude Code subscription, no key  | No              |
 | `opencode`    | _(none)_            | Yes — uses your Opencode subscription, no key     | No              |
 
 > CLI providers (`claude-code`, `opencode`) require no API key but need the tool installed and authenticated in your terminal. Web search still requires `TAVILY_API_KEY`. See [Appendix G](#appendix-g--using-a-coding-tool-as-your-llm-provider) for setup details.
