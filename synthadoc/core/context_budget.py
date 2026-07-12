@@ -6,8 +6,8 @@ from __future__ import annotations
 _CHARS_PER_TOKEN = 4
 
 _MODEL_CONTEXT_WINDOWS: dict[str, int] = {
-    "claude-opus-4":       200_000,
-    "claude-sonnet-4":     200_000,
+    "claude-opus-4":     1_000_000,
+    "claude-sonnet-4":   1_000_000,
     "claude-haiku-4":      200_000,
     "gpt-4o":              128_000,
     "gpt-4-turbo":         128_000,
@@ -15,8 +15,9 @@ _MODEL_CONTEXT_WINDOWS: dict[str, int] = {
     "gpt-3.5-turbo":        16_385,
     "deepseek-v3":         128_000,
     "deepseek-r1":         128_000,
+    "deepseek-v4":       1_000_000,
     "minimax/text-01":   1_000_000,
-    "minimax/abab6.5":     245_760,
+    "minimax/abab6.5":     204_800,
 }
 _DEFAULT_CONTEXT_WINDOW = 128_000
 
