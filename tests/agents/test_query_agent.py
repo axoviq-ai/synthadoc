@@ -2499,6 +2499,48 @@ async def test_no_gap_for_purpose_of_this_wiki(tmp_wiki):
     assert provider.complete.call_count == 2
 
 
+# ── _load_purpose_context truncation warning ──────────────────────────────────
+
+def test_purpose_context_warns_when_truncated(tmp_wiki, caplog):
+    """logger.warning fires when purpose.md exceeds the system char budget."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+
+    long_content = "x" * 5000
+    (tmp_wiki / "wiki" / "purpose.md").write_text(long_content, encoding="utf-8")
+
+    agent = QueryAgent(provider=provider, store=store, search=search)
+    agent._char_budgets["system"] = 100  # force a tiny budget so truncation is guaranteed
+
+    import logging
+    with caplog.at_level(logging.WARNING, logger="synthadoc.agents.query_agent"):
+        result = agent._load_purpose_context()
+
+    assert len(result) <= len("### Wiki Scope (purpose.md)\n") + 100
+    assert any("truncated" in r.message for r in caplog.records)
+
+
+def test_purpose_context_no_warning_when_fits(tmp_wiki, caplog):
+    """No warning when purpose.md content fits within the system char budget."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    provider = AsyncMock()
+
+    short_content = "This wiki covers AI topics."
+    (tmp_wiki / "wiki" / "purpose.md").write_text(short_content, encoding="utf-8")
+
+    agent = QueryAgent(provider=provider, store=store, search=search)
+    agent._char_budgets["system"] = 10_000  # well above the content length
+
+    import logging
+    with caplog.at_level(logging.WARNING, logger="synthadoc.agents.query_agent"):
+        result = agent._load_purpose_context()
+
+    assert short_content in result
+    assert not any("truncated" in r.message for r in caplog.records)
+
+
 # ── _parse_lookback_days ──────────────────────────────────────────────────────
 
 def test_parse_lookback_days_week():

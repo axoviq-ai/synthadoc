@@ -661,7 +661,14 @@ class QueryAgent:
         page = self._store.read_page("purpose")
         if not page:
             return ""
-        return f"### Wiki Scope (purpose.md)\n{page.content[:self._char_budgets['system']]}"
+        budget = self._char_budgets["system"]
+        if len(page.content) > budget:
+            logger.warning(
+                "purpose.md truncated to %d chars (context_system_pct budget); "
+                "full content is %d chars — increase context_system_pct or shorten purpose.md",
+                budget, len(page.content),
+            )
+        return f"### Wiki Scope (purpose.md)\n{page.content[:budget]}"
 
     def _build_wiki_context(self, candidates) -> str:
         """Greedy-fill wiki context up to the wiki char budget.
