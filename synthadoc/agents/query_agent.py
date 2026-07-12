@@ -658,11 +658,17 @@ class QueryAgent:
 
     def _load_purpose_context(self) -> str:
         """Return purpose.md as a pinned preamble for synthesis, or '' if absent."""
-        # system budget (context_system_pct) not yet enforced as a hard cap — reserved for v1.1
         page = self._store.read_page("purpose")
         if not page:
             return ""
-        return f"### Wiki Scope (purpose.md)\n{page.content[:12000]}"
+        budget = self._char_budgets["system"]
+        if len(page.content) > budget:
+            logger.warning(
+                "purpose.md truncated to %d chars (context_system_pct budget); "
+                "full content is %d chars — increase context_system_pct or shorten purpose.md",
+                budget, len(page.content),
+            )
+        return f"### Wiki Scope (purpose.md)\n{page.content[:budget]}"
 
     def _build_wiki_context(self, candidates) -> str:
         """Greedy-fill wiki context up to the wiki char budget.
