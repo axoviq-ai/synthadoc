@@ -84,6 +84,12 @@ def count_agents() -> int:
     )
 
 
+def count_hooks() -> int:
+    """Count hook scripts (.py files) in the hooks/ directory."""
+    hooks_dir = ROOT / "hooks"
+    return sum(1 for p in hooks_dir.glob("*.py"))
+
+
 def read_coverage(coverage_json: Path) -> int:
     """Return total coverage as an integer (e.g. 87).
 
@@ -120,6 +126,7 @@ def main() -> None:
         "skills": count_skills(),
         "mcp_tools": count_mcp_tools(),
         "agents": count_agents(),
+        "hooks": count_hooks(),
     }
 
     badges_path = ROOT / "docs" / "badges.json"

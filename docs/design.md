@@ -413,6 +413,30 @@ Serialises the wiki to one of five formats with zero additional LLM calls. Invok
 
 **GraphML tool compatibility:** The file includes both a standard `label` data key (read by Gephi and Cytoscape) and a `y:ShapeNode/y:NodeLabel` element (read by yEd). No position data is embedded — run the tool's own layout algorithm after import.
 
+### ActionAgent
+
+Dispatches action-intent queries from the chat UI (e.g. "activate a draft page", "show lint report", "archive a stale page", "run scaffold"). Parses the user's free-text intent into a structured action via an LLM extraction prompt, then executes the action against the wiki and returns a human-readable result. When the intent is ambiguous (e.g. "activate a page" without specifying which), sets `needs_clarification=True` and returns a prompt and candidate list for the web UI to render as chip buttons.
+
+### ScaffoldAgent
+
+Generates and updates the wiki's structural pages. Reads all current wiki pages and asks the LLM to organise them into 5–8 domain-appropriate categories, then writes `wiki/index.md` (category index with wikilinks), `wiki/purpose.md` (scope statement), and `AGENTS.md` (ingest and query guidelines). Also stamps a `categories:` field on each page's YAML frontmatter. When `ROUTING.md` already exists, regenerates it to stay in sync with the updated index structure.
+
+### RewriteAgent
+
+Rewrites follow-up questions in multi-turn conversations into self-contained, standalone form before BM25 retrieval. Converts context-dependent phrases ("What came after that?", "Tell me more about his early life") into explicit questions ("What came after Alan Turing's work at Bletchley Park?") so keyword retrieval targets the correct pages without relying on conversation context. Only invoked when conversation history is non-empty. See also: [Multi-turn Conversation](#multi-turn-conversation).
+
+### SummarizeAgent
+
+Compresses the oldest conversation turns into a single `[Session summary: …]` assistant turn when a session exceeds `conversation_history_turns`. Prevents unbounded context growth across long sessions. Emits a `notice` SSE event the first time compression occurs so the user can see that earlier context was condensed. See also: [Multi-turn Conversation](#multi-turn-conversation).
+
+### ContextAgent
+
+Builds token-budgeted context packs for MCP tool consumers. See [Section 20 — Context Packs](#20-context-packs) for full detail.
+
+### SearchDecomposeAgent
+
+Decomposes a web search intent into 1–4 terse keyword search strings optimised for authoritative source retrieval. Uses a separate prompt from `QueryAgent`'s question decomposition — search decomposition asks "what distinct search strings would find the best sources?" (terse keyword phrases) rather than "what distinct questions does this ask?" (natural-language sub-questions). See [Web search fan-out](#web-search-fan-out) in the IngestAgent section.
+
 ---
 
 ## 5. Skills System
@@ -766,7 +790,7 @@ The HTTP server runs a background task that polls `jobs.db` every 2 seconds and 
 
 **Package:** `synthadoc-obsidian` (TypeScript)  
 **Location:** `obsidian-plugin/` in the repo  
-**Version:** 0.6.0
+**Version:** 1.0.1
 
 Each vault configures its server URL in plugin settings (default `http://127.0.0.1:7070`).
 
@@ -787,7 +811,7 @@ Reload the plugin (toggle off/on) after copying — a full Obsidian restart is n
 | `Synthadoc: View Page Provenance` _(v0.5.0)_ | Sortable, paginated table of every claim citation recorded across the wiki — page, claim excerpt, source file, line range, and ingest timestamp. Draggable; all cell content is selectable and copyable. Click any row to open the Source Viewer showing the exact source lines with ±5 lines of context. For PDF sources a page-jump button opens the native PDF viewer at the correct page. |
 | `Synthadoc: Manage Page Lifecycle` _(v0.6.0)_ | Sortable, filterable, paginated table of all wiki pages with their current lifecycle state (`draft`, `active`, `contradicted`, `stale`, `archived`) and last transition timestamp. State filter checkboxes narrow the table; click column headers to sort. Each row shows valid transition buttons — click a button to trigger a transition; a reason dialog appears before committing. Clicking a draft or stale badge on the lint modal or jobs panel opens this table pre-filtered to that state. |
 | `Synthadoc: Jobs...` | Modal with status-filter checkboxes (pending, in_progress, completed, failed, skipped, dead, cancelled), sortable results table (click **Status**, **Operation**, or **Created** headers to sort ascending; click again to reverse; ▲/▼ indicates active sort, ⇅ indicates unsorted; default: newest first), error detail rows for failed/dead/cancelled jobs, pagination (25 per page), auto-refresh countdown, a **Retry selected** button (enabled when ≥ 1 selected job is failed/dead/cancelled) and a **Delete selected** button (enabled when ≥ 1 job is selected). A **Purge old jobs** footer row lets you set a day threshold and remove old completed/dead jobs in one click. |
-| `Synthadoc: Routing: manage ROUTING.md...` | Modal panel with three buttons. **Init** creates ROUTING.md from the current index.md branch structure (enabled only when ROUTING.md does not exist). **Validate** reports dangling slugs — pages listed in ROUTING.md that no longer exist in the wiki (enabled only when ROUTING.md exists). **Clean** removes dangling slugs from ROUTING.md (enabled only when ROUTING.md exists). After each action the result appears inline with per-entry `[Branch] [[slug]]` detail rows. |
+| `Synthadoc: Routing: manage ROUTING.md...` | Modal panel with three buttons. **Init** creates ROUTING.md from the current index.md branch structure (enabled only when ROUTING.md does not exist). **Validate** reports two things: dangling slugs (pages listed in ROUTING.md that no longer exist in the wiki) and unassigned slugs (pages that exist in index.md but are not listed in any ROUTING.md branch). Enabled only when ROUTING.md exists. **Clean** removes dangling slugs from ROUTING.md (enabled only when ROUTING.md exists). After each action the result appears inline with per-entry `[Branch] [[slug]]` detail rows. |
 | `Synthadoc: Staging: manage staging policy...` | Modal panel showing the current policy state. A segmented control switches between **Off**, **All**, and **Threshold**. When **Threshold** is selected, a second segmented control sets the minimum confidence (**High** / **Medium** / **Low**). A **Save** button persists the change via the HTTP API and updates the inline status. A footer link opens the Candidates modal directly. |
 | `Synthadoc: Candidates: review candidate pages...` | Paginated table (50 per page) of all staged candidate pages. Each row shows the slug, a colour-coded confidence badge, and a checkbox. **Promote All** and **Discard All** act on every candidate; **Promote Selected** and **Discard Selected** act on checked rows. The table reloads automatically after each action. A footer link opens the Staging policy modal. |
 | `Synthadoc: Context: build context pack...` | Modal with a goal/question text area, a token budget field (default 4000), and a **Build Context Pack** button (`Ctrl/Cmd+Enter` also triggers). The server decomposes the goal, retrieves and ranks wiki pages via BM25, and packs them within the budget. The result is rendered as cited Markdown in a read-only text area. **Copy to Clipboard** copies the content to the OS clipboard. **Save as .md** downloads the Markdown file with a slug-derived filename. |
@@ -847,15 +871,15 @@ synthadoc
 │   ├── cancel [-w wiki] [--yes]
 │   └── purge --older-than <days> [-w wiki]
 ├── routing
-│   ├── init [--wiki-root <path>]                 — generate ROUTING.md from index.md branch structure
-│   ├── validate [--wiki-root <path>]             — report dangling slugs and cross-branch duplicates
-│   └── clean [--wiki-root <path>]               — remove dangling slugs from ROUTING.md
+│   ├── init [-w wiki]                            — generate ROUTING.md from index.md branch structure
+│   ├── validate [-w wiki]                        — report dangling slugs and cross-branch duplicates
+│   └── clean [-w wiki]                           — remove dangling slugs from ROUTING.md
 ├── staging
-│   └── policy [off|all|threshold] [--min-confidence high|medium|low] [--wiki-root <path>]
+│   └── policy [off|all|threshold] [--min-confidence high|medium|low] [-w wiki]
 ├── candidates
-│   ├── list [--wiki-root <path>]
-│   ├── promote <slug>|--all [--wiki-root <path>]
-│   └── discard <slug>|--all [--wiki-root <path>]
+│   ├── list [-w wiki]
+│   ├── promote <slug>|--all [-w wiki]
+│   └── discard <slug>|--all [-w wiki]
 ├── context
 │   └── build "<goal>" [-w wiki] [--tokens N] [--output <file>]
 ├── export -f <fmt> [-o <path>] [-s <state>] [-w wiki]    — llms.txt, llms-full.txt, graphml, json, okf
@@ -1141,7 +1165,7 @@ max_file_mb  = 5
 backup_count = 5
 
 [hooks]
-on_ingest_complete = "python hooks/auto_commit.py"                        # non-blocking
+on_ingest_complete = "python hooks/git-auto-commit.py"                    # non-blocking
 on_lint_complete   = { cmd = "python hooks/notify.py", blocking = true }  # blocking
 
 [web_search]
@@ -1208,7 +1232,7 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 | `audit.url_staleness_days` | int | `0` | Days after which URL-sourced pages are automatically marked `stale` if the source URL has not been re-ingested. `0` = disabled. |
 | `logs.level` | str | `"INFO"` | Console log level: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 | `logs.max_file_mb` | int | `5` | Rotate `synthadoc.log` at this size (MB) |
-| `logs.backup_count` | int | `5` | Rotated log files to keep; total disk ≈ `max_file_mb × backup_count` |
+| `logs.backup_count` | int | `5` | Rotated log files to keep; total disk ≈ `max_file_mb × (backup_count + 1)` |
 | `web_search.provider` | str | `"tavily"` | Web search provider (currently only `tavily` supported) |
 | `web_search.max_results` | int | `20` | Maximum results fetched per web search query |
 | `search.vector` | bool | `false` | Enable semantic re-ranking; downloads `BAAI/bge-small-en-v1.5` (~130 MB) once on first enable |
@@ -1232,8 +1256,8 @@ Hooks are shell commands executed when lifecycle events fire. They are configure
 # .synthadoc/config.toml
 
 [hooks]
-on_ingest_complete = "python scripts/auto_commit.py"                        # non-blocking
-on_lint_complete   = { cmd = "python scripts/notify.py", blocking = true }  # blocking
+on_ingest_complete = "python hooks/git-auto-commit.py"                     # non-blocking
+on_lint_complete   = { cmd = "python hooks/notify.py", blocking = true }   # blocking
 ```
 
 ### Blocking vs. non-blocking
@@ -1569,7 +1593,7 @@ Spans cover: full operation tree (orchestrator → agent → LLM calls → stora
 
 ### Network exposure
 
-HTTP and MCP servers bind to `127.0.0.1` at OS socket level. Not configurable. No remote access without a separate reverse proxy (which the user must explicitly set up).
+HTTP and MCP servers bind to `127.0.0.1` by default. The bind address is configurable via `server.host` in `config.toml` (e.g. `host = "0.0.0.0"` to expose on all interfaces for LAN access). No built-in authentication — restrict via firewall when exposing beyond loopback. Remote access without a reverse proxy is not recommended on shared or networked machines.
 
 ### HTTP DoS
 
@@ -1771,10 +1795,10 @@ Pages may carry an `aliases:` list in YAML frontmatter. `QueryAgent._expand_alia
 | Command | Description |
 |---|---|
 | `synthadoc routing init` | Generate ROUTING.md from current index.md branch structure |
-| `synthadoc routing validate` | Report dangling slugs (dry run) |
+| `synthadoc routing validate` | Report dangling slugs and unassigned slugs (dry run) |
 | `synthadoc routing clean` | Remove dangling slugs from ROUTING.md |
 
-All commands accept `--wiki-root <path>`.
+All commands accept `-w <wiki>` / `--wiki <wiki>` to target a specific wiki.
 
 ### Obsidian plugin
 
@@ -2480,7 +2504,7 @@ Hint chips are rendered below each answer and in the empty-state panel before th
 
 ### Multi-turn Conversation
 
-Each `GET /query/stream` call may include a `session_id` (UUID from `POST /sessions`). When a session_id is present, the HTTP server loads conversation history from `audit.db` (up to `conversation_history_turns` most recent turns, default 10) and passes it to `QueryAgent.run_stream()`.
+Each `GET /query/stream` call may include a `session_id` (UUID from `POST /sessions`). When a session_id is present, the HTTP server loads conversation history from `audit.db` (up to `conversation_history_turns` most recent turns, default 5) and passes it to `QueryAgent.run_stream()`.
 
 **Follow-up question rewriting.** When history is non-empty, a `RewriteAgent` rewrites the user's follow-up question into a self-contained form before BM25 retrieval. This converts context-dependent phrases ("What came after that?" or "Tell me more about his early life") into standalone questions ("What came after Alan Turing's work at Bletchley Park?") so keyword retrieval targets the right pages.
 
@@ -2513,7 +2537,7 @@ The left navigation bar in the web UI is driven by `GET /sessions` (returns up t
 
 ```toml
 [query]
-conversation_history_turns = 10   # turns to include in each request (default: 10; 0 = disable history)
+conversation_history_turns = 5    # turns to include in each request (default: 5; 0 = disable history)
 ```
 
 ### CLI command
@@ -2956,7 +2980,7 @@ Edit `<wiki-root>/AGENTS.md` to give the LLM domain-specific instructions — te
 - **SSE shutdown stability** — a log filter installed on `uvicorn.error` at startup suppresses three benign error classes that appear when the server exits while SSE connections are open: `asyncio.CancelledError`, `KeyboardInterrupt`, and the `RuntimeError("Expected ASGI message 'http.response.body'…")` that Starlette's error middleware raises after cancellation. Actual errors during normal operation are unaffected.
 ### v0.8.0 (Community Edition)
 
-- **Multi-turn conversation** — the web chat UI maintains conversation history across turns within a session. History is stored in `audit.db` per session and loaded server-side on each request (up to `conversation_history_turns` turns, default 10). Follow-up questions are rewritten into standalone form by a dedicated rewrite component before BM25 retrieval, so context-dependent phrases ("What came after that?") resolve correctly. When the session exceeds the turn limit, a summarization component compresses the oldest turns into a `[Session summary]` entry; a `notice` SSE event is emitted the first time compression occurs.
+- **Multi-turn conversation** — the web chat UI maintains conversation history across turns within a session. History is stored in `audit.db` per session and loaded server-side on each request (up to `conversation_history_turns` turns, default 5). Follow-up questions are rewritten into standalone form by a dedicated rewrite component before BM25 retrieval, so context-dependent phrases ("What came after that?") resolve correctly. When the session exceeds the turn limit, a summarization component compresses the oldest turns into a `[Session summary]` entry; a `notice` SSE event is emitted the first time compression occurs.
 - **Clarify event** — when an action-intent query is ambiguous (e.g. "activate a draft page" without specifying which page), the server emits a `clarify` SSE event with a disambiguation prompt and candidate page list instead of routing to the synthesis pipeline. The web UI renders candidates as numbered chip buttons; the user can tap a chip or type a page name to complete the action.
 - **Two new SSE events** — `clarify` (`{prompt, candidates, action}`) for action disambiguation; `notice` (`{text}`) for system messages such as history compression.
 - **Configuration** — `[chat] conversation_history_turns = 5` controls how many prior turns are included in each request. Set to `0` to disable conversation history. `clarify_lookback = 5` controls how many prior assistant turns to scan when detecting a clarify continuation (chip click after an ambiguous action query); configurable independently of `conversation_history_turns`.
