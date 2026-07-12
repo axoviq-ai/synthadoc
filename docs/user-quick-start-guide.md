@@ -123,20 +123,15 @@ synthadoc use
 
 <a name="install-plugin"></a>
 
-## Step 2 — Install the Synthadoc plugin
+## Step 2 — Plugin already installed
 
-Run this command before opening Obsidian — it installs both the Synthadoc plugin and the Dataview plugin directly into the vault's plugins folder:
+No separate plugin step is needed. `synthadoc install` already copied both the Synthadoc plugin and the Dataview plugin directly into the vault's plugins folder, pre-enabled them, and set the correct server URL.
 
-```bash
-synthadoc plugin install history-of-computing
-```
+> **Reading View set automatically:** the installer writes `"defaultViewMode": "preview"` to `.obsidian/app.json`, so Obsidian opens wiki pages in Reading View by default. This is required for citation chips (`^[file:L-L]`) to render — they are invisible in Edit or Live Preview mode. You can change this later in Obsidian's Settings → Editor → Default view.
 
-> **Note:** The wiki must be registered first via `synthadoc install` before running
-> this command. The installer looks up the wiki's path from the registry.
+> **Upgrading an existing installation?** Run `synthadoc plugin upgrade` to push the updated plugin binary to all registered wikis. This is only needed when upgrading Synthadoc — not for new installs.
 
-> **Reading View set automatically:** `plugin install` writes `"defaultViewMode": "preview"` to `.obsidian/app.json` in the vault, so Obsidian opens notes in Reading View by default. This is required for citation chips (`^[file:L-L]`) to render — they are invisible in Edit or Live Preview mode. You can change this later in Obsidian's Settings → Editor → Default view.
-
-That's it for the CLI steps. Now open Obsidian.
+Now open Obsidian.
 
 ---
 
