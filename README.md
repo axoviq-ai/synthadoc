@@ -576,7 +576,7 @@ synthadoc demo sync history-of-computing
 # Update existing demo pages from the latest template (overwrites demo pages)
 synthadoc demo sync history-of-computing --force
 
-# Install the Obsidian plugin directly into the active Obsidian vault
+# Reinstall the Obsidian plugin into a wiki's vault — normally done automatically by synthadoc install
 synthadoc plugin install history-of-computing
 ```
 
