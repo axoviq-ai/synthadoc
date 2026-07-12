@@ -6,7 +6,7 @@ from synthadoc.config import QueryConfig
 
 
 def test_resolve_context_window_claude_sonnet():
-    assert resolve_context_window("claude-sonnet-4-6", 0) == 200_000
+    assert resolve_context_window("claude-sonnet-4-6", 0) == 1_000_000
 
 
 def test_resolve_context_window_gpt4o():
@@ -31,10 +31,10 @@ def test_resolve_context_window_gpt4_exact():
 def test_compute_char_budgets_defaults():
     cfg = QueryConfig()
     budgets = compute_char_budgets("claude-sonnet-4-6", cfg)
-    assert budgets["wiki"] == int(200_000 * 0.60 * 4)
-    assert budgets["history"] == int(200_000 * 0.20 * 4)
-    assert budgets["system"] == int(200_000 * 0.15 * 4)
-    assert budgets["index"] == int(200_000 * 0.05 * 4)
+    assert budgets["wiki"] == int(1_000_000 * 0.60 * 4)
+    assert budgets["history"] == int(1_000_000 * 0.20 * 4)
+    assert budgets["system"] == int(1_000_000 * 0.15 * 4)
+    assert budgets["index"] == int(1_000_000 * 0.05 * 4)
 
 
 def test_compute_char_budgets_respects_custom_pcts():
