@@ -156,10 +156,16 @@ def _normalize_citation_markers(text: str) -> str:
 
 _CITATION_PROMPT = (
     "You are a citation annotator. Given a wiki page section and the source text it was "
-    "compiled from, insert ^[FILENAME:L-L] at the END of each paragraph that makes a "
-    "substantive claim traceable to the source. L-L is the 1-based line range in the "
-    "numbered source text where the supporting passage appears. Do not annotate headings, "
-    "transition sentences, or [[wikilinks]].\n"
+    "compiled from, insert a citation marker at the END of each paragraph that makes a "
+    "substantive claim traceable to the source.\n\n"
+    "Citation format rules (follow exactly):\n"
+    "  - Format: ^[SOURCE:START-END]\n"
+    "  - SOURCE must be the exact source filename given below — copy it character-for-character. "
+    "Do NOT write the word 'FILENAME', 'SOURCE', or any other placeholder; use only the actual filename.\n"
+    "  - START-END is the 1-based line range in the numbered source text (use a hyphen, never a comma).\n"
+    "  - Example: if the source filename is '{filename}' and the claim is on lines 7-9, write "
+    "^[{filename}:7-9]\n\n"
+    "Do not annotate headings, transition sentences, or [[wikilinks]].\n"
     "Return ONLY the annotated section — identical to the input except for added ^[...] markers.\n\n"
     "Source filename: {filename}\n\n"
     "Source text (lines numbered):\n{numbered_source}\n\n"
@@ -290,8 +296,11 @@ def _strip_leading_frontmatter(content: str) -> str:
 
 
 def _append_source_ref(page: "WikiPage", ref: "SourceRef") -> None:
-    """Append ref to page.sources only when (file, hash) is not already recorded.
-    Also compacts any duplicates that accumulated from prior --force runs.
+    """Append ref to page.sources only when the source is not already recorded.
+
+    Deduplicates on (file, hash) AND detects when an absolute path matches an
+    existing relative-path entry (e.g. ``--force`` ingest with an absolute path
+    given for a source that is already registered as a relative path).
     """
     seen: set[tuple[str, str]] = set()
     clean: list["SourceRef"] = []
@@ -301,6 +310,17 @@ def _append_source_ref(page: "WikiPage", ref: "SourceRef") -> None:
             seen.add(key)
             clean.append(s)
     page.sources = clean
+
+    # If ref uses an absolute path, skip it when an existing relative-path entry
+    # is a suffix of that absolute path (normalise separators for cross-platform safety).
+    if Path(ref.file).is_absolute():
+        norm_abs = ref.file.replace("\\", "/")
+        for s in page.sources:
+            if not Path(s.file).is_absolute():
+                norm_rel = s.file.replace("\\", "/")
+                if norm_abs.endswith("/" + norm_rel) or norm_abs == norm_rel:
+                    return  # already recorded as a relative path
+
     if (ref.file, ref.hash) not in seen:
         page.sources.append(ref)
 
@@ -933,7 +953,7 @@ class IngestAgent:
                         _append_source_ref(page, SourceRef(
                             file=source,
                             hash=src_hash or "",
-                            size=src_size or 0,
+                            size=_source_len,
                             ingested=date.today().isoformat(),
                             truncated=_truncated,
                         ))
@@ -993,7 +1013,7 @@ class IngestAgent:
                             _append_source_ref(page, SourceRef(
                                 file=source,
                                 hash=src_hash or "",
-                                size=src_size or 0,
+                                size=_source_len,
                                 ingested=date.today().isoformat(),
                                 truncated=_truncated,
                             ))
@@ -1031,7 +1051,7 @@ class IngestAgent:
                         sources=[SourceRef(
                             file=source,
                             hash=src_hash or "",
-                            size=src_size or 0,
+                            size=_source_len,
                             ingested=today,
                             truncated=_truncated,
                         )],

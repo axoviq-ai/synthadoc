@@ -123,20 +123,15 @@ synthadoc use
 
 <a name="install-plugin"></a>
 
-## Step 2 — Install the Synthadoc plugin
+## Step 2 — Plugin already installed
 
-Run this command before opening Obsidian — it installs both the Synthadoc plugin and the Dataview plugin directly into the vault's plugins folder:
+No separate plugin step is needed. `synthadoc install` already copied both the Synthadoc plugin and the Dataview plugin directly into the vault's plugins folder, pre-enabled them, and set the correct server URL.
 
-```bash
-synthadoc plugin install history-of-computing
-```
+> **Reading View set automatically:** the installer writes `"defaultViewMode": "preview"` to `.obsidian/app.json`, so Obsidian opens wiki pages in Reading View by default. This is required for citation chips (`^[file:L-L]`) to render — they are invisible in Edit or Live Preview mode. You can change this later in Obsidian's Settings → Editor → Default view.
 
-> **Note:** The wiki must be registered first via `synthadoc install` before running
-> this command. The installer looks up the wiki's path from the registry.
+> **Upgrading an existing installation?** Run `synthadoc plugin upgrade` to push the updated plugin binary to all registered wikis. This is only needed when upgrading Synthadoc — not for new installs.
 
-> **Reading View set automatically:** `plugin install` writes `"defaultViewMode": "preview"` to `.obsidian/app.json` in the vault, so Obsidian opens notes in Reading View by default. This is required for citation chips (`^[file:L-L]`) to render — they are invisible in Edit or Live Preview mode. You can change this later in Obsidian's Settings → Editor → Default view.
-
-That's it for the CLI steps. Now open Obsidian.
+Now open Obsidian.
 
 ---
 
@@ -454,7 +449,7 @@ synthadoc query "Who invented FORTRAN and when?"
 synthadoc query "What did Konrad Zuse contribute to computing history?"
 ```
 
-> **Pages are created as `draft`.** Every page produced by ingest starts in the `draft` state — compiled but not yet reviewed. Run lint (Step 7) to promote clean pages to `active`.
+> **Pages are created as `draft`.** Every page produced by ingest starts in the `draft` state — compiled but not yet reviewed. Draft pages are immediately queryable; BM25 retrieval includes all pages regardless of lifecycle state. Running lint (Step 7) promotes clean pages to `active`, which marks them as human-reviewed and protects them from being overwritten by future ingest.
 
 > **Pre-LLM sanitizer (v1.0):** Before sending any source to the LLM, Synthadoc strips zero-width characters, bidirectional text overrides, hidden HTML, and instruction-override phrases that could cause the model to misinterpret content. This runs automatically — no configuration needed. See [design.md §29](design.md#29-pre-llm-source-sanitizer) for the full table of sanitizer categories, actions, and warning behaviour.
 
@@ -530,6 +525,30 @@ Page lifecycle:
 ```
 
 All 5 draft pages were promoted to `active`. The 13 pre-built pages were registered in the lifecycle system for the first time — 12 became `active`, and `grace-hopper` became `contradicted` (see Step 9).
+
+### 4. Review the lint report
+
+`synthadoc status` shows counts. `synthadoc lint report` shows what actually needs your attention — contradicted pages, orphan pages with no inbound links, adversarial warnings, and citation issues.
+
+```bash
+synthadoc lint report
+```
+
+Expected output (one contradicted page in the demo wiki):
+
+```
+Contradicted pages (1) - need review:
+
+  grace-hopper
+    Why flagged: Wikipedia source conflicts with the ACM oral history on the COBOL
+    standardisation timeline.
+    -> Open wiki/grace-hopper.md, resolve the conflict, then set status: active
+    -> Or re-run: synthadoc lint -w history-of-computing --auto-resolve
+```
+
+You can also open the report from the Obsidian plugin — open the command palette (`Ctrl/Cmd+P`) and choose **Synthadoc: Lint: report**. The modal shows the same information with action buttons.
+
+The contradicted `grace-hopper` page is explained and resolved in Step 9.
 
 ---
 
