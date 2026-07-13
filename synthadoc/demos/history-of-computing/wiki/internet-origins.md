@@ -10,10 +10,6 @@ sources:
   hash: placeholder
   ingested: 2026-04-08
   size: 0
-- file: C:\Users\ladmin\wikis\history-of-computing\raw_sources\public-domain\leiner-brief-history-internet-2009.txt
-  hash: f15ecdc49a3d30016b76e6c8f410d72ad7e3bb344e0a1497b5429b8d6772decd
-  ingested: '2026-07-12'
-  size: 6051
 status: active
 tags:
 - internet
@@ -24,7 +20,6 @@ title: Internet Origins
 type: concept
 updated: '2026-07-12'
 ---
-
 # Internet Origins
 
 The Internet grew from ARPANET, a research network funded by the U.S. Advanced Research Projects Agency (ARPA) in the late 1960s, to a global infrastructure connecting billions of devices.

@@ -10,10 +10,6 @@ sources:
   hash: placeholder
   ingested: 2026-04-09
   size: 0
-- file: C:\Users\ladmin\wikis\history-of-computing\raw_sources\public-domain\ceruzzi-history-modern-computing.txt
-  hash: 4607d7489564092aadd1a05aa86531bfec5c520c7745155c7c92d187c3bd04db
-  ingested: '2026-07-12'
-  size: 6624
 status: active
 tags:
 - personal-computer
@@ -24,7 +20,6 @@ title: Personal Computer Revolution
 type: concept
 updated: '2026-07-12'
 ---
-
 # Personal Computer Revolution
 
 The personal computer revolution of the 1970s and 1980s brought computing from air-conditioned mainframe rooms into homes and small businesses, fundamentally democratising access to programmable machines.

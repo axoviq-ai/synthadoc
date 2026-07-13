@@ -15,10 +15,6 @@ sources:
   hash: 0b35df51601160a9565c13804ebeeed4177ffd700c09676c7595c63f7286543e
   ingested: '2026-07-01'
   size: 43
-- file: C:\Users\ladmin\wikis\history-of-computing\raw_sources\public-domain\mccorduck-machines-who-think.txt
-  hash: dfa2dd545ae53d02ef3b910d7f563dd67819e87e41bd0cd27455096f189e1d13
-  ingested: '2026-07-12'
-  size: 7046
 status: active
 tags:
 - artificial-intelligence
@@ -29,7 +25,6 @@ title: Artificial Intelligence History
 type: concept
 updated: '2026-07-12'
 ---
-
 # Artificial Intelligence History
 
 Artificial intelligence — the endeavour to build machines that exhibit intelligent behaviour — traces directly to [[alan-turing]]'s 1950 paper proposing the Turing Test. The field has cycled through periods of optimism, underfunding ("AI winters"), and transformative breakthroughs. - [[konrad-zuse]] — Konrad Zuse Z3 Computer

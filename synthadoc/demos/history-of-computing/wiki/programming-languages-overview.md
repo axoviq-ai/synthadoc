@@ -11,10 +11,6 @@ sources:
   hash: placeholder
   ingested: 2026-04-08
   size: 0
-- file: C:\Users\ladmin\wikis\history-of-computing\raw_sources\public-domain\wexelblat-history-of-programming-languages-1981.txt
-  hash: b7c0b80d6614eb5e40ad2c6b7914893701dd2cd77bc51c4d0e7ed16fa7dd11cb
-  ingested: '2026-07-12'
-  size: 6836
 status: active
 tags:
 - programming-languages
@@ -24,7 +20,6 @@ title: Programming Languages Overview
 type: concept
 updated: '2026-07-12'
 ---
-
 # Programming Languages Overview
 
 Programming languages are formal notations for expressing computation. Their history reflects a constant tension between expressiveness and efficiency, between human readability and machine performance.

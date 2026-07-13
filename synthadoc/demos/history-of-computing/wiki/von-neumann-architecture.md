@@ -8,10 +8,6 @@ sources:
   hash: placeholder
   ingested: 2026-04-08
   size: 0
-- file: C:\Users\ladmin\wikis\history-of-computing\raw_sources\public-domain\vonneumann-firstdraft-1945.txt
-  hash: 8f5d3f50c56811dc7d5df0b6994449d09cf61b3c80b95bbd7456304a0d0058e3
-  ingested: '2026-07-12'
-  size: 5694
 status: active
 tags:
 - architecture
@@ -21,7 +17,6 @@ title: Von Neumann Architecture
 type: technology
 updated: '2026-07-12'
 ---
-
 # Von Neumann Architecture
 
 The Von Neumann architecture, described in John von Neumann's 1945 "First Draft of a Report on the EDVAC," is the design that underlies virtually every general-purpose computer built since. Its defining characteristic is that both program instructions and data reside in the same memory, allowing programs to be stored and modified like data.

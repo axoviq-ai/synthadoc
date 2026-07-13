@@ -8,10 +8,6 @@ sources:
   hash: placeholder
   ingested: 2026-04-09
   size: 0
-- file: C:\Users\ladmin\wikis\history-of-computing\raw_sources\public-domain\riordan-hoddeson-crystal-fire.txt
-  hash: ae44ed9a15e09cc141907f56d2cdda05797749f6a34b6375ba82d05384c85358
-  ingested: '2026-07-12'
-  size: 7170
 status: active
 tags:
 - hardware
@@ -22,7 +18,6 @@ title: Transistor and Microchip
 type: technology
 updated: '2026-07-12'
 ---
-
 # Transistor and Microchip
 
 The transistor and the integrated circuit are the twin inventions that made modern computing physically possible. Without them, [[von-neumann-architecture]] computers would remain room-sized vacuum-tube machines consuming megawatts of power.

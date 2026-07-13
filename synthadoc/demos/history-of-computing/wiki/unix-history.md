@@ -8,10 +8,6 @@ sources:
   hash: placeholder
   ingested: 2026-04-08
   size: 0
-- file: C:\Users\ladmin\wikis\history-of-computing\raw_sources\public-domain\ritchie-unix-history-1979.txt
-  hash: 14a9addf119ef7b97159505c0a86ac9893e95af47ca594e7edc48b56c4844936
-  ingested: '2026-07-12'
-  size: 5462
 status: active
 tags:
 - unix
@@ -22,7 +18,6 @@ title: Unix History
 type: technology
 updated: '2026-07-12'
 ---
-
 # Unix History
 
 Unix is a family of multitasking, multiuser operating systems that descend from the original AT&T Unix, developed at Bell Labs by Ken Thompson, Dennis Ritchie, and others starting in 1969.

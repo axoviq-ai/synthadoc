@@ -296,8 +296,11 @@ def _strip_leading_frontmatter(content: str) -> str:
 
 
 def _append_source_ref(page: "WikiPage", ref: "SourceRef") -> None:
-    """Append ref to page.sources only when (file, hash) is not already recorded.
-    Also compacts any duplicates that accumulated from prior --force runs.
+    """Append ref to page.sources only when the source is not already recorded.
+
+    Deduplicates on (file, hash) AND detects when an absolute path matches an
+    existing relative-path entry (e.g. ``--force`` ingest with an absolute path
+    given for a source that is already registered as a relative path).
     """
     seen: set[tuple[str, str]] = set()
     clean: list["SourceRef"] = []
@@ -307,6 +310,17 @@ def _append_source_ref(page: "WikiPage", ref: "SourceRef") -> None:
             seen.add(key)
             clean.append(s)
     page.sources = clean
+
+    # If ref uses an absolute path, skip it when an existing relative-path entry
+    # is a suffix of that absolute path (normalise separators for cross-platform safety).
+    if Path(ref.file).is_absolute():
+        norm_abs = ref.file.replace("\\", "/")
+        for s in page.sources:
+            if not Path(s.file).is_absolute():
+                norm_rel = s.file.replace("\\", "/")
+                if norm_abs.endswith("/" + norm_rel) or norm_abs == norm_rel:
+                    return  # already recorded as a relative path
+
     if (ref.file, ref.hash) not in seen:
         page.sources.append(ref)
 

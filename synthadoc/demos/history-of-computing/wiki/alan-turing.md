@@ -13,10 +13,6 @@ sources:
   hash: placeholder
   ingested: 2026-04-08
   size: 0
-- file: C:\Users\ladmin\wikis\history-of-computing\raw_sources\public-domain\turing-wikipedia-cc0.txt
-  hash: 153cacfe41b68d4af656622a041a92c95d94334e8960f79280877d0040fe8ca0
-  ingested: '2026-07-12'
-  size: 6424
 status: active
 tags:
 - biography
@@ -26,7 +22,6 @@ title: Alan Turing
 type: person
 updated: '2026-07-12'
 ---
-
 # Alan Turing
 
 Alan Mathison Turing (1912–1954) was an English mathematician, computer scientist, logician, cryptanalyst, philosopher, and theoretical biologist. He is widely considered to be the father of theoretical computer science and artificial intelligence.

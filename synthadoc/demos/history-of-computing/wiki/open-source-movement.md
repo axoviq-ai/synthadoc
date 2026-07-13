@@ -10,10 +10,6 @@ sources:
   hash: placeholder
   ingested: 2026-04-09
   size: 0
-- file: C:\Users\ladmin\wikis\history-of-computing\raw_sources\public-domain\raymond-cathedral-bazaar-1999.txt
-  hash: f457fb644617d3e412b5571b89f19248380a9bd17a240b651ee217c1be4e612e
-  ingested: '2026-07-12'
-  size: 5807
 status: active
 tags:
 - open-source
@@ -24,7 +20,6 @@ title: Open Source Movement
 type: concept
 updated: '2026-07-12'
 ---
-
 # Open Source Movement
 
 The open source movement established that software whose source code is publicly available and freely modifiable could be commercially and technically superior to proprietary alternatives. It transformed how software is produced, distributed, and governed.

@@ -10,10 +10,6 @@ sources:
   hash: placeholder
   ingested: 2026-04-09
   size: 0
-- file: C:\Users\ladmin\wikis\history-of-computing\raw_sources\public-domain\hopper-biography-usn.txt
-  hash: d1d5876c8832651fbfd126491f3af3398ce127ad5835bcf733e023a20b307733
-  ingested: '2026-07-12'
-  size: 5112
 status: active
 tags:
 - biography
@@ -24,7 +20,6 @@ title: Grace Hopper
 type: person
 updated: '2026-07-12'
 ---
-
 # Grace Hopper
 
 Grace Brewster Murray Hopper (1906–1992) was an American computer scientist and United States Navy rear admiral. She pioneered the idea that programs could be written in human-readable language and automatically translated to machine instructions — an idea her contemporaries dismissed as impossible.

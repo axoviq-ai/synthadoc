@@ -3187,9 +3187,26 @@ class SourceViewerModal extends Modal {
         // Files with no extension (bare slugs) are treated as plain text.
         const ext = dotIdx >= 0 ? this.filename.slice(dotIdx + 1).toLowerCase() : "";
         const isText = TEXT_EXTENSIONS.has(ext) || ext === "";
+        const findInSubdirs = (dir: string, name: string): string | null => {
+            if (!fs.existsSync(dir)) return null;
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true }) as import("fs").Dirent[]) {
+                const child = `${dir}/${entry.name}`;
+                if (entry.isDirectory()) {
+                    const found = findInSubdirs(child, name);
+                    if (found) return found;
+                } else if (entry.name === name) {
+                    return child;
+                }
+            }
+            return null;
+        };
         const resolvePath = (): string => {
             if (fs.existsSync(extractedPath)) return extractedPath;
             if (isText && fs.existsSync(rawSourcePath)) return rawSourcePath;
+            if (isText) {
+                const found = findInSubdirs(`${this.wikiRoot}/${RAW_SOURCES_DIR}`, this.filename);
+                if (found) return found;
+            }
             throw new Error("no-sidecar");
         };
 
