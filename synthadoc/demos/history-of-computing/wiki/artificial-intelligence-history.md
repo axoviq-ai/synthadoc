@@ -4,31 +4,17 @@ categories:
 - Quantum Computing & Next-Generation Paradigms
 confidence: high
 created: 2026-04-09
-lint_warnings:
-- claim: AlphaGo, 2016
- concern: AlphaGo defeated Lee Sedol in March 2016, but the original AlphaGo paper
- and earlier matches (vs. Fan Hui) were in 2015. Minor but the page implies it
- was solely a 2016 event — defensible if mentioning the famous match, but worth
- noting AlphaGo's development predates 2016.
 orphan: false
 resource: https://www.youtube.com/watch?v=cizKWUASbW0
 sources:
 - file: public-domain/mccorduck-machines-who-think.txt
- hash: placeholder
- ingested: 2026-04-09
- size: 0
+  hash: placeholder
+  ingested: 2026-04-09
+  size: 0
 - file: https://www.youtube.com/watch?v=cizKWUASbW0
- hash: 0b35df51601160a9565c13804ebeeed4177ffd700c09676c7595c63f7286543e
- ingested: '2026-07-01'
- size: 43
-- file: C:\Users\ladmin\wikis\history-of-computing\raw_sources\public-domain\mccorduck-machines-who-think.txt
- hash: dfa2dd545ae53d02ef3b910d7f563dd67819e87e41bd0cd27455096f189e1d13
- ingested: '2026-07-12'
- size: 7046
-- file: C:\Users\ladmin\wikis\history-of-computing\raw_sources\computing-pioneers-timeline.xlsx
- hash: f0bc39dec24b97436dd7c78e8e5c0f955c0a048614b1c78c63e286cf64263165
- ingested: '2026-07-12'
- size: 2992
+  hash: 0b35df51601160a9565c13804ebeeed4177ffd700c09676c7595c63f7286543e
+  ingested: '2026-07-01'
+  size: 43
 status: active
 tags:
 - artificial-intelligence
@@ -37,7 +23,7 @@ tags:
 - neural-networks
 title: Artificial Intelligence History
 type: concept
-updated: '2026-07-12'
+updated: '2026-07-01'
 ---
 
 # Artificial Intelligence History
@@ -71,25 +57,25 @@ The transformer architecture (Vaswani et al., 2017) — "Attention Is All You Ne
 See also: [[programming-languages-overview]] for Python's role as the dominant AI research language; [[internet-origins]] for the web-scale data that enabled deep learning.
 
 ## ELIZA and Early Chatbots (1966)
-Joseph Weizenbaum at MIT created ELIZA in 1966, one of the first chatbot programs. Written in SLIP, ELIZA simulated a Rogerian psychotherapist by pattern matching user inputs to generate responses. Despite its simplicity, ELIZA sparked lasting debates about whether machines could exhibit genuine intelligence or merely simulate understanding. ^[mccorduck-machines-who-think.txt:19-21]
+Joseph Weizenbaum at MIT created ELIZA in 1966, one of the first chatbot programs. Written in SLIP, ELIZA simulated a Rogerian psychotherapist by pattern matching user inputs to generate responses. Despite its simplicity, ELIZA sparked lasting debates about whether machines could exhibit genuine intelligence or merely simulate understanding.
 
 ## AI Winters (1970s–1980s)
-The field experienced significant setbacks known as "AI winters" — periods of reduced funding and public disappointment after initial optimism failed to deliver on ambitious promises. Early AI systems like Samuel's checkers program and McCarthy'sAdvice Taker demonstrated potential but faced fundamental limitations in representation, reasoning, and scalability. ^[mccorduck-machines-who-think.txt:25-27]
+The field experienced significant setbacks known as "AI winters" — periods of reduced funding and public disappointment after initial optimism failed to deliver on ambitious promises. Early AI systems like Samuel's checkers program and McCarthy'sAdvice Taker demonstrated potential but faced fundamental limitations in representation, reasoning, and scalability.
 
 ## Deep Learning Breakthrough
-Modern AI resurgence began around the 2010s with deep learning — neural networks with multiple layers capable of learning hierarchical representations from raw data. Enabled by increased computational power (GPUs) and massive datasets, deep learning achieved breakthroughs in image recognition, natural language processing, and game playing, fundamentally transforming the field's capabilities and applications. ^[mccorduck-machines-who-think.txt:39-40]
+Modern AI resurgence began around the 2010s with deep learning — neural networks with multiple layers capable of learning hierarchical representations from raw data. Enabled by increased computational power (GPUs) and massive datasets, deep learning achieved breakthroughs in image recognition, natural language processing, and game playing, fundamentally transforming the field's capabilities and applications.
 
 ## Early Programs and Limitations
 
-One of the most notable early AI programs was eliza (1964-1966), created by Joseph Weizenbaum at MIT. ELIZA simulated conversation using pattern-matching techniques, particularly mimicking a Rogerian psychotherapist. Despite its simplicity, ELIZA demonstrated both the appeal of machine intelligence and its significant limitations—users often attributed understanding to the program that did not actually exist. ^[mccorduck-machines-who-think.txt:19-21]
+One of the most notable early AI programs was eliza (1964-1966), created by Joseph Weizenbaum at MIT. ELIZA simulated conversation using pattern-matching techniques, particularly mimicking a Rogerian psychotherapist. Despite its simplicity, ELIZA demonstrated both the appeal of machine intelligence and its significant limitations—users often attributed understanding to the program that did not actually exist.
 
 ## Statistical Revival and Machine Learning
 
-Following the AI winters—periods of reduced funding and interest due to overhyped expectations—AI research experienced a revival through statistical and probabilistic approaches in the 1980s and 1990s. This shift toward data-driven methods laid groundwork for modern machine learning. ^[mccorduck-machines-who-think.txt:31-35]
+Following the AI winters—periods of reduced funding and interest due to overhyped expectations—AI research experienced a revival through statistical and probabilistic approaches in the 1980s and 1990s. This shift toward data-driven methods laid groundwork for modern machine learning.
 
 ## Deep Learning Breakthroughs
 
-The 2010s witnessed transformative breakthroughs through deep learning, where neural networks with multiple layers achieved unprecedented results in image recognition, natural language processing, and game playing. These advances built upon earlier theoretical foundations while enabling practical applications far beyond earlier capabilities.^[mccorduck-machines-who-think.txt:39-41]
+The 2010s witnessed transformative breakthroughs through deep learning, where neural networks with multiple layers achieved unprecedented results in image recognition, natural language processing, and game playing. These advances built upon earlier theoretical foundations while enabling practical applications far beyond earlier capabilities.
 
 ## Early Breakthroughs: ELIZA and Joseph Weizenbaum
 
@@ -101,22 +87,22 @@ After the AI winters, the field experienced a revival through statistical and ma
 
 ## Early AI Programs and the First AI Winter
 
-Following the Dartmouth Conference, early AI research produced notable programs such as joseph-weizenbaum's ELIZA (1966), a natural language processing program that simulated a Rogerian psychotherapist. ^[mccorduck-machines-who-think.txt:19-21] Despite initial optimism, the field encountered its first "AI winter" in the 1970s, when funding and interest declined due to unmet expectations and technical limitations. ^[mccorduck-machines-who-think.txt:25-27]
+Following the Dartmouth Conference, early AI research produced notable programs such as joseph-weizenbaum's ELIZA (1966), a natural language processing program that simulated a Rogerian psychotherapist. Despite initial optimism, the field encountered its first "AI winter" in the 1970s, when funding and interest declined due to unmet expectations and technical limitations.
 
 ## Early AI Programs
 
 ### Logic Theorist (1956)
-Allen Newell, Herbert Simon, and J.C. Shaw developed the Logic Theorist, the first AI program to prove mathematical theorems. It successfully proved 38 of the first 52 theorems in Principia Mathematica, marking one of the earliest successful demonstrations of AI reasoning. ^[mccorduck-machines-who-think.txt:15-15]
+Allen Newell, Herbert Simon, and J.C. Shaw developed the Logic Theorist, the first AI program to prove mathematical theorems. It successfully proved 38 of the first 52 theorems in Principia Mathematica, marking one of the earliest successful demonstrations of AI reasoning.
 
 ### General Problem Solver (GPS)
-Also created by Newell and Simon in 1957, GPS was designed to mimic human problem-solving approaches. It represented problems as state-space searches and used means-ends analysis, introducing foundational concepts in heuristic search that influenced AI research for decades. ^[mccorduck-machines-who-think.txt:15-15]
+Also created by Newell and Simon in 1957, GPS was designed to mimic human problem-solving approaches. It represented problems as state-space searches and used means-ends analysis, introducing foundational concepts in heuristic search that influenced AI research for decades.
 
 ### ELIZA (1966)
-Joseph Weizenbaum at MIT created ELIZA, a natural language processing program that simulated conversation through pattern matching. Originally designed as a therapeutic chatbot mimicking a Rogerian psychotherapist, ELIZA demonstrated early capabilities in human-computer dialogue and became a landmark in natural language AI research. ^[mccorduck-machines-who-think.txt:19-20]
+Joseph Weizenbaum at MIT created ELIZA, a natural language processing program that simulated conversation through pattern matching. Originally designed as a therapeutic chatbot mimicking a Rogerian psychotherapist, ELIZA demonstrated early capabilities in human-computer dialogue and became a landmark in natural language AI research.
 
 ## First AI Winter (1974–1980)
 
-The first AI winter followed a period of unmet expectations. Despite early optimism after Dartmouth and initial successes with Logic Theorist and GPS, AI systems proved limited in handling real-world complexity. Funding agencies (particularly ARPA and UK research councils) reduced investments as practical applications failed to materialize at scale. The field experienced reduced research activity and publication rates, though key research continued in select laboratories. This period highlighted the gap between AI's theoretical promises and the computational resources needed to achieve them. ^[mccorduck-machines-who-think.txt:25-27]
+The first AI winter followed a period of unmet expectations. Despite early optimism after Dartmouth and initial successes with Logic Theorist and GPS, AI systems proved limited in handling real-world complexity. Funding agencies (particularly ARPA and UK research councils) reduced investments as practical applications failed to materialize at scale. The field experienced reduced research activity and publication rates, though key research continued in select laboratories. This period highlighted the gap between AI's theoretical promises and the computational resources needed to achieve them.
 
 ## Key Figures Added
 
@@ -142,39 +128,39 @@ These early successes were followed by growing skepticism as promises outpaced c
 
 ## Early AI Programs and the First AI Winter
 
-Following the dartmouth-conference, early AI research produced several landmark programs that demonstrated the potential — and limits — of machine intelligence. Allen Newell and Herbert Simon developed the **Logic Theorist** (1955), often considered the first AI program, which proved mathematical theorems from Bertrand Russell and Alfred North Whitehead's *Principia Mathematica*. Their follow-up, the **General Problem Solver** (GPS), extended this approach by attempting to model human problem-solving as search through a space of possible states. ^[mccorduck-machines-who-think.txt:15-15]
+Following the dartmouth-conference, early AI research produced several landmark programs that demonstrated the potential — and limits — of machine intelligence. Allen Newell and Herbert Simon developed the **Logic Theorist** (1955), often considered the first AI program, which proved mathematical theorems from Bertrand Russell and Alfred North Whitehead's *Principia Mathematica*. Their follow-up, the **General Problem Solver** (GPS), extended this approach by attempting to model human problem-solving as search through a space of possible states.
 
-**ELIZA** (1964–1966), created by Joseph Weizenbaum at MIT, was one of the most famous early chatbots. It simulated a Rogerian psychotherapist by rephrasing user inputs as questions, and its surprisingly human-like responses led some users to attribute genuine understanding to the program — a phenomenon Weizenbaum himself found troubling and used to critique the overreach of AI claims. ^[mccorduck-machines-who-think.txt:19-21]
+**ELIZA** (1964–1966), created by Joseph Weizenbaum at MIT, was one of the most famous early chatbots. It simulated a Rogerian psychotherapist by rephrasing user inputs as questions, and its surprisingly human-like responses led some users to attribute genuine understanding to the program — a phenomenon Weizenbaum himself found troubling and used to critique the overreach of AI claims.
 
-These early successes fueled waves of optimism that the field would quickly achieve general machine intelligence. When that promise failed to materialize, funding dried up and the field entered the **first AI winter** in the 1970s, as government agencies and researchers grew disillusioned with the gap between ambitious predictions and practical results. ^[mccorduck-machines-who-think.txt:25-25] This cycle of optimism, disillusionment, and methodological recalibration — from symbolic search to expert systems, statistical methods, and ultimately deep learning — has recurred throughout the history of [[artificial-intelligence-history]] and continues to shape the field today. ^[mccorduck-machines-who-think.txt:3-3]
+These early successes fueled waves of optimism that the field would quickly achieve general machine intelligence. When that promise failed to materialize, funding dried up and the field entered the **first AI winter** in the 1970s, as government agencies and researchers grew disillusioned with the gap between ambitious predictions and practical results. This cycle of optimism, disillusionment, and methodological recalibration — from symbolic search to expert systems, statistical methods, and ultimately deep learning — has recurred throughout the history of [[artificial-intelligence-history]] and continues to shape the field today.
 
 ## Early NLP and Symbolic Systems
 
-Before the first AI winter, natural language processing emerged as a prominent subfield. joseph-weizenbaum created eliza (1964–1966) at MIT, one of the earliest chatbots. ELIZA simulated a Rogerian psychotherapist by pattern-matching user input against scripted rules, and it famously convinced some users that the program genuinely understood them — a vivid early illustration of the gap between AI expectations and actual capabilities.^[mccorduck-machines-who-think.txt:19-21]
+Before the first AI winter, natural language processing emerged as a prominent subfield. joseph-weizenbaum created eliza (1964–1966) at MIT, one of the earliest chatbots. ELIZA simulated a Rogerian psychotherapist by pattern-matching user input against scripted rules, and it famously convinced some users that the program genuinely understood them — a vivid early illustration of the gap between AI expectations and actual capabilities.
 
 ## First AI Winter (mid-1970s–1980s)
 
-The field entered its first "AI winter," a period of reduced funding and diminished public interest. Overly optimistic promises from the 1960s collided with the limitations of symbolic approaches, the difficulty of scaling commonsense knowledge, and the brittleness of rule-based systems. Government agencies in both the US and UK cut research budgets, and commercial interest in AI products waned. The episode became a cautionary lesson about the cyclical pattern of inflated expectations followed by disillusionment that has recurred throughout AI's history.^[mccorduck-machines-who-think.txt:25-27]
+The field entered its first "AI winter," a period of reduced funding and diminished public interest. Overly optimistic promises from the 1960s collided with the limitations of symbolic approaches, the difficulty of scaling commonsense knowledge, and the brittleness of rule-based systems. Government agencies in both the US and UK cut research budgets, and commercial interest in AI products waned. The episode became a cautionary lesson about the cyclical pattern of inflated expectations followed by disillusionment that has recurred throughout AI's history.
 
 ## Symbolic to Statistical and Deep Learning
 
-The long recovery from the first AI winter included the gradual displacement of purely symbolic approaches by statistical methods. By the 1990s, techniques such as hidden Markov models, Bayesian networks, and support vector machines dominated subfields like speech recognition and machine translation. This statistical turn paved the way for the deep learning revolution of the 2010s, where multilayer neural networks trained on large datasets produced breakthroughs in image recognition, game playing, and language modeling — echoing themes first explored at the dartmouth-conference and foreshadowed by [[alan-turing]]'s 1950 paper.^[mccorduck-machines-who-think.txt:39-41]
+The long recovery from the first AI winter included the gradual displacement of purely symbolic approaches by statistical methods. By the 1990s, techniques such as hidden Markov models, Bayesian networks, and support vector machines dominated subfields like speech recognition and machine translation. This statistical turn paved the way for the deep learning revolution of the 2010s, where multilayer neural networks trained on large datasets produced breakthroughs in image recognition, game playing, and language modeling — echoing themes first explored at the dartmouth-conference and foreshadowed by [[alan-turing]]'s 1950 paper.
 
 ## Additional Pioneers
 
-Beyond the four organisers of dartmouth-conference, early AI was shaped by allen-newell and herbert-simon, who developed the Logic Theorist (1956) and General Problem Solver (1957). Newell and Simon championed the view that cognition could be understood as symbol manipulation, founding an influential research programme in cognitive science and earning Simon the 1975 Turing Award.^[mccorduck-machines-who-think.txt:15-15]
+Beyond the four organisers of dartmouth-conference, early AI was shaped by allen-newell and herbert-simon, who developed the Logic Theorist (1956) and General Problem Solver (1957). Newell and Simon championed the view that cognition could be understood as symbol manipulation, founding an influential research programme in cognitive science and earning Simon the 1975 Turing Award.
 
 ## Early Milestones and Programs
 
-Following the [[alan-turing|1950 Turing Test proposal]], several landmark programs and systems demonstrated the early ambitions of the field. The **Logic Theorist**, created by Allen Newell and Herbert Simon in 1955, is often cited as the first true AI program — it proved mathematical theorems from Principia Mathematica using heuristic search. ^[mccorduck-machines-who-think.txt:7-15] **ELIZA**, built by joseph-weizenbaum at MIT in 1964–1966, was an early natural language processing program that simulated a Rogerian psychotherapist. ^[mccorduck-machines-who-think.txt:19-21] Despite Weizenbaum's own warnings about its superficiality, ELIZA famously convinced many users that the machine understood them, foreshadowing modern debates about machine intelligence and anthropomorphism. ^[mccorduck-machines-who-think.txt:19-21]
+Following the [[alan-turing|1950 Turing Test proposal]], several landmark programs and systems demonstrated the early ambitions of the field. The **Logic Theorist**, created by Allen Newell and Herbert Simon in 1955, is often cited as the first true AI program — it proved mathematical theorems from Principia Mathematica using heuristic search. **ELIZA**, built by joseph-weizenbaum at MIT in 1964–1966, was an early natural language processing program that simulated a Rogerian psychotherapist. Despite Weizenbaum's own warnings about its superficiality, ELIZA famously convinced many users that the machine understood them, foreshadowing modern debates about machine intelligence and anthropomorphism.
 
 ## The Recurring Cycle: AI Winters and Revivals
 
-AI's history is defined by a recurring pattern of **optimism, funding booms, disillusionment, and 'AI winters'** — periods of sharply reduced research funding and commercial interest after expectations outpaced results. ^[mccorduck-machines-who-think.txt:3-3] The first major winter occurred in the mid-1970s after critiques (notably the Lighthill Report in the UK) highlighted the limitations of then-current approaches. ^[mccorduck-machines-who-think.txt:25-27] A second winter followed in the late 1980s after the collapse of the expert-systems market. ^[mccorduck-machines-who-think.txt:35-35] Each winter was followed by a revival driven by new paradigms: expert systems in the 1980s, statistical machine learning in the 1990s and 2000s, and **deep learning** from the 2010s onward, fueled by large datasets, GPU computing, and breakthroughs in neural network training. ^[mccorduck-machines-who-think.txt:31-41]
+AI's history is defined by a recurring pattern of **optimism, funding booms, disillusionment, and 'AI winters'** — periods of sharply reduced research funding and commercial interest after expectations outpaced results. The first major winter occurred in the mid-1970s after critiques (notably the Lighthill Report in the UK) highlighted the limitations of then-current approaches. A second winter followed in the late 1980s after the collapse of the expert-systems market. Each winter was followed by a revival driven by new paradigms: expert systems in the 1980s, statistical machine learning in the 1990s and 2000s, and **deep learning** from the 2010s onward, fueled by large datasets, GPU computing, and breakthroughs in neural network training.
 
 ## Philosophical Framing
 
-From the outset, AI has been shaped by a deep philosophical question posed by [[alan-turing]] in 1950: *"Can machines think?* ^[mccorduck-machines-who-think.txt:7-9] The Dartmouth Conference participants — john-mccarthy, marvin-minsky, claude-shannon, and nathaniel-rochester — framed this as an engineering challenge, predicting that significant progress could be made within a generation. ^[mccorduck-machines-who-think.txt:13-13] The tension between Turing's behavioral framing (the imitation game) and the Dartmouth school's representational-symbol-manipulation view continues to influence modern debates between symbolic AI, connectionism, and large language models. ^[mccorduck-machines-who-think.txt:9-15]
+From the outset, AI has been shaped by a deep philosophical question posed by [[alan-turing]] in 1950: *"Can machines think?* The Dartmouth Conference participants — john-mccarthy, marvin-minsky, claude-shannon, and nathaniel-rochester — framed this as an engineering challenge, predicting that significant progress could be made within a generation. The tension between Turing's behavioral framing (the imitation game) and the Dartmouth school's representational-symbol-manipulation view continues to influence modern debates between symbolic AI, connectionism, and large language models.
 
 ## Early AI Programs (1955–1966)
 
@@ -182,19 +168,19 @@ Several landmark programs demonstrated that machines could perform tasks previou
 
 ### Logic Theorist (1955)
 
-Developed by allen-newell and herbert-simon (with J. C. Shaw), Logic Theorist is often considered the first true AI program. It proved mathematical theorems from Whitehead and Russell's *Principia Mathematica* by heuristic search rather than brute-force enumeration, foreshadowing search-based approaches that would dominate the field.^[mccorduck-machines-who-think.txt:15-15]
+Developed by allen-newell and herbert-simon (with J. C. Shaw), Logic Theorist is often considered the first true AI program. It proved mathematical theorems from Whitehead and Russell's *Principia Mathematica* by heuristic search rather than brute-force enumeration, foreshadowing search-based approaches that would dominate the field.
 
 ### General Problem Solver (1957)
 
-Also by allen-newell and herbert-simon, the General Problem Solver (GPS) generalized the means–ends analysis approach used in Logic Theorist. It attempted to solve a wide class of formally stated problems, making it one of the first attempts at domain-independent reasoning.^[mccorduck-machines-who-think.txt:15-15]
+Also by allen-newell and herbert-simon, the General Problem Solver (GPS) generalized the means–ends analysis approach used in Logic Theorist. It attempted to solve a wide class of formally stated problems, making it one of the first attempts at domain-independent reasoning.
 
 ### ELIZA (1964–1966)
 
-Created by joseph-weizenbaum at mit, ELIZA was an early natural-language program that simulated a Rogerian psychotherapist. By simple pattern matching and substitution, ELIZA produced surprisingly convincing dialogue, leading Weizenbaum himself to warn about the dangers of confusing apparent intelligence with genuine understanding — a tension that recurs throughout AI history.^[mccorduck-machines-who-think.txt:19-21]
+Created by joseph-weizenbaum at mit, ELIZA was an early natural-language program that simulated a Rogerian psychotherapist. By simple pattern matching and substitution, ELIZA produced surprisingly convincing dialogue, leading Weizenbaum himself to warn about the dangers of confusing apparent intelligence with genuine understanding — a tension that recurs throughout AI history.
 
 ## The First AI Winter (mid-1970s–early 1980s)
 
-Following the collapse of the perceptron-based connectionist program (Minsky and Papert, 1969), a 1973 Lighthill Report commissioned by the British government was highly critical of AI's progress, and DARPA cut back funding after years of unmet expectations. This convergence of academic critique, loss of institutional support, and a sense that AI had overpromised produced the **first AI winter** — a period of reduced funding and waning interest in the field, in which research continued in less visible corners but public optimism collapsed.^[mccorduck-machines-who-think.txt:25-27] The pattern of optimism, disappointment, and retrenchment would repeat in later decades as well.
+Following the collapse of the perceptron-based connectionist program (Minsky and Papert, 1969), a 1973 Lighthill Report commissioned by the British government was highly critical of AI's progress, and DARPA cut back funding after years of unmet expectations. This convergence of academic critique, loss of institutional support, and a sense that AI had overpromised produced the **first AI winter** — a period of reduced funding and waning interest in the field, in which research continued in less visible corners but public optimism collapsed. The pattern of optimism, disappointment, and retrenchment would repeat in later decades as well.
 
 ## Early AI Programs and NLP (1950s–1960s)
 
@@ -243,78 +229,4 @@ After initial enthusiasm, the field entered its first "AI winter" in the 1970s. 
 
 ## Andrew Ng and the Democratization of AI Education
 
-Andrew Ng has played a pivotal role in making artificial intelligence and machine learning accessible to a global audience. As co-founder of coursera, founder of DeepLearning.AI, and partner at AI Fund, Ng combined an accessible teaching approach with strategic backing from Sequoia Capital to help democratize AI knowledge worldwide. His widely adopted online courses became entry points for many into the field of AI, building on the educational legacy that followed from early AI research as discussed in the computing-history-timeline.
-
-## ELIZA and Early Natural Language Processing (1966)
-
-In 1966, joseph-weizenbaum at MIT created ELIZA, a program that simulated a Rogerian psychotherapist by reflecting user statements back as questions. ELIZA operated by pattern matching and template substitution, with no understanding of language semantics. Users nevertheless attributed understanding and empathy to ELIZA — a phenomenon Weizenbaum found troubling and later argued against in *Computer Power and Human Reason* (1976). ^[mccorduck-machines-who-think.txt:19-21]
-
-## First AI Winter (1974–1980)
-
-By the early 1970s, the gap between AI researchers' predictions and their systems' performance had become impossible to ignore. The Lighthill Report (1973), commissioned by the British Science Research Council, concluded that AI had failed to produce promised general-purpose intelligent systems, leading to drastic UK funding cuts. DARPA similarly cut funding for speech recognition and machine translation after judging progress insufficient. This period of reduced funding and dampened expectations is known as the first AI winter. ^[mccorduck-machines-who-think.txt:25-27]
-
-## Expert Systems and the Second AI Winter (1980s–early 1990s)
-
-The 1980s saw a commercial revival through expert systems — programs encoding domain knowledge as large sets of condition-action rules. XCON, developed for Digital Equipment Corporation by John McDermott from 1978, configured VAX computer orders using thousands of rules and saved DEC millions annually by the mid-1980s. A commercial AI industry grew around LISP machines from companies like Symbolics and LISP Machines Inc. The Japanese Fifth Generation Computer project (1982) aimed to build massively parallel AI hardware. ^[mccorduck-machines-who-think.txt:31-33]
-
-The boom collapsed in the late 1980s. LISP machines were displaced by commodity workstations, and expert systems proved brittle and expensive to maintain. The second AI winter brought renewed funding cuts. ^[mccorduck-machines-who-think.txt:35-35]
-
-## Neural Networks and the Statistical Turn
-
-In 1986, David Rumelhart, Geoffrey Hinton, and Ronald Williams published a clear exposition of the backpropagation algorithm for training multi-layer neural networks, demonstrating that networks with hidden layers could learn internal representations beyond what single-layer perceptrons could achieve. Through the 1990s and 2000s, the field shifted from symbolic AI toward statistical machine learning, incorporating Support Vector Machines (Vladimir Vapnik), random forests, ensemble methods, and kernel methods. ^[mccorduck-machines-who-think.txt:39-41]
-
-## Deep Learning Breakthrough
-
-In 2012, AlexNet — a convolutional neural network developed by Alex Krizhevsky, Ilya Sutskever, and Geoffrey Hinton at the University of Toronto — won the ImageNet Large Scale Visual Recognition Challenge by a dramatic margin. Its success relied on GPU hardware for training, large labelled datasets, and architectural advances like the ReLU activation function and dropout regularisation. Deep learning rapidly achieved state-of-the-art results in speech recognition, machine translation, and game playing; DeepMind's AlphaGo defeated the world Go champion in 2016. Large language models built on the transformer architecture (introduced 2017) brought AI capabilities into text generation and code completion at scales that returned [[alan-turing]]'s 1950 question to the centre of public discourse. ^[mccorduck-machines-who-think.txt:45-49]
-
-## Key Computing History Timeline (Cross-Reference)
-
-The following milestones form the backbone of computing history and are detailed across this wiki:
-
-- **1843** — [[ada-lovelace]] publishes the first algorithm intended for machine execution on Babbage's Analytical Engine, introducing loops and conditionals. ^[computing-pioneers-timeline.xlsx:3-3]
-- **1936** — [[alan-turing]] publishes *On Computable Numbers*, defining the Turing machine and proving the halting problem is undecidable. ^[computing-pioneers-timeline.xlsx:4-4]
-- **1945** — [[von-neumann-architecture]] is described in the *First Draft of a Report on EDVAC*, establishing the stored-program model. ^[computing-pioneers-timeline.xlsx:5-5]
-- **1947** — The transistor is invented at Bell Laboratories by Shockley, Bardeen, and Brattain, enabling miniaturisation. ^[computing-pioneers-timeline.xlsx:6-6]
-- **1952** — Grace Hopper develops the A-0 system (subroutine library and loader for UNIVAC), a precursor concept to compilers. ^[computing-pioneers-timeline.xlsx:7-7]
-- **1957** — John Backus and IBM release the FORTRAN compiler, the first high-level language compiler. ^[computing-pioneers-timeline.xlsx:8-8]
-- **1969** — [[ken-thompson]] and [[dennis-ritchie]] create Unix at Bell Labs. ^[computing-pioneers-timeline.xlsx:9-9]
-- **1971** — Intel releases the 4004, the first commercial microprocessor (designed by Federico Faggin). ^[computing-pioneers-timeline.xlsx:10-10]
-- **1975** — The Altair 8800 triggers the personal computer revolution. ^[computing-pioneers-timeline.xlsx:11-11]
-- **1983** — [[richard-stallman]] founds the GNU Project, launching the free software movement. ^[computing-pioneers-timeline.xlsx:12-12]
-- **1991** — [[linus-torvalds]] releases the Linux kernel. ^[computing-pioneers-timeline.xlsx:13-13]
-- **2006** — [[geoffrey-hinton]]'s deep learning pretraining breakthrough unlocks practical deep neural networks, leading to the modern LLM era. ^[computing-pioneers-timeline.xlsx:14-14]
-
-### Key Figures at a Glance
-
-- **[[ada-lovelace]]** (1815–1852, British) — First algorithm; visionary of general-purpose computing. ^[computing-pioneers-timeline.xlsx:17-17]
-- **[[alan-turing]]** (1912–1954, British) — Computation theory; Enigma decryption; AI foundations. ^[computing-pioneers-timeline.xlsx:18-18]
-- **John von Neumann** (1903–1957, Hungarian-American) — Stored-program architecture; game theory. ^[computing-pioneers-timeline.xlsx:19-19]
-- **Grace Hopper** (1906–1992, American) — FLOW-MATIC; COBOL; human-readable programming advocacy. ^[computing-pioneers-timeline.xlsx:20-20]
-- **John Backus** (1924–2007, American) — FORTRAN; Backus-Naur Form (BNF) grammar notation. ^[computing-pioneers-timeline.xlsx:21-21]
-- **Ken Thompson** (b. 1943, American) — Unix; B language; UTF-8; Go language. ^[computing-pioneers-timeline.xlsx:22-22]
-- **[[dennis-ritchie]]** (1941–2011, American) — C language; Unix co-creator. ^[computing-pioneers-timeline.xlsx:23-23]
-- **[[linus-torvalds]]** (b. 1969, Finnish) — Linux kernel; Git version control. ^[computing-pioneers-timeline.xlsx:24-24]
-- **[[richard-stallman]]** (b. 1953, American) — GNU Project; GPL licence; free software philosophy. ^[computing-pioneers-timeline.xlsx:25-25]
-- **[[geoffrey-hinton]]** (b. 1947, British-Canadian) — Deep learning; backpropagation; Boltzmann machines. ^[computing-pioneers-timeline.xlsx:26-26]
-
-## ELIZA and Early Natural Language Processing (1966)
-
-In 1966, [[joseph-weizenbaum]] at MIT created ELIZA, a program that simulated a Rogerian psychotherapist by reflecting user statements back as questions. ELIZA operated by pattern matching and template substitution, with no understanding of language semantics. Nevertheless, users attributed understanding and empathy to ELIZA — a phenomenon Weizenbaum found troubling. He later wrote *Computer Power and Human Reason* (1976), arguing against attributing understanding to machines. ELIZA demonstrated both the susceptibility of humans to the appearance of intelligence and the limits of surface-level language processing. ^[mccorduck-machines-who-think.txt:19-21]
-
-## First AI Winter (1974–1980)
-
-By the early 1970s, the gap between AI researchers' predictions and their systems' performance had become difficult to ignore. Programs that succeeded on carefully crafted problems failed on the full complexity of real-world tasks. The **Lighthill Report** (1973), commissioned by the British Science Research Council, reviewed AI research and concluded that it had failed to produce the promised general-purpose intelligent systems. Funding in the United Kingdom was drastically reduced. In the United States, DARPA cut funding for speech recognition and machine translation research after concluding that progress had been insufficient. ^[mccorduck-machines-who-think.txt:25-27]
-
-## Expert Systems and the Second AI Winter (1980s)
-
-The 1980s saw a commercial revival of AI through expert systems — programs that encoded domain expert knowledge as large sets of condition-action rules. **XCON** (eXpert CONfigurer), developed for Digital Equipment Corporation by John McDermott beginning in 1978, configured VAX computer orders by applying thousands of rules and saved DEC millions of dollars annually. Expert systems were deployed in medicine, financial analysis, and equipment diagnosis. A commercial AI industry grew around **LISP machines** — special-purpose hardware optimised for the LISP language — with companies like Symbolics and LISP Machines Inc. selling AI workstations. The Japanese **Fifth Generation Computer project** (1982) aimed to build massively parallel AI hardware. ^[mccorduck-machines-who-think.txt:31-33]
-
-The commercial boom collapsed in the late 1980s. LISP machine hardware was displaced by commodity workstations, and expert systems proved expensive to maintain — rules needed constant updating and systems were brittle outside their designed parameters. The second AI winter brought another round of funding cuts. ^[mccorduck-machines-who-think.txt:35-35]
-
-## Neural Networks and the Statistical Turn
-
-The intellectual groundwork for the neural network revival was laid in 1986, when David Rumelhart, Geoffrey Hinton, and Ronald Williams published a clear exposition of the **backpropagation** algorithm for training multi-layer neural networks, demonstrating that networks with hidden layers could learn internal representations that single-layer perceptrons could not. Through the 1990s and 2000s the field shifted from symbolic AI to statistical machine learning. Support Vector Machines (Vapnik, 1990s), random forests, ensemble methods, and kernel methods all contributed to practical applications. ^[mccorduck-machines-who-think.txt:39-41]
-
-## Deep Learning Breakthrough (2012–)
-
-In 2012, a convolutional neural network called **AlexNet**, developed by Alex Krizhevsky, Ilya Sutskever, and Geoffrey Hinton at the University of Toronto, won the ImageNet Large Scale Visual Recognition Challenge by a margin that shocked the computer vision community. Its success rested on GPU hardware for training, large labelled datasets, and architectural advances such as the ReLU activation function and dropout regularisation. Deep learning rapidly achieved state-of-the-art performance in speech recognition, machine translation, and game playing. DeepMind's **AlphaGo** defeated the world Go champion in 2016 — a
+Andrew Ng has played a pivotal role in making artificial intelligence and machine learning accessible to a global audience. As co-founder of coursera, founder of DeepLearning.AI, and partner at AI Fund, Ng combined an accessible teaching approach with strategic backing from Sequoia Capital to help democratize AI knowledge worldwide. His widely adopted online courses became entry points for many into the field of AI, building on the educational legacy that followed from early AI research as discussed in the [[computing-history-timeline]].
