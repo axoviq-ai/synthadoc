@@ -30,3 +30,10 @@ sources: []
 ## Platforms and AI
 - [[personal-computer-revolution]] — Altair, Apple II, IBM PC, and the GUI
 - [[artificial-intelligence-history]] — Dartmouth to deep learning and large language models
+
+## Recently Added
+- [[microprocessor]] — Microprocessor
+- [[konrad-zuse]] — Konrad Zuse
+- [[ada-lovelace]] — Ada Lovelace
+- [[eniac]] — ENIAC
+- [[quantum-computing-history]] — Quantum Computing History
