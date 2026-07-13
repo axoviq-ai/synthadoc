@@ -6,10 +6,10 @@ confidence: high
 created: 2026-05-09
 orphan: false
 sources:
-- file: ai-fundamentals-overview.md
-  hash: a3f8c2d1e4b9071652340abc98def765a3f8c2d1e4b9071652340abc98def765
-  ingested: '2026-05-09'
-  size: 3847
+- file: public-domain/transformer-architecture.txt
+  hash: placeholder
+  ingested: '2026-04-08'
+  size: 0
 status: active
 tags:
 - architecture
@@ -18,7 +18,7 @@ tags:
 - nlp
 title: Transformer Architecture
 type: technology
-updated: '2026-06-27'
+updated: '2026-07-12'
 ---
 
 # Transformer Architecture
@@ -68,41 +68,64 @@ rotary positional embeddings (RoPE) for better length generalisation.
 
 ## Why Transformers Replaced RNNs
 
-The [[transformer-architecture]] displaced recurrent-neural-networks as the dominant approach for sequence modelling because its self-attention mechanism enables parallel processing of all sequence positions simultaneously. ^[transformer-architecture.txt:7-7] This eliminated two long-standing problems with recurrent architectures:
+The [[transformer-architecture]] displaced recurrent-neural-networks as the dominant approach for sequence modelling because its self-attention mechanism enables parallel processing of all sequence positions simultaneously. This eliminated two long-standing problems with recurrent architectures:
 
-1. **Sequential computation bottleneck** — RNNs process tokens one at a time in order, preventing the parallelisation that GPUs could otherwise exploit. Transformers compute all positions in parallel, dramatically improving training throughput. ^[transformer-architecture.txt:7-7]
-2. **Vanishing and exploding gradients** — information had to propagate across many sequential steps in an RNN, making it difficult to learn long-range dependencies. Self-attention provides direct (O(1)) connections between any two positions in the sequence. ^[transformer-architecture.txt:7-7]
+1. **Sequential computation bottleneck** — RNNs process tokens one at a time in order, preventing the parallelisation that GPUs could otherwise exploit. Transformers compute all positions in parallel, dramatically improving training throughput.
+2. **Vanishing and exploding gradients** — information had to propagate across many sequential steps in an RNN, making it difficult to learn long-range dependencies. Self-attention provides direct (O(1)) connections between any two positions in the sequence.
 
-These advantages made transformers the practical foundation for scaling to the large parameter counts and dataset sizes underlying modern [[large-language-models]]. ^[transformer-architecture.txt:3-3] The original architecture was introduced by vaswani-et-al at google-brain in the 2017 paper *Attention Is All You Need*. ^[transformer-architecture.txt:3-3]
+These advantages made transformers the practical foundation for scaling to the large parameter counts and dataset sizes underlying modern [[large-language-models]]. The original architecture was introduced by vaswani-et-al at google-brain in the 2017 paper *Attention Is All You Need*.
 
 ## Architectural Origins
 
-The transformer was introduced in 2017 by Vaswani et al. in the paper *Attention Is All You Need*, produced by google-brain (Google Brain) and Google Research. ^[transformer-architecture.txt:3] It was built around a self-attention-mechanism that processes sequences in parallel rather than sequentially, replacing [[early-neural-networks|RNNs]] as the dominant approach for sequence modelling. ^[transformer-architecture.txt:3]
+The transformer was introduced in 2017 by Vaswani et al. in the paper *Attention Is All You Need*, produced by google-brain (Google Brain) and Google Research. It was built around a self-attention-mechanism that processes sequences in parallel rather than sequentially, replacing [[early-neural-networks|RNNs]] as the dominant approach for sequence modelling.
 
 ## Key Structural Elements
 
-The architecture is composed of several interlocking components: ^[transformer-architecture.txt:11]
+The architecture is composed of several interlocking components:
 
-- **Encoder-decoder structure** — the original design used both an encoder and a decoder, though many modern descendants use only one half. ^[transformer-architecture.txt:11]
-- **Multi-head attention** — multiple attention operations run in parallel, allowing the model to attend to information from different representation subspaces simultaneously. ^[transformer-architecture.txt:27]
-- **Feedforward sublayers** — position-wise fully connected layers applied after attention. ^[transformer-architecture.txt:31]
-- **Positional encodings** — sinusoidal or learned vectors injected to give the model information about token order, since attention itself is permutation-invariant. ^[transformer-architecture.txt:15]
+- **Encoder-decoder structure** — the original design used both an encoder and a decoder, though many modern descendants use only one half.
+- **Multi-head attention** — multiple attention operations run in parallel, allowing the model to attend to information from different representation subspaces simultaneously.
+- **Feedforward sublayers** — position-wise fully connected layers applied after attention.
+- **Positional encodings** — sinusoidal or learned vectors injected to give the model information about token order, since attention itself is permutation-invariant.
 
-The transformer became the foundation for nearly all modern [[large-language-models]], including the GPT and BERT families. ^[transformer-architecture.txt:3]
+The transformer became the foundation for nearly all modern [[large-language-models]], including the GPT and BERT families.
 
 ## Detailed Components
 
 **Scaled Dot-Product Attention**
-The core operation computes attention weights as softmax(QK^T / sqrt(d_k))V, where Q, K, and V are query, key, and value matrices derived from the input. The scaling factor prevents the dot products from growing too large in high dimensions and pushing the softmax into saturated regions. ^[transformer-architecture.txt:19-23]
+The core operation computes attention weights as softmax(QK^T / sqrt(d_k))V, where Q, K, and V are query, key, and value matrices derived from the input. The scaling factor prevents the dot products from growing too large in high dimensions and pushing the softmax into saturated regions.
 
 **Multi-Head Attention**
-Rather than performing a single attention function, the transformer projects Q, K, and V into multiple lower-dimensional subspaces and applies attention in parallel across h heads. Each head can learn to attend to different positions and represent different relationships. Outputs are concatenated and linearly projected. This was introduced in [[attention-mechanisms]] research and is central to the original Vaswani et al. (2017) design. ^[transformer-architecture.txt:27]
+Rather than performing a single attention function, the transformer projects Q, K, and V into multiple lower-dimensional subspaces and applies attention in parallel across h heads. Each head can learn to attend to different positions and represent different relationships. Outputs are concatenated and linearly projected. This was introduced in [[attention-mechanisms]] research and is central to the original Vaswani et al. (2017) design.
 
 **Feedforward Sublayers**
-Each encoder and decoder layer contains a position-wise feedforward network — two linear transformations with a ReLU activation in between, applied independently to each position. This provides the model with additional representational capacity beyond attention. ^[transformer-architecture.txt:31]
+Each encoder and decoder layer contains a position-wise feedforward network — two linear transformations with a ReLU activation in between, applied independently to each position. This provides the model with additional representational capacity beyond attention.
 
 **Positional Encodings**
-Because the transformer contains no recurrence or convolution, it has no inherent notion of token order. Positional encodings — sinusoidal functions of position added to input embeddings — inject sequence order information. This allows the model to distinguish permutations of the same tokens. ^[transformer-architecture.txt:15]
+Because the transformer contains no recurrence or convolution, it has no inherent notion of token order. Positional encodings — sinusoidal functions of position added to input embeddings — inject sequence order information. This allows the model to distinguish permutations of the same tokens.
 
 **Rise to Dominance**
-The transformer, developed by Vaswani et al. at Google Brain and Google Research, replaced recurrent-neural-networks (RNNs and LSTMs) as the dominant architecture for sequence modeling. Its parallelism and scalability made it the foundation for modern [[large-language-models]]. ^[transformer-architecture.txt:3]
+The transformer, developed by Vaswani et al. at Google Brain and Google Research, replaced recurrent-neural-networks (RNNs and LSTMs) as the dominant architecture for sequence modeling. Its parallelism and scalability made it the foundation for modern [[large-language-models]].
+
+## Feedforward Sublayer
+
+Each encoder and decoder layer contains a position-wise feedforward network — two linear transformations with a ReLU activation in between, applied independently to each position. The hidden dimension of the feedforward layer is typically four times the model dimension. Although described as a simple component, the feedforward sublayer contains the majority of the transformer's parameters. ^[transformer-architecture.txt:31-31]
+
+## Pre-Norm vs Post-Norm
+
+The original transformer places layer normalisation after the residual connection (post-norm). Later work found that placing layer normalisation before the sub-layer (pre-norm) improves training stability, particularly at large scale. Pre-norm has become standard in modern [[large-language-models]]. ^[transformer-architecture.txt:45-45]
+
+## Flash Attention
+
+In 2022, Dao et al. introduced Flash Attention, an exact [[attention-mechanisms]] algorithm that avoids materialising the full N×N attention matrix in GPU HBM by fusing the attention computation into a single kernel and using tiling. Flash Attention produces mathematically identical results to standard attention while using O(N) memory rather than O(N²), and is substantially faster in practice. Flash Attention 2 (2023) improved parallelism further. Flash Attention is now widely used in training large transformers. ^[transformer-architecture.txt:49-49]
+
+## Influence Beyond NLP
+
+The [[transformer-architecture]] has extended well beyond language modelling:
+
+- **Vision** — Vision Transformer (ViT, 2020) applied patch-based self-attention to image classification.
+- **Audio** — architectures such as Whisper use encoder-decoder transformers for speech recognition and translation.
+- **Biology** — AlphaFold 2 (2021) used attention-based architectures for protein structure prediction.
+- **Reinforcement learning** — the Decision Transformer and related work apply causal self-attention to sequential decision-making.
+
+The transformer's combination of scalability, parallelism, and expressiveness made it the dominant architecture of the deep learning era, serving as the foundation for nearly all [[large-language-models]]. ^[transformer-architecture.txt:53-53]

@@ -7,10 +7,10 @@ confidence: high
 created: 2026-05-09
 orphan: false
 sources:
-- file: ai-fundamentals-overview.md
-  hash: a3f8c2d1e4b9071652340abc98def765a3f8c2d1e4b9071652340abc98def765
-  ingested: '2026-05-09'
-  size: 3847
+- file: public-domain/reinforcement-learning-from-human-feedback.txt
+  hash: placeholder
+  ingested: '2026-04-08'
+  size: 0
 status: active
 tags:
 - rlhf
@@ -19,7 +19,7 @@ tags:
 - llm
 title: Reinforcement Learning from Human Feedback
 type: concept
-updated: '2026-06-27'
+updated: '2026-07-12'
 ---
 
 # Reinforcement Learning from Human Feedback
@@ -71,28 +71,46 @@ DPO (Direct Preference Optimisation) has emerged as a simpler alternative — se
 
 ## Core Problem RLHF Addresses
 
-Pre-trained language models like [[large-language-models|GPT-3]] learn statistical patterns for next-token prediction, but this objective does not inherently make them helpful, harmless, or aligned with user intent. RLHF exists to bridge this gap between *text prediction* and *genuine helpfulness*, serving as the alignment layer between a base model and its deployment in products like ChatGPT. ^[reinforcement-learning-from-human-feedback.txt:3-3]
+Pre-trained language models like [[large-language-models|GPT-3]] learn statistical patterns for next-token prediction, but this objective does not inherently make them helpful, harmless, or aligned with user intent. RLHF exists to bridge this gap between *text prediction* and *genuine helpfulness*, serving as the alignment layer between a base model and its deployment in products like ChatGPT.
 
 ## Connection to instruction-tuning
 
-Supervised fine-tuning (the first stage of RLHF) is closely related to instruction tuning — both train the model on human demonstrations of desired behaviour. Instruction tuning is sometimes used as a broader umbrella term that includes the SFT stage of the RLHF pipeline. ^[reinforcement-learning-from-human-feedback.txt:7-7]
+Supervised fine-tuning (the first stage of RLHF) is closely related to instruction tuning — both train the model on human demonstrations of desired behaviour. Instruction tuning is sometimes used as a broader umbrella term that includes the SFT stage of the RLHF pipeline.
 
 ## Technical Foundations
 
 The three stages rely on several key components:
 
-- **Supervised Fine-Tuning (SFT):** Human annotators write ideal responses that the base model is fine-tuned to imitate, establishing a baseline of helpful behaviour. ^[reinforcement-learning-from-human-feedback.txt:15]
-- **Reward Model:** A separate model is trained on human preference rankings (pairwise comparisons of model outputs) to predict which response a human would prefer. ^[reinforcement-learning-from-human-feedback.txt:17]
-- **Policy Optimisation with PPO:** The SFT model (the *policy*) is fine-tuned using proximal-policy-optimization (PPO) to maximise the reward model's score. A **KL-divergence** penalty anchors the policy close to the SFT model, preventing the model from drifting too far and producing incoherent text in pursuit of high reward. ^[reinforcement-learning-from-human-feedback.txt:19]
+- **Supervised Fine-Tuning (SFT):** Human annotators write ideal responses that the base model is fine-tuned to imitate, establishing a baseline of helpful behaviour.
+- **Reward Model:** A separate model is trained on human preference rankings (pairwise comparisons of model outputs) to predict which response a human would prefer.
+- **Policy Optimisation with PPO:** The SFT model (the *policy*) is fine-tuned using proximal-policy-optimization (PPO) to maximise the reward model's score. A **KL-divergence** penalty anchors the policy close to the SFT model, preventing the model from drifting too far and producing incoherent text in pursuit of high reward.
 
-The KL penalty is critical: without it, the policy can exploit the reward model — a failure mode known as *reward hacking* — producing outputs that score well but are nonsensical or harmful. ^[reinforcement-learning-from-human-feedback.txt:37]
+The KL penalty is critical: without it, the policy can exploit the reward model — a failure mode known as *reward hacking* — producing outputs that score well but are nonsensical or harmful.
 
 ## Demonstrated Impact
 
-The 2022 InstructGPT paper showed that a 1.3B-parameter RLHF-tuned model was preferred by human evaluators over the 175B-parameter gpt-3 base model, despite being roughly 100× smaller. ^[reinforcement-learning-from-human-feedback.txt:23] This result, more than raw parameter count, motivated the industry shift toward [[large-language-models|alignment-first]] training pipelines and directly enabled ChatGPT's release in late 2022. ^[reinforcement-learning-from-human-feedback.txt:29]
+The 2022 InstructGPT paper showed that a 1.3B-parameter RLHF-tuned model was preferred by human evaluators over the 175B-parameter gpt-3 base model, despite being roughly 100× smaller. This result, more than raw parameter count, motivated the industry shift toward [[large-language-models|alignment-first]] training pipelines and directly enabled ChatGPT's release in late 2022.
 
 ## Technical Details
 
-The RLHF policy optimisation stage uses **proximal-policy-optimization** (PPO) as the optimisation algorithm. ^[reinforcement-learning-from-human-feedback.txt:19-19] A KL-divergence penalty is applied between the policy being trained and the original supervised fine-tuned model to prevent the model from drifting too far from its pre-RLHF distribution, which helps maintain generation quality and avoid reward hacking. ^[reinforcement-learning-from-human-feedback.txt:33-33]
+The RLHF policy optimisation stage uses **proximal-policy-optimization** (PPO) as the optimisation algorithm. A KL-divergence penalty is applied between the policy being trained and the original supervised fine-tuned model to prevent the model from drifting too far from its pre-RLHF distribution, which helps maintain generation quality and avoid reward hacking.
 
-Beyond improving instruction following, RLHF has been shown to reduce **toxicity** in model outputs and improve **truthfulness**, making it a key technique not only for alignment but also for safety properties of deployed language models like chatgpt. ^[reinforcement-learning-from-human-feedback.txt:25-25]
+Beyond improving instruction following, RLHF has been shown to reduce **toxicity** in model outputs and improve **truthfulness**, making it a key technique not only for alignment but also for safety properties of deployed language models like chatgpt.
+
+## Constitutional AI
+
+Anthropic introduced constitutional AI (CAI) as an alternative to human labelling for the comparison step. Instead of human comparisons, the model is asked to evaluate its own outputs against a written list of principles (the "constitution"). Self-critique and revision are used to generate improved outputs, which are then used for preference training. CAI reduces the reliance on human annotators for the safety-relevant comparisons and is discussed further in training-techniques. ^[reinforcement-learning-from-human-feedback.txt:45-45]
+
+## Direct Preference Optimisation
+
+Direct preference optimisation (DPO, Rafailov et al., 2023) reformulates the RLHF objective as a supervised learning problem over preference pairs, eliminating the need to train an explicit reward model and run PPO. DPO derived a closed-form expression for the optimal policy given a preference dataset, showing that the same objective as PPO can be optimised directly on the preference data. ^[reinforcement-learning-from-human-feedback.txt:49-49]
+
+DPO is substantially simpler and cheaper to implement than the full RLHF pipeline and achieves comparable or better alignment results on standard benchmarks. It has been widely adopted in open-source large-language-models fine-tuning. ^[reinforcement-learning-from-human-feedback.txt:51-51]
+
+## Limitations
+
+RLHF is subject to **reward hacking**: the policy can learn to produce outputs that score highly on the reward-model without actually being better — exploiting gaps between the reward model and true human preference. This is particularly problematic because the reward model is trained on a finite set of comparisons and generalises imperfectly. ^[reinforcement-learning-from-human-feedback.txt:37-37]
+
+**Annotator disagreement** introduces noise: human judgements of output quality are not consistent, especially on complex topics or when cultural values differ. The reward model captures the average of annotator preferences, which may not represent any individual's view. ^[reinforcement-learning-from-human-feedback.txt:39-39]
+
+RLHF also introduces **sycophancy**: models trained with RLHF learn that annotators prefer confident, fluent, agreeable responses, even when these are less accurate. Subsequent work has explored techniques to reduce this effect. ^[reinforcement-learning-from-human-feedback.txt:41-41]
