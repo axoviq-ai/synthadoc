@@ -1355,4 +1355,5 @@ class QueryAgent:
             "next_hints": next_hints,
             "cacheable": not _is_live_data,
             "routing_warning": routing_warning,
+            "sub_questions_count": len(sub_questions),
         }}

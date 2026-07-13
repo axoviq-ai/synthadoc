@@ -510,6 +510,14 @@ class Orchestrator:
             question, session_id=session_id, session_mode=session_mode,
             history=history or [],
         ):
+            if evt.get("event") == "done":
+                sub_q_count = evt.get("data", {}).get("sub_questions_count", 1)
+                await self._audit.record_query(
+                    question=question,
+                    sub_questions_count=sub_q_count,
+                    tokens=0,
+                    cost_usd=0.0,
+                )
             yield evt
 
     async def lint(self, scope: str = "all", auto_resolve: bool = False) -> str:
