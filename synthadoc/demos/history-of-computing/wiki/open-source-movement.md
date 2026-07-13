@@ -10,6 +10,10 @@ sources:
   hash: placeholder
   ingested: 2026-04-09
   size: 0
+- file: C:\Users\ladmin\wikis\history-of-computing\raw_sources\public-domain\raymond-cathedral-bazaar-1999.txt
+  hash: f457fb644617d3e412b5571b89f19248380a9bd17a240b651ee217c1be4e612e
+  ingested: '2026-07-12'
+  size: 5807
 status: active
 tags:
 - open-source
@@ -18,7 +22,7 @@ tags:
 - licensing
 title: Open Source Movement
 type: concept
-updated: '2026-06-20'
+updated: '2026-07-12'
 ---
 
 # Open Source Movement
@@ -220,3 +224,27 @@ In 1997, Eric S. Raymond published "The Cathedral and the Bazaar," an essay that
 The essay drew on observations of [[linus-torvalds]] and the linux kernel development process as a real-world example of the bazaar model succeeding at scale. Raymond's work helped shift the broader conversation around free software toward the more business-friendly term "open source" and influenced the founding of the Open Source Initiative in 1998.
 
 Together, richard-stallman's gnu-project and Free Software Foundation (with the GPL copyleft license) and Torvalds's Linux kernel — combined through distributions like Debian and Red Hat — produced the first complete free Unix-like operating system, GNU/Linux.
+
+## Linux and Linus Torvalds (1991)
+
+In 1991, [[linus-torvalds]], a student at the University of Helsinki, posted to a Usenet newsgroup announcing a free operating system kernel for Intel 386 processors, initially released under a licence prohibiting commercial use before later adopting the [[gnu-general-public-license]]. Combined with the GNU userland tools, the Linux kernel provided the first complete free Unix-like operating system. A distributed, international community of contributors coordinated development through email and later version control systems, producing a model that became a template for large-scale open source collaboration. ^[raymond-cathedral-bazaar-1999.txt:17-19]
+
+Linux grew to dominate servers, cloud infrastructure, Android smartphones, embedded systems, and supercomputers. ^[raymond-cathedral-bazaar-1999.txt:21-21]
+
+## The Cathedral and the Bazaar (1997)
+
+Eric S. Raymond presented "The Cathedral and the Bazaar" at the 1997 Linux Kongress, contrasting the closed, slow-release *cathedral* model of traditional software development with the *bazaar* model — continuous public releases, many contributors, and rapid iteration. Raymond articulated **Linus's Law**: given enough eyeballs, all bugs are shallow. ^[raymond-cathedral-bazaar-1999.txt:25-29]
+
+The essay had direct commercial consequences: it circulated at Netscape Communications as the browser wars with Microsoft's Internet Explorer intensified, contributing to Netscape's 1998 decision to release the source of Netscape Communicator as the Mozilla project. Mozilla eventually produced Firefox, which became the second most widely used web browser. ^[raymond-cathedral-bazaar-1999.txt:31-31]
+
+## Open Source Initiative and the Term "Open Source" (1998)
+
+The term "open source" was proposed in early 1998 by Christine Peterson and adopted at a strategy session involving Raymond and Bruce Perens. The goal was a less ideologically charged label than "free software" that would appeal to businesses. Later that year, Perens and Raymond founded the **Open Source Initiative (OSI)** to steward the Open Source Definition and certify compliant licences. ^[raymond-cathedral-bazaar-1999.txt:35-35]
+
+The OSI definition requires compliant licences to permit free redistribution, include source code, allow derived works, and not discriminate against persons, groups, or fields. A spectrum of licences emerged: copyleft licences like the [[gnu-general-public-license]] and its LGPL/AGPL variants, and permissive licences like MIT, BSD, and Apache (the last adding explicit patent grants). ^[raymond-cathedral-bazaar-1999.txt:37-37]
+
+## Infrastructure and the LAMP Stack
+
+By the early 2000s, open source software underpinned most internet infrastructure: Linux and BSD servers, the Apache web server, Sendmail and Postfix, BIND, and MySQL and PostgreSQL databases. The **LAMP stack** (Linux, Apache, MySQL, PHP) became the standard platform for web applications. ^[raymond-cathedral-bazaar-1999.txt:41-41]
+
+GitHub, launched in 2008, lowered barriers to participation by providing a web interface for Git-based version control — letting any developer fork a project, propose changes, and request review. Open source became the default model for new infrastructure software. ^[raymond-cathedral-bazaar-1999.txt:43-43]

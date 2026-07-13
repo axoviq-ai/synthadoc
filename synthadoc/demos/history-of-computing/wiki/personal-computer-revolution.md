@@ -10,6 +10,10 @@ sources:
   hash: placeholder
   ingested: 2026-04-09
   size: 0
+- file: C:\Users\ladmin\wikis\history-of-computing\raw_sources\public-domain\ceruzzi-history-modern-computing.txt
+  hash: 4607d7489564092aadd1a05aa86531bfec5c520c7745155c7c92d187c3bd04db
+  ingested: '2026-07-12'
+  size: 6624
 status: active
 tags:
 - personal-computer
@@ -18,7 +22,7 @@ tags:
 - microprocessor
 title: Personal Computer Revolution
 type: concept
-updated: '2026-06-17'
+updated: '2026-07-12'
 ---
 
 # Personal Computer Revolution
@@ -88,3 +92,23 @@ The first commercially available single-chip microprocessor was the intel-4004, 
 ### The Path to the Desktop
 
 Transistor-based mainframes such as the ibm-7090 (introduced in 1959) proved that solid-state electronics could outperform vacuum-tube designs in both speed and reliability. Subsequent microprocessor generations — including the 8-bit intel-8080 that powered the altair-8800 and the 16-bit intel-8086 that defined the x86 architecture — carried this scaling directly into homes and small businesses.
+
+## VisiCalc and the First Killer App (1979)
+
+VisiCalc, the first electronic spreadsheet, was written by [[john-bardeen|Dan Bricklin]] and Bob Frankston for the [[apple-ii|Apple II]] and released in 1979. VisiCalc allowed users to perform financial calculations interactively, updating a grid of values automatically when any cell changed. It became the first example of what would be called a **killer application** — software so useful that people purchased hardware specifically to run it. VisiCalc drove Apple II sales and established the personal computer as a legitimate business tool, not merely a hobbyist curiosity. ^[ceruzzi-history-modern-computing.txt:33-33]
+
+## IBM PC and the Open Architecture (1981)
+
+IBM entered the personal computer market in August 1981 with the IBM Personal Computer. Rather than developing proprietary technology, IBM built the PC from commercially available components — the Intel 8088 processor, memory chips, and peripherals from multiple suppliers — and published the full technical specifications. This open architecture allowed other manufacturers to build IBM-compatible machines legally. ^[ceruzzi-history-modern-computing.txt:37-37]
+
+IBM licensed its operating system from [[microsoft]], which had acquired it (as QDOS) from Seattle Computer Products and adapted it as MS-DOS. The decision to license rather than own the operating system became one of the most consequential business errors in computing history: as dozens of clone manufacturers entered the market, IBM rapidly lost its ability to control the platform. The x86 architecture, running DOS and later Windows, became the enduring industry standard. ^[ceruzzi-history-modern-computing.txt:39-39]
+
+## Macintosh and the Graphical User Interface (1984)
+
+Xerox PARC (Palo Alto Research Center) developed the first practical graphical user interface in the early 1970s on the Alto workstation. The Alto introduced overlapping windows, icons, a mouse-driven pointer, and pull-down menus. Although Xerox did not successfully commercialise the Alto, Apple engineers — including Steve Jobs — who visited PARC in 1979 absorbed the approach and carried it into commercial products. ^[ceruzzi-history-modern-computing.txt:43-43]
+
+Apple's Lisa (1983) and Macintosh (1984) brought the graphical user interface to mass-market computing. The Macintosh, priced at $2,495, combined a GUI with a mouse and a built-in display in a compact, integrated consumer design. It established the visual, direct-manipulation paradigm — application icons, windows, menus, mouse pointer — that [[microsoft]] followed with Windows 1.0 in 1985 and that became the standard model of personal computing for decades. ^[ceruzzi-history-modern-computing.txt:45-45]
+
+## First-Generation Context: ENIAC and Vacuum Tubes
+
+To appreciate the scale of the PC revolution, contrast the Altair with the machines it replaced conceptually. ENIAC, the most famous vacuum-tube computer of the late 1940s, occupied 1,800 square feet, contained 17,468 vacuum tubes, and required constant maintenance as tubes burned out. The transistor, demonstrated at Bell Labs in December 1947, made possible the multi-decade miniaturisation — from room-sized mainframes to single-chip microprocessors like the [[intel-4004|Intel 4004]] (1971, 2,300 transistors) — that eventually put a CPU on every hobbyist's workbench. ^[ceruzzi-history-modern-computing.txt:7-7]

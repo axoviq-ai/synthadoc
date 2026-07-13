@@ -10,6 +10,10 @@ sources:
   hash: placeholder
   ingested: 2026-04-09
   size: 0
+- file: C:\Users\ladmin\wikis\history-of-computing\raw_sources\public-domain\hopper-biography-usn.txt
+  hash: d1d5876c8832651fbfd126491f3af3398ce127ad5835bcf733e023a20b307733
+  ingested: '2026-07-12'
+  size: 5112
 status: active
 tags:
 - biography
@@ -18,7 +22,7 @@ tags:
 - navy
 title: Grace Hopper
 type: person
-updated: '2026-06-20'
+updated: '2026-07-12'
 ---
 
 # Grace Hopper
@@ -61,3 +65,21 @@ Hopper retired from the Navy in 1986 with the rank of rear admiral, one of the f
 
 - hopper-biography-usn: U.S. Navy biographical entry on Grace Hopper.
 - first-compiler-controversy: Independent source challenging the A-0 "first compiler" attribution.
+
+## The Origin of "Debugging"
+
+While working on the Harvard Mark II in 1947, Hopper's team discovered a moth lodged in a relay, causing a malfunction. They taped the moth into the logbook with the annotation "first actual case of bug being found," providing the literal origin of the now-universal term [[debugging]].^[hopper-biography-usn.txt:13-13]
+
+## UNIVAC I and the A-0 Compiler
+
+After the war, Hopper joined the [[eckert-mauchly-computer-corporation]] (later absorbed by Remington Rand), where she worked on the [[univac-i]], one of the first commercial computers sold in the United States. The UNIVAC I became famous in 1952 when CBS used it to predict the outcome of the presidential election on live television.^[hopper-biography-usn.txt:17-17]
+
+At Eckert-Mauchly, Hopper developed the A-0 system in 1952. The A-0 was a program that translated symbolic mathematical notations into machine instructions by retrieving previously written subroutines from a library — a concept she explicitly described as a [[compiler]]. Subsequent versions, the A-1 and A-2, refined the approach. The debate over whether A-0 constitutes a true compiler in the modern sense (as opposed to a linker or loader) continues among historians, but Hopper's conceptual contribution — that translation from human-readable notation to machine instructions could be mechanised — was unambiguous and transformative.^[hopper-biography-usn.txt:19-21]
+
+## Later Naval Career and Retirement
+
+Hopper was recalled to active duty multiple times and eventually achieved the rank of rear admiral in 1985, the highest rank achieved by a woman in the [[united-states-navy]] to that point. She retired from active duty in 1986 at the age of 79, the oldest serving officer on active duty in the Navy.^[hopper-biography-usn.txt:31-31]
+
+## Honours and Legacy
+
+She was awarded the National Medal of Technology in 1991 and the Presidential Medal of Freedom posthumously in 2016. The Grace Hopper Celebration of Women in Computing, first held in 1994, is the world's largest gathering of women technologists and bears her name. The USS Hopper, a guided-missile destroyer commissioned in 1997, was named in her honour.^[hopper-biography-usn.txt:33-39]

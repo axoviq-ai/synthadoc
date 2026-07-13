@@ -15,6 +15,10 @@ sources:
   hash: 0b35df51601160a9565c13804ebeeed4177ffd700c09676c7595c63f7286543e
   ingested: '2026-07-01'
   size: 43
+- file: C:\Users\ladmin\wikis\history-of-computing\raw_sources\public-domain\mccorduck-machines-who-think.txt
+  hash: dfa2dd545ae53d02ef3b910d7f563dd67819e87e41bd0cd27455096f189e1d13
+  ingested: '2026-07-12'
+  size: 7046
 status: active
 tags:
 - artificial-intelligence
@@ -23,7 +27,7 @@ tags:
 - neural-networks
 title: Artificial Intelligence History
 type: concept
-updated: '2026-07-01'
+updated: '2026-07-12'
 ---
 
 # Artificial Intelligence History
@@ -230,3 +234,29 @@ After initial enthusiasm, the field entered its first "AI winter" in the 1970s. 
 ## Andrew Ng and the Democratization of AI Education
 
 Andrew Ng has played a pivotal role in making artificial intelligence and machine learning accessible to a global audience. As co-founder of coursera, founder of DeepLearning.AI, and partner at AI Fund, Ng combined an accessible teaching approach with strategic backing from Sequoia Capital to help democratize AI knowledge worldwide. His widely adopted online courses became entry points for many into the field of AI, building on the educational legacy that followed from early AI research as discussed in the [[computing-history-timeline]].
+
+## ELIZA and Early Natural Language Processing (1966)
+
+In 1966, [[joseph-weizenbaum]] at MIT created ELIZA, a program that simulated a Rogerian psychotherapist by reflecting user statements back as questions. ELIZA operated by pattern matching and template substitution, with no genuine understanding of language semantics — yet users attributed understanding and empathy to it, a phenomenon Weizenbaum found troubling. His later book *Computer Power and Human Reason* (1976) argued against attributing understanding to machines. ELIZA demonstrated both human susceptibility to the *appearance* of intelligence and the limits of surface-level language processing.
+
+## First AI Winter (1974–1980)
+
+By the early 1970s, the gap between AI researchers' predictions and their systems' performance was impossible to ignore. The 1973 Lighthill Report, commissioned by the British Science Research Council, reviewed AI research and concluded it had failed to deliver general-purpose intelligent systems, triggering sharp UK funding cuts. DARPA similarly scaled back funding for speech recognition and machine translation. This period of reduced funding and dampened expectations is known as the first AI winter.
+
+## Expert Systems and the Second AI Winter (1980s)
+
+Expert systems revived commercial AI in the 1980s by encoding domain knowledge as large rule sets. XCON, developed for Digital Equipment Corporation by John McDermott beginning in 1978, configured VAX computer orders using thousands of rules and reportedly saved DEC millions of dollars annually by the mid-1980s. A commercial AI industry grew around LISP machines (sold by Symbolics and LISP Machines Inc.), and Japan's Fifth Generation Computer project (announced 1982) aimed at massively parallel AI hardware.
+
+That boom collapsed in the late 1980s: LISP machine hardware was displaced by commodity workstations, and expert systems proved brittle and expensive to maintain. The resulting retrenchment is known as the second AI winter.
+
+## Neural Networks and the Statistical Turn
+
+The intellectual groundwork for the neural network revival was laid in 1986 when David Rumelhart, Geoffrey Hinton, and Ronald Williams published a clear exposition of the **backpropagation** algorithm for training multi-layer neural networks. The paper showed networks with hidden layers could learn internal representations that single-layer perceptrons could not. Through the 1990s and 2000s, the field shifted from symbolic AI toward statistical machine learning — support vector machines (Vladimir Vapnik), random forests, and kernel methods — driven by pattern recognition over large labelled datasets.
+
+## Deep Learning Breakthrough
+
+In 2012, **AlexNet**, a convolutional neural network built by Alex Krizhevsky, Ilya Sutskever, and Geoffrey Hinton at the University of Toronto, won the ImageNet Large Scale Visual Recognition Challenge by such a wide margin that it shocked the computer vision community. Its success rested on GPU training, large labelled datasets, and architectural innovations such as the ReLU activation function and dropout regularisation.
+
+Deep learning rapidly achieved state of the art in speech recognition, machine translation, and game playing. In 2016, DeepMind's **AlphaGo** defeated the world Go champion — a milestone many researchers had expected to be decades away.
+
+Large language models built on the transformer architecture (introduced 2017) brought AI capabilities into text generation, question answering, and code completion at scales that returned [[alan-turing]]'s 1950 question to the centre of public discourse.

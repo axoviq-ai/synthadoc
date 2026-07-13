@@ -11,6 +11,10 @@ sources:
   hash: placeholder
   ingested: 2026-04-08
   size: 0
+- file: C:\Users\ladmin\wikis\history-of-computing\raw_sources\public-domain\wexelblat-history-of-programming-languages-1981.txt
+  hash: b7c0b80d6614eb5e40ad2c6b7914893701dd2cd77bc51c4d0e7ed16fa7dd11cb
+  ingested: '2026-07-12'
+  size: 6836
 status: active
 tags:
 - programming-languages
@@ -18,7 +22,7 @@ tags:
 - compilers
 title: Programming Languages Overview
 type: concept
-updated: '2026-06-30'
+updated: '2026-07-12'
 ---
 
 # Programming Languages Overview
@@ -216,3 +220,31 @@ Throughout the history of programming languages, a central tension has existed b
 ## Web and Scripting Languages (1995–Present)
 
 JavaScript, created by Brendan Eich at Netscape in 1995, became the dominant language for client-side web interactivity. It was standardized as ecmascript (ECMA-262), with Node.js extending its runtime to server-side development. Alongside html and css, JavaScript forms the core triad of front-end web development. Its event-driven, prototype-based design and ubiquity in browsers made it one of the most widely deployed programming languages in history.
+
+## LISP and Symbolic Computation (1958)
+
+John McCarthy at MIT designed LISP (List Processing) in 1958, influenced by [[alonzo-church]]'s lambda calculus. LISP was built around lists as the primary data structure and introduced recursive function definitions, automatic memory management through garbage collection, and the concept that code and data have the same representation — a list can be both a program and data that programs manipulate. ^[wexelblat-history-of-programming-languages-1981.txt:19-19]
+
+LISP became the dominant language of [[artificial-intelligence-history|artificial intelligence]] research. Its flexibility and introspective capabilities made it well suited to symbolic AI tasks such as theorem proving, game playing, and natural language processing. McCarthy received the ACM Turing Award in 1971. ^[wexelblat-history-of-programming-languages-1981.txt:21-21]
+
+## Structured Programming (1968–1970s)
+
+In 1968, Edsger Dijkstra published a letter titled "Go To Statement Considered Harmful" in Communications of the ACM, arguing that unrestricted use of the goto instruction made programs difficult to understand and verify. The letter catalysed the structured programming movement, which advocated organising programs as compositions of three control structures: sequence, selection (if/else), and iteration (loops). ^[wexelblat-history-of-programming-languages-1981.txt:31-31]
+
+Structured programming became the dominant pedagogical and practical approach through the 1970s. Languages like Pascal, designed by Niklaus Wirth in 1970, were explicitly designed to enforce structured programming discipline. C, developed at Bell Labs by Dennis Ritchie in 1972, provided structured programming constructs while retaining low-level access to hardware. ^[wexelblat-history-of-programming-languages-1981.txt:33-33]
+
+## Object-Oriented Programming (1967–1995)
+
+Simula 67, designed by Ole-Johan Dahl and Kristen Nygaard at the Norwegian Computing Centre, introduced the class and object concepts — grouping data and the operations on that data into a single unit. Smalltalk, developed at Xerox PARC through the 1970s by Alan Kay and others, radicalised this approach: in Smalltalk, everything is an object, and computation proceeds entirely through message passing between objects. ^[wexelblat-history-of-programming-languages-1981.txt:37-37]
+
+C++, developed by Bjarne Stroustrup at Bell Labs in 1985, brought object-oriented programming to the C language and to systems programming. Java, released by Sun Microsystems in 1995, combined object orientation with a virtual machine that provided portability across hardware platforms — "write once, run anywhere." Python, designed by Guido van Rossum and first released in 1991, combined object orientation with dynamic typing and a focus on readability. ^[wexelblat-history-of-programming-languages-1981.txt:39-39]
+
+## Type Systems and Language Theory
+
+A type system assigns types to expressions in a program and uses them to detect errors before execution. Static type systems (C, Java, Haskell) check types at compile time; dynamic type systems (Python, JavaScript, LISP) check at runtime. Strong typing prevents operations that are undefined for a given type; weak typing allows implicit conversions between types. ^[wexelblat-history-of-programming-languages-1981.txt:43-43]
+
+Formal language theory, developed by Noam Chomsky for linguistics and adapted for programming languages, provides a framework for describing syntax rigorously. Backus-Naur Form (BNF), introduced to describe ALGOL 60, became the standard notation for specifying programming language grammars. Type theory, developed in mathematics by Bertrand Russell and later refined by Per Martin-Löf, provides a foundation for reasoning about program correctness. ^[wexelblat-history-of-programming-languages-1981.txt:45-45]
+
+## Modern Language Development
+
+Functional programming languages such as Haskell (1990), derived from earlier work on ML and Miranda, formalised a style in which programs are composed of pure functions without side effects. Rust (2015), developed at Mozilla, introduced a type system that enforces memory safety at compile time without a garbage collector, enabling systems programming without the memory errors endemic to C. The diversity of contemporary languages reflects the persistence of the core tensions in language design: between safety and performance, between abstraction and control, between expressiveness and verifiability. ^[wexelblat-history-of-programming-languages-1981.txt:49-49]

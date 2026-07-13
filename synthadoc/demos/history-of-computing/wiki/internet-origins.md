@@ -10,6 +10,10 @@ sources:
   hash: placeholder
   ingested: 2026-04-08
   size: 0
+- file: C:\Users\ladmin\wikis\history-of-computing\raw_sources\public-domain\leiner-brief-history-internet-2009.txt
+  hash: f15ecdc49a3d30016b76e6c8f410d72ad7e3bb344e0a1497b5429b8d6772decd
+  ingested: '2026-07-12'
+  size: 6051
 status: active
 tags:
 - internet
@@ -18,7 +22,7 @@ tags:
 - tcp-ip
 title: Internet Origins
 type: concept
-updated: '2026-06-20'
+updated: '2026-07-12'
 ---
 
 # Internet Origins
@@ -132,3 +136,25 @@ The advanced-research-projects-agency was an agency of the u-s-department-of-def
 ## Role of Berkeley BSD Unix
 
 berkeley-bsd-unix played a critical role in the practical spread of TCP/IP. The Berkeley Software Distribution incorporated its own networking code, and the free distribution of 4.2BSD in 1983 helped TCP/IP propagate beyond ARPANET into the broader research and academic computing community, laying the groundwork for the global internet.
+
+## Early ARPANET Details
+
+The first ARPANET message, sent on 29 October 1969 between a computer at [[arpanet|UCLA]] and one at the Stanford Research Institute, was "lo" — an attempt to type "login" that crashed the system after the first two letters. By December 1969, four nodes were connected: UCLA, the Stanford Research Institute, the University of California Santa Barbara, and the University of Utah.^[leiner-brief-history-internet-2009.txt:11-11]
+
+## TCP/IP Adoption and Flag Day
+
+On 1 January 1983 — sometimes called "Flag Day" — ARPANET switched from its earlier Network Control Program to [[tcp-ip|TCP/IP]], marking the formal birth of the modern internet as a unified network. The Berkeley BSD Unix distribution played a major role in propagating TCP/IP: its 1983 release included a high-quality, publicly available TCP/IP implementation that was adopted by universities, research institutions, and eventually commercial vendors. (See also [[unix-history]].)^[leiner-brief-history-internet-2009.txt:19-19]
+
+## Domain Name System
+
+As the network grew, the original mechanism for mapping host names to numeric addresses — a single text file called HOSTS.TXT maintained by the Stanford Research Institute — became unworkable. Paul Mockapetris designed the Domain Name System (DNS) in 1983, replacing the centralised file with a distributed, hierarchical database that delegated responsibility to authoritative servers at each domain, making the network scalable to millions and eventually billions of hosts.^[leiner-brief-history-internet-2009.txt:23-25]
+
+## Electronic Mail
+
+Electronic mail predated the World Wide Web by two decades. The first network email was sent by Ray Tomlinson in 1971 over ARPANET. Tomlinson also introduced the use of the @ symbol to separate the user name from the host name, a convention that persists unchanged. Email rapidly became the dominant use of ARPANET, consuming a larger share of network traffic than any other application by the mid-1970s.^[leiner-brief-history-internet-2009.txt:29-29]
+
+## The World Wide Web
+
+Tim Berners-Lee, a physicist at CERN in Geneva, proposed the World Wide Web in a 1989 document titled "Information Management: A Proposal." He implemented it in 1990 and made the software publicly available in 1991. The Web introduced three interrelated technologies: HTML for encoding documents, HTTP for requesting and serving them, and URLs for addressing them. Hyperlinks in HTML documents allowed a reader to navigate from one document to another on any server.^[leiner-brief-history-internet-2009.txt:33-35]
+
+The first graphical web browser, Mosaic, was released by the National Center for Supercomputing Applications in 1993, displaying images inline with text. Netscape Navigator, released in 1994, brought the Web to millions of homes.^[leiner-b

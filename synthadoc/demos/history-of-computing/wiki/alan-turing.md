@@ -13,6 +13,10 @@ sources:
   hash: placeholder
   ingested: 2026-04-08
   size: 0
+- file: C:\Users\ladmin\wikis\history-of-computing\raw_sources\public-domain\turing-wikipedia-cc0.txt
+  hash: 153cacfe41b68d4af656622a041a92c95d94334e8960f79280877d0040fe8ca0
+  ingested: '2026-07-12'
+  size: 6424
 status: active
 tags:
 - biography
@@ -20,7 +24,7 @@ tags:
 - cryptography
 title: Alan Turing
 type: person
-updated: '2026-06-20'
+updated: '2026-07-12'
 ---
 
 # Alan Turing
@@ -488,3 +492,41 @@ During the Second World War, Turing worked at the Government Code and Cypher Sch
 ## Dual Legacy
 
 Turing's career established him as both the founder of theoretical computation and a pivotal figure in cryptographic history. His abstract work on computability and his concrete wartime engineering on the Bombe represent two complementary strands of the origins of modern computing: the mathematical foundations of what a computer *could* in principle do, and the practical, high-stakes application of computation to intelligence work.
+
+## Early Life and Education
+
+Alan Turing was born in London in 1912. He studied mathematics at [[kings-college-cambridge]] (King's College, Cambridge), graduating with first-class honours in 1934, and was elected a Fellow of King's College in 1935. ^[turing-wikipedia-cc0.txt:3-3]
+
+## Theoretical Work and Computability
+
+Turing's 1936 paper addressed a problem posed by David Hilbert — the Entscheidungsproblem — asking whether a definite method exists that can decide the truth of any mathematical assertion. Turing's answer defined an abstract computing device (the Turing machine) consisting of an infinite tape divided into cells, a read/write head, and a finite set of state-transition rules. He proved that certain problems, including the halting problem, are undecidable — no algorithm can solve them in all cases — establishing the theoretical limits of mechanical computation before any general-purpose computer had been built. ^[turing-wikipedia-cc0.txt:7-9]
+
+Turing also demonstrated the existence of a **universal Turing machine** capable of simulating any other Turing machine by reading its description as data. This concept of a stored program, where instructions and data share the same representation, was the intellectual precursor to stored-program computers that followed. ^[turing-wikipedia-cc0.txt:11-11]
+
+## Bletchley Park and the Enigma
+
+During the Second World War, Turing joined the Government Code and Cypher School at [[bletchley-park]], the British codebreaking centre. He became one of the most important figures in the effort to break the German [[enigma]] cipher — an electro-mechanical rotor machine producing substitution ciphers of astronomical complexity. ^[turing-wikipedia-cc0.txt:15-17]
+
+Turing built on earlier work by Polish cryptanalysts Marian Rejewski, Jerzy Różycki, and Henryk Zygalski, who had partially solved earlier Enigma versions before the war. Drawing on their methods and developing new mathematical approaches, Turing designed the **Bombe**, an electromechanical machine that exploited cribs (known or guessed plaintext fragments) to narrow the rotor-setting search space. The Bombe ran multiple candidate configurations in parallel and rejected those producing contradictions. ^[turing-wikipedia-cc0.txt:19-19]
+
+By 1941, [[bletchley-park]] was decrypting large volumes of German naval, army, and air force traffic. The intelligence produced — codenamed Ultra — is estimated by historians to have shortened the Second World War in Europe by approximately one to two years, though the precise impact remains debated. The work remained classified until the 1970s, meaning Turing's wartime contributions were largely unknown to the public during his lifetime. ^[turing-wikipedia-cc0.txt:21-21]
+
+## The ACE and Stored-Program Computers
+
+After the war, Turing joined the National Physical Laboratory (NPL) in London, where he designed the **Automatic Computing Engine (ACE)**. His 1945 design report described a stored-program computer with mercury delay-line memory and a remarkably sophisticated instruction set. The ACE was ambitious enough that laboratory politics delayed construction; a scaled-down version, the Pilot ACE, ran its first program in 1950. ^[turing-wikipedia-cc0.txt:25-25]
+
+Turing also worked at the University of Manchester on software for the Manchester Mark 1, an early stored-program computer, bridging the gap between his theoretical models and their practical realisation in hardware. ^[turing-wikipedia-cc0.txt:27-27]
+
+## Computing Machinery and Intelligence
+
+In 1950, Turing published "Computing Machinery and Intelligence" in the philosophical journal *Mind*. The paper opened with the question "Can machines think?" and proposed replacing it with what he called the **imitation game**, now known as the Turing Test. In this test, a human interrogator communicates via text with two hidden participants — one human, one machine — and attempts to identify which is which. Turing anticipated common objections (theological, mathematical, and practical) and addressed each. The paper is one of the founding documents of [[artificial-intelligence-history]] as a field. ^[turing-wikipedia-cc0.txt:31-35]
+
+## Prosecution and Death
+
+In 1952, Turing was prosecuted under Victorian-era gross indecency laws for his relationship with another man. He was convicted and accepted chemical castration as an alternative to imprisonment. His security clearance was revoked, ending his access to classified government work. ^[turing-wikipedia-cc0.txt:39-39]
+
+Turing died on 7 June 1954 from cyanide poisoning. An inquest returned a verdict of suicide, though some researchers have questioned whether the death was accidental. He was 41 years old. ^[turing-wikipedia-cc0.txt:41-41]
+
+## Legacy
+
+The ACM Turing Award, established in 1966, is named in Turing's honour and is considered the highest distinction in computer science. In 2009, the British Prime Minister issued a formal apology for his treatment; in 2013 he received a posthumous royal pardon; and his portrait has appeared on the British £50 note since 2021. ^[turing-wikipedia-cc0.txt:45-45]
