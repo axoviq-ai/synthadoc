@@ -1053,6 +1053,46 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                         ),
                     })
 
+        # Citation issues — same logic as CLI lint report
+        from synthadoc.agents.lint_agent import _check_page_citations, LINT_SKIP_SLUGS as _SKIP
+        from synthadoc.storage.wiki import WikiPage as _WP, SourceRef as _SR
+        import re as _re
+        _FM_RE2 = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
+        extracted_dir = wiki_root / ".synthadoc" / "extracted"
+        citation_issues_by_slug: dict[str, list[dict]] = {}
+        for stem, text in page_texts.items():
+            if stem in _SKIP:
+                continue
+            _fm_m = _FM_RE2.match(text)
+            _fm: dict = {}
+            if _fm_m:
+                try:
+                    import yaml as _yaml2
+                    _fm = _yaml2.safe_load(_fm_m.group(1)) or {}
+                except Exception:
+                    pass
+            _body = text[_fm_m.end():] if _fm_m else text
+            _sources = [
+                _SR(file=s.get("file", ""), hash=s.get("hash", ""),
+                    size=s.get("size", 0), ingested=s.get("ingested", ""))
+                for s in (_fm.get("sources") or [])
+                if isinstance(s, dict)
+            ]
+            _fake_page = _WP(
+                title=stem, tags=[], content=_body,
+                status=_fm.get("status", ""), confidence=_fm.get("confidence", "medium"),
+                sources=_sources,
+            )
+            issues = _check_page_citations(stem, _fake_page, extracted_dir)
+            if issues:
+                citation_issues_by_slug[stem] = issues
+
+        citation_issues = [
+            {"slug": slug, "citation": iss["citation"], "reason": iss["reason"]}
+            for slug, issues in citation_issues_by_slug.items()
+            for iss in issues
+        ]
+
         return {
             "contradictions": [d["slug"] for d in contradiction_details],
             "contradiction_details": contradiction_details,
@@ -1060,6 +1100,11 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             "orphan_details": orphan_details,
             "adversarial_warnings": adversarial_warnings,
             "truncated_sources": truncated_sources,
+            "citation_issues": citation_issues,
+            "citation_issues_by_slug": {
+                slug: [{"citation": i["citation"], "reason": i["reason"]} for i in issues]
+                for slug, issues in citation_issues_by_slug.items()
+            },
         }
 
     _VALID_JOB_SORT = {"created_at", "status", "operation"}
