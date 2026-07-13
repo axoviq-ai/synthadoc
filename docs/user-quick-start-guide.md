@@ -449,7 +449,7 @@ synthadoc query "Who invented FORTRAN and when?"
 synthadoc query "What did Konrad Zuse contribute to computing history?"
 ```
 
-> **Pages are created as `draft`.** Every page produced by ingest starts in the `draft` state — compiled but not yet reviewed. Run lint (Step 7) to promote clean pages to `active`.
+> **Pages are created as `draft`.** Every page produced by ingest starts in the `draft` state — compiled but not yet reviewed. Draft pages are immediately queryable; BM25 retrieval includes all pages regardless of lifecycle state. Running lint (Step 7) promotes clean pages to `active`, which marks them as human-reviewed and protects them from being overwritten by future ingest.
 
 > **Pre-LLM sanitizer (v1.0):** Before sending any source to the LLM, Synthadoc strips zero-width characters, bidirectional text overrides, hidden HTML, and instruction-override phrases that could cause the model to misinterpret content. This runs automatically — no configuration needed. See [design.md §29](design.md#29-pre-llm-source-sanitizer) for the full table of sanitizer categories, actions, and warning behaviour.
 
