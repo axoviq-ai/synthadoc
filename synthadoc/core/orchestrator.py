@@ -265,6 +265,7 @@ class Orchestrator:
                 result.output_tokens,
                 is_local=(_agent_cfg.provider == "ollama"),
             )
+            await self._audit.update_ingest_cost(source, result.cost_usd)
             if await self._guard_ingest_cost(job_id, source, result.tokens_used, result.cost_usd):
                 return
             if max_results is not None and result.child_sources:
