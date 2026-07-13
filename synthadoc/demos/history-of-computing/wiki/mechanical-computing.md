@@ -5,11 +5,7 @@ status: archived
 confidence: medium
 type: technology
 created: 2026-04-08
-sources:
-  - file: public-domain/babbage-analytical-engine-notes.txt
-    hash: placeholder
-    size: 0
-    ingested: 2026-04-08
+sources: []
 aliases: []
 ---
 

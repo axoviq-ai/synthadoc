@@ -1620,6 +1620,10 @@ class LintReportModal extends Modal {
                 (r.orphans ?? []).map((s: string) => ({ slug: s, index_suggestion: `- [[${s}]]` }));
             const adversarialWarnings: any[] = r.adversarial_warnings ?? [];
             const truncatedSources: any[] = r.truncated_sources ?? [];
+            const citationIssuesBySlug: Record<string, any[]> = r.citation_issues_by_slug ?? {};
+            const citationSlugs = Object.keys(citationIssuesBySlug);
+            const totalCitationIssues = Object.values(citationIssuesBySlug).reduce(
+                (sum: number, issues: any[]) => sum + issues.length, 0);
             const totalAdvWarnings = adversarialWarnings.reduce(
                 (sum: number, p: any) => sum + ((p.warnings as any[])?.length ?? 0), 0);
 
@@ -1627,13 +1631,14 @@ class LintReportModal extends Modal {
             const tabBar = out.createEl("div");
             tabBar.style.cssText = "display:flex;gap:0;margin-bottom:16px;border-bottom:1px solid var(--background-modifier-border)";
 
-            type TabName = "Contradictions" | "Orphans" | "Adversarial" | "Truncated";
-            const tabNames: TabName[] = ["Contradictions", "Orphans", "Adversarial", "Truncated"];
+            type TabName = "Contradictions" | "Orphans" | "Adversarial" | "Truncated" | "Citations";
+            const tabNames: TabName[] = ["Contradictions", "Orphans", "Adversarial", "Truncated", "Citations"];
             const tabLabels: Record<TabName, string> = {
                 "Contradictions": `❗ Contradictions (${details.length})`,
                 "Orphans": `🔗 Orphans (${orphanDetails.length})`,
                 "Adversarial": `🔍 Adversarial (${totalAdvWarnings})`,
                 "Truncated": `✂ Truncated (${truncatedSources.length})`,
+                "Citations": `📎 Citations (${totalCitationIssues})`,
             };
             const panels: Record<TabName, HTMLElement> = {} as any;
             const tabBtns: Record<TabName, HTMLElement> = {} as any;
@@ -1766,10 +1771,37 @@ class LintReportModal extends Modal {
                 });
             }
 
+            // Citations panel
+            if (citationSlugs.length === 0) {
+                panels["Citations"].createEl("p", { text: "✅ No citation issues found." });
+            } else {
+                const ul = panels["Citations"].createEl("ul");
+                ul.style.cssText = "list-style:none;padding:0;margin:0;max-height:400px;overflow-y:auto";
+                citationSlugs.forEach(slug => {
+                    const issues: any[] = citationIssuesBySlug[slug] ?? [];
+                    const li = ul.createEl("li");
+                    li.style.cssText = "margin-bottom:10px";
+                    const slugLink = li.createEl("a", { text: slug });
+                    slugLink.style.cssText = "cursor:pointer;font-family:var(--font-monospace);font-size:var(--font-smaller);font-weight:600";
+                    slugLink.onclick = () => this.app.workspace.openLinkText(slug, "", false);
+                    li.appendText(` (${issues.length})`);
+                    const issueList = li.createEl("ul");
+                    issueList.style.cssText = "margin:4px 0 0 16px;padding:0";
+                    issues.forEach(({ citation, reason }: any) => {
+                        const issueLi = issueList.createEl("li");
+                        issueLi.style.cssText = "font-size:11px;color:var(--text-muted);margin-bottom:2px";
+                        issueLi.createEl("code", { text: citation })
+                            .style.cssText = "-webkit-user-select:text;user-select:text";
+                        issueLi.appendText(` — ${reason}`);
+                    });
+                });
+            }
+
             // Default to first tab with data, or Contradictions
             const defaultTab: TabName =
                 details.length > 0 ? "Contradictions" :
                 truncatedSources.length > 0 ? "Truncated" :
+                citationSlugs.length > 0 ? "Citations" :
                 orphanDetails.length > 0 ? "Orphans" : "Adversarial";
             switchTab(defaultTab);
 
@@ -3155,9 +3187,26 @@ class SourceViewerModal extends Modal {
         // Files with no extension (bare slugs) are treated as plain text.
         const ext = dotIdx >= 0 ? this.filename.slice(dotIdx + 1).toLowerCase() : "";
         const isText = TEXT_EXTENSIONS.has(ext) || ext === "";
+        const findInSubdirs = (dir: string, name: string): string | null => {
+            if (!fs.existsSync(dir)) return null;
+            for (const entry of fs.readdirSync(dir, { withFileTypes: true }) as import("fs").Dirent[]) {
+                const child = `${dir}/${entry.name}`;
+                if (entry.isDirectory()) {
+                    const found = findInSubdirs(child, name);
+                    if (found) return found;
+                } else if (entry.name === name) {
+                    return child;
+                }
+            }
+            return null;
+        };
         const resolvePath = (): string => {
             if (fs.existsSync(extractedPath)) return extractedPath;
             if (isText && fs.existsSync(rawSourcePath)) return rawSourcePath;
+            if (isText) {
+                const found = findInSubdirs(`${this.wikiRoot}/${RAW_SOURCES_DIR}`, this.filename);
+                if (found) return found;
+            }
             throw new Error("no-sidecar");
         };
 

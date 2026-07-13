@@ -179,12 +179,14 @@ def lint_report(
         )
         citation_issues.extend(_check_page_citations(stem, fake_page, extracted_dir))
 
+    truncated_pages = _state.truncated_pages  # [{slug, file, size}]
+
     # --- Report ---
-    has_issues = contradicted or orphans or adv_pages or citation_issues
+    has_issues = contradicted or orphans or adv_pages or citation_issues or truncated_pages
     if not has_issues:
         # Still sync frontmatter to clear stale orphan: true flags from previous runs.
         _sync_orphan_frontmatter(wiki_dir, page_texts, set())
-        typer.echo("All clear — no contradictions, orphan pages, or adversarial warnings found.")
+        typer.echo("All clear — no contradictions, orphan pages, adversarial warnings, or truncated sources found.")
         return
 
     if contradicted:
@@ -234,6 +236,21 @@ def lint_report(
             for iss in issues:
                 typer.echo(f"    {iss['citation']} — {iss['reason']}")
 
+    if truncated_pages:
+        try:
+            from synthadoc.config import load_config as _load_cfg
+            _default_max = getattr(getattr(_load_cfg(), "ingest", None), "max_source_chars", 32000)
+        except Exception:
+            _default_max = 32000
+        typer.echo(f"\nTruncated Sources ({len(truncated_pages)}) - source exceeded ingest limit:\n")
+        for entry in truncated_pages:
+            size = entry.get("size") or 0
+            suggested = size * 2 if size else _default_max * 2
+            typer.echo(f"  {entry['slug']} — source exceeded limit ({size:,} chars)")
+            typer.echo(f"    Source: {entry['file']}")
+            typer.echo(f"    💡 Re-ingest with a higher limit:")
+            typer.echo(f"       synthadoc ingest \"{entry['file']}\" -w {wiki} --max-source-chars {suggested}")
+
     # Sync orphan: true/false frontmatter so the Obsidian dashboard Dataview
     # query (WHERE orphan = true) reflects the same result as this report.
     _sync_orphan_frontmatter(wiki_dir, page_texts, set(orphans))
@@ -241,6 +258,7 @@ def lint_report(
     adv_count = sum(len(p["warnings"]) for p in adv_pages)
     typer.echo(
         f"\n{len(contradicted)} contradiction(s), {len(orphans)} orphan(s), "
-        f"{adv_count} adversarial warning(s), {len(citation_issues)} citation issue(s)."
+        f"{adv_count} adversarial warning(s), {len(citation_issues)} citation issue(s), "
+        f"{len(truncated_pages)} truncated source(s)."
         f"\nDashboard: open wiki/dashboard.md in Obsidian for a live view."
     )

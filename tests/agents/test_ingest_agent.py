@@ -1412,6 +1412,54 @@ async def test_youtube_rerun_allowed_after_page_deleted(tmp_wiki, mock_provider,
     assert not third.skipped, "re-ingest after page deletion must not be skipped"
 
 
+# ── SourceRef.size regression: content length vs. URL byte length ─────────────
+
+@pytest.mark.asyncio
+async def test_url_source_ref_size_is_content_length_not_url_length(tmp_wiki, mock_provider, cache):
+    """SourceRef.size stores extracted-text char count, not the URL byte length.
+
+    Regression: before the fix, URL sources stored len(url.encode()) in
+    SourceRef.size (e.g. 58 for a 58-char URL), causing the lint report to show
+    'source exceeded limit (58 chars)' and suggest '--max-source-chars 116'
+    — both meaningless. After the fix, size equals the actual content length.
+    """
+    from unittest.mock import patch
+    from synthadoc.skills.base import ExtractedContent
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+
+    url = "https://example.com/quantum-surface-code-article"  # 49 chars
+    # Build content that exceeds the default 32 000-char limit so truncated=True.
+    content = "quantum " * 5000  # 40 000 chars
+    mock_extracted = ExtractedContent(
+        text=content,
+        source_path=url,
+        metadata={},
+    )
+
+    agent = IngestAgent(provider=mock_provider, store=store, search=search,
+                        log_writer=log, audit_db=audit, cache=cache,
+                        max_pages=15, wiki_root=tmp_wiki)
+
+    with patch.object(agent._skill_agent, "extract", return_value=mock_extracted):
+        result = await agent.ingest(url)
+
+    assert result.pages_created, "ingest must create a page"
+    page = store.read_page(result.pages_created[0])
+    assert page is not None
+    src = page.sources[0]
+    assert src.truncated is True, "content exceeded 32 000-char default limit"
+    # size must be the content char count, not the URL byte count (49).
+    assert src.size == len(content), (
+        f"expected size={len(content)}, got {src.size} "
+        f"(URL is {len(url)} bytes — if size==URL length, the fix regressed)"
+    )
+
+
 # ── CJK (Chinese / Japanese / Korean) coverage ───────────────────────────────
 
 @pytest.mark.asyncio
@@ -2459,3 +2507,26 @@ def test_normalize_multiple_citations_in_text():
     assert "^[a.md:5-5]" in result
     assert "^[b.md:10-12]" in result
     assert "^[c.md:7-9]" in result
+
+
+def test_citation_prompt_example_uses_actual_filename():
+    """_CITATION_PROMPT formatted with a real filename must embed that name in the example.
+
+    Regression: the prompt previously contained a literal ^[FILENAME:L-L] example,
+    which caused LLMs to output 'FILENAME' as the source name in citations.  The fix
+    embeds the actual {filename} variable in the example so the LLM sees the real name.
+    """
+    from synthadoc.agents.ingest_agent import _CITATION_PROMPT
+
+    numbered = "\n".join(f"{i+1}: line {i+1}" for i in range(9))
+    formatted = _CITATION_PROMPT.format(
+        filename="my-source.txt",
+        numbered_source=numbered,
+        section="Some claim from the source.",
+    )
+    # The formatted prompt must include the concrete filename in the example
+    assert "^[my-source.txt:7-9]" in formatted, \
+        "Formatted _CITATION_PROMPT must embed the actual filename in the example citation"
+    # The placeholder word must NOT appear as part of a citation marker
+    assert "^[FILENAME:" not in formatted, \
+        "Formatted _CITATION_PROMPT must not contain the literal placeholder ^[FILENAME:"
