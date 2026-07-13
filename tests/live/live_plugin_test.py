@@ -530,10 +530,17 @@ def _test_context_budget() -> None:
             words.pop(0)
         return " ".join(words[:5])
 
+    _META_SLUGS = frozenset({
+        "overview", "dashboard", "index", "log", "scaffold", "purpose",
+        "wikilinks", "wiki", "obsidian", "dataview", "audit", "hooks", "skills",
+    })
+
     def _is_good_node(n: dict) -> bool:
         if not isinstance(n, dict) or not n.get("slug"):
             return False
         slug = n["slug"]
+        if slug in _META_SLUGS:          # meta/system pages — not meaningful query targets
+            return False
         if slug[:1].isdigit():           # date-prefixed slug (e.g. 2023-01-31-paper)
             return False
         if slug.startswith("youtube-"):  # YouTube video slug (e.g. youtube-yevjcec34rw)
