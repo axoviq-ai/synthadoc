@@ -152,4 +152,4 @@ Electronic mail predated the World Wide Web by two decades. The first network em
 
 Tim Berners-Lee, a physicist at CERN in Geneva, proposed the World Wide Web in a 1989 document titled "Information Management: A Proposal." He implemented it in 1990 and made the software publicly available in 1991. The Web introduced three interrelated technologies: HTML for encoding documents, HTTP for requesting and serving them, and URLs for addressing them. Hyperlinks in HTML documents allowed a reader to navigate from one document to another on any server.^[leiner-brief-history-internet-2009.txt:33-35]
 
-The first graphical web browser, Mosaic, was released by the National Center for Supercomputing Applications in 1993, displaying images inline with text. Netscape Navigator, released in 1994, brought the Web to millions of homes.^[leiner-b
+The first graphical web browser, Mosaic, was released by the National Center for Supercomputing Applications in 1993, displaying images inline with text. Netscape Navigator, released in 1994, brought the Web to millions of homes.^[leiner-brief-history-internet-2009.txt:37-37]
