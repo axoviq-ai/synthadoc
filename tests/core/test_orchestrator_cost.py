@@ -6,7 +6,7 @@ to the queue result, not just that the pricing function works in isolation."""
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from synthadoc.core.orchestrator import Orchestrator
-from synthadoc.config import Config, AgentsConfig, AgentConfig
+from synthadoc.config import Config, AgentsConfig, AgentConfig, CostConfig
 from synthadoc.agents.query_agent import QueryResult
 from synthadoc.agents.ingest_agent import IngestResult
 
@@ -182,6 +182,73 @@ async def test_orchestrator_ingest_unknown_model_uses_fallback_nonzero(tmp_wiki)
     cost = await _run_and_capture_ingest_cost(orch, input_tokens=1000, output_tokens=500)
     assert cost is not None
     assert cost > 0.0, "Unknown model must use fallback rate, not $0.00"
+
+
+# ── CostGuard wiring ─────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_guard_ingest_cost_hard_gate_fails_job_permanently(tmp_wiki):
+    """Hard gate exceeded must permanently fail the job and record an audit event."""
+    from synthadoc.core.queue import JobStatus
+
+    cfg = Config(
+        agents=AgentsConfig(default=AgentConfig(provider="anthropic", model="claude-haiku-4-5-20251001")),
+        cost=CostConfig(soft_warn_usd=0.0001, hard_gate_usd=0.0001),
+    )
+    orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
+    await orch.init()
+
+    try:
+        # 10k input + 5k output on haiku ≈ $0.035 — well above the $0.0001 hard gate
+        mock_agent = _mock_ingest_agent(input_tokens=10_000, output_tokens=5_000)
+        job_id = await orch._queue.enqueue("ingest", {"source": "test.md", "force": False})
+
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock(spec=[])), \
+             patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent), \
+             patch.object(orch._audit, "record_audit_event", new=AsyncMock()) as mock_audit:
+            await orch._run_ingest(job_id, "test.md", auto_confirm=True)
+
+        dead = await orch._queue.list_jobs(status=JobStatus.DEAD)
+        assert any(j.id == job_id for j in dead), "Hard gate must permanently fail the job"
+        job = next(j for j in dead if j.id == job_id)
+        assert "cost_gate_exceeded" in (job.error or "")
+        mock_audit.assert_awaited_once()
+        call_kwargs = mock_audit.call_args.kwargs
+        assert call_kwargs["event"] == "cost_gate_exceeded"
+        assert call_kwargs["metadata"]["source"] == "test.md"
+        assert call_kwargs["metadata"]["cost_usd"] > 0
+    finally:
+        await orch.close()
+
+
+@pytest.mark.asyncio
+async def test_guard_ingest_cost_soft_warn_completes_normally(tmp_wiki, caplog):
+    """Soft warn must not abort the job — it logs a warning and the job completes."""
+    import logging
+    from synthadoc.core.queue import JobStatus
+
+    cfg = Config(
+        agents=AgentsConfig(default=AgentConfig(provider="anthropic", model="claude-haiku-4-5-20251001")),
+        cost=CostConfig(soft_warn_usd=0.0001, hard_gate_usd=999.0),
+    )
+    orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
+    await orch.init()
+
+    try:
+        mock_agent = _mock_ingest_agent(input_tokens=10_000, output_tokens=5_000)
+        job_id = await orch._queue.enqueue("ingest", {"source": "test.md", "force": False})
+
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock(spec=[])), \
+             patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent), \
+             caplog.at_level(logging.WARNING, logger="synthadoc.core.orchestrator"):
+            await orch._run_ingest(job_id, "test.md", auto_confirm=True)
+
+        completed = await orch._queue.list_jobs(status=JobStatus.COMPLETED)
+        assert any(j.id == job_id for j in completed), "Soft warn must not abort the job"
+        assert any("soft_warn" in r.message for r in caplog.records), \
+            "Soft warn must emit a logger.warning"
+    finally:
+        await orch.close()
 
 
 # ── Permanent failure handling ────────────────────────────────────────────────

@@ -39,7 +39,10 @@ class CostGuard:
                 return
             if not interactive:
                 raise CostGateError(
-                    f"Estimated cost ${estimate.cost_usd:.4f} exceeds hard gate. Use --yes.")
+                    f"Estimated cost ${estimate.cost_usd:.4f} exceeds "
+                    f"hard_gate_usd ${self._cfg.hard_gate_usd:.2f}. "
+                    f"Raise hard_gate_usd in [cost] config or use a smaller model."
+                )
             if input("Proceed? [y/N] ").strip().lower() != "y":
                 raise CostGateError("Aborted by user.")
             return
