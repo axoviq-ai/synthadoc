@@ -2,16 +2,7 @@
 aliases: []
 categories:
 - Large Language Models
-confidence: medium
-contradiction_note: 'Flagged while ingesting ''llm-benchmarks-q1-2026.pdf'': The source
-  disputes a factual claim in the existing [[llm-benchmarks]] page. The wiki page
-  states ''Human expert performance is approximately 89.8%'' and likely presents Gemini
-  Ultra''s MMLU score without clarifying the evaluation protocol. The source argues
-  that the widely cited claim of Gemini Ultra surpassing human expert performance
-  is misleading because its 90.0% score used CoT@32 (chain-of-thought with 32 samples)
-  rather than the standard 5-shot protocol, and under equivalent 5-shot evaluation
-  it scored 83.7%. This is a factual dispute about how benchmark results are represented
-  in the wiki. Rule 1 applies: action=''flag''.'
+confidence: high
 created: 2026-05-09
 orphan: false
 sources:
@@ -19,7 +10,7 @@ sources:
   hash: placeholder
   ingested: '2026-04-08'
   size: 0
-status: contradicted
+status: active
 tags:
 - benchmarks
 - evaluation
@@ -62,11 +53,10 @@ calibration, robustness, fairness, and efficiency metrics simultaneously.
 |---------------|---------------|-----------|------------------------------------|
 | GPT-4         | 86.4%         | 67.0%     | OpenAI technical report (2023)     |
 | Claude 3 Opus | 86.8%         | 84.9%     | Anthropic model card (2024)        |
-| Gemini Ultra  | 90.0%         | 74.4%     | Google technical report (2023)     |
+| Gemini Ultra  | 83.7%*        | 74.4%     | Google technical report (2023)     |
 | Llama 3 70B   | 82.0%         | 81.7%     | Meta release (2024)                |
 
-Gemini Ultra's 90.0% MMLU score is the first result to surpass human expert performance
-(89.8%) on this benchmark, marking a significant milestone in language model evaluation.
+\* Gemini Ultra's widely-cited 90.0% MMLU figure used CoT@32 (chain-of-thought with 32 samples), not the standard 5-shot protocol. Under 5-shot evaluation, Gemini Ultra scores 83.7% — below GPT-4 (86.4%) and Claude 3 Opus (86.8%). See the reporting controversy sections below for detail.
 
 ## Benchmark Limitations
 
