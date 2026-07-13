@@ -393,3 +393,72 @@ def test_lint_report_no_citation_section_when_clean(tmp_path, monkeypatch):
                         lambda: {"mywiki": {"path": str(tmp_path)}})
     result = runner.invoke(app, ["lint", "report", "-w", "mywiki"])
     assert "Citation" not in result.output
+
+
+# ---------------------------------------------------------------------------
+# Truncated sources — CLI lint report (regression: section was missing)
+# ---------------------------------------------------------------------------
+
+_TRUNCATED_PAGE = (
+    "---\n"
+    "title: Long Article\n"
+    "status: active\n"
+    "sources:\n"
+    "  - file: 'https://example.com/long-article'\n"
+    "    hash: abc123\n"
+    "    size: 45000\n"
+    "    ingested: '2026-07-12'\n"
+    "    truncated: true\n"
+    "---\n\n"
+    "# Long Article\n\n"
+    "See [[hub-page]] for more.\n"
+)
+
+
+def test_lint_report_shows_truncated_sources(tmp_path, monkeypatch):
+    """CLI lint report must render a Truncated Sources section when a page has truncated: true.
+
+    Regression: _state.truncated_pages was computed but never rendered — the
+    section was silently absent from the CLI output while the plugin showed it.
+    """
+    import synthadoc.cli.install as install_mod
+    wiki_dir, root = _make_wiki(tmp_path, {
+        "index":        "# Index\n",
+        "hub-page":     "---\nstatus: active\n---\n# Hub\n\nSee [[long-article]].",
+        "long-article": _TRUNCATED_PAGE,
+    })
+    monkeypatch.setattr(install_mod, "_read_registry",
+                        lambda: {"mywiki": {"path": str(tmp_path)}})
+    result = runner.invoke(app, ["lint", "report", "-w", "mywiki"])
+    assert result.exit_code == 0, result.output
+    assert "Truncated" in result.output
+    assert "long-article" in result.output
+    assert "--max-source-chars" in result.output
+
+
+def test_lint_report_truncated_prevents_all_clear(tmp_path, monkeypatch):
+    """A page with a truncated source must prevent 'All clear' even if no other issues."""
+    import synthadoc.cli.install as install_mod
+    wiki_dir, root = _make_wiki(tmp_path, {
+        "index":        "# Index\n",
+        "hub-page":     "---\nstatus: active\n---\n# Hub\n\nSee [[long-article]].",
+        "long-article": _TRUNCATED_PAGE,
+    })
+    monkeypatch.setattr(install_mod, "_read_registry",
+                        lambda: {"mywiki": {"path": str(tmp_path)}})
+    result = runner.invoke(app, ["lint", "report", "-w", "mywiki"])
+    assert "All clear" not in result.output
+
+
+def test_lint_report_footer_includes_truncated_count(tmp_path, monkeypatch):
+    """Footer summary line must include the truncated source count."""
+    import synthadoc.cli.install as install_mod
+    wiki_dir, root = _make_wiki(tmp_path, {
+        "index":        "# Index\n",
+        "hub-page":     "---\nstatus: active\n---\n# Hub\n\nSee [[long-article]].",
+        "long-article": _TRUNCATED_PAGE,
+    })
+    monkeypatch.setattr(install_mod, "_read_registry",
+                        lambda: {"mywiki": {"path": str(tmp_path)}})
+    result = runner.invoke(app, ["lint", "report", "-w", "mywiki"])
+    assert "1 truncated source(s)" in result.output

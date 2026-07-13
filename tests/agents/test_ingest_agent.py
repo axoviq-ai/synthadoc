@@ -2507,3 +2507,26 @@ def test_normalize_multiple_citations_in_text():
     assert "^[a.md:5-5]" in result
     assert "^[b.md:10-12]" in result
     assert "^[c.md:7-9]" in result
+
+
+def test_citation_prompt_example_uses_actual_filename():
+    """_CITATION_PROMPT formatted with a real filename must embed that name in the example.
+
+    Regression: the prompt previously contained a literal ^[FILENAME:L-L] example,
+    which caused LLMs to output 'FILENAME' as the source name in citations.  The fix
+    embeds the actual {filename} variable in the example so the LLM sees the real name.
+    """
+    from synthadoc.agents.ingest_agent import _CITATION_PROMPT
+
+    numbered = "\n".join(f"{i+1}: line {i+1}" for i in range(9))
+    formatted = _CITATION_PROMPT.format(
+        filename="my-source.txt",
+        numbered_source=numbered,
+        section="Some claim from the source.",
+    )
+    # The formatted prompt must include the concrete filename in the example
+    assert "^[my-source.txt:7-9]" in formatted, \
+        "Formatted _CITATION_PROMPT must embed the actual filename in the example citation"
+    # The placeholder word must NOT appear as part of a citation marker
+    assert "^[FILENAME:" not in formatted, \
+        "Formatted _CITATION_PROMPT must not contain the literal placeholder ^[FILENAME:"

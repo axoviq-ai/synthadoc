@@ -818,3 +818,90 @@ def test_lifecycle_transition_bumps_epoch(tmp_wiki):
         epoch_after = client.app.state.orch._wiki_epoch
     if resp.status_code == 200:
         assert epoch_after > epoch_before
+
+
+# ---------------------------------------------------------------------------
+# Citation issues — HTTP API lint report (regression: endpoint never called
+# _check_page_citations, so citation_issues was always absent)
+# ---------------------------------------------------------------------------
+
+def test_lint_report_returns_citation_issues_keys(tmp_wiki):
+    """GET /lint/report must always include citation_issues and citation_issues_by_slug keys.
+
+    Regression: the HTTP endpoint skipped _check_page_citations entirely, so
+    the two citation keys were absent even though CLI showed 205 issues.
+    """
+    from synthadoc.integration.http_server import create_app
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.get("/lint/report")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "citation_issues" in data
+    assert "citation_issues_by_slug" in data
+
+
+def test_lint_report_includes_citation_issues_for_broken_refs(tmp_wiki):
+    """A page body with ^[FILENAME:3-5] and source named 'real-source.txt' must
+    appear in citation_issues as a broken_ref.
+
+    The citation uses 'FILENAME' as the source name, but the source's actual
+    basename is 'real-source.txt', so the reference is broken.
+    """
+    from synthadoc.integration.http_server import create_app
+
+    wiki_dir = tmp_wiki / "wiki"
+    (wiki_dir / "cited-page.md").write_text(
+        "---\n"
+        "status: active\n"
+        "sources:\n"
+        "  - file: '/docs/real-source.txt'\n"
+        "    hash: deadbeef\n"
+        "    size: 1000\n"
+        "    ingested: '2026-07-12'\n"
+        "---\n\n"
+        "# Cited Page\n\n"
+        "Some content. ^[FILENAME:3-5]\n",
+        encoding="utf-8",
+    )
+
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.get("/lint/report")
+    assert resp.status_code == 200
+    data = resp.json()
+    issues = data.get("citation_issues", [])
+    # At least one broken_ref for cited-page
+    assert any(i["slug"] == "cited-page" and i["reason"] == "broken_ref" for i in issues), \
+        f"No broken_ref for cited-page in: {issues}"
+
+
+def test_lint_report_returns_truncated_sources(tmp_wiki):
+    """A page with truncated: true in a source must appear in truncated_sources.
+
+    Regression: while the CLI showed truncated sources and the plugin showed them,
+    the HTTP API's /lint/report endpoint also needs to expose them.
+    """
+    from synthadoc.integration.http_server import create_app
+
+    wiki_dir = tmp_wiki / "wiki"
+    (wiki_dir / "big-article.md").write_text(
+        "---\n"
+        "status: active\n"
+        "sources:\n"
+        "  - file: 'https://example.com/big-article'\n"
+        "    hash: abc123\n"
+        "    size: 45000\n"
+        "    ingested: '2026-07-12'\n"
+        "    truncated: true\n"
+        "---\n\n"
+        "# Big Article\n\n"
+        "Some content.\n",
+        encoding="utf-8",
+    )
+
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.get("/lint/report")
+    assert resp.status_code == 200
+    data = resp.json()
+    truncated = data.get("truncated_sources", [])
+    assert any(e["slug"] == "big-article" for e in truncated), \
+        f"big-article not in truncated_sources: {truncated}"
