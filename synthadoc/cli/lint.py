@@ -13,7 +13,7 @@ from synthadoc.cli.main import app
 from synthadoc.cli._http import post
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
-from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
+from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS, suggested_reingest_cmd
 
 
 def _is_reingestable(file: str) -> bool:
@@ -245,11 +245,10 @@ def lint_report(
         typer.echo(f"\nTruncated Sources ({len(truncated_pages)}) - source exceeded ingest limit:\n")
         for entry in truncated_pages:
             size = entry.get("size") or 0
-            suggested = size * 2 if size else _default_max * 2
             typer.echo(f"  {entry['slug']} — source exceeded limit ({size:,} chars)")
             typer.echo(f"    Source: {entry['file']}")
             typer.echo(f"    💡 Re-ingest with a higher limit:")
-            typer.echo(f"       synthadoc ingest \"{entry['file']}\" -w {wiki} --max-source-chars {suggested}")
+            typer.echo(f"       {suggested_reingest_cmd(entry['file'], wiki, size or _default_max)}")
 
     # Sync orphan: true/false frontmatter so the Obsidian dashboard Dataview
     # query (WHERE orphan = true) reflects the same result as this report.

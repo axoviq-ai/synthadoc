@@ -323,6 +323,15 @@ def _append_source_ref(page: "WikiPage", ref: "SourceRef") -> None:
 
     if (ref.file, ref.hash) not in seen:
         page.sources.append(ref)
+    else:
+        # Update mutable fields on the existing entry so a re-ingest with a
+        # higher max_source_chars clears a stale truncated=True flag.
+        for s in page.sources:
+            if (s.file, s.hash) == (ref.file, ref.hash):
+                s.truncated = ref.truncated
+                s.size = ref.size
+                s.ingested = ref.ingested
+                break
 
 
 def _extract_key_data(source_text: str) -> list[str]:

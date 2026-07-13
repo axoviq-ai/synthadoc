@@ -927,6 +927,29 @@ def test_append_source_ref_deduplicates():
     assert len(page.sources) == 2
 
 
+def test_append_source_ref_clears_truncated_on_reingest():
+    """Re-ingesting the same (file, hash) with truncated=False must clear the stale flag.
+
+    URL sources always produce the same hash (derived from the URL, not content),
+    so a re-ingest with a higher max_source_chars must update the existing entry
+    rather than being silently dropped.
+    """
+    from synthadoc.agents.ingest_agent import _append_source_ref
+    from synthadoc.storage.wiki import SourceRef, WikiPage
+
+    url = "https://example.com/page"
+    url_hash = "hash-from-url"
+    page = WikiPage(title="T", tags=[], content="", status="draft", confidence="medium",
+                    sources=[SourceRef(file=url, hash=url_hash, size=100, ingested="2026-07-01", truncated=True)])
+
+    # Re-ingest with higher limit — same (file, hash), truncated=False
+    _append_source_ref(page, SourceRef(file=url, hash=url_hash, size=100, ingested="2026-07-13", truncated=False))
+
+    assert len(page.sources) == 1
+    assert page.sources[0].truncated is False
+    assert page.sources[0].ingested == "2026-07-13"
+
+
 @pytest.mark.asyncio
 async def test_analyse_returns_structured_result(tmp_wiki, cache):
     """_analyse() returns entities, tags, and a summary string."""

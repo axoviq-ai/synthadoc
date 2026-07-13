@@ -189,6 +189,22 @@ class AuditDB:
             )
             await db.commit()
 
+    async def update_ingest_cost(self, source_path: str, cost_usd: float) -> None:
+        """Patch cost_usd on the most recent ingest record for source_path.
+
+        Called by the orchestrator after estimate_cost() so the audit row
+        reflects the real computed cost rather than the 0.0 placeholder written
+        by IngestAgent before the orchestrator has run pricing.
+        """
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute(
+                "UPDATE ingests SET cost_usd = ? WHERE id = ("
+                "  SELECT id FROM ingests WHERE source_path = ? ORDER BY id DESC LIMIT 1"
+                ")",
+                (cost_usd, source_path),
+            )
+            await db.commit()
+
     async def find_by_hash_only(self, source_hash: str) -> Optional[dict]:
         """Return the first ingest record matching source_hash, or None.
 
