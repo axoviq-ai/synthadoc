@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from synthadoc.storage.log import AuditDB
 
@@ -167,6 +167,44 @@ def test_audit_queries_returns_recorded_data(tmp_wiki):
     data = resp.json()
     assert data["count"] == 1
     assert data["records"][0]["question"] == "What is Moore's Law?"
+
+
+def test_query_stream_records_audit_entry(tmp_wiki):
+    """GET /query/stream must write a record to audit.db when the done event fires.
+
+    Mocks QueryAgent.run_stream (not Orchestrator.query_stream) so the real
+    orchestrator wiring — including the record_query call — executes.
+    """
+    from fastapi.testclient import TestClient
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.storage.log import AuditDB
+
+    async def _fake_run_stream(self, question, **kwargs):
+        yield {"event": "status", "data": {"phase": "retrieving"}}
+        yield {"event": "token", "data": {"text": "Bell Labs invented the transistor."}}
+        yield {"event": "citations", "data": {"citations": []}}
+        yield {"event": "done", "data": {
+            "next_hints": [], "cacheable": False,
+            "routing_warning": None, "sub_questions_count": 2,
+        }}
+
+    with patch("synthadoc.agents.query_agent.QueryAgent.run_stream", new=_fake_run_stream):
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock(spec=[])):
+            with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+                resp = client.get("/query/stream?q=Who+invented+the+transistor")
+
+    assert resp.status_code == 200
+
+    db = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    records = asyncio.run(_fetch_queries(db))
+    assert len(records) == 1
+    assert records[0]["question"] == "Who invented the transistor"
+    assert records[0]["sub_questions_count"] == 2
+
+
+async def _fetch_queries(db):
+    await db.init()
+    return await db.list_queries(limit=10)
 
 
 def test_query_post_provider_unavailable_returns_502(tmp_wiki):
