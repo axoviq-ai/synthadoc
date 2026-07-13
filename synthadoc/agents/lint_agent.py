@@ -299,7 +299,7 @@ class LintAgent:
                     f"[WARN] {slug}.md: source '{src.file}' was truncated at ingest "
                     f"(source exceeded max_source_chars={max_chars} — {src.size:,} chars in source).\n"
                     f"       To re-ingest with a higher limit (this source only):\n"
-                    f"         synthadoc ingest {src.file} --max-source-chars {src.size * 2}\n"
+                    f"         synthadoc ingest {src.file} --max-source-chars {src.size * 2} --force\n"
                     f"       To raise the limit for all future ingests:\n"
                     f"         set [ingest] max_source_chars = {src.size * 2} in your config"
                 )

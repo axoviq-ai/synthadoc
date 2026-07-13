@@ -249,7 +249,7 @@ def lint_report(
             typer.echo(f"  {entry['slug']} — source exceeded limit ({size:,} chars)")
             typer.echo(f"    Source: {entry['file']}")
             typer.echo(f"    💡 Re-ingest with a higher limit:")
-            typer.echo(f"       synthadoc ingest \"{entry['file']}\" -w {wiki} --max-source-chars {suggested}")
+            typer.echo(f"       synthadoc ingest \"{entry['file']}\" -w {wiki} --max-source-chars {suggested} --force")
 
     # Sync orphan: true/false frontmatter so the Obsidian dashboard Dataview
     # query (WHERE orphan = true) reflects the same result as this report.
