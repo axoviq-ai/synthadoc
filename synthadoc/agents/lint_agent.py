@@ -153,6 +153,11 @@ def _fix_dangling_wikilinks(content: str, existing_slugs: set[str]) -> str:
     return "".join(result)
 
 
+def suggested_reingest_cmd(file: str, wiki_name: str, size: int) -> str:
+    """Return the CLI command a user should run to re-ingest a truncated source."""
+    return f'synthadoc ingest "{file}" -w {wiki_name} --max-source-chars {size * 2} --force'
+
+
 def find_orphan_slugs(
     page_texts: dict[str, str],
     skip: frozenset[str] = LINT_SKIP_SLUGS,
