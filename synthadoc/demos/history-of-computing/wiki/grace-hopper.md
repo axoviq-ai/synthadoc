@@ -27,15 +27,15 @@ Grace Brewster Murray Hopper (1906–1992) was an American computer scientist an
 
 ## Education and Early Career
 
-Hopper earned her bachelor's degree in mathematics and physics from Vassar College in 1928, then completed her master's and doctoral degrees in mathematics at Yale University. She joined the Vassar faculty and taught mathematics until World War II drew her into military service.^[hopper-biography-usn:1]
+Hopper earned her bachelor's degree in mathematics and physics from Vassar College in 1928, then completed her master's and doctoral degrees in mathematics at Yale University. She joined the Vassar faculty and taught mathematics until World War II drew her into military service.
 
 ## Naval Service and the Harvard Mark I
 
-In 1944, Hopper was assigned to the Bureau of Ships Computation Project at Harvard University, where she worked under Howard Aiken on the Harvard Mark I, a large-scale electromechanical computer. She was one of the first programmers ever assigned to such a machine, writing operational manuals and developing the conceptual framework for treating sequences of machine instructions as reusable procedures — a precursor to the subroutine concept.^[hopper-biography-usn:overview]
+In 1944, Hopper was assigned to the Bureau of Ships Computation Project at Harvard University, where she worked under Howard Aiken on the Harvard Mark I, a large-scale electromechanical computer. She was one of the first programmers ever assigned to such a machine, writing operational manuals and developing the conceptual framework for treating sequences of machine instructions as reusable procedures — a precursor to the subroutine concept.
 
 ## The Origin of "Debugging"
 
-On 9 September 1947, operators of the Harvard Mark II traced a malfunction to a moth trapped in a relay. The insect was taped into the logbook with the note "First actual case of bug being found." Although the term "bug" for engineering defects predates this incident, the Mark II logbook entry is the event most directly associated with the popularization of "debugging" in computing. Hopper's contribution was spreading the term within the programming community, not coining it from scratch.^[hopper-biography-usn:debugging]
+On 9 September 1947, operators of the Harvard Mark II traced a malfunction to a moth trapped in a relay. The insect was taped into the logbook with the note "First actual case of bug being found." Although the term "bug" for engineering defects predates this incident, the Mark II logbook entry is the event most directly associated with the popularization of "debugging" in computing. Hopper's contribution was spreading the term within the programming community, not coining it from scratch.
 
 ## UNIVAC I and the Eckert-Mauchly Years
 
@@ -43,7 +43,7 @@ After the war, Hopper joined the Eckert-Mauchly Computer Corporation (later abso
 
 ## The A-0 System and the Question of the "First Compiler"
 
-In 1952, Hopper developed the A-0 system for the UNIVAC I. A-0 allowed a programmer to write mathematical expressions using symbolic notation that the system would then translate into machine code. For many years, A-0 was widely credited in popular accounts and biographical summaries as the first compiler — a program that translates human-readable source code into machine-executable instructions.^[hopper-biography-usn:compiler]
+In 1952, Hopper developed the A-0 system for the UNIVAC I. A-0 allowed a programmer to write mathematical expressions using symbolic notation that the system would then translate into machine code. For many years, A-0 was widely credited in popular accounts and biographical summaries as the first compiler — a program that translates human-readable source code into machine-executable instructions.
 
 However, this attribution has been challenged by some historians of computing. Critics, including authors cited in recent scholarship such as the "first-compiler-controversy" source, argue that A-0 was more accurately a linker or loader rather than a true compiler in the modern sense, since it primarily combined pre-written subroutines into executable programs rather than translating higher-level source code. From this perspective, the IBM FORTRAN compiler released in 1957 is often identified as the first genuine compiler, because it performed full source-to-machine-code translation with significant optimization.
 
