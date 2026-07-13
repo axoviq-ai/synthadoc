@@ -145,3 +145,22 @@ async def test_audit_db_append_message_updates_last_active(tmp_wiki):
     msgs = await db.get_session_messages("sess-X")
     assert len(msgs) == 3
     assert msgs[2]["content"] == "Second message"
+
+
+@pytest.mark.asyncio
+async def test_update_ingest_cost_patches_most_recent_record(tmp_wiki):
+    """update_ingest_cost must overwrite the cost_usd written by record_ingest.
+
+    IngestAgent calls record_ingest with cost_usd=0.0 (before orchestrator
+    runs pricing). The orchestrator then calls update_ingest_cost with the
+    real value — this test verifies that patch lands correctly.
+    """
+    db = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await db.init()
+    source = "https://example.com/bell-labs"
+    await db.record_ingest("hash1", 1000, source, "bell-labs", tokens=5000, cost_usd=0.0)
+    # Simulate orchestrator patching after estimate_cost()
+    await db.update_ingest_cost(source, cost_usd=0.0312)
+    history = await db.list_ingests(limit=1)
+    assert len(history) == 1
+    assert abs(history[0]["cost_usd"] - 0.0312) < 1e-9

@@ -11,7 +11,7 @@ import logging
 from synthadoc.config import Config, load_config
 from synthadoc.errors import DomainBlockedException
 from synthadoc.core.cache import CacheManager
-from synthadoc.core.cost_guard import CostGuard
+from synthadoc.core.cost_guard import CostGuard, CostEstimate, CostGateError, CostEstimate, CostGateError
 from synthadoc.core.hooks import HookExecutor
 from synthadoc.core.queue import JobQueue
 from synthadoc.observability.telemetry import get_tracer, setup_telemetry
@@ -265,6 +265,9 @@ class Orchestrator:
                 result.output_tokens,
                 is_local=(_agent_cfg.provider == "ollama"),
             )
+            await self._audit.update_ingest_cost(source, result.cost_usd)
+            if await self._guard_ingest_cost(job_id, source, result.tokens_used, result.cost_usd):
+                return
             if max_results is not None and result.child_sources:
                 result.child_sources = result.child_sources[:max_results]
             if _is_web_search and result.child_sources:
@@ -378,6 +381,39 @@ class Orchestrator:
                 await self._queue.fail(job_id, str(e))
                 raise
 
+    async def _guard_ingest_cost(
+        self, job_id: str, source: str, tokens: int, cost_usd: float
+    ) -> bool:
+        """Check cost thresholds after an ingest LLM call.
+
+        Returns True if the job was aborted (hard gate exceeded) — caller must return.
+        Logs a warning for soft warn; logs an error, records an audit event, and
+        permanently fails the job for hard gate.
+        """
+        estimate = CostEstimate(tokens=tokens, cost_usd=cost_usd, operation=f"ingest:{source}")
+        try:
+            self._cost.check(estimate, interactive=False)
+        except CostGateError as e:
+            logger.error("Ingest job %s aborted by cost guard: %s", job_id, e)
+            await self._audit.record_audit_event(
+                job_id=job_id,
+                event="cost_gate_exceeded",
+                metadata={
+                    "source": source,
+                    "cost_usd": cost_usd,
+                    "hard_gate_usd": self._cfg.cost.hard_gate_usd,
+                    "tokens": tokens,
+                },
+            )
+            await self._queue.fail_permanent(job_id, f"cost_gate_exceeded: {e}")
+            return True
+        if cost_usd >= self._cfg.cost.soft_warn_usd:
+            logger.warning(
+                "Ingest cost $%.4f exceeds soft_warn_usd $%.2f for job %s",
+                cost_usd, self._cfg.cost.soft_warn_usd, job_id,
+            )
+        return False
+
     async def _auto_block_domain(self, exc: DomainBlockedException) -> None:
         """Persist a newly discovered blocked domain and record an audit event."""
         import json
@@ -475,6 +511,14 @@ class Orchestrator:
             question, session_id=session_id, session_mode=session_mode,
             history=history or [],
         ):
+            if evt.get("event") == "done":
+                sub_q_count = evt.get("data", {}).get("sub_questions_count", 1)
+                await self._audit.record_query(
+                    question=question,
+                    sub_questions_count=sub_q_count,
+                    tokens=0,
+                    cost_usd=0.0,
+                )
             yield evt
 
     async def lint(self, scope: str = "all", auto_resolve: bool = False) -> str:

@@ -1020,6 +1020,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             })
 
         # Build adversarial_warnings and truncated_sources via WikiStorage.read_page()
+        from synthadoc.agents.lint_agent import suggested_reingest_cmd as _src_cmd
         orch = app.state.orch
         wiki_name = wiki_root.name
         adversarial_warnings = []
@@ -1047,10 +1048,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                         "slug": slug,
                         "file": src.file,
                         "size": src.size,
-                        "suggested_reingest": (
-                            f'synthadoc ingest "{src.file}" -w {wiki_name}'
-                            f" --max-source-chars {src.size * 2}"
-                        ),
+                        "suggested_reingest": _src_cmd(src.file, wiki_name, src.size),
                     })
 
         # Citation issues — same logic as CLI lint report

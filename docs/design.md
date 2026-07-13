@@ -188,13 +188,13 @@ The filename without extension, derived from the page title. ASCII-safe and CJK-
 2. CLI posts `POST /jobs/ingest {source: "report.pdf"}` to `localhost:7070`
 3. HTTP server validates path, writes job to `jobs.db` with status `pending`, returns `{job_id}`
 4. Background worker picks up job within 2 seconds
-5. Orchestrator instantiates IngestAgent, checks CostGuard
+5. Orchestrator instantiates IngestAgent
 6. SkillAgent detects `.pdf`, lazy-loads `PdfSkill`, extracts text
 7. IngestAgent Step 1 — Analysis: `_analyse()` extracts entities, tags, and a 3-sentence summary (cached under key `analyse-v1`)
 8. IngestAgent Step 2 — Decision: LLM reads the full source text (bounded by `max_source_chars`) + BM25-retrieved candidate pages + `purpose.md` scope, decides per-page action (`create` / `update` / `flag` / `skip`). Pages with `status='active'` are protected — sources that conflict with them trigger `flag` rather than `update` (RULE 1b).
 9. IngestAgent Step 3 — Write: applies actions; updates frontmatter; writes `[[wikilinks]]`; fires hooks
 10. IngestAgent Step 4 — Overview: if any pages were created or updated, regenerates `wiki/overview.md`
-11. Job transitions to `completed`; `log.md` updated; `audit.db` record written
+11. Orchestrator calls `_guard_ingest_cost()` on the returned cost: soft warn → `logger.warning` only; hard gate → `cost_gate_exceeded` audit event + `fail_permanent` (job → DEAD). On success, job transitions to `completed`; `log.md` updated; `audit.db` record written
 
 ---
 
@@ -1223,8 +1223,8 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 | `queue.max_retries` | int | `3` | Retries before job → dead |
 | `queue.backoff_base_seconds` | int | `5` | Exponential backoff base (±20% jitter) |
 | `cache.version` | str | `"4"` | Bump to invalidate all cached LLM responses without touching source code |
-| `cost.soft_warn_usd` | float | `0.50` | Log warning, continue _(configured but not yet enforced — cost_guard is wired to the config but check() is not called in the ingest path)_ |
-| `cost.hard_gate_usd` | float | `2.00` | Require explicit confirmation _(configured but not yet enforced — see above)_ |
+| `cost.soft_warn_usd` | float | `0.50` | Emit `logger.warning` in server log when per-job ingest cost exceeds this threshold; job continues normally |
+| `cost.hard_gate_usd` | float | `2.00` | Permanently fail the ingest job (DEAD) and record a `cost_gate_exceeded` audit event when per-job cost exceeds this threshold |
 | `cost.auto_resolve_confidence_threshold` | float | `0.85` | Auto-apply lint resolutions above this score |
 | `chat.conversation_history_turns` | int | `5` | Number of prior conversation turns injected into each query prompt for multi-turn context. Set to `0` to disable conversation history (each query answered independently). |
 | `chat.session_retention_days` | int | `30` | Days to retain chat session history in `audit.db`. Sessions older than this are pruned automatically. |
@@ -1392,14 +1392,14 @@ Anthropic, OpenAI, and compatible providers cache stable prompt segments server-
 
 **Files:** `synthadoc/core/cost_guard.py`, `synthadoc/providers/pricing.py`
 
-Cost tracking is live: `estimate_cost()` is called after each ingest and query operation and the result is written to `audit.db`. The `CostGuard` threshold enforcement (soft warn / hard gate) is implemented and configurable but not yet wired into the LLM call path — it is infrastructure ready to activate.
+Cost tracking is live: `estimate_cost()` is called after each ingest and query operation and the result is written to `audit.db`. The `CostGuard` threshold enforcement is wired into the ingest pipeline: `Orchestrator._guard_ingest_cost()` is called after each ingest LLM call with the returned cost, before the job is marked complete.
 
 ### Thresholds
 
 | Threshold | Default | Behaviour |
 |-----------|---------|-----------|
-| `soft_warn_usd` | $0.50 | Log warning; auto-continue |
-| `hard_gate_usd` | $2.00 | Prompt user `Proceed? [y/N]`; block if N; skip prompt if `auto_confirm=True` or `--yes` flag |
+| `soft_warn_usd` | $0.50 | `logger.warning` in server log; job continues normally |
+| `hard_gate_usd` | $2.00 | Server/ingest path: records `cost_gate_exceeded` audit event + permanently fails job (DEAD). Interactive CLI: prompts `Proceed? [y/N]` |
 
 ### Cost Tracking and Pricing
 

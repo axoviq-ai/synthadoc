@@ -153,6 +153,11 @@ def _fix_dangling_wikilinks(content: str, existing_slugs: set[str]) -> str:
     return "".join(result)
 
 
+def suggested_reingest_cmd(file: str, wiki_name: str, size: int) -> str:
+    """Return the CLI command a user should run to re-ingest a truncated source."""
+    return f'synthadoc ingest "{file}" -w {wiki_name} --max-source-chars {size * 2} --force'
+
+
 def find_orphan_slugs(
     page_texts: dict[str, str],
     skip: frozenset[str] = LINT_SKIP_SLUGS,
@@ -299,7 +304,7 @@ class LintAgent:
                     f"[WARN] {slug}.md: source '{src.file}' was truncated at ingest "
                     f"(source exceeded max_source_chars={max_chars} — {src.size:,} chars in source).\n"
                     f"       To re-ingest with a higher limit (this source only):\n"
-                    f"         synthadoc ingest {src.file} --max-source-chars {src.size * 2}\n"
+                    f"         synthadoc ingest {src.file} --max-source-chars {src.size * 2} --force\n"
                     f"       To raise the limit for all future ingests:\n"
                     f"         set [ingest] max_source_chars = {src.size * 2} in your config"
                 )
