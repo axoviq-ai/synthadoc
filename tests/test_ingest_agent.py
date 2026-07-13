@@ -163,6 +163,42 @@ async def test_truncation_boundary_one_over(tmp_path, mock_provider):
     assert page.sources[0].truncated is True
 
 
+@pytest.mark.asyncio
+async def test_source_ref_size_is_content_length_not_file_bytes(tmp_path, mock_provider):
+    """SourceRef.size stores extracted-text char count, not the raw file byte count.
+
+    Regression: before the fix, size=src_size which for file sources is the
+    file size in bytes (not the text length). After sanitization and extraction
+    the two can differ; the lint report needs the char count to suggest a
+    meaningful --max-source-chars value.
+    """
+    content = "word " * 1000  # 5000 chars, well under the 32000 limit
+    source = tmp_path / "article.txt"
+    source.write_text(content)
+    agent = make_ingest_agent(tmp_path, mock_provider, max_source_chars=32000)
+    await agent.ingest(str(source))
+    page = get_first_page(tmp_path)
+    assert page.sources[0].truncated is False
+    assert page.sources[0].size == len(content)
+
+
+@pytest.mark.asyncio
+async def test_source_ref_size_is_full_content_length_when_truncated(tmp_path, mock_provider):
+    """SourceRef.size stores the full extracted length even when source is truncated.
+
+    The lint report uses size*2 to suggest --max-source-chars. That value only
+    makes sense if size is the full pre-truncation length, not the capped amount.
+    """
+    content = "word " * 6600  # 33000 chars — one thousand over the 32000 limit
+    source = tmp_path / "big.txt"
+    source.write_text(content)
+    agent = make_ingest_agent(tmp_path, mock_provider, max_source_chars=32000)
+    await agent.ingest(str(source))
+    page = get_first_page(tmp_path)
+    assert page.sources[0].truncated is True
+    assert page.sources[0].size == len(content)  # 33000, not 32000
+
+
 # ---------------------------------------------------------------------------
 # Sanitizer integration tests
 # ---------------------------------------------------------------------------

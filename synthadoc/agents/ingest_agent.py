@@ -933,7 +933,7 @@ class IngestAgent:
                         _append_source_ref(page, SourceRef(
                             file=source,
                             hash=src_hash or "",
-                            size=src_size or 0,
+                            size=_source_len,
                             ingested=date.today().isoformat(),
                             truncated=_truncated,
                         ))
@@ -993,7 +993,7 @@ class IngestAgent:
                             _append_source_ref(page, SourceRef(
                                 file=source,
                                 hash=src_hash or "",
-                                size=src_size or 0,
+                                size=_source_len,
                                 ingested=date.today().isoformat(),
                                 truncated=_truncated,
                             ))
@@ -1031,7 +1031,7 @@ class IngestAgent:
                         sources=[SourceRef(
                             file=source,
                             hash=src_hash or "",
-                            size=src_size or 0,
+                            size=_source_len,
                             ingested=today,
                             truncated=_truncated,
                         )],
