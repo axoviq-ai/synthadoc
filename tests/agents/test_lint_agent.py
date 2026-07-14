@@ -842,3 +842,261 @@ async def test_lint_does_not_archive_staged_candidates(tmp_wiki):
 
     state = await audit.get_page_state("my-candidate")
     assert state["state"] == "draft", "staged candidate must not be archived by ghost-draft sweep"
+
+
+# ── cascade_archive ───────────────────────────────────────────────────────────
+
+
+def _make_store(tmp_path, pages: dict) -> "WikiStorage":
+    """Helper: create a WikiStorage with pre-populated pages."""
+    from synthadoc.storage.wiki import WikiStorage, WikiPage
+    store = WikiStorage(tmp_path / "wiki")
+    for slug, content in pages.items():
+        store.write_page(slug, WikiPage(
+            title=slug, tags=[], content=content,
+            status="active", confidence="high", sources=[],
+        ))
+    return store
+
+
+@pytest.mark.asyncio
+async def test_cascade_archive_writes_audit_events(tmp_path):
+    from unittest.mock import AsyncMock
+    from synthadoc.agents.lint_agent import cascade_archive
+    from synthadoc.storage.wiki import TriggerSource
+
+    store = _make_store(tmp_path, {
+        "old-page": "Archived content.",
+        "referencing": "See [[old-page]] for details.",
+    })
+    page = store.read_page("old-page")
+    page.status = "archived"
+    store.write_page("old-page", page)
+
+    mock_audit = AsyncMock()
+    affected = await cascade_archive("old-page", store, audit_db=mock_audit,
+                                    trigger_source=TriggerSource.USER)
+
+    assert "referencing" in affected
+    mock_audit.record_lifecycle_event.assert_awaited_once()
+    call_args = mock_audit.record_lifecycle_event.call_args
+    assert call_args.args[0] == "referencing"       # slug
+    assert "cascade" in call_args.args[3]            # reason contains "cascade"
+    assert "[[old-page]]" in call_args.args[3]       # reason names the archived slug
+    mock_audit.delete_graph_node.assert_awaited_once_with("old-page")
+
+
+@pytest.mark.asyncio
+async def test_cascade_archive_no_audit_when_no_refs(tmp_path):
+    from unittest.mock import AsyncMock
+    from synthadoc.agents.lint_agent import cascade_archive
+
+    store = _make_store(tmp_path, {
+        "isolated": "No links pointing here.",
+        "other": "Talks about something else.",
+    })
+    page = store.read_page("isolated")
+    page.status = "archived"
+    store.write_page("isolated", page)
+
+    mock_audit = AsyncMock()
+    affected = await cascade_archive("isolated", store, audit_db=mock_audit)
+
+    assert affected == []
+    mock_audit.record_lifecycle_event.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cascade_archive_removes_inline_link(tmp_path):
+    from synthadoc.agents.lint_agent import cascade_archive
+
+    store = _make_store(tmp_path, {
+        "silicon-transistors": "## Silicon transistors\n\nSome content.",
+        "cpu-design": "CPUs use [[silicon-transistors]] extensively.",
+    })
+    # Archive silicon-transistors
+    page = store.read_page("silicon-transistors")
+    page.status = "archived"
+    store.write_page("silicon-transistors", page)
+
+    affected = await cascade_archive("silicon-transistors", store)
+
+    assert "cpu-design" in affected
+    updated = store.read_page("cpu-design")
+    assert "[[silicon-transistors]]" not in updated.content
+    assert "silicon-transistors" in updated.content  # display text preserved
+
+
+@pytest.mark.asyncio
+async def test_cascade_archive_removes_list_item(tmp_path):
+    from synthadoc.agents.lint_agent import cascade_archive
+
+    store = _make_store(tmp_path, {
+        "alpha": "# Alpha\nContent.",
+        "beta": "See also:\n- [[alpha]]\n- other item",
+    })
+    page = store.read_page("alpha")
+    page.status = "archived"
+    store.write_page("alpha", page)
+
+    affected = await cascade_archive("alpha", store)
+
+    assert "beta" in affected
+    updated = store.read_page("beta")
+    assert "[[alpha]]" not in updated.content
+    # list item dropped entirely
+    assert "- [[alpha]]" not in updated.content
+
+
+@pytest.mark.asyncio
+async def test_cascade_archive_no_op_when_no_refs(tmp_path):
+    from synthadoc.agents.lint_agent import cascade_archive
+
+    store = _make_store(tmp_path, {
+        "lonely": "No inbound links.",
+        "other": "Talks about something else entirely.",
+    })
+    page = store.read_page("lonely")
+    page.status = "archived"
+    store.write_page("lonely", page)
+
+    affected = await cascade_archive("lonely", store)
+
+    assert affected == []
+
+
+@pytest.mark.asyncio
+async def test_cascade_archive_skips_already_archived_pages(tmp_path):
+    from synthadoc.agents.lint_agent import cascade_archive
+
+    store = _make_store(tmp_path, {
+        "target": "Content.",
+        "already-archived": "References [[target]] extensively.",
+    })
+    page = store.read_page("target")
+    page.status = "archived"
+    store.write_page("target", page)
+    # Mark already-archived as archived too
+    other = store.read_page("already-archived")
+    other.status = "archived"
+    store.write_page("already-archived", other)
+
+    affected = await cascade_archive("target", store)
+
+    assert "already-archived" not in affected
+
+
+@pytest.mark.asyncio
+async def test_cascade_archive_skips_lint_skip_slugs(tmp_path):
+    from synthadoc.agents.lint_agent import cascade_archive, LINT_SKIP_SLUGS
+    from synthadoc.storage.wiki import WikiPage
+
+    store = _make_store(tmp_path, {
+        "some-page": "Content.",
+    })
+    # Populate a skip-slug page with a reference
+    for skip_slug in list(LINT_SKIP_SLUGS)[:1]:
+        store.write_page(skip_slug, WikiPage(
+            title=skip_slug, tags=[], content=f"[[some-page]] ref",
+            status="active", confidence="high", sources=[],
+        ))
+    page = store.read_page("some-page")
+    page.status = "archived"
+    store.write_page("some-page", page)
+
+    affected = await cascade_archive("some-page", store)
+
+    # Skip slug pages must not be rewritten
+    assert all(s not in LINT_SKIP_SLUGS for s in affected)
+
+
+@pytest.mark.asyncio
+async def test_cascade_archive_aliased_link(tmp_path):
+    """[[slug|Display Text]] should become just Display Text."""
+    from synthadoc.agents.lint_agent import cascade_archive
+
+    store = _make_store(tmp_path, {
+        "vacuum-tubes": "## Vacuum tubes\nOld tech.",
+        "history": "Early computers used [[vacuum-tubes|vacuum tube technology]].",
+    })
+    page = store.read_page("vacuum-tubes")
+    page.status = "archived"
+    store.write_page("vacuum-tubes", page)
+
+    affected = await cascade_archive("vacuum-tubes", store)
+
+    assert "history" in affected
+    updated = store.read_page("history")
+    assert "[[vacuum-tubes" not in updated.content
+    assert "vacuum tube technology" in updated.content
+
+
+# ── lint auto-archive cascade integration ─────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_lint_auto_archive_cascades_links(tmp_wiki):
+    """When lint auto-archives a page (source file missing), cascade_archive removes
+    [[page-b]] from all active pages immediately — not waiting for the next lint run."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    raw = tmp_wiki / "raw_sources"
+    raw.mkdir(exist_ok=True)
+
+    # Source file exists for page-a but NOT for page-b
+    (raw / "source-a.txt").write_text("Content A", encoding="utf-8")
+
+    store.write_page("page-a", WikiPage(
+        title="Page A", tags=[], content="Intro. See also [[page-b]].",
+        status="active", confidence="high",
+        sources=[SourceRef(file="source-a.txt", hash="x", size=1, ingested="2026-01-01")],
+    ))
+    store.write_page("page-b", WikiPage(
+        title="Page B", tags=[], content="Page B content.",
+        status="active", confidence="high",
+        sources=[SourceRef(file="source-b.txt", hash="y", size=1, ingested="2026-01-01")],
+    ))
+    # source-b.txt does NOT exist on disk
+
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log,
+                      wiki_root=tmp_wiki)
+    report = await agent.lint(scope="all", adversarial=False)
+
+    # page-b archived because source-b.txt missing
+    page_b = store.read_page("page-b")
+    assert page_b.status == "archived"
+
+    # cascade: [[page-b]] removed from page-a immediately (not waiting for next lint)
+    page_a = store.read_page("page-a")
+    assert "[[page-b]]" not in page_a.content
+    assert report.dangling_links_removed >= 1
+
+
+@pytest.mark.asyncio
+async def test_lint_multi_source_page_goes_stale_not_archived(tmp_wiki):
+    """When a page has multiple local sources and only ONE is missing from disk, lint must
+    mark it stale (not archived) because valid content from the remaining source still exists."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    raw = tmp_wiki / "raw_sources"
+    raw.mkdir(exist_ok=True)
+
+    # source-a exists on disk; source-b does NOT
+    (raw / "source-a.txt").write_text("Content A", encoding="utf-8")
+
+    store.write_page("multi-source-page", WikiPage(
+        title="Multi", tags=[], content="Content.",
+        status="active", confidence="high",
+        sources=[
+            SourceRef(file="source-a.txt", hash="x", size=1, ingested="2026-01-01"),
+            SourceRef(file="source-b.txt", hash="y", size=1, ingested="2026-01-01"),
+        ],
+    ))
+
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log, wiki_root=tmp_wiki)
+    report = await agent.lint(scope="all", adversarial=False)
+
+    page = store.read_page("multi-source-page")
+    assert page.status == "stale"        # NOT archived
+    assert report.lifecycle_stale >= 1
+    assert report.lifecycle_archived == 0

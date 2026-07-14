@@ -1,6 +1,6 @@
 # Synthadoc — Design Document
 
-**Version:** 1.0.1  
+**Version:** 1.0.2  
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -700,7 +700,7 @@ Note: BM25 IDF requires a minimum of 3 documents in the corpus for non-zero scor
 | `GET` | `/provenance/citations` _(v0.5.0)_ | `?page=<slug>&source=<file>&broken=<bool>&limit=N&offset=N&sort=<col>&order=<dir>` | `{total: int, citations: [CitationRow]}` |
 | `GET` | `/lifecycle/status` _(v0.6.0)_ | — | `{draft: int, active: int, contradicted: int, stale: int, archived: int}` |
 | `GET` | `/lifecycle/events` _(v0.6.0)_ | `?slug=<slug>&to_state=<state>&limit=N&offset=N` | `{total: int, events: [LifecycleEvent]}` |
-| `POST` | `/lifecycle/transition` _(v0.6.0)_ | `{slug: str, to_state: str, reason?: str}` | `{slug, from_state, to_state, timestamp}` |
+| `POST` | `/lifecycle/transition` _(v0.6.0)_ | `{slug: str, to_state: str, reason?: str}` | `{slug, from_state, to_state, timestamp, cascade_links_removed_from: [str]}` _(cascade field added v1.0.2)_ |
 | `GET` | `/query/stream` _(v0.7.0)_ | `?q=<question>&no_cache=<bool>&timeout_seconds=N` _(timeout added v0.8.0)_ | SSE stream of `data: <token>\n\n` events, terminated by `data: [DONE]\n\n` |
 | `GET` | `/app` _(v0.7.0)_ | — | Serves the React SPA (web chat UI) |
 | `GET` | `/sessions` _(v0.8.0)_ | — | `[{session_id, first_q, last_active, turn_count, questions: [str]}]` |
@@ -790,7 +790,7 @@ The HTTP server runs a background task that polls `jobs.db` every 2 seconds and 
 
 **Package:** `synthadoc-obsidian` (TypeScript)  
 **Location:** `obsidian-plugin/` in the repo  
-**Version:** 1.0.1
+**Version:** 1.0.2
 
 Each vault configures its server URL in plugin settings (default `http://127.0.0.1:7070`).
 
@@ -2115,7 +2115,7 @@ For PDF sources, if the pagemap sidecar exists and the target page is > 1, a **"
 
 ### Concept
 
-Every wiki page moves through a defined set of states that reflect its review status and the health of its source material. Pages start as `draft` — compiled but not yet validated — and advance to `active` when lint passes all checks. Subsequent changes to the source file on disk push the page to `stale`; a missing source file triggers `archived`. Manual transitions follow a defined graph (see Transition rules below); only semantically valid paths are permitted. Lint and ingest write state directly and are not subject to the graph restriction.
+Every wiki page moves through a defined set of states that reflect its review status and the health of its source material. Pages start as `draft` — compiled but not yet validated — and advance to `active` when lint passes all checks. Subsequent changes to the source file on disk push the page to `stale`; when all local source files are missing from disk the page is transitioned to `archived` (if only some sources are missing it is transitioned to `stale` instead). Manual transitions follow a defined graph (see Transition rules below); only semantically valid paths are permitted. Lint and ingest write state directly and are not subject to the graph restriction.
 
 ### States
 
@@ -2181,7 +2181,7 @@ Pass `--no-lifecycle` to `synthadoc lint run` to skip all four checks. Existing 
 
 #### Check 1 — Archived detection (local and URL sources)
 
-For **local file sources**: if the source path recorded in frontmatter no longer exists on disk, the page is transitioned to `archived`.
+For **local file sources**: lint evaluates all local (non-URL) source paths listed in the page's frontmatter. If **all** of them are missing from disk, the page is transitioned to `archived`. If only **some** are missing — meaning valid content from at least one source still exists — the page is transitioned to `stale` instead, preserving it for re-ingest rather than discarding it. _(v1.0.2: previously any single missing source triggered an immediate archive.)_
 
 For **URL sources** (`http://`, `https://`, `youtube.com/watch?v=…`): availability is checked only when `[lint] check_url_availability = true` (default: `false` — opt-in because it adds a network call per URL source during every lint run).
 
@@ -2198,6 +2198,19 @@ synthadoc lint run --check-urls
 [lint]
 check_url_availability = true   # default: false
 ```
+
+#### Cascade link cleanup
+
+Whenever a page transitions to `archived` — whether triggered manually (`synthadoc lifecycle archive`), via the Obsidian Lifecycle modal, the MCP `synthadoc_lifecycle` tool, or automatically by lint detecting a missing source — Synthadoc immediately scans all other active pages and removes every `[[archived-slug]]` wikilink pointing to the now-archived page.
+
+- **Inline links** — `[[archived-slug]]` becomes plain text (the display text if an alias was used, otherwise the slug itself).
+- **List-item links** — a list item whose only content is `[[archived-slug]]` is dropped entirely.
+- **Archived pages are skipped** — pages already archived are not rewritten.
+- **System pages are skipped** — index, overview, dashboard, log, and purpose pages are excluded.
+
+The cleanup runs synchronously before the response is returned, so the wiki is consistent immediately. The CLI and MCP responses include a `cascade_links_removed_from` field listing the affected slugs. During `lint run`, cascade is batched once after all auto-archive transitions complete, and the count is added to `dangling_links_removed` in the lint report.
+
+Lint's existing periodic dangling-link cleanup (`lint run --scope orphans`) remains in place as a safety net for any dead links that predate this feature or arrive through other paths.
 
 #### Check 2 — Stale detection (local and URL sources)
 
@@ -2613,7 +2626,7 @@ For Claude Desktop, `mcpServers` key names must use underscores (e.g. `synthadoc
 | `synthadoc_write_page` | `slug: str`, `content: str`, `title?: str` | `{slug, title, status}` or `{error, slug}` | Neither |
 | `synthadoc_status` | *(none)* | `{pages: int, wiki: str}` | Neither |
 | `synthadoc_jobs` | `status?: str` (default `"all"`) | `{jobs: [{id, operation, status, created, source?, error?}]}` | Neither |
-| `synthadoc_lifecycle` | `slug: str`, `to_state: str`, `reason: str` | `{slug, from_state, to_state, reason, timestamp}` or `{error}` | Neither |
+| `synthadoc_lifecycle` | `slug: str`, `to_state: str`, `reason: str` | `{slug, from_state, to_state, reason, timestamp, cascade_links_removed_from: [str]}` or `{error, cascade_links_removed_from: []}` _(cascade field added v1.0.2)_ | Neither |
 | `synthadoc_lint_report` | *(none)* | `{contradicted: [str], orphans: [str], adversarial_warnings: int, adversarial_pages: [str]}` | Neither |
 | `synthadoc_ingest` | `source: str` | `{job_id, source}` | Synthadoc |
 | `synthadoc_lint` | `scope?: str` (default `"all"`) | `{job_id, scope}` | Synthadoc |
@@ -2939,6 +2952,11 @@ Edit `<wiki-root>/AGENTS.md` to give the LLM domain-specific instructions — te
 ---
 
 ## Appendix A — Release Feature Index
+
+### v1.0.2
+
+- **Cascade link cleanup on archive** — archiving any page immediately removes every `[[slug]]` wikilink pointing to it from all other active pages, without waiting for the next `lint run`. Inline links become plain text; list-item-only links are dropped entirely. The HTTP `POST /lifecycle/transition` and MCP `synthadoc_lifecycle` responses now include a `cascade_links_removed_from` field listing the rewritten page slugs. During `lint run`, cascade runs once after all auto-archive transitions complete and the count is included in the lint report's `dangling_links_removed` field. System pages (index, dashboard, purpose, log, overview) and already-archived pages are skipped. The existing dangling-link lint pass remains as a safety net for dead links that predate this release.
+- **Multi-source partial-archive fix** — when a page has multiple local source files and only some are missing from disk, lint now transitions the page to `stale` (not `archived`), preserving it for re-ingest. The page is only archived when every local source file is gone. URL sources are not affected by this check.
 
 ### v1.0.1
 
