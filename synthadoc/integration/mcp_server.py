@@ -266,15 +266,16 @@ def create_mcp_server(orchestrator):
                 "error": (
                     f"invalid to_state {to_state!r}. "
                     f"Valid: {', '.join(sorted(_VALID_STATES))}"
-                )
+                ),
+                "cascade_links_removed_from": [],
             }
         page = orchestrator._store.read_page(slug)
         if page is None:
-            return {"error": "page not found", "slug": slug}
+            return {"error": "page not found", "slug": slug, "cascade_links_removed_from": []}
         from_state = page.status
         err = validate_lifecycle_transition(from_state, to_state)
         if err:
-            return {"error": err, "slug": slug, "from_state": from_state}
+            return {"error": err, "slug": slug, "from_state": from_state, "cascade_links_removed_from": []}
         page.status = to_state
         orchestrator._store.write_page(slug, page)
         await orchestrator._audit.set_page_state(slug, to_state, TriggerSource.MCP)
@@ -283,12 +284,20 @@ def create_mcp_server(orchestrator):
         )
         orchestrator._bump_epoch()
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        cascade_affected: list[str] = []
+        if to_state == LifecycleState.ARCHIVED:
+            from synthadoc.agents.lint_agent import cascade_archive
+            cascade_affected = await cascade_archive(
+                slug, orchestrator._store,
+                audit_db=orchestrator._audit, trigger_source=TriggerSource.MCP,
+            )
         return {
             "slug": slug,
             "from_state": from_state,
             "to_state": to_state,
             "reason": reason,
             "timestamp": ts,
+            "cascade_links_removed_from": cascade_affected,
         }
 
     @mcp.tool()

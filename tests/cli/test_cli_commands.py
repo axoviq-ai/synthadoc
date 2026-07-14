@@ -270,3 +270,25 @@ def test_status_shows_none_message_when_lifecycle_counts_empty():
          patch("synthadoc.cli._wiki.resolve_wiki", return_value="test"):
         result = runner.invoke(app, ["status", "-w", "test"])
     assert "(none" in result.output
+
+
+def test_transition_cmd_prints_cascade_summary():
+    """lifecycle archive prints cascade summary when cascade_links_removed_from is present."""
+    from synthadoc.cli.lifecycle import _transition_cmd
+
+    mock_response = {
+        "slug": "test-page",
+        "from_state": "active",
+        "to_state": "archived",
+        "timestamp": "2026-07-04T10:00:00Z",
+        "cascade_links_removed_from": ["page-b", "page-c"],
+    }
+
+    with patch("synthadoc.cli.lifecycle.post", return_value=mock_response):
+        result = runner.invoke(app, ["lifecycle", "archive", "test-page",
+                                      "--wiki", ".", "--reason", "testing"])
+
+    assert result.exit_code == 0
+    assert "Cascade" in result.output
+    assert "page-b" in result.output
+    assert "page-c" in result.output

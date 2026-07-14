@@ -45,7 +45,7 @@ No mocks.  This script is run manually, not by CI.
              plugin upgrade, backup/restore
   Tier 2 — Live.  Runs when server responds at SYNTHADOC_URL; calls LLM.
              [13]–[23] — status, ingest, query, scaffold, export, jobs,
-             lint run, schedule run, lifecycle, cache clear, audit
+             lint run, schedule run, lifecycle, cascade link cleanup, cache clear, audit
 
 ────────────────────────────────────────────────────────────────────────────────
  SIDE EFFECTS & ROLLBACK
@@ -645,6 +645,58 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
         check("lifecycle archive",
               ["lifecycle", "archive",  slug, "--reason", "live-test archive"]  + w)
         ok("lifecycle round-trip complete", f"{slug}: archived → draft → active → archived")
+
+        # ── cascade sub-test ──────────────────────────────────────────────────
+        info(f"lifecycle cascade sub-test on: {slug}")
+        # 1. Verify slug is in archived state (just archived above)
+        _slug_page = wiki_root / "wiki" / f"{slug}.md"
+        _slug_text = _slug_page.read_text(encoding="utf-8", errors="replace")
+        if "status: archived" in _slug_text[:600]:
+            ok("lifecycle cascade — slug confirmed archived")
+        else:
+            warn("lifecycle cascade — slug confirmed archived",
+                 "status: archived not found in frontmatter (proceeding anyway)")
+
+        # 2–3. Restore → activate so we can re-archive with a referencing page present
+        check("lifecycle cascade — restore for cascade",
+              ["lifecycle", "restore",  slug, "--reason", "live-test cascade restore"] + w)
+        check("lifecycle cascade — activate for cascade",
+              ["lifecycle", "activate", slug, "--reason", "live-test cascade activate"] + w)
+
+        # 4. Create a temp page referencing [[slug]]
+        _ref_page = wiki_root / "wiki" / "_live-test-cascade-ref.md"
+        _ref_content = (
+            "---\n"
+            "title: Cascade Ref Test\n"
+            "status: active\n"
+            "confidence: high\n"
+            "sources: []\n"
+            "created: '2026-07-14T00:00:00'\n"
+            "---\n"
+            "\n"
+            f"References [[{slug}]] for cascade test.\n"
+        )
+        try:
+            _ref_page.write_text(_ref_content, encoding="utf-8")
+            # 5–7. Archive the slug — cascade must rewrite referencing pages
+            check("lifecycle cascade — archive triggers cascade",
+                  ["lifecycle", "archive", slug, "--reason", "live-test cascade"] + w,
+                  contains=["Cascade:", "_live-test-cascade-ref"])
+            # 8. Verify wikilink was removed from the ref page on disk
+            _ref_text = _ref_page.read_text(encoding="utf-8", errors="replace")
+            if f"[[{slug}]]" not in _ref_text:
+                ok("lifecycle cascade — wikilink removed from ref page")
+            else:
+                fail("lifecycle cascade — wikilink removed from ref page",
+                     f"[[{slug}]] still present in _live-test-cascade-ref.md")
+        finally:
+            # 9. Rollback: delete temp page, restore slug back to archived
+            _ref_page.unlink(missing_ok=True)
+            run(["lifecycle", "restore",  slug, "--reason", "live-test cascade rollback"] + w)
+            run(["lifecycle", "activate", slug, "--reason", "live-test cascade rollback"] + w)
+            run(["lifecycle", "archive",  slug, "--reason", "live-test cascade rollback"] + w)
+            ok("lifecycle cascade rollback")
+
     else:
         warn("lifecycle activate/archive/restore",
              "no archived pages found — skipping round-trip")

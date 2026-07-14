@@ -204,6 +204,54 @@ def _fix_dangling_wikilinks(content: str, existing_slugs: set[str]) -> str:
     return "".join(result)
 
 
+async def cascade_archive(
+    archived_slug: str,
+    store: "WikiStorage",
+    audit_db: Optional["AuditDB"] = None,
+    trigger_source: str = TriggerSource.USER,
+) -> list[str]:
+    """Remove [[archived_slug]] wikilinks from all other active pages immediately.
+
+    Called after any archive transition so dead links don't accumulate between
+    lint runs.  Writes a lifecycle_events audit record for each rewritten page.
+    Returns list of slugs whose content changed.
+    """
+    slugs = store.all_slugs()
+    # Exclude the just-archived slug so _fix_dangling_wikilinks treats it as gone
+    active_slugs: set[str] = set(slugs) - {archived_slug}
+    affected: list[str] = []
+    for slug in slugs:
+        if slug == archived_slug or slug in LINT_SKIP_SLUGS:
+            continue
+        page = store.read_page(slug)
+        if not page or page.status == LifecycleState.ARCHIVED:
+            continue
+        new_content = _fix_dangling_wikilinks(page.content, active_slugs)
+        if new_content != page.content:
+            page.content = new_content
+            with store.page_lock(slug):
+                store.write_page(slug, page)
+            affected.append(slug)
+            if audit_db:
+                await audit_db.record_lifecycle_event(
+                    slug, page.status, page.status,
+                    f"cascade: [[{archived_slug}]] link removed",
+                    trigger_source,
+                )
+    # Prune the knowledge graph immediately so GET /graph is consistent.
+    # The /graph endpoint reads audit.db directly on every request (no in-memory cache),
+    # so this takes effect on the next request without any additional invalidation.
+    if audit_db:
+        await audit_db.delete_graph_node(archived_slug)
+
+    if affected:
+        _log.info(
+            "cascade_archive: [[%s]] removed from %d page(s): %s",
+            archived_slug, len(affected), affected,
+        )
+    return affected
+
+
 def suggested_reingest_cmd(file: str, wiki_name: str, size: int) -> str:
     """Return the CLI command a user should run to re-ingest a truncated source."""
     return f'synthadoc ingest "{file}" -w {wiki_name} --max-source-chars {size * 2} --force'
@@ -527,6 +575,7 @@ class LintAgent:
                                      url_staleness_days: int = 0,
                                      promote_drafts: bool = True) -> None:
         raw_sources_dir = self._wiki_root / "raw_sources"
+        _auto_archived_slugs: list[str] = []
         for slug in slugs:
             if slug in LINT_SKIP_SLUGS:
                 continue
@@ -543,11 +592,31 @@ class LintAgent:
                             if raw_sources_dir.exists():
                                 src_path = raw_sources_dir / src_ref.file
                                 if not src_path.exists():
-                                    await self._transition(slug, page, current,
-                                                           LifecycleState.ARCHIVED,
-                                                           "source file no longer on disk")
-                                    report.lifecycle_archived += 1
-                                    current = LifecycleState.ARCHIVED
+                                    local_sources = [
+                                        s for s in page.sources
+                                        if s.file and not is_url(s.file)
+                                    ]
+                                    all_missing = all(
+                                        not (raw_sources_dir / s.file).exists()
+                                        for s in local_sources
+                                    )
+                                    if all_missing:
+                                        await self._transition(
+                                            slug, page, current,
+                                            LifecycleState.ARCHIVED,
+                                            "all source files no longer on disk",
+                                        )
+                                        report.lifecycle_archived += 1
+                                        _auto_archived_slugs.append(slug)
+                                        current = LifecycleState.ARCHIVED
+                                    else:
+                                        await self._transition(
+                                            slug, page, current,
+                                            LifecycleState.STALE,
+                                            "source file no longer on disk; other sources remain",
+                                        )
+                                        report.lifecycle_stale += 1
+                                        current = LifecycleState.STALE
                                     break
                         # URL archived: HTTP HEAD or YouTube availability (opt-in)
                         elif src_ref.file and is_url(src_ref.file) and check_url_availability:
@@ -558,6 +627,7 @@ class LintAgent:
                                                        LifecycleState.ARCHIVED,
                                                        "URL source no longer available")
                                 report.lifecycle_archived += 1
+                                _auto_archived_slugs.append(slug)
                                 current = LifecycleState.ARCHIVED
                                 break
 
@@ -668,6 +738,7 @@ class LintAgent:
                         TriggerSource.LINT,
                     )
                     report.lifecycle_archived += 1
+                    _auto_archived_slugs.append(slug)
 
         if self._audit and self._cfg:
             retention = getattr(getattr(self._cfg, "audit", None), "lifecycle_retention_days", 0)
@@ -675,6 +746,17 @@ class LintAgent:
                 from datetime import timedelta
                 cutoff = (datetime.now(timezone.utc) - timedelta(days=retention)).isoformat()
                 await self._audit.purge_lifecycle_events(before_date=cutoff)
+
+        # Cascade: immediately clean [[slug]] refs for every page auto-archived above.
+        # Called once per archived slug after the full loop so we avoid O(n²) store
+        # scans (each cascade_archive call is O(n) — sequential is fine since they
+        # are independent).
+        for _slug in _auto_archived_slugs:
+            _affected = await cascade_archive(
+                _slug, self._store,
+                audit_db=self._audit, trigger_source=TriggerSource.LINT,
+            )
+            report.dangling_links_removed += len(_affected)
 
     async def lint(self, scope: str = "all", auto_resolve: bool = False,
                    adversarial: bool = True, lifecycle: bool = True,

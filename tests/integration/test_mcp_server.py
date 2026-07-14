@@ -513,7 +513,52 @@ async def test_mcp_lifecycle_page_not_found_returns_error(mock_orch):
             {"slug": "missing-page", "to_state": "active", "reason": "test"},
             convert_result=False,
         )
-    assert result == {"error": "page not found", "slug": "missing-page"}
+    assert result == {"error": "page not found", "slug": "missing-page", "cascade_links_removed_from": []}
+
+
+@pytest.mark.asyncio
+async def test_mcp_lifecycle_archive_returns_cascade_list(mock_orch):
+    """Archive transition calls cascade_archive and returns affected slug list."""
+    from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.storage.wiki import WikiPage
+    mcp = create_mcp_server(mock_orch)
+
+    # Write the page to be archived and a page that references it
+    archived_page = WikiPage(
+        title="Old Topic",
+        tags=[],
+        content="Content about old topic.",
+        status="active",
+        confidence="medium",
+        sources=[],
+    )
+    referencing_page = WikiPage(
+        title="Other Page",
+        tags=[],
+        content="See also [[old-topic]] for details.",
+        status="active",
+        confidence="medium",
+        sources=[],
+    )
+    mock_orch._store.write_page("old-topic", archived_page)
+    mock_orch._store.write_page("other-page", referencing_page)
+
+    with patch("synthadoc.storage.log.AuditDB.set_page_state", new=AsyncMock()), \
+         patch("synthadoc.storage.log.AuditDB.record_lifecycle_event", new=AsyncMock()), \
+         patch("synthadoc.storage.log.AuditDB.delete_graph_node", new=AsyncMock()):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_lifecycle",
+            {"slug": "old-topic", "to_state": "archived", "reason": "obsolete"},
+            convert_result=False,
+        )
+
+    # (a) Response contains cascade_links_removed_from with the affected slug
+    assert "cascade_links_removed_from" in result
+    assert result["cascade_links_removed_from"] == ["other-page"]
+
+    # (b) The referencing page no longer contains [[old-topic]]
+    updated = mock_orch._store.read_page("other-page")
+    assert "[[old-topic]]" not in updated.content
 
 
 @pytest.mark.asyncio

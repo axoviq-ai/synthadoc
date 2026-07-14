@@ -1,6 +1,6 @@
 ﻿# Synthadoc User Quick-Start Guide
 
-**Version: v1.0.1 (Community Edition)**
+**Version: v1.0.2 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
@@ -920,21 +920,23 @@ Claude calls `synthadoc_lifecycle` with `to_state="archived"` and a reason, writ
 
 ### Deleting a page and cleaning up its references
 
-When you delete a wiki page from Obsidian, any `[[wikilinks]]` pointing to it in other
-pages become dangling references. Run lint to remove them automatically:
+When a page is archived — whether via `synthadoc lifecycle archive`, the Obsidian Lifecycle modal, the MCP `synthadoc_lifecycle` tool, or automatically by lint detecting that all source files are gone — Synthadoc immediately removes all `[[page-name]]` wikilinks pointing to it from every other active page. No extra `lint run` is required.
 
-```bash
-synthadoc lint run
+- Inline links (`[[old-page]]`) become plain text.
+- List-item-only links (`- [[old-page]]`) are dropped entirely.
+- Already-archived pages and system pages (index, dashboard, purpose) are not rewritten.
+
+The CLI reports which pages were updated:
+
+```
+synthadoc lifecycle archive old-page -w my-wiki --reason "replaced by updated source"
+  old-page: active -> archived
+  Cascade: [[old-page]] removed from 2 page(s): cpu-design, transistor-history
 ```
 
-Lint scans every page for links whose target no longer exists:
+If a page has multiple source files and only some are missing from disk, lint marks it `stale` (not archived) so you can re-ingest the surviving sources. The page is only auto-archived when every local source file is gone.
 
-- **List items** whose only content is the dangling link are removed entirely, e.g.
-  `- [[deleted-page]] — some description` disappears from the page.
-- **Inline references** such as `as described in [[deleted-page]]` are unlinked — the
-  brackets are stripped and the display text is kept.
-
-The number of pages cleaned up is shown in the lint output and recorded in `log.md`.
+Lint's dangling-link cleanup (`lint run`) remains available as a safety net for any dead links that predate a v1.0.2 upgrade or arrive through other paths.
 
 ---
 

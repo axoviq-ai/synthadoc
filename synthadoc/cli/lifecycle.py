@@ -19,6 +19,12 @@ def _transition_cmd(slug: str, to_state: str, wiki: str, reason: str) -> None:
     })
     if "slug" in result:  # success: {slug, from_state, to_state, timestamp}
         typer.echo(f"  {slug}: {result['from_state']} -> {result['to_state']}")
+        affected = result.get("cascade_links_removed_from", [])
+        if affected:
+            typer.echo(
+                f"  Cascade: [[{slug}]] removed from {len(affected)} page(s): "
+                + ", ".join(affected)
+            )
     else:
         typer.echo(f"  Error: {result.get('detail', 'unknown error')}", err=True)
         raise typer.Exit(1)
