@@ -204,6 +204,54 @@ def _fix_dangling_wikilinks(content: str, existing_slugs: set[str]) -> str:
     return "".join(result)
 
 
+async def cascade_archive(
+    archived_slug: str,
+    store: "WikiStorage",
+    audit_db: Optional["AuditDB"] = None,
+    trigger_source: str = TriggerSource.USER,
+) -> list[str]:
+    """Remove [[archived_slug]] wikilinks from all other active pages immediately.
+
+    Called after any archive transition so dead links don't accumulate between
+    lint runs.  Writes a lifecycle_events audit record for each rewritten page.
+    Returns list of slugs whose content changed.
+    """
+    slugs = store.all_slugs()
+    # Exclude the just-archived slug so _fix_dangling_wikilinks treats it as gone
+    active_slugs: set[str] = set(slugs) - {archived_slug}
+    affected: list[str] = []
+    for slug in slugs:
+        if slug == archived_slug or slug in LINT_SKIP_SLUGS:
+            continue
+        page = store.read_page(slug)
+        if not page or page.status == LifecycleState.ARCHIVED:
+            continue
+        new_content = _fix_dangling_wikilinks(page.content, active_slugs)
+        if new_content != page.content:
+            page.content = new_content
+            with store.page_lock(slug):
+                store.write_page(slug, page)
+            affected.append(slug)
+            if audit_db:
+                await audit_db.record_lifecycle_event(
+                    slug, page.status, page.status,
+                    f"cascade: [[{archived_slug}]] link removed",
+                    trigger_source,
+                )
+    # Prune the knowledge graph immediately so GET /graph is consistent.
+    # The /graph endpoint reads audit.db directly on every request (no in-memory cache),
+    # so this takes effect on the next request without any additional invalidation.
+    if audit_db:
+        await audit_db.delete_graph_node(archived_slug)
+
+    if affected:
+        _log.info(
+            "cascade_archive: [[%s]] removed from %d page(s): %s",
+            archived_slug, len(affected), affected,
+        )
+    return affected
+
+
 def suggested_reingest_cmd(file: str, wiki_name: str, size: int) -> str:
     """Return the CLI command a user should run to re-ingest a truncated source."""
     return f'synthadoc ingest "{file}" -w {wiki_name} --max-source-chars {size * 2} --force'
