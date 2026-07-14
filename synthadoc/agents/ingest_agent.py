@@ -110,7 +110,7 @@ _OVERVIEW_PROMPT = (
     "Pages:\n{pages}"
 )
 
-CITATION_PASS4_CACHE_VERSION = "v3"  # bumped: explicit max_tokens=8192 to avoid truncation on long sections
+CITATION_PASS4_CACHE_VERSION = "v4"  # bumped: total_lines ceiling in prompt + post-processing clamp
 ANALYSIS_CACHE_VERSION = "v2"  # bumped to include OKF type field
 DECISION_CACHE_VERSION = "v3"  # bumped to add entity-profile must-create rule (RULE 2b)
 _CITATION_EXCERPT_LEN = 100
@@ -167,11 +167,12 @@ _CITATION_PROMPT = (
     "  - Example: if the source filename is '{filename}' and the claim is on lines 7-9, write "
     "^[{filename}:7-9]\n\n"
     "Do not annotate headings, transition sentences, or [[wikilinks]].\n"
-    "IMPORTANT: Only cite line numbers that appear in the numbered source above. "
+    "IMPORTANT: The source has exactly {total_lines} lines. "
+    "Never write a line number greater than {total_lines}. "
     "If the relevant content is not visible in the excerpt, skip the citation for that paragraph.\n"
     "Return ONLY the annotated section — identical to the input except for added ^[...] markers.\n\n"
     "Source filename: {filename}\n\n"
-    "Source text (lines numbered):\n{numbered_source}\n\n"
+    "Source text ({total_lines} lines, numbered):\n{numbered_source}\n\n"
     "Page section to annotate:\n{section}"
 )
 
@@ -453,9 +454,11 @@ class IngestAgent:
         # Bug C fix: truncate numbered source by line count, not character count.
         # Limit is configurable via [ingest] citation_source_lines in config.toml.
         _line_limit = int(getattr(getattr(self._cfg, "ingest", None), "citation_source_lines", _MAX_CITATION_LINES))
+        source_lines = source_text.splitlines()
+        total_lines = min(len(source_lines), _line_limit)
         numbered = "\n".join(
             f"{i+1}: {line}"
-            for i, line in enumerate(source_text.splitlines()[:_line_limit])
+            for i, line in enumerate(source_lines[:_line_limit])
         )
         body_hash = hashlib.sha256(section.encode()).hexdigest()
         ck = make_cache_key(
@@ -477,6 +480,7 @@ class IngestAgent:
                             filename=filename,
                             numbered_source=numbered,
                             section=section,
+                            total_lines=total_lines,
                         ),
                     )],
                     temperature=0.0,
@@ -531,6 +535,18 @@ class IngestAgent:
         # Normalize single-line and multi-range citations to canonical N-N format
         # before extraction so they are not silently dropped or flagged as malformed.
         annotated = _normalize_citation_markers(annotated)
+
+        # Safety clamp: remove citations whose start exceeds the source; clamp end
+        # to total_lines so the LLM cannot produce out_of_range markers even when
+        # it extrapolates chunk boundaries beyond the actual source length.
+        def _clamp(m: re.Match) -> str:
+            fname, start, end = m.group(1), int(m.group(2)), int(m.group(3))
+            if start > total_lines:
+                return ""
+            if end > total_lines:
+                end = total_lines
+            return f"^[{fname}:{start}-{end}]"
+        annotated = _CITATION_RE.sub(_clamp, annotated)
 
         # Bug B fix: case-insensitive filename comparison
         citations = [
