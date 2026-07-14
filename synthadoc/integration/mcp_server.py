@@ -283,12 +283,20 @@ def create_mcp_server(orchestrator):
         )
         orchestrator._bump_epoch()
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        cascade_affected: list[str] = []
+        if to_state == LifecycleState.ARCHIVED:
+            from synthadoc.agents.lint_agent import cascade_archive
+            cascade_affected = await cascade_archive(
+                slug, orchestrator._store,
+                audit_db=orchestrator._audit, trigger_source=TriggerSource.MCP,
+            )
         return {
             "slug": slug,
             "from_state": from_state,
             "to_state": to_state,
             "reason": reason,
             "timestamp": ts,
+            "cascade_links_removed_from": cascade_affected,
         }
 
     @mcp.tool()
