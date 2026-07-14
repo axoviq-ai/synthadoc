@@ -72,6 +72,11 @@ LINT_SKIP_SLUGS: frozenset[str] = frozenset(
 # e.g. "- [[some-slug]] — description" or "* [[slug]]"
 _LIST_LINK_RE = re.compile(r"^\s*[-*+]\s+\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
 
+# Extracts the 11-char video ID from any canonical YouTube URL form.
+_YOUTUBE_ID_RE = re.compile(
+    r"(?:youtube\.com/(?:watch\?v=|shorts/|live/|embed/|v/)|youtu\.be/)([A-Za-z0-9_-]{11})"
+)
+
 
 def _citation_source_names(file: str) -> set[str]:
     """Return all citation names a source may use, for backward-compatible lint checking.
@@ -81,9 +86,16 @@ def _citation_source_names(file: str) -> set[str]:
     were ingested with just the last segment.  Including both forms in the set
     ensures existing pages don't suddenly show broken_ref after the naming fix.
     For local files, return {Path(file).name}.
+    YouTube URLs are a special case: the ingest agent renames the sidecar to
+    "youtube-{video_id}" via suggested_slug, so SourceRef.file (the raw URL)
+    must map to that same slug here.
     """
     if "://" not in file:
         return {Path(file).name}
+    yt = _YOUTUBE_ID_RE.search(file)
+    if yt:
+        slug = re.sub(r"[^a-z0-9]+", "-", f"youtube-{yt.group(1)}".lower()).strip("-")
+        return {slug}
     bare = file.split("?")[0].rstrip("/")
     parts = [seg for seg in bare.split("/") if seg]
     segments = parts[2:] if len(parts) > 2 else parts[1:] if len(parts) > 1 else parts
