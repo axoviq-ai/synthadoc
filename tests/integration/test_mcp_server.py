@@ -513,7 +513,7 @@ async def test_mcp_lifecycle_page_not_found_returns_error(mock_orch):
             {"slug": "missing-page", "to_state": "active", "reason": "test"},
             convert_result=False,
         )
-    assert result == {"error": "page not found", "slug": "missing-page"}
+    assert result == {"error": "page not found", "slug": "missing-page", "cascade_links_removed_from": []}
 
 
 @pytest.mark.asyncio

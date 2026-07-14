@@ -266,15 +266,16 @@ def create_mcp_server(orchestrator):
                 "error": (
                     f"invalid to_state {to_state!r}. "
                     f"Valid: {', '.join(sorted(_VALID_STATES))}"
-                )
+                ),
+                "cascade_links_removed_from": [],
             }
         page = orchestrator._store.read_page(slug)
         if page is None:
-            return {"error": "page not found", "slug": slug}
+            return {"error": "page not found", "slug": slug, "cascade_links_removed_from": []}
         from_state = page.status
         err = validate_lifecycle_transition(from_state, to_state)
         if err:
-            return {"error": err, "slug": slug, "from_state": from_state}
+            return {"error": err, "slug": slug, "from_state": from_state, "cascade_links_removed_from": []}
         page.status = to_state
         orchestrator._store.write_page(slug, page)
         await orchestrator._audit.set_page_state(slug, to_state, TriggerSource.MCP)
