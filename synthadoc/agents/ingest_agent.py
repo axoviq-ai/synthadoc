@@ -155,12 +155,14 @@ def _normalize_citation_markers(text: str) -> str:
     return _NONCANONICAL_CITE_RE.sub(_fix, text)
 
 
-def _scrub_source_citations(content: str, filename: str, total_lines: int) -> str:
-    """Remove or clamp ^[filename:start-end] markers in *content* that exceed total_lines.
+def _scrub_source_citations(content: str, filename: str, source_text: str) -> str:
+    """Remove or clamp ^[filename:start-end] markers in *content* that exceed the
+    actual line count of *source_text*.
 
     Called on existing page content before appending a new update section so that
     stale out-of-range citations left by previous reingests are cleaned up.
     """
+    total_lines = len(source_text.splitlines())
     fname_lower = filename.lower()
 
     def _fix(m: re.Match) -> str:
@@ -1029,8 +1031,7 @@ class IngestAgent:
                             key_section = "\n\n## Key Data\n\n" + "\n".join(f"- {item}" for item in _key_items)
                             section = section + key_section
                         # Scrub stale out-of-range citations from previous reingests
-                        _src_line_count = len(extracted.text.splitlines())
-                        page.content = _scrub_source_citations(page.content, p.name, _src_line_count)
+                        page.content = _scrub_source_citations(page.content, p.name, extracted.text)
                         # Pass 4: annotate only the new update section
                         section, citations = await self._annotate_citations(
                             section, extracted.text, p.name, bust_cache=bust_cache
@@ -1092,8 +1093,7 @@ class IngestAgent:
                                 key_section = "\n\n## Key Data\n\n" + "\n".join(f"- {item}" for item in _key_items)
                                 section = section + key_section
                             # Scrub stale out-of-range citations from previous reingests
-                            _src_line_count = len(extracted.text.splitlines())
-                            page.content = _scrub_source_citations(page.content, p.name, _src_line_count)
+                            page.content = _scrub_source_citations(page.content, p.name, extracted.text)
                             # Pass 4: annotate only the new section
                             section, citations = await self._annotate_citations(
                                 section, extracted.text, p.name, bust_cache=bust_cache
