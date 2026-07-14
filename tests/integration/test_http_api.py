@@ -912,6 +912,115 @@ def test_lint_report_includes_citation_issues_for_broken_refs(tmp_wiki):
         f"No broken_ref for cited-page in: {issues}"
 
 
+def test_lifecycle_transition_archive_cascades_wikilinks(tmp_wiki):
+    """POST /lifecycle/transition to archived triggers cascade_archive.
+
+    A referencing page that contains [[archived-page]] must have that wikilink
+    removed, and the response must list the referencing slug in
+    cascade_links_removed_from.
+    """
+    import asyncio
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.storage.wiki import WikiStorage
+
+    wiki_dir = tmp_wiki / "wiki"
+
+    # Page to archive
+    (wiki_dir / "archived-page.md").write_text(
+        "---\nstatus: active\n---\n# Archived Page\n\nSome content.\n",
+        encoding="utf-8",
+    )
+    # Page that references the page to be archived
+    (wiki_dir / "referencing-page.md").write_text(
+        "---\nstatus: active\n---\n# Referencing Page\n\nSee also [[archived-page]] for details.\n",
+        encoding="utf-8",
+    )
+
+    db = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    asyncio.run(db.init())
+    asyncio.run(db.set_page_state("archived-page", "active", "ingest"))
+    asyncio.run(db.set_page_state("referencing-page", "active", "ingest"))
+
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.post("/lifecycle/transition", json={
+            "slug": "archived-page",
+            "to_state": "archived",
+            "reason": "no longer relevant",
+        })
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "cascade_links_removed_from" in data
+    assert "referencing-page" in data["cascade_links_removed_from"]
+
+    # The referencing page's content must no longer contain the dead wikilink
+    store = WikiStorage(wiki_dir)
+    updated = store.read_page("referencing-page")
+    assert updated is not None
+    assert "[[archived-page]]" not in updated.content
+
+
+def test_lifecycle_transition_non_archive_has_empty_cascade(tmp_wiki):
+    """POST /lifecycle/transition to a non-archived state always returns
+    cascade_links_removed_from as an empty list.
+    """
+    import asyncio
+    from synthadoc.integration.http_server import create_app
+
+    wiki_dir = tmp_wiki / "wiki"
+    (wiki_dir / "draft-page.md").write_text(
+        "---\nstatus: draft\n---\n# Draft\n",
+        encoding="utf-8",
+    )
+
+    db = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    asyncio.run(db.init())
+    asyncio.run(db.set_page_state("draft-page", "draft", "ingest"))
+
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.post("/lifecycle/transition", json={
+            "slug": "draft-page",
+            "to_state": "active",
+            "reason": "reviewed",
+        })
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "cascade_links_removed_from" in data
+    assert data["cascade_links_removed_from"] == []
+
+
+def test_lifecycle_transition_returns_slug_states_timestamp(tmp_wiki):
+    """POST /lifecycle/transition always returns slug, from_state, to_state, timestamp."""
+    import asyncio
+    from synthadoc.integration.http_server import create_app
+
+    wiki_dir = tmp_wiki / "wiki"
+    (wiki_dir / "my-page.md").write_text(
+        "---\nstatus: draft\n---\n# My Page\n",
+        encoding="utf-8",
+    )
+
+    db = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    asyncio.run(db.init())
+    asyncio.run(db.set_page_state("my-page", "draft", "ingest"))
+
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.post("/lifecycle/transition", json={
+            "slug": "my-page",
+            "to_state": "active",
+            "reason": "reviewed",
+        })
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["slug"] == "my-page"
+    assert data["from_state"] == "draft"
+    assert data["to_state"] == "active"
+    assert "timestamp" in data
+    assert "cascade_links_removed_from" in data
+
+
 def test_lint_report_returns_truncated_sources(tmp_wiki):
     """A page with truncated: true in a source must appear in truncated_sources.
 

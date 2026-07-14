@@ -1504,7 +1504,19 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         await audit.record_lifecycle_event(req.slug, from_state, req.to_state,
                                             req.reason, TriggerSource.USER)
         orch._bump_epoch()
-        return {"slug": req.slug, "from_state": from_state, "to_state": req.to_state, "timestamp": ts}
+        cascade_affected: list[str] = []
+        if req.to_state == LifecycleState.ARCHIVED:
+            from synthadoc.agents.lint_agent import cascade_archive
+            cascade_affected = await cascade_archive(
+                req.slug, orch._store, audit_db=audit, trigger_source=TriggerSource.USER
+            )
+        return {
+            "slug": req.slug,
+            "from_state": from_state,
+            "to_state": req.to_state,
+            "timestamp": ts,
+            "cascade_links_removed_from": cascade_affected,
+        }
 
     # ── Export ────────────────────────────────────────────────────────────────
     @app.post("/export")
