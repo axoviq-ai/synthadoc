@@ -920,21 +920,15 @@ Claude calls `synthadoc_lifecycle` with `to_state="archived"` and a reason, writ
 
 ### Deleting a page and cleaning up its references
 
-When you delete a wiki page from Obsidian, any `[[wikilinks]]` pointing to it in other
-pages become dangling references. Run lint to remove them automatically:
+When a page is archived, Synthadoc automatically removes all `[[page-name]]` wikilinks pointing to it from every other active page — no lint run required. Inline links become plain text and list-item-only links are dropped entirely. The archive command reports which pages were updated:
 
-```bash
-synthadoc lint run
+```
+synthadoc lifecycle archive old-page -w my-wiki --reason "replaced by updated source"
+  old-page: active -> archived
+  Cascade: [[old-page]] removed from 2 page(s): cpu-design, transistor-history
 ```
 
-Lint scans every page for links whose target no longer exists:
-
-- **List items** whose only content is the dangling link are removed entirely, e.g.
-  `- [[deleted-page]] — some description` disappears from the page.
-- **Inline references** such as `as described in [[deleted-page]]` are unlinked — the
-  brackets are stripped and the display text is kept.
-
-The number of pages cleaned up is shown in the lint output and recorded in `log.md`.
+Lint's dangling-link cleanup (`lint run`) remains available as a safety net for any dead links that predate a v1.0.2 upgrade or arrive through other paths.
 
 ---
 

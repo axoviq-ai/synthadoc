@@ -2199,6 +2199,19 @@ synthadoc lint run --check-urls
 check_url_availability = true   # default: false
 ```
 
+#### Cascade link cleanup
+
+Whenever a page transitions to `archived` — whether triggered manually (`synthadoc lifecycle archive`), via the Obsidian Lifecycle modal, the MCP `synthadoc_lifecycle` tool, or automatically by lint detecting a missing source — Synthadoc immediately scans all other active pages and removes every `[[archived-slug]]` wikilink pointing to the now-archived page.
+
+- **Inline links** — `[[archived-slug]]` becomes plain text (the display text if an alias was used, otherwise the slug itself).
+- **List-item links** — a list item whose only content is `[[archived-slug]]` is dropped entirely.
+- **Archived pages are skipped** — pages already archived are not rewritten.
+- **System pages are skipped** — index, overview, dashboard, log, and purpose pages are excluded.
+
+The cleanup runs synchronously before the response is returned, so the wiki is consistent immediately. The CLI and MCP responses include a `cascade_links_removed_from` field listing the affected slugs. During `lint run`, cascade is batched once after all auto-archive transitions complete, and the count is added to `dangling_links_removed` in the lint report.
+
+Lint's existing periodic dangling-link cleanup (`lint run --scope orphans`) remains in place as a safety net for any dead links that predate this feature or arrive through other paths.
+
 #### Check 2 — Stale detection (local and URL sources)
 
 For **local file sources**: a SHA-256 hash of the current file on disk is compared to the hash recorded at ingest time. A mismatch transitions the page to `stale`.

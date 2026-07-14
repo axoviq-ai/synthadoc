@@ -139,7 +139,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **Contradiction detection & resolution** — conflicting claims flagged `status: contradicted`; auto-resolve available; full conflict history | **Yes** | No | No | No |
 | **Adversarial claim review** — concurrent second-LLM pass flags overstated claims, unsupported superlatives, and contestable facts per page | **Yes** | No | No | No |
 | **Claim-level provenance** — `^[file:L-L]` citation on every claim; Source Viewer in Obsidian; PDF page resolution; broken-citation lint | **Yes** | No | Partial | No |
-| **5-state lifecycle machine** — `draft → active → contradicted / stale → archived`; auto-transitions via lint; immutable event log | **Yes** | No | No | No |
+| **5-state lifecycle machine** — `draft → active → contradicted / stale → archived`; auto-transitions via lint; immutable event log; cascade link cleanup on archive (immediate, no lint run required) | **Yes** | No | No | No |
 | **Pre-LLM source sanitizer** — strips zero-width chars, bidi overrides, hidden HTML, and instruction-override phrases before any LLM call | **Yes** | No | No | No |
 
 ### Knowledge Structure
@@ -746,6 +746,9 @@ synthadoc lifecycle activate <slug> -w my-wiki --reason "reviewed and verified"
 
 # Archive a page whose source has been superseded
 synthadoc lifecycle archive <slug> -w my-wiki --reason "replaced by updated source"
+# After archiving, any [[slug]] references in other pages are cleaned up automatically.
+# The output reports which pages were updated:
+#   Cascade: [[old-page]] removed from 2 page(s): cpu-design, transistor-history
 
 # Restore an archived page back to draft for re-review
 synthadoc lifecycle restore <slug> -w my-wiki --reason "source re-added"
