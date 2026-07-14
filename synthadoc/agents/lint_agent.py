@@ -73,6 +73,28 @@ LINT_SKIP_SLUGS: frozenset[str] = frozenset(
 _LIST_LINK_RE = re.compile(r"^\s*[-*+]\s+\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
 
 
+def _citation_source_names(file: str) -> set[str]:
+    """Return all citation names a source may use, for backward-compatible lint checking.
+
+    Ingest agent now uses the last two URL path segments for collision resistance
+    (e.g. biography-dennis-ritchie instead of dennis-ritchie), but older pages
+    were ingested with just the last segment.  Including both forms in the set
+    ensures existing pages don't suddenly show broken_ref after the naming fix.
+    For local files, return {Path(file).name}.
+    """
+    if "://" not in file:
+        return {Path(file).name}
+    bare = file.split("?")[0].rstrip("/")
+    parts = [seg for seg in bare.split("/") if seg]
+    segments = parts[2:] if len(parts) > 2 else parts[1:] if len(parts) > 1 else parts
+    names: set[str] = set()
+    if segments:
+        names.add(segments[-1])                              # old 1-segment form
+        if len(segments) >= 2:
+            names.add(f"{segments[-2]}-{segments[-1]}")     # new 2-segment form
+    return names or {"url-source"}
+
+
 def _check_page_citations(
     slug: str, page: WikiPage, extracted_dir: Path
 ) -> list[dict]:
@@ -83,7 +105,9 @@ def _check_page_citations(
     - broken_ref: filename not listed in page.sources[]
     - out_of_range: line_end exceeds actual line count of the extracted .txt file
     """
-    source_basenames = {Path(s.file).name for s in (page.sources or [])}
+    source_basenames: set[str] = set()
+    for s in (page.sources or []):
+        source_basenames.update(_citation_source_names(s.file))
     issues: list[dict] = []
     seen_citations: set[str] = set()
 
@@ -101,8 +125,12 @@ def _check_page_citations(
             issues.append({"slug": slug, "citation": citation, "reason": "broken_ref"})
             continue
 
-        # Check line range against extracted .txt if available
+        # Check line range against extracted .txt. Sidecars are always written as
+        # <stem>.txt (ingest strips the original extension and appends .txt), so
+        # try the citation filename directly first, then fall back to stem + ".txt".
         txt_path = Path(extracted_dir) / filename
+        if not txt_path.exists():
+            txt_path = Path(extracted_dir) / (Path(filename).stem + ".txt")
         if txt_path.exists():
             try:
                 line_count = txt_path.read_text(encoding="utf-8").count("\n") + 1
