@@ -110,12 +110,13 @@ _OVERVIEW_PROMPT = (
     "Pages:\n{pages}"
 )
 
-CITATION_PASS4_CACHE_VERSION = "v1"
+CITATION_PASS4_CACHE_VERSION = "v4"  # bumped: total_lines ceiling in prompt + post-processing clamp
 ANALYSIS_CACHE_VERSION = "v2"  # bumped to include OKF type field
 DECISION_CACHE_VERSION = "v3"  # bumped to add entity-profile must-create rule (RULE 2b)
 _CITATION_EXCERPT_LEN = 100
-_MAX_CITATION_LINES = 120
+_MAX_CITATION_LINES = 400
 _MAX_CITE_LEN_RATIO = 0.8
+_CITATION_MAX_TOKENS = 8192   # output cap for citation pass — large enough for long transcript sections
 
 _CODE_BLOCK_RE = re.compile(r"```[^\n]*\n(.*?)```", re.DOTALL)
 _BOLD_BULLET_NUM_RE = re.compile(
@@ -154,6 +155,29 @@ def _normalize_citation_markers(text: str) -> str:
     return _NONCANONICAL_CITE_RE.sub(_fix, text)
 
 
+def _scrub_source_citations(content: str, filename: str, source_text: str) -> str:
+    """Remove or clamp ^[filename:start-end] markers in *content* that exceed the
+    actual line count of *source_text*.
+
+    Called on existing page content before appending a new update section so that
+    stale out-of-range citations left by previous reingests are cleaned up.
+    """
+    total_lines = len(source_text.splitlines())
+    fname_lower = filename.lower()
+
+    def _fix(m: re.Match) -> str:
+        if m.group(1).lower() != fname_lower:
+            return m.group(0)
+        start, end = int(m.group(2)), int(m.group(3))
+        if start > total_lines:
+            return ""
+        if end > total_lines:
+            return f"^[{m.group(1)}:{start}-{total_lines}]"
+        return m.group(0)
+
+    return _CITATION_RE.sub(_fix, content)
+
+
 _CITATION_PROMPT = (
     "You are a citation annotator. Given a wiki page section and the source text it was "
     "compiled from, insert a citation marker at the END of each paragraph that makes a "
@@ -166,9 +190,12 @@ _CITATION_PROMPT = (
     "  - Example: if the source filename is '{filename}' and the claim is on lines 7-9, write "
     "^[{filename}:7-9]\n\n"
     "Do not annotate headings, transition sentences, or [[wikilinks]].\n"
+    "IMPORTANT: The source has exactly {total_lines} lines. "
+    "Never write a line number greater than {total_lines}. "
+    "If the relevant content is not visible in the excerpt, skip the citation for that paragraph.\n"
     "Return ONLY the annotated section — identical to the input except for added ^[...] markers.\n\n"
     "Source filename: {filename}\n\n"
-    "Source text (lines numbered):\n{numbered_source}\n\n"
+    "Source text ({total_lines} lines, numbered):\n{numbered_source}\n\n"
     "Page section to annotate:\n{section}"
 )
 
@@ -355,6 +382,33 @@ def _append_source_ref(page: "WikiPage", ref: "SourceRef") -> None:
                 break
 
 
+def _propagate_source_update(
+    store: "WikiStorage", source_url: str, new_truncated: bool, new_size: int, skip_slug: str
+) -> None:
+    """After a force reingest, sync truncated/size on every OTHER page that still references source_url.
+
+    When the LLM chooses action=create for a re-ingested URL, the source moves to a new page
+    while the old page keeps a stale SourceRef(truncated=True).  This walks all other pages
+    and updates the flag so lint stops reporting a warning that the user already resolved.
+    """
+    for slug in store.all_slugs():
+        if slug == skip_slug:
+            continue
+        page = store.read_page(slug)
+        if not page:
+            continue
+        changed = False
+        for ref in (page.sources or []):
+            if ref.file == source_url and (ref.truncated != new_truncated or ref.size != new_size):
+                ref.truncated = new_truncated
+                ref.size = new_size
+                changed = True
+        if changed:
+            with store.page_lock(slug):
+                store.write_page(slug, page)
+            logger.debug("ingest: propagated truncation update to slug=%s source=%s", slug, source_url[:80])
+
+
 def _extract_key_data(source_text: str) -> list[str]:
     """Extract numerical facts, formulas, and rates from source text deterministically.
 
@@ -447,10 +501,14 @@ class IngestAgent:
                 )
             return section, []
 
-        # Bug C fix: truncate numbered source by line count, not character count
+        # Bug C fix: truncate numbered source by line count, not character count.
+        # Limit is configurable via [ingest] citation_source_lines in config.toml.
+        _line_limit = int(getattr(getattr(self._cfg, "ingest", None), "citation_source_lines", _MAX_CITATION_LINES))
+        source_lines = source_text.splitlines()
+        total_lines = min(len(source_lines), _line_limit)
         numbered = "\n".join(
             f"{i+1}: {line}"
-            for i, line in enumerate(source_text.splitlines()[:_MAX_CITATION_LINES])
+            for i, line in enumerate(source_lines[:_line_limit])
         )
         body_hash = hashlib.sha256(section.encode()).hexdigest()
         ck = make_cache_key(
@@ -464,6 +522,7 @@ class IngestAgent:
             annotated = cached
         else:
             try:
+                _max_tok = int(getattr(getattr(self._cfg, "ingest", None), "citation_max_tokens", _CITATION_MAX_TOKENS))
                 resp = await self._provider.complete(
                     messages=[Message(
                         role="user",
@@ -471,9 +530,11 @@ class IngestAgent:
                             filename=filename,
                             numbered_source=numbered,
                             section=section,
+                            total_lines=total_lines,
                         ),
                     )],
                     temperature=0.0,
+                    max_tokens=_max_tok,
                 )
                 raw = resp.text.strip() or section
                 # Bug A fix: length-based sanity check replaces exact first-line match.
@@ -524,6 +585,18 @@ class IngestAgent:
         # Normalize single-line and multi-range citations to canonical N-N format
         # before extraction so they are not silently dropped or flagged as malformed.
         annotated = _normalize_citation_markers(annotated)
+
+        # Safety clamp: remove citations whose start exceeds the source; clamp end
+        # to total_lines so the LLM cannot produce out_of_range markers even when
+        # it extrapolates chunk boundaries beyond the actual source length.
+        def _clamp(m: re.Match) -> str:
+            fname, start, end = m.group(1), int(m.group(2)), int(m.group(3))
+            if start > total_lines:
+                return ""
+            if end > total_lines:
+                end = total_lines
+            return f"^[{fname}:{start}-{end}]"
+        annotated = _CITATION_RE.sub(_clamp, annotated)
 
         # Bug B fix: case-insensitive filename comparison
         citations = [
@@ -984,6 +1057,8 @@ class IngestAgent:
                         if len(_key_items) >= _KEY_DATA_MIN_ITEMS:
                             key_section = "\n\n## Key Data\n\n" + "\n".join(f"- {item}" for item in _key_items)
                             section = section + key_section
+                        # Scrub stale out-of-range citations from previous reingests
+                        page.content = _scrub_source_citations(page.content, p.name, extracted.text)
                         # Pass 4: annotate only the new update section
                         section, citations = await self._annotate_citations(
                             section, extracted.text, p.name, bust_cache=bust_cache
@@ -1044,6 +1119,8 @@ class IngestAgent:
                             if len(_key_items) >= _KEY_DATA_MIN_ITEMS:
                                 key_section = "\n\n## Key Data\n\n" + "\n".join(f"- {item}" for item in _key_items)
                                 section = section + key_section
+                            # Scrub stale out-of-range citations from previous reingests
+                            page.content = _scrub_source_citations(page.content, p.name, extracted.text)
                             # Pass 4: annotate only the new section
                             section, citations = await self._annotate_citations(
                                 section, extracted.text, p.name, bust_cache=bust_cache
@@ -1133,6 +1210,12 @@ class IngestAgent:
                                 branch = await self._pick_routing_branch(slug, new_page, ri)
                                 ri.add_slug(slug, branch)
                                 ri.save(self._routing_path)
+
+        # On force reingest, propagate updated truncated/size to any other page that
+        # still holds a SourceRef for the same URL (e.g. the old page when the LLM
+        # chose action=create for a source it previously appended to a different page).
+        if bust_cache and final_slug and "://" in source:
+            _propagate_source_update(self._store, source, _truncated, _source_len, final_slug)
 
         if result.pages_created or result.pages_updated:
             await self._update_overview()

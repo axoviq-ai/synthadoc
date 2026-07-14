@@ -53,6 +53,13 @@ default = {{ provider = "gemini", model = "gemini-2.5-flash-lite" }}
 
 [ingest]
 max_pages_per_ingest = 15
+# Citation pass (Pass 4) tuning — these two settings work together:
+#   citation_source_lines — how many lines of the source the LLM sees when placing ^[...] markers.
+#                           Increase if lint reports out_of_range on long sources (transcripts, PDFs).
+#   citation_max_tokens   — output token budget for the annotated section returned by the LLM.
+#                           Increase if you raise citation_source_lines and have long wiki sections.
+# citation_source_lines = 400
+# citation_max_tokens = 8192
 
 [cost]
 soft_warn_usd = 0.50

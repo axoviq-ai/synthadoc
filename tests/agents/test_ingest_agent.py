@@ -1997,7 +1997,10 @@ async def test_pass4_result_recorded_in_claim_citations(tmp_wiki, db, cache):
     )
 
     source = tmp_wiki / "raw_sources" / "research.md"
-    source.write_text("Neural networks are powerful tools.", encoding="utf-8")
+    source.write_text(
+        "Neural networks are powerful tools.\nThey learn from data.\nDeep learning is a subset.",
+        encoding="utf-8",
+    )
 
     with patch.object(IngestAgent, "_update_overview", AsyncMock()):
         result = await agent.ingest(str(source))
@@ -2546,6 +2549,7 @@ def test_citation_prompt_example_uses_actual_filename():
         filename="my-source.txt",
         numbered_source=numbered,
         section="Some claim from the source.",
+        total_lines=9,
     )
     # The formatted prompt must include the concrete filename in the example
     assert "^[my-source.txt:7-9]" in formatted, \

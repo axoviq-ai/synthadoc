@@ -1158,6 +1158,13 @@ max_pages_per_ingest  = 15
 chunk_size            = 1500
 chunk_overlap         = 150
 fetch_timeout_seconds = 30   # seconds to wait for a URL response before retrying
+# Citation pass (Pass 4) tuning — these two settings work together:
+#   citation_source_lines — how many lines of the source the LLM sees when placing ^[...] markers.
+#                           Increase if lint reports out_of_range on long sources (transcripts, PDFs).
+#   citation_max_tokens   — output token budget for the annotated section returned by the LLM.
+#                           Increase if you raise citation_source_lines and have long wiki sections.
+# citation_source_lines = 400
+# citation_max_tokens = 8192
 
 [logs]
 level        = "INFO"
@@ -1238,6 +1245,8 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 | `search.vector` | bool | `false` | Enable semantic re-ranking; downloads `BAAI/bge-small-en-v1.5` (~130 MB) once on first enable |
 | `search.vector_top_candidates` | int | `20` | BM25 candidate pool size when vector re-ranking is active |
 | `ingest.max_source_chars` | int | `32000` | Character limit applied to each source before the LLM call. Sources exceeding this limit are truncated; the page's `sources:` frontmatter entry gets `truncated: true` and lint emits a warning. Override per-run with `--max-source-chars N`. _(v1.0.0)_ |
+| `ingest.citation_source_lines` | int | `400` | Number of source lines the LLM sees during Pass 4 (citation annotation). Increase if lint reports `out_of_range` on long sources such as transcripts or PDFs. Raise `citation_max_tokens` in proportion when increasing this value. |
+| `ingest.citation_max_tokens` | int | `8192` | Output token budget for the annotated section returned by Pass 4. Increase when `citation_source_lines` is raised or wiki sections are long, to avoid truncated annotations. |
 | `query.context_wiki_pct` | float | `0.60` | Fraction of the model context window reserved for wiki source pages. _(v1.0.0)_ |
 | `query.context_history_pct` | float | `0.20` | Fraction reserved for conversation history. _(v1.0.0)_ |
 | `query.context_system_pct` | float | `0.15` | Fraction reserved for system prompt and instructions. Parsed and validated but not yet enforced as a hard cap in v1.0.0. _(v1.0.0)_ |
