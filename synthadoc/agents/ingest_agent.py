@@ -391,7 +391,7 @@ def _propagate_source_update(
     while the old page keeps a stale SourceRef(truncated=True).  This walks all other pages
     and updates the flag so lint stops reporting a warning that the user already resolved.
     """
-    for slug in store.list_slugs():
+    for slug in store.all_slugs():
         if slug == skip_slug:
             continue
         page = store.read_page(slug)
