@@ -449,10 +449,12 @@ class IngestAgent:
                 )
             return section, []
 
-        # Bug C fix: truncate numbered source by line count, not character count
+        # Bug C fix: truncate numbered source by line count, not character count.
+        # Limit is configurable via [ingest] citation_source_lines in config.toml.
+        _line_limit = int(getattr(getattr(self._cfg, "ingest", None), "citation_source_lines", _MAX_CITATION_LINES))
         numbered = "\n".join(
             f"{i+1}: {line}"
-            for i, line in enumerate(source_text.splitlines()[:_MAX_CITATION_LINES])
+            for i, line in enumerate(source_text.splitlines()[:_line_limit])
         )
         body_hash = hashlib.sha256(section.encode()).hexdigest()
         ck = make_cache_key(

@@ -53,6 +53,9 @@ default = {{ provider = "gemini", model = "gemini-2.5-flash-lite" }}
 
 [ingest]
 max_pages_per_ingest = 15
+# Lines of source text sent to the LLM when placing citation markers (Pass 4).
+# Increase if lint reports out_of_range citations on long sources (transcripts, large PDFs).
+# citation_source_lines = 400
 
 [cost]
 soft_warn_usd = 0.50
