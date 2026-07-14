@@ -928,7 +928,7 @@ synthadoc lifecycle archive old-page -w my-wiki --reason "replaced by updated so
   Cascade: [[old-page]] removed from 2 page(s): cpu-design, transistor-history
 ```
 
-Lint's dangling-link cleanup (`lint run`) remains available as a safety net for any dead links that predate a v1.1 upgrade or arrive through other paths.
+Lint's dangling-link cleanup (`lint run`) remains available as a safety net for any dead links that predate a v1.0.2 upgrade or arrive through other paths.
 
 ---
 
