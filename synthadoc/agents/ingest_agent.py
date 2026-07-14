@@ -110,11 +110,11 @@ _OVERVIEW_PROMPT = (
     "Pages:\n{pages}"
 )
 
-CITATION_PASS4_CACHE_VERSION = "v1"
+CITATION_PASS4_CACHE_VERSION = "v2"  # bumped: wider source window (400 lines) + hallucination guard
 ANALYSIS_CACHE_VERSION = "v2"  # bumped to include OKF type field
 DECISION_CACHE_VERSION = "v3"  # bumped to add entity-profile must-create rule (RULE 2b)
 _CITATION_EXCERPT_LEN = 100
-_MAX_CITATION_LINES = 120
+_MAX_CITATION_LINES = 400
 _MAX_CITE_LEN_RATIO = 0.8
 
 _CODE_BLOCK_RE = re.compile(r"```[^\n]*\n(.*?)```", re.DOTALL)
@@ -166,6 +166,8 @@ _CITATION_PROMPT = (
     "  - Example: if the source filename is '{filename}' and the claim is on lines 7-9, write "
     "^[{filename}:7-9]\n\n"
     "Do not annotate headings, transition sentences, or [[wikilinks]].\n"
+    "IMPORTANT: Only cite line numbers that appear in the numbered source above. "
+    "If the relevant content is not visible in the excerpt, skip the citation for that paragraph.\n"
     "Return ONLY the annotated section — identical to the input except for added ^[...] markers.\n\n"
     "Source filename: {filename}\n\n"
     "Source text (lines numbered):\n{numbered_source}\n\n"
