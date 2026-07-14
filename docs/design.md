@@ -1,6 +1,6 @@
 # Synthadoc — Design Document
 
-**Version:** 1.0.1  
+**Version:** 1.0.2  
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
