@@ -82,6 +82,18 @@ no Obsidian runtime needed.  Organized by the 14 plugin commands + ribbon icon.
   • lifecycle   : one archived page is transitioned round-trip
                   (archived → draft → active → archived).
   • staging     : policy saved, changed for one call, then restored.
+  • [2] ingest  : ingests https://en.wikipedia.org/wiki/ENIAC; newly-created
+                  pages are deleted after the test (pages_created only —
+                  pre-existing pages that were updated are not reverted).
+  • [6] scaffold: scaffold generates candidate pages; newly-created candidates
+                  are deleted after the test.
+  • sanitizer   : writes _live_test_sanitizer.txt, ingests it, then deletes
+                  the source file and any newly-created wiki page(s) / extracted
+                  sidecar.  Pre-existing pages updated by the ingest are not
+                  reverted (content merge is non-destructive).
+  • truncation  : writes _live_test_truncation.txt, ingests it, then deletes
+                  the source file and any newly-created wiki page(s) / extracted
+                  sidecar.
   All other calls are read-only or idempotent.
 """
 import argparse
@@ -178,6 +190,54 @@ def DELETE(path: str, timeout: int = 10) -> tuple[int, dict | str]:
 
 
 _TERMINAL_STATES = {"completed", "failed", "cancelled", "dead", "skipped"}
+
+
+def _cleanup_job_pages(job_id: str) -> list[str]:
+    """Delete wiki pages that were newly created (not pre-existing) by a job.
+
+    Only removes pages listed in pages_created — pages_updated were pre-existing
+    and reverting them would require restoring their original content.
+    Returns the list of slugs that were deleted.
+    """
+    wiki_root = _discover_wiki_root()
+    if not wiki_root:
+        return []
+    code, body = GET(f"/jobs/{job_id}")
+    if code != 200 or not isinstance(body, dict):
+        return []
+    result = body.get("result") or {}
+    created_slugs: list[str] = result.get("pages_created") or []
+    wiki_dir = wiki_root / "wiki"
+    candidates_dir = wiki_dir / "candidates"
+    deleted: list[str] = []
+    for slug in created_slugs:
+        for d in (wiki_dir, candidates_dir):
+            p = d / f"{slug}.md"
+            if p.exists():
+                p.unlink()
+                deleted.append(slug)
+    return deleted
+
+
+def _cleanup_test_ingest(job_id: str, src_file: pathlib.Path) -> None:
+    """Remove wiki pages and extracted sidecars written by a live test ingest job.
+
+    Deletes pages newly created by the job (not pre-existing pages that were
+    updated), plus any .synthadoc/extracted/<basename> sidecar and companion
+    pagemap JSON, so test runs leave no artifacts behind.
+    """
+    _cleanup_job_pages(job_id)
+    wiki_root = _discover_wiki_root()
+    if not wiki_root:
+        return
+    # Remove extracted sidecar for the test source file
+    extracted = wiki_root / ".synthadoc" / "extracted" / src_file.name
+    if extracted.exists():
+        extracted.unlink()
+    # Remove a companion pagemap JSON if present (PDF sources)
+    pagemap = extracted.with_suffix(".pagemap.json")
+    if pagemap.exists():
+        pagemap.unlink()
 
 
 def _wait_for_terminal(job_id: str, max_wait: int = 300, interval: int = 3) -> str | None:
@@ -407,6 +467,7 @@ def _test_truncation_flag() -> None:
         "microprogramming. EDSAC directly inspired LEO I (1951), the first business computer.",
         encoding="utf-8",
     )  # ~710 chars — exceeds max_source_chars=500 override; topic unlikely to be in the wiki
+    job_id: str | None = None
     try:
         code, body = POST("/jobs/ingest", {"source": str(src), "force": True, "max_source_chars": 500})
         assert code == 200, f"POST /jobs/ingest returned HTTP {code}: {str(body)[:120]}"
@@ -431,6 +492,9 @@ def _test_truncation_flag() -> None:
                     return
         raise AssertionError("No page has truncated=true in sources[] frontmatter")
     finally:
+        # Clean up before deleting the source file (sidecar lookup uses src.name)
+        if job_id:
+            _cleanup_test_ingest(job_id, src)
         src.unlink(missing_ok=True)
 
 
@@ -458,6 +522,7 @@ def _test_sanitizer() -> None:
         "every two years, a trend that held for over five decades.",
         encoding="utf-8",
     )
+    job_id: str | None = None
     try:
         code, body = POST("/jobs/ingest", {"source": str(src), "force": True})
         assert code == 200, f"POST /jobs/ingest returned HTTP {code}: {str(body)[:120]}"
@@ -481,6 +546,9 @@ def _test_sanitizer() -> None:
                 f"Injection phrase found in body of {p.name} — sanitizer not working"
         print("[OK] sanitizer: injection phrase not found in any page body")
     finally:
+        # Clean up before deleting the source file (sidecar lookup uses src.name)
+        if job_id:
+            _cleanup_test_ingest(job_id, src)
         src.unlink(missing_ok=True)
 
 
@@ -854,6 +922,11 @@ def main() -> None:
             ok("GET /jobs/{id}", f"status={body['status']}")
         else:
             fail("GET /jobs/{id}", f"HTTP {code}: {str(body)[:120]}")
+        # Remove any pages that were newly created by the ENIAC ingest (pre-existing
+        # pages that were updated are left untouched — we cannot restore their prior content)
+        deleted = _cleanup_job_pages(ingest_job_id)
+        if deleted:
+            info(f"[2] ingest cleanup: deleted newly-created page(s): {deleted}")
 
     code, body = GET("/jobs")
     if code == 200 and isinstance(body, list):
@@ -953,10 +1026,16 @@ def main() -> None:
     print("\n[6] synthadoc-scaffold — api.scaffold()")
 
     code, body, scaffold_final = _submit_job("/jobs/scaffold", {"domain": "history of computing"})
-    if code == 200 and isinstance(body, dict) and "job_id" in body:
-        ok("POST /jobs/scaffold", f"job_id={body['job_id'][:8]}… status={scaffold_final}")
+    scaffold_job_id: str | None = body.get("job_id") if isinstance(body, dict) else None
+    if code == 200 and scaffold_job_id:
+        ok("POST /jobs/scaffold", f"job_id={scaffold_job_id[:8]}… status={scaffold_final}")
     else:
         fail("POST /jobs/scaffold", f"HTTP {code}: {str(body)[:120]}")
+    # Scaffold creates candidate pages — delete any that are purely new test artifacts
+    if scaffold_job_id:
+        deleted = _cleanup_job_pages(scaffold_job_id)
+        if deleted:
+            info(f"[6] scaffold cleanup: deleted newly-created candidate(s): {deleted}")
 
     # ── [7] synthadoc-audit ───────────────────────────────────────────────────
     print("\n[7] synthadoc-audit — api.auditHistory(), api.auditCosts(), api.queryHistory(), api.auditEvents()")

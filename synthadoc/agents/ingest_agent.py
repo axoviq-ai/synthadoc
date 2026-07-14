@@ -279,6 +279,27 @@ def _slugify(title: str) -> str:
     return slug or "page-" + hashlib.md5(title.encode()).hexdigest()[:8]
 
 
+def _url_sidecar_name(url: str) -> str:
+    """Derive a collision-resistant sidecar name from a URL.
+
+    Uses the last two non-empty path segments joined with '-' so that URLs
+    sharing the same terminal segment (e.g. /profile/dennis-ritchie vs
+    /biography/dennis-ritchie) get distinct sidecar files and citation names.
+    Single-segment paths fall back to that segment alone.
+    """
+    bare = url.split("?")[0].rstrip("/")
+    parts = [seg for seg in bare.split("/") if seg]
+    # parts[0] = "https:", parts[1] = domain — skip both
+    segments = parts[2:] if len(parts) > 2 else parts[1:] if len(parts) > 1 else parts
+    if len(segments) >= 2:
+        name = f"{segments[-2]}-{segments[-1]}"
+    elif segments:
+        name = segments[-1]
+    else:
+        name = "url-source"
+    return re.sub(r"[^A-Za-z0-9.\-]", "-", name).strip("-")[:80] or "url-source"
+
+
 def _strip_leading_frontmatter(content: str) -> str:
     """Remove a leading YAML frontmatter block from LLM-generated page content.
 
@@ -686,7 +707,7 @@ class IngestAgent:
         # For URL / non-file sources p, src_hash, src_size are not set above.
         # Provide safe defaults so the audit call at the end always succeeds.
         if not self._needs_file_check(source):
-            p = Path(source.split("?")[0].rstrip("/").split("/")[-1] or "url-source")
+            p = Path(_url_sidecar_name(source))
             _canonical = _canonical_source(source)
             src_hash = hashlib.sha256(_canonical.encode()).hexdigest()
             src_size = len(_canonical.encode())
@@ -746,6 +767,15 @@ class IngestAgent:
         if extracted.metadata.get("child_sources"):
             result.child_sources = extracted.metadata["child_sources"]
             return result
+
+        # If the skill returned a cleaner slug (e.g. YouTube's "youtube-{video_id}"),
+        # use it as p so the sidecar and citation filename are meaningful and unique.
+        # Without this, all YouTube URLs share the same sidecar name "watch" (from
+        # the URL path segment "watch?v=…").
+        if is_url(source) and not _is_web_search:
+            _meta_slug = extracted.metadata.get("suggested_slug", "")
+            if _meta_slug:
+                p = Path(_slugify(_meta_slug))
 
         # Write text sidecar so the Obsidian Source Viewer can display extracted content.
         #   local file  → not is_url, not _is_web_search → sidecar from source path
