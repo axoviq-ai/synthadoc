@@ -592,12 +592,31 @@ class LintAgent:
                             if raw_sources_dir.exists():
                                 src_path = raw_sources_dir / src_ref.file
                                 if not src_path.exists():
-                                    await self._transition(slug, page, current,
-                                                           LifecycleState.ARCHIVED,
-                                                           "source file no longer on disk")
-                                    report.lifecycle_archived += 1
-                                    _auto_archived_slugs.append(slug)
-                                    current = LifecycleState.ARCHIVED
+                                    local_sources = [
+                                        s for s in page.sources
+                                        if s.file and not is_url(s.file)
+                                    ]
+                                    all_missing = all(
+                                        not (raw_sources_dir / s.file).exists()
+                                        for s in local_sources
+                                    )
+                                    if all_missing:
+                                        await self._transition(
+                                            slug, page, current,
+                                            LifecycleState.ARCHIVED,
+                                            "all source files no longer on disk",
+                                        )
+                                        report.lifecycle_archived += 1
+                                        _auto_archived_slugs.append(slug)
+                                        current = LifecycleState.ARCHIVED
+                                    else:
+                                        await self._transition(
+                                            slug, page, current,
+                                            LifecycleState.STALE,
+                                            "source file no longer on disk; other sources remain",
+                                        )
+                                        report.lifecycle_stale += 1
+                                        current = LifecycleState.STALE
                                     break
                         # URL archived: HTTP HEAD or YouTube availability (opt-in)
                         elif src_ref.file and is_url(src_ref.file) and check_url_availability:

@@ -1070,3 +1070,33 @@ async def test_lint_auto_archive_cascades_links(tmp_wiki):
     page_a = store.read_page("page-a")
     assert "[[page-b]]" not in page_a.content
     assert report.dangling_links_removed >= 1
+
+
+@pytest.mark.asyncio
+async def test_lint_multi_source_page_goes_stale_not_archived(tmp_wiki):
+    """When a page has multiple local sources and only ONE is missing from disk, lint must
+    mark it stale (not archived) because valid content from the remaining source still exists."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    raw = tmp_wiki / "raw_sources"
+    raw.mkdir(exist_ok=True)
+
+    # source-a exists on disk; source-b does NOT
+    (raw / "source-a.txt").write_text("Content A", encoding="utf-8")
+
+    store.write_page("multi-source-page", WikiPage(
+        title="Multi", tags=[], content="Content.",
+        status="active", confidence="high",
+        sources=[
+            SourceRef(file="source-a.txt", hash="x", size=1, ingested="2026-01-01"),
+            SourceRef(file="source-b.txt", hash="y", size=1, ingested="2026-01-01"),
+        ],
+    ))
+
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log, wiki_root=tmp_wiki)
+    report = await agent.lint(scope="all", adversarial=False)
+
+    page = store.read_page("multi-source-page")
+    assert page.status == "stale"        # NOT archived
+    assert report.lifecycle_stale >= 1
+    assert report.lifecycle_archived == 0
