@@ -155,6 +155,27 @@ def _normalize_citation_markers(text: str) -> str:
     return _NONCANONICAL_CITE_RE.sub(_fix, text)
 
 
+def _scrub_source_citations(content: str, filename: str, total_lines: int) -> str:
+    """Remove or clamp ^[filename:start-end] markers in *content* that exceed total_lines.
+
+    Called on existing page content before appending a new update section so that
+    stale out-of-range citations left by previous reingests are cleaned up.
+    """
+    fname_lower = filename.lower()
+
+    def _fix(m: re.Match) -> str:
+        if m.group(1).lower() != fname_lower:
+            return m.group(0)
+        start, end = int(m.group(2)), int(m.group(3))
+        if start > total_lines:
+            return ""
+        if end > total_lines:
+            return f"^[{m.group(1)}:{start}-{total_lines}]"
+        return m.group(0)
+
+    return _CITATION_RE.sub(_fix, content)
+
+
 _CITATION_PROMPT = (
     "You are a citation annotator. Given a wiki page section and the source text it was "
     "compiled from, insert a citation marker at the END of each paragraph that makes a "
@@ -1007,6 +1028,9 @@ class IngestAgent:
                         if len(_key_items) >= _KEY_DATA_MIN_ITEMS:
                             key_section = "\n\n## Key Data\n\n" + "\n".join(f"- {item}" for item in _key_items)
                             section = section + key_section
+                        # Scrub stale out-of-range citations from previous reingests
+                        _src_line_count = len(extracted.text.splitlines())
+                        page.content = _scrub_source_citations(page.content, p.name, _src_line_count)
                         # Pass 4: annotate only the new update section
                         section, citations = await self._annotate_citations(
                             section, extracted.text, p.name, bust_cache=bust_cache
@@ -1067,6 +1091,9 @@ class IngestAgent:
                             if len(_key_items) >= _KEY_DATA_MIN_ITEMS:
                                 key_section = "\n\n## Key Data\n\n" + "\n".join(f"- {item}" for item in _key_items)
                                 section = section + key_section
+                            # Scrub stale out-of-range citations from previous reingests
+                            _src_line_count = len(extracted.text.splitlines())
+                            page.content = _scrub_source_citations(page.content, p.name, _src_line_count)
                             # Pass 4: annotate only the new section
                             section, citations = await self._annotate_citations(
                                 section, extracted.text, p.name, bust_cache=bust_cache
