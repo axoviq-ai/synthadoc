@@ -469,6 +469,7 @@ class IngestAgent:
             annotated = cached
         else:
             try:
+                _max_tok = int(getattr(getattr(self._cfg, "ingest", None), "citation_max_tokens", _CITATION_MAX_TOKENS))
                 resp = await self._provider.complete(
                     messages=[Message(
                         role="user",
@@ -479,7 +480,7 @@ class IngestAgent:
                         ),
                     )],
                     temperature=0.0,
-                    max_tokens=_CITATION_MAX_TOKENS,
+                    max_tokens=_max_tok,
                 )
                 raw = resp.text.strip() or section
                 # Bug A fix: length-based sanity check replaces exact first-line match.
