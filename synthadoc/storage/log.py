@@ -809,3 +809,17 @@ class AuditDB:
             cur = await db.execute("SELECT from_slug, to_slug, weight FROM graph_edges")
             edges = [dict(r) for r in await cur.fetchall()]
         return {"nodes": nodes, "edges": edges}
+
+    async def delete_graph_node(self, slug: str) -> None:
+        """Remove a single node and all its incident edges from the graph tables.
+
+        Called immediately after a page is archived so the graph stays consistent
+        without waiting for the next full lint rebuild.
+        """
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute("DELETE FROM graph_nodes WHERE slug = ?", (slug,))
+            await db.execute(
+                "DELETE FROM graph_edges WHERE from_slug = ? OR to_slug = ?",
+                (slug, slug),
+            )
+            await db.commit()

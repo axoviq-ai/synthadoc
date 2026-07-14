@@ -317,3 +317,53 @@ async def test_list_sessions_multiple_sessions_ordered_by_last_active(tmp_path):
     result = await db.list_sessions()
     assert result[0]["session_id"] == "new"
     assert result[1]["session_id"] == "old"
+
+
+@pytest.mark.asyncio
+async def test_delete_graph_node_removes_node_and_edges(tmp_path):
+    from synthadoc.storage.log import AuditDB
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+
+    # Seed graph
+    await db.write_graph(
+        nodes=[
+            {"slug": "alpha", "cluster_id": 0},
+            {"slug": "beta",  "cluster_id": 0},
+            {"slug": "gamma", "cluster_id": 1},
+        ],
+        edges=[
+            {"from_slug": "alpha", "to_slug": "beta",  "weight": 1.0},
+            {"from_slug": "gamma", "to_slug": "alpha", "weight": 1.0},
+            {"from_slug": "beta",  "to_slug": "gamma", "weight": 1.0},
+        ],
+    )
+
+    await db.delete_graph_node("alpha")
+
+    graph = await db.read_graph()
+    slugs = {n["slug"] for n in graph["nodes"]}
+    assert "alpha" not in slugs
+    # All edges to or from alpha gone
+    for e in graph["edges"]:
+        assert e["from_slug"] != "alpha"
+        assert e["to_slug"] != "alpha"
+    # Unrelated edge preserved
+    assert any(e["from_slug"] == "beta" and e["to_slug"] == "gamma" for e in graph["edges"])
+
+
+@pytest.mark.asyncio
+async def test_delete_graph_node_no_op_when_slug_absent(tmp_path):
+    from synthadoc.storage.log import AuditDB
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+
+    await db.write_graph(
+        nodes=[{"slug": "only", "cluster_id": 0}],
+        edges=[],
+    )
+    # Should not raise even if slug not in graph
+    await db.delete_graph_node("nonexistent")
+
+    graph = await db.read_graph()
+    assert len(graph["nodes"]) == 1
