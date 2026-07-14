@@ -382,6 +382,33 @@ def _append_source_ref(page: "WikiPage", ref: "SourceRef") -> None:
                 break
 
 
+def _propagate_source_update(
+    store: "WikiStorage", source_url: str, new_truncated: bool, new_size: int, skip_slug: str
+) -> None:
+    """After a force reingest, sync truncated/size on every OTHER page that still references source_url.
+
+    When the LLM chooses action=create for a re-ingested URL, the source moves to a new page
+    while the old page keeps a stale SourceRef(truncated=True).  This walks all other pages
+    and updates the flag so lint stops reporting a warning that the user already resolved.
+    """
+    for slug in store.list_slugs():
+        if slug == skip_slug:
+            continue
+        page = store.read_page(slug)
+        if not page:
+            continue
+        changed = False
+        for ref in (page.sources or []):
+            if ref.file == source_url and (ref.truncated != new_truncated or ref.size != new_size):
+                ref.truncated = new_truncated
+                ref.size = new_size
+                changed = True
+        if changed:
+            with store.page_lock(slug):
+                store.write_page(slug, page)
+            logger.debug("ingest: propagated truncation update to slug=%s source=%s", slug, source_url[:80])
+
+
 def _extract_key_data(source_text: str) -> list[str]:
     """Extract numerical facts, formulas, and rates from source text deterministically.
 
@@ -1183,6 +1210,12 @@ class IngestAgent:
                                 branch = await self._pick_routing_branch(slug, new_page, ri)
                                 ri.add_slug(slug, branch)
                                 ri.save(self._routing_path)
+
+        # On force reingest, propagate updated truncated/size to any other page that
+        # still holds a SourceRef for the same URL (e.g. the old page when the LLM
+        # chose action=create for a source it previously appended to a different page).
+        if bust_cache and final_slug and "://" in source:
+            _propagate_source_update(self._store, source, _truncated, _source_len, final_slug)
 
         if result.pages_created or result.pages_updated:
             await self._update_overview()
