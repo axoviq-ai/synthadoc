@@ -1029,3 +1029,44 @@ async def test_cascade_archive_aliased_link(tmp_path):
     updated = store.read_page("history")
     assert "[[vacuum-tubes" not in updated.content
     assert "vacuum tube technology" in updated.content
+
+
+# ── lint auto-archive cascade integration ─────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_lint_auto_archive_cascades_links(tmp_wiki):
+    """When lint auto-archives a page (source file missing), cascade_archive removes
+    [[page-b]] from all active pages immediately — not waiting for the next lint run."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    raw = tmp_wiki / "raw_sources"
+    raw.mkdir(exist_ok=True)
+
+    # Source file exists for page-a but NOT for page-b
+    (raw / "source-a.txt").write_text("Content A", encoding="utf-8")
+
+    store.write_page("page-a", WikiPage(
+        title="Page A", tags=[], content="Intro. See also [[page-b]].",
+        status="active", confidence="high",
+        sources=[SourceRef(file="source-a.txt", hash="x", size=1, ingested="2026-01-01")],
+    ))
+    store.write_page("page-b", WikiPage(
+        title="Page B", tags=[], content="Page B content.",
+        status="active", confidence="high",
+        sources=[SourceRef(file="source-b.txt", hash="y", size=1, ingested="2026-01-01")],
+    ))
+    # source-b.txt does NOT exist on disk
+
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log,
+                      wiki_root=tmp_wiki)
+    report = await agent.lint(scope="all", adversarial=False)
+
+    # page-b archived because source-b.txt missing
+    page_b = store.read_page("page-b")
+    assert page_b.status == "archived"
+
+    # cascade: [[page-b]] removed from page-a immediately (not waiting for next lint)
+    page_a = store.read_page("page-a")
+    assert "[[page-b]]" not in page_a.content
+    assert report.dangling_links_removed >= 1

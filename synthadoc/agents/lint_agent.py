@@ -575,6 +575,7 @@ class LintAgent:
                                      url_staleness_days: int = 0,
                                      promote_drafts: bool = True) -> None:
         raw_sources_dir = self._wiki_root / "raw_sources"
+        _auto_archived_slugs: list[str] = []
         for slug in slugs:
             if slug in LINT_SKIP_SLUGS:
                 continue
@@ -595,6 +596,7 @@ class LintAgent:
                                                            LifecycleState.ARCHIVED,
                                                            "source file no longer on disk")
                                     report.lifecycle_archived += 1
+                                    _auto_archived_slugs.append(slug)
                                     current = LifecycleState.ARCHIVED
                                     break
                         # URL archived: HTTP HEAD or YouTube availability (opt-in)
@@ -606,6 +608,7 @@ class LintAgent:
                                                        LifecycleState.ARCHIVED,
                                                        "URL source no longer available")
                                 report.lifecycle_archived += 1
+                                _auto_archived_slugs.append(slug)
                                 current = LifecycleState.ARCHIVED
                                 break
 
@@ -716,6 +719,7 @@ class LintAgent:
                         TriggerSource.LINT,
                     )
                     report.lifecycle_archived += 1
+                    _auto_archived_slugs.append(slug)
 
         if self._audit and self._cfg:
             retention = getattr(getattr(self._cfg, "audit", None), "lifecycle_retention_days", 0)
@@ -723,6 +727,17 @@ class LintAgent:
                 from datetime import timedelta
                 cutoff = (datetime.now(timezone.utc) - timedelta(days=retention)).isoformat()
                 await self._audit.purge_lifecycle_events(before_date=cutoff)
+
+        # Cascade: immediately clean [[slug]] refs for every page auto-archived above.
+        # Called once per archived slug after the full loop so we avoid O(n²) store
+        # scans (each cascade_archive call is O(n) — sequential is fine since they
+        # are independent).
+        for _slug in _auto_archived_slugs:
+            _affected = await cascade_archive(
+                _slug, self._store,
+                audit_db=self._audit, trigger_source=TriggerSource.LINT,
+            )
+            report.dangling_links_removed += len(_affected)
 
     async def lint(self, scope: str = "all", auto_resolve: bool = False,
                    adversarial: bool = True, lifecycle: bool = True,
