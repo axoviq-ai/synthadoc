@@ -2,7 +2,7 @@
 # Copyright (C) 2026 Paul Chen / axoviq.com
 import pytest
 from unittest.mock import AsyncMock
-from synthadoc.agents.lint_agent import LintAgent, LintReport, find_orphan_slugs, _fix_dangling_wikilinks, LINT_SKIP_SLUGS, LINT_SKIP_SOURCE_SLUGS, _parse_adversarial_response, _check_page_citations, read_current_lint_state
+from synthadoc.agents.lint_agent import LintAgent, LintReport, find_orphan_slugs, _fix_dangling_wikilinks, LINT_SKIP_SLUGS, LINT_SKIP_SOURCE_SLUGS, _parse_adversarial_response, _check_page_citations, _citation_source_names, read_current_lint_state
 from synthadoc.providers.base import CompletionResponse
 from synthadoc.storage.wiki import WikiStorage, WikiPage, SourceRef
 from synthadoc.storage.log import LogWriter, AuditDB
@@ -561,6 +561,52 @@ def test_check_citations_reversed_range(tmp_path):
     )
     issues = _check_page_citations("t", page, extracted_dir=tmp_path)
     assert any(i["reason"] == "malformed" for i in issues)
+
+
+def test_citation_source_names_plain_url():
+    """Regular URL: underscores normalized to hyphens, matching _url_sidecar_name output."""
+    names = _citation_source_names("https://en.wikipedia.org/wiki/Alan_Turing")
+    # ingest produces "wiki-Alan-Turing" (underscore → hyphen); both 1- and 2-segment forms present
+    assert "wiki-Alan-Turing" in names
+    assert "Alan-Turing" in names
+    # raw underscore form must NOT be present — that would never match the sidecar filename
+    assert "Alan_Turing" not in names
+    assert "wiki-Alan_Turing" not in names
+
+
+def test_citation_source_names_youtube_watch():
+    """YouTube watch URL maps to 'youtube-{slugified_id}', matching ingest suggested_slug."""
+    names = _citation_source_names("https://www.youtube.com/watch?v=O5nskjZ_GoI")
+    assert names == {"youtube-o5nskjz-goi"}
+
+
+def test_citation_source_names_youtube_shorts():
+    names = _citation_source_names("https://www.youtube.com/shorts/dQw4w9WgXcQ")
+    assert names == {"youtube-dqw4w9wgxcq"}
+
+
+def test_citation_source_names_youtube_does_not_produce_watch():
+    """Ensure old broken derivation ('watch') is no longer returned for YouTube URLs."""
+    names = _citation_source_names("https://www.youtube.com/watch?v=O5nskjZ_GoI")
+    assert "watch" not in names
+
+
+def test_check_citations_youtube_no_broken_ref(tmp_path):
+    """Citations annotated as youtube-... should not be flagged broken_ref."""
+    extracted = tmp_path / "extracted"
+    extracted.mkdir()
+    txt = extracted / "youtube-o5nskjz-goi.txt"
+    txt.write_text("line1\nline2\nline3\n")
+    page = WikiPage(
+        title="T", tags=[], content="Fact.^[youtube-o5nskjz-goi:1-2]",
+        status="active", confidence="high",
+        sources=[SourceRef(
+            file="https://www.youtube.com/watch?v=O5nskjZ_GoI",
+            hash="x", size=1, ingested="2026-01-01",
+        )],
+    )
+    issues = _check_page_citations("t", page, extracted_dir=extracted)
+    assert issues == []
 
 
 # ── read_current_lint_state ───────────────────────────────────────────────────

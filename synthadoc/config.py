@@ -86,6 +86,8 @@ class IngestConfig:
     staging_policy: str = "off"           # "off" | "all" | "threshold"
     staging_confidence_min: str = "high"  # "high" | "medium" | "low"
     max_source_chars: int = 32000         # chars read from a source before truncation (~8k tokens)
+    citation_source_lines: int = 400      # lines of source text shown to the citation LLM (Pass 4)
+    citation_max_tokens: int = 8192       # output token budget for the citation LLM response
 
 
 @dataclass
@@ -326,6 +328,8 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         staging_policy=ig.get("staging_policy", "off"),
         staging_confidence_min=ig.get("staging_confidence_min", "high"),
         max_source_chars=int(ig.get("max_source_chars", 32000)),
+        citation_source_lines=int(ig.get("citation_source_lines", 400)),
+        citation_max_tokens=int(ig.get("citation_max_tokens", 8192)),
     )
 
     # --- query ---
