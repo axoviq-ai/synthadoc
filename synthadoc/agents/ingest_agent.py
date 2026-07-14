@@ -110,12 +110,13 @@ _OVERVIEW_PROMPT = (
     "Pages:\n{pages}"
 )
 
-CITATION_PASS4_CACHE_VERSION = "v2"  # bumped: wider source window (400 lines) + hallucination guard
+CITATION_PASS4_CACHE_VERSION = "v3"  # bumped: explicit max_tokens=8192 to avoid truncation on long sections
 ANALYSIS_CACHE_VERSION = "v2"  # bumped to include OKF type field
 DECISION_CACHE_VERSION = "v3"  # bumped to add entity-profile must-create rule (RULE 2b)
 _CITATION_EXCERPT_LEN = 100
 _MAX_CITATION_LINES = 400
 _MAX_CITE_LEN_RATIO = 0.8
+_CITATION_MAX_TOKENS = 8192   # output cap for citation pass — large enough for long transcript sections
 
 _CODE_BLOCK_RE = re.compile(r"```[^\n]*\n(.*?)```", re.DOTALL)
 _BOLD_BULLET_NUM_RE = re.compile(
@@ -478,6 +479,7 @@ class IngestAgent:
                         ),
                     )],
                     temperature=0.0,
+                    max_tokens=_CITATION_MAX_TOKENS,
                 )
                 raw = resp.text.strip() or section
                 # Bug A fix: length-based sanity check replaces exact first-line match.
