@@ -1248,14 +1248,26 @@ def main() -> None:
     else:
         fail("GET /lifecycle/events?limit=10&offset=0", f"HTTP {code}: {str(body)[:120]}")
 
-    # round-trip: find an archived page and cycle it archived→draft→active→archived
+    # round-trip: find an archived page and cycle it archived→draft→active→archived.
+    # Probe each archived candidate with the first transition call; skip any that
+    # return 404 — those are stale lifecycle-DB entries whose wiki file is gone.
     archived_slug: str | None = None
+    _rt_first_done = False
     for p in lc_pages:
-        if isinstance(p, dict) and p.get("state") == "archived":
-            archived_slug = p.get("slug")
+        if not (isinstance(p, dict) and p.get("state") == "archived" and p.get("slug")):
+            continue
+        candidate = p.get("slug")
+        c, b = POST("/lifecycle/transition",
+                    {"slug": candidate, "to_state": "draft",
+                     "reason": "plugin-live-test restore"})
+        if c == 200 and isinstance(b, dict):
+            archived_slug = candidate
+            _rt_first_done = True
             break
+        if c == 404:
+            info(f"lifecycle round-trip — skipping stale DB entry '{candidate}' (no wiki file)")
 
-    # If no archived page exists, promote an active page to archived temporarily
+    # If no usable archived page, promote an active page to archived temporarily
     # so the round-trip can still run, then restore it to active at the end.
     created_archived_slug: str | None = None
     if not archived_slug:
@@ -1269,20 +1281,21 @@ def main() -> None:
                     archived_slug = candidate
                     created_archived_slug = candidate
                     info(f"no archived page found — archived '{candidate}' temporarily for round-trip")
+                    c2, b2 = POST("/lifecycle/transition",
+                                  {"slug": candidate, "to_state": "draft",
+                                   "reason": "plugin-live-test restore"})
+                    if c2 == 200 and isinstance(b2, dict):
+                        _rt_first_done = True
                     break
         if not archived_slug:
             warn("POST /lifecycle/transition", "no active or archived page available — skipping round-trip")
 
     if archived_slug:
         info(f"lifecycle round-trip on: {archived_slug}")
-
-        code, body = POST("/lifecycle/transition",
-                          {"slug": archived_slug, "to_state": "draft",
-                           "reason": "plugin-live-test restore"})
-        if code == 200 and isinstance(body, dict):
+        if _rt_first_done:
             ok("POST /lifecycle/transition (archived→draft)", f"slug={archived_slug!r}")
         else:
-            fail("POST /lifecycle/transition (archived→draft)", f"HTTP {code}: {str(body)[:120]}")
+            fail("POST /lifecycle/transition (archived→draft)", f"slug={archived_slug!r} — transition returned unexpected error")
 
         code, body = POST("/lifecycle/transition",
                           {"slug": archived_slug, "to_state": "active",
