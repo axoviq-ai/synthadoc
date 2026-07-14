@@ -883,6 +883,7 @@ async def test_cascade_archive_writes_audit_events(tmp_path):
     assert call_args.args[0] == "referencing"       # slug
     assert "cascade" in call_args.args[3]            # reason contains "cascade"
     assert "[[old-page]]" in call_args.args[3]       # reason names the archived slug
+    mock_audit.delete_graph_node.assert_awaited_once_with("old-page")
 
 
 @pytest.mark.asyncio
