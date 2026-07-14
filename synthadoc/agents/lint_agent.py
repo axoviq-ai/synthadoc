@@ -77,6 +77,14 @@ _YOUTUBE_ID_RE = re.compile(
     r"(?:youtube\.com/(?:watch\?v=|shorts/|live/|embed/|v/)|youtu\.be/)([A-Za-z0-9_-]{11})"
 )
 
+# Same character set allowed in sidecar filenames as _url_sidecar_name in ingest_agent.py.
+_URL_NAME_SAFE_RE = re.compile(r"[^A-Za-z0-9.\-]+")
+
+
+def _url_name_normalize(raw: str) -> str:
+    """Apply the same character filter as _url_sidecar_name in ingest_agent.py."""
+    return _URL_NAME_SAFE_RE.sub("-", raw).strip("-") or "url-source"
+
 
 def _citation_source_names(file: str) -> set[str]:
     """Return all citation names a source may use, for backward-compatible lint checking.
@@ -89,6 +97,9 @@ def _citation_source_names(file: str) -> set[str]:
     YouTube URLs are a special case: the ingest agent renames the sidecar to
     "youtube-{video_id}" via suggested_slug, so SourceRef.file (the raw URL)
     must map to that same slug here.
+    For all URL-based sources, names are normalized through _url_name_normalize
+    to match the transformation applied by _url_sidecar_name (e.g. underscores
+    in Wikipedia-style paths become hyphens).
     """
     if "://" not in file:
         return {Path(file).name}
@@ -101,9 +112,9 @@ def _citation_source_names(file: str) -> set[str]:
     segments = parts[2:] if len(parts) > 2 else parts[1:] if len(parts) > 1 else parts
     names: set[str] = set()
     if segments:
-        names.add(segments[-1])                              # old 1-segment form
+        names.add(_url_name_normalize(segments[-1]))                              # old 1-segment form
         if len(segments) >= 2:
-            names.add(f"{segments[-2]}-{segments[-1]}")     # new 2-segment form
+            names.add(_url_name_normalize(f"{segments[-2]}-{segments[-1]}"))     # new 2-segment form
     return names or {"url-source"}
 
 

@@ -563,6 +563,17 @@ def test_check_citations_reversed_range(tmp_path):
     assert any(i["reason"] == "malformed" for i in issues)
 
 
+def test_citation_source_names_plain_url():
+    """Regular URL: underscores normalized to hyphens, matching _url_sidecar_name output."""
+    names = _citation_source_names("https://en.wikipedia.org/wiki/Alan_Turing")
+    # ingest produces "wiki-Alan-Turing" (underscore → hyphen); both 1- and 2-segment forms present
+    assert "wiki-Alan-Turing" in names
+    assert "Alan-Turing" in names
+    # raw underscore form must NOT be present — that would never match the sidecar filename
+    assert "Alan_Turing" not in names
+    assert "wiki-Alan_Turing" not in names
+
+
 def test_citation_source_names_youtube_watch():
     """YouTube watch URL maps to 'youtube-{slugified_id}', matching ingest suggested_slug."""
     names = _citation_source_names("https://www.youtube.com/watch?v=O5nskjZ_GoI")
