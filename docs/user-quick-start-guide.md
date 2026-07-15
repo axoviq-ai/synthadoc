@@ -1257,9 +1257,15 @@ synthadoc jobs list
 
 After batch ingest, the wiki has grown from 10 pre-built pages to 12 or more. **Scaffold**
 reads the current wiki state and uses the LLM to regenerate the structure files —
-`wiki/index.md`, `AGENTS.md`, and `wiki/purpose.md` — so they reflect what the wiki has
-actually become. Existing pages that are already linked in `index.md` are detected as
-**protected slugs** and preserved; only unlinked and new categories are refreshed.
+`wiki/index.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, and `wiki/purpose.md` — so they
+reflect what the wiki has actually become. Existing pages that are already linked in
+`index.md` are detected as **protected slugs** and preserved; only unlinked and new
+categories are refreshed.
+
+> **Upgrading an existing wiki?** If your wiki was created with an earlier version of
+> Synthadoc, running `synthadoc scaffold` is all you need to get `CLAUDE.md` and
+> `GEMINI.md` for the first time. The command regenerates all three skill files with
+> LLM-produced domain guidelines that match your current wiki content.
 
 ### Run scaffold
 
@@ -1275,7 +1281,9 @@ Generating domain-specific scaffold (History of Computing)…
   Protected slugs: alan-turing, grace-hopper, von-neumann-architecture, unix-history, … (10 pages)
   Scaffold complete — domain-specific content generated.
 wiki/index.md updated
-AGENTS.md updated
+AGENTS.md   updated
+CLAUDE.md   updated
+GEMINI.md   updated
 wiki/purpose.md updated
 ```
 
@@ -1285,7 +1293,8 @@ full post-ingest wiki (e.g. **Pioneers and Visionaries**, **Hardware Milestones*
 
 ### Re-run scaffold at any time
 
-As the wiki grows, re-running scaffold keeps the index structure current:
+As the wiki grows, re-running scaffold keeps the index structure current and refreshes
+all three agent skill files with updated domain guidelines:
 
 ```bash
 synthadoc scaffold
