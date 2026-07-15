@@ -2340,7 +2340,7 @@ ready to build a wiki for your own domain:
 Key differences from the demo:
 
 - `synthadoc install <name> --target <dir> --domain "<your domain>"` generates LLM
-  scaffold for your domain at install time (index categories, AGENTS.md, purpose.md)
+  scaffold for your domain at install time (index categories, AGENTS.md, CLAUDE.md, GEMINI.md, purpose.md)
 - Drop your own source files into `raw_sources/` and run batch ingest
 - Use web search to fill knowledge gaps as your wiki grows
 - Schedule nightly ingests and weekly scaffold refresh to keep it current automatically
@@ -2390,7 +2390,7 @@ All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synt
 
 | Command                                   | What it does                                                                                                                   |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `Synthadoc: Wiki: regenerate scaffold...` | Rewrites`index.md`, `AGENTS.md`, and `purpose.md` using the LLM. Polls job status live. All existing wiki pages are preserved. |
+| `Synthadoc: Wiki: regenerate scaffold...` | Rewrites `index.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, and `purpose.md` using the LLM. Polls job status live. All existing wiki pages are preserved. |
 
 ### Lifecycle
 
@@ -2653,7 +2653,7 @@ synthadoc status
 ```
 
 `--domain` is a free-text description of the subject area — the LLM uses it to generate
-domain-aware starter files: `wiki/index.md`, `wiki/purpose.md`, and `AGENTS.md`.
+domain-aware starter files: `wiki/index.md`, `wiki/purpose.md`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`.
 
 ### 2. Start the server
 
@@ -3145,7 +3145,7 @@ Creates a timestamped compressed zip in the current directory:
 synthadoc-backup-history-of-computing-20260624-103000.zip
 ```
 
-**What's included by default:** wiki pages, candidates, config, audit database, exports, query cache, raw sources, and root-level wiki files (`AGENTS.md`, `ROUTING.md`, `log.md`, and any `*.txt` batch ingest files) when present.
+**What's included by default:** wiki pages, candidates, config, audit database, exports, query cache, raw sources, and root-level wiki files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `ROUTING.md`, `log.md`, and any `*.txt` batch ingest files) when present.
 
 **Flags:**
 ```
@@ -3180,7 +3180,7 @@ Restores to the same directory as the zip file by default. Detects port conflict
 | Item | Included? | Notes |
 |---|---|---|
 | `wiki/*.md` | ✓ Always | All compiled wiki pages |
-| `AGENTS.md`, `ROUTING.md`, `log.md` | ✓ Always | Wiki root files |
+| `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `ROUTING.md`, `log.md` | ✓ Always | Wiki root files |
 | `hooks/` | ✓ Always | User hook scripts |
 | `.synthadoc/config.toml` | ✓ Always | Server config |
 | `.synthadoc/audit.db` | ✓ Always | Full audit trail, lifecycle state, chat history |
