@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
+import sqlite3
 import pytest
 from pathlib import Path
 
@@ -14,6 +15,14 @@ def tmp_wiki(tmp_path: Path) -> Path:
     sd = tmp_path / ".synthadoc"
     sd.mkdir()
     (sd / "logs").mkdir()
+    # Pre-create DB files synchronously so they exist before the asyncio event loop
+    # starts.  On Windows CI, sqlite3.connect() on a brand-new file triggers an AV
+    # scan; creating them here (outside the event loop) prevents that scan from
+    # blocking aiosqlite threads during app startup and timing out long test suites.
+    # audit.db is intentionally excluded — some tests assert on its absence.
+    for _db in ("jobs.db", "cache.db"):
+        with sqlite3.connect(sd / _db):
+            pass
     return tmp_path
 
 

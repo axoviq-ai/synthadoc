@@ -128,7 +128,7 @@ class Orchestrator:
 
     async def close(self) -> None:
         await self._cache.close()
-        await asyncio.sleep(0)  # drain pending aiosqlite thread callbacks before loop teardown
+        await asyncio.sleep(0.05)  # allow in-flight aiosqlite thread callbacks to post before loop teardown
 
     async def __aenter__(self) -> "Orchestrator":
         await self.init()
