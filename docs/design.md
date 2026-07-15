@@ -2951,7 +2951,7 @@ Every Synthadoc wiki ships three companion files that give AI coding agents a co
 
 | File | Platform |
 |---|---|
-| `AGENTS.md` | Codex CLI, OpenCode, Pi, and any agent that reads the AGENTS.md convention |
+| `AGENTS.md` | Codex CLI, OpenCode, and any agent that reads the AGENTS.md convention |
 | `CLAUDE.md` | Claude Code (this session's tool) — highest-priority instruction source in Claude's hierarchy |
 | `GEMINI.md` | Gemini CLI — relevant because Synthadoc's default LLM provider is `gemini-2.5-flash-lite` |
 
