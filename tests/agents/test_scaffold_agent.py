@@ -327,6 +327,17 @@ async def test_scaffold_raises_after_two_failed_attempts():
 
 # ── _validate_scaffold_result ─────────────────────────────────────────────────
 
+def _make_agents_md(domain: str = "Machine Learning") -> str:
+    return (
+        f"# AGENTS.md — {domain} Wiki\n\n"
+        f"## Domain Guidelines\n- Summarize key claims.\n\n"
+        f"## Quick Reference\n| Action | Command |\n|---|---|\n"
+        f"| Start server | `synthadoc serve -w <wiki>` |\n\n"
+        f"## Ingest\nIngest sources here.\n\n"
+        f"## Query\nQuery wiki here.\n"
+    )
+
+
 def _make_result(
     index_md: str | None = None,
     agents_md: str | None = None,
@@ -335,15 +346,15 @@ def _make_result(
     domain: str = "Machine Learning",
 ) -> "ScaffoldResult":
     from synthadoc.agents.scaffold_agent import ScaffoldResult
+    _agents = agents_md if agents_md is not None else _make_agents_md(domain)
     return ScaffoldResult(
         index_md=index_md if index_md is not None else (
             f"---\ntitle: Index\ncreated: '2026-01-01'\n---\n\n# {domain} — Index\n\n"
             f"## Core Concepts\n*key ideas*\n\n- [[neural-networks]]\n"
         ),
-        agents_md=agents_md if agents_md is not None else (
-            f"# AGENTS.md — {domain} Wiki\n\n## Purpose\nCaptures knowledge.\n\n"
-            f"## Ingest Guidelines\n- Summarize.\n\n## Query Guidelines\n- Cite sources.\n"
-        ),
+        agents_md=_agents,
+        claude_md=_agents.replace("# AGENTS.md", "# CLAUDE.md", 1),
+        gemini_md=_agents.replace("# AGENTS.md", "# GEMINI.md", 1),
         purpose_md=purpose_md if purpose_md is not None else (
             f"# Wiki Purpose — {domain}\n\n## Overview\n\nSome overview.\n"
         ),
@@ -409,17 +420,17 @@ def test_validate_scaffold_result_fails_no_wikilinks():
         _validate_scaffold_result(result, "Machine Learning")
 
 
-def test_validate_scaffold_result_fails_missing_ingest_guidelines():
+def test_validate_scaffold_result_fails_missing_domain_guidelines():
     from synthadoc.agents.scaffold_agent import _validate_scaffold_result
-    result = _make_result(agents_md="# AGENTS.md\n\n## Query Guidelines\n- Cite.\n")
-    with pytest.raises(ValueError, match="Ingest Guidelines"):
+    result = _make_result(agents_md="# AGENTS.md\n\n## Quick Reference\n## Ingest\n## Query\n")
+    with pytest.raises(ValueError, match="Domain Guidelines"):
         _validate_scaffold_result(result, "Machine Learning")
 
 
-def test_validate_scaffold_result_fails_missing_query_guidelines():
+def test_validate_scaffold_result_fails_missing_quick_reference():
     from synthadoc.agents.scaffold_agent import _validate_scaffold_result
-    result = _make_result(agents_md="# AGENTS.md\n\n## Ingest Guidelines\n- Summarize.\n")
-    with pytest.raises(ValueError, match="Query Guidelines"):
+    result = _make_result(agents_md="# AGENTS.md\n\n## Domain Guidelines\n## Ingest\n## Query\n")
+    with pytest.raises(ValueError, match="Quick Reference"):
         _validate_scaffold_result(result, "Machine Learning")
 
 
@@ -443,6 +454,8 @@ def test_validate_scaffold_result_reports_all_issues_at_once():
     bad = ScaffoldResult(
         index_md="no frontmatter here",
         agents_md="no sections",
+        claude_md="no sections",
+        gemini_md="no sections",
         purpose_md="no sections",
         dashboard_intro="x",
     )
@@ -470,6 +483,40 @@ async def test_scaffold_raises_on_validation_failure():
     agent = ScaffoldAgent(provider=provider)
     with pytest.raises(ValueError, match="no \\[\\[wikilinks\\]\\]"):
         await agent.scaffold(domain="Machine Learning")
+
+
+@pytest.mark.asyncio
+async def test_scaffold_returns_claude_and_gemini_md():
+    """scaffold() must populate claude_md and gemini_md alongside agents_md."""
+    provider = _make_provider(_VALID_RESPONSE)
+    agent = ScaffoldAgent(provider=provider)
+    result = await agent.scaffold(domain="Machine Learning")
+    assert result.claude_md.startswith("# CLAUDE.md")
+    assert result.gemini_md.startswith("# GEMINI.md")
+    assert "Machine Learning" in result.claude_md
+    assert "Machine Learning" in result.gemini_md
+
+
+@pytest.mark.asyncio
+async def test_scaffold_skill_files_share_body():
+    """AGENTS.md, CLAUDE.md, GEMINI.md must share identical body (differ only in H1)."""
+    provider = _make_provider(_VALID_RESPONSE)
+    agent = ScaffoldAgent(provider=provider)
+    result = await agent.scaffold(domain="Machine Learning")
+    agents_lines = result.agents_md.splitlines()
+    claude_lines = result.claude_md.splitlines()
+    gemini_lines = result.gemini_md.splitlines()
+    assert agents_lines[1:] == claude_lines[1:] == gemini_lines[1:]
+
+
+@pytest.mark.asyncio
+async def test_scaffold_port_embedded_in_skill_files():
+    """scaffold(port=9090) must embed 9090 in all three skill files."""
+    provider = _make_provider(_VALID_RESPONSE)
+    agent = ScaffoldAgent(provider=provider)
+    result = await agent.scaffold(domain="Machine Learning", port=9090)
+    for content in (result.agents_md, result.claude_md, result.gemini_md):
+        assert "9090" in content
 
 
 def test_build_index_md_strips_meta_slugs():

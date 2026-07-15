@@ -2945,9 +2945,41 @@ Three cache layers (embedding, LLM response, provider prompt cache) invalidate a
 
 → Layer-by-layer breakdown and invalidation rules: [§12 Cache System](#12-cache-system)
 
-### Per-wiki AGENTS.md
+### Multi-Platform Agent Skill Files
 
-Edit `<wiki-root>/AGENTS.md` to give the LLM domain-specific instructions — terminology, page-naming conventions, what to cross-reference. This is the highest-priority instruction source for every agent run against this wiki; the `scaffold` command regenerates a starter version from current wiki state.
+Every Synthadoc wiki ships three companion files that give AI coding agents a complete, self-contained operating guide for the wiki:
+
+| File | Platform |
+|---|---|
+| `AGENTS.md` | Codex CLI, OpenCode, and any agent that reads the AGENTS.md convention |
+| `CLAUDE.md` | Claude Code (this session's tool) — highest-priority instruction source in Claude's hierarchy |
+| `GEMINI.md` | Gemini CLI — relevant because Synthadoc's default LLM provider is `gemini-2.5-flash-lite` |
+
+All three files share identical body content generated from the same template; they differ only in their H1 heading so each agent recognises its own file first. The body covers:
+
+- **Domain guidelines** — LLM-generated bullet list of domain-specific ingest and query rules (produced by `scaffold`)
+- **Quick reference table** — every common CLI command with the correct `synthadoc` syntax
+- **Server startup** — how to start the server and verify it is running
+- **Ingest examples** — local file, URL, YouTube, agent session `.jsonl`, force reingest, dry-run
+- **Query** — basic and streaming query syntax; citation marker format
+- **Lint** — when to run and what each check does
+- **Lifecycle** — transition commands with state names
+- **Page schema** — frontmatter structure with all fields
+- **MCP tools table** — all 12 tools with purpose descriptions
+
+**How the files are created and updated:**
+
+1. `synthadoc init` — writes all three files with default domain guidelines and the wiki's configured port.
+2. `synthadoc scaffold` — regenerates all three with LLM-produced domain guidelines derived from the current wiki state. The `scaffold` command prints a confirmation line for each file.
+
+**Use cases:**
+
+- Open Claude Code in a Synthadoc wiki directory and it immediately knows how to ingest, query, lint, and manage lifecycle — no additional setup. Claude Code can also start the server in background mode (`synthadoc serve -w <wiki> -b`), stop it cleanly, and orchestrate multi-step workflows, effectively acting as a control plane for the wiki.
+- Gemini CLI reads `GEMINI.md` and can run `synthadoc` commands with the correct flags without asking the user for help.
+- CI pipelines with Codex CLI use `AGENTS.md` to drive automated lint and lifecycle transitions on PR merge.
+- Agent session files produced by Claude Code (`.jsonl` under `~/.claude/projects/`) can themselves be ingested into the wiki, capturing the reasoning behind design decisions alongside the source documents.
+
+→ See [README.md — Interfaces & Integration](../README.md#interfaces--integration) for the feature comparison row and quick-start instructions.
 
 ---
 

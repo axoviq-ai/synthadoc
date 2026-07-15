@@ -192,7 +192,9 @@ history-of-computing/
     alan-turing.md        ← example pre-built topic page
     grace-hopper.md       ← ...and so on for each of the 13 pre-built pages
   raw_sources/            ← source documents to ingest (PDF, PPTX, XLSX, PNG, MD)
-  AGENTS.md               ← LLM instructions — domain guidelines for ingest and query
+  AGENTS.md               ← LLM instructions for Codex/OpenCode — domain guidelines for ingest and query
+  CLAUDE.md               ← same instructions, Claude Code format (read automatically when you open this folder in Claude Code)
+  GEMINI.md               ← same instructions, Gemini CLI format
   log.md                  ← human-readable activity log of every ingest and lint event
   .synthadoc/
     config.toml           ← per-wiki settings (port, LLM provider, cost limits)
@@ -209,8 +211,12 @@ history-of-computing/
 | `wiki/index.md`       | Pre-generated category structure with`[[wikilinks]]` to each page |
 | `wiki/dashboard.md`   | Live Dataview tables — contradictions, orphans, recently added / updated / archived |
 | `wiki/alan-turing.md` | YAML frontmatter:`status`, `confidence`, `tags`, `sources[]`      |
-| `AGENTS.md`           | Domain-specific guidelines the LLM reads on every ingest          |
+| `AGENTS.md`           | Domain-specific guidelines for Codex/OpenCode agents — LLM reads this on every ingest |
+| `CLAUDE.md`           | Same guidelines in Claude Code format — loaded automatically when you open this folder in Claude Code |
+| `GEMINI.md`           | Same guidelines in Gemini CLI format |
 | `wiki/purpose.md`     | In-scope / out-of-scope definition for History of Computing       |
+
+> **Upgrading an existing wiki?** If your wiki was created before v1.0.2, it will have `AGENTS.md` but not `CLAUDE.md` or `GEMINI.md`. Run `synthadoc scaffold` once to generate all three with LLM-produced guidelines that match your current wiki content.
 
 ### dashboard.md — what each section shows
 
@@ -1257,9 +1263,15 @@ synthadoc jobs list
 
 After batch ingest, the wiki has grown from 10 pre-built pages to 12 or more. **Scaffold**
 reads the current wiki state and uses the LLM to regenerate the structure files —
-`wiki/index.md`, `AGENTS.md`, and `wiki/purpose.md` — so they reflect what the wiki has
-actually become. Existing pages that are already linked in `index.md` are detected as
-**protected slugs** and preserved; only unlinked and new categories are refreshed.
+`wiki/index.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, and `wiki/purpose.md` — so they
+reflect what the wiki has actually become. Existing pages that are already linked in
+`index.md` are detected as **protected slugs** and preserved; only unlinked and new
+categories are refreshed.
+
+> **Upgrading an existing wiki?** If your wiki was created with an earlier version of
+> Synthadoc, running `synthadoc scaffold` is all you need to get `CLAUDE.md` and
+> `GEMINI.md` for the first time. The command regenerates all three skill files with
+> LLM-produced domain guidelines that match your current wiki content.
 
 ### Run scaffold
 
@@ -1275,7 +1287,9 @@ Generating domain-specific scaffold (History of Computing)…
   Protected slugs: alan-turing, grace-hopper, von-neumann-architecture, unix-history, … (10 pages)
   Scaffold complete — domain-specific content generated.
 wiki/index.md updated
-AGENTS.md updated
+AGENTS.md   updated
+CLAUDE.md   updated
+GEMINI.md   updated
 wiki/purpose.md updated
 ```
 
@@ -1285,7 +1299,8 @@ full post-ingest wiki (e.g. **Pioneers and Visionaries**, **Hardware Milestones*
 
 ### Re-run scaffold at any time
 
-As the wiki grows, re-running scaffold keeps the index structure current:
+As the wiki grows, re-running scaffold keeps the index structure current and refreshes
+all three agent skill files with updated domain guidelines:
 
 ```bash
 synthadoc scaffold
@@ -2325,7 +2340,7 @@ ready to build a wiki for your own domain:
 Key differences from the demo:
 
 - `synthadoc install <name> --target <dir> --domain "<your domain>"` generates LLM
-  scaffold for your domain at install time (index categories, AGENTS.md, purpose.md)
+  scaffold for your domain at install time (index categories, AGENTS.md, CLAUDE.md, GEMINI.md, purpose.md)
 - Drop your own source files into `raw_sources/` and run batch ingest
 - Use web search to fill knowledge gaps as your wiki grows
 - Schedule nightly ingests and weekly scaffold refresh to keep it current automatically
@@ -2375,7 +2390,7 @@ All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synt
 
 | Command                                   | What it does                                                                                                                   |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `Synthadoc: Wiki: regenerate scaffold...` | Rewrites`index.md`, `AGENTS.md`, and `purpose.md` using the LLM. Polls job status live. All existing wiki pages are preserved. |
+| `Synthadoc: Wiki: regenerate scaffold...` | Rewrites `index.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, and `purpose.md` using the LLM. Polls job status live. All existing wiki pages are preserved. |
 
 ### Lifecycle
 
@@ -2638,7 +2653,7 @@ synthadoc status
 ```
 
 `--domain` is a free-text description of the subject area — the LLM uses it to generate
-domain-aware starter files: `wiki/index.md`, `wiki/purpose.md`, and `AGENTS.md`.
+domain-aware starter files: `wiki/index.md`, `wiki/purpose.md`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`.
 
 ### 2. Start the server
 
@@ -3130,7 +3145,7 @@ Creates a timestamped compressed zip in the current directory:
 synthadoc-backup-history-of-computing-20260624-103000.zip
 ```
 
-**What's included by default:** wiki pages, candidates, config, audit database, exports, query cache, raw sources, and root-level wiki files (`AGENTS.md`, `ROUTING.md`, `log.md`, and any `*.txt` batch ingest files) when present.
+**What's included by default:** wiki pages, candidates, config, audit database, exports, query cache, raw sources, and root-level wiki files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `ROUTING.md`, `log.md`, and any `*.txt` batch ingest files) when present.
 
 **Flags:**
 ```
@@ -3165,7 +3180,7 @@ Restores to the same directory as the zip file by default. Detects port conflict
 | Item | Included? | Notes |
 |---|---|---|
 | `wiki/*.md` | ✓ Always | All compiled wiki pages |
-| `AGENTS.md`, `ROUTING.md`, `log.md` | ✓ Always | Wiki root files |
+| `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `ROUTING.md`, `log.md` | ✓ Always | Wiki root files |
 | `hooks/` | ✓ Always | User hook scripts |
 | `.synthadoc/config.toml` | ✓ Always | Server config |
 | `.synthadoc/audit.db` | ✓ Always | Full audit trail, lifecycle state, chat history |

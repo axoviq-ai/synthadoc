@@ -133,65 +133,66 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 
 | Capability | Synthadoc | Typical RAG | NotebookLM | Notion AI |
 | --- | --- | --- | --- | --- |
-| **Ingest-time synthesis** — sources compiled into the wiki at ingest; not re-summarised at query time | **Yes** | No | Partial | No |
-| **Contradiction detection & resolution** — conflicting claims flagged `status: contradicted`; auto-resolve available; full conflict history | **Yes** | No | No | No |
-| **Adversarial claim review** — concurrent second-LLM pass flags overstated claims, unsupported superlatives, and contestable facts per page | **Yes** | No | No | No |
-| **Claim-level provenance** — `^[file:L-L]` citation on every claim; Source Viewer in Obsidian; PDF page resolution; broken-citation lint | **Yes** | No | Partial | No |
-| **5-state lifecycle machine** — `draft → active → contradicted / stale → archived`; auto-transitions via lint; immutable event log; cascade link cleanup on archive (immediate, no lint run required) | **Yes** | No | No | No |
-| **Pre-LLM source sanitizer** — strips zero-width chars, bidi overrides, hidden HTML, and instruction-override phrases before any LLM call | **Yes** | No | No | No |
+| **[Ingest-time synthesis](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#ingestagent)** — sources compiled into the wiki at ingest; not re-summarised at query time | **Yes** | No | Partial | No |
+| **[Contradiction detection & resolution](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-9--resolve-a-contradiction)** — conflicting claims flagged `status: contradicted`; auto-resolve available; full conflict history | **Yes** | No | No | No |
+| **[Adversarial claim review](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-11--run-the-adversarial-review)** — concurrent second-LLM pass flags overstated claims, unsupported superlatives, and contestable facts per page | **Yes** | No | No | No |
+| **[Claim-level provenance](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-20--establish-claim-level-provenance)** — `^[file:L-L]` citation on every claim; Source Viewer in Obsidian; PDF page resolution; broken-citation lint | **Yes** | No | Partial | No |
+| **[5-state lifecycle machine](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-8--manage-page-lifecycle)** — `draft → active → contradicted / stale → archived`; auto-transitions via lint; immutable event log; cascade link cleanup on archive (immediate, no lint run required) | **Yes** | No | No | No |
+| **[Pre-LLM source sanitizer](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#29-pre-llm-source-sanitizer)** — strips zero-width chars, bidi overrides, hidden HTML, and instruction-override phrases before any LLM call | **Yes** | No | No | No |
 
 ### Knowledge Structure
 
 | Capability | Synthadoc | Typical RAG | NotebookLM | Notion AI |
 | --- | --- | --- | --- | --- |
-| **Wikilink graph + D3 visualisation** — `[[wikilinks]]` auto-built at ingest; force-directed graph in web UI; nodes coloured by Louvain cluster; click node to query | **Yes** | No | Partial | No |
-| **Orphan page detection** — unreferenced pages surfaced by lint with ready-to-paste index entries | **Yes** | No | No | No |
-| **Query-scoped routing** — ROUTING.md maps wiki branches to page slugs; queries auto-select relevant branches; new pages auto-slotted | **Yes** | No | No | No |
-| **Candidates staging** — ingest pages to a staging area first; review, promote, or discard before they enter the live wiki | **Yes** | No | No | No |
-| **Scaffold automation** — regenerates index categories, AGENTS.md, and purpose.md from current wiki state; protected pages never overwritten | **Yes** | No | No | No |
+| **[Wikilink graph + D3 visualisation](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-24--knowledge-graph)** — `[[wikilinks]]` auto-built at ingest; force-directed graph in web UI; nodes coloured by Louvain cluster; click node to query | **Yes** | No | Partial | No |
+| **[Orphan page detection](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-10--fix-an-orphan-page)** — unreferenced pages surfaced by lint with ready-to-paste index entries | **Yes** | No | No | No |
+| **[Query-scoped routing](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-17--set-up-routingmd--scoped-search)** — ROUTING.md maps wiki branches to page slugs; queries auto-select relevant branches; new pages auto-slotted | **Yes** | No | No | No |
+| **[Candidates staging](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-18--configure-candidates-staging)** — ingest pages to a staging area first; review, promote, or discard before they enter the live wiki | **Yes** | No | No | No |
+| **[Scaffold automation](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-14--enrich-the-wiki-with-scaffold)** — regenerates index categories, AGENTS.md/CLAUDE.md/GEMINI.md, and purpose.md from current wiki state; protected pages never overwritten | **Yes** | No | No | No |
 
 ### Search & Query
 
 | Capability | Synthadoc | Typical RAG | NotebookLM | Notion AI |
 | --- | --- | --- | --- | --- |
-| **Query decomposition + gap detection** — compound questions split into parallel BM25 sub-queries; thin results trigger a knowledge-gap callout with suggested web searches | **Yes** | Partial | No | No |
-| **BM25 TF fallback + compound identifier search** — reliable results on small corpora (IDF collapse → TF fallback); underscore identifiers expanded at index and query time so `capex growth` matches `capex_growth` | **Yes** | No | No | No |
-| **Web search → wiki pages** — Tavily search fans out into parallel URL ingest jobs; gap callout in web UI suggests searches inline | **Yes** | No | No | No |
-| **Semantic re-ranking** — optional vector re-ranking (`BAAI/bge-small-en-v1.5`) improves recall on conceptually related queries; BM25 stays as fallback | **Yes** (optional) | Varies | No | No |
-| **Streaming output + query cache** — token-by-token streaming; cache key = question + wiki version; auto-invalidates on ingest or lifecycle change | **Yes** | Partial | Partial | Partial |
-| **Proportional context budget** — sources allocated proportionally to model context window (60 % wiki / 20 % history / 15 % system / 5 % index); replaces fixed top-N cap | **Yes** | No | No | No |
+| **[Query decomposition + gap detection](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#knowledge-gap-detection)** — compound questions split into parallel BM25 sub-queries; thin results trigger a knowledge-gap callout with suggested web searches | **Yes** | Partial | No | No |
+| **[BM25 TF fallback + compound identifier search](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#queryagent)** — reliable results on small corpora (IDF collapse → TF fallback); underscore identifiers expanded at index and query time so `capex growth` matches `capex_growth` | **Yes** | No | No | No |
+| **[Web search → wiki pages](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-12--web-search-ingestion)** — Tavily search fans out into parallel URL ingest jobs; gap callout in web UI suggests searches inline | **Yes** | No | No | No |
+| **[Semantic re-ranking](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#semantic-re-ranking)** — optional vector re-ranking (`BAAI/bge-small-en-v1.5`) improves recall on conceptually related queries; BM25 stays as fallback | **Yes** (optional) | Varies | No | No |
+| **[Streaming output + query cache](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-23--query-caching)** — token-by-token streaming; cache key = question + wiki version; auto-invalidates on ingest or lifecycle change | **Yes** | Partial | Partial | Partial |
+| **[Proportional context budget](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#31-proportional-context-budget)** — sources allocated proportionally to model context window (60 % wiki / 20 % history / 15 % system / 5 % index); replaces fixed top-N cap | **Yes** | No | No | No |
 
 ### Interfaces & Integration
 
 | Capability | Synthadoc | Typical RAG | NotebookLM | Notion AI |
 | --- | --- | --- | --- | --- |
-| **Obsidian integration** — native plugin: ingest modal, streaming query, lint report, lifecycle controls, context pack builder, provenance viewer, export modal; Reading View set as default on install so citation chips are visible immediately | **Yes** | No | No | No |
-| **Web chat UI** — `synthadoc web`: streaming answers, session sidebar, multi-turn history, knowledge-gap callouts, knowledge graph tab | **Yes** | No | Yes | Yes |
-| **MCP server** — 12 tools; Claude Desktop (stdio), Claude Code (SSE), n8n/LangGraph (HTTP/SSE); brain+memory architecture; no double-LLM cost for reads | **Yes** | No | No | No |
-| **Context packs** — goal → sub-questions → token-budget evidence pack; REST + MCP callable; paste into any LLM chat as grounded context | **Yes** | No | No | No |
-| **Export formats** — `llms.txt`, `llms-full.txt`, GraphML, JSON (provenance + lifecycle), OKF v0.1 bundle; lifecycle-filtered; zero extra LLM calls | **Yes** | No | Partial | No |
+| **[Obsidian integration](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-3--open-the-vault-in-obsidian)** — native plugin: ingest modal, streaming query, lint report, lifecycle controls, context pack builder, provenance viewer, export modal; Reading View set as default on install so citation chips are visible immediately | **Yes** | No | No | No |
+| **[Web chat UI](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-22--use-the-web-chat-ui)** — `synthadoc web`: streaming answers, session sidebar, multi-turn history, knowledge-gap callouts, knowledge graph tab | **Yes** | No | Yes | Yes |
+| **[MCP server](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#27-mcp-server)** — 12 tools; Claude Desktop (stdio), Claude Code (SSE), n8n/LangGraph (HTTP/SSE); brain+memory architecture; no double-LLM cost for reads | **Yes** | No | No | No |
+| **[Context packs](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-19--build-a-context-pack)** — goal → sub-questions → token-budget evidence pack; REST + MCP callable; paste into any LLM chat as grounded context | **Yes** | No | No | No |
+| **[Export formats](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-21--export-your-wiki)** — `llms.txt`, `llms-full.txt`, GraphML, JSON (provenance + lifecycle), OKF v0.1 bundle; lifecycle-filtered; zero extra LLM calls | **Yes** | No | Partial | No |
+| **[Multi-platform agent skill files](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#multi-platform-agent-skill-files)** — `AGENTS.md` (Codex/OpenCode), `CLAUDE.md` (Claude Code), `GEMINI.md` (Gemini CLI); all include full CLI quick-reference, domain guidelines, MCP tool table; regenerated by `scaffold` | **Yes** | No | No | No |
 
 ### Content Sources
 
 | Capability | Synthadoc | Typical RAG | NotebookLM | Notion AI |
 | --- | --- | --- | --- | --- |
-| **Multi-format ingest** — PDF, DOCX, PPTX, XLSX/CSV, Markdown, TXT, images (vision), web URLs, YouTube transcripts | **Yes** | Varies | Partial | Partial |
-| **Web search decomposition** — broad topics decomposed into focused Tavily keyword searches; results merged and deduplicated | **Yes** | No | No | Partial |
-| **YouTube transcript ingest** — timestamped transcript + executive summary; no API key; auto-generated captions supported | **Yes** | No | Yes | No |
-| **Multilingual / CJK queries** — Chinese, Japanese, Korean — no false knowledge gaps | **Yes** | Limited | No | No |
-| **Multiple LLM providers + coding tools** — Gemini, Groq, Qwen, MiniMax, DeepSeek, Anthropic, OpenAI, Ollama; Claude Code and Opencode (no API key needed) | **Yes** | No | No | No |
+| **[Multi-format ingest](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#built-in-skills)** — PDF, DOCX, PPTX, XLSX/CSV, Markdown, TXT, images (vision), web URLs, YouTube transcripts | **Yes** | Varies | Partial | Partial |
+| **[Web search decomposition](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-12--web-search-ingestion)** — broad topics decomposed into focused Tavily keyword searches; results merged and deduplicated | **Yes** | No | No | Partial |
+| **[YouTube transcript ingest](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-13--ingest-a-youtube-video)** — timestamped transcript + executive summary; no API key; auto-generated captions supported | **Yes** | No | Yes | No |
+| **[Multilingual / CJK queries](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#queryagent)** — Chinese, Japanese, Korean — no false knowledge gaps | **Yes** | Limited | No | No |
+| **[Multiple LLM providers + coding tools](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#appendix-c--switching-llm-providers)** — Gemini, Groq, Qwen, MiniMax, DeepSeek, Anthropic, OpenAI, Ollama; Claude Code and Opencode (no API key needed) | **Yes** | No | No | No |
 
 ### Operations & Trust
 
 | Capability | Synthadoc | Typical RAG | NotebookLM | Notion AI |
 | --- | --- | --- | --- | --- |
 | **Local-first + offline artifact** — source documents never leave your machine; compiled wiki is plain Markdown, fully readable offline in any editor without the server | **Yes** | Varies | No | No |
-| **Portable backup / restore** — single zip: wiki pages + audit/lifecycle DB + config; port and domain rewriting on restore; migrate machines without re-ingesting | **Yes** | No — re-ingest required | No — AI metadata lost | No |
-| **Cost guard + full audit trail** — per-job token + cost log; soft-warn and hard-gate thresholds; `audit citations` validates every claim citation; immutable event log | **Yes** | No | No | No |
-| **Resumable job queue + retry** — every ingest/lint job persisted with status and error; batch a hundred documents and resume after a crash | **Yes** | No | No | No |
-| **Custom skills + CI hooks** — subclass `BaseSkill` for new file formats; 2 hook events on ingest and lint complete; blocking hooks can gate operations | **Yes** | Limited | No | No |
-| **Per-source truncation flag** — `--max-source-chars` caps any source (PDF, DOCX, web page, plain text) before the LLM call; truncated sources flagged with `truncated: true` in frontmatter and warned in lint output | **Yes** | No | No | No |
-| **Multi-wiki isolation** — each wiki on its own port with independent config, audit trail, and job queue; switch with `synthadoc use` | **Yes** | No | Partial | No |
+| **[Portable backup / restore](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#28-backup--restore)** — single zip: wiki pages + audit/lifecycle DB + config; port and domain rewriting on restore; migrate machines without re-ingesting | **Yes** | No — re-ingest required | No — AI metadata lost | No |
+| **[Cost guard + full audit trail](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-15--audit-features)** — per-job token + cost log; soft-warn and hard-gate thresholds; `audit citations` validates every claim citation; immutable event log | **Yes** | No | No | No |
+| **[Resumable job queue + retry](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#14-job-queue)** — every ingest/lint job persisted with status and error; batch a hundred documents and resume after a crash | **Yes** | No | No | No |
+| **[Custom skills + CI hooks](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#11-hook-system)** — subclass `BaseSkill` for new file formats; 2 hook events on ingest and lint complete; blocking hooks can gate operations | **Yes** | Limited | No | No |
+| **[Per-source truncation flag](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#30-per-source-truncation-flag)** — `--max-source-chars` caps any source (PDF, DOCX, web page, plain text) before the LLM call; truncated sources flagged with `truncated: true` in frontmatter and warned in lint output | **Yes** | No | No | No |
+| **[Multi-wiki isolation](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#wiki-targeting)** — each wiki on its own port with independent config, audit trail, and job queue; switch with `synthadoc use` | **Yes** | No | Partial | No |
 
 ### Business value
 

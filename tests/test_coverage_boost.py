@@ -329,15 +329,18 @@ async def test_run_scaffold_completes_job(tmp_wiki):
     try:
         job_id = await orch._queue.enqueue("scaffold", {"domain": "Test Domain"})
 
+        _agents = (
+            "# AGENTS.md — Test Domain Wiki\n\n## Domain Guidelines\n- Summarize.\n\n"
+            "## Quick Reference\n| Action | Command |\n\n## Ingest\n\n## Query\n"
+        )
         result = ScaffoldResult(
             index_md=(
                 "---\ntitle: Index\ncreated: '2026-01-01'\n---\n\n"
                 "# Test Domain — Index\n\n## Core\n*key ideas*\n\n- [[overview]]\n"
             ),
-            agents_md=(
-                "# AGENTS.md — Test Domain Wiki\n\n## Purpose\nCaptures knowledge.\n\n"
-                "## Ingest Guidelines\n- Summarize.\n\n## Query Guidelines\n- Cite sources.\n"
-            ),
+            agents_md=_agents,
+            claude_md=_agents.replace("# AGENTS.md", "# CLAUDE.md", 1),
+            gemini_md=_agents.replace("# AGENTS.md", "# GEMINI.md", 1),
             purpose_md=(
                 "# Wiki Purpose — Test Domain\n\n## Overview\n\nCovers Test Domain.\n"
             ),
