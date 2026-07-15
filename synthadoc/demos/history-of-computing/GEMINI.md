@@ -1,4 +1,4 @@
-# AGENTS.md — History of Computing Wiki
+# GEMINI.md — History of Computing Wiki
 
 This wiki is managed by [Synthadoc](https://github.com/axoviq-ai/synthadoc).
 It covers: **History of Computing**.

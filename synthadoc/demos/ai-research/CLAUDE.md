@@ -1,13 +1,14 @@
-# AGENTS.md — History of Computing Wiki
+# CLAUDE.md — AI Research Wiki
 
 This wiki is managed by [Synthadoc](https://github.com/axoviq-ai/synthadoc).
-It covers: **History of Computing**.
+It covers: **AI Research**.
 
 ## Domain Guidelines
-- Summarize key claims, dates, and chronological context from each source
-- Cross-reference related figures, architectures, and eras using [[page-name]] wikilink syntax
-- Flag contradictions between sources — especially conflicting attribution or dates — with ⚠ markers
-- Preserve temporal precision: dates and "first" claims are load-bearing facts in this domain
+- Focus on AI/ML research: architectures, training methods, benchmarks, key papers, and researchers
+- Summarize key claims, methods, and results — prioritize technical precision over breadth
+- Cross-reference related concepts using [[page-name]] wikilink syntax
+- When a source updates or refines a prior result, flag contradictions rather than silently overwriting
+- Skip sources that are purely promotional, news aggregators, or outside AI/ML research scope
 
 ## Quick Reference
 
