@@ -33,7 +33,7 @@ def main() -> int:
         print(f"Nothing to copy — build the plugin first: cd obsidian-plugin && npm run build", file=sys.stderr)
         return 1
     for name in copied:
-        print(f"  copied {name}  →  synthadoc/data/obsidian-plugin/{name}")
+        print(f"  copied {name}  ->  synthadoc/data/obsidian-plugin/{name}")
     print(f"\nDone. Commit synthadoc/data/obsidian-plugin/ to include in the next release.")
     return 0
 

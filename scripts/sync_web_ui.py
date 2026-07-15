@@ -29,7 +29,7 @@ def main() -> int:
         shutil.rmtree(DST)
     shutil.copytree(SRC, DST)
     file_count = sum(1 for _ in DST.rglob("*") if _.is_file())
-    print(f"  synced {file_count} files  →  synthadoc/data/web-ui/dist/")
+    print(f"  synced {file_count} files  ->  synthadoc/data/web-ui/dist/")
     print("\nDone. Commit synthadoc/data/web-ui/ to include in the next release.")
     return 0
 
