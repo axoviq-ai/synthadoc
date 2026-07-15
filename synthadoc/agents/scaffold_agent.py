@@ -10,6 +10,7 @@ from datetime import date
 from typing import Optional
 
 from synthadoc.providers.base import LLMProvider, Message
+from synthadoc.cli._init import _AGENT_INSTRUCTION_BODY
 
 logger = logging.getLogger(__name__)
 
@@ -149,19 +150,9 @@ sources: []
 
 """
 
-_AGENTS_MD_TEMPLATE = """\
-# AGENTS.md — {domain} Wiki
-
-## Purpose
-This wiki captures knowledge about: {domain}.
-
-## Ingest Guidelines
-{guidelines}
-
-## Query Guidelines
-- Answer using only wiki content
-- Always cite sources using `[[page-name]]` link syntax
-"""
+_AGENTS_MD_TEMPLATE = "# AGENTS.md — {domain} Wiki\n\n" + _AGENT_INSTRUCTION_BODY
+_CLAUDE_MD_TEMPLATE = "# CLAUDE.md — {domain} Wiki\n\n" + _AGENT_INSTRUCTION_BODY
+_GEMINI_MD_TEMPLATE = "# GEMINI.md — {domain} Wiki\n\n" + _AGENT_INSTRUCTION_BODY
 
 _PURPOSE_MD_TEMPLATE = """\
 ---
@@ -220,6 +211,8 @@ def preserve_user_zone(existing_content: str, new_scaffold_content: str) -> str:
 class ScaffoldResult:
     index_md: str
     agents_md: str
+    claude_md: str
+    gemini_md: str
     purpose_md: str
     dashboard_intro: str
 
@@ -258,11 +251,10 @@ def _validate_scaffold_result(result: "ScaffoldResult", domain: str) -> None:
     if "[[" not in result.index_md:
         issues.append("index.md: no [[wikilinks]] — LLM returned no category slugs")
 
-    # AGENTS.md checks
-    if "## Ingest Guidelines" not in result.agents_md:
-        issues.append("AGENTS.md: missing '## Ingest Guidelines' section")
-    if "## Query Guidelines" not in result.agents_md:
-        issues.append("AGENTS.md: missing '## Query Guidelines' section")
+    # AGENTS.md checks — verify key sections from the comprehensive template
+    for section in ("## Domain Guidelines", "## Quick Reference", "## Ingest", "## Query"):
+        if section not in result.agents_md:
+            issues.append(f"AGENTS.md: missing '{section}' section")
 
     # purpose.md checks
     if "## Overview" not in result.purpose_md:
@@ -286,6 +278,7 @@ class ScaffoldAgent:
         self,
         domain: str,
         protected_slugs: Optional[list[str]] = None,
+        port: int = 7070,
     ) -> ScaffoldResult:
         protected_section = ""
         slugs_instruction = ""
@@ -343,9 +336,12 @@ class ScaffoldAgent:
         if data is None:
             raise last_exc or ValueError("ScaffoldAgent: unparseable scaffold JSON")
 
+        agents_md, claude_md, gemini_md = self._build_skill_files(domain, data, port)
         scaffold = ScaffoldResult(
             index_md=self._build_index_md(domain, data),
-            agents_md=self._build_agents_md(domain, data),
+            agents_md=agents_md,
+            claude_md=claude_md,
+            gemini_md=gemini_md,
             purpose_md=self._build_purpose_md(domain, data),
             dashboard_intro=data.get("dashboard_intro", f"A wiki tracking {domain} knowledge."),
         )
@@ -371,16 +367,23 @@ class ScaffoldAgent:
         lines.append("")
         return "\n".join(lines)
 
-    def _build_agents_md(self, domain: str, data: dict) -> str:
+    def _build_skill_files(
+        self, domain: str, data: dict, port: int
+    ) -> tuple[str, str, str]:
+        """Return (agents_md, claude_md, gemini_md) from LLM scaffold data."""
         raw_guidelines = data.get("agents_guidelines", "Summarize key claims.")
-        # Normalise to bullet list
         bullets = []
         for line in raw_guidelines.splitlines():
             line = line.strip().lstrip("-•* ")
             if line:
                 bullets.append(f"- {line}")
         guidelines = "\n".join(bullets) if bullets else f"- {raw_guidelines}"
-        return _AGENTS_MD_TEMPLATE.format(domain=domain, guidelines=guidelines)
+        kwargs = dict(domain=domain, guidelines=guidelines, port=port)
+        return (
+            _AGENTS_MD_TEMPLATE.format(**kwargs),
+            _CLAUDE_MD_TEMPLATE.format(**kwargs),
+            _GEMINI_MD_TEMPLATE.format(**kwargs),
+        )
 
     def _build_purpose_md(self, domain: str, data: dict) -> str:
         def _bullets(raw: str | list, fallback: str) -> str:

@@ -2,20 +2,140 @@
 # Copyright (C) 2026 Paul Chen / axoviq.com
 from pathlib import Path
 
-_AGENTS_MD = """# AGENTS.md — {domain} Wiki
+_AGENT_INSTRUCTION_BODY = """\
+This wiki is managed by [Synthadoc](https://github.com/axoviq-ai/synthadoc).
+It covers: **{domain}**.
 
-## Purpose
-This wiki captures knowledge about: {domain}.
+## Domain Guidelines
+{guidelines}
 
-## Ingest Guidelines
-- Summarize key claims and findings
-- Cross-reference related concepts using `[[page-name]]` link syntax
-- Flag contradictions with ⚠ markers
+## Quick Reference
 
-## Query Guidelines
-- Answer using only wiki content
-- Always cite sources using `[[page-name]]` link syntax
+| Action | Command |
+|---|---|
+| Start server | `synthadoc serve -w <wiki>` |
+| Check status | `synthadoc status` |
+| Ingest a file | `synthadoc ingest --source <path> -w <wiki>` |
+| Ingest a URL | `synthadoc ingest --source https://... -w <wiki>` |
+| Query | `synthadoc query "your question" -w <wiki>` |
+| Run lint | `synthadoc lint run -w <wiki>` |
+| Export wiki | `synthadoc export --format llms-full -w <wiki>` |
+
+Replace `<wiki>` with your wiki name (the directory name, not the domain).
+
+## Server
+
+The Synthadoc server must be running before any ingest, query, or lint operation.
+Default address: `http://127.0.0.1:{port}`
+
+```bash
+synthadoc serve -w <wiki>   # start (keep this terminal open)
+synthadoc status             # verify it is running — shows active wiki and port
+```
+
+## Ingest
+
+Supported sources: local files (md, pdf, docx, pptx, xlsx, csv, txt, png/jpg/webp),
+web URLs, YouTube video URLs, and agent session files (.jsonl).
+
+```bash
+# Local file
+synthadoc ingest --source raw_sources/report.pdf -w <wiki>
+
+# Web URL
+synthadoc ingest --source https://example.com/article -w <wiki>
+
+# YouTube video (transcript extracted automatically)
+synthadoc ingest --source "https://www.youtube.com/watch?v=<id>" -w <wiki>
+
+# Agent session history (Claude Code, Codex CLI, Cursor .jsonl files)
+synthadoc ingest --source ~/.claude/projects/<hash>/<session>.jsonl -w <wiki>
+
+# Re-ingest with a larger source window (when lint reports truncated sources)
+synthadoc ingest --source <path> --force --max-source-chars 64000 -w <wiki>
+
+# Analyse source without writing to wiki (dry-run)
+synthadoc ingest --source <path> --analyse-only -w <wiki>
+```
+
+## Query
+
+```bash
+synthadoc query "your question here" -w <wiki>
+synthadoc query --stream "your question" -w <wiki>   # streaming output
+```
+
+Answers include `^[source:line]` citation markers. Use only wiki content — do not
+supplement with outside knowledge unless the wiki explicitly says it does not cover the topic.
+
+## Lint
+
+Run after major ingests or weekly to keep the wiki healthy:
+
+```bash
+synthadoc lint run -w <wiki>
+```
+
+Checks: orphan pages, dangling links, truncated sources, contradictions, adversarial
+review, citation accuracy. Automatically archives pages whose source files have been deleted.
+After archiving, cascade cleanup removes all `[[slug]]` links pointing to the archived page.
+
+## Lifecycle
+
+```bash
+synthadoc lifecycle activate --slug <slug> -w <wiki>   # draft → active
+synthadoc lifecycle archive  --slug <slug> -w <wiki>   # active → archived (cascade cleanup runs)
+synthadoc lifecycle restore  --slug <slug> -w <wiki>   # archived → active
+synthadoc lifecycle log      -w <wiki>                  # full audit trail
+```
+
+## Page Schema
+
+Every wiki page has YAML frontmatter:
+
+```yaml
+title: "Page Title"
+status: active        # draft | active | stale | archived
+confidence: high      # high | medium | low
+type: concept         # concept | person | event | technology | organization | place
+sources:
+  - file: raw_sources/report.pdf
+    hash: <sha256>
+    ingested: "2026-07-15"
+```
+
+Cross-link related pages with `[[slug]]` syntax. Slugs are kebab-case filenames without `.md`.
+
+## MCP Tools
+
+When Synthadoc is connected as an MCP server the following tools are available:
+
+| Tool | Purpose |
+|---|---|
+| `synthadoc_query` | Ask a question; returns a cited answer |
+| `synthadoc_ingest` | Add a source document or URL |
+| `synthadoc_search` | Full-text search across wiki pages |
+| `synthadoc_context` | Build a context pack for a topic |
+| `synthadoc_write` | Create or update a page directly |
+| `synthadoc_lifecycle` | Transition a page's lifecycle state |
+| `synthadoc_lint_run` | Run a lint pass |
+| `synthadoc_lint_report` | Retrieve the latest lint report |
+| `synthadoc_jobs` | List recent jobs and their status |
+| `synthadoc_status` | Check server and wiki status |
+| `synthadoc_export` | Export wiki in various formats |
+| `synthadoc_graph` | Retrieve the knowledge graph |
 """
+
+_DEFAULT_GUIDELINES = """\
+- Summarize key claims and findings from each source
+- Cross-link related concepts using [[page-name]] wikilink syntax
+- Maintain consistent terminology across pages
+- Flag contradictions between sources with ⚠ markers\
+"""
+
+_AGENTS_MD = "# AGENTS.md — {domain} Wiki\n\n" + _AGENT_INSTRUCTION_BODY
+_CLAUDE_MD = "# CLAUDE.md — {domain} Wiki\n\n" + _AGENT_INSTRUCTION_BODY
+_GEMINI_MD = "# GEMINI.md — {domain} Wiki\n\n" + _AGENT_INSTRUCTION_BODY
 
 _CONFIG_TOML = """\
 # synthadoc per-project configuration
@@ -207,8 +327,13 @@ def init_wiki(root: Path, domain: str = "General", port: int = 7070) -> None:
     (root / ".obsidian" / "app.json").write_text(
         '{\n  "userIgnoreFilters": [\n    "raw_sources"\n  ]\n}\n',
         encoding="utf-8", newline="\n")
+    _skill_file_kwargs = dict(domain=domain, guidelines=_DEFAULT_GUIDELINES, port=port)
     (root / "AGENTS.md").write_text(
-        _AGENTS_MD.format(domain=domain), encoding="utf-8", newline="\n")
+        _AGENTS_MD.format(**_skill_file_kwargs), encoding="utf-8", newline="\n")
+    (root / "CLAUDE.md").write_text(
+        _CLAUDE_MD.format(**_skill_file_kwargs), encoding="utf-8", newline="\n")
+    (root / "GEMINI.md").write_text(
+        _GEMINI_MD.format(**_skill_file_kwargs), encoding="utf-8", newline="\n")
     (root / "wiki" / "index.md").write_text(
         "# Index\n\n", encoding="utf-8", newline="\n")
     (root / "wiki" / "purpose.md").write_text(
