@@ -2974,12 +2974,12 @@ All three files share identical body content generated from the same template; t
 
 **Use cases:**
 
-- Open Claude Code in a Synthadoc wiki directory and it immediately knows how to ingest, query, lint, and manage lifecycle — no additional setup.
+- Open Claude Code in a Synthadoc wiki directory and it immediately knows how to ingest, query, lint, and manage lifecycle — no additional setup. Claude Code can also start the server in background mode (`synthadoc serve -w <wiki> -b`), stop it cleanly, and orchestrate multi-step workflows, effectively acting as a control plane for the wiki.
 - Gemini CLI reads `GEMINI.md` and can run `synthadoc` commands with the correct flags without asking the user for help.
 - CI pipelines with Codex CLI use `AGENTS.md` to drive automated lint and lifecycle transitions on PR merge.
 - Agent session files produced by Claude Code (`.jsonl` under `~/.claude/projects/`) can themselves be ingested into the wiki, capturing the reasoning behind design decisions alongside the source documents.
 
-→ See README.md for the feature comparison row and quick-start instructions.
+→ See [README.md — Interfaces & Integration](../README.md#interfaces--integration) for the feature comparison row and quick-start instructions.
 
 ---
 
