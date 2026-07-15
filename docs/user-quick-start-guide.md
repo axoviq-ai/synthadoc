@@ -192,7 +192,9 @@ history-of-computing/
     alan-turing.md        ← example pre-built topic page
     grace-hopper.md       ← ...and so on for each of the 13 pre-built pages
   raw_sources/            ← source documents to ingest (PDF, PPTX, XLSX, PNG, MD)
-  AGENTS.md               ← LLM instructions — domain guidelines for ingest and query
+  AGENTS.md               ← LLM instructions for Codex/OpenCode — domain guidelines for ingest and query
+  CLAUDE.md               ← same instructions, Claude Code format (read automatically when you open this folder in Claude Code)
+  GEMINI.md               ← same instructions, Gemini CLI format
   log.md                  ← human-readable activity log of every ingest and lint event
   .synthadoc/
     config.toml           ← per-wiki settings (port, LLM provider, cost limits)
@@ -209,8 +211,12 @@ history-of-computing/
 | `wiki/index.md`       | Pre-generated category structure with`[[wikilinks]]` to each page |
 | `wiki/dashboard.md`   | Live Dataview tables — contradictions, orphans, recently added / updated / archived |
 | `wiki/alan-turing.md` | YAML frontmatter:`status`, `confidence`, `tags`, `sources[]`      |
-| `AGENTS.md`           | Domain-specific guidelines the LLM reads on every ingest          |
+| `AGENTS.md`           | Domain-specific guidelines for Codex/OpenCode agents — LLM reads this on every ingest |
+| `CLAUDE.md`           | Same guidelines in Claude Code format — loaded automatically when you open this folder in Claude Code |
+| `GEMINI.md`           | Same guidelines in Gemini CLI format |
 | `wiki/purpose.md`     | In-scope / out-of-scope definition for History of Computing       |
+
+> **Upgrading an existing wiki?** If your wiki was created before v1.0.2, it will have `AGENTS.md` but not `CLAUDE.md` or `GEMINI.md`. Run `synthadoc scaffold` once to generate all three with LLM-produced guidelines that match your current wiki content.
 
 ### dashboard.md — what each section shows
 
