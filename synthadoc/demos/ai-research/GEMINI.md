@@ -15,12 +15,15 @@ It covers: **AI Research**.
 | Action | Command |
 |---|---|
 | Start server | `synthadoc serve -w <wiki>` |
-| Check status | `synthadoc status` |
-| Ingest a file | `synthadoc ingest --source <path> -w <wiki>` |
-| Ingest a URL | `synthadoc ingest --source https://... -w <wiki>` |
+| Check status | `synthadoc status -w <wiki>` |
+| Ingest a file | `synthadoc ingest raw_sources/report.pdf -w <wiki>` |
+| Ingest a URL | `synthadoc ingest https://example.com/article -w <wiki>` |
 | Query | `synthadoc query "your question" -w <wiki>` |
 | Run lint | `synthadoc lint run -w <wiki>` |
-| Export wiki | `synthadoc export --format llms-full -w <wiki>` |
+| View lint report | `synthadoc lint report -w <wiki>` |
+| Export (LLM text) | `synthadoc export -f llms-full.txt -w <wiki>` |
+| Export (JSON) | `synthadoc export -f json -w <wiki>` |
+| Export (OKF bundle) | `synthadoc export -f okf -o ./export-dir -w <wiki>` |
 
 Replace `<wiki>` with your wiki name (the directory name, not the domain).
 
@@ -30,40 +33,47 @@ The Synthadoc server must be running before any ingest, query, or lint operation
 Default address: `http://127.0.0.1:7070`
 
 ```bash
-synthadoc serve -w <wiki>   # start (keep this terminal open)
-synthadoc status             # verify it is running — shows active wiki and port
+synthadoc serve -w <wiki>       # start (keep this terminal open)
+synthadoc serve -w <wiki> -b    # start in background (logs go to wiki log file)
+synthadoc status -w <wiki>      # verify it is running — shows active wiki and port
 ```
 
 ## Ingest
 
-Supported sources: local files (md, pdf, docx, pptx, xlsx, csv, txt, png/jpg/webp),
-web URLs, YouTube video URLs, and agent session files (.jsonl).
+Source is a positional argument. Supported sources: local files (md, pdf, docx, pptx,
+xlsx, csv, txt, png/jpg/webp), web URLs, YouTube video URLs, and agent session files (.jsonl).
 
 ```bash
 # Local file
-synthadoc ingest --source raw_sources/report.pdf -w <wiki>
+synthadoc ingest raw_sources/report.pdf -w <wiki>
 
 # Web URL
-synthadoc ingest --source https://example.com/article -w <wiki>
+synthadoc ingest https://example.com/article -w <wiki>
 
 # YouTube video (transcript extracted automatically)
-synthadoc ingest --source "https://www.youtube.com/watch?v=<id>" -w <wiki>
+synthadoc ingest "https://www.youtube.com/watch?v=<id>" -w <wiki>
 
 # Agent session history (Claude Code, Codex CLI, Cursor .jsonl files)
-synthadoc ingest --source ~/.claude/projects/<hash>/<session>.jsonl -w <wiki>
+synthadoc ingest ~/.claude/projects/<hash>/<session>.jsonl -w <wiki>
+
+# Ingest all files in a directory
+synthadoc ingest raw_sources/ --batch -w <wiki>
 
 # Re-ingest with a larger source window (when lint reports truncated sources)
-synthadoc ingest --source <path> --force --max-source-chars 64000 -w <wiki>
+synthadoc ingest raw_sources/report.pdf --force --max-source-chars 64000 -w <wiki>
 
 # Analyse source without writing to wiki (dry-run)
-synthadoc ingest --source <path> --analyse-only -w <wiki>
+synthadoc ingest raw_sources/report.pdf --analyse-only -w <wiki>
 ```
 
 ## Query
 
+Streaming output is on by default. Use `--no-stream` for scripts or pipes.
+
 ```bash
-synthadoc query "your question here" -w <wiki>
-synthadoc query --stream "your question" -w <wiki>   # streaming output
+synthadoc query "your question here" -w <wiki>          # streaming (default)
+synthadoc query "your question here" --no-stream -w <wiki>   # blocking, pipe-safe
+synthadoc query "your question here" --save -w <wiki>   # save answer as a wiki page
 ```
 
 Answers include `^[source:line]` citation markers. Use only wiki content — do not
@@ -74,7 +84,8 @@ supplement with outside knowledge unless the wiki explicitly says it does not co
 Run after major ingests or weekly to keep the wiki healthy:
 
 ```bash
-synthadoc lint run -w <wiki>
+synthadoc lint run -w <wiki>       # run a full lint pass (server must be running)
+synthadoc lint report -w <wiki>    # show the latest report without running a new pass
 ```
 
 Checks: orphan pages, dangling links, truncated sources, contradictions, adversarial
@@ -83,11 +94,48 @@ After archiving, cascade cleanup removes all `[[slug]]` links pointing to the ar
 
 ## Lifecycle
 
+Slug is a positional argument. `--reason` is required for all transitions.
+
 ```bash
-synthadoc lifecycle activate --slug <slug> -w <wiki>   # draft → active
-synthadoc lifecycle archive  --slug <slug> -w <wiki>   # active → archived (cascade cleanup runs)
-synthadoc lifecycle restore  --slug <slug> -w <wiki>   # archived → active
-synthadoc lifecycle log      -w <wiki>                  # full audit trail
+synthadoc lifecycle activate <slug> --reason "reviewed and verified" -w <wiki>
+# draft → active
+
+synthadoc lifecycle archive <slug> --reason "superseded by newer source" -w <wiki>
+# active → archived (cascade cleanup removes all [[slug]] links)
+
+synthadoc lifecycle restore <slug> --reason "re-opening for update" -w <wiki>
+# archived → draft (ready for re-ingest and re-activation)
+
+synthadoc lifecycle log -w <wiki>
+# full audit trail of all lifecycle events
+```
+
+## Export
+
+Server does **not** need to be running for export. Output defaults to stdout; use `-o`
+to write to a file or directory.
+
+```bash
+# Plain text for LLM context windows (active pages only)
+synthadoc export -f llms.txt -w <wiki>
+
+# Full text with frontmatter included
+synthadoc export -f llms-full.txt -o wiki-export.txt -w <wiki>
+
+# Graph structure (import into Gephi, yEd, etc.)
+synthadoc export -f graphml -o wiki-graph.graphml -w <wiki>
+
+# JSON with full provenance and lifecycle metadata
+synthadoc export -f json -o wiki-export.json -w <wiki>
+
+# OKF bundle (Open Knowledge Format — interoperable with other tools)
+synthadoc export -f okf -o ./okf-export/ -w <wiki>
+
+# Export only active pages
+synthadoc export -f llms-full.txt --status active -w <wiki>
+
+# Export only pages in a named context pack
+synthadoc export -f json --context-pack "Q3 Review" -w <wiki>
 ```
 
 ## Page Schema
