@@ -11,7 +11,7 @@ const SUPPORTED_EXTENSIONS = new Set([
 // Filenames excluded from Pick-files scan: generated wiki output and known system/config files.
 const PICK_FILES_EXCLUDED_NAMES = new Set([
     "log.md", "routing.md", "agents.md", "readme.md",
-    "dashboard.md", "index.md", "overview.md", "claude.md",
+    "dashboard.md", "index.md", "overview.md", "claude.md", "gemini.md",
 ]);
 
 interface SynthadocSettings {

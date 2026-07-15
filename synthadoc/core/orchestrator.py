@@ -128,7 +128,7 @@ class Orchestrator:
 
     async def close(self) -> None:
         await self._cache.close()
-        await asyncio.sleep(0)  # drain pending aiosqlite thread callbacks before loop teardown
+        await asyncio.sleep(0.05)  # allow in-flight aiosqlite thread callbacks to post before loop teardown
 
     async def __aenter__(self) -> "Orchestrator":
         await self.init()
@@ -539,14 +539,22 @@ class Orchestrator:
             result = await ScaffoldAgent(
                 provider=make_provider("ingest", self._cfg),
                 max_tokens=self._cfg.agents.scaffold_max_tokens,
-            ).scaffold(domain=domain, protected_slugs=protected_slugs or None)
+            ).scaffold(
+                domain=domain,
+                protected_slugs=protected_slugs or None,
+                port=self._cfg.server.port,
+            )
 
             index_path = self._root / "wiki" / "index.md"
             existing = index_path.read_text(encoding="utf-8") if index_path.exists() else ""
             final_index = preserve_user_zone(existing, result.index_md)
             index_path.write_text(final_index, encoding="utf-8", newline="\n")
-            (self._root / "AGENTS.md").write_text(
-                result.agents_md, encoding="utf-8", newline="\n")
+            for _filename, _content in (
+                ("AGENTS.md", result.agents_md),
+                ("CLAUDE.md", result.claude_md),
+                ("GEMINI.md", result.gemini_md),
+            ):
+                (self._root / _filename).write_text(_content, encoding="utf-8", newline="\n")
             (self._root / "wiki" / "purpose.md").write_text(
                 result.purpose_md, encoding="utf-8", newline="\n")
 

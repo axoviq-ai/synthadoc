@@ -65,6 +65,8 @@ def scaffold_cmd(
             typer.echo("Scaffold complete.")
             typer.echo("  index.md    updated")
             typer.echo("  AGENTS.md   updated")
+            typer.echo("  CLAUDE.md   updated")
+            typer.echo("  GEMINI.md   updated")
             typer.echo("  purpose.md  updated")
             typer.echo(f"  categories  stamped on {cats} page(s)")
             break

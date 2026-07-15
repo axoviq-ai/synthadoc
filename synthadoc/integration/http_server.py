@@ -457,8 +457,9 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         worker = asyncio.create_task(_worker_loop(orch))
 
         from synthadoc.core.scheduler import run_scheduler_loop
+        # orch.init() already created all tables in audit.db via self._audit.init();
+        # no second init() call needed here.
         audit_db = _AuditDB(wiki_root / ".synthadoc" / "audit.db")
-        await audit_db.init()
         scheduler = asyncio.create_task(
             run_scheduler_loop(wiki_root.name, wiki_root, audit_db)
         )

@@ -473,17 +473,21 @@ async def test_run_scaffold_excludes_meta_slugs_from_protected(tmp_wiki):
 
     captured_slugs: list[str] = []
 
-    async def fake_scaffold(self, domain, protected_slugs=None):
+    async def fake_scaffold(self, domain, protected_slugs=None, port=7070):
         captured_slugs.extend(protected_slugs or [])
+        _agents = (
+            "# AGENTS.md — Test Wiki\n\n## Domain Guidelines\n- Summarize.\n\n"
+            "## Quick Reference\n| Action | Command |\n\n## Ingest\n\n## Query\n"
+        )
         return ScaffoldResult(
             index_md=(
                 f"---\ntitle: Index\nstatus: active\nconfidence: high\n"
                 f"created: '2026-01-01'\n---\n\n# {domain} — Index\n\n"
                 "## Topics\n\n- [[real-topic]]\n"
             ),
-            agents_md=(
-                "## Ingest Guidelines\nIngest.\n\n## Query Guidelines\nQuery.\n"
-            ),
+            agents_md=_agents,
+            claude_md=_agents.replace("# AGENTS.md", "# CLAUDE.md", 1),
+            gemini_md=_agents.replace("# AGENTS.md", "# GEMINI.md", 1),
             purpose_md=f"# Wiki Purpose — {domain}\n\n## Overview\n\nText.\n",
             dashboard_intro="A wiki.",
         )
