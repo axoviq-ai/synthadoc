@@ -276,6 +276,7 @@ _PURPOSE_MD = """\
 This wiki covers: {domain}.
 
 Include: topics directly related to {domain}.
+Also accepted: AI coding session transcripts (.jsonl files from Claude Code, Codex, Cursor).
 Exclude: unrelated domains. When in doubt, ingest and review.
 """
 

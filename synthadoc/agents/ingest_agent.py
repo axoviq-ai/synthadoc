@@ -343,43 +343,77 @@ def _strip_leading_frontmatter(content: str) -> str:
     return content
 
 
-def _append_source_ref(page: "WikiPage", ref: "SourceRef") -> None:
-    """Append ref to page.sources only when the source is not already recorded.
+def _files_match(a: str, b: str) -> bool:
+    """Return True if two source paths refer to the same file (handles abs vs relative)."""
+    if a == b:
+        return True
+    abs_a, abs_b = Path(a).is_absolute(), Path(b).is_absolute()
+    norm_a, norm_b = a.replace("\\", "/"), b.replace("\\", "/")
+    if abs_a and not abs_b:
+        return norm_a.endswith("/" + norm_b)
+    if abs_b and not abs_a:
+        return norm_b.endswith("/" + norm_a)
+    return False
 
-    Deduplicates on (file, hash) AND detects when an absolute path matches an
-    existing relative-path entry (e.g. ``--force`` ingest with an absolute path
-    given for a source that is already registered as a relative path).
+
+def _source_in_page(page: "WikiPage", source: str) -> bool:
+    """Return True if *source* is already recorded in page.sources."""
+    return any(_files_match(s.file, source) for s in (page.sources or []))
+
+
+def _append_source_ref(page: "WikiPage", ref: "SourceRef") -> None:
+    """Append or update ref in page.sources, deduplicating on file path alone.
+
+    When the same file is re-ingested (e.g. the session grew and the hash changed),
+    the existing entry is updated in place rather than appended as a second entry.
+    Also handles abs-vs-relative path variants for the same underlying file.
     """
-    seen: set[tuple[str, str]] = set()
+    # Deduplicate existing sources by file path (keep first, discard later duplicates)
+    seen_files: set[str] = set()
     clean: list["SourceRef"] = []
     for s in page.sources:
-        key = (s.file, s.hash)
-        if key not in seen:
-            seen.add(key)
+        if s.file not in seen_files:
+            seen_files.add(s.file)
             clean.append(s)
     page.sources = clean
 
-    # If ref uses an absolute path, skip it when an existing relative-path entry
-    # is a suffix of that absolute path (normalise separators for cross-platform safety).
-    if Path(ref.file).is_absolute():
-        norm_abs = ref.file.replace("\\", "/")
-        for s in page.sources:
-            if not Path(s.file).is_absolute():
-                norm_rel = s.file.replace("\\", "/")
-                if norm_abs.endswith("/" + norm_rel) or norm_abs == norm_rel:
-                    return  # already recorded as a relative path
+    # Update in place if the file (in any abs/rel form) is already present
+    for s in page.sources:
+        if _files_match(s.file, ref.file):
+            s.hash = ref.hash
+            s.size = ref.size
+            s.ingested = ref.ingested
+            s.truncated = ref.truncated
+            return
 
-    if (ref.file, ref.hash) not in seen:
-        page.sources.append(ref)
+    page.sources.append(ref)
+
+
+def _merge_section_into_page(
+    page: "WikiPage",
+    section: str,
+    source: str,
+    src_hash: str,
+    source_len: int,
+    truncated: bool,
+) -> None:
+    """Apply *section* to *page* and record the source reference.
+
+    When *source* is already recorded in page.sources (force re-ingest of the same
+    file), the body is replaced entirely so the source never accumulates duplicate
+    sections. Otherwise the section is appended as additional content.
+    """
+    if _source_in_page(page, source):
+        page.content = section
     else:
-        # Update mutable fields on the existing entry so a re-ingest with a
-        # higher max_source_chars clears a stale truncated=True flag.
-        for s in page.sources:
-            if (s.file, s.hash) == (ref.file, ref.hash):
-                s.truncated = ref.truncated
-                s.size = ref.size
-                s.ingested = ref.ingested
-                break
+        page.content = page.content.rstrip() + f"\n\n{section}"
+    _append_source_ref(page, SourceRef(
+        file=source,
+        hash=src_hash,
+        size=source_len,
+        ingested=date.today().isoformat(),
+        truncated=truncated,
+    ))
 
 
 def _propagate_source_update(
@@ -412,7 +446,9 @@ def _propagate_source_update(
 def _extract_key_data(source_text: str) -> list[str]:
     """Extract numerical facts, formulas, and rates from source text deterministically.
 
-    Returns a deduplicated list of strings. Returns [] when nothing is found.
+    Returns a deduplicated list of strings. Multi-line code blocks are kept as a
+    single item (with embedded newlines) so _format_key_section can wrap them in
+    fenced code blocks rather than emitting individual disconnected bullet lines.
     """
     items: list[str] = []
     seen: set[str] = set()
@@ -424,22 +460,41 @@ def _extract_key_data(source_text: str) -> list[str]:
             items.append(item)
 
     for m in _CODE_BLOCK_RE.finditer(source_text):
-        for line in m.group(1).splitlines():
-            line = line.strip()
-            if line:
-                _add(line)
+        content = m.group(1).strip()
+        if not content:
+            continue
+        lines = [l.strip() for l in content.splitlines() if l.strip()]
+        if len(lines) == 1:
+            _add(lines[0])
+        else:
+            # Keep the whole block so it renders as fenced code, not disconnected bullets
+            _add(content)
 
     for m in _BOLD_BULLET_NUM_RE.finditer(source_text):
         _add(f"{m.group(1).strip()} — {m.group(2).strip()}")
 
     for m in _FORMULA_LINE_RE.finditer(source_text):
         candidate = m.group(0).strip()
-        # Skip lines already found in a code block (avoid duplicates from formula lines
-        # that appear both inside a block and as a standalone copy in the text)
+        # Skip lines already found in a code block (avoid duplicates)
         if candidate not in seen:
             _add(candidate)
 
     return items
+
+
+def _format_key_section(items: list[str]) -> str:
+    """Format key data items as a Markdown section.
+
+    Single-line items become bullet list entries; multi-line items (from code
+    blocks) are wrapped in fenced code blocks so they render correctly.
+    """
+    parts: list[str] = []
+    for item in items:
+        if "\n" in item:
+            parts.append(f"```\n{item}\n```")
+        else:
+            parts.append(f"- {item}")
+    return "\n\n## Key Data\n\n" + "\n\n".join(parts)
 
 
 class IngestAgent:
@@ -449,7 +504,8 @@ class IngestAgent:
                  cache_version: str = DECISION_CACHE_VERSION,
                  fetch_timeout: int = 30,
                  routing_path: Optional[Path] = None,
-                 cfg=None) -> None:
+                 cfg=None,
+                 allow_external_paths: bool = False) -> None:
         self._provider = provider
         self._store = store
         self._search = search
@@ -460,6 +516,7 @@ class IngestAgent:
         self._wiki_root = Path(wiki_root) if wiki_root is not None else None
         self._routing_path = Path(routing_path) if routing_path is not None else None
         self._cfg = cfg
+        self._allow_external_paths = allow_external_paths
         self._cache_version = cache_version
         self._skill_agent = SkillAgent(skill_kwargs={
             "url": {"fetch_timeout": fetch_timeout},
@@ -743,11 +800,11 @@ class IngestAgent:
             if p.stat().st_size == 0:
                 raise ValueError(f"Source file is empty: {source}")
 
-            # Security: reject sources outside wiki_root.
-            # Existence is checked first so that plain-text strings or typos
-            # that get misclassified as paths produce FileNotFoundError (clear)
-            # rather than PermissionError "outside wiki root" (misleading).
-            if self._wiki_root is not None:
+            # Security: reject sources outside wiki_root unless the caller explicitly
+            # set allow_external_paths (e.g. CLI ingesting ~/.claude session files).
+            # allow_external_paths is only honoured for localhost requests in the HTTP
+            # handler, so remote callers cannot use it to read arbitrary system files.
+            if self._wiki_root is not None and not self._allow_external_paths:
                 root_resolved = self._wiki_root.resolve()
                 try:
                     p.relative_to(root_resolved)
@@ -1055,22 +1112,14 @@ class IngestAgent:
                         # Pass 0: append Key Data section for deterministic numerical preservation
                         _key_items = _extract_key_data(text)
                         if len(_key_items) >= _KEY_DATA_MIN_ITEMS:
-                            key_section = "\n\n## Key Data\n\n" + "\n".join(f"- {item}" for item in _key_items)
-                            section = section + key_section
+                            section = section + _format_key_section(_key_items)
                         # Scrub stale out-of-range citations from previous reingests
                         page.content = _scrub_source_citations(page.content, p.name, extracted.text)
                         # Pass 4: annotate only the new update section
                         section, citations = await self._annotate_citations(
                             section, extracted.text, p.name, bust_cache=bust_cache
                         )
-                        page.content = page.content.rstrip() + f"\n\n{section}"
-                        _append_source_ref(page, SourceRef(
-                            file=source,
-                            hash=src_hash or "",
-                            size=_source_len,
-                            ingested=date.today().isoformat(),
-                            truncated=_truncated,
-                        ))
+                        _merge_section_into_page(page, section, source, src_hash or "", _source_len, _truncated)
                         staged = self._write_or_stage(target, page, policy)
                 if staged:
                     logger.info("ingest: staged update to candidates slug=%s source=%s", target, source[:80])
@@ -1117,22 +1166,14 @@ class IngestAgent:
                             # Pass 0: append Key Data section for deterministic numerical preservation
                             _key_items = _extract_key_data(text)
                             if len(_key_items) >= _KEY_DATA_MIN_ITEMS:
-                                key_section = "\n\n## Key Data\n\n" + "\n".join(f"- {item}" for item in _key_items)
-                                section = section + key_section
+                                section = section + _format_key_section(_key_items)
                             # Scrub stale out-of-range citations from previous reingests
                             page.content = _scrub_source_citations(page.content, p.name, extracted.text)
                             # Pass 4: annotate only the new section
                             section, citations = await self._annotate_citations(
                                 section, extracted.text, p.name, bust_cache=bust_cache
                             )
-                            page.content = page.content.rstrip() + f"\n\n{section}"
-                            _append_source_ref(page, SourceRef(
-                                file=source,
-                                hash=src_hash or "",
-                                size=_source_len,
-                                ingested=date.today().isoformat(),
-                                truncated=_truncated,
-                            ))
+                            _merge_section_into_page(page, section, source, src_hash or "", _source_len, _truncated)
                             staged = self._write_or_stage(slug, page, policy)
                     if staged:
                         logger.info("ingest: staged update to candidates slug=%s source=%s", slug, source[:80])
@@ -1150,8 +1191,7 @@ class IngestAgent:
                     # Pass 0: append Key Data section for deterministic numerical preservation
                     _key_items = _extract_key_data(text)
                     if len(_key_items) >= _KEY_DATA_MIN_ITEMS:
-                        key_section = "\n\n## Key Data\n\n" + "\n".join(f"- {item}" for item in _key_items)
-                        body = body + key_section
+                        body = body + _format_key_section(_key_items)
                     # Pass 4: annotate the full new page body
                     body, citations = await self._annotate_citations(
                         body, extracted.text, p.name, bust_cache=bust_cache

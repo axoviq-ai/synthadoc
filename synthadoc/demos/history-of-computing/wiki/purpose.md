@@ -28,6 +28,7 @@ This wiki documents the history of computing, from mechanical calculating device
 - Operating systems, programming languages, and software movements
 - Origins and growth of computer networking and the internet
 - Broad historical timelines and era-defining shifts in computing
+- AI coding session transcripts (`.jsonl` files from Claude Code, Codex, Cursor) capturing software development decisions, debugging sessions, architecture discussions, and technical problem-solving
 
 ## What Is Out of Scope
 
@@ -36,7 +37,6 @@ This wiki documents the history of computing, from mechanical calculating device
 - Current product reviews or buying guides for modern hardware
 - Unreleased or speculative future technology
 - Company financials, stock performance, or business strategy
-- Detailed API or programming tutorials unrelated to historical context
 
 ## Intended Audience
 

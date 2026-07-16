@@ -104,6 +104,12 @@ def ingest_cmd(
             body["max_results"] = max_results
         if max_source_chars is not None:
             body["max_source_chars"] = max_source_chars
+        # Local file paths may be outside the wiki root (e.g. ~/.claude session files).
+        # The server honours this flag only for localhost requests.
+        if not s.startswith(("http://", "https://")) and not any(
+            s.lower().startswith(p) for p in _INTENT_PREFIXES
+        ):
+            body["allow_external_paths"] = True
         result = post(wiki, "/jobs/ingest", body)
         typer.echo(f"Enqueued {s} -> job {result['job_id']}")
         w_flag = f" -w {wiki}" if wiki != "." else ""

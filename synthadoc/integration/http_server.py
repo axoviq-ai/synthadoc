@@ -248,6 +248,9 @@ class IngestRequest(BaseModel):
     force: bool = False
     max_results: int | None = None
     max_source_chars: int | None = None   # overrides [ingest] max_source_chars for this run
+    # Allows ingesting files outside the wiki root (e.g. ~/.claude session files).
+    # Honoured only for requests from 127.0.0.1 / ::1 to prevent remote file reads.
+    allow_external_paths: bool = False
 
     @field_validator("source")
     @classmethod
@@ -359,9 +362,11 @@ async def _worker_loop(orch) -> None:
                     force = job.payload.get("force", False)
                     max_results = job.payload.get("max_results")
                     max_source_chars = job.payload.get("max_source_chars")
+                    allow_external_paths = job.payload.get("allow_external_paths", False)
                     job_coro = orch._run_ingest(job.id, source, auto_confirm=True, force=force,
                                                 max_results=max_results,
-                                                max_source_chars=max_source_chars)
+                                                max_source_chars=max_source_chars,
+                                                allow_external_paths=allow_external_paths)
                 elif job.operation == "lint":
                     scope = job.payload.get("scope", "all")
                     auto_resolve = job.payload.get("auto_resolve", False)
@@ -930,8 +935,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         analysis.pop("_tokens", None)
         return {"source": req.source, "analysis": analysis}
 
+    _LOCALHOST_ADDRS = frozenset(("127.0.0.1", "::1", "localhost"))
+
     @app.post("/jobs/ingest")
-    async def enqueue_ingest(req: IngestRequest):
+    async def enqueue_ingest(request: Request, req: IngestRequest):
         from pathlib import Path as _Path
         from synthadoc.agents.skill_agent import SkillAgent
         source = req.source
@@ -952,6 +959,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             payload["max_results"] = req.max_results
         if req.max_source_chars is not None:
             payload["max_source_chars"] = req.max_source_chars
+        # allow_external_paths is only trusted from localhost to prevent remote file reads.
+        client_host = (request.client.host if request.client else "") or ""
+        if req.allow_external_paths and client_host in _LOCALHOST_ADDRS:
+            payload["allow_external_paths"] = True
         job_id = await app.state.orch.queue.enqueue("ingest", payload)
         return {"job_id": job_id}
 
@@ -1433,9 +1444,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     @app.get("/lifecycle/pages")
     async def lifecycle_pages():
-        audit = app.state.orch._audit
-        pages = await audit.get_all_page_states()
+        orch = app.state.orch
+        audit = orch._audit
         cdir = _cand_dir()
+        pages = await audit.get_live_page_states(orch._store.page_exists)
         pages = [p for p in pages if not (cdir / f"{p['slug']}.md").exists()]
         return {"pages": pages}
 
@@ -1444,11 +1456,12 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
         orch = app.state.orch
         audit = orch._audit
-        counts = await audit.get_lifecycle_summary()
+        counts: dict[str, int] = {"draft": 0, "active": 0, "contradicted": 0, "stale": 0, "archived": 0}
+        counts.update(await audit.get_live_lifecycle_summary(orch._store.page_exists))
         # Split draft into wiki-domain drafts vs staged-in-candidates drafts.
         if counts.get("draft", 0) > 0:
             cdir = _cand_dir()
-            all_states = await audit.get_all_page_states()
+            all_states = await audit.get_live_page_states(orch._store.page_exists)
             in_cand = sum(1 for p in all_states
                           if p["state"] == "draft" and (cdir / f"{p['slug']}.md").exists())
             if in_cand:

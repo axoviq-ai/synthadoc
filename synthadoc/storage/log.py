@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import aiosqlite
 
@@ -518,6 +518,23 @@ class AuditDB:
             ) as cur:
                 rows = await cur.fetchall()
         return [dict(r) for r in rows]
+
+    async def get_live_page_states(self, page_exists: Callable[[str], bool]) -> list:
+        """Return page states filtered to slugs whose files still exist on disk.
+
+        Excludes entries for pages deleted externally (e.g. via Obsidian UI) that
+        were never removed from the audit DB through the lifecycle API.
+        """
+        all_states = await self.get_all_page_states()
+        return [p for p in all_states if page_exists(p["slug"])]
+
+    async def get_live_lifecycle_summary(self, page_exists: Callable[[str], bool]) -> dict:
+        """Return lifecycle counts filtered to slugs that still exist on disk."""
+        live = await self.get_live_page_states(page_exists)
+        counts: dict[str, int] = {}
+        for p in live:
+            counts[p["state"]] = counts.get(p["state"], 0) + 1
+        return counts
 
     async def get_lifecycle_summary(self) -> dict:
         """Return counts for all 5 lifecycle states; missing states default to 0."""
