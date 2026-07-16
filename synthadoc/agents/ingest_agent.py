@@ -449,7 +449,8 @@ class IngestAgent:
                  cache_version: str = DECISION_CACHE_VERSION,
                  fetch_timeout: int = 30,
                  routing_path: Optional[Path] = None,
-                 cfg=None) -> None:
+                 cfg=None,
+                 allow_external_paths: bool = False) -> None:
         self._provider = provider
         self._store = store
         self._search = search
@@ -460,6 +461,7 @@ class IngestAgent:
         self._wiki_root = Path(wiki_root) if wiki_root is not None else None
         self._routing_path = Path(routing_path) if routing_path is not None else None
         self._cfg = cfg
+        self._allow_external_paths = allow_external_paths
         self._cache_version = cache_version
         self._skill_agent = SkillAgent(skill_kwargs={
             "url": {"fetch_timeout": fetch_timeout},
@@ -743,11 +745,11 @@ class IngestAgent:
             if p.stat().st_size == 0:
                 raise ValueError(f"Source file is empty: {source}")
 
-            # Security: reject sources outside wiki_root.
-            # Existence is checked first so that plain-text strings or typos
-            # that get misclassified as paths produce FileNotFoundError (clear)
-            # rather than PermissionError "outside wiki root" (misleading).
-            if self._wiki_root is not None:
+            # Security: reject sources outside wiki_root unless the caller explicitly
+            # set allow_external_paths (e.g. CLI ingesting ~/.claude session files).
+            # allow_external_paths is only honoured for localhost requests in the HTTP
+            # handler, so remote callers cannot use it to read arbitrary system files.
+            if self._wiki_root is not None and not self._allow_external_paths:
                 root_resolved = self._wiki_root.resolve()
                 try:
                     p.relative_to(root_resolved)

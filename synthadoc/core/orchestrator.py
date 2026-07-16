@@ -202,7 +202,8 @@ class Orchestrator:
 
     async def _run_ingest(self, job_id: str, source: str, auto_confirm: bool,
                           force: bool = False, max_results: int | None = None,
-                          max_source_chars: int | None = None) -> None:
+                          max_source_chars: int | None = None,
+                          allow_external_paths: bool = False) -> None:
         # auto_confirm is reserved for when user-facing confirmation prompts are added.
         from synthadoc.agents.ingest_agent import IngestAgent
         from synthadoc.skills.web_search.scripts.main import _INTENT_RE as _WEB_SEARCH_RE
@@ -256,6 +257,7 @@ class Orchestrator:
                 wiki_root=self._root,
                 routing_path=_routing_path if _routing_path.exists() else None,
                 cfg=cfg,
+                allow_external_paths=allow_external_paths,
             )
             result = await agent.ingest(source, force=force, bust_cache=force)
             _agent_cfg = cfg.agents.resolve("ingest")
