@@ -798,8 +798,8 @@ class LintAgent:
                         )
                         report.tokens_used += resp.total_tokens
                         try:
-                            raw = resp.text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
-                            decision = _json.loads(raw)
+                            from synthadoc.agents.ingest_agent import _parse_json_response
+                            decision = _parse_json_response(resp.text)
                         except Exception:
                             decision = {"resolvable": False, "reason": "auto-resolve returned unparseable output", "resolution": ""}
                         if decision.get("resolvable"):
