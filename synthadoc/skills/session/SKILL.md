@@ -45,6 +45,10 @@ Only substantive conversation turns are kept:
 | Sub-agent scaffolding (`isSidechain: true`) | Skipped (internal sub-agent turns) |
 | Session metadata lines | Skipped (`permission-mode`, `file-history-snapshot`, `system`, `last-prompt`) |
 
+The extracted text is then passed through Synthadoc's standard pre-LLM source sanitizer
+(zero-width characters, bidi overrides, HTML comments, hidden CSS spans, base64 blobs,
+instruction-override phrases), exactly like PDF, DOCX, URL, and every other source type.
+
 ## Output format
 
 Each turn is labelled `[USER]` or `[ASSISTANT]` and separated by `---`:

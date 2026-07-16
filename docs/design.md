@@ -535,6 +535,11 @@ Format is auto-detected from the first 30 parseable lines. Files that match neit
 | `thinking` blocks | ✗ | Internal reasoning — not the final answer |
 | `permission-mode`, `system`, `last-prompt` lines | ✗ | Session metadata, not conversation |
 
+After extraction the text passes through Synthadoc's standard pre-LLM source sanitizer
+(zero-width characters, bidi overrides, HTML comments, hidden CSS spans, base64 blobs ≥ 200 chars,
+instruction-override phrases) — the same step applied to every PDF, DOCX, URL, and other source type.
+See [§29 Pre-LLM Source Sanitizer](#29-pre-llm-source-sanitizer).
+
 **Output format**
 
 Each kept turn is labelled and separated by `---`:

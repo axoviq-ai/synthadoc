@@ -2417,6 +2417,7 @@ synthadoc ingest --file sessions.txt -w my-wiki
 | **Re-ingest is safe** | Synthadoc deduplicates by source hash — re-ingesting the same `.jsonl` file will update the existing page rather than create a duplicate. |
 | **Codex / Cursor sessions** | The same command works for Codex and Cursor `.jsonl` exports — format is detected automatically. |
 | **Private content** | Session files may contain proprietary code. Keep your wiki on a local or private server and review what the page contains before sharing. |
+| **Sanitization** | Extracted turns pass through the standard pre-LLM source sanitizer (zero-width chars, bidi overrides, HTML comments, instruction-override phrases) — the same step applied to every PDF, URL, and DOCX source. |
 
 ---
 
