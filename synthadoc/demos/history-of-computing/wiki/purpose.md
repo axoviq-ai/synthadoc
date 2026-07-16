@@ -1,16 +1,55 @@
-# Wiki Purpose
+---
+title: Wiki Purpose — History of Computing
+status: active
+confidence: high
+created: '2026-07-15'
+aliases: []
+categories:
+- Overview & Orientation
+tags: []
+orphan: false
+sources: []
+---
 
-This wiki covers the History of Computing — from mechanical calculators to the modern internet, open-source movement, and emerging computing paradigms.
+# Wiki Purpose — History of Computing
 
-Include:
-- Key figures and pioneers (Turing, Hopper, von Neumann, Lovelace, Ritchie, Torvalds, Zuse, and others)
-- Machines and hardware milestones (mechanical calculators, vacuum tubes, transistors, microchips, personal computers)
-- Programming languages, compilers, and operating systems
-- Software movements (open source, free software, Unix philosophy)
-- Networking and internet origins (ARPANET, TCP/IP, the World Wide Web)
-- Artificial intelligence history and foundational research
-- Quantum computing as an emerging paradigm rooted in computing history
-- Organizations, institutions, and research labs that shaped the field
-- Social and cultural impact of computing advances
+## Overview
 
-Exclude: unrelated domains (biology, economics, politics) unless directly tied to a computing milestone or figure. When in doubt, ingest and let the lint pass decide relevance.
+<!-- synthadoc:scaffold -->
+
+This wiki documents the history of computing, from mechanical calculating devices through modern software movements and artificial intelligence. It captures the people, machines, ideas, and social movements that shaped how computers evolved into their current form. The wiki serves as a reference for understanding technical lineage and historical context behind today's computing landscape.
+
+## What Belongs in This Wiki
+
+<!-- synthadoc:scaffold -->
+
+- Biographies of computing pioneers and their key contributions
+- Milestone hardware and architectural developments (transistors, microchips, von Neumann architecture)
+- Operating systems, programming languages, and software movements
+- Origins and growth of computer networking and the internet
+- Broad historical timelines and era-defining shifts in computing
+
+## What Is Out of Scope
+
+<!-- synthadoc:scaffold -->
+
+- Current product reviews or buying guides for modern hardware
+- Unreleased or speculative future technology
+- Company financials, stock performance, or business strategy
+- Detailed API or programming tutorials unrelated to historical context
+
+## Intended Audience
+
+<!-- synthadoc:scaffold -->
+
+Researchers, students, and technology enthusiasts seeking historical context on computing developments. Also useful for writers and educators needing accurate reference material on the evolution of computing technology.
+
+## Primary Use Cases
+
+<!-- synthadoc:scaffold -->
+
+- Who invented a particular computing concept or technology and when
+- How did a specific technology or architecture evolve over time
+- What historical events led to the development of the modern internet or personal computer
+- How are different pioneers, technologies, and movements in computing history connected
+- What is the broader historical timeline of a computing era or milestone
