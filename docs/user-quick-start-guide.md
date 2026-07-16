@@ -2422,30 +2422,6 @@ synthadoc ingest --file sessions.txt -w my-wiki
 | **Sanitization** | Extracted turns pass through the standard pre-LLM source sanitizer (zero-width chars, bidi overrides, HTML comments, instruction-override phrases) — the same step applied to every PDF, URL, and DOCX source. |
 | **Obsidian plugin / web UI** | Neither the Obsidian plugin nor the web UI can ingest session files directly — they do not send local filesystem paths outside the wiki root. Use the CLI (`synthadoc ingest <path>`) for session file ingestion. |
 
-### Auto-ingest every session with a stop hook
-
-Instead of ingesting manually, you can configure a Claude Code **stop hook** to ingest the session automatically every time a conversation ends. Create or edit `.claude/settings.json` in your project root:
-
-```json
-{
-  "hooks": {
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "SESSION=$(ls -t ~/.claude/projects/-Users-yourname-workspace-my-project/*.jsonl | head -1) && synthadoc ingest \"$SESSION\" --force -w my-wiki"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-Replace the project hash in the path and `my-wiki` with your wiki name. With this in place, every session is silently archived to the wiki when you close the conversation — no manual step needed. Use `.claude/settings.json` at the project root to scope it to one repo, or `~/.claude/settings.json` to apply it globally across all projects.
-
 ---
 
 ## Citation quality
