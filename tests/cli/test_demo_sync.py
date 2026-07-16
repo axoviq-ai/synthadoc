@@ -354,6 +354,168 @@ def test_inject_type_if_missing_skips_when_template_has_no_type(tmp_path):
     assert changed is False
 
 
+_SCAFFOLD_MARKER = "<!-- synthadoc:scaffold -->"
+
+_PURPOSE_TEMPLATE = """\
+---
+title: Wiki Purpose
+status: active
+confidence: high
+---
+
+# Wiki Purpose
+
+## Overview
+
+<!-- synthadoc:scaffold -->
+
+Template overview content.
+
+## What Belongs in This Wiki
+
+<!-- synthadoc:scaffold -->
+
+- Template bullet A
+- Template bullet B
+
+## What Is Out of Scope
+
+<!-- synthadoc:scaffold -->
+
+- Template out-of-scope A
+
+## Intended Audience
+
+<!-- synthadoc:scaffold -->
+
+Template audience content.
+
+## Primary Use Cases
+
+<!-- synthadoc:scaffold -->
+
+- Template use case 1
+"""
+
+
+def test_sync_purpose_md_written_when_missing(tmp_path):
+    """purpose.md does not exist in installed wiki → write template content."""
+    tmpl = _make_template(tmp_path, "test-wiki")
+    inst = _make_installed(tmp_path, "test-wiki")
+    (tmpl / "wiki" / "purpose.md").write_text(_PURPOSE_TEMPLATE, encoding="utf-8")
+
+    registry = {"test-wiki": {"path": str(inst)}}
+    demos = {"test-wiki": tmpl}
+
+    with patch("synthadoc.cli.demo._read_registry", return_value=registry), \
+         patch("synthadoc.cli.demo._DEMOS", demos):
+        from typer.testing import CliRunner
+        from synthadoc.cli.demo import demo_app
+        result = CliRunner().invoke(demo_app, ["sync", "test-wiki"])
+
+    assert result.exit_code == 0
+    assert (inst / "wiki" / "purpose.md").exists()
+    content = (inst / "wiki" / "purpose.md").read_text(encoding="utf-8")
+    assert _SCAFFOLD_MARKER in content
+    assert "section markers updated" in result.output
+
+
+def test_sync_purpose_md_no_markers_full_replace(tmp_path):
+    """Installed purpose.md has no markers → full replace with template."""
+    tmpl = _make_template(tmp_path, "test-wiki")
+    inst = _make_installed(tmp_path, "test-wiki")
+    (tmpl / "wiki" / "purpose.md").write_text(_PURPOSE_TEMPLATE, encoding="utf-8")
+    (inst / "wiki" / "purpose.md").write_text(
+        "---\ntitle: Wiki Purpose\n---\n\n# Old Content\n\nNo markers here.\n",
+        encoding="utf-8",
+    )
+
+    registry = {"test-wiki": {"path": str(inst)}}
+    demos = {"test-wiki": tmpl}
+
+    with patch("synthadoc.cli.demo._read_registry", return_value=registry), \
+         patch("synthadoc.cli.demo._DEMOS", demos):
+        from typer.testing import CliRunner
+        from synthadoc.cli.demo import demo_app
+        result = CliRunner().invoke(demo_app, ["sync", "test-wiki"])
+
+    assert result.exit_code == 0
+    content = (inst / "wiki" / "purpose.md").read_text(encoding="utf-8")
+    assert _SCAFFOLD_MARKER in content
+    assert "Old Content" not in content
+    assert "Template overview content" in content
+
+
+def test_sync_purpose_md_with_markers_preserves_user_edits(tmp_path):
+    """Installed purpose.md has section markers → user content above each marker is kept."""
+    tmpl = _make_template(tmp_path, "test-wiki")
+    inst = _make_installed(tmp_path, "test-wiki")
+    (tmpl / "wiki" / "purpose.md").write_text(_PURPOSE_TEMPLATE, encoding="utf-8")
+
+    installed_purpose = """\
+---
+title: Wiki Purpose
+status: active
+confidence: high
+---
+
+# Wiki Purpose
+
+## Overview
+
+My custom overview line.
+
+<!-- synthadoc:scaffold -->
+
+Old LLM overview content (will be replaced).
+
+## What Belongs in This Wiki
+
+<!-- synthadoc:scaffold -->
+
+- Old bullet A
+
+## What Is Out of Scope
+
+<!-- synthadoc:scaffold -->
+
+- Old out-of-scope A
+
+## Intended Audience
+
+<!-- synthadoc:scaffold -->
+
+Old audience content.
+
+## Primary Use Cases
+
+<!-- synthadoc:scaffold -->
+
+- Old use case 1
+"""
+    (inst / "wiki" / "purpose.md").write_text(installed_purpose, encoding="utf-8")
+
+    registry = {"test-wiki": {"path": str(inst)}}
+    demos = {"test-wiki": tmpl}
+
+    with patch("synthadoc.cli.demo._read_registry", return_value=registry), \
+         patch("synthadoc.cli.demo._DEMOS", demos):
+        from typer.testing import CliRunner
+        from synthadoc.cli.demo import demo_app
+        result = CliRunner().invoke(demo_app, ["sync", "test-wiki"])
+
+    assert result.exit_code == 0
+    content = (inst / "wiki" / "purpose.md").read_text(encoding="utf-8")
+    # User content above the marker in Overview section is preserved
+    assert "My custom overview line." in content
+    # LLM zone replaced with template content
+    assert "Template overview content." in content
+    assert "Old LLM overview content" not in content
+    # Other sections updated from template
+    assert "Template bullet A" in content
+    assert "section markers updated" in result.output
+
+
 def test_sync_backfills_type_in_existing_page(tmp_path):
     """Step 4: existing pages missing type: get it injected from the template."""
     tmpl = _make_template(tmp_path, "test-wiki")

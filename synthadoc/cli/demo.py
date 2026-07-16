@@ -97,7 +97,19 @@ def sync_demo(
                 installed_dash.write_text(new_content, encoding="utf-8", newline="\n")
                 updated.append("  ~ wiki/dashboard.md  (Dataview sections updated)")
 
-        # ── 3. wiki/: copy new template pages that don't exist yet ────────────
+        # ── 3. wiki/purpose.md: update section markers via preserve_user_zone ──
+        template_purpose = demo_template / "wiki" / "purpose.md"
+        installed_purpose = installed_root / "wiki" / "purpose.md"
+        if template_purpose.exists():
+            from synthadoc.agents.scaffold_agent import preserve_user_zone
+            tmpl_raw = template_purpose.read_text(encoding="utf-8")
+            inst_raw = installed_purpose.read_text(encoding="utf-8") if installed_purpose.exists() else ""
+            merged = preserve_user_zone(inst_raw, tmpl_raw)
+            if merged.rstrip() != inst_raw.rstrip():
+                installed_purpose.write_text(merged, encoding="utf-8", newline="\n")
+                updated.append("  ~ wiki/purpose.md  (section markers updated, user edits preserved)")
+
+        # ── 5. wiki/: copy new template pages that don't exist yet ────────────
         demo_wiki = demo_template / "wiki"
         installed_wiki = installed_root / "wiki"
         _SKIP_WIKI = {"index.md", "dashboard.md", "purpose.md"}
@@ -112,7 +124,7 @@ def sync_demo(
                 shutil.copy2(src, dest)
                 updated.append(f"  ~ wiki/{src.name}  (updated from template)")
 
-        # ── 4. wiki/: backfill missing metadata fields (e.g. type:) ──────────
+        # ── 6. wiki/: backfill missing metadata fields (e.g. type:) ──────────
         for src in demo_wiki.glob("*.md"):
             if src.name in _SKIP_WIKI:
                 continue
