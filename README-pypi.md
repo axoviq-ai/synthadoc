@@ -37,7 +37,7 @@
 
 > Built for individuals, small teams, and large organizations who need a knowledge base that stays accurate as documents accumulate.
 
-Synthadoc reads your raw source documents — PDFs, spreadsheets, PPTs, web pages, images, videos, Word files, TXTs — and uses an LLM to synthesize them into a persistent, structured wiki. Cross-references are built automatically, contradictions are detected and surfaced, orphan pages are flagged, and every answer cites its sources. Outputs are stored as local Markdown files, ensuring seamless integration and autonomous management within [Obsidian](https://obsidian.md) or any wiki-compliant ecosystem.
+Synthadoc reads your raw source documents — PDFs, spreadsheets, PPTs, web pages, images, videos, Word files, TXTs, and AI session transcripts (.jsonl) — and uses an LLM to synthesize them into a persistent, structured wiki. Cross-references are built automatically, contradictions are detected and surfaced, orphan pages are flagged, and every answer cites its sources. Outputs are stored as local Markdown files, ensuring seamless integration and autonomous management within [Obsidian](https://obsidian.md) or any wiki-compliant ecosystem.
 
 ---
 
@@ -176,7 +176,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 
 | Capability | Synthadoc | Typical RAG | NotebookLM | Notion AI |
 | --- | --- | --- | --- | --- |
-| **[Multi-format ingest](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#built-in-skills)** — PDF, DOCX, PPTX, XLSX/CSV, Markdown, TXT, images (vision), web URLs, YouTube transcripts | **Yes** | Varies | Partial | Partial |
+| **[Multi-format ingest](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#built-in-skills)** — PDF, DOCX, PPTX, XLSX/CSV, Markdown, TXT, images (vision), web URLs, YouTube transcripts, AI session transcripts (.jsonl) | **Yes** | Varies | Partial | Partial |
 | **[Web search decomposition](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-12--web-search-ingestion)** — broad topics decomposed into focused Tavily keyword searches; results merged and deduplicated | **Yes** | No | No | Partial |
 | **[YouTube transcript ingest](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-13--ingest-a-youtube-video)** — timestamped transcript + executive summary; no API key; auto-generated captions supported | **Yes** | No | Yes | No |
 | **[Multilingual / CJK queries](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#queryagent)** — Chinese, Japanese, Korean — no false knowledge gaps | **Yes** | Limited | No | No |
