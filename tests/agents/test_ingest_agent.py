@@ -922,9 +922,12 @@ def test_append_source_ref_deduplicates():
     _append_source_ref(page, SourceRef(file="/a/b.md", hash="abc123", size=100, ingested="2026-07-05"))
     assert len(page.sources) == 1
 
-    # Different hash on same file → allowed (genuinely updated source)
-    _append_source_ref(page, SourceRef(file="/a/b.md", hash="deadbeef", size=200, ingested="2026-07-05"))
-    assert len(page.sources) == 2
+    # Different hash on same file → update in place (file re-ingested with new content)
+    _append_source_ref(page, SourceRef(file="/a/b.md", hash="deadbeef", size=200, ingested="2026-07-16"))
+    assert len(page.sources) == 1
+    assert page.sources[0].hash == "deadbeef"
+    assert page.sources[0].size == 200
+    assert page.sources[0].ingested == "2026-07-16"
 
 
 def test_append_source_ref_clears_truncated_on_reingest():

@@ -40,6 +40,7 @@ major engine feature. No setup beyond following the steps below is required.
 22. [Use the web chat UI](#step-22--use-the-web-chat-ui)
 23. [Query caching](#step-23--query-caching)
 24. [Knowledge Graph](#knowledge-graph)
+25. [Ingest an AI session transcript](#session-ingest)
 
 **Appendices**
 
@@ -2293,6 +2294,133 @@ Or set it globally in `.synthadoc/config.toml`:
 [ingest]
 max_source_chars = 128000
 ```
+
+---
+
+<a name="session-ingest"></a>
+
+## Step 25 — Ingest an AI session transcript
+
+AI coding sessions contain a rich record of problem-solving — architecture decisions,
+debugging steps, code explanations, and implementation rationale — that would otherwise
+be lost after the conversation ends. The session skill turns any Claude Code, Codex, or
+Cursor `.jsonl` session file into a searchable wiki page.
+
+### What gets ingested
+
+The skill extracts only the substantive conversation turns:
+
+- **User questions / instructions** (≥ 3 words) — the problems you brought to the session
+- **Assistant answers** (≥ 20 words) — explanations, code walk-throughs, and decisions
+
+Filtered out automatically: tool calls, shell output, file reads, thinking blocks,
+sub-agent scaffolding, and session metadata lines. This means file contents and
+credentials in tool output never reach the wiki.
+
+### Locate your Claude Code session files
+
+Claude Code stores sessions under `~/.claude/projects/`. Each project directory
+contains one `.jsonl` file per conversation:
+
+```bash
+ls ~/.claude/projects/
+# e.g.: -Users-yourname-workspace-myproject/
+ls ~/.claude/projects/-Users-yourname-workspace-myproject/
+# e.g.: 4f8c2a1b-3e9d-4a6b-8c1f-2d7e0a3b5f9c.jsonl
+```
+
+### Ingest a session file
+
+Pass the `.jsonl` path directly — no need to copy the file into the wiki directory first.
+Synthadoc's CLI automatically signals the server that the file may be outside the wiki root,
+and the server accepts this for local (127.0.0.1) connections:
+
+```bash
+synthadoc ingest ~/.claude/projects/-Users-yourname-workspace-myproject/4f8c2a1b-3e9d-4a6b-8c1f-2d7e0a3b5f9c.jsonl
+```
+
+Synthadoc detects the `.jsonl` extension, routes to the session skill, and creates a
+wiki page. The page slug is auto-derived from the session date and the first substantive
+user message — for example `session-2026-07-15-how-do-i-implement-sliding`.
+
+Watch progress:
+
+```bash
+synthadoc jobs list
+```
+
+### Demo walkthrough — capture a debugging session
+
+This walkthrough shows the full flow using a typical Claude Code session.
+
+**1. Find the session file**
+
+Suppose you just finished a debugging session in your `my-project` workspace. List the
+available sessions sorted by modification time to find the most recent:
+
+```bash
+ls -lt ~/.claude/projects/-Users-yourname-workspace-my-project/*.jsonl | head -5
+```
+
+Copy the path of the most recent file — for example:
+
+```
+~/.claude/projects/-Users-yourname-workspace-my-project/2b7e1f3c-4a8d-4c9b-b5e2-1f0c3a7d2e8b.jsonl
+```
+
+**2. Ingest it**
+
+```bash
+synthadoc ingest \
+  ~/.claude/projects/-Users-yourname-workspace-my-project/2b7e1f3c-4a8d-4c9b-b5e2-1f0c3a7d2e8b.jsonl \
+  -w my-wiki
+```
+
+Expected output:
+
+```
+[ingest] source: .../2b7e1f3c-....jsonl  format=claude_code  turns=47
+[ingest] page: session-2026-07-15-why-is-my-async-queue-deadlock  (draft)
+[ingest] done  1 page created
+```
+
+**3. Check the result**
+
+```bash
+synthadoc query "why did my async queue deadlock" -w my-wiki
+```
+
+The answer cites the session page with source-line precision. The session is now part of
+the permanent wiki — queryable alongside all your other sources.
+
+**4. Ingest multiple sessions at once**
+
+Create a batch file (`sessions.txt`) listing session paths one per line:
+
+```
+# sessions.txt
+~/.claude/projects/-Users-yourname-workspace-my-project/2b7e1f3c-....jsonl
+~/.claude/projects/-Users-yourname-workspace-my-project/9a3d5e2f-....jsonl
+~/.claude/projects/-Users-yourname-workspace-other-project/1c4b8f7a-....jsonl
+```
+
+Then run:
+
+```bash
+synthadoc ingest --file sessions.txt -w my-wiki
+```
+
+### Limitations and tips
+
+| Concern | Detail |
+|---------|--------|
+| **Long sessions** | Very long sessions are truncated at `max_source_chars` (default 400 000 chars). Raise the limit with `--max-source-chars 800000` for very active sessions. |
+| **Tool output excluded** | Shell output and file reads are stripped from the wiki page. Re-ingest the original source files separately if you need the file contents indexed. |
+| **Re-ingest is safe** | Synthadoc deduplicates by source hash — re-ingesting the same `.jsonl` file will update the existing page rather than create a duplicate. |
+| **Codex / Cursor sessions** | The same command works for Codex and Cursor `.jsonl` exports — format is detected automatically. |
+| **Private content** | Session files may contain proprietary code. Keep your wiki on a local or private server and review what the page contains before sharing. |
+| **Sanitization** | Extracted turns pass through the standard pre-LLM source sanitizer (zero-width chars, bidi overrides, HTML comments, instruction-override phrases) — the same step applied to every PDF, URL, and DOCX source. |
+| **Obsidian plugin / web UI** | Neither the Obsidian plugin nor the web UI can ingest session files directly — they do not send local filesystem paths outside the wiki root. Use the CLI (`synthadoc ingest <path>`) for session file ingestion. |
 
 ---
 

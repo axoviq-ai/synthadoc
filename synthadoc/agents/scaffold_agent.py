@@ -183,6 +183,7 @@ sources: []
 <!-- synthadoc:scaffold -->
 
 {include}
+- AI coding session transcripts (`.jsonl` files from Claude Code, Codex, Cursor) — captures software development decisions, debugging sessions, and technical problem-solving
 
 ## What Is Out of Scope
 

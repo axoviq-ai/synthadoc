@@ -506,6 +506,64 @@ For URL sources, **longest prefix wins**: the matched extension string length de
 | `image` | `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.tiff` | `image`, `screenshot`, `diagram`, `photo` | Base64 + vision LLM |
 | `web_search` | _(none)_ | `search for`, `find on the web`, `look up`, `web search`, `browse` | Calls Tavily API; returns top result URLs as child sources enqueued individually. Requires `TAVILY_API_KEY`. |
 | `youtube` | `https://www.youtube.com/`, `https://youtu.be/` | `youtube video`, `youtube lecture`, `youtube talk` | Extracts captions via YouTube caption system; no API key or audio download needed. Generates an executive summary (what the video covers, main topics, key takeaway) followed by the full timestamped transcript. Skips gracefully when no captions are available. |
+| `session` | `.jsonl` | `claude session`, `codex session`, `cursor session`, `ai session`, `session history` | Extracts human-readable turns from AI coding session transcripts. Supports Claude Code JSONL format and Codex/Cursor format. Filters tool calls, thinking blocks, and sub-agent scaffolding. Short turns (< 20 assistant words, < 3 user words) are skipped. No external dependencies. |
+
+### Session Skill — AI Session History Ingestion
+
+The `session` skill turns AI coding session history files (`.jsonl`) into searchable wiki pages capturing the problem-solving knowledge exchanged during the session.
+
+**Supported formats**
+
+| Format | File origin | Detection |
+|--------|-------------|-----------|
+| Claude Code | `~/.claude/projects/<hash>/<session-id>.jsonl` | `obj.type` ∈ `{"user", "assistant"}` with nested `obj.message` |
+| Codex / Cursor | Export from OpenAI Codex or Cursor IDE | `obj.role` at top level, no `message` wrapper |
+
+Format is auto-detected from the first 30 parseable lines. Files that match neither format are parsed as Codex (fallback).
+
+**Filtering rules**
+
+| Content | Kept? | Reason |
+|---------|-------|--------|
+| User text ≥ 3 words | ✓ | Substantive question or instruction |
+| Assistant text ≥ 20 words | ✓ | Substantive answer |
+| User text < 3 words (`"ok"`, `"yes"`) | ✗ | Too terse to be useful |
+| Assistant text < 20 words | ✗ | Acknowledgement or one-liner |
+| `isSidechain: true` lines | ✗ | Sub-agent scaffolding (not the user's conversation) |
+| `tool_use` blocks | ✗ | Shell commands / file writes — not final output |
+| `tool_result` blocks | ✗ | Raw output — avoids leaking file contents or credentials |
+| `thinking` blocks | ✗ | Internal reasoning — not the final answer |
+| `permission-mode`, `system`, `last-prompt` lines | ✗ | Session metadata, not conversation |
+
+After extraction the text passes through Synthadoc's standard pre-LLM source sanitizer
+(zero-width characters, bidi overrides, HTML comments, hidden CSS spans, base64 blobs ≥ 200 chars,
+instruction-override phrases) — the same step applied to every PDF, DOCX, URL, and other source type.
+See [§29 Pre-LLM Source Sanitizer](#29-pre-llm-source-sanitizer).
+
+**Output format**
+
+Each kept turn is labelled and separated by `---`:
+
+```
+[USER]
+How do I implement a sliding window algorithm in Python?
+
+---
+
+[ASSISTANT]
+A sliding window algorithm maintains a contiguous subarray by advancing two
+pointers simultaneously…
+```
+
+**`suggested_slug`**
+
+The skill sets `metadata["suggested_slug"]` to `session-YYYY-MM-DD-<topic>` where the date comes from the file's `mtime` and the topic from the first substantive user turn (first 6 words, slugified). Example: `session-2026-07-15-how-do-i-implement-sliding`.
+
+**Limitations**
+
+- No chunking in v1.1 — very long sessions are truncated at `max_source_chars` (default 400 000 chars). Split large archives into individual `.jsonl` files.
+- Tool output is excluded by design — re-ingest the original source files if you need the file contents in the wiki.
+- Re-ingesting the same `.jsonl` file uses Synthadoc's standard source-hash dedup — no duplicate pages are created.
 
 ### Custom Skill Locations
 
@@ -779,6 +837,25 @@ The `progress` field is updated in real time during execution (e.g. `{"phase": "
 - Absolute path: `/home/user/docs/report.pdf`
 - Vault-relative path: `raw_sources/report.pdf` (resolved against `wiki_root`)
 - URL: `https://example.com/article`
+
+**External file paths** (outside the wiki root) are supported when the request comes from
+`127.0.0.1` or `::1` and the payload includes `"allow_external_paths": true`. The CLI sets
+this flag automatically for all local file sources. Remote clients cannot set this flag
+(the server ignores it for non-localhost connections) to prevent arbitrary file reads
+in server-exposed deployments.
+
+This is required for ingesting files that live outside the wiki directory by design —
+for example, Claude Code session transcripts at `~/.claude/projects/<hash>/<id>.jsonl`.
+
+**Client behaviour summary:**
+
+| Client | Sends `allow_external_paths` | Can ingest outside wiki root? |
+|--------|------------------------------|-------------------------------|
+| CLI (`synthadoc ingest <path>`) | `true` (automatic, local file paths only) | Yes — server is localhost |
+| Obsidian plugin | Never sent (field omitted → defaults `false`) | No — wiki-relative paths and URLs only |
+| Web UI | Never sent (field omitted → defaults `false`) | No — wiki-relative paths and URLs only |
+| Direct HTTP API (localhost) | Set manually in request body | Yes — if request from 127.0.0.1/::1 |
+| Direct HTTP API (remote) | Ignored by server | No — server silently treats as `false` |
 
 ### Background worker
 
