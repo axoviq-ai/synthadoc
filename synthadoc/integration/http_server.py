@@ -1444,9 +1444,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     @app.get("/lifecycle/pages")
     async def lifecycle_pages():
-        audit = app.state.orch._audit
-        pages = await audit.get_all_page_states()
+        orch = app.state.orch
+        audit = orch._audit
         cdir = _cand_dir()
+        pages = await audit.get_live_page_states(orch._store.page_exists)
         pages = [p for p in pages if not (cdir / f"{p['slug']}.md").exists()]
         return {"pages": pages}
 
@@ -1455,11 +1456,12 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
         orch = app.state.orch
         audit = orch._audit
-        counts = await audit.get_lifecycle_summary()
+        counts: dict[str, int] = {"draft": 0, "active": 0, "contradicted": 0, "stale": 0, "archived": 0}
+        counts.update(await audit.get_live_lifecycle_summary(orch._store.page_exists))
         # Split draft into wiki-domain drafts vs staged-in-candidates drafts.
         if counts.get("draft", 0) > 0:
             cdir = _cand_dir()
-            all_states = await audit.get_all_page_states()
+            all_states = await audit.get_live_page_states(orch._store.page_exists)
             in_cand = sum(1 for p in all_states
                           if p["state"] == "draft" and (cdir / f"{p['slug']}.md").exists())
             if in_cand:

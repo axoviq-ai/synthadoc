@@ -481,12 +481,8 @@ class QueryAgent:
         try:
             audit = AuditDB(audit_path)
             await audit.init()
-            all_page_states = await audit.get_all_page_states()
-            # Filter out pages that no longer exist on disk (e.g. deleted via Obsidian)
-            all_page_states = [p for p in all_page_states if self._store.page_exists(p["slug"])]
-            counts: dict[str, int] = {}
-            for p in all_page_states:
-                counts[p["state"]] = counts.get(p["state"], 0) + 1
+            all_page_states = await audit.get_live_page_states(self._store.page_exists)
+            counts: dict[str, int] = await audit.get_live_lifecycle_summary(self._store.page_exists)
 
             lines: list[str] = []
 

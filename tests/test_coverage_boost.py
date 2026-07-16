@@ -1530,9 +1530,9 @@ async def test_fetch_live_wiki_data_empty_detected_state(tmp_wiki):
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
     agent = QueryAgent(provider=AsyncMock(), store=store, search=search)
 
-    with patch.object(AuditDB, "get_lifecycle_summary",
+    with patch.object(AuditDB, "get_live_lifecycle_summary",
                       new=AsyncMock(return_value={"stale": 0, "active": 2})), \
-         patch.object(AuditDB, "get_all_page_states", new=AsyncMock(return_value=[])):
+         patch.object(AuditDB, "get_live_page_states", new=AsyncMock(return_value=[])):
         result = await agent._fetch_live_wiki_data("Which pages are stale?")
 
     assert "(none)" in result

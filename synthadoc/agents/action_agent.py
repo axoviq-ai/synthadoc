@@ -415,7 +415,7 @@ class ActionAgent:
         from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
         audit = AuditDB(audit_path)
         await audit.init()
-        counts = await audit.get_lifecycle_summary()
+        counts = await audit.get_live_lifecycle_summary(self._orch._store.page_exists)
         all_pages = [s for s in self._orch._store.list_pages() if s not in LINT_SKIP_SLUGS]
         total = len(all_pages)
         unlinted = total - sum(counts.values())

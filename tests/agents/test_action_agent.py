@@ -299,7 +299,7 @@ async def test_wiki_status_with_audit_db(tmp_path):
     with patch("synthadoc.storage.log.AuditDB") as MockAudit:
         inst = AsyncMock()
         inst.init = AsyncMock()
-        inst.get_lifecycle_summary = AsyncMock(return_value=counts)
+        inst.get_live_lifecycle_summary = AsyncMock(return_value=counts)
         MockAudit.return_value = inst
         result = await agent.run("show wiki status")
     assert result is not None
