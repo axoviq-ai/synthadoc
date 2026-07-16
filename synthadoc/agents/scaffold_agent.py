@@ -171,6 +171,8 @@ sources: []
 
 # Wiki Purpose — {domain}
 
+<!-- synthadoc:scaffold -->
+
 ## Overview
 
 {overview}
@@ -194,18 +196,26 @@ sources: []
 
 
 def preserve_user_zone(existing_content: str, new_scaffold_content: str) -> str:
-    """Return index.md content preserving the user zone above SCAFFOLD_MARKER.
+    """Preserve user content above SCAFFOLD_MARKER when re-generating scaffold files.
 
-    If the marker is absent, returns new_scaffold_content unchanged (full rewrite).
-    When the marker is present the existing file already has its own frontmatter
-    and h1 title, so strip both from new_scaffold_content before injecting.
+    Works for both index.md and purpose.md.  If the marker is absent the file
+    is fully replaced.  When present, everything the user wrote above the marker
+    is kept; only the generated sections below it are replaced.
+
+    Frontmatter and H1 are stripped from new_scaffold_content so they are not
+    duplicated after the user zone.  A leading marker in the stripped body is
+    also removed to prevent duplication when the new template embeds the marker
+    (e.g. purpose.md places it between the H1 and ## Overview).
     """
     if SCAFFOLD_MARKER not in existing_content:
         return new_scaffold_content
     user_zone = existing_content.split(SCAFFOLD_MARKER)[0].rstrip()
     body = _FM_STRIP_RE.sub("", new_scaffold_content, count=1)
     body = _H1_STRIP_RE.sub("", body, count=1)
-    return f"{user_zone}\n\n{SCAFFOLD_MARKER}\n\n{body.lstrip()}"
+    body = body.lstrip()
+    if body.startswith(SCAFFOLD_MARKER):
+        body = body[len(SCAFFOLD_MARKER):].lstrip()
+    return f"{user_zone}\n\n{SCAFFOLD_MARKER}\n\n{body}"
 
 
 @dataclass

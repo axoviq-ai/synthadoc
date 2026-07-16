@@ -1,5 +1,7 @@
 # Wiki Purpose
 
+<!-- synthadoc:scaffold -->
+
 This wiki covers the History of Computing — from mechanical calculators to the modern internet, open-source movement, and emerging computing paradigms.
 
 Include:

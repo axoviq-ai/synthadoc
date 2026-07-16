@@ -608,3 +608,54 @@ async def test_condensed_guidelines_paragraph_becomes_bullets():
     bullets = [ln for ln in guidelines_section.splitlines() if ln.strip().startswith("- ")]
     assert len(bullets) >= 2  # original sentence + ⚠ bullet
     assert any("⚠" in b for b in bullets)
+
+
+# ── purpose.md scaffold marker ────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_purpose_md_has_scaffold_marker():
+    """Generated purpose.md must contain the scaffold marker between H1 and ## Overview."""
+    provider = _make_provider(_VALID_RESPONSE)
+    agent = ScaffoldAgent(provider=provider)
+    result = await agent.scaffold(domain="Machine Learning")
+    assert "<!-- synthadoc:scaffold -->" in result.purpose_md
+    # Marker must appear before ## Overview
+    marker_pos = result.purpose_md.index("<!-- synthadoc:scaffold -->")
+    overview_pos = result.purpose_md.index("## Overview")
+    assert marker_pos < overview_pos
+
+
+def test_preserve_user_zone_purpose_md_style():
+    """preserve_user_zone correctly handles purpose.md: marker embedded after H1.
+
+    When the template places the marker between the H1 and ## Overview, a
+    re-scaffold must keep content the user added above the marker (e.g. a note
+    below the H1) and replace everything below it with fresh LLM content.
+    """
+    from synthadoc.agents.scaffold_agent import SCAFFOLD_MARKER, preserve_user_zone
+
+    existing = (
+        "---\ntitle: Wiki Purpose\nstatus: active\n---\n\n"
+        "# Wiki Purpose — Machine Learning\n\n"
+        "<!-- synthadoc:scaffold -->\n\n"
+        "## Overview\n\nOld overview text.\n\n"
+        "## What Belongs in This Wiki\n\n- Old bullet\n"
+    )
+    new_scaffold = (
+        "---\ntitle: Wiki Purpose — Machine Learning\nstatus: active\n---\n\n"
+        "# Wiki Purpose — Machine Learning\n\n"
+        "<!-- synthadoc:scaffold -->\n\n"
+        "## Overview\n\nNew overview text.\n\n"
+        "## What Belongs in This Wiki\n\n- New bullet\n"
+    )
+    result = preserve_user_zone(existing, new_scaffold)
+
+    # Frontmatter and H1 are above the marker — preserved from existing
+    assert "# Wiki Purpose — Machine Learning" in result
+    # Marker appears exactly once
+    assert result.count(SCAFFOLD_MARKER) == 1
+    # New LLM content replaces old
+    assert "New overview text." in result
+    assert "Old overview text." not in result
+    assert "New bullet" in result
+    assert "Old bullet" not in result

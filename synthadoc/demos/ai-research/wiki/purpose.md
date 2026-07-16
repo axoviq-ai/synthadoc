@@ -11,6 +11,8 @@ aliases: []
 
 # Purpose
 
+<!-- synthadoc:scaffold -->
+
 This wiki tracks the state of AI/ML research — foundational architectures, training methods,
 benchmark results, and the researchers driving the field.
 
