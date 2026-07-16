@@ -231,6 +231,25 @@ def test_extract_first_json_object_handles_braces_in_strings():
     assert _extract_first_json_object(payload) == payload
 
 
+def test_extract_first_json_object_handles_escaped_quote_in_string():
+    """Backslash-escaped quote inside a JSON string must not end the string early.
+
+    This exercises the escape-flag path (lines that set/clear escape) so that
+    the \" sequence does not toggle in_str and break depth tracking.
+    """
+    from synthadoc.agents.scaffold_agent import _extract_first_json_object
+    # JSON: {"key": "val\"ue"} — escaped quote inside the string value
+    payload = '{"key": "val\\"ue"}'
+    result = _extract_first_json_object(payload)
+    assert result == payload
+
+
+def test_extract_first_json_object_returns_none_for_unclosed_brace():
+    """Input that opens a brace but never closes it must return None."""
+    from synthadoc.agents.scaffold_agent import _extract_first_json_object
+    assert _extract_first_json_object("{ never closed") is None
+
+
 def test_parse_scaffold_json_tier2_extracts_embedded_object():
     """Tier 2 (brace-balanced): valid JSON object buried in surrounding text."""
     from synthadoc.agents.scaffold_agent import _parse_scaffold_json
@@ -545,3 +564,219 @@ def test_build_index_md_strips_meta_slugs():
         assert f"[[{slug}]]" not in result, f"meta slug [[{slug}]] must not appear in index.md"
     assert "[[real-topic]]" in result
     assert "[[another-real-page]]" in result
+
+
+# ── domain_label overrides config domain ─────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_domain_label_overrides_config_domain():
+    """When the LLM returns domain_label, it replaces the config domain in all titles."""
+    response = {**_VALID_RESPONSE, "domain_label": "History of Computing"}
+    provider = _make_provider(response)
+    agent = ScaffoldAgent(provider=provider)
+    result = await agent.scaffold(domain="General")
+    assert "History of Computing" in result.agents_md
+    assert "History of Computing" in result.claude_md
+    assert "History of Computing" in result.gemini_md
+    assert "# History of Computing — Index" in result.index_md
+    assert "General" not in result.agents_md.splitlines()[0]
+
+
+@pytest.mark.asyncio
+async def test_domain_label_empty_falls_back_to_config_domain():
+    """An empty or missing domain_label falls back to the config domain name."""
+    response = {**_VALID_RESPONSE, "domain_label": ""}
+    provider = _make_provider(response)
+    agent = ScaffoldAgent(provider=provider)
+    result = await agent.scaffold(domain="Machine Learning")
+    assert "Machine Learning" in result.agents_md
+
+
+# ── ⚠ contradiction bullet always present ────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_contradiction_bullet_appended_when_absent():
+    """⚠ contradiction-marker bullet is always present even if the LLM omits it."""
+    response = {**_VALID_RESPONSE, "agents_guidelines": "Summarize key claims.\nCross-link related concepts."}
+    provider = _make_provider(response)
+    agent = ScaffoldAgent(provider=provider)
+    result = await agent.scaffold(domain="Machine Learning")
+    assert "⚠" in result.agents_md
+    assert "⚠" in result.claude_md
+    assert "⚠" in result.gemini_md
+
+
+@pytest.mark.asyncio
+async def test_contradiction_bullet_not_duplicated_when_present():
+    """If the LLM already includes ⚠ the bullet is not added a second time."""
+    response = {**_VALID_RESPONSE, "agents_guidelines": "Summarize claims.\nFlag contradictions with ⚠ markers."}
+    provider = _make_provider(response)
+    agent = ScaffoldAgent(provider=provider)
+    result = await agent.scaffold(domain="Machine Learning")
+    assert result.agents_md.count("⚠") == 1
+
+
+@pytest.mark.asyncio
+async def test_condensed_guidelines_paragraph_becomes_bullets():
+    """A single-paragraph guidelines response is wrapped in one bullet + ⚠ appended."""
+    response = {**_VALID_RESPONSE, "agents_guidelines": "Summarize claims and cross-link related topics."}
+    provider = _make_provider(response)
+    agent = ScaffoldAgent(provider=provider)
+    result = await agent.scaffold(domain="Machine Learning")
+    guidelines_section = result.agents_md.split("## Domain Guidelines")[1].split("##")[0]
+    bullets = [ln for ln in guidelines_section.splitlines() if ln.strip().startswith("- ")]
+    assert len(bullets) >= 2  # original sentence + ⚠ bullet
+    assert any("⚠" in b for b in bullets)
+
+
+# ── purpose.md per-section scaffold markers ───────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_purpose_md_has_scaffold_marker():
+    """Generated purpose.md must contain one scaffold marker inside each of the 5 sections."""
+    provider = _make_provider(_VALID_RESPONSE)
+    agent = ScaffoldAgent(provider=provider)
+    result = await agent.scaffold(domain="Machine Learning")
+    assert result.purpose_md.count("<!-- synthadoc:scaffold -->") == 5
+    # Marker sits inside each section (after the ## heading, not before it)
+    assert "## Overview\n\n<!-- synthadoc:scaffold -->" in result.purpose_md
+    assert "## What Belongs in This Wiki\n\n<!-- synthadoc:scaffold -->" in result.purpose_md
+    assert "## What Is Out of Scope\n\n<!-- synthadoc:scaffold -->" in result.purpose_md
+    assert "## Intended Audience\n\n<!-- synthadoc:scaffold -->" in result.purpose_md
+    assert "## Primary Use Cases\n\n<!-- synthadoc:scaffold -->" in result.purpose_md
+
+
+def test_preserve_user_zone_multi_marker_basic():
+    """Multi-marker mode: user content above each section marker is preserved;
+    scaffold content below each marker is replaced with fresh LLM output."""
+    from synthadoc.agents.scaffold_agent import SCAFFOLD_MARKER, preserve_user_zone
+    M = SCAFFOLD_MARKER
+    existing = (
+        "---\ntitle: Wiki Purpose\nstatus: active\n---\n\n"
+        "# Wiki Purpose — ML\n\n"
+        f"## Overview\n\n{M}\n\nOld overview.\n\n"
+        f"## What Belongs in This Wiki\n\nUser added line.\n\n{M}\n\n- Old bullet\n\n"
+        f"## What Is Out of Scope\n\n{M}\n\n- Old scope\n\n"
+    )
+    new_scaffold = (
+        "---\ntitle: Wiki Purpose — ML\n---\n\n"
+        "# Wiki Purpose — ML\n\n"
+        f"## Overview\n\n{M}\n\nNew overview.\n\n"
+        f"## What Belongs in This Wiki\n\n{M}\n\n- New bullet\n\n"
+        f"## What Is Out of Scope\n\n{M}\n\n- New scope\n\n"
+        f"## Intended Audience\n\n{M}\n\nNew audience.\n\n"
+    )
+    result = preserve_user_zone(existing, new_scaffold)
+
+    # User zone preserved
+    assert "User added line." in result
+    # Scaffold zones replaced
+    assert "New overview." in result
+    assert "Old overview." not in result
+    assert "New bullet" in result
+    assert "Old bullet" not in result
+    # New section from scaffold appended
+    assert "## Intended Audience" in result
+    assert "New audience." in result
+    # Marker count = 4 (3 existing + 1 appended)
+    assert result.count(SCAFFOLD_MARKER) == 4
+
+
+def test_preserve_user_zone_section_without_marker_not_in_template_kept():
+    """A section without a marker that is NOT in the template is user-added — kept as-is."""
+    from synthadoc.agents.scaffold_agent import SCAFFOLD_MARKER, preserve_user_zone
+    M = SCAFFOLD_MARKER
+    existing = (
+        "# Wiki Purpose — ML\n\n"
+        f"## Overview\n\n{M}\n\nOld overview.\n\n"
+        "## My Custom Section\n\nFull user content here.\nMore lines.\n\n"
+        f"## What Is Out of Scope\n\n{M}\n\n- Old scope\n\n"
+    )
+    new_scaffold = (
+        "# Wiki Purpose — ML\n\n"
+        f"## Overview\n\n{M}\n\nNew overview.\n\n"
+        f"## What Is Out of Scope\n\n{M}\n\n- New scope\n\n"
+    )
+    result = preserve_user_zone(existing, new_scaffold)
+
+    # User-added section (not in template) untouched
+    assert "## My Custom Section" in result
+    assert "Full user content here." in result
+    # Other sections updated
+    assert "New overview." in result
+    assert "Old overview." not in result
+
+
+def test_preserve_user_zone_section_without_marker_in_template_overwritten():
+    """A section without a marker that IS in the template is replaced by template content."""
+    from synthadoc.agents.scaffold_agent import SCAFFOLD_MARKER, preserve_user_zone
+    M = SCAFFOLD_MARKER
+    existing = (
+        "# Wiki Purpose — ML\n\n"
+        f"## Overview\n\n{M}\n\nOld overview.\n\n"
+        # Intended Audience has NO marker — user removed it
+        "## Intended Audience\n\nOld audience content. No marker here.\n\n"
+        f"## What Is Out of Scope\n\n{M}\n\n- Old scope\n\n"
+    )
+    new_scaffold = (
+        "# Wiki Purpose — ML\n\n"
+        f"## Overview\n\n{M}\n\nNew overview.\n\n"
+        f"## Intended Audience\n\n{M}\n\nNew audience content.\n\n"
+        f"## What Is Out of Scope\n\n{M}\n\n- New scope\n\n"
+    )
+    result = preserve_user_zone(existing, new_scaffold)
+
+    # Section without marker that IS in template → replaced with template content
+    assert "New audience content." in result
+    assert "Old audience content. No marker here." not in result
+    # Marker added to the replaced section
+    assert result.count(M) == 3
+    # Other sections updated normally
+    assert "New overview." in result
+    assert "- New scope" in result
+
+
+def test_preserve_user_zone_no_markers_returns_new_content():
+    """Existing file with no markers at all is fully replaced — first scaffold on an existing wiki."""
+    from synthadoc.agents.scaffold_agent import SCAFFOLD_MARKER, preserve_user_zone
+    M = SCAFFOLD_MARKER
+    existing = "# Wiki Purpose\n\nSome old content with no markers.\n"
+    new_scaffold = (
+        "---\ntitle: Wiki Purpose — ML\n---\n\n"
+        "# Wiki Purpose — ML\n\n"
+        f"## Overview\n\n{M}\n\nNew overview.\n\n"
+    )
+    result = preserve_user_zone(existing, new_scaffold)
+    assert result == new_scaffold
+    assert "New overview." in result
+    assert "old content" not in result
+
+
+def test_preserve_user_zone_single_marker_legacy_backward_compat():
+    """Single-marker files (index.md / legacy purpose.md) use the original
+    file-level split: everything above the marker is preserved, everything below
+    is replaced. The H1 and frontmatter of the new scaffold are stripped."""
+    from synthadoc.agents.scaffold_agent import SCAFFOLD_MARKER, preserve_user_zone
+    M = SCAFFOLD_MARKER
+    existing = (
+        "---\ntitle: Wiki Purpose\nstatus: active\n---\n\n"
+        "# Wiki Purpose — ML\n\n"
+        f"{M}\n\n"
+        "## Overview\n\nOld overview.\n\n"
+        "## What Belongs in This Wiki\n\n- Old bullet\n"
+    )
+    new_scaffold = (
+        "---\ntitle: Wiki Purpose — ML\n---\n\n"
+        "# Wiki Purpose — ML\n\n"
+        f"{M}\n\n"
+        "## Overview\n\nNew overview.\n\n"
+        "## What Belongs in This Wiki\n\n- New bullet\n"
+    )
+    result = preserve_user_zone(existing, new_scaffold)
+
+    assert result.count(SCAFFOLD_MARKER) == 1
+    assert "# Wiki Purpose — ML" in result
+    assert "New overview." in result
+    assert "Old overview." not in result
+    assert "New bullet" in result
+    assert "Old bullet" not in result

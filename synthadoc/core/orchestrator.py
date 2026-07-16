@@ -555,8 +555,10 @@ class Orchestrator:
                 ("GEMINI.md", result.gemini_md),
             ):
                 (self._root / _filename).write_text(_content, encoding="utf-8", newline="\n")
-            (self._root / "wiki" / "purpose.md").write_text(
-                result.purpose_md, encoding="utf-8", newline="\n")
+            purpose_path = self._root / "wiki" / "purpose.md"
+            existing_purpose = purpose_path.read_text(encoding="utf-8") if purpose_path.exists() else ""
+            final_purpose = preserve_user_zone(existing_purpose, result.purpose_md)
+            purpose_path.write_text(final_purpose, encoding="utf-8", newline="\n")
 
             # Scaffold rewrites index.md — regenerate ROUTING.md so routing stays in sync.
             routing_path = self._root / "ROUTING.md"

@@ -214,7 +214,7 @@ history-of-computing/
 | `AGENTS.md`           | Domain-specific guidelines for Codex/OpenCode agents — LLM reads this on every ingest |
 | `CLAUDE.md`           | Same guidelines in Claude Code format — loaded automatically when you open this folder in Claude Code |
 | `GEMINI.md`           | Same guidelines in Gemini CLI format |
-| `wiki/purpose.md`     | In-scope / out-of-scope definition for History of Computing       |
+| `wiki/purpose.md`     | Scope definition for History of Computing — five sections (Overview, What Belongs, Out of Scope, Intended Audience, Primary Use Cases). Each section contains a `<!-- synthadoc:scaffold -->` marker: content you add **above** a marker is preserved when you re-run `synthadoc scaffold`; content below is refreshed by the LLM. |
 
 > **Upgrading an existing wiki?** If your wiki was created before v1.0.2, it will have `AGENTS.md` but not `CLAUDE.md` or `GEMINI.md`. Run `synthadoc scaffold` once to generate all three with LLM-produced guidelines that match your current wiki content.
 
