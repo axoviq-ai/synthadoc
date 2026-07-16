@@ -2331,7 +2331,9 @@ ls ~/.claude/projects/-Users-yourname-workspace-myproject/
 
 ### Ingest a session file
 
-Pass the `.jsonl` path directly:
+Pass the `.jsonl` path directly — no need to copy the file into the wiki directory first.
+Synthadoc's CLI automatically signals the server that the file may be outside the wiki root,
+and the server accepts this for local (127.0.0.1) connections:
 
 ```bash
 synthadoc ingest ~/.claude/projects/-Users-yourname-workspace-myproject/4f8c2a1b-3e9d-4a6b-8c1f-2d7e0a3b5f9c.jsonl

@@ -838,6 +838,15 @@ The `progress` field is updated in real time during execution (e.g. `{"phase": "
 - Vault-relative path: `raw_sources/report.pdf` (resolved against `wiki_root`)
 - URL: `https://example.com/article`
 
+**External file paths** (outside the wiki root) are supported when the request comes from
+`127.0.0.1` or `::1` and the payload includes `"allow_external_paths": true`. The CLI sets
+this flag automatically for all local file sources. Remote clients cannot set this flag
+(the server ignores it for non-localhost connections) to prevent arbitrary file reads
+in server-exposed deployments.
+
+This is required for ingesting files that live outside the wiki directory by design —
+for example, Claude Code session transcripts at `~/.claude/projects/<hash>/<id>.jsonl`.
+
 ### Background worker
 
 The HTTP server runs a background task that polls `jobs.db` every 2 seconds and dispatches pending jobs. Max 4 concurrent ingest jobs (configurable via `max_parallel_ingest`).
