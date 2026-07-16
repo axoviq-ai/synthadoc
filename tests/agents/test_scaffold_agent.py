@@ -231,6 +231,25 @@ def test_extract_first_json_object_handles_braces_in_strings():
     assert _extract_first_json_object(payload) == payload
 
 
+def test_extract_first_json_object_handles_escaped_quote_in_string():
+    """Backslash-escaped quote inside a JSON string must not end the string early.
+
+    This exercises the escape-flag path (lines that set/clear escape) so that
+    the \" sequence does not toggle in_str and break depth tracking.
+    """
+    from synthadoc.agents.scaffold_agent import _extract_first_json_object
+    # JSON: {"key": "val\"ue"} — escaped quote inside the string value
+    payload = '{"key": "val\\"ue"}'
+    result = _extract_first_json_object(payload)
+    assert result == payload
+
+
+def test_extract_first_json_object_returns_none_for_unclosed_brace():
+    """Input that opens a brace but never closes it must return None."""
+    from synthadoc.agents.scaffold_agent import _extract_first_json_object
+    assert _extract_first_json_object("{ never closed") is None
+
+
 def test_parse_scaffold_json_tier2_extracts_embedded_object():
     """Tier 2 (brace-balanced): valid JSON object buried in surrounding text."""
     from synthadoc.agents.scaffold_agent import _parse_scaffold_json
