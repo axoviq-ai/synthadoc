@@ -682,8 +682,8 @@ def test_preserve_user_zone_multi_marker_basic():
     assert result.count(SCAFFOLD_MARKER) == 4
 
 
-def test_preserve_user_zone_section_without_marker_kept_as_is():
-    """A section that has no marker is treated as user-owned and left completely unchanged."""
+def test_preserve_user_zone_section_without_marker_not_in_template_kept():
+    """A section without a marker that is NOT in the template is user-added — kept as-is."""
     from synthadoc.agents.scaffold_agent import SCAFFOLD_MARKER, preserve_user_zone
     M = SCAFFOLD_MARKER
     existing = (
@@ -699,12 +699,41 @@ def test_preserve_user_zone_section_without_marker_kept_as_is():
     )
     result = preserve_user_zone(existing, new_scaffold)
 
-    # User-owned section untouched
+    # User-added section (not in template) untouched
     assert "## My Custom Section" in result
     assert "Full user content here." in result
     # Other sections updated
     assert "New overview." in result
     assert "Old overview." not in result
+
+
+def test_preserve_user_zone_section_without_marker_in_template_overwritten():
+    """A section without a marker that IS in the template is replaced by template content."""
+    from synthadoc.agents.scaffold_agent import SCAFFOLD_MARKER, preserve_user_zone
+    M = SCAFFOLD_MARKER
+    existing = (
+        "# Wiki Purpose — ML\n\n"
+        f"## Overview\n\n{M}\n\nOld overview.\n\n"
+        # Intended Audience has NO marker — user removed it
+        "## Intended Audience\n\nOld audience content. No marker here.\n\n"
+        f"## What Is Out of Scope\n\n{M}\n\n- Old scope\n\n"
+    )
+    new_scaffold = (
+        "# Wiki Purpose — ML\n\n"
+        f"## Overview\n\n{M}\n\nNew overview.\n\n"
+        f"## Intended Audience\n\n{M}\n\nNew audience content.\n\n"
+        f"## What Is Out of Scope\n\n{M}\n\n- New scope\n\n"
+    )
+    result = preserve_user_zone(existing, new_scaffold)
+
+    # Section without marker that IS in template → replaced with template content
+    assert "New audience content." in result
+    assert "Old audience content. No marker here." not in result
+    # Marker added to the replaced section
+    assert result.count(M) == 3
+    # Other sections updated normally
+    assert "New overview." in result
+    assert "- New scope" in result
 
 
 def test_preserve_user_zone_no_markers_returns_new_content():

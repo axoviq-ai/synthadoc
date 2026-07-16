@@ -227,9 +227,10 @@ def preserve_user_zone(existing_content: str, new_scaffold_content: str) -> str:
     **Multi-marker mode** (purpose.md with a marker inside each ## section):
     each section is merged independently.  Within a section, content the user
     wrote *above* the marker is preserved; content *below* the marker is
-    replaced with fresh LLM output.  Sections that have no marker are treated
-    as fully user-owned and kept unchanged.  Sections present in the new
-    scaffold but absent from the existing file are appended.
+    replaced with fresh LLM output.  Sections without a marker are replaced
+    entirely by the template content (marker added); sections present in the
+    existing file but absent from the template are kept unchanged.  Sections
+    present in the new scaffold but absent from the existing file are appended.
 
     If the existing file has no marker at all it is fully replaced — this is
     the correct behaviour for the very first scaffold run on an existing wiki.
@@ -262,7 +263,13 @@ def preserve_user_zone(existing_content: str, new_scaffold_content: str) -> str:
             parts.append(body)  # preamble (frontmatter + H1) — always preserved
             continue
         if SCAFFOLD_MARKER not in body:
-            parts.append(heading + body)  # user-owned section, no marker — kept as-is
+            fresh = new_content_map.get(heading, "")
+            if fresh:
+                # No marker present → scaffold owns this section; replace with template content.
+                parts.append(f"{heading}\n\n{SCAFFOLD_MARKER}\n\n{fresh}\n\n")
+            else:
+                # Section not in the new scaffold template → user-added, keep as-is.
+                parts.append(heading + body)
             continue
         user_zone = body.split(SCAFFOLD_MARKER, 1)[0].strip()
         fresh = new_content_map.get(heading, "").strip()
