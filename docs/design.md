@@ -847,6 +847,16 @@ in server-exposed deployments.
 This is required for ingesting files that live outside the wiki directory by design —
 for example, Claude Code session transcripts at `~/.claude/projects/<hash>/<id>.jsonl`.
 
+**Client behaviour summary:**
+
+| Client | Sends `allow_external_paths` | Can ingest outside wiki root? |
+|--------|------------------------------|-------------------------------|
+| CLI (`synthadoc ingest <path>`) | `true` (automatic, local file paths only) | Yes — server is localhost |
+| Obsidian plugin | Never sent (field omitted → defaults `false`) | No — wiki-relative paths and URLs only |
+| Web UI | Never sent (field omitted → defaults `false`) | No — wiki-relative paths and URLs only |
+| Direct HTTP API (localhost) | Set manually in request body | Yes — if request from 127.0.0.1/::1 |
+| Direct HTTP API (remote) | Ignored by server | No — server silently treats as `false` |
+
 ### Background worker
 
 The HTTP server runs a background task that polls `jobs.db` every 2 seconds and dispatches pending jobs. Max 4 concurrent ingest jobs (configurable via `max_parallel_ingest`).

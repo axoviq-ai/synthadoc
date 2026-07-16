@@ -2420,6 +2420,7 @@ synthadoc ingest --file sessions.txt -w my-wiki
 | **Codex / Cursor sessions** | The same command works for Codex and Cursor `.jsonl` exports — format is detected automatically. |
 | **Private content** | Session files may contain proprietary code. Keep your wiki on a local or private server and review what the page contains before sharing. |
 | **Sanitization** | Extracted turns pass through the standard pre-LLM source sanitizer (zero-width chars, bidi overrides, HTML comments, instruction-override phrases) — the same step applied to every PDF, URL, and DOCX source. |
+| **Obsidian plugin / web UI** | Neither the Obsidian plugin nor the web UI can ingest session files directly — they do not send local filesystem paths outside the wiki root. Use the CLI (`synthadoc ingest <path>`) for session file ingestion. |
 
 ---
 
