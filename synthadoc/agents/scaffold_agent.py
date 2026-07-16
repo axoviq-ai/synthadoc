@@ -21,6 +21,7 @@ _META_SLUGS = frozenset({"index", "overview", "purpose", "dashboard", "log"})
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
 _FM_STRIP_RE = re.compile(r"^---\s*\n.*?\n---\s*\n+", re.DOTALL)
 _H1_STRIP_RE = re.compile(r"^#[^#][^\n]*\n+")
+_SECTION_SPLIT_RE = re.compile(r"(^## .+$)", re.MULTILINE)
 
 
 def _coerce_scaffold_dict(value: object) -> dict | None:
@@ -171,51 +172,113 @@ sources: []
 
 # Wiki Purpose — {domain}
 
-<!-- synthadoc:scaffold -->
-
 ## Overview
+
+<!-- synthadoc:scaffold -->
 
 {overview}
 
 ## What Belongs in This Wiki
 
+<!-- synthadoc:scaffold -->
+
 {include}
 
 ## What Is Out of Scope
+
+<!-- synthadoc:scaffold -->
 
 {exclude}
 
 ## Intended Audience
 
+<!-- synthadoc:scaffold -->
+
 {audience}
 
 ## Primary Use Cases
+
+<!-- synthadoc:scaffold -->
 
 {use_cases}
 """
 
 
+def _parse_sections(content: str) -> list[tuple[str, str]]:
+    """Split content on ## headings → [(heading, body), ...].
+
+    The first entry always has heading='' and holds the pre-heading preamble
+    (frontmatter + H1 + any content before the first ## heading).
+    """
+    parts = _SECTION_SPLIT_RE.split(content)
+    result: list[tuple[str, str]] = [("", parts[0])]
+    for i in range(1, len(parts), 2):
+        result.append((parts[i], parts[i + 1] if i + 1 < len(parts) else ""))
+    return result
+
+
 def preserve_user_zone(existing_content: str, new_scaffold_content: str) -> str:
-    """Preserve user content above SCAFFOLD_MARKER when re-generating scaffold files.
+    """Preserve user content above SCAFFOLD_MARKER on scaffold regeneration.
 
-    Works for both index.md and purpose.md.  If the marker is absent the file
-    is fully replaced.  When present, everything the user wrote above the marker
-    is kept; only the generated sections below it are replaced.
+    **Single-marker mode** (index.md, or a legacy purpose.md with exactly one
+    marker): the marker sits below the H1.  Everything above the marker is the
+    user zone; everything below is replaced with the new scaffold body.
 
-    Frontmatter and H1 are stripped from new_scaffold_content so they are not
-    duplicated after the user zone.  A leading marker in the stripped body is
-    also removed to prevent duplication when the new template embeds the marker
-    (e.g. purpose.md places it between the H1 and ## Overview).
+    **Multi-marker mode** (purpose.md with a marker inside each ## section):
+    each section is merged independently.  Within a section, content the user
+    wrote *above* the marker is preserved; content *below* the marker is
+    replaced with fresh LLM output.  Sections that have no marker are treated
+    as fully user-owned and kept unchanged.  Sections present in the new
+    scaffold but absent from the existing file are appended.
+
+    If the existing file has no marker at all it is fully replaced — this is
+    the correct behaviour for the very first scaffold run on an existing wiki.
     """
     if SCAFFOLD_MARKER not in existing_content:
         return new_scaffold_content
-    user_zone = existing_content.split(SCAFFOLD_MARKER)[0].rstrip()
-    body = _FM_STRIP_RE.sub("", new_scaffold_content, count=1)
-    body = _H1_STRIP_RE.sub("", body, count=1)
-    body = body.lstrip()
-    if body.startswith(SCAFFOLD_MARKER):
-        body = body[len(SCAFFOLD_MARKER):].lstrip()
-    return f"{user_zone}\n\n{SCAFFOLD_MARKER}\n\n{body}"
+
+    if existing_content.count(SCAFFOLD_MARKER) == 1:
+        # ── Single-marker mode ─────────────────────────────────────────────
+        user_zone = existing_content.split(SCAFFOLD_MARKER)[0].rstrip()
+        body = _FM_STRIP_RE.sub("", new_scaffold_content, count=1)
+        body = _H1_STRIP_RE.sub("", body, count=1)
+        body = body.lstrip()
+        if body.startswith(SCAFFOLD_MARKER):
+            body = body[len(SCAFFOLD_MARKER):].lstrip()
+        return f"{user_zone}\n\n{SCAFFOLD_MARKER}\n\n{body}"
+
+    # ── Multi-marker mode ──────────────────────────────────────────────────
+    # Build heading → fresh LLM content map from the new scaffold.
+    new_content_map: dict[str, str] = {}
+    for heading, body in _parse_sections(new_scaffold_content):
+        if not heading:
+            continue
+        after = body.split(SCAFFOLD_MARKER, 1)[1].strip() if SCAFFOLD_MARKER in body else body.strip()
+        new_content_map[heading] = after
+
+    parts: list[str] = []
+    for heading, body in _parse_sections(existing_content):
+        if not heading:
+            parts.append(body)  # preamble (frontmatter + H1) — always preserved
+            continue
+        if SCAFFOLD_MARKER not in body:
+            parts.append(heading + body)  # user-owned section, no marker — kept as-is
+            continue
+        user_zone = body.split(SCAFFOLD_MARKER, 1)[0].strip()
+        fresh = new_content_map.get(heading, "").strip()
+        if user_zone:
+            parts.append(f"{heading}\n\n{user_zone}\n\n{SCAFFOLD_MARKER}\n\n{fresh}\n\n")
+        else:
+            parts.append(f"{heading}\n\n{SCAFFOLD_MARKER}\n\n{fresh}\n\n")
+
+    # Append sections from new scaffold absent in the existing file.
+    existing_headings = {h for h, _ in _parse_sections(existing_content) if h}
+    for heading, body in _parse_sections(new_scaffold_content):
+        if heading and heading not in existing_headings:
+            fresh = body.split(SCAFFOLD_MARKER, 1)[1].strip() if SCAFFOLD_MARKER in body else body.strip()
+            parts.append(f"{heading}\n\n{SCAFFOLD_MARKER}\n\n{fresh}\n\n")
+
+    return "".join(parts)
 
 
 @dataclass

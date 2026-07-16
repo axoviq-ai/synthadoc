@@ -629,52 +629,125 @@ async def test_condensed_guidelines_paragraph_becomes_bullets():
     assert any("⚠" in b for b in bullets)
 
 
-# ── purpose.md scaffold marker ────────────────────────────────────────────────
+# ── purpose.md per-section scaffold markers ───────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_purpose_md_has_scaffold_marker():
-    """Generated purpose.md must contain the scaffold marker between H1 and ## Overview."""
+    """Generated purpose.md must contain one scaffold marker inside each of the 5 sections."""
     provider = _make_provider(_VALID_RESPONSE)
     agent = ScaffoldAgent(provider=provider)
     result = await agent.scaffold(domain="Machine Learning")
-    assert "<!-- synthadoc:scaffold -->" in result.purpose_md
-    # Marker must appear before ## Overview
-    marker_pos = result.purpose_md.index("<!-- synthadoc:scaffold -->")
-    overview_pos = result.purpose_md.index("## Overview")
-    assert marker_pos < overview_pos
+    assert result.purpose_md.count("<!-- synthadoc:scaffold -->") == 5
+    # Marker sits inside each section (after the ## heading, not before it)
+    assert "## Overview\n\n<!-- synthadoc:scaffold -->" in result.purpose_md
+    assert "## What Belongs in This Wiki\n\n<!-- synthadoc:scaffold -->" in result.purpose_md
+    assert "## What Is Out of Scope\n\n<!-- synthadoc:scaffold -->" in result.purpose_md
+    assert "## Intended Audience\n\n<!-- synthadoc:scaffold -->" in result.purpose_md
+    assert "## Primary Use Cases\n\n<!-- synthadoc:scaffold -->" in result.purpose_md
 
 
-def test_preserve_user_zone_purpose_md_style():
-    """preserve_user_zone correctly handles purpose.md: marker embedded after H1.
-
-    When the template places the marker between the H1 and ## Overview, a
-    re-scaffold must keep content the user added above the marker (e.g. a note
-    below the H1) and replace everything below it with fresh LLM content.
-    """
+def test_preserve_user_zone_multi_marker_basic():
+    """Multi-marker mode: user content above each section marker is preserved;
+    scaffold content below each marker is replaced with fresh LLM output."""
     from synthadoc.agents.scaffold_agent import SCAFFOLD_MARKER, preserve_user_zone
-
+    M = SCAFFOLD_MARKER
     existing = (
         "---\ntitle: Wiki Purpose\nstatus: active\n---\n\n"
-        "# Wiki Purpose — Machine Learning\n\n"
-        "<!-- synthadoc:scaffold -->\n\n"
-        "## Overview\n\nOld overview text.\n\n"
+        "# Wiki Purpose — ML\n\n"
+        f"## Overview\n\n{M}\n\nOld overview.\n\n"
+        f"## What Belongs in This Wiki\n\nUser added line.\n\n{M}\n\n- Old bullet\n\n"
+        f"## What Is Out of Scope\n\n{M}\n\n- Old scope\n\n"
+    )
+    new_scaffold = (
+        "---\ntitle: Wiki Purpose — ML\n---\n\n"
+        "# Wiki Purpose — ML\n\n"
+        f"## Overview\n\n{M}\n\nNew overview.\n\n"
+        f"## What Belongs in This Wiki\n\n{M}\n\n- New bullet\n\n"
+        f"## What Is Out of Scope\n\n{M}\n\n- New scope\n\n"
+        f"## Intended Audience\n\n{M}\n\nNew audience.\n\n"
+    )
+    result = preserve_user_zone(existing, new_scaffold)
+
+    # User zone preserved
+    assert "User added line." in result
+    # Scaffold zones replaced
+    assert "New overview." in result
+    assert "Old overview." not in result
+    assert "New bullet" in result
+    assert "Old bullet" not in result
+    # New section from scaffold appended
+    assert "## Intended Audience" in result
+    assert "New audience." in result
+    # Marker count = 4 (3 existing + 1 appended)
+    assert result.count(SCAFFOLD_MARKER) == 4
+
+
+def test_preserve_user_zone_section_without_marker_kept_as_is():
+    """A section that has no marker is treated as user-owned and left completely unchanged."""
+    from synthadoc.agents.scaffold_agent import SCAFFOLD_MARKER, preserve_user_zone
+    M = SCAFFOLD_MARKER
+    existing = (
+        "# Wiki Purpose — ML\n\n"
+        f"## Overview\n\n{M}\n\nOld overview.\n\n"
+        "## My Custom Section\n\nFull user content here.\nMore lines.\n\n"
+        f"## What Is Out of Scope\n\n{M}\n\n- Old scope\n\n"
+    )
+    new_scaffold = (
+        "# Wiki Purpose — ML\n\n"
+        f"## Overview\n\n{M}\n\nNew overview.\n\n"
+        f"## What Is Out of Scope\n\n{M}\n\n- New scope\n\n"
+    )
+    result = preserve_user_zone(existing, new_scaffold)
+
+    # User-owned section untouched
+    assert "## My Custom Section" in result
+    assert "Full user content here." in result
+    # Other sections updated
+    assert "New overview." in result
+    assert "Old overview." not in result
+
+
+def test_preserve_user_zone_no_markers_returns_new_content():
+    """Existing file with no markers at all is fully replaced — first scaffold on an existing wiki."""
+    from synthadoc.agents.scaffold_agent import SCAFFOLD_MARKER, preserve_user_zone
+    M = SCAFFOLD_MARKER
+    existing = "# Wiki Purpose\n\nSome old content with no markers.\n"
+    new_scaffold = (
+        "---\ntitle: Wiki Purpose — ML\n---\n\n"
+        "# Wiki Purpose — ML\n\n"
+        f"## Overview\n\n{M}\n\nNew overview.\n\n"
+    )
+    result = preserve_user_zone(existing, new_scaffold)
+    assert result == new_scaffold
+    assert "New overview." in result
+    assert "old content" not in result
+
+
+def test_preserve_user_zone_single_marker_legacy_backward_compat():
+    """Single-marker files (index.md / legacy purpose.md) use the original
+    file-level split: everything above the marker is preserved, everything below
+    is replaced. The H1 and frontmatter of the new scaffold are stripped."""
+    from synthadoc.agents.scaffold_agent import SCAFFOLD_MARKER, preserve_user_zone
+    M = SCAFFOLD_MARKER
+    existing = (
+        "---\ntitle: Wiki Purpose\nstatus: active\n---\n\n"
+        "# Wiki Purpose — ML\n\n"
+        f"{M}\n\n"
+        "## Overview\n\nOld overview.\n\n"
         "## What Belongs in This Wiki\n\n- Old bullet\n"
     )
     new_scaffold = (
-        "---\ntitle: Wiki Purpose — Machine Learning\nstatus: active\n---\n\n"
-        "# Wiki Purpose — Machine Learning\n\n"
-        "<!-- synthadoc:scaffold -->\n\n"
-        "## Overview\n\nNew overview text.\n\n"
+        "---\ntitle: Wiki Purpose — ML\n---\n\n"
+        "# Wiki Purpose — ML\n\n"
+        f"{M}\n\n"
+        "## Overview\n\nNew overview.\n\n"
         "## What Belongs in This Wiki\n\n- New bullet\n"
     )
     result = preserve_user_zone(existing, new_scaffold)
 
-    # Frontmatter and H1 are above the marker — preserved from existing
-    assert "# Wiki Purpose — Machine Learning" in result
-    # Marker appears exactly once
     assert result.count(SCAFFOLD_MARKER) == 1
-    # New LLM content replaces old
-    assert "New overview text." in result
-    assert "Old overview text." not in result
+    assert "# Wiki Purpose — ML" in result
+    assert "New overview." in result
+    assert "Old overview." not in result
     assert "New bullet" in result
     assert "Old bullet" not in result
