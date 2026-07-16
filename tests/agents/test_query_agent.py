@@ -2309,6 +2309,10 @@ async def test_fetch_live_wiki_data_returns_counts(tmp_wiki):
     await audit.set_page_state("page-c", "stale", "test")
 
     store = WikiStorage(tmp_wiki / "wiki")
+    _stub = WikiPage(title="stub", tags=[], content="x", status="active", confidence="medium", sources=[])
+    store.write_page("page-a", _stub)
+    store.write_page("page-b", _stub)
+    store.write_page("page-c", _stub)
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
     agent = QueryAgent(provider=AsyncMock(), store=store, search=search)
     result = await agent._fetch_live_wiki_data("which pages are stale?")
@@ -2329,6 +2333,7 @@ async def test_fetch_live_wiki_data_counts_contradicted(tmp_wiki):
     await audit.set_page_state("page-x", "contradicted", "test")
 
     store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("page-x", WikiPage(title="stub", tags=[], content="x", status="contradicted", confidence="medium", sources=[]))
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
     agent = QueryAgent(provider=AsyncMock(), store=store, search=search)
     result = await agent._fetch_live_wiki_data("how many pages contradicted?")
@@ -2347,6 +2352,7 @@ async def test_query_live_data_injected_into_synthesis(tmp_wiki):
     await audit.set_page_state("my-page", "stale", "test")
 
     store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("my-page", WikiPage(title="stub", tags=[], content="x", status="stale", confidence="medium", sources=[]))
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
     provider = AsyncMock()
     provider.complete.side_effect = [
