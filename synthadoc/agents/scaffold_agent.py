@@ -115,6 +115,7 @@ Set up a knowledge wiki for the domain: {domain}
 
 Return ONLY valid JSON:
 {{
+  "domain_label": "precise human-readable domain name inferred from the wiki content (e.g. 'History of Computing', not 'General' or 'My Wiki')",
   "categories": [
     {{
       "heading": "Category Name",
@@ -123,12 +124,12 @@ Return ONLY valid JSON:
     }},
     ...
   ],
-  "agents_guidelines": "2-4 bullet points of domain-specific ingest and query guidelines (plain text, not markdown list syntax)",
+  "agents_guidelines": "3 domain-specific ingest and query guidelines, one per line — write each guideline as a plain sentence on its own line with no bullet or dash symbol (the renderer adds the bullet)",
   "purpose_overview": "2-3 sentences describing the domain, its importance, and what this wiki is for",
-  "purpose_include": "3-5 bullet points (plain text, not markdown) listing the types of topics, concepts, and artefacts that belong in this wiki",
-  "purpose_exclude": "3-5 bullet points (plain text, not markdown) listing what is explicitly out of scope",
+  "purpose_include": "3-5 items listing the types of topics, concepts, and artefacts that belong in this wiki, one per line, no bullet symbols",
+  "purpose_exclude": "3-5 items listing what is explicitly out of scope, one per line, no bullet symbols",
   "purpose_audience": "1-2 sentences describing who will use this wiki and how",
-  "purpose_use_cases": "3-5 bullet points (plain text, not markdown) of the primary questions or tasks this wiki is meant to answer",
+  "purpose_use_cases": "3-5 primary questions or tasks this wiki is meant to answer, one per line, no bullet symbols",
   "dashboard_intro": "one sentence describing what this wiki tracks"
 }}
 
@@ -336,16 +337,20 @@ class ScaffoldAgent:
         if data is None:
             raise last_exc or ValueError("ScaffoldAgent: unparseable scaffold JSON")
 
-        agents_md, claude_md, gemini_md = self._build_skill_files(domain, data, port)
+        # Prefer the LLM-identified label so a wiki whose config still says
+        # "General" gets the correct domain name in all generated titles.
+        effective_domain = (data.get("domain_label") or "").strip() or domain
+
+        agents_md, claude_md, gemini_md = self._build_skill_files(effective_domain, data, port)
         scaffold = ScaffoldResult(
-            index_md=self._build_index_md(domain, data),
+            index_md=self._build_index_md(effective_domain, data),
             agents_md=agents_md,
             claude_md=claude_md,
             gemini_md=gemini_md,
-            purpose_md=self._build_purpose_md(domain, data),
-            dashboard_intro=data.get("dashboard_intro", f"A wiki tracking {domain} knowledge."),
+            purpose_md=self._build_purpose_md(effective_domain, data),
+            dashboard_intro=data.get("dashboard_intro", f"A wiki tracking {effective_domain} knowledge."),
         )
-        _validate_scaffold_result(scaffold, domain)
+        _validate_scaffold_result(scaffold, effective_domain)
         return scaffold
 
     def _build_index_md(self, domain: str, data: dict) -> str:
@@ -367,6 +372,8 @@ class ScaffoldAgent:
         lines.append("")
         return "\n".join(lines)
 
+    _CONTRADICTION_BULLET = "- Flag contradictions between sources with ⚠ markers"
+
     def _build_skill_files(
         self, domain: str, data: dict, port: int
     ) -> tuple[str, str, str]:
@@ -377,7 +384,13 @@ class ScaffoldAgent:
             line = line.strip().lstrip("-•* ")
             if line:
                 bullets.append(f"- {line}")
-        guidelines = "\n".join(bullets) if bullets else f"- {raw_guidelines}"
+        if not bullets:
+            bullets = [f"- {raw_guidelines}"]
+        # Always include the ⚠ contradiction-marker convention — it's a
+        # Synthadoc-wide standard, not domain-specific, so the LLM may omit it.
+        if "⚠" not in "\n".join(bullets):
+            bullets.append(self._CONTRADICTION_BULLET)
+        guidelines = "\n".join(bullets)
         kwargs = dict(domain=domain, guidelines=guidelines, port=port)
         return (
             _AGENTS_MD_TEMPLATE.format(**kwargs),
