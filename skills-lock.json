@@ -23,13 +23,19 @@
       "source": "axoviq-ai/synthadoc",
       "sourceType": "github",
       "skillPath": "synthadoc/skills/pdf/SKILL.md",
-      "computedHash": "119d9f3f5af21b5a297f1879d281ca2a41dbfd1981e4e53d6b6f582b8d3657e3"
+      "computedHash": "307a86e1ac353cee1e216d3bfb45599404ec8e5ddbe81ac8882dcacdca7dc8e6"
     },
     "pptx": {
       "source": "axoviq-ai/synthadoc",
       "sourceType": "github",
       "skillPath": "synthadoc/skills/pptx/SKILL.md",
       "computedHash": "72fc7544332e7a3b77414adcdf845e9190a3a7f318a26829dca383502cd216e9"
+    },
+    "session": {
+      "source": "axoviq-ai/synthadoc",
+      "sourceType": "github",
+      "skillPath": "synthadoc/skills/session/SKILL.md",
+      "computedHash": "46d944339c39e8758f99bd5106c87745e9d61a12eb25b9a1d4e1e6a9ba953fe6"
     },
     "url": {
       "source": "axoviq-ai/synthadoc",
