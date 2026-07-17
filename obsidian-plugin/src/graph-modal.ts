@@ -562,7 +562,7 @@ export class GraphModal extends Modal {
         typeSelect.addEventListener("change", () => { applyFilter(typeSelect.value); startLoop(); }, { signal: sig });
 
         // ── Fetch and init ────────────────────────────────────────────────────
-        (api as any).graph().then((data: any) => {
+        api.graph().then((data: any) => {
             if (this._closed) return;
             loadingEl.remove();
 
