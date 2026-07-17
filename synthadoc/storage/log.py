@@ -9,7 +9,7 @@ from typing import Callable, Optional
 
 import aiosqlite
 
-DB_SCHEMA_VERSION: int = 2
+DB_SCHEMA_VERSION: int = 3
 
 CITATION_EXCERPT_LEN = 100
 
@@ -158,6 +158,7 @@ class AuditDB:
                     from_slug   TEXT NOT NULL,
                     to_slug     TEXT NOT NULL,
                     weight      INTEGER NOT NULL DEFAULT 1,
+                    edge_type   TEXT NOT NULL DEFAULT 'mixed',
                     PRIMARY KEY (from_slug, to_slug)
                 )""")
             # Migrations for existing installs
@@ -168,6 +169,7 @@ class AuditDB:
                 "ALTER TABLE chat_sessions ADD COLUMN summary_turn_count INTEGER NOT NULL DEFAULT 0",
                 "ALTER TABLE chat_messages ADD COLUMN citations TEXT DEFAULT NULL",
                 "ALTER TABLE chat_messages ADD COLUMN gap_suggestions TEXT DEFAULT NULL",
+                "ALTER TABLE graph_edges ADD COLUMN edge_type TEXT NOT NULL DEFAULT 'mixed'",
             ):
                 try:
                     await db.execute(migration)
@@ -810,8 +812,8 @@ class AuditDB:
                 [(n["slug"], n["cluster_id"], ts) for n in nodes],
             )
             await db.executemany(
-                "INSERT INTO graph_edges (from_slug, to_slug, weight) VALUES (?,?,?)",
-                [(e["from_slug"], e["to_slug"], e["weight"]) for e in edges],
+                "INSERT INTO graph_edges (from_slug, to_slug, weight, edge_type) VALUES (?,?,?,?)",
+                [(e["from_slug"], e["to_slug"], e["weight"], e.get("edge_type", "mixed")) for e in edges],
             )
             await db.commit()
 
@@ -823,7 +825,7 @@ class AuditDB:
             nodes = [dict(r) for r in await cur.fetchall()]
             if not nodes:
                 return None
-            cur = await db.execute("SELECT from_slug, to_slug, weight FROM graph_edges")
+            cur = await db.execute("SELECT from_slug, to_slug, weight, edge_type FROM graph_edges")
             edges = [dict(r) for r in await cur.fetchall()]
         return {"nodes": nodes, "edges": edges}
 

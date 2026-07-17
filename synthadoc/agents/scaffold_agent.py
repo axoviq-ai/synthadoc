@@ -15,7 +15,7 @@ from synthadoc.cli._init import _AGENT_INSTRUCTION_BODY
 logger = logging.getLogger(__name__)
 
 SCAFFOLD_MARKER = "<!-- synthadoc:scaffold -->"
-_SCAFFOLD_RETRY_LIMIT = 2
+_SCAFFOLD_RETRY_LIMIT = 3
 _META_SLUGS = frozenset({"index", "overview", "purpose", "dashboard", "log"})
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
@@ -100,6 +100,18 @@ def _parse_scaffold_json(raw: str) -> dict | None:
         fixed_extracted = re.sub(r"}\s*\n(\s*){", r"},\n\1{", extracted)
         try:
             return _coerce_scaffold_dict(json.loads(fixed_extracted))
+        except json.JSONDecodeError:
+            pass
+    # 4. Strip trailing commas — some models emit "value," before "}" or "]"
+    def _strip_trailing_commas(s: str) -> str:
+        return re.sub(r",(\s*[}\]])", r"\1", s)
+    try:
+        return _coerce_scaffold_dict(json.loads(_strip_trailing_commas(raw)))
+    except json.JSONDecodeError:
+        pass
+    if extracted:
+        try:
+            return _coerce_scaffold_dict(json.loads(_strip_trailing_commas(extracted)))
         except json.JSONDecodeError:
             pass
     return None
@@ -400,19 +412,26 @@ class ScaffoldAgent:
             if data is not None:
                 break
 
-            # First attempt failed — ask the model to fix its own output
-            logger.warning(
-                "ScaffoldAgent: JSON parse failed on attempt %d — asking model to self-correct",
-                attempt + 1,
-            )
-            logger.debug("ScaffoldAgent: malformed raw response: %.500s", raw)
-            messages = messages + [
-                Message(role="assistant", content=resp.text),
-                Message(role="user", content=(
-                    "The JSON you returned is not valid. "
-                    "Return ONLY the corrected JSON with no additional text."
-                )),
-            ]
+            is_last = attempt + 1 == _SCAFFOLD_RETRY_LIMIT
+            if is_last:
+                logger.warning(
+                    "ScaffoldAgent: JSON parse failed on attempt %d (final) — giving up. "
+                    "Malformed response: %.2000s",
+                    attempt + 1, raw,
+                )
+            else:
+                logger.warning(
+                    "ScaffoldAgent: JSON parse failed on attempt %d — asking model to self-correct. "
+                    "Malformed response: %.500s",
+                    attempt + 1, raw,
+                )
+                messages = messages + [
+                    Message(role="assistant", content=resp.text),
+                    Message(role="user", content=(
+                        "The JSON you returned is not valid. "
+                        "Return ONLY the corrected JSON with no additional text."
+                    )),
+                ]
             last_exc = ValueError(f"ScaffoldAgent: unparseable scaffold JSON after {attempt + 1} attempt(s)")
 
         if data is None:

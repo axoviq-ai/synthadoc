@@ -623,10 +623,10 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
                     ["schedule", "run", "--op", "lint run"] + w)
     sched_lint_job_id = _extract_job_id(r_sched.stdout + r_sched.stderr)
     if sched_lint_job_id:
-        # Verify the command submitted a job — don't wait for completion.
-        # Lint was already run and verified at [19]; waiting here doubles runtime.
-        ok("schedule run — job submitted",
-           f"job_id={sched_lint_job_id[:8]}… (not waiting — lint verified at [19])")
+        # Wait for completion so the background lint job cannot race with [21]'s
+        # cascade sub-test (lint auto-archives pages with missing source files,
+        # which would cause the cascade archive to 422 "already in state archived").
+        _wait_job_terminal(sched_lint_job_id, "schedule run — lint job complete")
     else:
         warn("schedule run", "could not extract job ID from output")
 
@@ -635,6 +635,21 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
     check("lifecycle log", ["lifecycle", "log"] + w)
 
     archived_slugs = find_pages_by_status(wiki_root, "archived")
+    _pre_archived_slug: str | None = None
+    if not archived_slugs:
+        # No archived page in this wiki — archive an active one so the round-trip
+        # and cascade tests can run. We restore it to active at the end of [21].
+        _active_for_test = [s for s in find_pages_by_status(wiki_root, "active")
+                            if not s.startswith("_")]
+        if _active_for_test:
+            _candidate = _active_for_test[len(_active_for_test) // 2]
+            _r_pre = run(["lifecycle", "archive", _candidate,
+                           "--reason", "live-test pre-archive for lifecycle round-trip"] + w)
+            if _r_pre.returncode == 0:
+                archived_slugs = [_candidate]
+                _pre_archived_slug = _candidate
+                info(f"no archived pages — pre-archived '{_candidate}' for lifecycle test")
+
     if archived_slugs:
         slug = archived_slugs[0]
         info(f"lifecycle round-trip on: {slug}")
@@ -697,9 +712,15 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
             run(["lifecycle", "archive",  slug, "--reason", "live-test cascade rollback"] + w)
             ok("lifecycle cascade rollback")
 
+        # If we pre-archived a page just for this test, restore it to active
+        if _pre_archived_slug:
+            run(["lifecycle", "restore",  slug, "--reason", "live-test pre-archive restore"] + w)
+            run(["lifecycle", "activate", slug, "--reason", "live-test pre-archive restore"] + w)
+            ok("lifecycle pre-archive restore", f"'{slug}' restored to active")
+
     else:
         warn("lifecycle activate/archive/restore",
-             "no archived pages found — skipping round-trip")
+             "no archived pages found and no active pages available — skipping round-trip")
 
     # ── cache clear ───────────────────────────────────────────────────────────
     print("\n[22] cache clear")

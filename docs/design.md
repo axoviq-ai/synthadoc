@@ -2958,11 +2958,21 @@ CREATE TABLE graph_edges (
     from_slug   TEXT NOT NULL,
     to_slug     TEXT NOT NULL,
     weight      INTEGER NOT NULL DEFAULT 1,
+    edge_type   TEXT NOT NULL DEFAULT 'mixed',
     PRIMARY KEY (from_slug, to_slug)
 );
 ```
 
-Edge weight equals the number of `[[wikilink]]` references from one page to another (most pairs: 1). Cluster IDs are assigned by Louvain community detection — pages that link densely to each other end up in the same cluster.
+Edge weight is a composite signal from two sources:
+
+| Edge type | Source | Weight contribution |
+|-----------|--------|---------------------|
+| `wikilink` | `[[slug]]` occurrences in page body | +1 per occurrence |
+| `co_source` | pages compiled from the same source file (matched by hash) | +2 per shared source |
+
+Most edges are `mixed` (have both types). Pure `co_source` edges surface hidden relationships — pages compiled from the same source document are linked immediately after ingest, before any wikilinks are created. `edge_type` is stored on each edge so the web UI can render co-source edges with a different visual style.
+
+Cluster IDs are assigned by Louvain community detection — pages that link densely to each other end up in the same cluster.
 
 ### REST API
 
@@ -2979,7 +2989,7 @@ Edge weight equals the number of `[[wikilink]]` references from one page to anot
      "type": "concept", "state": "active", "cluster_id": 2}
   ],
   "edges": [
-    {"from": "quantum-error-correction", "to": "shor-algorithm", "weight": 1}
+    {"from": "quantum-error-correction", "to": "shor-algorithm", "weight": 3, "edge_type": "mixed"}
   ]
 }
 ```
@@ -2988,7 +2998,7 @@ When the graph tables are empty (first call after upgrade, or before the first l
 
 ### Web UI
 
-The **Graph** tab (alongside Chat in the top nav) renders a D3.js force-directed graph. Nodes are colored by cluster. Clicking a node opens a sidebar showing the page title, type and lifecycle state badges, cluster assignment, and an **"Ask about this →"** button that switches to the Chat tab with a pre-filled query.
+The **Graph** tab (alongside Chat in the top nav) renders a D3.js force-directed graph. Nodes are colored by cluster. Edge thickness is proportional to weight (1–4 px). Pure `co_source` edges (no wikilink) are rendered with a dashed stroke, making hidden source-based relationships visually distinct from explicit cross-links. Clicking a node opens a sidebar showing the page title, type and lifecycle state badges, cluster assignment, and an **"Ask about this →"** button that switches to the Chat tab with a pre-filled query.
 
 Controls: zoom in/out (scroll or pinch), drag nodes, filter by page type.
 
@@ -3061,6 +3071,12 @@ All three files share identical body content generated from the same template; t
 ---
 
 ## Appendix A — Release Feature Index
+
+### v1.1.0 (in progress)
+
+- **Weighted knowledge graph edges** — graph edges now carry two signals: wikilink occurrences (+1 each) and co-source connections — pages compiled from the same source file (matched by SHA-256 hash) — (+2 per shared source). `edge_type` field added to `graph_edges` table (`wikilink`, `co_source`, or `mixed`). `GET /graph` exposes `edge_type` per edge. Web UI renders edge thickness proportional to weight (1–4 px) and dashed lines for pure co-source edges. Co-source edges appear immediately after ingest — before any wikilinks — surfacing hidden relationships in the graph. Schema migrated to version 3.
+- **Multi-platform agent skill files** — `synthadoc init` now writes `CLAUDE.md`, `AGENTS.md`, and `GEMINI.md` at wiki root; all three carry the same complete CLI reference so Claude Code, Codex CLI, OpenCode, Pi, and Gemini CLI users get first-class guidance without manual setup.
+- **Session history ingestion skill** — `.jsonl` session files from Claude Code and Codex CLI are ingested as wiki pages; human turns and substantive assistant responses extracted; tool calls, thinking blocks, and sub-agent scaffolding skipped; format auto-detected; `suggested_slug` derived from session date and first user message.
 
 ### v1.0.2
 

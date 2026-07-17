@@ -108,7 +108,7 @@ RAG retrieves document chunks at query time. Synthadoc **compiles** knowledge at
 | Problem | Synthadoc approach |
 | --- | --- |
 | **Contradictions blended silently** | Ingest-time conflict detection; page flagged `status: contradicted`; auto-resolve or queue for human review |
-| **No links between related content** | `[[wikilinks]]` auto-built on every ingest pass; force-directed graph with Louvain clustering in web UI |
+| **No links between related content** | `[[wikilinks]]` auto-built on every ingest pass; weighted graph (wikilink + co-source signals) with Louvain clustering in web UI |
 | **Orphan pages never surfaced** | Lint reports unreferenced pages with ready-to-paste index entries |
 | **LLM output can be overconfident** | Adversarial second-LLM pass flags overstated claims, unsupported superlatives, and contestable facts per page |
 | **Claims lack source traceability** | `^[file:L-L]` citation on every claim; Source Viewer in Obsidian; PDF page resolution; broken-citation lint |
@@ -144,7 +144,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 
 | Capability | Synthadoc | Typical RAG | NotebookLM | Notion AI |
 | --- | --- | --- | --- | --- |
-| **[Wikilink graph + D3 visualisation](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-24--knowledge-graph)** — `[[wikilinks]]` auto-built at ingest; force-directed graph in web UI; nodes coloured by Louvain cluster; click node to query | **Yes** | No | Partial | No |
+| **[Weighted knowledge graph + D3 visualisation](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-24--knowledge-graph)** — `[[wikilinks]]` auto-built at ingest; co-source edges connect pages compiled from the same document; edge thickness reflects combined weight; dashed edges for co-source-only relationships; Louvain cluster colouring; click node to query | **Yes** | No | Partial | No |
 | **[Orphan page detection](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-10--fix-an-orphan-page)** — unreferenced pages surfaced by lint with ready-to-paste index entries | **Yes** | No | No | No |
 | **[Query-scoped routing](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-17--set-up-routingmd--scoped-search)** — ROUTING.md maps wiki branches to page slugs; queries auto-select relevant branches; new pages auto-slotted | **Yes** | No | No | No |
 | **[Candidates staging](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-18--configure-candidates-staging)** — ingest pages to a staging area first; review, promote, or discard before they enter the live wiki | **Yes** | No | No | No |
@@ -406,7 +406,7 @@ The guide covers:
 21. Use the web chat UI — streaming answers, session-aware hint chips, citations in-browser
 22. Query caching — understand how answers are cached and how to bypass with `--no-cache`
 23. Backup and restore — create a portable wiki zip, restore on a different machine
-24. Knowledge graph — build the wikilink graph, explore clusters in the web UI Graph tab, click a node to query it
+24. Knowledge graph — weighted edges (wikilink + co-source signals), explore clusters in the web UI Graph tab, click a node to query it
 
 ---
 
