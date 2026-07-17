@@ -73,7 +73,11 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: strin
         const sim = d3.forceSimulation(filtered as d3.SimulationNodeDatum[])
             .force("link", d3.forceLink(d3Links).id((d: any) => d.slug).distance(80))
             .force("charge", d3.forceManyBody().strength(-120))
-            .force("center", d3.forceCenter(cx, cy));
+            .force("center", d3.forceCenter(cx, cy))
+            // Gentle gravity prevents weakly-connected nodes from drifting off-screen
+            .force("x", d3.forceX(cx).strength(0.06))
+            .force("y", d3.forceY(cy).strength(0.06))
+            .alphaDecay(0.05);
 
         const link = g.append("g").selectAll("line")
             .data(d3Links).join("line")
@@ -106,31 +110,35 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: strin
                 .attr("pointer-events", "none")
             : null;
 
+        // Fit all nodes into the viewport. Clips 1 outlier per axis (≥8 nodes) so
+        // one stray weakly-connected node can't force the whole graph to zoom out.
+        const applyFit = () => {
+            const pad = 56;
+            const allX = (filtered as any[]).map((d: any) => d.x as number).sort((a, b) => a - b);
+            const allY = (filtered as any[]).map((d: any) => d.y as number).sort((a, b) => a - b);
+            if (!allX.length) return;
+            const clip = allX.length > 8 ? 1 : 0;
+            const x0 = allX[clip], x1 = allX[allX.length - 1 - clip];
+            const y0 = allY[clip], y1 = allY[allY.length - 1 - clip];
+            const bw = Math.max(x1 - x0, 1), bh = Math.max(y1 - y0, 1);
+            const scale = Math.min((width - pad * 2) / bw, (height - pad * 2) / bh, 2.0);
+            const tx = width / 2 - (x0 + bw / 2) * scale;
+            const ty = height / 2 - (y0 + bh / 2) * scale;
+            svg.transition().duration(500)
+                .call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+        };
+
+        let autoFitted = false;
         sim.on("tick", () => {
             link.attr("x1", (d: any) => d.source.x).attr("y1", (d: any) => d.source.y)
                 .attr("x2", (d: any) => d.target.x).attr("y2", (d: any) => d.target.y);
             node.attr("cx", (d: any) => d.x).attr("cy", (d: any) => d.y);
             if (label) label.attr("x", (d: any) => d.x).attr("y", (d: any) => d.y + 20);
+            // Fire fit when visually settled (~1s with alphaDecay 0.05), don't wait for full cooldown
+            if (!autoFitted && sim.alpha() < 0.05) { autoFitted = true; applyFit(); }
         });
 
-        // Fit all nodes into the viewport once the simulation cools; skip on subsequent drag-restarts
-        let autoFitted = false;
-        sim.on("end", () => {
-            if (autoFitted) return;
-            autoFitted = true;
-            const pad = 56;
-            const xs = (filtered as any[]).map((d: any) => d.x as number);
-            const ys = (filtered as any[]).map((d: any) => d.y as number);
-            if (!xs.length) return;
-            const x0 = Math.min(...xs), x1 = Math.max(...xs);
-            const y0 = Math.min(...ys), y1 = Math.max(...ys);
-            const bw = Math.max(x1 - x0, 1), bh = Math.max(y1 - y0, 1);
-            const scale = Math.min((width - pad * 2) / bw, (height - pad * 2) / bh, 1.8);
-            const tx = width / 2 - (x0 + bw / 2) * scale;
-            const ty = height / 2 - (y0 + bh / 2) * scale;
-            svg.transition().duration(400)
-                .call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
-        });
+        sim.on("end", () => { if (!autoFitted) { autoFitted = true; applyFit(); } });
     }, [status, nodes, edges, typeFilter]);
 
     // Highlight selected node without re-running the simulation
