@@ -9,7 +9,8 @@ const CLUSTER_COLORS = [
     "#edc948","#b07aa1","#ff9da7","#9c755f","#bab0ac",
 ];
 
-const LABEL_MAX_NODES = 50;
+const LABEL_ALWAYS_SHOW = 50;    // show labels at default zoom for small graphs
+const LABEL_ZOOM_THRESHOLD = 1.5; // show labels for larger graphs once zoomed in this much
 const LABEL_R = 22; // px from node center to label anchor
 const truncateLabel = (s: string) => s.length > 15 ? s.slice(0, 14) + "…" : s;
 
@@ -23,6 +24,8 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: strin
     const [edges, setEdges] = useState<GraphEdge[]>([]);
     const [selected, setSelected] = useState<GraphNode | null>(null);
     const [typeFilter, setTypeFilter] = useState<string>("all");
+    const zoomScaleRef = useRef(1);      // current D3 zoom k; read by highlight effect
+    const filteredCountRef = useRef(0);  // node count after filter; read by highlight effect
 
     const fetchGraph = useCallback(async () => {
         try {
@@ -57,7 +60,16 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: strin
         const { width, height } = svgRef.current.getBoundingClientRect();
         const g = svg.append("g");
 
-        const zoom = d3.zoom<SVGSVGElement, unknown>().on("zoom", e => g.attr("transform", e.transform));
+        filteredCountRef.current = filtered.length;
+        const showLabelsAt = (k: number) => filtered.length <= LABEL_ALWAYS_SHOW || k >= LABEL_ZOOM_THRESHOLD;
+
+        // label is declared here so the zoom closure can toggle its visibility
+        let label: d3.Selection<SVGTextElement, GraphNode, SVGGElement, unknown> | null = null;
+        const zoom = d3.zoom<SVGSVGElement, unknown>().on("zoom", e => {
+            g.attr("transform", e.transform);
+            zoomScaleRef.current = e.transform.k;
+            if (label) label.attr("visibility", showLabelsAt(e.transform.k) ? "visible" : "hidden");
+        });
         svg.call(zoom);
 
         // D3 forceLink requires {source, target} — our API uses {from, to}
@@ -108,21 +120,20 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: strin
             if (src && tgt) { neighborMap.get(src)!.push(tgt); neighborMap.get(tgt)!.push(src); }
         }
 
-        const label = filtered.length <= LABEL_MAX_NODES
-            ? g.append("g").selectAll<SVGTextElement, GraphNode>("text")
-                .data(filtered).join("text")
-                .attr("class", "node-label")
-                .text((d: any) => truncateLabel(d.title || d.slug))
-                .attr("font-size", "10px")
-                .attr("fill", "#94a3b8")
-                .attr("dominant-baseline", "middle")
-                // Dark halo so labels remain legible when sitting over edge lines
-                .style("paint-order", "stroke fill")
-                .attr("stroke", "rgba(5,6,14,0.85)")
-                .attr("stroke-width", "3")
-                .attr("stroke-linejoin", "round")
-                .attr("pointer-events", "none")
-            : null;
+        label = g.append("g").selectAll<SVGTextElement, GraphNode>("text")
+            .data(filtered).join("text")
+            .attr("class", "node-label")
+            .text((d: any) => truncateLabel(d.title || d.slug))
+            .attr("font-size", "10px")
+            .attr("fill", "#94a3b8")
+            .attr("dominant-baseline", "middle")
+            // Dark halo so labels remain legible when sitting over edge lines
+            .style("paint-order", "stroke fill")
+            .attr("stroke", "rgba(5,6,14,0.85)")
+            .attr("stroke-width", "3")
+            .attr("stroke-linejoin", "round")
+            .attr("pointer-events", "none")
+            .attr("visibility", showLabelsAt(1) ? "visible" : "hidden");
 
         // Fit all nodes into the viewport. Clips 1 outlier per axis (≥8 nodes) so
         // one stray weakly-connected node can't force the whole graph to zoom out.
@@ -179,8 +190,11 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: strin
             .attr("stroke", (d) => d.slug === selected?.slug ? "#facc15" : "#fff")
             .attr("stroke-width", (d) => d.slug === selected?.slug ? 3 : 1.5)
             .attr("opacity", selected ? (d) => d.slug === selected.slug ? 1 : 0.45 : 1);
+        const labelsShown = filteredCountRef.current <= LABEL_ALWAYS_SHOW || zoomScaleRef.current >= LABEL_ZOOM_THRESHOLD;
         d3.select(svgRef.current)
             .selectAll<SVGTextElement, GraphNode>("text.node-label")
+            // Always show the selected node's label even when labels are zoom-hidden
+            .attr("visibility", (d) => selected?.slug === d.slug ? "visible" : (labelsShown ? "visible" : "hidden"))
             .attr("opacity", selected ? (d) => d.slug === selected.slug ? 1 : 0.2 : 0.85);
     }, [selected, status]);
 
