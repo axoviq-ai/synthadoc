@@ -10,6 +10,10 @@ from synthadoc.agents.lint_agent import LintAgent
 from synthadoc.storage.wiki import WikiStorage, WikiPage, SourceRef, LifecycleState
 
 
+def make_source(hash_val: str, file: str = "doc.pdf") -> SourceRef:
+    return SourceRef(file=file, hash=hash_val, size=1000, ingested="2026-01-01")
+
+
 def make_page(sources=None, content="# Test\n\nContent.", status=LifecycleState.ACTIVE):
     """Helper to create a WikiPage."""
     return WikiPage(
@@ -157,3 +161,66 @@ def test_build_graph_pipe_alias_link_resolved(tmp_path):
     nodes, edges = agent._build_graph()
     edge_pairs = {(e["from_slug"], e["to_slug"]) for e in edges}
     assert ("a", "b") in edge_pairs, "pipe-alias link should produce edge a→b"
+
+
+def test_build_graph_wikilink_edge_type(tmp_path):
+    """Pure wikilink edges get edge_type='wikilink'."""
+    pages = {
+        "a": make_page(content="see [[b]]"),
+        "b": make_page(content=""),
+    }
+    store = make_store(tmp_path, pages)
+    agent = LintAgent(None, store, mock_log_writer())
+    _, edges = agent._build_graph()
+    ab = next(e for e in edges if e["from_slug"] == "a" and e["to_slug"] == "b")
+    assert ab["edge_type"] == "wikilink"
+
+
+def test_build_graph_co_source_edge(tmp_path):
+    """Pages sharing a source hash produce a co_source edge with +2 weight per shared hash."""
+    src = make_source("sha256abc")
+    pages = {
+        "a": make_page(content="no links", sources=[src]),
+        "b": make_page(content="no links", sources=[src]),
+    }
+    store = make_store(tmp_path, pages)
+    agent = LintAgent(None, store, mock_log_writer())
+    _, edges = agent._build_graph()
+    # Bidirectional co-source edges
+    ab = next((e for e in edges if e["from_slug"] == "a" and e["to_slug"] == "b"), None)
+    ba = next((e for e in edges if e["from_slug"] == "b" and e["to_slug"] == "a"), None)
+    assert ab is not None, "co-source edge a→b expected"
+    assert ba is not None, "co-source edge b→a expected"
+    assert ab["weight"] == 2  # 1 shared source × 2
+    assert ab["edge_type"] == "co_source"
+    assert ba["edge_type"] == "co_source"
+
+
+def test_build_graph_mixed_edge(tmp_path):
+    """Wikilink + shared source hash produces edge_type='mixed' with accumulated weight."""
+    src = make_source("sha256xyz")
+    pages = {
+        "a": make_page(content="links to [[b]]", sources=[src]),
+        "b": make_page(content="", sources=[src]),
+    }
+    store = make_store(tmp_path, pages)
+    agent = LintAgent(None, store, mock_log_writer())
+    _, edges = agent._build_graph()
+    ab = next(e for e in edges if e["from_slug"] == "a" and e["to_slug"] == "b")
+    # wikilink weight=1, co-source weight=2 → total 3
+    assert ab["weight"] == 3
+    assert ab["edge_type"] == "mixed"
+
+
+def test_build_graph_co_source_two_shared(tmp_path):
+    """Two shared source hashes contribute +4 to co-source weight."""
+    pages = {
+        "x": make_page(content="", sources=[make_source("h1", "a.pdf"), make_source("h2", "b.pdf")]),
+        "y": make_page(content="", sources=[make_source("h1", "a.pdf"), make_source("h2", "b.pdf")]),
+    }
+    store = make_store(tmp_path, pages)
+    agent = LintAgent(None, store, mock_log_writer())
+    _, edges = agent._build_graph()
+    xy = next(e for e in edges if e["from_slug"] == "x" and e["to_slug"] == "y")
+    assert xy["weight"] == 4  # 2 shared sources × 2
+    assert xy["edge_type"] == "co_source"

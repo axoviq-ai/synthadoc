@@ -421,7 +421,10 @@ class LintAgent:
 
         all_slugs = set(slugs)
         edge_counts: dict[tuple[str, str], int] = defaultdict(int)
+        wikilink_pairs: set[tuple[str, str]] = set()
+        source_map: dict[str, set[str]] = {}
 
+        # Pass 1: wikilink edges + source hash extraction in one read per page
         for slug in slugs:
             page = self._store.read_page(slug)
             if page is None:
@@ -430,6 +433,24 @@ class LintAgent:
                 target = match.group(1).split("|")[0].strip()
                 if target and target != slug and target in all_slugs:
                     edge_counts[(slug, target)] += 1
+                    wikilink_pairs.add((slug, target))
+            if page.sources:
+                hashes = {s.hash for s in page.sources if s.hash}
+                if hashes:
+                    source_map[slug] = hashes
+
+        # Pass 2: co-source edges — pages sharing a source hash get +2 per shared source
+        cosource_pairs: set[tuple[str, str]] = set()
+        slug_list = list(source_map)
+        for i, s1 in enumerate(slug_list):
+            for s2 in slug_list[i + 1:]:
+                shared = source_map[s1] & source_map[s2]
+                if shared:
+                    increment = len(shared) * 2
+                    edge_counts[(s1, s2)] += increment
+                    edge_counts[(s2, s1)] += increment
+                    cosource_pairs.add((s1, s2))
+                    cosource_pairs.add((s2, s1))
 
         # Use DiGraph to preserve link direction (a→b and b→a are distinct edges)
         G = nx.DiGraph()
@@ -447,10 +468,17 @@ class LintAgent:
             {"slug": slug, "cluster_id": int(partition.get(slug, 0))}
             for slug in slugs
         ]
-        edges = [
-            {"from_slug": src, "to_slug": dst, "weight": data["weight"]}
-            for src, dst, data in G.edges(data=True)
-        ]
+        edges = []
+        for src, dst, data in G.edges(data=True):
+            has_wikilink = (src, dst) in wikilink_pairs
+            has_cosource = (src, dst) in cosource_pairs
+            if has_wikilink and has_cosource:
+                edge_type = "mixed"
+            elif has_cosource:
+                edge_type = "co_source"
+            else:
+                edge_type = "wikilink"
+            edges.append({"from_slug": src, "to_slug": dst, "weight": data["weight"], "edge_type": edge_type})
         return nodes, edges
 
     async def _adversarial_single(self, slug: str, content: str) -> tuple[list[dict], int]:

@@ -876,7 +876,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             "cluster_count": clusters,
             "nodes": enriched_nodes,
             "edges": [
-                {"from": e["from_slug"], "to": e["to_slug"], "weight": e["weight"]}
+                {"from": e["from_slug"], "to": e["to_slug"], "weight": e["weight"], "edge_type": e.get("edge_type", "mixed")}
                 for e in graph_data["edges"]
             ],
         }, headers=_NO_STORE)

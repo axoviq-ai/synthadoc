@@ -10,7 +10,7 @@ const CLUSTER_COLORS = [
 ];
 
 interface GraphNode { slug: string; title: string; type: string; state: string; cluster_id: number; }
-interface GraphEdge { from: string; to: string; weight: number; }
+interface GraphEdge { from: string; to: string; weight: number; edge_type: string; }
 
 export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: string[]) => void }) {
     const svgRef = useRef<SVGSVGElement>(null);
@@ -56,7 +56,7 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: strin
         svg.call(d3.zoom<SVGSVGElement, unknown>().on("zoom", e => g.attr("transform", e.transform)));
 
         // D3 forceLink requires {source, target} — our API uses {from, to}
-        const d3Links = filteredEdges.map(e => ({ source: e.from, target: e.to, weight: e.weight }));
+        const d3Links = filteredEdges.map(e => ({ source: e.from, target: e.to, weight: e.weight, edge_type: e.edge_type }));
 
         const sim = d3.forceSimulation(filtered as d3.SimulationNodeDatum[])
             .force("link", d3.forceLink(d3Links).id((d: any) => d.slug).distance(80))
@@ -65,7 +65,9 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: strin
 
         const link = g.append("g").selectAll("line")
             .data(d3Links).join("line")
-            .attr("stroke", "rgba(160,170,220,0.35)").attr("stroke-width", (d: any) => Math.sqrt(d.weight));
+            .attr("stroke", "rgba(160,170,220,0.35)")
+            .attr("stroke-width", (d: any) => Math.min(4, Math.max(1, Math.sqrt(d.weight))))
+            .attr("stroke-dasharray", (d: any) => d.edge_type === "co_source" ? "5,3" : null);
 
         const node = g.append("g").selectAll("circle")
             .data(filtered).join("circle")
