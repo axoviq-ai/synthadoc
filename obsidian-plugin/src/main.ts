@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Paul Chen / axoviq.com
 import { App, FileSystemAdapter, MarkdownRenderer, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile } from "obsidian";
 import { api, setBase, getBase } from "./api";
+import { GraphModal } from "./graph-modal";
 
 const SUPPORTED_EXTENSIONS = new Set([
     "md", "txt", "pdf", "docx", "xlsx", "csv",
@@ -127,6 +128,12 @@ export default class SynthadocPlugin extends Plugin {
             id: "synthadoc-export-wiki",
             name: "Export Wiki",
             callback: () => new ExportModal(this.app).open(),
+        });
+
+        this.addCommand({
+            id: "synthadoc-graph",
+            name: "Graph: show knowledge graph",
+            callback: () => new GraphModal(this.app, this.settings.serverUrl).open(),
         });
 
         this.addRibbonIcon("book-open", "Synthadoc status", async () => {
