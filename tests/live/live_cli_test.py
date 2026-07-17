@@ -623,10 +623,10 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
                     ["schedule", "run", "--op", "lint run"] + w)
     sched_lint_job_id = _extract_job_id(r_sched.stdout + r_sched.stderr)
     if sched_lint_job_id:
-        # Verify the command submitted a job — don't wait for completion.
-        # Lint was already run and verified at [19]; waiting here doubles runtime.
-        ok("schedule run — job submitted",
-           f"job_id={sched_lint_job_id[:8]}… (not waiting — lint verified at [19])")
+        # Wait for completion so the background lint job cannot race with [21]'s
+        # cascade sub-test (lint auto-archives pages with missing source files,
+        # which would cause the cascade archive to 422 "already in state archived").
+        _wait_job_terminal(sched_lint_job_id, "schedule run — lint job complete")
     else:
         warn("schedule run", "could not extract job ID from output")
 
