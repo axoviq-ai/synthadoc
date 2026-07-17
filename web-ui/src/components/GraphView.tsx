@@ -52,19 +52,28 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: strin
 
         const svg = d3.select(svgRef.current);
         svg.selectAll("*").remove();
-        const width = svgRef.current.clientWidth;
-        const height = svgRef.current.clientHeight;
+        // getBoundingClientRect gives the true rendered size; clientWidth can be 0 for CSS-sized SVGs
+        const { width, height } = svgRef.current.getBoundingClientRect();
         const g = svg.append("g");
 
-        svg.call(d3.zoom<SVGSVGElement, unknown>().on("zoom", e => g.attr("transform", e.transform)));
+        const zoom = d3.zoom<SVGSVGElement, unknown>().on("zoom", e => g.attr("transform", e.transform));
+        svg.call(zoom);
 
         // D3 forceLink requires {source, target} — our API uses {from, to}
         const d3Links = filteredEdges.map(e => ({ source: e.from, target: e.to, weight: e.weight, edge_type: e.edge_type }));
 
+        // Seed positions in a circle so the simulation starts spread across the viewport
+        const cx = width / 2, cy = height / 2;
+        const initR = Math.min(width, height) * 0.35;
+        filtered.forEach((n: any, i) => {
+            n.x = cx + initR * Math.cos((2 * Math.PI * i) / filtered.length);
+            n.y = cy + initR * Math.sin((2 * Math.PI * i) / filtered.length);
+        });
+
         const sim = d3.forceSimulation(filtered as d3.SimulationNodeDatum[])
             .force("link", d3.forceLink(d3Links).id((d: any) => d.slug).distance(80))
             .force("charge", d3.forceManyBody().strength(-120))
-            .force("center", d3.forceCenter(width / 2, height / 2));
+            .force("center", d3.forceCenter(cx, cy));
 
         const link = g.append("g").selectAll("line")
             .data(d3Links).join("line")
@@ -102,6 +111,25 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: strin
                 .attr("x2", (d: any) => d.target.x).attr("y2", (d: any) => d.target.y);
             node.attr("cx", (d: any) => d.x).attr("cy", (d: any) => d.y);
             if (label) label.attr("x", (d: any) => d.x).attr("y", (d: any) => d.y + 20);
+        });
+
+        // Fit all nodes into the viewport once the simulation cools; skip on subsequent drag-restarts
+        let autoFitted = false;
+        sim.on("end", () => {
+            if (autoFitted) return;
+            autoFitted = true;
+            const pad = 56;
+            const xs = (filtered as any[]).map((d: any) => d.x as number);
+            const ys = (filtered as any[]).map((d: any) => d.y as number);
+            if (!xs.length) return;
+            const x0 = Math.min(...xs), x1 = Math.max(...xs);
+            const y0 = Math.min(...ys), y1 = Math.max(...ys);
+            const bw = Math.max(x1 - x0, 1), bh = Math.max(y1 - y0, 1);
+            const scale = Math.min((width - pad * 2) / bw, (height - pad * 2) / bh, 1.8);
+            const tx = width / 2 - (x0 + bw / 2) * scale;
+            const ty = height / 2 - (y0 + bh / 2) * scale;
+            svg.transition().duration(400)
+                .call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
         });
     }, [status, nodes, edges, typeFilter]);
 
