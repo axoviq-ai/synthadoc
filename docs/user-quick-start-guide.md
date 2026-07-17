@@ -2285,6 +2285,20 @@ Click any node to open its detail panel:
 
 Click **Ask about this →** to jump to the Chat tab with a pre-filled query about that page. The answer is drawn from the wiki and citations appear inline.
 
+### Open the graph panel in Obsidian
+
+You can explore the same knowledge graph without leaving Obsidian. Open the command palette (`Ctrl/Cmd+P`) and run **"Graph: show knowledge graph"**.
+
+The panel shows all wiki pages as force-directed nodes coloured by cluster. Use the **type filter** dropdown to narrow to a specific knowledge type (concept, person, event…). If your wiki has more than 300 pages, the 300 most-connected are shown with an explanatory banner — use the type filter to narrow the view.
+
+**Interactions:**
+- **Hover** a node — tooltip shows title, slug, type, state, cluster, and connection count.
+- **Click** a node — opens the wiki page in the current pane; the node is highlighted gold.
+- **Drag** a node — re-pins it to a new position.
+- **Scroll** to zoom in/out; **drag the background** to pan.
+
+Edge thickness encodes connection strength (thicker = more wikilinks + shared sources). Dashed edges are co-source relationships — pages compiled from the same source document.
+
 ---
 
 **Large sources:** Synthadoc applies a default character limit of 32,000 characters per source before the LLM call. Sources that exceed this limit are truncated; the compiled page records `truncated: true` in its `sources:` frontmatter and `synthadoc lint` emits a warning with a suggested override command. To raise the limit for a single ingest:
