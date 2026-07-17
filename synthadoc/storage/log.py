@@ -158,6 +158,7 @@ class AuditDB:
                     from_slug   TEXT NOT NULL,
                     to_slug     TEXT NOT NULL,
                     weight      INTEGER NOT NULL DEFAULT 1,
+                    edge_type   TEXT NOT NULL DEFAULT 'mixed',
                     PRIMARY KEY (from_slug, to_slug)
                 )""")
             # Migrations for existing installs

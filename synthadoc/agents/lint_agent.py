@@ -410,10 +410,13 @@ class LintAgent:
         return warnings
 
     def _build_graph(self) -> tuple[list[dict], list[dict]]:
-        """Extract wikilink graph from all pages and run Louvain clustering.
+        """Extract weighted graph from all pages and run Louvain clustering.
 
         Returns (nodes, edges) where each node has {slug, cluster_id} and each
-        edge has {from_slug, to_slug, weight}.  Self-links are ignored.
+        edge has {from_slug, to_slug, weight, edge_type}.  Self-links are
+        ignored.  Edge weight combines wikilink occurrences (+1 each) and
+        co-source connections (+2 per shared source hash).  edge_type is one
+        of 'wikilink', 'co_source', or 'mixed'.
         """
         slugs = self._store.list_pages()
         if not slugs:
