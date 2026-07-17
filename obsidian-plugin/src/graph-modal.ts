@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 William Johnason / axoviq.com
 import { App, Modal } from "obsidian";
+import { api } from "./api";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const CLUSTER_COLORS = [
@@ -180,9 +181,396 @@ export function computeLabelPlacement(node: GNode, neighbors: GNode[]): LabelPla
     return { lx: node.x + ndx * LABEL_R, ly: node.y + ndy * LABEL_R, anchor };
 }
 
-// ── GraphModal placeholder (implemented in Task 3) ───────────────────────────
+// ── GraphModal ────────────────────────────────────────────────────────────────
 export class GraphModal extends Modal {
-    constructor(app: App, _serverUrl: string) { super(app); }
-    onOpen() {}
-    onClose() { this.contentEl.empty(); }
+    private _serverUrl: string;
+    private _raf: number | null = null;
+    private _closed = false;
+
+    constructor(app: App, serverUrl: string) {
+        super(app);
+        this._serverUrl = serverUrl;
+    }
+
+    onOpen() {
+        this._closed = false;
+        const { contentEl, modalEl } = this;
+        contentEl.empty();
+        contentEl.style.cssText = "display:flex;flex-direction:column;height:100%;overflow:hidden;padding:0;";
+        modalEl.style.width = "clamp(800px, 80vw, 1400px)";
+        modalEl.style.height = "clamp(600px, 80vh, 1000px)";
+
+        // ── Header ──────────────────────────────────────────────────────────
+        const header = contentEl.createDiv();
+        header.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 14px;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,0.08);";
+        header.createEl("span", { text: "Knowledge Graph" })
+              .style.cssText = "font-weight:600;font-size:14px;";
+
+        const typeSelect = header.createEl("select") as HTMLSelectElement;
+        typeSelect.style.cssText = "background:var(--background-secondary);color:var(--text-normal);border:1px solid var(--background-modifier-border);border-radius:4px;padding:2px 6px;font-size:12px;";
+
+        const statsEl = header.createEl("span");
+        statsEl.style.cssText = "margin-left:auto;opacity:0.55;font-size:12px;";
+
+        // ── Canvas area ─────────────────────────────────────────────────────
+        const canvasWrap = contentEl.createDiv();
+        canvasWrap.style.cssText = "flex:1;position:relative;overflow:hidden;background:var(--background-primary);";
+
+        const canvas = canvasWrap.createEl("canvas") as HTMLCanvasElement;
+        canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;cursor:grab;";
+
+        // Node-cap banner
+        const bannerEl = canvasWrap.createEl("div");
+        bannerEl.style.cssText = [
+            "position:absolute;top:10px;left:50%;transform:translateX(-50%);",
+            "background:rgba(253,230,138,0.15);border:1px solid rgba(253,230,138,0.45);",
+            "border-radius:6px;padding:4px 14px;font-size:12px;color:#fde68a;",
+            "display:none;white-space:nowrap;",
+        ].join("");
+
+        // Hover tooltip
+        const tooltipEl = canvasWrap.createEl("div");
+        tooltipEl.style.cssText = [
+            "position:absolute;background:var(--background-secondary);",
+            "border:1px solid var(--background-modifier-border);border-radius:6px;",
+            "padding:8px 12px;font-size:12px;pointer-events:none;display:none;min-width:160px;",
+        ].join("");
+
+        // Loading message
+        const loadingEl = canvasWrap.createEl("p", { text: "Loading knowledge graph…" });
+        loadingEl.style.cssText = "position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);opacity:0.55;margin:0;";
+
+        // ── Footer — cluster legend ──────────────────────────────────────────
+        const footer = contentEl.createDiv();
+        footer.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;padding:6px 14px;flex-shrink:0;border-top:1px solid rgba(255,255,255,0.08);font-size:11px;min-height:30px;";
+
+        // ── Simulation state ─────────────────────────────────────────────────
+        let allNodes: GNode[] = [];
+        let allEdges: GEdge[] = [];
+        let currentNodes: GNode[] = [];
+        let currentEdges: GEdge[] = [];
+        let neighborMap: Map<string, GNode[]> = new Map();
+        let selectedSlug: string | null = null;
+        let hoverSlug: string | null = null;
+        let alpha = 1;
+        let scale = 1, offsetX = 0, offsetY = 0;
+
+        // ── Canvas sizing ────────────────────────────────────────────────────
+        const canvasSize = (): { w: number; h: number } => {
+            const r = canvas.getBoundingClientRect();
+            return { w: r.width || 800, h: r.height || 600 };
+        };
+
+        const resizeCanvas = () => {
+            const { w, h } = canvasSize();
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = Math.round(w * dpr);
+            canvas.height = Math.round(h * dpr);
+        };
+
+        // ── Draw ─────────────────────────────────────────────────────────────
+        const draw = () => {
+            resizeCanvas();
+            const { w, h } = canvasSize();
+            const dpr = window.devicePixelRatio || 1;
+            const ctx = canvas.getContext("2d");
+            if (!ctx) return;
+            ctx.save();
+            ctx.scale(dpr, dpr);
+            ctx.clearRect(0, 0, w, h);
+            ctx.save();
+            ctx.translate(offsetX, offsetY);
+            ctx.scale(scale, scale);
+
+            // Edges
+            const slugMap = new Map(currentNodes.map(n => [n.slug, n]));
+            for (const e of currentEdges) {
+                const s = slugMap.get(e.from), t = slugMap.get(e.to);
+                if (!s || !t) continue;
+                ctx.beginPath();
+                ctx.moveTo(s.x, s.y);
+                ctx.lineTo(t.x, t.y);
+                ctx.strokeStyle = "rgba(160,170,220,0.35)";
+                ctx.lineWidth = Math.min(4, Math.max(1, Math.sqrt(e.weight)));
+                ctx.setLineDash(e.edge_type === "co_source" ? [5, 3] : []);
+                ctx.stroke();
+            }
+            ctx.setLineDash([]);
+
+            const showLabels = currentNodes.length <= LABEL_ALWAYS_SHOW || scale >= LABEL_ZOOM_THRESHOLD;
+
+            // Nodes + labels
+            for (const n of currentNodes) {
+                const isSel = n.slug === selectedSlug;
+                const isHov = n.slug === hoverSlug;
+                const dim = selectedSlug !== null && !isSel;
+                const r = isSel ? NODE_R_SEL : NODE_R;
+                const color = CLUSTER_COLORS[n.cluster_id % CLUSTER_COLORS.length];
+
+                ctx.globalAlpha = dim ? 0.45 : 1;
+                ctx.beginPath();
+                ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.strokeStyle = isSel ? "#facc15" : "#fff";
+                ctx.lineWidth = isSel ? 3 : 1.5;
+                ctx.stroke();
+
+                if (isSel || isHov || showLabels) {
+                    const lp = computeLabelPlacement(n, neighborMap.get(n.slug) || []);
+                    const label = truncateLabel(n.title || n.slug);
+                    ctx.font = "10px sans-serif";
+                    ctx.textAlign = lp.anchor;
+                    ctx.textBaseline = "middle";
+                    ctx.lineWidth = 3;
+                    ctx.lineJoin = "round";
+                    ctx.strokeStyle = "rgba(5,6,14,0.85)";
+                    ctx.globalAlpha = selectedSlug ? (isSel ? 1 : 0.2) : 0.85;
+                    ctx.strokeText(label, lp.lx, lp.ly);
+                    ctx.fillStyle = "#94a3b8";
+                    ctx.fillText(label, lp.lx, lp.ly);
+                }
+                ctx.globalAlpha = 1;
+            }
+            ctx.restore();
+            ctx.restore();
+        };
+
+        // ── Animation loop ───────────────────────────────────────────────────
+        const loop = () => {
+            if (this._closed) return;
+            if (alpha > 0.01) {
+                const { w, h } = canvasSize();
+                verletTick(currentNodes, currentEdges, w / 2, h / 2, alpha);
+                alpha *= 0.95;
+            }
+            draw();
+            this._raf = requestAnimationFrame(loop);
+        };
+
+        // ── Helpers ──────────────────────────────────────────────────────────
+        const buildNeighborMap = () => {
+            neighborMap = new Map(currentNodes.map(n => [n.slug, []]));
+            const sm = new Map(currentNodes.map(n => [n.slug, n]));
+            for (const e of currentEdges) {
+                const s = sm.get(e.from), t = sm.get(e.to);
+                if (s && t) { neighborMap.get(e.from)!.push(t); neighborMap.get(e.to)!.push(s); }
+            }
+        };
+
+        const applyFilter = (type: string) => {
+            const result = filterAndCap(allNodes, allEdges, type, NODE_CAP);
+            currentNodes = result.nodes;
+            currentEdges = result.edges;
+            selectedSlug = null;
+            hoverSlug = null;
+
+            // Seed positions in circle
+            const { w, h } = canvasSize();
+            const cx = w / 2, cy = h / 2;
+            const initR = Math.min(w, h) * 0.35;
+            currentNodes.forEach((n, i) => {
+                n.x = cx + initR * Math.cos((2 * Math.PI * i) / (currentNodes.length || 1));
+                n.y = cy + initR * Math.sin((2 * Math.PI * i) / (currentNodes.length || 1));
+                n.vx = 0; n.vy = 0; n.fx = null; n.fy = null;
+            });
+
+            buildNeighborMap();
+
+            // 200 offline ticks before first paint
+            for (let i = 0; i < 200; i++) {
+                verletTick(currentNodes, currentEdges, cx, cy, 1 - i / 200);
+            }
+
+            // Auto-fit
+            const fit = computeAutoFit(currentNodes, w, h);
+            scale = fit.scale; offsetX = fit.tx; offsetY = fit.ty;
+
+            alpha = 0.3; // restart live animation gently
+
+            // Banner
+            if (result.capped) {
+                bannerEl.textContent = type === "all"
+                    ? `Your wiki has ${result.originalCount} pages — showing the ${NODE_CAP} most connected. Select a type to narrow the view.`
+                    : `Filtered to '${type}': ${result.originalCount} pages found — showing the ${NODE_CAP} most connected.`;
+                bannerEl.style.display = "block";
+            } else {
+                bannerEl.style.display = "none";
+            }
+
+            statsEl.textContent = `${currentNodes.length} nodes · ${currentEdges.length} edges`;
+
+            // Cluster legend
+            footer.empty();
+            const clusters = [...new Set(currentNodes.map(n => n.cluster_id))].sort((a, b) => a - b);
+            for (const cid of clusters) {
+                const item = footer.createDiv();
+                item.style.cssText = "display:flex;align-items:center;gap:4px;opacity:0.7;";
+                const dot = item.createEl("span");
+                dot.style.cssText = `width:9px;height:9px;border-radius:50%;background:${CLUSTER_COLORS[cid % CLUSTER_COLORS.length]};flex-shrink:0;`;
+                item.createEl("span", { text: `Cluster ${cid}` });
+            }
+        };
+
+        // ── Hit test ─────────────────────────────────────────────────────────
+        const hitNode = (clientX: number, clientY: number): GNode | null => {
+            const rect = canvas.getBoundingClientRect();
+            const cx = (clientX - rect.left - offsetX) / scale;
+            const cy = (clientY - rect.top  - offsetY) / scale;
+            const hitR = 12 / scale;
+            let best: GNode | null = null, bestD = hitR;
+            for (const n of currentNodes) {
+                const d = Math.sqrt((n.x - cx) ** 2 + (n.y - cy) ** 2);
+                if (d < bestD) { bestD = d; best = n; }
+            }
+            return best;
+        };
+
+        // ── Tooltip ──────────────────────────────────────────────────────────
+        const showTooltip = (node: GNode, clientX: number, clientY: number) => {
+            const tt = assembleTooltip(node, currentEdges);
+            tooltipEl.innerHTML = `
+<div style="font-weight:600;margin-bottom:4px;white-space:nowrap;">${tt.title}</div>
+<div style="opacity:0.6;font-size:11px;margin-bottom:6px;">${tt.slug}</div>
+<table style="border-collapse:collapse;width:100%;">
+  <tr><td style="opacity:0.65;padding-right:12px;">Type</td><td>${tt.type}</td></tr>
+  <tr><td style="opacity:0.65;padding-right:12px;">State</td><td>${tt.state}</td></tr>
+  <tr><td style="opacity:0.65;padding-right:12px;">Cluster</td><td>${tt.cluster_id}</td></tr>
+  <tr><td style="opacity:0.65;padding-right:12px;">Connections</td><td>${tt.connections}</td></tr>
+</table>`;
+            const rect = canvas.getBoundingClientRect();
+            tooltipEl.style.display = "block";
+            let tx = clientX - rect.left + 14;
+            let ty = clientY - rect.top - 10;
+            const tw = tooltipEl.offsetWidth || 180, th = tooltipEl.offsetHeight || 100;
+            if (tx + tw > rect.width - 6) tx = clientX - rect.left - tw - 14;
+            if (ty + th > rect.height - 6) ty = rect.height - th - 6;
+            tooltipEl.style.left = `${tx}px`;
+            tooltipEl.style.top  = `${ty}px`;
+        };
+
+        // ── Pointer / scroll events ──────────────────────────────────────────
+        canvas.addEventListener("wheel", (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+            const prev = scale;
+            scale = Math.max(0.2, Math.min(4.0, scale * (e.deltaY < 0 ? 1.1 : 0.9)));
+            const ratio = scale / prev;
+            offsetX = mx - ratio * (mx - offsetX);
+            offsetY = my - ratio * (my - offsetY);
+        }, { passive: false });
+
+        let dragState: {
+            type: "pan" | "node";
+            startClientX: number; startClientY: number;
+            node?: GNode;
+        } | null = null;
+
+        canvas.addEventListener("pointerdown", (e) => {
+            const node = hitNode(e.clientX, e.clientY);
+            if (node) {
+                dragState = { type: "node", startClientX: e.clientX, startClientY: e.clientY, node };
+                node.fx = node.x; node.fy = node.y;
+                alpha = Math.max(alpha, 0.3);
+                canvas.style.cursor = "grabbing";
+            } else {
+                dragState = { type: "pan", startClientX: e.clientX, startClientY: e.clientY };
+                canvas.style.cursor = "grabbing";
+            }
+            canvas.setPointerCapture(e.pointerId);
+        });
+
+        canvas.addEventListener("pointermove", (e) => {
+            // Hover tooltip
+            const hov = hitNode(e.clientX, e.clientY);
+            hoverSlug = hov?.slug ?? null;
+            if (hov) {
+                showTooltip(hov, e.clientX, e.clientY);
+                canvas.style.cursor = dragState ? "grabbing" : "pointer";
+            } else {
+                tooltipEl.style.display = "none";
+                canvas.style.cursor = dragState?.type === "pan" ? "grabbing" : "grab";
+            }
+
+            if (!dragState) return;
+            if (dragState.type === "pan") {
+                offsetX += e.clientX - dragState.startClientX;
+                offsetY += e.clientY - dragState.startClientY;
+                dragState.startClientX = e.clientX;
+                dragState.startClientY = e.clientY;
+            } else if (dragState.node) {
+                const rect = canvas.getBoundingClientRect();
+                dragState.node.fx = (e.clientX - rect.left - offsetX) / scale;
+                dragState.node.fy = (e.clientY - rect.top  - offsetY) / scale;
+                alpha = Math.max(alpha, 0.1);
+            }
+        });
+
+        canvas.addEventListener("pointerup", (e) => {
+            if (dragState?.type === "node" && dragState.node) {
+                const dx = e.clientX - dragState.startClientX;
+                const dy = e.clientY - dragState.startClientY;
+                if (Math.sqrt(dx * dx + dy * dy) < 5) {
+                    // Click — select/deselect and open page
+                    const slug = dragState.node.slug;
+                    if (slug === selectedSlug) {
+                        selectedSlug = null;
+                    } else {
+                        selectedSlug = slug;
+                        this.app.workspace.openLinkText(slug, "");
+                    }
+                }
+                dragState.node.fx = null;
+                dragState.node.fy = null;
+            }
+            canvas.style.cursor = "grab";
+            dragState = null;
+        });
+
+        // ── Type filter ──────────────────────────────────────────────────────
+        typeSelect.addEventListener("change", () => applyFilter(typeSelect.value));
+
+        // ── Fetch and init ────────────────────────────────────────────────────
+        (api as any).graph().then((data: any) => {
+            if (this._closed) return;
+            loadingEl.remove();
+
+            if (data.status === "computing") {
+                const msg = canvasWrap.createEl("p", { text: "Graph is still being computed — open this panel again in a moment." });
+                msg.style.cssText = "position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);opacity:0.55;margin:0;text-align:center;";
+                return;
+            }
+
+            allNodes = (data.nodes as any[]).map((n: any): GNode => ({
+                slug: n.slug, title: n.title || n.slug, type: n.type || "concept",
+                state: n.state || "active", cluster_id: n.cluster_id ?? 0,
+                x: 0, y: 0, vx: 0, vy: 0, fx: null, fy: null,
+            }));
+            allEdges = (data.edges as any[]).map((e: any): GEdge => ({
+                from: e.from, to: e.to, weight: e.weight ?? 1, edge_type: e.edge_type || "wikilink",
+            }));
+
+            // Build type dropdown
+            const types = ["all", ...Array.from(new Set(allNodes.map(n => n.type))).sort()];
+            for (const t of types) {
+                const opt = typeSelect.createEl("option", { value: t });
+                opt.text = t === "all" ? "All types" : t;
+                if (t === "all") opt.selected = true;
+            }
+
+            applyFilter("all");
+            loop();
+        }).catch(() => {
+            if (!this._closed) {
+                loadingEl.textContent = "Could not load graph — is the server running?";
+            }
+        });
+    }
+
+    onClose() {
+        this._closed = true;
+        if (this._raf !== null) { cancelAnimationFrame(this._raf); this._raf = null; }
+        this.contentEl.empty();
+    }
 }
