@@ -2229,7 +2229,12 @@ synthadoc cache clear -w history-of-computing
 
 ## Step 24 — Knowledge Graph
 
-The knowledge graph visualises how your wiki pages connect through `[[wikilinks]]`. Synthadoc builds it automatically during lint and detects knowledge clusters using the Louvain algorithm — pages that reference each other frequently appear in the same colour group.
+The knowledge graph visualises how your wiki pages connect. Synthadoc builds it automatically during lint using two signals:
+
+- **Wikilink edges** — drawn when one page contains `[[another-page]]`. Each occurrence adds +1 to the edge weight.
+- **Co-source edges** — drawn when two pages were compiled from the same source file (matched by content hash). Each shared source adds +2 to the edge weight. These edges appear immediately after ingest, even before any wikilinks exist.
+
+Edge thickness reflects total weight (thicker = stronger relationship). Dashed edges are pure co-source connections — pages related by origin but not yet cross-linked. Solid edges include at least one wikilink. Louvain cluster detection colours pages that are densely connected in the same group.
 
 ### Build the graph
 
@@ -2256,7 +2261,7 @@ Lint prints a summary line when the graph is built:
 2. Open `http://localhost:7070/app` in your browser.
 3. Click the **Graph** tab in the top navigation bar.
 
-The force-directed graph appears: nodes are wiki pages, edges are `[[wikilinks]]`, and node colours represent detected knowledge clusters.
+The force-directed graph appears: nodes are wiki pages, edge thickness reflects relationship strength, dashed edges are co-source connections, and node colours represent detected knowledge clusters.
 
 > On first load, the server may need a moment to hydrate the graph from the database. A brief spinner shows while it loads — the tab switches to the graph automatically when ready.
 
