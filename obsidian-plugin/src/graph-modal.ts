@@ -183,17 +183,17 @@ export function computeLabelPlacement(node: GNode, neighbors: GNode[]): LabelPla
 
 // ── GraphModal ────────────────────────────────────────────────────────────────
 export class GraphModal extends Modal {
-    private _serverUrl: string;
     private _raf: number | null = null;
     private _closed = false;
+    private _abort: AbortController | null = null;
 
-    constructor(app: App, serverUrl: string) {
+    constructor(app: App, _serverUrl: string) {
         super(app);
-        this._serverUrl = serverUrl;
     }
 
     onOpen() {
         this._closed = false;
+        this._abort = new AbortController();
         const { contentEl, modalEl } = this;
         contentEl.empty();
         contentEl.style.cssText = "display:flex;flex-direction:column;height:100%;overflow:hidden;padding:0;";
@@ -261,11 +261,15 @@ export class GraphModal extends Modal {
             return { w: r.width || 800, h: r.height || 600 };
         };
 
+        let _lastCanvasW = 0, _lastCanvasH = 0;
         const resizeCanvas = () => {
             const { w, h } = canvasSize();
             const dpr = window.devicePixelRatio || 1;
-            canvas.width = Math.round(w * dpr);
-            canvas.height = Math.round(h * dpr);
+            const pw = Math.round(w * dpr), ph = Math.round(h * dpr);
+            if (pw !== _lastCanvasW || ph !== _lastCanvasH) {
+                canvas.width = pw; canvas.height = ph;
+                _lastCanvasW = pw; _lastCanvasH = ph;
+            }
         };
 
         // ── Draw ─────────────────────────────────────────────────────────────
@@ -343,9 +347,17 @@ export class GraphModal extends Modal {
                 const { w, h } = canvasSize();
                 verletTick(currentNodes, currentEdges, w / 2, h / 2, alpha);
                 alpha *= 0.95;
+                draw();
+                this._raf = requestAnimationFrame(loop);
+            } else {
+                draw();
+                this._raf = null; // settled — stop the loop
             }
-            draw();
-            this._raf = requestAnimationFrame(loop);
+        };
+        const startLoop = () => {
+            if (this._raf === null && !this._closed) {
+                this._raf = requestAnimationFrame(loop);
+            }
         };
 
         // ── Helpers ──────────────────────────────────────────────────────────
@@ -429,15 +441,25 @@ export class GraphModal extends Modal {
         // ── Tooltip ──────────────────────────────────────────────────────────
         const showTooltip = (node: GNode, clientX: number, clientY: number) => {
             const tt = assembleTooltip(node, currentEdges);
-            tooltipEl.innerHTML = `
-<div style="font-weight:600;margin-bottom:4px;white-space:nowrap;">${tt.title}</div>
-<div style="opacity:0.6;font-size:11px;margin-bottom:6px;">${tt.slug}</div>
-<table style="border-collapse:collapse;width:100%;">
-  <tr><td style="opacity:0.65;padding-right:12px;">Type</td><td>${tt.type}</td></tr>
-  <tr><td style="opacity:0.65;padding-right:12px;">State</td><td>${tt.state}</td></tr>
-  <tr><td style="opacity:0.65;padding-right:12px;">Cluster</td><td>${tt.cluster_id}</td></tr>
-  <tr><td style="opacity:0.65;padding-right:12px;">Connections</td><td>${tt.connections}</td></tr>
-</table>`;
+            tooltipEl.empty();
+            const titleEl = tooltipEl.createDiv();
+            titleEl.style.cssText = "font-weight:600;margin-bottom:4px;white-space:nowrap;";
+            titleEl.textContent = tt.title;
+            const slugEl = tooltipEl.createDiv();
+            slugEl.style.cssText = "opacity:0.6;font-size:11px;margin-bottom:6px;";
+            slugEl.textContent = tt.slug;
+            const tbl = tooltipEl.createEl("table");
+            tbl.style.cssText = "border-collapse:collapse;width:100%;";
+            const rows: [string, string | number][] = [
+                ["Type", tt.type], ["State", tt.state],
+                ["Cluster", tt.cluster_id], ["Connections", tt.connections],
+            ];
+            for (const [label, val] of rows) {
+                const tr = tbl.createEl("tr");
+                const th = tr.createEl("td"); th.style.cssText = "opacity:0.65;padding-right:12px;";
+                th.textContent = label;
+                const td = tr.createEl("td"); td.textContent = String(val);
+            }
             const rect = canvas.getBoundingClientRect();
             tooltipEl.style.display = "block";
             let tx = clientX - rect.left + 14;
@@ -450,6 +472,7 @@ export class GraphModal extends Modal {
         };
 
         // ── Pointer / scroll events ──────────────────────────────────────────
+        const sig = this._abort!.signal;
         canvas.addEventListener("wheel", (e) => {
             e.preventDefault();
             const rect = canvas.getBoundingClientRect();
@@ -459,7 +482,8 @@ export class GraphModal extends Modal {
             const ratio = scale / prev;
             offsetX = mx - ratio * (mx - offsetX);
             offsetY = my - ratio * (my - offsetY);
-        }, { passive: false });
+            startLoop();
+        }, { passive: false, signal: sig });
 
         let dragState: {
             type: "pan" | "node";
@@ -479,7 +503,8 @@ export class GraphModal extends Modal {
                 canvas.style.cursor = "grabbing";
             }
             canvas.setPointerCapture(e.pointerId);
-        });
+            startLoop();
+        }, { signal: sig });
 
         canvas.addEventListener("pointermove", (e) => {
             // Hover tooltip
@@ -505,7 +530,7 @@ export class GraphModal extends Modal {
                 dragState.node.fy = (e.clientY - rect.top  - offsetY) / scale;
                 alpha = Math.max(alpha, 0.1);
             }
-        });
+        }, { signal: sig });
 
         canvas.addEventListener("pointerup", (e) => {
             if (dragState?.type === "node" && dragState.node) {
@@ -526,10 +551,15 @@ export class GraphModal extends Modal {
             }
             canvas.style.cursor = "grab";
             dragState = null;
-        });
+        }, { signal: sig });
+
+        canvas.addEventListener("pointercancel", () => {
+            if (dragState?.node) { dragState.node.fx = null; dragState.node.fy = null; }
+            dragState = null;
+        }, { signal: sig });
 
         // ── Type filter ──────────────────────────────────────────────────────
-        typeSelect.addEventListener("change", () => applyFilter(typeSelect.value));
+        typeSelect.addEventListener("change", () => { applyFilter(typeSelect.value); startLoop(); }, { signal: sig });
 
         // ── Fetch and init ────────────────────────────────────────────────────
         (api as any).graph().then((data: any) => {
@@ -571,6 +601,8 @@ export class GraphModal extends Modal {
     onClose() {
         this._closed = true;
         if (this._raf !== null) { cancelAnimationFrame(this._raf); this._raf = null; }
+        this._abort?.abort();
+        this._abort = null;
         this.contentEl.empty();
     }
 }
