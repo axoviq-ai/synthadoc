@@ -204,6 +204,26 @@ describe("computeAutoFit", () => {
         expect(fitWithClip.scale).toBeGreaterThan(0.1);
     });
 
+    it("clips outlier at exactly n=8 boundary", () => {
+        const nodes = Array.from({ length: 8 }, (_, i) => ({
+            slug: `n${i}`, title: `N${i}`, type: "concept", state: "active", cluster_id: 0,
+            x: i * 100, y: i * 100, vx: 0, vy: 0, fx: null, fy: null,
+        }));
+        // With clip=1: uses indices [1..6] for x and y
+        const result = computeAutoFit(nodes, 1600, 1200);
+        expect(result.scale).toBeGreaterThan(0);
+        // Clipped bounding box: x0=100, x1=600 (width 500); y0=100, y1=600 (height 500)
+        // Unclipped bounding box: x0=0, x1=700 (width 700); y0=0, y1=700 (height 700)
+        const clippedBW = 500;
+        const clippedBH = 500;
+        const unclippedBW = 700;
+        const unclippedBH = 700;
+        const clippedScale = Math.min((1600 - 56*2) / clippedBW, (1200 - 56*2) / clippedBH, 2.0);
+        const unclippedScale = Math.min((1600 - 56*2) / unclippedBW, (1200 - 56*2) / unclippedBH, 2.0);
+        expect(result.scale).toBeCloseTo(clippedScale, 1);
+        expect(result.scale).not.toBeCloseTo(unclippedScale, 1);
+    });
+
     it("returns { scale:1, tx:0, ty:0 } for empty array", () => {
         const fit = computeAutoFit([], 800, 600);
         expect(fit).toEqual({ scale: 1, tx: 0, ty: 0 });

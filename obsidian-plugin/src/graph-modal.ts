@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 William Johnason / axoviq.com
 import { App, Modal } from "obsidian";
-import { api } from "./api";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const CLUSTER_COLORS = [
@@ -157,7 +156,7 @@ export function computeAutoFit(nodes: GNode[], width: number, height: number): F
     if (!nodes.length) return { scale: 1, tx: 0, ty: 0 };
     const allX = nodes.map(n => n.x).sort((a, b) => a - b);
     const allY = nodes.map(n => n.y).sort((a, b) => a - b);
-    const clip = allX.length > 8 ? 1 : 0;
+    const clip = allX.length >= 8 ? 1 : 0;
     const x0 = allX[clip], x1 = allX[allX.length - 1 - clip];
     const y0 = allY[clip], y1 = allY[allY.length - 1 - clip];
     const bw = Math.max(x1 - x0, 1), bh = Math.max(y1 - y0, 1);
