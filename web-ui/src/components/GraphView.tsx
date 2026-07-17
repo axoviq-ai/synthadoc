@@ -9,6 +9,9 @@ const CLUSTER_COLORS = [
     "#edc948","#b07aa1","#ff9da7","#9c755f","#bab0ac",
 ];
 
+const LABEL_MAX_NODES = 50;
+const truncateLabel = (s: string) => s.length > 15 ? s.slice(0, 14) + "…" : s;
+
 interface GraphNode { slug: string; title: string; type: string; state: string; cluster_id: number; }
 interface GraphEdge { from: string; to: string; weight: number; edge_type: string; }
 
@@ -83,10 +86,22 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: strin
 
         node.append("title").text((d: any) => d.title || d.slug);
 
+        const label = filtered.length <= LABEL_MAX_NODES
+            ? g.append("g").selectAll<SVGTextElement, GraphNode>("text")
+                .data(filtered).join("text")
+                .attr("class", "node-label")
+                .text((d: any) => truncateLabel(d.title || d.slug))
+                .attr("text-anchor", "middle")
+                .attr("font-size", "10px")
+                .attr("fill", "#94a3b8")
+                .attr("pointer-events", "none")
+            : null;
+
         sim.on("tick", () => {
             link.attr("x1", (d: any) => d.source.x).attr("y1", (d: any) => d.source.y)
                 .attr("x2", (d: any) => d.target.x).attr("y2", (d: any) => d.target.y);
             node.attr("cx", (d: any) => d.x).attr("cy", (d: any) => d.y);
+            if (label) label.attr("x", (d: any) => d.x).attr("y", (d: any) => d.y + 20);
         });
     }, [status, nodes, edges, typeFilter]);
 
@@ -99,6 +114,9 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: strin
             .attr("stroke", (d) => d.slug === selected?.slug ? "#facc15" : "#fff")
             .attr("stroke-width", (d) => d.slug === selected?.slug ? 3 : 1.5)
             .attr("opacity", selected ? (d) => d.slug === selected.slug ? 1 : 0.45 : 1);
+        d3.select(svgRef.current)
+            .selectAll<SVGTextElement, GraphNode>("text.node-label")
+            .attr("opacity", selected ? (d) => d.slug === selected.slug ? 1 : 0.2 : 0.85);
     }, [selected, status]);
 
     const types = ["all", ...Array.from(new Set(nodes.map(n => n.type))).sort()];
