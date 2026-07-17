@@ -105,4 +105,5 @@ export const api = {
     createSession: (): Promise<{ session_id: string; mode: string; initial_hints: string[] }> => {
         return fetch(`${BASE}/sessions`, { method: "POST" }).then(r => r.json());
     },
+    graph:        ()                          => call("/graph"),
 };
