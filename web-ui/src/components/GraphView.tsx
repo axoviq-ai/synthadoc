@@ -10,6 +10,7 @@ const CLUSTER_COLORS = [
 ];
 
 const LABEL_MAX_NODES = 50;
+const LABEL_R = 22; // px from node center to label anchor
 const truncateLabel = (s: string) => s.length > 15 ? s.slice(0, 14) + "…" : s;
 
 interface GraphNode { slug: string; title: string; type: string; state: string; cluster_id: number; }
@@ -99,14 +100,27 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: strin
 
         node.append("title").text((d: any) => d.title || d.slug);
 
+        // Build neighbor map so each label can be placed away from its edges
+        const slugToNode = new Map<string, any>(filtered.map((n: any) => [n.slug, n]));
+        const neighborMap = new Map<any, any[]>(filtered.map((n: any) => [n, []]));
+        for (const e of filteredEdges) {
+            const src = slugToNode.get(e.from), tgt = slugToNode.get(e.to);
+            if (src && tgt) { neighborMap.get(src)!.push(tgt); neighborMap.get(tgt)!.push(src); }
+        }
+
         const label = filtered.length <= LABEL_MAX_NODES
             ? g.append("g").selectAll<SVGTextElement, GraphNode>("text")
                 .data(filtered).join("text")
                 .attr("class", "node-label")
                 .text((d: any) => truncateLabel(d.title || d.slug))
-                .attr("text-anchor", "middle")
                 .attr("font-size", "10px")
                 .attr("fill", "#94a3b8")
+                .attr("dominant-baseline", "middle")
+                // Dark halo so labels remain legible when sitting over edge lines
+                .style("paint-order", "stroke fill")
+                .attr("stroke", "rgba(5,6,14,0.85)")
+                .attr("stroke-width", "3")
+                .attr("stroke-linejoin", "round")
                 .attr("pointer-events", "none")
             : null;
 
@@ -133,7 +147,22 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: strin
             link.attr("x1", (d: any) => d.source.x).attr("y1", (d: any) => d.source.y)
                 .attr("x2", (d: any) => d.target.x).attr("y2", (d: any) => d.target.y);
             node.attr("cx", (d: any) => d.x).attr("cy", (d: any) => d.y);
-            if (label) label.attr("x", (d: any) => d.x).attr("y", (d: any) => d.y + 20);
+            if (label) {
+                // Place each label away from the centroid of its neighbors (into empty space)
+                for (const d of filtered as any[]) {
+                    const ns = neighborMap.get(d) || [];
+                    if (!ns.length) { d._lx = d.x; d._ly = d.y + LABEL_R; d._la = "middle"; continue; }
+                    let dx = 0, dy = 0;
+                    for (const n of ns) { dx += (n.x - d.x); dy += (n.y - d.y); }
+                    dx = -(dx / ns.length); dy = -(dy / ns.length); // flip: away from neighbors
+                    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+                    d._lx = d.x + (dx / len) * LABEL_R;
+                    d._ly = d.y + (dy / len) * LABEL_R;
+                    d._la = (dx / len) < -0.3 ? "end" : (dx / len) > 0.3 ? "start" : "middle";
+                }
+                label.attr("x", (d: any) => d._lx).attr("y", (d: any) => d._ly)
+                     .attr("text-anchor", (d: any) => d._la);
+            }
             // Fire fit when visually settled (~1s with alphaDecay 0.05), don't wait for full cooldown
             if (!autoFitted && sim.alpha() < 0.05) { autoFitted = true; applyFit(); }
         });
