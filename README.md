@@ -350,8 +350,6 @@ synthadoc serve -w history-of-computing
 synthadoc serve -w history-of-computing --background
 ```
 
-![Synthadoc 1.1.0 server startup — ASCII logo, mode, port, wiki, and LLM provider](docs/png/synthadoc-serve.png)
-
 The server binds to `http://127.0.0.1:7070` (localhost-only). Leave it running while you work — the Obsidian plugin, CLI ingest commands, and query commands all talk to it.
 
 To switch LLM provider, edit `[agents]` in `<wiki-root>/.synthadoc/config.toml` and restart `synthadoc serve`. See [Appendix — Switching LLM providers](docs/user-quick-start-guide.md#appendix-c--switching-llm-providers) for step-by-step instructions.
