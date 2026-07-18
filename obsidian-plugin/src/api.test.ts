@@ -538,3 +538,36 @@ describe("api.contextBuild", () => {
         );
     });
 });
+
+describe("api.graph", () => {
+    it("GETs /graph and returns nodes + edges when status is ready", async () => {
+        mockResponse({
+            status: "ready",
+            nodes: [
+                { slug: "alan-turing", title: "Alan Turing", type: "person", state: "active", cluster_id: 0 },
+                { slug: "grace-hopper", title: "Grace Hopper", type: "person", state: "active", cluster_id: 1 },
+            ],
+            edges: [{ from: "alan-turing", to: "grace-hopper", weight: 3, edge_type: "wikilink" }],
+        });
+        const r = await (api as any).graph() as any;
+        expect(r.status).toBe("ready");
+        expect(r.nodes).toHaveLength(2);
+        expect(r.nodes[0].slug).toBe("alan-turing");
+        expect(r.edges).toHaveLength(1);
+        expect(r.edges[0].edge_type).toBe("wikilink");
+        expect(mockRequestUrl).toHaveBeenCalledWith(
+            expect.objectContaining({ url: "http://127.0.0.1:7070/graph", method: "GET" })
+        );
+    });
+
+    it("returns computing status while graph is still building", async () => {
+        mockResponse({ status: "computing" });
+        const r = await (api as any).graph() as any;
+        expect(r.status).toBe("computing");
+    });
+
+    it("throws when server returns non-OK status", async () => {
+        mockResponse({}, 500);
+        await expect((api as any).graph()).rejects.toThrow("synthadoc API 500");
+    });
+});

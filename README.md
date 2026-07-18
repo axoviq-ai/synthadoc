@@ -146,7 +146,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 
 | Capability | Synthadoc | Typical RAG | NotebookLM | Notion AI |
 | --- | --- | --- | --- | --- |
-| **[Weighted knowledge graph + D3 visualisation](docs/user-quick-start-guide.md#step-24--knowledge-graph)** — `[[wikilinks]]` auto-built at ingest; co-source edges connect pages compiled from the same document; edge thickness reflects combined weight; dashed edges for co-source-only relationships; Louvain cluster colouring; click node to query | **Yes** | No | Partial | No |
+| **[Weighted knowledge graph + D3 visualisation](docs/user-quick-start-guide.md#step-24--knowledge-graph)** — `[[wikilinks]]` auto-built at ingest; co-source edges connect pages compiled from the same document; edge thickness reflects combined weight; dashed edges for co-source-only relationships; Louvain cluster colouring; click node to query; Obsidian graph panel: same graph inside Obsidian via Canvas, type filter, click node to open page | **Yes** | No | Partial | No |
 | **[Orphan page detection](docs/user-quick-start-guide.md#step-10--fix-an-orphan-page)** — unreferenced pages surfaced by lint with ready-to-paste index entries | **Yes** | No | No | No |
 | **[Query-scoped routing](docs/user-quick-start-guide.md#step-17--set-up-routingmd--scoped-search)** — ROUTING.md maps wiki branches to page slugs; queries auto-select relevant branches; new pages auto-slotted | **Yes** | No | No | No |
 | **[Candidates staging](docs/user-quick-start-guide.md#step-18--configure-candidates-staging)** — ingest pages to a staging area first; review, promote, or discard before they enter the live wiki | **Yes** | No | No | No |
@@ -167,7 +167,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 
 | Capability | Synthadoc | Typical RAG | NotebookLM | Notion AI |
 | --- | --- | --- | --- | --- |
-| **[Obsidian integration](docs/user-quick-start-guide.md#step-3--open-the-vault-in-obsidian)** — native plugin: ingest modal, streaming query, lint report, lifecycle controls, context pack builder, provenance viewer, export modal; Reading View set as default on install so citation chips are visible immediately | **Yes** | No | No | No |
+| **[Obsidian integration](docs/user-quick-start-guide.md#step-3--open-the-vault-in-obsidian)** — native plugin: ingest modal, streaming query, lint report, lifecycle controls, context pack builder, provenance viewer, export modal, **knowledge graph panel** (Canvas force graph, type filter, hover tooltip, click-to-open page); Reading View set as default on install so citation chips are visible immediately | **Yes** | No | No | No |
 | **[Web chat UI](docs/user-quick-start-guide.md#step-22--use-the-web-chat-ui)** — `synthadoc web`: streaming answers, session sidebar, multi-turn history, knowledge-gap callouts, knowledge graph tab | **Yes** | No | Yes | Yes |
 | **[MCP server](docs/design.md#27-mcp-server)** — 12 tools; Claude Desktop (stdio), Claude Code (SSE), n8n/LangGraph (HTTP/SSE); brain+memory architecture; no double-LLM cost for reads | **Yes** | No | No | No |
 | **[Context packs](docs/user-quick-start-guide.md#step-19--build-a-context-pack)** — goal → sub-questions → token-budget evidence pack; REST + MCP callable; paste into any LLM chat as grounded context | **Yes** | No | No | No |
