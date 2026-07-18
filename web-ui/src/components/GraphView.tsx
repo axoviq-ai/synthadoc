@@ -199,6 +199,8 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: strin
     }, [selected, status]);
 
     const types = ["all", ...Array.from(new Set(nodes.map(n => n.type))).sort()];
+    const filteredNodes = typeFilter === "all" ? nodes : nodes.filter(n => n.type === typeFilter);
+    const clusterIds = [...new Set(filteredNodes.map(n => n.cluster_id))].sort((a, b) => a - b);
 
     return (
         <div className="graph-view">
@@ -230,6 +232,15 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: strin
                             onAsk={(q, hints) => { onAskQuery(q, hints); setSelected(null); }}
                             onClose={() => setSelected(null)}
                         />
+                    </div>
+                    <div className="graph-legend">
+                        {clusterIds.map(cid => (
+                            <div key={cid} className="graph-legend-item">
+                                <span className="graph-cluster-dot"
+                                      style={{ background: CLUSTER_COLORS[cid % CLUSTER_COLORS.length] }} />
+                                Cluster {cid}
+                            </div>
+                        ))}
                     </div>
                 </>
             )}
