@@ -418,7 +418,8 @@ class LintAgent:
         co-source connections (+2 per shared source hash).  edge_type is one
         of 'wikilink', 'co_source', or 'mixed'.
         """
-        slugs = self._store.list_pages()
+        _SYSTEM_SLUGS = {"overview", "index", "dashboard", "purpose", "log"}
+        slugs = [s for s in self._store.list_pages() if s not in _SYSTEM_SLUGS]
         if not slugs:
             return [], []
 
