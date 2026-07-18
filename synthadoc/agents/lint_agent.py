@@ -52,6 +52,7 @@ class LintReport:
 
 
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
+_SYSTEM_SLUGS: frozenset[str] = frozenset({"overview", "index", "dashboard", "purpose", "log"})
 
 _CITATION_MIN_WORDS = 50  # skip presence check on stub pages shorter than this
 
@@ -418,7 +419,6 @@ class LintAgent:
         co-source connections (+2 per shared source hash).  edge_type is one
         of 'wikilink', 'co_source', or 'mixed'.
         """
-        _SYSTEM_SLUGS = {"overview", "index", "dashboard", "purpose", "log"}
         slugs = [s for s in self._store.list_pages() if s not in _SYSTEM_SLUGS]
         if not slugs:
             return [], []
@@ -443,28 +443,32 @@ class LintAgent:
                 if hashes:
                     source_map[slug] = hashes
 
-        # Pass 2: co-source edges — pages sharing a source hash get +2 per shared source
-        cosource_pairs: set[tuple[str, str]] = set()
+        # Pass 2: co-source edges — pages sharing a source hash get +2 per shared source.
+        # Only store in canonical (min, max) direction to avoid spurious reverse edges.
+        cosource_slugs: set[tuple[str, str]] = set()
         slug_list = list(source_map)
         for i, s1 in enumerate(slug_list):
             for s2 in slug_list[i + 1:]:
                 shared = source_map[s1] & source_map[s2]
                 if shared:
                     increment = len(shared) * 2
-                    edge_counts[(s1, s2)] += increment
-                    edge_counts[(s2, s1)] += increment
-                    cosource_pairs.add((s1, s2))
-                    cosource_pairs.add((s2, s1))
+                    a, b = (s1, s2) if s1 < s2 else (s2, s1)
+                    edge_counts[(a, b)] += increment
+                    cosource_slugs.add((a, b))
 
-        # Use DiGraph to preserve link direction (a→b and b→a are distinct edges)
-        G = nx.DiGraph()
+        # Undirected graph: each page pair appears as one canonical edge (min slug → max slug)
+        # for co-source; wikilinks are directed and already stored as (src, dst) in pass 1.
+        G = nx.Graph()
         G.add_nodes_from(slugs)
         for (src, dst), weight in edge_counts.items():
-            G.add_edge(src, dst, weight=weight)
+            if G.has_edge(src, dst):
+                G[src][dst]["weight"] = max(G[src][dst]["weight"], weight)
+            else:
+                G.add_edge(src, dst, weight=weight)
 
         # Louvain requires undirected graph
         if _LOUVAIN_AVAILABLE and G.number_of_nodes() > 0:
-            partition = community_louvain.best_partition(G.to_undirected())
+            partition = community_louvain.best_partition(G)
         else:
             partition = {slug: 0 for slug in slugs}
 
@@ -474,8 +478,9 @@ class LintAgent:
         ]
         edges = []
         for src, dst, data in G.edges(data=True):
-            has_wikilink = (src, dst) in wikilink_pairs
-            has_cosource = (src, dst) in cosource_pairs
+            canonical = (min(src, dst), max(src, dst))
+            has_wikilink = (src, dst) in wikilink_pairs or (dst, src) in wikilink_pairs
+            has_cosource = canonical in cosource_slugs
             if has_wikilink and has_cosource:
                 edge_type = "mixed"
             elif has_cosource:

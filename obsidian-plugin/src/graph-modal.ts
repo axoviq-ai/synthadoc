@@ -193,8 +193,13 @@ export class GraphModal extends Modal {
     }
 
     // Block Escape-key and outside-click; only allow close via the × button.
+    // Also allow Obsidian's programmatic close (vault/workspace teardown) through
+    // when the modal container is no longer attached to the document.
     close() {
-        if (this._xClose) { this._xClose = false; super.close(); }
+        if (this._xClose || !document.contains(this.containerEl)) {
+            this._xClose = false;
+            super.close();
+        }
     }
 
     private _dismiss() { this._xClose = true; this.close(); }
@@ -507,8 +512,13 @@ export class GraphModal extends Modal {
         }, { signal: sig });
         document.addEventListener("mousemove", (e) => {
             if (!panelDrag) return;
-            modalEl.style.left = (panelDrag.l0 + e.clientX - panelDrag.x0) + "px";
-            modalEl.style.top  = (panelDrag.t0 + e.clientY - panelDrag.y0) + "px";
+            const newLeft = panelDrag.l0 + e.clientX - panelDrag.x0;
+            const newTop  = panelDrag.t0 + e.clientY - panelDrag.y0;
+            // Keep at least 60 px (≈ header height) visible so the panel stays grabbable.
+            const margin = 60;
+            const w = modalEl.offsetWidth, h = modalEl.offsetHeight;
+            modalEl.style.left = Math.max(margin - w, Math.min(window.innerWidth - margin, newLeft)) + "px";
+            modalEl.style.top  = Math.max(0, Math.min(window.innerHeight - margin, newTop)) + "px";
         }, { signal: sig });
         document.addEventListener("mouseup", () => { panelDrag = null; }, { signal: sig });
 

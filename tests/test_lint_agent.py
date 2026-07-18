@@ -80,7 +80,7 @@ async def test_lint_no_warn_when_not_truncated(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_build_graph_basic_edges(tmp_path):
-    """_build_graph extracts directed edges from wikilinks."""
+    """_build_graph extracts undirected edges from wikilinks (one edge per pair)."""
     pages = {
         "a": make_page(content="links to [[b]] and [[c]]"),
         "b": make_page(content="links to [[a]]"),
@@ -91,10 +91,12 @@ def test_build_graph_basic_edges(tmp_path):
     nodes, edges = agent._build_graph()
     slugs = {n["slug"] for n in nodes}
     assert slugs == {"a", "b", "c"}
-    edge_pairs = {(e["from_slug"], e["to_slug"]) for e in edges}
-    assert ("a", "b") in edge_pairs
-    assert ("a", "c") in edge_pairs
-    assert ("b", "a") in edge_pairs
+    # Graph is undirected: check as unordered pairs
+    edge_sets = {frozenset((e["from_slug"], e["to_slug"])) for e in edges}
+    assert frozenset(("a", "b")) in edge_sets
+    assert frozenset(("a", "c")) in edge_sets
+    # a↔b is one edge (not two); b→a wikilink and a→b wikilink collapse into one undirected edge
+    assert len([e for e in edges if frozenset((e["from_slug"], e["to_slug"])) == frozenset(("a", "b"))]) == 1
 
 
 def test_build_graph_multi_link_weight(tmp_path):
@@ -177,7 +179,7 @@ def test_build_graph_wikilink_edge_type(tmp_path):
 
 
 def test_build_graph_co_source_edge(tmp_path):
-    """Pages sharing a source hash produce a co_source edge with +2 weight per shared hash."""
+    """Pages sharing a source hash produce one undirected co_source edge with +2 weight per shared hash."""
     src = make_source("sha256abc")
     pages = {
         "a": make_page(content="no links", sources=[src]),
@@ -186,14 +188,12 @@ def test_build_graph_co_source_edge(tmp_path):
     store = make_store(tmp_path, pages)
     agent = LintAgent(None, store, mock_log_writer())
     _, edges = agent._build_graph()
-    # Bidirectional co-source edges
-    ab = next((e for e in edges if e["from_slug"] == "a" and e["to_slug"] == "b"), None)
-    ba = next((e for e in edges if e["from_slug"] == "b" and e["to_slug"] == "a"), None)
-    assert ab is not None, "co-source edge a→b expected"
-    assert ba is not None, "co-source edge b→a expected"
-    assert ab["weight"] == 2  # 1 shared source × 2
-    assert ab["edge_type"] == "co_source"
-    assert ba["edge_type"] == "co_source"
+    # Single undirected co-source edge (not two directed edges)
+    ab_edges = [e for e in edges if frozenset((e["from_slug"], e["to_slug"])) == frozenset(("a", "b"))]
+    assert len(ab_edges) == 1, "exactly one co-source edge between a and b expected"
+    edge = ab_edges[0]
+    assert edge["weight"] == 2  # 1 shared source × 2
+    assert edge["edge_type"] == "co_source"
 
 
 def test_build_graph_mixed_edge(tmp_path):
