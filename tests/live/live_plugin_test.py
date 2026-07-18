@@ -87,13 +87,11 @@ no Obsidian runtime needed.  Organized by the 14 plugin commands + ribbon icon.
                   pre-existing pages that were updated are not reverted).
   • [6] scaffold: scaffold generates candidate pages; newly-created candidates
                   are deleted after the test.
-  • sanitizer   : writes _live_test_sanitizer.txt, ingests it, then deletes
-                  the source file and any newly-created wiki page(s) / extracted
-                  sidecar.  Pre-existing pages updated by the ingest are not
-                  reverted (content merge is non-destructive).
-  • truncation  : writes _live_test_truncation.txt, ingests it, then deletes
-                  the source file and any newly-created wiki page(s) / extracted
-                  sidecar.
+  • sanitizer + truncation: writes _live_test_sanitizer.txt with max_source_chars=500,
+                  ingests it once (verifying injection-phrase stripping and the
+                  truncated=true frontmatter flag in a single LLM round-trip), then
+                  deletes the source file and any newly-created wiki page(s) / sidecar.
+                  Pre-existing pages updated by the ingest are not reverted.
   All other calls are read-only or idempotent.
 """
 import argparse
@@ -444,75 +442,25 @@ def _read_frontmatter(p: pathlib.Path) -> dict:
 
 # ── v1.0 feature test functions ───────────────────────────────────────────────
 
-def _test_truncation_flag() -> None:
-    """Ingest a source > max_source_chars; verify truncated=true in frontmatter sources."""
+def _test_sanitizer_and_truncation_flag() -> None:
+    """Single ingest that verifies both the sanitizer and the truncation flag.
+
+    The IBM System/360 content (~710 chars) with max_source_chars=500 gives us
+    truncation in the same job that tests injection-phrase stripping.  One LLM
+    round-trip instead of two avoids exhausting per-minute rate limits between
+    back-to-back ingest tests.
+    """
     wiki_root = _discover_wiki_root()
     assert wiki_root, "Could not discover wiki root via CLI"
 
-    # Write the file inside raw_sources/ so the server process can always read it
-    raw_sources = wiki_root / "raw_sources"
-    raw_sources.mkdir(exist_ok=True)
-    src = raw_sources / "_live_test_truncation.txt"
-    # Use real historical content so the LLM scope check accepts it.
-    # Pass max_source_chars=500 to force truncation without needing a huge file.
-    src.write_text(
-        "EDSAC (Electronic Delay Storage Automatic Calculator) was the first practical "
-        "stored-program computer, operational at the University of Cambridge in May 1949. "
-        "Designed by Maurice Wilkes and his team, EDSAC used mercury delay lines for memory, "
-        "storing 512 35-bit words. It ran its first program — a table of squares — on 6 May 1949. "
-        "EDSAC introduced the subroutine library concept: Wilkes, Wheeler, and Gill published "
-        "the first textbook on programming ('The Preparation of Programs for an Electronic "
-        "Digital Computer', 1951), establishing foundational software-engineering practice. "
-        "The machine was retired in 1958 and succeeded by EDSAC 2, which introduced "
-        "microprogramming. EDSAC directly inspired LEO I (1951), the first business computer.",
-        encoding="utf-8",
-    )  # ~710 chars — exceeds max_source_chars=500 override; topic unlikely to be in the wiki
-    job_id: str | None = None
-    try:
-        code, body = POST("/jobs/ingest", {"source": str(src), "force": True, "max_source_chars": 500})
-        assert code == 200, f"POST /jobs/ingest returned HTTP {code}: {str(body)[:120]}"
-        assert isinstance(body, dict) and "job_id" in body, \
-            f"No job_id in response: {str(body)[:120]}"
-        job_id = body["job_id"]
-        final = _wait_for_terminal(job_id, max_wait=300)
-        assert final == "completed", \
-            f"Ingest job did not complete (status={final!r}) — no page written, cannot check truncated flag"
-
-        # Check both wiki/ and wiki/candidates/ — staging policy may route the page there.
-        # Updates also write a SourceRef now, so any page touched by this ingest may have
-        # truncated=true if the source exceeded max_source_chars.
-        wiki_dir = wiki_root / "wiki"
-        pages = list(wiki_dir.glob("*.md")) + list((wiki_dir / "candidates").glob("*.md"))
-        assert pages, "No .md pages found in wiki dir"
-        for p in pages:
-            fm = _read_frontmatter(p)
-            for s in fm.get("sources", []):
-                if isinstance(s, dict) and s.get("truncated"):
-                    print(f"[OK] truncation flag: {p.name} has truncated source")
-                    return
-        raise AssertionError("No page has truncated=true in sources[] frontmatter")
-    finally:
-        # Clean up before deleting the source file (sidecar lookup uses src.name)
-        if job_id:
-            _cleanup_test_ingest(job_id, src)
-        src.unlink(missing_ok=True)
-
-
-def _test_sanitizer() -> None:
-    """Ingest a source with an injection phrase; verify phrase absent from all page bodies."""
-    wiki_root = _discover_wiki_root()
-    assert wiki_root, "Could not discover wiki root via CLI"
-
-    # Write inside raw_sources/ so the server process can read it (temp dir is outside wiki root)
     raw_sources = wiki_root / "raw_sources"
     raw_sources.mkdir(exist_ok=True)
     src = raw_sources / "_live_test_sanitizer.txt"
 
     phrase = "ignore previous instructions"
-    # Use a specific, datable topic (IBM System/360) not covered by the demo wiki's
-    # existing pages (transistor-and-microchip, von-neumann-architecture, alan-turing, etc.)
-    # so the decision LLM creates a new page rather than returning "skip" because it
-    # judges the content already well-covered.  Same strategy as _test_truncation_flag.
+    # IBM System/360 is not in the demo wiki, so the decision LLM creates a new page.
+    # The text is ~710 chars; max_source_chars=500 forces truncation so we can check
+    # the truncated flag in the resulting frontmatter at the same time.
     src.write_text(
         "IBM System/360, announced on 7 April 1964, was the first family of computers "
         "designed to cover a broad range of performance and price points under a single "
@@ -527,22 +475,27 @@ def _test_sanitizer() -> None:
         "The System/360 directly shaped the IBM System/370, System/390, and the modern "
         "z/Architecture still in production today.",
         encoding="utf-8",
-    )
+    )  # ~710 chars — exceeds max_source_chars=500 override
     job_id: str | None = None
     try:
-        code, body = POST("/jobs/ingest", {"source": str(src), "force": True})
+        code, body = POST(
+            "/jobs/ingest",
+            {"source": str(src), "force": True, "max_source_chars": 500},
+        )
         assert code == 200, f"POST /jobs/ingest returned HTTP {code}: {str(body)[:120]}"
         assert isinstance(body, dict) and "job_id" in body, \
             f"No job_id in response: {str(body)[:120]}"
         job_id = body["job_id"]
         final = _wait_for_terminal(job_id, max_wait=300)
         assert final == "completed", \
-            f"Ingest job did not complete (status={final!r}) — sanitizer could not be verified"
+            f"Ingest job did not complete (status={final!r}) — cannot verify sanitizer or truncation flag"
+
         wiki_dir = wiki_root / "wiki"
         pages = list(wiki_dir.glob("*.md")) + list((wiki_dir / "candidates").glob("*.md"))
+
+        # Sanitizer: injection phrase must not appear in any page body.
         for p in pages:
             text = p.read_text(encoding="utf-8")
-            # Strip frontmatter; only check page body
             if text.startswith("---"):
                 parts = text.split("---", 2)
                 body_text = parts[2] if len(parts) >= 3 else text
@@ -551,8 +504,17 @@ def _test_sanitizer() -> None:
             assert phrase not in body_text.lower(), \
                 f"Injection phrase found in body of {p.name} — sanitizer not working"
         print("[OK] sanitizer: injection phrase not found in any page body")
+
+        # Truncation flag: at least one page must carry truncated=true in its sources.
+        assert pages, "No .md pages found in wiki dir"
+        for p in pages:
+            fm = _read_frontmatter(p)
+            for s in fm.get("sources", []):
+                if isinstance(s, dict) and s.get("truncated"):
+                    print(f"[OK] truncation flag: {p.name} has truncated source")
+                    return
+        raise AssertionError("No page has truncated=true in sources[] frontmatter")
     finally:
-        # Clean up before deleting the source file (sidecar lookup uses src.name)
         if job_id:
             _cleanup_test_ingest(job_id, src)
         src.unlink(missing_ok=True)
@@ -1374,16 +1336,11 @@ def main() -> None:
         fail("GET /graph (lazy hydration)", str(e))
 
     try:
-        _test_sanitizer()
-        ok("POST /jobs/ingest (sanitizer)", "injection phrase absent from all page bodies")
+        _test_sanitizer_and_truncation_flag()
+        ok("POST /jobs/ingest (sanitizer + truncation flag)",
+           "injection phrase absent from all pages; truncated=true found in sources frontmatter")
     except AssertionError as e:
-        fail("POST /jobs/ingest (sanitizer)", str(e))
-
-    try:
-        _test_truncation_flag()
-        ok("POST /jobs/ingest (truncation flag)", "truncated=true found in sources frontmatter")
-    except AssertionError as e:
-        fail("POST /jobs/ingest (truncation flag)", str(e))
+        fail("POST /jobs/ingest (sanitizer + truncation flag)", str(e))
 
     try:
         _test_blocked_domain_filter()

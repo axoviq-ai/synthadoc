@@ -759,6 +759,8 @@ body {
 .graph-meta-label { color: #64748b; }
 .graph-meta-value { color: #cbd5e1; display: flex; align-items: center; gap: 5px; }
 .graph-cluster-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.graph-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 6px 14px; flex-shrink: 0; border-top: 1px solid rgba(124,58,237,0.18); font-size: 11px; color: #94a3b8; min-height: 28px; }
+.graph-legend-item { display: flex; align-items: center; gap: 4px; opacity: 0.7; }
 .graph-conn-label { color: #64748b; font-size: 10.5px; }
 .graph-sidebar-hint { font-size: 11px; color: #f59e0b; background: rgba(245,158,11,0.08); border-radius: 5px; padding: 6px 8px; margin: 0; }
 .graph-sidebar-hint-list { display: flex; flex-direction: column; gap: 5px; }
