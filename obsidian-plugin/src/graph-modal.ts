@@ -186,31 +186,53 @@ export class GraphModal extends Modal {
     private _raf: number | null = null;
     private _closed = false;
     private _abort: AbortController | null = null;
+    private _xClose = false;
 
     constructor(app: App, _serverUrl: string) {
         super(app);
     }
 
+    // Block Escape-key and outside-click; only allow close via the × button.
+    close() {
+        if (this._xClose) { this._xClose = false; super.close(); }
+    }
+
+    private _dismiss() { this._xClose = true; this.close(); }
+
     onOpen() {
         this._closed = false;
         this._abort = new AbortController();
+        const sig = this._abort.signal;
         const { contentEl, modalEl } = this;
         contentEl.empty();
         contentEl.style.cssText = "display:flex;flex-direction:column;height:100%;overflow:hidden;padding:0;";
         modalEl.style.width = "clamp(800px, 80vw, 1400px)";
         modalEl.style.height = "clamp(600px, 80vh, 1000px)";
 
-        // ── Header ──────────────────────────────────────────────────────────
+        // Switch to fixed positioning so the panel can be dragged freely.
+        // Done in the next animation frame after Obsidian has laid it out.
+        requestAnimationFrame(() => {
+            if (this._closed) return;
+            const r = modalEl.getBoundingClientRect();
+            modalEl.style.cssText += ";position:fixed;left:" + r.left + "px;top:" + r.top + "px;margin:0;transform:none;";
+        });
+
+        // ── Header (drag handle) ─────────────────────────────────────────────
         const header = contentEl.createDiv();
-        header.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 14px;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,0.08);";
+        header.style.cssText = "display:flex;align-items:center;gap:10px;padding:8px 14px;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,0.08);cursor:move;user-select:none;";
         header.createEl("span", { text: "Knowledge Graph" })
               .style.cssText = "font-weight:600;font-size:14px;";
 
         const typeSelect = header.createEl("select") as HTMLSelectElement;
-        typeSelect.style.cssText = "background:var(--background-secondary);color:var(--text-normal);border:1px solid var(--background-modifier-border);border-radius:4px;padding:2px 6px;font-size:12px;";
+        typeSelect.style.cssText = "background:var(--background-secondary);color:var(--text-normal);border:1px solid var(--background-modifier-border);border-radius:4px;padding:2px 6px;font-size:12px;cursor:default;";
 
         const statsEl = header.createEl("span");
         statsEl.style.cssText = "margin-left:auto;opacity:0.55;font-size:12px;";
+
+        const closeBtn = header.createEl("button");
+        closeBtn.style.cssText = "background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;padding:0 4px;line-height:1;border-radius:3px;";
+        closeBtn.setAttribute("aria-label", "Close");
+        closeBtn.textContent = "×";
 
         // ── Canvas area ─────────────────────────────────────────────────────
         const canvasWrap = contentEl.createDiv();
@@ -472,7 +494,25 @@ export class GraphModal extends Modal {
         };
 
         // ── Pointer / scroll events ──────────────────────────────────────────
-        const sig = this._abort!.signal;
+
+        // Close button — only way to dismiss the modal.
+        closeBtn.addEventListener("click", (e) => { e.stopPropagation(); this._dismiss(); }, { signal: sig });
+
+        // Header drag — move the whole panel.
+        let panelDrag: { x0: number; y0: number; l0: number; t0: number } | null = null;
+        header.addEventListener("mousedown", (e) => {
+            if ((e.target as HTMLElement).closest("select,button")) return;
+            const r = modalEl.getBoundingClientRect();
+            panelDrag = { x0: e.clientX, y0: e.clientY, l0: r.left, t0: r.top };
+            e.preventDefault();
+        }, { signal: sig });
+        document.addEventListener("mousemove", (e) => {
+            if (!panelDrag) return;
+            modalEl.style.left = (panelDrag.l0 + e.clientX - panelDrag.x0) + "px";
+            modalEl.style.top  = (panelDrag.t0 + e.clientY - panelDrag.y0) + "px";
+        }, { signal: sig });
+        document.addEventListener("mouseup", () => { panelDrag = null; }, { signal: sig });
+
         canvas.addEventListener("wheel", (e) => {
             e.preventDefault();
             const rect = canvas.getBoundingClientRect();
