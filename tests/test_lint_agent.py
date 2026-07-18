@@ -108,7 +108,7 @@ def test_build_graph_multi_link_weight(tmp_path):
     store = make_store(tmp_path, pages)
     agent = LintAgent(None, store, mock_log_writer())
     nodes, edges = agent._build_graph()
-    ab = next(e for e in edges if e["from_slug"] == "a" and e["to_slug"] == "b")
+    ab = next(e for e in edges if frozenset((e["from_slug"], e["to_slug"])) == frozenset(("a", "b")))
     assert ab["weight"] == 2
 
 
@@ -161,8 +161,8 @@ def test_build_graph_pipe_alias_link_resolved(tmp_path):
     store = make_store(tmp_path, pages)
     agent = LintAgent(None, store, mock_log_writer())
     nodes, edges = agent._build_graph()
-    edge_pairs = {(e["from_slug"], e["to_slug"]) for e in edges}
-    assert ("a", "b") in edge_pairs, "pipe-alias link should produce edge a→b"
+    edge_sets = {frozenset((e["from_slug"], e["to_slug"])) for e in edges}
+    assert frozenset(("a", "b")) in edge_sets, "pipe-alias link should produce edge a↔b"
 
 
 def test_build_graph_wikilink_edge_type(tmp_path):
@@ -174,7 +174,7 @@ def test_build_graph_wikilink_edge_type(tmp_path):
     store = make_store(tmp_path, pages)
     agent = LintAgent(None, store, mock_log_writer())
     _, edges = agent._build_graph()
-    ab = next(e for e in edges if e["from_slug"] == "a" and e["to_slug"] == "b")
+    ab = next(e for e in edges if frozenset((e["from_slug"], e["to_slug"])) == frozenset(("a", "b")))
     assert ab["edge_type"] == "wikilink"
 
 
@@ -206,7 +206,7 @@ def test_build_graph_mixed_edge(tmp_path):
     store = make_store(tmp_path, pages)
     agent = LintAgent(None, store, mock_log_writer())
     _, edges = agent._build_graph()
-    ab = next(e for e in edges if e["from_slug"] == "a" and e["to_slug"] == "b")
+    ab = next(e for e in edges if frozenset((e["from_slug"], e["to_slug"])) == frozenset(("a", "b")))
     # wikilink weight=1, co-source weight=2 → total 3
     assert ab["weight"] == 3
     assert ab["edge_type"] == "mixed"
@@ -221,6 +221,6 @@ def test_build_graph_co_source_two_shared(tmp_path):
     store = make_store(tmp_path, pages)
     agent = LintAgent(None, store, mock_log_writer())
     _, edges = agent._build_graph()
-    xy = next(e for e in edges if e["from_slug"] == "x" and e["to_slug"] == "y")
+    xy = next(e for e in edges if frozenset((e["from_slug"], e["to_slug"])) == frozenset(("x", "y")))
     assert xy["weight"] == 4  # 2 shared sources × 2
     assert xy["edge_type"] == "co_source"
