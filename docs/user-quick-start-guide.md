@@ -1,6 +1,6 @@
 ﻿# Synthadoc User Quick-Start Guide
 
-**Version: v1.0.2 (Community Edition)**
+**Version: v1.1.0 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
@@ -1337,6 +1337,31 @@ Everything **above** the marker is your protected zone — scaffold never touche
 Everything **below** is rewritten each time. If the marker is absent, scaffold rewrites
 the whole file as before.
 
+### Per-section markers in purpose.md
+
+`wiki/purpose.md` uses a more granular approach — each `## Section` has its own marker. This lets you annotate individual sections (for example, add a note about what kind of sources belong in the wiki) without losing your annotations when scaffold regenerates the rest.
+
+```markdown
+## Overview
+
+My organization-specific note about this wiki.
+
+<!-- synthadoc:scaffold -->
+
+LLM-generated overview content refreshed each scaffold run.
+
+## What Belongs
+
+<!-- synthadoc:scaffold -->
+
+LLM-generated scope definition — no custom note above, so only this line is rewritten.
+```
+
+Text you write **above** the marker in any section is preserved. Text below is refreshed.
+Sections where you have not added a marker are treated the same as before (fully refreshed).
+
+→ Full design spec: [Design §34 — Synthadoc Scaffold Marker](design.md#34-synthadoc-scaffold-marker)
+
 ---
 
 <a name="audit"></a>
@@ -2284,6 +2309,19 @@ Click any node to open its detail panel:
 - **"Ask about this →"** button
 
 Click **Ask about this →** to jump to the Chat tab with a pre-filled query about that page. The answer is drawn from the wiki and citations appear inline.
+
+### When to use which graph view
+
+Synthadoc provides two knowledge graph views powered by the same `GET /graph` endpoint. Choose based on what you want to do next:
+
+| I want to… | Use |
+|---|---|
+| Ask a question about a page | **Web UI Graph tab** — click a node → "Ask about this →" |
+| Read or edit a page I found in the graph | **Obsidian panel** — click a node to open it in the current pane |
+| Explore graph topology while staying in Obsidian | **Obsidian panel** |
+| See graph and chat side by side | **Web UI** |
+
+> **Rule of thumb:** Use the **web UI** when you want to ask questions about a node. Use the **Obsidian panel** when you want to navigate to and edit a page.
 
 ### Open the graph panel in Obsidian
 
