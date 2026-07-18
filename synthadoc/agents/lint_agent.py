@@ -462,7 +462,7 @@ class LintAgent:
         G.add_nodes_from(slugs)
         for (src, dst), weight in edge_counts.items():
             if G.has_edge(src, dst):
-                G[src][dst]["weight"] = max(G[src][dst]["weight"], weight)
+                G[src][dst]["weight"] += weight
             else:
                 G.add_edge(src, dst, weight=weight)
 
