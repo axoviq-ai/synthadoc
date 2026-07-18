@@ -229,11 +229,6 @@ export class GraphModal extends Modal {
         const statsEl = header.createEl("span");
         statsEl.style.cssText = "margin-left:auto;opacity:0.55;font-size:12px;";
 
-        const closeBtn = header.createEl("button");
-        closeBtn.style.cssText = "background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;padding:0 4px;line-height:1;border-radius:3px;";
-        closeBtn.setAttribute("aria-label", "Close");
-        closeBtn.textContent = "×";
-
         // ── Canvas area ─────────────────────────────────────────────────────
         const canvasWrap = contentEl.createDiv();
         canvasWrap.style.cssText = "flex:1;position:relative;overflow:hidden;background:var(--background-primary);";
@@ -495,8 +490,12 @@ export class GraphModal extends Modal {
 
         // ── Pointer / scroll events ──────────────────────────────────────────
 
-        // Close button — only way to dismiss the modal.
-        closeBtn.addEventListener("click", (e) => { e.stopPropagation(); this._dismiss(); }, { signal: sig });
+        // Wire Obsidian's native close button (added to modalEl before onOpen) to _dismiss()
+        // so it can bypass our close() override that blocks Escape and outside-click.
+        const nativeClose = modalEl.querySelector(".modal-close-button") as HTMLElement | null;
+        if (nativeClose) {
+            nativeClose.addEventListener("click", (e) => { e.stopPropagation(); this._dismiss(); }, { signal: sig });
+        }
 
         // Header drag — move the whole panel.
         let panelDrag: { x0: number; y0: number; l0: number; t0: number } | null = null;
