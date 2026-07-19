@@ -23,7 +23,7 @@ from synthadoc.agents.citations import CITATION_RE as _CITATION_BODY_RE
 from synthadoc.agents.citations import MALFORMED_CITE_RE as _MALFORMED_CITE_RE
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.log import AuditDB, LogWriter
-from synthadoc.storage.wiki import WikiStorage, LifecycleState, is_url, TriggerSource
+from synthadoc.storage.wiki import WikiStorage, LifecycleState, is_url, TriggerSource, SYSTEM_PAGE_SLUGS
 
 import logging as _logging
 
@@ -64,9 +64,8 @@ LINT_SKIP_SOURCE_SLUGS: frozenset[str] = frozenset(
 )
 
 # Pages never reported as orphans (root / auto-generated pages).
-LINT_SKIP_SLUGS: frozenset[str] = frozenset(
-    {"index", "log", "dashboard", "purpose", "overview"}
-)
+# Backward-compat alias — new code should import SYSTEM_PAGE_SLUGS from storage.wiki.
+LINT_SKIP_SLUGS: frozenset[str] = SYSTEM_PAGE_SLUGS
 
 
 # Matches a list item whose first significant content is a single wikilink,

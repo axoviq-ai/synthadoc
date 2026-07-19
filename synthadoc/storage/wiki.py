@@ -15,6 +15,13 @@ _FRONTMATTER_FIELDS = ("title", "tags", "status", "confidence", "created", "upda
                        "categories", "aliases", "contradiction_note", "unresolved_note", "lint_warnings",
                        "type", "resource")
 
+# Slugs that are system/metadata pages managed by Synthadoc itself.
+# These are excluded from page counts, search indexes, exports, lifecycle checks,
+# and any other operation that should only touch user content pages.
+SYSTEM_PAGE_SLUGS: frozenset[str] = frozenset(
+    {"index", "log", "dashboard", "purpose", "overview"}
+)
+
 
 class LifecycleState:
     """Named constants for the 5-state lifecycle machine."""
