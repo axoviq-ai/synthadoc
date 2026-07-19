@@ -52,7 +52,6 @@ class LintReport:
 
 
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
-_SYSTEM_SLUGS: frozenset[str] = frozenset({"overview", "index", "dashboard", "purpose", "log"})
 
 _CITATION_MIN_WORDS = 50  # skip presence check on stub pages shorter than this
 
@@ -418,7 +417,17 @@ class LintAgent:
         co-source connections (+2 per shared source hash).  edge_type is one
         of 'wikilink', 'co_source', or 'mixed'.
         """
-        slugs = [s for s in self._store.list_pages() if s not in _SYSTEM_SLUGS]
+        # Collect slugs, excluding system pages and archived pages; cache pages to avoid
+        # re-reading below. Archived pages are excluded here so graph rebuilds after a
+        # server restart match the state maintained by cascade_archive() at archive time.
+        _page_cache: dict[str, WikiPage] = {}
+        for _s in self._store.list_pages():
+            if _s in SYSTEM_PAGE_SLUGS:
+                continue
+            _p = self._store.read_page(_s)
+            if _p is not None and _p.status != LifecycleState.ARCHIVED:
+                _page_cache[_s] = _p
+        slugs = list(_page_cache)
         if not slugs:
             return [], []
 
@@ -429,9 +438,7 @@ class LintAgent:
 
         # Pass 1: wikilink edges + source hash extraction in one read per page
         for slug in slugs:
-            page = self._store.read_page(slug)
-            if page is None:
-                continue
+            page = _page_cache[slug]
             for match in _WIKILINK_RE.finditer(page.content or ""):
                 target = match.group(1).split("|")[0].strip()
                 if target and target != slug and target in all_slugs:

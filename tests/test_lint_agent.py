@@ -224,3 +224,39 @@ def test_build_graph_co_source_two_shared(tmp_path):
     xy = next(e for e in edges if frozenset((e["from_slug"], e["to_slug"])) == frozenset(("x", "y")))
     assert xy["weight"] == 4  # 2 shared sources × 2
     assert xy["edge_type"] == "co_source"
+
+
+def test_build_graph_excludes_archived_pages(tmp_path):
+    """Archived pages must not appear as graph nodes on a full rebuild.
+
+    Regression: before the fix, _build_graph() read all .md files from disk
+    without filtering by lifecycle state, so a server restart would re-add
+    archived pages to the graph (contradicting the node deletion performed by
+    cascade_archive() at archive time).
+    """
+    pages = {
+        "active-page": make_page(content="see [[other-active]]", status=LifecycleState.ACTIVE),
+        "other-active": make_page(content="", status=LifecycleState.ACTIVE),
+        "archived-page": make_page(content="", status=LifecycleState.ARCHIVED),
+    }
+    store = make_store(tmp_path, pages)
+    agent = LintAgent(None, store, mock_log_writer())
+    nodes, _ = agent._build_graph()
+    slugs = {n["slug"] for n in nodes}
+    assert "archived-page" not in slugs
+    assert "active-page" in slugs
+    assert "other-active" in slugs
+
+
+def test_build_graph_includes_draft_pages(tmp_path):
+    """Draft pages are included in the graph (only archived are excluded)."""
+    pages = {
+        "active-page": make_page(content="see [[draft-page]]", status=LifecycleState.ACTIVE),
+        "draft-page": make_page(content="", status=LifecycleState.DRAFT),
+    }
+    store = make_store(tmp_path, pages)
+    agent = LintAgent(None, store, mock_log_writer())
+    nodes, _ = agent._build_graph()
+    slugs = {n["slug"] for n in nodes}
+    assert "draft-page" in slugs
+    assert "active-page" in slugs
