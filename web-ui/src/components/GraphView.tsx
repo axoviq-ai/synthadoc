@@ -220,8 +220,10 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: strin
                                 aria-label="Filter by type">
                             {types.map(t => <option key={t} value={t}>{t === "all" ? "All types" : t}</option>)}
                         </select>
-                        <span className="graph-stats"
-                              title="Validated pages only — excludes draft and archived">{nodes.length} nodes · {edges.length} edges</span>
+                        <span className="graph-stats">
+                            {nodes.length} nodes · {edges.length} edges
+                            <span className="graph-stats-note"> — validated only</span>
+                        </span>
                     </div>
                     <div className="graph-canvas-wrap">
                         <svg ref={svgRef} className="graph-canvas" />

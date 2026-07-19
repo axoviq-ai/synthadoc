@@ -432,8 +432,11 @@ export class GraphModal extends Modal {
                 bannerEl.style.display = "none";
             }
 
-            statsEl.textContent = `${currentNodes.length} nodes · ${currentEdges.length} edges`;
-            statsEl.title = "Validated pages only — excludes draft and archived";
+            statsEl.empty();
+            statsEl.appendText(`${currentNodes.length} nodes · ${currentEdges.length} edges`);
+            const noteEl = statsEl.createEl("span");
+            noteEl.textContent = " — validated only";
+            noteEl.style.cssText = "font-size:11px;opacity:0.7;";
 
             // Cluster legend
             footer.empty();
