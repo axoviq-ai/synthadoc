@@ -60,7 +60,7 @@ Turing's legacy extends across multiple fields: theoretical computer science, cr
 Turing studied mathematics at kings-college-cambridge, where he was influenced by David Hilbert's work on computability and the Entscheidungsproblem.
 
 ## Cryptanalysis Work
-At bletchley-park, working for the Government Code and Cypher School (GC&CS), Turing designed the Bombé machine to break the German Enigma cipher. This work built on the pioneering Polish cryptanalysis of Marian Rejewski, who had developed the最早的 bomba machine before the war.
+At bletchley-park, working for the Government Code and Cypher School (GC&CS), Turing designed the Bombé machine to break the German Enigma cipher. This work built on the pioneering Polish cryptanalysis of Marian Rejewski, who had developed the earliest bomba machine before the war.
 
 ## Theoretical Contributions
 Beyond the Turing machine model, Turing proved the undecidability of the halting problem — demonstrating fundamental limits of mechanical reasoning.
@@ -111,7 +111,7 @@ Turing's conceptual work laid the groundwork for the **stored-program computer**
 
 ## Personal History and Legacy
 
-Turing was persecuted for his sexuality under British law and received a posthumous royal pardon from Queen Elizabeth II in 2013, recognizing his贡献 to British security during WWII.
+Turing was persecuted for his sexuality under British law and received a posthumous royal pardon from Queen Elizabeth II in 2013, recognizing his contributions to British security during WWII.
 
 ## Additional Biographical Details
 

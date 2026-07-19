@@ -195,3 +195,41 @@ def test_trim_history_preserves_chronological_order():
     # verify oldest-to-newest order maintained
     for i in range(len(trimmed) - 1):
         assert trimmed[i]["content"] < trimmed[i + 1]["content"]
+
+
+# ── _build_synthesis_prompt language instruction ──────────────────────────────
+
+def test_synthesis_prompt_non_cjk_language_instruction():
+    """Non-CJK question must include an explicit 'Do not use the language of the Pages' instruction.
+
+    Regression: the old instruction was 'Respond in the same language as the Question' which
+    the LLM overrides when source pages are written in a different language (e.g. Japanese wiki
+    answering an English question in Japanese).
+    """
+    cfg = QueryConfig()
+    agent = _make_agent(cfg, {})
+    prompt = agent._build_synthesis_prompt(
+        "What is a Turing machine?",
+        "Page content here.",
+        gap=False,
+        system_ctx="",
+        is_live_data=False,
+    )
+    assert "Do not use the language of the Pages" in prompt
+    assert "always match the Question's language" in prompt
+
+
+def test_synthesis_prompt_cjk_japanese_language_instruction():
+    """CJK (Japanese) question must use the explicit 'Respond in Japanese' prohibition."""
+    cfg = QueryConfig()
+    agent = _make_agent(cfg, {})
+    # Include hiragana so _detect_cjk_language returns "Japanese"
+    prompt = agent._build_synthesis_prompt(
+        "チューリングマシンとは何ですか？",  # "What is a Turing machine?" in Japanese
+        "Page content here.",
+        gap=False,
+        system_ctx="",
+        is_live_data=False,
+    )
+    assert "Respond in Japanese" in prompt
+    assert "Do not respond in English or any other language" in prompt

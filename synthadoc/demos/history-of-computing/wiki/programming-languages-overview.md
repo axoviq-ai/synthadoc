@@ -49,7 +49,7 @@ Python's simplicity drove adoption in data science and [[internet-origins]] web 
 All programming languages are ultimately rooted in the theory of computation formalised by [[alan-turing]]. A language is Turing-complete if it can express any computable function — nearly every general-purpose language meets this bar.
 
 ## Third Generation: LISP and AI (1958–)
-While FORTRAN aimed at scientific计算 and COBOL at business record-keeping, LISP emerged from MIT in 1958, devised by John McCarthy for artificial intelligence and symbolic processing. Influenced by Alonzo Church's lambda calculus, LISP prioritized recursion and list processing over numerical computation — a fundamentally different paradigm from mainstream languages of the era.
+While FORTRAN aimed at scientific computing and COBOL at business record-keeping, LISP emerged from MIT in 1958, devised by John McCarthy for artificial intelligence and symbolic processing. Influenced by Alonzo Church's lambda calculus, LISP prioritized recursion and list processing over numerical computation — a fundamentally different paradigm from mainstream languages of the era.
 
 ## Human Factors vs Machine Efficiency
 Throughout all generations, language designers have navigated a core tension: prioritizing human readability, expressiveness, and abstraction versus machine efficiency and resource conservation. This dialectic has driven each wave of innovation, from assembly mnemonics to high-level languages like FORTRAN and COBOL, to declarative and functional paradigms exemplified by LISP.
