@@ -642,7 +642,7 @@ class QueryAgent:
         _lang_instr = (
             f"The question is in {_lang}. Respond in {_lang}. Do not respond in English or any other language.\n"
             if _lang
-            else "Respond in the same language as the Question.\n"
+            else "Respond in the same language as the Question below. Do not use the language of the Pages — always match the Question's language.\n"
         )
         return prefix + (
             f"Answer using ONLY these wiki pages. Cite with [[PageTitle]].\n"
