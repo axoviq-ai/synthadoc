@@ -205,6 +205,7 @@ async def test_web_search_fanout_processing_is_fast(tmp_wiki):
         await queue.enqueue("ingest", {"source": url, "force": False})
 
     # Process all jobs through IngestAgent with mocked provider and skill
+    import asyncio
     start = time.perf_counter()
     try:
         with patch.object(IngestAgent, "_update_overview", AsyncMock()):
@@ -226,8 +227,16 @@ async def test_web_search_fanout_processing_is_fast(tmp_wiki):
                         })
                     except Exception as e:
                         await queue.fail(job.id, str(e))
+                    # Yield between jobs so the Windows IOCP event loop can drain
+                    # pending completion callbacks from aiosqlite thread teardowns.
+                    # Without this, 20 rapid-fire per-operation connects pile up and
+                    # _poll() deadlocks waiting for completions that were never posted.
+                    await asyncio.sleep(0)
     finally:
         await cache.close()
+        # Mirror orchestrator.close(): allow in-flight aiosqlite thread callbacks
+        # to post before the event loop tears down this coroutine.
+        await asyncio.sleep(0.05)
     elapsed = time.perf_counter() - start
 
     assert elapsed < 45.0, f"Processing 20 web search jobs took {elapsed:.1f}s — exceeds 45s SLO"
