@@ -222,7 +222,7 @@ export function GraphView({ onAskQuery }: { onAskQuery: (q: string, hints: strin
                         </select>
                         <span className="graph-stats">
                             {nodes.length} nodes · {edges.length} edges
-                            <span className="graph-stats-note"> — validated only</span>
+                            <span className="graph-stats-note"> (excludes draft and archived nodes)</span>
                         </span>
                     </div>
                     <div className="graph-canvas-wrap">

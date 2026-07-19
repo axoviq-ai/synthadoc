@@ -435,7 +435,7 @@ export class GraphModal extends Modal {
             statsEl.empty();
             statsEl.appendText(`${currentNodes.length} nodes · ${currentEdges.length} edges`);
             const noteEl = statsEl.createEl("span");
-            noteEl.textContent = " — validated only";
+            noteEl.textContent = " (excludes draft and archived nodes)";
             noteEl.style.cssText = "font-size:11px;opacity:0.7;";
 
             // Cluster legend
