@@ -417,15 +417,20 @@ class LintAgent:
         co-source connections (+2 per shared source hash).  edge_type is one
         of 'wikilink', 'co_source', or 'mixed'.
         """
-        # Collect slugs, excluding system pages and archived pages; cache pages to avoid
-        # re-reading below. Archived pages are excluded here so graph rebuilds after a
-        # server restart match the state maintained by cascade_archive() at archive time.
+        # Only include pages with a validated lifecycle state (active, stale, contradicted).
+        # Draft pages are unreviewed content; archived pages are retired.  Neither should
+        # appear in the knowledge graph, which represents the validated knowledge network.
+        _GRAPH_STATES = frozenset({
+            LifecycleState.ACTIVE,
+            LifecycleState.STALE,
+            LifecycleState.CONTRADICTED,
+        })
         _page_cache: dict[str, WikiPage] = {}
         for _s in self._store.list_pages():
             if _s in SYSTEM_PAGE_SLUGS:
                 continue
             _p = self._store.read_page(_s)
-            if _p is not None and _p.status != LifecycleState.ARCHIVED:
+            if _p is not None and _p.status in _GRAPH_STATES:
                 _page_cache[_s] = _p
         slugs = list(_page_cache)
         if not slugs:

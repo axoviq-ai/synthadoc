@@ -248,8 +248,12 @@ def test_build_graph_excludes_archived_pages(tmp_path):
     assert "other-active" in slugs
 
 
-def test_build_graph_includes_draft_pages(tmp_path):
-    """Draft pages are included in the graph (only archived are excluded)."""
+def test_build_graph_excludes_draft_pages(tmp_path):
+    """Draft pages must not appear in the graph — they are unreviewed content.
+
+    Only active, stale, and contradicted pages belong in the validated knowledge
+    network represented by the graph.
+    """
     pages = {
         "active-page": make_page(content="see [[draft-page]]", status=LifecycleState.ACTIVE),
         "draft-page": make_page(content="", status=LifecycleState.DRAFT),
@@ -258,5 +262,21 @@ def test_build_graph_includes_draft_pages(tmp_path):
     agent = LintAgent(None, store, mock_log_writer())
     nodes, _ = agent._build_graph()
     slugs = {n["slug"] for n in nodes}
-    assert "draft-page" in slugs
+    assert "draft-page" not in slugs
     assert "active-page" in slugs
+
+
+def test_build_graph_includes_stale_and_contradicted(tmp_path):
+    """Stale and contradicted pages are still part of the knowledge network and must appear."""
+    pages = {
+        "active-page": make_page(content="see [[stale-page]] and [[contradicted-page]]",
+                                 status=LifecycleState.ACTIVE),
+        "stale-page": make_page(content="", status=LifecycleState.STALE),
+        "contradicted-page": make_page(content="", status=LifecycleState.CONTRADICTED),
+    }
+    store = make_store(tmp_path, pages)
+    agent = LintAgent(None, store, mock_log_writer())
+    nodes, _ = agent._build_graph()
+    slugs = {n["slug"] for n in nodes}
+    assert "stale-page" in slugs
+    assert "contradicted-page" in slugs
