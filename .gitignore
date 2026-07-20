@@ -35,3 +35,6 @@ synthadoc/demos/*/log.md
 
 # subagent test scratch directories
 test_tmp/
+
+# intermediate build output — committed artifact is synthadoc/data/web-ui/dist/
+web-ui/dist/

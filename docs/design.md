@@ -1,6 +1,6 @@
 # Synthadoc — Design Document
 
-**Version:** 1.0.2  
+**Version:** 1.1.0  
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -41,6 +41,8 @@
 30. [Per-Source Truncation Flag](#30-per-source-truncation-flag)
 31. [Proportional Context Budget](#31-proportional-context-budget)
 32. [Knowledge Graph](#32-knowledge-graph)
+33. [Multi-Platform Agent Skill Files](#33-multi-platform-agent-skill-files)
+34. [Synthadoc Scaffold Marker](#34-synthadoc-scaffold-marker)
 
 **Appendices**
 - [Appendix A — Release Feature Index](#appendix-a--release-feature-index)
@@ -72,7 +74,9 @@ my-wiki/
   wiki/               ← compiled Markdown pages
   raw_sources/        ← original source documents
   hooks/              ← wiki-specific hook scripts
-  AGENTS.md           ← LLM instructions for this domain
+  AGENTS.md           ← LLM instructions for Codex CLI, OpenCode, and generic OpenAI agents
+  CLAUDE.md           ← same content as AGENTS.md; loaded automatically by Claude Code
+  GEMINI.md           ← same content as AGENTS.md; loaded automatically by Gemini CLI
   log.md              ← human-readable activity log
   .synthadoc/
     config.toml       ← per-project configuration
@@ -867,7 +871,7 @@ The HTTP server runs a background task that polls `jobs.db` every 2 seconds and 
 
 **Package:** `synthadoc-obsidian` (TypeScript)  
 **Location:** `obsidian-plugin/` in the repo  
-**Version:** 1.0.2
+**Version:** 1.1.0
 
 Each vault configures its server URL in plugin settings (default `http://127.0.0.1:7070`).
 
@@ -893,7 +897,7 @@ Reload the plugin (toggle off/on) after copying — a full Obsidian restart is n
 | `Synthadoc: Candidates: review candidate pages...` | Paginated table (50 per page) of all staged candidate pages. Each row shows the slug, a colour-coded confidence badge, and a checkbox. **Promote All** and **Discard All** act on every candidate; **Promote Selected** and **Discard Selected** act on checked rows. The table reloads automatically after each action. A footer link opens the Staging policy modal. |
 | `Synthadoc: Context: build context pack...` | Modal with a goal/question text area, a token budget field (default 4000), and a **Build Context Pack** button (`Ctrl/Cmd+Enter` also triggers). The server decomposes the goal, retrieves and ranks wiki pages via BM25, and packs them within the budget. The result is rendered as cited Markdown in a read-only text area. **Copy to Clipboard** copies the content to the OS clipboard. **Save as .md** downloads the Markdown file with a slug-derived filename. |
 | `Synthadoc: Audit...` | Tabbed modal with four audit views, each loading automatically on open. **Query history** — last N query records (default 50) with question, sub-question count, token use, cost, and timestamp. **Ingest history** — last N ingest records (default 50) with source filename, wiki page slug, tokens, cost, and ingested-at timestamp. **Events** — last N raw audit events (default 100, max 1000) with timestamp, job ID, event type, and metadata; scrollable when tall. **Cost summary** — total tokens and cost over the last N days (default 30) plus per-day breakdown. |
-| `Graph: show knowledge graph` | Open the knowledge graph panel — Canvas force graph with type filter, hover tooltip, and click-to-open |
+| `Graph: show knowledge graph` _(v1.1.0)_ | Open the knowledge graph panel — draggable modal with Canvas force-directed graph, type filter dropdown, cluster legend, hover tooltip showing title/slug/type/state/cluster/connections, and click-to-open page in current pane. System pages (index, overview, dashboard, purpose, log) are excluded. Capped at 300 most-connected nodes for large wikis with an explanatory banner. |
 
 ### Ribbon icon
 
@@ -2777,7 +2781,9 @@ All file I/O is handled by a dedicated backup engine (pure stdlib — no new pip
 ```
 synthadoc-backup-<wiki>-<YYYYMMDD-HHMMSS>.zip
 ├── manifest.json          ← always present; last entry wins if duplicated
-├── AGENTS.md              ← LLM agent instructions (if present)
+├── AGENTS.md              ← LLM agent instructions for Codex CLI / OpenCode (if present)
+├── CLAUDE.md              ← same content; loaded by Claude Code (if present)
+├── GEMINI.md              ← same content; loaded by Gemini CLI (if present)
 ├── ROUTING.md             ← query routing index (if present)
 ├── log.md                 ← human-readable activity log (if present)
 ├── *.txt                  ← all batch ingest files at wiki root (if present)
@@ -3003,6 +3009,116 @@ The **Graph** tab (alongside Chat in the top nav) renders a D3.js force-directed
 
 Controls: zoom in/out (scroll or pinch), drag nodes, filter by page type.
 
+### System page exclusion _(v1.1.0)_
+
+The five structural system pages — `overview`, `index`, `dashboard`, `purpose`, and `log` — are excluded from both `graph_nodes` and `graph_edges`. These pages link to nearly every other page and would act as false hubs, inflating edge counts and distorting Louvain cluster detection. System page exclusion is applied inside `_build_graph()` before any edge computation.
+
+### Obsidian knowledge graph panel _(v1.1.0)_
+
+→ Full description: [§33 Multi-Platform Agent Skill Files](#33-multi-platform-agent-skill-files) covers scaffold; the graph panel itself is documented in [§8 Obsidian Plugin](#8-obsidian-plugin) command table.
+
+The Obsidian plugin includes a **draggable modal** knowledge graph panel (`Graph: show knowledge graph` command). It fetches from the same `GET /graph` endpoint as the web UI and renders a force-directed Canvas 2D simulation using Verlet integration (no external library). System pages are already excluded from the server response.
+
+| Feature | Obsidian panel | Web UI Graph tab |
+|---------|----------------|-----------------|
+| Engine | Canvas 2D + Verlet | D3.js SVG |
+| Node click | Opens the wiki page in the current pane | Opens the node sidebar with "Ask about this →" |
+| **Best for** | **Navigating to and editing pages** | **Asking questions about a page** |
+| Draggable panel | Yes — drag header to reposition | Fixed tab layout |
+| Node cap | 300 most-connected (see note) | No cap |
+| Cluster legend | Yes | Yes |
+| Type filter | Yes | Yes |
+
+**Rule of thumb:** Use the **web UI** when you want to ask questions about a node. Use the **Obsidian panel** when you want to navigate to and edit a page.
+
+**Node cap rationale:** The Obsidian panel uses a hand-written Verlet integrator with O(n²) pairwise charge repulsion — every node repels every other node on each animation tick. At 300 nodes that is ~90,000 operations per frame, which runs smoothly at 60 fps inside Obsidian's Electron renderer. At 500 nodes it is ~250,000 operations per frame and starts to lag noticeably. The web UI has no cap because D3's `forceManyBody` uses a Barnes-Hut tree approximation (O(n log n)), which scales to thousands of nodes without frame-rate issues. When the cap is hit, nodes are ranked by degree and the 300 most-connected are shown; a banner reports the total page count and the number of hidden nodes, and suggests using the type filter to bring the set below 300.
+
+→ User walkthrough: [Quick-Start Guide §24 — Knowledge Graph](docs/user-quick-start-guide.md#knowledge-graph)
+
+---
+
+## 33. Multi-Platform Agent Skill Files
+
+<a name="multi-platform-agent-skill-files"></a>
+
+`synthadoc init` and `synthadoc scaffold` write three agent skill files at the wiki root:
+
+| File | Format | Read by |
+|------|--------|---------|
+| `AGENTS.md` | OpenAI Agents SDK / Codex / OpenCode | Codex CLI, OpenCode, generic agents |
+| `CLAUDE.md` | Claude Code / Anthropic | Claude Code (loaded automatically when the wiki folder is opened) |
+| `GEMINI.md` | Gemini CLI | Gemini CLI |
+
+All three files carry **identical content**: a title block, the LLM-generated domain guidelines for the wiki, a quick-reference CLI command table, and an MCP tool table. The only difference is the heading comment. This means any AI coding tool that opens the wiki root gets full Synthadoc guidance without manual setup.
+
+### Content generated by `scaffold`
+
+Each skill file is generated from the same LLM call that produces `purpose.md` and `index.md`. The LLM receives the current wiki page list and domain description, then generates:
+
+1. **Domain label** — a precise human-readable name inferred from wiki content (e.g. `History of Computing`, not `My Wiki`)
+2. **Domain guidelines** — 3 domain-specific ingest and query guidelines as plain sentences
+3. **Quick Reference table** — pre-filled with the current wiki name and port
+
+If the wiki was created before v1.1.0, running `synthadoc scaffold` once regenerates all three files and adds `CLAUDE.md` and `GEMINI.md` to any wiki that only had `AGENTS.md`.
+
+### Template source
+
+The instruction body is defined in `synthadoc/cli/_init.py` as `_AGENT_INSTRUCTION_BODY` and shared by all three templates, keeping the files permanently in sync. The scaffold agent substitutes `{domain}`, `{guidelines}`, and `{port}` at write time.
+
+---
+
+## 34. Synthadoc Scaffold Marker
+
+<a name="synthadoc-scaffold-marker"></a>
+
+The scaffold marker `<!-- synthadoc:scaffold -->` (written as an HTML comment) separates **user-authored content** (preserved) from **scaffold-managed content** (rewritten on each `synthadoc scaffold` run).
+
+### Single-marker mode (index.md)
+
+The marker appears once, below the H1 heading in `index.md`. Everything above the marker is the user zone; everything below is replaced with new LLM-generated categories.
+
+```markdown
+My custom introduction — maintained by hand.
+
+<!-- synthadoc:scaffold -->
+
+## Pioneers and Visionaries
+- [[alan-turing]]
+...
+```
+
+If the marker is absent, scaffold rewrites the whole file (original behaviour).
+
+### Per-section multi-marker mode (purpose.md)
+
+`purpose.md` uses a **per-section** approach: the marker appears inside each `## Section` heading. Within a section, content the user writes **above** the marker is preserved; content below is replaced with fresh LLM output. Sections without a marker in the existing file are replaced entirely (and a marker is added). Sections in the existing file that the scaffold template does not include are kept unchanged.
+
+```markdown
+## Overview
+
+My custom overview note.
+
+<!-- synthadoc:scaffold -->
+
+LLM-generated overview content goes here.
+
+## What Belongs
+
+<!-- synthadoc:scaffold -->
+
+LLM-generated scope definition.
+```
+
+This design lets users annotate any section of `purpose.md` without losing their notes on the next scaffold run.
+
+### Marker preservation guarantee
+
+- `preserve_user_zone()` in `scaffold_agent.py` handles both modes.
+- If a section has no marker in the existing file, `preserve_user_zone()` treats the entire section body as user content and preserves it, replacing only what falls below any marker it finds.
+- The scaffold NEVER touches `config.toml`, `dashboard.md`, or any wiki page (`wiki/*.md`).
+
+→ User walkthrough: [Quick-Start Guide §14 — Enrich the wiki with scaffold](docs/user-quick-start-guide.md#scaffold)
+
 ---
 
 ## Customization
@@ -3073,11 +3189,18 @@ All three files share identical body content generated from the same template; t
 
 ## Appendix A — Release Feature Index
 
-### v1.1.0 (in progress)
+### v1.1.0
 
 - **Weighted knowledge graph edges** — graph edges now carry two signals: wikilink occurrences (+1 each) and co-source connections — pages compiled from the same source file (matched by SHA-256 hash) — (+2 per shared source). `edge_type` field added to `graph_edges` table (`wikilink`, `co_source`, or `mixed`). `GET /graph` exposes `edge_type` per edge. Web UI renders edge thickness proportional to weight (1–4 px) and dashed lines for pure co-source edges. Co-source edges appear immediately after ingest — before any wikilinks — surfacing hidden relationships in the graph. Schema migrated to version 3.
-- **Multi-platform agent skill files** — `synthadoc init` now writes `CLAUDE.md`, `AGENTS.md`, and `GEMINI.md` at wiki root; all three carry the same complete CLI reference so Claude Code, Codex CLI, OpenCode, Pi, and Gemini CLI users get first-class guidance without manual setup.
-- **Session history ingestion skill** — `.jsonl` session files from Claude Code and Codex CLI are ingested as wiki pages; human turns and substantive assistant responses extracted; tool calls, thinking blocks, and sub-agent scaffolding skipped; format auto-detected; `suggested_slug` derived from session date and first user message.
+- **Multi-platform agent skill files** — `synthadoc init` and `synthadoc scaffold` write `CLAUDE.md`, `AGENTS.md`, and `GEMINI.md` at wiki root; all three carry LLM-generated domain guidelines and the full CLI quick-reference so Claude Code, Codex CLI, OpenCode, Pi, and Gemini CLI users get first-class guidance without manual setup. Run `synthadoc scaffold` once on any pre-v1.1.0 wiki to generate the new files. See [§33](#33-multi-platform-agent-skill-files).
+- **Session history ingestion skill** — `.jsonl` session files from Claude Code and Codex CLI are ingested as wiki pages; human turns and substantive assistant responses extracted; tool calls, thinking blocks, and sub-agent scaffolding skipped; format auto-detected; `suggested_slug` derived from session date and first user message. Converts ephemeral problem-solving knowledge into searchable wiki entries. See [§5 Skills System — Session Skill](#session-skill--ai-session-history-ingestion).
+- **Obsidian knowledge graph panel** — new `Graph: show knowledge graph` command in the Obsidian plugin opens a draggable modal with a Canvas 2D force-directed graph. Features: Verlet integration, type filter dropdown, cluster legend, hover tooltip (title, slug, type, state, cluster, connections), click-to-open page in current pane, node drag to repin. Closes only via the × button — Escape and outside-click do not close the panel, matching the behaviour of other Synthadoc modals. **Large-wiki cap:** when the node set exceeds 300 (after any type filter is applied), nodes are ranked by degree (total edge count) and the 300 most-connected are displayed; edges to capped-out nodes are removed; a banner explains the cap and suggests using the type filter to narrow the view below 300. See [§8 Obsidian Plugin](#8-obsidian-plugin) and [§32 Knowledge Graph — Obsidian panel](#obsidian-knowledge-graph-panel-v110).
+- **Per-section scaffold markers in `purpose.md`** — `purpose.md` now uses per-section `<!-- synthadoc:scaffold -->` markers. Users can write content above the marker in any `## Section` block; that content is preserved on every re-scaffold. A single-marker mode for `index.md` continues to work as before. See [§34 Synthadoc Scaffold Marker](#34-synthadoc-scaffold-marker).
+- **System pages excluded from knowledge graph** — `overview`, `index`, `dashboard`, `purpose`, and `log` are filtered out of `_build_graph()` before any edge computation so they cannot act as false hubs in Louvain cluster detection. Both the Obsidian graph panel and the web UI Graph tab reflect this exclusion.
+- **Web UI graph cluster legend** — the web UI Graph tab now shows a cluster legend below the canvas (matching the Obsidian plugin panel), with a color swatch and label for each Louvain cluster present in the filtered node set.
+- **`_merge_section_into_page` deduplication** — force re-ingest of the same source file (e.g. an updated `.jsonl` session) now replaces the page body rather than appending a duplicate section. `_files_match()` normalizes absolute vs. relative paths so the same file is recognized regardless of how it was passed to the ingest command.
+- **`purpose.md` domain label inference** — `scaffold` now infers a precise `domain_label` from current wiki content (e.g. `History of Computing`) instead of using a generic placeholder; the label is used in all three agent skill files and in `purpose.md`'s Overview section.
+- **CI: Windows runner fix** — `scripts/sync_plugin.py` and `scripts/sync_web_ui.py` now use `shutil.copy2` instead of `cp -f`, resolving CI failures on Windows runners for the sync check.
 
 ### v1.0.2
 

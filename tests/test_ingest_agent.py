@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from synthadoc.agents.ingest_agent import IngestAgent
+from synthadoc.agents.ingest_agent import IngestAgent, _files_match
 from synthadoc.config import AgentConfig, AgentsConfig, Config, IngestConfig
 from synthadoc.providers.base import CompletionResponse
 from synthadoc.storage.log import AuditDB, LogWriter
@@ -197,6 +197,33 @@ async def test_source_ref_size_is_full_content_length_when_truncated(tmp_path, m
     page = get_first_page(tmp_path)
     assert page.sources[0].truncated is True
     assert page.sources[0].size == len(content)  # 33000, not 32000
+
+
+# ---------------------------------------------------------------------------
+# _files_match unit tests
+# ---------------------------------------------------------------------------
+
+def test_files_match_identical():
+    assert _files_match("notes.pdf", "notes.pdf")
+
+def test_files_match_abs_vs_relative_suffix(tmp_path):
+    abs_path = str(tmp_path / "raw_sources" / "notes.pdf")
+    assert _files_match(abs_path, "raw_sources/notes.pdf")
+
+def test_files_match_abs_vs_filename_only(tmp_path):
+    abs_path = str(tmp_path / "raw_sources" / "notes.pdf")
+    assert _files_match(abs_path, "notes.pdf")
+
+def test_files_match_no_false_positive_different_dir(tmp_path):
+    abs_path = str(tmp_path / "other_dir" / "notes.pdf")
+    assert not _files_match(abs_path, "raw_sources/notes.pdf")
+
+def test_files_match_relative_vs_abs(tmp_path):
+    abs_path = str(tmp_path / "raw_sources" / "notes.pdf")
+    assert _files_match("raw_sources/notes.pdf", abs_path)
+
+def test_files_match_both_relative_no_match():
+    assert not _files_match("a/notes.pdf", "b/notes.pdf")
 
 
 # ---------------------------------------------------------------------------

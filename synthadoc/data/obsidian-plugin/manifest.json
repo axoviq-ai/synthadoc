@@ -1,7 +1,7 @@
 {
   "id": "synthadoc",
   "name": "Synthadoc",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "minAppVersion": "1.4.0",
   "description": "Connect your Obsidian vault to synthadoc.",
   "author": "synthadoc",

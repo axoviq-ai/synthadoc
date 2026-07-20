@@ -80,7 +80,7 @@ async def test_lint_no_warn_when_not_truncated(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_build_graph_basic_edges(tmp_path):
-    """_build_graph extracts directed edges from wikilinks."""
+    """_build_graph extracts undirected edges from wikilinks (one edge per pair)."""
     pages = {
         "a": make_page(content="links to [[b]] and [[c]]"),
         "b": make_page(content="links to [[a]]"),
@@ -91,10 +91,12 @@ def test_build_graph_basic_edges(tmp_path):
     nodes, edges = agent._build_graph()
     slugs = {n["slug"] for n in nodes}
     assert slugs == {"a", "b", "c"}
-    edge_pairs = {(e["from_slug"], e["to_slug"]) for e in edges}
-    assert ("a", "b") in edge_pairs
-    assert ("a", "c") in edge_pairs
-    assert ("b", "a") in edge_pairs
+    # Graph is undirected: check as unordered pairs
+    edge_sets = {frozenset((e["from_slug"], e["to_slug"])) for e in edges}
+    assert frozenset(("a", "b")) in edge_sets
+    assert frozenset(("a", "c")) in edge_sets
+    # a↔b is one edge (not two); b→a wikilink and a→b wikilink collapse into one undirected edge
+    assert len([e for e in edges if frozenset((e["from_slug"], e["to_slug"])) == frozenset(("a", "b"))]) == 1
 
 
 def test_build_graph_multi_link_weight(tmp_path):
@@ -106,7 +108,7 @@ def test_build_graph_multi_link_weight(tmp_path):
     store = make_store(tmp_path, pages)
     agent = LintAgent(None, store, mock_log_writer())
     nodes, edges = agent._build_graph()
-    ab = next(e for e in edges if e["from_slug"] == "a" and e["to_slug"] == "b")
+    ab = next(e for e in edges if frozenset((e["from_slug"], e["to_slug"])) == frozenset(("a", "b")))
     assert ab["weight"] == 2
 
 
@@ -159,8 +161,8 @@ def test_build_graph_pipe_alias_link_resolved(tmp_path):
     store = make_store(tmp_path, pages)
     agent = LintAgent(None, store, mock_log_writer())
     nodes, edges = agent._build_graph()
-    edge_pairs = {(e["from_slug"], e["to_slug"]) for e in edges}
-    assert ("a", "b") in edge_pairs, "pipe-alias link should produce edge a→b"
+    edge_sets = {frozenset((e["from_slug"], e["to_slug"])) for e in edges}
+    assert frozenset(("a", "b")) in edge_sets, "pipe-alias link should produce edge a↔b"
 
 
 def test_build_graph_wikilink_edge_type(tmp_path):
@@ -172,12 +174,12 @@ def test_build_graph_wikilink_edge_type(tmp_path):
     store = make_store(tmp_path, pages)
     agent = LintAgent(None, store, mock_log_writer())
     _, edges = agent._build_graph()
-    ab = next(e for e in edges if e["from_slug"] == "a" and e["to_slug"] == "b")
+    ab = next(e for e in edges if frozenset((e["from_slug"], e["to_slug"])) == frozenset(("a", "b")))
     assert ab["edge_type"] == "wikilink"
 
 
 def test_build_graph_co_source_edge(tmp_path):
-    """Pages sharing a source hash produce a co_source edge with +2 weight per shared hash."""
+    """Pages sharing a source hash produce one undirected co_source edge with +2 weight per shared hash."""
     src = make_source("sha256abc")
     pages = {
         "a": make_page(content="no links", sources=[src]),
@@ -186,14 +188,12 @@ def test_build_graph_co_source_edge(tmp_path):
     store = make_store(tmp_path, pages)
     agent = LintAgent(None, store, mock_log_writer())
     _, edges = agent._build_graph()
-    # Bidirectional co-source edges
-    ab = next((e for e in edges if e["from_slug"] == "a" and e["to_slug"] == "b"), None)
-    ba = next((e for e in edges if e["from_slug"] == "b" and e["to_slug"] == "a"), None)
-    assert ab is not None, "co-source edge a→b expected"
-    assert ba is not None, "co-source edge b→a expected"
-    assert ab["weight"] == 2  # 1 shared source × 2
-    assert ab["edge_type"] == "co_source"
-    assert ba["edge_type"] == "co_source"
+    # Single undirected co-source edge (not two directed edges)
+    ab_edges = [e for e in edges if frozenset((e["from_slug"], e["to_slug"])) == frozenset(("a", "b"))]
+    assert len(ab_edges) == 1, "exactly one co-source edge between a and b expected"
+    edge = ab_edges[0]
+    assert edge["weight"] == 2  # 1 shared source × 2
+    assert edge["edge_type"] == "co_source"
 
 
 def test_build_graph_mixed_edge(tmp_path):
@@ -206,7 +206,7 @@ def test_build_graph_mixed_edge(tmp_path):
     store = make_store(tmp_path, pages)
     agent = LintAgent(None, store, mock_log_writer())
     _, edges = agent._build_graph()
-    ab = next(e for e in edges if e["from_slug"] == "a" and e["to_slug"] == "b")
+    ab = next(e for e in edges if frozenset((e["from_slug"], e["to_slug"])) == frozenset(("a", "b")))
     # wikilink weight=1, co-source weight=2 → total 3
     assert ab["weight"] == 3
     assert ab["edge_type"] == "mixed"
@@ -221,6 +221,62 @@ def test_build_graph_co_source_two_shared(tmp_path):
     store = make_store(tmp_path, pages)
     agent = LintAgent(None, store, mock_log_writer())
     _, edges = agent._build_graph()
-    xy = next(e for e in edges if e["from_slug"] == "x" and e["to_slug"] == "y")
+    xy = next(e for e in edges if frozenset((e["from_slug"], e["to_slug"])) == frozenset(("x", "y")))
     assert xy["weight"] == 4  # 2 shared sources × 2
     assert xy["edge_type"] == "co_source"
+
+
+def test_build_graph_excludes_archived_pages(tmp_path):
+    """Archived pages must not appear as graph nodes on a full rebuild.
+
+    Regression: before the fix, _build_graph() read all .md files from disk
+    without filtering by lifecycle state, so a server restart would re-add
+    archived pages to the graph (contradicting the node deletion performed by
+    cascade_archive() at archive time).
+    """
+    pages = {
+        "active-page": make_page(content="see [[other-active]]", status=LifecycleState.ACTIVE),
+        "other-active": make_page(content="", status=LifecycleState.ACTIVE),
+        "archived-page": make_page(content="", status=LifecycleState.ARCHIVED),
+    }
+    store = make_store(tmp_path, pages)
+    agent = LintAgent(None, store, mock_log_writer())
+    nodes, _ = agent._build_graph()
+    slugs = {n["slug"] for n in nodes}
+    assert "archived-page" not in slugs
+    assert "active-page" in slugs
+    assert "other-active" in slugs
+
+
+def test_build_graph_excludes_draft_pages(tmp_path):
+    """Draft pages must not appear in the graph — they are unreviewed content.
+
+    Only active, stale, and contradicted pages belong in the validated knowledge
+    network represented by the graph.
+    """
+    pages = {
+        "active-page": make_page(content="see [[draft-page]]", status=LifecycleState.ACTIVE),
+        "draft-page": make_page(content="", status=LifecycleState.DRAFT),
+    }
+    store = make_store(tmp_path, pages)
+    agent = LintAgent(None, store, mock_log_writer())
+    nodes, _ = agent._build_graph()
+    slugs = {n["slug"] for n in nodes}
+    assert "draft-page" not in slugs
+    assert "active-page" in slugs
+
+
+def test_build_graph_includes_stale_and_contradicted(tmp_path):
+    """Stale and contradicted pages are still part of the knowledge network and must appear."""
+    pages = {
+        "active-page": make_page(content="see [[stale-page]] and [[contradicted-page]]",
+                                 status=LifecycleState.ACTIVE),
+        "stale-page": make_page(content="", status=LifecycleState.STALE),
+        "contradicted-page": make_page(content="", status=LifecycleState.CONTRADICTED),
+    }
+    store = make_store(tmp_path, pages)
+    agent = LintAgent(None, store, mock_log_writer())
+    nodes, _ = agent._build_graph()
+    slugs = {n["slug"] for n in nodes}
+    assert "stale-page" in slugs
+    assert "contradicted-page" in slugs

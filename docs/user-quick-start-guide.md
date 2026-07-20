@@ -1,6 +1,6 @@
 ﻿# Synthadoc User Quick-Start Guide
 
-**Version: v1.0.2 (Community Edition)**
+**Version: v1.1.0 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
@@ -459,6 +459,8 @@ synthadoc query "What did Konrad Zuse contribute to computing history?"
 > **Pages are created as `draft`.** Every page produced by ingest starts in the `draft` state — compiled but not yet reviewed. Draft pages are immediately queryable; BM25 retrieval includes all pages regardless of lifecycle state. Running lint (Step 7) promotes clean pages to `active`, which marks them as human-reviewed and protects them from being overwritten by future ingest.
 
 > **Pre-LLM sanitizer (v1.0):** Before sending any source to the LLM, Synthadoc strips zero-width characters, bidirectional text overrides, hidden HTML, and instruction-override phrases that could cause the model to misinterpret content. This runs automatically — no configuration needed. See [design.md §29](design.md#29-pre-llm-source-sanitizer) for the full table of sanitizer categories, actions, and warning behaviour.
+
+> **Large sources:** Synthadoc applies a default character limit of 32,000 characters per source before the LLM call. Sources that exceed this limit are truncated; the compiled page records `truncated: true` in its `sources:` frontmatter and `synthadoc lint` emits a warning with a suggested override command. To raise the limit for a single ingest run `synthadoc ingest papers/large-textbook.pdf --max-source-chars 128000`, or set it globally in `.synthadoc/config.toml` under `[ingest] max_source_chars = 128000`.
 
 ---
 
@@ -1337,6 +1339,31 @@ Everything **above** the marker is your protected zone — scaffold never touche
 Everything **below** is rewritten each time. If the marker is absent, scaffold rewrites
 the whole file as before.
 
+### Per-section markers in purpose.md
+
+`wiki/purpose.md` uses a more granular approach — each `## Section` has its own marker. This lets you annotate individual sections (for example, add a note about what kind of sources belong in the wiki) without losing your annotations when scaffold regenerates the rest.
+
+```markdown
+## Overview
+
+My organization-specific note about this wiki.
+
+<!-- synthadoc:scaffold -->
+
+LLM-generated overview content refreshed each scaffold run.
+
+## What Belongs
+
+<!-- synthadoc:scaffold -->
+
+LLM-generated scope definition — no custom note above, so only this line is rewritten.
+```
+
+Text you write **above** the marker in any section is preserved. Text below is refreshed.
+Sections where you have not added a marker are treated the same as before (fully refreshed).
+
+→ Full design spec: [Design §34 — Synthadoc Scaffold Marker](design.md#34-synthadoc-scaffold-marker)
+
 ---
 
 <a name="audit"></a>
@@ -1478,9 +1505,9 @@ run-bc56dc6a  scaffold  success
 
 The **Details** section only appears when runs have output to show. Successful runs display captured output; failed runs display the error. A `failed` run means either `synthadoc serve` was not running when the task fired, or the operation itself encountered an error. Re-run manually with `synthadoc schedule run --op "lint run"` to recover.
 
-### Clean up (demo only)
+### Clean up the scheduled tasks
 
-Remove the scheduled jobs so they do not run after the demo:
+Remove the scheduled jobs when you no longer need them:
 
 ```bash
 synthadoc schedule remove sched-a3f1b2c4
@@ -2271,7 +2298,13 @@ Zoom and pan with your mouse or trackpad. Pages with more inbound links appear l
 
 In the history-of-computing demo you will see clusters forming around computing pioneers, hardware eras, and software history.
 
-![Knowledge graph for the history-of-computing wiki — nodes coloured by Louvain cluster](png/synthadoc-knowledge-graph.png)
+Before running lint, you may notice isolated nodes floating at the edges — pages with no wikilinks pointing to or from them, or with broken citation links. These are orphan pages that have not yet been connected to the rest of the knowledge graph.
+
+![Knowledge graph before lint — isolated nodes with broken or missing links visible at the edges](png/synthadoc-knowledge-graph-with-broken-links.png)
+
+After lint resolves dangling links and the graph is rebuilt, the same wiki becomes significantly more connected. Pages that were isolated now have edges to related neighbours, and the cluster structure becomes clearer.
+
+![Knowledge graph after lint — 110 nodes, denser cluster structure with fewer isolated pages](png/synthadoc-knowledge-graph.png)
 
 ### Click a node to query it
 
@@ -2284,6 +2317,19 @@ Click any node to open its detail panel:
 - **"Ask about this →"** button
 
 Click **Ask about this →** to jump to the Chat tab with a pre-filled query about that page. The answer is drawn from the wiki and citations appear inline.
+
+### When to use which graph view
+
+Synthadoc provides two knowledge graph views powered by the same `GET /graph` endpoint. Choose based on what you want to do next:
+
+| I want to… | Use |
+|---|---|
+| Ask a question about a page | **Web UI Graph tab** — click a node → "Ask about this →" |
+| Read or edit a page I found in the graph | **Obsidian panel** — click a node to open it in the current pane |
+| Explore graph topology while staying in Obsidian | **Obsidian panel** |
+| See graph and chat side by side | **Web UI** |
+
+> **Rule of thumb:** Use the **web UI** when you want to ask questions about a node. Use the **Obsidian panel** when you want to navigate to and edit a page.
 
 ### Open the graph panel in Obsidian
 
@@ -2299,20 +2345,7 @@ The panel shows all wiki pages as force-directed nodes coloured by cluster. Use 
 
 Edge thickness encodes connection strength (thicker = more wikilinks + shared sources). Dashed edges are co-source relationships — pages compiled from the same source document.
 
----
-
-**Large sources:** Synthadoc applies a default character limit of 32,000 characters per source before the LLM call. Sources that exceed this limit are truncated; the compiled page records `truncated: true` in its `sources:` frontmatter and `synthadoc lint` emits a warning with a suggested override command. To raise the limit for a single ingest:
-
-```bash
-synthadoc ingest papers/large-textbook.pdf --max-source-chars 128000
-```
-
-Or set it globally in `.synthadoc/config.toml`:
-
-```toml
-[ingest]
-max_source_chars = 128000
-```
+![Obsidian knowledge graph panel — force-directed graph with cluster colours, type filter, and hover tooltip](png/synthadoc-obsidian-kg.png)
 
 ---
 
@@ -2472,8 +2505,26 @@ To promote a page to active: `synthadoc lifecycle activate <slug>`
 
 After upgrading Synthadoc, sync your demo wikis to pick up new content:
 
-    synthadoc demo sync --force            # update all demo pages and source files (recommended)
-    synthadoc demo sync                    # additive only — skip if you need citation markers on pre-built pages
+    synthadoc demo sync --force   # overwrite existing wiki pages from the latest template (picks up citation markers and other page updates)
+    synthadoc demo sync           # additive only — copies new raw_sources and new wiki pages; existing wiki pages are not overwritten
+
+---
+
+## Uninstall a wiki
+
+> **Caution:** Uninstalling permanently deletes the wiki directory and all its contents — pages, source files, audit database, and config. This cannot be undone. Run `synthadoc backup` first if you want to keep a copy:
+>
+> ```bash
+> synthadoc backup -w history-of-computing   # creates a timestamped zip you can restore later
+> ```
+
+To uninstall:
+
+```bash
+synthadoc uninstall history-of-computing
+```
+
+The command asks for two confirmations — a yes/no prompt and then requires you to type the wiki name — before anything is deleted. This applies to both demo wikis and your own wikis.
 
 ---
 
