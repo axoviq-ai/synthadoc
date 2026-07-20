@@ -73,6 +73,8 @@ def test_create_backup_contains_wiki_pages(wiki_root, tmp_path):
 
 def test_create_backup_includes_root_config_files(wiki_root, tmp_path):
     (wiki_root / "AGENTS.md").write_text("# Agents", encoding="utf-8")
+    (wiki_root / "CLAUDE.md").write_text("# Claude", encoding="utf-8")
+    (wiki_root / "GEMINI.md").write_text("# Gemini", encoding="utf-8")
     (wiki_root / "ROUTING.md").write_text("# Routing", encoding="utf-8")
     (wiki_root / "log.md").write_text("# Log", encoding="utf-8")
     (wiki_root / "sources.txt").write_text("https://example.com\n", encoding="utf-8")
@@ -80,6 +82,8 @@ def test_create_backup_includes_root_config_files(wiki_root, tmp_path):
     with zipfile.ZipFile(zip_path) as zf:
         names = zf.namelist()
     assert "AGENTS.md" in names
+    assert "CLAUDE.md" in names
+    assert "GEMINI.md" in names
     assert "ROUTING.md" in names
     assert "log.md" in names
     assert "sources.txt" in names
@@ -90,6 +94,8 @@ def test_create_backup_skips_absent_root_config_files(wiki_root, tmp_path):
     with zipfile.ZipFile(zip_path) as zf:
         names = zf.namelist()
     assert "AGENTS.md" not in names
+    assert "CLAUDE.md" not in names
+    assert "GEMINI.md" not in names
     assert "ROUTING.md" not in names
     assert "log.md" not in names
     assert "sources.txt" not in names
