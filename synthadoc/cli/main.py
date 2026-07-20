@@ -30,12 +30,26 @@ def _resolve_wiki_path(wiki: str) -> Path:
 def main(ctx: typer.Context,
          version: bool = typer.Option(False, "--version", "-v"),
          wiki: Optional[str] = typer.Option(None, "--wiki", "-w")):
+    import asyncio
+    import platform
     import sys
+    import warnings
+
     # Ensure UTF-8 output on Windows where the default console encoding is cp1252.
     # Wiki content (markdown, citations) may contain characters outside cp1252.
     for _stream in (sys.stdout, sys.stderr):
         if hasattr(_stream, "reconfigure"):
             _stream.reconfigure(encoding="utf-8", errors="replace")
+
+    # ProactorEventLoop (Windows IOCP) deadlocks with aiosqlite's worker thread
+    # under concurrent load — affects both `synthadoc serve` (uvicorn) and any
+    # CLI command that calls asyncio.run().  Set SelectorEventLoop before any
+    # event loop is created.  WindowsSelectorEventLoopPolicy is deprecated in
+    # Python 3.14+ (removal in 3.16); suppress the warning for clean output.
+    if platform.system() == "Windows":
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     if version:
         typer.echo(f"synthadoc {__version__}")
         raise typer.Exit()

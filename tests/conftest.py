@@ -1,8 +1,21 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
+import asyncio
+import platform
 import sqlite3
 import pytest
 from pathlib import Path
+
+# ProactorEventLoop (Windows IOCP) deadlocks with aiosqlite's worker thread
+# under load — observed in test_cache_read_latency_p99 and concurrent-reader
+# tests.  Force SelectorEventLoop for all async tests on Windows.
+# WindowsSelectorEventLoopPolicy is deprecated in Python 3.14+ (removal in
+# 3.16); suppress the DeprecationWarning so test output stays clean.
+if platform.system() == "Windows":
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 @pytest.fixture
