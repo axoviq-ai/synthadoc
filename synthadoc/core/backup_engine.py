@@ -25,7 +25,7 @@ def _iter_wiki_files(
         for f in sorted(wiki_dir.rglob("*.md")):
             yield f, str(f.relative_to(wiki_root)).replace("\\", "/")
 
-    for name in ("AGENTS.md", "ROUTING.md", "log.md"):
+    for name in ("AGENTS.md", "CLAUDE.md", "GEMINI.md", "ROUTING.md", "log.md"):
         p = wiki_root / name
         if p.exists():
             yield p, name

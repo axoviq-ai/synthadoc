@@ -74,7 +74,9 @@ my-wiki/
   wiki/               ← compiled Markdown pages
   raw_sources/        ← original source documents
   hooks/              ← wiki-specific hook scripts
-  AGENTS.md           ← LLM instructions for this domain
+  AGENTS.md           ← LLM instructions for Codex CLI, OpenCode, and generic OpenAI agents
+  CLAUDE.md           ← same content as AGENTS.md; loaded automatically by Claude Code
+  GEMINI.md           ← same content as AGENTS.md; loaded automatically by Gemini CLI
   log.md              ← human-readable activity log
   .synthadoc/
     config.toml       ← per-project configuration
@@ -2779,7 +2781,9 @@ All file I/O is handled by a dedicated backup engine (pure stdlib — no new pip
 ```
 synthadoc-backup-<wiki>-<YYYYMMDD-HHMMSS>.zip
 ├── manifest.json          ← always present; last entry wins if duplicated
-├── AGENTS.md              ← LLM agent instructions (if present)
+├── AGENTS.md              ← LLM agent instructions for Codex CLI / OpenCode (if present)
+├── CLAUDE.md              ← same content; loaded by Claude Code (if present)
+├── GEMINI.md              ← same content; loaded by Gemini CLI (if present)
 ├── ROUTING.md             ← query routing index (if present)
 ├── log.md                 ← human-readable activity log (if present)
 ├── *.txt                  ← all batch ingest files at wiki root (if present)
