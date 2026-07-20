@@ -256,7 +256,8 @@ class OpenAIProvider(LLMProvider):
             logger.warning(
                 "complete: response truncated by token limit "
                 "(finish_reason=length, max_tokens=%d, model=%s). "
-                "Increase query_max_tokens in [agents] of config.toml.",
+                "Increase scaffold_max_tokens (ingest) or query_max_tokens (queries) "
+                "in [agents] of config.toml.",
                 max_tokens, self._config.model,
             )
         original_content = choice.message.content or ""
@@ -351,7 +352,8 @@ class OpenAIProvider(LLMProvider):
                     "complete_stream: response truncated by token limit "
                     "(finish_reason=length, max_tokens=%d, model=%s). "
                     "think_chars=%d answer_chars=%d. "
-                    "Increase query_max_tokens in [agents] of config.toml.",
+                    "Increase scaffold_max_tokens (ingest) or query_max_tokens (queries) "
+                    "in [agents] of config.toml.",
                     max_tokens, self._config.model, _think_chars, _answer_chars,
                 )
             if not (chunk.choices and chunk.choices[0].delta.content):
