@@ -183,11 +183,12 @@ def test_spa_not_built_returns_503(tmp_wiki):
     from pathlib import Path
 
     app = _make_app(tmp_wiki)
-    # If the developer has built the UI, the 503 path is unreachable — skip
+    # The server prefers synthadoc/data/web-ui/dist (committed package artifact) over
+    # web-ui/dist (local dev build). Check the same path the server resolves first.
     import synthadoc.integration.http_server as srv_mod
-    dist_path = Path(srv_mod.__file__).parent.parent.parent / "web-ui" / "dist"
+    dist_path = Path(srv_mod.__file__).parent.parent / "data" / "web-ui" / "dist"
     if dist_path.exists() and (dist_path / "index.html").is_file():
-        pytest.skip("web-ui/dist exists; 503 path not reachable")
+        pytest.skip("web-ui built artifact present in package data; 503 path not reachable")
 
     with TestClient(app) as client:
         resp = client.get("/app")

@@ -1457,11 +1457,14 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         orch = app.state.orch
         audit = orch._audit
         counts: dict[str, int] = {"draft": 0, "active": 0, "contradicted": 0, "stale": 0, "archived": 0}
-        counts.update(await audit.get_live_lifecycle_summary(orch._store.page_exists))
+        # Exclude system slugs (LINT_SKIP_SLUGS) so lifecycle totals match the
+        # Pages count in /status, which applies the same exclusion list.
+        _live = lambda slug: slug not in LINT_SKIP_SLUGS and orch._store.page_exists(slug)
+        counts.update(await audit.get_live_lifecycle_summary(_live))
         # Split draft into wiki-domain drafts vs staged-in-candidates drafts.
         if counts.get("draft", 0) > 0:
             cdir = _cand_dir()
-            all_states = await audit.get_live_page_states(orch._store.page_exists)
+            all_states = await audit.get_live_page_states(_live)
             in_cand = sum(1 for p in all_states
                           if p["state"] == "draft" and (cdir / f"{p['slug']}.md").exists())
             if in_cand:

@@ -23,7 +23,7 @@ from synthadoc.agents.citations import CITATION_RE as _CITATION_BODY_RE
 from synthadoc.agents.citations import MALFORMED_CITE_RE as _MALFORMED_CITE_RE
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.log import AuditDB, LogWriter
-from synthadoc.storage.wiki import WikiStorage, LifecycleState, is_url, TriggerSource
+from synthadoc.storage.wiki import WikiStorage, LifecycleState, is_url, TriggerSource, SYSTEM_PAGE_SLUGS
 
 import logging as _logging
 
@@ -63,9 +63,8 @@ LINT_SKIP_SOURCE_SLUGS: frozenset[str] = frozenset(
 )
 
 # Pages never reported as orphans (root / auto-generated pages).
-LINT_SKIP_SLUGS: frozenset[str] = frozenset(
-    {"index", "log", "dashboard", "purpose", "overview"}
-)
+# Backward-compat alias — new code should import SYSTEM_PAGE_SLUGS from storage.wiki.
+LINT_SKIP_SLUGS: frozenset[str] = SYSTEM_PAGE_SLUGS
 
 
 # Matches a list item whose first significant content is a single wikilink,
@@ -418,8 +417,22 @@ class LintAgent:
         co-source connections (+2 per shared source hash).  edge_type is one
         of 'wikilink', 'co_source', or 'mixed'.
         """
-        _SYSTEM_SLUGS = {"overview", "index", "dashboard", "purpose", "log"}
-        slugs = [s for s in self._store.list_pages() if s not in _SYSTEM_SLUGS]
+        # Only include pages with a validated lifecycle state (active, stale, contradicted).
+        # Draft pages are unreviewed content; archived pages are retired.  Neither should
+        # appear in the knowledge graph, which represents the validated knowledge network.
+        _GRAPH_STATES = frozenset({
+            LifecycleState.ACTIVE,
+            LifecycleState.STALE,
+            LifecycleState.CONTRADICTED,
+        })
+        _page_cache: dict[str, WikiPage] = {}
+        for _s in self._store.list_pages():
+            if _s in SYSTEM_PAGE_SLUGS:
+                continue
+            _p = self._store.read_page(_s)
+            if _p is not None and _p.status in _GRAPH_STATES:
+                _page_cache[_s] = _p
+        slugs = list(_page_cache)
         if not slugs:
             return [], []
 
@@ -430,9 +443,7 @@ class LintAgent:
 
         # Pass 1: wikilink edges + source hash extraction in one read per page
         for slug in slugs:
-            page = self._store.read_page(slug)
-            if page is None:
-                continue
+            page = _page_cache[slug]
             for match in _WIKILINK_RE.finditer(page.content or ""):
                 target = match.group(1).split("|")[0].strip()
                 if target and target != slug and target in all_slugs:
@@ -443,28 +454,32 @@ class LintAgent:
                 if hashes:
                     source_map[slug] = hashes
 
-        # Pass 2: co-source edges — pages sharing a source hash get +2 per shared source
-        cosource_pairs: set[tuple[str, str]] = set()
+        # Pass 2: co-source edges — pages sharing a source hash get +2 per shared source.
+        # Only store in canonical (min, max) direction to avoid spurious reverse edges.
+        cosource_slugs: set[tuple[str, str]] = set()
         slug_list = list(source_map)
         for i, s1 in enumerate(slug_list):
             for s2 in slug_list[i + 1:]:
                 shared = source_map[s1] & source_map[s2]
                 if shared:
                     increment = len(shared) * 2
-                    edge_counts[(s1, s2)] += increment
-                    edge_counts[(s2, s1)] += increment
-                    cosource_pairs.add((s1, s2))
-                    cosource_pairs.add((s2, s1))
+                    a, b = (s1, s2) if s1 < s2 else (s2, s1)
+                    edge_counts[(a, b)] += increment
+                    cosource_slugs.add((a, b))
 
-        # Use DiGraph to preserve link direction (a→b and b→a are distinct edges)
-        G = nx.DiGraph()
+        # Undirected graph: each page pair appears as one canonical edge (min slug → max slug)
+        # for co-source; wikilinks are directed and already stored as (src, dst) in pass 1.
+        G = nx.Graph()
         G.add_nodes_from(slugs)
         for (src, dst), weight in edge_counts.items():
-            G.add_edge(src, dst, weight=weight)
+            if G.has_edge(src, dst):
+                G[src][dst]["weight"] += weight
+            else:
+                G.add_edge(src, dst, weight=weight)
 
         # Louvain requires undirected graph
         if _LOUVAIN_AVAILABLE and G.number_of_nodes() > 0:
-            partition = community_louvain.best_partition(G.to_undirected())
+            partition = community_louvain.best_partition(G)
         else:
             partition = {slug: 0 for slug in slugs}
 
@@ -474,8 +489,9 @@ class LintAgent:
         ]
         edges = []
         for src, dst, data in G.edges(data=True):
-            has_wikilink = (src, dst) in wikilink_pairs
-            has_cosource = (src, dst) in cosource_pairs
+            canonical = (min(src, dst), max(src, dst))
+            has_wikilink = (src, dst) in wikilink_pairs or (dst, src) in wikilink_pairs
+            has_cosource = canonical in cosource_slugs
             if has_wikilink and has_cosource:
                 edge_type = "mixed"
             elif has_cosource:

@@ -8,9 +8,9 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from synthadoc.storage.wiki import WikiStorage, WikiPage, LifecycleState
+from synthadoc.storage.wiki import WikiStorage, WikiPage, LifecycleState, SYSTEM_PAGE_SLUGS
 
-_SKIP_SLUGS = frozenset({"index", "log", "dashboard", "overview", "purpose"})
+_SKIP_SLUGS = SYSTEM_PAGE_SLUGS
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 EXPORT_FORMATS = frozenset({"llms.txt", "llms-full.txt", "graphml", "json", "okf"})
 

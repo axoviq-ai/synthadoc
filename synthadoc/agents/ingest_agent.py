@@ -344,15 +344,21 @@ def _strip_leading_frontmatter(content: str) -> str:
 
 
 def _files_match(a: str, b: str) -> bool:
-    """Return True if two source paths refer to the same file (handles abs vs relative)."""
+    """Return True if two source paths refer to the same file (handles abs vs relative).
+
+    Uses Path.parts comparison so 'notes.pdf' doesn't falsely match
+    'other/notes.pdf' and 'raw_sources/notes.pdf' are treated as distinct.
+    """
     if a == b:
         return True
-    abs_a, abs_b = Path(a).is_absolute(), Path(b).is_absolute()
-    norm_a, norm_b = a.replace("\\", "/"), b.replace("\\", "/")
+    pa, pb = Path(a), Path(b)
+    abs_a, abs_b = pa.is_absolute(), pb.is_absolute()
     if abs_a and not abs_b:
-        return norm_a.endswith("/" + norm_b)
+        pa_parts, pb_parts = pa.parts, pb.parts
+        return pa_parts[-len(pb_parts):] == pb_parts if pb_parts else False
     if abs_b and not abs_a:
-        return norm_b.endswith("/" + norm_a)
+        pa_parts, pb_parts = pa.parts, pb.parts
+        return pb_parts[-len(pa_parts):] == pa_parts if pa_parts else False
     return False
 
 

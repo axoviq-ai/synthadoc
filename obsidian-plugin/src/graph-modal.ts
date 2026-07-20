@@ -193,8 +193,13 @@ export class GraphModal extends Modal {
     }
 
     // Block Escape-key and outside-click; only allow close via the × button.
+    // Also allow Obsidian's programmatic close (vault/workspace teardown) through
+    // when the modal container is no longer attached to the document.
     close() {
-        if (this._xClose) { this._xClose = false; super.close(); }
+        if (this._xClose || !document.contains(this.containerEl)) {
+            this._xClose = false;
+            super.close();
+        }
     }
 
     private _dismiss() { this._xClose = true; this.close(); }
@@ -419,15 +424,20 @@ export class GraphModal extends Modal {
 
             // Banner
             if (result.capped) {
+                const hidden = result.originalCount - NODE_CAP;
                 bannerEl.textContent = type === "all"
-                    ? `Your wiki has ${result.originalCount} pages — showing the ${NODE_CAP} most connected. Select a type to narrow the view.`
-                    : `Filtered to '${type}': ${result.originalCount} pages found — showing the ${NODE_CAP} most connected.`;
+                    ? `Your wiki has ${result.originalCount} pages — showing the ${NODE_CAP} most connected (${hidden} not displayed). Use the type filter to narrow the view.`
+                    : `Filtered to '${type}': ${result.originalCount} pages — showing the ${NODE_CAP} most connected (${hidden} not displayed).`;
                 bannerEl.style.display = "block";
             } else {
                 bannerEl.style.display = "none";
             }
 
-            statsEl.textContent = `${currentNodes.length} nodes · ${currentEdges.length} edges`;
+            statsEl.empty();
+            statsEl.appendText(`${currentNodes.length} nodes · ${currentEdges.length} edges`);
+            const noteEl = statsEl.createEl("span");
+            noteEl.textContent = " (excludes draft and archived nodes)";
+            noteEl.style.cssText = "font-size:11px;opacity:0.7;";
 
             // Cluster legend
             footer.empty();
@@ -507,8 +517,13 @@ export class GraphModal extends Modal {
         }, { signal: sig });
         document.addEventListener("mousemove", (e) => {
             if (!panelDrag) return;
-            modalEl.style.left = (panelDrag.l0 + e.clientX - panelDrag.x0) + "px";
-            modalEl.style.top  = (panelDrag.t0 + e.clientY - panelDrag.y0) + "px";
+            const newLeft = panelDrag.l0 + e.clientX - panelDrag.x0;
+            const newTop  = panelDrag.t0 + e.clientY - panelDrag.y0;
+            // Keep at least 60 px (≈ header height) visible so the panel stays grabbable.
+            const margin = 60;
+            const w = modalEl.offsetWidth, h = modalEl.offsetHeight;
+            modalEl.style.left = Math.max(margin - w, Math.min(window.innerWidth - margin, newLeft)) + "px";
+            modalEl.style.top  = Math.max(0, Math.min(window.innerHeight - margin, newTop)) + "px";
         }, { signal: sig });
         document.addEventListener("mouseup", () => { panelDrag = null; }, { signal: sig });
 
