@@ -424,9 +424,10 @@ export class GraphModal extends Modal {
 
             // Banner
             if (result.capped) {
+                const hidden = result.originalCount - NODE_CAP;
                 bannerEl.textContent = type === "all"
-                    ? `Your wiki has ${result.originalCount} pages — showing the ${NODE_CAP} most connected. Select a type to narrow the view.`
-                    : `Filtered to '${type}': ${result.originalCount} pages found — showing the ${NODE_CAP} most connected.`;
+                    ? `Your wiki has ${result.originalCount} pages — showing the ${NODE_CAP} most connected (${hidden} not displayed). Use the type filter to narrow the view.`
+                    : `Filtered to '${type}': ${result.originalCount} pages — showing the ${NODE_CAP} most connected (${hidden} not displayed).`;
                 bannerEl.style.display = "block";
             } else {
                 bannerEl.style.display = "none";

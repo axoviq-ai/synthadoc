@@ -190,7 +190,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **[Portable backup / restore](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#28-backup--restore)** — single zip: wiki pages + audit/lifecycle DB + config; port and domain rewriting on restore; migrate machines without re-ingesting | **Yes** | No — re-ingest required | No — AI metadata lost | No |
 | **[Cost guard + full audit trail](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-15--audit-features)** — per-job token + cost log; soft-warn and hard-gate thresholds; `audit citations` validates every claim citation; immutable event log | **Yes** | No | No | No |
 | **[Resumable job queue + retry](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#14-job-queue)** — every ingest/lint job persisted with status and error; batch a hundred documents and resume after a crash | **Yes** | No | No | No |
-| **[Custom skills + CI hooks](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#11-hook-system)** — subclass `BaseSkill` for new file formats; 2 hook events on ingest and lint complete; blocking hooks can gate operations | **Yes** | Limited | No | No |
+| **[Custom skills + CI hooks](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#11-hook-system)** — subclass `BaseSkill` for new file formats; 2 hook events (`on_ingest_complete` + `on_lint_complete`); example git auto-commit hook included; blocking hooks can gate operations | **Yes** | Limited | No | No |
 | **[Per-source truncation flag](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#30-per-source-truncation-flag)** — `--max-source-chars` caps any source (PDF, DOCX, web page, plain text) before the LLM call; truncated sources flagged with `truncated: true` in frontmatter and warned in lint output | **Yes** | No | No | No |
 | **[Multi-wiki isolation](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#wiki-targeting)** — each wiki on its own port with independent config, audit trail, and job queue; switch with `synthadoc use` | **Yes** | No | Partial | No |
 
@@ -412,27 +412,31 @@ The guide covers:
 
 ## Creating Your Own Wiki
 
+> **New to building your own wiki?** Work through the [AquaFlow Capital Workshop Walkthrough](https://github.com/axoviq-ai/synthadoc/tree/main/docs/example/aquaflow) first — a complete end-to-end workshop using a real M&A due-diligence wiki with pre-built pages, evaluation queries, and benchmark results. Once you are comfortable with the flow, come back here to build your own wiki from scratch.
+
 Unlike the demo (which ships with pre-built pages), your own wiki starts from a domain description and grows as you feed it sources:
 
 ```bash
 synthadoc install market-condition-canada --target ~/wikis --domain "Market conditions and trends in Canada"
 synthadoc use market-condition-canada   # set as the default wiki — no -w needed from here on
-synthadoc status                        # confirm the wiki registered correctly (should show 0 pages)
 ```
 
 Before starting the server, open `~/wikis/market-condition-canada/.synthadoc/config.toml` and set your LLM provider — see [Appendix C in the Quick-Start Guide](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#appendix-c--switching-llm-providers) for the full provider list and API key setup. Then start:
 
 ```bash
 synthadoc serve
+synthadoc status                        # confirm the wiki registered correctly (should show 0 pages)
 ```
 
-`--domain` is a free-text description of the subject area — the LLM uses it to generate three domain-aware starter files via scaffold:
+`--domain` is a free-text description of the subject area — the LLM uses it to generate five domain-aware starter files via scaffold:
 
 | File                | Purpose                                                                     |
 | ------------------- | --------------------------------------------------------------------------- |
 | `wiki/index.md`     | Table of contents — domain-relevant categories with `[[wikilinks]]`        |
-| `wiki/purpose.md`   | Scope declaration — tells the ingest agent what belongs and what to ignore |
-| `AGENTS.md`         | LLM behaviour guidelines — tone, terminology, and synthesis style          |
+| `wiki/purpose.md`   | Scope declaration — used by the ingest agent to filter out-of-scope sources at ingest time, and injected as a pinned preamble into every query synthesis prompt so the LLM understands the wiki's domain boundaries when answering |
+| `AGENTS.md`         | LLM behaviour guidelines (tone, terminology, synthesis style) — read by Codex CLI, OpenCode, and generic OpenAI Agents tooling |
+| `CLAUDE.md`         | Same content as `AGENTS.md` — loaded automatically by Claude Code when the wiki folder is open |
+| `GEMINI.md`         | Same content as `AGENTS.md` — loaded automatically by Gemini CLI |
 
 `wiki/dashboard.md` is also created during install (a static template — not LLM-generated). `ROUTING.md` is optional and generated separately via `synthadoc routing init` after pages accumulate.
 
@@ -577,6 +581,9 @@ synthadoc demo sync history-of-computing --force
 
 # Reinstall the Obsidian plugin into a wiki's vault — normally done automatically by synthadoc install
 synthadoc plugin install history-of-computing
+
+# Push the updated plugin binary to every registered wiki after a Synthadoc upgrade
+synthadoc plugin upgrade
 ```
 
 ### Switching the active wiki
