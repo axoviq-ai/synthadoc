@@ -218,6 +218,15 @@ default = {{ provider = "gemini", model = "gemini-2.5-flash-lite" }}
 # log message so you know to adjust the model or prompt size.
 # 0 = no limit (provider default).  Restart the server after changing.
 # llm_timeout_seconds = 90
+#
+# Output token budget for the scaffold JSON generated at the start of each ingest.
+# Raise if ingest fails with "unparseable scaffold JSON" on wikis with many pages
+# or very long agents_guidelines / purpose fields.
+scaffold_max_tokens = 32768
+#
+# Output token budget for query synthesis (the answer returned to the user).
+# Raise if answers are cut off mid-sentence with long-context reasoning models.
+query_max_tokens = 8192
 
 [ingest]
 max_pages_per_ingest = 15
@@ -226,8 +235,8 @@ max_pages_per_ingest = 15
 #                           Increase if lint reports out_of_range on long sources (transcripts, PDFs).
 #   citation_max_tokens   — output token budget for the annotated section returned by the LLM.
 #                           Increase if you raise citation_source_lines and have long wiki sections.
-# citation_source_lines = 400
-# citation_max_tokens = 8192
+citation_source_lines = 400
+citation_max_tokens = 8192
 
 [cost]
 soft_warn_usd = 0.50
