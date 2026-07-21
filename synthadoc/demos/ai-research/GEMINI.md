@@ -92,6 +92,22 @@ Checks: orphan pages, dangling links, truncated sources, contradictions, adversa
 review, citation accuracy. Automatically archives pages whose source files have been deleted.
 After archiving, cascade cleanup removes all `[[slug]]` links pointing to the archived page.
 
+## Staging / Candidates
+
+When staging is enabled (`synthadoc staging policy all` or `threshold`), newly ingested pages
+land in `wiki/candidates/` as drafts instead of going straight to `wiki/`. Review and act on
+them before they appear in query results.
+
+```bash
+synthadoc staging policy              # show current policy (off | all | threshold)
+synthadoc candidates list -w <wiki>   # list pages awaiting review
+synthadoc candidates promote <slug> -w <wiki>   # accept — moves page to wiki/
+synthadoc candidates discard <slug> -w <wiki>   # reject — deletes the candidate
+```
+
+If an ingest seems to have produced no page, check `synthadoc candidates list` — the page may
+be waiting in the staging queue.
+
 ## Lifecycle
 
 Slug is a positional argument. `--reason` is required for all transitions.
