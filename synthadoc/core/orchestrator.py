@@ -253,6 +253,39 @@ class Orchestrator:
             _is_web_search = bool(_WEB_SEARCH_RE.match(source))
             if _is_web_search:
                 await self._queue.update_progress(job_id, {"phase": "searching"})
+
+            # Resolve agent config before constructing the agent (reused for post-call pricing).
+            _agent_cfg = cfg.agents.resolve("ingest")
+            _is_local = _agent_cfg.provider == "ollama"
+
+            # Pre-call coarse cost check: block before any LLM spend if over hard gate.
+            # Uses max_source_chars as the worst-case input bound (~4 chars per token).
+            _pre_input = cfg.ingest.max_source_chars // 4
+            _pre_output = _pre_input // 4
+            _pre_cost = estimate_cost(_agent_cfg.model, _pre_input, _pre_output, is_local=_is_local)
+            _pre_estimate = CostEstimate(
+                tokens=_pre_input + _pre_output,
+                cost_usd=_pre_cost,
+                operation=f"pre-check:ingest:{source}",
+            )
+            try:
+                self._cost.check(_pre_estimate, interactive=False)
+            except CostGateError as e:
+                logger.error("Ingest job %s blocked by pre-call cost check: %s", job_id, e)
+                await self._audit.record_audit_event(
+                    job_id=job_id,
+                    event="cost_gate_exceeded",
+                    metadata={
+                        "source": source,
+                        "cost_usd": _pre_cost,
+                        "hard_gate_usd": self._cfg.cost.hard_gate_usd,
+                        "tokens": _pre_input + _pre_output,
+                        "stage": "pre_call",
+                    },
+                )
+                await self._queue.fail_permanent(job_id, f"cost_gate_exceeded: {e}")
+                return
+
             _routing_path = self._root / "ROUTING.md"
             agent = IngestAgent(
                 provider=make_provider("ingest", cfg),
@@ -267,16 +300,14 @@ class Orchestrator:
                 allow_external_paths=allow_external_paths,
             )
             result = await agent.ingest(source, force=force, bust_cache=force)
-            _agent_cfg = cfg.agents.resolve("ingest")
             result.cost_usd = estimate_cost(
                 _agent_cfg.model,
                 result.input_tokens,
                 result.output_tokens,
-                is_local=(_agent_cfg.provider == "ollama"),
+                is_local=_is_local,
             )
             await self._audit.update_ingest_cost(source, result.cost_usd)
-            if await self._guard_ingest_cost(job_id, source, result.tokens_used, result.cost_usd):
-                return
+            await self._guard_ingest_cost(job_id, source, result.tokens_used, result.cost_usd)
             if max_results is not None and result.child_sources:
                 result.child_sources = result.child_sources[:max_results]
             if _is_web_search and result.child_sources:
@@ -392,36 +423,16 @@ class Orchestrator:
 
     async def _guard_ingest_cost(
         self, job_id: str, source: str, tokens: int, cost_usd: float
-    ) -> bool:
-        """Check cost thresholds after an ingest LLM call.
+    ) -> None:
+        """Emit a soft-cost warning if actual ingest cost exceeds soft_warn_usd.
 
-        Returns True if the job was aborted (hard gate exceeded) — caller must return.
-        Logs a warning for soft warn; logs an error, records an audit event, and
-        permanently fails the job for hard gate.
+        The hard gate is enforced pre-call in _run_ingest before any LLM spend.
         """
-        estimate = CostEstimate(tokens=tokens, cost_usd=cost_usd, operation=f"ingest:{source}")
-        try:
-            self._cost.check(estimate, interactive=False)
-        except CostGateError as e:
-            logger.error("Ingest job %s aborted by cost guard: %s", job_id, e)
-            await self._audit.record_audit_event(
-                job_id=job_id,
-                event="cost_gate_exceeded",
-                metadata={
-                    "source": source,
-                    "cost_usd": cost_usd,
-                    "hard_gate_usd": self._cfg.cost.hard_gate_usd,
-                    "tokens": tokens,
-                },
-            )
-            await self._queue.fail_permanent(job_id, f"cost_gate_exceeded: {e}")
-            return True
         if cost_usd >= self._cfg.cost.soft_warn_usd:
             logger.warning(
                 "Ingest cost $%.4f exceeds soft_warn_usd $%.2f for job %s",
                 cost_usd, self._cfg.cost.soft_warn_usd, job_id,
             )
-        return False
 
     async def _auto_block_domain(self, exc: DomainBlockedException) -> None:
         """Persist a newly discovered blocked domain and record an audit event."""
