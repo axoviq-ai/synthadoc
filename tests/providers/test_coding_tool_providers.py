@@ -126,6 +126,7 @@ def test_claude_is_quota_exhausted_true():
     provider = _make_claude_provider()
     assert provider._is_quota_exhausted("Claude AI usage limit reached") is True
     assert provider._is_quota_exhausted("You've reached your usage cap") is True
+    assert provider._is_quota_exhausted("You've hit your session limit · resets 2:30pm") is True
 
 
 def test_claude_is_quota_exhausted_false():
