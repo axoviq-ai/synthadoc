@@ -188,6 +188,21 @@ class OpenAIProvider(LLMProvider):
                     self._config.provider, self._timeout,
                 )
                 raise
+            except _openai.PermissionDeniedError as exc:
+                # Some providers (e.g. Qwen/DashScope) return 403 with an
+                # AllocationQuota error code when the free-tier quota is exhausted.
+                body = exc.body if isinstance(exc.body, dict) else {}
+                err_type = (body.get("error", {}).get("type") or "").lower()
+                err_code = (body.get("error", {}).get("code") or "").lower()
+                if "allocationquota" in err_type or "allocationquota" in err_code or "quota" in str(exc).lower():
+                    err_msg = body.get("error", {}).get("message") or str(exc)
+                    logger.error(
+                        "Quota exhausted for %s (403) — %s",
+                        self._config.provider, err_msg,
+                    )
+                    from synthadoc.errors import DailyQuotaExhaustedException
+                    raise DailyQuotaExhaustedException(self._config.provider) from exc
+                raise
             except _openai.RateLimitError as exc:
                 if self._is_daily_quota_error(exc):
                     logger.error(

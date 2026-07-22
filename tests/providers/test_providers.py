@@ -334,6 +334,52 @@ async def test_openai_provider_daily_quota_raises_immediately_without_retry():
     sleep_mock.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_openai_provider_403_allocation_quota_raises_daily_quota():
+    """Qwen-style 403 PermissionDeniedError with AllocationQuota code must convert
+    to DailyQuotaExhaustedException — no stack trace, no retry."""
+    import openai
+    from synthadoc.providers.openai import OpenAIProvider
+    from synthadoc.errors import DailyQuotaExhaustedException
+    cfg = AgentConfig(provider="qwen", model="qwen-plus",
+                      base_url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1")
+    provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    qwen_body = {
+        "error": {
+            "message": "The free quota has been exhausted.",
+            "type": "AllocationQuota.FreeTierOnly",
+            "code": "AllocationQuota.FreeTierOnly",
+        }
+    }
+    perm_exc = openai.PermissionDeniedError(
+        message="quota exhausted", response=MagicMock(status_code=403), body=qwen_body)
+
+    with patch.object(provider._client.chat.completions, "create", side_effect=perm_exc):
+        with pytest.raises(DailyQuotaExhaustedException):
+            await provider.complete(messages=[Message(role="user", content="hi")])
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_403_genuine_permission_error_reraises():
+    """A 403 that is NOT quota-related (e.g. model access denied) must re-raise
+    PermissionDeniedError unchanged so the caller can handle it."""
+    import openai
+    from synthadoc.providers.openai import OpenAIProvider
+    cfg = AgentConfig(provider="openai", model="gpt-4o")
+    provider = OpenAIProvider(api_key="test-key", config=cfg)
+
+    perm_exc = openai.PermissionDeniedError(
+        message="You do not have access to this model",
+        response=MagicMock(status_code=403),
+        body={"error": {"message": "You do not have access to this model", "type": "access_denied"}},
+    )
+
+    with patch.object(provider._client.chat.completions, "create", side_effect=perm_exc):
+        with pytest.raises(openai.PermissionDeniedError):
+            await provider.complete(messages=[Message(role="user", content="hi")])
+
+
 def _make_cfg(provider: str, model: str) -> "Config":
     from synthadoc.config import Config, AgentsConfig, AgentConfig
     return Config(agents=AgentsConfig(default=AgentConfig(provider=provider, model=model)))
@@ -982,6 +1028,21 @@ def test_classify_llm_error_returns_503_for_internal_server_error():
     assert result is not None
     assert result.status_code == 503
     assert "503" in result.detail
+
+
+def test_classify_llm_error_returns_403_for_permission_error():
+    """PermissionDeniedError (403) must return a clean HTTPException, not fall through to 502 with a stack trace."""
+    import openai
+    from synthadoc.integration.http_server import _classify_llm_error
+    exc = openai.PermissionDeniedError(
+        message="The free quota has been exhausted.",
+        response=MagicMock(status_code=403),
+        body={"error": {"message": "The free quota has been exhausted.", "type": "AllocationQuota.FreeTierOnly"}},
+    )
+    result = _classify_llm_error(exc)
+    assert result is not None
+    assert result.status_code == 403
+    assert "403" in result.detail
 
 
 def test_classify_llm_error_returns_401_for_auth_error():

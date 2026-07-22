@@ -236,6 +236,7 @@ class ClaudeCodeCLIProvider(CodingToolCLIProvider):
             "claude ai usage limit", "you've reached your",
             "credit balance is too low", "insufficient credits",
             "credit balance", "out of credits",
+            "session limit",  # "You've hit your session limit · resets ..."
         ))
 
 
