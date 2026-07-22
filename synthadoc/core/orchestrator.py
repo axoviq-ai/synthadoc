@@ -104,6 +104,7 @@ class Orchestrator:
         self._cost   = CostGuard(self._cfg.cost)
         self._hooks  = HookExecutor(self._cfg.hooks)
         self._wiki_epoch: int = 0
+        self._migration_task: "asyncio.Task[None] | None" = None
         setup_telemetry(sd / "logs" / "traces.jsonl")
 
     def _bump_epoch(self) -> None:
@@ -118,7 +119,7 @@ class Orchestrator:
             logger.info("Vector search: enabled (model: BAAI/bge-small-en-v1.5) — initialising…")
             try:
                 await self._search.init_vector()
-                asyncio.create_task(self._run_vector_migration())
+                self._migration_task = asyncio.create_task(self._run_vector_migration())
             except ImportError:
                 logger.warning(
                     "Vector search requires 'fastembed' which is not installed. "
@@ -127,6 +128,12 @@ class Orchestrator:
                 )
 
     async def close(self) -> None:
+        if self._migration_task and not self._migration_task.done():
+            self._migration_task.cancel()
+            try:
+                await self._migration_task
+            except asyncio.CancelledError:
+                pass
         await self._cache.close()
         await asyncio.sleep(0.05)  # allow in-flight aiosqlite thread callbacks to post before loop teardown
 
