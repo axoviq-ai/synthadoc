@@ -254,37 +254,12 @@ class Orchestrator:
             if _is_web_search:
                 await self._queue.update_progress(job_id, {"phase": "searching"})
 
-            # Resolve agent config before constructing the agent (reused for post-call pricing).
+            if await self._pre_check_ingest_cost(job_id, source, cfg):
+                return
+
+            # Resolve agent config for post-call pricing.
             _agent_cfg = cfg.agents.resolve("ingest")
             _is_local = _agent_cfg.provider == "ollama"
-
-            # Pre-call coarse cost check: block before any LLM spend if over hard gate.
-            # Uses max_source_chars as the worst-case input bound (~4 chars per token).
-            _pre_input = cfg.ingest.max_source_chars // 4
-            _pre_output = _pre_input // 4
-            _pre_cost = estimate_cost(_agent_cfg.model, _pre_input, _pre_output, is_local=_is_local)
-            _pre_estimate = CostEstimate(
-                tokens=_pre_input + _pre_output,
-                cost_usd=_pre_cost,
-                operation=f"pre-check:ingest:{source}",
-            )
-            try:
-                self._cost.check(_pre_estimate, interactive=False)
-            except CostGateError as e:
-                logger.error("Ingest job %s blocked by pre-call cost check: %s", job_id, e)
-                await self._audit.record_audit_event(
-                    job_id=job_id,
-                    event="cost_gate_exceeded",
-                    metadata={
-                        "source": source,
-                        "cost_usd": _pre_cost,
-                        "hard_gate_usd": self._cfg.cost.hard_gate_usd,
-                        "tokens": _pre_input + _pre_output,
-                        "stage": "pre_call",
-                    },
-                )
-                await self._queue.fail_permanent(job_id, f"cost_gate_exceeded: {e}")
-                return
 
             _routing_path = self._root / "ROUTING.md"
             agent = IngestAgent(
@@ -421,12 +396,49 @@ class Orchestrator:
                 await self._queue.fail(job_id, str(e))
                 raise
 
+    async def _pre_check_ingest_cost(
+        self, job_id: str, source: str, cfg: "Config"
+    ) -> bool:
+        """Enforce the hard gate BEFORE any LLM call using a worst-case cost estimate.
+
+        Estimate: max_source_chars // 4 input tokens, // 16 output tokens (~4 chars/token).
+        Returns True if the job was permanently blocked — caller must return immediately.
+        """
+        _agent_cfg = cfg.agents.resolve("ingest")
+        _is_local = _agent_cfg.provider == "ollama"
+        _pre_input = cfg.ingest.max_source_chars // 4
+        _pre_output = _pre_input // 4
+        _pre_cost = estimate_cost(_agent_cfg.model, _pre_input, _pre_output, is_local=_is_local)
+        _pre_estimate = CostEstimate(
+            tokens=_pre_input + _pre_output,
+            cost_usd=_pre_cost,
+            operation=f"pre-check:ingest:{source}",
+        )
+        try:
+            self._cost.check(_pre_estimate, interactive=False)
+            return False
+        except CostGateError as e:
+            logger.error("Ingest job %s blocked by pre-call cost check: %s", job_id, e)
+            await self._audit.record_audit_event(
+                job_id=job_id,
+                event="cost_gate_exceeded",
+                metadata={
+                    "source": source,
+                    "cost_usd": _pre_cost,
+                    "hard_gate_usd": self._cfg.cost.hard_gate_usd,
+                    "tokens": _pre_input + _pre_output,
+                    "stage": "pre_call",
+                },
+            )
+            await self._queue.fail_permanent(job_id, f"cost_gate_exceeded: {e}")
+            return True
+
     async def _guard_ingest_cost(
         self, job_id: str, source: str, tokens: int, cost_usd: float
     ) -> None:
         """Emit a soft-cost warning if actual ingest cost exceeds soft_warn_usd.
 
-        The hard gate is enforced pre-call in _run_ingest before any LLM spend.
+        The hard gate is enforced pre-call via _pre_check_ingest_cost before any LLM spend.
         """
         if cost_usd >= self._cfg.cost.soft_warn_usd:
             logger.warning(
