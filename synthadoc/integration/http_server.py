@@ -358,6 +358,34 @@ def _parse_retry_after(exc: Exception, default: float = 60.0) -> float:
     return default
 
 
+def _assert_job_retryable(job: "Job") -> "str | None":
+    """Return a warning string for SKIPPED jobs, or raise HTTPException for non-retryable statuses.
+
+    Retryable: FAILED, CANCELLED, SKIPPED (with a warning).
+    Non-retryable: COMPLETED, IN_PROGRESS, DEAD, PENDING.
+    """
+    from synthadoc.core.queue import JobStatus
+    _RETRYABLE = {JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.SKIPPED}
+    if job.status in _RETRYABLE:
+        if job.status == JobStatus.SKIPPED:
+            return (
+                f"Job {job.id!r} was previously skipped (e.g. domain auto-blocked). "
+                "Resolve the underlying issue first or it will be skipped again."
+            )
+        return None
+    if job.status == JobStatus.COMPLETED:
+        detail = f"Job {job.id!r} already completed successfully — retrying would cause a duplicate ingest"
+    elif job.status == JobStatus.IN_PROGRESS:
+        detail = f"Job {job.id!r} is currently running — wait for it to finish before retrying"
+    elif job.status == JobStatus.DEAD:
+        detail = f"Job {job.id!r} is permanently dead and cannot be retried"
+    elif job.status == JobStatus.PENDING:
+        detail = f"Job {job.id!r} is already pending"
+    else:
+        detail = f"Job {job.id!r} has status '{job.status}' and cannot be retried"
+    raise HTTPException(status_code=409, detail=detail)
+
+
 async def _worker_loop(orch) -> None:
     """Background task: poll jobs.db and execute pending jobs."""
     sleep_secs = _WORKER_POLL_SECONDS
@@ -1169,14 +1197,12 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     @app.post("/jobs/{job_id}/retry")
     async def retry_job(job_id: str):
-        jobs = await app.state.orch.queue.list_jobs()
-        job = next((j for j in jobs if j.id == job_id), None)
+        job = await app.state.orch.queue.get_job(job_id)
         if job is None:
             raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found")
-        if job.status == JobStatus.DEAD:
-            raise HTTPException(status_code=409, detail=f"Job {job_id!r} is permanently dead and cannot be retried")
+        warning = _assert_job_retryable(job)
         await app.state.orch.queue.retry(job_id)
-        return {"retried": job_id}
+        return {"retried": job_id, **({"warning": warning} if warning else {})}
 
     @app.post("/jobs/cancel-pending")
     async def cancel_pending_jobs():
