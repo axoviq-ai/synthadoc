@@ -188,7 +188,11 @@ async def test_orchestrator_ingest_unknown_model_uses_fallback_nonzero(tmp_wiki)
 
 @pytest.mark.asyncio
 async def test_guard_ingest_cost_hard_gate_fails_job_permanently(tmp_wiki):
-    """Hard gate exceeded must permanently fail the job and record an audit event."""
+    """Hard gate exceeded must permanently fail the job and record an audit event.
+
+    Gate now fires pre-call: with hard_gate_usd=0.0001 and default max_source_chars=32000,
+    the pre-call estimate (≈$0.018 on haiku) exceeds the limit before any LLM call.
+    """
     from synthadoc.core.queue import JobStatus
 
     cfg = Config(
@@ -199,7 +203,6 @@ async def test_guard_ingest_cost_hard_gate_fails_job_permanently(tmp_wiki):
     await orch.init()
 
     try:
-        # 10k input + 5k output on haiku ≈ $0.035 — well above the $0.0001 hard gate
         mock_agent = _mock_ingest_agent(input_tokens=10_000, output_tokens=5_000)
         job_id = await orch._queue.enqueue("ingest", {"source": "test.md", "force": False})
 
@@ -247,6 +250,108 @@ async def test_guard_ingest_cost_soft_warn_completes_normally(tmp_wiki, caplog):
         assert any(j.id == job_id for j in completed), "Soft warn must not abort the job"
         assert any("soft_warn" in r.message for r in caplog.records), \
             "Soft warn must emit a logger.warning"
+    finally:
+        await orch.close()
+
+
+# ── Pre-call cost gate ───────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_pre_call_gate_blocks_ingest_agent_not_called(tmp_wiki):
+    """Pre-call estimate must block the LLM call entirely when over hard_gate_usd.
+
+    With hard_gate_usd=0.001 and default max_source_chars=32000 on haiku, the
+    worst-case estimate (~$0.018) exceeds the limit before agent.ingest() runs.
+    """
+    from synthadoc.core.queue import JobStatus
+
+    cfg = Config(
+        agents=AgentsConfig(default=AgentConfig(provider="anthropic", model="claude-haiku-4-5-20251001")),
+        cost=CostConfig(soft_warn_usd=0.0001, hard_gate_usd=0.001),
+    )
+    orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
+    await orch.init()
+
+    try:
+        mock_agent = _mock_ingest_agent(input_tokens=10_000, output_tokens=5_000)
+        job_id = await orch._queue.enqueue("ingest", {"source": "test.md", "force": False})
+
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock(spec=[])), \
+             patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent), \
+             patch.object(orch._audit, "record_audit_event", new=AsyncMock()) as mock_audit:
+            await orch._run_ingest(job_id, "test.md", auto_confirm=True)
+
+        mock_agent.ingest.assert_not_awaited()
+
+        dead = await orch._queue.list_jobs(status=JobStatus.DEAD)
+        assert any(j.id == job_id for j in dead), "Pre-call gate must permanently fail the job"
+        job = next(j for j in dead if j.id == job_id)
+        assert "cost_gate_exceeded" in (job.error or "")
+
+        mock_audit.assert_awaited_once()
+        metadata = mock_audit.call_args.kwargs["metadata"]
+        assert metadata["stage"] == "pre_call"
+        assert metadata["cost_usd"] > 0
+    finally:
+        await orch.close()
+
+
+@pytest.mark.asyncio
+async def test_pre_call_gate_passes_and_ingest_runs_normally(tmp_wiki):
+    """When hard_gate_usd is high enough for the pre-call estimate, ingest must proceed."""
+    from synthadoc.core.queue import JobStatus
+
+    cfg = Config(
+        agents=AgentsConfig(default=AgentConfig(provider="anthropic", model="claude-haiku-4-5-20251001")),
+        cost=CostConfig(soft_warn_usd=0.0001, hard_gate_usd=100.0),
+    )
+    orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
+    await orch.init()
+
+    try:
+        mock_agent = _mock_ingest_agent(input_tokens=1_000, output_tokens=500)
+        job_id = await orch._queue.enqueue("ingest", {"source": "test.md", "force": False})
+
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock(spec=[])), \
+             patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
+            await orch._run_ingest(job_id, "test.md", auto_confirm=True)
+
+        mock_agent.ingest.assert_awaited_once()
+        completed = await orch._queue.list_jobs(status=JobStatus.COMPLETED)
+        assert any(j.id == job_id for j in completed), "Job must complete when gate passes"
+    finally:
+        await orch.close()
+
+
+@pytest.mark.asyncio
+async def test_post_call_soft_warn_fires_but_does_not_abort_job(tmp_wiki, caplog):
+    """After the hard gate was moved pre-call, the post-call check is soft-warn only:
+    actual cost exceeding soft_warn_usd must log a warning but not abort the job."""
+    import logging
+    from synthadoc.core.queue import JobStatus
+
+    # actual cost ≈ $0.035 on haiku (10k/5k tokens) will exceed soft_warn_usd=0.001;
+    # hard_gate_usd=100.0 so the pre-call check passes.
+    cfg = Config(
+        agents=AgentsConfig(default=AgentConfig(provider="anthropic", model="claude-haiku-4-5-20251001")),
+        cost=CostConfig(soft_warn_usd=0.001, hard_gate_usd=100.0),
+    )
+    orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
+    await orch.init()
+
+    try:
+        mock_agent = _mock_ingest_agent(input_tokens=10_000, output_tokens=5_000)
+        job_id = await orch._queue.enqueue("ingest", {"source": "test.md", "force": False})
+
+        with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock(spec=[])), \
+             patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent), \
+             caplog.at_level(logging.WARNING, logger="synthadoc.core.orchestrator"):
+            await orch._run_ingest(job_id, "test.md", auto_confirm=True)
+
+        completed = await orch._queue.list_jobs(status=JobStatus.COMPLETED)
+        assert any(j.id == job_id for j in completed), "Soft warn must not abort the job"
+        assert any("soft_warn" in r.message for r in caplog.records), \
+            "Post-call soft warn must emit a logger.warning"
     finally:
         await orch.close()
 

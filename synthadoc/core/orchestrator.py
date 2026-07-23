@@ -16,7 +16,6 @@ from synthadoc.core.hooks import HookExecutor
 from synthadoc.core.queue import JobQueue
 from synthadoc.observability.telemetry import get_tracer, setup_telemetry
 from synthadoc.providers import make_provider
-from synthadoc.providers.ollama import OllamaProvider
 from synthadoc.providers.pricing import estimate_cost
 from synthadoc.storage.log import AuditDB, LogWriter
 from synthadoc.storage.search import HybridSearch
@@ -253,6 +252,14 @@ class Orchestrator:
             _is_web_search = bool(_WEB_SEARCH_RE.match(source))
             if _is_web_search:
                 await self._queue.update_progress(job_id, {"phase": "searching"})
+
+            if await self._pre_check_ingest_cost(job_id, source, cfg):
+                return
+
+            # Resolve agent config for post-call pricing.
+            _agent_cfg = cfg.agents.resolve("ingest")
+            _is_local = _agent_cfg.is_local
+
             _routing_path = self._root / "ROUTING.md"
             agent = IngestAgent(
                 provider=make_provider("ingest", cfg),
@@ -267,16 +274,14 @@ class Orchestrator:
                 allow_external_paths=allow_external_paths,
             )
             result = await agent.ingest(source, force=force, bust_cache=force)
-            _agent_cfg = cfg.agents.resolve("ingest")
             result.cost_usd = estimate_cost(
                 _agent_cfg.model,
                 result.input_tokens,
                 result.output_tokens,
-                is_local=(_agent_cfg.provider == "ollama"),
+                is_local=_is_local,
             )
             await self._audit.update_ingest_cost(source, result.cost_usd)
-            if await self._guard_ingest_cost(job_id, source, result.tokens_used, result.cost_usd):
-                return
+            await self._guard_ingest_cost(job_id, source, result.tokens_used, result.cost_usd)
             if max_results is not None and result.child_sources:
                 result.child_sources = result.child_sources[:max_results]
             if _is_web_search and result.child_sources:
@@ -390,38 +395,55 @@ class Orchestrator:
                 await self._queue.fail(job_id, str(e))
                 raise
 
-    async def _guard_ingest_cost(
-        self, job_id: str, source: str, tokens: int, cost_usd: float
+    async def _pre_check_ingest_cost(
+        self, job_id: str, source: str, cfg: "Config"
     ) -> bool:
-        """Check cost thresholds after an ingest LLM call.
+        """Enforce the hard gate BEFORE any LLM call using a worst-case cost estimate.
 
-        Returns True if the job was aborted (hard gate exceeded) — caller must return.
-        Logs a warning for soft warn; logs an error, records an audit event, and
-        permanently fails the job for hard gate.
+        Estimate: max_source_chars // 4 input tokens, // 16 output tokens (~4 chars/token).
+        Returns True if the job was permanently blocked — caller must return immediately.
         """
-        estimate = CostEstimate(tokens=tokens, cost_usd=cost_usd, operation=f"ingest:{source}")
+        _agent_cfg = cfg.agents.resolve("ingest")
+        _is_local = _agent_cfg.is_local
+        _pre_input = cfg.ingest.max_source_chars // 4
+        _pre_output = _pre_input // 4
+        _pre_cost = estimate_cost(_agent_cfg.model, _pre_input, _pre_output, is_local=_is_local)
+        _pre_estimate = CostEstimate(
+            tokens=_pre_input + _pre_output,
+            cost_usd=_pre_cost,
+            operation=f"pre-check:ingest:{source}",
+        )
         try:
-            self._cost.check(estimate, interactive=False)
+            self._cost.check(_pre_estimate, interactive=False)
+            return False
         except CostGateError as e:
-            logger.error("Ingest job %s aborted by cost guard: %s", job_id, e)
+            logger.error("Ingest job %s blocked by pre-call cost check: %s", job_id, e)
             await self._audit.record_audit_event(
                 job_id=job_id,
                 event="cost_gate_exceeded",
                 metadata={
                     "source": source,
-                    "cost_usd": cost_usd,
+                    "cost_usd": _pre_cost,
                     "hard_gate_usd": self._cfg.cost.hard_gate_usd,
-                    "tokens": tokens,
+                    "tokens": _pre_input + _pre_output,
+                    "stage": "pre_call",
                 },
             )
             await self._queue.fail_permanent(job_id, f"cost_gate_exceeded: {e}")
             return True
+
+    async def _guard_ingest_cost(
+        self, job_id: str, source: str, tokens: int, cost_usd: float
+    ) -> None:
+        """Emit a soft-cost warning if actual ingest cost exceeds soft_warn_usd.
+
+        The hard gate is enforced pre-call via _pre_check_ingest_cost before any LLM spend.
+        """
         if cost_usd >= self._cfg.cost.soft_warn_usd:
             logger.warning(
                 "Ingest cost $%.4f exceeds soft_warn_usd $%.2f for job %s",
                 cost_usd, self._cfg.cost.soft_warn_usd, job_id,
             )
-        return False
 
     async def _auto_block_domain(self, exc: DomainBlockedException) -> None:
         """Persist a newly discovered blocked domain and record an audit event."""
@@ -461,25 +483,24 @@ class Orchestrator:
         import asyncio
         from synthadoc.agents.query_agent import QueryAgent
         _provider = make_provider("query", self._cfg)
-        _model = self._cfg.agents.resolve("query").model
+        _query_cfg = self._cfg.agents.resolve("query")
         result = await asyncio.wait_for(
             QueryAgent(
                 provider=_provider,
                 store=self._store, search=self._search,
                 query_config=self._cfg.query,
-                model=_model,
+                model=_query_cfg.model,
                 gap_score_threshold=self._cfg.query.gap_score_threshold,
                 orchestrator=self,
                 max_tokens=self._cfg.agents.query_max_tokens,
             ).query(question),
             timeout=timeout_seconds if timeout_seconds > 0 else None,
         )
-        _model = self._cfg.agents.resolve("query").model
         cost_usd = estimate_cost(
-            _model,
+            _query_cfg.model,
             result.input_tokens,
             result.output_tokens,
-            is_local=isinstance(_provider, OllamaProvider),
+            is_local=_query_cfg.is_local,
         )
         await self._audit.record_query(
             question=question,
