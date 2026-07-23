@@ -33,6 +33,11 @@ class AgentConfig:
     base_url: str = ""
     thinking: str = ""  # "disabled" | "enabled" | "adaptive" | "" (provider default)
 
+    @property
+    def is_local(self) -> bool:
+        """True for providers that run locally and incur no API cost (e.g. Ollama)."""
+        return self.provider == "ollama"
+
 
 @dataclass
 class AgentsConfig:

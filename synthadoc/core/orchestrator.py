@@ -16,7 +16,6 @@ from synthadoc.core.hooks import HookExecutor
 from synthadoc.core.queue import JobQueue
 from synthadoc.observability.telemetry import get_tracer, setup_telemetry
 from synthadoc.providers import make_provider
-from synthadoc.providers.ollama import OllamaProvider
 from synthadoc.providers.pricing import estimate_cost
 from synthadoc.storage.log import AuditDB, LogWriter
 from synthadoc.storage.search import HybridSearch
@@ -259,7 +258,7 @@ class Orchestrator:
 
             # Resolve agent config for post-call pricing.
             _agent_cfg = cfg.agents.resolve("ingest")
-            _is_local = _agent_cfg.provider == "ollama"
+            _is_local = _agent_cfg.is_local
 
             _routing_path = self._root / "ROUTING.md"
             agent = IngestAgent(
@@ -405,7 +404,7 @@ class Orchestrator:
         Returns True if the job was permanently blocked — caller must return immediately.
         """
         _agent_cfg = cfg.agents.resolve("ingest")
-        _is_local = _agent_cfg.provider == "ollama"
+        _is_local = _agent_cfg.is_local
         _pre_input = cfg.ingest.max_source_chars // 4
         _pre_output = _pre_input // 4
         _pre_cost = estimate_cost(_agent_cfg.model, _pre_input, _pre_output, is_local=_is_local)
@@ -484,25 +483,24 @@ class Orchestrator:
         import asyncio
         from synthadoc.agents.query_agent import QueryAgent
         _provider = make_provider("query", self._cfg)
-        _model = self._cfg.agents.resolve("query").model
+        _query_cfg = self._cfg.agents.resolve("query")
         result = await asyncio.wait_for(
             QueryAgent(
                 provider=_provider,
                 store=self._store, search=self._search,
                 query_config=self._cfg.query,
-                model=_model,
+                model=_query_cfg.model,
                 gap_score_threshold=self._cfg.query.gap_score_threshold,
                 orchestrator=self,
                 max_tokens=self._cfg.agents.query_max_tokens,
             ).query(question),
             timeout=timeout_seconds if timeout_seconds > 0 else None,
         )
-        _model = self._cfg.agents.resolve("query").model
         cost_usd = estimate_cost(
-            _model,
+            _query_cfg.model,
             result.input_tokens,
             result.output_tokens,
-            is_local=isinstance(_provider, OllamaProvider),
+            is_local=_query_cfg.is_local,
         )
         await self._audit.record_query(
             question=question,
