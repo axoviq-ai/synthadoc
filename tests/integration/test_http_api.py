@@ -459,8 +459,8 @@ def test_job_response_includes_progress_field(tmp_wiki):
     from synthadoc.core.queue import Job, JobStatus
     fake_job = Job(id="job-p1", operation="ingest", payload={"source": "search for: housing"},
                    status=JobStatus.PENDING, retries=0, error=None, progress=None)
-    with patch("synthadoc.core.queue.JobQueue.list_jobs",
-               new=AsyncMock(return_value=[fake_job])):
+    with patch("synthadoc.core.queue.JobQueue.get_job",
+               new=AsyncMock(return_value=fake_job)):
         with TestClient(create_app(wiki_root=tmp_wiki)) as client:
             resp = client.get("/jobs/job-p1")
     assert resp.status_code == 200
@@ -858,8 +858,8 @@ def test_delete_completed_job_endpoint(tmp_wiki):
     completed_job = Job(id="done-1", operation="lint", payload={},
                         status=JobStatus.COMPLETED, retries=0, error=None,
                         created_at=datetime.datetime.now(datetime.timezone.utc).isoformat())
-    with patch("synthadoc.core.queue.JobQueue.list_jobs",
-               new=AsyncMock(return_value=[completed_job])):
+    with patch("synthadoc.core.queue.JobQueue.get_job",
+               new=AsyncMock(return_value=completed_job)):
         with patch("synthadoc.core.queue.JobQueue.delete", new=AsyncMock()):
             with TestClient(create_app(wiki_root=tmp_wiki)) as client:
                 resp = client.delete("/jobs/done-1")
@@ -875,8 +875,8 @@ def test_delete_pending_job_returns_409(tmp_wiki):
     pending_job = Job(id="run-1", operation="lint", payload={},
                       status=JobStatus.PENDING, retries=0, error=None,
                       created_at=datetime.datetime.now(datetime.timezone.utc).isoformat())
-    with patch("synthadoc.core.queue.JobQueue.list_jobs",
-               new=AsyncMock(return_value=[pending_job])):
+    with patch("synthadoc.core.queue.JobQueue.get_job",
+               new=AsyncMock(return_value=pending_job)):
         with TestClient(create_app(wiki_root=tmp_wiki)) as client:
             resp = client.delete("/jobs/run-1")
     assert resp.status_code == 409
