@@ -108,35 +108,133 @@ def test_ingest_backslash_url_is_normalised_not_path_resolved(tmp_wiki):
     assert str(tmp_wiki) not in queued_source
 
 
+def _make_job(job_id: str, status, retries: int = 0, error: str = ""):
+    from synthadoc.core.queue import Job
+    return Job(id=job_id, operation="ingest", payload={},
+               status=status, retries=retries, error=error)
+
+
 def test_retry_job_endpoint(tmp_wiki):
-    """POST /jobs/{id}/retry resets the job to pending."""
+    """POST /jobs/{id}/retry on a FAILED job resets it to pending."""
     from synthadoc.integration.http_server import create_app
-    from synthadoc.core.queue import Job, JobStatus
-    fake_job = Job(id="fail-1", operation="ingest", payload={},
-                   status=JobStatus.FAILED, retries=0, error="server restarted")
-    with patch("synthadoc.core.queue.JobQueue.list_jobs",
-               new=AsyncMock(return_value=[fake_job])):
-        with patch("synthadoc.core.queue.JobQueue.retry",
-                   new=AsyncMock()) as mock_retry:
+    from synthadoc.core.queue import JobStatus
+    fake_job = _make_job("fail-1", JobStatus.FAILED, error="server restarted")
+    with patch("synthadoc.core.queue.JobQueue.get_job", new=AsyncMock(return_value=fake_job)):
+        with patch("synthadoc.core.queue.JobQueue.retry", new=AsyncMock()) as mock_retry:
             with TestClient(create_app(wiki_root=tmp_wiki)) as client:
                 resp = client.post("/jobs/fail-1/retry")
     assert resp.status_code == 200
-    assert resp.json()["retried"] == "fail-1"
+    body = resp.json()
+    assert body["retried"] == "fail-1"
+    assert "warning" not in body
     mock_retry.assert_awaited_once_with("fail-1")
 
 
-def test_retry_dead_job_returns_409(tmp_wiki):
-    """POST /jobs/{id}/retry on a dead job must return 409 — dead jobs cannot be retried."""
+def test_retry_cancelled_job_returns_200(tmp_wiki):
+    """POST /jobs/{id}/retry on a CANCELLED job must succeed with no warning."""
     from synthadoc.integration.http_server import create_app
-    from synthadoc.core.queue import Job, JobStatus
-    fake_job = Job(id="dead-1", operation="ingest", payload={},
-                   status=JobStatus.DEAD, retries=3, error="timed out after 600s")
-    with patch("synthadoc.core.queue.JobQueue.list_jobs",
-               new=AsyncMock(return_value=[fake_job])):
+    from synthadoc.core.queue import JobStatus
+    fake_job = _make_job("cancel-1", JobStatus.CANCELLED)
+    with patch("synthadoc.core.queue.JobQueue.get_job", new=AsyncMock(return_value=fake_job)):
+        with patch("synthadoc.core.queue.JobQueue.retry", new=AsyncMock()) as mock_retry:
+            with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+                resp = client.post("/jobs/cancel-1/retry")
+    assert resp.status_code == 200
+    assert "warning" not in resp.json()
+    mock_retry.assert_awaited_once_with("cancel-1")
+
+
+def test_retry_skipped_job_returns_200_with_warning(tmp_wiki):
+    """POST /jobs/{id}/retry on a SKIPPED job must succeed but include a warning."""
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.core.queue import JobStatus
+    fake_job = _make_job("skip-1", JobStatus.SKIPPED)
+    with patch("synthadoc.core.queue.JobQueue.get_job", new=AsyncMock(return_value=fake_job)):
+        with patch("synthadoc.core.queue.JobQueue.retry", new=AsyncMock()) as mock_retry:
+            with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+                resp = client.post("/jobs/skip-1/retry")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["retried"] == "skip-1"
+    assert "warning" in body
+    assert "skipped" in body["warning"].lower()
+    mock_retry.assert_awaited_once_with("skip-1")
+
+
+def test_retry_dead_job_returns_409(tmp_wiki):
+    """POST /jobs/{id}/retry on a DEAD job must return 409."""
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.core.queue import JobStatus
+    fake_job = _make_job("dead-1", JobStatus.DEAD, retries=3, error="timed out after 600s")
+    with patch("synthadoc.core.queue.JobQueue.get_job", new=AsyncMock(return_value=fake_job)):
         with patch("synthadoc.core.queue.JobQueue.retry", new=AsyncMock()) as mock_retry:
             with TestClient(create_app(wiki_root=tmp_wiki)) as client:
                 resp = client.post("/jobs/dead-1/retry")
     assert resp.status_code == 409
+    mock_retry.assert_not_awaited()
+
+
+def test_retry_completed_job_returns_409(tmp_wiki):
+    """POST /jobs/{id}/retry on a COMPLETED job must return 409 — would cause duplicate ingest."""
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.core.queue import JobStatus
+    fake_job = _make_job("done-1", JobStatus.COMPLETED)
+    with patch("synthadoc.core.queue.JobQueue.get_job", new=AsyncMock(return_value=fake_job)):
+        with patch("synthadoc.core.queue.JobQueue.retry", new=AsyncMock()) as mock_retry:
+            with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+                resp = client.post("/jobs/done-1/retry")
+    assert resp.status_code == 409
+    assert "duplicate" in resp.json()["detail"].lower()
+    mock_retry.assert_not_awaited()
+
+
+def test_retry_in_progress_job_returns_409(tmp_wiki):
+    """POST /jobs/{id}/retry on an IN_PROGRESS job must return 409 — would cause concurrent double-execution."""
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.core.queue import JobStatus
+    fake_job = _make_job("running-1", JobStatus.IN_PROGRESS)
+    with patch("synthadoc.core.queue.JobQueue.get_job", new=AsyncMock(return_value=fake_job)):
+        with patch("synthadoc.core.queue.JobQueue.retry", new=AsyncMock()) as mock_retry:
+            with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+                resp = client.post("/jobs/running-1/retry")
+    assert resp.status_code == 409
+    assert "running" in resp.json()["detail"].lower()
+    mock_retry.assert_not_awaited()
+
+
+def test_retry_pending_job_returns_409(tmp_wiki):
+    """POST /jobs/{id}/retry on a PENDING job must return 409 — already queued."""
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.core.queue import JobStatus
+    fake_job = _make_job("pend-1", JobStatus.PENDING)
+    with patch("synthadoc.core.queue.JobQueue.get_job", new=AsyncMock(return_value=fake_job)):
+        with patch("synthadoc.core.queue.JobQueue.retry", new=AsyncMock()) as mock_retry:
+            with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+                resp = client.post("/jobs/pend-1/retry")
+    assert resp.status_code == 409
+    assert "pending" in resp.json()["detail"].lower()
+    mock_retry.assert_not_awaited()
+
+
+def test_retry_nonexistent_job_returns_404(tmp_wiki):
+    """POST /jobs/{id}/retry on an unknown job ID must return 404."""
+    from synthadoc.integration.http_server import create_app
+    with patch("synthadoc.core.queue.JobQueue.get_job", new=AsyncMock(return_value=None)):
+        with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+            resp = client.post("/jobs/ghost-1/retry")
+    assert resp.status_code == 404
+
+
+def test_retry_unknown_status_returns_409(tmp_wiki):
+    """_assert_job_retryable else branch: an unrecognised status produces a 409 with a generic message."""
+    from synthadoc.integration.http_server import create_app
+    fake_job = _make_job("weird-1", "future_unknown_status")
+    with patch("synthadoc.core.queue.JobQueue.get_job", new=AsyncMock(return_value=fake_job)):
+        with patch("synthadoc.core.queue.JobQueue.retry", new=AsyncMock()) as mock_retry:
+            with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+                resp = client.post("/jobs/weird-1/retry")
+    assert resp.status_code == 409
+    assert "cannot be retried" in resp.json()["detail"].lower()
     mock_retry.assert_not_awaited()
 
 
