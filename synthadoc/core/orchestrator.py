@@ -632,8 +632,12 @@ class Orchestrator:
                 "routing_regenerated": routing_regenerated,
             })
         except Exception as e:
-            await self._queue.fail(job_id, str(e))
-            raise
+            from synthadoc.errors import DailyQuotaExhaustedException, CodingToolQuotaExhaustedException
+            if isinstance(e, (DailyQuotaExhaustedException, CodingToolQuotaExhaustedException)):
+                await self._queue.fail_permanent(job_id, str(e))
+            else:
+                await self._queue.fail(job_id, str(e))
+                raise
 
     async def _run_lint(self, job_id: str, scope: str = "all", auto_resolve: bool = False,
                         adversarial: bool = True, lifecycle: bool = True,
