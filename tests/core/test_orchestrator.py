@@ -505,3 +505,45 @@ async def test_run_scaffold_excludes_meta_slugs_from_protected(tmp_wiki):
             f"Meta slug '{meta}' must be filtered out of protected_slugs passed to scaffold"
         )
     assert "real-topic" in captured_slugs
+
+
+@pytest.mark.asyncio
+async def test_run_scaffold_daily_quota_exhausted_fails_permanent(tmp_wiki):
+    """DailyQuotaExhaustedException in _run_scaffold must permanently fail the job (no retry)."""
+    from synthadoc.errors import DailyQuotaExhaustedException
+
+    cfg = load_config()
+    orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
+
+    exc = DailyQuotaExhaustedException(provider="anthropic")
+
+    with patch("synthadoc.agents.scaffold_agent.ScaffoldAgent.scaffold", new=AsyncMock(side_effect=exc)), \
+         patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
+         patch.object(orch, "_queue") as mock_queue:
+        mock_queue.fail_permanent = AsyncMock()
+        mock_queue.fail = AsyncMock()
+        await orch._run_scaffold("job-quota-daily", "TestDomain")
+
+    mock_queue.fail_permanent.assert_awaited_once()
+    mock_queue.fail.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_scaffold_coding_tool_quota_fails_permanent(tmp_wiki):
+    """CodingToolQuotaExhaustedException in _run_scaffold must permanently fail the job (no retry)."""
+    from synthadoc.errors import CodingToolQuotaExhaustedException
+
+    cfg = load_config()
+    orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
+
+    exc = CodingToolQuotaExhaustedException("claude-code")
+
+    with patch("synthadoc.agents.scaffold_agent.ScaffoldAgent.scaffold", new=AsyncMock(side_effect=exc)), \
+         patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
+         patch.object(orch, "_queue") as mock_queue:
+        mock_queue.fail_permanent = AsyncMock()
+        mock_queue.fail = AsyncMock()
+        await orch._run_scaffold("job-quota-coding", "TestDomain")
+
+    mock_queue.fail_permanent.assert_awaited_once()
+    mock_queue.fail.assert_not_awaited()
