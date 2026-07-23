@@ -632,8 +632,26 @@ class Orchestrator:
                 "routing_regenerated": routing_regenerated,
             })
         except Exception as e:
-            await self._queue.fail(job_id, str(e))
-            raise
+            if not await self._fail_or_permanent(job_id, e):
+                raise
+
+    async def _fail_or_permanent(self, job_id: str, exc: Exception) -> bool:
+        """Permanently fail the job for quota errors; mark retryable for everything else.
+
+        Returns True when the job was permanently failed (quota exhausted — caller must
+        NOT re-raise). Returns False when the job was marked retryable — caller must
+        re-raise so the worker loop records the original traceback.
+
+        Bare ``raise`` in the caller's except block preserves the original traceback;
+        ``raise exc`` inside this helper would truncate it, which is why we use a bool
+        return instead of raising here.
+        """
+        from synthadoc.errors import DailyQuotaExhaustedException, CodingToolQuotaExhaustedException
+        if isinstance(exc, (DailyQuotaExhaustedException, CodingToolQuotaExhaustedException)):
+            await self._queue.fail_permanent(job_id, str(exc))
+            return True
+        await self._queue.fail(job_id, str(exc))
+        return False
 
     async def _run_lint(self, job_id: str, scope: str = "all", auto_resolve: bool = False,
                         adversarial: bool = True, lifecycle: bool = True,
@@ -682,9 +700,5 @@ class Orchestrator:
                 "orphans": report.orphan_slugs,
             })
         except Exception as e:
-            from synthadoc.errors import DailyQuotaExhaustedException, CodingToolQuotaExhaustedException
-            if isinstance(e, (DailyQuotaExhaustedException, CodingToolQuotaExhaustedException)):
-                await self._queue.fail_permanent(job_id, str(e))
-            else:
-                await self._queue.fail(job_id, str(e))
+            if not await self._fail_or_permanent(job_id, e):
                 raise
