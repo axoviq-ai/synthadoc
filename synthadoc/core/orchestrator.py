@@ -104,6 +104,8 @@ class Orchestrator:
         self._hooks  = HookExecutor(self._cfg.hooks)
         self._wiki_epoch: int = 0
         self._migration_task: "asyncio.Task[None] | None" = None
+        # Serializes concurrent read-modify-write on blocked_domains.json
+        self._block_domain_lock = asyncio.Lock()
         setup_telemetry(sd / "logs" / "traces.jsonl")
 
     def _bump_epoch(self) -> None:
@@ -452,18 +454,23 @@ class Orchestrator:
         from datetime import datetime, timezone
 
         blocked_path = self._root / ".synthadoc" / "blocked_domains.json"
-        try:
-            existing: list = json.loads(blocked_path.read_text(encoding="utf-8")) \
-                if blocked_path.exists() else []
-            if exc.domain not in existing:
-                existing.append(exc.domain)
-                blocked_path.write_text(
-                    json.dumps(existing, indent=2), encoding="utf-8"
+        # Lock serializes concurrent ingest jobs so no two coroutines perform
+        # the read-modify-write on blocked_domains.json simultaneously.
+        async with self._block_domain_lock:
+            try:
+                existing: list = json.loads(blocked_path.read_text(encoding="utf-8")) \
+                    if blocked_path.exists() else []
+                if exc.domain not in existing:
+                    existing.append(exc.domain)
+                    # Atomic write: write to .tmp then replace to avoid a partial
+                    # file being visible to concurrent readers on failure.
+                    tmp_path = blocked_path.with_suffix(".tmp")
+                    tmp_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+                    tmp_path.replace(blocked_path)
+            except Exception as write_err:
+                logging.getLogger(__name__).warning(
+                    "Could not persist blocked domain %s: %s", exc.domain, write_err
                 )
-        except Exception as write_err:
-            logging.getLogger(__name__).warning(
-                "Could not persist blocked domain %s: %s", exc.domain, write_err
-            )
 
         try:
             await self._audit.record_audit_event(
