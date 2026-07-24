@@ -127,3 +127,40 @@ def test_get_hints_defaults_to_power_user(client_and_db):
     resp = client.get("/hints")
     assert resp.status_code == 200
     assert "hints" in resp.json()
+
+
+@pytest.mark.asyncio
+async def test_session_state_pruned_to_match_db(tmp_path):
+    """_prune_stale_session_state() must evict entries absent from the DB.
+
+    Simulates the hourly purge path: POST /sessions populates _session_state,
+    purge_old_sessions deletes the row from the DB, then _prune_stale_session_state
+    removes the orphaned in-memory entry.
+    """
+    from synthadoc.integration.http_server import _prune_stale_session_state
+
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+
+    # Simulate three sessions added to in-memory state (as POST /sessions would do)
+    session_state: dict[str, dict] = {
+        "alive-1": {"mode": "POWER_USER", "cursor": 0, "last_hints": []},
+        "alive-2": {"mode": "EXPLORER",   "cursor": 2, "last_hints": ["hint-a"]},
+        # gone-1 is in RAM but absent from the DB (purged or never persisted)
+        "gone-1":  {"mode": "POWER_USER", "cursor": 0, "last_hints": []},
+    }
+
+    # Only alive-1 and alive-2 exist in the DB
+    await db.create_session("alive-1", "POWER_USER")
+    await db.create_session("alive-2", "EXPLORER")
+
+    pruned = await _prune_stale_session_state(db, session_state)
+
+    # gone-1 must be evicted; the return count must reflect it
+    assert pruned == 1
+    assert "gone-1" not in session_state
+    # Alive entries must be preserved intact
+    assert "alive-1" in session_state
+    assert "alive-2" in session_state
+    assert session_state["alive-2"]["cursor"] == 2
+    assert session_state["alive-2"]["last_hints"] == ["hint-a"]

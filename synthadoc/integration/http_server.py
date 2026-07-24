@@ -408,7 +408,22 @@ def _assert_job_retryable(job: "Job") -> "str | None":
     raise HTTPException(status_code=409, detail=detail)
 
 
-async def _worker_loop(orch) -> None:
+async def _prune_stale_session_state(audit, session_state: dict) -> int:
+    """Remove in-memory session state entries that no longer exist in the audit DB.
+
+    Called from the hourly purge block so _session_state mirrors the DB lifetime:
+    once a session is deleted from chat_sessions, its RAM entry is evicted too.
+    Returns the number of entries removed.
+    """
+    active_ids = await audit.list_all_session_ids()
+    # Build the stale list first to avoid mutating the dict while iterating over it
+    stale_keys = [k for k in session_state if k not in active_ids]
+    for k in stale_keys:
+        del session_state[k]
+    return len(stale_keys)
+
+
+async def _worker_loop(orch, session_state: dict) -> None:
     """Background task: poll jobs.db and execute pending jobs."""
     sleep_secs = _WORKER_POLL_SECONDS
     _last_purge_time: float = 0.0
@@ -483,6 +498,11 @@ async def _worker_loop(orch) -> None:
                     _purged = await orch._audit.purge_old_sessions(_retention)
                     if _purged:
                         logger.info("Purged %d stale sessions.", _purged)
+                # Prune in-memory session state to match DB — removes entries for
+                # sessions that have been deleted from the DB (or were never persisted).
+                _pruned = await _prune_stale_session_state(orch._audit, session_state)
+                if _pruned:
+                    logger.debug("Pruned %d stale session_state entries.", _pruned)
                 _last_purge_time = time.monotonic()
             except Exception as _pe:
                 logger.error("Session purge failed: %s", _pe)
@@ -519,7 +539,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         app.state.orch = orch
         from synthadoc.agents.hint_engine import HintEngine as _HE
         _HE.configure(wiki_root / "hints.json")
-        worker = asyncio.create_task(_worker_loop(orch))
+        worker = asyncio.create_task(_worker_loop(orch, _session_state))
 
         from synthadoc.core.scheduler import run_scheduler_loop
         # orch.init() already created all tables in audit.db via self._audit.init();
