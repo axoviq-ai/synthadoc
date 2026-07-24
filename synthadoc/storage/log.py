@@ -784,6 +784,13 @@ class AuditDB:
             })
         return result
 
+    async def list_all_session_ids(self) -> set[str]:
+        """Return the set of all session IDs currently in the DB."""
+        async with aiosqlite.connect(self._path) as db:
+            async with db.execute("SELECT session_id FROM chat_sessions") as cur:
+                rows = await cur.fetchall()
+        return {r[0] for r in rows}
+
     async def purge_old_sessions(self, retention_days: int) -> int:
         """Delete sessions inactive for more than retention_days. Returns count deleted."""
         cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()

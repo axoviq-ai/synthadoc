@@ -353,6 +353,49 @@ async def test_delete_graph_node_removes_node_and_edges(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_list_all_session_ids_returns_all_ids(tmp_path):
+    """list_all_session_ids() must return every session currently in the DB."""
+    from synthadoc.storage.log import AuditDB
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+
+    assert await db.list_all_session_ids() == set()
+
+    await db.create_session("s1", "POWER_USER")
+    await db.create_session("s2", "EXPLORER")
+    await db.create_session("s3", "NEW_WIKI")
+
+    ids = await db.list_all_session_ids()
+    assert ids == {"s1", "s2", "s3"}
+
+
+@pytest.mark.asyncio
+async def test_list_all_session_ids_after_purge_excludes_deleted(tmp_path):
+    """list_all_session_ids() must not return sessions that were purged from the DB."""
+    import aiosqlite
+    from synthadoc.storage.log import AuditDB
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+
+    await db.create_session("old", "POWER_USER")
+    await db.create_session("recent", "POWER_USER")
+
+    # Back-date the old session so purge_old_sessions removes it
+    async with aiosqlite.connect(tmp_path / "audit.db") as conn:
+        await conn.execute(
+            "UPDATE chat_sessions SET last_active=? WHERE session_id=?",
+            ("2020-01-01T00:00:00", "old"),
+        )
+        await conn.commit()
+
+    await db.purge_old_sessions(retention_days=30)
+
+    ids = await db.list_all_session_ids()
+    assert "old" not in ids
+    assert "recent" in ids
+
+
+@pytest.mark.asyncio
 async def test_delete_graph_node_no_op_when_slug_absent(tmp_path):
     from synthadoc.storage.log import AuditDB
     db = AuditDB(tmp_path / "audit.db")

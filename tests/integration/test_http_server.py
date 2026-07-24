@@ -513,16 +513,24 @@ def test_get_graph_computing_returns_no_store_header(tmp_wiki, reset_graph_flag)
 
 
 def test_session_purge_does_not_reference_session_state(tmp_wiki):
-    """_worker_loop session purge must not raise NameError for _session_state.
+    """_worker_loop must not directly reference the closure variable _session_state.
 
     Regression test: _session_state is defined inside create_app() and is not
-    accessible from the module-level _worker_loop.  The purge branch must not
-    call _session_state.clear() (or any other reference to that name).
+    accessible from the module-level _worker_loop.  The purge branch must receive
+    it as the session_state parameter, not reference _session_state by name.
+
+    The check uses a word-boundary regex so that helper function names that
+    contain the substring (e.g. _prune_stale_session_state) do not falsely trip
+    the assertion — only a standalone identifier _session_state would match.
     """
+    import re
     import inspect
     from synthadoc.integration import http_server
 
     src = inspect.getsource(http_server._worker_loop)
-    assert "_session_state" not in src, (
-        "_worker_loop must not reference _session_state (it is out of scope)"
+    # Match _session_state only when it is NOT preceded by another word character
+    # (which would mean it is part of a longer identifier like _prune_stale_session_state).
+    assert not re.search(r"(?<!\w)_session_state", src), (
+        "_worker_loop must not reference _session_state directly (it is out of scope); "
+        "pass it as the session_state parameter instead"
     )
