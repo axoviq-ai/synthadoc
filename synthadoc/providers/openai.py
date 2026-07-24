@@ -443,6 +443,16 @@ class OpenAIProvider(LLMProvider):
                 )
             return
 
+        if _fallback_task is not None and not _fallback_task.done():
+            # Stream ended without </think> — the parallel complete() call is still
+            # running but its result will never be used. Cancel it to avoid a leaked
+            # task burning tokens in the background.
+            _fallback_task.cancel()
+            try:
+                await _fallback_task
+            except (asyncio.CancelledError, Exception):
+                pass
+
         if in_think:
             logger.warning(
                 "complete_stream: stream ended inside <think> block — think block was never closed "

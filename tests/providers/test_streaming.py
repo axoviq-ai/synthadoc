@@ -218,3 +218,68 @@ async def test_ollama_provider_complete_stream_yields_tokens():
         async for tok in provider.complete_stream([Message(role="user", content="hi")]):
             tokens.append(tok)
     assert tokens == ["Tok1", "Tok2"]
+
+
+@pytest.mark.asyncio
+async def test_openai_provider_stream_ends_inside_think_cancels_fallback_task():
+    """BUG-4 regression: if the stream exhausts its budget inside <think> (no </think>),
+    the parallel fallback complete() task must be cancelled — not leaked."""
+    import asyncio
+    from unittest.mock import patch
+    from synthadoc.providers.openai import OpenAIProvider
+    from synthadoc.config import AgentConfig
+
+    cfg = AgentConfig(provider="openai", model="minimax/MiniMax-M2.5")
+    provider = OpenAIProvider.__new__(OpenAIProvider)
+    provider._config = cfg
+    provider._timeout = None
+    provider._extra_body = {}
+
+    # Stream opens <think> but token budget is exhausted before </think>
+    raw_tokens = ["<think>", "partial reasoning... (truncated)"]
+    chunks = []
+    for t in raw_tokens:
+        c = MagicMock()
+        c.choices = [MagicMock(delta=MagicMock(content=t), finish_reason=None)]
+        chunks.append(c)
+    stop_chunk = MagicMock()
+    stop_chunk.choices = [MagicMock(delta=MagicMock(content=None), finish_reason="length")]
+    chunks.append(stop_chunk)
+
+    async def _fake_create(*a, **kw):
+        async def _gen():
+            for c in chunks:
+                yield c
+        return _gen()
+
+    mock_client = MagicMock()
+    mock_client.chat.completions.create = _fake_create
+    provider._client = mock_client
+
+    async def _hanging_complete(*a, **kw):
+        await asyncio.sleep(60)
+
+    provider.complete = _hanging_complete
+
+    # Intercept asyncio.create_task so we can inspect the task after the stream ends
+    captured_task = None
+    _real_create_task = asyncio.create_task
+
+    def _spy_create_task(coro, **kw):
+        nonlocal captured_task
+        t = _real_create_task(coro, **kw)
+        captured_task = t
+        return t
+
+    tokens = []
+    with patch("asyncio.create_task", side_effect=_spy_create_task):
+        async for tok in provider.complete_stream([Message(role="user", content="hi")]):
+            tokens.append(tok)
+
+    # No tokens from inside the think block
+    assert tokens == []
+    # The fallback task was created (proving <think> was detected)
+    assert captured_task is not None
+    # After the generator returns, the task must be done and cancelled — not leaked
+    assert captured_task.done(), "fallback task was not cancelled — it leaked"
+    assert captured_task.cancelled(), "fallback task ended without being cancelled"
