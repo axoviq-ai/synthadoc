@@ -358,6 +358,28 @@ def _parse_retry_after(exc: Exception, default: float = 60.0) -> float:
     return default
 
 
+async def _get_job_or_404(queue: "JobQueue", job_id: str) -> "Job":
+    """Fetch a job by ID from the queue, raising HTTP 404 if it does not exist."""
+    job = await queue.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found")
+    return job
+
+
+def _job_to_dict(j: "Job") -> dict:
+    """Serialize a Job to the standard API response shape."""
+    return {
+        "id": j.id,
+        "status": j.status,
+        "operation": j.operation,
+        "created_at": str(j.created_at),
+        "payload": j.payload,
+        "error": j.error,
+        "result": j.result,
+        "progress": j.progress,
+    }
+
+
 def _assert_job_retryable(job: "Job") -> "str | None":
     """Return a warning string for SKIPPED jobs, or raise HTTPException for non-retryable statuses.
 
@@ -1175,21 +1197,12 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     @app.get("/jobs/{job_id}")
     async def get_job(job_id: str):
-        # O(n) scan — acceptable for typical queue sizes (< 1000 active jobs); add an index if needed
-        jobs = await app.state.orch.queue.list_jobs()
-        for j in jobs:
-            if j.id == job_id:
-                return {"id": j.id, "status": j.status, "operation": j.operation,
-                        "created_at": str(j.created_at), "payload": j.payload,
-                        "error": j.error, "result": j.result, "progress": j.progress}
-        raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found")
+        j = await _get_job_or_404(app.state.orch.queue, job_id)
+        return _job_to_dict(j)
 
     @app.delete("/jobs/{job_id}")
     async def delete_job(job_id: str):
-        jobs = await app.state.orch.queue.list_jobs()
-        job = next((j for j in jobs if j.id == job_id), None)
-        if job is None:
-            raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found")
+        job = await _get_job_or_404(app.state.orch.queue, job_id)
         if job.status in (JobStatus.PENDING, JobStatus.IN_PROGRESS):
             raise HTTPException(status_code=409, detail=f"Cannot delete a job with status {job.status!r}")
         await app.state.orch.queue.delete(job_id, app.state.orch._audit)
@@ -1197,9 +1210,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     @app.post("/jobs/{job_id}/retry")
     async def retry_job(job_id: str):
-        job = await app.state.orch.queue.get_job(job_id)
-        if job is None:
-            raise HTTPException(status_code=404, detail=f"Job {job_id!r} not found")
+        job = await _get_job_or_404(app.state.orch.queue, job_id)
         warning = _assert_job_retryable(job)
         await app.state.orch.queue.retry(job_id)
         return {"retried": job_id, **({"warning": warning} if warning else {})}
