@@ -118,6 +118,13 @@ class QueryConfig:
 
 @dataclass
 class QueueConfig:
+    # Reserved for future parallel job execution. The worker loop currently
+    # processes jobs sequentially, so this value has no effect at runtime.
+    # Wiring it up requires: (1) WAL mode on AuditDB and JobQueue SQLite files
+    # so concurrent writers don't contend, (2) a worker loop refactor to use
+    # asyncio.Semaphore + asyncio.create_task(), and (3) per-job rate-limit
+    # backoff instead of loop-level backoff. Revisit when multi-user / high-
+    # throughput support is a design goal.
     max_parallel_ingest: int = 4
     max_retries: int = 3
     backoff_base_seconds: int = 5

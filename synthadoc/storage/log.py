@@ -62,6 +62,11 @@ class AuditDB:
         self._path.parent.mkdir(parents=True, exist_ok=True)
 
     async def init(self) -> None:
+        # WAL mode is not enabled here. Each public method opens its own
+        # aiosqlite connection, so concurrent callers serialize on SQLite's
+        # default busy timeout (5 s) rather than WAL's proper concurrent
+        # read/write model. Enable PRAGMA journal_mode=WAL in this init block
+        # before wiring up parallel job execution or multi-user support.
         async with aiosqlite.connect(self._path) as db:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS ingests (

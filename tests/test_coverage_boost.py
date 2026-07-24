@@ -504,6 +504,39 @@ async def test_auto_block_domain_does_not_duplicate(tmp_wiki):
 
 
 @pytest.mark.asyncio
+async def test_auto_block_domain_concurrent_no_lost_writes(tmp_wiki):
+    """Concurrent _auto_block_domain calls must not lose any domain via a race.
+
+    Fires two calls simultaneously with different domains; both must appear in
+    the final file because _block_domain_lock serializes the read-modify-write.
+    """
+    import asyncio
+    import json
+    from synthadoc.config import load_config
+    from synthadoc.core.orchestrator import Orchestrator
+    from synthadoc.errors import DomainBlockedException
+
+    orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
+    await orch.init()
+    try:
+        exc_a = DomainBlockedException(domain="alpha.com", url="https://alpha.com/", status_code=403)
+        exc_b = DomainBlockedException(domain="beta.com",  url="https://beta.com/",  status_code=403)
+
+        # Run both concurrently — without the lock, one domain would overwrite the other
+        await asyncio.gather(
+            orch._auto_block_domain(exc_a),
+            orch._auto_block_domain(exc_b),
+        )
+
+        blocked_file = tmp_wiki / ".synthadoc" / "blocked_domains.json"
+        domains = json.loads(blocked_file.read_text(encoding="utf-8"))
+        assert "alpha.com" in domains
+        assert "beta.com" in domains
+    finally:
+        await orch.close()
+
+
+@pytest.mark.asyncio
 async def test_run_ingest_vector_embed_on_complete(tmp_wiki):
     """When search.vector=True and a page exists in the store, _run_ingest embeds it."""
     from synthadoc.agents.ingest_agent import IngestResult
