@@ -146,6 +146,17 @@ def _classify_llm_error(exc: Exception) -> "HTTPException | None":
             status_code=403,
             detail=f"LLM provider quota or permission error (403): {detail}. {_SWITCH}",
         )
+    if code == 413:
+        body = getattr(exc, "body", None) or {}
+        err_msg = ""
+        if isinstance(body, dict):
+            err_msg = body.get("error", {}).get("message", "")
+        detail = err_msg or str(exc)
+        return HTTPException(
+            status_code=413,
+            detail=f"LLM provider rejected request as too large (413): {detail}. "
+                   f"Reduce context via max_source_chars in .synthadoc/config.toml, or {_SWITCH}",
+        )
     if code == 429:
         msg = str(exc)
         _SWITCH_429 = "Switch to another provider by editing [agents] in .synthadoc/config.toml and restarting the server (options: anthropic, openai, gemini, groq, minimax, deepseek, ollama)."
