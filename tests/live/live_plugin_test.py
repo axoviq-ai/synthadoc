@@ -221,18 +221,55 @@ def _cleanup_job_pages(job_id: str) -> list[str]:
 
 
 def _cleanup_test_ingest(job_id: str, src_file: pathlib.Path) -> None:
-    """Remove wiki pages and extracted sidecars written by a live test ingest job.
+    """Remove all artifacts written by a live test ingest job.
 
-    Deletes pages newly created by the job (not pre-existing pages that were
-    updated), plus any .synthadoc/extracted/<basename> sidecar and companion
-    pagemap JSON, so test runs leave no artifacts behind.
+    Three cleanup passes run regardless of job outcome (completed / dead):
+      1. Job-result pass: delete pages listed in pages_created.
+      2. Source-scan pass: delete any wiki / candidate page whose frontmatter
+         sources[] references src_file.name — catches pages_updated entries and
+         pages created by dead jobs whose result is empty.
+      3. DB pass: delete claim_citations rows for src_file.name so the Page
+         Provenance modal no longer shows stale rows pointing at a deleted file.
+    Also removes the .synthadoc/extracted sidecar and pagemap JSON.
     """
     _cleanup_job_pages(job_id)
     wiki_root = _discover_wiki_root()
     if not wiki_root:
         return
+
+    # Pass 2: scan all markdown files for references to the test source
+    src_name = src_file.name
+    wiki_dir = wiki_root / "wiki"
+    candidates_dir = wiki_dir / "candidates"
+    for md_file in list(wiki_dir.glob("*.md")) + list(candidates_dir.glob("*.md")):
+        try:
+            fm = _read_frontmatter(md_file)
+            if any(
+                isinstance(s, dict) and src_name in (s.get("file") or "")
+                for s in fm.get("sources", [])
+            ):
+                md_file.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    # Pass 3: purge claim_citations and related audit_events for this source
+    db_path = wiki_root / ".synthadoc" / "audit.db"
+    if db_path.exists():
+        import sqlite3 as _sqlite3
+        with _sqlite3.connect(db_path) as _db:
+            _db.execute(
+                "DELETE FROM claim_citations WHERE source_file = ?", (src_name,)
+            )
+            _db.execute(
+                "DELETE FROM audit_events "
+                "WHERE event = 'citation_validation_failed' "
+                "AND JSON_EXTRACT(metadata, '$.source_file') = ?",
+                (src_name,),
+            )
+            _db.commit()
+
     # Remove extracted sidecar for the test source file
-    extracted = wiki_root / ".synthadoc" / "extracted" / src_file.name
+    extracted = wiki_root / ".synthadoc" / "extracted" / src_name
     if extracted.exists():
         extracted.unlink()
     # Remove a companion pagemap JSON if present (PDF sources)
