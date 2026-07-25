@@ -194,6 +194,21 @@ class CodingToolCLIProvider(LLMProvider):
         # generator without having to special-case non-streaming providers.
         resp = await self.complete(messages, system=system,
                                    temperature=temperature, max_tokens=max_tokens)
+        self.last_stream_input_tokens = resp.input_tokens
+        self.last_stream_output_tokens = resp.output_tokens
+        if self.last_stream_input_tokens == 0:
+            _cpt = 3.5
+            input_chars = sum(
+                len(m.content) if isinstance(m.content, str)
+                else sum(
+                    len(p.get("text", ""))
+                    for p in m.content
+                    if isinstance(p, dict) and p.get("type") == "text"
+                )
+                for m in messages
+            )
+            self.last_stream_input_tokens = max(1, round(input_chars / _cpt))
+            self.last_stream_output_tokens = max(1, round(len(resp.text) / _cpt))
         words = resp.text.split(" ")
         for i, word in enumerate(words):
             yield word if i == len(words) - 1 else word + " "
