@@ -13,6 +13,27 @@ from synthadoc.providers.base import CompletionResponse, LLMProvider, Message
 
 logger = logging.getLogger(__name__)
 
+_CHARS_PER_TOKEN = 3.5
+
+
+def _estimate_tokens_from_chars(msgs: list[dict], answer_chars: int) -> tuple[int, int]:
+    """Return (input_tokens, output_tokens) estimated from character counts.
+
+    Used when the provider does not emit a usage chunk (e.g. MiniMax non-reasoning).
+    Accuracy is ±20%; no API call is made.
+    """
+    input_chars = sum(
+        len(m["content"]) if isinstance(m.get("content"), str)
+        else sum(
+            len(p.get("text", ""))
+            for p in m.get("content", [])
+            if isinstance(p, dict) and p.get("type") == "text"
+        )
+        for m in msgs
+    )
+    return max(1, round(input_chars / _CHARS_PER_TOKEN)), max(1, round(answer_chars / _CHARS_PER_TOKEN))
+
+
 # Providers whose chat endpoint does not support image inputs
 _NO_VISION_HOSTS = ("groq.com", "api.deepseek.com")
 
@@ -471,24 +492,14 @@ class OpenAIProvider(LLMProvider):
 
         # Providers that don't honour stream_options (e.g. MiniMax non-reasoning)
         # never emit a usage chunk, so last_stream_*_tokens stays 0.  Fall back to
-        # a character-based estimate: ~3.5 chars per token, no API call, zero latency.
+        # a character-based estimate: no API call, zero latency.
         if self.last_stream_input_tokens == 0:
-            _CHARS_PER_TOKEN = 3.5
-            input_chars = sum(
-                len(m["content"]) if isinstance(m.get("content"), str)
-                else sum(
-                    len(p.get("text", ""))
-                    for p in m.get("content", [])
-                    if isinstance(p, dict) and p.get("type") == "text"
-                )
-                for m in msgs
+            self.last_stream_input_tokens, self.last_stream_output_tokens = (
+                _estimate_tokens_from_chars(msgs, _answer_chars)
             )
-            self.last_stream_input_tokens = max(1, round(input_chars / _CHARS_PER_TOKEN))
-            self.last_stream_output_tokens = max(1, round(_answer_chars / _CHARS_PER_TOKEN))
             logger.debug(
                 "complete_stream: no usage chunk — estimated tokens from chars "
-                "(input_chars=%d → %d tok, output_chars=%d → %d tok, model=%s)",
-                input_chars, self.last_stream_input_tokens,
-                _answer_chars, self.last_stream_output_tokens,
+                "(%d in, %d out, model=%s)",
+                self.last_stream_input_tokens, self.last_stream_output_tokens,
                 self._config.model,
             )
