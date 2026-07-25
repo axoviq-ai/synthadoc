@@ -316,6 +316,49 @@ async def test_ollama_complete_stream_sets_last_stream_usage():
 
 
 @pytest.mark.asyncio
+async def test_openai_complete_stream_char_estimate_fallback():
+    """When provider sends no usage chunk, tokens must be estimated from character counts."""
+    from synthadoc.providers.openai import OpenAIProvider
+    from synthadoc.config import AgentConfig
+
+    cfg = AgentConfig(provider="minimax", model="MiniMax-M3")
+    provider = OpenAIProvider.__new__(OpenAIProvider)
+    provider._config = cfg
+    provider._timeout = None
+    provider._extra_body = {}
+
+    # Chunks with no usage (simulates MiniMax non-reasoning ignoring stream_options)
+    chunks = []
+    for text in ["Hello", " world", "!"]:
+        c = MagicMock()
+        c.usage = None
+        c.choices = [MagicMock(finish_reason=None, delta=MagicMock(content=text))]
+        chunks.append(c)
+    finish_chunk = MagicMock()
+    finish_chunk.usage = None
+    finish_chunk.choices = [MagicMock(finish_reason="stop", delta=MagicMock(content=None))]
+    chunks.append(finish_chunk)
+
+    async def _fake_create(*a, **kw):
+        async def _gen():
+            for c in chunks:
+                yield c
+        return _gen()
+
+    provider._client = MagicMock()
+    provider._client.chat.completions.create = _fake_create
+
+    tokens = []
+    async for tok in provider.complete_stream([Message(role="user", content="What is AI?")]):
+        tokens.append(tok)
+
+    assert "".join(tokens) == "Hello world!"
+    # Must have fallen back to character estimate — both must be > 0
+    assert provider.last_stream_input_tokens > 0, "input tokens must be estimated from prompt chars"
+    assert provider.last_stream_output_tokens > 0, "output tokens must be estimated from answer chars"
+
+
+@pytest.mark.asyncio
 async def test_ollama_provider_complete_stream_yields_tokens():
     """OllamaProvider.complete_stream must yield token strings."""
     from synthadoc.providers.ollama import OllamaProvider

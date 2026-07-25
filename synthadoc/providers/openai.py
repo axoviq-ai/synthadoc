@@ -468,3 +468,27 @@ class OpenAIProvider(LLMProvider):
             )
         if buf and not in_think:
             yield buf
+
+        # Providers that don't honour stream_options (e.g. MiniMax non-reasoning)
+        # never emit a usage chunk, so last_stream_*_tokens stays 0.  Fall back to
+        # a character-based estimate: ~3.5 chars per token, no API call, zero latency.
+        if self.last_stream_input_tokens == 0:
+            _CHARS_PER_TOKEN = 3.5
+            input_chars = sum(
+                len(m["content"]) if isinstance(m.get("content"), str)
+                else sum(
+                    len(p.get("text", ""))
+                    for p in m.get("content", [])
+                    if isinstance(p, dict) and p.get("type") == "text"
+                )
+                for m in msgs
+            )
+            self.last_stream_input_tokens = max(1, round(input_chars / _CHARS_PER_TOKEN))
+            self.last_stream_output_tokens = max(1, round(_answer_chars / _CHARS_PER_TOKEN))
+            logger.debug(
+                "complete_stream: no usage chunk — estimated tokens from chars "
+                "(input_chars=%d → %d tok, output_chars=%d → %d tok, model=%s)",
+                input_chars, self.last_stream_input_tokens,
+                _answer_chars, self.last_stream_output_tokens,
+                self._config.model,
+            )

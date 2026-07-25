@@ -1396,11 +1396,7 @@ def main() -> None:
         _test_streaming_query_audit()
         ok("GET /query/stream (streaming token audit)", "tokens > 0 and cost_usd >= 0 persisted in audit")
     except AssertionError as e:
-        msg = str(e)
-        if "tokens_used=0" in msg or "tokens_used = 0" in msg:
-            warn("GET /query/stream (streaming token audit)", msg)
-        else:
-            fail("GET /query/stream (streaming token audit)", msg)
+        fail("GET /query/stream (streaming token audit)", str(e))
 
     try:
         _test_blocked_domain_filter()
