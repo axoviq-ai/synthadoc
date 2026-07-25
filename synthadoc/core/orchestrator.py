@@ -549,12 +549,20 @@ class Orchestrator:
             history=history or [],
         ):
             if evt.get("event") == "done":
-                sub_q_count = evt.get("data", {}).get("sub_questions_count", 1)
+                data = evt.get("data", {})
+                sub_q_count = data.get("sub_questions_count", 1)
+                _input_tok = data.get("input_tokens", 0)
+                _output_tok = data.get("output_tokens", 0)
+                _query_cfg = self._cfg.agents.resolve("query")
+                cost_usd = estimate_cost(
+                    _query_cfg.model, _input_tok, _output_tok,
+                    is_local=_query_cfg.is_local,
+                )
                 await self._audit.record_query(
                     question=question,
                     sub_questions_count=sub_q_count,
-                    tokens=0,
-                    cost_usd=0.0,
+                    tokens=_input_tok + _output_tok,
+                    cost_usd=cost_usd,
                 )
             yield evt
 

@@ -78,6 +78,11 @@ class AnthropicProvider(LLMProvider):
             kwargs["system"] = system
         async with self._client.messages.stream(**kwargs) as stream:
             async for event in stream:
-                if (event.type == "content_block_delta"
+                # message_start carries input_tokens; message_delta carries cumulative output_tokens.
+                if event.type == "message_start":
+                    self.last_stream_input_tokens = event.message.usage.input_tokens
+                elif event.type == "message_delta" and hasattr(event, "usage"):
+                    self.last_stream_output_tokens = event.usage.output_tokens
+                elif (event.type == "content_block_delta"
                         and hasattr(event.delta, "text")):
                     yield event.delta.text

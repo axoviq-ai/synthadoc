@@ -360,8 +360,14 @@ class OpenAIProvider(LLMProvider):
             model=self._config.model, messages=msgs,
             temperature=temperature, max_tokens=max_tokens,
             timeout=self._timeout, stream=True,
+            stream_options={"include_usage": True},
             **({"extra_body": self._extra_body} if self._extra_body else {}),
         ):
+            # The final chunk with include_usage=True has chunk.usage populated and
+            # empty choices — capture before the early-continue guard below.
+            if chunk.usage is not None:
+                self.last_stream_input_tokens = chunk.usage.prompt_tokens
+                self.last_stream_output_tokens = chunk.usage.completion_tokens
             if chunk.choices and chunk.choices[0].finish_reason == "length":
                 logger.warning(
                     "complete_stream: response truncated by token limit "
@@ -430,6 +436,10 @@ class OpenAIProvider(LLMProvider):
             )
             try:
                 resp = await _fallback_task
+                # complete() returns exact token counts — use them instead of the
+                # streaming usage (which covers the suppressed think block only).
+                self.last_stream_input_tokens = resp.input_tokens
+                self.last_stream_output_tokens = resp.output_tokens
                 if resp.text:
                     logger.info(
                         "complete_stream: fallback done (answer_len=%d, model=%s)",

@@ -1350,10 +1350,19 @@ class QueryAgent:
             logger.debug("run_stream: yielding gap event (%d searches)", len(_suggested))
             yield {"event": "gap", "data": {"suggested_searches": _suggested}}
 
+        # Read exact token counts captured by the provider during streaming.
+        # Providers that support usage reporting (OpenAI, Anthropic, Ollama) set
+        # these after the generator is exhausted; others leave them at 0.
+        _stream_input_tokens = self._provider.last_stream_input_tokens
+        _stream_output_tokens = self._provider.last_stream_output_tokens
+
         next_hints = HintEngine.after_response(full_answer, session_mode)
         yield {"event": "done", "data": {
             "next_hints": next_hints,
             "cacheable": not _is_live_data,
             "routing_warning": routing_warning,
             "sub_questions_count": len(sub_questions),
+            "tokens_used": _stream_input_tokens + _stream_output_tokens,
+            "input_tokens": _stream_input_tokens,
+            "output_tokens": _stream_output_tokens,
         }}

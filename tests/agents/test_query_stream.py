@@ -16,10 +16,14 @@ async def _collect_stream(agent, question):
     return events
 
 
-def _make_streaming_agent(tmp_wiki, tokens=("Answer", " here"), answer_full="Answer here"):
+def _make_streaming_agent(tmp_wiki, tokens=("Answer", " here"), answer_full="Answer here",
+                          stream_input_tokens=0, stream_output_tokens=0):
     store = WikiStorage(tmp_wiki / "wiki")
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
     provider = MagicMock()
+    # Explicitly set integer defaults so query_agent.py reads real ints, not MagicMocks.
+    provider.last_stream_input_tokens = stream_input_tokens
+    provider.last_stream_output_tokens = stream_output_tokens
     provider.complete = AsyncMock(return_value=MagicMock(
         text='["what is AI?"]', input_tokens=10, output_tokens=5
     ))
@@ -213,3 +217,31 @@ async def test_run_stream_system_knowledge_suppresses_gap(tmp_wiki):
 
     gap_events = [e for e in events if e["event"] == "gap"]
     assert len(gap_events) == 0, "system knowledge match must suppress gap event"
+
+
+@pytest.mark.asyncio
+async def test_run_stream_done_event_includes_token_counts(tmp_wiki):
+    """done event must carry tokens_used, input_tokens, output_tokens from the provider."""
+    store, search, provider = _make_streaming_agent(
+        tmp_wiki, stream_input_tokens=150, stream_output_tokens=60
+    )
+    agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=0.0)
+    events = await _collect_stream(agent, "What is AI?")
+    done_events = [e for e in events if e["event"] == "done"]
+    assert len(done_events) == 1
+    data = done_events[0]["data"]
+    assert data["input_tokens"] == 150
+    assert data["output_tokens"] == 60
+    assert data["tokens_used"] == 210
+
+
+@pytest.mark.asyncio
+async def test_run_stream_done_event_tokens_zero_when_provider_unsupported(tmp_wiki):
+    """done event must carry tokens_used=0 when the provider does not report streaming usage."""
+    store, search, provider = _make_streaming_agent(tmp_wiki)  # default: 0/0
+    agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=0.0)
+    events = await _collect_stream(agent, "What is AI?")
+    done = [e for e in events if e["event"] == "done"][0]["data"]
+    assert done["tokens_used"] == 0
+    assert done["input_tokens"] == 0
+    assert done["output_tokens"] == 0

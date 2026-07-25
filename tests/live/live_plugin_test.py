@@ -73,6 +73,8 @@ no Obsidian runtime needed.  Organized by the 14 plugin commands + ribbon icon.
   [v1.0-d] truncation flag      : POST /jobs/ingest (>32 k chars), frontmatter sources check
   [v1.0-e] blocked domain filter: GET /query/stream, gap suggestions contain no blocked domains
   [v1.0-f] context budget       : GET /query/stream, citations non-empty and status count consistent
+  [v1.0-g] streaming token audit: GET /query/stream done event tokens_used > 0,
+                                   GET /audit/queries shows non-zero tokens and cost_usd
 
 ────────────────────────────────────────────────────────────────────────────────
  SIDE EFFECTS & ROLLBACK
@@ -669,6 +671,52 @@ def _test_context_budget() -> None:
 
     print(f"[OK] context budget: {len(citations)} citation(s) from {node_count}-page wiki, "
           f"status.sources={synthesizing_sources}")
+
+
+def _test_streaming_query_audit() -> None:
+    """After a streaming query, GET /audit/queries must show tokens > 0 and cost_usd > 0.
+
+    This verifies the end-to-end fix for the bug where streaming audit records
+    were always hardcoded to tokens=0, cost_usd=0.0.
+    """
+    code, body = POST("/sessions", {"mode": "query"})
+    assert code == 200, f"POST /sessions returned HTTP {code}"
+    session_id = body.get("session_id", "")
+
+    # Use a simple factual question — any wiki with content should answer it
+    q = "streaming token audit live test"
+    path = (f"/query/stream?q={urllib.parse.quote(q)}"
+            f"&session_id={urllib.parse.quote(session_id)}&no_cache=true&timeout_seconds=60")
+    events = _read_full_sse(path, timeout=90)
+
+    error_events = [e for e in events if e.get("event") == "error"]
+    assert not error_events, f"SSE query returned error: {error_events[0]['data']}"
+
+    done_events = [e for e in events if e.get("event") == "done"]
+    assert done_events, "SSE stream must emit a 'done' event"
+    done_data = done_events[0].get("data", {})
+    sse_tokens = done_data.get("tokens_used", 0)
+    assert sse_tokens > 0, (
+        f"done event tokens_used={sse_tokens}: streaming providers must report usage "
+        "via stream_options={{include_usage: True}} (OpenAI) or equivalent"
+    )
+
+    # Small sleep to allow the async record_query coroutine to persist the row
+    time.sleep(0.5)
+
+    code, rows = GET("/audit/queries?limit=5")
+    assert code == 200, f"GET /audit/queries returned HTTP {code}"
+    assert isinstance(rows, list) and rows, "No query audit rows found after streaming query"
+
+    # Most recent row (queries ordered DESC)
+    latest = rows[0]
+    assert latest.get("tokens", 0) > 0, (
+        f"Audit row tokens={latest.get('tokens')} — streaming token count not persisted"
+    )
+    assert latest.get("cost_usd", 0.0) > 0.0, (
+        f"Audit row cost_usd={latest.get('cost_usd')} — streaming cost not persisted "
+        "(check that the configured model is a paid provider, not Ollama)"
+    )
 
 
 def _test_blocked_domain_filter() -> None:
@@ -1341,6 +1389,12 @@ def main() -> None:
            "injection phrase absent from all pages; truncated=true found in sources frontmatter")
     except AssertionError as e:
         fail("POST /jobs/ingest (sanitizer + truncation flag)", str(e))
+
+    try:
+        _test_streaming_query_audit()
+        ok("GET /query/stream (streaming token audit)", "tokens > 0 and cost_usd > 0 persisted in audit")
+    except AssertionError as e:
+        fail("GET /query/stream (streaming token audit)", str(e))
 
     try:
         _test_blocked_domain_filter()
