@@ -1182,7 +1182,7 @@ Required environment variables per provider:
 
 ### Coding tool CLI providers — no API key needed
 
-If you have an active **Claude Code** or **Opencode** subscription, you can use it as the LLM provider with no separate API key.
+If you have an active **Claude Code** subscription, or want to use the free **Opencode Zen** tier, you can use either as the LLM provider with no separate API key.
 
 **Requirements:** the CLI tool must be installed and reachable on `PATH`:
 - Claude Code: `claude` binary — install via `npm install -g @anthropic-ai/claude-code`
@@ -1196,11 +1196,11 @@ default = { provider = "claude-code", model = "claude-opus-4-8" }
 lint    = { provider = "claude-code", model = "claude-haiku-4-5-20251001" }
 ```
 
-For Opencode:
+For Opencode Zen (free, no API key — requires connecting first: run `opencode` → `/connect` → select Zen):
 
 ```toml
 [agents]
-default = { provider = "opencode", model = "anthropic/claude-opus-4-8" }
+default = { provider = "opencode", model = "opencode/big-pickle" }
 ```
 
 **Runtime override** — bypasses config.toml for the current server session:

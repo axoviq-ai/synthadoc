@@ -2709,7 +2709,7 @@ Switch by editing `<wiki-root>/.synthadoc/config.toml` and restarting the server
 | `qwen`        | `QWEN_API_KEY`      | Yes — 1M free tokens (90-day trial), then paid    | Model-dependent |
 | `deepseek`    | `DEEPSEEK_API_KEY`  | No — very affordable pricing                      | No              |
 | `claude-code` | _(none)_            | Yes — uses your Claude Code subscription, no key  | No              |
-| `opencode`    | _(none)_            | Yes — uses your Opencode subscription, no key     | No              |
+| `opencode`    | _(none)_            | Yes — free via Opencode Zen, no API key           | No              |
 
 > CLI providers (`claude-code`, `opencode`) require no API key but need the tool installed and authenticated in your terminal. Web search still requires `TAVILY_API_KEY`. See [Appendix G](#appendix-g--using-a-coding-tool-as-your-llm-provider) for setup details.
 
@@ -2730,7 +2730,7 @@ default = { provider = "gemini",    model = "gemini-2.5-flash" }                
 # default = { provider = "openai",    model = "gpt-4o-mini" }                       # OpenAI
 # default = { provider = "ollama",    model = "llama3.2" }                          # Ollama (local, GPU required)
 # default = { provider = "claude-code" }                                             # Claude Code CLI (no API key)
-# default = { provider = "opencode" }                                                # Opencode CLI (no API key)
+# default = { provider = "opencode", model = "opencode/big-pickle" }                # Opencode Zen (free; connect first: opencode → /connect → select Zen)
 ```
 
 Restart `synthadoc serve`. The startup banner confirms `LLM: <provider>/<model>`.
@@ -2921,11 +2921,11 @@ Open `.synthadoc/config.toml` in your wiki root, comment out the active `default
 
 ```toml
 [agents]
-# default = { provider = "claude-code" }   # no API key — uses your Claude Code subscription
-# default = { provider = "opencode" }      # no API key — uses your Opencode subscription
+# default = { provider = "claude-code" }                                       # no API key — uses your Claude Code subscription
+# default = { provider = "opencode", model = "opencode/big-pickle" }          # free via Opencode Zen — connect first: opencode → /connect → select Zen
 ```
 
-The `model` field is optional — if omitted, the tool uses its own configured default. Restart the server after saving.
+For Claude Code, `model` is optional — omit it to use Claude Code's own configured default. For Opencode, specify `model = "opencode/big-pickle"` to use the free Zen tier. Restart the server after saving.
 
 Ensure the tool is installed and authenticated in your terminal before starting the server. No environment variables are required.
 

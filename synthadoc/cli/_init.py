@@ -226,7 +226,7 @@ default = {{ provider = "gemini", model = "gemini-2.5-flash-lite" }}
 # default = {{ provider = "ollama",    model = "llama3.2" }}                  # fully local, no API key; requires GPU — CPU-only is too slow for interactive use
 # default = {{ provider = "qwen",      model = "qwen-plus" }}                 # DashScope cloud API — set QWEN_API_KEY (https://bailian.console.aliyun.com/)
 # default = {{ provider = "claude-code" }}                                    # no API key — uses your Claude Code subscription
-# default = {{ provider = "opencode" }}                                       # no API key — uses your Opencode subscription
+# default = {{ provider = "opencode", model = "opencode/big-pickle" }}        # free via Opencode Zen — no API key; connect first: run 'opencode' → /connect → select Zen
 #
 # LLM call timeout — useful for reasoning models (e.g. MiniMax-M2.5, MiniMax-M3 with thinking enabled) that can
 # spend 2+ minutes on a single prompt and return an empty response instead of
