@@ -183,6 +183,182 @@ async def test_anthropic_provider_complete_stream_yields_tokens():
 
 
 @pytest.mark.asyncio
+async def test_openai_complete_stream_sets_last_stream_usage():
+    """complete_stream must set last_stream_input_tokens / last_stream_output_tokens from the usage chunk."""
+    from synthadoc.providers.openai import OpenAIProvider
+    from synthadoc.config import AgentConfig
+
+    cfg = AgentConfig(provider="openai", model="gpt-4o-mini")
+    provider = OpenAIProvider.__new__(OpenAIProvider)
+    provider._config = cfg
+    provider._timeout = None
+    provider._extra_body = {}
+
+    # content chunk + final usage-only chunk (include_usage=True pattern)
+    content_chunk = MagicMock()
+    content_chunk.usage = None
+    content_chunk.choices = [MagicMock(finish_reason=None, delta=MagicMock(content="hi"))]
+
+    usage_chunk = MagicMock()
+    usage_chunk.usage = MagicMock(prompt_tokens=120, completion_tokens=40)
+    usage_chunk.choices = []  # empty choices on usage chunk
+
+    async def _fake_create(*a, **kw):
+        assert kw.get("stream_options") == {"include_usage": True}, \
+            "stream_options must request usage"
+        async def _gen():
+            for c in [content_chunk, usage_chunk]:
+                yield c
+        return _gen()
+
+    provider._client = MagicMock()
+    provider._client.chat.completions.create = _fake_create
+
+    tokens = []
+    async for tok in provider.complete_stream([Message(role="user", content="hi")]):
+        tokens.append(tok)
+
+    assert "".join(tokens) == "hi"
+    assert provider.last_stream_input_tokens == 120
+    assert provider.last_stream_output_tokens == 40
+
+
+@pytest.mark.asyncio
+async def test_anthropic_complete_stream_sets_last_stream_usage():
+    """AnthropicProvider.complete_stream must set usage from message_start and message_delta."""
+    from synthadoc.providers.anthropic import AnthropicProvider
+    from synthadoc.config import AgentConfig
+
+    cfg = AgentConfig(provider="anthropic", model="claude-haiku-4-5-20251001")
+    provider = AnthropicProvider.__new__(AnthropicProvider)
+    provider._config = cfg
+
+    msg_start = MagicMock()
+    msg_start.type = "message_start"
+    msg_start.message = MagicMock(usage=MagicMock(input_tokens=200))
+
+    delta_event = MagicMock()
+    delta_event.type = "content_block_delta"
+    delta_event.delta = MagicMock(type="text_delta", text="hello")
+
+    msg_delta = MagicMock()
+    msg_delta.type = "message_delta"
+    msg_delta.usage = MagicMock(output_tokens=30)
+
+    msg_stop = MagicMock()
+    msg_stop.type = "message_stop"
+
+    class _FakeStream:
+        def __init__(self):
+            self._events = [msg_start, delta_event, msg_delta, msg_stop]
+            self._idx = 0
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+        def __aiter__(self): return self
+        async def __anext__(self):
+            if self._idx >= len(self._events):
+                raise StopAsyncIteration
+            e = self._events[self._idx]; self._idx += 1; return e
+
+    provider._client = MagicMock()
+    provider._client.messages.stream = MagicMock(return_value=_FakeStream())
+
+    tokens = []
+    async for tok in provider.complete_stream([Message(role="user", content="hi")]):
+        tokens.append(tok)
+
+    assert tokens == ["hello"]
+    assert provider.last_stream_input_tokens == 200
+    assert provider.last_stream_output_tokens == 30
+
+
+@pytest.mark.asyncio
+async def test_ollama_complete_stream_sets_last_stream_usage():
+    """OllamaProvider.complete_stream must capture prompt_eval_count / eval_count from done chunk."""
+    from synthadoc.providers.ollama import OllamaProvider
+    from synthadoc.config import AgentConfig
+    import json
+    from unittest.mock import patch
+
+    cfg = AgentConfig(provider="ollama", model="llama3")
+    provider = OllamaProvider(config=cfg)
+
+    lines = [
+        json.dumps({"message": {"content": "A"}, "done": False}),
+        json.dumps({"message": {"content": "B"}, "done": False}),
+        json.dumps({"message": {"content": ""}, "done": True,
+                    "prompt_eval_count": 50, "eval_count": 25}),
+    ]
+
+    async def _aiter_lines():
+        for line in lines:
+            yield line
+
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_response.aiter_lines = _aiter_lines
+    mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_response.__aexit__ = AsyncMock(return_value=False)
+
+    mock_client = MagicMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.stream = MagicMock(return_value=mock_response)
+
+    with patch("synthadoc.providers.ollama.httpx.AsyncClient", return_value=mock_client):
+        tokens = []
+        async for tok in provider.complete_stream([Message(role="user", content="hi")]):
+            tokens.append(tok)
+
+    assert tokens == ["A", "B"]
+    assert provider.last_stream_input_tokens == 50
+    assert provider.last_stream_output_tokens == 25
+
+
+@pytest.mark.asyncio
+async def test_openai_complete_stream_char_estimate_fallback():
+    """When provider sends no usage chunk, tokens must be estimated from character counts."""
+    from synthadoc.providers.openai import OpenAIProvider
+    from synthadoc.config import AgentConfig
+
+    cfg = AgentConfig(provider="minimax", model="MiniMax-M3")
+    provider = OpenAIProvider.__new__(OpenAIProvider)
+    provider._config = cfg
+    provider._timeout = None
+    provider._extra_body = {}
+
+    # Chunks with no usage (simulates MiniMax non-reasoning ignoring stream_options)
+    chunks = []
+    for text in ["Hello", " world", "!"]:
+        c = MagicMock()
+        c.usage = None
+        c.choices = [MagicMock(finish_reason=None, delta=MagicMock(content=text))]
+        chunks.append(c)
+    finish_chunk = MagicMock()
+    finish_chunk.usage = None
+    finish_chunk.choices = [MagicMock(finish_reason="stop", delta=MagicMock(content=None))]
+    chunks.append(finish_chunk)
+
+    async def _fake_create(*a, **kw):
+        async def _gen():
+            for c in chunks:
+                yield c
+        return _gen()
+
+    provider._client = MagicMock()
+    provider._client.chat.completions.create = _fake_create
+
+    tokens = []
+    async for tok in provider.complete_stream([Message(role="user", content="What is AI?")]):
+        tokens.append(tok)
+
+    assert "".join(tokens) == "Hello world!"
+    # Must have fallen back to character estimate — both must be > 0
+    assert provider.last_stream_input_tokens > 0, "input tokens must be estimated from prompt chars"
+    assert provider.last_stream_output_tokens > 0, "output tokens must be estimated from answer chars"
+
+
+@pytest.mark.asyncio
 async def test_ollama_provider_complete_stream_yields_tokens():
     """OllamaProvider.complete_stream must yield token strings."""
     from synthadoc.providers.ollama import OllamaProvider

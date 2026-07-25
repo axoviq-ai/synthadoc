@@ -356,6 +356,77 @@ async def test_post_call_soft_warn_fires_but_does_not_abort_job(tmp_wiki, caplog
         await orch.close()
 
 
+# ── Orchestrator.query_stream() cost ─────────────────────────────────────────
+
+def _make_streaming_query_agent(input_tokens: int, output_tokens: int):
+    """Return a mock QueryAgent whose run_stream() emits a done event with token counts."""
+    mock_agent = MagicMock()
+
+    async def _run_stream(question, session_id=None, session_mode="POWER_USER", history=None):
+        yield {"event": "token", "data": {"text": "ok"}}
+        yield {"event": "done", "data": {
+            "sub_questions_count": 1,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "tokens_used": input_tokens + output_tokens,
+            "next_hints": [],
+            "cacheable": False,
+            "routing_warning": None,
+        }}
+
+    mock_agent.run_stream = _run_stream
+    return mock_agent
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_query_stream_records_nonzero_cost(tmp_wiki):
+    """query_stream() must call record_query() with tokens > 0 and cost_usd > 0 for a paid model."""
+    cfg = _cfg("anthropic", "claude-haiku-4-5-20251001")
+    orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
+    await orch.init()
+
+    mock_agent = _make_streaming_query_agent(input_tokens=1000, output_tokens=500)
+    recorded: dict = {}
+
+    async def capture_record_query(**kwargs):
+        recorded.update(kwargs)
+
+    with patch("synthadoc.agents.query_agent.QueryAgent", return_value=mock_agent), \
+         patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock(spec=[])), \
+         patch.object(orch._audit, "record_query", side_effect=capture_record_query):
+        async for _ in orch.query_stream("what is AI?"):
+            pass
+
+    assert recorded.get("tokens", 0) == 1500, "streaming must record real token count"
+    assert recorded.get("cost_usd", 0.0) > 0.0, "streaming must record non-zero cost for paid model"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_query_stream_records_zero_cost_for_ollama(tmp_wiki):
+    """query_stream() must call record_query() with cost_usd=0.0 for Ollama (local)."""
+    from synthadoc.providers.ollama import OllamaProvider
+    cfg = _cfg("ollama", "llama3")
+    orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
+    await orch.init()
+
+    mock_agent = _make_streaming_query_agent(input_tokens=1000, output_tokens=500)
+    recorded: dict = {}
+
+    async def capture_record_query(**kwargs):
+        recorded.update(kwargs)
+
+    mock_ollama_provider = MagicMock(spec=OllamaProvider)
+
+    with patch("synthadoc.agents.query_agent.QueryAgent", return_value=mock_agent), \
+         patch("synthadoc.core.orchestrator.make_provider", return_value=mock_ollama_provider), \
+         patch.object(orch._audit, "record_query", side_effect=capture_record_query):
+        async for _ in orch.query_stream("what is AI?"):
+            pass
+
+    assert recorded.get("tokens", 0) == 1500, "streaming must record real token count even for Ollama"
+    assert recorded.get("cost_usd", 0.0) == 0.0, "Ollama (local) must record $0.00"
+
+
 # ── Permanent failure handling ────────────────────────────────────────────────
 
 @pytest.mark.asyncio

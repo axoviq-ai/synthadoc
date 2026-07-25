@@ -64,4 +64,6 @@ class OllamaProvider(LLMProvider):
                     if token:
                         yield token
                     if data.get("done"):
+                        self.last_stream_input_tokens = data.get("prompt_eval_count", 0)
+                        self.last_stream_output_tokens = data.get("eval_count", 0)
                         break

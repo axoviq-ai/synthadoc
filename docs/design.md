@@ -1182,7 +1182,7 @@ Required environment variables per provider:
 
 ### Coding tool CLI providers — no API key needed
 
-If you have an active **Claude Code** or **Opencode** subscription, you can use it as the LLM provider with no separate API key.
+If you have an active **Claude Code** subscription, or want to use the free **Opencode Zen** tier, you can use either as the LLM provider with no separate API key.
 
 **Requirements:** the CLI tool must be installed and reachable on `PATH`:
 - Claude Code: `claude` binary — install via `npm install -g @anthropic-ai/claude-code`
@@ -1196,11 +1196,11 @@ default = { provider = "claude-code", model = "claude-opus-4-8" }
 lint    = { provider = "claude-code", model = "claude-haiku-4-5-20251001" }
 ```
 
-For Opencode:
+For Opencode Zen (free, no API key — requires connecting first: run `opencode` → `/connect` → select Zen):
 
 ```toml
 [agents]
-default = { provider = "opencode", model = "anthropic/claude-opus-4-8" }
+default = { provider = "opencode", model = "opencode/big-pickle" }
 ```
 
 **Runtime override** — bypasses config.toml for the current server session:
@@ -1284,7 +1284,7 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 | `agents.default.provider` | str | `"gemini"` | LLM provider: `anthropic`, `openai`, `gemini`, `groq`, `minimax`, `deepseek`, `qwen`, `ollama` |
 | `agents.default.model` | str | `"gemini-2.5-flash"` | Model ID passed to the provider API |
 | `agents.default.base_url` | str | `""` | Override the provider's API endpoint. Use this to point any OpenAI-compatible provider at a custom URL (e.g. a local proxy or a private deployment). |
-| `agents.default.thinking` | str | `""` | Reasoning mode: `"disabled"` turns off chain-of-thought (faster, cheaper on MiniMax M3 and Qwen); `"enabled"` or `"adaptive"` turns it on. Empty string uses the provider's default. Applies to `minimax` and `qwen` (DashScope) providers; ignored by others. |
+| `agents.default.thinking` | str | `""` | Reasoning mode: `"disabled"` turns off chain-of-thought (faster, cheaper on MiniMax M3 and Qwen); `"enabled"` or `"adaptive"` turns it on. Empty string uses the provider's default. Applies to `minimax`, `qwen` (DashScope), and `deepseek` providers; ignored by others. |
 | `agents.ingest.provider` | str | (inherits default) | Override provider/model for the ingest agent only. Useful to use a cheap fast model for ingest while keeping a high-quality model for queries. |
 | `agents.ingest.model` | str | (inherits default) | Model ID for the ingest agent override. |
 | `agents.query.provider` | str | (inherits default) | Override provider/model for query answering only. |
@@ -2509,7 +2509,7 @@ data: {"event": "token", "data": {"text": " Turing"}}
 
 data: {"event": "citations", "data": {"citations": ["alan-turing", "enigma"]}}
 
-data: {"event": "done", "data": {"next_hints": ["What came after Turing?", ...]}}
+data: {"event": "done", "data": {"next_hints": [...], "input_tokens": 1240, "output_tokens": 380, "tokens_used": 1620}}
 ```
 
 | Event | Payload | When |
@@ -2521,12 +2521,37 @@ data: {"event": "done", "data": {"next_hints": ["What came after Turing?", ...]}
 | `gap` | `{"suggested_searches": […]}` | If knowledge gap detected |
 | `clarify` | `{"prompt": "…", "candidates": ["slug-1", …], "action": "…"}` | Action agent needs disambiguation (e.g. which page to activate) |
 | `notice` | `{"text": "…"}` | System message (e.g. conversation history was compressed) |
-| `done` | `{"next_hints": […]}` | Stream complete |
+| `done` | `{"next_hints": […], "input_tokens": N, "output_tokens": N, "tokens_used": N}` | Stream complete |
 | `error` | `{"message": "…"}` | On any exception |
 
 The CLI `synthadoc query` renders tokens as they arrive using ANSI cursor control. Pass `--no-stream` to fall back to the blocking `POST /query` endpoint and print the full answer when complete.
 
 The streaming path shares the same query decomposition, BM25 retrieval, and knowledge-gap detection as the blocking path. The only difference is delivery mechanism — SSE for streaming, plain JSON for blocking.
+
+### Streaming Token Audit
+
+Streaming LLM responses do not return token counts in the same way as blocking calls. To track real usage in the audit trail:
+
+**Provider-side collection** — each `LLMProvider` subclass exposes two instance attributes: `last_stream_input_tokens` and `last_stream_output_tokens`. These default to `0` and are populated from the API-specific usage field when the stream ends:
+
+| Provider | Mechanism | Verified |
+|---|---|---|
+| OpenAI | `stream_options={"include_usage": True}` passed to `chat.completions.create()`; final chunk carries `chunk.usage.prompt_tokens` / `completion_tokens` with empty `choices` | ✅ |
+| Anthropic | `message_start` event → `event.message.usage.input_tokens`; `message_delta` event → `event.usage.output_tokens` | ✅ |
+| Ollama | Final chunk with `done=True` → `prompt_eval_count` / `eval_count` | ✅ |
+| DeepSeek | Same `OpenAIProvider` path as OpenAI; DeepSeek's OpenAI-compatible API supports `stream_options` | ✅ |
+| MiniMax (reasoning: M2.5+) | Detects `<think>` in stream → falls back to blocking `complete()` → captures exact counts from `resp.usage` | ✅ |
+| MiniMax (non-reasoning, e.g. M3 thinking=disabled) | Same `OpenAIProvider` path; MiniMax API silently ignores `stream_options`. Falls back to character-based estimate (÷ 3.5 chars/token) from prompt + answer lengths. Accuracy ±20%. | ✅ estimated |
+| Gemini | Same `OpenAIProvider` path via `generativelanguage.googleapis.com/v1beta/openai/`; Google's compatibility layer honours `stream_options` — verified live (Gemini 2.5 Flash Lite, 50K tokens) | ✅ |
+| Groq | Same `OpenAIProvider` path; Groq's OpenAI-compatible API supports `stream_options` | ✅ |
+| Qwen (DashScope) | Same `OpenAIProvider` path via DashScope; `stream_options` honoured — verified live (qwen-plus, 28K tokens) | ✅ |
+| Qwen (Ollama) | Ollama path → `prompt_eval_count` / `eval_count` | ✅ |
+
+**Forwarding to `done` event** — after `complete_stream()` is exhausted, `QueryAgent.run_stream()` reads the provider attributes and includes them in the final `done` event payload: `input_tokens`, `output_tokens`, `tokens_used`.
+
+**Audit record** — `Orchestrator.query_stream()` consumes the `done` event and calls `estimate_cost(model, input_tokens, output_tokens, is_local)` from `synthadoc/providers/pricing.py`, then calls `AuditDB.record_query()` with the real token count and computed cost. The audit row at `GET /audit/queries` will therefore always show non-zero values for cloud providers.
+
+When a provider does not report streaming usage (e.g. a future provider not yet wired), the attributes stay at `0`; the audit row records `tokens=0, cost_usd=0.0` rather than crashing, matching the pre-fix behaviour.
 
 ### Epoch-Based Query Result Cache
 

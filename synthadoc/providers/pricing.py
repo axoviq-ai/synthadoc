@@ -72,8 +72,8 @@ _PRICING: dict[str, tuple[float, float]] = {
     # they map to deepseek-v4-flash non-thinking / thinking modes respectively.
     "deepseek-v4-flash":         ( 0.14e-6,  0.28e-6),
     "deepseek-v4-pro":           ( 0.435e-6, 0.87e-6),
-    "deepseek-chat":             ( 0.14e-6,  0.28e-6),  # → deepseek-v4-flash
-    "deepseek-reasoner":         ( 0.435e-6, 0.87e-6),  # → deepseek-v4-pro
+    "deepseek-chat":             ( 0.14e-6,  0.28e-6),  # → deepseek-v4-flash (non-thinking)
+    "deepseek-reasoner":         ( 0.14e-6,  0.28e-6),  # → deepseek-v4-flash (thinking mode)
     "deepseek-v3":               ( 0.14e-6,  0.28e-6),  # legacy
     "deepseek-r1":               ( 0.435e-6, 0.87e-6),  # legacy
 

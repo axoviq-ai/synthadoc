@@ -2709,7 +2709,7 @@ Switch by editing `<wiki-root>/.synthadoc/config.toml` and restarting the server
 | `qwen`        | `QWEN_API_KEY`      | Yes — 1M free tokens (90-day trial), then paid    | Model-dependent |
 | `deepseek`    | `DEEPSEEK_API_KEY`  | No — very affordable pricing                      | No              |
 | `claude-code` | _(none)_            | Yes — uses your Claude Code subscription, no key  | No              |
-| `opencode`    | _(none)_            | Yes — uses your Opencode subscription, no key     | No              |
+| `opencode`    | _(none)_            | Yes — free via Opencode Zen, no API key           | No              |
 
 > CLI providers (`claude-code`, `opencode`) require no API key but need the tool installed and authenticated in your terminal. Web search still requires `TAVILY_API_KEY`. See [Appendix G](#appendix-g--using-a-coding-tool-as-your-llm-provider) for setup details.
 
@@ -2721,8 +2721,10 @@ Switch by editing `<wiki-root>/.synthadoc/config.toml` and restarting the server
 
 default = { provider = "gemini",    model = "gemini-2.5-flash" }                    # Gemini Flash (default, free tier)
 # default = { provider = "groq",      model = "llama-3.3-70b-versatile" }           # Groq (fast, free tier)
-# default = { provider = "qwen",      model = "qwen-plus" }                         # Qwen via DashScope (1M free tokens)
-# default = { provider = "deepseek",  model = "deepseek-chat" }                     # DeepSeek (very affordable)
+# default = { provider = "qwen",      model = "qwen-plus" }                              # Qwen via DashScope (1M free tokens)
+# default = { provider = "qwen",      model = "qwen-plus", thinking = "disabled" }      # Qwen — thinking suppressed (faster)
+# default = { provider = "deepseek",  model = "deepseek-v4-flash" }                              # DeepSeek (very affordable, non-thinking)
+# default = { provider = "deepseek",  model = "deepseek-v4-flash", thinking = "enabled" }       # DeepSeek thinking mode (chain-of-thought; replaces deepseek-reasoner)
 # default = { provider = "minimax",   model = "MiniMax-M2.5" }                      # MiniMax M2.5 (multimodal, cheapest paid)
 # default = { provider = "minimax",   model = "MiniMax-M3", thinking = "disabled" } # MiniMax M3 (fast, low-cost)
 # default = { provider = "anthropic", model = "claude-sonnet-4-6" }                 # Anthropic Sonnet (high quality)
@@ -2730,7 +2732,7 @@ default = { provider = "gemini",    model = "gemini-2.5-flash" }                
 # default = { provider = "openai",    model = "gpt-4o-mini" }                       # OpenAI
 # default = { provider = "ollama",    model = "llama3.2" }                          # Ollama (local, GPU required)
 # default = { provider = "claude-code" }                                             # Claude Code CLI (no API key)
-# default = { provider = "opencode" }                                                # Opencode CLI (no API key)
+# default = { provider = "opencode", model = "opencode/big-pickle" }                # Opencode Zen (free; connect first: opencode → /connect → select Zen)
 ```
 
 Restart `synthadoc serve`. The startup banner confirms `LLM: <provider>/<model>`.
@@ -2743,7 +2745,7 @@ Restart `synthadoc serve`. The startup banner confirms `LLM: <provider>/<model>`
 > - **Thinking field (MiniMax M3, Qwen DashScope):** Add `thinking = "disabled"` to your `agents.default` line to suppress chain-of-thought reasoning. Useful when you want lower latency and cost and don't need the model to reason step-by-step. Example: `default = { provider = "minimax", model = "MiniMax-M3", thinking = "disabled" }`
 > - **Ollama — GPU required:** Local Ollama models require a CUDA or Metal GPU to be practically usable. On CPU-only machines, processing an 8 K-token context takes 5–10 minutes before the first token is generated — well beyond any reasonable timeout. If you do not have a GPU, use a cloud provider instead (Gemini 2.5 Flash Lite is free). Install Ollama from [ollama.com](https://ollama.com); no API key needed.
 > - **Qwen cloud (DashScope):** New accounts get **1 million free tokens** (valid 90 days after activating Model Studio). Set `QWEN_API_KEY` (get one at [bailian.console.aliyun.com](https://bailian.console.aliyun.com/)) and use `model = "qwen-plus"` or `"qwen-max"`. DashScope supports a `thinking` field: set `thinking = "disabled"` for faster responses.
-> - **DeepSeek:** Very affordable cloud API — `deepseek-chat` works for all Synthadoc operations. Set `DEEPSEEK_API_KEY` (get one at [platform.deepseek.com](https://platform.deepseek.com/api_keys)).
+> - **DeepSeek:** Very affordable cloud API. Use `deepseek-v4-flash` for standard mode or add `thinking = "enabled"` for chain-of-thought reasoning (the latter replaces the deprecated `deepseek-reasoner`). Set `DEEPSEEK_API_KEY` (get one at [platform.deepseek.com](https://platform.deepseek.com/api_keys)).
 
 ---
 
@@ -2921,11 +2923,11 @@ Open `.synthadoc/config.toml` in your wiki root, comment out the active `default
 
 ```toml
 [agents]
-# default = { provider = "claude-code" }   # no API key — uses your Claude Code subscription
-# default = { provider = "opencode" }      # no API key — uses your Opencode subscription
+# default = { provider = "claude-code" }                                       # no API key — uses your Claude Code subscription
+# default = { provider = "opencode", model = "opencode/big-pickle" }          # free via Opencode Zen — connect first: opencode → /connect → select Zen
 ```
 
-The `model` field is optional — if omitted, the tool uses its own configured default. Restart the server after saving.
+For Claude Code, `model` is optional — omit it to use Claude Code's own configured default. For Opencode, specify `model = "opencode/big-pickle"` to use the free Zen tier. Restart the server after saving.
 
 Ensure the tool is installed and authenticated in your terminal before starting the server. No environment variables are required.
 

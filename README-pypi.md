@@ -297,7 +297,7 @@ Synthadoc defaults to **Gemini Flash** — free tier, no credit card, 1 million 
 | Anthropic        | No                                                       | Yes             | [console.anthropic.com](https://console.anthropic.com/)           |
 | OpenAI           | No                                                       | Yes             | [platform.openai.com](https://platform.openai.com/api-keys)      |
 | **Claude Code**  | Included with subscription — no API key                  | No              | Set `provider = "claude-code"` in config.toml                    |
-| **Opencode**     | Included with subscription — no API key                  | No              | Set `provider = "opencode"` in config.toml                       |
+| **Opencode**     | Free via Opencode Zen — no API key                       | No              | Set `provider = "opencode", model = "opencode/big-pickle"` in config.toml; connect first: run `opencode` → `/connect` → select Zen |
 
 ```bash
 # macOS / Linux — add to ~/.bashrc or ~/.zshrc to persist
