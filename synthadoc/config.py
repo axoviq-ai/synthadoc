@@ -35,8 +35,12 @@ class AgentConfig:
 
     @property
     def is_local(self) -> bool:
-        """True for providers that run locally and incur no API cost (e.g. Ollama)."""
-        return self.provider == "ollama"
+        """True for providers that incur no per-token API cost.
+
+        Includes Ollama (local inference) and CLI-delegation providers
+        (claude-code, opencode) that bill via subscription rather than per token.
+        """
+        return self.provider in ("ollama", "claude-code", "opencode")
 
 
 @dataclass
