@@ -250,10 +250,10 @@ def test_deepseek_chat_alias_matches_v4_flash():
            estimate_cost("deepseek-v4-flash", 1_000_000, 1_000_000)
 
 
-def test_deepseek_reasoner_alias_matches_v4_pro():
-    """deepseek-reasoner is an alias for deepseek-v4-pro — must have identical pricing."""
+def test_deepseek_reasoner_alias_matches_v4_flash():
+    """deepseek-reasoner is an alias for deepseek-v4-flash thinking — must have identical pricing."""
     assert estimate_cost("deepseek-reasoner", 1_000_000, 1_000_000) == \
-           estimate_cost("deepseek-v4-pro", 1_000_000, 1_000_000)
+           estimate_cost("deepseek-v4-flash", 1_000_000, 1_000_000)
 
 
 def test_deepseek_v3_legacy_rates():

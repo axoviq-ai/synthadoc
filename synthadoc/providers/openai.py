@@ -82,7 +82,7 @@ def _build_extra_body(thinking: str, provider: str = "") -> dict:
     Empty string (unset) → no extra_body; provider default applies.
     DashScope (qwen) uses enable_thinking; MiniMax/others use thinking.type.
     """
-    if provider == "qwen":
+    if provider in ("qwen", "deepseek"):
         return _QWEN_THINKING_EXTRA_BODY.get(thinking, {})
     return _THINKING_EXTRA_BODY.get(thinking, {})
 

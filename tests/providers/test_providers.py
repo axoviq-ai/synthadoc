@@ -1011,7 +1011,7 @@ def test_make_provider_deepseek_uses_openai_provider_with_base_url(monkeypatch):
 @pytest.mark.asyncio
 async def test_openai_provider_deepseek_r1_think_tags_stripped():
     """DeepSeek-R1 embeds <think>...</think> in the content field; they must be stripped."""
-    cfg = AgentConfig(provider="deepseek", model="deepseek-reasoner",
+    cfg = AgentConfig(provider="deepseek", model="deepseek-v4-flash", thinking="enabled",
                       base_url="https://api.deepseek.com/v1")
     provider = OpenAIProvider(api_key="test-key", config=cfg)
 
