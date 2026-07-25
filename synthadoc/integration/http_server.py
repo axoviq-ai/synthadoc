@@ -88,6 +88,15 @@ def _classify_llm_error(exc: Exception) -> "HTTPException | None":
     """Return a meaningful HTTPException for known LLM API error codes, or None."""
     from synthadoc.errors import DailyQuotaExhaustedException, CodingToolQuotaExhaustedException
     _SWITCH = "Switch to another provider by editing [agents] in .synthadoc/config.toml and restarting the server (options: anthropic, openai, gemini, groq, minimax, deepseek, ollama)."
+    # RuntimeError raised by CodingToolCLIProvider._parse_output (claude-code / opencode)
+    # carries the tool's own error message — surface it without a stack trace.
+    if isinstance(exc, RuntimeError):
+        msg = str(exc)
+        if msg.startswith(("opencode: ", "claude: ")):
+            return HTTPException(
+                status_code=503,
+                detail=f"Coding tool error: {msg}. Check your opencode/claude-code configuration and environment variables.",
+            )
     if isinstance(exc, DailyQuotaExhaustedException):
         return HTTPException(
             status_code=503,
