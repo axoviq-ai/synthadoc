@@ -854,7 +854,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                                     citations=citations or None,
                                     gap_suggestions=_suggested_searches if _knowledge_gap else None,
                                 )
-                            yield f"event: done\ndata: {_json.dumps({'next_hints': next_hints})}\n\n"
+                            done_payload = {**evt["data"], "next_hints": next_hints}
+                            yield f"event: done\ndata: {_json.dumps(done_payload)}\n\n"
                             continue
                         yield f"event: {evt['event']}\ndata: {_json.dumps(evt['data'])}\n\n"
             except _asyncio.CancelledError:
