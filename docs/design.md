@@ -2542,12 +2542,10 @@ Streaming LLM responses do not return token counts in the same way as blocking c
 | DeepSeek | Same `OpenAIProvider` path as OpenAI; DeepSeek's OpenAI-compatible API supports `stream_options` | ✅ |
 | MiniMax (reasoning: M2.5+) | Detects `<think>` in stream → falls back to blocking `complete()` → captures exact counts from `resp.usage` | ✅ |
 | MiniMax (non-reasoning, e.g. M3 thinking=disabled) | Same `OpenAIProvider` path; MiniMax API silently ignores `stream_options`. Falls back to character-based estimate (÷ 3.5 chars/token) from prompt + answer lengths. Accuracy ±20%. | ✅ estimated |
-| Gemini | Same `OpenAIProvider` path via `generativelanguage.googleapis.com/v1beta/openai/`; whether Google's compatibility layer honours `stream_options` is unverified | ⚠️ unverified |
+| Gemini | Same `OpenAIProvider` path via `generativelanguage.googleapis.com/v1beta/openai/`; Google's compatibility layer honours `stream_options` — verified live (Gemini 2.5 Flash Lite, 50K tokens) | ✅ |
 | Groq | Same `OpenAIProvider` path; Groq's OpenAI-compatible API supports `stream_options` | ✅ |
-| Qwen (DashScope) | Same `OpenAIProvider` path via DashScope; `stream_options` sent but DashScope compatibility unverified | ⚠️ unverified |
+| Qwen (DashScope) | Same `OpenAIProvider` path via DashScope; `stream_options` honoured — verified live (qwen-plus, 28K tokens) | ✅ |
 | Qwen (Ollama) | Ollama path → `prompt_eval_count` / `eval_count` | ✅ |
-
-Providers marked ⚠️ may silently ignore `stream_options`, leaving `tokens_used = 0` in the `done` event. They never error on the parameter. To verify non-reasoning MiniMax, disable thinking (set `thinking = false` in `[agents]`) and run a live streaming query, then check `GET /audit/queries`.
 
 **Forwarding to `done` event** — after `complete_stream()` is exhausted, `QueryAgent.run_stream()` reads the provider attributes and includes them in the final `done` event payload: `input_tokens`, `output_tokens`, `tokens_used`.
 
