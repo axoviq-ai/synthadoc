@@ -80,7 +80,7 @@ default = { provider = "gemini", model = "gemini-2.5-flash-lite" }
 # default = { provider = "groq",      model = "llama-3.3-70b-versatile" }  # free tier, 100K tokens/day
 # default = { provider = "anthropic", model = "claude-sonnet-4-6" }        # paid, high quality
 # default = { provider = "anthropic", model = "claude-opus-4-8" }          # paid, highest quality (most capable)
-# default = { provider = "deepseek",  model = "deepseek-chat" }            # paid, very cheap ($0.14/M in); text-only, no vision
+# default = { provider = "deepseek",  model = "deepseek-v4-flash" }        # paid, very cheap ($0.14/M in); text-only, no vision
 # default = { provider = "ollama",    model = "llama3.2" }                 # fully local, no API key; requires GPU — CPU-only is too slow for interactive use
 # default = { provider = "qwen",      model = "qwen-plus" }                # DashScope cloud API — set QWEN_API_KEY (https://bailian.console.aliyun.com/)
 # default = { provider = "claude-code" }                                   # no API key — uses your Claude Code subscription

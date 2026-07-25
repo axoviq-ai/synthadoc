@@ -176,10 +176,10 @@ def test_llm_timeout_seconds_is_parsed(tmp_path):
 def test_deepseek_is_a_valid_provider(tmp_path):
     """deepseek must be accepted as a valid provider name without raising."""
     toml = tmp_path / "config.toml"
-    toml.write_text('[agents]\ndefault = {provider = "deepseek", model = "deepseek-chat"}\n')
+    toml.write_text('[agents]\ndefault = {provider = "deepseek", model = "deepseek-v4-flash"}\n')
     cfg = load_config(project_config=toml)
     assert cfg.agents.default.provider == "deepseek"
-    assert cfg.agents.default.model == "deepseek-chat"
+    assert cfg.agents.default.model == "deepseek-v4-flash"
 
 
 def test_qwen_is_a_valid_provider(tmp_path):

@@ -146,6 +146,16 @@ def _classify_llm_error(exc: Exception) -> "HTTPException | None":
             status_code=403,
             detail=f"LLM provider quota or permission error (403): {detail}. {_SWITCH}",
         )
+    if code == 400:
+        body = getattr(exc, "body", None) or {}
+        err_msg = ""
+        if isinstance(body, dict):
+            err_msg = body.get("error", {}).get("message", "")
+        detail = err_msg or str(exc)
+        return HTTPException(
+            status_code=400,
+            detail=f"LLM provider rejected the request (400): {detail}. Check your model name and provider configuration.",
+        )
     if code == 413:
         body = getattr(exc, "body", None) or {}
         err_msg = ""
