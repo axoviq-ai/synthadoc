@@ -2721,7 +2721,8 @@ Switch by editing `<wiki-root>/.synthadoc/config.toml` and restarting the server
 
 default = { provider = "gemini",    model = "gemini-2.5-flash" }                    # Gemini Flash (default, free tier)
 # default = { provider = "groq",      model = "llama-3.3-70b-versatile" }           # Groq (fast, free tier)
-# default = { provider = "qwen",      model = "qwen-plus" }                         # Qwen via DashScope (1M free tokens)
+# default = { provider = "qwen",      model = "qwen-plus" }                              # Qwen via DashScope (1M free tokens)
+# default = { provider = "qwen",      model = "qwen-plus", thinking = "disabled" }      # Qwen — thinking suppressed (faster)
 # default = { provider = "deepseek",  model = "deepseek-v4-flash" }                              # DeepSeek (very affordable, non-thinking)
 # default = { provider = "deepseek",  model = "deepseek-v4-flash", thinking = "enabled" }       # DeepSeek thinking mode (chain-of-thought; replaces deepseek-reasoner)
 # default = { provider = "minimax",   model = "MiniMax-M2.5" }                      # MiniMax M2.5 (multimodal, cheapest paid)

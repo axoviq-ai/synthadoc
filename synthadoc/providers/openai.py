@@ -80,7 +80,7 @@ def _build_extra_body(thinking: str, provider: str = "") -> dict:
     """Return the provider extra_body dict for the given thinking setting.
 
     Empty string (unset) → no extra_body; provider default applies.
-    DashScope (qwen) uses enable_thinking; MiniMax/others use thinking.type.
+    DashScope (qwen) and DeepSeek use enable_thinking; MiniMax/others use thinking.type.
     """
     if provider in ("qwen", "deepseek"):
         return _QWEN_THINKING_EXTRA_BODY.get(thinking, {})

@@ -1284,7 +1284,7 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 | `agents.default.provider` | str | `"gemini"` | LLM provider: `anthropic`, `openai`, `gemini`, `groq`, `minimax`, `deepseek`, `qwen`, `ollama` |
 | `agents.default.model` | str | `"gemini-2.5-flash"` | Model ID passed to the provider API |
 | `agents.default.base_url` | str | `""` | Override the provider's API endpoint. Use this to point any OpenAI-compatible provider at a custom URL (e.g. a local proxy or a private deployment). |
-| `agents.default.thinking` | str | `""` | Reasoning mode: `"disabled"` turns off chain-of-thought (faster, cheaper on MiniMax M3 and Qwen); `"enabled"` or `"adaptive"` turns it on. Empty string uses the provider's default. Applies to `minimax` and `qwen` (DashScope) providers; ignored by others. |
+| `agents.default.thinking` | str | `""` | Reasoning mode: `"disabled"` turns off chain-of-thought (faster, cheaper on MiniMax M3 and Qwen); `"enabled"` or `"adaptive"` turns it on. Empty string uses the provider's default. Applies to `minimax`, `qwen` (DashScope), and `deepseek` providers; ignored by others. |
 | `agents.ingest.provider` | str | (inherits default) | Override provider/model for the ingest agent only. Useful to use a cheap fast model for ingest while keeping a high-quality model for queries. |
 | `agents.ingest.model` | str | (inherits default) | Model ID for the ingest agent override. |
 | `agents.query.provider` | str | (inherits default) | Override provider/model for query answering only. |
