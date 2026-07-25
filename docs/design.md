@@ -2541,7 +2541,7 @@ Streaming LLM responses do not return token counts in the same way as blocking c
 | Ollama | Final chunk with `done=True` → `prompt_eval_count` / `eval_count` | ✅ |
 | DeepSeek | Same `OpenAIProvider` path as OpenAI; DeepSeek's OpenAI-compatible API supports `stream_options` | ✅ |
 | MiniMax (reasoning: M2.5+) | Detects `<think>` in stream → falls back to blocking `complete()` → captures exact counts from `resp.usage` | ✅ |
-| MiniMax (non-reasoning) | Same `OpenAIProvider` path; `stream_options` sent but MiniMax API compatibility unverified | ⚠️ unverified |
+| MiniMax (non-reasoning, e.g. M3 thinking=disabled) | Same `OpenAIProvider` path; MiniMax API silently ignores `stream_options` — no usage chunk is emitted; tokens report as 0 | ❌ not supported |
 | Gemini | Same `OpenAIProvider` path via `generativelanguage.googleapis.com/v1beta/openai/`; whether Google's compatibility layer honours `stream_options` is unverified | ⚠️ unverified |
 | Groq | Same `OpenAIProvider` path; Groq's OpenAI-compatible API supports `stream_options` | ✅ |
 | Qwen (DashScope) | Same `OpenAIProvider` path via DashScope; `stream_options` sent but DashScope compatibility unverified | ⚠️ unverified |
