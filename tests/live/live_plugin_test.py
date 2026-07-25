@@ -710,9 +710,10 @@ def _test_streaming_query_audit() -> None:
     # Small sleep to allow the async record_query coroutine to persist the row
     time.sleep(0.5)
 
-    code, rows = GET("/audit/queries?limit=5")
+    code, body = GET("/audit/queries?limit=5")
     assert code == 200, f"GET /audit/queries returned HTTP {code}"
-    assert isinstance(rows, list) and rows, "No query audit rows found after streaming query"
+    rows = body.get("records", []) if isinstance(body, dict) else body
+    assert rows, "No query audit rows found after streaming query"
 
     latest = rows[0]
     assert latest.get("tokens", 0) > 0, (
