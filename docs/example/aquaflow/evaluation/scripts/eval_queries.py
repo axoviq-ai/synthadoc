@@ -26,7 +26,7 @@ Usage — compare two or more result files:
 Models evaluated in the AquaFlow benchmark (config.toml snippets):
     minimax-think:      provider="minimax"   model="MiniMax-M3"                    (thinking=on, default)
     minimax:            provider="minimax"   model="MiniMax-M3"  thinking="disabled"
-    deepseek:           provider="deepseek"  model="deepseek-chat"
+    deepseek:           provider="deepseek"  model="deepseek-v4-flash"
     claude-opus-4-8:    provider="anthropic"  model="claude-opus-4-8"
     claude-sonnet-4-6:  provider="anthropic"  model="claude-sonnet-4-6"
     qwen-plus:          provider="qwen"      model="qwen-plus"

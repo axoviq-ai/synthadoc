@@ -991,7 +991,7 @@ def test_make_provider_missing_deepseek_key_exits(monkeypatch, capsys):
     from synthadoc.providers import make_provider
     monkeypatch.setenv("DEEPSEEK_API_KEY", "")
     with pytest.raises((click.exceptions.Exit, typer.Exit)) as exc_info:
-        make_provider("ingest", _make_cfg("deepseek", "deepseek-chat"))
+        make_provider("ingest", _make_cfg("deepseek", "deepseek-v4-flash"))
     assert exc_info.value.exit_code == 1
     err = capsys.readouterr().err
     assert "DEEPSEEK_API_KEY" in err
@@ -1002,7 +1002,7 @@ def test_make_provider_deepseek_uses_openai_provider_with_base_url(monkeypatch):
     from synthadoc.providers import make_provider
     from synthadoc.providers.openai import OpenAIProvider
     monkeypatch.setenv("DEEPSEEK_API_KEY", "test-deepseek-key")
-    provider = make_provider("ingest", _make_cfg("deepseek", "deepseek-chat"))
+    provider = make_provider("ingest", _make_cfg("deepseek", "deepseek-v4-flash"))
     assert isinstance(provider, OpenAIProvider)
     assert "api.deepseek.com" in str(provider._client.base_url)
     assert provider.supports_vision is False  # DeepSeek is text-only
@@ -1011,7 +1011,7 @@ def test_make_provider_deepseek_uses_openai_provider_with_base_url(monkeypatch):
 @pytest.mark.asyncio
 async def test_openai_provider_deepseek_r1_think_tags_stripped():
     """DeepSeek-R1 embeds <think>...</think> in the content field; they must be stripped."""
-    cfg = AgentConfig(provider="deepseek", model="deepseek-reasoner",
+    cfg = AgentConfig(provider="deepseek", model="deepseek-v4-flash", thinking="enabled",
                       base_url="https://api.deepseek.com/v1")
     provider = OpenAIProvider(api_key="test-key", config=cfg)
 

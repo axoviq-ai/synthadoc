@@ -88,6 +88,15 @@ def _classify_llm_error(exc: Exception) -> "HTTPException | None":
     """Return a meaningful HTTPException for known LLM API error codes, or None."""
     from synthadoc.errors import DailyQuotaExhaustedException, CodingToolQuotaExhaustedException
     _SWITCH = "Switch to another provider by editing [agents] in .synthadoc/config.toml and restarting the server (options: anthropic, openai, gemini, groq, minimax, deepseek, ollama)."
+    # RuntimeError raised by CodingToolCLIProvider._parse_output (claude-code / opencode)
+    # carries the tool's own error message — surface it without a stack trace.
+    if isinstance(exc, RuntimeError):
+        msg = str(exc)
+        if msg.startswith(("opencode: ", "claude: ")):
+            return HTTPException(
+                status_code=503,
+                detail=f"Coding tool error: {msg}. Check your opencode/claude-code configuration and environment variables.",
+            )
     if isinstance(exc, DailyQuotaExhaustedException):
         return HTTPException(
             status_code=503,
@@ -145,6 +154,27 @@ def _classify_llm_error(exc: Exception) -> "HTTPException | None":
         return HTTPException(
             status_code=403,
             detail=f"LLM provider quota or permission error (403): {detail}. {_SWITCH}",
+        )
+    if code == 400:
+        body = getattr(exc, "body", None) or {}
+        err_msg = ""
+        if isinstance(body, dict):
+            err_msg = body.get("error", {}).get("message", "")
+        detail = err_msg or str(exc)
+        return HTTPException(
+            status_code=400,
+            detail=f"LLM provider rejected the request (400): {detail}. Check your model name and provider configuration.",
+        )
+    if code == 413:
+        body = getattr(exc, "body", None) or {}
+        err_msg = ""
+        if isinstance(body, dict):
+            err_msg = body.get("error", {}).get("message", "")
+        detail = err_msg or str(exc)
+        return HTTPException(
+            status_code=413,
+            detail=f"LLM provider rejected request as too large (413): {detail}. "
+                   f"Reduce context via max_source_chars in .synthadoc/config.toml, or {_SWITCH}",
         )
     if code == 429:
         msg = str(exc)
@@ -854,7 +884,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                                     citations=citations or None,
                                     gap_suggestions=_suggested_searches if _knowledge_gap else None,
                                 )
-                            yield f"event: done\ndata: {_json.dumps({'next_hints': next_hints})}\n\n"
+                            done_payload = {**evt["data"], "next_hints": next_hints}
+                            yield f"event: done\ndata: {_json.dumps(done_payload)}\n\n"
                             continue
                         yield f"event: {evt['event']}\ndata: {_json.dumps(evt['data'])}\n\n"
             except _asyncio.CancelledError:

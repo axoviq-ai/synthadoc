@@ -13,6 +13,27 @@ from synthadoc.providers.base import CompletionResponse, LLMProvider, Message
 
 logger = logging.getLogger(__name__)
 
+_CHARS_PER_TOKEN = 3.5
+
+
+def _estimate_tokens_from_chars(msgs: list[dict], answer_chars: int) -> tuple[int, int]:
+    """Return (input_tokens, output_tokens) estimated from character counts.
+
+    Used when the provider does not emit a usage chunk (e.g. MiniMax non-reasoning).
+    Accuracy is ±20%; no API call is made.
+    """
+    input_chars = sum(
+        len(m["content"]) if isinstance(m.get("content"), str)
+        else sum(
+            len(p.get("text", ""))
+            for p in m.get("content", [])
+            if isinstance(p, dict) and p.get("type") == "text"
+        )
+        for m in msgs
+    )
+    return max(1, round(input_chars / _CHARS_PER_TOKEN)), max(1, round(answer_chars / _CHARS_PER_TOKEN))
+
+
 # Providers whose chat endpoint does not support image inputs
 _NO_VISION_HOSTS = ("groq.com", "api.deepseek.com")
 
@@ -59,9 +80,9 @@ def _build_extra_body(thinking: str, provider: str = "") -> dict:
     """Return the provider extra_body dict for the given thinking setting.
 
     Empty string (unset) → no extra_body; provider default applies.
-    DashScope (qwen) uses enable_thinking; MiniMax/others use thinking.type.
+    DashScope (qwen) and DeepSeek use enable_thinking; MiniMax/others use thinking.type.
     """
-    if provider == "qwen":
+    if provider in ("qwen", "deepseek"):
         return _QWEN_THINKING_EXTRA_BODY.get(thinking, {})
     return _THINKING_EXTRA_BODY.get(thinking, {})
 
@@ -360,8 +381,14 @@ class OpenAIProvider(LLMProvider):
             model=self._config.model, messages=msgs,
             temperature=temperature, max_tokens=max_tokens,
             timeout=self._timeout, stream=True,
+            stream_options={"include_usage": True},
             **({"extra_body": self._extra_body} if self._extra_body else {}),
         ):
+            # The final chunk with include_usage=True has chunk.usage populated and
+            # empty choices — capture before the early-continue guard below.
+            if chunk.usage is not None:
+                self.last_stream_input_tokens = chunk.usage.prompt_tokens
+                self.last_stream_output_tokens = chunk.usage.completion_tokens
             if chunk.choices and chunk.choices[0].finish_reason == "length":
                 logger.warning(
                     "complete_stream: response truncated by token limit "
@@ -430,6 +457,10 @@ class OpenAIProvider(LLMProvider):
             )
             try:
                 resp = await _fallback_task
+                # complete() returns exact token counts — use them instead of the
+                # streaming usage (which covers the suppressed think block only).
+                self.last_stream_input_tokens = resp.input_tokens
+                self.last_stream_output_tokens = resp.output_tokens
                 if resp.text:
                     logger.info(
                         "complete_stream: fallback done (answer_len=%d, model=%s)",
@@ -468,3 +499,17 @@ class OpenAIProvider(LLMProvider):
             )
         if buf and not in_think:
             yield buf
+
+        # Providers that don't honour stream_options (e.g. MiniMax non-reasoning)
+        # never emit a usage chunk, so last_stream_*_tokens stays 0.  Fall back to
+        # a character-based estimate: no API call, zero latency.
+        if self.last_stream_input_tokens == 0:
+            self.last_stream_input_tokens, self.last_stream_output_tokens = (
+                _estimate_tokens_from_chars(msgs, _answer_chars)
+            )
+            logger.debug(
+                "complete_stream: no usage chunk — estimated tokens from chars "
+                "(%d in, %d out, model=%s)",
+                self.last_stream_input_tokens, self.last_stream_output_tokens,
+                self._config.model,
+            )

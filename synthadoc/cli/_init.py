@@ -222,11 +222,13 @@ default = {{ provider = "gemini", model = "gemini-2.5-flash-lite" }}
 # default = {{ provider = "groq",      model = "llama-3.3-70b-versatile" }}  # free tier, 100K tokens/day
 # default = {{ provider = "anthropic", model = "claude-sonnet-4-6" }}        # paid, high quality
 # default = {{ provider = "anthropic", model = "claude-opus-4-8" }}          # paid, highest quality (most capable)
-# default = {{ provider = "deepseek",  model = "deepseek-chat" }}             # paid, very cheap ($0.14/M in); text-only, no vision
+# default = {{ provider = "deepseek",  model = "deepseek-v4-flash" }}                          # paid, very cheap ($0.14/M in); text-only, no vision
+# default = {{ provider = "deepseek",  model = "deepseek-v4-flash", thinking = "enabled" }}   # thinking/reasoning mode (replaces deepseek-reasoner)
 # default = {{ provider = "ollama",    model = "llama3.2" }}                  # fully local, no API key; requires GPU — CPU-only is too slow for interactive use
-# default = {{ provider = "qwen",      model = "qwen-plus" }}                 # DashScope cloud API — set QWEN_API_KEY (https://bailian.console.aliyun.com/)
+# default = {{ provider = "qwen",      model = "qwen-plus" }}                                  # DashScope cloud API — set QWEN_API_KEY (https://bailian.console.aliyun.com/)
+# default = {{ provider = "qwen",      model = "qwen-plus", thinking = "disabled" }}           # same, with thinking suppressed (faster, lower latency)
 # default = {{ provider = "claude-code" }}                                    # no API key — uses your Claude Code subscription
-# default = {{ provider = "opencode" }}                                       # no API key — uses your Opencode subscription
+# default = {{ provider = "opencode", model = "opencode/big-pickle" }}        # free via Opencode Zen — no API key; connect first: run 'opencode' → /connect → select Zen
 #
 # LLM call timeout — useful for reasoning models (e.g. MiniMax-M2.5, MiniMax-M3 with thinking enabled) that can
 # spend 2+ minutes on a single prompt and return an empty response instead of
