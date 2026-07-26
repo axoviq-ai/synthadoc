@@ -131,7 +131,7 @@ class QueueConfig:
     # throughput support is a design goal.
     max_parallel_ingest: int = 4
     max_retries: int = 3
-    backoff_base_seconds: int = 5
+    backoff_base_seconds: int = 30
 
 
 @dataclass

@@ -32,14 +32,30 @@ class Job:
     created_at: Optional[str] = None
     result: Optional[dict] = None
     progress: Optional[dict] = None
+    retry_after: Optional[str] = None
+
+
+_MAX_BACKOFF_SECONDS: int = 300
 
 
 class JobQueue:
-    def __init__(self, db_path: Path, max_retries: int = 3) -> None:
+    def __init__(self, db_path: Path, max_retries: int = 3,
+                 backoff_base_seconds: int = 30) -> None:
         self._path = Path(db_path)
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._max_retries = max_retries
+        self._backoff_base_seconds = backoff_base_seconds
         self._lock = asyncio.Lock()
+
+    def _backoff_delay(self, new_retries: int) -> int:
+        """Exponential backoff delay in seconds for the given retry count.
+
+        Returns 0 when backoff_base_seconds is 0 (disabled, used in tests).
+        """
+        if self._backoff_base_seconds <= 0:
+            return 0
+        return min(self._backoff_base_seconds * (2 ** (new_retries - 1)),
+                   _MAX_BACKOFF_SECONDS)
 
     _DEFAULT_JOB_TIMEOUT_SECONDS: int = 600  # matches [server] job_timeout_seconds default
 
@@ -66,6 +82,11 @@ class JobQueue:
             # Migrate existing DBs that predate the progress column
             try:
                 await db.execute("ALTER TABLE jobs ADD COLUMN progress TEXT")
+            except Exception:
+                pass  # column already exists
+            # Migrate existing DBs that predate the retry_after column
+            try:
+                await db.execute("ALTER TABLE jobs ADD COLUMN retry_after TEXT")
             except Exception:
                 pass  # column already exists
             # Jobs left in_progress from a crashed session can never complete —
@@ -110,7 +131,9 @@ class JobQueue:
             async with aiosqlite.connect(self._path) as db:
                 db.row_factory = aiosqlite.Row
                 async with db.execute(
-                    "SELECT * FROM jobs WHERE status='pending' ORDER BY created_at LIMIT 1"
+                    "SELECT * FROM jobs WHERE status='pending' "
+                    "AND (retry_after IS NULL OR retry_after <= datetime('now')) "
+                    "ORDER BY created_at LIMIT 1"
                 ) as cur:
                     row = await cur.fetchone()
                 if not row:
@@ -123,7 +146,8 @@ class JobQueue:
                            retries=row["retries"], error=row["error"],
                            created_at=row["created_at"],
                            result=json.loads(row["result"]) if row["result"] else None,
-                           progress=json.loads(row["progress"]) if row["progress"] else None)
+                           progress=json.loads(row["progress"]) if row["progress"] else None,
+                           retry_after=row["retry_after"])
 
     async def complete(self, job_id: str, result: Optional[dict] = None) -> None:
         async with aiosqlite.connect(self._path) as db:
@@ -148,10 +172,24 @@ class JobQueue:
                 row = await cur.fetchone()
             retries = (row["retries"] + 1) if row else 1
             new_status = JobStatus.DEAD if retries >= self._max_retries else JobStatus.PENDING
-            await db.execute(
-                "UPDATE jobs SET status=?,retries=?,error=? WHERE id=?",
-                (new_status, retries, error, job_id),
-            )
+            if new_status == JobStatus.PENDING:
+                delay = self._backoff_delay(retries)
+                if delay > 0:
+                    await db.execute(
+                        "UPDATE jobs SET status=?,retries=?,error=?,"
+                        "retry_after=datetime('now',?) WHERE id=?",
+                        (new_status, retries, error, f"+{delay} seconds", job_id),
+                    )
+                else:
+                    await db.execute(
+                        "UPDATE jobs SET status=?,retries=?,error=?,retry_after=NULL WHERE id=?",
+                        (new_status, retries, error, job_id),
+                    )
+            else:
+                await db.execute(
+                    "UPDATE jobs SET status=?,retries=?,error=?,retry_after=NULL WHERE id=?",
+                    (new_status, retries, error, job_id),
+                )
             await db.commit()
 
     async def requeue(self, job_id: str, error: str = "") -> None:
@@ -195,7 +233,8 @@ class JobQueue:
     async def retry(self, job_id: str) -> None:
         async with aiosqlite.connect(self._path) as db:
             await db.execute(
-                "UPDATE jobs SET status='pending',retries=0,error=NULL WHERE id=?", (job_id,)
+                "UPDATE jobs SET status='pending',retries=0,error=NULL,retry_after=NULL WHERE id=?",
+                (job_id,),
             )
             await db.commit()
 
@@ -257,6 +296,7 @@ class JobQueue:
                         created_at=r["created_at"],
                         result=json.loads(r["result"]) if r["result"] else None,
                         progress=json.loads(r["progress"]) if r["progress"] else None,
+                        retry_after=r["retry_after"],
                         ) for r in rows]
 
     async def get_job(self, job_id: str) -> Optional[Job]:
@@ -275,4 +315,5 @@ class JobQueue:
             created_at=row["created_at"],
             result=json.loads(row["result"]) if row["result"] else None,
             progress=json.loads(row["progress"]) if row["progress"] else None,
+            retry_after=row["retry_after"],
         )

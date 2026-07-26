@@ -77,7 +77,7 @@ def test_queue_defaults():
     cfg = load_config()
     assert cfg.queue.max_parallel_ingest == 4
     assert cfg.queue.max_retries == 3
-    assert cfg.queue.backoff_base_seconds == 5
+    assert cfg.queue.backoff_base_seconds == 30
 
 
 def test_unlimited_wikis(tmp_path):
