@@ -90,7 +90,9 @@ class Orchestrator:
         sd.mkdir(parents=True, exist_ok=True)
         (sd / "logs").mkdir(exist_ok=True)
 
-        self._queue  = JobQueue(sd / "jobs.db", max_retries=self._cfg.queue.max_retries)
+        self._queue  = JobQueue(sd / "jobs.db",
+                                max_retries=self._cfg.queue.max_retries,
+                                backoff_base_seconds=self._cfg.queue.backoff_base_seconds)
         self.queue   = self._queue
         self._audit  = AuditDB(sd / "audit.db")
         self._cache  = CacheManager(sd / "cache.db")
@@ -372,11 +374,15 @@ class Orchestrator:
                 await self._auto_block_domain(e)
                 await self._queue.skip(job_id, str(e))
             elif isinstance(e, (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.PoolTimeout,
-                                   httpx.ConnectError, httpx.ReadError)):
-                # Transient network error (timeout, connection refused, dropped) — retry with backoff.
+                                   httpx.ConnectError, httpx.ReadError,
+                                   httpx.RemoteProtocolError)):
+                # Transient network error (timeout, connection refused, dropped, protocol) — retry with backoff.
+                _job = await self._queue.get_job(job_id)
+                _retries_so_far = (_job.retries if _job else 0) + 1
+                _outcome = "dead — retry budget exhausted" if _retries_so_far >= self._queue._max_retries else f"will retry (attempt {_retries_so_far}/{self._queue._max_retries})"
                 logging.getLogger(__name__).warning(
-                    "URL fetch failed for job %s (%s: %s) — will retry", job_id, source,
-                    type(e).__name__
+                    "URL fetch failed for job %s (%s: %s) — %s", job_id, source,
+                    type(e).__name__, _outcome,
                 )
                 await self._queue.fail(job_id, f"{type(e).__name__}: {source}")
             elif isinstance(e, httpx.HTTPStatusError):

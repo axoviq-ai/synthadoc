@@ -30,7 +30,7 @@ async def test_complete_job(tmp_wiki):
 
 @pytest.mark.asyncio
 async def test_fail_retries_then_dies(tmp_wiki):
-    q = JobQueue(tmp_wiki / ".synthadoc" / "jobs.db", max_retries=2)
+    q = JobQueue(tmp_wiki / ".synthadoc" / "jobs.db", max_retries=2, backoff_base_seconds=0)
     await q.init()
     await q.enqueue("ingest", {"source": "x.pdf"})
     job = await q.dequeue()
@@ -74,7 +74,7 @@ async def test_queue_handles_overflow(tmp_wiki):
 @pytest.mark.asyncio
 async def test_fail_exactly_at_max_retries_becomes_dead(tmp_wiki):
     """Job must become dead on the Nth failure where N == max_retries."""
-    q = JobQueue(tmp_wiki / ".synthadoc" / "jobs.db", max_retries=3)
+    q = JobQueue(tmp_wiki / ".synthadoc" / "jobs.db", max_retries=3, backoff_base_seconds=0)
     await q.init()
     await q.enqueue("ingest", {"source": "x.pdf"})
     for _ in range(3):
@@ -189,7 +189,7 @@ async def test_enqueue_many_all_pending(tmp_wiki):
 @pytest.mark.asyncio
 async def test_retry_resets_retries_counter(tmp_wiki):
     """retry() must reset the retries counter to 0 so the job gets a full retry budget."""
-    q = JobQueue(tmp_wiki / ".synthadoc" / "jobs.db", max_retries=2)
+    q = JobQueue(tmp_wiki / ".synthadoc" / "jobs.db", max_retries=2, backoff_base_seconds=0)
     await q.init()
     job_id = await q.enqueue("ingest", {"source": "x.pdf"})
     # Exhaust retries → dead
@@ -500,3 +500,69 @@ async def test_list_jobs_invalid_sort_column_falls_back_to_created_at(tmp_wiki):
     await q.enqueue("ingest", {"source": "x.pdf"})
     jobs = await q.list_jobs(sort_by="__injected__; DROP TABLE jobs--", order="asc")
     assert len(jobs) == 1
+
+
+# ── Exponential backoff ──────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_fail_sets_retry_after_backoff(tmp_wiki):
+    """fail() on a retryable job must set retry_after to a future timestamp."""
+    import aiosqlite
+    q = JobQueue(tmp_wiki / ".synthadoc" / "jobs.db", max_retries=3, backoff_base_seconds=30)
+    await q.init()
+    job_id = await q.enqueue("ingest", {"source": "x.pdf"})
+    job = await q.dequeue()
+    assert job is not None
+    await q.fail(job_id, "transient error")
+    async with aiosqlite.connect(q._path) as db:
+        async with db.execute("SELECT retry_after FROM jobs WHERE id=?", (job_id,)) as cur:
+            row = await cur.fetchone()
+    assert row is not None
+    assert row[0] is not None, "retry_after must be set after a transient failure"
+
+
+@pytest.mark.asyncio
+async def test_dequeue_skips_jobs_in_backoff(tmp_wiki):
+    """dequeue() must not return a job whose retry_after is in the future."""
+    q = JobQueue(tmp_wiki / ".synthadoc" / "jobs.db", max_retries=3, backoff_base_seconds=30)
+    await q.init()
+    job_id = await q.enqueue("ingest", {"source": "x.pdf"})
+    job = await q.dequeue()
+    assert job is not None
+    await q.fail(job_id, "transient error")
+    # retry_after is ~30 s in the future — dequeue must not return the job yet
+    result = await q.dequeue()
+    assert result is None, "dequeue must skip jobs still in backoff"
+
+
+@pytest.mark.asyncio
+async def test_fail_dead_clears_retry_after(tmp_wiki):
+    """The final failure (status=dead) must not leave retry_after set."""
+    import aiosqlite
+    q = JobQueue(tmp_wiki / ".synthadoc" / "jobs.db", max_retries=1, backoff_base_seconds=30)
+    await q.init()
+    job_id = await q.enqueue("ingest", {"source": "x.pdf"})
+    job = await q.dequeue()
+    assert job is not None
+    await q.fail(job_id, "fatal error")
+    async with aiosqlite.connect(q._path) as db:
+        async with db.execute("SELECT status, retry_after FROM jobs WHERE id=?", (job_id,)) as cur:
+            row = await cur.fetchone()
+    assert row[0] == "dead"
+    assert row[1] is None, "dead jobs must not have retry_after set"
+
+
+@pytest.mark.asyncio
+async def test_retry_clears_retry_after(tmp_wiki):
+    """Manual retry() must clear retry_after so the job is immediately dequeued."""
+    q = JobQueue(tmp_wiki / ".synthadoc" / "jobs.db", max_retries=3, backoff_base_seconds=30)
+    await q.init()
+    job_id = await q.enqueue("ingest", {"source": "x.pdf"})
+    job = await q.dequeue()
+    assert job is not None
+    await q.fail(job_id, "transient error")
+    # retry_after is set — manual retry must clear it
+    await q.retry(job_id)
+    result = await q.dequeue()
+    assert result is not None, "after retry(), job must be immediately dequeued"
+    assert result.id == job_id
