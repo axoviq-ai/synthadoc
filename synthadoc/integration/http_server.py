@@ -546,7 +546,7 @@ _graph_computing = False  # module-level flag prevents duplicate background task
 def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mcp: bool = True) -> FastAPI:
     import os
     import synthadoc
-    from synthadoc.config import load_config
+    from synthadoc.config import load_config, STAGING_POLICIES, STAGING_CONFIDENCE_LEVELS
     from synthadoc.core.orchestrator import Orchestrator
     from synthadoc.storage.log import AuditDB as _AuditDB
     from synthadoc.storage.wiki import LifecycleState, TriggerSource
@@ -1405,10 +1405,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
     async def staging_policy_set(req: StagingPolicyRequest):
         import tomllib as _tomllib
         from synthadoc.cli.candidates import _patch_toml as _cand_patch_toml
-        if req.policy not in ("off", "all", "threshold"):
-            raise HTTPException(400, "policy must be off, all, or threshold")
-        if req.confidence_min and req.confidence_min not in ("high", "medium", "low"):
-            raise HTTPException(400, "confidence_min must be high, medium, or low")
+        if req.policy not in STAGING_POLICIES:
+            raise HTTPException(400, f"policy must be one of: {', '.join(sorted(STAGING_POLICIES))}")
+        if req.confidence_min and req.confidence_min not in STAGING_CONFIDENCE_LEVELS:
+            raise HTTPException(400, f"confidence_min must be one of: {', '.join(sorted(STAGING_CONFIDENCE_LEVELS))}")
         cfg_path = _staging_cfg_path()
         cfg_path.parent.mkdir(parents=True, exist_ok=True)
         updates: dict = {"staging_policy": req.policy}
