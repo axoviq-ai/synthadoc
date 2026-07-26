@@ -576,7 +576,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         # no second init() call needed here.
         audit_db = _AuditDB(wiki_root / ".synthadoc" / "audit.db")
         scheduler = asyncio.create_task(
-            run_scheduler_loop(wiki_root.name, wiki_root, audit_db)
+            run_scheduler_loop(wiki_root.name, wiki_root, audit_db,
+                               job_timeout_seconds=cfg.server.job_timeout_seconds)
         )
 
         try:
