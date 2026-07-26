@@ -90,7 +90,9 @@ class Orchestrator:
         sd.mkdir(parents=True, exist_ok=True)
         (sd / "logs").mkdir(exist_ok=True)
 
-        self._queue  = JobQueue(sd / "jobs.db", max_retries=self._cfg.queue.max_retries)
+        self._queue  = JobQueue(sd / "jobs.db",
+                                max_retries=self._cfg.queue.max_retries,
+                                backoff_base_seconds=self._cfg.queue.backoff_base_seconds)
         self.queue   = self._queue
         self._audit  = AuditDB(sd / "audit.db")
         self._cache  = CacheManager(sd / "cache.db")
