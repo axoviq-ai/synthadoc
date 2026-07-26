@@ -377,9 +377,12 @@ class Orchestrator:
                                    httpx.ConnectError, httpx.ReadError,
                                    httpx.RemoteProtocolError)):
                 # Transient network error (timeout, connection refused, dropped, protocol) — retry with backoff.
+                _job = await self._queue.get_job(job_id)
+                _retries_so_far = (_job.retries if _job else 0) + 1
+                _outcome = "dead — retry budget exhausted" if _retries_so_far >= self._queue._max_retries else f"will retry (attempt {_retries_so_far}/{self._queue._max_retries})"
                 logging.getLogger(__name__).warning(
-                    "URL fetch failed for job %s (%s: %s) — will retry", job_id, source,
-                    type(e).__name__
+                    "URL fetch failed for job %s (%s: %s) — %s", job_id, source,
+                    type(e).__name__, _outcome,
                 )
                 await self._queue.fail(job_id, f"{type(e).__name__}: {source}")
             elif isinstance(e, httpx.HTTPStatusError):
