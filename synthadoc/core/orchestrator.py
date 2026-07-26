@@ -374,8 +374,9 @@ class Orchestrator:
                 await self._auto_block_domain(e)
                 await self._queue.skip(job_id, str(e))
             elif isinstance(e, (httpx.ReadTimeout, httpx.ConnectTimeout, httpx.PoolTimeout,
-                                   httpx.ConnectError, httpx.ReadError)):
-                # Transient network error (timeout, connection refused, dropped) — retry with backoff.
+                                   httpx.ConnectError, httpx.ReadError,
+                                   httpx.RemoteProtocolError)):
+                # Transient network error (timeout, connection refused, dropped, protocol) — retry with backoff.
                 logging.getLogger(__name__).warning(
                     "URL fetch failed for job %s (%s: %s) — will retry", job_id, source,
                     type(e).__name__
