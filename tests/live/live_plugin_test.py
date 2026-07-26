@@ -75,6 +75,7 @@ no Obsidian runtime needed.  Organized by the 14 plugin commands + ribbon icon.
   [v1.0-f] context budget       : GET /query/stream, citations non-empty and status count consistent
   [v1.0-g] streaming token audit: GET /query/stream done event tokens_used > 0,
                                    GET /audit/queries shows non-zero tokens and cost_usd
+  [v1.1-a] citation pagination  : GET /provenance/citations?broken=true structure + pagination (BUG-11)
 
 ────────────────────────────────────────────────────────────────────────────────
  SIDE EFFECTS & ROLLBACK
@@ -220,18 +221,55 @@ def _cleanup_job_pages(job_id: str) -> list[str]:
 
 
 def _cleanup_test_ingest(job_id: str, src_file: pathlib.Path) -> None:
-    """Remove wiki pages and extracted sidecars written by a live test ingest job.
+    """Remove all artifacts written by a live test ingest job.
 
-    Deletes pages newly created by the job (not pre-existing pages that were
-    updated), plus any .synthadoc/extracted/<basename> sidecar and companion
-    pagemap JSON, so test runs leave no artifacts behind.
+    Three cleanup passes run regardless of job outcome (completed / dead):
+      1. Job-result pass: delete pages listed in pages_created.
+      2. Source-scan pass: delete any wiki / candidate page whose frontmatter
+         sources[] references src_file.name — catches pages_updated entries and
+         pages created by dead jobs whose result is empty.
+      3. DB pass: delete claim_citations rows for src_file.name so the Page
+         Provenance modal no longer shows stale rows pointing at a deleted file.
+    Also removes the .synthadoc/extracted sidecar and pagemap JSON.
     """
     _cleanup_job_pages(job_id)
     wiki_root = _discover_wiki_root()
     if not wiki_root:
         return
+
+    # Pass 2: scan all markdown files for references to the test source
+    src_name = src_file.name
+    wiki_dir = wiki_root / "wiki"
+    candidates_dir = wiki_dir / "candidates"
+    for md_file in list(wiki_dir.glob("*.md")) + list(candidates_dir.glob("*.md")):
+        try:
+            fm = _read_frontmatter(md_file)
+            if any(
+                isinstance(s, dict) and src_name in (s.get("file") or "")
+                for s in fm.get("sources", [])
+            ):
+                md_file.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    # Pass 3: purge claim_citations and related audit_events for this source
+    db_path = wiki_root / ".synthadoc" / "audit.db"
+    if db_path.exists():
+        import sqlite3 as _sqlite3
+        with _sqlite3.connect(db_path) as _db:
+            _db.execute(
+                "DELETE FROM claim_citations WHERE source_file = ?", (src_name,)
+            )
+            _db.execute(
+                "DELETE FROM audit_events "
+                "WHERE event = 'citation_validation_failed' "
+                "AND JSON_EXTRACT(metadata, '$.source_file') = ?",
+                (src_name,),
+            )
+            _db.commit()
+
     # Remove extracted sidecar for the test source file
-    extracted = wiki_root / ".synthadoc" / "extracted" / src_file.name
+    extracted = wiki_root / ".synthadoc" / "extracted" / src_name
     if extracted.exists():
         extracted.unlink()
     # Remove a companion pagemap JSON if present (PDF sources)
@@ -720,6 +758,47 @@ def _test_streaming_query_audit() -> None:
         f"Audit row tokens={latest.get('tokens')} — streaming token count not persisted"
     )
     assert latest.get("cost_usd", 0.0) >= 0.0  # 0.0 is valid for Ollama (local)
+
+
+def _test_citation_failures_pagination() -> None:
+    """GET /provenance/citations?broken=true must return correct structure and honour pagination.
+
+    BUG-11 regression: the page_slug filter was applied in Python after LIMIT,
+    so rows for a specific slug could be invisible if other slugs filled the page.
+    The fix pushes filtering into SQL. This live test verifies:
+      1. The endpoint returns 200 with 'total' and 'citations' keys.
+      2. Pagination (limit=1, offset=0) returns at most 1 row.
+      3. total >= len(citations) (no off-by-one from the SQL fix).
+      4. /provenance/citations?page=<slug> (non-broken, page filter in SQL) works.
+    """
+    code, body = GET("/provenance/citations?broken=true")
+    assert code == 200, f"GET /provenance/citations?broken=true returned HTTP {code}: {body}"
+    assert isinstance(body, dict), f"Expected dict, got {type(body).__name__}: {body}"
+    assert "total" in body, f"Response missing 'total' key: {list(body.keys())}"
+    assert "citations" in body, f"Response missing 'citations' key: {list(body.keys())}"
+    total = body["total"]
+    all_citations = body["citations"]
+    assert isinstance(all_citations, list), f"'citations' must be a list, got {type(all_citations).__name__}"
+    assert total >= len(all_citations), (
+        f"total={total} < len(citations)={len(all_citations)} — SQL LIMIT/OFFSET mis-applied"
+    )
+
+    # Pagination: limit=1 must return at most 1 row
+    code2, body2 = GET("/provenance/citations?broken=true&limit=1&offset=0")
+    assert code2 == 200, f"pagination call returned HTTP {code2}"
+    paged = body2.get("citations", [])
+    assert len(paged) <= 1, f"limit=1 returned {len(paged)} rows — LIMIT not respected"
+
+    # Non-broken path with page filter (exercises the list_citations SQL path)
+    code3, lc_body = GET("/lifecycle/pages")
+    if code3 == 200:
+        lc_pages = lc_body if isinstance(lc_body, list) else lc_body.get("pages", [])
+        if lc_pages:
+            slug = (lc_pages[0].get("slug") if isinstance(lc_pages[0], dict) else lc_pages[0])
+            if slug:
+                code4, body4 = GET(f"/provenance/citations?page={urllib.parse.quote(slug)}&limit=10")
+                assert code4 == 200, f"page-filtered citations returned HTTP {code4}"
+                assert "citations" in body4, f"Missing 'citations' key in page-filtered response"
 
 
 def _test_blocked_domain_filter() -> None:
@@ -1385,6 +1464,12 @@ def main() -> None:
         ok("GET /graph (lazy hydration)", "repeated poll resolved to ready")
     except AssertionError as e:
         fail("GET /graph (lazy hydration)", str(e))
+
+    try:
+        _test_citation_failures_pagination()
+        ok("GET /provenance/citations (BUG-11 pagination)", "structure valid, total >= len(citations), limit respected")
+    except AssertionError as e:
+        fail("GET /provenance/citations (BUG-11 pagination)", str(e))
 
     try:
         _test_sanitizer_and_truncation_flag()
