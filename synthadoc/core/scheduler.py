@@ -105,7 +105,7 @@ class Scheduler:
 # ------------------------------------------------------------------
 
 async def run_scheduler_loop(
-    wiki: str, wiki_root: Path, audit_db: "AuditDB", job_timeout_seconds: int = 900
+    wiki: str, wiki_root: Path, audit_db: "AuditDB", job_timeout_seconds: int = 600
 ) -> None:
     """Asyncio background task: fire scheduled jobs at their cron times."""
     while True:
@@ -129,7 +129,7 @@ async def run_scheduler_loop(
 
 async def _run_scheduled_job(
     entry: dict, wiki: str, wiki_root: Path, audit_db: "AuditDB",
-    job_timeout_seconds: int = 900,
+    job_timeout_seconds: int = 600,
 ) -> None:
     """Execute one scheduled job and record the result in the audit DB."""
     run_id = f"run-{uuid.uuid4().hex[:8]}"
