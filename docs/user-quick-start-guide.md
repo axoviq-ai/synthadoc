@@ -1,6 +1,6 @@
 ﻿# Synthadoc User Quick-Start Guide
 
-**Version: v1.1.0 (Community Edition)**
+**Version: v1.1.2 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
@@ -53,6 +53,7 @@ major engine feature. No setup beyond following the steps below is required.
 - [Appendix H — BM25 Routing Performance Benchmarks](#appendix-h--bm25-routing-performance-benchmarks)
 - [Appendix I — Connect Claude via MCP](#appendix-i--connect-claude-via-mcp)
 - [Appendix J — Backup & Restore](#appendix-j--backup--restore)
+- [Appendix K — What's New in v1.1.2](#appendix-k--whats-new-in-v112)
 
 ---
 
@@ -3393,3 +3394,57 @@ Restores to the same directory as the zip file by default. Detects port conflict
 | `embeddings.db` | ✗ Never | Rebuilt automatically on next server start |
 | `server.pid` | ✗ Never | Machine-specific process ID |
 | `logs/` | ✗ Never | Server application logs |
+
+---
+
+<a name="appendix-k--whats-new-in-v112"></a>
+## Appendix K — What's New in v1.1.2
+
+v1.1.2 is a reliability fixpack. No new features, no configuration changes required — upgrade with `pip install --upgrade synthadoc` and restart your server.
+
+### Reliability improvements
+
+**Exponential backoff on failed URL fetches**
+
+When a URL ingest job hits a transient error (server timeout, 5xx response, dropped connection), the job now waits before retrying instead of retrying immediately. The wait doubles each attempt: 30 s → 60 s → 120 s → capped at 300 s. Other jobs in your queue run normally during the wait — the backoff is stored as a timestamp in the database, not a sleep. This prevents a flaky remote server from exhausting your job's retry budget in seconds.
+
+**Scheduler jobs can no longer hang indefinitely**
+
+Scheduled operations (`lint`, `ingest --batch`, etc.) are now limited to `job_timeout_seconds` (default 600 s, visible and editable in `config.toml`). If a subprocess stalls, it is killed after the timeout and the run is recorded as failed. Previously a hung subprocess would block that scheduler slot indefinitely.
+
+**Streaming query now records accurate token usage and cost**
+
+The query audit trail (`synthadoc audit queries`) previously showed `tokens=0, cost=0` for streamed queries. It now records the actual LLM token counts and cost, so your cost summary is accurate regardless of whether streaming is enabled.
+
+**Cost hard gate fires at the right time**
+
+The cost hard gate now checks your budget *before* the LLM call. Previously it checked *after* tokens were spent, which could allow a page to be partially written before the gate rejected the request.
+
+### Stability fixes
+
+| Area | What was fixed |
+|------|---------------|
+| Memory | HTTP server session state is now capped at 100 entries (LRU); was unbounded on long-running servers |
+| Streaming | Leaked asyncio task cleaned up when a streaming response ends mid-`<think>` block |
+| Config | `staging_policy` and `staging_confidence_min` invalid values now raise a clear error at startup instead of failing silently at runtime |
+| Jobs | Retrying an already-completed or in-progress job now returns an error; direct primary-key lookup replaces table scans in `GET /DELETE /jobs/{id}` |
+| Vector search | Background embedding migration task no longer risks being garbage-collected mid-run |
+| Logs | Qwen 403 and Claude Code session-limit errors no longer emit a full stack trace — a one-line warning with the fix is shown instead |
+| Scaffold | MiniMax-M3 truncated JSON responses handled gracefully; `AGENTS.md` / `CLAUDE.md` / `GEMINI.md` now include a Staging and Candidates section |
+| Audit | Citation failure pagination returned wrong results when filtering by page; fixed |
+
+### Upgrade notes
+
+No database migrations or config changes are required. After upgrading:
+
+```
+pip install --upgrade synthadoc
+synthadoc serve -w <your-wiki>
+```
+
+If you run scheduled jobs and want to adjust the subprocess timeout from the default 600 s, uncomment and edit `job_timeout_seconds` in `.synthadoc/config.toml`:
+
+```toml
+[server]
+job_timeout_seconds = 600  # adjust if your ingest jobs are large
+```
