@@ -1228,7 +1228,7 @@ skill   = { model = "claude-haiku-4-5-20251001" }
 [queue]
 max_parallel_ingest  = 4
 max_retries          = 3
-backoff_base_seconds = 5
+backoff_base_seconds = 30
 
 [cost]
 soft_warn_usd                     = 0.50
@@ -1310,7 +1310,7 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 | `query.context_token_budget` | int | `4000` | Token budget for context pack assembly. Increase for richer context on complex queries; decrease if hitting prompt size limits. |
 | `queue.max_parallel_ingest` | int | `4` | Max concurrent ingest agents |
 | `queue.max_retries` | int | `3` | Retries before job → dead |
-| `queue.backoff_base_seconds` | int | `5` | Exponential backoff base (±20% jitter) |
+| `queue.backoff_base_seconds` | int | `30` | Exponential backoff base; delays are `min(base × 2^(attempt−1), 300)` seconds |
 | `cache.version` | str | `"4"` | Bump to invalidate all cached LLM responses without touching source code |
 | `cost.soft_warn_usd` | float | `0.50` | Emit `logger.warning` in server log when per-job ingest cost exceeds this threshold; job continues normally |
 | `cost.hard_gate_usd` | float | `2.00` | Permanently fail the ingest job (DEAD) and record a `cost_gate_exceeded` audit event when per-job cost exceeds this threshold |
@@ -1581,8 +1581,8 @@ in_progress → skipped      (system-initiated skip; e.g. auto-blocked domain)
 | `skipped` | System-initiated permanent skip (e.g. domain auto-blocked after repeated 403s) | No action needed; remove domain from blocked list to re-enable |
 | `cancelled` | Pending job cancelled by user via `synthadoc jobs cancel` | Re-enqueue manually if cancelled in error |
 
-**Backoff formula:** `backoff_base_seconds × 2^(retry_count) × jitter`  
-where `jitter ∈ [0.8, 1.2]` (±20% random). Applied only to retryable errors (LLM API timeouts, 5xx responses).
+**Backoff formula:** `min(backoff_base_seconds × 2^(attempt − 1), 300)`  
+With the default base of 30 s: attempt 1 waits 30 s, attempt 2 waits 60 s, attempt 3 waits 120 s (all capped at 300 s). The `retry_after` timestamp is stored in the jobs table; `dequeue()` skips any job whose `retry_after` is still in the future. Applied only to transient errors (network timeouts, connection failures, 5xx responses).
 
 **Persistence:** Jobs survive server restarts. `in_progress` jobs at shutdown are reset to `pending` on startup.
 

@@ -44,12 +44,15 @@ No mocks.  This script is run manually, not by CI.
              context build, lint report, schedule, audit lifecycle purge,
              plugin upgrade, backup/restore
   Tier 2 — Live.  Runs when server responds at SYNTHADOC_URL; calls LLM.
-             [13]–[23] — status, ingest, query, scaffold, export, jobs,
-             lint run, schedule run, lifecycle, cascade link cleanup, cache clear, audit
+             [13]–[25] — status, ingest, query, scaffold, export, jobs,
+             lint run, schedule run, lifecycle, cascade link cleanup, cache clear,
+             job backoff, audit, logging
 
 ────────────────────────────────────────────────────────────────────────────────
  SIDE EFFECTS & ROLLBACK
 ────────────────────────────────────────────────────────────────────────────────
+  • job backoff: one ingest job is enqueued to a URL that returns 503; it runs
+                through all 3 retries (~3 min total) and is deleted on completion.
   • backup:     zip written to a temp dir, deleted after tests.
   • restore:    two wikis registered under '_live-test-restore' and
                 '_live-test-restore-dflt'; directories deleted and registry
@@ -734,8 +737,101 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
     check("audit events",    ["audit", "events"]     + w)
     check("audit citations", ["audit", "citations"]  + w)
 
+    # ── job backoff (transient-failure retry) ────────────────────────────────
+    print("\n[24] job backoff")
+
+    _BACKOFF_URL  = "https://httpstat.us/503"
+    _backoff_base = SYNTHADOC_URL.rstrip("/")
+    _backoff_jid  = ""
+
+    try:
+        _req = urllib.request.Request(
+            f"{_backoff_base}/jobs/ingest",
+            data=json.dumps({"source": _BACKOFF_URL}).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(_req, timeout=10) as _r:
+            _backoff_jid = json.loads(_r.read().decode()).get("job_id", "")
+        info(f"Enqueued job {_backoff_jid} — waiting for first failure (~30-40s)…")
+    except Exception as _e:
+        fail("job backoff — enqueue", str(_e))
+
+    if _backoff_jid:
+        # Poll the DB until the job enters its first backoff window:
+        # status=pending, retry_after IS NOT NULL
+        _db_path       = wiki_root / ".synthadoc" / "jobs.db"
+        _bo_deadline   = time.monotonic() + 90
+        _bo_row        = None
+        while time.monotonic() < _bo_deadline:
+            time.sleep(3)
+            try:
+                _c = sqlite3.connect(str(_db_path))
+                _bo_row = _c.execute(
+                    "SELECT status, retries, retry_after FROM jobs WHERE id=?",
+                    (_backoff_jid,)
+                ).fetchone()
+                _c.close()
+                if _bo_row and _bo_row[0] == "pending" and _bo_row[2] is not None:
+                    break
+                _bo_row = None
+            except Exception:
+                pass
+
+        if _bo_row:
+            ok("job backoff — retry_after set after first failure",
+               f"retries={_bo_row[1]}, retry_after={_bo_row[2]}")
+
+            # retry_after must be a future UTC timestamp
+            import datetime as _dt
+            try:
+                _ra  = _dt.datetime.fromisoformat(_bo_row[2])
+                _now = _dt.datetime.utcnow()
+                if _ra > _now:
+                    ok("job backoff — retry_after is a future timestamp",
+                       f"{int((_ra - _now).total_seconds())}s remaining")
+                else:
+                    fail("job backoff — retry_after is a future timestamp",
+                         f"retry_after {_bo_row[2]} is already in the past")
+            except ValueError as _e:
+                fail("job backoff — retry_after is a future timestamp",
+                     f"could not parse retry_after: {_e}")
+
+            # Log must contain WARN "will retry", not an ERROR+stacktrace
+            _log_path = wiki_root / ".synthadoc" / "logs" / "synthadoc.log"
+            if _log_path.exists():
+                _log_lines = _log_path.read_text(
+                    encoding="utf-8", errors="replace"
+                ).splitlines()
+                _job_lines  = [l for l in _log_lines if _backoff_jid in l]
+                _has_error  = any('"level": "ERROR"' in l for l in _job_lines)
+                _has_warn   = any("will retry" in l for l in _job_lines)
+                if not _has_error:
+                    ok("job backoff — no ERROR log entry (no stacktrace)")
+                else:
+                    fail("job backoff — no ERROR log entry",
+                         f"ERROR entry found for job {_backoff_jid}")
+                if _has_warn:
+                    _wmsg = next(l for l in _job_lines if "will retry" in l)
+                    try:
+                        _wmsg = json.loads(_wmsg).get("msg", _wmsg)
+                    except Exception:
+                        pass
+                    ok("job backoff — WARN log present", str(_wmsg)[:120])
+                else:
+                    warn("job backoff — WARN log present",
+                         "no 'will retry' warning found in log yet")
+        else:
+            fail("job backoff — retry_after set after first failure",
+                 "job did not enter backoff state within 90s")
+
+        # Wait for all retries to exhaust then delete the job
+        _wait_job_terminal(_backoff_jid, "job backoff — wait for dead", max_wait=360)
+        run(["jobs", "delete", _backoff_jid] + w)
+        ok("job backoff — cleanup", f"job {_backoff_jid} deleted")
+
     # ── logging ───────────────────────────────────────────────────────────────
-    print("\n[24] logging")
+    print("\n[25] logging")
     import json as _json
     log_path = wiki_root / ".synthadoc" / "logs" / "synthadoc.log"
     if not log_path.exists():
