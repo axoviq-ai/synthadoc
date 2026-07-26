@@ -14,6 +14,7 @@ import yaml
 from synthadoc.cli._wiki import resolve_wiki
 from synthadoc.cli._wiki import resolve_wiki_path
 from synthadoc.cli.main import app
+from synthadoc.config import STAGING_POLICIES, STAGING_CONFIDENCE_LEVELS
 
 staging_app = typer.Typer(name="staging", help="Manage staging policy for new wiki pages.")
 candidates_app = typer.Typer(name="candidates", help="Review, promote, or discard candidate pages.")
@@ -116,8 +117,11 @@ def staging_policy_cmd(
             typer.echo(f"Minimum confidence for auto-promote: {min_c}")
         return
 
-    if policy not in ("off", "all", "threshold"):
-        typer.echo("Policy must be one of: off, all, threshold")
+    if policy not in STAGING_POLICIES:
+        typer.echo(f"Policy must be one of: {', '.join(sorted(STAGING_POLICIES))}")
+        raise typer.Exit(1)
+    if min_confidence and min_confidence not in STAGING_CONFIDENCE_LEVELS:
+        typer.echo(f"min-confidence must be one of: {', '.join(sorted(STAGING_CONFIDENCE_LEVELS))}")
         raise typer.Exit(1)
 
     updates = {"staging_policy": policy}

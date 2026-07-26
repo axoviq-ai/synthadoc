@@ -20,6 +20,9 @@ from typing import Optional
 KNOWN_PROVIDERS = {"anthropic", "openai", "ollama", "gemini", "groq", "minimax", "deepseek",
                    "qwen", "claude-code", "opencode"}
 
+STAGING_POLICIES: frozenset[str] = frozenset({"off", "all", "threshold"})
+STAGING_CONFIDENCE_LEVELS: frozenset[str] = frozenset({"high", "medium", "low"})
+
 
 # ---------------------------------------------------------------------------
 # Leaf dataclasses
@@ -254,6 +257,19 @@ def _validate_provider(agent: AgentConfig) -> None:
         )
 
 
+def _validate_ingest_staging(policy: str, confidence_min: str) -> None:
+    if policy not in STAGING_POLICIES:
+        raise ValueError(
+            f"Unknown staging_policy '{policy}'. "
+            f"Must be one of: {', '.join(sorted(STAGING_POLICIES))}"
+        )
+    if confidence_min not in STAGING_CONFIDENCE_LEVELS:
+        raise ValueError(
+            f"Unknown staging_confidence_min '{confidence_min}'. "
+            f"Must be one of: {', '.join(sorted(STAGING_CONFIDENCE_LEVELS))}"
+        )
+
+
 def _build_default_agents_config() -> AgentsConfig:
     """Return a sentinel AgentsConfig with no real default (used as base before merging)."""
     # We use a placeholder that will be replaced during _merge if the user
@@ -347,6 +363,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         citation_source_lines=int(ig.get("citation_source_lines", 400)),
         citation_max_tokens=int(ig.get("citation_max_tokens", 8192)),
     )
+    _validate_ingest_staging(ingest.staging_policy, ingest.staging_confidence_min)
 
     # --- query ---
     q_section = raw.get("query", {})

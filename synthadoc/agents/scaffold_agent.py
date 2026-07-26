@@ -137,7 +137,7 @@ Return ONLY valid JSON:
     }},
     ...
   ],
-  "agents_guidelines": "3 domain-specific ingest and query guidelines, one per line — write each guideline as a plain sentence on its own line with no bullet or dash symbol (the renderer adds the bullet)",
+  "agents_guidelines": ["domain-specific guideline one", "domain-specific guideline two", "domain-specific guideline three"],
   "purpose_overview": "2-3 sentences describing the domain, its importance, and what this wiki is for",
   "purpose_include": "3-5 items listing the types of topics, concepts, and artefacts that belong in this wiki, one per line, no bullet symbols",
   "purpose_exclude": "3-5 items listing what is explicitly out of scope, one per line, no bullet symbols",
@@ -146,6 +146,7 @@ Return ONLY valid JSON:
   "dashboard_intro": "one sentence describing what this wiki tracks"
 }}
 
+Write exactly 3 "agents_guidelines" items — each a plain sentence with no bullet or dash prefix (the renderer adds bullets).
 The "slugs" array must contain the kebab-case page slugs that belong in each category.
 {slugs_instruction}If a category has no known pages yet, use an empty array.
 Never include system/meta pages in any "slugs" array: index, overview, purpose, dashboard, log.
@@ -479,8 +480,12 @@ class ScaffoldAgent:
     ) -> tuple[str, str, str]:
         """Return (agents_md, claude_md, gemini_md) from LLM scaffold data."""
         raw_guidelines = data.get("agents_guidelines", "Summarize key claims.")
+        if isinstance(raw_guidelines, list):
+            lines = [str(g) for g in raw_guidelines]
+        else:
+            lines = raw_guidelines.splitlines()
         bullets = []
-        for line in raw_guidelines.splitlines():
+        for line in lines:
             line = line.strip().lstrip("-•* ")
             if line:
                 bullets.append(f"- {line}")

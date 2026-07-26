@@ -278,6 +278,20 @@ def test_chat_config_defaults_via_load_config(tmp_path):
     assert cfg.chat.session_retention_days == 30
 
 
+def test_invalid_staging_policy_raises(tmp_path):
+    toml_file = tmp_path / "config.toml"
+    toml_file.write_text('[ingest]\nstaging_policy = "bogus"\n')
+    with pytest.raises(ValueError, match="Unknown staging_policy"):
+        load_config(project_config=toml_file)
+
+
+def test_invalid_staging_confidence_min_raises(tmp_path):
+    toml_file = tmp_path / "config.toml"
+    toml_file.write_text('[ingest]\nstaging_confidence_min = "extreme"\n')
+    with pytest.raises(ValueError, match="Unknown staging_confidence_min"):
+        load_config(project_config=toml_file)
+
+
 def test_ingest_config_max_source_chars_default():
     from synthadoc.config import IngestConfig
     cfg = IngestConfig()
