@@ -317,6 +317,40 @@ async def test_list_citation_failures_multiple_events(db):
     assert all(r["reason"] == "broken" for r in rows)
 
 
+async def test_list_citation_failures_slug_filter_applies_before_limit(db):
+    """BUG-11 regression: page_slug filter must be in SQL, not Python.
+
+    If the filter ran in Python after LIMIT, a page whose rows appear after the
+    first LIMIT rows would never be found even though matching rows exist.
+    """
+    # Write 5 failures for "other-page" followed by 1 for "target-page".
+    # With LIMIT=3 and Python-side filtering, "target-page" would never appear.
+    for i in range(5):
+        await db.write_event(
+            "citation_validation_failed",
+            metadata={"slug": "other-page", "citation": f"^[f{i}.txt:1]", "reason": "broken"},
+        )
+    await db.write_event(
+        "citation_validation_failed",
+        metadata={"slug": "target-page", "citation": "^[target.txt:1]", "reason": "missing"},
+    )
+    rows = await db.list_citation_failures(page_slug="target-page", limit=3, offset=0)
+    assert len(rows) == 1
+    assert rows[0]["page_slug"] == "target-page"
+    assert rows[0]["reason"] == "missing"
+
+
+async def test_list_citation_failures_page_slug_key_also_matched(db):
+    """Metadata stored with 'page_slug' key (not legacy 'slug') must also be returned."""
+    await db.write_event(
+        "citation_validation_failed",
+        metadata={"page_slug": "modern-page", "citation": "^[a.txt:1]", "reason": "broken_ref"},
+    )
+    rows = await db.list_citation_failures(page_slug="modern-page")
+    assert len(rows) == 1
+    assert rows[0]["page_slug"] == "modern-page"
+
+
 async def test_write_event_stores_event(db):
     await db.write_event("citation_pass4_skipped",
                          metadata={"slug": "p", "error": "timeout"})

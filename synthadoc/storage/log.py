@@ -56,6 +56,24 @@ class LogWriter:
         )
 
 
+def _audit_slug_filter(page_slug: str | None) -> tuple[str, list]:
+    """Return (SQL WHERE fragment, bound params) for filtering audit_events by slug.
+
+    Metadata may store the slug under 'page_slug' (preferred) or legacy 'slug'.
+    Expressing the filter in SQL ensures LIMIT/OFFSET operate on the
+    already-filtered set rather than on all rows (BUG-11).
+    """
+    if page_slug is None:
+        return "", []
+    return (
+        "AND COALESCE("
+        "JSON_EXTRACT(metadata, '$.page_slug'), "
+        "JSON_EXTRACT(metadata, '$.slug')"
+        ") = ? ",
+        [page_slug],
+    )
+
+
 class AuditDB:
     def __init__(self, db_path: Path) -> None:
         self._path = Path(db_path)
@@ -403,13 +421,15 @@ class AuditDB:
         Each returned dict has keys: page_slug, source_file, citation, reason,
         event_time.
         """
+        slug_filter, params = _audit_slug_filter(page_slug)
+        params.extend([limit, offset])
         async with aiosqlite.connect(self._path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
                 "SELECT timestamp, metadata FROM audit_events "
-                "WHERE event='citation_validation_failed' "
+                f"WHERE event='citation_validation_failed' {slug_filter}"
                 "ORDER BY id DESC LIMIT ? OFFSET ?",
-                (limit, offset),
+                params,
             ) as cur:
                 rows = await cur.fetchall()
         result = []
@@ -418,16 +438,13 @@ class AuditDB:
                 m = json.loads(r["metadata"] or "{}")
             except Exception:
                 m = {}
-            entry = {
+            result.append({
                 "page_slug": m.get("page_slug") or m.get("slug"),
                 "source_file": m.get("source_file"),
                 "citation": m.get("citation"),
                 "reason": m.get("reason"),
                 "event_time": r["timestamp"],
-            }
-            if page_slug is not None and entry["page_slug"] != page_slug:
-                continue
-            result.append(entry)
+            })
         return result
 
     async def write_event(self, event: str, job_id: str = "",
