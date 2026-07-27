@@ -51,6 +51,7 @@ dependencies = [
     "croniter>=2.0",
     "networkx>=3.0",
     "python-louvain>=0.16",
+    "mcp>=1.0",
 ]
 
 [project.urls]
@@ -70,7 +71,6 @@ dev = [
     "pytest-timeout>=2.3",
     "pytest-benchmark>=4.0",
     "respx>=0.21",
-    "mcp>=1.0",
     "matplotlib>=3.8",
 ]
 
