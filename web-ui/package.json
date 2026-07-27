@@ -17,6 +17,9 @@
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1"
   },
+  "overrides": {
+    "postcss": ">=8.5.18"
+  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/d3": "^7.4.3",
