@@ -232,6 +232,7 @@ _LIVE_DATA_TRIGGERS: frozenset[str] = frozenset({
     "truncated", "truncation", "max_source_chars", "source limit",
     "job", "jobs", "job id", "job status", "ingest job", "queue",
     "pending jobs", "failed job", "dead job",
+    "wiki status", "page status", "show status",
 })
 
 _RECENT_CHANGE_TRIGGERS: frozenset[str] = frozenset({
@@ -481,8 +482,9 @@ class QueryAgent:
         try:
             audit = AuditDB(audit_path)
             await audit.init()
-            all_page_states = await audit.get_live_page_states(self._store.page_exists)
-            counts: dict[str, int] = await audit.get_live_lifecycle_summary(self._store.page_exists)
+            _live = lambda slug: slug not in LINT_SKIP_SLUGS and self._store.page_exists(slug)
+            all_page_states = await audit.get_live_page_states(_live)
+            counts: dict[str, int] = await audit.get_live_lifecycle_summary(_live)
 
             lines: list[str] = []
 
