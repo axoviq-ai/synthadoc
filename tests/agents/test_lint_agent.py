@@ -1100,3 +1100,28 @@ async def test_lint_multi_source_page_goes_stale_not_archived(tmp_wiki):
     assert page.status == "stale"        # NOT archived
     assert report.lifecycle_stale >= 1
     assert report.lifecycle_archived == 0
+
+
+@pytest.mark.asyncio
+async def test_lint_bootstrap_archived_frontmatter_records_lifecycle_event(tmp_wiki):
+    """A page with status: archived already set in frontmatter but no DB row yet
+    (e.g. a pre-generated demo page on first lint run) must produce a lifecycle_events
+    audit entry so the Audit log in the UI is not empty for that page."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("pre-archived", WikiPage(
+        title="Pre-Archived Page", tags=[], content="Retired content.",
+        status="archived", confidence="high", sources=[],
+    ))
+
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+    # No DB row for "pre-archived" — simulates first lint run on a demo wiki
+
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log, audit_db=audit)
+    await agent.lint(adversarial=False)
+
+    events, total = await audit.get_lifecycle_events("pre-archived")
+    assert total > 0, "bootstrap must write a lifecycle_events row for the pre-archived page"
+    assert events[0]["to_state"] == "archived"
+    assert "bootstrapped" in events[0]["reason"]
