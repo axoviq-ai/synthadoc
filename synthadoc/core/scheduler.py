@@ -127,6 +127,15 @@ async def run_scheduler_loop(
             logger.warning("scheduler loop error: %s", exc)
 
 
+def _kill_proc(proc: object) -> None:
+    """Kill a subprocess, silently ignoring errors (already exited, no permission, etc.)."""
+    if proc is not None:
+        try:
+            proc.kill()  # type: ignore[union-attr]
+        except Exception:
+            pass
+
+
 async def _run_scheduled_job(
     entry: dict, wiki: str, wiki_root: Path, audit_db: "AuditDB",
     job_timeout_seconds: int,
@@ -167,20 +176,12 @@ async def _run_scheduled_job(
             logger.warning("[schedule] %s  %s  %.1fs  failed (%s)", run_id, op, duration, err)
     except asyncio.TimeoutError:
         duration = time.monotonic() - t0
-        if proc is not None:
-            try:
-                proc.kill()
-            except Exception:
-                pass
+        _kill_proc(proc)
         err = f"timed out after {job_timeout_seconds}s"
         await audit_db.record_scheduled_run_finish(run_id, "failed", duration, err)
         logger.warning("[schedule] %s  %s  %.1fs  %s", run_id, op, duration, err)
     except asyncio.CancelledError:
-        if proc is not None:
-            try:
-                proc.kill()
-            except Exception:
-                pass
+        _kill_proc(proc)
         raise
     except Exception as exc:
         duration = time.monotonic() - t0
