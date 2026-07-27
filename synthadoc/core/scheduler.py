@@ -104,7 +104,9 @@ class Scheduler:
 # Server-side scheduler loop — runs inside synthadoc serve
 # ------------------------------------------------------------------
 
-async def run_scheduler_loop(wiki: str, wiki_root: Path, audit_db: "AuditDB") -> None:
+async def run_scheduler_loop(
+    wiki: str, wiki_root: Path, audit_db: "AuditDB", job_timeout_seconds: int
+) -> None:
     """Asyncio background task: fire scheduled jobs at their cron times."""
     while True:
         now = datetime.now()
@@ -117,7 +119,7 @@ async def run_scheduler_loop(wiki: str, wiki_root: Path, audit_db: "AuditDB") ->
             for entry in sched._load_raw():
                 if _matches_cron(entry.get("cron", ""), now):
                     asyncio.create_task(
-                        _run_scheduled_job(entry, wiki, wiki_root, audit_db)
+                        _run_scheduled_job(entry, wiki, wiki_root, audit_db, job_timeout_seconds)
                     )
         except asyncio.CancelledError:
             raise
@@ -125,8 +127,18 @@ async def run_scheduler_loop(wiki: str, wiki_root: Path, audit_db: "AuditDB") ->
             logger.warning("scheduler loop error: %s", exc)
 
 
+def _kill_proc(proc: object) -> None:
+    """Kill a subprocess, silently ignoring errors (already exited, no permission, etc.)."""
+    if proc is not None:
+        try:
+            proc.kill()  # type: ignore[union-attr]
+        except Exception:
+            pass
+
+
 async def _run_scheduled_job(
-    entry: dict, wiki: str, wiki_root: Path, audit_db: "AuditDB"
+    entry: dict, wiki: str, wiki_root: Path, audit_db: "AuditDB",
+    job_timeout_seconds: int,
 ) -> None:
     """Execute one scheduled job and record the result in the audit DB."""
     run_id = f"run-{uuid.uuid4().hex[:8]}"
@@ -137,6 +149,7 @@ async def _run_scheduled_job(
     logger.info("[schedule] %s  %s  starting", run_id, op)
 
     t0 = time.monotonic()
+    proc = None
     try:
         proc = await asyncio.create_subprocess_exec(
             sys.executable, "-m", "synthadoc", "-w", wiki,
@@ -146,7 +159,9 @@ async def _run_scheduled_job(
             stderr=asyncio.subprocess.PIPE,
             env={**os.environ, "PYTHONIOENCODING": "utf-8"},
         )
-        stdout, stderr = await proc.communicate()
+        stdout, stderr = await asyncio.wait_for(
+            proc.communicate(), timeout=job_timeout_seconds
+        )
         duration = time.monotonic() - t0
         out = _truncate_output(stdout.decode(errors="replace").strip() if stdout else "")
 
@@ -159,7 +174,14 @@ async def _run_scheduled_job(
                 err += f": {stderr.decode(errors='replace').strip()[:300]}"
             await audit_db.record_scheduled_run_finish(run_id, "failed", duration, err, out)
             logger.warning("[schedule] %s  %s  %.1fs  failed (%s)", run_id, op, duration, err)
+    except asyncio.TimeoutError:
+        duration = time.monotonic() - t0
+        _kill_proc(proc)
+        err = f"timed out after {job_timeout_seconds}s"
+        await audit_db.record_scheduled_run_finish(run_id, "failed", duration, err)
+        logger.warning("[schedule] %s  %s  %.1fs  %s", run_id, op, duration, err)
     except asyncio.CancelledError:
+        _kill_proc(proc)
         raise
     except Exception as exc:
         duration = time.monotonic() - t0

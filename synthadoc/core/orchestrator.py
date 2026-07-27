@@ -11,7 +11,7 @@ import logging
 from synthadoc.config import Config, load_config
 from synthadoc.errors import DomainBlockedException
 from synthadoc.core.cache import CacheManager
-from synthadoc.core.cost_guard import CostGuard, CostEstimate, CostGateError, CostEstimate, CostGateError
+from synthadoc.core.cost_guard import CostGuard, CostEstimate, CostGateError
 from synthadoc.core.hooks import HookExecutor
 from synthadoc.core.queue import JobQueue
 from synthadoc.observability.telemetry import get_tracer, setup_telemetry

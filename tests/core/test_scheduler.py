@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
-from synthadoc.core.scheduler import Scheduler, ScheduleEntry
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from synthadoc.core.scheduler import Scheduler, ScheduleEntry, _run_scheduled_job
 
 
 def test_schedule_entry_parses_cron():
@@ -33,3 +36,64 @@ def test_scheduler_apply_from_config(tmp_path):
     assert len(cfg.schedule.jobs) == 2
     assert cfg.schedule.jobs[0].op == "lint"
     assert cfg.schedule.jobs[1].cron == "0 2 * * *"
+
+
+# ------------------------------------------------------------------
+# _run_scheduled_job — subprocess timeout and outcome recording
+# ------------------------------------------------------------------
+
+async def test_run_scheduled_job_timeout_kills_proc(tmp_path):
+    """Hanging subprocess: TimeoutError kills the process and records 'failed'."""
+    audit_db = AsyncMock()
+
+    async def _hang():
+        await asyncio.sleep(9999)
+
+    mock_proc = MagicMock()
+    mock_proc.kill = MagicMock()
+    mock_proc.communicate = _hang
+
+    entry = {"id": "sched-test-timeout", "op": "lint"}
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)):
+        await _run_scheduled_job(entry, "test-wiki", tmp_path, audit_db, job_timeout_seconds=0.05)
+
+    mock_proc.kill.assert_called_once()
+    call = audit_db.record_scheduled_run_finish.call_args
+    assert call.args[1] == "failed"
+    assert "timed out" in call.args[3]
+
+
+async def test_run_scheduled_job_success(tmp_path):
+    """Subprocess exits 0: audit records 'success'."""
+    audit_db = AsyncMock()
+
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b"all good", b""))
+
+    entry = {"id": "sched-test-ok", "op": "lint"}
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)):
+        await _run_scheduled_job(entry, "test-wiki", tmp_path, audit_db, job_timeout_seconds=30)
+
+    call = audit_db.record_scheduled_run_finish.call_args
+    assert call.args[1] == "success"
+
+
+async def test_run_scheduled_job_nonzero_exit(tmp_path):
+    """Subprocess exits non-zero: audit records 'failed' with exit code message."""
+    audit_db = AsyncMock()
+
+    mock_proc = MagicMock()
+    mock_proc.returncode = 2
+    mock_proc.communicate = AsyncMock(return_value=(b"", b"something failed"))
+
+    entry = {"id": "sched-test-fail", "op": "ingest"}
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)):
+        await _run_scheduled_job(entry, "test-wiki", tmp_path, audit_db, job_timeout_seconds=30)
+
+    call = audit_db.record_scheduled_run_finish.call_args
+    assert call.args[1] == "failed"
+    assert "exit code 2" in call.args[3]
