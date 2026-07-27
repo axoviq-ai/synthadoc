@@ -31,6 +31,22 @@ from pathlib import Path
 
 import pytest
 
+
+# ProactorEventLoop (IOCP) deadlocks when aiosqlite's background thread
+# signals 500+ rapid-fire completion callbacks in the tight read-latency loop.
+# Scope the SelectorEventLoop fix to this module only so other async perf
+# tests that relied on ProactorEventLoop are not disturbed.
+if platform.system() == "Windows":
+    import warnings
+    warnings.filterwarnings("ignore", ".*WindowsSelectorEventLoopPolicy.*", DeprecationWarning)
+    warnings.filterwarnings("ignore", ".*set_event_loop_policy.*", DeprecationWarning)
+
+@pytest.fixture
+def asyncio_event_loop_policy():
+    if platform.system() == "Windows":
+        return asyncio.WindowsSelectorEventLoopPolicy()
+    return asyncio.DefaultEventLoopPolicy()
+
 from synthadoc.core.cache import CacheManager, make_query_cache_key
 
 # ── constants ─────────────────────────────────────────────────────────────────
