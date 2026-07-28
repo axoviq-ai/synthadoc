@@ -31,6 +31,7 @@ jobs:
             exit 1
           fi
       - run: pip install -e ".[dev]"
+      - run: pip install "mcp>=1.0,<2.0"
       - run: python scripts/update_badges.py --check
       - run: pytest --cov=synthadoc --cov-report=term-missing -v
 
@@ -49,6 +50,7 @@ jobs:
           python-version: "3.12"
       - run: python scripts/prepare_pypi_readme.py
       - run: pip install -e ".[dev]"
+      - run: pip install "mcp>=1.0,<2.0"
       - run: pytest --cov=synthadoc --cov-report=json -q
       - run: python scripts/update_badges.py --coverage-json coverage.json
       - run: |
