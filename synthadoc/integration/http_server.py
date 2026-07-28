@@ -611,9 +611,12 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
     )
 
     if enable_mcp:
-        from synthadoc.integration.mcp_server import create_mcp_server
-        _mcp = create_mcp_server(orchestrator=orch)
-        app.mount("/mcp", _mcp.sse_app())
+        try:
+            from synthadoc.integration.mcp_server import create_mcp_server
+            _mcp = create_mcp_server(orchestrator=orch)
+            app.mount("/mcp", _mcp.sse_app())
+        except ImportError:
+            pass
 
     @app.get("/", response_class=Response)
     async def index():

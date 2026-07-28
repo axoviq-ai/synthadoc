@@ -3,6 +3,8 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+pytest.importorskip("mcp", reason="mcp package not installed")
+
 
 # ── Fixture ──────────────────────────────────────────────────────────────────
 
