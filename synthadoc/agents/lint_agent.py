@@ -689,6 +689,13 @@ class LintAgent:
                             await self._audit.set_page_state(
                                 slug, LifecycleState.ARCHIVED, TriggerSource.LINT
                             )
+                            await self._audit.record_lifecycle_event(
+                                slug,
+                                LifecycleState.ARCHIVED,
+                                LifecycleState.ARCHIVED,
+                                "bootstrapped from frontmatter: page was already archived",
+                                TriggerSource.LINT,
+                            )
                     continue
 
                 # Check 2: stale detection -- source file hash changed
@@ -862,6 +869,12 @@ class LintAgent:
                             self._store.write_page(slug, page)
                             report.contradictions_resolved += 1
                             if self._audit:
+                                resolve_reason = decision.get("reason", "contradiction auto-resolved by lint")
+                                await self._audit.set_page_state(slug, LifecycleState.ACTIVE, TriggerSource.LINT)
+                                await self._audit.record_lifecycle_event(
+                                    slug, LifecycleState.CONTRADICTED, LifecycleState.ACTIVE,
+                                    f"auto-resolved: {resolve_reason}", TriggerSource.LINT,
+                                )
                                 await self._audit.record_audit_event(
                                     job_id, "auto_resolved", {"slug": slug})
                         else:

@@ -265,6 +265,11 @@ async def test_ingest_flags_contradiction(tmp_wiki, cache):
     page = store.read_page("grace-hopper")
     assert page.status == "contradicted"
 
+    events, total = await audit.get_lifecycle_events("grace-hopper")
+    assert total > 0, "contradiction flag must write a lifecycle_events row"
+    assert events[0]["to_state"] == "contradicted"
+    assert events[0]["from_state"] == "active"
+
 
 @pytest.mark.asyncio
 async def test_ingest_flag_ignores_skip_slugs(tmp_wiki, cache):

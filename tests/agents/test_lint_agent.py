@@ -1100,3 +1100,141 @@ async def test_lint_multi_source_page_goes_stale_not_archived(tmp_wiki):
     assert page.status == "stale"        # NOT archived
     assert report.lifecycle_stale >= 1
     assert report.lifecycle_archived == 0
+
+
+@pytest.mark.asyncio
+async def test_lint_bootstrap_archived_frontmatter_records_lifecycle_event(tmp_wiki):
+    """A page with status: archived already set in frontmatter but no DB row yet
+    (e.g. a pre-generated demo page on first lint run) must produce a lifecycle_events
+    audit entry so the Audit log in the UI is not empty for that page."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("pre-archived", WikiPage(
+        title="Pre-Archived Page", tags=[], content="Retired content.",
+        status="archived", confidence="high", sources=[],
+    ))
+
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+    # No DB row for "pre-archived" — simulates first lint run on a demo wiki
+
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log, audit_db=audit)
+    await agent.lint(adversarial=False)
+
+    events, total = await audit.get_lifecycle_events("pre-archived")
+    assert total > 0, "bootstrap must write a lifecycle_events row for the pre-archived page"
+    assert events[0]["to_state"] == "archived"
+    assert "bootstrapped" in events[0]["reason"]
+
+
+@pytest.mark.asyncio
+async def test_lint_auto_resolve_records_lifecycle_event(tmp_wiki):
+    """Successful auto-resolve (contradicted → active) must write a lifecycle_events row
+    with from_state=contradicted, to_state=active, and reason containing 'auto-resolved'."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("auto-resolve-page", WikiPage(
+        title="Auto Resolve", tags=[], content="⚠ conflict",
+        status="contradicted", confidence="low", sources=[],
+    ))
+
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+    await audit.set_page_state("auto-resolve-page", "contradicted", "ingest")
+
+    provider = AsyncMock()
+    provider.complete.return_value = CompletionResponse(
+        text='{"resolvable": true, "reason": "Claims reconciled.", "resolution": "Reconciled content."}',
+        input_tokens=10, output_tokens=5,
+    )
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    agent = LintAgent(provider=provider, store=store, log_writer=log, audit_db=audit)
+    await agent.lint(scope="contradictions", auto_resolve=True)
+
+    events, total = await audit.get_lifecycle_events("auto-resolve-page")
+    assert total > 0, "auto-resolve must write a lifecycle_events row"
+    assert events[0]["from_state"] == "contradicted"
+    assert events[0]["to_state"] == "active"
+    assert "auto-resolved" in events[0]["reason"]
+
+
+@pytest.mark.asyncio
+async def test_lint_auto_resolve_failed_no_lifecycle_event(tmp_wiki):
+    """When auto-resolve decides resolvable=False, no lifecycle_events row must be written
+    (the page stays contradicted; only audit_events gets an auto_resolve_failed entry)."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("unresolvable-page", WikiPage(
+        title="Unresolvable", tags=[], content="⚠ conflict",
+        status="contradicted", confidence="low", sources=[],
+    ))
+
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+    await audit.set_page_state("unresolvable-page", "contradicted", "ingest")
+
+    provider = AsyncMock()
+    provider.complete.return_value = CompletionResponse(
+        text='{"resolvable": false, "reason": "Entire page is fabricated.", "resolution": ""}',
+        input_tokens=10, output_tokens=5,
+    )
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    agent = LintAgent(provider=provider, store=store, log_writer=log, audit_db=audit)
+    await agent.lint(scope="contradictions", auto_resolve=True)
+
+    events, total = await audit.get_lifecycle_events("unresolvable-page")
+    assert total == 0, "failed auto-resolve must not write a lifecycle_events row"
+    page = store.read_page("unresolvable-page")
+    assert page.status == "contradicted"
+
+
+@pytest.mark.asyncio
+async def test_lint_transition_archive_records_reason(tmp_wiki):
+    """When lint archives a page because its source file is gone, the lifecycle_events row
+    must carry reason='all source files no longer on disk'."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    raw = tmp_wiki / "raw_sources"
+    raw.mkdir(exist_ok=True)
+    # Source file intentionally absent from disk
+    store.write_page("gone-page", WikiPage(
+        title="Gone Page", tags=[], content="Content.",
+        status="active", confidence="high",
+        sources=[SourceRef(file="missing.txt", hash="abc", size=10, ingested="2026-01-01")],
+    ))
+
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+    await audit.set_page_state("gone-page", "active", "ingest")
+
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log,
+                      audit_db=audit, wiki_root=tmp_wiki)
+    await agent.lint(adversarial=False)
+
+    events, total = await audit.get_lifecycle_events("gone-page")
+    assert total > 0, "archive transition must write a lifecycle_events row"
+    assert events[0]["to_state"] == "archived"
+    assert events[0]["reason"] == "all source files no longer on disk"
+
+
+@pytest.mark.asyncio
+async def test_lint_transition_draft_to_active_records_reason(tmp_wiki):
+    """When lint promotes a draft page to active, the lifecycle_events row
+    must carry reason='lint passed'."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("new-draft", WikiPage(
+        title="New Draft", tags=[], content="Some content.",
+        status="draft", confidence="high", sources=[],
+    ))
+
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await audit.init()
+    await audit.set_page_state("new-draft", "draft", "ingest")
+
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log, audit_db=audit)
+    await agent.lint(adversarial=False)
+
+    events, total = await audit.get_lifecycle_events("new-draft")
+    assert total > 0, "draft→active promotion must write a lifecycle_events row"
+    assert events[0]["from_state"] == "draft"
+    assert events[0]["to_state"] == "active"
+    assert events[0]["reason"] == "lint passed"

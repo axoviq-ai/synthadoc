@@ -1078,7 +1078,8 @@ class IngestAgent:
             with self._store.page_lock(target):
                 page = self._store.read_page(target)
                 if page:
-                    page.status = "contradicted"
+                    prev_status = page.status
+                    page.status = LifecycleState.CONTRADICTED
                     page.unresolved_note = None  # clear any previous auto-resolve failure
                     reasoning = decisions.get("reasoning", "")
                     page.contradiction_note = (
@@ -1087,6 +1088,12 @@ class IngestAgent:
                     )
                     self._store.write_page(target, page)
                     self._search.invalidate_index()
+                    if self._audit:
+                        await self._audit.set_page_state(target, LifecycleState.CONTRADICTED, TriggerSource.INGEST)
+                        await self._audit.record_lifecycle_event(
+                            target, prev_status, LifecycleState.CONTRADICTED,
+                            page.contradiction_note, TriggerSource.INGEST,
+                        )
             result.pages_flagged.append(target)
 
         elif action == "update" and target and self._store.page_exists(target):
@@ -1209,7 +1216,7 @@ class IngestAgent:
                     new_page = WikiPage(
                         title=page_title, tags=tags,
                         content=body,
-                        status="draft", confidence="medium",
+                        status=LifecycleState.DRAFT, confidence="medium",
                         sources=[SourceRef(
                             file=source,
                             hash=src_hash or "",
