@@ -6,6 +6,16 @@ import sqlite3
 import pytest
 from pathlib import Path
 
+# Detect whether the MCP package is properly installed.  Forks whose
+# pyproject.toml pre-dates the mcp dependency may have no mcp package, or an
+# old one that lacks mcp.server.fastmcp.  We detect this once at import time
+# so the autouse fixture below is zero-cost when mcp is present.
+try:
+    from mcp.server.fastmcp import FastMCP as _FastMCP  # noqa: F401
+    _MCP_AVAILABLE = True
+except ImportError:
+    _MCP_AVAILABLE = False
+
 # ProactorEventLoop (Windows IOCP) deadlocks with aiosqlite's worker thread
 # under load — observed in test_cache_read_latency_p99 and concurrent-reader
 # tests.  Force SelectorEventLoop for all async tests on Windows.
@@ -16,6 +26,25 @@ if platform.system() == "Windows":
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+
+@pytest.fixture(autouse=True)
+def _disable_mcp_when_unavailable(monkeypatch):
+    """Force enable_mcp=False in create_app when mcp.server.fastmcp is absent.
+
+    Non-MCP tests (HTTP API, routing, SSE, …) don't exercise the MCP mount
+    and must not fail just because the mcp package is missing or stale.
+    MCP-specific tests guard themselves with pytest.importorskip.
+    """
+    if _MCP_AVAILABLE:
+        return
+    import synthadoc.integration.http_server as _hs
+    _orig = _hs.create_app
+
+    def _patched(wiki_root, *, enable_mcp=True, **kwargs):
+        return _orig(wiki_root, enable_mcp=False, **kwargs)
+
+    monkeypatch.setattr(_hs, "create_app", _patched)
 
 
 @pytest.fixture

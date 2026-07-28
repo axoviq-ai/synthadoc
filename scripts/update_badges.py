@@ -56,12 +56,11 @@ def count_obsidian_commands() -> int:
 
 
 def count_mcp_tools() -> int:
-    """Count MCP tools registered in create_mcp_server()."""
-    sys.path.insert(0, str(ROOT))
-    from unittest.mock import MagicMock
-    from synthadoc.integration.mcp_server import create_mcp_server
-    mcp = create_mcp_server(MagicMock())
-    return len(mcp._tool_manager.list_tools())
+    """Count MCP tools registered in mcp_server.py by counting @mcp.tool() decorators."""
+    mcp_server_py = ROOT / "synthadoc" / "integration" / "mcp_server.py"
+    if not mcp_server_py.exists():
+        return 0
+    return mcp_server_py.read_text(encoding="utf-8").count("@mcp.tool()")
 
 
 def count_skills() -> int:
