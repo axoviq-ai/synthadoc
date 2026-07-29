@@ -72,11 +72,15 @@ modification time and the first substantive user message:
 session-2026-07-15-how-do-i-implement-a-sliding
 ```
 
+## Large sessions — chunking
+
+Sessions longer than 30 substantive turns are split into 30-turn chunks.
+Each chunk is labelled with a `## Part N of M` header so the downstream LLM
+can process sections independently. The `metadata` dict includes `chunk_total`
+when chunking occurs; single-chunk sessions (≤ 30 turns) are unchanged.
+
 ## Limitations
 
-- **No chunking in v1.1** — very long sessions are truncated at the
-  `max_source_chars` limit (default 400 000 chars). Multi-session archives
-  should be split into individual `.jsonl` files before ingesting.
 - **Tool output excluded** — tool result blocks (shell output, file reads, etc.)
   are stripped. This is intentional: it avoids leaking file contents and
   credentials into the wiki.
