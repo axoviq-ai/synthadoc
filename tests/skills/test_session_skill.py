@@ -536,6 +536,128 @@ async def test_extract_unknown_format_falls_back_to_codex(tmp_path):
     assert result.text != ""
 
 
+# ── Chunking ─────────────────────────────────────────────────────────────────
+
+def _make_turns(n: int) -> list[tuple[str, str]]:
+    """Generate n alternating substantive (user, assistant) turns.
+
+    Unique zero-padded markers (USR-00000, AST-00001) ensure no marker is a
+    substring of another, which makes the no-duplication assertion reliable.
+    Assistant turns use 25 filler words to stay well above _MIN_ASSISTANT_WORDS=20.
+    """
+    turns = []
+    for i in range(n):
+        if i % 2 == 0:
+            turns.append(("user", f"USR-{i:05d} user question about this specific feature"))
+        else:
+            turns.append(("assistant", f"AST-{i:05d} " + " ".join(["word"] * 25)))
+    return turns
+
+
+def _write_turns_jsonl(tmp_path: Path, turns: list[tuple[str, str]], fmt: str = "codex") -> Path:
+    """Write pre-built turns to a JSONL file."""
+    lines = []
+    for role, text in turns:
+        if fmt == "codex":
+            lines.append(_codex_line(role, text))
+        else:
+            if role == "user":
+                lines.append(_cc_user(text))
+            else:
+                lines.append(_cc_assistant([_cc_text_block(text)]))
+    return _write_jsonl(tmp_path, lines)
+
+
+def test_chunk_turns_single_chunk_when_at_limit():
+    from synthadoc.skills.session.scripts.main import _chunk_turns
+    turns = _make_turns(30)
+    chunks = _chunk_turns(turns, 30)
+    assert len(chunks) == 1
+    assert chunks[0] == turns
+
+
+def test_chunk_turns_splits_at_boundary():
+    from synthadoc.skills.session.scripts.main import _chunk_turns
+    turns = _make_turns(31)
+    chunks = _chunk_turns(turns, 30)
+    assert len(chunks) == 2
+    assert len(chunks[0]) == 30
+    assert len(chunks[1]) == 1
+
+
+def test_chunk_turns_three_even_chunks():
+    from synthadoc.skills.session.scripts.main import _chunk_turns
+    turns = _make_turns(90)
+    chunks = _chunk_turns(turns, 30)
+    assert len(chunks) == 3
+    assert all(len(c) == 30 for c in chunks)
+
+
+def test_chunk_turns_uneven_last_chunk():
+    from synthadoc.skills.session.scripts.main import _chunk_turns
+    turns = _make_turns(65)
+    chunks = _chunk_turns(turns, 30)
+    assert len(chunks) == 3
+    assert len(chunks[0]) == 30
+    assert len(chunks[1]) == 30
+    assert len(chunks[2]) == 5
+
+
+def test_chunk_turns_preserves_all_turns():
+    from synthadoc.skills.session.scripts.main import _chunk_turns
+    turns = _make_turns(75)
+    chunks = _chunk_turns(turns, 30)
+    flat = [t for chunk in chunks for t in chunk]
+    assert flat == turns
+
+
+@pytest.mark.asyncio
+async def test_extract_small_session_has_no_part_headers(tmp_path):
+    skill = _load_skill()
+    f = _write_turns_jsonl(tmp_path, _make_turns(10))
+    result = await skill.extract(str(f))
+    assert "Part" not in result.text
+    assert result.metadata.get("chunk_total", 1) == 1
+
+
+@pytest.mark.asyncio
+async def test_extract_large_session_has_part_headers(tmp_path):
+    skill = _load_skill()
+    f = _write_turns_jsonl(tmp_path, _make_turns(31))
+    result = await skill.extract(str(f))
+    assert "Part 1 of 2" in result.text
+    assert "Part 2 of 2" in result.text
+
+
+@pytest.mark.asyncio
+async def test_extract_large_session_chunk_total_in_metadata(tmp_path):
+    skill = _load_skill()
+    f = _write_turns_jsonl(tmp_path, _make_turns(61))
+    result = await skill.extract(str(f))
+    assert result.metadata["chunk_total"] == 3
+
+
+@pytest.mark.asyncio
+async def test_extract_large_session_no_turns_dropped(tmp_path):
+    skill = _load_skill()
+    turns = _make_turns(60)
+    f = _write_turns_jsonl(tmp_path, turns)
+    result = await skill.extract(str(f))
+    for _, text in turns:
+        assert text in result.text, f"Turn missing from output: {text[:40]}"
+
+
+@pytest.mark.asyncio
+async def test_extract_large_session_no_turns_duplicated(tmp_path):
+    skill = _load_skill()
+    f = _write_turns_jsonl(tmp_path, _make_turns(40))
+    result = await skill.extract(str(f))
+    # Each unique turn marker (USR-00000, USR-00002 …) appears exactly once
+    for i in range(0, 40, 2):
+        marker = f"USR-{i:05d}"
+        assert result.text.count(marker) == 1, f"Turn {i} appears more than once"
+
+
 # ── Skill registration ────────────────────────────────────────────────────────
 
 def test_skill_detected_for_jsonl_extension():
