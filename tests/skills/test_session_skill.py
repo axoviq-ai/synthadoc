@@ -536,6 +536,25 @@ async def test_extract_unknown_format_falls_back_to_codex(tmp_path):
     assert result.text != ""
 
 
+@pytest.mark.asyncio
+async def test_extract_unknown_format_logs_info(tmp_path, caplog):
+    import logging
+    import json as _json
+    skill = _load_skill()
+    # {"speaker"/"utterance"} matches neither claude_code nor codex detection rules
+    lines = [_json.dumps({"speaker": "user", "utterance": "hello world question here"})]
+    f = _write_jsonl(tmp_path, lines)
+    with caplog.at_level(logging.INFO):
+        await skill.extract(str(f))
+    # Must be an INFO record explicitly about the unknown format — not the WARNING
+    # that mentions the file path (which happens to contain "unknown" from the test name).
+    info_records = [r for r in caplog.records if r.levelno == logging.INFO]
+    assert any("format" in r.message.lower() for r in info_records), (
+        f"Expected an INFO log about unknown format; got INFO records: {[r.message for r in info_records]}"
+    )
+
+
+
 # ── Chunking ─────────────────────────────────────────────────────────────────
 
 def _make_turns(n: int) -> list[tuple[str, str]]:
