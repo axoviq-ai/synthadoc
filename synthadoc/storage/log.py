@@ -9,7 +9,7 @@ from typing import Callable, Optional
 
 import aiosqlite
 
-DB_SCHEMA_VERSION: int = 3
+DB_SCHEMA_VERSION: int = 4
 
 CITATION_EXCERPT_LEN = 100
 
@@ -133,13 +133,14 @@ class AuditDB:
                 )""")
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS lifecycle_events (
-                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                    slug         TEXT NOT NULL,
-                    from_state   TEXT,
-                    to_state     TEXT NOT NULL,
-                    reason       TEXT,
-                    triggered_by TEXT NOT NULL,
-                    timestamp    TEXT NOT NULL
+                    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                    slug             TEXT NOT NULL,
+                    from_state       TEXT,
+                    to_state         TEXT NOT NULL,
+                    reason           TEXT,
+                    triggered_by     TEXT NOT NULL,
+                    timestamp        TEXT NOT NULL,
+                    content_snapshot TEXT DEFAULT NULL
                 )""")
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS scheduled_runs (
@@ -193,6 +194,7 @@ class AuditDB:
                 "ALTER TABLE chat_messages ADD COLUMN citations TEXT DEFAULT NULL",
                 "ALTER TABLE chat_messages ADD COLUMN gap_suggestions TEXT DEFAULT NULL",
                 "ALTER TABLE graph_edges ADD COLUMN edge_type TEXT NOT NULL DEFAULT 'mixed'",
+                "ALTER TABLE lifecycle_events ADD COLUMN content_snapshot TEXT DEFAULT NULL",
             ):
                 try:
                     await db.execute(migration)
@@ -492,14 +494,15 @@ class AuditDB:
     async def record_lifecycle_event(
         self, slug: str, from_state: Optional[str], to_state: str,
         reason: str, triggered_by: str,
+        content_snapshot: Optional[str] = None,   # ← new
     ) -> None:
         ts = datetime.now(timezone.utc).isoformat()
         async with aiosqlite.connect(self._path) as db:
             await db.execute(
                 "INSERT INTO lifecycle_events"
-                " (slug,from_state,to_state,reason,triggered_by,timestamp)"
-                " VALUES (?,?,?,?,?,?)",
-                (slug, from_state, to_state, reason or "", triggered_by, ts),
+                " (slug,from_state,to_state,reason,triggered_by,timestamp,content_snapshot)"
+                " VALUES (?,?,?,?,?,?,?)",
+                (slug, from_state, to_state, reason or "", triggered_by, ts, content_snapshot),
             )
             await db.commit()
 
