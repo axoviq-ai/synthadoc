@@ -346,6 +346,11 @@ class LifecycleTransitionRequest(BaseModel):
     reason: str
 
 
+class RollbackRequest(BaseModel):
+    index: int
+    reason: str
+
+
 class ExportRequest(BaseModel):
     format: str
     status_filter: str = "all"
@@ -1679,6 +1684,49 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                 }
                 for s in snapshots
             ],
+        }
+
+    @app.post("/pages/{slug}/rollback")
+    async def page_rollback(slug: str, req: RollbackRequest, response: Response):
+        response.headers["Cache-Control"] = "no-store"
+        orch = app.state.orch
+        audit = orch._audit
+
+        page = orch._store.read_page(slug)
+        if page is None:
+            raise HTTPException(status_code=404, detail=f"Page not found: {slug}")
+
+        snap = await audit.get_snapshot_by_index(slug, req.index)
+        if snap is None or snap.get("content_snapshot") is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Snapshot index {req.index} not found for '{slug}'",
+            )
+
+        current_content = page.content
+        current_state = page.status
+
+        # Record the pre-rollback state as a new snapshot (makes rollback undoable)
+        await audit.record_lifecycle_event(
+            slug, current_state, current_state,
+            f"rollback:{req.index}:{req.reason}",
+            TriggerSource.USER,
+            content_snapshot=current_content,
+        )
+        new_snapshots = await audit.list_page_snapshots(slug)
+        rollback_event_index = new_snapshots[0]["index"]  # newest = the one we just inserted
+
+        # Restore page body from the snapshot
+        page.content = snap["content_snapshot"]
+        orch._store.write_page(slug, page)
+        orch._bump_epoch()
+
+        return {
+            "slug": slug,
+            "snapshot_index": req.index,
+            "snapshot_timestamp": snap["timestamp"],
+            "restored_chars": len(snap["content_snapshot"]),
+            "rollback_event_index": rollback_event_index,
         }
 
     # ── Export ────────────────────────────────────────────────────────────────

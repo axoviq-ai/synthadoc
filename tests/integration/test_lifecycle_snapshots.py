@@ -270,3 +270,93 @@ def test_history_endpoint_single_with_content(tmp_wiki):
     data = resp.json()
     assert data["index"] == 1
     assert "Body v2." in data["content"]  # index 1 = newest = archived snapshot
+
+
+# ── Task 5 tests ────────────────────────────────────────────────────────────
+
+def test_rollback_endpoint_restores_file(tmp_wiki):
+    """POST /pages/{slug}/rollback writes the snapshot body back to the .md file."""
+    import asyncio
+    from fastapi.testclient import TestClient
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.storage.log import AuditDB
+
+    wiki_dir = tmp_wiki / "wiki"
+    original_body = "This is the original body before editing."
+    (wiki_dir / "rollback-page.md").write_text(
+        f"---\ntitle: Rollback Test\nstatus: draft\nconfidence: medium\n"
+        f"tags: []\nsources: []\n---\n\n{original_body}\n",
+        encoding="utf-8",
+    )
+
+    # Seed one snapshot in the audit DB
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    async def _seed():
+        await audit.init()
+        await audit.record_lifecycle_event(
+            "rollback-page", "draft", "active", "activated", "user",
+            content_snapshot=original_body,
+        )
+    asyncio.run(_seed())
+
+    # Now "accidentally edit" the page on disk
+    (wiki_dir / "rollback-page.md").write_text(
+        "---\ntitle: Rollback Test\nstatus: active\nconfidence: medium\n"
+        "tags: []\nsources: []\n---\n\nThis is the WRONG body after editing.\n",
+        encoding="utf-8",
+    )
+
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.post("/pages/rollback-page/rollback", json={
+            "index": 1,
+            "reason": "reverting accidental edit",
+        })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["slug"] == "rollback-page"
+    assert data["snapshot_index"] == 1
+    assert data["restored_chars"] == len(original_body)
+
+    # Verify the file on disk now contains the original body
+    on_disk = (wiki_dir / "rollback-page.md").read_text(encoding="utf-8")
+    assert original_body in on_disk
+    assert "WRONG body" not in on_disk
+
+
+def test_rollback_endpoint_records_pre_rollback_snapshot(tmp_wiki):
+    """The rollback event itself has content_snapshot = the pre-rollback body."""
+    import asyncio
+    from fastapi.testclient import TestClient
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.storage.log import AuditDB
+
+    wiki_dir = tmp_wiki / "wiki"
+    pre_rollback_body = "Body that will be overwritten by rollback."
+    (wiki_dir / "rb2-page.md").write_text(
+        f"---\ntitle: RB2\nstatus: active\nconfidence: medium\ntags: []\nsources: []\n"
+        f"---\n\n{pre_rollback_body}\n",
+        encoding="utf-8",
+    )
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    async def _seed():
+        await audit.init()
+        await audit.record_lifecycle_event(
+            "rb2-page", "draft", "active", "activated", "user",
+            content_snapshot="original snap body",
+        )
+    asyncio.run(_seed())
+
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.post("/pages/rb2-page/rollback", json={
+            "index": 1,
+            "reason": "testing undo",
+        })
+    assert resp.status_code == 200
+    rb_event_index = resp.json()["rollback_event_index"]
+
+    async def _check():
+        await audit.init()
+        snap = await audit.get_snapshot_by_index("rb2-page", rb_event_index)
+        assert snap is not None
+        assert pre_rollback_body in snap["content_snapshot"]
+    asyncio.run(_check())
