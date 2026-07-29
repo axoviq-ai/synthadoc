@@ -1643,9 +1643,9 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
     @app.get("/pages/{slug}/history")
     async def page_snapshot_history(
         slug: str,
+        response: Response,
         index: Optional[int] = None,
         include_content: bool = False,
-        response: Response = None,
     ):
         response.headers["Cache-Control"] = "no-store"
         audit = app.state.orch._audit
@@ -1713,13 +1713,13 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             TriggerSource.USER,
             content_snapshot=current_content,
         )
-        new_snapshots = await audit.list_page_snapshots(slug)
-        rollback_event_index = new_snapshots[0]["index"]  # newest = the one we just inserted
+        rollback_event_index = 1  # always 1: newest id → index 1 (ORDER BY id DESC)
 
         # Restore page body from the snapshot
         page.content = snap["content_snapshot"]
         orch._store.write_page(slug, page)
         orch._bump_epoch()
+        orch._search.invalidate_index()
 
         return {
             "slug": slug,
