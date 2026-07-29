@@ -174,6 +174,8 @@ class SessionSkill(BaseSkill):
             return ExtractedContent(text="", source_path=source, metadata={"empty": True})
 
         fmt = _detect_format(lines)
+        if fmt == "unknown":
+            logger.info("session: unrecognised format in %s — falling back to Codex parser", path.name)
         raw_turns = _parse_claude_code(lines) if fmt == "claude_code" else _parse_codex(lines)
 
         turns = [(role, text) for role, text in raw_turns if _is_substantive(role, text)]
