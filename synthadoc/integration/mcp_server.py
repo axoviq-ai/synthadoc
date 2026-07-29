@@ -280,7 +280,8 @@ def create_mcp_server(orchestrator):
         orchestrator._store.write_page(slug, page)
         await orchestrator._audit.set_page_state(slug, to_state, TriggerSource.MCP)
         await orchestrator._audit.record_lifecycle_event(
-            slug, from_state, to_state, reason, TriggerSource.MCP
+            slug, from_state, to_state, reason, TriggerSource.MCP,
+            content_snapshot=page.content,
         )
         orchestrator._bump_epoch()
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

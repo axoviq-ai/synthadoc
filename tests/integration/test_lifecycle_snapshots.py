@@ -158,3 +158,43 @@ async def test_get_snapshot_by_index_out_of_range(tmp_path: Path):
         "p", "draft", "active", "r", "user", content_snapshot="content"
     )
     assert await audit.get_snapshot_by_index("p", 99) is None
+
+
+# ── Task 3 tests ────────────────────────────────────────────────────────────
+
+import sqlite3 as _sqlite3
+
+
+def test_transition_stores_content_snapshot(tmp_wiki):
+    """POST /lifecycle/transition captures page.content in the snapshot column."""
+    import asyncio
+    from fastapi.testclient import TestClient
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.storage.log import AuditDB
+
+    wiki_dir = tmp_wiki / "wiki"
+    page_body = "The page body that should be snapshotted."
+    (wiki_dir / "snap-test.md").write_text(
+        f"---\ntitle: Snap Test\nstatus: draft\nconfidence: medium\n"
+        f"tags: []\nsources: []\n---\n\n{page_body}\n",
+        encoding="utf-8",
+    )
+
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.post("/lifecycle/transition", json={
+            "slug": "snap-test",
+            "to_state": "active",
+            "reason": "verified",
+        })
+    assert resp.status_code == 200
+
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+
+    async def _check():
+        await audit.init()
+        snapshots = await audit.list_page_snapshots("snap-test")
+        assert len(snapshots) == 1
+        snap = await audit.get_snapshot_by_index("snap-test", 1)
+        assert page_body in snap["content_snapshot"]
+
+    asyncio.run(_check())

@@ -662,7 +662,8 @@ class ActionAgent:
         audit = AuditDB(self._wiki_root / ".synthadoc" / "audit.db")
         await audit.init()
         await audit.set_page_state(slug, to_state, "user")
-        await audit.record_lifecycle_event(slug, from_state, to_state, reason, "user")
+        await audit.record_lifecycle_event(slug, from_state, to_state, reason, "user",
+                                            content_snapshot=page.content)
         self._orch._bump_epoch()
         return ActionResult(
             action_type=action,
