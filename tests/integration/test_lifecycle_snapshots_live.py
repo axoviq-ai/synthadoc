@@ -39,6 +39,7 @@ def require_server():
 
 # ── Live test 1: View-and-restore workflow ───────────────────────────────────
 
+@pytest.mark.live
 def test_live_view_and_restore():
     """Activate → edit → GET history shows snapshot → POST rollback → file matches."""
     import time
@@ -85,6 +86,7 @@ def test_live_view_and_restore():
 
 # ── Live test 2: Rollback is undoable ────────────────────────────────────────
 
+@pytest.mark.live
 def test_live_rollback_is_undoable():
     """Activate (snap 1) → rollback to 1 (creates snap 2) → rollback to 2 → original restored."""
     import time
@@ -135,6 +137,7 @@ def test_live_rollback_is_undoable():
 
 # ── Live test 3: Lint/ingest events produce no snapshot ──────────────────────
 
+@pytest.mark.live
 def test_live_lint_transition_has_no_snapshot():
     """Verify that lint-agent transitions do not appear in /pages/{slug}/history."""
     import time

@@ -123,6 +123,15 @@ synthadoc lifecycle restore <slug> --reason "re-opening for update" -w <wiki>
 
 synthadoc lifecycle log -w <wiki>
 # full audit trail of all lifecycle events
+
+synthadoc lifecycle history <slug> -w <wiki>
+# list content snapshots for a page (captured at each state transition)
+
+synthadoc lifecycle history <slug> --index N --show-content -w <wiki>
+# view the full page body at snapshot N (1 = newest); pipe to a file to recover it
+
+synthadoc lifecycle rollback <slug> --index N --reason "<reason>" -w <wiki>
+# restore the page body to snapshot N; state is unchanged; the rollback is itself auditable
 ```
 
 ## Export
