@@ -162,8 +162,6 @@ async def test_get_snapshot_by_index_out_of_range(tmp_path: Path):
 
 # ── Task 3 tests ────────────────────────────────────────────────────────────
 
-import sqlite3 as _sqlite3
-
 
 def test_transition_stores_content_snapshot(tmp_wiki):
     """POST /lifecycle/transition captures page.content in the snapshot column."""

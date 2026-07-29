@@ -701,7 +701,7 @@ Immutable append-only audit log of every lifecycle transition.
 | `reason` | TEXT | Human-readable reason (empty string if none provided) |
 | `triggered_by` | TEXT | `ingest`, `lint`, `cli`, `api` |
 | `timestamp` | TEXT | UTC ISO-8601 |
-| `content_snapshot` | TEXT | NULL | Full page body at transition; NULL for lint/ingest events |
+| `content_snapshot` | TEXT | Full page body at transition; NULL for lint/ingest events |
 
 ### jobs.db — Job queue
 
@@ -770,7 +770,7 @@ Note: BM25 IDF requires a minimum of 3 documents in the corpus for non-zero scor
 | `GET` | `/sessions/{session_id}/messages` _(v0.8.0)_ | — | `[{role, content, timestamp}]` |
 | `GET` | `/graph` _(v1.0.0)_ | — | `{status, node_count, edge_count, cluster_count, nodes: [...], edges: [...]}` or `{status: "computing"}` on first call |
 | `GET` | `/pages/{slug}/history` | `?index=N&include_content=true` | List content snapshots; ?index=N&include_content=true for single |
-| `POST` | `/pages/{slug}/rollback` | `{index: int, reason?: str}` | Restore page body to snapshot N |
+| `POST` | `/pages/{slug}/rollback` | `{index: int, reason: str}` | Restore page body to snapshot N |
 
 **`GET /jobs` query parameters:**
 
