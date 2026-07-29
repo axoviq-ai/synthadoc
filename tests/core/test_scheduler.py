@@ -97,3 +97,19 @@ async def test_run_scheduled_job_nonzero_exit(tmp_path):
     call = audit_db.record_scheduled_run_finish.call_args
     assert call.args[1] == "failed"
     assert "exit code 2" in call.args[3]
+
+
+def test_save_raw_is_atomic(tmp_path):
+    """_save_raw writes via a .tmp sibling then renames — no partial file on failure."""
+    sched = Scheduler(wiki="test", wiki_root=str(tmp_path))
+    sched.add("ingest", "0 2 * * *")
+
+    # The .tmp file must not be left behind after a successful write
+    tmp_file = sched._path.with_suffix(".tmp")
+    assert not tmp_file.exists()
+
+    # The target file must be valid JSON and contain the entry
+    import json
+    data = json.loads(sched._path.read_text())
+    assert len(data) == 1
+    assert data[0]["op"] == "ingest"
