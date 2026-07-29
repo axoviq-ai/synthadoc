@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 _MIN_ASSISTANT_WORDS = 20
 _MIN_USER_WORDS = 3
+_CHUNK_SIZE = 30
 _SLUG_CLEAN_RE = re.compile(r"[^a-z0-9]+")
 
 _CLAUDE_CODE_TYPES = frozenset(
@@ -119,6 +120,13 @@ def _parse_codex(lines: list[str]) -> list[tuple[str, str]]:
     return turns
 
 
+def _chunk_turns(
+    turns: list[tuple[str, str]], size: int
+) -> list[list[tuple[str, str]]]:
+    """Split turns into successive slices of at most *size* elements."""
+    return [turns[i : i + size] for i in range(0, len(turns), size)]
+
+
 def _make_slug(path: Path, turns: list[tuple[str, str]]) -> str:
     """Generate a suggested slug: session-YYYY-MM-DD-<topic-from-first-user-turn>."""
     try:
@@ -178,18 +186,37 @@ class SessionSkill(BaseSkill):
                 metadata={"format": fmt, "empty": True},
             )
 
-        blocks = []
-        for role, text in turns:
-            label = "[USER]" if role in ("user", "human") else "[ASSISTANT]"
-            blocks.append(f"{label}\n{text}")
-        output = "\n\n---\n\n".join(blocks)
+        chunks = _chunk_turns(turns, _CHUNK_SIZE)
+        total = len(chunks)
+
+        def _render_chunk(chunk: list[tuple[str, str]]) -> str:
+            blocks = []
+            for role, text in chunk:
+                label = "[USER]" if role in ("user", "human") else "[ASSISTANT]"
+                blocks.append(f"{label}\n{text}")
+            return "\n\n---\n\n".join(blocks)
+
+        if total == 1:
+            output = _render_chunk(chunks[0])
+            metadata: dict = {
+                "format": fmt,
+                "turn_count": len(turns),
+                "suggested_slug": _make_slug(path, turns),
+            }
+        else:
+            parts = []
+            for i, chunk in enumerate(chunks, 1):
+                parts.append(f"## Part {i} of {total}\n\n{_render_chunk(chunk)}")
+            output = "\n\n---\n\n".join(parts)
+            metadata = {
+                "format": fmt,
+                "turn_count": len(turns),
+                "chunk_total": total,
+                "suggested_slug": _make_slug(path, turns),
+            }
 
         return ExtractedContent(
             text=output,
             source_path=source,
-            metadata={
-                "format": fmt,
-                "turn_count": len(turns),
-                "suggested_slug": _make_slug(path, turns),
-            },
+            metadata=metadata,
         )
