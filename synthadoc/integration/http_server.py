@@ -1635,6 +1635,52 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             "cascade_links_removed_from": cascade_affected,
         }
 
+    @app.get("/pages/{slug}/history")
+    async def page_snapshot_history(
+        slug: str,
+        index: Optional[int] = None,
+        include_content: bool = False,
+        response: Response = None,
+    ):
+        response.headers["Cache-Control"] = "no-store"
+        audit = app.state.orch._audit
+        if index is not None:
+            snap = await audit.get_snapshot_by_index(slug, index)
+            if snap is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Snapshot index {index} not found for '{slug}'",
+                )
+            result = {
+                "slug": slug,
+                "index": snap["index"],
+                "timestamp": snap["timestamp"],
+                "from_state": snap["from_state"],
+                "to_state": snap["to_state"],
+                "reason": snap["reason"],
+                "triggered_by": snap["triggered_by"],
+                "content_length": len(snap["content_snapshot"] or ""),
+            }
+            if include_content:
+                result["content"] = snap["content_snapshot"]
+            return result
+        snapshots = await audit.list_page_snapshots(slug)
+        return {
+            "slug": slug,
+            "snapshots": [
+                {
+                    "index": s["index"],
+                    "timestamp": s["timestamp"],
+                    "from_state": s["from_state"],
+                    "to_state": s["to_state"],
+                    "reason": s["reason"],
+                    "triggered_by": s["triggered_by"],
+                    "content_length": s["content_length"],
+                }
+                for s in snapshots
+            ],
+        }
+
     # ── Export ────────────────────────────────────────────────────────────────
     @app.post("/export")
     async def export_wiki(req: ExportRequest):

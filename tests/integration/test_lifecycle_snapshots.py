@@ -198,3 +198,75 @@ def test_transition_stores_content_snapshot(tmp_wiki):
         assert page_body in snap["content_snapshot"]
 
     asyncio.run(_check())
+
+
+# ── Task 4 tests ────────────────────────────────────────────────────────────
+
+def _make_wiki_with_snapshots(tmp_wiki):
+    """Write a page with two lifecycle transitions so the audit DB has snapshots."""
+    import asyncio
+    from synthadoc.storage.log import AuditDB
+
+    wiki_dir = tmp_wiki / "wiki"
+    (wiki_dir / "hist-page.md").write_text(
+        "---\ntitle: Hist\nstatus: draft\nconfidence: medium\ntags: []\nsources: []\n---\n\nBody v1.\n",
+        encoding="utf-8",
+    )
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+
+    async def _seed():
+        await audit.init()
+        await audit.record_lifecycle_event(
+            "hist-page", "draft", "active", "r1", "user",
+            content_snapshot="Body v1.",
+        )
+        await audit.record_lifecycle_event(
+            "hist-page", "active", "archived", "r2", "user",
+            content_snapshot="Body v2.",
+        )
+    asyncio.run(_seed())
+
+
+def test_history_endpoint_list(tmp_wiki):
+    """GET /pages/{slug}/history returns a summary list, newest first."""
+    from fastapi.testclient import TestClient
+    from synthadoc.integration.http_server import create_app
+    _make_wiki_with_snapshots(tmp_wiki)
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.get("/pages/hist-page/history")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["slug"] == "hist-page"
+    snaps = data["snapshots"]
+    assert len(snaps) == 2
+    assert snaps[0]["index"] == 1          # newest first
+    assert snaps[0]["to_state"] == "archived"
+    assert "content_snapshot" not in snaps[0]  # content not in list view
+    assert "content_length" in snaps[0]
+    assert resp.headers.get("cache-control") == "no-store"
+
+
+def test_history_endpoint_single_no_content(tmp_wiki):
+    """GET /pages/{slug}/history?index=1 without include_content omits the body."""
+    from fastapi.testclient import TestClient
+    from synthadoc.integration.http_server import create_app
+    _make_wiki_with_snapshots(tmp_wiki)
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.get("/pages/hist-page/history?index=1")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["index"] == 1
+    assert "content" not in data
+
+
+def test_history_endpoint_single_with_content(tmp_wiki):
+    """GET /pages/{slug}/history?index=1&include_content=true returns Markdown."""
+    from fastapi.testclient import TestClient
+    from synthadoc.integration.http_server import create_app
+    _make_wiki_with_snapshots(tmp_wiki)
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.get("/pages/hist-page/history?index=1&include_content=true")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["index"] == 1
+    assert "Body v2." in data["content"]  # index 1 = newest = archived snapshot
