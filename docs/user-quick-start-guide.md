@@ -722,6 +722,41 @@ konrad-zuse   draft   active  lint    2026-05-28T18:31:23  lint passed
 
 > For enterprise wikis, this trail answers the compliance questions: "when was this page reviewed, by what process, and why was it changed?" — without requiring anyone to maintain that record manually.
 
+#### Snapshots and content recovery
+
+Every time you activate, archive, or restore a page, Synthadoc saves the page body
+at that moment. This gives you a built-in version history at each lifecycle boundary.
+
+**View the snapshot history for a page:**
+```
+synthadoc lifecycle history quantum-computing -w my-wiki
+```
+
+**Inspect the full body at a specific snapshot:**
+```
+synthadoc lifecycle history quantum-computing --index 1 --show-content -w my-wiki
+```
+
+**Redirect to a file for comparison or manual editing:**
+```
+synthadoc lifecycle history quantum-computing --index 1 --show-content -w my-wiki > before-archive.md
+diff before-archive.md wiki/quantum-computing.md
+```
+
+**Restore the page body to a previous snapshot:**
+```
+synthadoc lifecycle rollback quantum-computing --index 1 \
+  --reason "reverting accidental edit" -w my-wiki
+```
+
+The rollback saves the current body as its own snapshot before overwriting, so you can
+undo the rollback by rolling back to that new snapshot index.
+
+**Common use cases:**
+- Recover content that was overwritten before archiving
+- Audit what a page said when it was first activated
+- Compare two lifecycle versions with `diff`
+
 ---
 
 <a name="resolve-contradiction"></a>

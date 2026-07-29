@@ -701,6 +701,7 @@ Immutable append-only audit log of every lifecycle transition.
 | `reason` | TEXT | Human-readable reason (empty string if none provided) |
 | `triggered_by` | TEXT | `ingest`, `lint`, `cli`, `api` |
 | `timestamp` | TEXT | UTC ISO-8601 |
+| `content_snapshot` | TEXT | NULL | Full page body at transition; NULL for lint/ingest events |
 
 ### jobs.db — Job queue
 
@@ -768,6 +769,8 @@ Note: BM25 IDF requires a minimum of 3 documents in the corpus for non-zero scor
 | `GET` | `/sessions` _(v0.8.0)_ | — | `[{session_id, first_q, last_active, turn_count, questions: [str]}]` |
 | `GET` | `/sessions/{session_id}/messages` _(v0.8.0)_ | — | `[{role, content, timestamp}]` |
 | `GET` | `/graph` _(v1.0.0)_ | — | `{status, node_count, edge_count, cluster_count, nodes: [...], edges: [...]}` or `{status: "computing"}` on first call |
+| `GET` | `/pages/{slug}/history` | `?index=N&include_content=true` | List content snapshots; ?index=N&include_content=true for single |
+| `POST` | `/pages/{slug}/rollback` | `{index: int, reason?: str}` | Restore page body to snapshot N |
 
 **`GET /jobs` query parameters:**
 
@@ -970,7 +973,9 @@ synthadoc
 │   ├── activate <slug> [-w wiki] [--reason "<str>"]
 │   ├── archive  <slug> [-w wiki] [--reason "<str>"]
 │   ├── restore  <slug> [-w wiki] [--reason "<str>"]
-│   └── log      [slug] [-w wiki] [--state <state>]
+│   ├── log      [slug] [-w wiki] [--state <state>]
+│   ├── history  <slug> [-w wiki] [--index N] [--show-content]    list content snapshots (newest first)
+│   └── rollback <slug> [-w wiki] [--index N] [--reason "<str>"]  restore page body to a snapshot
 ├── audit
 │   ├── history [-w wiki] [--limit N] [--json]
 │   ├── cost [-w wiki] [--days N] [--json]
@@ -2390,6 +2395,25 @@ url_staleness_days = 90          # 0 = never mark URL sources stale (default)
 [lint]
 check_url_availability = true    # default: false — adds a network call per URL source during lint
 ```
+
+### Page Content Snapshots
+
+When the user activates, archives, or restores a page via the CLI, MCP tool, or REST
+API, the page body (`WikiPage.content`) is captured in the `content_snapshot` column of
+the triggering `lifecycle_events` row.
+
+Lint-agent and ingest-agent transitions do not capture snapshots — they do not change
+page content.
+
+Snapshots are indexed 1-based, newest first. Index 1 always refers to the most recent
+transition that has a snapshot. The rollback operation:
+
+1. Records the current body as a new snapshot (making rollback undoable).
+2. Writes the target snapshot body to the `.md` file on disk.
+3. Does **not** change `page_states` or call `set_page_state`.
+
+Storage: ~3 KB per snapshot. Existing `purge_lifecycle_events()` removes rows
+(and their snapshots) on `--before` or `--keep-latest` purge.
 
 ---
 
