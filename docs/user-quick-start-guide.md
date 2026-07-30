@@ -824,6 +824,11 @@ synthadoc lifecycle rollback konrad-zuse --index 1 \
 - Compare the activation body to the current version with `diff` before deciding whether to roll back
 - Restore a page to a known-good state after a failed re-ingest
 
+> **Coming in v1.2 — Obsidian UI for snapshots:** The **Manage Page Lifecycle** modal
+> will gain a **Content Snapshots** tab that lets you browse all snapshot history, read
+> and diff snapshot content against the current version, and roll back — all without
+> leaving Obsidian or touching the CLI.
+
 ---
 
 <a name="resolve-contradiction"></a>
@@ -2697,7 +2702,7 @@ All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synt
 
 | Command                            | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Synthadoc: Manage Page Lifecycle` | Sortable, filterable, paginated table of all wiki pages with their current lifecycle state (`draft`, `active`, `contradicted`, `stale`, `archived`) and last transition timestamp. State filter checkboxes narrow the table. Click column headers to sort. Each row shows valid transition action buttons — click to trigger a transition; a reason dialog appears before committing. Draft and stale badge links on the lint modal and jobs panel open this table pre-filtered to that state. |
+| `Synthadoc: Manage Page Lifecycle` | Two-tab modal. **Current States tab** — sortable, filterable, paginated table of all wiki pages with their current lifecycle state (`draft`, `active`, `contradicted`, `stale`, `archived`) and last transition timestamp. State filter checkboxes narrow the table. Click column headers to sort. Each row shows valid transition action buttons — click to trigger a transition; a reason dialog appears before committing. Draft and stale badge links on the lint modal and jobs panel open this table pre-filtered to that state. **Audit Log tab** — full history of every lifecycle state transition across all pages; searchable by slug, filterable by target state, sortable by any column, with pagination. Each row shows slug, From state, To state, triggered-by (`ingest`, `lint`, `cli`, `api`), timestamp, and reason. |
 
 ### Audit
 
