@@ -765,6 +765,14 @@ synthadoc lifecycle restore <slug> -w my-wiki --reason "source re-added"
 synthadoc lifecycle log <slug> -w my-wiki
 synthadoc lifecycle log -w my-wiki
 
+# Browse content snapshots captured at each lifecycle transition
+synthadoc lifecycle history <slug> -w my-wiki
+synthadoc lifecycle history <slug> --index 1 -w my-wiki            # inspect newest snapshot
+synthadoc lifecycle history <slug> --index 2 --show-content -w my-wiki  # print full body
+
+# Restore the page body to a prior snapshot (rollback is itself snapshotted, so it is undoable)
+synthadoc lifecycle rollback <slug> --index 2 --reason "restoring original body" -w my-wiki
+
 # Purge old lifecycle events to reclaim audit.db space
 synthadoc audit lifecycle purge -w my-wiki --before 2026-01-01
 synthadoc audit lifecycle purge -w my-wiki --keep-latest 100
