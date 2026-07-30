@@ -346,6 +346,11 @@ class LifecycleTransitionRequest(BaseModel):
     reason: str
 
 
+class RollbackRequest(BaseModel):
+    index: int
+    reason: str
+
+
 class ExportRequest(BaseModel):
     format: str
     status_filter: str = "all"
@@ -1618,7 +1623,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         audit = app.state.orch._audit
         await audit.set_page_state(req.slug, req.to_state, TriggerSource.USER)
         await audit.record_lifecycle_event(req.slug, from_state, req.to_state,
-                                            req.reason, TriggerSource.USER)
+                                            req.reason, TriggerSource.USER,
+                                            content_snapshot=page.content)
         orch._bump_epoch()
         cascade_affected: list[str] = []
         if req.to_state == LifecycleState.ARCHIVED:
@@ -1632,6 +1638,95 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             "to_state": req.to_state,
             "timestamp": ts,
             "cascade_links_removed_from": cascade_affected,
+        }
+
+    @app.get("/pages/{slug}/history")
+    async def page_snapshot_history(
+        slug: str,
+        response: Response,
+        index: Optional[int] = None,
+        include_content: bool = False,
+    ):
+        response.headers["Cache-Control"] = "no-store"
+        audit = app.state.orch._audit
+        if index is not None:
+            snap = await audit.get_snapshot_by_index(slug, index)
+            if snap is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Snapshot index {index} not found for '{slug}'",
+                )
+            result = {
+                "slug": slug,
+                "index": snap["index"],
+                "timestamp": snap["timestamp"],
+                "from_state": snap["from_state"],
+                "to_state": snap["to_state"],
+                "reason": snap["reason"],
+                "triggered_by": snap["triggered_by"],
+                "content_length": len(snap["content_snapshot"] or ""),
+            }
+            if include_content:
+                result["content"] = snap["content_snapshot"]
+            return result
+        snapshots = await audit.list_page_snapshots(slug)
+        return {
+            "slug": slug,
+            "snapshots": [
+                {
+                    "index": s["index"],
+                    "timestamp": s["timestamp"],
+                    "from_state": s["from_state"],
+                    "to_state": s["to_state"],
+                    "reason": s["reason"],
+                    "triggered_by": s["triggered_by"],
+                    "content_length": s["content_length"],
+                }
+                for s in snapshots
+            ],
+        }
+
+    @app.post("/pages/{slug}/rollback")
+    async def page_rollback(slug: str, req: RollbackRequest, response: Response):
+        response.headers["Cache-Control"] = "no-store"
+        orch = app.state.orch
+        audit = orch._audit
+
+        page = orch._store.read_page(slug)
+        if page is None:
+            raise HTTPException(status_code=404, detail=f"Page not found: {slug}")
+
+        snap = await audit.get_snapshot_by_index(slug, req.index)
+        if snap is None or snap.get("content_snapshot") is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Snapshot index {req.index} not found for '{slug}'",
+            )
+
+        current_content = page.content
+        current_state = page.status
+
+        # Record the pre-rollback state as a new snapshot (makes rollback undoable)
+        await audit.record_lifecycle_event(
+            slug, current_state, current_state,
+            f"rollback:{req.index}:{req.reason}",
+            TriggerSource.USER,
+            content_snapshot=current_content,
+        )
+        rollback_event_index = 1  # always 1: newest id → index 1 (ORDER BY id DESC)
+
+        # Restore page body from the snapshot
+        page.content = snap["content_snapshot"]
+        orch._store.write_page(slug, page)
+        orch._bump_epoch()
+        orch._search.invalidate_index()
+
+        return {
+            "slug": slug,
+            "snapshot_index": req.index,
+            "snapshot_timestamp": snap["timestamp"],
+            "restored_chars": len(snap["content_snapshot"]),
+            "rollback_event_index": rollback_event_index,
         }
 
     # ── Export ────────────────────────────────────────────────────────────────

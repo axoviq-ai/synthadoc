@@ -24,6 +24,9 @@ It covers: **AI Research**.
 | Export (LLM text) | `synthadoc export -f llms-full.txt -w <wiki>` |
 | Export (JSON) | `synthadoc export -f json -w <wiki>` |
 | Export (OKF bundle) | `synthadoc export -f okf -o ./export-dir -w <wiki>` |
+| List content snapshots | `synthadoc lifecycle history <slug> -w <wiki>` |
+| View snapshot body | `synthadoc lifecycle history <slug> --index N --show-content -w <wiki>` |
+| Restore body to snapshot | `synthadoc lifecycle rollback <slug> --index N --reason "<reason>" -w <wiki>` |
 
 Replace `<wiki>` with your wiki name (the directory name, not the domain).
 
@@ -124,6 +127,15 @@ synthadoc lifecycle restore <slug> --reason "re-opening for update" -w <wiki>
 
 synthadoc lifecycle log -w <wiki>
 # full audit trail of all lifecycle events
+
+synthadoc lifecycle history <slug> -w <wiki>
+# list content snapshots for a page (captured at each state transition)
+
+synthadoc lifecycle history <slug> --index N --show-content -w <wiki>
+# view the full page body at snapshot N (1 = newest); pipe to a file to recover it
+
+synthadoc lifecycle rollback <slug> --index N --reason "<reason>" -w <wiki>
+# restore the page body to snapshot N; state is unchanged; the rollback is itself auditable
 ```
 
 ## Export

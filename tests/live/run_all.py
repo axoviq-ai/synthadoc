@@ -11,7 +11,7 @@ Options:
     --wiki NAME    Wiki name to test against (default: history-of-computing)
     --mcp-url URL  MCP SSE endpoint URL (default: <url>/mcp/sse)
     --suite NAME   Run only this suite; repeatable: --suite cli --suite mcp
-                   Choices: cli  mcp  plugin  (default: all three)
+                   Choices: cli  mcp  plugin  snapshots  (default: all four)
 
 Examples:
     # Run all suites against the default wiki (history-of-computing, port 7070)
@@ -49,9 +49,10 @@ def _configured_wiki() -> str:
 HERE = Path(__file__).parent
 
 SUITES = {
-    "cli":    "live_cli_test.py",
-    "mcp":    "live_mcp_test.py",
-    "plugin": "live_plugin_test.py",
+    "cli":       "live_cli_test.py",
+    "mcp":       "live_mcp_test.py",
+    "plugin":    "live_plugin_test.py",
+    "snapshots": "test_lifecycle_snapshots_live.py",
 }
 
 PASS = "\033[92mPASS\033[0m"
@@ -130,15 +131,17 @@ def main() -> None:
 
     # Per-suite CLI args (override env vars for explicit invocation)
     suite_args = {
-        "cli":    ["--wiki", args.wiki, "--url", base + "/"],
-        "mcp":    [],
-        "plugin": ["--wiki", args.wiki, "--url", base],
+        "cli":       ["--wiki", args.wiki, "--url", base + "/"],
+        "mcp":       [],
+        "plugin":    ["--wiki", args.wiki, "--url", base],
+        "snapshots": [],
     }
     # Per-suite environment
     suite_env = {
-        "cli":    {**os.environ, "WIKI_NAME": args.wiki, "SYNTHADOC_URL": base + "/"},
-        "mcp":    {**os.environ, "MCP_URL": mcp_url},
-        "plugin": {**os.environ, "WIKI_NAME": args.wiki, "SYNTHADOC_URL": base},
+        "cli":       {**os.environ, "WIKI_NAME": args.wiki, "SYNTHADOC_URL": base + "/"},
+        "mcp":       {**os.environ, "MCP_URL": mcp_url},
+        "plugin":    {**os.environ, "WIKI_NAME": args.wiki, "SYNTHADOC_URL": base},
+        "snapshots": {**os.environ, "SYNTHADOC_URL": base},
     }
 
     codes: dict[str, int] = {}

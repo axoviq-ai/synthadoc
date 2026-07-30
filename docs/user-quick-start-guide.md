@@ -722,6 +722,108 @@ konrad-zuse   draft   active  lint    2026-05-28T18:31:23  lint passed
 
 > For enterprise wikis, this trail answers the compliance questions: "when was this page reviewed, by what process, and why was it changed?" — without requiring anyone to maintain that record manually.
 
+#### Snapshots and content recovery
+
+Each time you manually activate, archive, or restore a page, Synthadoc automatically
+freezes the page body at that moment. These **content snapshots** give you a permanent
+record of what the page said at every lifecycle boundary — so you can see what was
+published, compare versions, and roll back accidental edits at any time.
+
+> Lint-driven transitions (draft → active, active → stale, etc.) do **not** capture
+> snapshots. Only manual transitions via `lifecycle activate`, `lifecycle archive`, and
+> `lifecycle restore` do.
+
+Snapshots are listed **newest-first**. Index 1 is always the most recent snapshot; older
+snapshots carry higher index numbers.
+
+---
+
+**Walkthrough: recovering the original content after an accidental edit**
+
+Suppose `konrad-zuse` was activated with a well-researched body (3,412 chars). You later
+edited the page and archived it — but the archived version lost some content (2,891
+chars). You want the original back.
+
+**Step 1 — Browse the snapshot history:**
+
+```bash
+synthadoc lifecycle history konrad-zuse -w history-of-computing
+```
+
+```
+Index  Timestamp (UTC)       From → To                     Content           Reason
+----------------------------------------------------------------------------------------------------
+    1  2026-07-15 14:22:05   active → archived              2,891 chars       retiring for demo
+    2  2026-05-10 09:14:33   draft → active                 3,412 chars       reviewed and verified
+```
+
+Index 1 is the archive transition (newest) — it captured the shorter edited body.
+Index 2 is the original activation — it captured the 3,412-char body you want back.
+
+**Step 2 — Preview the snapshot before committing to a rollback:**
+
+```bash
+synthadoc lifecycle history konrad-zuse --index 2 -w history-of-computing
+```
+
+```
+Snapshot 2  2026-05-10 09:14:33  draft → active
+Reason: reviewed and verified
+Content: 3,412 chars
+```
+
+Add `--show-content` to print the full body, or redirect to a file to diff it against
+the current version:
+
+```bash
+synthadoc lifecycle history konrad-zuse --index 2 --show-content \
+  -w history-of-computing > original.md
+diff original.md wiki/konrad-zuse.md
+```
+
+**Step 3 — Roll back to that snapshot:**
+
+```bash
+synthadoc lifecycle rollback konrad-zuse --index 2 \
+  --reason "restoring original activation body" -w history-of-computing
+```
+
+Synthadoc saves the current body as a new snapshot **before** overwriting — so the
+rollback is always undoable — then replaces the page body with the content from
+snapshot 2.
+
+**Step 4 — Confirm: the history now has three entries:**
+
+```bash
+synthadoc lifecycle history konrad-zuse -w history-of-computing
+```
+
+```
+Index  Timestamp (UTC)       From → To                     Content           Reason
+----------------------------------------------------------------------------------------------------
+    1  2026-07-29 09:35:12   archived → archived            2,891 chars       rollback:2:restoring original…
+    2  2026-07-15 14:22:05   active → archived              2,891 chars       retiring for demo
+    3  2026-05-10 09:14:33   draft → active                 3,412 chars       reviewed and verified
+```
+
+Index 1 is the rollback record — it holds the body that was just replaced. The page body
+is now restored to 3,412 chars from snapshot 3.
+
+**To undo the rollback**, simply roll back to index 1:
+
+```bash
+synthadoc lifecycle rollback konrad-zuse --index 1 \
+  --reason "undoing rollback" -w history-of-computing
+```
+
+---
+
+**Common use cases:**
+- Recover content that was overwritten by an accidental edit before archiving
+- Audit exactly what a page said when it first went live
+- Compare the activation body to the current version with `diff` before deciding whether to roll back
+- Restore a page to a known-good state after a failed re-ingest
+
 ---
 
 <a name="resolve-contradiction"></a>
