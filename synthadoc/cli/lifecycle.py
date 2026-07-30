@@ -86,3 +86,70 @@ def lifecycle_log(
             f"{e['slug']:<25} {(e['from_state'] or 'null'):<14} {e['to_state']:<14}"
             f" {e['triggered_by']:<12} {e['timestamp'][:19]:<22} {e.get('reason', '')}"
         )
+
+
+@lifecycle_app.command("history")
+def lifecycle_history(
+    slug: str = typer.Argument(..., help="Page slug"),
+    wiki: Optional[str] = typer.Option(None, "--wiki", "-w"),
+    index: Optional[int] = typer.Option(None, "--index", help="Snapshot index (1 = newest)"),
+    show_content: bool = typer.Option(False, "--show-content", help="Print full snapshot body"),
+    as_json: bool = typer.Option(False, "--json", help="Machine-readable JSON output"),
+) -> None:
+    """List content snapshots for a page, or view a specific one."""
+    params: dict = {}
+    if index is not None:
+        params["index"] = index
+        if show_content:
+            params["include_content"] = "true"
+
+    result = get(resolve_wiki(wiki), f"/pages/{slug}/history", **params)
+
+    if as_json:
+        import json as _json
+        typer.echo(_json.dumps(result, indent=2))
+        return
+
+    if index is not None:
+        # Single snapshot view
+        ts = result.get("timestamp", "")[:19]
+        typer.echo(f"Snapshot {result['index']}  {ts}  {result.get('from_state','?')} → {result['to_state']}")
+        typer.echo(f"Reason: {result.get('reason', '')}")
+        typer.echo(f"Content: {result.get('content_length', 0):,} chars")
+        if show_content and "content" in result:
+            typer.echo("\n" + result["content"])
+        return
+
+    # List view
+    snapshots = result.get("snapshots", [])
+    if not snapshots:
+        typer.echo(f"No snapshots recorded for '{slug}'.")
+        return
+    typer.echo(f"{'Index':>5}  {'Timestamp (UTC)':<20}  {'From → To':<28}  {'Content':<16}  Reason")
+    typer.echo("-" * 100)
+    for s in snapshots:
+        ts = s.get("timestamp", "")[:19]
+        transition = f"{s.get('from_state') or 'null'} → {s['to_state']}"
+        chars = f"{s.get('content_length', 0):,} chars"
+        reason = (s.get("reason") or "")[:40]
+        typer.echo(f"{s['index']:>5}  {ts:<20}  {transition:<28}  {chars:<16}  {reason}")
+
+
+@lifecycle_app.command("rollback")
+def lifecycle_rollback(
+    slug: str = typer.Argument(..., help="Page slug to restore"),
+    wiki: Optional[str] = typer.Option(None, "--wiki", "-w"),
+    index: int = typer.Option(..., "--index", help="Snapshot index to restore (1 = newest)"),
+    reason: str = typer.Option(..., "--reason", help="Reason for rollback (required)"),
+) -> None:
+    """Restore page content to a previous snapshot. State is unchanged."""
+    result = post(resolve_wiki(wiki), f"/pages/{slug}/rollback", {
+        "index": index,
+        "reason": reason,
+    })
+    ts = result.get("snapshot_timestamp", "")[:19]
+    typer.echo(f"Rolled back {slug} to snapshot {index} ({ts})")
+    typer.echo(f"Restored {result.get('restored_chars', 0):,} chars.")
+    rb_idx = result.get("rollback_event_index")
+    if rb_idx:
+        typer.echo(f"Pre-rollback content saved as snapshot {rb_idx}. Use --index {rb_idx} to undo.")

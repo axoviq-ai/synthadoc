@@ -9,7 +9,7 @@ from typing import Callable, Optional
 
 import aiosqlite
 
-DB_SCHEMA_VERSION: int = 3
+DB_SCHEMA_VERSION: int = 4
 
 CITATION_EXCERPT_LEN = 100
 
@@ -133,13 +133,14 @@ class AuditDB:
                 )""")
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS lifecycle_events (
-                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                    slug         TEXT NOT NULL,
-                    from_state   TEXT,
-                    to_state     TEXT NOT NULL,
-                    reason       TEXT,
-                    triggered_by TEXT NOT NULL,
-                    timestamp    TEXT NOT NULL
+                    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                    slug             TEXT NOT NULL,
+                    from_state       TEXT,
+                    to_state         TEXT NOT NULL,
+                    reason           TEXT,
+                    triggered_by     TEXT NOT NULL,
+                    timestamp        TEXT NOT NULL,
+                    content_snapshot TEXT DEFAULT NULL
                 )""")
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS scheduled_runs (
@@ -193,6 +194,7 @@ class AuditDB:
                 "ALTER TABLE chat_messages ADD COLUMN citations TEXT DEFAULT NULL",
                 "ALTER TABLE chat_messages ADD COLUMN gap_suggestions TEXT DEFAULT NULL",
                 "ALTER TABLE graph_edges ADD COLUMN edge_type TEXT NOT NULL DEFAULT 'mixed'",
+                "ALTER TABLE lifecycle_events ADD COLUMN content_snapshot TEXT DEFAULT NULL",
             ):
                 try:
                     await db.execute(migration)
@@ -492,14 +494,15 @@ class AuditDB:
     async def record_lifecycle_event(
         self, slug: str, from_state: Optional[str], to_state: str,
         reason: str, triggered_by: str,
+        content_snapshot: Optional[str] = None,   # ← new
     ) -> None:
         ts = datetime.now(timezone.utc).isoformat()
         async with aiosqlite.connect(self._path) as db:
             await db.execute(
                 "INSERT INTO lifecycle_events"
-                " (slug,from_state,to_state,reason,triggered_by,timestamp)"
-                " VALUES (?,?,?,?,?,?)",
-                (slug, from_state, to_state, reason or "", triggered_by, ts),
+                " (slug,from_state,to_state,reason,triggered_by,timestamp,content_snapshot)"
+                " VALUES (?,?,?,?,?,?,?)",
+                (slug, from_state, to_state, reason or "", triggered_by, ts, content_snapshot),
             )
             await db.commit()
 
@@ -533,6 +536,48 @@ class AuditDB:
             ) as cur:
                 rows = await cur.fetchall()
         return [dict(r) for r in rows], total
+
+    async def list_page_snapshots(self, slug: str) -> list[dict]:
+        """Return events for *slug* with non-NULL content_snapshot, newest first.
+
+        Each dict includes index (1-based), id, slug, from_state, to_state,
+        reason, triggered_by, timestamp, content_length. The content_snapshot
+        text is NOT included — call get_snapshot_by_index() to fetch it.
+        """
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT id, slug, from_state, to_state, reason, triggered_by,"
+                " timestamp, LENGTH(content_snapshot) AS content_length"
+                " FROM lifecycle_events"
+                " WHERE slug = ? AND content_snapshot IS NOT NULL"
+                " ORDER BY id DESC",
+                (slug,),
+            ) as cur:
+                rows = await cur.fetchall()
+        return [{"index": i, **dict(row)} for i, row in enumerate(rows, 1)]
+
+    async def get_snapshot_by_index(self, slug: str, index: int) -> Optional[dict]:
+        """Return the Nth snapshot (1 = newest) with full content_snapshot text.
+
+        Returns None when index is out of range.
+        """
+        snapshots = await self.list_page_snapshots(slug)
+        if index < 1 or index > len(snapshots):
+            return None
+        target_id = snapshots[index - 1]["id"]
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT id, slug, from_state, to_state, reason, triggered_by,"
+                " timestamp, content_snapshot"
+                " FROM lifecycle_events WHERE id = ?",
+                (target_id,),
+            ) as cur:
+                row = await cur.fetchone()
+        if row is None:
+            return None
+        return {"index": index, **dict(row)}
 
     async def get_all_page_states(self) -> list:
         async with aiosqlite.connect(self._path) as db:

@@ -192,6 +192,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | --- | --- | --- | --- | --- |
 | **Local-first + offline artifact** — source documents never leave your machine; compiled wiki is plain Markdown, fully readable offline in any editor without the server | **Yes** | Varies | No | No |
 | **[Portable backup / restore](docs/design.md#28-backup--restore)** — single zip: wiki pages + audit/lifecycle DB + config; port and domain rewriting on restore; migrate machines without re-ingesting | **Yes** | No — re-ingest required | No — AI metadata lost | No |
+| **[Lifecycle content snapshots + rollback](docs/user-quick-start-guide.md#snapshots-and-content-recovery)** — page body frozen at every manual lifecycle transition; browse per-page version history with `lifecycle history` (newest-first, with reason); restore any prior version with `lifecycle rollback`; rollback saves the current body first so it is always undoable | **Yes** | No | No | Partial — Notion has time-based edit history (plan-gated, no lifecycle tie, no auditable rollback) |
 | **[Cost guard + full audit trail](docs/user-quick-start-guide.md#step-15--audit-features)** — per-job token + cost log; soft-warn and hard-gate thresholds; `audit citations` validates every claim citation; immutable event log | **Yes** | No | No | No |
 | **[Resumable job queue + retry](docs/design.md#14-job-queue)** — every ingest/lint job persisted with status and error; batch a hundred documents and resume after a crash | **Yes** | No | No | No |
 | **[Custom skills + CI hooks](docs/design.md#11-hook-system)** — subclass `BaseSkill` for new file formats; 2 hook events (`on_ingest_complete` + `on_lint_complete`); example git auto-commit hook included; blocking hooks can gate operations | **Yes** | Limited | No | No |
@@ -767,10 +768,23 @@ synthadoc lifecycle restore <slug> -w my-wiki --reason "source re-added"
 synthadoc lifecycle log <slug> -w my-wiki
 synthadoc lifecycle log -w my-wiki
 
+# Browse content snapshots captured at each lifecycle transition
+synthadoc lifecycle history <slug> -w my-wiki
+synthadoc lifecycle history <slug> --index 1 -w my-wiki            # inspect newest snapshot
+synthadoc lifecycle history <slug> --index 2 --show-content -w my-wiki  # print full body
+
+# Restore the page body to a prior snapshot (rollback is itself snapshotted, so it is undoable)
+synthadoc lifecycle rollback <slug> --index 2 --reason "restoring original body" -w my-wiki
+
 # Purge old lifecycle events to reclaim audit.db space
 synthadoc audit lifecycle purge -w my-wiki --before 2026-01-01
 synthadoc audit lifecycle purge -w my-wiki --keep-latest 100
 ```
+
+Synthadoc automatically captures the page body each time you activate, archive, or
+restore a page. Use `synthadoc lifecycle history <slug>` to browse snapshots and
+`synthadoc lifecycle rollback <slug> --index N --reason "..."` to restore any prior
+version — the rollback itself is recorded as an auditable event so it can be undone.
 
 ### Monitoring jobs
 

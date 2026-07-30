@@ -88,8 +88,10 @@ asyncio_mode = "auto"
 timeout = 60
 testpaths = ["tests"]
 addopts = "-m 'not integration and not charts'"
+norecursedirs = ["tests/live", "tests/performance"]
 markers = [
     "integration: marks tests that require real external tools (run explicitly with '-m integration')",
+    "live: marks tests that require a running Synthadoc server (run explicitly with '-m live')",
     "windows: marks tests that run only on Windows",
     "linux: marks tests that run only on Linux",
     "macos: marks tests that run only on macOS",
