@@ -71,6 +71,9 @@ vi.mock("./api", () => ({
         lifecycleTransition: vi.fn(), deleteJob: vi.fn(),
         exportWiki: vi.fn(),
         queryStream: vi.fn(), createSession: vi.fn(),
+        snapshotList: vi.fn(),
+        pageRollback: vi.fn(),
+        lifecycleEventsPurge: vi.fn(),
     },
     setBase: vi.fn(),
 }));
@@ -620,6 +623,9 @@ async function getModal(commandId: string, appOverride?: any): Promise<{ ModalCl
             exportWiki: vi.fn(),
             queryStream: vi.fn().mockRejectedValue(new Error("streaming unavailable")),
             createSession: vi.fn(),
+            snapshotList: vi.fn(),
+            pageRollback: vi.fn(),
+            lifecycleEventsPurge: vi.fn(),
         },
         setBase: vi.fn(),
     };
