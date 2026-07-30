@@ -824,10 +824,10 @@ synthadoc lifecycle rollback konrad-zuse --index 1 \
 - Compare the activation body to the current version with `diff` before deciding whether to roll back
 - Restore a page to a known-good state after a failed re-ingest
 
-> **Coming in v1.2 — Obsidian UI for snapshots:** The **Manage Page Lifecycle** modal
-> will gain a **Content Snapshots** tab that lets you browse all snapshot history, read
-> and diff snapshot content against the current version, and roll back — all without
-> leaving Obsidian or touching the CLI.
+> **Obsidian UI for snapshots:** The **Manage Page Lifecycle** modal includes a
+> **Content Snapshots** tab where you can browse all snapshot history, read and diff
+> snapshot content against the current version, and roll back — all without leaving
+> Obsidian or touching the CLI.
 
 ---
 
