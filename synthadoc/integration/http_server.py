@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, Response
 from synthadoc.core.queue import JobStatus
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional
 
 import logging
@@ -349,6 +349,19 @@ class LifecycleTransitionRequest(BaseModel):
 class RollbackRequest(BaseModel):
     index: int
     reason: str
+
+
+class PurgeEventsRequest(BaseModel):
+    keep_latest: Optional[int] = None
+    before_date: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _exactly_one(self) -> "PurgeEventsRequest":
+        has_keep = self.keep_latest is not None
+        has_date = self.before_date is not None
+        if has_keep == has_date:   # both set or neither set
+            raise ValueError("Exactly one of keep_latest or before_date must be provided")
+        return self
 
 
 class ExportRequest(BaseModel):
@@ -1685,6 +1698,19 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                 for s in snapshots
             ],
         }
+
+    @app.get("/snapshots")
+    async def get_all_snapshots(slug: Optional[str] = None) -> JSONResponse:
+        rows = await app.state.orch._audit.list_all_snapshots(slug_filter=slug)
+        return JSONResponse({"snapshots": rows}, headers={"Cache-Control": "no-store"})
+
+    @app.post("/lifecycle/events/purge")
+    async def purge_lifecycle_events_endpoint(req: PurgeEventsRequest) -> JSONResponse:
+        await app.state.orch._audit.purge_lifecycle_events(
+            before_date=req.before_date,
+            keep_latest=req.keep_latest,
+        )
+        return JSONResponse({"purged": True}, headers={"Cache-Control": "no-store"})
 
     @app.post("/pages/{slug}/rollback")
     async def page_rollback(slug: str, req: RollbackRequest, response: Response):
