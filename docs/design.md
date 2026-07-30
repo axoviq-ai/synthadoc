@@ -2360,6 +2360,14 @@ synthadoc lifecycle restore  <slug> -w <wiki> [--reason "..."]
 synthadoc lifecycle log      [slug] -w <wiki> [--state <state>]
     Print the event log for one page (or all pages). Filter by to_state with --state.
 
+synthadoc lifecycle history  <slug> -w <wiki> [--index <n>] [--show-content] [--json]
+    List content snapshots captured at lifecycle transitions (newest first).
+    --index <n> inspects a single snapshot; --show-content prints the full body.
+
+synthadoc lifecycle rollback <slug> -w <wiki> --index <n> --reason "..."
+    Restore the page body from snapshot <n>. The current body is saved as a new
+    snapshot first, so every rollback is undoable.
+
 synthadoc audit lifecycle purge -w <wiki> --before <date>
     Delete lifecycle events older than <date> (ISO-8601, e.g. 2026-01-01).
 
@@ -3352,7 +3360,7 @@ All three files share identical body content generated from the same template; t
 - **Ingest creates draft pages** — all new pages are created with `status: draft` instead of `active`; pages must pass a lint run to be promoted
 - **LintAgent lifecycle checks** — four automated checks run at the end of every lint pass: archived detection (source file missing → `archived`), stale detection (source hash mismatch → `stale`), draft promotion (draft + no active issues → `active`), manual-edit sync (frontmatter `status` ≠ DB → reconcile); skipped when `--no-lifecycle` is passed
 - **Auto-retention** — `[audit] lifecycle_retention_days = N` in `config.toml` prunes old `lifecycle_events` at the end of each lint run; `0` = keep forever (default)
-- **Lifecycle CLI** — `synthadoc lifecycle activate/archive/restore/log`, `synthadoc status` extended with per-state counts, `synthadoc audit lifecycle purge --before / --keep-latest`
+- **Lifecycle CLI** — `synthadoc lifecycle activate/archive/restore/log/history/rollback`, `synthadoc status` extended with per-state counts, `synthadoc audit lifecycle purge --before / --keep-latest`
 - **Lifecycle HTTP API** — `GET /lifecycle/status`, `GET /lifecycle/events`, `POST /lifecycle/transition`
 - **Lifecycle Obsidian plugin** — `Synthadoc: Manage Page Lifecycle` command opens `LifecycleModal`: sortable, filterable, paginated table of all pages with current state and last transition; valid transition action buttons per row; `ReasonModal` prompts for reason before committing; draft/stale badge links on lint modal and jobs panel open the table pre-filtered
 - **Export formats** — `synthadoc export --format <fmt>` serializes the wiki in four formats assembled server-side with zero LLM calls: `llms.txt` (navigation index per llmstxt.org spec — active pages in `## Pages`, contradicted/stale in `## Needs Review`, archived omitted); `llms-full.txt` (flat content dump with `---` separators, provenance footnotes preserved verbatim, no size limit); `graphml` (standard GraphML 1.1 — node attributes include `label`/`title`, `status`, `confidence`, `orphan`, `inbound_link_count`, `routing_branch`; edges=wikilinks; dual-label support: `label` key for Gephi/Cytoscape, `y:NodeLabel` for yEd; no position data — run tool layout after import); `json` (agent-ready dump with `claims[]`, `lifecycle_history[]`, per-page `ingest_cost_usd` and `ingest_tokens`, `total_compilation_cost_usd`, `routing.branch_memberships`); all formats accept `--status` filter (`all`/`active`/`draft`/`stale`/`contradicted`/`archived`); `POST /export` endpoint accepts `{format, status_filter}`; Obsidian **Export Wiki** command — format dropdown, full-width output path, status filter, Export button, View Graph inline preview button (graphml only)
