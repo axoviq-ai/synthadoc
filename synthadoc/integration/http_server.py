@@ -355,6 +355,16 @@ class PurgeEventsRequest(BaseModel):
     keep_latest: Optional[int] = None
     before_date: Optional[str] = None
 
+    @field_validator("before_date")
+    @classmethod
+    def _validate_date_format(cls, v: Optional[str]) -> Optional[str]:
+        import re as _re
+        if v is None:
+            return v
+        if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+            raise ValueError("before_date must be in YYYY-MM-DD format")
+        return v
+
     @model_validator(mode="after")
     def _exactly_one(self) -> "PurgeEventsRequest":
         has_keep = self.keep_latest is not None

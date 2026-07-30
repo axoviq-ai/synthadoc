@@ -515,3 +515,13 @@ def test_purge_endpoint_rejects_neither_param(tmp_wiki):
     with TestClient(create_app(wiki_root=tmp_wiki)) as client:
         resp = client.post("/lifecycle/events/purge", json={})
     assert resp.status_code == 422
+
+
+def test_purge_endpoint_rejects_invalid_date_format(tmp_wiki):
+    """POST /lifecycle/events/purge with a malformed date returns 422."""
+    from fastapi.testclient import TestClient
+    from synthadoc.integration.http_server import create_app
+    for bad_date in ["foobar", "2026/01/01", "26-01-01", "2026-1-1"]:
+        with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+            resp = client.post("/lifecycle/events/purge", json={"before_date": bad_date})
+        assert resp.status_code == 422, f"Expected 422 for before_date={bad_date!r}, got {resp.status_code}"

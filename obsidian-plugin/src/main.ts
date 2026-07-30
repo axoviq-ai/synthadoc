@@ -4037,7 +4037,6 @@ export class LifecycleModal extends Modal {
             const activeFile = this.app.workspace.getActiveFile?.();
             if (!activeFile) return;
             if (!activeFile.path.endsWith(`wiki/${slug}.md`)) return;
-            await this.app.vault.adapter.read(activeFile.path);
             const view = this.app.workspace.getActiveViewOfType?.(MarkdownView);
             if (view) view.editor?.refresh();
         } catch { /* non-fatal */ }
