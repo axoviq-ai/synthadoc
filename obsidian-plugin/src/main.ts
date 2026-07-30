@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Paul Chen / axoviq.com
-import { App, FileSystemAdapter, MarkdownRenderer, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile } from "obsidian";
+import { App, FileSystemAdapter, MarkdownRenderer, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile } from "obsidian";
 import { api, setBase, getBase } from "./api";
 import { GraphModal } from "./graph-modal";
 
@@ -4012,12 +4012,35 @@ export class LifecycleModal extends Modal {
         if (this._snapRows.length > 0) await this._fetchSnapshots();
     }
 
-    private _openSnapshotContent(_snap: any): void {
-        // implemented in Task 4
+    private async _openSnapshotContent(snap: any): Promise<void> {
+        let content = "";
+        try {
+            const data = await api.lifecycleHistory(snap.slug, snap.snap_index) as any;
+            content = data.content ?? "";
+        } catch { /* non-fatal — show empty content */ }
+
+        new SnapshotContentModal(
+            this.app,
+            this.wikiRoot,
+            { ...snap, content },
+            (slug: string) => {
+                this._snapHighlightSlug = slug;
+                this._snapHighlightIndex = 1;
+                this._fetchSnapshots();
+                this._reloadIfActive(slug);
+            }
+        ).open();
     }
 
-    private async _reloadIfActive(_slug: string): Promise<void> {
-        // implemented in Task 4
+    private async _reloadIfActive(slug: string): Promise<void> {
+        try {
+            const activeFile = this.app.workspace.getActiveFile?.();
+            if (!activeFile) return;
+            if (!activeFile.path.endsWith(`wiki/${slug}.md`)) return;
+            await this.app.vault.adapter.read(activeFile.path);
+            const view = this.app.workspace.getActiveViewOfType?.(MarkdownView);
+            if (view) view.editor?.refresh();
+        } catch { /* non-fatal */ }
     }
 
     private _filteredPages(): any[] {
@@ -4635,6 +4658,197 @@ class GraphViewModal extends Modal {
 
     onClose() {
         this._closed = true;
+        this.contentEl.empty();
+    }
+}
+
+// ── computeDiff — LCS-based line diff ─────────────────────────────────────────
+
+export function computeDiff(
+    oldLines: string[],
+    newLines: string[]
+): Array<{ type: "eq" | "add" | "del"; text: string }> {
+    const m = oldLines.length, n = newLines.length;
+    const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+    for (let i = m - 1; i >= 0; i--)
+        for (let j = n - 1; j >= 0; j--)
+            dp[i][j] = oldLines[i] === newLines[j]
+                ? dp[i + 1][j + 1] + 1
+                : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    const result: Array<{ type: "eq" | "add" | "del"; text: string }> = [];
+    let i = 0, j = 0;
+    while (i < m || j < n) {
+        if (i < m && j < n && oldLines[i] === newLines[j]) {
+            result.push({ type: "eq", text: oldLines[i++] }); j++;
+        } else if (j < n && (i >= m || dp[i][j + 1] >= dp[i + 1][j])) {
+            result.push({ type: "add", text: newLines[j++] });
+        } else {
+            result.push({ type: "del", text: oldLines[i++] });
+        }
+    }
+    return result;
+}
+
+// ── SnapshotContentModal — content view, diff, and rollback ───────────────────
+
+export class SnapshotContentModal extends Modal {
+    private _area: HTMLElement | null = null;
+
+    constructor(
+        app: App,
+        private wikiRoot: string,
+        private snap: {
+            slug: string; snap_index: number; timestamp: string;
+            from_state: string; to_state: string;
+            reason: string; content: string;
+        },
+        private onRollbackDone: (slug: string) => void,
+    ) { super(app); }
+
+    async onOpen(): Promise<void> {
+        const { modalEl, contentEl } = this;
+        modalEl.style.width  = "clamp(960px, 88vw, 1400px)";
+        modalEl.style.height = "clamp(640px, 82vh, 960px)";
+        contentEl.style.cssText = "display:flex;flex-direction:column;height:100%";
+
+        // Header — title + meta + toggle bar
+        const header = contentEl.createEl("div");
+        header.style.cssText = "flex-shrink:0;padding:0 0 8px";
+        makeDraggable(modalEl, header);
+
+        const titleEl = header.createEl("h3", {
+            text: `Snapshot ${this.snap.snap_index} — ${this.snap.slug}`,
+        });
+        titleEl.style.cssText = "margin:0;display:flex;justify-content:space-between;align-items:center";
+
+        const copyBtn = header.createEl("button", { text: "Copy" });
+        copyBtn.style.marginLeft = "8px";
+        copyBtn.onclick = () => (window as any).navigator?.clipboard?.writeText(this.snap.content ?? "");
+
+        const meta = header.createEl("p");
+        meta.style.cssText = "margin:4px 0;font-size:11px;color:var(--text-muted)";
+        meta.setText(
+            `${(this.snap.timestamp ?? "").slice(0, 19)} UTC · ` +
+            `${this.snap.from_state ?? "null"} → ${this.snap.to_state} · ${this.snap.reason ?? ""}`
+        );
+
+        // View toggle bar
+        const toggleBar = header.createEl("div");
+        toggleBar.style.cssText =
+            "display:flex;gap:6px;padding-top:8px;" +
+            "border-bottom:1px solid var(--background-modifier-border)";
+        const contentToggle = toggleBar.createEl("button", { text: "Content" });
+        const diffToggle    = toggleBar.createEl("button", { text: "Diff vs current" });
+
+        // Scrollable content area
+        this._area = contentEl.createEl("div");
+        this._area.style.cssText =
+            "flex:1;min-height:0;overflow-y:auto;padding:12px 16px;" +
+            "font-family:var(--font-monospace);font-size:12px;" +
+            "white-space:pre-wrap;word-break:break-word;" +
+            "border:1px solid var(--background-modifier-border);border-radius:4px";
+
+        contentToggle.onclick = () => this._showContent();
+        diffToggle.onclick    = () => this._showDiff();
+        this._showContent();   // default view
+
+        // Footer — cancel + rollback buttons
+        const footer = contentEl.createEl("div");
+        footer.style.cssText =
+            "flex-shrink:0;display:flex;justify-content:space-between;align-items:center;padding:8px 0 0";
+        const cancelBtn = footer.createEl("button", { text: "Cancel" });
+        cancelBtn.onclick = () => this.close();
+        const rollBtn = footer.createEl("button", { text: "Rollback to this version" });
+        rollBtn.onclick = () => {
+            new ReasonModal(
+                this.app,
+                `Roll back «${this.snap.slug}» to snapshot ${this.snap.snap_index}`,
+                async (reason: string) => { await this._doRollback(reason); }
+            ).open();
+        };
+    }
+
+    private _showContent(): void {
+        if (!this._area) return;
+        this._area.empty();
+        this._area.setText(this.snap.content ?? "");
+    }
+
+    async _showDiff(): Promise<void> {
+        if (!this._area) return;
+        this._area.empty();
+        const wikiRelPath = `wiki/${this.snap.slug}.md`;
+        let currentBody: string;
+        try {
+            const file = (this.app as any).vault.getFileByPath(wikiRelPath);
+            if (!file) throw new Error("file not found in vault");
+            currentBody = await (this.app as any).vault.read(file);
+        } catch {
+            this._area.setText("Cannot read current file — is this wiki open as an Obsidian vault?");
+            return;
+        }
+        const oldLines = (this.snap.content ?? "").split("\n");
+        const newLines = currentBody.split("\n");
+        const hunks = computeDiff(oldLines, newLines);
+        this._renderDiff(this._area, hunks);
+    }
+
+    private _renderDiff(
+        area: HTMLElement,
+        hunks: Array<{ type: "eq" | "add" | "del"; text: string }>
+    ): void {
+        const CONTEXT = 3;
+        const show = new Array(hunks.length).fill(false);
+        for (let i = 0; i < hunks.length; i++) {
+            if (hunks[i].type !== "eq") {
+                for (let k = Math.max(0, i - CONTEXT); k <= Math.min(hunks.length - 1, i + CONTEXT); k++)
+                    show[k] = true;
+            }
+        }
+        let skipped = 0;
+        const flush = () => {
+            if (skipped > 0) {
+                const sep = area.createEl("div");
+                sep.style.cssText = "color:var(--text-muted);font-style:italic;padding:2px 0";
+                sep.setText(`… ${skipped} unchanged lines …`);
+                skipped = 0;
+            }
+        };
+        for (let i = 0; i < hunks.length; i++) {
+            const h = hunks[i];
+            if (!show[i]) { skipped++; continue; }
+            flush();
+            const line = area.createEl("div");
+            if (h.type === "add") {
+                line.style.cssText = "background:rgba(0,200,0,0.10)";
+                const prefix = line.createEl("span", { text: "+ " });
+                prefix.style.color = "var(--color-green, #6abf69)";
+                line.appendText(h.text);
+            } else if (h.type === "del") {
+                line.style.cssText = "background:rgba(200,0,0,0.10)";
+                const prefix = line.createEl("span", { text: "- " });
+                prefix.style.color = "var(--color-red, #e06c75)";
+                line.appendText(h.text);
+            } else {
+                line.style.cssText = "color:var(--text-muted)";
+                line.setText("  " + h.text);
+            }
+        }
+        flush();
+    }
+
+    async _doRollback(reason: string): Promise<void> {
+        try {
+            await api.pageRollback(this.snap.slug, this.snap.snap_index, reason);
+            this.close();
+            this.onRollbackDone(this.snap.slug);
+            new Notice(`Rolled back «${this.snap.slug}» to snapshot ${this.snap.snap_index}.`);
+        } catch {
+            new Notice("Rollback failed — is the server running?");
+        }
+    }
+
+    onClose(): void {
         this.contentEl.empty();
     }
 }

@@ -678,3 +678,42 @@ describe("api.lifecycleEventsPurge", () => {
         ).rejects.toThrow("synthadoc API 422");
     });
 });
+
+describe("api.lifecycleHistory", () => {
+    it("GETs /pages/{slug}/history with index and include_content=true by default", async () => {
+        mockRequestUrl.mockResolvedValueOnce({ status: 200, json: { content: "old body" } });
+        const r = await (api as any).lifecycleHistory("my-page", 2) as any;
+        expect(r.content).toBe("old body");
+        expect(mockRequestUrl).toHaveBeenCalledWith(
+            expect.objectContaining({
+                url: "http://127.0.0.1:7070/pages/my-page/history?index=2&include_content=true",
+                method: "GET",
+            })
+        );
+    });
+
+    it("URL-encodes slug with spaces", async () => {
+        mockRequestUrl.mockResolvedValueOnce({ status: 200, json: { content: "" } });
+        await (api as any).lifecycleHistory("my page", 1);
+        expect(mockRequestUrl).toHaveBeenCalledWith(
+            expect.objectContaining({
+                url: expect.stringContaining("my%20page"),
+            })
+        );
+    });
+
+    it("passes include_content=false when overridden", async () => {
+        mockRequestUrl.mockResolvedValueOnce({ status: 200, json: {} });
+        await (api as any).lifecycleHistory("my-page", 3, false);
+        expect(mockRequestUrl).toHaveBeenCalledWith(
+            expect.objectContaining({
+                url: expect.stringContaining("include_content=false"),
+            })
+        );
+    });
+
+    it("throws on non-OK status", async () => {
+        mockRequestUrl.mockResolvedValueOnce({ status: 404, json: {} });
+        await expect((api as any).lifecycleHistory("missing", 1)).rejects.toThrow("synthadoc API 404");
+    });
+});

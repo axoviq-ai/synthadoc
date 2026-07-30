@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Paul Chen / axoviq.com
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { computeDiff } from "./main";
 
 // Obsidian plugins use `window.setInterval`; make it available in node test env
 (globalThis as any).window = globalThis;
@@ -74,6 +75,7 @@ vi.mock("./api", () => ({
         snapshotList: vi.fn(),
         pageRollback: vi.fn(),
         lifecycleEventsPurge: vi.fn(),
+        lifecycleHistory: vi.fn(),
     },
     setBase: vi.fn(),
 }));
@@ -626,6 +628,7 @@ async function getModal(commandId: string, appOverride?: any): Promise<{ ModalCl
             snapshotList: vi.fn(),
             pageRollback: vi.fn(),
             lifecycleEventsPurge: vi.fn(),
+            lifecycleHistory: vi.fn(),
         },
         setBase: vi.fn(),
     };
@@ -2582,6 +2585,7 @@ function makeApiMock(overrides: Record<string, any> = {}) {
             snapshotList: vi.fn().mockResolvedValue({ snapshots: [] }),
             pageRollback: vi.fn().mockResolvedValue({}),
             lifecycleEventsPurge: vi.fn().mockResolvedValue({ purged: true }),
+            lifecycleHistory: vi.fn().mockResolvedValue({ content: "" }),
             exportWiki: vi.fn(),
             queryStream: vi.fn(), createSession: vi.fn(),
             ...overrides,
@@ -2678,5 +2682,128 @@ describe("LifecycleModal Tab 2 — purge footer", () => {
         });
         await (modal as any)._purgeEvents({ before_date: "2026-01-01" });
         expect(purgeMock).toHaveBeenCalledWith({ before_date: "2026-01-01" });
+    });
+});
+
+// ── computeDiff ───────────────────────────────────────────────────────────────
+
+describe("computeDiff", () => {
+    it("returns empty array for identical empty inputs", () => {
+        expect(computeDiff([], [])).toEqual([]);
+    });
+
+    it("marks all lines eq when inputs are identical", () => {
+        const result = computeDiff(["a", "b"], ["a", "b"]);
+        expect(result.every(r => r.type === "eq")).toBe(true);
+    });
+
+    it("marks added lines when new has extra content", () => {
+        const result = computeDiff(["a"], ["a", "b"]);
+        expect(result.some(r => r.type === "add" && r.text === "b")).toBe(true);
+    });
+
+    it("marks deleted lines when old has content removed", () => {
+        const result = computeDiff(["a", "b"], ["a"]);
+        expect(result.some(r => r.type === "del" && r.text === "b")).toBe(true);
+    });
+
+    it("handles completely different inputs", () => {
+        const result = computeDiff(["x", "y"], ["a", "b"]);
+        expect(result.filter(r => r.type === "del")).toHaveLength(2);
+        expect(result.filter(r => r.type === "add")).toHaveLength(2);
+    });
+
+    it("handles empty old — all added", () => {
+        const result = computeDiff([], ["new line"]);
+        expect(result).toEqual([{ type: "add", text: "new line" }]);
+    });
+
+    it("handles empty new — all deleted", () => {
+        const result = computeDiff(["old line"], []);
+        expect(result).toEqual([{ type: "del", text: "old line" }]);
+    });
+});
+
+// ── SnapshotContentModal ─────────────────────────────────────────────────────
+
+describe("SnapshotContentModal", () => {
+    const snap = {
+        slug: "konrad-zuse", snap_index: 1,
+        timestamp: "2026-07-29T09:35:12",
+        from_state: "draft", to_state: "active",
+        reason: "reviewed", content: "old body\nline two",
+    };
+
+    function makeSnapApiMock(overrides: Record<string, any> = {}) {
+        return {
+            api: {
+                pageRollback: vi.fn().mockResolvedValue({ slug: "konrad-zuse", snapshot_index: 1, restored_chars: 50 }),
+                lifecyclePages: vi.fn().mockResolvedValue({ pages: [] }),
+                lifecycleEvents: vi.fn().mockResolvedValue({ events: [] }),
+                snapshotList: vi.fn().mockResolvedValue({ snapshots: [] }),
+                lifecycleTransition: vi.fn(),
+                deleteJob: vi.fn(),
+                lifecycleEventsPurge: vi.fn(),
+                lifecycleHistory: vi.fn().mockResolvedValue({ content: "old body" }),
+                lifecycleStatus: vi.fn(),
+                ...overrides,
+            },
+            setBase: vi.fn(),
+        };
+    }
+
+    beforeEach(() => { vi.resetModules(); });
+
+    it("opens without throwing", async () => {
+        vi.doMock("./api", () => makeSnapApiMock());
+        const { SnapshotContentModal } = await import("./main") as any;
+        const app = {
+            vault: {
+                getFileByPath: vi.fn().mockReturnValue({ path: "wiki/konrad-zuse.md" }),
+                read: vi.fn().mockResolvedValue("new body"),
+            },
+            workspace: { getActiveFile: () => null },
+        };
+        const modal = new SnapshotContentModal(app, "/wiki", snap, vi.fn());
+        modal.contentEl = makeSmartContentEl();
+        modal.modalEl = { style: {}, addEventListener: vi.fn() };
+        await expect(modal.onOpen()).resolves.not.toThrow();
+    });
+
+    it("calls api.pageRollback and onRollbackDone on _doRollback", async () => {
+        const rollbackMock = vi.fn().mockResolvedValue({ slug: "konrad-zuse", snapshot_index: 1, restored_chars: 50 });
+        vi.doMock("./api", () => makeSnapApiMock({ pageRollback: rollbackMock }));
+        const { SnapshotContentModal } = await import("./main") as any;
+        const onRollbackDone = vi.fn();
+        const app = {
+            vault: { getFileByPath: vi.fn().mockReturnValue(null), read: vi.fn() },
+            workspace: { getActiveFile: () => null },
+        };
+        const modal = new SnapshotContentModal(app, "/wiki", snap, onRollbackDone);
+        modal.contentEl = makeSmartContentEl();
+        modal.modalEl = { style: {}, addEventListener: vi.fn() };
+        await modal.onOpen();
+        await (modal as any)._doRollback("test reason");
+        expect(rollbackMock).toHaveBeenCalledWith("konrad-zuse", 1, "test reason");
+        expect(onRollbackDone).toHaveBeenCalledWith("konrad-zuse");
+    });
+
+    it("calls vault.read for diff view", async () => {
+        vi.doMock("./api", () => makeSnapApiMock());
+        const { SnapshotContentModal } = await import("./main") as any;
+        const readMock = vi.fn().mockResolvedValue("new body");
+        const app = {
+            vault: {
+                getFileByPath: vi.fn().mockReturnValue({ path: "wiki/konrad-zuse.md" }),
+                read: readMock,
+            },
+            workspace: { getActiveFile: () => null },
+        };
+        const modal = new SnapshotContentModal(app, "/wiki", snap, vi.fn());
+        modal.contentEl = makeSmartContentEl();
+        modal.modalEl = { style: {}, addEventListener: vi.fn() };
+        await modal.onOpen();
+        await (modal as any)._showDiff();
+        expect(readMock).toHaveBeenCalled();
     });
 });

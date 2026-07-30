@@ -117,4 +117,7 @@ export const api = {
 
     lifecycleEventsPurge: (params: { keep_latest?: number; before_date?: string }) =>
         call("/lifecycle/events/purge", "POST", params),
+
+    lifecycleHistory: (slug: string, index: number, includeContent = true) =>
+        call(`/pages/${encodeURIComponent(slug)}/history?index=${index}&include_content=${includeContent}`),
 };
