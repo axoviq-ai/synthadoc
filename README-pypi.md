@@ -770,6 +770,11 @@ synthadoc audit lifecycle purge -w my-wiki --before 2026-01-01
 synthadoc audit lifecycle purge -w my-wiki --keep-latest 100
 ```
 
+Synthadoc automatically captures the page body each time you activate, archive, or
+restore a page. Use `synthadoc lifecycle history <slug>` to browse snapshots and
+`synthadoc lifecycle rollback <slug> --index N --reason "..."` to restore any prior
+version — the rollback itself is recorded as an auditable event so it can be undone.
+
 ### Monitoring jobs
 
 ```bash
