@@ -8,14 +8,19 @@ Prerequisites:
   - A wiki is registered and the server is healthy
 
 Run with:
-  pytest tests/integration/test_lifecycle_snapshots_live.py -v -s
+  python -X utf8 tests/live/run_all.py --suite snapshots
+  python -X utf8 tests/live/test_lifecycle_snapshots_live.py
+  pytest tests/live/test_lifecycle_snapshots_live.py -v -s
 """
 from __future__ import annotations
+
+import os
+import sys
 
 import httpx
 import pytest
 
-BASE = "http://127.0.0.1:7070"
+BASE = os.environ.get("SYNTHADOC_URL", "http://127.0.0.1:7070").rstrip("/")
 
 
 def _api(path: str, method: str = "GET", body: dict | None = None) -> dict:
@@ -166,3 +171,7 @@ def test_live_lint_transition_has_no_snapshot():
     assert history["snapshots"] == [], (
         f"Expected no snapshots from lint transitions, got: {history['snapshots']}"
     )
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main([__file__, "-v", "-s"]))
