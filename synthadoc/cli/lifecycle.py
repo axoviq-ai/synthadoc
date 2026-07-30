@@ -125,13 +125,14 @@ def lifecycle_history(
     if not snapshots:
         typer.echo(f"No snapshots recorded for '{slug}'.")
         return
-    typer.echo(f"{'Index':>5}  {'Timestamp (UTC)':<20}  {'From → To':<28}  Content")
-    typer.echo("-" * 80)
+    typer.echo(f"{'Index':>5}  {'Timestamp (UTC)':<20}  {'From → To':<28}  {'Content':<16}  Reason")
+    typer.echo("-" * 100)
     for s in snapshots:
         ts = s.get("timestamp", "")[:19]
         transition = f"{s.get('from_state') or 'null'} → {s['to_state']}"
         chars = f"{s.get('content_length', 0):,} chars"
-        typer.echo(f"{s['index']:>5}  {ts:<20}  {transition:<28}  {chars}")
+        reason = (s.get("reason") or "")[:40]
+        typer.echo(f"{s['index']:>5}  {ts:<20}  {transition:<28}  {chars:<16}  {reason}")
 
 
 @lifecycle_app.command("rollback")
