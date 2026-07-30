@@ -3594,8 +3594,8 @@ const ALLOWED_TRANSITIONS: Record<string, string[]> = {
 
 const ALL_LIFECYCLE_STATES = [...LifecycleState.ALL];
 
-class LifecycleModal extends Modal {
-    private _activeTab: "states" | "audit" = "states";
+export class LifecycleModal extends Modal {
+    private _activeTab: "states" | "audit" | "snapshots" = "states";
     // Tab 1 — current page states
     private _page = 0;
     private _pages: any[] = [];
@@ -3615,6 +3615,16 @@ class LifecycleModal extends Modal {
     private _auditTableWrap: HTMLElement | null = null;
     private _auditPagerWrap: HTMLElement | null = null;
     private _tab2Content: HTMLElement | null = null;
+    // Tab 3 — content snapshots
+    private _snapPage = 0;
+    private _snapRows: any[] = [];
+    private _snapSlugFilter = "";
+    private _snapHighlightSlug = "";
+    private _snapHighlightIndex = 0;
+    private _snapTableWrap: HTMLElement | null = null;
+    private _snapPagerWrap: HTMLElement | null = null;
+    private _tab3Content: HTMLElement | null = null;
+    private _snapTabBuilt = false;
 
     constructor(
         app: App,
@@ -3649,27 +3659,45 @@ class LifecycleModal extends Modal {
         tab1Btn.style.cssText = TAB_ACTIVE;
         const tab2Btn = tabBar.createEl("button", { text: "Audit Log" }) as HTMLButtonElement;
         tab2Btn.style.cssText = TAB_INACTIVE;
+        const tab3Btn = tabBar.createEl("button", { text: "Content Snapshots" }) as HTMLButtonElement;
+        tab3Btn.style.cssText = TAB_INACTIVE;
 
-        // Two content areas
+        // Three content areas
         this._tab1Content = contentEl.createDiv();
         this._tab1Content.style.cssText = "display:flex;flex-direction:column;flex:1;min-height:0";
         this._tab2Content = contentEl.createDiv();
         this._tab2Content.style.cssText = "display:none;flex-direction:column;flex:1;min-height:0";
+        this._tab3Content = contentEl.createDiv({ cls: "sdc-tab3" });
+        this._tab3Content.style.cssText = "display:none;flex-direction:column;gap:8px;flex:1;min-height:0";
 
         tab1Btn.addEventListener("click", () => {
             this._activeTab = "states";
             tab1Btn.style.cssText = TAB_ACTIVE;
             tab2Btn.style.cssText = TAB_INACTIVE;
+            tab3Btn.style.cssText = TAB_INACTIVE;
             this._tab1Content!.style.display = "flex";
             this._tab2Content!.style.display = "none";
+            if (this._tab3Content) this._tab3Content.style.display = "none";
         });
         tab2Btn.addEventListener("click", async () => {
             this._activeTab = "audit";
             tab2Btn.style.cssText = TAB_ACTIVE;
             tab1Btn.style.cssText = TAB_INACTIVE;
+            tab3Btn.style.cssText = TAB_INACTIVE;
             this._tab1Content!.style.display = "none";
             this._tab2Content!.style.display = "flex";
+            if (this._tab3Content) this._tab3Content.style.display = "none";
             if (this._auditEvents.length === 0) await this._fetchAudit();
+        });
+        tab3Btn.addEventListener("click", async () => {
+            this._activeTab = "snapshots";
+            tab3Btn.style.cssText = TAB_ACTIVE;
+            tab1Btn.style.cssText = TAB_INACTIVE;
+            tab2Btn.style.cssText = TAB_INACTIVE;
+            this._tab1Content!.style.display = "none";
+            this._tab2Content!.style.display = "none";
+            this._tab3Content!.style.display = "flex";
+            if (!this._snapTabBuilt) await this._buildSnapshotTab();
         });
 
         // ── Tab 1 content ──────────────────────────────────────────────
@@ -3754,6 +3782,48 @@ class LifecycleModal extends Modal {
 
         this._auditPagerWrap = tab2.createDiv();
         this._auditPagerWrap.style.cssText = "flex-shrink:0;display:flex;gap:8px;align-items:center;margin-top:8px;font-size:12px;color:var(--text-muted)";
+
+        // Purge footer — Tab 2
+        const purgeFooter = this._tab2Content!.createDiv();
+        purgeFooter.style.cssText =
+            "border-top:1px solid var(--background-modifier-border);" +
+            "padding:10px 0 4px;display:flex;flex-direction:column;gap:8px";
+
+        const purgeRow = purgeFooter.createDiv();
+        purgeRow.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;align-items:center";
+
+        // Keep-latest row
+        const keepInput = purgeRow.createEl("input", { type: "number" }) as HTMLInputElement;
+        keepInput.value = "100"; keepInput.style.width = "60px";
+        const keepBtn = purgeRow.createEl("button", { text: "Keep latest N per page — Purge" }) as HTMLButtonElement;
+        const statusEl = purgeFooter.createEl("span");
+        statusEl.style.cssText = "color:var(--text-muted);font-size:11px";
+        keepBtn.onclick = async () => {
+            const n = parseInt(keepInput.value, 10);
+            if (isNaN(n) || n < 1) { statusEl.setText("Invalid number"); return; }
+            try {
+                await this._purgeEvents({ keep_latest: n });
+                statusEl.setText("Purged.");
+            } catch { statusEl.setText("Error — is the server running?"); }
+        };
+
+        // Before-date row
+        const dateInput = purgeRow.createEl("input", { type: "text" }) as HTMLInputElement;
+        dateInput.placeholder = "YYYY-MM-DD"; dateInput.style.width = "120px";
+        const dateBtn = purgeRow.createEl("button", { text: "Before date — Purge" }) as HTMLButtonElement;
+        dateBtn.onclick = async () => {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(dateInput.value)) {
+                statusEl.setText("Invalid date — use YYYY-MM-DD"); return;
+            }
+            try {
+                await this._purgeEvents({ before_date: dateInput.value });
+                statusEl.setText("Purged.");
+            } catch { statusEl.setText("Error — is the server running?"); }
+        };
+
+        const warnEl = purgeFooter.createEl("p");
+        warnEl.style.cssText = "color:var(--text-muted);font-size:11px;margin:0";
+        warnEl.setText("Purging events also permanently removes their captured content snapshots.");
     }
 
     private async _fetchAndRender() {
@@ -3774,6 +3844,180 @@ class LifecycleModal extends Modal {
             this._auditEvents = [];
         }
         this._renderAuditAll();
+    }
+
+    private async _buildSnapshotTab() {
+        this._snapTabBuilt = true;
+        const wrap = this._tab3Content!;
+
+        // Pre-populate filter from initialFilter
+        if (this.initialFilter && !this._snapSlugFilter) {
+            this._snapSlugFilter = this.initialFilter;
+        }
+
+        // Filter bar
+        const filterBar = wrap.createDiv();
+        filterBar.style.cssText = "display:flex;align-items:center;gap:8px;padding:4px 0";
+
+        const filterInput = filterBar.createEl("input", { type: "text" }) as HTMLInputElement;
+        filterInput.placeholder = "Filter by slug…";
+        filterInput.style.width = "220px";
+        filterInput.value = this._snapSlugFilter;
+        filterInput.oninput = () => {
+            this._snapSlugFilter = filterInput.value.trim();
+            this._snapPage = 0;
+            this._renderSnapTable();
+        };
+
+        const refreshBtn = filterBar.createEl("button", { text: "↻ Refresh" }) as HTMLButtonElement;
+        refreshBtn.style.marginLeft = "auto";
+        refreshBtn.onclick = () => this._fetchSnapshots();
+
+        // Table container
+        this._snapTableWrap = wrap.createDiv();
+        this._snapPagerWrap = wrap.createDiv();
+
+        await this._fetchSnapshots();
+    }
+
+    async _fetchSnapshots() {
+        try {
+            const data = await (api as any).snapshotList(this._snapSlugFilter || undefined) as any;
+            this._snapRows = data.snapshots ?? [];
+        } catch {
+            this._snapRows = [];
+        }
+        this._renderSnapTable();
+    }
+
+    private _renderSnapTable() {
+        if (!this._snapTableWrap) return;
+        this._snapTableWrap.empty();
+
+        const PAGE = 25;
+        const filter = this._snapSlugFilter.toLowerCase();
+        const visible = filter
+            ? this._snapRows.filter(r => r.slug.toLowerCase().includes(filter))
+            : this._snapRows;
+
+        if (visible.length === 0) {
+            const msg = this._snapTableWrap.createEl("p");
+            msg.style.cssText = "color:var(--text-muted);font-style:italic;padding:12px 0";
+            msg.setText(
+                "No snapshots recorded. Snapshots are captured on manual lifecycle " +
+                "transitions (activate, archive, restore)."
+            );
+            if (this._snapPagerWrap) this._snapPagerWrap.empty();
+            return;
+        }
+
+        const page = this._snapRows.length > 0 ? this._snapPage : 0;
+        const start = page * PAGE;
+        const rows = visible.slice(start, start + PAGE);
+
+        const table = this._snapTableWrap.createEl("table");
+        table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px";
+        const head = table.createEl("thead");
+        const hr = head.createEl("tr");
+        for (const [label, w] of [
+            ["Slug", "22%"], ["#", "4%"], ["Timestamp", "16%"],
+            ["From → To", "18%"], ["Size", "9%"], ["Reason", "auto"], ["Actions", "160px"]
+        ] as [string, string][]) {
+            const th = hr.createEl("th", { text: label });
+            th.style.cssText = `width:${w};text-align:left;padding:4px 6px;` +
+                "border-bottom:1px solid var(--background-modifier-border);font-weight:600";
+        }
+
+        const body = table.createEl("tbody");
+        let lastSlug = "";
+        let altBg = false;
+        for (const snap of rows) {
+            if (snap.slug !== lastSlug) { lastSlug = snap.slug; altBg = !altBg; }
+            const highlight =
+                snap.slug === this._snapHighlightSlug &&
+                snap.snap_index === this._snapHighlightIndex;
+            const tr = body.createEl("tr");
+            const baseBg = altBg ? "var(--background-secondary)" : "transparent";
+            tr.style.cssText = `background:${highlight ? "var(--interactive-accent-hover)" : baseBg};` +
+                (highlight ? "transition:background 2s ease;" : "");
+            if (highlight) {
+                setTimeout(() => { tr.style.background = baseBg; }, 2000);
+            }
+            const cells: string[] = [
+                snap.slug,
+                String(snap.snap_index),
+                (snap.timestamp ?? "").slice(0, 19),
+                `${snap.from_state ?? "null"} → ${snap.to_state}`,
+                `${(snap.content_length ?? 0).toLocaleString()} chars`,
+                (snap.reason ?? "").slice(0, 40),
+            ];
+            for (const txt of cells) {
+                const td = tr.createEl("td");
+                td.style.cssText = "padding:4px 6px;vertical-align:top";
+                td.setText(txt);
+            }
+            const actionTd = tr.createEl("td");
+            actionTd.style.cssText = "padding:4px 6px;white-space:nowrap";
+
+            const viewBtn = actionTd.createEl("button", { text: "View" }) as HTMLButtonElement;
+            viewBtn.style.marginRight = "6px";
+            viewBtn.onclick = () => this._openSnapshotContent(snap);
+
+            const rollBtn = actionTd.createEl("button", { text: "Rollback" }) as HTMLButtonElement;
+            rollBtn.onclick = () => this._rollbackFromTable(snap);
+        }
+
+        this._renderSnapPager(visible.length, PAGE);
+    }
+
+    private _renderSnapPager(total: number, pageSize: number) {
+        if (!this._snapPagerWrap) return;
+        this._snapPagerWrap.empty();
+        const pages = Math.ceil(total / pageSize);
+        if (pages <= 1) return;
+        const bar = this._snapPagerWrap.createDiv();
+        bar.style.cssText = "display:flex;gap:6px;align-items:center;padding:6px 0";
+        const prev = bar.createEl("button", { text: "← Prev" }) as HTMLButtonElement;
+        prev.disabled = this._snapPage === 0;
+        prev.onclick = () => { this._snapPage--; this._renderSnapTable(); };
+        bar.createEl("span").setText(`Page ${this._snapPage + 1} / ${pages}`);
+        const next = bar.createEl("button", { text: "Next →" }) as HTMLButtonElement;
+        next.disabled = this._snapPage >= pages - 1;
+        next.onclick = () => { this._snapPage++; this._renderSnapTable(); };
+    }
+
+    private _rollbackFromTable(snap: any) {
+        new ReasonModal(
+            this.app,
+            `Roll back «${snap.slug}» to snapshot ${snap.snap_index}`,
+            async (reason: string) => {
+                try {
+                    await (api as any).pageRollback(snap.slug, snap.snap_index, reason);
+                    await this._fetchSnapshots();
+                    this._snapHighlightSlug = snap.slug;
+                    this._snapHighlightIndex = 1;
+                    this._renderSnapTable();
+                    await this._reloadIfActive(snap.slug);
+                    new Notice(`Rolled back «${snap.slug}» to snapshot ${snap.snap_index}.`);
+                } catch {
+                    new Notice("Rollback failed — is the server running?");
+                }
+            }
+        ).open();
+    }
+
+    private async _purgeEvents(params: { keep_latest?: number; before_date?: string }) {
+        await (api as any).lifecycleEventsPurge(params);
+        await this._fetchAudit();
+        if (this._snapRows.length > 0) await this._fetchSnapshots();
+    }
+
+    private _openSnapshotContent(_snap: any): void {
+        // implemented in Task 4
+    }
+
+    private async _reloadIfActive(_slug: string): Promise<void> {
+        // implemented in Task 4
     }
 
     private _filteredPages(): any[] {

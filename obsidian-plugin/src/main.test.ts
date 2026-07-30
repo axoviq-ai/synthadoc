@@ -2560,3 +2560,123 @@ describe("SynthadocSettingTab", () => {
         expect(tab.containerEl.createEl).toHaveBeenCalledWith("h2", expect.objectContaining({ text: "Synthadoc settings" }));
     });
 });
+
+// ── LifecycleModal Tab 3 — Content Snapshots ────────────────────────────────
+
+function makeApiMock(overrides: Record<string, any> = {}) {
+    return {
+        api: {
+            ingest: vi.fn(), lint: vi.fn(), lintReport: vi.fn(), status: vi.fn(),
+            query: vi.fn(), health: vi.fn(), jobs: vi.fn(), job: vi.fn(),
+            retryJob: vi.fn(), purgeJobs: vi.fn(), scaffold: vi.fn(),
+            auditHistory: vi.fn(), auditCosts: vi.fn(), queryHistory: vi.fn(), auditEvents: vi.fn(),
+            routingStatus: vi.fn(), routingInit: vi.fn(), routingValidate: vi.fn(), routingClean: vi.fn(),
+            stagingPolicy: vi.fn(), stagingSetPolicy: vi.fn(),
+            candidates: vi.fn(), candidatesPromoteAll: vi.fn(), candidatesDiscardAll: vi.fn(),
+            candidatePromote: vi.fn(), candidateDiscard: vi.fn(),
+            contextBuild: vi.fn(),
+            config: vi.fn().mockResolvedValue({ check_url_availability: false }),
+            lifecycleStatus: vi.fn(), lifecycleTransition: vi.fn(), deleteJob: vi.fn(),
+            lifecyclePages: vi.fn().mockResolvedValue({ pages: [] }),
+            lifecycleEvents: vi.fn().mockResolvedValue({ events: [] }),
+            snapshotList: vi.fn().mockResolvedValue({ snapshots: [] }),
+            pageRollback: vi.fn().mockResolvedValue({}),
+            lifecycleEventsPurge: vi.fn().mockResolvedValue({ purged: true }),
+            exportWiki: vi.fn(),
+            queryStream: vi.fn(), createSession: vi.fn(),
+            ...overrides,
+        },
+        setBase: vi.fn(),
+    };
+}
+
+async function openLifecycleModal(slug?: string, apiOverrides: Record<string, any> = {}) {
+    const apiMockModule = makeApiMock(apiOverrides);
+    vi.doMock("./api", () => apiMockModule);
+    const { LifecycleModal } = await import("./main") as any;
+    const modal = new LifecycleModal(
+        { workspace: { getActiveFile: () => null } } as any,
+        "/wiki",
+        "http://127.0.0.1:7070",
+        slug,
+    );
+    modal.contentEl = makeSmartContentEl();
+    modal.modalEl = { style: {}, addEventListener: vi.fn() };
+    modal.containerEl = { querySelector: vi.fn().mockReturnValue({ addEventListener: vi.fn() }) };
+    await modal.onOpen();
+    return { modal, api: apiMockModule.api };
+}
+
+describe("LifecycleModal Tab 3 — Content Snapshots", () => {
+    beforeEach(() => { vi.resetModules(); });
+
+    it("renders a third tab button labelled 'Content Snapshots'", async () => {
+        const { modal } = await openLifecycleModal("konrad-zuse");
+        const btns: any[] = modal.contentEl.querySelectorAll("button");
+        const btnTexts = btns.map((b: any) => b.textContent ?? b._html ?? "");
+        expect(btnTexts).toContain("Content Snapshots");
+    });
+
+    it("_buildSnapshotTab calls api.snapshotList and populates _snapRows", async () => {
+        const fakeSnaps = [
+            { slug: "pg-a", snap_index: 1, timestamp: "2026-07-01T00:00:00",
+              from_state: "draft", to_state: "active", reason: "ok", content_length: 100 },
+        ];
+        const { modal, api } = await openLifecycleModal(undefined, {
+            snapshotList: vi.fn().mockResolvedValue({ snapshots: fakeSnaps }),
+        });
+        await (modal as any)._buildSnapshotTab();
+        expect(api.snapshotList).toHaveBeenCalled();
+        expect((modal as any)._snapRows).toHaveLength(1);
+        expect((modal as any)._snapRows[0].slug).toBe("pg-a");
+    });
+
+    it("pre-populates _snapSlugFilter from initialFilter", async () => {
+        const { modal } = await openLifecycleModal("konrad-zuse");
+        await (modal as any)._buildSnapshotTab();
+        expect((modal as any)._snapSlugFilter).toBe("konrad-zuse");
+    });
+
+    it("_fetchSnapshots populates _snapRows from snapshotList response", async () => {
+        const fakeSnaps = [
+            { slug: "pg-a", snap_index: 1, timestamp: "2026-07-01T00:00:00",
+              from_state: "draft", to_state: "active", reason: "ok", content_length: 100 },
+        ];
+        const { modal } = await openLifecycleModal(undefined, {
+            snapshotList: vi.fn().mockResolvedValue({ snapshots: fakeSnaps }),
+        });
+        await (modal as any)._buildSnapshotTab();
+        await (modal as any)._fetchSnapshots();
+        expect((modal as any)._snapRows).toHaveLength(1);
+        expect((modal as any)._snapRows[0].slug).toBe("pg-a");
+    });
+
+    it("_fetchSnapshots sets _snapRows to [] when snapshotList returns empty", async () => {
+        const { modal } = await openLifecycleModal();
+        await (modal as any)._buildSnapshotTab();
+        await (modal as any)._fetchSnapshots();
+        expect((modal as any)._snapRows).toHaveLength(0);
+    });
+});
+
+describe("LifecycleModal Tab 2 — purge footer", () => {
+    beforeEach(() => { vi.resetModules(); });
+
+    it("calls api.lifecycleEventsPurge with keep_latest on _purgeEvents", async () => {
+        const purgeMock = vi.fn().mockResolvedValue({ purged: true });
+        const { modal, api } = await openLifecycleModal(undefined, {
+            lifecycleEventsPurge: purgeMock,
+        });
+        await (modal as any)._purgeEvents({ keep_latest: 100 });
+        expect(purgeMock).toHaveBeenCalledWith({ keep_latest: 100 });
+    });
+
+    it("calls api.lifecycleEventsPurge with before_date on _purgeEvents", async () => {
+        const purgeMock = vi.fn().mockResolvedValue({ purged: true });
+        const { modal } = await openLifecycleModal(undefined, {
+            lifecycleEventsPurge: purgeMock,
+        });
+        await (modal as any)._purgeEvents({ before_date: "2026-01-01" });
+        expect(purgeMock).toHaveBeenCalledWith({ before_date: "2026-01-01" });
+    });
+});
