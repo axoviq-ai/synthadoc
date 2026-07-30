@@ -358,3 +358,170 @@ def test_rollback_endpoint_records_pre_rollback_snapshot(tmp_wiki):
         assert snap is not None
         assert pre_rollback_body in snap["content_snapshot"]
     asyncio.run(_check())
+
+
+# ── Task 6 tests (v1.2 backend) ─────────────────────────────────────────────
+
+def test_get_snapshots_returns_all(tmp_wiki):
+    """GET /snapshots returns every event that has a non-NULL content_snapshot."""
+    import asyncio
+    from fastapi.testclient import TestClient
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.storage.log import AuditDB
+
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    async def _seed():
+        await audit.init()
+        await audit.record_lifecycle_event(
+            "page-a", "draft", "active", "r1", "user",
+            content_snapshot="body a1",
+        )
+        await audit.record_lifecycle_event(
+            "page-a", "active", "archived", "r2", "user",
+            content_snapshot="body a2",
+        )
+        await audit.record_lifecycle_event(
+            "page-b", "draft", "active", "r3", "user",
+            content_snapshot="body b1",
+        )
+        # NULL snapshot — must NOT appear
+        await audit.record_lifecycle_event(
+            "page-b", "active", "archived", "r4", "user",
+        )
+    asyncio.run(_seed())
+
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.get("/snapshots")
+    assert resp.status_code == 200
+    assert resp.headers.get("cache-control") == "no-store"
+    data = resp.json()
+    assert "snapshots" in data
+    slugs = [s["slug"] for s in data["snapshots"]]
+    assert "page-a" in slugs
+    assert "page-b" in slugs
+    # 3 events with snapshots, 1 null
+    assert len(data["snapshots"]) == 3
+    # snap_index is present and is an integer
+    for snap in data["snapshots"]:
+        assert isinstance(snap["snap_index"], int)
+        assert "content_snapshot" not in snap  # full body not in list
+
+
+def test_get_snapshots_slug_filter(tmp_wiki):
+    """GET /snapshots?slug=page-a returns only page-a rows."""
+    import asyncio
+    from fastapi.testclient import TestClient
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.storage.log import AuditDB
+
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    async def _seed():
+        await audit.init()
+        await audit.record_lifecycle_event(
+            "page-a", "draft", "active", "r", "user", content_snapshot="a"
+        )
+        await audit.record_lifecycle_event(
+            "page-b", "draft", "active", "r", "user", content_snapshot="b"
+        )
+    asyncio.run(_seed())
+
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.get("/snapshots?slug=page-a")
+    data = resp.json()
+    assert all(s["slug"] == "page-a" for s in data["snapshots"])
+    assert len(data["snapshots"]) == 1
+
+
+def test_get_snapshots_empty(tmp_wiki):
+    """GET /snapshots returns an empty list when no snapshots exist."""
+    from fastapi.testclient import TestClient
+    from synthadoc.integration.http_server import create_app
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.get("/snapshots")
+    assert resp.status_code == 200
+    assert resp.json() == {"snapshots": []}
+
+
+def test_purge_endpoint_keep_latest(tmp_wiki):
+    """POST /lifecycle/events/purge with keep_latest deletes old events."""
+    import asyncio
+    from fastapi.testclient import TestClient
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.storage.log import AuditDB
+
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    async def _seed():
+        await audit.init()
+        for i in range(5):
+            await audit.record_lifecycle_event(
+                "p", "draft", "active", f"r{i}", "user",
+                content_snapshot=f"body {i}",
+            )
+    asyncio.run(_seed())
+
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.post("/lifecycle/events/purge", json={"keep_latest": 2})
+    assert resp.status_code == 200
+    assert resp.json() == {"purged": True}
+    assert resp.headers.get("cache-control") == "no-store"
+
+    # Verify that only 2 remain
+    async def _check():
+        await audit.init()
+        snaps = await audit.list_page_snapshots("p")
+        assert len(snaps) == 2
+    asyncio.run(_check())
+
+
+def test_purge_endpoint_before_date(tmp_wiki):
+    """POST /lifecycle/events/purge with before_date removes older events."""
+    import asyncio
+    from fastapi.testclient import TestClient
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.storage.log import AuditDB
+
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    async def _seed():
+        await audit.init()
+        await audit.record_lifecycle_event(
+            "p", "draft", "active", "r", "user", content_snapshot="body"
+        )
+    asyncio.run(_seed())
+
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.post(
+            "/lifecycle/events/purge", json={"before_date": "2099-01-01"}
+        )
+    assert resp.status_code == 200
+    assert resp.json() == {"purged": True}
+
+
+def test_purge_endpoint_rejects_both_params(tmp_wiki):
+    """POST /lifecycle/events/purge with both params returns 422."""
+    from fastapi.testclient import TestClient
+    from synthadoc.integration.http_server import create_app
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.post(
+            "/lifecycle/events/purge",
+            json={"keep_latest": 10, "before_date": "2026-01-01"},
+        )
+    assert resp.status_code == 422
+
+
+def test_purge_endpoint_rejects_neither_param(tmp_wiki):
+    """POST /lifecycle/events/purge with no params returns 422."""
+    from fastapi.testclient import TestClient
+    from synthadoc.integration.http_server import create_app
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.post("/lifecycle/events/purge", json={})
+    assert resp.status_code == 422
+
+
+def test_purge_endpoint_rejects_invalid_date_format(tmp_wiki):
+    """POST /lifecycle/events/purge with a malformed date returns 422."""
+    from fastapi.testclient import TestClient
+    from synthadoc.integration.http_server import create_app
+    for bad_date in ["foobar", "2026/01/01", "26-01-01", "2026-1-1"]:
+        with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+            resp = client.post("/lifecycle/events/purge", json={"before_date": bad_date})
+        assert resp.status_code == 422, f"Expected 422 for before_date={bad_date!r}, got {resp.status_code}"

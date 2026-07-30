@@ -571,3 +571,149 @@ describe("api.graph", () => {
         await expect((api as any).graph()).rejects.toThrow("synthadoc API 500");
     });
 });
+
+// ── v1.2 api additions ───────────────────────────────────────────────────────
+
+describe("api.snapshotList", () => {
+    it("GETs /snapshots and returns the snapshots array", async () => {
+        mockResponse({
+            snapshots: [
+                { slug: "konrad-zuse", snap_index: 1, timestamp: "2026-07-29T09:35:12",
+                  from_state: "draft", to_state: "active", reason: "reviewed", content_length: 1024 },
+            ],
+        });
+        const r = await (api as any).snapshotList() as any;
+        expect(r.snapshots).toHaveLength(1);
+        expect(r.snapshots[0].slug).toBe("konrad-zuse");
+        expect(mockRequestUrl).toHaveBeenCalledWith(
+            expect.objectContaining({ url: "http://127.0.0.1:7070/snapshots", method: "GET" })
+        );
+    });
+
+    it("passes slug query param when provided", async () => {
+        mockResponse({ snapshots: [] });
+        await (api as any).snapshotList("konrad-zuse");
+        expect(mockRequestUrl).toHaveBeenCalledWith(
+            expect.objectContaining({
+                url: "http://127.0.0.1:7070/snapshots?slug=konrad-zuse",
+            })
+        );
+    });
+
+    it("URL-encodes the slug", async () => {
+        mockResponse({ snapshots: [] });
+        await (api as any).snapshotList("my page/slug");
+        expect(mockRequestUrl).toHaveBeenCalledWith(
+            expect.objectContaining({
+                url: expect.stringContaining("my%20page%2Fslug"),
+            })
+        );
+    });
+
+    it("throws on non-OK status", async () => {
+        mockResponse({}, 500);
+        await expect((api as any).snapshotList()).rejects.toThrow("synthadoc API 500");
+    });
+});
+
+describe("api.pageRollback", () => {
+    it("POSTs to /pages/{slug}/rollback with index and reason", async () => {
+        mockResponse({ slug: "konrad-zuse", snapshot_index: 2, restored_chars: 1500 });
+        const r = await (api as any).pageRollback("konrad-zuse", 2, "reverting typo") as any;
+        expect(r.slug).toBe("konrad-zuse");
+        expect(r.snapshot_index).toBe(2);
+        expect(mockRequestUrl).toHaveBeenCalledWith(
+            expect.objectContaining({
+                url: "http://127.0.0.1:7070/pages/konrad-zuse/rollback",
+                method: "POST",
+                body: JSON.stringify({ index: 2, reason: "reverting typo" }),
+            })
+        );
+    });
+
+    it("URL-encodes slug in the path", async () => {
+        mockResponse({ slug: "my page", snapshot_index: 1, restored_chars: 100 });
+        await (api as any).pageRollback("my page", 1, "undo");
+        expect(mockRequestUrl).toHaveBeenCalledWith(
+            expect.objectContaining({
+                url: expect.stringContaining("my%20page"),
+            })
+        );
+    });
+
+    it("throws on non-OK status", async () => {
+        mockResponse({}, 404);
+        await expect((api as any).pageRollback("missing", 1, "x")).rejects.toThrow("synthadoc API 404");
+    });
+});
+
+describe("api.lifecycleEventsPurge", () => {
+    it("POSTs to /lifecycle/events/purge with keep_latest", async () => {
+        mockResponse({ purged: true });
+        const r = await (api as any).lifecycleEventsPurge({ keep_latest: 50 }) as any;
+        expect(r.purged).toBe(true);
+        expect(mockRequestUrl).toHaveBeenCalledWith(
+            expect.objectContaining({
+                url: "http://127.0.0.1:7070/lifecycle/events/purge",
+                method: "POST",
+                body: JSON.stringify({ keep_latest: 50 }),
+            })
+        );
+    });
+
+    it("POSTs with before_date", async () => {
+        mockResponse({ purged: true });
+        await (api as any).lifecycleEventsPurge({ before_date: "2026-01-01" });
+        expect(mockRequestUrl).toHaveBeenCalledWith(
+            expect.objectContaining({
+                body: JSON.stringify({ before_date: "2026-01-01" }),
+            })
+        );
+    });
+
+    it("throws on non-OK status", async () => {
+        mockResponse({}, 422);
+        await expect(
+            (api as any).lifecycleEventsPurge({ keep_latest: 10, before_date: "2026-01-01" })
+        ).rejects.toThrow("synthadoc API 422");
+    });
+});
+
+describe("api.lifecycleHistory", () => {
+    it("GETs /pages/{slug}/history with index and include_content=true by default", async () => {
+        mockRequestUrl.mockResolvedValueOnce({ status: 200, json: { content: "old body" } });
+        const r = await (api as any).lifecycleHistory("my-page", 2) as any;
+        expect(r.content).toBe("old body");
+        expect(mockRequestUrl).toHaveBeenCalledWith(
+            expect.objectContaining({
+                url: "http://127.0.0.1:7070/pages/my-page/history?index=2&include_content=true",
+                method: "GET",
+            })
+        );
+    });
+
+    it("URL-encodes slug with spaces", async () => {
+        mockRequestUrl.mockResolvedValueOnce({ status: 200, json: { content: "" } });
+        await (api as any).lifecycleHistory("my page", 1);
+        expect(mockRequestUrl).toHaveBeenCalledWith(
+            expect.objectContaining({
+                url: expect.stringContaining("my%20page"),
+            })
+        );
+    });
+
+    it("passes include_content=false when overridden", async () => {
+        mockRequestUrl.mockResolvedValueOnce({ status: 200, json: {} });
+        await (api as any).lifecycleHistory("my-page", 3, false);
+        expect(mockRequestUrl).toHaveBeenCalledWith(
+            expect.objectContaining({
+                url: expect.stringContaining("include_content=false"),
+            })
+        );
+    });
+
+    it("throws on non-OK status", async () => {
+        mockRequestUrl.mockResolvedValueOnce({ status: 404, json: {} });
+        await expect((api as any).lifecycleHistory("missing", 1)).rejects.toThrow("synthadoc API 404");
+    });
+});
