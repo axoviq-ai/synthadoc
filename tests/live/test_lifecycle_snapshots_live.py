@@ -29,10 +29,21 @@ def _api(path: str, method: str = "GET", body: dict | None = None) -> dict:
     with httpx.Client(timeout=30) as client:
         if method == "POST":
             r = client.post(f"{BASE}{path}", json=body)
+        elif method == "DELETE":
+            r = client.delete(f"{BASE}{path}")
         else:
             r = client.get(f"{BASE}{path}")
         r.raise_for_status()
         return r.json()
+
+
+def _cleanup_slug(wiki_dir: Path, slug: str) -> None:
+    """Remove wiki page file and all its lifecycle events (snapshots) from the DB."""
+    (wiki_dir / f"{slug}.md").unlink(missing_ok=True)
+    try:
+        _api(f"/pages/{slug}/history", "DELETE")
+    except Exception:
+        pass
 
 
 def _wiki_dir() -> Path:
@@ -104,7 +115,7 @@ def test_live_view_and_restore():
         history2 = _api(f"/pages/{slug}/history")
         assert len(history2["snapshots"]) == 2
     finally:
-        page_path.unlink(missing_ok=True)
+        _cleanup_slug(wiki_dir, slug)
 
 
 # ── Live test 2: Rollback is undoable ────────────────────────────────────────
@@ -144,7 +155,7 @@ def test_live_rollback_is_undoable():
         snap_after_undo = _api(f"/pages/{slug}/history?index=1&include_content=true")
         assert body_v1 in snap_after_undo.get("content", "")
     finally:
-        page_path.unlink(missing_ok=True)
+        _cleanup_slug(wiki_dir, slug)
 
 
 # ── Live test 3: Lint/ingest events produce no snapshot ──────────────────────
@@ -168,7 +179,7 @@ def test_live_lint_transition_has_no_snapshot():
             f"Expected no snapshots from lint transitions, got: {history['snapshots']}"
         )
     finally:
-        page_path.unlink(missing_ok=True)
+        _cleanup_slug(wiki_dir, slug)
 
 
 if __name__ == "__main__":

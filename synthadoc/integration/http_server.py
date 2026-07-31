@@ -1722,6 +1722,20 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         )
         return JSONResponse({"purged": True}, headers={"Cache-Control": "no-store"})
 
+    @app.delete("/pages/{slug}/history")
+    async def delete_slug_history(slug: str):
+        """Delete all lifecycle events (including snapshots) for a slug.
+
+        Intended for test teardown — removes DB rows without touching the wiki file.
+        Returns the number of rows deleted.
+        """
+        audit = app.state.orch._audit
+        deleted = await audit.delete_slug_events(slug)
+        return JSONResponse(
+            {"slug": slug, "deleted": deleted},
+            headers={"Cache-Control": "no-store"},
+        )
+
     @app.post("/pages/{slug}/rollback")
     async def page_rollback(slug: str, req: RollbackRequest, response: Response):
         response.headers["Cache-Control"] = "no-store"

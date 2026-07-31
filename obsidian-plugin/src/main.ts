@@ -3949,7 +3949,7 @@ export class LifecycleModal extends Modal {
         const head = table.createEl("thead");
         const hr = head.createEl("tr");
         for (const [label, w] of [
-            ["Slug", "22%"], ["#", "4%"], ["Timestamp", "16%"],
+            ["Slug", "22%"], ["Index", "5%"], ["Timestamp", "16%"],
             ["From → To", "18%"], ["Size", "9%"], ["Reason", "auto"], ["Actions", "160px"]
         ] as [string, string][]) {
             const th = hr.createEl("th", { text: label });
@@ -3983,10 +3983,9 @@ export class LifecycleModal extends Modal {
             tr.addEventListener("mouseenter", () => { if (!highlight) tr.style.background = "var(--background-modifier-hover)"; });
             tr.addEventListener("mouseleave", () => { if (!highlight) tr.style.background = baseBg; });
 
-            // Row click → open the wiki page in Obsidian
+            // Row click → open the wiki page in Obsidian (same pattern as LintReportModal)
             tr.addEventListener("click", () => {
-                const f = (this.app as any).vault.getFileByPath(`wiki/${snap.slug}.md`);
-                if (f) (this.app as any).workspace.getLeaf(false).openFile(f);
+                this.app.workspace.openLinkText(snap.slug, "", false);
             });
 
             const cells: string[] = [

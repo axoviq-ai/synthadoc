@@ -669,6 +669,15 @@ class AuditDB:
                 """, (keep_latest,))
             await db.commit()
 
+    async def delete_slug_events(self, slug: str) -> int:
+        """Delete all lifecycle events (including snapshots) for *slug*. Returns rows deleted."""
+        async with aiosqlite.connect(self._path) as db:
+            cur = await db.execute(
+                "DELETE FROM lifecycle_events WHERE slug = ?", (slug,)
+            )
+            await db.commit()
+            return cur.rowcount or 0
+
     async def record_scheduled_run_start(
         self, run_id: str, op: str, wiki: str, entry_id: str = ""
     ) -> None:
