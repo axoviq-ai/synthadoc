@@ -3865,12 +3865,29 @@ export class LifecycleModal extends Modal {
         const filterBar = wrap.createDiv();
         filterBar.style.cssText = "display:flex;align-items:center;gap:8px;padding:4px 0;flex-shrink:0";
 
-        const filterInput = filterBar.createEl("input", { type: "text" }) as HTMLInputElement;
+        const filterWrap = filterBar.createDiv();
+        filterWrap.style.cssText = "position:relative;display:inline-flex;align-items:center";
+
+        const filterInput = filterWrap.createEl("input", { type: "text" }) as HTMLInputElement;
         filterInput.placeholder = "Filter by slug…";
-        filterInput.style.width = "220px";
+        filterInput.style.cssText = "width:220px;padding-right:22px;box-sizing:border-box";
         filterInput.value = this._snapSlugFilter;
+
+        const clearX = filterWrap.createEl("span", { text: "×" });
+        clearX.style.cssText =
+            "position:absolute;right:6px;cursor:pointer;color:var(--text-muted);font-size:16px;" +
+            "line-height:1;display:" + (this._snapSlugFilter ? "block" : "none");
+        clearX.onclick = () => {
+            filterInput.value = "";
+            clearX.style.display = "none";
+            this._snapSlugFilter = "";
+            this._snapPage = 0;
+            this._renderSnapTable();
+        };
+
         filterInput.oninput = () => {
             this._snapSlugFilter = filterInput.value.trim();
+            clearX.style.display = this._snapSlugFilter ? "block" : "none";
             this._snapPage = 0;
             this._renderSnapTable();
         };
