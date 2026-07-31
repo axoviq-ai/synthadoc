@@ -9,14 +9,17 @@ import { computeDiff } from "./main";
 vi.mock("obsidian", () => ({
     Plugin: class {
         app: any;
-        addCommand                   = vi.fn();
-        addRibbonIcon                = vi.fn();
-        addSettingTab                = vi.fn();
-        loadData                     = vi.fn().mockResolvedValue({});
-        saveData                     = vi.fn().mockResolvedValue(undefined);
+        addCommand                    = vi.fn();
+        addRibbonIcon                 = vi.fn();
+        addSettingTab                 = vi.fn();
+        loadData                      = vi.fn().mockResolvedValue({});
+        saveData                      = vi.fn().mockResolvedValue(undefined);
         registerMarkdownPostProcessor = vi.fn();
-        registerExtensions           = vi.fn();
-        constructor(app?: any) { this.app = app; }
+        registerExtensions            = vi.fn();
+        registerEvent                 = vi.fn();
+        constructor(app?: any) {
+            this.app = app ?? { vault: { on: vi.fn(), read: vi.fn().mockResolvedValue("") } };
+        }
     },
     FileSystemAdapter: class {},
     PluginSettingTab: class {
@@ -178,6 +181,8 @@ describe("IngestModal All-sources tab", () => {
         vault: {
             getFiles: () => files,
             adapter: { getFullPath: (p: string) => `/abs/${p}` },
+            on: vi.fn(),
+            read: vi.fn().mockResolvedValue(""),
         },
     });
 
@@ -570,7 +575,10 @@ async function getModal(commandId: string, appOverride?: any): Promise<{ ModalCl
             saveData                      = vi.fn().mockResolvedValue(undefined);
             registerMarkdownPostProcessor = vi.fn();
             registerExtensions            = vi.fn();
-            constructor(app?: any) { this.app = app; }
+            registerEvent                 = vi.fn();
+            constructor(app?: any) {
+                this.app = app ?? { vault: { on: vi.fn(), read: vi.fn().mockResolvedValue("") } };
+            }
         },
         FileSystemAdapter: class {},
         PluginSettingTab: class {
@@ -780,6 +788,8 @@ describe("IngestModal Pick-files tab", () => {
         vault: {
             getFiles: () => files.map(f => ({ ...f, name: f.name ?? f.path.split("/").pop() ?? f.path })),
             adapter: { getFullPath: (p: string) => `/abs/${p}` },
+            on: vi.fn(),
+            read: vi.fn().mockResolvedValue(""),
         },
     });
 
@@ -2009,6 +2019,8 @@ describe("Export Modal", () => {
                 getAbstractFileByPath: vi.fn().mockReturnValue(null),
                 createFolder: vi.fn().mockResolvedValue(undefined),
                 create: vi.fn().mockResolvedValue(mockTFile),
+                on: vi.fn(),
+                read: vi.fn().mockResolvedValue(""),
             },
             workspace: { getLeaf: vi.fn().mockReturnValue(mockLeaf) },
             commands: { executeCommandById: vi.fn() },
