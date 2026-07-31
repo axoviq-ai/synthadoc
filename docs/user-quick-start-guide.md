@@ -724,17 +724,22 @@ konrad-zuse   draft   active  lint    2026-05-28T18:31:23  lint passed
 
 #### Snapshots and content recovery
 
-Each time you manually activate, archive, or restore a page, Synthadoc automatically
-freezes the page body at that moment. These **content snapshots** give you a permanent
-record of what the page said at every lifecycle boundary — so you can see what was
-published, compare versions, and roll back accidental edits at any time.
+Synthadoc automatically captures a **content snapshot** — a frozen copy of the page body
+— every time anything meaningful happens to a page. Three situations trigger a snapshot:
 
-> Lint-driven transitions (draft → active, active → stale, etc.) do **not** capture
-> snapshots. Only manual transitions via `lifecycle activate`, `lifecycle archive`, and
-> `lifecycle restore` do.
+| Trigger | What causes it | Example |
+|---------|---------------|---------|
+| **Manual lifecycle transition** | You activate, archive, or restore a page via the CLI, Obsidian plugin, or API | `synthadoc lifecycle activate konrad-zuse` |
+| **Lint-driven state change** | Lint promotes a page, marks it stale, archives it for a missing source, or auto-resolves a contradiction | `synthadoc lint run --auto-resolve` |
+| **Manual file edit in Obsidian** | You edit a wiki page directly in Obsidian; the plugin detects the save and sends the content to the server (2-second debounce, only records when content actually changed) | Edit `wiki/orphan-page.md` in Obsidian and save |
 
 Snapshots are listed **newest-first**. Index 1 is always the most recent snapshot; older
 snapshots carry higher index numbers.
+
+> **Deduplication for manual edits:** the Obsidian plugin compares the saved content to
+> the last stored snapshot before writing. If you save without changing anything, no
+> snapshot is created. This keeps the snapshot history meaningful without accumulating
+> identical entries.
 
 ---
 
@@ -824,10 +829,29 @@ synthadoc lifecycle rollback konrad-zuse --index 1 \
 - Compare the activation body to the current version with `diff` before deciding whether to roll back
 - Restore a page to a known-good state after a failed re-ingest
 
-> **Obsidian UI for snapshots:** The **Manage Page Lifecycle** modal includes a
-> **Content Snapshots** tab where you can browse all snapshot history, read and diff
-> snapshot content against the current version, and roll back — all without leaving
-> Obsidian or touching the CLI.
+#### Content Snapshots tab — browsing and rolling back in Obsidian
+
+The **Manage Page Lifecycle** modal includes a **Content Snapshots** tab where you can
+browse the full snapshot history for every page, compare any snapshot against the current
+file, and roll back — all without leaving Obsidian or touching the CLI.
+
+**What the tab shows:**
+- All snapshots across all pages, sorted by slug then by index when unfiltered
+- Snapshot index (1 = newest per slug), the state transition that triggered it, who
+  triggered it (`lint`, `cli`, `api`, `MANUAL_EDIT`), the timestamp, and the content size
+- A **Filter by slug…** input with a × clear button to narrow the list to one page
+
+**Actions:**
+- **Click any row** — opens the corresponding wiki page in the main Obsidian panel
+- **View** — shows a line-by-line diff of the snapshot body against the current file,
+  with added lines in green and removed lines in red; YAML frontmatter is stripped from
+  both sides so the diff focuses on the content that matters
+- **Rollback** — restores the page body to that snapshot; the current body is saved as a
+  new snapshot first, so every rollback is undoable
+
+![Synthadoc Content Snapshots tab](png/synthadoc-content-snapshots.png)
+
+<!-- screenshot placeholder: filter by slug, showing rows from multiple triggers (lint, MANUAL_EDIT, cli) -->
 
 ---
 

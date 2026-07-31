@@ -701,7 +701,7 @@ Immutable append-only audit log of every lifecycle transition.
 | `reason` | TEXT | Human-readable reason (empty string if none provided) |
 | `triggered_by` | TEXT | `ingest`, `lint`, `cli`, `api` |
 | `timestamp` | TEXT | UTC ISO-8601 |
-| `content_snapshot` | TEXT | Full page body at transition; NULL for lint/ingest events |
+| `content_snapshot` | TEXT | Full page body at the moment of the event; NULL when the event carries no content change (e.g. ingest-agent transitions). See [§23 Page Content Snapshots](#page-content-snapshots) for the full capture policy. |
 
 ### jobs.db — Job queue
 
@@ -771,6 +771,8 @@ Note: BM25 IDF requires a minimum of 3 documents in the corpus for non-zero scor
 | `GET` | `/graph` _(v1.0.0)_ | — | `{status, node_count, edge_count, cluster_count, nodes: [...], edges: [...]}` or `{status: "computing"}` on first call |
 | `GET` | `/pages/{slug}/history` | `?index=N&include_content=true` | List content snapshots; ?index=N&include_content=true for single |
 | `POST` | `/pages/{slug}/rollback` | `{index: int, reason: str}` | Restore page body to snapshot N |
+| `POST` | `/pages/{slug}/snapshot` | `{content: str, reason?: str}` | Record a content snapshot only when content differs from the last stored snapshot (`recorded: true/false`). Called by the Obsidian plugin on vault modify events. |
+| `DELETE` | `/pages/{slug}/history` | — | Delete all lifecycle events (including snapshots) for a slug; intended for test teardown. |
 
 **`GET /jobs` query parameters:**
 
@@ -893,7 +895,7 @@ Reload the plugin (toggle off/on) after copying — a full Obsidian restart is n
 | `Synthadoc: Lint: report` | 3-tab modal — **Contradictions**, **Orphans**, **Adversarial** _(v0.5.0)_. The Adversarial tab shows each flagged claim (orange) with its concern and suggested re-ingest commands. |
 | `Synthadoc: Lint: run...` | Modal with **Auto-resolve** and **Skip adversarial review** _(v0.5.0)_ checkboxes. Queues a lint job; polls progress live; reports contradiction, orphan, and adversarial warning counts when complete. Tick **Skip adversarial review** to run structural-only lint (also clears existing `lint_warnings`). |
 | `Synthadoc: View Page Provenance` _(v0.5.0)_ | Sortable, paginated table of every claim citation recorded across the wiki — page, claim excerpt, source file, line range, and ingest timestamp. Draggable; all cell content is selectable and copyable. Click any row to open the Source Viewer showing the exact source lines with ±5 lines of context. For PDF sources a page-jump button opens the native PDF viewer at the correct page. |
-| `Synthadoc: Manage Page Lifecycle` _(v0.6.0)_ | Sortable, filterable, paginated table of all wiki pages with their current lifecycle state (`draft`, `active`, `contradicted`, `stale`, `archived`) and last transition timestamp. State filter checkboxes narrow the table; click column headers to sort. Each row shows valid transition buttons — click a button to trigger a transition; a reason dialog appears before committing. Clicking a draft or stale badge on the lint modal or jobs panel opens this table pre-filtered to that state. |
+| `Synthadoc: Manage Page Lifecycle` _(v0.6.0)_ | Three-tab modal. **Current States** — sortable, filterable, paginated table (dynamic row count based on modal height) of all wiki pages with their current lifecycle state and last transition timestamp; click column headers to sort; each row shows valid transition buttons with a reason dialog before committing; draft/stale badge links on the lint modal and jobs panel open the table pre-filtered to that state. **Audit Log** — full history of every state transition across all pages, searchable by slug, filterable by target state, sortable by any column, with pagination and a purge footer (keep latest N per slug, or purge events before a date). **Content Snapshots** _(v1.2.0)_ — flat list of all snapshots across all pages, grouped by slug and sorted by index when unfiltered; filter-by-slug input with a × clear button; each row shows slug, snapshot index, state transition, triggered-by, timestamp, and size; click a row to open the corresponding wiki page; **View** button shows the snapshot diff against the current file body (LCS diff, YAML frontmatter stripped); **Rollback** button restores the page body to that snapshot (saves current body first, making rollback undoable). |
 | `Synthadoc: Jobs...` | Modal with status-filter checkboxes (pending, in_progress, completed, failed, skipped, dead, cancelled), sortable results table (click **Status**, **Operation**, or **Created** headers to sort ascending; click again to reverse; ▲/▼ indicates active sort, ⇅ indicates unsorted; default: newest first), error detail rows for failed/dead/cancelled jobs, pagination (25 per page), auto-refresh countdown, a **Retry selected** button (enabled when ≥ 1 selected job is failed/dead/cancelled) and a **Delete selected** button (enabled when ≥ 1 job is selected). A **Purge old jobs** footer row lets you set a day threshold and remove old completed/dead jobs in one click. |
 | `Synthadoc: Routing: manage ROUTING.md...` | Modal panel with three buttons. **Init** creates ROUTING.md from the current index.md branch structure (enabled only when ROUTING.md does not exist). **Validate** reports two things: dangling slugs (pages listed in ROUTING.md that no longer exist in the wiki) and unassigned slugs (pages that exist in index.md but are not listed in any ROUTING.md branch). Enabled only when ROUTING.md exists. **Clean** removes dangling slugs from ROUTING.md (enabled only when ROUTING.md exists). After each action the result appears inline with per-entry `[Branch] [[slug]]` detail rows. |
 | `Synthadoc: Staging: manage staging policy...` | Modal panel showing the current policy state. A segmented control switches between **Off**, **All**, and **Threshold**. When **Threshold** is selected, a second segmented control sets the minimum confidence (**High** / **Medium** / **Low**). A **Save** button persists the change via the HTTP API and updates the inline status. A footer link opens the Candidates modal directly. |
@@ -917,6 +919,25 @@ If the icon is not visible, make sure the plugin is enabled under **Settings →
 |---------|---------|-------------|
 | Server URL | `http://127.0.0.1:7070` | HTTP server for this vault |
 | Raw sources folder | `raw_sources` | Folder scanned by "Ingest all sources" |
+
+### Background vault monitoring _(v1.2.0)_
+
+In addition to the command palette commands, the plugin registers a passive vault event
+listener for automatic content snapshot capture:
+
+- **`vault.on("modify")`** — fires whenever Obsidian saves a file. The handler filters to
+  `.md` files at the vault root only (wiki pages, not subdirectories or scaffold files).
+- **2-second per-slug debounce** — rapid keystrokes during editing collapse into a single
+  request. The timer resets on each save event and only fires after 2 seconds of quiet.
+- **Deduplication on the server** — `POST /pages/{slug}/snapshot` calls
+  `AuditLog.snapshot_if_changed()`, which compares the incoming content to the last
+  stored snapshot. No new row is written when content is identical.
+- **Silent failure** — if the server is offline or the slug is not in the wiki, the error
+  is swallowed. The plugin never shows an error notification for background snapshot calls.
+
+This gives rollback coverage for edits that do not trigger a lifecycle transition — for
+example, manually fixing an orphan page, editing body copy, or correcting a citation —
+without requiring any explicit user action.
 
 ### Supported ingest formats
 
@@ -2406,15 +2427,28 @@ check_url_availability = true    # default: false — adds a network call per UR
 
 ### Page Content Snapshots
 
-When the user activates, archives, or restores a page via the CLI, MCP tool, or REST
-API, the page body (`WikiPage.content`) is captured in the `content_snapshot` column of
-the triggering `lifecycle_events` row.
+A content snapshot is a copy of the page body (`WikiPage.content`) stored in the
+`content_snapshot` column of a `lifecycle_events` row. Three distinct triggers produce
+snapshots; ingest-agent transitions never do (ingest does not change existing content):
 
-Lint-agent and ingest-agent transitions do not capture snapshots — they do not change
-page content.
+| Trigger | When it fires | Dedup? |
+|---------|--------------|--------|
+| **Manual lifecycle transition** | User calls `lifecycle activate`, `lifecycle archive`, `lifecycle restore` via CLI, the Obsidian Lifecycle modal, the REST API, or the MCP tool | No — always records |
+| **Lint-driven state change** | `LintAgent._transition()` fires: draft → active (promotion), active → stale (hash mismatch), active → archived (source gone), contradicted → active (auto-resolve) | No — always records; for auto-resolve, captures the post-resolution body that was just written |
+| **Manual file edit in Obsidian** | The Obsidian plugin's `vault.on("modify")` handler fires after a 2-second debounce on any `.md` file at the vault root | Yes — `AuditLog.snapshot_if_changed()` compares incoming content to the last stored snapshot and only writes a new row when content differs |
+
+For the manual-edit trigger the `from_state` and `to_state` columns are both set to the
+current page state (no lifecycle transition occurs — this is a pure content checkpoint).
+
+**Deduplication (manual edits only):** `snapshot_if_changed()` reads the last
+`content_snapshot` for the slug from the DB and compares it to the incoming content with
+a string equality check. At typical wiki page sizes (< 100 KB) and the 2-second debounce
+rate, this is negligible overhead. A future optimisation may store a `content_hash`
+column to avoid reading the full text from the DB; deferred until page sizes make it
+measurable.
 
 Snapshots are indexed 1-based, newest first. Index 1 always refers to the most recent
-transition that has a snapshot. The rollback operation:
+snapshot. The rollback operation:
 
 1. Records the current body as a new snapshot (making rollback undoable).
 2. Writes the target snapshot body to the `.md` file on disk.
