@@ -955,10 +955,11 @@ function makeDraggable(modalEl: HTMLElement, handle: HTMLElement): void {
     // Drag from the title bar
     handle.addEventListener("mousedown", startDrag);
 
-    // Also drag from the modal frame/padding — but not from inside the content area
+    // Also drag from the modal frame/padding — but not from inside the content area or the × button
     modalEl.addEventListener("mousedown", (e: MouseEvent) => {
         if (handle.contains(e.target as Node)) return; // already handled above
         if (handle.parentElement && handle.parentElement.contains(e.target as Node)) return; // inside content
+        if ((e.target as Element)?.closest?.(".modal-close-button")) return; // let Obsidian's × work
         startDrag(e);
     });
 
@@ -4699,9 +4700,10 @@ export function computeDiff(
 // ── SnapshotContentModal — content view, diff, and rollback ───────────────────
 
 export class SnapshotContentModal extends Modal {
-    private _area: HTMLElement | null = null;
+    private _area:       HTMLElement | null = null;
     private _contentBtn: HTMLButtonElement | null = null;
     private _diffBtn:    HTMLButtonElement | null = null;
+    private _copyBtn:    HTMLButtonElement | null = null;
 
     constructor(
         app: App,
@@ -4728,11 +4730,7 @@ export class SnapshotContentModal extends Modal {
         const titleEl = header.createEl("h3", {
             text: `Snapshot ${this.snap.snap_index} — ${this.snap.slug}`,
         });
-        titleEl.style.cssText = "margin:0;display:flex;justify-content:space-between;align-items:center";
-
-        const copyBtn = header.createEl("button", { text: "Copy" });
-        copyBtn.style.marginLeft = "8px";
-        copyBtn.onclick = () => (window as any).navigator?.clipboard?.writeText(this.snap.content ?? "");
+        titleEl.style.cssText = "margin:0";
 
         const meta = header.createEl("p");
         meta.style.cssText = "margin:4px 0;font-size:11px;color:var(--text-muted)";
@@ -4762,10 +4760,12 @@ export class SnapshotContentModal extends Modal {
         this._diffBtn.onclick    = () => this._showDiff();
         this._showContent();   // default view
 
-        // Footer — rollback only (modal already has an × close button)
+        // Footer — Copy to Clipboard (left, Content tab only) + Rollback (right)
         const footer = contentEl.createEl("div");
         footer.style.cssText =
-            "flex-shrink:0;display:flex;justify-content:flex-end;align-items:center;padding:8px 0 0";
+            "flex-shrink:0;display:flex;justify-content:space-between;align-items:center;padding:8px 0 0";
+        this._copyBtn = footer.createEl("button", { text: "Copy to Clipboard" }) as HTMLButtonElement;
+        this._copyBtn.onclick = () => (window as any).navigator?.clipboard?.writeText(this.snap.content ?? "");
         const rollBtn = footer.createEl("button", { text: "Rollback to this version" });
         rollBtn.onclick = () => {
             new ReasonModal(
@@ -4788,6 +4788,7 @@ export class SnapshotContentModal extends Modal {
     private _showContent(): void {
         if (!this._area) return;
         this._setActiveToggle("content");
+        if (this._copyBtn) this._copyBtn.style.display = "";
         this._area.empty();
         this._area.setText(this.snap.content ?? "");
     }
@@ -4795,6 +4796,7 @@ export class SnapshotContentModal extends Modal {
     async _showDiff(): Promise<void> {
         if (!this._area) return;
         this._setActiveToggle("diff");
+        if (this._copyBtn) this._copyBtn.style.display = "none";
         this._area.empty();
 
         // Legend
