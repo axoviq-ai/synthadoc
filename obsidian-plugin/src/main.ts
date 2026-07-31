@@ -3574,8 +3574,6 @@ class ReasonModal extends Modal {
 
 // ── LifecycleModal ────────────────────────────────────────────────────────────
 
-const LIFECYCLE_PAGE_SIZE = 20;
-
 const LIFECYCLE_STATE_COLORS: Record<string, string> = {
     [LifecycleState.DRAFT]:        "background:#7a4f00;color:#ffd880",
     [LifecycleState.ACTIVE]:       "background:#1a4a1a;color:#80ff80",
@@ -3625,6 +3623,9 @@ export class LifecycleModal extends Modal {
     private _snapPagerWrap: HTMLElement | null = null;
     private _tab3Content: HTMLElement | null = null;
     private _snapTabBuilt = false;
+    // computed page sizes: derived from container height each render cycle
+    private _statesPageSize = 50;
+    private _auditPageSize = 50;
 
     constructor(
         app: App,
@@ -3894,7 +3895,7 @@ export class LifecycleModal extends Modal {
         if (!this._snapTableWrap) return;
         this._snapTableWrap.empty();
 
-        const PAGE = 25;
+        const PAGE = this._calcPageSize(this._snapTableWrap, 26);
         const filter = this._snapSlugFilter.toLowerCase();
         const visible = filter
             ? this._snapRows.filter(r => r.slug.toLowerCase().includes(filter))
@@ -4074,12 +4075,19 @@ export class LifecycleModal extends Modal {
         });
     }
 
+    private _calcPageSize(wrap: HTMLElement | null, rowH = 34, fallback = 50): number {
+        const h = wrap?.clientHeight ?? 0;
+        return h > 0 ? Math.max(10, Math.floor((h - rowH) / rowH)) : fallback;
+    }
+
     private _renderAll() {
+        this._statesPageSize = this._calcPageSize(this._tableWrap, 36);
         this._renderTable();
         this._renderPager();
     }
 
     private _renderAuditAll() {
+        this._auditPageSize = this._calcPageSize(this._auditTableWrap, 32);
         this._renderAuditTable();
         this._renderAuditPager();
     }
@@ -4090,9 +4098,9 @@ export class LifecycleModal extends Modal {
 
         const filtered = this._filteredPages();
         const sorted = this._sortedPages(filtered);
-        const totalPages = Math.max(1, Math.ceil(sorted.length / LIFECYCLE_PAGE_SIZE));
+        const totalPages = Math.max(1, Math.ceil(sorted.length / this._statesPageSize));
         this._page = Math.min(this._page, totalPages - 1);
-        const slice = sorted.slice(this._page * LIFECYCLE_PAGE_SIZE, (this._page + 1) * LIFECYCLE_PAGE_SIZE);
+        const slice = sorted.slice(this._page * this._statesPageSize, (this._page + 1) * this._statesPageSize);
 
         if (sorted.length === 0) {
             this._tableWrap.createEl("p", { text: "No pages found." })
@@ -4207,9 +4215,9 @@ export class LifecycleModal extends Modal {
             return;
         }
 
-        const totalPages = Math.max(1, Math.ceil(sorted.length / LIFECYCLE_PAGE_SIZE));
+        const totalPages = Math.max(1, Math.ceil(sorted.length / this._auditPageSize));
         this._auditPage = Math.min(this._auditPage, totalPages - 1);
-        const slice = sorted.slice(this._auditPage * LIFECYCLE_PAGE_SIZE, (this._auditPage + 1) * LIFECYCLE_PAGE_SIZE);
+        const slice = sorted.slice(this._auditPage * this._auditPageSize, (this._auditPage + 1) * this._auditPageSize);
 
         const AUDIT_COLS: { key: string; label: string; sortable: boolean }[] = [
             { key: "slug",         label: "Slug",         sortable: true },
@@ -4286,7 +4294,7 @@ export class LifecycleModal extends Modal {
         if (!this._pagerWrap) return;
         this._pagerWrap.empty();
         const filtered = this._filteredPages();
-        const totalPages = Math.max(1, Math.ceil(filtered.length / LIFECYCLE_PAGE_SIZE));
+        const totalPages = Math.max(1, Math.ceil(filtered.length / this._statesPageSize));
         if (totalPages <= 1) return;
         const prev = this._pagerWrap.createEl("button", { text: "← Prev" }) as HTMLButtonElement;
         prev.disabled = this._page === 0;
@@ -4303,7 +4311,7 @@ export class LifecycleModal extends Modal {
         if (!this._auditPagerWrap) return;
         this._auditPagerWrap.empty();
         const filtered = this._filteredAuditEvents();
-        const totalPages = Math.max(1, Math.ceil(filtered.length / LIFECYCLE_PAGE_SIZE));
+        const totalPages = Math.max(1, Math.ceil(filtered.length / this._auditPageSize));
         if (totalPages <= 1) return;
         const prev = this._auditPagerWrap.createEl("button", { text: "← Prev" }) as HTMLButtonElement;
         prev.disabled = this._auditPage === 0;
