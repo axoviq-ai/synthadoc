@@ -14,13 +14,12 @@ DB_SCHEMA_VERSION: int = 4
 CITATION_EXCERPT_LEN = 100
 
 
-def _strip_frontmatter(text: str) -> str:
+def strip_frontmatter(text: str) -> str:
     """Return *text* with any YAML frontmatter block removed (body only).
 
     Mirrors the TypeScript stripFrontmatter helper in the Obsidian plugin.
-    Called inside snapshot_if_changed so all stored snapshots are body-only
-    regardless of whether the caller is the vault monitor (raw .md file) or
-    a lifecycle transition (WikiPage.content, already body-only).
+    Used inside snapshot_if_changed and at rollback time so all stored
+    and restored content is body-only regardless of trigger source.
     """
     if not text.startswith("---\n"):
         return text
@@ -636,7 +635,7 @@ class AuditDB:
         frontmatter is stripped here before comparing and storing so callers do not
         need to normalise it themselves.
         """
-        content = _strip_frontmatter(content)
+        content = strip_frontmatter(content)
         async with aiosqlite.connect(self._path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(

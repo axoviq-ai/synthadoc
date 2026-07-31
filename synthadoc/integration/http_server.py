@@ -1787,8 +1787,13 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         )
         rollback_event_index = 1  # always 1: newest id → index 1 (ORDER BY id DESC)
 
-        # Restore page body from the snapshot
-        page.content = snap["content_snapshot"]
+        # Restore page body from the snapshot.
+        # Strip frontmatter in case the snapshot was captured before the fix
+        # that normalised stored content to body-only; write_page adds its own
+        # frontmatter, so restoring a snapshot that still contains frontmatter
+        # would produce a double-frontmatter file.
+        from synthadoc.storage.log import strip_frontmatter
+        page.content = strip_frontmatter(snap["content_snapshot"])
         orch._store.write_page(slug, page)
         orch._bump_epoch()
         orch._search.invalidate_index()

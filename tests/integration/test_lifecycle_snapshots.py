@@ -360,6 +360,59 @@ def test_rollback_endpoint_records_pre_rollback_snapshot(tmp_wiki):
     asyncio.run(_check())
 
 
+def test_rollback_strips_frontmatter_from_old_snapshot(tmp_wiki):
+    """Rollback from a snapshot that contains YAML frontmatter must not produce
+    a double-frontmatter file on disk.
+
+    Before the fix, vault-monitor snapshots stored the full .md file content
+    (frontmatter + body).  Rolling back such a snapshot set page.content to
+    'frontmatter + body', then write_page wrapped it again with its own
+    frontmatter, resulting in a corrupted page file.  The fix calls
+    strip_frontmatter() on the snapshot content before restoring.
+    """
+    import asyncio
+    from fastapi.testclient import TestClient
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.storage.log import AuditDB
+
+    wiki_dir = tmp_wiki / "wiki"
+    body = "Body before the bad edit."
+    # Simulate a pre-fix snapshot: stored with frontmatter still present
+    snap_with_frontmatter = (
+        "---\ntitle: Snap Test\nstatus: active\nconfidence: medium\n"
+        "tags: []\nsources: []\n---\n\n" + body
+    )
+    (wiki_dir / "snap-fm-page.md").write_text(
+        "---\ntitle: Snap Test\nstatus: active\nconfidence: medium\n"
+        "tags: []\nsources: []\n---\n\nThis is the wrong body.\n",
+        encoding="utf-8",
+    )
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    async def _seed():
+        await audit.init()
+        await audit.record_lifecycle_event(
+            "snap-fm-page", "draft", "active", "activated", "user",
+            content_snapshot=snap_with_frontmatter,
+        )
+    asyncio.run(_seed())
+
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.post("/pages/snap-fm-page/rollback", json={
+            "index": 1,
+            "reason": "restoring old snapshot",
+        })
+    assert resp.status_code == 200
+
+    on_disk = (wiki_dir / "snap-fm-page.md").read_text(encoding="utf-8")
+    # Body must be present
+    assert body in on_disk
+    # Must not contain double frontmatter (second --- block inside the body)
+    body_part = on_disk.split("---\n", 2)[-1]  # everything after the closing ---
+    assert "---" not in body_part, (
+        "File has double frontmatter after rollback — strip_frontmatter not applied"
+    )
+
+
 # ── Task 6 tests (v1.2 backend) ─────────────────────────────────────────────
 
 def test_get_snapshots_returns_all(tmp_wiki):
