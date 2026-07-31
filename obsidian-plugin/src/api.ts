@@ -106,4 +106,24 @@ export const api = {
         return fetch(`${BASE}/sessions`, { method: "POST" }).then(r => r.json());
     },
     graph:        ()                          => call("/graph"),
+
+    snapshotList: (slug?: string) => {
+        const qs = slug ? `?slug=${encodeURIComponent(slug)}` : "";
+        return call(`/snapshots${qs}`);
+    },
+
+    pageRollback: (slug: string, index: number, reason: string) =>
+        call(`/pages/${encodeURIComponent(slug)}/rollback`, "POST", { index, reason }),
+
+    lifecycleEventsPurge: (params: { keep_latest?: number; before_date?: string }) =>
+        call("/lifecycle/events/purge", "POST", params),
+
+    lifecycleHistory: (slug: string, index: number, includeContent = true) =>
+        call(`/pages/${encodeURIComponent(slug)}/history?index=${index}&include_content=${includeContent}`),
+
+    pageSnapshot: (slug: string, content: string, reason?: string) =>
+        call(`/pages/${encodeURIComponent(slug)}/snapshot`, "POST", {
+            content,
+            ...(reason ? { reason } : {}),
+        }),
 };

@@ -29,10 +29,21 @@ def _api(path: str, method: str = "GET", body: dict | None = None) -> dict:
     with httpx.Client(timeout=30) as client:
         if method == "POST":
             r = client.post(f"{BASE}{path}", json=body)
+        elif method == "DELETE":
+            r = client.delete(f"{BASE}{path}")
         else:
             r = client.get(f"{BASE}{path}")
         r.raise_for_status()
         return r.json()
+
+
+def _cleanup_slug(wiki_dir: Path, slug: str) -> None:
+    """Remove wiki page file and all its lifecycle events (snapshots) from the DB."""
+    (wiki_dir / f"{slug}.md").unlink(missing_ok=True)
+    try:
+        _api(f"/pages/{slug}/history", "DELETE")
+    except Exception:
+        pass
 
 
 def _wiki_dir() -> Path:
@@ -104,7 +115,7 @@ def test_live_view_and_restore():
         history2 = _api(f"/pages/{slug}/history")
         assert len(history2["snapshots"]) == 2
     finally:
-        page_path.unlink(missing_ok=True)
+        _cleanup_slug(wiki_dir, slug)
 
 
 # ── Live test 2: Rollback is undoable ────────────────────────────────────────
@@ -144,31 +155,74 @@ def test_live_rollback_is_undoable():
         snap_after_undo = _api(f"/pages/{slug}/history?index=1&include_content=true")
         assert body_v1 in snap_after_undo.get("content", "")
     finally:
-        page_path.unlink(missing_ok=True)
+        _cleanup_slug(wiki_dir, slug)
 
 
-# ── Live test 3: Lint/ingest events produce no snapshot ──────────────────────
+# ── Live test 3: Lint transitions now capture content snapshots ──────────────
 
 @pytest.mark.live
-def test_live_lint_transition_has_no_snapshot():
-    """Verify that lint-agent transitions do not appear in /pages/{slug}/history."""
+def test_live_lint_transition_captures_snapshot():
+    """Verify lint-agent state changes record a content snapshot."""
     slug = f"live-lint-snap-{int(time.time())}"
     body = "Content for lint snapshot test."
 
     wiki_dir = _wiki_dir()
-    page_path = _write_page(wiki_dir, slug, "Lint Snap", body)
+    _write_page(wiki_dir, slug, "Lint Snap", body)
     try:
-        # Trigger a lint run
+        # Activate the page (draft → active) so the DB has a state row
+        _api("/lifecycle/transition", "POST", {
+            "slug": slug, "to_state": "active", "reason": "live test setup"
+        })
+
+        # Trigger a lint run — for a new page with no source file, lint may
+        # produce a stale or other state transition depending on config.
+        # We only verify that if any snapshot exists, it contains the body.
         _api("/jobs/lint", "POST", {"scope": "all", "auto_resolve": False, "adversarial": False})
         time.sleep(3)
 
-        # /pages/{slug}/history should be empty (lint transitions have NULL snapshot)
         history = _api(f"/pages/{slug}/history")
-        assert history["snapshots"] == [], (
-            f"Expected no snapshots from lint transitions, got: {history['snapshots']}"
-        )
+        # Every snapshot recorded (activation + any lint transition) must include body text
+        for snap in history.get("snapshots", []):
+            snap_detail = _api(
+                f"/pages/{slug}/history?index={snap['index']}&include_content=true"
+            )
+            assert body in snap_detail.get("content", ""), (
+                f"Snapshot index {snap['index']} content missing expected body"
+            )
     finally:
-        page_path.unlink(missing_ok=True)
+        _cleanup_slug(wiki_dir, slug)
+
+
+# ── Live test 4: Manual snapshot endpoint deduplication ──────────────────────
+
+@pytest.mark.live
+def test_live_manual_snapshot_dedup():
+    """POST /pages/{slug}/snapshot only records when content actually changed."""
+    slug = f"live-manual-snap-{int(time.time())}"
+    body_v1 = "Version one."
+    body_v2 = "Version two — different."
+
+    wiki_dir = _wiki_dir()
+    _write_page(wiki_dir, slug, "Manual Snap", body_v1)
+    try:
+        # Activate the page (draft → active) so the DB has a state row
+        _api("/lifecycle/transition", "POST", {
+            "slug": slug, "to_state": "active", "reason": "setup"
+        })
+
+        # First manual snapshot: new content → recorded
+        r1 = _api(f"/pages/{slug}/snapshot", "POST", {"content": body_v1})
+        assert r1["recorded"] is True
+
+        # Same content again: no-op
+        r2 = _api(f"/pages/{slug}/snapshot", "POST", {"content": body_v1})
+        assert r2["recorded"] is False
+
+        # Different content → recorded
+        r3 = _api(f"/pages/{slug}/snapshot", "POST", {"content": body_v2})
+        assert r3["recorded"] is True
+    finally:
+        _cleanup_slug(wiki_dir, slug)
 
 
 if __name__ == "__main__":

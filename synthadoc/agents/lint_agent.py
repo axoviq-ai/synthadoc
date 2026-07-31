@@ -571,7 +571,8 @@ class LintAgent:
         if self._audit:
             await self._audit.set_page_state(slug, to_state, TriggerSource.LINT)
             await self._audit.record_lifecycle_event(
-                slug, from_state, to_state, reason, TriggerSource.LINT
+                slug, from_state, to_state, reason, TriggerSource.LINT,
+                content_snapshot=page.content or None,
             )
         page.status = to_state
         self._store.write_page(slug, page)
@@ -874,6 +875,7 @@ class LintAgent:
                                 await self._audit.record_lifecycle_event(
                                     slug, LifecycleState.CONTRADICTED, LifecycleState.ACTIVE,
                                     f"auto-resolved: {resolve_reason}", TriggerSource.LINT,
+                                    content_snapshot=page.content or None,
                                 )
                                 await self._audit.record_audit_event(
                                     job_id, "auto_resolved", {"slug": slug})

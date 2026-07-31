@@ -167,7 +167,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 
 | Capability | Synthadoc | Typical RAG | NotebookLM | Notion AI |
 | --- | --- | --- | --- | --- |
-| **[Obsidian integration](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-3--open-the-vault-in-obsidian)** — native plugin: ingest modal, streaming query, lint report, lifecycle controls, context pack builder, provenance viewer, export modal, **knowledge graph panel** (Canvas force graph, type filter, hover tooltip, click-to-open page); Reading View set as default on install so citation chips are visible immediately | **Yes** | No | No | No |
+| **[Obsidian integration](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-3--open-the-vault-in-obsidian)** — native plugin: ingest modal, streaming query, lint report, lifecycle controls, context pack builder, provenance viewer, export modal, **knowledge graph panel** (Canvas force graph, type filter, hover tooltip, click-to-open page); **background vault monitoring** (auto-snapshot on every file save, 2 s debounce, dedup so unchanged saves are free); Reading View set as default on install so citation chips are visible immediately | **Yes** | No | No | No |
 | **[Web chat UI](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-22--use-the-web-chat-ui)** — `synthadoc web`: streaming answers, session sidebar, multi-turn history, knowledge-gap callouts, knowledge graph tab | **Yes** | No | Yes | Yes |
 | **[MCP server](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#27-mcp-server)** — 12 tools; Claude Desktop (stdio), Claude Code (SSE), n8n/LangGraph (HTTP/SSE); brain+memory architecture; no double-LLM cost for reads | **Yes** | No | No | No |
 | **[Context packs](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-19--build-a-context-pack)** — goal → sub-questions → token-budget evidence pack; REST + MCP callable; paste into any LLM chat as grounded context | **Yes** | No | No | No |
@@ -190,7 +190,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | --- | --- | --- | --- | --- |
 | **Local-first + offline artifact** — source documents never leave your machine; compiled wiki is plain Markdown, fully readable offline in any editor without the server | **Yes** | Varies | No | No |
 | **[Portable backup / restore](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#28-backup--restore)** — single zip: wiki pages + audit/lifecycle DB + config; port and domain rewriting on restore; migrate machines without re-ingesting | **Yes** | No — re-ingest required | No — AI metadata lost | No |
-| **[Lifecycle content snapshots + rollback](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#snapshots-and-content-recovery)** — page body frozen at every manual lifecycle transition; browse per-page version history with `lifecycle history` (newest-first, with reason); restore any prior version with `lifecycle rollback`; rollback saves the current body first so it is always undoable | **Yes** | No | No | Partial — Notion has time-based edit history (plan-gated, no lifecycle tie, no auditable rollback) |
+| **[Lifecycle content snapshots + rollback](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#snapshots-and-content-recovery)** — page body captured at every lifecycle transition (manual CLI/Obsidian, lint-driven auto-transition, or Obsidian vault save); deduplicated so unchanged saves cost nothing; browse per-page version history with `lifecycle history` (newest-first, with reason); restore any prior version with `lifecycle rollback`; rollback saves the current body first so it is always undoable | **Yes** | No | No | Partial — Notion has time-based edit history (plan-gated, no lifecycle tie, no auditable rollback) |
 | **[Cost guard + full audit trail](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-15--audit-features)** — per-job token + cost log; soft-warn and hard-gate thresholds; `audit citations` validates every claim citation; immutable event log | **Yes** | No | No | No |
 | **[Resumable job queue + retry](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#14-job-queue)** — every ingest/lint job persisted with status and error; batch a hundred documents and resume after a crash | **Yes** | No | No | No |
 | **[Custom skills + CI hooks](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#11-hook-system)** — subclass `BaseSkill` for new file formats; 2 hook events (`on_ingest_complete` + `on_lint_complete`); example git auto-commit hook included; blocking hooks can gate operations | **Yes** | Limited | No | No |
@@ -779,10 +779,12 @@ synthadoc audit lifecycle purge -w my-wiki --before 2026-01-01
 synthadoc audit lifecycle purge -w my-wiki --keep-latest 100
 ```
 
-Synthadoc automatically captures the page body each time you activate, archive, or
-restore a page. Use `synthadoc lifecycle history <slug>` to browse snapshots and
-`synthadoc lifecycle rollback <slug> --index N --reason "..."` to restore any prior
-version — the rollback itself is recorded as an auditable event so it can be undone.
+Synthadoc captures the page body in three situations: a manual lifecycle transition
+(activate, archive, restore), a lint-driven auto-transition (stale detection, contradiction
+auto-resolve, draft promotion), or a file save detected by the Obsidian plugin (2 s debounce,
+deduplicated — unchanged saves cost nothing). Use `synthadoc lifecycle history <slug>` to
+browse snapshots and `synthadoc lifecycle rollback <slug> --index N --reason "..."` to
+restore any prior version — the rollback itself is recorded as an auditable event so it can be undone.
 
 ### Monitoring jobs
 
