@@ -849,9 +849,7 @@ file, and roll back — all without leaving Obsidian or touching the CLI.
 - **Rollback** — restores the page body to that snapshot; the current body is saved as a
   new snapshot first, so every rollback is undoable
 
-![Synthadoc Content Snapshots tab](png/synthadoc-content-snapshots.png)
-
-<!-- screenshot placeholder: filter by slug, showing rows from multiple triggers (lint, MANUAL_EDIT, cli) -->
+![Synthadoc Content Snapshots tab — list of snapshots for a page with diff view and rollback](png/synthadoc-lifecycle-snapshots.png)
 
 ---
 
