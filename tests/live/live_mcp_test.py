@@ -121,12 +121,51 @@ async def run_tests():
             # ── 1. synthadoc_status ─────────────────────────────────────────
             print("\n[1] synthadoc_status")
             r = await call(session, "synthadoc_status")
-            if "pages" in r and "wiki" in r:
-                ok("synthadoc_status", f"wiki={r['wiki']!r}  pages={r['pages']}")
-                wiki_pages = r["pages"]
-            else:
-                fail("synthadoc_status", f"unexpected response: {r}")
+            required_keys = {"wiki", "pages", "jobs_pending", "jobs_total", "lifecycle"}
+            missing_keys = required_keys - set(r.keys())
+            if missing_keys:
+                fail("synthadoc_status", f"missing keys: {missing_keys}  got: {list(r.keys())}")
                 wiki_pages = 0
+            else:
+                lc = r["lifecycle"]
+                lc_keys = {"active", "draft", "stale", "contradicted", "archived"}
+                missing_lc = lc_keys - set(lc.keys())
+                lc_sum = sum(lc.get(s, 0) for s in lc_keys) + lc.get("unlinted", 0)
+                ok("synthadoc_status",
+                   f"wiki={r['wiki']!r}  pages={r['pages']}  "
+                   f"jobs_pending={r['jobs_pending']}  jobs_total={r['jobs_total']}  "
+                   f"lifecycle={lc}")
+                wiki_pages = r["pages"]
+                if missing_lc:
+                    fail("synthadoc_status(lifecycle keys)", f"missing lifecycle keys: {missing_lc}")
+                else:
+                    ok("synthadoc_status(lifecycle keys)", "all 5 lifecycle states present")
+                if lc_sum != wiki_pages:
+                    fail("synthadoc_status(lifecycle sum)",
+                         f"lifecycle counts sum to {lc_sum} but pages={wiki_pages} "
+                         f"(diff={wiki_pages - lc_sum})")
+                else:
+                    ok("synthadoc_status(lifecycle sum)", f"counts sum correctly to {wiki_pages}")
+                # Cross-check against HTTP /status endpoint
+                try:
+                    with urllib.request.urlopen(f"{_HTTP_BASE}/status", timeout=5) as resp:
+                        http_status = json.loads(resp.read().decode())
+                    http_pages = http_status.get("pages")
+                    if http_pages == wiki_pages:
+                        ok("synthadoc_status(page count vs HTTP /status)",
+                           f"MCP and HTTP agree: {wiki_pages} pages")
+                    else:
+                        fail("synthadoc_status(page count vs HTTP /status)",
+                             f"MCP says {wiki_pages} but HTTP /status says {http_pages}")
+                    http_pending = http_status.get("jobs_pending")
+                    if http_pending == r["jobs_pending"]:
+                        ok("synthadoc_status(jobs_pending vs HTTP /status)",
+                           f"MCP and HTTP agree: {r['jobs_pending']} pending")
+                    else:
+                        fail("synthadoc_status(jobs_pending vs HTTP /status)",
+                             f"MCP={r['jobs_pending']} vs HTTP={http_pending}")
+                except Exception as exc:
+                    warn("synthadoc_status(HTTP cross-check)", f"could not reach HTTP /status: {exc}")
 
             # ── 2. synthadoc_list_pages (all) ───────────────────────────────
             print("\n[2] synthadoc_list_pages — all")
@@ -310,19 +349,30 @@ async def run_tests():
                 # write modified content
                 test_content = original_content + "\n\n<!-- MCP live test marker -->"
                 r = await call(session, "synthadoc_write_page",
-                               {"slug": first_slug, "content": test_content})
+                               {"slug": first_slug, "content": test_content,
+                                "reason": "MCP live test — adding marker"})
                 if r.get("slug") == first_slug and "status" in r:
                     ok("synthadoc_write_page(update content)", f"slug={first_slug!r}  status={r['status']!r}")
+                    # snapshot_recorded must be present and True (content changed)
+                    if r.get("snapshot_recorded") is True:
+                        ok("synthadoc_write_page(snapshot_recorded)", "snapshot recorded for content change")
+                    elif r.get("snapshot_recorded") is False:
+                        warn("synthadoc_write_page(snapshot_recorded)",
+                             "snapshot_recorded=False — content may be identical to last snapshot")
+                    else:
+                        fail("synthadoc_write_page(snapshot_recorded)",
+                             f"snapshot_recorded field missing or unexpected: {r.get('snapshot_recorded')!r}")
                     # verify the write took effect
                     verify = await call(session, "synthadoc_read_page", {"slug": first_slug})
                     if "<!-- MCP live test marker -->" in verify.get("content", ""):
                         ok("synthadoc_write_page(verify read-back)", "content change confirmed by read_page")
                     else:
                         fail("synthadoc_write_page(verify read-back)", "content not updated in storage")
-                    # restore original
-                    await call(session, "synthadoc_write_page",
-                               {"slug": first_slug, "content": original_content, "title": original_title})
-                    info(f"Restored {first_slug!r} to original content")
+                    # restore original — snapshot_recorded should be True again
+                    restore_r = await call(session, "synthadoc_write_page",
+                               {"slug": first_slug, "content": original_content, "title": original_title,
+                                "reason": "MCP live test — restore original"})
+                    info(f"Restored {first_slug!r} to original content  snapshot_recorded={restore_r.get('snapshot_recorded')}")
                 else:
                     fail("synthadoc_write_page(update content)", str(r))
 
