@@ -167,9 +167,9 @@ def test_live_lint_transition_captures_snapshot():
     body = "Content for lint snapshot test."
 
     wiki_dir = _wiki_dir()
-    _write_page(wiki_dir, slug, "Lint Snap", body, status="active")
+    _write_page(wiki_dir, slug, "Lint Snap", body)
     try:
-        # Activate the page via lifecycle transition so the DB has a state row
+        # Activate the page (draft → active) so the DB has a state row
         _api("/lifecycle/transition", "POST", {
             "slug": slug, "to_state": "active", "reason": "live test setup"
         })
@@ -203,8 +203,9 @@ def test_live_manual_snapshot_dedup():
     body_v2 = "Version two — different."
 
     wiki_dir = _wiki_dir()
-    _write_page(wiki_dir, slug, "Manual Snap", body_v1, status="active")
+    _write_page(wiki_dir, slug, "Manual Snap", body_v1)
     try:
+        # Activate the page (draft → active) so the DB has a state row
         _api("/lifecycle/transition", "POST", {
             "slug": slug, "to_state": "active", "reason": "setup"
         })
