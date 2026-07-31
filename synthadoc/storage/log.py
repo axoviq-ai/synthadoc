@@ -14,6 +14,22 @@ DB_SCHEMA_VERSION: int = 4
 CITATION_EXCERPT_LEN = 100
 
 
+def _strip_frontmatter(text: str) -> str:
+    """Return *text* with any YAML frontmatter block removed (body only).
+
+    Mirrors the TypeScript stripFrontmatter helper in the Obsidian plugin.
+    Called inside snapshot_if_changed so all stored snapshots are body-only
+    regardless of whether the caller is the vault monitor (raw .md file) or
+    a lifecycle transition (WikiPage.content, already body-only).
+    """
+    if not text.startswith("---\n"):
+        return text
+    close = text.find("\n---\n", 3)
+    if close == -1:
+        return text
+    return text[close + 5:].lstrip("\n")
+
+
 class LogWriter:
     def __init__(self, log_path: Path) -> None:
         self._path = Path(log_path)
@@ -615,7 +631,12 @@ class AuditDB:
         Returns True if a new snapshot was recorded, False when content is unchanged.
         The from_state and to_state are both set to the current page state (no lifecycle
         transition occurs — this is a pure content checkpoint).
+
+        *content* may be a raw .md file (with YAML frontmatter) or body-only text;
+        frontmatter is stripped here before comparing and storing so callers do not
+        need to normalise it themselves.
         """
+        content = _strip_frontmatter(content)
         async with aiosqlite.connect(self._path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(

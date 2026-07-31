@@ -577,6 +577,37 @@ async def test_snapshot_if_changed_records_when_content_differs(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_snapshot_if_changed_strips_frontmatter_before_compare(tmp_path: Path):
+    """snapshot_if_changed() treats raw .md content the same as body-only content.
+
+    Lifecycle transitions store body-only content (WikiPage.content).  The vault
+    monitor sends full .md file content including YAML frontmatter.  Both must
+    deduplicate correctly against each other.
+    """
+    audit = AuditDB(tmp_path / "audit.db")
+    await audit.init()
+    await audit.set_page_state("p", "active", "user")
+
+    body = "Body content here."
+    raw_with_frontmatter = f"---\ntitle: P\nstatus: active\n---\n\n{body}"
+
+    # First call: store via body-only (as lifecycle transitions do)
+    r1 = await audit.snapshot_if_changed("p", body, "lifecycle", "r1")
+    assert r1 is True
+
+    # Second call: same body wrapped in frontmatter (as vault monitor previously sent)
+    # must be deduplicated — content is unchanged
+    r2 = await audit.snapshot_if_changed("p", raw_with_frontmatter, "manual_edit", "r2")
+    assert r2 is False, "frontmatter wrapper must not fool deduplication"
+
+    snaps = await audit.list_page_snapshots("p")
+    assert len(snaps) == 1, "only one snapshot should exist"
+    # Verify stored content is body-only (frontmatter was stripped before storage)
+    snap = await audit.get_snapshot_by_index("p", 1)
+    assert snap["content_snapshot"] == body
+
+
+@pytest.mark.asyncio
 async def test_snapshot_if_changed_uses_current_state(tmp_path: Path):
     """snapshot_if_changed() records from_state = to_state = current page state."""
     audit = AuditDB(tmp_path / "audit.db")
