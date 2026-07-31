@@ -3792,14 +3792,58 @@ export class LifecycleModal extends Modal {
         const purgeFooter = this._tab2Content!.createDiv();
         purgeFooter.style.cssText =
             "border-top:1px solid var(--background-modifier-border);" +
-            "padding:10px 0 4px;display:flex;flex-direction:column;gap:6px;flex-shrink:0";
+            "padding:8px 0 4px;display:flex;flex-direction:column;gap:5px;flex-shrink:0";
 
-        const ROW_CSS = "display:flex;align-items:center;gap:8px;font-size:12px";
-        const LABEL_CSS = "color:var(--text-muted);min-width:220px";
+        // ── Single control row ────────────────────────────────────────────
+        const purgeRow = purgeFooter.createDiv();
+        purgeRow.style.cssText = "display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px";
 
-        // Status line (shared between both purge actions)
-        const statusEl = purgeFooter.createEl("span");
-        statusEl.style.cssText = "font-size:11px;color:var(--text-muted);min-height:14px";
+        purgeRow.createEl("span", { text: "Purge:" })
+            .style.cssText = "font-weight:600;color:var(--text-normal)";
+
+        // Radio A — keep latest N (label wraps radio so clicking text toggles it)
+        const keepLabel = purgeRow.createEl("label");
+        keepLabel.style.cssText = "display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:var(--text-muted)";
+        const keepRadio = keepLabel.createEl("input", { type: "radio" }) as HTMLInputElement;
+        keepRadio.name = "sdc-purge-mode"; keepRadio.checked = true;
+        keepLabel.createEl("span", { text: "Keep latest" });
+        const keepInput = purgeRow.createEl("input", { type: "number" }) as HTMLInputElement;
+        keepInput.value = "100"; keepInput.min = "1";
+        keepInput.style.cssText = "width:60px;padding:2px 5px;font-size:12px";
+        purgeRow.createEl("span", { text: "entries" })
+            .style.cssText = "color:var(--text-muted);margin-right:6px";
+
+        // Separator
+        purgeRow.createEl("span", { text: "·" }).style.color = "var(--text-faint)";
+
+        // Radio B — before date
+        const dateLabel = purgeRow.createEl("label");
+        dateLabel.style.cssText = "display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:var(--text-muted)";
+        const dateRadio = dateLabel.createEl("input", { type: "radio" }) as HTMLInputElement;
+        dateRadio.name = "sdc-purge-mode";
+        dateLabel.createEl("span", { text: "Before date" });
+        const dateInput = purgeRow.createEl("input", { type: "text" }) as HTMLInputElement;
+        dateInput.placeholder = "YYYY-MM-DD";
+        dateInput.style.cssText = "width:106px;padding:2px 5px;font-size:12px;font-family:var(--font-monospace);margin-right:6px";
+
+        // Single Purge button
+        const purgeBtn = purgeRow.createEl("button", { text: "Purge" }) as HTMLButtonElement;
+        purgeBtn.style.cssText = "font-size:12px";
+
+        // Status (inline after button)
+        const statusEl = purgeRow.createEl("span");
+        statusEl.style.cssText = "font-size:11px;color:var(--text-muted)";
+
+        // Dim inactive input; auto-select radio when input is focused
+        const syncInputStates = () => {
+            keepInput.style.opacity = keepRadio.checked ? "1" : "0.45";
+            dateInput.style.opacity = dateRadio.checked ? "1" : "0.45";
+        };
+        keepRadio.addEventListener("change", syncInputStates);
+        dateRadio.addEventListener("change", syncInputStates);
+        keepInput.addEventListener("focus", () => { keepRadio.checked = true; syncInputStates(); });
+        dateInput.addEventListener("focus", () => { dateRadio.checked = true; syncInputStates(); });
+        syncInputStates();
 
         const setStatus = (msg: string, isErr = false) => {
             statusEl.setText(msg);
@@ -3807,56 +3851,35 @@ export class LifecycleModal extends Modal {
             if (msg) setTimeout(() => { if (statusEl.getText() === msg) statusEl.setText(""); }, 4000);
         };
 
-        // ── Row 1: Keep latest N ──────────────────────────────────────────
-        const keepRow = purgeFooter.createDiv();
-        keepRow.style.cssText = ROW_CSS;
-        keepRow.createEl("span", { text: "Keep only the latest N entries:" }).style.cssText = LABEL_CSS;
-        const keepInput = keepRow.createEl("input", { type: "number" }) as HTMLInputElement;
-        keepInput.value = "100";
-        keepInput.min = "1";
-        keepInput.style.cssText = "width:64px;padding:2px 5px;font-size:12px";
-        const keepBtn = keepRow.createEl("button", { text: "Purge" }) as HTMLButtonElement;
-        keepBtn.style.cssText = "font-size:12px";
-        keepBtn.onclick = async () => {
-            const n = parseInt(keepInput.value, 10);
-            if (isNaN(n) || n < 1) { setStatus("Enter a positive integer.", true); return; }
-            keepBtn.disabled = true;
-            setStatus("Purging…");
-            try {
-                await this._purgeEvents({ keep_latest: n });
-                await this._fetchAudit();
-                setStatus(`Done — kept latest ${n} per slug.`);
-            } catch { setStatus("Error — is the server running?", true); }
-            finally { keepBtn.disabled = false; }
-        };
-
-        // ── Row 2: Before date ────────────────────────────────────────────
-        const dateRow = purgeFooter.createDiv();
-        dateRow.style.cssText = ROW_CSS;
-        dateRow.createEl("span", { text: "Delete all entries before date:" }).style.cssText = LABEL_CSS;
-        const dateInput = dateRow.createEl("input", { type: "text" }) as HTMLInputElement;
-        dateInput.placeholder = "YYYY-MM-DD";
-        dateInput.style.cssText = "width:110px;padding:2px 5px;font-size:12px;font-family:var(--font-monospace)";
-        const dateBtn = dateRow.createEl("button", { text: "Purge" }) as HTMLButtonElement;
-        dateBtn.style.cssText = "font-size:12px";
-        dateBtn.onclick = async () => {
-            const val = dateInput.value.trim();
-            if (!/^\d{4}-\d{2}-\d{2}$/.test(val)) {
-                setStatus("Enter a date in YYYY-MM-DD format.", true); return;
+        purgeBtn.onclick = async () => {
+            if (keepRadio.checked) {
+                const n = parseInt(keepInput.value, 10);
+                if (isNaN(n) || n < 1) { setStatus("Enter a positive integer.", true); keepInput.focus(); return; }
+                purgeBtn.disabled = true; setStatus("Purging…");
+                try {
+                    await this._purgeEvents({ keep_latest: n });
+                    await this._fetchAudit();
+                    setStatus(`Done — kept latest ${n} per slug.`);
+                } catch { setStatus("Error — is the server running?", true); }
+                finally { purgeBtn.disabled = false; }
+            } else {
+                const val = dateInput.value.trim();
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+                    setStatus("Enter a date in YYYY-MM-DD format.", true); dateInput.focus(); return;
+                }
+                const [y, m, d] = val.split("-").map(Number);
+                const dt = new Date(y, m - 1, d);
+                if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) {
+                    setStatus(`${val} is not a valid calendar date.`, true); dateInput.focus(); return;
+                }
+                purgeBtn.disabled = true; setStatus("Purging…");
+                try {
+                    await this._purgeEvents({ before_date: val });
+                    await this._fetchAudit();
+                    setStatus(`Done — removed entries before ${val}.`);
+                } catch { setStatus("Error — is the server running?", true); }
+                finally { purgeBtn.disabled = false; }
             }
-            const [y, m, d] = val.split("-").map(Number);
-            const dt = new Date(y, m - 1, d);
-            if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) {
-                setStatus(`${val} is not a valid calendar date.`, true); return;
-            }
-            dateBtn.disabled = true;
-            setStatus("Purging…");
-            try {
-                await this._purgeEvents({ before_date: val });
-                await this._fetchAudit();
-                setStatus(`Done — removed entries before ${val}.`);
-            } catch { setStatus("Error — is the server running?", true); }
-            finally { dateBtn.disabled = false; }
         };
 
         // Warning note
@@ -4168,7 +4191,8 @@ export class LifecycleModal extends Modal {
     }
 
     private _renderAuditAll() {
-        this._auditPageSize = this._calcPageSize(this._auditTableWrap, 32);
+        // Audit rows: 13px font × ~1.2 line-height + 12px padding + 1px border ≈ 29px
+        this._auditPageSize = this._calcPageSize(this._auditTableWrap, 29);
         this._renderAuditTable();
         this._renderAuditPager();
     }
