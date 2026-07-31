@@ -575,6 +575,17 @@ async def _worker_loop(orch, session_state: dict) -> None:
 
 _graph_computing = False  # module-level flag prevents duplicate background tasks
 
+# Lowercase slug names that represent scaffold or config files.
+# Applied to all lifecycle UI display endpoints so that vault-root config
+# files (AGENTS, CLAUDE, GEMINI, ROUTING) and wiki/ scaffold pages
+# (index, dashboard, overview, purpose, log) never appear in the
+# Current States, Audit Log, or Content Snapshots tabs — regardless of
+# what historical records the audit DB contains.
+_SCAFFOLD_SLUG_LOWER: frozenset[str] = frozenset({
+    "index", "log", "dashboard", "purpose", "overview",  # wiki/ scaffold (LINT_SKIP_SLUGS)
+    "agents", "claude", "gemini", "routing", "readme",   # vault-root config files
+})
+
 
 def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mcp: bool = True) -> FastAPI:
     import os
@@ -1580,7 +1591,11 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         audit = orch._audit
         cdir = _cand_dir()
         pages = await audit.get_live_page_states(orch._store.page_exists)
-        pages = [p for p in pages if not (cdir / f"{p['slug']}.md").exists()]
+        pages = [
+            p for p in pages
+            if not (cdir / f"{p['slug']}.md").exists()
+            and p["slug"].lower() not in _SCAFFOLD_SLUG_LOWER
+        ]
         return {"pages": pages}
 
     @app.get("/lifecycle/status")
@@ -1623,7 +1638,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             limit=limit,
             offset=offset,
         )
-        return {"events": events, "total": total}
+        events = [e for e in events if e["slug"].lower() not in _SCAFFOLD_SLUG_LOWER]
+        return {"events": events, "total": len(events)}
 
     @app.post("/lifecycle/transition")
     async def lifecycle_transition(req: LifecycleTransitionRequest):
@@ -1717,6 +1733,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
     @app.get("/snapshots")
     async def get_all_snapshots(slug: Optional[str] = None) -> JSONResponse:
         rows = await app.state.orch._audit.list_all_snapshots(slug_filter=slug)
+        rows = [r for r in rows if r["slug"].lower() not in _SCAFFOLD_SLUG_LOWER]
         return JSONResponse({"snapshots": rows}, headers={"Cache-Control": "no-store"})
 
     @app.post("/lifecycle/events/purge")
