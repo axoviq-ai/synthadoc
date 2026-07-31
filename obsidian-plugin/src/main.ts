@@ -4207,7 +4207,26 @@ export class LifecycleModal extends Modal {
         next.onclick = () => { this._snapPage++; this._renderSnapTable(); };
     }
 
-    private _rollbackFromTable(snap: any) {
+    private async _rollbackFromTable(snap: any): Promise<void> {
+        const wikiRelPath = `wiki/${snap.slug}.md`;
+        try {
+            const file = (this.app as any).vault.getFileByPath(wikiRelPath);
+            if (file) {
+                const [currentRaw, histData] = await Promise.all([
+                    (this.app as any).vault.read(file),
+                    (api as any).lifecycleHistory(snap.slug, snap.snap_index),
+                ]);
+                const snapContent: string = (histData as any).content ?? "";
+                const hunks = computeDiff(
+                    stripFrontmatter(snapContent).split("\n"),
+                    stripFrontmatter(currentRaw).split("\n"),
+                );
+                if (hunks.every(h => h.type === "eq")) {
+                    new Notice("Snapshot already matches the current file — rollback skipped.");
+                    return;
+                }
+            }
+        } catch { /* unable to verify — proceed */ }
         new ReasonModal(
             this.app,
             `Roll back «${snap.slug}» to snapshot ${snap.snap_index}`,
@@ -5118,6 +5137,21 @@ export class SnapshotContentModal extends Modal {
     }
 
     async _doRollback(reason: string): Promise<void> {
+        const wikiRelPath = `wiki/${this.snap.slug}.md`;
+        try {
+            const file = (this.app as any).vault.getFileByPath(wikiRelPath);
+            if (file) {
+                const currentRaw = await (this.app as any).vault.read(file);
+                const hunks = computeDiff(
+                    this._bodyLines(this.snap.content ?? ""),
+                    this._bodyLines(currentRaw),
+                );
+                if (hunks.every(h => h.type === "eq")) {
+                    new Notice("Snapshot already matches the current file — rollback skipped.");
+                    return;
+                }
+            }
+        } catch { /* unable to read current file — proceed with rollback */ }
         try {
             await api.pageRollback(this.snap.slug, this.snap.snap_index, reason);
             this.close();
