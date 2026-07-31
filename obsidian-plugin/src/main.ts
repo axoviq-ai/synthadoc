@@ -3882,7 +3882,7 @@ export class LifecycleModal extends Modal {
             clearX.style.display = "none";
             this._snapSlugFilter = "";
             this._snapPage = 0;
-            this._renderSnapTable();
+            this._fetchSnapshots();   // re-fetch without slug filter to get all snapshots
         };
 
         filterInput.oninput = () => {
@@ -3923,9 +3923,11 @@ export class LifecycleModal extends Modal {
 
         const PAGE = this._calcPageSize(this._snapTableWrap, 38);
         const filter = this._snapSlugFilter.toLowerCase();
-        const visible = filter
+        let visible = filter
             ? this._snapRows.filter(r => r.slug.toLowerCase().includes(filter))
-            : this._snapRows;
+            : [...this._snapRows].sort((a, b) =>
+                a.slug < b.slug ? -1 : a.slug > b.slug ? 1 :
+                (a.snap_index ?? 0) - (b.snap_index ?? 0));
 
         if (visible.length === 0) {
             const msg = this._snapTableWrap.createEl("p");
