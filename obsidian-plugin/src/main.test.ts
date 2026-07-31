@@ -2907,6 +2907,29 @@ describe("SnapshotContentModal", () => {
         expect(onRollbackDone).toHaveBeenCalledWith("konrad-zuse");
     });
 
+    it("Rollback button onclick shows notice and skips ReasonModal when content matches", async () => {
+        const rollbackMock = vi.fn();
+        vi.doMock("./api", () => makeSnapApiMock({ pageRollback: rollbackMock }));
+        const { SnapshotContentModal } = await import("./main") as any;
+        const app = {
+            vault: {
+                getFileByPath: vi.fn().mockReturnValue({ path: "wiki/konrad-zuse.md" }),
+                read: vi.fn().mockResolvedValue("old body\nline two"), // matches snap.content
+            },
+            workspace: { getActiveFile: () => null },
+        };
+        const modal = new SnapshotContentModal(app, "/wiki", snap, vi.fn());
+        modal.contentEl = makeSmartContentEl();
+        modal.modalEl = { style: {}, addEventListener: vi.fn() };
+        await modal.onOpen();
+        const buttons: any[] = modal.contentEl.querySelectorAll("button");
+        const rollBtn = buttons.find((b: any) => b._html === "Rollback to this version");
+        expect(rollBtn).toBeDefined();
+        await rollBtn.onclick();
+        // Guard fires before ReasonModal opens — no API call
+        expect(rollbackMock).not.toHaveBeenCalled();
+    });
+
     it("calls vault.read for diff view", async () => {
         vi.doMock("./api", () => makeSnapApiMock());
         const { SnapshotContentModal } = await import("./main") as any;

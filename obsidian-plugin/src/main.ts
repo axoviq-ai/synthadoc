@@ -5013,7 +5013,22 @@ export class SnapshotContentModal extends Modal {
         this._copyBtn = footer.createEl("button", { text: "Copy to Clipboard" }) as HTMLButtonElement;
         this._copyBtn.onclick = () => (window as any).navigator?.clipboard?.writeText(this.snap.content ?? "");
         const rollBtn = footer.createEl("button", { text: "Rollback to this version" });
-        rollBtn.onclick = () => {
+        rollBtn.onclick = async () => {
+            const wikiRelPath = `wiki/${this.snap.slug}.md`;
+            try {
+                const file = (this.app as any).vault.getFileByPath(wikiRelPath);
+                if (file) {
+                    const currentRaw = await (this.app as any).vault.read(file);
+                    const hunks = computeDiff(
+                        this._bodyLines(this.snap.content ?? ""),
+                        this._bodyLines(currentRaw),
+                    );
+                    if (hunks.every(h => h.type === "eq")) {
+                        new Notice("Snapshot already matches the current file — rollback skipped.");
+                        return;
+                    }
+                }
+            } catch { /* unable to read current file — proceed */ }
             new ReasonModal(
                 this.app,
                 `Roll back «${this.snap.slug}» to snapshot ${this.snap.snap_index}`,
