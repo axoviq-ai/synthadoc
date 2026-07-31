@@ -3852,14 +3852,18 @@ export class LifecycleModal extends Modal {
         this._snapTabBuilt = true;
         const wrap = this._tab3Content!;
 
-        // Pre-populate filter from initialFilter
-        if (this.initialFilter && !this._snapSlugFilter) {
-            this._snapSlugFilter = this.initialFilter;
+        // Pre-populate slug filter from the currently active wiki page
+        if (!this._snapSlugFilter) {
+            const activeFile = this.app.workspace.getActiveFile();
+            if (activeFile) {
+                const m = activeFile.path.match(/^wiki\/(.+)\.md$/);
+                if (m) this._snapSlugFilter = m[1];
+            }
         }
 
         // Filter bar
         const filterBar = wrap.createDiv();
-        filterBar.style.cssText = "display:flex;align-items:center;gap:8px;padding:4px 0";
+        filterBar.style.cssText = "display:flex;align-items:center;gap:8px;padding:4px 0;flex-shrink:0";
 
         const filterInput = filterBar.createEl("input", { type: "text" }) as HTMLInputElement;
         filterInput.placeholder = "Filter by slug…";
@@ -3875,9 +3879,13 @@ export class LifecycleModal extends Modal {
         refreshBtn.style.marginLeft = "auto";
         refreshBtn.onclick = () => this._fetchSnapshots();
 
-        // Table container
+        // Table container — flex:1 so clientHeight is measurable for page-size calc
         this._snapTableWrap = wrap.createDiv();
+        this._snapTableWrap.style.cssText =
+            "flex:1;overflow:auto;min-height:0;" +
+            "border:1px solid var(--background-modifier-border);border-radius:4px";
         this._snapPagerWrap = wrap.createDiv();
+        this._snapPagerWrap.style.cssText = "flex-shrink:0";
 
         await this._fetchSnapshots();
     }
@@ -3896,7 +3904,7 @@ export class LifecycleModal extends Modal {
         if (!this._snapTableWrap) return;
         this._snapTableWrap.empty();
 
-        const PAGE = this._calcPageSize(this._snapTableWrap, 26);
+        const PAGE = this._calcPageSize(this._snapTableWrap, 38);
         const filter = this._snapSlugFilter.toLowerCase();
         const visible = filter
             ? this._snapRows.filter(r => r.slug.toLowerCase().includes(filter))
@@ -3930,21 +3938,38 @@ export class LifecycleModal extends Modal {
                 "border-bottom:1px solid var(--background-modifier-border);font-weight:600";
         }
 
+        // Two low-opacity accent colors that read well in both dark and light themes
+        const GROUP_COLORS = [
+            "rgba(100,149,237,0.10)",   // cornflower blue
+            "rgba(255,183,77,0.10)",    // amber
+        ];
+
         const body = table.createEl("tbody");
         let lastSlug = "";
-        let altBg = false;
+        let groupIdx = -1;
         for (const snap of rows) {
-            if (snap.slug !== lastSlug) { lastSlug = snap.slug; altBg = !altBg; }
+            if (snap.slug !== lastSlug) { lastSlug = snap.slug; groupIdx = (groupIdx + 1) % 2; }
             const highlight =
                 snap.slug === this._snapHighlightSlug &&
                 snap.snap_index === this._snapHighlightIndex;
+            const baseBg = GROUP_COLORS[groupIdx];
             const tr = body.createEl("tr");
-            const baseBg = altBg ? "var(--background-secondary)" : "transparent";
-            tr.style.cssText = `background:${highlight ? "var(--interactive-accent-hover)" : baseBg};` +
+            tr.style.cssText =
+                `background:${highlight ? "var(--interactive-accent-hover)" : baseBg};` +
+                "cursor:pointer;" +
                 (highlight ? "transition:background 2s ease;" : "");
-            if (highlight) {
-                setTimeout(() => { tr.style.background = baseBg; }, 2000);
-            }
+            if (highlight) setTimeout(() => { tr.style.background = baseBg; }, 2000);
+
+            // Row hover effect
+            tr.addEventListener("mouseenter", () => { if (!highlight) tr.style.background = "var(--background-modifier-hover)"; });
+            tr.addEventListener("mouseleave", () => { if (!highlight) tr.style.background = baseBg; });
+
+            // Row click → open the wiki page in Obsidian
+            tr.addEventListener("click", () => {
+                const f = (this.app as any).vault.getFileByPath(`wiki/${snap.slug}.md`);
+                if (f) (this.app as any).workspace.getLeaf(false).openFile(f);
+            });
+
             const cells: string[] = [
                 snap.slug,
                 String(snap.snap_index),
@@ -3963,10 +3988,10 @@ export class LifecycleModal extends Modal {
 
             const viewBtn = actionTd.createEl("button", { text: "View" }) as HTMLButtonElement;
             viewBtn.style.marginRight = "6px";
-            viewBtn.onclick = () => this._openSnapshotContent(snap);
+            viewBtn.onclick = (e) => { e.stopPropagation(); this._openSnapshotContent(snap); };
 
             const rollBtn = actionTd.createEl("button", { text: "Rollback" }) as HTMLButtonElement;
-            rollBtn.onclick = () => this._rollbackFromTable(snap);
+            rollBtn.onclick = (e) => { e.stopPropagation(); this._rollbackFromTable(snap); };
         }
 
         this._renderSnapPager(visible.length, PAGE);

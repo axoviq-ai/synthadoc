@@ -2635,8 +2635,18 @@ describe("LifecycleModal Tab 3 — Content Snapshots", () => {
         expect((modal as any)._snapRows[0].slug).toBe("pg-a");
     });
 
-    it("pre-populates _snapSlugFilter from initialFilter", async () => {
-        const { modal } = await openLifecycleModal("konrad-zuse");
+    it("pre-populates _snapSlugFilter from the active wiki file", async () => {
+        const apiMockModule = makeApiMock({});
+        vi.doMock("./api", () => apiMockModule);
+        const { LifecycleModal } = await import("./main") as any;
+        const modal = new LifecycleModal(
+            { workspace: { getActiveFile: () => ({ path: "wiki/konrad-zuse.md", basename: "konrad-zuse" }) } } as any,
+            "/wiki", "http://127.0.0.1:7070",
+        );
+        modal.contentEl = makeSmartContentEl();
+        modal.modalEl = { style: {}, addEventListener: vi.fn() };
+        modal.containerEl = { querySelector: vi.fn().mockReturnValue({ addEventListener: vi.fn() }) };
+        await modal.onOpen();
         await (modal as any)._buildSnapshotTab();
         expect((modal as any)._snapSlugFilter).toBe("konrad-zuse");
     });
