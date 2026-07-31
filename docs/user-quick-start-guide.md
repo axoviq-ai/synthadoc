@@ -729,7 +729,7 @@ Synthadoc automatically captures a **content snapshot** — a frozen copy of the
 
 | Trigger | What causes it | Example |
 |---------|---------------|---------|
-| **Manual lifecycle transition** | You activate, archive, or restore a page via the CLI, Obsidian plugin, or API | `synthadoc lifecycle activate konrad-zuse` |
+| **Manual lifecycle transition** | You activate, archive, or restore a page via the CLI, Obsidian plugin, API, or the MCP `synthadoc_lifecycle` tool | `synthadoc lifecycle activate konrad-zuse` |
 | **Lint-driven state change** | Lint promotes a page, marks it stale, archives it for a missing source, or auto-resolves a contradiction | `synthadoc lint run --auto-resolve` |
 | **Manual file edit in Obsidian** | You edit a wiki page directly in Obsidian; the plugin detects the save and sends the content to the server (2-second debounce, only records when content actually changed) | Edit `wiki/orphan-page.md` in Obsidian and save |
 
