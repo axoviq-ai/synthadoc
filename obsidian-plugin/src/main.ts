@@ -3680,6 +3680,8 @@ export class LifecycleModal extends Modal {
             this._tab1Content!.style.display = "flex";
             this._tab2Content!.style.display = "none";
             if (this._tab3Content) this._tab3Content.style.display = "none";
+            // Recalculate page size after layout settles (same pattern as tab2/tab3)
+            this._raf(() => this._renderAll());
         });
         tab2Btn.addEventListener("click", async () => {
             this._activeTab = "audit";
@@ -3692,7 +3694,7 @@ export class LifecycleModal extends Modal {
             if (this._auditEvents.length === 0) await this._fetchAudit();
             // Re-measure after layout so _calcPageSize gets the real clientHeight,
             // both on first open (clientHeight may be 0 during fetch) and on re-visits.
-            requestAnimationFrame(() => this._renderAuditAll());
+            this._raf(() => this._renderAuditAll());
         });
         tab3Btn.addEventListener("click", async () => {
             this._activeTab = "snapshots";
@@ -3743,6 +3745,8 @@ export class LifecycleModal extends Modal {
         this._pagerWrap.style.cssText = "flex-shrink:0;display:flex;gap:8px;align-items:center;margin-top:8px;font-size:12px;color:var(--text-muted)";
 
         await this._fetchAndRender();
+        // Re-measure after first paint so _calcPageSize gets the real clientHeight
+        this._raf(() => this._renderAll());
 
         // ── Tab 2 content ──────────────────────────────────────────────
         const tab2 = this._tab2Content;
@@ -4184,8 +4188,15 @@ export class LifecycleModal extends Modal {
         return h > 0 ? Math.max(10, Math.floor((h - rowH) / rowH)) : fallback;
     }
 
+    // requestAnimationFrame isn't available in test environments; fall back to sync.
+    private _raf(fn: () => void): void {
+        if (typeof requestAnimationFrame !== "undefined") requestAnimationFrame(fn);
+        else fn();
+    }
+
     private _renderAll() {
-        this._statesPageSize = this._calcPageSize(this._tableWrap, 36);
+        // States rows: 6px top/bottom td padding + action buttons (~22px) ≈ 34px
+        this._statesPageSize = this._calcPageSize(this._tableWrap, 34);
         this._renderTable();
         this._renderPager();
     }
