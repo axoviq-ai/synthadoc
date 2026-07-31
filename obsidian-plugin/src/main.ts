@@ -4788,7 +4788,7 @@ export class SnapshotContentModal extends Modal {
     private _showContent(): void {
         if (!this._area) return;
         this._setActiveToggle("content");
-        if (this._copyBtn) this._copyBtn.style.display = "";
+        if (this._copyBtn) this._copyBtn.style.visibility = "";
         this._area.empty();
         this._area.setText(this.snap.content ?? "");
     }
@@ -4796,7 +4796,7 @@ export class SnapshotContentModal extends Modal {
     async _showDiff(): Promise<void> {
         if (!this._area) return;
         this._setActiveToggle("diff");
-        if (this._copyBtn) this._copyBtn.style.display = "none";
+        if (this._copyBtn) this._copyBtn.style.visibility = "hidden";
         this._area.empty();
 
         // Legend
