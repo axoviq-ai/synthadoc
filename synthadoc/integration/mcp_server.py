@@ -177,10 +177,38 @@ def create_mcp_server(orchestrator):
 
     @mcp.tool()
     async def synthadoc_status() -> dict:
-        """Get wiki status: page count and wiki name."""
+        """Get wiki status: page count, job queue summary, and lifecycle breakdown.
+
+        Returns:
+          wiki          — wiki name
+          pages         — number of user content pages (excludes system scaffold pages)
+          jobs_pending  — jobs waiting to run
+          jobs_total    — all jobs ever recorded
+          lifecycle     — page counts by state: active, draft, stale, contradicted, archived
+                          (plus "unlinted" for pages with no lifecycle record yet)
+        """
+        from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
+
+        user_slugs = [s for s in orchestrator._store.list_pages() if s not in LINT_SKIP_SLUGS]
+
+        jobs = await orchestrator.queue.list_jobs()
+        jobs_pending = sum(1 for j in jobs if j.status == JobStatus.PENDING)
+
+        _live = lambda slug: slug not in LINT_SKIP_SLUGS and orchestrator._store.page_exists(slug)
+        lifecycle: dict[str, int] = {
+            "draft": 0, "active": 0, "contradicted": 0, "stale": 0, "archived": 0,
+        }
+        lifecycle.update(await orchestrator._audit.get_live_lifecycle_summary(_live))
+        unlinted = len(user_slugs) - sum(lifecycle.values())
+        if unlinted > 0:
+            lifecycle["unlinted"] = unlinted
+
         return {
-            "pages": len(orchestrator._store.list_pages()),
             "wiki": orchestrator._root.name,
+            "pages": len(user_slugs),
+            "jobs_pending": jobs_pending,
+            "jobs_total": len(jobs),
+            "lifecycle": lifecycle,
         }
 
     @mcp.tool()
