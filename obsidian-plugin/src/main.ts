@@ -28,6 +28,7 @@ const DEFAULT_SETTINGS: SynthadocSettings = {
 export default class SynthadocPlugin extends Plugin {
     settings: SynthadocSettings = DEFAULT_SETTINGS;
     private _citationScanTimer: ReturnType<typeof setTimeout> | null = null;
+    private _snapTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
     async onload() {
         await this.loadSettings();
@@ -213,6 +214,31 @@ export default class SynthadocPlugin extends Plugin {
                 this._replaceFootnoteCitations(wikiRoot);
             }, 100);
         });
+
+        // Capture a content snapshot whenever a wiki page is saved manually.
+        // Debounced 2 s so rapid keystrokes produce a single request per save.
+        // Only targets .md files at the vault root (wiki pages, not scaffolding subdirs).
+        this.registerEvent(
+            this.app.vault.on("modify", (file) => {
+                if (!(file instanceof TFile)) return;
+                if (file.extension !== "md") return;
+                const parentPath = file.parent?.path ?? "";
+                if (parentPath !== "/" && parentPath !== "") return;
+                const slug = file.basename;
+                const existing = this._snapTimers.get(slug);
+                if (existing !== undefined) clearTimeout(existing);
+                const timer = setTimeout(async () => {
+                    this._snapTimers.delete(slug);
+                    try {
+                        const content = await this.app.vault.read(file);
+                        await api.pageSnapshot(slug, content);
+                    } catch {
+                        // server offline or page unknown — silently ignore
+                    }
+                }, 2000);
+                this._snapTimers.set(slug, timer);
+            })
+        );
     }
 
     async loadSettings() {

@@ -351,6 +351,11 @@ class RollbackRequest(BaseModel):
     reason: str
 
 
+class SnapshotRequest(BaseModel):
+    content: str
+    reason: str = "manual edit detected by Obsidian plugin"
+
+
 class PurgeEventsRequest(BaseModel):
     keep_latest: Optional[int] = None
     before_date: Optional[str] = None
@@ -1778,6 +1783,21 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             "restored_chars": len(snap["content_snapshot"]),
             "rollback_event_index": rollback_event_index,
         }
+
+    @app.post("/pages/{slug}/snapshot")
+    async def create_page_snapshot(slug: str, req: SnapshotRequest, response: Response):
+        """Record a content snapshot for *slug* only when content has changed.
+
+        Called by the Obsidian plugin on vault modify events so manual edits that
+        don't trigger a lifecycle transition are still snapshotted for rollback.
+        Returns {slug, recorded: true/false}.
+        """
+        response.headers["Cache-Control"] = "no-store"
+        audit = app.state.orch._audit
+        recorded = await audit.snapshot_if_changed(
+            slug, req.content, TriggerSource.MANUAL_EDIT, req.reason
+        )
+        return {"slug": slug, "recorded": recorded}
 
     # ── Export ────────────────────────────────────────────────────────────────
     @app.post("/export")

@@ -525,3 +525,161 @@ def test_purge_endpoint_rejects_invalid_date_format(tmp_wiki):
         with TestClient(create_app(wiki_root=tmp_wiki)) as client:
             resp = client.post("/lifecycle/events/purge", json={"before_date": bad_date})
         assert resp.status_code == 422, f"Expected 422 for before_date={bad_date!r}, got {resp.status_code}"
+
+
+# ── snapshot_if_changed unit tests ──────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_snapshot_if_changed_records_on_first_call(tmp_path: Path):
+    """snapshot_if_changed() creates a snapshot when there is no prior snapshot."""
+    audit = AuditDB(tmp_path / "audit.db")
+    await audit.init()
+    await audit.set_page_state("p", "active", "user")
+
+    recorded = await audit.snapshot_if_changed("p", "body v1", "MANUAL_EDIT", "edit")
+    assert recorded is True
+
+    snaps = await audit.list_page_snapshots("p")
+    assert len(snaps) == 1
+    full = await audit.get_snapshot_by_index("p", 1)
+    assert full is not None
+    assert full["content_snapshot"] == "body v1"
+
+
+@pytest.mark.asyncio
+async def test_snapshot_if_changed_skips_when_unchanged(tmp_path: Path):
+    """snapshot_if_changed() returns False and records nothing when content is identical."""
+    audit = AuditDB(tmp_path / "audit.db")
+    await audit.init()
+    await audit.set_page_state("p", "active", "user")
+
+    await audit.snapshot_if_changed("p", "same body", "MANUAL_EDIT", "edit 1")
+    result = await audit.snapshot_if_changed("p", "same body", "MANUAL_EDIT", "edit 2")
+    assert result is False
+
+    snaps = await audit.list_page_snapshots("p")
+    assert len(snaps) == 1  # still only one snapshot
+
+
+@pytest.mark.asyncio
+async def test_snapshot_if_changed_records_when_content_differs(tmp_path: Path):
+    """snapshot_if_changed() records a new snapshot when content changes."""
+    audit = AuditDB(tmp_path / "audit.db")
+    await audit.init()
+    await audit.set_page_state("p", "active", "user")
+
+    await audit.snapshot_if_changed("p", "v1", "MANUAL_EDIT", "e1")
+    recorded = await audit.snapshot_if_changed("p", "v2", "MANUAL_EDIT", "e2")
+    assert recorded is True
+
+    snaps = await audit.list_page_snapshots("p")
+    assert len(snaps) == 2
+
+
+@pytest.mark.asyncio
+async def test_snapshot_if_changed_uses_current_state(tmp_path: Path):
+    """snapshot_if_changed() records from_state = to_state = current page state."""
+    audit = AuditDB(tmp_path / "audit.db")
+    await audit.init()
+    await audit.set_page_state("p", "active", "user")
+
+    await audit.snapshot_if_changed("p", "content", "MANUAL_EDIT", "reason")
+    snaps = await audit.list_page_snapshots("p")
+    assert len(snaps) == 1
+    assert snaps[0]["from_state"] == "active"
+    assert snaps[0]["to_state"] == "active"
+
+
+# ── POST /pages/{slug}/snapshot endpoint tests ───────────────────────────────
+
+def test_snapshot_endpoint_records_new_content(tmp_wiki):
+    """POST /pages/{slug}/snapshot returns {recorded: true} for new content."""
+    import asyncio
+    from fastapi.testclient import TestClient
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.storage.log import AuditDB
+
+    wiki_dir = tmp_wiki / "wiki"
+    (wiki_dir / "snap-manual.md").write_text(
+        "---\ntitle: Manual\nstatus: active\nconfidence: medium\ntags: []\nsources: []\n---\n\nbody v1\n",
+        encoding="utf-8",
+    )
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    asyncio.run(audit.init())
+    asyncio.run(audit.set_page_state("snap-manual", "active", "user"))
+
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.post("/pages/snap-manual/snapshot", json={"content": "body v1"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["recorded"] is True
+    assert data["slug"] == "snap-manual"
+
+
+def test_snapshot_endpoint_skips_unchanged_content(tmp_wiki):
+    """POST /pages/{slug}/snapshot returns {recorded: false} when content is identical."""
+    import asyncio
+    from fastapi.testclient import TestClient
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.storage.log import AuditDB
+
+    wiki_dir = tmp_wiki / "wiki"
+    (wiki_dir / "snap-dedup.md").write_text(
+        "---\ntitle: Dedup\nstatus: active\nconfidence: medium\ntags: []\nsources: []\n---\n\nsame\n",
+        encoding="utf-8",
+    )
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    asyncio.run(audit.init())
+    asyncio.run(audit.set_page_state("snap-dedup", "active", "user"))
+
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        client.post("/pages/snap-dedup/snapshot", json={"content": "same"})
+        resp = client.post("/pages/snap-dedup/snapshot", json={"content": "same"})
+    assert resp.status_code == 200
+    assert resp.json()["recorded"] is False
+
+
+# ── Lint snapshot tests ──────────────────────────────────────────────────────
+
+def test_lint_transition_captures_snapshot(tmp_wiki):
+    """A lint-driven _transition() records content_snapshot in the lifecycle event."""
+    import asyncio
+    from synthadoc.agents.lint_agent import LintAgent
+    from synthadoc.storage.log import AuditDB
+    from synthadoc.storage.wiki import WikiStorage
+
+    wiki_dir = tmp_wiki / "wiki"
+    page_body = "Content that lint will mark stale."
+    (wiki_dir / "lint-snap.md").write_text(
+        f"---\ntitle: Lint Snap\nstatus: active\nconfidence: medium\n"
+        f"tags: []\nsources: []\n---\n\n{page_body}\n",
+        encoding="utf-8",
+    )
+
+    store = WikiStorage(wiki_dir)
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+
+    async def run():
+        await audit.init()
+        await audit.set_page_state("lint-snap", "active", "user")
+        agent = LintAgent(
+            provider=None,
+            store=store,
+            log_writer=None,
+            audit_db=audit,
+            wiki_root=tmp_wiki,
+        )
+        page = store.read_page("lint-snap")
+        await agent._transition("lint-snap", page, "active", "stale", "source changed")
+
+    asyncio.run(run())
+
+    async def check():
+        await audit.init()
+        snaps = await audit.list_page_snapshots("lint-snap")
+        assert len(snaps) == 1, f"Expected 1 snapshot, got {len(snaps)}"
+        full = await audit.get_snapshot_by_index("lint-snap", 1)
+        assert full is not None
+        assert page_body in full["content_snapshot"]
+
+    asyncio.run(check())

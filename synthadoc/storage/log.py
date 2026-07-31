@@ -607,6 +607,35 @@ class AuditDB:
             return None
         return {"index": index, **dict(row)}
 
+    async def snapshot_if_changed(
+        self, slug: str, content: str, triggered_by: str, reason: str
+    ) -> bool:
+        """Record a content snapshot only when *content* differs from the last stored snapshot.
+
+        Returns True if a new snapshot was recorded, False when content is unchanged.
+        The from_state and to_state are both set to the current page state (no lifecycle
+        transition occurs — this is a pure content checkpoint).
+        """
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT content_snapshot FROM lifecycle_events"
+                " WHERE slug = ? AND content_snapshot IS NOT NULL"
+                " ORDER BY id DESC LIMIT 1",
+                (slug,),
+            ) as cur:
+                row = await cur.fetchone()
+        last = dict(row)["content_snapshot"] if row else None
+        if last == content:
+            return False
+        state_row = await self.get_page_state(slug)
+        current_state = state_row["state"] if state_row else "draft"
+        await self.record_lifecycle_event(
+            slug, current_state, current_state, reason, triggered_by,
+            content_snapshot=content,
+        )
+        return True
+
     async def get_all_page_states(self) -> list:
         async with aiosqlite.connect(self._path) as db:
             db.row_factory = aiosqlite.Row

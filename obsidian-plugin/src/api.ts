@@ -120,4 +120,10 @@ export const api = {
 
     lifecycleHistory: (slug: string, index: number, includeContent = true) =>
         call(`/pages/${encodeURIComponent(slug)}/history?index=${index}&include_content=${includeContent}`),
+
+    pageSnapshot: (slug: string, content: string, reason?: string) =>
+        call(`/pages/${encodeURIComponent(slug)}/snapshot`, "POST", {
+            content,
+            ...(reason ? { reason } : {}),
+        }),
 };
