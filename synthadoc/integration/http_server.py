@@ -1793,6 +1793,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         Returns {slug, recorded: true/false}.
         """
         response.headers["Cache-Control"] = "no-store"
+        if not app.state.orch._store.page_exists(slug):
+            return {"slug": slug, "recorded": False}
         audit = app.state.orch._audit
         recorded = await audit.snapshot_if_changed(
             slug, req.content, TriggerSource.MANUAL_EDIT, req.reason

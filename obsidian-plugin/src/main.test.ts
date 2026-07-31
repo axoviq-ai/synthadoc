@@ -79,6 +79,7 @@ vi.mock("./api", () => ({
         pageRollback: vi.fn(),
         lifecycleEventsPurge: vi.fn(),
         lifecycleHistory: vi.fn(),
+        pageSnapshot: vi.fn().mockResolvedValue({ recorded: false }),
     },
     setBase: vi.fn(),
 }));
@@ -2827,5 +2828,72 @@ describe("SnapshotContentModal", () => {
         await modal.onOpen();
         await (modal as any)._showDiff();
         expect(readMock).toHaveBeenCalled();
+    });
+});
+
+// ── SynthadocPlugin vault monitor parentPath filter ──────────────────────────
+//
+// Uses vi.doMock per test so the api factory seen by main.ts during onload()
+// has a fresh, trackable pageSnapshot spy regardless of what earlier describe
+// blocks registered via vi.doMock.
+
+describe("SynthadocPlugin vault monitor parentPath filter", () => {
+    beforeEach(() => {
+        vi.resetModules();
+        vi.useFakeTimers();
+    });
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    // Register a fresh api doMock and return the pageSnapshot spy.
+    // Must be called before any import of ./main so onload() picks it up.
+    function setupApiMock() {
+        const pageSnapshot = vi.fn().mockResolvedValue({ recorded: false });
+        vi.doMock("./api", () => ({
+            api: {
+                pageSnapshot,
+                config: vi.fn().mockResolvedValue({ check_url_availability: false }),
+            },
+            setBase: vi.fn(),
+        }));
+        return pageSnapshot;
+    }
+
+    async function loadVaultModifyCallback() {
+        const { default: SynthadocPlugin } = await import("./main");
+        const plugin = new SynthadocPlugin();
+        await plugin.onload();
+        const vaultOnMock = (plugin as any).app.vault.on as ReturnType<typeof vi.fn>;
+        const modifyCall = vaultOnMock.mock.calls.find((c: any[]) => c[0] === "modify");
+        return modifyCall?.[1] as ((file: any) => void);
+    }
+
+    it("ignores vault-root files (parentPath = '')", async () => {
+        const pageSnapshot = setupApiMock();
+        const { TFile } = await import("obsidian") as any;
+        const cb = await loadVaultModifyCallback();
+        expect(cb).toBeDefined();
+        cb(Object.assign(new TFile(), { extension: "md", basename: "AGENTS", parent: { path: "" } }));
+        await vi.runAllTimersAsync();
+        expect(pageSnapshot).not.toHaveBeenCalled();
+    });
+
+    it("ignores vault-root files (parentPath = '/')", async () => {
+        const pageSnapshot = setupApiMock();
+        const { TFile } = await import("obsidian") as any;
+        const cb = await loadVaultModifyCallback();
+        cb(Object.assign(new TFile(), { extension: "md", basename: "CLAUDE", parent: { path: "/" } }));
+        await vi.runAllTimersAsync();
+        expect(pageSnapshot).not.toHaveBeenCalled();
+    });
+
+    it("calls api.pageSnapshot for wiki/ files (parentPath = 'wiki')", async () => {
+        const pageSnapshot = setupApiMock();
+        const { TFile } = await import("obsidian") as any;
+        const cb = await loadVaultModifyCallback();
+        cb(Object.assign(new TFile(), { extension: "md", basename: "my-page", parent: { path: "wiki" } }));
+        await vi.runAllTimersAsync();
+        expect(pageSnapshot).toHaveBeenCalledWith("my-page", expect.any(String));
     });
 });

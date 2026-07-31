@@ -217,13 +217,14 @@ export default class SynthadocPlugin extends Plugin {
 
         // Capture a content snapshot whenever a wiki page is saved manually.
         // Debounced 2 s so rapid keystrokes produce a single request per save.
-        // Only targets .md files at the vault root (wiki pages, not scaffolding subdirs).
+        // Only targets .md files inside the wiki/ subdirectory (not vault-root
+        // scaffold files such as AGENTS.md, CLAUDE.md, ROUTING.md, log.md).
         this.registerEvent(
             this.app.vault.on("modify", (file) => {
                 if (!(file instanceof TFile)) return;
                 if (file.extension !== "md") return;
                 const parentPath = file.parent?.path ?? "";
-                if (parentPath !== "/" && parentPath !== "") return;
+                if (parentPath !== "wiki") return;
                 const slug = file.basename;
                 const existing = this._snapTimers.get(slug);
                 if (existing !== undefined) clearTimeout(existing);

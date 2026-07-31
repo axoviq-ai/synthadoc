@@ -639,6 +639,28 @@ def test_snapshot_endpoint_skips_unchanged_content(tmp_wiki):
     assert resp.json()["recorded"] is False
 
 
+def test_snapshot_endpoint_rejects_non_wiki_slug(tmp_wiki):
+    """POST /pages/{slug}/snapshot returns {recorded: false} for slugs with no wiki file.
+
+    Scaffold files (AGENTS.md, CLAUDE.md, ROUTING.md, log.md) live at the
+    vault root and have no corresponding wiki/{slug}.md — the server must
+    silently ignore snapshot requests for them.
+    """
+    from fastapi.testclient import TestClient
+    from synthadoc.integration.http_server import create_app
+
+    for scaffold_slug in ("AGENTS", "CLAUDE", "ROUTING", "log"):
+        with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+            resp = client.post(
+                f"/pages/{scaffold_slug}/snapshot",
+                json={"content": "scaffold content"},
+            )
+        assert resp.status_code == 200, f"Expected 200 for slug={scaffold_slug!r}"
+        data = resp.json()
+        assert data["recorded"] is False, f"Expected recorded=false for slug={scaffold_slug!r}"
+        assert data["slug"] == scaffold_slug
+
+
 # ── Lint snapshot tests ──────────────────────────────────────────────────────
 
 def test_lint_transition_captures_snapshot(tmp_wiki):
