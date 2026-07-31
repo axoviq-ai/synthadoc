@@ -239,15 +239,22 @@ def create_mcp_server(orchestrator):
         return {"pages": pages, "total": len(pages)}
 
     @mcp.tool()
-    async def synthadoc_write_page(slug: str, content: str, title: str = "") -> dict:
+    async def synthadoc_write_page(
+        slug: str, content: str, title: str = "", reason: str = ""
+    ) -> dict:
         """Update the content of an existing wiki page.
 
         Only updates content (and optionally title) — lifecycle state is unchanged.
         Use synthadoc_lifecycle to transition state after editing.
         Clears contradiction_note if present, since a manual edit implies resolution.
 
-        Returns the updated slug, title, and status.
+        reason: optional note describing why the edit was made. Recorded in the
+                content snapshot so the change is visible in the Content Snapshots
+                tab and can be rolled back from the Obsidian plugin.
+
+        Returns the updated slug, title, status, and whether a snapshot was recorded.
         """
+        from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
         if not content or not content.strip():
             return {"error": "content must not be empty"}
         from datetime import date
@@ -261,7 +268,12 @@ def create_mcp_server(orchestrator):
         page.updated = date.today().isoformat()
         orchestrator._store.write_page(slug, page)
         orchestrator._bump_epoch()
-        return {"slug": slug, "title": page.title, "status": page.status}
+        snapped = False
+        if slug not in LINT_SKIP_SLUGS:
+            snapped = await orchestrator._audit.snapshot_if_changed(
+                slug, content, TriggerSource.MCP, reason or "content updated via MCP"
+            )
+        return {"slug": slug, "title": page.title, "status": page.status, "snapshot_recorded": snapped}
 
     @mcp.tool()
     async def synthadoc_read_page(slug: str) -> dict:
