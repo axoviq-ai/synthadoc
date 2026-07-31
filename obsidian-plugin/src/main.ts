@@ -4829,6 +4829,17 @@ export class SnapshotContentModal extends Modal {
         const oldLines = this._bodyLines(this.snap.content ?? "");
         const newLines = this._bodyLines(currentRaw);
         const hunks = computeDiff(oldLines, newLines);
+
+        if (hunks.every(h => h.type === "eq")) {
+            const msg = this._area.createEl("div");
+            msg.style.cssText =
+                "display:flex;flex-direction:column;align-items:center;justify-content:center;" +
+                "height:100%;gap:8px;color:var(--text-muted);font-family:var(--font-interface)";
+            msg.createEl("span", { text: "✓" }).style.cssText = "font-size:32px;color:var(--color-green,#6abf69)";
+            msg.createEl("span", { text: "No differences — snapshot content matches the current file." });
+            return;
+        }
+
         this._renderDiff(this._area, hunks);
     }
 
