@@ -4814,19 +4814,31 @@ export class SnapshotContentModal extends Modal {
             `<span style="color:var(--color-red,#e06c75);font-weight:700">− red</span>` +
             ` — exists in <strong>this snapshot</strong>, not in current → <em>restored</em> on rollback`;
         const wikiRelPath = `wiki/${this.snap.slug}.md`;
-        let currentBody: string;
+        let currentRaw: string;
         try {
             const file = (this.app as any).vault.getFileByPath(wikiRelPath);
             if (!file) throw new Error("file not found in vault");
-            currentBody = await (this.app as any).vault.read(file);
+            currentRaw = await (this.app as any).vault.read(file);
         } catch {
             this._area.setText("Cannot read current file — is this wiki open as an Obsidian vault?");
             return;
         }
-        const oldLines = (this.snap.content ?? "").split("\n");
-        const newLines = currentBody.split("\n");
+        // Snapshots are stored as body-only (Python strips frontmatter).
+        // vault.read() returns the full file with YAML frontmatter.
+        // Normalize both sides to body-only so the diff is meaningful.
+        const oldLines = this._bodyLines(this.snap.content ?? "");
+        const newLines = this._bodyLines(currentRaw);
         const hunks = computeDiff(oldLines, newLines);
         this._renderDiff(this._area, hunks);
+    }
+
+    private _bodyLines(text: string): string[] {
+        const norm = text.replace(/\r\n?/g, "\n");
+        if (norm.startsWith("---\n")) {
+            const close = norm.indexOf("\n---\n", 3);
+            if (close !== -1) return norm.slice(close + 5).replace(/^\n+/, "").split("\n");
+        }
+        return norm.split("\n");
     }
 
     private _renderDiff(
