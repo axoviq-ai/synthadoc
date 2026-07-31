@@ -2896,4 +2896,16 @@ describe("SynthadocPlugin vault monitor parentPath filter", () => {
         await vi.runAllTimersAsync();
         expect(pageSnapshot).toHaveBeenCalledWith("my-page", expect.any(String));
     });
+
+    it.each(["dashboard", "overview", "purpose", "index"])(
+        "ignores wiki/ scaffold file %s.md",
+        async (basename) => {
+            const pageSnapshot = setupApiMock();
+            const { TFile } = await import("obsidian") as any;
+            const cb = await loadVaultModifyCallback();
+            cb(Object.assign(new TFile(), { extension: "md", basename, parent: { path: "wiki" } }));
+            await vi.runAllTimersAsync();
+            expect(pageSnapshot).not.toHaveBeenCalled();
+        },
+    );
 });

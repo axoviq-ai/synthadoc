@@ -642,9 +642,8 @@ def test_snapshot_endpoint_skips_unchanged_content(tmp_wiki):
 def test_snapshot_endpoint_rejects_non_wiki_slug(tmp_wiki):
     """POST /pages/{slug}/snapshot returns {recorded: false} for slugs with no wiki file.
 
-    Scaffold files (AGENTS.md, CLAUDE.md, ROUTING.md, log.md) live at the
-    vault root and have no corresponding wiki/{slug}.md — the server must
-    silently ignore snapshot requests for them.
+    Vault-root scaffold files (AGENTS.md, CLAUDE.md, ROUTING.md, log.md) have
+    no corresponding wiki/{slug}.md — rejected by page_exists() check.
     """
     from fastapi.testclient import TestClient
     from synthadoc.integration.http_server import create_app
@@ -659,6 +658,41 @@ def test_snapshot_endpoint_rejects_non_wiki_slug(tmp_wiki):
         data = resp.json()
         assert data["recorded"] is False, f"Expected recorded=false for slug={scaffold_slug!r}"
         assert data["slug"] == scaffold_slug
+
+
+def test_snapshot_endpoint_rejects_system_page_slugs(tmp_wiki):
+    """POST /pages/{slug}/snapshot returns {recorded: false} for system page slugs.
+
+    System pages (dashboard, overview, purpose, index) live inside wiki/ so
+    page_exists() returns True for them — but the LINT_SKIP_SLUGS guard must
+    reject them before snapshot_if_changed() is called.
+    """
+    import asyncio
+    from fastapi.testclient import TestClient
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.storage.log import AuditDB
+
+    wiki_dir = tmp_wiki / "wiki"
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+
+    async def _seed(slug: str) -> None:
+        await audit.init()
+        await audit.set_page_state(slug, "active", "user")
+
+    for system_slug in ("dashboard", "overview", "purpose", "index"):
+        (wiki_dir / f"{system_slug}.md").write_text(
+            f"---\ntitle: {system_slug}\nstatus: active\n---\n\nbody\n",
+            encoding="utf-8",
+        )
+        asyncio.run(_seed(system_slug))
+        with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+            resp = client.post(
+                f"/pages/{system_slug}/snapshot",
+                json={"content": "some body"},
+            )
+        assert resp.status_code == 200, f"Expected 200 for slug={system_slug!r}"
+        data = resp.json()
+        assert data["recorded"] is False, f"Expected recorded=false for slug={system_slug!r}"
 
 
 # ── Lint snapshot tests ──────────────────────────────────────────────────────

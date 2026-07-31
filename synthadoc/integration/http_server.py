@@ -1793,7 +1793,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         Returns {slug, recorded: true/false}.
         """
         response.headers["Cache-Control"] = "no-store"
-        if not app.state.orch._store.page_exists(slug):
+        from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
+        if slug in LINT_SKIP_SLUGS or not app.state.orch._store.page_exists(slug):
             return {"slug": slug, "recorded": False}
         audit = app.state.orch._audit
         recorded = await audit.snapshot_if_changed(

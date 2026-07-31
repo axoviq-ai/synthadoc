@@ -9,10 +9,11 @@ const SUPPORTED_EXTENSIONS = new Set([
     "png", "jpg", "jpeg", "webp", "gif", "tiff",
 ]);
 
-// Filenames excluded from Pick-files scan: generated wiki output and known system/config files.
+// Filenames excluded from Pick-files scan and vault-save snapshots:
+// generated wiki scaffold pages and known system/config files.
 const PICK_FILES_EXCLUDED_NAMES = new Set([
     "log.md", "routing.md", "agents.md", "readme.md",
-    "dashboard.md", "index.md", "overview.md", "claude.md", "gemini.md",
+    "dashboard.md", "index.md", "overview.md", "purpose.md", "claude.md", "gemini.md",
 ]);
 
 interface SynthadocSettings {
@@ -225,6 +226,7 @@ export default class SynthadocPlugin extends Plugin {
                 if (file.extension !== "md") return;
                 const parentPath = file.parent?.path ?? "";
                 if (parentPath !== "wiki") return;
+                if (PICK_FILES_EXCLUDED_NAMES.has(`${file.basename}.${file.extension}`)) return;
                 const slug = file.basename;
                 const existing = this._snapTimers.get(slug);
                 if (existing !== undefined) clearTimeout(existing);
