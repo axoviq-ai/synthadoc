@@ -18,7 +18,10 @@ vi.mock("obsidian", () => ({
         registerExtensions            = vi.fn();
         registerEvent                 = vi.fn();
         constructor(app?: any) {
-            this.app = app ?? { vault: { on: vi.fn(), read: vi.fn().mockResolvedValue("") } };
+            this.app = app ?? {
+                vault: { on: vi.fn(), read: vi.fn().mockResolvedValue("") },
+                workspace: { on: vi.fn(), getActiveFile: vi.fn().mockReturnValue(null) },
+            };
         }
     },
     FileSystemAdapter: class {},
@@ -578,7 +581,10 @@ async function getModal(commandId: string, appOverride?: any): Promise<{ ModalCl
             registerExtensions            = vi.fn();
             registerEvent                 = vi.fn();
             constructor(app?: any) {
-                this.app = app ?? { vault: { on: vi.fn(), read: vi.fn().mockResolvedValue("") } };
+                this.app = app ?? {
+                    vault:     { on: vi.fn(), read: vi.fn().mockResolvedValue("") },
+                    workspace: { on: vi.fn(), getActiveFile: vi.fn().mockReturnValue(null) },
+                };
             }
         },
         FileSystemAdapter: class {},
@@ -646,6 +652,15 @@ async function getModal(commandId: string, appOverride?: any): Promise<{ ModalCl
     const { default: FreshPlugin } = await import("./main");
     const plugin = new FreshPlugin();
     if (appOverride) plugin.app = appOverride as any;
+    // onload() registers workspace.on("active-leaf-change"); appOverride may
+    // have workspace without an `on` function, so patch it before onload().
+    if (typeof plugin.app.workspace?.on !== "function") {
+        if (!plugin.app.workspace) {
+            plugin.app.workspace = { on: vi.fn(), getActiveFile: vi.fn().mockReturnValue(null) };
+        } else {
+            plugin.app.workspace.on = vi.fn();
+        }
+    }
     await plugin.onload();
     const cmd = (plugin.addCommand as any).mock.calls.find(
         (c: any) => c[0].id === commandId
@@ -2860,21 +2875,42 @@ describe("SynthadocPlugin vault monitor parentPath filter", () => {
         return pageSnapshot;
     }
 
-    async function loadVaultModifyCallback() {
+    async function loadCallbacks() {
         const { default: SynthadocPlugin } = await import("./main");
         const plugin = new SynthadocPlugin();
+        // A prior vi.doMock("obsidian") from getModal() tests may have registered
+        // a factory without workspace.  Patch before onload() so the listener
+        // registration in onload() finds workspace.on.
+        if (!(plugin as any).app.workspace) {
+            (plugin as any).app.workspace = { on: vi.fn(), getActiveFile: vi.fn().mockReturnValue(null) };
+        }
         await plugin.onload();
         const vaultOnMock = (plugin as any).app.vault.on as ReturnType<typeof vi.fn>;
         const modifyCall = vaultOnMock.mock.calls.find((c: any[]) => c[0] === "modify");
-        return { plugin, cb: modifyCall?.[1] as ((file: any) => void) };
+        const workspaceOnMock = (plugin as any).app.workspace.on as ReturnType<typeof vi.fn>;
+        const leafCall = workspaceOnMock?.mock.calls.find((c: any[]) => c[0] === "active-leaf-change");
+        return {
+            plugin,
+            modifyCb:    modifyCall?.[1] as ((file: any) => void),
+            leafChangeCb: leafCall?.[1]  as ((leaf: any) => void),
+        };
+    }
+
+    // Helper: trigger vault.on("modify") for a wiki/ file and settle the 2 s read debounce.
+    async function triggerModify(modifyCb: (f: any) => void, TFile: any, basename: string, plugin: any, rawContent = "") {
+        (plugin as any).app.vault.read = vi.fn().mockResolvedValue(rawContent);
+        modifyCb(Object.assign(new TFile(), { extension: "md", basename, parent: { path: "wiki" } }));
+        await vi.advanceTimersByTimeAsync(2001); // settle read debounce only
     }
 
     it("ignores vault-root files (parentPath = '')", async () => {
         const pageSnapshot = setupApiMock();
         const { TFile } = await import("obsidian") as any;
-        const { cb } = await loadVaultModifyCallback();
-        expect(cb).toBeDefined();
-        cb(Object.assign(new TFile(), { extension: "md", basename: "AGENTS", parent: { path: "" } }));
+        const { modifyCb } = await loadCallbacks();
+        expect(modifyCb).toBeDefined();
+        const dummyPlugin = { app: { vault: { read: vi.fn().mockResolvedValue("") } } };
+        (dummyPlugin as any).app.vault.on = vi.fn();
+        modifyCb(Object.assign(new TFile(), { extension: "md", basename: "AGENTS", parent: { path: "" } }));
         await vi.runAllTimersAsync();
         expect(pageSnapshot).not.toHaveBeenCalled();
     });
@@ -2882,28 +2918,51 @@ describe("SynthadocPlugin vault monitor parentPath filter", () => {
     it("ignores vault-root files (parentPath = '/')", async () => {
         const pageSnapshot = setupApiMock();
         const { TFile } = await import("obsidian") as any;
-        const { cb } = await loadVaultModifyCallback();
-        cb(Object.assign(new TFile(), { extension: "md", basename: "CLAUDE", parent: { path: "/" } }));
+        const { modifyCb } = await loadCallbacks();
+        modifyCb(Object.assign(new TFile(), { extension: "md", basename: "CLAUDE", parent: { path: "/" } }));
         await vi.runAllTimersAsync();
         expect(pageSnapshot).not.toHaveBeenCalled();
     });
 
-    it("calls api.pageSnapshot for wiki/ files (parentPath = 'wiki')", async () => {
+    it("does NOT snapshot immediately on modify — waits for leaf-change or idle", async () => {
         const pageSnapshot = setupApiMock();
         const { TFile } = await import("obsidian") as any;
-        const { cb } = await loadVaultModifyCallback();
-        cb(Object.assign(new TFile(), { extension: "md", basename: "my-page", parent: { path: "wiki" } }));
-        await vi.runAllTimersAsync();
-        expect(pageSnapshot).toHaveBeenCalledWith("my-page", expect.any(String));
+        const { plugin, modifyCb } = await loadCallbacks();
+        await triggerModify(modifyCb, TFile, "my-page", plugin, "body text");
+        // Only the 2 s read debounce has fired; idle timer (10 min) has not.
+        expect(pageSnapshot).not.toHaveBeenCalled();
     });
 
-    it("strips YAML frontmatter before calling api.pageSnapshot", async () => {
+    it("snapshots when user switches away from a dirty wiki page (leaf-change)", async () => {
         const pageSnapshot = setupApiMock();
         const { TFile } = await import("obsidian") as any;
-        const { plugin, cb } = await loadVaultModifyCallback();
+        const { plugin, modifyCb, leafChangeCb } = await loadCallbacks();
+        await triggerModify(modifyCb, TFile, "my-page", plugin, "body text");
+        expect(pageSnapshot).not.toHaveBeenCalled();
+        // Simulate switching to a non-wiki leaf
+        await leafChangeCb?.({ view: { file: null } });
+        await vi.runAllTimersAsync();
+        expect(pageSnapshot).toHaveBeenCalledWith("my-page", "body text");
+    });
+
+    it("snapshots via idle fallback when no leaf-change occurs", async () => {
+        const pageSnapshot = setupApiMock();
+        const { TFile } = await import("obsidian") as any;
+        const { plugin, modifyCb } = await loadCallbacks();
+        await triggerModify(modifyCb, TFile, "my-page", plugin, "idle body");
+        expect(pageSnapshot).not.toHaveBeenCalled();
+        // Advance past the 10-minute idle timeout
+        await vi.advanceTimersByTimeAsync(10 * 60 * 1000 + 1);
+        expect(pageSnapshot).toHaveBeenCalledWith("my-page", "idle body");
+    });
+
+    it("strips YAML frontmatter before storing dirty content", async () => {
+        const pageSnapshot = setupApiMock();
+        const { TFile } = await import("obsidian") as any;
+        const { plugin, modifyCb, leafChangeCb } = await loadCallbacks();
         const rawWithFrontmatter = "---\ntitle: Konrad Zuse\nstatus: active\n---\n\nBody content here.";
-        (plugin as any).app.vault.read = vi.fn().mockResolvedValue(rawWithFrontmatter);
-        cb(Object.assign(new TFile(), { extension: "md", basename: "konrad-zuse", parent: { path: "wiki" } }));
+        await triggerModify(modifyCb, TFile, "konrad-zuse", plugin, rawWithFrontmatter);
+        await leafChangeCb?.({ view: { file: null } });
         await vi.runAllTimersAsync();
         expect(pageSnapshot).toHaveBeenCalledWith("konrad-zuse", "Body content here.");
     });
@@ -2913,8 +2972,8 @@ describe("SynthadocPlugin vault monitor parentPath filter", () => {
         async (basename) => {
             const pageSnapshot = setupApiMock();
             const { TFile } = await import("obsidian") as any;
-            const { cb } = await loadVaultModifyCallback();
-            cb(Object.assign(new TFile(), { extension: "md", basename, parent: { path: "wiki" } }));
+            const { modifyCb } = await loadCallbacks();
+            modifyCb(Object.assign(new TFile(), { extension: "md", basename, parent: { path: "wiki" } }));
             await vi.runAllTimersAsync();
             expect(pageSnapshot).not.toHaveBeenCalled();
         },

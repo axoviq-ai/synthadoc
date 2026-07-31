@@ -41,10 +41,22 @@ const DEFAULT_SETTINGS: SynthadocSettings = {
     rawSourcesFolder: "raw_sources",
 };
 
+// How long a page must be idle (no edits) before a snapshot fires automatically.
+// The primary trigger is switching away from the file; this is a safety fallback
+// for long single-file sessions or if Obsidian is closed without switching.
+const SNAPSHOT_IDLE_MS = 10 * 60 * 1000; // 10 minutes
+
 export default class SynthadocPlugin extends Plugin {
     settings: SynthadocSettings = DEFAULT_SETTINGS;
     private _citationScanTimer: ReturnType<typeof setTimeout> | null = null;
-    private _snapTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+    // slug → latest stripped body waiting to be snapshotted
+    private _dirtyPages: Map<string, string> = new Map();
+    // slug → debounce timer for reading the file after a modify event (short)
+    private _readTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+    // slug → idle-fallback timer that fires if no switch-away occurs (long)
+    private _idleTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+    // the wiki/ slug whose file is currently in focus (null if non-wiki page active)
+    private _activeSlug: string | null = null;
 
     async onload() {
         await this.loadSettings();
@@ -231,10 +243,17 @@ export default class SynthadocPlugin extends Plugin {
             }, 100);
         });
 
-        // Capture a content snapshot whenever a wiki page is saved manually.
-        // Debounced 2 s so rapid keystrokes produce a single request per save.
-        // Only targets .md files inside the wiki/ subdirectory (not vault-root
-        // scaffold files such as AGENTS.md, CLAUDE.md, ROUTING.md, log.md).
+        // Snapshot strategy: capture once per editing session, not on every save.
+        //
+        // vault.on("modify") debounces the file read (2 s) and stores the body
+        // in _dirtyPages.  No API call is made here — that would fire on every
+        // pause in typing and create a snapshot for every intermediate state.
+        //
+        // The snapshot fires on whichever comes first:
+        //   1. workspace.on("active-leaf-change") — user switches away from the
+        //      file; the natural "done editing" signal in Obsidian.
+        //   2. SNAPSHOT_IDLE_MS idle timeout — fallback for long sessions where
+        //      the user never switches away (or closes Obsidian).
         this.registerEvent(
             this.app.vault.on("modify", (file) => {
                 if (!(file instanceof TFile)) return;
@@ -243,20 +262,69 @@ export default class SynthadocPlugin extends Plugin {
                 if (parentPath !== "wiki") return;
                 if (PICK_FILES_EXCLUDED_NAMES.has(`${file.basename}.${file.extension}`)) return;
                 const slug = file.basename;
-                const existing = this._snapTimers.get(slug);
+                // Debounce just the file read; update dirty state on settle.
+                const existing = this._readTimers.get(slug);
                 if (existing !== undefined) clearTimeout(existing);
                 const timer = setTimeout(async () => {
-                    this._snapTimers.delete(slug);
+                    this._readTimers.delete(slug);
                     try {
                         const rawContent = await this.app.vault.read(file);
-                        await api.pageSnapshot(slug, stripFrontmatter(rawContent));
+                        this._dirtyPages.set(slug, stripFrontmatter(rawContent));
+                        this._resetIdleTimer(slug);
                     } catch {
-                        // server offline or page unknown — silently ignore
+                        // file unreadable — leave dirty state as-is
                     }
                 }, 2000);
-                this._snapTimers.set(slug, timer);
+                this._readTimers.set(slug, timer);
             })
         );
+
+        // Snapshot the previously focused wiki page when the user switches away.
+        this.registerEvent(
+            this.app.workspace.on("active-leaf-change", (leaf: any) => {
+                // Flush the old active page before updating _activeSlug.
+                if (this._activeSlug) {
+                    void this._flushDirtySlug(this._activeSlug);
+                }
+                // Determine which wiki slug (if any) is now in focus.
+                const file = leaf?.view?.file;
+                if (
+                    file instanceof TFile &&
+                    file.extension === "md" &&
+                    (file.parent?.path ?? "") === "wiki" &&
+                    !PICK_FILES_EXCLUDED_NAMES.has(`${file.basename}.${file.extension}`)
+                ) {
+                    this._activeSlug = file.basename;
+                } else {
+                    this._activeSlug = null;
+                }
+            })
+        );
+    }
+
+    /** Cancel any pending timers and immediately snapshot a dirty slug. */
+    private async _flushDirtySlug(slug: string): Promise<void> {
+        const body = this._dirtyPages.get(slug);
+        if (body === undefined) return;
+        this._dirtyPages.delete(slug);
+        const idle = this._idleTimers.get(slug);
+        if (idle !== undefined) { clearTimeout(idle); this._idleTimers.delete(slug); }
+        try {
+            await api.pageSnapshot(slug, body);
+        } catch {
+            // server offline or page unknown — silently ignore
+        }
+    }
+
+    /** Start (or restart) the idle-fallback timer for a dirty slug. */
+    private _resetIdleTimer(slug: string): void {
+        const existing = this._idleTimers.get(slug);
+        if (existing !== undefined) clearTimeout(existing);
+        const timer = setTimeout(() => {
+            this._idleTimers.delete(slug);
+            void this._flushDirtySlug(slug);
+        }, SNAPSHOT_IDLE_MS);
+        this._idleTimers.set(slug, timer);
     }
 
     async loadSettings() {
