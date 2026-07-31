@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, Response
 from synthadoc.core.queue import JobStatus
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional
 
 import logging
@@ -351,6 +351,34 @@ class RollbackRequest(BaseModel):
     reason: str
 
 
+class SnapshotRequest(BaseModel):
+    content: str
+    reason: str = "manual edit detected by Obsidian plugin"
+
+
+class PurgeEventsRequest(BaseModel):
+    keep_latest: Optional[int] = None
+    before_date: Optional[str] = None
+
+    @field_validator("before_date")
+    @classmethod
+    def _validate_date_format(cls, v: Optional[str]) -> Optional[str]:
+        import re as _re
+        if v is None:
+            return v
+        if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+            raise ValueError("before_date must be in YYYY-MM-DD format")
+        return v
+
+    @model_validator(mode="after")
+    def _exactly_one(self) -> "PurgeEventsRequest":
+        has_keep = self.keep_latest is not None
+        has_date = self.before_date is not None
+        if has_keep == has_date:   # both set or neither set
+            raise ValueError("Exactly one of keep_latest or before_date must be provided")
+        return self
+
+
 class ExportRequest(BaseModel):
     format: str
     status_filter: str = "all"
@@ -546,6 +574,17 @@ async def _worker_loop(orch, session_state: dict) -> None:
 
 
 _graph_computing = False  # module-level flag prevents duplicate background tasks
+
+# Lowercase slug names that represent scaffold or config files.
+# Applied to all lifecycle UI display endpoints so that vault-root config
+# files (AGENTS, CLAUDE, GEMINI, ROUTING) and wiki/ scaffold pages
+# (index, dashboard, overview, purpose, log) never appear in the
+# Current States, Audit Log, or Content Snapshots tabs — regardless of
+# what historical records the audit DB contains.
+_SCAFFOLD_SLUG_LOWER: frozenset[str] = frozenset({
+    "index", "log", "dashboard", "purpose", "overview",  # wiki/ scaffold (LINT_SKIP_SLUGS)
+    "agents", "claude", "gemini", "routing", "readme",   # vault-root config files
+})
 
 
 def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mcp: bool = True) -> FastAPI:
@@ -1552,7 +1591,11 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         audit = orch._audit
         cdir = _cand_dir()
         pages = await audit.get_live_page_states(orch._store.page_exists)
-        pages = [p for p in pages if not (cdir / f"{p['slug']}.md").exists()]
+        pages = [
+            p for p in pages
+            if not (cdir / f"{p['slug']}.md").exists()
+            and p["slug"].lower() not in _SCAFFOLD_SLUG_LOWER
+        ]
         return {"pages": pages}
 
     @app.get("/lifecycle/status")
@@ -1595,7 +1638,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             limit=limit,
             offset=offset,
         )
-        return {"events": events, "total": total}
+        events = [e for e in events if e["slug"].lower() not in _SCAFFOLD_SLUG_LOWER]
+        return {"events": events, "total": len(events)}
 
     @app.post("/lifecycle/transition")
     async def lifecycle_transition(req: LifecycleTransitionRequest):
@@ -1686,6 +1730,34 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             ],
         }
 
+    @app.get("/snapshots")
+    async def get_all_snapshots(slug: Optional[str] = None) -> JSONResponse:
+        rows = await app.state.orch._audit.list_all_snapshots(slug_filter=slug)
+        rows = [r for r in rows if r["slug"].lower() not in _SCAFFOLD_SLUG_LOWER]
+        return JSONResponse({"snapshots": rows}, headers={"Cache-Control": "no-store"})
+
+    @app.post("/lifecycle/events/purge")
+    async def purge_lifecycle_events_endpoint(req: PurgeEventsRequest) -> JSONResponse:
+        await app.state.orch._audit.purge_lifecycle_events(
+            before_date=req.before_date,
+            keep_latest=req.keep_latest,
+        )
+        return JSONResponse({"purged": True}, headers={"Cache-Control": "no-store"})
+
+    @app.delete("/pages/{slug}/history")
+    async def delete_slug_history(slug: str):
+        """Delete all lifecycle events (including snapshots) for a slug.
+
+        Intended for test teardown — removes DB rows without touching the wiki file.
+        Returns the number of rows deleted.
+        """
+        audit = app.state.orch._audit
+        deleted = await audit.delete_slug_events(slug)
+        return JSONResponse(
+            {"slug": slug, "deleted": deleted},
+            headers={"Cache-Control": "no-store"},
+        )
+
     @app.post("/pages/{slug}/rollback")
     async def page_rollback(slug: str, req: RollbackRequest, response: Response):
         response.headers["Cache-Control"] = "no-store"
@@ -1715,8 +1787,13 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         )
         rollback_event_index = 1  # always 1: newest id → index 1 (ORDER BY id DESC)
 
-        # Restore page body from the snapshot
-        page.content = snap["content_snapshot"]
+        # Restore page body from the snapshot.
+        # Strip frontmatter in case the snapshot was captured before the fix
+        # that normalised stored content to body-only; write_page adds its own
+        # frontmatter, so restoring a snapshot that still contains frontmatter
+        # would produce a double-frontmatter file.
+        from synthadoc.storage.log import strip_frontmatter
+        page.content = strip_frontmatter(snap["content_snapshot"])
         orch._store.write_page(slug, page)
         orch._bump_epoch()
         orch._search.invalidate_index()
@@ -1728,6 +1805,24 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             "restored_chars": len(snap["content_snapshot"]),
             "rollback_event_index": rollback_event_index,
         }
+
+    @app.post("/pages/{slug}/snapshot")
+    async def create_page_snapshot(slug: str, req: SnapshotRequest, response: Response):
+        """Record a content snapshot for *slug* only when content has changed.
+
+        Called by the Obsidian plugin on vault modify events so manual edits that
+        don't trigger a lifecycle transition are still snapshotted for rollback.
+        Returns {slug, recorded: true/false}.
+        """
+        response.headers["Cache-Control"] = "no-store"
+        from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
+        if slug in LINT_SKIP_SLUGS or not app.state.orch._store.page_exists(slug):
+            return {"slug": slug, "recorded": False}
+        audit = app.state.orch._audit
+        recorded = await audit.snapshot_if_changed(
+            slug, req.content, TriggerSource.MANUAL_EDIT, req.reason
+        )
+        return {"slug": slug, "recorded": recorded}
 
     # ── Export ────────────────────────────────────────────────────────────────
     @app.post("/export")

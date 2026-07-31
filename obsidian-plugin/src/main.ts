@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Paul Chen / axoviq.com
-import { App, FileSystemAdapter, MarkdownRenderer, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile } from "obsidian";
+import { App, FileSystemAdapter, MarkdownRenderer, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile } from "obsidian";
 import { api, setBase, getBase } from "./api";
 import { GraphModal } from "./graph-modal";
 
@@ -9,11 +9,27 @@ const SUPPORTED_EXTENSIONS = new Set([
     "png", "jpg", "jpeg", "webp", "gif", "tiff",
 ]);
 
-// Filenames excluded from Pick-files scan: generated wiki output and known system/config files.
+// Filenames excluded from Pick-files scan and vault-save snapshots:
+// generated wiki scaffold pages and known system/config files.
 const PICK_FILES_EXCLUDED_NAMES = new Set([
     "log.md", "routing.md", "agents.md", "readme.md",
-    "dashboard.md", "index.md", "overview.md", "claude.md", "gemini.md",
+    "dashboard.md", "index.md", "overview.md", "purpose.md", "claude.md", "gemini.md",
 ]);
+
+// Strip YAML frontmatter from raw .md content, returning the body only.
+// The synthadoc wiki store always persists body-only content (read_page strips
+// frontmatter before populating WikiPage.content). All snapshot storage must
+// go through this function so that deduplication comparisons are consistent
+// regardless of whether the previous snapshot came from a lifecycle transition
+// (body-only) or a vault-monitor save (which vault.read() returns as full file).
+function stripFrontmatter(raw: string): string {
+    const norm = raw.replace(/\r\n?/g, "\n");
+    if (norm.startsWith("---\n")) {
+        const close = norm.indexOf("\n---\n", 3);
+        if (close !== -1) return norm.slice(close + 5).replace(/^\n+/, "");
+    }
+    return norm;
+}
 
 interface SynthadocSettings {
     serverUrl: string;
@@ -25,9 +41,22 @@ const DEFAULT_SETTINGS: SynthadocSettings = {
     rawSourcesFolder: "raw_sources",
 };
 
+// How long a page must be idle (no edits) before a snapshot fires automatically.
+// The primary trigger is switching away from the file; this is a safety fallback
+// for long single-file sessions or if Obsidian is closed without switching.
+const SNAPSHOT_IDLE_MS = 10 * 60 * 1000; // 10 minutes
+
 export default class SynthadocPlugin extends Plugin {
     settings: SynthadocSettings = DEFAULT_SETTINGS;
     private _citationScanTimer: ReturnType<typeof setTimeout> | null = null;
+    // slug → latest stripped body waiting to be snapshotted
+    private _dirtyPages: Map<string, string> = new Map();
+    // slug → debounce timer for reading the file after a modify event (short)
+    private _readTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+    // slug → idle-fallback timer that fires if no switch-away occurs (long)
+    private _idleTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+    // the wiki/ slug whose file is currently in focus (null if non-wiki page active)
+    private _activeSlug: string | null = null;
 
     async onload() {
         await this.loadSettings();
@@ -213,6 +242,89 @@ export default class SynthadocPlugin extends Plugin {
                 this._replaceFootnoteCitations(wikiRoot);
             }, 100);
         });
+
+        // Snapshot strategy: capture once per editing session, not on every save.
+        //
+        // vault.on("modify") debounces the file read (2 s) and stores the body
+        // in _dirtyPages.  No API call is made here — that would fire on every
+        // pause in typing and create a snapshot for every intermediate state.
+        //
+        // The snapshot fires on whichever comes first:
+        //   1. workspace.on("active-leaf-change") — user switches away from the
+        //      file; the natural "done editing" signal in Obsidian.
+        //   2. SNAPSHOT_IDLE_MS idle timeout — fallback for long sessions where
+        //      the user never switches away (or closes Obsidian).
+        this.registerEvent(
+            this.app.vault.on("modify", (file) => {
+                if (!(file instanceof TFile)) return;
+                if (file.extension !== "md") return;
+                const parentPath = file.parent?.path ?? "";
+                if (parentPath !== "wiki") return;
+                if (PICK_FILES_EXCLUDED_NAMES.has(`${file.basename}.${file.extension}`)) return;
+                const slug = file.basename;
+                // Debounce just the file read; update dirty state on settle.
+                const existing = this._readTimers.get(slug);
+                if (existing !== undefined) clearTimeout(existing);
+                const timer = setTimeout(async () => {
+                    this._readTimers.delete(slug);
+                    try {
+                        const rawContent = await this.app.vault.read(file);
+                        this._dirtyPages.set(slug, stripFrontmatter(rawContent));
+                        this._resetIdleTimer(slug);
+                    } catch {
+                        // file unreadable — leave dirty state as-is
+                    }
+                }, 2000);
+                this._readTimers.set(slug, timer);
+            })
+        );
+
+        // Snapshot the previously focused wiki page when the user switches away.
+        this.registerEvent(
+            this.app.workspace.on("active-leaf-change", (leaf: any) => {
+                // Flush the old active page before updating _activeSlug.
+                if (this._activeSlug) {
+                    void this._flushDirtySlug(this._activeSlug);
+                }
+                // Determine which wiki slug (if any) is now in focus.
+                const file = leaf?.view?.file;
+                if (
+                    file instanceof TFile &&
+                    file.extension === "md" &&
+                    (file.parent?.path ?? "") === "wiki" &&
+                    !PICK_FILES_EXCLUDED_NAMES.has(`${file.basename}.${file.extension}`)
+                ) {
+                    this._activeSlug = file.basename;
+                } else {
+                    this._activeSlug = null;
+                }
+            })
+        );
+    }
+
+    /** Cancel any pending timers and immediately snapshot a dirty slug. */
+    private async _flushDirtySlug(slug: string): Promise<void> {
+        const body = this._dirtyPages.get(slug);
+        if (body === undefined) return;
+        this._dirtyPages.delete(slug);
+        const idle = this._idleTimers.get(slug);
+        if (idle !== undefined) { clearTimeout(idle); this._idleTimers.delete(slug); }
+        try {
+            await api.pageSnapshot(slug, body);
+        } catch {
+            // server offline or page unknown — silently ignore
+        }
+    }
+
+    /** Start (or restart) the idle-fallback timer for a dirty slug. */
+    private _resetIdleTimer(slug: string): void {
+        const existing = this._idleTimers.get(slug);
+        if (existing !== undefined) clearTimeout(existing);
+        const timer = setTimeout(() => {
+            this._idleTimers.delete(slug);
+            void this._flushDirtySlug(slug);
+        }, SNAPSHOT_IDLE_MS);
+        this._idleTimers.set(slug, timer);
     }
 
     async loadSettings() {
@@ -955,10 +1067,11 @@ function makeDraggable(modalEl: HTMLElement, handle: HTMLElement): void {
     // Drag from the title bar
     handle.addEventListener("mousedown", startDrag);
 
-    // Also drag from the modal frame/padding — but not from inside the content area
+    // Also drag from the modal frame/padding — but not from inside the content area or the × button
     modalEl.addEventListener("mousedown", (e: MouseEvent) => {
         if (handle.contains(e.target as Node)) return; // already handled above
         if (handle.parentElement && handle.parentElement.contains(e.target as Node)) return; // inside content
+        if ((e.target as Element)?.closest?.(".modal-close-button")) return; // let Obsidian's × work
         startDrag(e);
     });
 
@@ -3574,8 +3687,6 @@ class ReasonModal extends Modal {
 
 // ── LifecycleModal ────────────────────────────────────────────────────────────
 
-const LIFECYCLE_PAGE_SIZE = 20;
-
 const LIFECYCLE_STATE_COLORS: Record<string, string> = {
     [LifecycleState.DRAFT]:        "background:#7a4f00;color:#ffd880",
     [LifecycleState.ACTIVE]:       "background:#1a4a1a;color:#80ff80",
@@ -3594,8 +3705,8 @@ const ALLOWED_TRANSITIONS: Record<string, string[]> = {
 
 const ALL_LIFECYCLE_STATES = [...LifecycleState.ALL];
 
-class LifecycleModal extends Modal {
-    private _activeTab: "states" | "audit" = "states";
+export class LifecycleModal extends Modal {
+    private _activeTab: "states" | "audit" | "snapshots" = "states";
     // Tab 1 — current page states
     private _page = 0;
     private _pages: any[] = [];
@@ -3615,6 +3726,19 @@ class LifecycleModal extends Modal {
     private _auditTableWrap: HTMLElement | null = null;
     private _auditPagerWrap: HTMLElement | null = null;
     private _tab2Content: HTMLElement | null = null;
+    // Tab 3 — content snapshots
+    private _snapPage = 0;
+    private _snapRows: any[] = [];
+    private _snapSlugFilter = "";
+    private _snapHighlightSlug = "";
+    private _snapHighlightIndex = 0;
+    private _snapTableWrap: HTMLElement | null = null;
+    private _snapPagerWrap: HTMLElement | null = null;
+    private _tab3Content: HTMLElement | null = null;
+    private _snapTabBuilt = false;
+    // computed page sizes: derived from container height each render cycle
+    private _statesPageSize = 50;
+    private _auditPageSize = 50;
 
     constructor(
         app: App,
@@ -3649,27 +3773,50 @@ class LifecycleModal extends Modal {
         tab1Btn.style.cssText = TAB_ACTIVE;
         const tab2Btn = tabBar.createEl("button", { text: "Audit Log" }) as HTMLButtonElement;
         tab2Btn.style.cssText = TAB_INACTIVE;
+        const tab3Btn = tabBar.createEl("button", { text: "Content Snapshots" }) as HTMLButtonElement;
+        tab3Btn.style.cssText = TAB_INACTIVE;
 
-        // Two content areas
+        // Three content areas
         this._tab1Content = contentEl.createDiv();
         this._tab1Content.style.cssText = "display:flex;flex-direction:column;flex:1;min-height:0";
         this._tab2Content = contentEl.createDiv();
         this._tab2Content.style.cssText = "display:none;flex-direction:column;flex:1;min-height:0";
+        this._tab3Content = contentEl.createDiv({ cls: "sdc-tab3" });
+        this._tab3Content.style.cssText = "display:none;flex-direction:column;gap:8px;flex:1;min-height:0";
 
         tab1Btn.addEventListener("click", () => {
             this._activeTab = "states";
             tab1Btn.style.cssText = TAB_ACTIVE;
             tab2Btn.style.cssText = TAB_INACTIVE;
+            tab3Btn.style.cssText = TAB_INACTIVE;
             this._tab1Content!.style.display = "flex";
             this._tab2Content!.style.display = "none";
+            if (this._tab3Content) this._tab3Content.style.display = "none";
+            // Recalculate page size after layout settles (same pattern as tab2/tab3)
+            this._raf(() => this._renderAll());
         });
         tab2Btn.addEventListener("click", async () => {
             this._activeTab = "audit";
             tab2Btn.style.cssText = TAB_ACTIVE;
             tab1Btn.style.cssText = TAB_INACTIVE;
+            tab3Btn.style.cssText = TAB_INACTIVE;
             this._tab1Content!.style.display = "none";
             this._tab2Content!.style.display = "flex";
+            if (this._tab3Content) this._tab3Content.style.display = "none";
             if (this._auditEvents.length === 0) await this._fetchAudit();
+            // Re-measure after layout so _calcPageSize gets the real clientHeight,
+            // both on first open (clientHeight may be 0 during fetch) and on re-visits.
+            this._raf(() => this._renderAuditAll());
+        });
+        tab3Btn.addEventListener("click", async () => {
+            this._activeTab = "snapshots";
+            tab3Btn.style.cssText = TAB_ACTIVE;
+            tab1Btn.style.cssText = TAB_INACTIVE;
+            tab2Btn.style.cssText = TAB_INACTIVE;
+            this._tab1Content!.style.display = "none";
+            this._tab2Content!.style.display = "none";
+            this._tab3Content!.style.display = "flex";
+            if (!this._snapTabBuilt) await this._buildSnapshotTab();
         });
 
         // ── Tab 1 content ──────────────────────────────────────────────
@@ -3710,6 +3857,8 @@ class LifecycleModal extends Modal {
         this._pagerWrap.style.cssText = "flex-shrink:0;display:flex;gap:8px;align-items:center;margin-top:8px;font-size:12px;color:var(--text-muted)";
 
         await this._fetchAndRender();
+        // Re-measure after first paint so _calcPageSize gets the real clientHeight
+        this._raf(() => this._renderAll());
 
         // ── Tab 2 content ──────────────────────────────────────────────
         const tab2 = this._tab2Content;
@@ -3754,6 +3903,105 @@ class LifecycleModal extends Modal {
 
         this._auditPagerWrap = tab2.createDiv();
         this._auditPagerWrap.style.cssText = "flex-shrink:0;display:flex;gap:8px;align-items:center;margin-top:8px;font-size:12px;color:var(--text-muted)";
+
+        // Purge footer — Tab 2
+        const purgeFooter = this._tab2Content!.createDiv();
+        purgeFooter.style.cssText =
+            "border-top:1px solid var(--background-modifier-border);" +
+            "padding:8px 0 4px;display:flex;flex-direction:column;gap:5px;flex-shrink:0";
+
+        // ── Single control row ────────────────────────────────────────────
+        const purgeRow = purgeFooter.createDiv();
+        purgeRow.style.cssText = "display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px";
+
+        purgeRow.createEl("span", { text: "Purge:" })
+            .style.cssText = "font-weight:600;color:var(--text-normal)";
+
+        // Radio A — keep latest N (label wraps radio so clicking text toggles it)
+        const keepLabel = purgeRow.createEl("label");
+        keepLabel.style.cssText = "display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:var(--text-muted)";
+        const keepRadio = keepLabel.createEl("input", { type: "radio" }) as HTMLInputElement;
+        keepRadio.name = "sdc-purge-mode"; keepRadio.checked = true;
+        keepLabel.createEl("span", { text: "Keep latest" });
+        const keepInput = purgeRow.createEl("input", { type: "number" }) as HTMLInputElement;
+        keepInput.value = "100"; keepInput.min = "1";
+        keepInput.style.cssText = "width:60px;padding:2px 5px;font-size:12px";
+        purgeRow.createEl("span", { text: "entries" })
+            .style.cssText = "color:var(--text-muted);margin-right:6px";
+
+        // Separator
+        purgeRow.createEl("span", { text: "·" }).style.color = "var(--text-faint)";
+
+        // Radio B — before date
+        const dateLabel = purgeRow.createEl("label");
+        dateLabel.style.cssText = "display:inline-flex;align-items:center;gap:4px;cursor:pointer;color:var(--text-muted)";
+        const dateRadio = dateLabel.createEl("input", { type: "radio" }) as HTMLInputElement;
+        dateRadio.name = "sdc-purge-mode";
+        dateLabel.createEl("span", { text: "Before date" });
+        const dateInput = purgeRow.createEl("input", { type: "text" }) as HTMLInputElement;
+        dateInput.placeholder = "YYYY-MM-DD";
+        dateInput.style.cssText = "width:106px;padding:2px 5px;font-size:12px;font-family:var(--font-monospace);margin-right:6px";
+
+        // Single Purge button
+        const purgeBtn = purgeRow.createEl("button", { text: "Purge" }) as HTMLButtonElement;
+        purgeBtn.style.cssText = "font-size:12px";
+
+        // Status (inline after button)
+        const statusEl = purgeRow.createEl("span");
+        statusEl.style.cssText = "font-size:11px;color:var(--text-muted)";
+
+        // Dim inactive input; auto-select radio when input is focused
+        const syncInputStates = () => {
+            keepInput.style.opacity = keepRadio.checked ? "1" : "0.45";
+            dateInput.style.opacity = dateRadio.checked ? "1" : "0.45";
+        };
+        keepRadio.addEventListener("change", syncInputStates);
+        dateRadio.addEventListener("change", syncInputStates);
+        keepInput.addEventListener("focus", () => { keepRadio.checked = true; syncInputStates(); });
+        dateInput.addEventListener("focus", () => { dateRadio.checked = true; syncInputStates(); });
+        syncInputStates();
+
+        const setStatus = (msg: string, isErr = false) => {
+            statusEl.setText(msg);
+            statusEl.style.color = isErr ? "var(--color-red,#e05252)" : "var(--text-muted)";
+            if (msg) setTimeout(() => { if (statusEl.getText() === msg) statusEl.setText(""); }, 4000);
+        };
+
+        purgeBtn.onclick = async () => {
+            if (keepRadio.checked) {
+                const n = parseInt(keepInput.value, 10);
+                if (isNaN(n) || n < 1) { setStatus("Enter a positive integer.", true); keepInput.focus(); return; }
+                purgeBtn.disabled = true; setStatus("Purging…");
+                try {
+                    await this._purgeEvents({ keep_latest: n });
+                    await this._fetchAudit();
+                    setStatus(`Done — kept latest ${n} per slug.`);
+                } catch { setStatus("Error — is the server running?", true); }
+                finally { purgeBtn.disabled = false; }
+            } else {
+                const val = dateInput.value.trim();
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+                    setStatus("Enter a date in YYYY-MM-DD format.", true); dateInput.focus(); return;
+                }
+                const [y, m, d] = val.split("-").map(Number);
+                const dt = new Date(y, m - 1, d);
+                if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) {
+                    setStatus(`${val} is not a valid calendar date.`, true); dateInput.focus(); return;
+                }
+                purgeBtn.disabled = true; setStatus("Purging…");
+                try {
+                    await this._purgeEvents({ before_date: val });
+                    await this._fetchAudit();
+                    setStatus(`Done — removed entries before ${val}.`);
+                } catch { setStatus("Error — is the server running?", true); }
+                finally { purgeBtn.disabled = false; }
+            }
+        };
+
+        // Warning note
+        const warnEl = purgeFooter.createEl("p");
+        warnEl.style.cssText = "color:var(--text-muted);font-size:11px;margin:0";
+        warnEl.setText("⚠ Purging events permanently removes their captured content snapshots.");
     }
 
     private async _fetchAndRender() {
@@ -3774,6 +4022,264 @@ class LifecycleModal extends Modal {
             this._auditEvents = [];
         }
         this._renderAuditAll();
+    }
+
+    private async _buildSnapshotTab() {
+        this._snapTabBuilt = true;
+        const wrap = this._tab3Content!;
+
+        // Pre-populate slug filter from the currently active wiki page
+        if (!this._snapSlugFilter) {
+            const activeFile = this.app.workspace.getActiveFile();
+            if (activeFile) {
+                const m = activeFile.path.match(/^wiki\/(.+)\.md$/);
+                if (m) this._snapSlugFilter = m[1];
+            }
+        }
+
+        // Filter bar
+        const filterBar = wrap.createDiv();
+        filterBar.style.cssText = "display:flex;align-items:center;gap:8px;padding:4px 0;flex-shrink:0";
+
+        const filterWrap = filterBar.createDiv();
+        filterWrap.style.cssText = "position:relative;display:inline-flex;align-items:center";
+
+        const filterInput = filterWrap.createEl("input", { type: "text" }) as HTMLInputElement;
+        filterInput.placeholder = "Filter by slug…";
+        filterInput.style.cssText = "width:220px;padding-right:22px;box-sizing:border-box";
+        filterInput.value = this._snapSlugFilter;
+
+        const clearX = filterWrap.createEl("span", { text: "×" });
+        clearX.style.cssText =
+            "position:absolute;right:6px;cursor:pointer;color:var(--text-muted);font-size:16px;" +
+            "line-height:1;display:" + (this._snapSlugFilter ? "block" : "none");
+        clearX.onclick = () => {
+            filterInput.value = "";
+            clearX.style.display = "none";
+            this._snapSlugFilter = "";
+            this._snapPage = 0;
+            this._fetchSnapshots();   // re-fetch without slug filter to get all snapshots
+        };
+
+        filterInput.oninput = () => {
+            this._snapSlugFilter = filterInput.value.trim();
+            clearX.style.display = this._snapSlugFilter ? "block" : "none";
+            this._snapPage = 0;
+            this._renderSnapTable();
+        };
+
+        const refreshBtn = filterBar.createEl("button", { text: "↻ Refresh" }) as HTMLButtonElement;
+        refreshBtn.style.marginLeft = "auto";
+        refreshBtn.onclick = () => this._fetchSnapshots();
+
+        // Table container — flex:1 so clientHeight is measurable for page-size calc
+        this._snapTableWrap = wrap.createDiv();
+        this._snapTableWrap.style.cssText =
+            "flex:1;overflow:auto;min-height:0;" +
+            "border:1px solid var(--background-modifier-border);border-radius:4px";
+        this._snapPagerWrap = wrap.createDiv();
+        this._snapPagerWrap.style.cssText = "flex-shrink:0";
+
+        await this._fetchSnapshots();
+    }
+
+    async _fetchSnapshots() {
+        try {
+            const data = await (api as any).snapshotList(this._snapSlugFilter || undefined) as any;
+            this._snapRows = data.snapshots ?? [];
+        } catch {
+            this._snapRows = [];
+        }
+        this._renderSnapTable();
+    }
+
+    private _renderSnapTable() {
+        if (!this._snapTableWrap) return;
+        this._snapTableWrap.empty();
+
+        const PAGE = this._calcPageSize(this._snapTableWrap, 38);
+        const filter = this._snapSlugFilter.toLowerCase();
+        let visible = filter
+            ? this._snapRows.filter(r => r.slug.toLowerCase().includes(filter))
+            : [...this._snapRows].sort((a, b) =>
+                a.slug < b.slug ? -1 : a.slug > b.slug ? 1 :
+                (a.snap_index ?? 0) - (b.snap_index ?? 0));
+
+        if (visible.length === 0) {
+            const msg = this._snapTableWrap.createEl("p");
+            msg.style.cssText = "color:var(--text-muted);font-style:italic;padding:12px 0";
+            msg.setText(
+                "No snapshots recorded. Snapshots are captured on manual lifecycle " +
+                "transitions (activate, archive, restore)."
+            );
+            if (this._snapPagerWrap) this._snapPagerWrap.empty();
+            return;
+        }
+
+        const page = this._snapRows.length > 0 ? this._snapPage : 0;
+        const start = page * PAGE;
+        const rows = visible.slice(start, start + PAGE);
+
+        const table = this._snapTableWrap.createEl("table");
+        table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px";
+        const head = table.createEl("thead");
+        const hr = head.createEl("tr");
+        for (const [label, w] of [
+            ["Slug", "22%"], ["Index", "5%"], ["Timestamp", "16%"],
+            ["From → To", "18%"], ["Size", "9%"], ["Reason", "auto"], ["Actions", "160px"]
+        ] as [string, string][]) {
+            const th = hr.createEl("th", { text: label });
+            th.style.cssText = `width:${w};text-align:left;padding:4px 6px;` +
+                "border-bottom:1px solid var(--background-modifier-border);font-weight:600";
+        }
+
+        // Two low-opacity accent colors that read well in both dark and light themes
+        const GROUP_COLORS = [
+            "rgba(100,149,237,0.10)",   // cornflower blue
+            "rgba(255,183,77,0.10)",    // amber
+        ];
+
+        const body = table.createEl("tbody");
+        let lastSlug = "";
+        let groupIdx = -1;
+        for (const snap of rows) {
+            if (snap.slug !== lastSlug) { lastSlug = snap.slug; groupIdx = (groupIdx + 1) % 2; }
+            const highlight =
+                snap.slug === this._snapHighlightSlug &&
+                snap.snap_index === this._snapHighlightIndex;
+            const baseBg = GROUP_COLORS[groupIdx];
+            const tr = body.createEl("tr");
+            tr.style.cssText =
+                `background:${highlight ? "var(--interactive-accent-hover)" : baseBg};` +
+                "cursor:pointer;" +
+                (highlight ? "transition:background 2s ease;" : "");
+            if (highlight) setTimeout(() => { tr.style.background = baseBg; }, 2000);
+
+            // Row hover effect
+            tr.addEventListener("mouseenter", () => { if (!highlight) tr.style.background = "var(--background-modifier-hover)"; });
+            tr.addEventListener("mouseleave", () => { if (!highlight) tr.style.background = baseBg; });
+
+            // Row click → open the wiki page in Obsidian (same pattern as LintReportModal)
+            tr.addEventListener("click", () => {
+                this.app.workspace.openLinkText(snap.slug, "", false);
+            });
+
+            const cells: string[] = [
+                snap.slug,
+                String(snap.snap_index),
+                (snap.timestamp ?? "").slice(0, 19),
+                `${snap.from_state ?? "null"} → ${snap.to_state}`,
+                `${(snap.content_length ?? 0).toLocaleString()} chars`,
+                (snap.reason ?? "").slice(0, 40),
+            ];
+            for (const txt of cells) {
+                const td = tr.createEl("td");
+                td.style.cssText = "padding:4px 6px;vertical-align:top";
+                td.setText(txt);
+            }
+            const actionTd = tr.createEl("td");
+            actionTd.style.cssText = "padding:4px 6px;white-space:nowrap";
+
+            const viewBtn = actionTd.createEl("button", { text: "View" }) as HTMLButtonElement;
+            viewBtn.style.marginRight = "6px";
+            viewBtn.onclick = (e) => { e.stopPropagation(); this._openSnapshotContent(snap); };
+
+            const rollBtn = actionTd.createEl("button", { text: "Rollback" }) as HTMLButtonElement;
+            rollBtn.onclick = (e) => { e.stopPropagation(); this._rollbackFromTable(snap); };
+        }
+
+        this._renderSnapPager(visible.length, PAGE);
+    }
+
+    private _renderSnapPager(total: number, pageSize: number) {
+        if (!this._snapPagerWrap) return;
+        this._snapPagerWrap.empty();
+        const pages = Math.ceil(total / pageSize);
+        if (pages <= 1) return;
+        const bar = this._snapPagerWrap.createDiv();
+        bar.style.cssText = "display:flex;gap:6px;align-items:center;padding:6px 0";
+        const prev = bar.createEl("button", { text: "← Prev" }) as HTMLButtonElement;
+        prev.disabled = this._snapPage === 0;
+        prev.onclick = () => { this._snapPage--; this._renderSnapTable(); };
+        bar.createEl("span").setText(`Page ${this._snapPage + 1} / ${pages}`);
+        const next = bar.createEl("button", { text: "Next →" }) as HTMLButtonElement;
+        next.disabled = this._snapPage >= pages - 1;
+        next.onclick = () => { this._snapPage++; this._renderSnapTable(); };
+    }
+
+    private async _rollbackFromTable(snap: any): Promise<void> {
+        const wikiRelPath = `wiki/${snap.slug}.md`;
+        try {
+            const file = (this.app as any).vault.getFileByPath(wikiRelPath);
+            if (file) {
+                const [currentRaw, histData] = await Promise.all([
+                    (this.app as any).vault.read(file),
+                    (api as any).lifecycleHistory(snap.slug, snap.snap_index),
+                ]);
+                const snapContent: string = (histData as any).content ?? "";
+                const hunks = computeDiff(
+                    stripFrontmatter(snapContent).split("\n"),
+                    stripFrontmatter(currentRaw).split("\n"),
+                );
+                if (hunks.every(h => h.type === "eq")) {
+                    new Notice("Snapshot already matches the current file — rollback skipped.");
+                    return;
+                }
+            }
+        } catch { /* unable to verify — proceed */ }
+        new ReasonModal(
+            this.app,
+            `Roll back «${snap.slug}» to snapshot ${snap.snap_index}`,
+            async (reason: string) => {
+                try {
+                    await (api as any).pageRollback(snap.slug, snap.snap_index, reason);
+                    await this._fetchSnapshots();
+                    this._snapHighlightSlug = snap.slug;
+                    this._snapHighlightIndex = 1;
+                    this._renderSnapTable();
+                    await this._reloadIfActive(snap.slug);
+                    new Notice(`Rolled back «${snap.slug}» to snapshot ${snap.snap_index}.`);
+                } catch {
+                    new Notice("Rollback failed — is the server running?");
+                }
+            }
+        ).open();
+    }
+
+    private async _purgeEvents(params: { keep_latest?: number; before_date?: string }) {
+        await (api as any).lifecycleEventsPurge(params);
+        await this._fetchAudit();
+        if (this._snapRows.length > 0) await this._fetchSnapshots();
+    }
+
+    private async _openSnapshotContent(snap: any): Promise<void> {
+        let content = "";
+        try {
+            const data = await api.lifecycleHistory(snap.slug, snap.snap_index) as any;
+            content = data.content ?? "";
+        } catch { /* non-fatal — show empty content */ }
+
+        new SnapshotContentModal(
+            this.app,
+            this.wikiRoot,
+            { ...snap, content },
+            (slug: string) => {
+                this._snapHighlightSlug = slug;
+                this._snapHighlightIndex = 1;
+                this._fetchSnapshots();
+                this._reloadIfActive(slug);
+            }
+        ).open();
+    }
+
+    private async _reloadIfActive(slug: string): Promise<void> {
+        try {
+            const activeFile = this.app.workspace.getActiveFile?.();
+            if (!activeFile) return;
+            if (!activeFile.path.endsWith(`wiki/${slug}.md`)) return;
+            const view = this.app.workspace.getActiveViewOfType?.(MarkdownView);
+            if (view) view.editor?.refresh();
+        } catch { /* non-fatal */ }
     }
 
     private _filteredPages(): any[] {
@@ -3808,12 +4314,27 @@ class LifecycleModal extends Modal {
         });
     }
 
+    private _calcPageSize(wrap: HTMLElement | null, rowH = 34, fallback = 50): number {
+        const h = wrap?.clientHeight ?? 0;
+        return h > 0 ? Math.max(10, Math.floor((h - rowH) / rowH)) : fallback;
+    }
+
+    // requestAnimationFrame isn't available in test environments; fall back to sync.
+    private _raf(fn: () => void): void {
+        if (typeof requestAnimationFrame !== "undefined") requestAnimationFrame(fn);
+        else fn();
+    }
+
     private _renderAll() {
+        // States rows: 6px top/bottom td padding + action buttons (~22px) ≈ 34px
+        this._statesPageSize = this._calcPageSize(this._tableWrap, 34);
         this._renderTable();
         this._renderPager();
     }
 
     private _renderAuditAll() {
+        // Audit rows: 13px font × ~1.2 line-height + 12px padding + 1px border ≈ 29px
+        this._auditPageSize = this._calcPageSize(this._auditTableWrap, 29);
         this._renderAuditTable();
         this._renderAuditPager();
     }
@@ -3824,9 +4345,9 @@ class LifecycleModal extends Modal {
 
         const filtered = this._filteredPages();
         const sorted = this._sortedPages(filtered);
-        const totalPages = Math.max(1, Math.ceil(sorted.length / LIFECYCLE_PAGE_SIZE));
+        const totalPages = Math.max(1, Math.ceil(sorted.length / this._statesPageSize));
         this._page = Math.min(this._page, totalPages - 1);
-        const slice = sorted.slice(this._page * LIFECYCLE_PAGE_SIZE, (this._page + 1) * LIFECYCLE_PAGE_SIZE);
+        const slice = sorted.slice(this._page * this._statesPageSize, (this._page + 1) * this._statesPageSize);
 
         if (sorted.length === 0) {
             this._tableWrap.createEl("p", { text: "No pages found." })
@@ -3941,9 +4462,9 @@ class LifecycleModal extends Modal {
             return;
         }
 
-        const totalPages = Math.max(1, Math.ceil(sorted.length / LIFECYCLE_PAGE_SIZE));
+        const totalPages = Math.max(1, Math.ceil(sorted.length / this._auditPageSize));
         this._auditPage = Math.min(this._auditPage, totalPages - 1);
-        const slice = sorted.slice(this._auditPage * LIFECYCLE_PAGE_SIZE, (this._auditPage + 1) * LIFECYCLE_PAGE_SIZE);
+        const slice = sorted.slice(this._auditPage * this._auditPageSize, (this._auditPage + 1) * this._auditPageSize);
 
         const AUDIT_COLS: { key: string; label: string; sortable: boolean }[] = [
             { key: "slug",         label: "Slug",         sortable: true },
@@ -4020,7 +4541,7 @@ class LifecycleModal extends Modal {
         if (!this._pagerWrap) return;
         this._pagerWrap.empty();
         const filtered = this._filteredPages();
-        const totalPages = Math.max(1, Math.ceil(filtered.length / LIFECYCLE_PAGE_SIZE));
+        const totalPages = Math.max(1, Math.ceil(filtered.length / this._statesPageSize));
         if (totalPages <= 1) return;
         const prev = this._pagerWrap.createEl("button", { text: "← Prev" }) as HTMLButtonElement;
         prev.disabled = this._page === 0;
@@ -4037,7 +4558,7 @@ class LifecycleModal extends Modal {
         if (!this._auditPagerWrap) return;
         this._auditPagerWrap.empty();
         const filtered = this._filteredAuditEvents();
-        const totalPages = Math.max(1, Math.ceil(filtered.length / LIFECYCLE_PAGE_SIZE));
+        const totalPages = Math.max(1, Math.ceil(filtered.length / this._auditPageSize));
         if (totalPages <= 1) return;
         const prev = this._auditPagerWrap.createEl("button", { text: "← Prev" }) as HTMLButtonElement;
         prev.disabled = this._auditPage === 0;
@@ -4391,6 +4912,272 @@ class GraphViewModal extends Modal {
 
     onClose() {
         this._closed = true;
+        this.contentEl.empty();
+    }
+}
+
+// ── computeDiff — LCS-based line diff ─────────────────────────────────────────
+
+export function computeDiff(
+    oldLines: string[],
+    newLines: string[]
+): Array<{ type: "eq" | "add" | "del"; text: string }> {
+    const m = oldLines.length, n = newLines.length;
+    const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+    for (let i = m - 1; i >= 0; i--)
+        for (let j = n - 1; j >= 0; j--)
+            dp[i][j] = oldLines[i] === newLines[j]
+                ? dp[i + 1][j + 1] + 1
+                : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    const result: Array<{ type: "eq" | "add" | "del"; text: string }> = [];
+    let i = 0, j = 0;
+    while (i < m || j < n) {
+        if (i < m && j < n && oldLines[i] === newLines[j]) {
+            result.push({ type: "eq", text: oldLines[i++] }); j++;
+        } else if (j < n && (i >= m || dp[i][j + 1] >= dp[i + 1][j])) {
+            result.push({ type: "add", text: newLines[j++] });
+        } else {
+            result.push({ type: "del", text: oldLines[i++] });
+        }
+    }
+    return result;
+}
+
+// ── SnapshotContentModal — content view, diff, and rollback ───────────────────
+
+export class SnapshotContentModal extends Modal {
+    private _area:       HTMLElement | null = null;
+    private _contentBtn: HTMLButtonElement | null = null;
+    private _diffBtn:    HTMLButtonElement | null = null;
+    private _copyBtn:    HTMLButtonElement | null = null;
+
+    constructor(
+        app: App,
+        private wikiRoot: string,
+        private snap: {
+            slug: string; snap_index: number; timestamp: string;
+            from_state: string; to_state: string;
+            reason: string; content: string;
+        },
+        private onRollbackDone: (slug: string) => void,
+    ) { super(app); }
+
+    async onOpen(): Promise<void> {
+        const { modalEl, contentEl } = this;
+        modalEl.style.width  = "clamp(960px, 88vw, 1400px)";
+        modalEl.style.height = "clamp(640px, 82vh, 960px)";
+        contentEl.style.cssText = "display:flex;flex-direction:column;height:100%";
+
+        // Header — title + meta + toggle bar
+        const header = contentEl.createEl("div");
+        header.style.cssText = "flex-shrink:0;padding:0 0 8px";
+        makeDraggable(modalEl, header);
+
+        const titleEl = header.createEl("h3", {
+            text: `Snapshot ${this.snap.snap_index} — ${this.snap.slug}`,
+        });
+        titleEl.style.cssText = "margin:0";
+
+        const meta = header.createEl("p");
+        meta.style.cssText = "margin:4px 0;font-size:11px;color:var(--text-muted)";
+        meta.setText(
+            `${(this.snap.timestamp ?? "").slice(0, 19)} UTC · ` +
+            `${this.snap.from_state ?? "null"} → ${this.snap.to_state} · ${this.snap.reason ?? ""}`
+        );
+
+        // View toggle bar
+        const toggleBar = header.createEl("div");
+        toggleBar.style.cssText =
+            "display:flex;gap:6px;padding-top:8px;" +
+            "border-bottom:1px solid var(--background-modifier-border)";
+        this._contentBtn = toggleBar.createEl("button", { text: "Content" }) as HTMLButtonElement;
+        this._diffBtn    = toggleBar.createEl("button", { text: "Diff vs current" }) as HTMLButtonElement;
+
+        // Scrollable content area
+        this._area = contentEl.createEl("div");
+        this._area.style.cssText =
+            "flex:1;min-height:0;overflow-y:auto;padding:12px 16px;" +
+            "font-family:var(--font-monospace);font-size:12px;" +
+            "white-space:pre-wrap;word-break:break-word;" +
+            "user-select:text;-webkit-user-select:text;cursor:text;" +
+            "border:1px solid var(--background-modifier-border);border-radius:4px";
+
+        this._contentBtn.onclick = () => this._showContent();
+        this._diffBtn.onclick    = () => this._showDiff();
+        this._showContent();   // default view
+
+        // Footer — Copy to Clipboard (left, Content tab only) + Rollback (right)
+        const footer = contentEl.createEl("div");
+        footer.style.cssText =
+            "flex-shrink:0;display:flex;justify-content:space-between;align-items:center;padding:8px 0 0";
+        this._copyBtn = footer.createEl("button", { text: "Copy to Clipboard" }) as HTMLButtonElement;
+        this._copyBtn.onclick = () => (window as any).navigator?.clipboard?.writeText(this.snap.content ?? "");
+        const rollBtn = footer.createEl("button", { text: "Rollback to this version" });
+        rollBtn.onclick = async () => {
+            const wikiRelPath = `wiki/${this.snap.slug}.md`;
+            try {
+                const file = (this.app as any).vault.getFileByPath(wikiRelPath);
+                if (file) {
+                    const currentRaw = await (this.app as any).vault.read(file);
+                    const hunks = computeDiff(
+                        this._bodyLines(this.snap.content ?? ""),
+                        this._bodyLines(currentRaw),
+                    );
+                    if (hunks.every(h => h.type === "eq")) {
+                        new Notice("Snapshot already matches the current file — rollback skipped.");
+                        return;
+                    }
+                }
+            } catch { /* unable to read current file — proceed */ }
+            new ReasonModal(
+                this.app,
+                `Roll back «${this.snap.slug}» to snapshot ${this.snap.snap_index}`,
+                async (reason: string) => { await this._doRollback(reason); }
+            ).open();
+        };
+    }
+
+    private _setActiveToggle(tab: "content" | "diff"): void {
+        const active   = "padding:4px 12px 6px;border-radius:0;background:transparent;" +
+                         "border-bottom:2px solid var(--interactive-accent);color:var(--text-normal)";
+        const inactive = "padding:4px 12px 6px;border-radius:0;background:transparent;" +
+                         "border-bottom:2px solid transparent;color:var(--text-muted)";
+        if (this._contentBtn) this._contentBtn.style.cssText = tab === "content" ? active : inactive;
+        if (this._diffBtn)    this._diffBtn.style.cssText    = tab === "diff"    ? active : inactive;
+    }
+
+    private _showContent(): void {
+        if (!this._area) return;
+        this._setActiveToggle("content");
+        if (this._copyBtn) this._copyBtn.style.visibility = "";
+        this._area.empty();
+        this._area.setText(this.snap.content ?? "");
+    }
+
+    async _showDiff(): Promise<void> {
+        if (!this._area) return;
+        this._setActiveToggle("diff");
+        if (this._copyBtn) this._copyBtn.style.visibility = "hidden";
+        this._area.empty();
+
+        // Legend
+        const legend = this._area.createEl("div");
+        legend.style.cssText =
+            "display:flex;gap:24px;padding:4px 0 8px;" +
+            "border-bottom:1px solid var(--background-modifier-border);" +
+            "margin-bottom:8px;font-size:11px;user-select:none";
+        const gSpan = legend.createEl("span");
+        gSpan.innerHTML =
+            `<span style="color:var(--color-green,#6abf69);font-weight:700">+ green</span>` +
+            ` — exists in <strong>current file</strong>, not in snapshot → <em>removed</em> on rollback`;
+        const rSpan = legend.createEl("span");
+        rSpan.innerHTML =
+            `<span style="color:var(--color-red,#e06c75);font-weight:700">− red</span>` +
+            ` — exists in <strong>this snapshot</strong>, not in current → <em>restored</em> on rollback`;
+        const wikiRelPath = `wiki/${this.snap.slug}.md`;
+        let currentRaw: string;
+        try {
+            const file = (this.app as any).vault.getFileByPath(wikiRelPath);
+            if (!file) throw new Error("file not found in vault");
+            currentRaw = await (this.app as any).vault.read(file);
+        } catch {
+            this._area.setText("Cannot read current file — is this wiki open as an Obsidian vault?");
+            return;
+        }
+        // Both sides are normalised to body-only via stripFrontmatter so the
+        // diff is meaningful even when stored content has no frontmatter.
+        const oldLines = this._bodyLines(this.snap.content ?? "");
+        const newLines = this._bodyLines(currentRaw);
+        const hunks = computeDiff(oldLines, newLines);
+
+        if (hunks.every(h => h.type === "eq")) {
+            const msg = this._area.createEl("div");
+            msg.style.cssText =
+                "display:flex;flex-direction:column;align-items:center;justify-content:center;" +
+                "height:100%;gap:8px;color:var(--text-muted);font-family:var(--font-interface)";
+            msg.createEl("span", { text: "✓" }).style.cssText = "font-size:32px;color:var(--color-green,#6abf69)";
+            msg.createEl("span", { text: "No differences — snapshot content matches the current file." });
+            return;
+        }
+
+        this._renderDiff(this._area, hunks);
+    }
+
+    private _bodyLines(text: string): string[] {
+        return stripFrontmatter(text).split("\n");
+    }
+
+    private _renderDiff(
+        area: HTMLElement,
+        hunks: Array<{ type: "eq" | "add" | "del"; text: string }>
+    ): void {
+        const CONTEXT = 3;
+        const show = new Array(hunks.length).fill(false);
+        for (let i = 0; i < hunks.length; i++) {
+            if (hunks[i].type !== "eq") {
+                for (let k = Math.max(0, i - CONTEXT); k <= Math.min(hunks.length - 1, i + CONTEXT); k++)
+                    show[k] = true;
+            }
+        }
+        let skipped = 0;
+        const flush = () => {
+            if (skipped > 0) {
+                const sep = area.createEl("div");
+                sep.style.cssText = "color:var(--text-muted);font-style:italic;padding:2px 0";
+                sep.setText(`… ${skipped} unchanged lines …`);
+                skipped = 0;
+            }
+        };
+        for (let i = 0; i < hunks.length; i++) {
+            const h = hunks[i];
+            if (!show[i]) { skipped++; continue; }
+            flush();
+            const line = area.createEl("div");
+            if (h.type === "add") {
+                line.style.cssText = "background:rgba(0,200,0,0.10)";
+                const prefix = line.createEl("span", { text: "+ " });
+                prefix.style.color = "var(--color-green, #6abf69)";
+                line.appendText(h.text);
+            } else if (h.type === "del") {
+                line.style.cssText = "background:rgba(200,0,0,0.10)";
+                const prefix = line.createEl("span", { text: "- " });
+                prefix.style.color = "var(--color-red, #e06c75)";
+                line.appendText(h.text);
+            } else {
+                line.style.cssText = "color:var(--text-muted)";
+                line.setText("  " + h.text);
+            }
+        }
+        flush();
+    }
+
+    async _doRollback(reason: string): Promise<void> {
+        const wikiRelPath = `wiki/${this.snap.slug}.md`;
+        try {
+            const file = (this.app as any).vault.getFileByPath(wikiRelPath);
+            if (file) {
+                const currentRaw = await (this.app as any).vault.read(file);
+                const hunks = computeDiff(
+                    this._bodyLines(this.snap.content ?? ""),
+                    this._bodyLines(currentRaw),
+                );
+                if (hunks.every(h => h.type === "eq")) {
+                    new Notice("Snapshot already matches the current file — rollback skipped.");
+                    return;
+                }
+            }
+        } catch { /* unable to read current file — proceed with rollback */ }
+        try {
+            await api.pageRollback(this.snap.slug, this.snap.snap_index, reason);
+            this.close();
+            this.onRollbackDone(this.snap.slug);
+            new Notice(`Rolled back «${this.snap.slug}» to snapshot ${this.snap.snap_index}.`);
+        } catch {
+            new Notice("Rollback failed — is the server running?");
+        }
+    }
+
+    onClose(): void {
         this.contentEl.empty();
     }
 }

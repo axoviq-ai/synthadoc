@@ -14,6 +14,21 @@ DB_SCHEMA_VERSION: int = 4
 CITATION_EXCERPT_LEN = 100
 
 
+def strip_frontmatter(text: str) -> str:
+    """Return *text* with any YAML frontmatter block removed (body only).
+
+    Mirrors the TypeScript stripFrontmatter helper in the Obsidian plugin.
+    Used inside snapshot_if_changed and at rollback time so all stored
+    and restored content is body-only regardless of trigger source.
+    """
+    if not text.startswith("---\n"):
+        return text
+    close = text.find("\n---\n", 3)
+    if close == -1:
+        return text
+    return text[close + 5:].lstrip("\n")
+
+
 class LogWriter:
     def __init__(self, log_path: Path) -> None:
         self._path = Path(log_path)
@@ -557,6 +572,34 @@ class AuditDB:
                 rows = await cur.fetchall()
         return [{"index": i, **dict(row)} for i, row in enumerate(rows, 1)]
 
+    async def list_all_snapshots(self, slug_filter: Optional[str] = None) -> list[dict]:
+        """Return all events with non-NULL content_snapshot as a flat list.
+        snap_index is 1-based per slug (1 = newest), via ROW_NUMBER window."""
+        sql = """
+            SELECT
+                slug,
+                CAST(ROW_NUMBER() OVER (PARTITION BY slug ORDER BY id DESC) AS INTEGER)
+                    AS snap_index,
+                timestamp,
+                from_state,
+                to_state,
+                reason,
+                triggered_by,
+                LENGTH(content_snapshot) AS content_length
+            FROM lifecycle_events
+            WHERE content_snapshot IS NOT NULL
+        """
+        params: list = []
+        if slug_filter:
+            sql += " AND slug = ?"
+            params.append(slug_filter)
+        sql += " ORDER BY slug ASC, snap_index ASC"
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(sql, params) as cur:
+                rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
     async def get_snapshot_by_index(self, slug: str, index: int) -> Optional[dict]:
         """Return the Nth snapshot (1 = newest) with full content_snapshot text.
 
@@ -578,6 +621,40 @@ class AuditDB:
         if row is None:
             return None
         return {"index": index, **dict(row)}
+
+    async def snapshot_if_changed(
+        self, slug: str, content: str, triggered_by: str, reason: str
+    ) -> bool:
+        """Record a content snapshot only when *content* differs from the last stored snapshot.
+
+        Returns True if a new snapshot was recorded, False when content is unchanged.
+        The from_state and to_state are both set to the current page state (no lifecycle
+        transition occurs — this is a pure content checkpoint).
+
+        *content* may be a raw .md file (with YAML frontmatter) or body-only text;
+        frontmatter is stripped here before comparing and storing so callers do not
+        need to normalise it themselves.
+        """
+        content = strip_frontmatter(content)
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT content_snapshot FROM lifecycle_events"
+                " WHERE slug = ? AND content_snapshot IS NOT NULL"
+                " ORDER BY id DESC LIMIT 1",
+                (slug,),
+            ) as cur:
+                row = await cur.fetchone()
+        last = dict(row)["content_snapshot"] if row else None
+        if last == content:
+            return False
+        state_row = await self.get_page_state(slug)
+        current_state = state_row["state"] if state_row else "draft"
+        await self.record_lifecycle_event(
+            slug, current_state, current_state, reason, triggered_by,
+            content_snapshot=content,
+        )
+        return True
 
     async def get_all_page_states(self) -> list:
         async with aiosqlite.connect(self._path) as db:
@@ -640,6 +717,15 @@ class AuditDB:
                     )
                 """, (keep_latest,))
             await db.commit()
+
+    async def delete_slug_events(self, slug: str) -> int:
+        """Delete all lifecycle events (including snapshots) for *slug*. Returns rows deleted."""
+        async with aiosqlite.connect(self._path) as db:
+            cur = await db.execute(
+                "DELETE FROM lifecycle_events WHERE slug = ?", (slug,)
+            )
+            await db.commit()
+            return cur.rowcount or 0
 
     async def record_scheduled_run_start(
         self, run_id: str, op: str, wiki: str, entry_id: str = ""

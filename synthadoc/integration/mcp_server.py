@@ -177,10 +177,38 @@ def create_mcp_server(orchestrator):
 
     @mcp.tool()
     async def synthadoc_status() -> dict:
-        """Get wiki status: page count and wiki name."""
+        """Get wiki status: page count, job queue summary, and lifecycle breakdown.
+
+        Returns:
+          wiki          — wiki name
+          pages         — number of user content pages (excludes system scaffold pages)
+          jobs_pending  — jobs waiting to run
+          jobs_total    — all jobs ever recorded
+          lifecycle     — page counts by state: active, draft, stale, contradicted, archived
+                          (plus "unlinted" for pages with no lifecycle record yet)
+        """
+        from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
+
+        user_slugs = [s for s in orchestrator._store.list_pages() if s not in LINT_SKIP_SLUGS]
+
+        jobs = await orchestrator.queue.list_jobs()
+        jobs_pending = sum(1 for j in jobs if j.status == JobStatus.PENDING)
+
+        _live = lambda slug: slug not in LINT_SKIP_SLUGS and orchestrator._store.page_exists(slug)
+        lifecycle: dict[str, int] = {
+            "draft": 0, "active": 0, "contradicted": 0, "stale": 0, "archived": 0,
+        }
+        lifecycle.update(await orchestrator._audit.get_live_lifecycle_summary(_live))
+        unlinted = len(user_slugs) - sum(lifecycle.values())
+        if unlinted > 0:
+            lifecycle["unlinted"] = unlinted
+
         return {
-            "pages": len(orchestrator._store.list_pages()),
             "wiki": orchestrator._root.name,
+            "pages": len(user_slugs),
+            "jobs_pending": jobs_pending,
+            "jobs_total": len(jobs),
+            "lifecycle": lifecycle,
         }
 
     @mcp.tool()
@@ -211,15 +239,22 @@ def create_mcp_server(orchestrator):
         return {"pages": pages, "total": len(pages)}
 
     @mcp.tool()
-    async def synthadoc_write_page(slug: str, content: str, title: str = "") -> dict:
+    async def synthadoc_write_page(
+        slug: str, content: str, title: str = "", reason: str = ""
+    ) -> dict:
         """Update the content of an existing wiki page.
 
         Only updates content (and optionally title) — lifecycle state is unchanged.
         Use synthadoc_lifecycle to transition state after editing.
         Clears contradiction_note if present, since a manual edit implies resolution.
 
-        Returns the updated slug, title, and status.
+        reason: optional note describing why the edit was made. Recorded in the
+                content snapshot so the change is visible in the Content Snapshots
+                tab and can be rolled back from the Obsidian plugin.
+
+        Returns the updated slug, title, status, and whether a snapshot was recorded.
         """
+        from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
         if not content or not content.strip():
             return {"error": "content must not be empty"}
         from datetime import date
@@ -233,7 +268,12 @@ def create_mcp_server(orchestrator):
         page.updated = date.today().isoformat()
         orchestrator._store.write_page(slug, page)
         orchestrator._bump_epoch()
-        return {"slug": slug, "title": page.title, "status": page.status}
+        snapped = False
+        if slug not in LINT_SKIP_SLUGS:
+            snapped = await orchestrator._audit.snapshot_if_changed(
+                slug, content, TriggerSource.MCP, reason or "content updated via MCP"
+            )
+        return {"slug": slug, "title": page.title, "status": page.status, "snapshot_recorded": snapped}
 
     @mcp.tool()
     async def synthadoc_read_page(slug: str) -> dict:

@@ -101,9 +101,17 @@ async def test_mcp_search_tool_returns_results(mock_orch):
 @pytest.mark.asyncio
 async def test_mcp_status_tool_returns_page_count(mock_orch):
     from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.core.queue import Job, JobStatus as JS
     mcp = create_mcp_server(mock_orch)
+    fake_jobs = [
+        Job(id="j1", operation="ingest", payload={}, status=JS.PENDING,   retries=0, error=None),
+        Job(id="j2", operation="lint",   payload={}, status=JS.COMPLETED, retries=0, error=None),
+    ]
+    lc = {"active": 1, "draft": 1, "stale": 0, "contradicted": 0, "archived": 0}
     with patch("synthadoc.storage.wiki.WikiStorage.list_pages",
-               return_value=["page-1", "page-2"]):
+               return_value=["page-1", "page-2"]), \
+         patch.object(mock_orch.queue, "list_jobs", new=AsyncMock(return_value=fake_jobs)), \
+         patch.object(mock_orch._audit, "get_live_lifecycle_summary", new=AsyncMock(return_value=lc)):
         result = await mcp._tool_manager.call_tool(
             "synthadoc_status", {}, convert_result=False
         )
@@ -112,6 +120,45 @@ async def test_mcp_status_tool_returns_page_count(mock_orch):
     assert result["wiki"] == mock_orch._root.name
     assert "\\" not in result["wiki"]
     assert "/" not in result["wiki"]
+    assert result["jobs_pending"] == 1
+    assert result["jobs_total"] == 2
+    assert result["lifecycle"]["active"] == 1
+    assert result["lifecycle"]["draft"] == 1
+
+
+@pytest.mark.asyncio
+async def test_mcp_status_excludes_system_scaffold_pages(mock_orch):
+    """System scaffold pages (LINT_SKIP_SLUGS) must not inflate the page count."""
+    from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
+    from synthadoc.core.queue import JobStatus as JS
+    mcp = create_mcp_server(mock_orch)
+    # Mix of user pages and a system scaffold page
+    all_slugs = ["page-1", "page-2", next(iter(LINT_SKIP_SLUGS))]
+    lc = {"active": 2, "draft": 0, "stale": 0, "contradicted": 0, "archived": 0}
+    with patch("synthadoc.storage.wiki.WikiStorage.list_pages", return_value=all_slugs), \
+         patch.object(mock_orch.queue, "list_jobs", new=AsyncMock(return_value=[])), \
+         patch.object(mock_orch._audit, "get_live_lifecycle_summary", new=AsyncMock(return_value=lc)):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_status", {}, convert_result=False
+        )
+    assert result["pages"] == 2  # scaffold page excluded
+
+
+@pytest.mark.asyncio
+async def test_mcp_status_reports_unlinted_pages(mock_orch):
+    """Pages with no lifecycle record should appear as 'unlinted'."""
+    from synthadoc.integration.mcp_server import create_mcp_server
+    mcp = create_mcp_server(mock_orch)
+    lc = {"active": 1, "draft": 0, "stale": 0, "contradicted": 0, "archived": 0}
+    with patch("synthadoc.storage.wiki.WikiStorage.list_pages", return_value=["p1", "p2", "p3"]), \
+         patch.object(mock_orch.queue, "list_jobs", new=AsyncMock(return_value=[])), \
+         patch.object(mock_orch._audit, "get_live_lifecycle_summary", new=AsyncMock(return_value=lc)):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_status", {}, convert_result=False
+        )
+    assert result["pages"] == 3
+    assert result["lifecycle"]["unlinted"] == 2  # 3 pages - 1 active
 
 
 # ── New tool: synthadoc_read_page ─────────────────────────────────────────────
@@ -327,7 +374,8 @@ async def test_mcp_write_page_updates_content(mock_orch):
         contradiction_note="old note",
     )
     with patch("synthadoc.storage.wiki.WikiStorage.read_page", return_value=fake_page), \
-         patch("synthadoc.storage.wiki.WikiStorage.write_page") as mock_write:
+         patch("synthadoc.storage.wiki.WikiStorage.write_page") as mock_write, \
+         patch.object(mock_orch._audit, "snapshot_if_changed", new=AsyncMock(return_value=True)):
         result = await mcp._tool_manager.call_tool(
             "synthadoc_write_page",
             {"slug": "grace-hopper", "content": "new content", "title": "Grace Hopper (revised)"},
@@ -366,6 +414,71 @@ async def test_mcp_write_page_rejects_empty_content(mock_orch):
             convert_result=False,
         )
         assert result == {"error": "content must not be empty"}
+
+
+@pytest.mark.asyncio
+async def test_mcp_write_page_records_snapshot_on_content_change(mock_orch):
+    """synthadoc_write_page must call snapshot_if_changed so MCP edits appear in Content Snapshots."""
+    from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.storage.wiki import WikiPage
+    mcp = create_mcp_server(mock_orch)
+    fake_page = WikiPage(title="Konrad Zuse", tags=[], content="old body",
+                         status="active", confidence="high", sources=[])
+    snap_mock = AsyncMock(return_value=True)
+    with patch("synthadoc.storage.wiki.WikiStorage.read_page", return_value=fake_page), \
+         patch("synthadoc.storage.wiki.WikiStorage.write_page"), \
+         patch.object(mock_orch._audit, "snapshot_if_changed", snap_mock):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_write_page",
+            {"slug": "konrad-zuse", "content": "new body", "reason": "fix orphan link"},
+            convert_result=False,
+        )
+    assert result["snapshot_recorded"] is True
+    snap_mock.assert_awaited_once_with("konrad-zuse", "new body", "mcp", "fix orphan link")
+
+
+@pytest.mark.asyncio
+async def test_mcp_write_page_snapshot_uses_default_reason(mock_orch):
+    """When reason is omitted, snapshot_if_changed gets a default reason string."""
+    from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.storage.wiki import WikiPage
+    mcp = create_mcp_server(mock_orch)
+    fake_page = WikiPage(title="Zuse", tags=[], content="old",
+                         status="active", confidence="high", sources=[])
+    snap_mock = AsyncMock(return_value=False)
+    with patch("synthadoc.storage.wiki.WikiStorage.read_page", return_value=fake_page), \
+         patch("synthadoc.storage.wiki.WikiStorage.write_page"), \
+         patch.object(mock_orch._audit, "snapshot_if_changed", snap_mock):
+        await mcp._tool_manager.call_tool(
+            "synthadoc_write_page",
+            {"slug": "konrad-zuse", "content": "same old"},
+            convert_result=False,
+        )
+    _, _, _, reason_arg = snap_mock.await_args.args
+    assert reason_arg  # must not be empty
+
+
+@pytest.mark.asyncio
+async def test_mcp_write_page_skips_snapshot_for_system_pages(mock_orch):
+    """System scaffold pages (LINT_SKIP_SLUGS) must not be snapshotted."""
+    from synthadoc.integration.mcp_server import create_mcp_server
+    from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
+    from synthadoc.storage.wiki import WikiPage
+    mcp = create_mcp_server(mock_orch)
+    system_slug = next(iter(LINT_SKIP_SLUGS))
+    fake_page = WikiPage(title="Index", tags=[], content="old",
+                         status="active", confidence="high", sources=[])
+    snap_mock = AsyncMock(return_value=False)
+    with patch("synthadoc.storage.wiki.WikiStorage.read_page", return_value=fake_page), \
+         patch("synthadoc.storage.wiki.WikiStorage.write_page"), \
+         patch.object(mock_orch._audit, "snapshot_if_changed", snap_mock):
+        result = await mcp._tool_manager.call_tool(
+            "synthadoc_write_page",
+            {"slug": system_slug, "content": "new index content"},
+            convert_result=False,
+        )
+    snap_mock.assert_not_awaited()
+    assert result["snapshot_recorded"] is False
 
 
 # ── New tool: synthadoc_lifecycle ─────────────────────────────────────────────

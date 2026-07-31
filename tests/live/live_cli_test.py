@@ -92,6 +92,24 @@ def _configured_wiki() -> str:
         return "history-of-computing"
 
 
+def _delete_slug_history(slug: str) -> None:
+    """DELETE /pages/{slug}/history — remove all audit DB records for a temp test slug.
+
+    Called in finally blocks after test-created pages are deleted from disk so
+    the slug never appears in the Audit Log, Current States, or Content Snapshots
+    tabs after the live test completes. Silently ignores errors (server offline,
+    endpoint not found, etc.).
+    """
+    try:
+        base = SYNTHADOC_URL.rstrip("/")
+        req = urllib.request.Request(
+            f"{base}/pages/{slug}/history", method="DELETE"
+        )
+        urllib.request.urlopen(req, timeout=10).close()
+    except Exception:
+        pass
+
+
 WIKI_NAME     = os.environ.get("WIKI_NAME", _configured_wiki())
 SYNTHADOC_URL = os.environ.get("SYNTHADOC_URL", "http://127.0.0.1:7070/")
 PY            = sys.executable
@@ -708,8 +726,9 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
                 fail("lifecycle cascade — wikilink removed from ref page",
                      f"[[{slug}]] still present in _live-test-cascade-ref.md")
         finally:
-            # 9. Rollback: delete temp page, restore slug back to archived
+            # 9. Rollback: delete temp page + its DB history, restore slug back to archived
             _ref_page.unlink(missing_ok=True)
+            _delete_slug_history("_live-test-cascade-ref")
             run(["lifecycle", "restore",  slug, "--reason", "live-test cascade rollback"] + w)
             run(["lifecycle", "activate", slug, "--reason", "live-test cascade rollback"] + w)
             run(["lifecycle", "archive",  slug, "--reason", "live-test cascade rollback"] + w)

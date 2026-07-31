@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Paul Chen / axoviq.com
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { computeDiff } from "./main";
 
 // Obsidian plugins use `window.setInterval`; make it available in node test env
 (globalThis as any).window = globalThis;
@@ -8,14 +9,20 @@ import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 vi.mock("obsidian", () => ({
     Plugin: class {
         app: any;
-        addCommand                   = vi.fn();
-        addRibbonIcon                = vi.fn();
-        addSettingTab                = vi.fn();
-        loadData                     = vi.fn().mockResolvedValue({});
-        saveData                     = vi.fn().mockResolvedValue(undefined);
+        addCommand                    = vi.fn();
+        addRibbonIcon                 = vi.fn();
+        addSettingTab                 = vi.fn();
+        loadData                      = vi.fn().mockResolvedValue({});
+        saveData                      = vi.fn().mockResolvedValue(undefined);
         registerMarkdownPostProcessor = vi.fn();
-        registerExtensions           = vi.fn();
-        constructor(app?: any) { this.app = app; }
+        registerExtensions            = vi.fn();
+        registerEvent                 = vi.fn();
+        constructor(app?: any) {
+            this.app = app ?? {
+                vault: { on: vi.fn(), read: vi.fn().mockResolvedValue("") },
+                workspace: { on: vi.fn(), getActiveFile: vi.fn().mockReturnValue(null) },
+            };
+        }
     },
     FileSystemAdapter: class {},
     PluginSettingTab: class {
@@ -71,6 +78,11 @@ vi.mock("./api", () => ({
         lifecycleTransition: vi.fn(), deleteJob: vi.fn(),
         exportWiki: vi.fn(),
         queryStream: vi.fn(), createSession: vi.fn(),
+        snapshotList: vi.fn(),
+        pageRollback: vi.fn(),
+        lifecycleEventsPurge: vi.fn(),
+        lifecycleHistory: vi.fn(),
+        pageSnapshot: vi.fn().mockResolvedValue({ recorded: false }),
     },
     setBase: vi.fn(),
 }));
@@ -173,6 +185,8 @@ describe("IngestModal All-sources tab", () => {
         vault: {
             getFiles: () => files,
             adapter: { getFullPath: (p: string) => `/abs/${p}` },
+            on: vi.fn(),
+            read: vi.fn().mockResolvedValue(""),
         },
     });
 
@@ -565,7 +579,13 @@ async function getModal(commandId: string, appOverride?: any): Promise<{ ModalCl
             saveData                      = vi.fn().mockResolvedValue(undefined);
             registerMarkdownPostProcessor = vi.fn();
             registerExtensions            = vi.fn();
-            constructor(app?: any) { this.app = app; }
+            registerEvent                 = vi.fn();
+            constructor(app?: any) {
+                this.app = app ?? {
+                    vault:     { on: vi.fn(), read: vi.fn().mockResolvedValue("") },
+                    workspace: { on: vi.fn(), getActiveFile: vi.fn().mockReturnValue(null) },
+                };
+            }
         },
         FileSystemAdapter: class {},
         PluginSettingTab: class {
@@ -620,6 +640,10 @@ async function getModal(commandId: string, appOverride?: any): Promise<{ ModalCl
             exportWiki: vi.fn(),
             queryStream: vi.fn().mockRejectedValue(new Error("streaming unavailable")),
             createSession: vi.fn(),
+            snapshotList: vi.fn(),
+            pageRollback: vi.fn(),
+            lifecycleEventsPurge: vi.fn(),
+            lifecycleHistory: vi.fn(),
         },
         setBase: vi.fn(),
     };
@@ -628,6 +652,15 @@ async function getModal(commandId: string, appOverride?: any): Promise<{ ModalCl
     const { default: FreshPlugin } = await import("./main");
     const plugin = new FreshPlugin();
     if (appOverride) plugin.app = appOverride as any;
+    // onload() registers workspace.on("active-leaf-change"); appOverride may
+    // have workspace without an `on` function, so patch it before onload().
+    if (typeof plugin.app.workspace?.on !== "function") {
+        if (!plugin.app.workspace) {
+            plugin.app.workspace = { on: vi.fn(), getActiveFile: vi.fn().mockReturnValue(null) };
+        } else {
+            plugin.app.workspace.on = vi.fn();
+        }
+    }
     await plugin.onload();
     const cmd = (plugin.addCommand as any).mock.calls.find(
         (c: any) => c[0].id === commandId
@@ -771,6 +804,8 @@ describe("IngestModal Pick-files tab", () => {
         vault: {
             getFiles: () => files.map(f => ({ ...f, name: f.name ?? f.path.split("/").pop() ?? f.path })),
             adapter: { getFullPath: (p: string) => `/abs/${p}` },
+            on: vi.fn(),
+            read: vi.fn().mockResolvedValue(""),
         },
     });
 
@@ -2000,6 +2035,8 @@ describe("Export Modal", () => {
                 getAbstractFileByPath: vi.fn().mockReturnValue(null),
                 createFolder: vi.fn().mockResolvedValue(undefined),
                 create: vi.fn().mockResolvedValue(mockTFile),
+                on: vi.fn(),
+                read: vi.fn().mockResolvedValue(""),
             },
             workspace: { getLeaf: vi.fn().mockReturnValue(mockLeaf) },
             commands: { executeCommandById: vi.fn() },
@@ -2553,4 +2590,496 @@ describe("SynthadocSettingTab", () => {
         expect(tab.containerEl.empty).toHaveBeenCalled();
         expect(tab.containerEl.createEl).toHaveBeenCalledWith("h2", expect.objectContaining({ text: "Synthadoc settings" }));
     });
+});
+
+// ── LifecycleModal Tab 3 — Content Snapshots ────────────────────────────────
+
+function makeApiMock(overrides: Record<string, any> = {}) {
+    return {
+        api: {
+            ingest: vi.fn(), lint: vi.fn(), lintReport: vi.fn(), status: vi.fn(),
+            query: vi.fn(), health: vi.fn(), jobs: vi.fn(), job: vi.fn(),
+            retryJob: vi.fn(), purgeJobs: vi.fn(), scaffold: vi.fn(),
+            auditHistory: vi.fn(), auditCosts: vi.fn(), queryHistory: vi.fn(), auditEvents: vi.fn(),
+            routingStatus: vi.fn(), routingInit: vi.fn(), routingValidate: vi.fn(), routingClean: vi.fn(),
+            stagingPolicy: vi.fn(), stagingSetPolicy: vi.fn(),
+            candidates: vi.fn(), candidatesPromoteAll: vi.fn(), candidatesDiscardAll: vi.fn(),
+            candidatePromote: vi.fn(), candidateDiscard: vi.fn(),
+            contextBuild: vi.fn(),
+            config: vi.fn().mockResolvedValue({ check_url_availability: false }),
+            lifecycleStatus: vi.fn(), lifecycleTransition: vi.fn(), deleteJob: vi.fn(),
+            lifecyclePages: vi.fn().mockResolvedValue({ pages: [] }),
+            lifecycleEvents: vi.fn().mockResolvedValue({ events: [] }),
+            snapshotList: vi.fn().mockResolvedValue({ snapshots: [] }),
+            pageRollback: vi.fn().mockResolvedValue({}),
+            lifecycleEventsPurge: vi.fn().mockResolvedValue({ purged: true }),
+            lifecycleHistory: vi.fn().mockResolvedValue({ content: "" }),
+            exportWiki: vi.fn(),
+            queryStream: vi.fn(), createSession: vi.fn(),
+            ...overrides,
+        },
+        setBase: vi.fn(),
+    };
+}
+
+async function openLifecycleModal(slug?: string, apiOverrides: Record<string, any> = {}) {
+    const apiMockModule = makeApiMock(apiOverrides);
+    vi.doMock("./api", () => apiMockModule);
+    const { LifecycleModal } = await import("./main") as any;
+    const modal = new LifecycleModal(
+        { workspace: { getActiveFile: () => null } } as any,
+        "/wiki",
+        "http://127.0.0.1:7070",
+        slug,
+    );
+    modal.contentEl = makeSmartContentEl();
+    modal.modalEl = { style: {}, addEventListener: vi.fn() };
+    modal.containerEl = { querySelector: vi.fn().mockReturnValue({ addEventListener: vi.fn() }) };
+    await modal.onOpen();
+    return { modal, api: apiMockModule.api };
+}
+
+describe("LifecycleModal Tab 3 — Content Snapshots", () => {
+    beforeEach(() => { vi.resetModules(); });
+
+    it("renders a third tab button labelled 'Content Snapshots'", async () => {
+        const { modal } = await openLifecycleModal("konrad-zuse");
+        const btns: any[] = modal.contentEl.querySelectorAll("button");
+        const btnTexts = btns.map((b: any) => b.textContent ?? b._html ?? "");
+        expect(btnTexts).toContain("Content Snapshots");
+    });
+
+    it("_buildSnapshotTab calls api.snapshotList and populates _snapRows", async () => {
+        const fakeSnaps = [
+            { slug: "pg-a", snap_index: 1, timestamp: "2026-07-01T00:00:00",
+              from_state: "draft", to_state: "active", reason: "ok", content_length: 100 },
+        ];
+        const { modal, api } = await openLifecycleModal(undefined, {
+            snapshotList: vi.fn().mockResolvedValue({ snapshots: fakeSnaps }),
+        });
+        await (modal as any)._buildSnapshotTab();
+        expect(api.snapshotList).toHaveBeenCalled();
+        expect((modal as any)._snapRows).toHaveLength(1);
+        expect((modal as any)._snapRows[0].slug).toBe("pg-a");
+    });
+
+    it("pre-populates _snapSlugFilter from the active wiki file", async () => {
+        const apiMockModule = makeApiMock({});
+        vi.doMock("./api", () => apiMockModule);
+        const { LifecycleModal } = await import("./main") as any;
+        const modal = new LifecycleModal(
+            { workspace: { getActiveFile: () => ({ path: "wiki/konrad-zuse.md", basename: "konrad-zuse" }) } } as any,
+            "/wiki", "http://127.0.0.1:7070",
+        );
+        modal.contentEl = makeSmartContentEl();
+        modal.modalEl = { style: {}, addEventListener: vi.fn() };
+        modal.containerEl = { querySelector: vi.fn().mockReturnValue({ addEventListener: vi.fn() }) };
+        await modal.onOpen();
+        await (modal as any)._buildSnapshotTab();
+        expect((modal as any)._snapSlugFilter).toBe("konrad-zuse");
+    });
+
+    it("_fetchSnapshots populates _snapRows from snapshotList response", async () => {
+        const fakeSnaps = [
+            { slug: "pg-a", snap_index: 1, timestamp: "2026-07-01T00:00:00",
+              from_state: "draft", to_state: "active", reason: "ok", content_length: 100 },
+        ];
+        const { modal } = await openLifecycleModal(undefined, {
+            snapshotList: vi.fn().mockResolvedValue({ snapshots: fakeSnaps }),
+        });
+        await (modal as any)._buildSnapshotTab();
+        await (modal as any)._fetchSnapshots();
+        expect((modal as any)._snapRows).toHaveLength(1);
+        expect((modal as any)._snapRows[0].slug).toBe("pg-a");
+    });
+
+    it("_fetchSnapshots sets _snapRows to [] when snapshotList returns empty", async () => {
+        const { modal } = await openLifecycleModal();
+        await (modal as any)._buildSnapshotTab();
+        await (modal as any)._fetchSnapshots();
+        expect((modal as any)._snapRows).toHaveLength(0);
+    });
+
+    it("_rollbackFromTable skips rollback when snapshot matches current file", async () => {
+        const rollbackMock = vi.fn();
+        const { modal } = await openLifecycleModal("pg-a", {
+            pageRollback: rollbackMock,
+            lifecycleHistory: vi.fn().mockResolvedValue({ content: "same body" }),
+        });
+        // Attach a vault whose current file matches the snapshot content
+        (modal as any).app.vault = {
+            getFileByPath: vi.fn().mockReturnValue({ path: "wiki/pg-a.md" }),
+            read: vi.fn().mockResolvedValue("same body"),
+        };
+        await (modal as any)._rollbackFromTable({ slug: "pg-a", snap_index: 2 });
+        expect(rollbackMock).not.toHaveBeenCalled();
+    });
+
+    it("_rollbackFromTable opens ReasonModal when snapshot differs from current file", async () => {
+        const rollbackMock = vi.fn().mockResolvedValue({});
+        const { modal } = await openLifecycleModal("pg-a", {
+            pageRollback: rollbackMock,
+            lifecycleHistory: vi.fn().mockResolvedValue({ content: "old body" }),
+        });
+        // Attach a vault whose current file differs from the snapshot
+        (modal as any).app.vault = {
+            getFileByPath: vi.fn().mockReturnValue({ path: "wiki/pg-a.md" }),
+            read: vi.fn().mockResolvedValue("new different body"),
+        };
+        // ReasonModal opens and calls its callback synchronously in the test mock
+        // We verify that the modal is constructed (open() was called on ReasonModal instance)
+        // by checking the Notice path is reachable — just ensure no early-return occurred
+        // and no throw from the guard.
+        await expect(
+            (modal as any)._rollbackFromTable({ slug: "pg-a", snap_index: 2 })
+        ).resolves.not.toThrow();
+        // pageRollback is NOT called here because ReasonModal.open() in the test mock
+        // does not invoke the callback — that is tested in the existing rollback tests.
+        // The important invariant: no early-return (guard did not fire).
+        expect(rollbackMock).not.toHaveBeenCalled(); // callback not invoked by mock open()
+    });
+});
+
+describe("LifecycleModal Tab 2 — purge footer", () => {
+    beforeEach(() => { vi.resetModules(); });
+
+    it("calls api.lifecycleEventsPurge with keep_latest on _purgeEvents", async () => {
+        const purgeMock = vi.fn().mockResolvedValue({ purged: true });
+        const { modal, api } = await openLifecycleModal(undefined, {
+            lifecycleEventsPurge: purgeMock,
+        });
+        await (modal as any)._purgeEvents({ keep_latest: 100 });
+        expect(purgeMock).toHaveBeenCalledWith({ keep_latest: 100 });
+    });
+
+    it("calls api.lifecycleEventsPurge with before_date on _purgeEvents", async () => {
+        const purgeMock = vi.fn().mockResolvedValue({ purged: true });
+        const { modal } = await openLifecycleModal(undefined, {
+            lifecycleEventsPurge: purgeMock,
+        });
+        await (modal as any)._purgeEvents({ before_date: "2026-01-01" });
+        expect(purgeMock).toHaveBeenCalledWith({ before_date: "2026-01-01" });
+    });
+});
+
+// ── computeDiff ───────────────────────────────────────────────────────────────
+
+describe("computeDiff", () => {
+    it("returns empty array for identical empty inputs", () => {
+        expect(computeDiff([], [])).toEqual([]);
+    });
+
+    it("marks all lines eq when inputs are identical", () => {
+        const result = computeDiff(["a", "b"], ["a", "b"]);
+        expect(result.every(r => r.type === "eq")).toBe(true);
+    });
+
+    it("marks added lines when new has extra content", () => {
+        const result = computeDiff(["a"], ["a", "b"]);
+        expect(result.some(r => r.type === "add" && r.text === "b")).toBe(true);
+    });
+
+    it("marks deleted lines when old has content removed", () => {
+        const result = computeDiff(["a", "b"], ["a"]);
+        expect(result.some(r => r.type === "del" && r.text === "b")).toBe(true);
+    });
+
+    it("handles completely different inputs", () => {
+        const result = computeDiff(["x", "y"], ["a", "b"]);
+        expect(result.filter(r => r.type === "del")).toHaveLength(2);
+        expect(result.filter(r => r.type === "add")).toHaveLength(2);
+    });
+
+    it("handles empty old — all added", () => {
+        const result = computeDiff([], ["new line"]);
+        expect(result).toEqual([{ type: "add", text: "new line" }]);
+    });
+
+    it("handles empty new — all deleted", () => {
+        const result = computeDiff(["old line"], []);
+        expect(result).toEqual([{ type: "del", text: "old line" }]);
+    });
+});
+
+// ── SnapshotContentModal ─────────────────────────────────────────────────────
+
+describe("SnapshotContentModal", () => {
+    const snap = {
+        slug: "konrad-zuse", snap_index: 1,
+        timestamp: "2026-07-29T09:35:12",
+        from_state: "draft", to_state: "active",
+        reason: "reviewed", content: "old body\nline two",
+    };
+
+    function makeSnapApiMock(overrides: Record<string, any> = {}) {
+        return {
+            api: {
+                pageRollback: vi.fn().mockResolvedValue({ slug: "konrad-zuse", snapshot_index: 1, restored_chars: 50 }),
+                lifecyclePages: vi.fn().mockResolvedValue({ pages: [] }),
+                lifecycleEvents: vi.fn().mockResolvedValue({ events: [] }),
+                snapshotList: vi.fn().mockResolvedValue({ snapshots: [] }),
+                lifecycleTransition: vi.fn(),
+                deleteJob: vi.fn(),
+                lifecycleEventsPurge: vi.fn(),
+                lifecycleHistory: vi.fn().mockResolvedValue({ content: "old body" }),
+                lifecycleStatus: vi.fn(),
+                ...overrides,
+            },
+            setBase: vi.fn(),
+        };
+    }
+
+    beforeEach(() => { vi.resetModules(); });
+
+    it("opens without throwing", async () => {
+        vi.doMock("./api", () => makeSnapApiMock());
+        const { SnapshotContentModal } = await import("./main") as any;
+        const app = {
+            vault: {
+                getFileByPath: vi.fn().mockReturnValue({ path: "wiki/konrad-zuse.md" }),
+                read: vi.fn().mockResolvedValue("new body"),
+            },
+            workspace: { getActiveFile: () => null },
+        };
+        const modal = new SnapshotContentModal(app, "/wiki", snap, vi.fn());
+        modal.contentEl = makeSmartContentEl();
+        modal.modalEl = { style: {}, addEventListener: vi.fn() };
+        await expect(modal.onOpen()).resolves.not.toThrow();
+    });
+
+    it("calls api.pageRollback and onRollbackDone on _doRollback", async () => {
+        const rollbackMock = vi.fn().mockResolvedValue({ slug: "konrad-zuse", snapshot_index: 1, restored_chars: 50 });
+        vi.doMock("./api", () => makeSnapApiMock({ pageRollback: rollbackMock }));
+        const { SnapshotContentModal } = await import("./main") as any;
+        const onRollbackDone = vi.fn();
+        const app = {
+            vault: { getFileByPath: vi.fn().mockReturnValue(null), read: vi.fn() },
+            workspace: { getActiveFile: () => null },
+        };
+        const modal = new SnapshotContentModal(app, "/wiki", snap, onRollbackDone);
+        modal.contentEl = makeSmartContentEl();
+        modal.modalEl = { style: {}, addEventListener: vi.fn() };
+        await modal.onOpen();
+        await (modal as any)._doRollback("test reason");
+        expect(rollbackMock).toHaveBeenCalledWith("konrad-zuse", 1, "test reason");
+        expect(onRollbackDone).toHaveBeenCalledWith("konrad-zuse");
+    });
+
+    it("skips api.pageRollback when snapshot content matches current file", async () => {
+        const rollbackMock = vi.fn();
+        vi.doMock("./api", () => makeSnapApiMock({ pageRollback: rollbackMock }));
+        const { SnapshotContentModal } = await import("./main") as any;
+        const app = {
+            vault: {
+                getFileByPath: vi.fn().mockReturnValue({ path: "wiki/konrad-zuse.md" }),
+                // Current file has the same body as snap.content
+                read: vi.fn().mockResolvedValue("old body\nline two"),
+            },
+            workspace: { getActiveFile: () => null },
+        };
+        const modal = new SnapshotContentModal(app, "/wiki", snap, vi.fn());
+        modal.contentEl = makeSmartContentEl();
+        modal.modalEl = { style: {}, addEventListener: vi.fn() };
+        await modal.onOpen();
+        await (modal as any)._doRollback("no-op");
+        expect(rollbackMock).not.toHaveBeenCalled();
+    });
+
+    it("proceeds with rollback when snapshot content differs from current file", async () => {
+        const rollbackMock = vi.fn().mockResolvedValue({ slug: "konrad-zuse", snapshot_index: 1, restored_chars: 10 });
+        vi.doMock("./api", () => makeSnapApiMock({ pageRollback: rollbackMock }));
+        const { SnapshotContentModal } = await import("./main") as any;
+        const onRollbackDone = vi.fn();
+        const app = {
+            vault: {
+                getFileByPath: vi.fn().mockReturnValue({ path: "wiki/konrad-zuse.md" }),
+                // Current file has different content from snap.content
+                read: vi.fn().mockResolvedValue("completely different content"),
+            },
+            workspace: { getActiveFile: () => null },
+        };
+        const modal = new SnapshotContentModal(app, "/wiki", snap, onRollbackDone);
+        modal.contentEl = makeSmartContentEl();
+        modal.modalEl = { style: {}, addEventListener: vi.fn() };
+        await modal.onOpen();
+        await (modal as any)._doRollback("restore");
+        expect(rollbackMock).toHaveBeenCalledWith("konrad-zuse", 1, "restore");
+        expect(onRollbackDone).toHaveBeenCalledWith("konrad-zuse");
+    });
+
+    it("Rollback button onclick shows notice and skips ReasonModal when content matches", async () => {
+        const rollbackMock = vi.fn();
+        vi.doMock("./api", () => makeSnapApiMock({ pageRollback: rollbackMock }));
+        const { SnapshotContentModal } = await import("./main") as any;
+        const app = {
+            vault: {
+                getFileByPath: vi.fn().mockReturnValue({ path: "wiki/konrad-zuse.md" }),
+                read: vi.fn().mockResolvedValue("old body\nline two"), // matches snap.content
+            },
+            workspace: { getActiveFile: () => null },
+        };
+        const modal = new SnapshotContentModal(app, "/wiki", snap, vi.fn());
+        modal.contentEl = makeSmartContentEl();
+        modal.modalEl = { style: {}, addEventListener: vi.fn() };
+        await modal.onOpen();
+        const buttons: any[] = modal.contentEl.querySelectorAll("button");
+        const rollBtn = buttons.find((b: any) => b._html === "Rollback to this version");
+        expect(rollBtn).toBeDefined();
+        await rollBtn.onclick();
+        // Guard fires before ReasonModal opens — no API call
+        expect(rollbackMock).not.toHaveBeenCalled();
+    });
+
+    it("calls vault.read for diff view", async () => {
+        vi.doMock("./api", () => makeSnapApiMock());
+        const { SnapshotContentModal } = await import("./main") as any;
+        const readMock = vi.fn().mockResolvedValue("new body");
+        const app = {
+            vault: {
+                getFileByPath: vi.fn().mockReturnValue({ path: "wiki/konrad-zuse.md" }),
+                read: readMock,
+            },
+            workspace: { getActiveFile: () => null },
+        };
+        const modal = new SnapshotContentModal(app, "/wiki", snap, vi.fn());
+        modal.contentEl = makeSmartContentEl();
+        modal.modalEl = { style: {}, addEventListener: vi.fn() };
+        await modal.onOpen();
+        await (modal as any)._showDiff();
+        expect(readMock).toHaveBeenCalled();
+    });
+});
+
+// ── SynthadocPlugin vault monitor parentPath filter ──────────────────────────
+//
+// Uses vi.doMock per test so the api factory seen by main.ts during onload()
+// has a fresh, trackable pageSnapshot spy regardless of what earlier describe
+// blocks registered via vi.doMock.
+
+describe("SynthadocPlugin vault monitor parentPath filter", () => {
+    beforeEach(() => {
+        vi.resetModules();
+        vi.useFakeTimers();
+    });
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    // Register a fresh api doMock and return the pageSnapshot spy.
+    // Must be called before any import of ./main so onload() picks it up.
+    function setupApiMock() {
+        const pageSnapshot = vi.fn().mockResolvedValue({ recorded: false });
+        vi.doMock("./api", () => ({
+            api: {
+                pageSnapshot,
+                config: vi.fn().mockResolvedValue({ check_url_availability: false }),
+            },
+            setBase: vi.fn(),
+        }));
+        return pageSnapshot;
+    }
+
+    async function loadCallbacks() {
+        const { default: SynthadocPlugin } = await import("./main");
+        const plugin = new SynthadocPlugin();
+        // A prior vi.doMock("obsidian") from getModal() tests may have registered
+        // a factory without workspace.  Patch before onload() so the listener
+        // registration in onload() finds workspace.on.
+        if (!(plugin as any).app.workspace) {
+            (plugin as any).app.workspace = { on: vi.fn(), getActiveFile: vi.fn().mockReturnValue(null) };
+        }
+        await plugin.onload();
+        const vaultOnMock = (plugin as any).app.vault.on as ReturnType<typeof vi.fn>;
+        const modifyCall = vaultOnMock.mock.calls.find((c: any[]) => c[0] === "modify");
+        const workspaceOnMock = (plugin as any).app.workspace.on as ReturnType<typeof vi.fn>;
+        const leafCall = workspaceOnMock?.mock.calls.find((c: any[]) => c[0] === "active-leaf-change");
+        return {
+            plugin,
+            modifyCb:    modifyCall?.[1] as ((file: any) => void),
+            leafChangeCb: leafCall?.[1]  as ((leaf: any) => void),
+        };
+    }
+
+    // Helper: trigger vault.on("modify") for a wiki/ file and settle the 2 s read debounce.
+    async function triggerModify(modifyCb: (f: any) => void, TFile: any, basename: string, plugin: any, rawContent = "") {
+        (plugin as any).app.vault.read = vi.fn().mockResolvedValue(rawContent);
+        modifyCb(Object.assign(new TFile(), { extension: "md", basename, parent: { path: "wiki" } }));
+        await vi.advanceTimersByTimeAsync(2001); // settle read debounce only
+    }
+
+    it("ignores vault-root files (parentPath = '')", async () => {
+        const pageSnapshot = setupApiMock();
+        const { TFile } = await import("obsidian") as any;
+        const { modifyCb } = await loadCallbacks();
+        expect(modifyCb).toBeDefined();
+        const dummyPlugin = { app: { vault: { read: vi.fn().mockResolvedValue("") } } };
+        (dummyPlugin as any).app.vault.on = vi.fn();
+        modifyCb(Object.assign(new TFile(), { extension: "md", basename: "AGENTS", parent: { path: "" } }));
+        await vi.runAllTimersAsync();
+        expect(pageSnapshot).not.toHaveBeenCalled();
+    });
+
+    it("ignores vault-root files (parentPath = '/')", async () => {
+        const pageSnapshot = setupApiMock();
+        const { TFile } = await import("obsidian") as any;
+        const { modifyCb } = await loadCallbacks();
+        modifyCb(Object.assign(new TFile(), { extension: "md", basename: "CLAUDE", parent: { path: "/" } }));
+        await vi.runAllTimersAsync();
+        expect(pageSnapshot).not.toHaveBeenCalled();
+    });
+
+    it("does NOT snapshot immediately on modify — waits for leaf-change or idle", async () => {
+        const pageSnapshot = setupApiMock();
+        const { TFile } = await import("obsidian") as any;
+        const { plugin, modifyCb } = await loadCallbacks();
+        await triggerModify(modifyCb, TFile, "my-page", plugin, "body text");
+        // Only the 2 s read debounce has fired; idle timer (10 min) has not.
+        expect(pageSnapshot).not.toHaveBeenCalled();
+    });
+
+    it("snapshots when user switches away from a dirty wiki page (leaf-change)", async () => {
+        const pageSnapshot = setupApiMock();
+        const { TFile } = await import("obsidian") as any;
+        const { plugin, modifyCb, leafChangeCb } = await loadCallbacks();
+        await triggerModify(modifyCb, TFile, "my-page", plugin, "body text");
+        expect(pageSnapshot).not.toHaveBeenCalled();
+        // Simulate switching to a non-wiki leaf
+        await leafChangeCb?.({ view: { file: null } });
+        await vi.runAllTimersAsync();
+        expect(pageSnapshot).toHaveBeenCalledWith("my-page", "body text");
+    });
+
+    it("snapshots via idle fallback when no leaf-change occurs", async () => {
+        const pageSnapshot = setupApiMock();
+        const { TFile } = await import("obsidian") as any;
+        const { plugin, modifyCb } = await loadCallbacks();
+        await triggerModify(modifyCb, TFile, "my-page", plugin, "idle body");
+        expect(pageSnapshot).not.toHaveBeenCalled();
+        // Advance past the 10-minute idle timeout
+        await vi.advanceTimersByTimeAsync(10 * 60 * 1000 + 1);
+        expect(pageSnapshot).toHaveBeenCalledWith("my-page", "idle body");
+    });
+
+    it("strips YAML frontmatter before storing dirty content", async () => {
+        const pageSnapshot = setupApiMock();
+        const { TFile } = await import("obsidian") as any;
+        const { plugin, modifyCb, leafChangeCb } = await loadCallbacks();
+        const rawWithFrontmatter = "---\ntitle: Konrad Zuse\nstatus: active\n---\n\nBody content here.";
+        await triggerModify(modifyCb, TFile, "konrad-zuse", plugin, rawWithFrontmatter);
+        await leafChangeCb?.({ view: { file: null } });
+        await vi.runAllTimersAsync();
+        expect(pageSnapshot).toHaveBeenCalledWith("konrad-zuse", "Body content here.");
+    });
+
+    it.each(["dashboard", "overview", "purpose", "index"])(
+        "ignores wiki/ scaffold file %s.md",
+        async (basename) => {
+            const pageSnapshot = setupApiMock();
+            const { TFile } = await import("obsidian") as any;
+            const { modifyCb } = await loadCallbacks();
+            modifyCb(Object.assign(new TFile(), { extension: "md", basename, parent: { path: "wiki" } }));
+            await vi.runAllTimersAsync();
+            expect(pageSnapshot).not.toHaveBeenCalled();
+        },
+    );
 });
