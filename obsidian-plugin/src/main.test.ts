@@ -2866,13 +2866,13 @@ describe("SynthadocPlugin vault monitor parentPath filter", () => {
         await plugin.onload();
         const vaultOnMock = (plugin as any).app.vault.on as ReturnType<typeof vi.fn>;
         const modifyCall = vaultOnMock.mock.calls.find((c: any[]) => c[0] === "modify");
-        return modifyCall?.[1] as ((file: any) => void);
+        return { plugin, cb: modifyCall?.[1] as ((file: any) => void) };
     }
 
     it("ignores vault-root files (parentPath = '')", async () => {
         const pageSnapshot = setupApiMock();
         const { TFile } = await import("obsidian") as any;
-        const cb = await loadVaultModifyCallback();
+        const { cb } = await loadVaultModifyCallback();
         expect(cb).toBeDefined();
         cb(Object.assign(new TFile(), { extension: "md", basename: "AGENTS", parent: { path: "" } }));
         await vi.runAllTimersAsync();
@@ -2882,7 +2882,7 @@ describe("SynthadocPlugin vault monitor parentPath filter", () => {
     it("ignores vault-root files (parentPath = '/')", async () => {
         const pageSnapshot = setupApiMock();
         const { TFile } = await import("obsidian") as any;
-        const cb = await loadVaultModifyCallback();
+        const { cb } = await loadVaultModifyCallback();
         cb(Object.assign(new TFile(), { extension: "md", basename: "CLAUDE", parent: { path: "/" } }));
         await vi.runAllTimersAsync();
         expect(pageSnapshot).not.toHaveBeenCalled();
@@ -2891,10 +2891,21 @@ describe("SynthadocPlugin vault monitor parentPath filter", () => {
     it("calls api.pageSnapshot for wiki/ files (parentPath = 'wiki')", async () => {
         const pageSnapshot = setupApiMock();
         const { TFile } = await import("obsidian") as any;
-        const cb = await loadVaultModifyCallback();
+        const { cb } = await loadVaultModifyCallback();
         cb(Object.assign(new TFile(), { extension: "md", basename: "my-page", parent: { path: "wiki" } }));
         await vi.runAllTimersAsync();
         expect(pageSnapshot).toHaveBeenCalledWith("my-page", expect.any(String));
+    });
+
+    it("strips YAML frontmatter before calling api.pageSnapshot", async () => {
+        const pageSnapshot = setupApiMock();
+        const { TFile } = await import("obsidian") as any;
+        const { plugin, cb } = await loadVaultModifyCallback();
+        const rawWithFrontmatter = "---\ntitle: Konrad Zuse\nstatus: active\n---\n\nBody content here.";
+        (plugin as any).app.vault.read = vi.fn().mockResolvedValue(rawWithFrontmatter);
+        cb(Object.assign(new TFile(), { extension: "md", basename: "konrad-zuse", parent: { path: "wiki" } }));
+        await vi.runAllTimersAsync();
+        expect(pageSnapshot).toHaveBeenCalledWith("konrad-zuse", "Body content here.");
     });
 
     it.each(["dashboard", "overview", "purpose", "index"])(
@@ -2902,7 +2913,7 @@ describe("SynthadocPlugin vault monitor parentPath filter", () => {
         async (basename) => {
             const pageSnapshot = setupApiMock();
             const { TFile } = await import("obsidian") as any;
-            const cb = await loadVaultModifyCallback();
+            const { cb } = await loadVaultModifyCallback();
             cb(Object.assign(new TFile(), { extension: "md", basename, parent: { path: "wiki" } }));
             await vi.runAllTimersAsync();
             expect(pageSnapshot).not.toHaveBeenCalled();

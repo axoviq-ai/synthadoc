@@ -16,6 +16,21 @@ const PICK_FILES_EXCLUDED_NAMES = new Set([
     "dashboard.md", "index.md", "overview.md", "purpose.md", "claude.md", "gemini.md",
 ]);
 
+// Strip YAML frontmatter from raw .md content, returning the body only.
+// The synthadoc wiki store always persists body-only content (read_page strips
+// frontmatter before populating WikiPage.content). All snapshot storage must
+// go through this function so that deduplication comparisons are consistent
+// regardless of whether the previous snapshot came from a lifecycle transition
+// (body-only) or a vault-monitor save (which vault.read() returns as full file).
+function stripFrontmatter(raw: string): string {
+    const norm = raw.replace(/\r\n?/g, "\n");
+    if (norm.startsWith("---\n")) {
+        const close = norm.indexOf("\n---\n", 3);
+        if (close !== -1) return norm.slice(close + 5).replace(/^\n+/, "");
+    }
+    return norm;
+}
+
 interface SynthadocSettings {
     serverUrl: string;
     rawSourcesFolder: string;
@@ -233,8 +248,8 @@ export default class SynthadocPlugin extends Plugin {
                 const timer = setTimeout(async () => {
                     this._snapTimers.delete(slug);
                     try {
-                        const content = await this.app.vault.read(file);
-                        await api.pageSnapshot(slug, content);
+                        const rawContent = await this.app.vault.read(file);
+                        await api.pageSnapshot(slug, stripFrontmatter(rawContent));
                     } catch {
                         // server offline or page unknown — silently ignore
                     }
@@ -4967,9 +4982,8 @@ export class SnapshotContentModal extends Modal {
             this._area.setText("Cannot read current file — is this wiki open as an Obsidian vault?");
             return;
         }
-        // Snapshots are stored as body-only (Python strips frontmatter).
-        // vault.read() returns the full file with YAML frontmatter.
-        // Normalize both sides to body-only so the diff is meaningful.
+        // Both sides are normalised to body-only via stripFrontmatter so the
+        // diff is meaningful even when stored content has no frontmatter.
         const oldLines = this._bodyLines(this.snap.content ?? "");
         const newLines = this._bodyLines(currentRaw);
         const hunks = computeDiff(oldLines, newLines);
@@ -4988,12 +5002,7 @@ export class SnapshotContentModal extends Modal {
     }
 
     private _bodyLines(text: string): string[] {
-        const norm = text.replace(/\r\n?/g, "\n");
-        if (norm.startsWith("---\n")) {
-            const close = norm.indexOf("\n---\n", 3);
-            if (close !== -1) return norm.slice(close + 5).replace(/^\n+/, "").split("\n");
-        }
-        return norm.split("\n");
+        return stripFrontmatter(text).split("\n");
     }
 
     private _renderDiff(
