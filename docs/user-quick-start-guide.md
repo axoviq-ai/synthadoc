@@ -851,6 +851,10 @@ file, and roll back — all without leaving Obsidian or touching the CLI.
 
 ![Synthadoc Content Snapshots tab — list of snapshots for a page with diff view and rollback](png/synthadoc-lifecycle-snapshots.png)
 
+Clicking **View** on any row opens an inline diff of that snapshot against the current file. Added lines appear in green and removed lines in red. Use the **Rollback** button to restore the page to that exact version — the current body is auto-saved as a new snapshot first, keeping every rollback undoable.
+
+![Synthadoc snapshot diff view — line-by-line comparison with added/removed lines highlighted and Rollback button](png/synthadoc-lifecycle-snapshot-diff.png)
+
 ---
 
 <a name="resolve-contradiction"></a>
