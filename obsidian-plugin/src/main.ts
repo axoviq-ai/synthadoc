@@ -4700,6 +4700,8 @@ export function computeDiff(
 
 export class SnapshotContentModal extends Modal {
     private _area: HTMLElement | null = null;
+    private _contentBtn: HTMLButtonElement | null = null;
+    private _diffBtn:    HTMLButtonElement | null = null;
 
     constructor(
         app: App,
@@ -4744,8 +4746,8 @@ export class SnapshotContentModal extends Modal {
         toggleBar.style.cssText =
             "display:flex;gap:6px;padding-top:8px;" +
             "border-bottom:1px solid var(--background-modifier-border)";
-        const contentToggle = toggleBar.createEl("button", { text: "Content" });
-        const diffToggle    = toggleBar.createEl("button", { text: "Diff vs current" });
+        this._contentBtn = toggleBar.createEl("button", { text: "Content" }) as HTMLButtonElement;
+        this._diffBtn    = toggleBar.createEl("button", { text: "Diff vs current" }) as HTMLButtonElement;
 
         // Scrollable content area
         this._area = contentEl.createEl("div");
@@ -4753,18 +4755,17 @@ export class SnapshotContentModal extends Modal {
             "flex:1;min-height:0;overflow-y:auto;padding:12px 16px;" +
             "font-family:var(--font-monospace);font-size:12px;" +
             "white-space:pre-wrap;word-break:break-word;" +
+            "user-select:text;-webkit-user-select:text;cursor:text;" +
             "border:1px solid var(--background-modifier-border);border-radius:4px";
 
-        contentToggle.onclick = () => this._showContent();
-        diffToggle.onclick    = () => this._showDiff();
+        this._contentBtn.onclick = () => this._showContent();
+        this._diffBtn.onclick    = () => this._showDiff();
         this._showContent();   // default view
 
-        // Footer — cancel + rollback buttons
+        // Footer — rollback only (modal already has an × close button)
         const footer = contentEl.createEl("div");
         footer.style.cssText =
-            "flex-shrink:0;display:flex;justify-content:space-between;align-items:center;padding:8px 0 0";
-        const cancelBtn = footer.createEl("button", { text: "Cancel" });
-        cancelBtn.onclick = () => this.close();
+            "flex-shrink:0;display:flex;justify-content:flex-end;align-items:center;padding:8px 0 0";
         const rollBtn = footer.createEl("button", { text: "Rollback to this version" });
         rollBtn.onclick = () => {
             new ReasonModal(
@@ -4775,15 +4776,41 @@ export class SnapshotContentModal extends Modal {
         };
     }
 
+    private _setActiveToggle(tab: "content" | "diff"): void {
+        const active   = "padding:4px 12px 6px;border-radius:0;background:transparent;" +
+                         "border-bottom:2px solid var(--interactive-accent);color:var(--text-normal)";
+        const inactive = "padding:4px 12px 6px;border-radius:0;background:transparent;" +
+                         "border-bottom:2px solid transparent;color:var(--text-muted)";
+        if (this._contentBtn) this._contentBtn.style.cssText = tab === "content" ? active : inactive;
+        if (this._diffBtn)    this._diffBtn.style.cssText    = tab === "diff"    ? active : inactive;
+    }
+
     private _showContent(): void {
         if (!this._area) return;
+        this._setActiveToggle("content");
         this._area.empty();
         this._area.setText(this.snap.content ?? "");
     }
 
     async _showDiff(): Promise<void> {
         if (!this._area) return;
+        this._setActiveToggle("diff");
         this._area.empty();
+
+        // Legend
+        const legend = this._area.createEl("div");
+        legend.style.cssText =
+            "display:flex;gap:24px;padding:4px 0 8px;" +
+            "border-bottom:1px solid var(--background-modifier-border);" +
+            "margin-bottom:8px;font-size:11px;user-select:none";
+        const gSpan = legend.createEl("span");
+        gSpan.innerHTML =
+            `<span style="color:var(--color-green,#6abf69);font-weight:700">+ green</span>` +
+            ` — exists in <strong>current file</strong>, not in snapshot → <em>removed</em> on rollback`;
+        const rSpan = legend.createEl("span");
+        rSpan.innerHTML =
+            `<span style="color:var(--color-red,#e06c75);font-weight:700">− red</span>` +
+            ` — exists in <strong>this snapshot</strong>, not in current → <em>restored</em> on rollback`;
         const wikiRelPath = `wiki/${this.snap.slug}.md`;
         let currentBody: string;
         try {
