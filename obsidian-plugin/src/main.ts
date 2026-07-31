@@ -3690,6 +3690,9 @@ export class LifecycleModal extends Modal {
             this._tab2Content!.style.display = "flex";
             if (this._tab3Content) this._tab3Content.style.display = "none";
             if (this._auditEvents.length === 0) await this._fetchAudit();
+            // Re-measure after layout so _calcPageSize gets the real clientHeight,
+            // both on first open (clientHeight may be 0 during fetch) and on re-visits.
+            requestAnimationFrame(() => this._renderAuditAll());
         });
         tab3Btn.addEventListener("click", async () => {
             this._activeTab = "snapshots";
@@ -3789,43 +3792,77 @@ export class LifecycleModal extends Modal {
         const purgeFooter = this._tab2Content!.createDiv();
         purgeFooter.style.cssText =
             "border-top:1px solid var(--background-modifier-border);" +
-            "padding:10px 0 4px;display:flex;flex-direction:column;gap:8px";
+            "padding:10px 0 4px;display:flex;flex-direction:column;gap:6px;flex-shrink:0";
 
-        const purgeRow = purgeFooter.createDiv();
-        purgeRow.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;align-items:center";
+        const ROW_CSS = "display:flex;align-items:center;gap:8px;font-size:12px";
+        const LABEL_CSS = "color:var(--text-muted);min-width:220px";
 
-        // Keep-latest row
-        const keepInput = purgeRow.createEl("input", { type: "number" }) as HTMLInputElement;
-        keepInput.value = "100"; keepInput.style.width = "60px";
-        const keepBtn = purgeRow.createEl("button", { text: "Keep latest N per page — Purge" }) as HTMLButtonElement;
+        // Status line (shared between both purge actions)
         const statusEl = purgeFooter.createEl("span");
-        statusEl.style.cssText = "color:var(--text-muted);font-size:11px";
+        statusEl.style.cssText = "font-size:11px;color:var(--text-muted);min-height:14px";
+
+        const setStatus = (msg: string, isErr = false) => {
+            statusEl.setText(msg);
+            statusEl.style.color = isErr ? "var(--color-red,#e05252)" : "var(--text-muted)";
+            if (msg) setTimeout(() => { if (statusEl.getText() === msg) statusEl.setText(""); }, 4000);
+        };
+
+        // ── Row 1: Keep latest N ──────────────────────────────────────────
+        const keepRow = purgeFooter.createDiv();
+        keepRow.style.cssText = ROW_CSS;
+        keepRow.createEl("span", { text: "Keep only the latest N entries:" }).style.cssText = LABEL_CSS;
+        const keepInput = keepRow.createEl("input", { type: "number" }) as HTMLInputElement;
+        keepInput.value = "100";
+        keepInput.min = "1";
+        keepInput.style.cssText = "width:64px;padding:2px 5px;font-size:12px";
+        const keepBtn = keepRow.createEl("button", { text: "Purge" }) as HTMLButtonElement;
+        keepBtn.style.cssText = "font-size:12px";
         keepBtn.onclick = async () => {
             const n = parseInt(keepInput.value, 10);
-            if (isNaN(n) || n < 1) { statusEl.setText("Invalid number"); return; }
+            if (isNaN(n) || n < 1) { setStatus("Enter a positive integer.", true); return; }
+            keepBtn.disabled = true;
+            setStatus("Purging…");
             try {
                 await this._purgeEvents({ keep_latest: n });
-                statusEl.setText("Purged.");
-            } catch { statusEl.setText("Error — is the server running?"); }
+                await this._fetchAudit();
+                setStatus(`Done — kept latest ${n} per slug.`);
+            } catch { setStatus("Error — is the server running?", true); }
+            finally { keepBtn.disabled = false; }
         };
 
-        // Before-date row
-        const dateInput = purgeRow.createEl("input", { type: "text" }) as HTMLInputElement;
-        dateInput.placeholder = "YYYY-MM-DD"; dateInput.style.width = "120px";
-        const dateBtn = purgeRow.createEl("button", { text: "Before date — Purge" }) as HTMLButtonElement;
+        // ── Row 2: Before date ────────────────────────────────────────────
+        const dateRow = purgeFooter.createDiv();
+        dateRow.style.cssText = ROW_CSS;
+        dateRow.createEl("span", { text: "Delete all entries before date:" }).style.cssText = LABEL_CSS;
+        const dateInput = dateRow.createEl("input", { type: "text" }) as HTMLInputElement;
+        dateInput.placeholder = "YYYY-MM-DD";
+        dateInput.style.cssText = "width:110px;padding:2px 5px;font-size:12px;font-family:var(--font-monospace)";
+        const dateBtn = dateRow.createEl("button", { text: "Purge" }) as HTMLButtonElement;
+        dateBtn.style.cssText = "font-size:12px";
         dateBtn.onclick = async () => {
-            if (!/^\d{4}-\d{2}-\d{2}$/.test(dateInput.value)) {
-                statusEl.setText("Invalid date — use YYYY-MM-DD"); return;
+            const val = dateInput.value.trim();
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+                setStatus("Enter a date in YYYY-MM-DD format.", true); return;
             }
+            const [y, m, d] = val.split("-").map(Number);
+            const dt = new Date(y, m - 1, d);
+            if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) {
+                setStatus(`${val} is not a valid calendar date.`, true); return;
+            }
+            dateBtn.disabled = true;
+            setStatus("Purging…");
             try {
-                await this._purgeEvents({ before_date: dateInput.value });
-                statusEl.setText("Purged.");
-            } catch { statusEl.setText("Error — is the server running?"); }
+                await this._purgeEvents({ before_date: val });
+                await this._fetchAudit();
+                setStatus(`Done — removed entries before ${val}.`);
+            } catch { setStatus("Error — is the server running?", true); }
+            finally { dateBtn.disabled = false; }
         };
 
+        // Warning note
         const warnEl = purgeFooter.createEl("p");
         warnEl.style.cssText = "color:var(--text-muted);font-size:11px;margin:0";
-        warnEl.setText("Purging events also permanently removes their captured content snapshots.");
+        warnEl.setText("⚠ Purging events permanently removes their captured content snapshots.");
     }
 
     private async _fetchAndRender() {
