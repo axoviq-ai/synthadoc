@@ -113,3 +113,11 @@ def test_save_raw_is_atomic(tmp_path):
     data = json.loads(sched._path.read_text())
     assert len(data) == 1
     assert data[0]["op"] == "ingest"
+
+
+def test_save_raw_uses_unix_line_endings(tmp_path):
+    """schedules.json must use LF-only line endings on all platforms (no CRLF)."""
+    sched = Scheduler(wiki="test", wiki_root=str(tmp_path))
+    sched.add("ingest", "0 2 * * *")
+    raw = sched._path.read_bytes()
+    assert b"\r\n" not in raw

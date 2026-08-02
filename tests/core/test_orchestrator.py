@@ -547,3 +547,19 @@ async def test_run_scaffold_coding_tool_quota_fails_permanent(tmp_wiki):
 
     mock_queue.fail_permanent.assert_awaited_once()
     mock_queue.fail.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_auto_block_domain_writes_unix_line_endings(tmp_wiki):
+    """blocked_domains.json must use LF-only line endings on all platforms (no CRLF)."""
+    from synthadoc.errors import DomainBlockedException
+
+    cfg = load_config()
+    async with Orchestrator(wiki_root=tmp_wiki, config=cfg) as orch:
+        exc = DomainBlockedException(domain="evil.com", url="https://evil.com/p", status_code=403)
+        await orch._auto_block_domain(exc)
+
+    blocked_path = tmp_wiki / ".synthadoc" / "blocked_domains.json"
+    assert blocked_path.exists()
+    raw = blocked_path.read_bytes()
+    assert b"\r\n" not in raw
