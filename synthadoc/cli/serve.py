@@ -62,7 +62,7 @@ def _sync_plugin_config(wiki_root: Path, host: str, port: int) -> None:
         if data.get("serverUrl") != expected_url:
             old_url = data.get("serverUrl", "(none)")
             data["serverUrl"] = expected_url
-            data_json.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            data_json.write_text(json.dumps(data, indent=2), encoding="utf-8", newline="\n")
             typer.echo(
                 f"Notice: plugin server URL updated {old_url!r} → {expected_url!r}.\n"
                 f"Reload Obsidian (Cmd+R / Ctrl+R) if it is already open."
