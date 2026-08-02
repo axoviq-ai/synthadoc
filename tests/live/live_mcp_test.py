@@ -23,6 +23,7 @@ MCP_URL defaults to http://127.0.0.1:7070/mcp/sse if the env var is not set.
 import asyncio
 import json
 import os
+import shutil
 import sys
 import time
 import urllib.error
@@ -472,11 +473,17 @@ async def run_tests():
             else:
                 fail("synthadoc_export(json inline)", f"unexpected: {r}")
 
-            # okf — writes to disk (default path)
+            # okf — writes to disk (default path); cleaned up afterwards
             r = await call(session, "synthadoc_export",
                            {"format": "okf", "status_filter": "active"})
             if r.get("format") == "okf" and "output_path" in r and "files_written" in r:
-                ok("synthadoc_export(okf to disk)", f"files_written={r['files_written']}  path={r['output_path']!r}")
+                okf_path = r["output_path"]
+                ok("synthadoc_export(okf to disk)", f"files_written={r['files_written']}  path={okf_path!r}")
+                try:
+                    shutil.rmtree(okf_path)
+                    info(f"Cleaned up OKF export directory: {okf_path!r}")
+                except Exception as exc:
+                    warn("synthadoc_export(okf cleanup)", f"could not remove {okf_path!r}: {exc}")
             elif "error" in r:
                 fail("synthadoc_export(okf to disk)", r["error"])
             else:
@@ -555,6 +562,9 @@ async def run_tests():
 
             # ── 14. synthadoc_ingest ─────────────────────────────────────────
             print("\n[14] synthadoc_ingest")
+            # Snapshot slug set before ingest so we can diff and archive new pages.
+            _pre_ingest = {p["slug"] for p in (await call(session, "synthadoc_list_pages", {"status": "all"})).get("pages", [])}
+
             # ingest a direct, stable Wikipedia URL — avoids third-party timeouts
             # that plagued the old "search for: Harvard Mark I" search-intent form
             # (search results returned unreliable domains like devx.com that timed out)
@@ -566,6 +576,20 @@ async def run_tests():
                 _done = await _wait_all_terminal(r["job_id"])
                 if _done:
                     info("Ingest job reached terminal state")
+                    # Archive any pages that didn't exist before the ingest.
+                    _post_ingest = {p["slug"] for p in (await call(session, "synthadoc_list_pages", {"status": "all"})).get("pages", [])}
+                    new_slugs = _post_ingest - _pre_ingest
+                    if new_slugs:
+                        for ns in new_slugs:
+                            arc = await call(session, "synthadoc_lifecycle",
+                                             {"slug": ns, "to_state": "archived",
+                                              "reason": "live test cleanup"})
+                            if arc.get("to_state") == "archived" or "already in state" in arc.get("error", ""):
+                                info(f"Archived ingest test page {ns!r}")
+                            else:
+                                warn("synthadoc_ingest(cleanup)", f"could not archive {ns!r}: {arc}")
+                    else:
+                        info("Ingest updated an existing page — no new slug to archive")
                 else:
                     warn("synthadoc_ingest(url)",
                          "Job still running after 3 min — check the Jobs panel")
