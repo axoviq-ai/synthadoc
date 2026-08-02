@@ -113,3 +113,31 @@ def test_save_raw_is_atomic(tmp_path):
     data = json.loads(sched._path.read_text())
     assert len(data) == 1
     assert data[0]["op"] == "ingest"
+
+
+def test_save_raw_uses_unix_line_endings(tmp_path):
+    """_save_raw must pass newline="\\n" to write_text regardless of platform.
+
+    A binary-mode read catches the symptom on Windows; the write_text spy
+    catches a missing newline= argument on Linux/Mac where Python never
+    produces CRLF anyway (so the byte check alone would always pass there).
+    """
+    import pathlib
+    from unittest.mock import patch, call
+
+    real_write_text = pathlib.Path.write_text
+    calls: list = []
+
+    def spy(self, data, *args, **kwargs):
+        calls.append((args, kwargs))
+        return real_write_text(self, data, *args, **kwargs)
+
+    sched = Scheduler(wiki="test", wiki_root=str(tmp_path))
+    with patch.object(pathlib.Path, "write_text", spy):
+        sched.add("ingest", "0 2 * * *")
+
+    # Verify newline="\n" was passed on every write_text call
+    for _, kwargs in calls:
+        assert kwargs.get("newline") == "\n", "write_text called without newline='\\n'"
+    # Also verify the on-disk bytes contain no CRLF
+    assert b"\r\n" not in sched._path.read_bytes()
