@@ -83,7 +83,7 @@ class Scheduler:
     def _save_raw(self, entries: list[dict]) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self._path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(entries, indent=2), encoding="utf-8")
+        tmp.write_text(json.dumps(entries, indent=2), encoding="utf-8", newline="\n")
         tmp.replace(self._path)
 
     def _fetch_last_runs(self) -> dict[str, dict]:
