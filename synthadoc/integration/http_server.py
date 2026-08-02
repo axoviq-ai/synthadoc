@@ -1778,12 +1778,15 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         current_content = page.content
         current_state = page.status
 
-        # Record the pre-rollback state as a new snapshot (makes rollback undoable)
+        # Record the pre-rollback state as a new snapshot (makes rollback undoable).
+        # force=True: the undo checkpoint must always be stored, even if content
+        # matches the last snapshot (e.g. rolling back to the activation snapshot).
         await audit.record_lifecycle_event(
             slug, current_state, current_state,
             f"rollback:{req.index}:{req.reason}",
             TriggerSource.USER,
             content_snapshot=current_content,
+            force=True,
         )
         rollback_event_index = 1  # always 1: newest id → index 1 (ORDER BY id DESC)
 

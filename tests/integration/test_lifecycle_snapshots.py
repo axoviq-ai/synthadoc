@@ -835,6 +835,31 @@ async def test_record_lifecycle_event_stores_different_content(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_record_lifecycle_event_force_bypasses_dedup(tmp_path: Path):
+    """force=True always stores content_snapshot even when content equals the last snapshot.
+
+    The rollback endpoint uses this to guarantee the pre-rollback undo checkpoint is
+    recorded even when the current page content matches the most recent snapshot.
+    """
+    audit = AuditDB(tmp_path / "audit.db")
+    await audit.init()
+
+    body = "Content that would normally be deduplicated."
+    await audit.record_lifecycle_event(
+        "p", "draft", "active", "activate", "user", content_snapshot=body
+    )
+    # Second call with the same content but force=True — must NOT be suppressed
+    await audit.record_lifecycle_event(
+        "p", "active", "active", "rollback:1:undo", "user",
+        content_snapshot=body, force=True,
+    )
+
+    snaps = await audit.list_page_snapshots("p")
+    assert len(snaps) == 2, "force=True must bypass dedup and record the snapshot"
+    assert snaps[0]["content_length"] > 0
+
+
+@pytest.mark.asyncio
 async def test_record_lifecycle_event_dedup_strips_frontmatter(tmp_path: Path):
     """Dedup compares body-only; passing raw .md content does not bypass it."""
     audit = AuditDB(tmp_path / "audit.db")

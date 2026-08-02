@@ -523,10 +523,11 @@ class AuditDB:
         self, slug: str, from_state: Optional[str], to_state: str,
         reason: str, triggered_by: str,
         content_snapshot: Optional[str] = None,
+        force: bool = False,
     ) -> None:
         if content_snapshot is not None:
             content_snapshot = strip_frontmatter(content_snapshot)
-            if await self._last_content_snapshot(slug) == content_snapshot:
+            if not force and await self._last_content_snapshot(slug) == content_snapshot:
                 content_snapshot = None  # suppress: same content already stored
         ts = datetime.now(timezone.utc).isoformat()
         async with aiosqlite.connect(self._path) as db:
