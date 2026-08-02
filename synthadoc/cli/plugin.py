@@ -65,7 +65,7 @@ def _write_plugin_data(wiki_path: Path, plugin_dir: Path) -> None:
             pass
 
     existing["serverUrl"] = server_url
-    data_json.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+    data_json.write_text(json.dumps(existing, indent=2), encoding="utf-8", newline="\n")
 
 
 def _update_community_plugins(wiki_path: Path, *plugin_ids: str) -> None:
@@ -87,7 +87,7 @@ def _update_community_plugins(wiki_path: Path, *plugin_ids: str) -> None:
             enabled.append(pid)
             changed = True
     if changed:
-        cp_file.write_text(json.dumps(enabled, indent=2), encoding="utf-8")
+        cp_file.write_text(json.dumps(enabled, indent=2), encoding="utf-8", newline="\n")
 
 
 def _install_dataview(wiki_path: Path) -> str:
@@ -144,7 +144,7 @@ def _set_reading_view_default(wiki_path: Path) -> bool:
     config[_OBSIDIAN_APP_JSON_KEY] = _OBSIDIAN_READING_VIEW
     config["newFileLocation"] = _OBSIDIAN_NEW_FILE_LOCATION
     config["newFileFolderPath"] = _OBSIDIAN_NEW_FILE_FOLDER
-    app_json.write_text(json.dumps(config, indent=2), encoding="utf-8")
+    app_json.write_text(json.dumps(config, indent=2), encoding="utf-8", newline="\n")
     return True
 
 
@@ -190,7 +190,7 @@ def _patch_workspace_reading_view(wiki_path: Path) -> bool:
 
     _patch(workspace)
     if changed:
-        ws_json.write_text(json.dumps(workspace, indent=2), encoding="utf-8")
+        ws_json.write_text(json.dumps(workspace, indent=2), encoding="utf-8", newline="\n")
     return changed
 
 

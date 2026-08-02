@@ -547,3 +547,36 @@ async def test_run_scaffold_coding_tool_quota_fails_permanent(tmp_wiki):
 
     mock_queue.fail_permanent.assert_awaited_once()
     mock_queue.fail.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_auto_block_domain_writes_unix_line_endings(tmp_wiki):
+    """blocked_domains.json must pass newline="\\n" to write_text regardless of platform.
+
+    A binary-mode read catches the symptom on Windows; the write_text spy
+    catches a missing newline= argument on Linux/Mac where Python never
+    produces CRLF anyway (so the byte check alone would always pass there).
+    """
+    import pathlib
+    from synthadoc.errors import DomainBlockedException
+
+    real_write_text = pathlib.Path.write_text
+    calls: list = []
+
+    def spy(self, data, *args, **kwargs):
+        calls.append((args, kwargs))
+        return real_write_text(self, data, *args, **kwargs)
+
+    cfg = load_config()
+    async with Orchestrator(wiki_root=tmp_wiki, config=cfg) as orch:
+        exc = DomainBlockedException(domain="evil.com", url="https://evil.com/p", status_code=403)
+        with patch("pathlib.Path.write_text", spy):
+            await orch._auto_block_domain(exc)
+
+    blocked_path = tmp_wiki / ".synthadoc" / "blocked_domains.json"
+    assert blocked_path.exists()
+    # Verify newline="\n" was passed on every write_text call
+    for _, kwargs in calls:
+        assert kwargs.get("newline") == "\n", "write_text called without newline='\\n'"
+    # Also verify the on-disk bytes contain no CRLF
+    assert b"\r\n" not in blocked_path.read_bytes()

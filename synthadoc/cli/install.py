@@ -40,7 +40,7 @@ def resolve_wiki_path(wiki: str) -> Path:
 
 def _write_registry(data: dict) -> None:
     _REGISTRY.parent.mkdir(parents=True, exist_ok=True)
-    _REGISTRY.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    _REGISTRY.write_text(json.dumps(data, indent=2), encoding="utf-8", newline="\n")
 
 
 def _get_reserved_ports() -> set[int]:

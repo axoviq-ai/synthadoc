@@ -471,7 +471,7 @@ class Orchestrator:
                     # Atomic write: write to .tmp then replace to avoid a partial
                     # file being visible to concurrent readers on failure.
                     tmp_path = blocked_path.with_suffix(".tmp")
-                    tmp_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+                    tmp_path.write_text(json.dumps(existing, indent=2), encoding="utf-8", newline="\n")
                     tmp_path.replace(blocked_path)
             except Exception as write_err:
                 logging.getLogger(__name__).warning(
