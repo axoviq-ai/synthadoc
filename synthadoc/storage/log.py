@@ -509,8 +509,21 @@ class AuditDB:
     async def record_lifecycle_event(
         self, slug: str, from_state: Optional[str], to_state: str,
         reason: str, triggered_by: str,
-        content_snapshot: Optional[str] = None,   # ← new
+        content_snapshot: Optional[str] = None,
     ) -> None:
+        if content_snapshot is not None:
+            content_snapshot = strip_frontmatter(content_snapshot)
+            async with aiosqlite.connect(self._path) as db:
+                db.row_factory = aiosqlite.Row
+                async with db.execute(
+                    "SELECT content_snapshot FROM lifecycle_events"
+                    " WHERE slug = ? AND content_snapshot IS NOT NULL"
+                    " ORDER BY id DESC LIMIT 1",
+                    (slug,),
+                ) as cur:
+                    row = await cur.fetchone()
+            if row and dict(row)["content_snapshot"] == content_snapshot:
+                content_snapshot = None  # suppress: same content already stored
         ts = datetime.now(timezone.utc).isoformat()
         async with aiosqlite.connect(self._path) as db:
             await db.execute(
