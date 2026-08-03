@@ -96,7 +96,7 @@ def _patch_toml(path: Path, section: str, updates: dict) -> None:
         for k, v in updates.items():
             result.append(f"{k} = {_toml_value(v)}")
 
-    path.write_text("\n".join(result) + "\n", encoding="utf-8")
+    path.write_text("\n".join(result) + "\n", encoding="utf-8", newline="\n")
 
 
 @staging_app.command("policy")
@@ -185,10 +185,10 @@ def _add_to_index(wiki_dir: Path, entries: list[tuple[str, str]]) -> None:
                 insert_at = i + 1
         for j, entry in enumerate(new_lines):
             lines.insert(insert_at + j, entry)
-        index_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        index_path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
     else:
         section = "\n\n## Recently Added\n" + "\n".join(new_lines) + "\n"
-        index_path.write_text(text.rstrip() + section, encoding="utf-8")
+        index_path.write_text(text.rstrip() + section, encoding="utf-8", newline="\n")
 
 
 @candidates_app.command("promote")

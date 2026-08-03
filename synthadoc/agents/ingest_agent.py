@@ -538,10 +538,10 @@ class IngestAgent:
         extracted_dir = self._wiki_root / ".synthadoc" / "extracted"
         extracted_dir.mkdir(parents=True, exist_ok=True)
         name = Path(source_path).stem
-        (extracted_dir / f"{name}.txt").write_text(text, encoding="utf-8")
+        (extracted_dir / f"{name}.txt").write_text(text, encoding="utf-8", newline="\n")
         if pagemap:
             (extracted_dir / f"{name}.pdf.pagemap").write_text(
-                json.dumps(pagemap, indent=2), encoding="utf-8"
+                json.dumps(pagemap, indent=2), encoding="utf-8", newline="\n"
             )
 
     async def _annotate_citations(
