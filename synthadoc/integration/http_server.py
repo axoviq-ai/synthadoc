@@ -573,7 +573,7 @@ async def _worker_loop(orch, session_state: dict) -> None:
         await asyncio.sleep(sleep_secs)
 
 
-_graph_computing = False  # module-level flag prevents duplicate background tasks
+_graph_task: "asyncio.Task[None] | None" = None  # retained reference prevents GC cancellation
 
 # Lowercase slug names that represent scaffold or config files.
 # Applied to all lifecycle UI display endpoints so that vault-root config
@@ -1005,14 +1005,13 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     @app.get("/graph")
     async def get_graph():
-        global _graph_computing
+        global _graph_task
         orch = app.state.orch
         graph_data = await orch._audit.read_graph()
         if graph_data is None:
-            if not _graph_computing:
-                _graph_computing = True
+            if _graph_task is None or _graph_task.done():
+                _graph_task = asyncio.create_task(_background_build_graph())
                 logger.info("[graph] computation started (lazy hydration)")
-                asyncio.create_task(_background_build_graph())
             return JSONResponse(content={"status": "computing"}, headers=_NO_STORE)
         enriched_nodes = []
         for n in graph_data["nodes"]:
@@ -1038,7 +1037,6 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         }, headers=_NO_STORE)
 
     async def _background_build_graph():
-        global _graph_computing
         try:
             from synthadoc.agents.lint_agent import LintAgent
             from synthadoc.providers import make_provider as _make_provider
@@ -1059,8 +1057,6 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             )
         except Exception as exc:
             logger.error("[graph] build failed: %s", exc)
-        finally:
-            _graph_computing = False
 
     @app.post("/analyse")
     async def analyse_source(req: AnalyseRequest):
@@ -1753,6 +1749,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         """
         audit = app.state.orch._audit
         deleted = await audit.delete_slug_events(slug)
+        await audit.delete_graph_node(slug)
         return JSONResponse(
             {"slug": slug, "deleted": deleted},
             headers={"Cache-Control": "no-store"},
