@@ -1749,6 +1749,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         """
         audit = app.state.orch._audit
         deleted = await audit.delete_slug_events(slug)
+        await audit.delete_graph_node(slug)
         return JSONResponse(
             {"slug": slug, "deleted": deleted},
             headers={"Cache-Control": "no-store"},

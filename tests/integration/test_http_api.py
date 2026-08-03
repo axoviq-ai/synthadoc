@@ -1199,3 +1199,45 @@ def test_get_graph_no_duplicate_task_while_running(tmp_wiki):
         assert hs._graph_task is running_task, "_graph_task must not be replaced while the existing task is still running"
     finally:
         hs._graph_task = saved
+
+
+def test_delete_history_prunes_graph_node(tmp_wiki):
+    """DELETE /pages/{slug}/history must remove the slug from the graph cache.
+
+    Live test teardown calls this endpoint.  Without the graph pruning, the
+    node persists in graph_nodes until the next full rebuild — causing stale
+    artifact nodes to appear in GET /graph (web UI and Obsidian graph modal).
+    """
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.storage.log import AuditDB
+
+    app = create_app(wiki_root=tmp_wiki)
+
+    async def _seed_and_check():
+        audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+        await audit.init()
+        # Seed a graph node for a test-artifact slug
+        await audit.write_graph(
+            [{"slug": "live-lint-snap-test", "cluster_id": 0}],
+            [],
+        )
+        graph_before = await audit.read_graph()
+        assert any(n["slug"] == "live-lint-snap-test" for n in graph_before["nodes"])
+
+    import asyncio
+    asyncio.run(_seed_and_check())
+
+    with TestClient(app) as client:
+        resp = client.delete("/pages/live-lint-snap-test/history")
+    assert resp.status_code == 200
+
+    async def _check_pruned():
+        audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+        await audit.init()
+        graph = await audit.read_graph()
+        if graph is None:
+            return  # all nodes gone — also correct
+        assert not any(n["slug"] == "live-lint-snap-test" for n in graph["nodes"]), \
+            "graph node must be removed by DELETE /pages/{slug}/history"
+
+    asyncio.run(_check_pruned())
