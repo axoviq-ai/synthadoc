@@ -29,6 +29,8 @@ import time
 import urllib.error
 import urllib.request
 
+from synthadoc.storage.wiki import SYSTEM_PAGE_SLUGS
+
 MCP_URL = os.environ.get("MCP_URL", "http://127.0.0.1:7070/mcp/sse")
 _HTTP_BASE = MCP_URL.split("/mcp/sse")[0].rstrip("/")
 
@@ -174,7 +176,11 @@ async def run_tests():
             if "pages" in r and isinstance(r["pages"], list):
                 ok("synthadoc_list_pages(all)", f"total={r['total']}")
                 all_pages = r["pages"]
-                first_slug = all_pages[0]["slug"] if all_pages else None
+                # Prefer a non-scaffold page so write_page snapshot tests work
+                first_slug = next(
+                    (p["slug"] for p in all_pages if p["slug"] not in SYSTEM_PAGE_SLUGS),
+                    all_pages[0]["slug"] if all_pages else None,
+                )
                 # check each page has expected fields
                 missing = [k for k in ("slug","title","status","type","has_sources") if k not in (all_pages[0] if all_pages else {})]
                 if missing:
@@ -190,11 +196,13 @@ async def run_tests():
             if "pages" in r:
                 active_pages = r["pages"]
                 ok("synthadoc_list_pages(active)", f"active pages={len(active_pages)}")
-                if active_pages:
-                    active_slug = active_pages[0]["slug"]
-                else:
-                    active_slug = None
-                    warn("synthadoc_list_pages(active)", "no active pages found — subsequent lifecycle test may be skipped")
+                # Prefer a non-scaffold page so write_page snapshot tests work
+                active_slug = next(
+                    (p["slug"] for p in active_pages if p["slug"] not in SYSTEM_PAGE_SLUGS),
+                    None,
+                )
+                if active_slug is None:
+                    warn("synthadoc_list_pages(active)", "no active non-scaffold pages found — subsequent lifecycle test may be skipped")
             else:
                 fail("synthadoc_list_pages(active)", str(r))
                 active_pages = []
@@ -296,6 +304,9 @@ async def run_tests():
                 if "job_id" in r and "scope" in r:
                     ok("synthadoc_lint(single page)", f"job_id={r['job_id']}  scope={r['scope']!r}")
                     lint_job_id = r["job_id"]
+                    # Wait for lint to finish before write_page tests — avoids racing
+                    # concurrent lifecycle transitions against snapshot checks.
+                    await _wait_all_terminal(lint_job_id, max_wait=60)
                 else:
                     fail("synthadoc_lint(single page)", str(r))
                     lint_job_id = None
