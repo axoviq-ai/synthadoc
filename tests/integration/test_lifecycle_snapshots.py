@@ -779,6 +779,108 @@ def test_snapshot_endpoint_rejects_system_page_slugs(tmp_wiki):
         assert data["recorded"] is False, f"Expected recorded=false for slug={system_slug!r}"
 
 
+# ── record_lifecycle_event dedup tests ─────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_record_lifecycle_event_suppresses_duplicate_content_snapshot(tmp_path: Path):
+    """When content_snapshot is identical to the last stored snapshot, the second
+    record_lifecycle_event call stores the lifecycle metadata but NULL for content.
+
+    This prevents lifecycle transitions (e.g., state changes) from duplicating
+    content that was already captured by snapshot_if_changed or a prior call.
+    """
+    audit = AuditDB(tmp_path / "audit.db")
+    await audit.init()
+
+    body = "Content that must not be duplicated."
+    await audit.record_lifecycle_event(
+        "p", "draft", "active", "first write", "mcp", content_snapshot=body
+    )
+    await audit.record_lifecycle_event(
+        "p", "active", "active", "lifecycle transition with same content", "mcp",
+        content_snapshot=body,
+    )
+
+    # Only one content snapshot — second call should have stored NULL
+    snaps = await audit.list_page_snapshots("p")
+    assert len(snaps) == 1
+
+    # Both lifecycle events ARE in the audit log (event is still recorded)
+    async with aiosqlite.connect(tmp_path / "audit.db") as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT id, content_snapshot FROM lifecycle_events WHERE slug='p'") as cur:
+            rows = await cur.fetchall()
+    assert len(rows) == 2
+    assert rows[0]["content_snapshot"] == body
+    assert rows[1]["content_snapshot"] is None
+
+
+@pytest.mark.asyncio
+async def test_record_lifecycle_event_stores_different_content(tmp_path: Path):
+    """record_lifecycle_event stores content_snapshot when content has changed."""
+    audit = AuditDB(tmp_path / "audit.db")
+    await audit.init()
+
+    await audit.record_lifecycle_event(
+        "p", "draft", "active", "v1", "user", content_snapshot="body v1"
+    )
+    await audit.record_lifecycle_event(
+        "p", "active", "stale", "v2", "user", content_snapshot="body v2"
+    )
+
+    snaps = await audit.list_page_snapshots("p")
+    assert len(snaps) == 2
+    assert snaps[0]["to_state"] == "stale"   # newest first
+    assert snaps[1]["to_state"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_record_lifecycle_event_force_bypasses_dedup(tmp_path: Path):
+    """force=True always stores content_snapshot even when content equals the last snapshot.
+
+    The rollback endpoint uses this to guarantee the pre-rollback undo checkpoint is
+    recorded even when the current page content matches the most recent snapshot.
+    """
+    audit = AuditDB(tmp_path / "audit.db")
+    await audit.init()
+
+    body = "Content that would normally be deduplicated."
+    await audit.record_lifecycle_event(
+        "p", "draft", "active", "activate", "user", content_snapshot=body
+    )
+    # Second call with the same content but force=True — must NOT be suppressed
+    await audit.record_lifecycle_event(
+        "p", "active", "active", "rollback:1:undo", "user",
+        content_snapshot=body, force=True,
+    )
+
+    snaps = await audit.list_page_snapshots("p")
+    assert len(snaps) == 2, "force=True must bypass dedup and record the snapshot"
+    assert snaps[0]["content_length"] > 0
+
+
+@pytest.mark.asyncio
+async def test_record_lifecycle_event_dedup_strips_frontmatter(tmp_path: Path):
+    """Dedup compares body-only; passing raw .md content does not bypass it."""
+    audit = AuditDB(tmp_path / "audit.db")
+    await audit.init()
+
+    body = "The real body content."
+    raw = f"---\ntitle: T\nstatus: active\n---\n\n{body}"
+
+    # First call: store body-only
+    await audit.record_lifecycle_event(
+        "p", "draft", "active", "r1", "user", content_snapshot=body
+    )
+    # Second call: same body wrapped in frontmatter — should be suppressed
+    await audit.record_lifecycle_event(
+        "p", "active", "active", "r2", "mcp", content_snapshot=raw
+    )
+
+    snaps = await audit.list_page_snapshots("p")
+    assert len(snaps) == 1, "raw .md wrapper must not bypass content dedup"
+
+
 # ── Lint snapshot tests ──────────────────────────────────────────────────────
 
 def test_lint_transition_captures_snapshot(tmp_wiki):

@@ -506,11 +506,29 @@ class AuditDB:
                 row = await cur.fetchone()
         return dict(row) if row else None
 
+    async def _last_content_snapshot(self, slug: str) -> Optional[str]:
+        """Return the body of the most recent content_snapshot for *slug*, or None."""
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT content_snapshot FROM lifecycle_events"
+                " WHERE slug = ? AND content_snapshot IS NOT NULL"
+                " ORDER BY id DESC LIMIT 1",
+                (slug,),
+            ) as cur:
+                row = await cur.fetchone()
+        return dict(row)["content_snapshot"] if row else None
+
     async def record_lifecycle_event(
         self, slug: str, from_state: Optional[str], to_state: str,
         reason: str, triggered_by: str,
-        content_snapshot: Optional[str] = None,   # ← new
+        content_snapshot: Optional[str] = None,
+        force: bool = False,
     ) -> None:
+        if content_snapshot is not None:
+            content_snapshot = strip_frontmatter(content_snapshot)
+            if not force and await self._last_content_snapshot(slug) == content_snapshot:
+                content_snapshot = None  # suppress: same content already stored
         ts = datetime.now(timezone.utc).isoformat()
         async with aiosqlite.connect(self._path) as db:
             await db.execute(
@@ -636,17 +654,7 @@ class AuditDB:
         need to normalise it themselves.
         """
         content = strip_frontmatter(content)
-        async with aiosqlite.connect(self._path) as db:
-            db.row_factory = aiosqlite.Row
-            async with db.execute(
-                "SELECT content_snapshot FROM lifecycle_events"
-                " WHERE slug = ? AND content_snapshot IS NOT NULL"
-                " ORDER BY id DESC LIMIT 1",
-                (slug,),
-            ) as cur:
-                row = await cur.fetchone()
-        last = dict(row)["content_snapshot"] if row else None
-        if last == content:
+        if await self._last_content_snapshot(slug) == content:
             return False
         state_row = await self.get_page_state(slug)
         current_state = state_row["state"] if state_row else "draft"
