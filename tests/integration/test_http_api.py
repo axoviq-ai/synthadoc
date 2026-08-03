@@ -715,6 +715,30 @@ def test_lifecycle_events_endpoint(tmp_wiki):
     assert "total" in data
 
 
+def test_lifecycle_events_total_uses_db_count_not_filtered_len(tmp_wiki):
+    """BUG-20: total must reflect the DB row count, not len(filtered_page).
+
+    Seed one scaffold event (overview) and one real event. Request with limit=1
+    so overview falls on page 0. After filtering, len(events)==0, but total must
+    still equal the DB count (2), not 0.
+    """
+    import asyncio
+    from synthadoc.integration.http_server import create_app
+
+    db = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    asyncio.run(db.init())
+    asyncio.run(db.record_lifecycle_event("overview", "draft", "active", "mcp", "test"))
+    asyncio.run(db.record_lifecycle_event("real-page", "draft", "active", "mcp", "test"))
+
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.get("/lifecycle/events?limit=1&offset=0")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    # The filtered page may have 0 or 1 visible events, but total must be 2
+    assert data["total"] == 2
+
+
 def test_lifecycle_transition_valid(tmp_wiki):
     """POST /lifecycle/transition moves a draft page to active and returns slug/states/timestamp."""
     import asyncio
