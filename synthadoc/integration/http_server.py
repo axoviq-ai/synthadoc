@@ -1635,7 +1635,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             offset=offset,
         )
         events = [e for e in events if e["slug"].lower() not in _SCAFFOLD_SLUG_LOWER]
-        return {"events": events, "total": len(events)}
+        return {"events": events, "total": total}
 
     @app.post("/lifecycle/transition")
     async def lifecycle_transition(req: LifecycleTransitionRequest):
