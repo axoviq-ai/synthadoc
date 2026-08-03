@@ -296,6 +296,10 @@ async def run_tests():
                 if "job_id" in r and "scope" in r:
                     ok("synthadoc_lint(single page)", f"job_id={r['job_id']}  scope={r['scope']!r}")
                     lint_job_id = r["job_id"]
+                    # Wait for lint to finish before tests [10]/[13] run write_page on the
+                    # same slug — a concurrent lint transition records a content snapshot
+                    # that causes snapshot_if_changed to falsely report no change.
+                    await _wait_all_terminal(lint_job_id, max_wait=60)
                 else:
                     fail("synthadoc_lint(single page)", str(r))
                     lint_job_id = None
