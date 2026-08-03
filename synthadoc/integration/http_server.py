@@ -407,8 +407,10 @@ def _filter_blocked_suggestions(suggestions: list[str], blocked: set[str]) -> li
     filtered = []
     for s in suggestions:
         m = _SUGGESTION_URL_RE.match(s)
-        if m and m.group(1).lower().lstrip("www.") in blocked:
-            continue
+        if m:
+            domain = m.group(1).lower()
+            if domain in blocked or domain.removeprefix("www.") in blocked:
+                continue
         filtered.append(s)
     return filtered
 
