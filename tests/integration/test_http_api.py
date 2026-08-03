@@ -1150,3 +1150,52 @@ def test_lint_report_returns_truncated_sources(tmp_wiki):
     truncated = data.get("truncated_sources", [])
     assert any(e["slug"] == "big-article" for e in truncated), \
         f"big-article not in truncated_sources: {truncated}"
+
+
+# ------------------------------------------------------------------
+# BUG-18 — _graph_task reference retention and deduplication
+# ------------------------------------------------------------------
+
+def test_get_graph_stores_task_reference(tmp_wiki):
+    """GET /graph must store the background task in _graph_task.
+
+    asyncio.create_task() returns a weak reference — if the caller discards
+    the return value the GC can cancel the task mid-execution.  After the
+    first /graph request that triggers lazy hydration, _graph_task must be
+    non-None.
+    """
+    import synthadoc.integration.http_server as hs
+    from synthadoc.integration.http_server import create_app
+
+    saved = hs._graph_task
+    try:
+        hs._graph_task = None
+        with patch.object(AuditDB, "read_graph", new=AsyncMock(return_value=None)):
+            with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+                resp = client.get("/graph")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "computing"
+        assert hs._graph_task is not None, "_graph_task must be retained to prevent GC cancellation"
+    finally:
+        hs._graph_task = saved
+
+
+def test_get_graph_no_duplicate_task_while_running(tmp_wiki):
+    """GET /graph must not spawn a second background task when one is already in flight."""
+    import synthadoc.integration.http_server as hs
+    from synthadoc.integration.http_server import create_app
+
+    running_task = MagicMock()
+    running_task.done.return_value = False
+
+    saved = hs._graph_task
+    try:
+        hs._graph_task = running_task
+        with patch.object(AuditDB, "read_graph", new=AsyncMock(return_value=None)):
+            with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+                resp = client.get("/graph")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "computing"
+        assert hs._graph_task is running_task, "_graph_task must not be replaced while the existing task is still running"
+    finally:
+        hs._graph_task = saved
