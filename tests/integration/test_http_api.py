@@ -1265,3 +1265,48 @@ def test_delete_history_prunes_graph_node(tmp_wiki):
             "graph node must be removed by DELETE /pages/{slug}/history"
 
     asyncio.run(_check_pruned())
+
+
+# ---------------------------------------------------------------------------
+# BUG-21 — _filter_blocked_suggestions domain matching
+# ---------------------------------------------------------------------------
+
+def test_filter_blocked_suggestions_removes_www_prefixed_domain():
+    """BUG-21: www.example.com in blocked must filter https://www.example.com/…"""
+    from synthadoc.integration.http_server import _filter_blocked_suggestions
+    blocked = {"www.example.com"}
+    suggestions = ["https://www.example.com/article", "some search query"]
+    result = _filter_blocked_suggestions(suggestions, blocked)
+    assert result == ["some search query"]
+
+
+def test_filter_blocked_suggestions_www_suggestion_matches_bare_blocked_domain():
+    """Suggestion with www. prefix must be filtered when bare domain is blocked."""
+    from synthadoc.integration.http_server import _filter_blocked_suggestions
+    blocked = {"example.com"}
+    suggestions = ["https://www.example.com/article", "safe query"]
+    result = _filter_blocked_suggestions(suggestions, blocked)
+    assert result == ["safe query"]
+
+
+def test_filter_blocked_suggestions_does_not_misstrip_www2():
+    """www2.example.com must not be mangled; only the literal 'www.' prefix is stripped."""
+    from synthadoc.integration.http_server import _filter_blocked_suggestions
+    blocked = {"www2.example.com"}
+    suggestions = ["https://www2.example.com/page", "https://example.com/other"]
+    result = _filter_blocked_suggestions(suggestions, blocked)
+    # www2.example.com is in blocked directly, so it is removed
+    assert "https://www2.example.com/page" not in result
+    # example.com is not blocked
+    assert "https://example.com/other" in result
+
+
+def test_filter_blocked_suggestions_keeps_unblocked_urls():
+    """URLs from non-blocked domains pass through unchanged."""
+    from synthadoc.integration.http_server import _filter_blocked_suggestions
+    blocked = {"blocked.com"}
+    suggestions = ["https://safe.com/page", "https://www.blocked.com/x", "query"]
+    result = _filter_blocked_suggestions(suggestions, blocked)
+    assert "https://safe.com/page" in result
+    assert "https://www.blocked.com/x" not in result
+    assert "query" in result
