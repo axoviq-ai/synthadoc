@@ -5,6 +5,7 @@ import asyncio
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from unittest.mock import AsyncMock, patch
 from synthadoc.storage.log import AuditDB
 
 
@@ -164,3 +165,112 @@ async def test_session_state_pruned_to_match_db(tmp_path):
     assert "alive-2" in session_state
     assert session_state["alive-2"]["cursor"] == 2
     assert session_state["alive-2"]["last_hints"] == ["hint-a"]
+
+
+# ---------------------------------------------------------------------------
+# POST /sessions mode-selection — verifies the DB-query path (no read_page)
+# ---------------------------------------------------------------------------
+
+def _make_sessions_create_app(tmp_wiki):
+    from synthadoc.integration.http_server import create_app
+    return create_app(wiki_root=tmp_wiki)
+
+
+def test_post_sessions_new_wiki_mode(tmp_wiki):
+    """With fewer than 5 pages, mode must be NEW_WIKI regardless of DB state."""
+    app = _make_sessions_create_app(tmp_wiki)
+    # tmp_wiki has no pages — list_pages() returns []
+    with patch("synthadoc.storage.log.AuditDB.has_prior_sessions",
+               new=AsyncMock(return_value=False)):
+        with patch("synthadoc.storage.log.AuditDB.create_session",
+                   new=AsyncMock()):
+            with TestClient(app) as client:
+                resp = client.post("/sessions")
+    assert resp.status_code == 200
+    assert resp.json()["mode"] == "NEW_WIKI"
+
+
+def test_post_sessions_explorer_mode(tmp_wiki):
+    """With ≥5 pages and no prior sessions, mode must be EXPLORER."""
+    # Create 5 dummy page files so list_pages() returns 5
+    wiki_dir = tmp_wiki / "wiki"
+    for i in range(5):
+        (wiki_dir / f"page{i}.md").write_text(
+            "---\ntitle: P\nstatus: active\n---\n\nbody\n", encoding="utf-8"
+        )
+    app = _make_sessions_create_app(tmp_wiki)
+    with patch("synthadoc.storage.log.AuditDB.has_prior_sessions",
+               new=AsyncMock(return_value=False)):
+        with patch("synthadoc.storage.log.AuditDB.create_session",
+                   new=AsyncMock()):
+            with TestClient(app) as client:
+                resp = client.post("/sessions")
+    assert resp.status_code == 200
+    assert resp.json()["mode"] == "EXPLORER"
+
+
+def test_post_sessions_health_check_mode_uses_db_not_read_page(tmp_wiki):
+    """HEALTH_CHECK mode must be selected via get_lifecycle_summary(), not read_page().
+
+    Specifically: the response must be HEALTH_CHECK when the DB reports stale
+    pages, and read_page must NOT have been called for any page.
+    """
+    wiki_dir = tmp_wiki / "wiki"
+    for i in range(5):
+        (wiki_dir / f"page{i}.md").write_text(
+            "---\ntitle: P\nstatus: active\n---\n\nbody\n", encoding="utf-8"
+        )
+    app = _make_sessions_create_app(tmp_wiki)
+    with patch("synthadoc.storage.log.AuditDB.has_prior_sessions",
+               new=AsyncMock(return_value=True)):
+        with patch("synthadoc.storage.log.AuditDB.get_lifecycle_summary",
+                   new=AsyncMock(return_value={"active": 4, "stale": 1})) as mock_summary:
+            with patch("synthadoc.storage.log.AuditDB.create_session",
+                       new=AsyncMock()):
+                with patch("synthadoc.storage.wiki.WikiStorage.read_page") as mock_read:
+                    with TestClient(app) as client:
+                        resp = client.post("/sessions")
+    assert resp.status_code == 200
+    assert resp.json()["mode"] == "HEALTH_CHECK"
+    mock_summary.assert_awaited_once()
+    mock_read.assert_not_called()
+
+
+def test_post_sessions_power_user_mode(tmp_wiki):
+    """With ≥5 pages, prior sessions, and no stale/contradicted pages, mode is POWER_USER."""
+    wiki_dir = tmp_wiki / "wiki"
+    for i in range(5):
+        (wiki_dir / f"page{i}.md").write_text(
+            "---\ntitle: P\nstatus: active\n---\n\nbody\n", encoding="utf-8"
+        )
+    app = _make_sessions_create_app(tmp_wiki)
+    with patch("synthadoc.storage.log.AuditDB.has_prior_sessions",
+               new=AsyncMock(return_value=True)):
+        with patch("synthadoc.storage.log.AuditDB.get_lifecycle_summary",
+                   new=AsyncMock(return_value={"active": 5})):
+            with patch("synthadoc.storage.log.AuditDB.create_session",
+                       new=AsyncMock()):
+                with TestClient(app) as client:
+                    resp = client.post("/sessions")
+    assert resp.status_code == 200
+    assert resp.json()["mode"] == "POWER_USER"
+
+
+def test_post_sessions_health_check_on_contradicted(tmp_wiki):
+    """contradicted count alone is sufficient to trigger HEALTH_CHECK."""
+    wiki_dir = tmp_wiki / "wiki"
+    for i in range(5):
+        (wiki_dir / f"page{i}.md").write_text(
+            "---\ntitle: P\nstatus: active\n---\n\nbody\n", encoding="utf-8"
+        )
+    app = _make_sessions_create_app(tmp_wiki)
+    with patch("synthadoc.storage.log.AuditDB.has_prior_sessions",
+               new=AsyncMock(return_value=True)):
+        with patch("synthadoc.storage.log.AuditDB.get_lifecycle_summary",
+                   new=AsyncMock(return_value={"active": 4, "contradicted": 1})):
+            with patch("synthadoc.storage.log.AuditDB.create_session",
+                       new=AsyncMock()):
+                with TestClient(app) as client:
+                    resp = client.post("/sessions")
+    assert resp.status_code == 200
+    assert resp.json()["mode"] == "HEALTH_CHECK"
