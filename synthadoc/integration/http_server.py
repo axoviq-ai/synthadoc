@@ -1016,26 +1016,32 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                 logger.info("[graph] computation started (lazy hydration)")
             return JSONResponse(content={"status": "computing"}, headers=_NO_STORE)
         enriched_nodes = []
+        valid_slugs: set[str] = set()
         for n in graph_data["nodes"]:
             page = orch._store.read_page(n["slug"])
+            if page is None:
+                continue  # page deleted since graph was cached; omit without forcing a rebuild
             enriched_nodes.append({
                 "slug": n["slug"],
-                "title": page.title if page else n["slug"],
-                "type": (page.type if page else None) or "concept",
-                "state": (page.status if page else "active"),
+                "title": page.title,
+                "type": page.type or "concept",
+                "state": page.status,
                 "cluster_id": n["cluster_id"],
             })
-        clusters = len({n["cluster_id"] for n in graph_data["nodes"]}) if graph_data["nodes"] else 0
+            valid_slugs.add(n["slug"])
+        clusters = len({n["cluster_id"] for n in enriched_nodes}) if enriched_nodes else 0
+        valid_edges = [
+            {"from": e["from_slug"], "to": e["to_slug"], "weight": e["weight"], "edge_type": e.get("edge_type", "mixed")}
+            for e in graph_data["edges"]
+            if e["from_slug"] in valid_slugs and e["to_slug"] in valid_slugs
+        ]
         return JSONResponse(content={
             "status": "ready",
             "node_count": len(enriched_nodes),
-            "edge_count": len(graph_data["edges"]),
+            "edge_count": len(valid_edges),
             "cluster_count": clusters,
             "nodes": enriched_nodes,
-            "edges": [
-                {"from": e["from_slug"], "to": e["to_slug"], "weight": e["weight"], "edge_type": e.get("edge_type", "mixed")}
-                for e in graph_data["edges"]
-            ],
+            "edges": valid_edges,
         }, headers=_NO_STORE)
 
     async def _background_build_graph():
