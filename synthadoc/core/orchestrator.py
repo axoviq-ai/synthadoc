@@ -9,6 +9,7 @@ from typing import Optional
 import logging
 
 from synthadoc.config import Config, load_config
+from synthadoc.utils import atomic_write_text
 from synthadoc.errors import DomainBlockedException
 from synthadoc.core.cache import CacheManager
 from synthadoc.core.cost_guard import CostGuard, CostEstimate, CostGateError
@@ -468,11 +469,7 @@ class Orchestrator:
                     if blocked_path.exists() else []
                 if exc.domain not in existing:
                     existing.append(exc.domain)
-                    # Atomic write: write to .tmp then replace to avoid a partial
-                    # file being visible to concurrent readers on failure.
-                    tmp_path = blocked_path.with_suffix(".tmp")
-                    tmp_path.write_text(json.dumps(existing, indent=2), encoding="utf-8", newline="\n")
-                    tmp_path.replace(blocked_path)
+                    atomic_write_text(blocked_path, json.dumps(existing, indent=2))
             except Exception as write_err:
                 logging.getLogger(__name__).warning(
                     "Could not persist blocked domain %s: %s", exc.domain, write_err
