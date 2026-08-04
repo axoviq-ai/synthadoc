@@ -1791,7 +1791,7 @@ async def test_pass4_failure_does_not_fail_ingest(tmp_wiki):
     assert not result.skipped
     assert result.pages_created
 
-    events = await audit.list_events()
+    events, _ = await audit.list_events()
     assert any(e["event"] == "citation_pass4_skipped" for e in events), \
         f"Expected citation_pass4_skipped event, got: {[e['event'] for e in events]}"
 
@@ -2068,7 +2068,7 @@ async def test_pass4_no_citations_logs_warning(tmp_wiki, caplog):
     )
 
     # Audit event must be recorded
-    events = await audit.list_events()
+    events, _ = await audit.list_events()
     citation_events = [e for e in events if e["event"] == "citation_pass4_no_markers"]
     assert citation_events, (
         f"Expected citation_pass4_no_markers audit event. Got events: "
@@ -2166,7 +2166,7 @@ async def test_pass4_sanity_check_rejects_too_short_response(tmp_wiki):
     )
     assert annotated == section
     assert citations == []
-    events = await audit.list_events()
+    events, _ = await audit.list_events()
     skipped = [
         e for e in events
         if e["event"] == "citation_pass4_skipped"
@@ -2237,7 +2237,7 @@ async def test_pass4_empty_source_text_emits_audit_event(tmp_wiki):
     )
 
     assert citations == []
-    events = await audit.list_events()
+    events, _ = await audit.list_events()
     assert any(
         e["event"] == "citation_pass4_skipped"
         and _json.loads(e.get("metadata") or "{}").get("error") == "empty_source_text"

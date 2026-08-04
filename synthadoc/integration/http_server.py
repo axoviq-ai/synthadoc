@@ -8,7 +8,7 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from synthadoc.core.queue import JobStatus
 from synthadoc.storage.wiki import SYSTEM_PAGE_SLUGS
 from fastapi.responses import JSONResponse
@@ -1330,23 +1330,32 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         return {"job_id": job_id}
 
     @app.get("/audit/history")
-    async def audit_history(limit: int = 50):
-        records = await app.state.orch._audit.list_ingests(limit=limit)
-        return {"records": records, "count": len(records)}
+    async def audit_history(
+        limit: int = Query(default=50, ge=1, le=500),
+        offset: int = Query(default=0, ge=0),
+    ):
+        records, total = await app.state.orch._audit.list_ingests(limit=limit, offset=offset)
+        return {"records": records, "total": total, "limit": limit, "offset": offset}
 
     @app.get("/audit/costs")
     async def audit_costs(days: int = 30):
         return await app.state.orch._audit.cost_summary(days=days)
 
     @app.get("/audit/queries")
-    async def audit_queries(limit: int = 50):
-        records = await app.state.orch._audit.list_queries(limit=limit)
-        return {"records": records, "count": len(records)}
+    async def audit_queries(
+        limit: int = Query(default=50, ge=1, le=500),
+        offset: int = Query(default=0, ge=0),
+    ):
+        records, total = await app.state.orch._audit.list_queries(limit=limit, offset=offset)
+        return {"records": records, "total": total, "limit": limit, "offset": offset}
 
     @app.get("/audit/events")
-    async def audit_events(limit: int = 100):
-        records = await app.state.orch._audit.list_events(limit=limit)
-        return {"records": records, "count": len(records)}
+    async def audit_events(
+        limit: int = Query(default=100, ge=1, le=1000),
+        offset: int = Query(default=0, ge=0),
+    ):
+        records, total = await app.state.orch._audit.list_events(limit=limit, offset=offset)
+        return {"records": records, "total": total, "limit": limit, "offset": offset}
 
     @app.post("/context/build")
     async def context_build(req: ContextBuildRequest):
