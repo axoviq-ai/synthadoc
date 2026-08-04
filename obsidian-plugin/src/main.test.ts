@@ -1044,7 +1044,7 @@ describe("AuditModal — Events tab", () => {
         modal.onOpen();
         await flushPromises();
 
-        expect(apiMock.auditEvents).toHaveBeenCalledWith(100);
+        expect(apiMock.auditEvents).toHaveBeenCalledWith(100, 0);
         const html = modal.contentEl.innerHTML;
         expect(html).toContain("job_started");
         expect(html).toContain("job_completed");
@@ -2088,7 +2088,7 @@ describe("AuditModal — Ingest history tab", () => {
         modal.onOpen();
         await flushPromises();
 
-        expect(apiMock.auditHistory).toHaveBeenCalledWith(50);
+        expect(apiMock.auditHistory).toHaveBeenCalledWith(50, 0);
     });
 
     it("shows 'No ingest records' when empty", async () => {
@@ -2196,7 +2196,7 @@ describe("AuditModal — Query history tab", () => {
         modal.onOpen();
         await flushPromises();
 
-        expect(apiMock.queryHistory).toHaveBeenCalledWith(50);
+        expect(apiMock.queryHistory).toHaveBeenCalledWith(50, 0);
     });
 
     it("shows 'No queries recorded' when empty", async () => {
