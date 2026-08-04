@@ -15,6 +15,7 @@ from synthadoc.cli._wiki import resolve_wiki
 from synthadoc.cli._wiki import resolve_wiki_path
 from synthadoc.cli.main import app
 from synthadoc.config import STAGING_POLICIES, STAGING_CONFIDENCE_LEVELS
+from synthadoc.utils import atomic_write_text
 
 staging_app = typer.Typer(name="staging", help="Manage staging policy for new wiki pages.")
 candidates_app = typer.Typer(name="candidates", help="Review, promote, or discard candidate pages.")
@@ -96,7 +97,7 @@ def _patch_toml(path: Path, section: str, updates: dict) -> None:
         for k, v in updates.items():
             result.append(f"{k} = {_toml_value(v)}")
 
-    path.write_text("\n".join(result) + "\n", encoding="utf-8", newline="\n")
+    atomic_write_text(path, "\n".join(result) + "\n")
 
 
 @staging_app.command("policy")
@@ -185,10 +186,10 @@ def _add_to_index(wiki_dir: Path, entries: list[tuple[str, str]]) -> None:
                 insert_at = i + 1
         for j, entry in enumerate(new_lines):
             lines.insert(insert_at + j, entry)
-        index_path.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+        atomic_write_text(index_path, "\n".join(lines) + "\n")
     else:
         section = "\n\n## Recently Added\n" + "\n".join(new_lines) + "\n"
-        index_path.write_text(text.rstrip() + section, encoding="utf-8", newline="\n")
+        atomic_write_text(index_path, text.rstrip() + section)
 
 
 @candidates_app.command("promote")
