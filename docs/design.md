@@ -1,6 +1,6 @@
 # Synthadoc — Design Document
 
-**Version:** 1.1.3  
+**Version:** 1.2.0  
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -755,6 +755,7 @@ Note: BM25 IDF requires a minimum of 3 documents in the corpus for non-zero scor
 | `GET` | `/jobs` | `?status=<filter>&sort=<col>&order=<dir>` | `[Job]` |
 | `GET` | `/jobs/{id}` | — | `Job` |
 | `DELETE` | `/jobs/{id}` | — | `{deleted: job_id}` |
+| `POST` | `/jobs/{id}/retry` | — | `{retried: job_id}` — resets a `dead` or `failed` job to `pending`; returns an optional `warning` field if the job status is unusual |
 | `GET` | `/query` | `?q=<question>` | `{answer: str, citations: [str]}` |
 | `POST` | `/query` | `{question: str, save?: bool}` | `{answer: str, citations: [str], slug?: str}` |
 | `GET` | `/status` | — | `WikiStatus` |
@@ -868,7 +869,7 @@ for example, Claude Code session transcripts at `~/.claude/projects/<hash>/<id>.
 
 ### Background worker
 
-The HTTP server runs a background task that polls `jobs.db` every 2 seconds and dispatches pending jobs. Max 4 concurrent ingest jobs (configurable via `max_parallel_ingest`).
+The HTTP server runs a background task that polls `jobs.db` every 2 seconds and dispatches pending jobs. The worker processes one job at a time (sequential `await`). `queue.max_parallel_ingest` is reserved for a future parallel implementation but has no runtime effect today — see the config reference for details.
 
 ---
 
@@ -1252,7 +1253,7 @@ skill   = { model = "claude-haiku-4-5-20251001" }
 # llm_timeout_seconds = 90  # set for reasoning models to fail fast instead of silent empty response
 
 [queue]
-max_parallel_ingest  = 4
+max_parallel_ingest  = 4    # reserved — no effect; jobs run sequentially today
 max_retries          = 3
 backoff_base_seconds = 30
 
@@ -1334,7 +1335,7 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 | `ingest.staging_confidence_min` | str | `"high"` | Minimum confidence to auto-commit when `staging_policy = "threshold"`. Values: `"high"`, `"medium"`, `"low"`. Pages below this threshold are held as candidates. |
 | `query.gap_score_threshold` | float | `2.0` | BM25 score below which a knowledge gap is detected and `suggested_searches` are returned instead of (or alongside) an answer. Lower = more sensitive gap detection. |
 | `query.context_token_budget` | int | `4000` | Token budget for context pack assembly. Increase for richer context on complex queries; decrease if hitting prompt size limits. |
-| `queue.max_parallel_ingest` | int | `4` | Max concurrent ingest agents |
+| `queue.max_parallel_ingest` | int | `4` | Reserved for future parallel execution. The worker currently processes jobs sequentially; this field has no runtime effect. |
 | `queue.max_retries` | int | `3` | Retries before job → dead |
 | `queue.backoff_base_seconds` | int | `30` | Exponential backoff base; delays are `min(base × 2^(attempt−1), 300)` seconds |
 | `cache.version` | str | `"4"` | Bump to invalidate all cached LLM responses without touching source code |
@@ -3279,6 +3280,17 @@ All three files share identical body content generated from the same template; t
 ---
 
 ## Appendix A — Release Feature Index
+
+### v1.2.0
+
+- **Content snapshots and rollback** — page body captured at every lifecycle transition (manual CLI/Obsidian/MCP, lint-driven auto-transition); browse per-page version history with `synthadoc lifecycle history`; restore any prior version with `synthadoc lifecycle rollback` (saves current body first so rollback is always undoable). Content Snapshots tab added to the Obsidian Lifecycle modal. See [§23 Page Content Snapshots](#page-content-snapshots).
+- **Background vault monitoring** — Obsidian plugin registers `vault.on("modify")` with a 2-second per-slug debounce; on each quiet period it posts `POST /pages/{slug}/snapshot` to capture manual edits that do not trigger a lifecycle transition. Server-side deduplication ensures no snapshot is written when content is unchanged. See [§8 Background vault monitoring](#background-vault-monitoring-v120).
+- **Atomic page writes** — `WikiStorage.write_page` now writes to a `.tmp` sibling then calls `os.replace()`, eliminating the risk of a partial page file on mid-write crash or disk error. Shared `atomic_write_text()` utility in `synthadoc/utils.py` consolidates the pattern used by `write_page`, `Scheduler._save_raw`, and `Orchestrator._auto_block_domain` (BUG-24).
+- **CRLF fix — Markdown and TOML writers** — seven `write_text` call sites that write `.md` and `.toml` files were missing `newline="\\n"`, producing CRLF line endings on Windows and corrupting YAML frontmatter. All sites now force LF (BUG-23).
+- **Graph task GC fix** — the `asyncio.create_task()` result for the background graph build was not stored, allowing the GC to silently cancel the task. The reference is now kept in `_graph_task` and reused to deduplicate concurrent build requests (BUG-18).
+- **Graph cache stale node cleanup** — `DELETE /pages/{slug}/history` now also calls `delete_graph_node(slug)` so live-test artifact nodes are pruned from the graph cache on teardown.
+- **`/lifecycle/events` total field fix** — `GET /lifecycle/events` was returning `len(events)` (post-filter page count) instead of the pre-pagination `total` from the DB, causing pagination clients to miscalculate page counts (BUG-20).
+- **Blocked-domain suggestion filter fix** — `_filter_blocked_suggestions` used `lstrip("www.")` which strips individual characters rather than the literal prefix, so `www.example.com` was never matched against a blocked entry of the same name. Replaced with `removeprefix("www.")` and dual-form check (BUG-21).
 
 ### v1.1.2
 
