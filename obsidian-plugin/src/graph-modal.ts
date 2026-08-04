@@ -186,24 +186,10 @@ export class GraphModal extends Modal {
     private _raf: number | null = null;
     private _closed = false;
     private _abort: AbortController | null = null;
-    private _xClose = false;
-    private _hideStyle: HTMLStyleElement | null = null;
 
     constructor(app: App, _serverUrl: string) {
         super(app);
     }
-
-    // Block Escape-key and outside-click; only allow close via the × button.
-    // Also allow Obsidian's programmatic close (vault/workspace teardown) through
-    // when the modal container is no longer attached to the document.
-    close() {
-        if (this._xClose || !document.contains(this.containerEl)) {
-            this._xClose = false;
-            super.close();
-        }
-    }
-
-    private _dismiss() { this._xClose = true; this.close(); }
 
     onOpen() {
         this._closed = false;
@@ -234,12 +220,6 @@ export class GraphModal extends Modal {
 
         const statsEl = header.createEl("span");
         statsEl.style.cssText = "margin-left:auto;opacity:0.55;font-size:12px;";
-
-        // Own close button in the header — reliable regardless of Obsidian version.
-        const closeBtn = header.createEl("button");
-        closeBtn.textContent = "×";
-        closeBtn.setAttribute("aria-label", "Close");
-        closeBtn.style.cssText = "background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:20px;line-height:1;padding:2px 6px;border-radius:4px;flex-shrink:0;margin-left:8px;";
 
         // ── Canvas area ─────────────────────────────────────────────────────
         const canvasWrap = contentEl.createDiv();
@@ -507,16 +487,16 @@ export class GraphModal extends Modal {
 
         // ── Pointer / scroll events ──────────────────────────────────────────
 
-        // Wire our custom close button.
-        closeBtn.addEventListener("click", (e) => { e.stopPropagation(); this._dismiss(); }, { signal: sig });
+        // Block Escape key — capture phase fires before Obsidian's own keydown handler.
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") e.stopImmediatePropagation();
+        }, { capture: true, signal: sig });
 
-        // Hide Obsidian's native close button via CSS injection.
-        // querySelector fails when Obsidian adds the button after onOpen() returns.
-        // A <style> rule applies regardless of insertion timing.
-        this.containerEl.setAttribute("data-sg-graph", "1");
-        this._hideStyle = document.createElement("style");
-        this._hideStyle.textContent = "[data-sg-graph] .modal-close-button { display: none !important; }";
-        document.head.appendChild(this._hideStyle);
+        // Block outside-click — stop clicks on the overlay before Obsidian sees them.
+        // Clicks inside modalEl (including the native × button) are not affected.
+        this.containerEl.addEventListener("click", (e) => {
+            if (!modalEl.contains(e.target as Node)) e.stopImmediatePropagation();
+        }, { capture: true, signal: sig });
 
         // Header drag — move the whole panel.
         let panelDrag: { x0: number; y0: number; l0: number; t0: number } | null = null;
@@ -668,9 +648,6 @@ export class GraphModal extends Modal {
         if (this._raf !== null) { cancelAnimationFrame(this._raf); this._raf = null; }
         this._abort?.abort();
         this._abort = null;
-        this._hideStyle?.remove();
-        this._hideStyle = null;
-        this.containerEl.removeAttribute("data-sg-graph");
         this.contentEl.empty();
     }
 }
