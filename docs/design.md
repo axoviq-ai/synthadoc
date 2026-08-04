@@ -755,6 +755,7 @@ Note: BM25 IDF requires a minimum of 3 documents in the corpus for non-zero scor
 | `GET` | `/jobs` | `?status=<filter>&sort=<col>&order=<dir>` | `[Job]` |
 | `GET` | `/jobs/{id}` | — | `Job` |
 | `DELETE` | `/jobs/{id}` | — | `{deleted: job_id}` |
+| `POST` | `/jobs/{id}/retry` | — | `{retried: job_id}` — resets a `dead` or `failed` job to `pending`; returns an optional `warning` field if the job status is unusual |
 | `GET` | `/query` | `?q=<question>` | `{answer: str, citations: [str]}` |
 | `POST` | `/query` | `{question: str, save?: bool}` | `{answer: str, citations: [str], slug?: str}` |
 | `GET` | `/status` | — | `WikiStatus` |
