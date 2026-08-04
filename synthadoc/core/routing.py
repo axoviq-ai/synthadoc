@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from synthadoc.utils import atomic_write_text
+
 _BRANCH_RE = re.compile(r"^##\s+(.+)$")
 _SLUG_RE = re.compile(r"^\s*-\s*\[\[([^\]]+)\]\]")
 
@@ -97,4 +99,4 @@ class RoutingIndex:
             for slug in slugs:
                 lines.append(f"- [[{slug}]]")
             lines.append("")
-        path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
+        atomic_write_text(path, "\n".join(lines))

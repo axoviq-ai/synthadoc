@@ -3085,3 +3085,86 @@ async def test_run_search_fallback_to_full_corpus_when_routing_weak(tmp_wiki):
     # Routing warning must be non-empty
     assert routing_warning, "Expected a routing_warning when fallback triggered"
     assert "ROUTING.md" in routing_warning
+
+
+# ---------------------------------------------------------------------------
+# _select_live_data_question unit tests
+# ---------------------------------------------------------------------------
+
+def test_select_live_data_question_explicit_trigger_uses_original():
+    """Original question with a live-data trigger word must be returned directly."""
+    from synthadoc.agents.query_agent import _select_live_data_question
+    result = _select_live_data_question("What pages are stale?", "What pages are stale right now?")
+    assert result == "What pages are stale?"
+
+
+def test_select_live_data_question_vague_followup_uses_rewrite():
+    """Vague original (<3 content terms) must fall back to retrieval_question."""
+    from synthadoc.agents.query_agent import _select_live_data_question
+    result = _select_live_data_question("check it again", "check job status a95c6a33")
+    assert result == "check job status a95c6a33"
+
+
+def test_select_live_data_question_specific_content_query_uses_original():
+    """Specific content query (≥3 content terms) must use original, avoiding
+    false positives when the rewrite injects history words like 'active'."""
+    from synthadoc.agents.query_agent import _select_live_data_question
+    original = "What are the key ideas in Programming Languages Overview?"
+    rewrite = "What are the key ideas in Programming Languages Overview? (an active page)"
+    result = _select_live_data_question(original, rewrite)
+    assert result == original
+
+
+def test_select_live_data_question_no_history_returns_question():
+    """When original and retrieval_question are the same (no history), original is returned."""
+    from synthadoc.agents.query_agent import _select_live_data_question
+    q = "What is a monad?"
+    assert _select_live_data_question(q, q) == q
+
+
+@pytest.mark.asyncio
+async def test_run_stream_specific_content_query_not_hijacked_by_rewrite_triggers(tmp_wiki):
+    """Regression: a specific content question must not be routed to the live-data path
+    when the RewriteAgent injects lifecycle trigger words (e.g. 'active') from history.
+
+    'What are the key ideas in Programming Languages Overview?' has ≥3 content terms,
+    so _select_live_data_question uses the original question for trigger detection,
+    which has no live-data triggers — page content is returned, not a status table.
+    """
+    store = WikiStorage(tmp_wiki / "wiki")
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+
+    provider = AsyncMock()
+    provider.complete.return_value = CompletionResponse(
+        text='["key ideas programming languages overview"]', input_tokens=5, output_tokens=5
+    )
+    async def _fake_stream(**kw):
+        yield "Here are the key ideas."
+    provider.complete_stream = _fake_stream
+
+    agent = QueryAgent(provider=provider, store=store, search=search,
+                       gap_score_threshold=2.0)
+
+    history = [
+        {"role": "user", "content": "What pages are active?"},
+        {"role": "assistant", "content": "There are 10 active pages."},
+    ]
+
+    with patch("synthadoc.agents.query_agent.RewriteAgent") as mock_rw_cls, \
+         patch("synthadoc.agents.query_agent.ActionAgent") as mock_action_cls:
+        # Simulate rewrite injecting 'active' from history context
+        mock_rw_cls.return_value.rewrite = AsyncMock(
+            return_value="What are the key ideas in Programming Languages Overview? (an active page)"
+        )
+        mock_action_cls.return_value.detect.return_value = False
+
+        events = await _collect_events(agent.run_stream(
+            "What are the key ideas in Programming Languages Overview?",
+            history=history,
+        ))
+
+    done_ev = next(e for e in events if e["event"] == "done")
+    # cacheable=False only when is_live_data=True; a content response must remain cacheable.
+    assert done_ev["data"].get("cacheable", True) is True, (
+        "Content question must not be routed to live-data path due to rewrite trigger injection"
+    )

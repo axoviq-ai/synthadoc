@@ -311,6 +311,26 @@ _HINTS: dict[str, str] = {
 }
 
 
+def _select_live_data_question(question: str, retrieval_question: str) -> str:
+    """Return which question string to use for live-data trigger detection.
+
+    Three cases:
+    1. Original question already contains live-data trigger words → use it directly.
+    2. Original question is specific (≥3 content key terms) → use it to avoid false
+       positives when the rewrite injects history words like "active" or "stale".
+    3. Original question is vague (<3 content key terms, e.g. "check it again") → use
+       retrieval_question so the resolved intent triggers the correct live-data path.
+    """
+    q_lower = question.lower()
+    if any(kw in q_lower for kw in _LIVE_DATA_TRIGGERS):
+        return question
+    content_term_count = sum(
+        1 for w in question.split()
+        if len(w) >= 4 and w.lower().rstrip("s'?!.,") not in _STOPWORDS
+    )
+    return question if content_term_count >= 3 else retrieval_question
+
+
 def _is_introspective(question: str) -> bool:
     """Return True when a question asks about the wiki's own content or scope,
     or is a Synthadoc CLI invocation — both should suppress gap detection."""
@@ -1226,7 +1246,9 @@ class QueryAgent:
         if _purpose_ctx:
             _ctx_parts.append(_purpose_ctx)
         _is_live_data = False
-        _live_data = await self._fetch_live_wiki_data(retrieval_question)
+        _live_data = await self._fetch_live_wiki_data(
+            _select_live_data_question(question, retrieval_question)
+        )
         if _system_ctx:
             # System knowledge matched: answer from help pages only; wiki pages are irrelevant noise
             _ctx_parts.append(f"## Synthadoc Help\n{_system_ctx}")
