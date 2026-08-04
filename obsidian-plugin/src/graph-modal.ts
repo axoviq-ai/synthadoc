@@ -510,7 +510,9 @@ export class GraphModal extends Modal {
         closeBtn.addEventListener("click", (e) => { e.stopPropagation(); this._dismiss(); }, { signal: sig });
 
         // Hide Obsidian's native close button — we have our own in the header.
-        const nativeClose = modalEl.querySelector(".modal-close-button") as HTMLElement | null;
+        // containerEl (not modalEl) is the right scope: in some Obsidian versions the
+        // button is a sibling of modalEl rather than a child of it.
+        const nativeClose = this.containerEl.querySelector(".modal-close-button") as HTMLElement | null;
         if (nativeClose) nativeClose.style.display = "none";
 
         // Header drag — move the whole panel.
