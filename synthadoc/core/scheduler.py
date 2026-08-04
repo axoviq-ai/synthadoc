@@ -14,6 +14,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from synthadoc.utils import atomic_write_text
+
 if TYPE_CHECKING:
     from synthadoc.storage.log import AuditDB
 
@@ -82,9 +84,7 @@ class Scheduler:
 
     def _save_raw(self, entries: list[dict]) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self._path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(entries, indent=2), encoding="utf-8", newline="\n")
-        tmp.replace(self._path)
+        atomic_write_text(self._path, json.dumps(entries, indent=2))
 
     def _fetch_last_runs(self) -> dict[str, dict]:
         from synthadoc.storage.log import AuditDB
