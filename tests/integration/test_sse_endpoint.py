@@ -106,13 +106,28 @@ def test_post_sessions_power_user_mode(tmp_wiki):
 
 
 def test_post_sessions_health_check_mode(tmp_wiki):
-    """POST /sessions on second call with a stale page returns HEALTH_CHECK."""
+    """POST /sessions on second call with a stale page returns HEALTH_CHECK.
+
+    The endpoint now reads page states from page_states (DB) rather than
+    parsing every file.  Seed the DB row that lint would normally write so
+    the endpoint sees the stale state without a full lint run.
+    """
+    import asyncio
+    from synthadoc.storage.log import AuditDB
     from fastapi.testclient import TestClient
+
     _make_wiki_pages(tmp_wiki / "wiki", stale_index=0)
+
+    # Seed the stale state into the audit DB that the app will use
+    db_path = tmp_wiki / ".synthadoc" / "audit.db"
+    db = AuditDB(db_path)
+    asyncio.run(db.init())
+    asyncio.run(db.set_page_state("page0", "stale", "lint"))
+
     app = _make_app(tmp_wiki)
     with TestClient(app) as client:
         client.post("/sessions")          # first call records session
-        resp = client.post("/sessions")   # second call → stale page → HEALTH_CHECK
+        resp = client.post("/sessions")   # second call → DB has stale → HEALTH_CHECK
     assert resp.status_code == 200
     assert resp.json()["mode"] == "HEALTH_CHECK"
 
