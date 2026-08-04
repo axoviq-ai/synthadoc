@@ -14,7 +14,7 @@
       '-+###############+-'
 
        S Y N T H A D O C
-    Community Edition  v1.1.3
+    Community Edition  v1.2.0
   ────────────────────────────────
   Domain-agnostic LLM wiki engine
 ```
@@ -30,10 +30,10 @@
 <a href="https://github.com/axoviq-ai/synthadoc/tree/main/hooks"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.hooks&label=Hook%20events&color=teal" alt="Hook events"/></a>
 <a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.cli_commands&label=CLI%20commands&color=darkblue" alt="CLI commands"/></a>
 <a href="https://github.com/axoviq-ai/synthadoc/tree/main/obsidian-plugin"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.obsidian_commands&label=Obsidian%20commands&color=blueviolet" alt="Obsidian commands"/></a>
-<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.1.3-brightgreen.svg" alt="Version"/></a>
+<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.2.0-brightgreen.svg" alt="Version"/></a>
 </p>
 
-**Document version: v1.1.3**
+**Document version: v1.2.0**
 
 **Engineered for solo users and enterprises alike, providing a domain-specific knowledge base that scales seamlessly while maintaining accuracy through autonomous self-optimization.**
 
