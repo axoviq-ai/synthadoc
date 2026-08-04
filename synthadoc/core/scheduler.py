@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("synthadoc.scheduler")
 
+_running_tasks: set[asyncio.Task] = set()  # strong references prevent GC cancellation
+
 
 @dataclass
 class ScheduleEntry:
@@ -120,9 +122,11 @@ async def run_scheduler_loop(
             sched = Scheduler(wiki=wiki, wiki_root=str(wiki_root))
             for entry in sched._load_raw():
                 if _matches_cron(entry.get("cron", ""), now):
-                    asyncio.create_task(
+                    task = asyncio.create_task(
                         _run_scheduled_job(entry, wiki, wiki_root, audit_db, job_timeout_seconds)
                     )
+                    _running_tasks.add(task)
+                    task.add_done_callback(_running_tasks.discard)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
