@@ -15,7 +15,7 @@ async def test_record_query_stored_and_retrievable(tmp_wiki):
         tokens=125,
         cost_usd=0.0004,
     )
-    records = await db.list_queries(limit=10)
+    records, total = await db.list_queries(limit=10)
     assert len(records) == 1
     assert records[0]["question"] == "What is Moore's Law?"
     assert records[0]["sub_questions_count"] == 1
@@ -68,7 +68,7 @@ async def test_list_queries_returns_most_recent_first(tmp_wiki):
     await db.init()
     await db.record_query(question="first question", sub_questions_count=1, tokens=100, cost_usd=0.0003)
     await db.record_query(question="second question", sub_questions_count=2, tokens=150, cost_usd=0.0005)
-    records = await db.list_queries(limit=10)
+    records, _ = await db.list_queries(limit=10)
     assert records[0]["question"] == "second question"
     assert records[1]["question"] == "first question"
 
@@ -81,7 +81,7 @@ async def test_list_queries_respects_limit(tmp_wiki):
     for i in range(5):
         await db.record_query(question=f"question {i}", sub_questions_count=1,
                                tokens=50, cost_usd=0.0001)
-    records = await db.list_queries(limit=3)
+    records, _ = await db.list_queries(limit=3)
     assert len(records) == 3
 
 
@@ -161,6 +161,6 @@ async def test_update_ingest_cost_patches_most_recent_record(tmp_wiki):
     await db.record_ingest("hash1", 1000, source, "bell-labs", tokens=5000, cost_usd=0.0)
     # Simulate orchestrator patching after estimate_cost()
     await db.update_ingest_cost(source, cost_usd=0.0312)
-    history = await db.list_ingests(limit=1)
+    history, _ = await db.list_ingests(limit=1)
     assert len(history) == 1
     assert abs(history[0]["cost_usd"] - 0.0312) < 1e-9

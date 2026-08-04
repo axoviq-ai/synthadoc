@@ -22,7 +22,7 @@ async def populated_audit_db(tmp_path):
 
 @pytest.mark.asyncio
 async def test_list_ingests_returns_records(populated_audit_db):
-    records = await populated_audit_db.list_ingests(limit=10)
+    records, _ = await populated_audit_db.list_ingests(limit=10)
     assert len(records) == 3
     assert records[0]["source_path"] == "/wiki/raw/doc2.pdf"  # DESC order — newest first
     assert "tokens" in records[0]
@@ -32,13 +32,13 @@ async def test_list_ingests_returns_records(populated_audit_db):
 
 @pytest.mark.asyncio
 async def test_list_ingests_respects_limit(populated_audit_db):
-    records = await populated_audit_db.list_ingests(limit=2)
+    records, _ = await populated_audit_db.list_ingests(limit=2)
     assert len(records) == 2
 
 
 @pytest.mark.asyncio
 async def test_list_events_returns_records(populated_audit_db):
-    events = await populated_audit_db.list_events(limit=10)
+    events, _ = await populated_audit_db.list_events(limit=10)
     assert len(events) == 2
     assert events[0]["event"] in ("ingest_complete", "lint_complete")
 
@@ -354,13 +354,13 @@ async def test_list_citation_failures_page_slug_key_also_matched(db):
 async def test_write_event_stores_event(db):
     await db.write_event("citation_pass4_skipped",
                          metadata={"slug": "p", "error": "timeout"})
-    events = await db.list_events(limit=10)
+    events, _ = await db.list_events(limit=10)
     assert any(e["event"] == "citation_pass4_skipped" for e in events)
 
 
 async def test_write_event_accepts_dict_metadata(db):
     await db.write_event("test_event", metadata={"key": "value", "num": 42})
-    events = await db.list_events(limit=10)
+    events, _ = await db.list_events(limit=10)
     matching = [e for e in events if e["event"] == "test_event"]
     assert len(matching) == 1
     parsed = json.loads(matching[0]["metadata"])
@@ -370,7 +370,7 @@ async def test_write_event_accepts_dict_metadata(db):
 
 async def test_write_event_default_metadata_is_empty_dict(db):
     await db.write_event("no_metadata_event")
-    events = await db.list_events(limit=10)
+    events, _ = await db.list_events(limit=10)
     matching = [e for e in events if e["event"] == "no_metadata_event"]
     assert len(matching) == 1
     parsed = json.loads(matching[0]["metadata"])
