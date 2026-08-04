@@ -187,6 +187,7 @@ export class GraphModal extends Modal {
     private _closed = false;
     private _abort: AbortController | null = null;
     private _xClose = false;
+    private _hideStyle: HTMLStyleElement | null = null;
 
     constructor(app: App, _serverUrl: string) {
         super(app);
@@ -509,11 +510,13 @@ export class GraphModal extends Modal {
         // Wire our custom close button.
         closeBtn.addEventListener("click", (e) => { e.stopPropagation(); this._dismiss(); }, { signal: sig });
 
-        // Hide Obsidian's native close button — we have our own in the header.
-        // containerEl (not modalEl) is the right scope: in some Obsidian versions the
-        // button is a sibling of modalEl rather than a child of it.
-        const nativeClose = this.containerEl.querySelector(".modal-close-button") as HTMLElement | null;
-        if (nativeClose) nativeClose.style.display = "none";
+        // Hide Obsidian's native close button via CSS injection.
+        // querySelector fails when Obsidian adds the button after onOpen() returns.
+        // A <style> rule applies regardless of insertion timing.
+        this.containerEl.setAttribute("data-sg-graph", "1");
+        this._hideStyle = document.createElement("style");
+        this._hideStyle.textContent = "[data-sg-graph] .modal-close-button { display: none !important; }";
+        document.head.appendChild(this._hideStyle);
 
         // Header drag — move the whole panel.
         let panelDrag: { x0: number; y0: number; l0: number; t0: number } | null = null;
@@ -665,6 +668,9 @@ export class GraphModal extends Modal {
         if (this._raf !== null) { cancelAnimationFrame(this._raf); this._raf = null; }
         this._abort?.abort();
         this._abort = null;
+        this._hideStyle?.remove();
+        this._hideStyle = null;
+        this.containerEl.removeAttribute("data-sg-graph");
         this.contentEl.empty();
     }
 }
