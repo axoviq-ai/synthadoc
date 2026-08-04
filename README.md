@@ -837,17 +837,25 @@ synthadoc ingest report.pdf --analyse-only -w my-wiki
 
 ```bash
 # Ingest history: timestamp, source file, wiki page, tokens, cost
-synthadoc audit history -w my-wiki            # last 50 records
-synthadoc audit history -n 100 -w my-wiki     # last 100 records
-synthadoc audit history --json -w my-wiki     # raw JSON for scripting
+synthadoc audit history -w my-wiki                    # last 50 records (shows total)
+synthadoc audit history -n 100 -w my-wiki             # last 100 records
+synthadoc audit history -n 50 --offset 50 -w my-wiki  # page 2 (records 51-100)
+synthadoc audit history --json -w my-wiki             # raw JSON for scripting
+
+# Query history: question, sub-questions, tokens, cost
+synthadoc audit queries -w my-wiki                    # last 50 records (shows total)
+synthadoc audit queries -n 100 -w my-wiki             # last 100 records
+synthadoc audit queries -n 50 --offset 50 -w my-wiki  # page 2 (records 51-100)
+synthadoc audit queries --json -w my-wiki             # raw JSON for scripting
 
 # Token usage: totals + daily breakdown
 synthadoc audit cost -w my-wiki               # last 30 days
 synthadoc audit cost --days 7 -w my-wiki      # last 7 days
 
 # Audit events: contradictions found, auto-resolutions, cost gate triggers
-synthadoc audit events -w my-wiki             # last 100 events
-synthadoc audit events --json -w my-wiki      # raw JSON for scripting
+synthadoc audit events -w my-wiki                      # last 100 events (shows total)
+synthadoc audit events -n 100 --offset 100 -w my-wiki  # page 2 (events 101-200)
+synthadoc audit events --json -w my-wiki               # raw JSON for scripting
 
 # Claim citations: source-line provenance for every annotated claim
 synthadoc audit citations -w my-wiki                    # all citations (last 50)

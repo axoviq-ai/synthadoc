@@ -402,19 +402,19 @@ describe("api.job", () => {
 });
 
 describe("api.auditHistory", () => {
-    it("GETs /audit/history with default limit of 50", async () => {
+    it("GETs /audit/history with default limit and offset", async () => {
         mockResponse([]);
         await api.auditHistory();
         expect(mockRequestUrl).toHaveBeenCalledWith(
-            expect.objectContaining({ url: "http://127.0.0.1:7070/audit/history?limit=50", method: "GET" })
+            expect.objectContaining({ url: "http://127.0.0.1:7070/audit/history?limit=50&offset=0", method: "GET" })
         );
     });
 
-    it("GETs /audit/history with custom limit", async () => {
+    it("GETs /audit/history with custom limit and offset", async () => {
         mockResponse([]);
-        await api.auditHistory(10);
+        await api.auditHistory(10, 20);
         expect(mockRequestUrl).toHaveBeenCalledWith(
-            expect.objectContaining({ url: "http://127.0.0.1:7070/audit/history?limit=10" })
+            expect.objectContaining({ url: "http://127.0.0.1:7070/audit/history?limit=10&offset=20" })
         );
     });
 });
@@ -438,37 +438,37 @@ describe("api.auditCosts", () => {
 });
 
 describe("api.queryHistory", () => {
-    it("GETs /audit/queries with default limit of 50", async () => {
+    it("GETs /audit/queries with default limit and offset", async () => {
         mockResponse([]);
         await api.queryHistory();
         expect(mockRequestUrl).toHaveBeenCalledWith(
-            expect.objectContaining({ url: "http://127.0.0.1:7070/audit/queries?limit=50", method: "GET" })
+            expect.objectContaining({ url: "http://127.0.0.1:7070/audit/queries?limit=50&offset=0", method: "GET" })
         );
     });
 
-    it("GETs /audit/queries with custom limit", async () => {
+    it("GETs /audit/queries with custom limit and offset", async () => {
         mockResponse([]);
-        await api.queryHistory(20);
+        await api.queryHistory(20, 40);
         expect(mockRequestUrl).toHaveBeenCalledWith(
-            expect.objectContaining({ url: "http://127.0.0.1:7070/audit/queries?limit=20" })
+            expect.objectContaining({ url: "http://127.0.0.1:7070/audit/queries?limit=20&offset=40" })
         );
     });
 });
 
 describe("api.auditEvents", () => {
-    it("GETs /audit/events with default limit of 100", async () => {
+    it("GETs /audit/events with default limit and offset", async () => {
         mockResponse([]);
         await api.auditEvents();
         expect(mockRequestUrl).toHaveBeenCalledWith(
-            expect.objectContaining({ url: "http://127.0.0.1:7070/audit/events?limit=100", method: "GET" })
+            expect.objectContaining({ url: "http://127.0.0.1:7070/audit/events?limit=100&offset=0", method: "GET" })
         );
     });
 
-    it("GETs /audit/events with custom limit", async () => {
+    it("GETs /audit/events with custom limit and offset", async () => {
         mockResponse([]);
-        await api.auditEvents(25);
+        await api.auditEvents(25, 50);
         expect(mockRequestUrl).toHaveBeenCalledWith(
-            expect.objectContaining({ url: "http://127.0.0.1:7070/audit/events?limit=25" })
+            expect.objectContaining({ url: "http://127.0.0.1:7070/audit/events?limit=25&offset=50" })
         );
     });
 });

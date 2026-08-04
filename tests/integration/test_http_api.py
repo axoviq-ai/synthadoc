@@ -246,7 +246,7 @@ def test_audit_queries_returns_empty_initially(tmp_wiki):
     assert resp.status_code == 200
     data = resp.json()
     assert data["records"] == []
-    assert data["count"] == 0
+    assert data["total"] == 0
 
 
 def test_audit_queries_returns_recorded_data(tmp_wiki):
@@ -263,7 +263,7 @@ def test_audit_queries_returns_recorded_data(tmp_wiki):
         resp = client.get("/audit/queries")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["count"] == 1
+    assert data["total"] == 1
     assert data["records"][0]["question"] == "What is Moore's Law?"
 
 
@@ -302,7 +302,8 @@ def test_query_stream_records_audit_entry(tmp_wiki):
 
 async def _fetch_queries(db):
     await db.init()
-    return await db.list_queries(limit=10)
+    records, _ = await db.list_queries(limit=10)
+    return records
 
 
 def test_query_post_provider_unavailable_returns_502(tmp_wiki):
@@ -378,12 +379,12 @@ def test_audit_history_endpoint(tmp_wiki):
          "tokens": 500, "cost_usd": 0.001, "ingested_at": "2026-04-17T10:00:00"}
     ]
     with patch("synthadoc.storage.log.AuditDB.list_ingests",
-               new=AsyncMock(return_value=fake_records)):
+               new=AsyncMock(return_value=(fake_records, len(fake_records)))):
         with TestClient(create_app(wiki_root=tmp_wiki)) as client:
             resp = client.get("/audit/history?limit=10")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["count"] == 1
+    assert data["total"] == 1
     assert data["records"][0]["wiki_page"] == "ai-basics"
 
 
@@ -849,7 +850,7 @@ def test_audit_events_endpoint(tmp_wiki):
     assert resp.status_code == 200
     data = resp.json()
     assert "records" in data
-    assert "count" in data
+    assert "total" in data
 
 
 def test_cancel_pending_jobs_endpoint(tmp_wiki):

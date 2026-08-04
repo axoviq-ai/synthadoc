@@ -26,6 +26,7 @@ def _get_audit_db(wiki: str):
 def history_cmd(
     wiki: Optional[str] = typer.Option(None, "--wiki", "-w"),
     limit: int = typer.Option(50, "--limit", "-n"),
+    offset: int = typer.Option(0, "--offset"),
     as_json: bool = typer.Option(False, "--json", help="Output raw JSON"),
 ):
     """Show recent ingest history."""
@@ -35,13 +36,15 @@ def history_cmd(
 
     async def _fetch():
         await db.init()
-        return await db.list_ingests(limit=limit)
+        records, total = await db.list_ingests(limit=limit, offset=offset)
+        return records, total
 
-    records = asyncio.run(_fetch())
+    records, total = asyncio.run(_fetch())
     if as_json:
         typer.echo(json.dumps(records, indent=2))
         return
-    table = Table(title=f"Ingest History (last {limit})")
+    page_info = f"offset {offset}, " if offset else ""
+    table = Table(title=f"Ingest History ({page_info}{len(records)} of {total})")
     table.add_column("Timestamp", style="dim")
     table.add_column("Source")
     table.add_column("Wiki Page", style="cyan")
@@ -93,6 +96,7 @@ def cost_cmd(
 def queries_cmd(
     wiki: Optional[str] = typer.Option(None, "--wiki", "-w"),
     limit: int = typer.Option(50, "--limit", "-n"),
+    offset: int = typer.Option(0, "--offset"),
     as_json: bool = typer.Option(False, "--json", help="Output raw JSON"),
 ):
     """Show recent query history."""
@@ -102,13 +106,15 @@ def queries_cmd(
 
     async def _fetch():
         await db.init()
-        return await db.list_queries(limit=limit)
+        records, total = await db.list_queries(limit=limit, offset=offset)
+        return records, total
 
-    records = asyncio.run(_fetch())
+    records, total = asyncio.run(_fetch())
     if as_json:
         typer.echo(json.dumps(records, indent=2))
         return
-    table = Table(title=f"Query History (last {limit})")
+    page_info = f"offset {offset}, " if offset else ""
+    table = Table(title=f"Query History ({page_info}{len(records)} of {total})")
     table.add_column("Timestamp", style="dim")
     table.add_column("Question")
     table.add_column("Sub-Qs", justify="right")
@@ -208,6 +214,7 @@ def lifecycle_purge(
 def events_cmd(
     wiki: Optional[str] = typer.Option(None, "--wiki", "-w"),
     limit: int = typer.Option(100, "--limit", "-n"),
+    offset: int = typer.Option(0, "--offset"),
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Show raw audit events."""
@@ -217,13 +224,15 @@ def events_cmd(
 
     async def _fetch():
         await db.init()
-        return await db.list_events(limit=limit)
+        events, total = await db.list_events(limit=limit, offset=offset)
+        return events, total
 
-    events = asyncio.run(_fetch())
+    events, total = asyncio.run(_fetch())
     if as_json:
         typer.echo(json.dumps(events, indent=2))
         return
-    table = Table(title=f"Audit Events (last {limit})")
+    page_info = f"offset {offset}, " if offset else ""
+    table = Table(title=f"Audit Events ({page_info}{len(events)} of {total})")
     table.add_column("Timestamp", style="dim")
     table.add_column("Job ID", style="dim")
     table.add_column("Event", style="cyan")

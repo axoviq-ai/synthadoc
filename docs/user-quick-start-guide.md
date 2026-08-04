@@ -1512,7 +1512,10 @@ synthadoc audit history
 ```
 
 Shows the last 50 ingest records: timestamp, source file, wiki pages created/updated,
-token count, and cost. Use `--limit N` (or `-n N`) for more records and `--json` for machine-readable output.
+token count, and cost. Use `--limit N` (or `-n N`) for more records, `--offset N` to skip to a later page,
+and `--json` for machine-readable output. The title line shows the total row count so you know how many
+records exist (`50 of 312`). To page through: `synthadoc audit history -n 50 --offset 50` for records 51–100.
+In the **Obsidian Audit modal**, the Ingest History tab is fully paginated with ← Prev / Next → buttons.
 
 ![synthadoc audit history output](png/synthadoc-audit-history.png)
 
@@ -1544,6 +1547,10 @@ synthadoc audit queries
 
 Shows recent questions asked, how many sub-questions each was decomposed into, token
 usage, and per-query cost. Especially useful after running the compound queries in Step 5.
+Use `--limit N` and `--offset N` to page through a large history:
+`synthadoc audit queries -n 50 --offset 50` shows records 51–100.
+The title shows the total count (`50 of 3782`) so you can tell how many records exist beyond the current page.
+In the **Obsidian Audit modal**, the Query History tab is paginated (50 per page) with ← Prev / Next → navigation.
 
 ![synthadoc audit queries — query history table showing questions, sub-question count, tokens, and cost](png/audit-queries.png)
 
@@ -1552,6 +1559,10 @@ usage, and per-query cost. Especially useful after running the compound queries 
 ```bash
 synthadoc audit events
 ```
+
+Shows raw job-level audit events (start/finish, errors). Use `--limit N` and `--offset N` to page:
+`synthadoc audit events -n 100 --offset 100` shows events 101–200.
+Paginated in the Obsidian Audit modal (100 events per page) with ← Prev / Next → navigation and a total count in the page label.
 
 Expected after Steps 6–10:
 
