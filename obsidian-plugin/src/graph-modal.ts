@@ -186,23 +186,10 @@ export class GraphModal extends Modal {
     private _raf: number | null = null;
     private _closed = false;
     private _abort: AbortController | null = null;
-    private _xClose = false;
 
     constructor(app: App, _serverUrl: string) {
         super(app);
     }
-
-    // Block Escape-key and outside-click; only allow close via the × button.
-    // Also allow Obsidian's programmatic close (vault/workspace teardown) through
-    // when the modal container is no longer attached to the document.
-    close() {
-        if (this._xClose || !document.contains(this.containerEl)) {
-            this._xClose = false;
-            super.close();
-        }
-    }
-
-    private _dismiss() { this._xClose = true; this.close(); }
 
     onOpen() {
         this._closed = false;
@@ -500,12 +487,16 @@ export class GraphModal extends Modal {
 
         // ── Pointer / scroll events ──────────────────────────────────────────
 
-        // Wire Obsidian's native close button (added to modalEl before onOpen) to _dismiss()
-        // so it can bypass our close() override that blocks Escape and outside-click.
-        const nativeClose = modalEl.querySelector(".modal-close-button") as HTMLElement | null;
-        if (nativeClose) {
-            nativeClose.addEventListener("click", (e) => { e.stopPropagation(); this._dismiss(); }, { signal: sig });
-        }
+        // Block Escape key — capture phase fires before Obsidian's own keydown handler.
+        document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") e.stopImmediatePropagation();
+        }, { capture: true, signal: sig });
+
+        // Block outside-click — stop clicks on the overlay before Obsidian sees them.
+        // Clicks inside modalEl (including the native × button) are not affected.
+        this.containerEl.addEventListener("click", (e) => {
+            if (!modalEl.contains(e.target as Node)) e.stopImmediatePropagation();
+        }, { capture: true, signal: sig });
 
         // Header drag — move the whole panel.
         let panelDrag: { x0: number; y0: number; l0: number; t0: number } | null = null;
