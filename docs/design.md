@@ -902,7 +902,7 @@ Reload the plugin (toggle off/on) after copying — a full Obsidian restart is n
 | `Synthadoc: Staging: manage staging policy...` | Modal panel showing the current policy state. A segmented control switches between **Off**, **All**, and **Threshold**. When **Threshold** is selected, a second segmented control sets the minimum confidence (**High** / **Medium** / **Low**). A **Save** button persists the change via the HTTP API and updates the inline status. A footer link opens the Candidates modal directly. |
 | `Synthadoc: Candidates: review candidate pages...` | Paginated table (50 per page) of all staged candidate pages. Each row shows the slug, a colour-coded confidence badge, and a checkbox. **Promote All** and **Discard All** act on every candidate; **Promote Selected** and **Discard Selected** act on checked rows. The table reloads automatically after each action. A footer link opens the Staging policy modal. |
 | `Synthadoc: Context: build context pack...` | Modal with a goal/question text area, a token budget field (default 4000), and a **Build Context Pack** button (`Ctrl/Cmd+Enter` also triggers). The server decomposes the goal, retrieves and ranks wiki pages via BM25, and packs them within the budget. The result is rendered as cited Markdown in a read-only text area. **Copy to Clipboard** copies the content to the OS clipboard. **Save as .md** downloads the Markdown file with a slug-derived filename. |
-| `Synthadoc: Audit...` | Tabbed modal with four audit views, each loading automatically on open. **Query history** — last N query records (default 50) with question, sub-question count, token use, cost, and timestamp. **Ingest history** — last N ingest records (default 50) with source filename, wiki page slug, tokens, cost, and ingested-at timestamp. **Events** — last N raw audit events (default 100, max 1000) with timestamp, job ID, event type, and metadata; scrollable when tall. **Cost summary** — total tokens and cost over the last N days (default 30) plus per-day breakdown. |
+| `Synthadoc: Audit...` | Tabbed modal with four audit views, each loading automatically on open. **Query history** — paginated (50 per page) query records with question, sub-question count, token use, cost, and timestamp; ← Prev / Page X of Y (Z total) / Next → / ↻ Reload controls. **Ingest history** — paginated (50 per page) ingest records with source filename, wiki page slug, tokens, cost, and ingested-at timestamp; same pager controls. **Events** — paginated (100 per page) raw audit events with timestamp, job ID, event type, and metadata; same pager controls. **Cost summary** — total tokens and cost over the last N days (default 30) plus per-day breakdown. |
 | `Graph: show knowledge graph` _(v1.1.0)_ | Open the knowledge graph panel — draggable modal with Canvas force-directed graph, type filter dropdown, cluster legend, hover tooltip showing title/slug/type/state/cluster/connections, and click-to-open page in current pane. System pages (index, overview, dashboard, purpose, log) are excluded. Capped at 300 most-connected nodes for large wikis with an explanatory banner. |
 
 ### Ribbon icon
@@ -999,10 +999,10 @@ synthadoc
 │   ├── history  <slug> [-w wiki] [--index N] [--show-content]    list content snapshots (newest first)
 │   └── rollback <slug> [-w wiki] [--index N] [--reason "<str>"]  restore page body to a snapshot
 ├── audit
-│   ├── history [-w wiki] [--limit N] [--json]
+│   ├── history [-w wiki] [--limit N] [--offset N] [--json]
 │   ├── cost [-w wiki] [--days N] [--json]
-│   ├── queries [-w wiki] [--limit N] [--json]
-│   ├── events [-w wiki] [--limit N] [--json]
+│   ├── queries [-w wiki] [--limit N] [--offset N] [--json]
+│   ├── events [-w wiki] [--limit N] [--offset N] [--json]
 │   ├── citations [-w wiki] [--page <slug>] [--source <file>] [--broken] [--json]
 │   └── lifecycle
 │       └── purge -w wiki (--before <date> | --keep-latest <n>)
@@ -1079,15 +1079,21 @@ synthadoc ingest --file sources.txt --analyse-only -w my-wiki
 Query the append-only `audit.db` directly from the CLI:
 
 ```bash
-# Last 20 ingest records
+# Last 50 ingest records (title shows "50 of N total"); page 2 with --offset
 synthadoc audit history -w my-wiki
+synthadoc audit history -n 50 --offset 50 -w my-wiki
+
+# Last 50 query records; supports --limit and --offset for paging
+synthadoc audit queries -w my-wiki
+synthadoc audit queries -n 50 --offset 50 -w my-wiki
 
 # Token spend + cost for the last 30 days (default) or custom window
 synthadoc audit cost -w my-wiki
 synthadoc audit cost --days 7 -w my-wiki
 
-# Last 100 audit events (contradictions found, auto-resolutions, cost gate triggers)
+# Last 100 audit events; supports --limit and --offset for paging
 synthadoc audit events -w my-wiki
+synthadoc audit events -n 100 --offset 100 -w my-wiki
 ```
 
 ### Wiki targeting
@@ -3289,6 +3295,7 @@ All three files share identical body content generated from the same template; t
 - **CRLF fix — Markdown and TOML writers** — seven `write_text` call sites that write `.md` and `.toml` files were missing `newline="\\n"`, producing CRLF line endings on Windows and corrupting YAML frontmatter. All sites now force LF (BUG-23).
 - **Graph task GC fix** — the `asyncio.create_task()` result for the background graph build was not stored, allowing the GC to silently cancel the task. The reference is now kept in `_graph_task` and reused to deduplicate concurrent build requests (BUG-18).
 - **Graph cache stale node cleanup** — `DELETE /pages/{slug}/history` now also calls `delete_graph_node(slug)` so live-test artifact nodes are pruned from the graph cache on teardown.
+- **Audit endpoint pagination** — `GET /audit/queries`, `GET /audit/history`, and `GET /audit/events` now support `limit` and `offset` query parameters and return `{records, total, limit, offset}`; max limit is 500 for queries/ingests and 1000 for events (FastAPI `Query` validation); the Obsidian Audit modal Query history, Ingest history, and Events tabs show Prev/Next pagers with a "Page X of Y (Z total)" label (BUG-25).
 - **`/lifecycle/events` total field fix** — `GET /lifecycle/events` was returning `len(events)` (post-filter page count) instead of the pre-pagination `total` from the DB, causing pagination clients to miscalculate page counts (BUG-20).
 - **Blocked-domain suggestion filter fix** — `_filter_blocked_suggestions` used `lstrip("www.")` which strips individual characters rather than the literal prefix, so `www.example.com` was never matched against a blocked entry of the same name. Replaced with `removeprefix("www.")` and dual-form check (BUG-21).
 
@@ -3484,7 +3491,7 @@ All three files share identical body content generated from the same template; t
 - **Two-step ingest** — `_analyse()` caches entity extraction + summary; decision prompt uses summary instead of full text; reduces cost on large documents
 - **purpose.md scope filtering** — define what belongs in your wiki; the LLM skips out-of-scope sources cleanly
 - **overview.md auto-summary** — 2-paragraph wiki overview regenerated automatically after every ingest
-- **Audit CLI** — `synthadoc audit history / cost / events` query `audit.db`; `--analyse-only` flag previews ingest analysis before writing pages
+- **Audit CLI** — `synthadoc audit history / cost / queries / events` query `audit.db`; `--analyse-only` flag previews ingest analysis before writing pages
 - **3-layer cache** — embedding cache, LLM response cache, provider prompt cache
 - **Cost guards** — configurable soft-warn and hard-gate USD thresholds
 - **Hook system** — shell commands on `on_ingest_complete` and `on_lint_complete` lifecycle events; blocking or background; context passed as JSON on stdin

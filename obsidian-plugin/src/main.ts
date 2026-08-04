@@ -2068,180 +2068,222 @@ class AuditModal extends Modal {
     }
 
     private _buildQueryHistoryTab(panel: HTMLElement) {
-        const row = panel.createEl("div");
-        row.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:12px";
-        row.createEl("label", { text: "Last" });
-        const input = row.createEl("input", { type: "number" }) as HTMLInputElement;
-        input.value = "50";
-        input.style.cssText = "width:60px;padding:4px 8px";
-        row.createEl("span", { text: "records" });
-        const btn = row.createEl("button", { text: "Load" });
+        const PAGE_SIZE = 50;
+        let page = 0;
+        let total = 0;
 
-        const tableEl = panel.createEl("div");
-
-        const load = async () => {
-            const limit = parseInt(input.value) || 50;
-            tableEl.setText("Loading…");
-            try {
-                const r = await api.queryHistory(limit) as any;
-                tableEl.empty();
-                if (!r.records.length) {
-                    tableEl.createEl("p", { text: "No queries recorded yet." });
-                    return;
-                }
-                const table = tableEl.createEl("table");
-                table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px;-webkit-user-select:text;user-select:text";
-                const hrow = table.createEl("thead").createEl("tr");
-                for (const h of ["Question", "Sub-Qs", "Tokens", "Cost (USD)", "Asked at"]) {
-                    const th = hrow.createEl("th", { text: h });
-                    th.style.cssText = "text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border)";
-                }
-                const tbody = table.createEl("tbody");
-                for (const rec of r.records) {
-                    const tr = tbody.createEl("tr");
-                    const ts = rec.queried_at ? new Date(rec.queried_at).toLocaleString() : "—";
-                    for (const text of [
-                        rec.question.length > 80 ? rec.question.slice(0, 77) + "…" : rec.question,
-                        String(rec.sub_questions_count ?? 1),
-                        (rec.tokens ?? 0).toLocaleString(),
-                        `$${(rec.cost_usd ?? 0).toFixed(4)}`,
-                        ts,
-                    ]) {
-                        const td = tr.createEl("td", { text });
-                        td.style.cssText = "padding:4px 8px;border-bottom:1px solid var(--background-modifier-border-subtle)";
-                    }
-                }
-            } catch {
-                tableEl.setText("Error: is synthadoc serve running?");
-            }
-        };
-
-        btn.onclick = load;
-        load();
-    }
-
-    private _buildIngestHistoryTab(panel: HTMLElement) {
-        const row = panel.createEl("div");
-        row.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:12px";
-        row.createEl("label", { text: "Last" });
-        const input = row.createEl("input", { type: "number" }) as HTMLInputElement;
-        input.value = "50";
-        input.style.cssText = "width:60px;padding:4px 8px";
-        row.createEl("span", { text: "records" });
-        const btn = row.createEl("button", { text: "Load" });
-
-        const tableEl = panel.createEl("div");
-
-        const load = async () => {
-            const limit = parseInt(input.value) || 50;
-            tableEl.setText("Loading…");
-            try {
-                const r = await api.auditHistory(limit) as any;
-                tableEl.empty();
-                if (!r.records.length) {
-                    tableEl.createEl("p", { text: "No ingest records yet." });
-                    return;
-                }
-                const table = tableEl.createEl("table");
-                table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px;-webkit-user-select:text;user-select:text;table-layout:fixed";
-                // colgroup — fixes column widths so the table doesn't reflow per row
-                const cg = table.createEl("colgroup");
-                for (const w of ["20%", "26%", "8%", "10%", "36%"]) {
-                    const col = cg.createEl("col") as HTMLElement;
-                    col.style.width = w;
-                }
-                const COLS = [
-                    { label: "Source",     wrap: false },
-                    { label: "Wiki page",  wrap: false },
-                    { label: "Tokens",     wrap: true  },
-                    { label: "Cost (USD)", wrap: true  },
-                    { label: "Ingested at", wrap: true },
-                ];
-                const hrow = table.createEl("thead").createEl("tr");
-                for (const col of COLS) {
-                    const th = hrow.createEl("th", { text: col.label });
-                    th.style.cssText = "text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
-                }
-                const tbody = table.createEl("tbody");
-                for (const rec of r.records) {
-                    const tr = tbody.createEl("tr");
-                    const _parts = rec.source_path.split(/[\\/]/);
-                    const src = _parts.filter(Boolean).pop() ?? rec.source_path;
-                    const ts = rec.ingested_at ? new Date(rec.ingested_at).toLocaleString() : "—";
-                    const cells = [
-                        { text: src,                                    nowrap: true  },
-                        { text: rec.wiki_page,                          nowrap: true  },
-                        { text: (rec.tokens ?? 0).toLocaleString(),     nowrap: true  },
-                        { text: `$${(rec.cost_usd ?? 0).toFixed(4)}`,   nowrap: true  },
-                        { text: ts,                                      nowrap: true  },
-                    ];
-                    for (const cell of cells) {
-                        const td = tr.createEl("td", { text: cell.text });
-                        td.style.cssText = "padding:4px 8px;border-bottom:1px solid var(--background-modifier-border-subtle);overflow:hidden;text-overflow:ellipsis"
-                            + (cell.nowrap ? ";white-space:nowrap" : "");
-                    }
-                }
-            } catch {
-                tableEl.setText("Error: is synthadoc serve running?");
-            }
-        };
-
-        btn.onclick = load;
-        load();
-    }
-
-    private _buildEventsTab(panel: HTMLElement) {
-        const row = panel.createEl("div");
-        row.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:12px";
-        row.createEl("label", { text: "Last" });
-        const input = row.createEl("input", { type: "number" }) as HTMLInputElement;
-        input.value = "100";
-        input.min = "1";
-        input.max = "1000";
-        input.style.cssText = "width:70px;padding:4px 8px";
-        row.createEl("span", { text: "events (max 1000)" });
-        const btn = row.createEl("button", { text: "Load" });
+        const pagerRow = panel.createEl("div");
+        pagerRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:12px";
+        const prevBtn = pagerRow.createEl("button", { text: "← Prev" }) as HTMLButtonElement;
+        const pageLabel = pagerRow.createEl("span");
+        pageLabel.style.cssText = "font-size:12px;color:var(--text-muted)";
+        const nextBtn = pagerRow.createEl("button", { text: "Next →" }) as HTMLButtonElement;
+        const refreshBtn = pagerRow.createEl("button", { text: "↻" });
+        refreshBtn.title = "Refresh";
 
         const tableEl = panel.createEl("div");
         tableEl.style.cssText = "max-height:60vh;overflow-y:auto";
 
+        const render = (r: any) => {
+            tableEl.empty();
+            total = r.total ?? 0;
+            const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+            page = Math.min(page, totalPages - 1);
+            pageLabel.textContent = `Page ${page + 1} of ${totalPages} (${total} total)`;
+            prevBtn.disabled = page === 0;
+            nextBtn.disabled = page >= totalPages - 1;
+
+            if (!r.records.length) {
+                tableEl.createEl("p", { text: "No queries recorded yet." });
+                return;
+            }
+            const table = tableEl.createEl("table");
+            table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px;-webkit-user-select:text;user-select:text";
+            const hrow = table.createEl("thead").createEl("tr");
+            for (const h of ["Question", "Sub-Qs", "Tokens", "Cost (USD)", "Asked at"]) {
+                const th = hrow.createEl("th", { text: h });
+                th.style.cssText = "text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border)";
+            }
+            const tbody = table.createEl("tbody");
+            for (const rec of r.records) {
+                const tr = tbody.createEl("tr");
+                const ts = rec.queried_at ? new Date(rec.queried_at).toLocaleString() : "—";
+                for (const text of [
+                    rec.question.length > 80 ? rec.question.slice(0, 77) + "…" : rec.question,
+                    String(rec.sub_questions_count ?? 1),
+                    (rec.tokens ?? 0).toLocaleString(),
+                    `$${(rec.cost_usd ?? 0).toFixed(4)}`,
+                    ts,
+                ]) {
+                    const td = tr.createEl("td", { text });
+                    td.style.cssText = "padding:4px 8px;border-bottom:1px solid var(--background-modifier-border-subtle)";
+                }
+            }
+        };
+
         const load = async () => {
-            let limit = parseInt(input.value) || 100;
-            if (limit < 1) limit = 1;
-            if (limit > 1000) limit = 1000;
-            input.value = String(limit);
             tableEl.setText("Loading…");
             try {
-                const r = await api.auditEvents(limit) as any;
-                tableEl.empty();
-                if (!r.records.length) {
-                    tableEl.createEl("p", { text: "No audit events found." });
-                    return;
-                }
-                const table = tableEl.createEl("table");
-                table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px;-webkit-user-select:text;user-select:text";
-                const hrow = table.createEl("thead").createEl("tr");
-                for (const h of ["Timestamp", "Job ID", "Event", "Metadata"]) {
-                    const th = hrow.createEl("th", { text: h });
-                    th.style.cssText = "text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border);white-space:nowrap";
-                }
-                const tbody = table.createEl("tbody");
-                for (const rec of r.records) {
-                    const tr = tbody.createEl("tr");
-                    const ts = rec.timestamp ? rec.timestamp.slice(0, 16).replace("T", " ") : "—";
-                    const jobId = rec.job_id ? rec.job_id.slice(0, 8) : "—";
-                    for (const text of [ts, jobId, rec.event ?? "—", rec.metadata ?? "—"]) {
-                        const td = tr.createEl("td", { text });
-                        td.style.cssText = "padding:4px 8px;border-bottom:1px solid var(--background-modifier-border-subtle);font-size:11px";
-                    }
-                }
+                const r = await api.queryHistory(PAGE_SIZE, page * PAGE_SIZE) as any;
+                render(r);
             } catch {
                 tableEl.setText("Error: is synthadoc serve running?");
             }
         };
 
-        btn.onclick = load;
-        input.addEventListener("keydown", (e) => { if (e.key === "Enter") load(); });
+        prevBtn.onclick = () => { page--; load(); };
+        nextBtn.onclick = () => { page++; load(); };
+        refreshBtn.onclick = () => { page = 0; load(); };
+        load();
+    }
+
+    private _buildIngestHistoryTab(panel: HTMLElement) {
+        const PAGE_SIZE = 50;
+        let page = 0;
+        let total = 0;
+
+        const pagerRow = panel.createEl("div");
+        pagerRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:12px";
+        const prevBtn = pagerRow.createEl("button", { text: "← Prev" }) as HTMLButtonElement;
+        const pageLabel = pagerRow.createEl("span");
+        pageLabel.style.cssText = "font-size:12px;color:var(--text-muted)";
+        const nextBtn = pagerRow.createEl("button", { text: "Next →" }) as HTMLButtonElement;
+        const refreshBtn = pagerRow.createEl("button", { text: "↻" });
+        refreshBtn.title = "Refresh";
+
+        const tableEl = panel.createEl("div");
+        tableEl.style.cssText = "max-height:60vh;overflow-y:auto";
+
+        const render = (r: any) => {
+            tableEl.empty();
+            total = r.total ?? 0;
+            const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+            page = Math.min(page, totalPages - 1);
+            pageLabel.textContent = `Page ${page + 1} of ${totalPages} (${total} total)`;
+            prevBtn.disabled = page === 0;
+            nextBtn.disabled = page >= totalPages - 1;
+
+            if (!r.records.length) {
+                tableEl.createEl("p", { text: "No ingest records yet." });
+                return;
+            }
+            const table = tableEl.createEl("table");
+            table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px;-webkit-user-select:text;user-select:text;table-layout:fixed";
+            const cg = table.createEl("colgroup");
+            for (const w of ["20%", "26%", "8%", "10%", "36%"]) {
+                const col = cg.createEl("col") as HTMLElement;
+                col.style.width = w;
+            }
+            const COLS = [
+                { label: "Source",      wrap: false },
+                { label: "Wiki page",   wrap: false },
+                { label: "Tokens",      wrap: true  },
+                { label: "Cost (USD)",  wrap: true  },
+                { label: "Ingested at", wrap: true  },
+            ];
+            const hrow = table.createEl("thead").createEl("tr");
+            for (const col of COLS) {
+                const th = hrow.createEl("th", { text: col.label });
+                th.style.cssText = "text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
+            }
+            const tbody = table.createEl("tbody");
+            for (const rec of r.records) {
+                const tr = tbody.createEl("tr");
+                const _parts = rec.source_path.split(/[\\/]/);
+                const src = _parts.filter(Boolean).pop() ?? rec.source_path;
+                const ts = rec.ingested_at ? new Date(rec.ingested_at).toLocaleString() : "—";
+                const cells = [
+                    { text: src,                                   nowrap: true },
+                    { text: rec.wiki_page,                         nowrap: true },
+                    { text: (rec.tokens ?? 0).toLocaleString(),    nowrap: true },
+                    { text: `$${(rec.cost_usd ?? 0).toFixed(4)}`,  nowrap: true },
+                    { text: ts,                                     nowrap: true },
+                ];
+                for (const cell of cells) {
+                    const td = tr.createEl("td", { text: cell.text });
+                    td.style.cssText = "padding:4px 8px;border-bottom:1px solid var(--background-modifier-border-subtle);overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+                }
+            }
+        };
+
+        const load = async () => {
+            tableEl.setText("Loading…");
+            try {
+                const r = await api.auditHistory(PAGE_SIZE, page * PAGE_SIZE) as any;
+                render(r);
+            } catch {
+                tableEl.setText("Error: is synthadoc serve running?");
+            }
+        };
+
+        prevBtn.onclick = () => { page--; load(); };
+        nextBtn.onclick = () => { page++; load(); };
+        refreshBtn.onclick = () => { page = 0; load(); };
+        load();
+    }
+
+    private _buildEventsTab(panel: HTMLElement) {
+        const PAGE_SIZE = 100;
+        let page = 0;
+        let total = 0;
+
+        const pagerRow = panel.createEl("div");
+        pagerRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:12px";
+        const prevBtn = pagerRow.createEl("button", { text: "← Prev" }) as HTMLButtonElement;
+        const pageLabel = pagerRow.createEl("span");
+        pageLabel.style.cssText = "font-size:12px;color:var(--text-muted)";
+        const nextBtn = pagerRow.createEl("button", { text: "Next →" }) as HTMLButtonElement;
+        const refreshBtn = pagerRow.createEl("button", { text: "↻" });
+        refreshBtn.title = "Refresh";
+
+        const tableEl = panel.createEl("div");
+        tableEl.style.cssText = "max-height:60vh;overflow-y:auto";
+
+        const render = (r: any) => {
+            tableEl.empty();
+            total = r.total ?? 0;
+            const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+            page = Math.min(page, totalPages - 1);
+            pageLabel.textContent = `Page ${page + 1} of ${totalPages} (${total} total)`;
+            prevBtn.disabled = page === 0;
+            nextBtn.disabled = page >= totalPages - 1;
+
+            if (!r.records.length) {
+                tableEl.createEl("p", { text: "No audit events found." });
+                return;
+            }
+            const table = tableEl.createEl("table");
+            table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px;-webkit-user-select:text;user-select:text";
+            const hrow = table.createEl("thead").createEl("tr");
+            for (const h of ["Timestamp", "Job ID", "Event", "Metadata"]) {
+                const th = hrow.createEl("th", { text: h });
+                th.style.cssText = "text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border);white-space:nowrap";
+            }
+            const tbody = table.createEl("tbody");
+            for (const rec of r.records) {
+                const tr = tbody.createEl("tr");
+                const ts = rec.timestamp ? rec.timestamp.slice(0, 16).replace("T", " ") : "—";
+                const jobId = rec.job_id ? rec.job_id.slice(0, 8) : "—";
+                for (const text of [ts, jobId, rec.event ?? "—", rec.metadata ?? "—"]) {
+                    const td = tr.createEl("td", { text });
+                    td.style.cssText = "padding:4px 8px;border-bottom:1px solid var(--background-modifier-border-subtle);font-size:11px";
+                }
+            }
+        };
+
+        const load = async () => {
+            tableEl.setText("Loading…");
+            try {
+                const r = await api.auditEvents(PAGE_SIZE, page * PAGE_SIZE) as any;
+                render(r);
+            } catch {
+                tableEl.setText("Error: is synthadoc serve running?");
+            }
+        };
+
+        prevBtn.onclick = () => { page--; load(); };
+        nextBtn.onclick = () => { page++; load(); };
+        refreshBtn.onclick = () => { page = 0; load(); };
         load();
     }
 

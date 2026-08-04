@@ -288,16 +288,23 @@ class AuditDB:
                 row = await cur.fetchone()
             return dict(row) if row else None
 
-    async def list_ingests(self, limit: int = 50) -> list[dict]:
+    @staticmethod
+    async def _count_table(db, table: str) -> int:
+        """Return the total row count for *table* using an already-open db handle."""
+        async with db.execute(f"SELECT COUNT(*) FROM {table}") as cur:  # noqa: S608
+            return (await cur.fetchone())[0]
+
+    async def list_ingests(self, limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
         async with aiosqlite.connect(self._path) as db:
             db.row_factory = aiosqlite.Row
+            total = await self._count_table(db, "ingests")
             async with db.execute(
                 "SELECT source_path, wiki_page, tokens, cost_usd, ingested_at "
-                "FROM ingests ORDER BY id DESC LIMIT ?",
-                (limit,),
+                "FROM ingests ORDER BY id DESC LIMIT ? OFFSET ?",
+                (limit, offset),
             ) as cur:
                 rows = await cur.fetchall()
-        return [dict(r) for r in rows]
+        return [dict(r) for r in rows], total
 
     async def list_ingests_since(self, days: int = 7) -> list[dict]:
         """Return ingest records from the last `days` days, newest first."""
@@ -312,16 +319,17 @@ class AuditDB:
                 rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
-    async def list_events(self, limit: int = 100) -> list[dict]:
+    async def list_events(self, limit: int = 100, offset: int = 0) -> tuple[list[dict], int]:
         async with aiosqlite.connect(self._path) as db:
             db.row_factory = aiosqlite.Row
+            total = await self._count_table(db, "audit_events")
             async with db.execute(
                 "SELECT job_id, event, timestamp, metadata "
-                "FROM audit_events ORDER BY id ASC LIMIT ?",
-                (limit,),
+                "FROM audit_events ORDER BY id ASC LIMIT ? OFFSET ?",
+                (limit, offset),
             ) as cur:
                 rows = await cur.fetchall()
-        return [dict(r) for r in rows]
+        return [dict(r) for r in rows], total
 
     async def record_query(self, question: str, sub_questions_count: int,
                            tokens: int, cost_usd: float) -> None:
@@ -334,16 +342,17 @@ class AuditDB:
             )
             await db.commit()
 
-    async def list_queries(self, limit: int = 50) -> list[dict]:
+    async def list_queries(self, limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
         async with aiosqlite.connect(self._path) as db:
             db.row_factory = aiosqlite.Row
+            total = await self._count_table(db, "queries")
             async with db.execute(
                 "SELECT question, sub_questions_count, tokens, cost_usd, queried_at"
-                " FROM queries ORDER BY id DESC LIMIT ?",
-                (limit,),
+                " FROM queries ORDER BY id DESC LIMIT ? OFFSET ?",
+                (limit, offset),
             ) as cur:
                 rows = await cur.fetchall()
-        return [dict(r) for r in rows]
+        return [dict(r) for r in rows], total
 
     async def cost_summary(self, days: int = 30) -> dict:
         from datetime import timedelta
@@ -837,9 +846,7 @@ class AuditDB:
 
     async def has_prior_sessions(self) -> bool:
         async with aiosqlite.connect(self._path) as db:
-            async with db.execute("SELECT COUNT(*) FROM chat_sessions") as cur:
-                row = await cur.fetchone()
-        return (row[0] if row else 0) > 0
+            return await self._count_table(db, "chat_sessions") > 0
 
     async def get_history(self, session_id: str, turns: int) -> list[dict]:
         """Return last `turns` conversation turns (user+assistant pairs), oldest first."""

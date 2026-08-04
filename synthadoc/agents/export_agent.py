@@ -91,7 +91,7 @@ class ExportAgent:
         citations = await audit.list_citations(limit=100_000)
         lc_events, _ = await audit.get_lifecycle_events(limit=100_000)
         cost_data = await audit.cost_summary(days=3650)
-        ingest_records = await audit.list_ingests(limit=100_000)
+        ingest_records, _ = await audit.list_ingests(limit=100_000)
         return self._render_json(pages, citations, lc_events, cost_data, ingest_records, routing)
 
     def _render_llms_txt(self, pages: dict[str, WikiPage]) -> str:
