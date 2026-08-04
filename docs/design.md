@@ -868,7 +868,7 @@ for example, Claude Code session transcripts at `~/.claude/projects/<hash>/<id>.
 
 ### Background worker
 
-The HTTP server runs a background task that polls `jobs.db` every 2 seconds and dispatches pending jobs. Max 4 concurrent ingest jobs (configurable via `max_parallel_ingest`).
+The HTTP server runs a background task that polls `jobs.db` every 2 seconds and dispatches pending jobs. The worker processes one job at a time (sequential `await`). `queue.max_parallel_ingest` is reserved for a future parallel implementation but has no runtime effect today — see the config reference for details.
 
 ---
 
@@ -1252,7 +1252,7 @@ skill   = { model = "claude-haiku-4-5-20251001" }
 # llm_timeout_seconds = 90  # set for reasoning models to fail fast instead of silent empty response
 
 [queue]
-max_parallel_ingest  = 4
+max_parallel_ingest  = 4    # reserved — no effect; jobs run sequentially today
 max_retries          = 3
 backoff_base_seconds = 30
 
@@ -1334,7 +1334,7 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 | `ingest.staging_confidence_min` | str | `"high"` | Minimum confidence to auto-commit when `staging_policy = "threshold"`. Values: `"high"`, `"medium"`, `"low"`. Pages below this threshold are held as candidates. |
 | `query.gap_score_threshold` | float | `2.0` | BM25 score below which a knowledge gap is detected and `suggested_searches` are returned instead of (or alongside) an answer. Lower = more sensitive gap detection. |
 | `query.context_token_budget` | int | `4000` | Token budget for context pack assembly. Increase for richer context on complex queries; decrease if hitting prompt size limits. |
-| `queue.max_parallel_ingest` | int | `4` | Max concurrent ingest agents |
+| `queue.max_parallel_ingest` | int | `4` | Reserved for future parallel execution. The worker currently processes jobs sequentially; this field has no runtime effect. |
 | `queue.max_retries` | int | `3` | Retries before job → dead |
 | `queue.backoff_base_seconds` | int | `30` | Exponential backoff base; delays are `min(base × 2^(attempt−1), 300)` seconds |
 | `cache.version` | str | `"4"` | Bump to invalidate all cached LLM responses without touching source code |
