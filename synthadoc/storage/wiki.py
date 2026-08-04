@@ -200,7 +200,7 @@ class WikiStorage:
         yaml_str = yaml.dump(fm, default_flow_style=False, allow_unicode=True)
         text = f"---\n{yaml_str}---\n\n{body}"
         target = self._page_path(slug)
-        target.write_text(text, encoding="utf-8")
+        target.write_text(text, encoding="utf-8", newline="\n")
 
     def read_page(self, slug: str) -> Optional[WikiPage]:
         target = self._page_path(slug)
@@ -276,7 +276,7 @@ class WikiStorage:
             raw = raw.rstrip() + f"\n{entry}\n"
         else:
             raw = raw.rstrip() + f"\n\n## Recently Added\n{entry}\n"
-        index_path.write_text(raw, encoding="utf-8")
+        index_path.write_text(raw, encoding="utf-8", newline="\n")
         # Stamp the page itself so it's queryable by category
         self._add_category(slug, "Recently Added")
 

@@ -340,3 +340,60 @@ def test_read_page_with_malformed_yaml_frontmatter(tmp_wiki):
     assert loaded is not None
     assert isinstance(loaded, WikiPage)
     assert "some body" in loaded.content
+
+
+# ---------------------------------------------------------------------------
+# BUG-23 — write_page and append_to_index must use newline="\n" (no CRLF)
+# ---------------------------------------------------------------------------
+
+def test_write_page_uses_unix_line_endings(tmp_wiki):
+    """BUG-23: write_page must pass newline="\\n" so no CRLF on Windows."""
+    import pathlib
+    from unittest.mock import patch
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    (tmp_wiki / "wiki").mkdir(parents=True, exist_ok=True)
+    page = WikiPage(title="T", tags=[], content="body", status="draft",
+                    confidence="medium", sources=[])
+
+    real_write_text = pathlib.Path.write_text
+    calls: list = []
+
+    def spy(self, data, *args, **kwargs):
+        calls.append(kwargs)
+        return real_write_text(self, data, *args, **kwargs)
+
+    with patch.object(pathlib.Path, "write_text", spy):
+        store.write_page("test-newline", page)
+
+    assert calls, "write_text was never called"
+    for kwargs in calls:
+        assert kwargs.get("newline") == "\n", "write_text called without newline='\\n'"
+    assert b"\r\n" not in (tmp_wiki / "wiki" / "test-newline.md").read_bytes()
+
+
+def test_append_to_index_uses_unix_line_endings(tmp_wiki):
+    """BUG-23: append_to_index must pass newline="\\n" so no CRLF on Windows."""
+    import pathlib
+    from unittest.mock import patch
+
+    wiki_dir = tmp_wiki / "wiki"
+    wiki_dir.mkdir(parents=True, exist_ok=True)
+    index = wiki_dir / "index.md"
+    index.write_text("# Index\n\n## Recently Added\n", encoding="utf-8")
+
+    store = WikiStorage(wiki_dir)
+    real_write_text = pathlib.Path.write_text
+    calls: list = []
+
+    def spy(self, data, *args, **kwargs):
+        calls.append(kwargs)
+        return real_write_text(self, data, *args, **kwargs)
+
+    with patch.object(pathlib.Path, "write_text", spy):
+        store.append_to_index("new-page", "New Page")
+
+    assert calls, "write_text was never called"
+    for kwargs in calls:
+        assert kwargs.get("newline") == "\n", "write_text called without newline='\\n'"
+    assert b"\r\n" not in index.read_bytes()
