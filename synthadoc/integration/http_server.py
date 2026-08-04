@@ -10,6 +10,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from synthadoc.core.queue import JobStatus
+from synthadoc.storage.wiki import SYSTEM_PAGE_SLUGS
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator, model_validator
 from typing import Optional
@@ -583,8 +584,7 @@ _graph_task: "asyncio.Task[None] | None" = None  # retained reference prevents G
 # (index, dashboard, overview, purpose, log) never appear in the
 # Current States, Audit Log, or Content Snapshots tabs — regardless of
 # what historical records the audit DB contains.
-_SCAFFOLD_SLUG_LOWER: frozenset[str] = frozenset({
-    "index", "log", "dashboard", "purpose", "overview",  # wiki/ scaffold (LINT_SKIP_SLUGS)
+_SCAFFOLD_SLUG_LOWER: frozenset[str] = SYSTEM_PAGE_SLUGS | frozenset({
     "agents", "claude", "gemini", "routing", "readme",   # vault-root config files
 })
 
