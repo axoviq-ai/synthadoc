@@ -197,6 +197,10 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **[Per-source truncation flag](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#30-per-source-truncation-flag)** — `--max-source-chars` caps any source (PDF, DOCX, web page, plain text) before the LLM call; truncated sources flagged with `truncated: true` in frontmatter and warned in lint output | **Yes** | No | No | No |
 | **[Multi-wiki isolation](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#wiki-targeting)** — each wiki on its own port with independent config, audit trail, and job queue; switch with `synthadoc use` | **Yes** | No | Partial | No |
 
+- **Guided Maintenance Workflows** — ask the chat to "re-ingest stale pages" and the
+  wiki agent finds stale sources, confirms with you, re-ingests each one, and optionally
+  runs lint — all from a single conversational turn. No terminal required.
+
 ### Business value
 
 | Value | How |
