@@ -3,8 +3,26 @@
 import asyncio
 import platform
 import sqlite3
+import sys
 import pytest
 from pathlib import Path
+
+
+def pytest_collection_modifyitems(config, items):
+    """Auto-deselect tests whose platform marker does not match the current OS."""
+    _sys = sys.platform  # "win32", "linux", "darwin"
+    remaining, deselected = [], []
+    for item in items:
+        skip = (
+            (item.get_closest_marker("windows") and _sys != "win32")
+            or (item.get_closest_marker("linux") and _sys != "linux")
+            or (item.get_closest_marker("macos") and _sys != "darwin")
+            or (item.get_closest_marker("posix") and _sys == "win32")
+        )
+        (deselected if skip else remaining).append(item)
+    if deselected:
+        config.hook.pytest_deselected(items=deselected)
+        items[:] = remaining
 
 # Detect whether the MCP package is properly installed.  Forks whose
 # pyproject.toml pre-dates the mcp dependency may have no mcp package, or an
