@@ -473,6 +473,37 @@ class AuditDB:
             })
         return result
 
+    async def count_citations(
+        self,
+        page_slug: str | None = None,
+        source_file: str | None = None,
+    ) -> int:
+        """Return the total number of claim_citations rows matching the filters."""
+        wheres, params = [], []
+        if page_slug:
+            wheres.append("page_slug=?")
+            params.append(page_slug)
+        if source_file:
+            wheres.append("source_file=?")
+            params.append(source_file)
+        where = ("WHERE " + " AND ".join(wheres)) if wheres else ""
+        async with aiosqlite.connect(self._path) as db:
+            async with db.execute(
+                f"SELECT COUNT(*) FROM claim_citations {where}", params
+            ) as cur:
+                return (await cur.fetchone())[0]
+
+    async def count_citation_failures(self, page_slug: str | None = None) -> int:
+        """Return the total number of citation_validation_failed audit events."""
+        slug_filter, params = _audit_slug_filter(page_slug)
+        async with aiosqlite.connect(self._path) as db:
+            async with db.execute(
+                f"SELECT COUNT(*) FROM audit_events "
+                f"WHERE event='citation_validation_failed' {slug_filter}",
+                params,
+            ) as cur:
+                return (await cur.fetchone())[0]
+
     async def write_event(self, event: str, job_id: str = "",
                           metadata: dict | None = None) -> None:
         """Write a single audit event."""
