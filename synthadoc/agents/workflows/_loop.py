@@ -53,11 +53,14 @@ async def run_tool_call_loop(
 ) -> AsyncGenerator[dict, None]:
     """Drive an LLM tool-call loop and yield SSE event dicts.
 
-    Yielded event shapes::
+    Yielded event shapes (from the generator)::
+
+        {"event": "token",      "data": {"text": str}}
+        {"event": "final_text", "data": {"text": str}}
+
+    Side-channel events (dispatched via ctx.send_sse_event, NOT yielded)::
 
         {"event": "tool_progress", "data": {"tool": str, "message": str}}
-        {"event": "token",         "data": {"text": str}}
-        {"event": "final_text",    "data": {"text": str}}
 
     Args:
         system_prompt:   System prompt passed to the provider on every call.
