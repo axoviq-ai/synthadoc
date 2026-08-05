@@ -3219,6 +3219,30 @@ This design lets users annotate any section of `purpose.md` without losing their
 
 ---
 
+## Guided Maintenance Workflows
+
+The chat interface supports conversational maintenance through an agentic tool-call loop.
+When a user asks to "re-ingest stale pages" or similar, the system:
+
+1. Detects the intent as an `orchestrate` action
+2. Runs a tool-call loop that calls up to five tools: find stale pages, ingest a source,
+   poll a job for completion, run lint, and request user confirmation
+3. Streams `tool_progress` SSE events so the UI shows inline progress
+4. Sends a `confirm_request` SSE event when user approval is needed; the UI renders a
+   confirmation card with Yes/No buttons
+5. On completion, includes an optional `pre_prompt` in the `done` event to pre-fill the
+   textarea with the natural next action (e.g. "Run lint now")
+
+**SSE protocol extensions (v1.2.0):**
+- `tool_progress` — `{tool, job_id?, message}` — emitted during long-running tool steps
+- `confirm_request` — `{session_id, message, yes_label, no_label}` — requires user decision
+- `done.pre_prompt` — optional string pre-filling the chat textarea with the next step
+
+**Loop constraints:** maximum 30 tool calls per action; confirmation timeout 120 seconds
+(defaults to declined on timeout).
+
+---
+
 ## Customization
 
 Synthadoc exposes four extension points — all hot-loaded, no server restart required.
@@ -3290,6 +3314,7 @@ All three files share identical body content generated from the same template; t
 ### v1.2.0
 
 - **Agentic Ingest & Lint Workflow** — conversational agentic loop in the web UI chat that orchestrates re-ingest and lint runs without the user leaving the chat. When stale pages are detected, contextual hint chips guide the user to re-ingest them; the agent finds each page's source path, queues ingest jobs sequentially, monitors completion with exponential-backoff polling, narrates per-page progress, then offers to run lint — all from a single conversation. Built on a tool-call loop in the action agent (same pattern as Claude Code): `find_stale_pages`, `ingest_source`, `poll_job`, `run_lint`, and `confirm` tools; two new SSE event types (`tool_progress`, `confirm_request`); new `POST /ingest` and `POST /action/confirm` HTTP endpoints. Errors return as structured `tool_result` payloads — the stream never dies on a tool failure; partial completion continues with remaining pages and reports all outcomes.
+- **Guided Maintenance Workflows** — user-facing conversational maintenance experience built on the Agentic Ingest & Lint Workflow; covers the SSE protocol extensions (`tool_progress`, `confirm_request`, `done.pre_prompt`) and loop constraints (30-call cap, 120-second confirmation timeout). See [§ Guided Maintenance Workflows](#guided-maintenance-workflows).
 - **Content snapshots and rollback** — page body captured at every lifecycle transition (manual CLI/Obsidian/MCP, lint-driven auto-transition); browse per-page version history with `synthadoc lifecycle history`; restore any prior version with `synthadoc lifecycle rollback` (saves current body first so rollback is always undoable). Content Snapshots tab added to the Obsidian Lifecycle modal. See [§23 Page Content Snapshots](#page-content-snapshots).
 - **Background vault monitoring** — Obsidian plugin registers `vault.on("modify")` with a 2-second per-slug debounce; on each quiet period it posts `POST /pages/{slug}/snapshot` to capture manual edits that do not trigger a lifecycle transition. Server-side deduplication ensures no snapshot is written when content is unchanged. See [§8 Background vault monitoring](#background-vault-monitoring-v120).
 - **Atomic page writes** — `WikiStorage.write_page` now writes to a `.tmp` sibling then calls `os.replace()`, eliminating the risk of a partial page file on mid-write crash or disk error. Shared `atomic_write_text()` utility in `synthadoc/utils.py` consolidates the pattern used by `write_page`, `Scheduler._save_raw`, and `Orchestrator._auto_block_domain` (BUG-24).

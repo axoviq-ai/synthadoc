@@ -2716,9 +2716,17 @@ async def test_run_stream_action_clarify_yields_clarify_event(tmp_wiki):
     mock_orchestrator = object()
     agent._orchestrator = mock_orchestrator
 
+    async def _clarify_gen(*args, **kwargs):
+        yield {"event": "clarify", "data": {
+            "prompt": clarify_result.clarify_prompt,
+            "candidates": clarify_result.clarify_candidates,
+            "action": clarify_result.action_type,
+        }}
+        yield {"event": "done", "data": {}}
+
     with patch("synthadoc.agents.query_agent.ActionAgent") as mock_action_cls:
         mock_action_cls.return_value.detect.return_value = True
-        mock_action_cls.return_value.run = AsyncMock(return_value=clarify_result)
+        mock_action_cls.return_value.run_gen = _clarify_gen
         events = await _collect_events(agent.run_stream("schedule ingest daily"))
 
     event_types = [e["event"] for e in events]

@@ -120,7 +120,13 @@ _ACTION_RE = re.compile(
     # job status / job list
     r"|\bjob\w*\s+(status|detail|list|progress|result)\b"
     r"|\b(show|list|display|view|check|get)\b.{0,30}\bjob\w*\b"
-    r"|\bwhat.{0,20}\b(status|progress).{0,20}\bjob\b",
+    r"|\bwhat.{0,20}\b(status|progress).{0,20}\bjob\b"
+    # orchestrate / guided workflow / re-ingest stale pages
+    r"|\bstale\s+pages?\b"
+    r"|\borchestrat"
+    r"|\bguided\s+workflow\b"
+    # "re-ingest stale pages" — require "stale" nearby to avoid matching how-to questions
+    r"|\bre.?ingest\b.{0,60}\bstale\b|\bstale\b.{0,60}\bre.?ingest\b",
     re.IGNORECASE,
 )
 
@@ -131,7 +137,7 @@ _EXTRACT_PROMPT_TEMPLATE = (
     "parameters from the user request below.\n\n"
     "Return ONLY a JSON object — no explanation, no markdown fences.\n\n"
     'Schema: {{"action": "<lint|lint_report|wiki_status|ingest|scaffold|schedule_add|schedule_list|'
-    'schedule_history|lifecycle_activate|lifecycle_archive|lifecycle_restore|job_list|job_status|none>", "params": {{...}}}}\n\n'
+    'schedule_history|lifecycle_activate|lifecycle_archive|lifecycle_restore|job_list|job_status|orchestrate|none>", "params": {{...}}}}\n\n'
     "params keys by action:\n"
     "  lint          : scope (all|contradictions|orphans|stale|citations), auto_resolve (bool)\n"
     "                  Use lint for ANY request to RUN the linter or auto-resolve issues:\n"
@@ -179,6 +185,10 @@ _EXTRACT_PROMPT_TEMPLATE = (
     "                  'what is the status of my last job'. Resolve job_id from history when the user\n"
     "                  says 'the last job', 'that job', or picks a number from a previous list.\n"
     "                  Leave job_id null when no specific job is mentioned.\n"
+    "  orchestrate   : intent (str) — use for requests to re-ingest stale pages, run guided "
+    "wiki maintenance, or orchestrate multi-step operations from the chat.\n"
+    "                  Examples: 're-ingest stale pages' → orchestrate, intent='reingest'\n"
+    "                            'run guided maintenance workflow' → orchestrate, intent='maintenance'\n"
     "  none          : (no params)\n\n"
     "Cron parsing: 'daily at 6am'='0 6 * * *', 'every Sunday at 7pm'='0 19 * * 0', "
     "'every weekday at 9am'='0 9 * * 1-5', 'every hour'='0 * * * *'\n\n"
@@ -275,6 +285,115 @@ class ActionAgent:
                 success=False,
                 message=f"Could not complete the action: {exc}",
             )
+
+    async def run_gen(
+        self, question: str, history: list[dict] | None = None, session_id: str | None = None
+    ) -> "AsyncGenerator[dict, None]":
+        """Like run(), but yields SSE event dicts for streaming.
+
+        Handles all actions including orchestrate. For non-orchestrate actions,
+        wraps the ActionResult in the standard SSE event sequence.
+        """
+        extraction = await self._extract(question, history=history or [])
+        if extraction is None:
+            return
+        action = extraction.get("action", "none")
+        params = extraction.get("params", {})
+        if action == "none":
+            return
+        if action == "orchestrate":
+            async for evt in self._run_orchestrate(question, session_id=session_id):
+                yield evt
+            return
+        try:
+            result = await self._dispatch(action, params)
+        except Exception as exc:
+            logger.warning("action dispatch failed in run_gen (%s): %s", action, exc)
+            result = ActionResult(
+                action_type=action, success=False,
+                message=f"Could not complete the action: {exc}",
+            )
+        if result is None:
+            return
+        if result.needs_clarification:
+            yield {"event": "clarify", "data": {
+                "prompt": result.clarify_prompt,
+                "candidates": result.clarify_candidates,
+                "action": result.action_type,
+            }}
+            yield {"event": "done", "data": {}}
+            return
+        yield {"event": "token", "data": {"text": result.message}}
+        yield {"event": "citations", "data": {"citations": []}}
+        from synthadoc.agents.query_agent import _build_pre_prompt  # lazy — avoids circular import
+        _pre_prompt = _build_pre_prompt(result.message)
+        _done_data: dict = {
+            "citations": [], "hints": [], "gap": not result.success,
+            "job_id": result.job_id, "cacheable": False,
+        }
+        if _pre_prompt:
+            _done_data["pre_prompt"] = _pre_prompt
+        yield {"event": "done", "data": _done_data}
+
+    async def _run_orchestrate(self, question: str, session_id: str | None = None) -> "AsyncGenerator[dict, None]":
+        """Run IngestLintWorkflow via tool-call loop and yield SSE dicts."""
+        from synthadoc.agents.workflows._base import WorkflowContext
+        from synthadoc.agents.workflows._loop import run_tool_call_loop
+        from synthadoc.agents.workflows.ingest_lint import IngestLintWorkflow
+        from synthadoc.storage.log import AuditDB
+
+        sse_buffer: list[dict] = []
+
+        async def _send(event: str, data: dict) -> None:
+            sse_buffer.append({"event": event, "data": data})
+
+        audit_db = getattr(self._orch, "_audit", None)
+        if audit_db is None:
+            audit_path = self._wiki_root / ".synthadoc" / "audit.db"
+            audit_db = AuditDB(audit_path)
+
+        import uuid as _uuid
+        _session_id = session_id or str(_uuid.uuid4())
+        ctx = WorkflowContext(
+            session_id=_session_id,
+            wiki_root=self._wiki_root,
+            queue=getattr(self._orch, "queue", None),
+            store=getattr(self._orch, "_store", None),
+            audit_db=audit_db,
+            send_sse_event=_send,
+            confirm_registry=getattr(self._orch, "_confirm_registry", {}),
+            confirm_result_registry=getattr(self._orch, "_confirm_result_registry", {}),
+        )
+
+        wf = IngestLintWorkflow()
+        system_prompt = await wf.build_system_prompt()
+        tool_fns = wf.get_tool_fns(ctx)
+
+        async for evt in run_tool_call_loop(
+            system_prompt=system_prompt,
+            initial_message=wf.build_initial_message(question),
+            tool_fns=tool_fns,
+            provider=self._provider,
+            ctx=ctx,
+        ):
+            # Flush buffered side-channel events (tool_progress, confirm_request)
+            for pending in sse_buffer:
+                yield pending
+            sse_buffer.clear()
+            if evt["event"] == "final_text":
+                text = evt["data"]["text"]
+                yield {"event": "token", "data": {"text": text}}
+                from synthadoc.agents.query_agent import _build_pre_prompt  # lazy — avoids circular import
+                _pre_prompt = _build_pre_prompt(text)
+                _done_data: dict = {"citations": [], "hints": [], "cacheable": False}
+                if _pre_prompt:
+                    _done_data["pre_prompt"] = _pre_prompt
+                yield {"event": "done", "data": _done_data}
+            else:
+                yield evt
+        # Flush any remaining buffered events
+        for pending in sse_buffer:
+            yield pending
 
     # ── private ───────────────────────────────────────────────────────────────
 

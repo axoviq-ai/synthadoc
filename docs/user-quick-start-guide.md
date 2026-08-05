@@ -2689,6 +2689,18 @@ Key differences from the demo:
 
 ---
 
+### Resolving stale pages from the chat
+
+1. Ask: *"show me the wiki status"*
+2. The response lists any stale pages. A **Re-ingest stale pages** hint button appears.
+3. Click it (or type the phrase). The wiki agent confirms: *"I'll re-ingest N pages. Confirm?"*
+4. Click **Yes, re-ingest all**. Progress appears inline as each page is re-ingested.
+5. When done, click **Run lint now** to promote the pages to active status.
+
+You can also type these requests directly without clicking hint chips.
+
+---
+
 ## Appendix A — Obsidian Plugin Command Reference
 
 All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synthadoc`).
