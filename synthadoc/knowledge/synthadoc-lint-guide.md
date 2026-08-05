@@ -60,6 +60,8 @@ An LLM pass that flags overstated claims or factual contradictions within page c
 
 Skip lifecycle checks with `--no-lifecycle`.
 
+**Note:** `lint run --scope stale` detects new staleness but does **not** resolve pages already marked stale. To resolve a stale page, re-ingest its source file: `synthadoc ingest raw_sources/<file>`. Lint will then promote the re-ingested draft to active.
+
 ## Useful Flags
 
 | Flag | Description |
