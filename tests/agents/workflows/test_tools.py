@@ -371,6 +371,34 @@ async def test_ingest_source_rejects_relative_path():
     assert "absolute" in result["error"]
 
 
+async def test_poll_job_returns_failed_on_queue_error():
+    """Queue.get_job raising → status=failed with error message."""
+    queue = MagicMock()
+    queue.get_job = AsyncMock(side_effect=RuntimeError("db unavailable"))
+    ctx, _ = _make_ctx(queue=queue)
+    result = await tool_poll_job(ctx, "job-err", timeout_seconds=120)
+    assert result["status"] == "failed"
+    assert "db unavailable" in result["message"]
+
+
+async def test_confirm_returns_false_when_send_sse_raises():
+    """send_sse_event raising → confirmed=False, registry cleaned up."""
+    async def _bad_send(e, d):
+        raise RuntimeError("stream closed")
+
+    ctx = WorkflowContext(
+        session_id="s1",
+        wiki_root=Path("/wiki"),
+        queue=None, store=None, audit_db=None,
+        send_sse_event=_bad_send,
+        confirm_registry={},
+        confirm_result_registry={},
+    )
+    result = await tool_confirm(ctx, "Proceed?")
+    assert result["confirmed"] is False
+    assert "s1" not in ctx.confirm_registry
+
+
 async def test_confirm_cleanup_on_timeout():
     """Registry entries are cleaned up even on TimeoutError."""
     ctx, _ = _make_ctx()

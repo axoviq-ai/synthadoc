@@ -137,7 +137,11 @@ async def tool_poll_job(
                 "message": f"Job {job_id} timed out after {int(elapsed)}s",
             }
 
-        job = await ctx.queue.get_job(job_id)
+        try:
+            job = await ctx.queue.get_job(job_id)
+        except Exception as exc:  # noqa: BLE001
+            return {"status": "failed", "message": f"Queue error for job {job_id}: {exc}"}
+
         if job is not None and job.status.value in _TERMINAL_STATUSES:
             if job.status.value == "completed":
                 return {
@@ -200,15 +204,18 @@ async def tool_confirm(
     ctx.confirm_registry[ctx.session_id] = gate
     ctx.confirm_result_registry[ctx.session_id] = False
     try:
-        await ctx.send_sse_event(
-            "confirm_request",
-            {
-                "session_id": ctx.session_id,
-                "message": message,
-                "yes_label": yes_label,
-                "no_label": no_label,
-            },
-        )
+        try:
+            await ctx.send_sse_event(
+                "confirm_request",
+                {
+                    "session_id": ctx.session_id,
+                    "message": message,
+                    "yes_label": yes_label,
+                    "no_label": no_label,
+                },
+            )
+        except Exception:  # noqa: BLE001
+            return {"confirmed": False}
         try:
             await asyncio.wait_for(gate.wait(), timeout=120.0)
             confirmed = ctx.confirm_result_registry.get(ctx.session_id, False)
