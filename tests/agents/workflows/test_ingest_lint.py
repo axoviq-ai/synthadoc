@@ -110,3 +110,36 @@ async def test_action_agent_run_gen_returns_none_action_silently():
     agent = ActionAgent(provider, orch, Path("/wiki"))
     events = [e async for e in agent.run_gen("hello world")]
     assert events == []
+
+
+async def test_action_agent_run_gen_non_orchestrate_yields_token_and_done():
+    """run_gen() with a non-orchestrate action (lint) yields token, citations, done."""
+    from synthadoc.agents.action_agent import ActionAgent, ActionResult
+    from synthadoc.providers.base import CompletionResponse
+    from unittest.mock import patch
+
+    provider = AsyncMock()
+    provider.complete = AsyncMock(return_value=CompletionResponse(
+        text='{"action": "lint", "params": {"scope": "all", "auto_resolve": false}}',
+        input_tokens=10, output_tokens=5,
+    ))
+    orch = MagicMock()
+    orch._confirm_registry = {}
+    orch._confirm_result_registry = {}
+    agent = ActionAgent(provider, orch, Path("/wiki"))
+
+    lint_result = ActionResult(
+        action_type="lint", success=True,
+        message="Lint queued — job ID abc123",
+        job_id="abc123",
+    )
+    with patch.object(agent, "_dispatch", AsyncMock(return_value=lint_result)):
+        events = [e async for e in agent.run_gen("run lint")]
+
+    event_types = [e["event"] for e in events]
+    assert "token" in event_types
+    assert "done" in event_types
+    assert "citations" in event_types
+    done_evt = next(e for e in events if e["event"] == "done")
+    assert done_evt["data"]["job_id"] == "abc123"
+    assert done_evt["data"]["gap"] is False

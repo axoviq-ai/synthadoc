@@ -124,7 +124,9 @@ _ACTION_RE = re.compile(
     # orchestrate / guided workflow / re-ingest stale pages
     r"|\bstale\s+pages?\b"
     r"|\borchestrat"
-    r"|\bguided\s+workflow\b",
+    r"|\bguided\s+workflow\b"
+    # "re-ingest stale pages" — require "stale" nearby to avoid matching how-to questions
+    r"|\bre.?ingest\b.{0,60}\bstale\b|\bstale\b.{0,60}\bre.?ingest\b",
     re.IGNORECASE,
 )
 
@@ -292,7 +294,6 @@ class ActionAgent:
         Handles all actions including orchestrate. For non-orchestrate actions,
         wraps the ActionResult in the standard SSE event sequence.
         """
-        from collections.abc import AsyncGenerator as _AG  # noqa: F401
         extraction = await self._extract(question, history=history or [])
         if extraction is None:
             return
