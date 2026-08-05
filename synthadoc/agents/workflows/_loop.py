@@ -113,7 +113,10 @@ async def run_tool_call_loop(
                 {"tool": tool_name, "message": f"Calling {tool_name}..."},
             )
 
-            tool_result = await tool_fns[tool_name](**tool_input)
+            if tool_name not in tool_fns:
+                tool_result = {"error": f"Unknown tool: {tool_name!r}"}
+            else:
+                tool_result = await tool_fns[tool_name](**tool_input)
 
             messages.append(Message(role="assistant", content=text))
             messages.append(Message(role="user", content=str(tool_result)))

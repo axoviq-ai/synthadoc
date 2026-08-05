@@ -1231,7 +1231,7 @@ class QueryAgent:
                                         self._store._root.parent)
             if _action_agent.detect(question, history=history or []):
                 _had_events = False
-                async for _evt in _action_agent.run_gen(question, history=history or []):
+                async for _evt in _action_agent.run_gen(question, history=history or [], session_id=session_id):
                     _had_events = True
                     yield _evt
                 if _had_events:

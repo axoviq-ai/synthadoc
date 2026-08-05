@@ -287,7 +287,7 @@ class ActionAgent:
             )
 
     async def run_gen(
-        self, question: str, history: list[dict] | None = None
+        self, question: str, history: list[dict] | None = None, session_id: str | None = None
     ) -> "AsyncGenerator[dict, None]":
         """Like run(), but yields SSE event dicts for streaming.
 
@@ -302,7 +302,7 @@ class ActionAgent:
         if action == "none":
             return
         if action == "orchestrate":
-            async for evt in self._run_orchestrate(question):
+            async for evt in self._run_orchestrate(question, session_id=session_id):
                 yield evt
             return
         try:
@@ -335,7 +335,7 @@ class ActionAgent:
             _done_data["pre_prompt"] = _pre_prompt
         yield {"event": "done", "data": _done_data}
 
-    async def _run_orchestrate(self, question: str) -> "AsyncGenerator[dict, None]":
+    async def _run_orchestrate(self, question: str, session_id: str | None = None) -> "AsyncGenerator[dict, None]":
         """Run IngestLintWorkflow via tool-call loop and yield SSE dicts."""
         from synthadoc.agents.workflows._base import WorkflowContext
         from synthadoc.agents.workflows._loop import run_tool_call_loop
@@ -352,8 +352,10 @@ class ActionAgent:
             audit_path = self._wiki_root / ".synthadoc" / "audit.db"
             audit_db = AuditDB(audit_path)
 
+        import uuid as _uuid
+        _session_id = session_id or str(_uuid.uuid4())
         ctx = WorkflowContext(
-            session_id=getattr(self._orch, "_session_id", "action-agent"),
+            session_id=_session_id,
             wiki_root=self._wiki_root,
             queue=getattr(self._orch, "queue", None),
             store=getattr(self._orch, "_store", None),

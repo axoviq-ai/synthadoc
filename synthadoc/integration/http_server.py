@@ -1164,8 +1164,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     @app.post("/ingest")
     async def agent_ingest(request: Request, req: AgentIngestRequest):
-        from pathlib import Path as _P
-        src = _P(req.source_path)
+        src = Path(req.source_path)
         # Validate path is within wiki_root.
         try:
             resolved = src.resolve()

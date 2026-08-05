@@ -52,4 +52,23 @@ describe("ConfirmCard", () => {
         fireEvent.click(screen.getByText("No"));
         expect(onDecline).toHaveBeenCalledOnce();
     });
+
+    it("auto-dismisses via onDecline after timeoutSeconds", () => {
+        vi.useFakeTimers();
+        const onDecline = vi.fn();
+        render(
+            <ConfirmCard
+                message="Proceed?"
+                yesLabel="Yes"
+                noLabel="No"
+                onConfirm={vi.fn()}
+                onDecline={onDecline}
+                timeoutSeconds={1}
+            />
+        );
+        expect(onDecline).not.toHaveBeenCalled();
+        vi.advanceTimersByTime(1001);
+        expect(onDecline).toHaveBeenCalledOnce();
+        vi.useRealTimers();
+    });
 });

@@ -185,3 +185,39 @@ async def test_loop_stops_at_budget():
     assert "budget" in final_events[0]["data"]["text"].lower()
     # provider.complete should be called at most budget+1 times
     assert provider.complete.call_count <= 4
+
+
+@pytest.mark.asyncio
+async def test_loop_returns_error_for_unknown_tool():
+    """LLM calling a non-existent tool returns an error dict, stream continues normally."""
+    ctx, _ = _make_ctx()
+
+    call_count = 0
+
+    async def _provider_complete(messages, **_kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return CompletionResponse(
+                text='{"tool_call": {"name": "ghost_tool", "input": {}}}',
+                input_tokens=5, output_tokens=5,
+            )
+        return CompletionResponse(text="Done.", input_tokens=5, output_tokens=5)
+
+    provider = MagicMock()
+    provider.complete = AsyncMock(side_effect=_provider_complete)
+
+    results = []
+    async for event in run_tool_call_loop(
+        system_prompt="sys",
+        initial_message="go",
+        tool_fns={},  # empty — ghost_tool not registered
+        provider=provider,
+        ctx=ctx,
+    ):
+        results.append(event)
+
+    # Stream must not crash — it must emit a final_text
+    assert any(e["event"] == "final_text" for e in results)
+    # The error must have been fed back to the LLM (second LLM call happened)
+    assert call_count == 2

@@ -6,10 +6,7 @@ import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Awaitable, Callable
-
-if TYPE_CHECKING:
-    pass  # Forward-reference strings used below keep imports optional at runtime
+from typing import Awaitable, Callable
 
 SseEventFn = Callable[[str, dict], Awaitable[None]]
 
