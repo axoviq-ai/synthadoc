@@ -3,9 +3,9 @@
 // Copyright (C) 2026 William Johnason / axoviq.com
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import ConfirmCard from "./ConfirmCard";
 
 afterEach(cleanup);
-import ConfirmCard from "./ConfirmCard";
 
 describe("ConfirmCard", () => {
     it("renders yes and no buttons with correct labels", () => {

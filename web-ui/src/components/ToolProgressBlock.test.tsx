@@ -3,9 +3,9 @@
 // Copyright (C) 2026 William Johnason / axoviq.com
 import { describe, it, expect, afterEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
+import ToolProgressBlock from "./ToolProgressBlock";
 
 afterEach(cleanup);
-import ToolProgressBlock from "./ToolProgressBlock";
 
 describe("ToolProgressBlock", () => {
     it("renders progress message", () => {

@@ -10,7 +10,6 @@ import type { Message } from "../useQueryStream";
 import { SettingsPopover, readTimeoutSetting, readMaxResultsSetting } from "./SettingsPopover";
 import ToolProgressBlock from "./ToolProgressBlock";
 import ConfirmCard from "./ConfirmCard";
-import type { ConfirmRequestData } from "../api";
 
 interface Props {
     sessionId: string | null;
