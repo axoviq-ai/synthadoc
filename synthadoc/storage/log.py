@@ -94,6 +94,43 @@ class AuditDB:
         self._path = Path(db_path)
         self._path.parent.mkdir(parents=True, exist_ok=True)
 
+    @staticmethod
+    async def _run_migrations(db) -> None:
+        """Apply schema and data migrations to an open db connection.
+
+        Schema migrations (ALTER TABLE) are silently skipped when the column
+        already exists.  Data migrations are written as idempotent SQL so they
+        are safe to re-run on every startup.
+        """
+        # Schema migrations — ignored if the column already exists
+        for sql in (
+            "ALTER TABLE scheduled_runs ADD COLUMN entry_id TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE scheduled_runs ADD COLUMN output TEXT DEFAULT ''",
+            "ALTER TABLE chat_sessions ADD COLUMN history_summary TEXT DEFAULT NULL",
+            "ALTER TABLE chat_sessions ADD COLUMN summary_turn_count INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE chat_messages ADD COLUMN citations TEXT DEFAULT NULL",
+            "ALTER TABLE chat_messages ADD COLUMN gap_suggestions TEXT DEFAULT NULL",
+            "ALTER TABLE graph_edges ADD COLUMN edge_type TEXT NOT NULL DEFAULT 'mixed'",
+            "ALTER TABLE lifecycle_events ADD COLUMN content_snapshot TEXT DEFAULT NULL",
+        ):
+            try:
+                await db.execute(sql)
+                await db.commit()
+            except Exception:
+                pass  # column already exists
+
+        # Data migrations — idempotent by SQL semantics
+        # Remove duplicate claim_citations rows accumulated before
+        # record_claim_citations gained its DELETE-before-INSERT guard.
+        await db.execute("""
+            DELETE FROM claim_citations
+            WHERE id NOT IN (
+                SELECT MAX(id)
+                FROM claim_citations
+                GROUP BY page_slug, source_file, line_start, line_end
+            )
+        """)
+
     async def init(self) -> None:
         # WAL mode is not enabled here. Each public method opens its own
         # aiosqlite connection, so concurrent callers serialize on SQLite's
@@ -200,22 +237,7 @@ class AuditDB:
                     edge_type   TEXT NOT NULL DEFAULT 'mixed',
                     PRIMARY KEY (from_slug, to_slug)
                 )""")
-            # Migrations for existing installs
-            for migration in (
-                "ALTER TABLE scheduled_runs ADD COLUMN entry_id TEXT NOT NULL DEFAULT ''",
-                "ALTER TABLE scheduled_runs ADD COLUMN output TEXT DEFAULT ''",
-                "ALTER TABLE chat_sessions ADD COLUMN history_summary TEXT DEFAULT NULL",
-                "ALTER TABLE chat_sessions ADD COLUMN summary_turn_count INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE chat_messages ADD COLUMN citations TEXT DEFAULT NULL",
-                "ALTER TABLE chat_messages ADD COLUMN gap_suggestions TEXT DEFAULT NULL",
-                "ALTER TABLE graph_edges ADD COLUMN edge_type TEXT NOT NULL DEFAULT 'mixed'",
-                "ALTER TABLE lifecycle_events ADD COLUMN content_snapshot TEXT DEFAULT NULL",
-            ):
-                try:
-                    await db.execute(migration)
-                    await db.commit()
-                except Exception:
-                    pass  # column already exists
+            await self._run_migrations(db)
             await db.execute(f"PRAGMA user_version = {DB_SCHEMA_VERSION}")
             await db.commit()
 
@@ -384,11 +406,18 @@ class AuditDB:
     async def record_claim_citations(
         self, page_slug: str, citations: list[dict]
     ) -> None:
-        """Record claim-level citations produced by Pass 4."""
+        """Record claim-level citations produced by Pass 4.
+
+        Replaces any previously stored citations for this slug so that
+        re-ingesting a page never accumulates duplicate rows.
+        """
         if not citations:
             return
         ts = datetime.now(timezone.utc).isoformat()
         async with aiosqlite.connect(self._path) as db:
+            await db.execute(
+                "DELETE FROM claim_citations WHERE page_slug=?", (page_slug,)
+            )
             await db.executemany(
                 "INSERT INTO claim_citations "
                 "(page_slug,source_file,line_start,line_end,claim_excerpt,ingested_at) "
@@ -472,6 +501,37 @@ class AuditDB:
                 "event_time": r["timestamp"],
             })
         return result
+
+    async def count_citations(
+        self,
+        page_slug: str | None = None,
+        source_file: str | None = None,
+    ) -> int:
+        """Return the total number of claim_citations rows matching the filters."""
+        wheres, params = [], []
+        if page_slug:
+            wheres.append("page_slug=?")
+            params.append(page_slug)
+        if source_file:
+            wheres.append("source_file=?")
+            params.append(source_file)
+        where = ("WHERE " + " AND ".join(wheres)) if wheres else ""
+        async with aiosqlite.connect(self._path) as db:
+            async with db.execute(
+                f"SELECT COUNT(*) FROM claim_citations {where}", params
+            ) as cur:
+                return (await cur.fetchone())[0]
+
+    async def count_citation_failures(self, page_slug: str | None = None) -> int:
+        """Return the total number of citation_validation_failed audit events."""
+        slug_filter, params = _audit_slug_filter(page_slug)
+        async with aiosqlite.connect(self._path) as db:
+            async with db.execute(
+                f"SELECT COUNT(*) FROM audit_events "
+                f"WHERE event='citation_validation_failed' {slug_filter}",
+                params,
+            ) as cur:
+                return (await cur.fetchone())[0]
 
     async def write_event(self, event: str, job_id: str = "",
                           metadata: dict | None = None) -> None:
