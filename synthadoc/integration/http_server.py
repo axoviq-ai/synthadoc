@@ -589,6 +589,18 @@ _SCAFFOLD_SLUG_LOWER: frozenset[str] = SYSTEM_PAGE_SLUGS | frozenset({
 })
 
 
+def _find_dist_dir() -> Path:
+    """Return the web-UI dist directory to serve.
+
+    Prefers the committed package artifact; falls back to the source-tree
+    dev build so ``synthadoc serve`` works in editable installs.
+    """
+    pkg = Path(__file__).parent.parent / "data" / "web-ui" / "dist"
+    if (pkg / "index.html").is_file():
+        return pkg
+    return Path(__file__).parent.parent.parent / "web-ui" / "dist"
+
+
 def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mcp: bool = True) -> FastAPI:
     import os
     import synthadoc
@@ -1869,11 +1881,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         return Response(content=content, media_type=_CONTENT_TYPES[req.format])
 
     # Serve the React web UI for /app and /app/* paths.
-    # pip-installed: dist is bundled under synthadoc/data/web-ui/dist/
-    # dev (editable install): fall back to the source tree web-ui/dist/
-    _pkg_web_dist = Path(__file__).parent.parent / "data" / "web-ui" / "dist"
-    _src_web_dist = Path(__file__).parent.parent.parent / "web-ui" / "dist"
-    _web_dist = _pkg_web_dist if (_pkg_web_dist / "index.html").is_file() else _src_web_dist
+    _web_dist = _find_dist_dir()
     if _web_dist.exists() and (_web_dist / "index.html").is_file():
         from fastapi.staticfiles import StaticFiles
         from fastapi.responses import FileResponse, RedirectResponse

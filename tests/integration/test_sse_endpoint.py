@@ -191,21 +191,22 @@ def test_query_stream_gap_stored_and_replayed_from_cache(tmp_wiki):
     assert b"quantum" in resp2.content
 
 
-def test_spa_not_built_returns_503(tmp_wiki):
-    """GET /app returns 503 with helpful message when web-ui/dist is missing."""
-    import pytest
+def test_spa_not_built_returns_503(tmp_wiki, monkeypatch):
+    """GET /app returns 503 with helpful message when web-ui/dist is missing.
+
+    Patches the dist-path resolver so the test runs regardless of whether
+    the committed package artifact is present.
+    """
     from fastapi.testclient import TestClient
     from pathlib import Path
+    from unittest.mock import patch
 
-    app = _make_app(tmp_wiki)
-    # The server prefers synthadoc/data/web-ui/dist (committed package artifact) over
-    # web-ui/dist (local dev build). Check the same path the server resolves first.
-    import synthadoc.integration.http_server as srv_mod
-    dist_path = Path(srv_mod.__file__).parent.parent / "data" / "web-ui" / "dist"
-    if dist_path.exists() and (dist_path / "index.html").is_file():
-        pytest.skip("web-ui built artifact present in package data; 503 path not reachable")
-
-    with TestClient(app) as client:
-        resp = client.get("/app")
+    # Point the server's dist resolver at a directory that does not exist so
+    # the 503 branch is always reachable, even with the built artifact present.
+    empty = tmp_wiki / "no-dist"
+    with patch("synthadoc.integration.http_server._find_dist_dir", return_value=empty):
+        app = _make_app(tmp_wiki)
+        with TestClient(app) as client:
+            resp = client.get("/app")
     assert resp.status_code == 503
     assert b"npm run build" in resp.content
