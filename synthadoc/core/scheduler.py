@@ -188,6 +188,11 @@ async def _run_scheduled_job(
         logger.warning("[schedule] %s  %s  %.1fs  %s", run_id, op, duration, err)
     except asyncio.CancelledError:
         _kill_proc(proc)
+        duration = time.monotonic() - t0
+        try:
+            await audit_db.record_scheduled_run_finish(run_id, "cancelled", duration)
+        except Exception:
+            pass
         raise
     except Exception as exc:
         duration = time.monotonic() - t0
