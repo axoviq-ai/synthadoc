@@ -22,6 +22,7 @@ export default function App() {
     const [initialMessages, setInitialMessages] = useState<Message[]>([]);
     const [activeTab, setActiveTab] = useState<"chat" | "graph">("chat");
     const [injectedQuery, setInjectedQuery] = useState<string | null>(null);
+    const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
     const [graphHints, setGraphHints] = useState<string[]>([]);
     const [hintLockLeft, setHintLockLeft] = useState(0);
 
@@ -29,12 +30,16 @@ export default function App() {
     const displayHints = hintLockLeft > 0 ? graphHints : hints;
 
     // Called from ChatWindow after each streamed response
-    const handleChatHints = useCallback((newHints: string[]) => {
+    const handleChatHints = useCallback((newHints: string[], prePrompt?: string) => {
         setHintLockLeft(prev => {
             const next = Math.max(0, prev - 1);
             if (next === 0) updateHints(newHints);
             return next;
         });
+        if (prePrompt) {
+            setPendingPrompt(prePrompt);
+            setInjectedQuery(null);  // mutually exclusive
+        }
     }, [updateHints]);
 
     // Keep the active highlight in sync with the current session (including the initial session on load)
@@ -48,6 +53,7 @@ export default function App() {
         setActiveSessionId(null);
         setHintLockLeft(0);
         setActiveTab("chat");
+        setPendingPrompt(null);
         await resetSession();
     }, [resetSession]);
 
@@ -71,12 +77,25 @@ export default function App() {
         setHintLockLeft(0);
         setActiveSessionId(sessionId);
         setActiveTab("chat");
+        setPendingPrompt(null);
         setResetKey((k) => k + 1);
     }, [resumeSession, updateHints]);
 
     const handleQuerySent = useCallback(() => {
         refreshSessions();
     }, [refreshSessions]);
+
+    const handleConfirmDecision = useCallback(async (sessionId: string, confirmed: boolean) => {
+        try {
+            await fetch(`/action/confirm`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ session_id: sessionId, confirmed }),
+            });
+        } catch {
+            // fire-and-forget; backend times out gracefully
+        }
+    }, []);
 
     return (
         <div className="app-layout">
@@ -119,12 +138,16 @@ export default function App() {
                         onQuerySent={handleQuerySent}
                         showTip={sessions.length > 0}
                         initialMessages={initialMessages}
+                        pendingPrompt={pendingPrompt}
+                        onPendingPromptConsumed={() => setPendingPrompt(null)}
+                        onConfirmDecision={handleConfirmDecision}
                     />
                 )}
                 {activeTab === "graph" && (
                     <GraphView
                         onAskQuery={(q, nodeHints) => {
                             setInjectedQuery(q);
+                            setPendingPrompt(null);
                             if (nodeHints?.length) {
                                 setGraphHints(nodeHints);
                                 setHintLockLeft(GRAPH_HINT_PIN_TURNS);

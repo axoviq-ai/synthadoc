@@ -8,26 +8,33 @@ import { Hero } from "./Hero";
 import { useQueryStream } from "../useQueryStream";
 import type { Message } from "../useQueryStream";
 import { SettingsPopover, readTimeoutSetting, readMaxResultsSetting } from "./SettingsPopover";
+import ToolProgressBlock from "./ToolProgressBlock";
+import ConfirmCard from "./ConfirmCard";
+import type { ConfirmRequestData } from "../api";
 
 interface Props {
     sessionId: string | null;
     mode: string;
     hints: string[];
-    onHints: (hints: string[]) => void;
+    onHints: (hints: string[], prePrompt?: string) => void;
     wikiName: string;
     injectedQuery: string | null;
     onInjected: () => void;
     onQuerySent: () => void;
     showTip: boolean;
     initialMessages?: Message[];
+    pendingPrompt?: string | null;
+    onPendingPromptConsumed?: () => void;
+    onConfirmDecision?: (sessionId: string, confirmed: boolean) => void;
 }
 
 export function ChatWindow({
     sessionId, mode, hints, onHints, wikiName,
     injectedQuery, onInjected, onQuerySent, showTip,
     initialMessages = [],
+    pendingPrompt, onPendingPromptConsumed, onConfirmDecision,
 }: Props) {
-    const { messages, streaming, error, send } = useQueryStream(sessionId, onHints, initialMessages, onQuerySent);
+    const { messages, streaming, error, send, progressLines, pendingConfirm, setPendingConfirm } = useQueryStream(sessionId, onHints, initialMessages, onQuerySent);
     const [input, setInput] = useState("");
     const [noCache, setNoCache] = useState(false);
     const [timeoutSeconds, setTimeoutSeconds] = useState(readTimeoutSetting);
@@ -61,6 +68,13 @@ export function ChatWindow({
         const el = messagesRef.current;
         if (el) el.scrollTop = el.scrollHeight;
     }, [messages]);
+
+    useEffect(() => {
+        if (pendingPrompt != null) {
+            setInput(pendingPrompt);
+            setTimeout(() => inputRef.current?.focus(), 0);
+        }
+    }, [pendingPrompt]);
 
     const submit = () => {
         const q = input.trim();
@@ -107,6 +121,24 @@ export function ChatWindow({
                         </div>
                     )
                 }
+                {progressLines.length > 0 && (
+                    <ToolProgressBlock lines={progressLines} collapsed={!streaming} />
+                )}
+                {pendingConfirm && (
+                    <ConfirmCard
+                        message={pendingConfirm.message}
+                        yesLabel={pendingConfirm.yes_label}
+                        noLabel={pendingConfirm.no_label}
+                        onConfirm={() => {
+                            setPendingConfirm(null);
+                            onConfirmDecision?.(pendingConfirm.session_id, true);
+                        }}
+                        onDecline={() => {
+                            setPendingConfirm(null);
+                            onConfirmDecision?.(pendingConfirm.session_id, false);
+                        }}
+                    />
+                )}
                 {error && <p className="error-banner" role="alert">{error}</p>}
             </div>
             <div className="input-dock">
@@ -147,7 +179,12 @@ export function ChatWindow({
                         className="query-input"
                         aria-label="Ask your wiki"
                         value={input}
-                        onChange={(e) => setInput(e.target.value)}
+                        onChange={(e) => {
+                            setInput(e.target.value);
+                            if (e.target.value === "" && onPendingPromptConsumed) {
+                                onPendingPromptConsumed();
+                            }
+                        }}
                         onKeyDown={handleKey}
                         placeholder="Ask your wiki..."
                         disabled={streaming || !sessionId}
