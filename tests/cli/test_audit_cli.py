@@ -269,11 +269,11 @@ async def test_list_citations_filter_by_page(db):
 
 
 async def test_list_citations_filter_by_source(db):
+    # Both source files belong to the same page — pass them in a single call
+    # so the replace-on-reingest logic does not discard the first entry.
     await db.record_claim_citations("alan-turing", [
-        {"source_file": "bio.txt", "line_start": 1, "line_end": 5, "claim_excerpt": "x"}
-    ])
-    await db.record_claim_citations("alan-turing", [
-        {"source_file": "other.txt", "line_start": 1, "line_end": 5, "claim_excerpt": "y"}
+        {"source_file": "bio.txt",   "line_start": 1, "line_end": 5, "claim_excerpt": "x"},
+        {"source_file": "other.txt", "line_start": 1, "line_end": 5, "claim_excerpt": "y"},
     ])
     rows = await db.list_citations(source_file="bio.txt")
     assert len(rows) == 1

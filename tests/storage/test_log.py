@@ -417,6 +417,31 @@ async def test_delete_graph_node_no_op_when_slug_absent(tmp_path):
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
+async def test_record_claim_citations_replaces_on_reingest(tmp_path):
+    """Re-ingesting a page must replace its citations, not accumulate duplicates."""
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+
+    citations_v1 = [
+        {"source_file": "src.txt", "line_start": 1, "line_end": 1, "claim_excerpt": "c1"},
+        {"source_file": "src.txt", "line_start": 2, "line_end": 2, "claim_excerpt": "c2"},
+    ]
+    citations_v2 = [
+        {"source_file": "src.txt", "line_start": 1, "line_end": 1, "claim_excerpt": "c1-updated"},
+    ]
+
+    await db.record_claim_citations("edsac", citations_v1)
+    assert await db.count_citations(page_slug="edsac") == 2
+
+    # Re-ingest: must replace, not append
+    await db.record_claim_citations("edsac", citations_v2)
+    assert await db.count_citations(page_slug="edsac") == 1
+
+    rows = await db.list_citations(page_slug="edsac")
+    assert rows[0]["claim_excerpt"] == "c1-updated"
+
+
+@pytest.mark.asyncio
 async def test_count_citations_empty(tmp_path):
     db = AuditDB(tmp_path / "audit.db")
     await db.init()

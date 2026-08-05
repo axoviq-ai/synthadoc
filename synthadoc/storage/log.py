@@ -384,11 +384,18 @@ class AuditDB:
     async def record_claim_citations(
         self, page_slug: str, citations: list[dict]
     ) -> None:
-        """Record claim-level citations produced by Pass 4."""
+        """Record claim-level citations produced by Pass 4.
+
+        Replaces any previously stored citations for this slug so that
+        re-ingesting a page never accumulates duplicate rows.
+        """
         if not citations:
             return
         ts = datetime.now(timezone.utc).isoformat()
         async with aiosqlite.connect(self._path) as db:
+            await db.execute(
+                "DELETE FROM claim_citations WHERE page_slug=?", (page_slug,)
+            )
             await db.executemany(
                 "INSERT INTO claim_citations "
                 "(page_slug,source_file,line_start,line_end,claim_excerpt,ingested_at) "
