@@ -410,3 +410,114 @@ async def test_delete_graph_node_no_op_when_slug_absent(tmp_path):
 
     graph = await db.read_graph()
     assert len(graph["nodes"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# count_citations / count_citation_failures
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_record_claim_citations_replaces_on_reingest(tmp_path):
+    """Re-ingesting a page must replace its citations, not accumulate duplicates."""
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+
+    citations_v1 = [
+        {"source_file": "src.txt", "line_start": 1, "line_end": 1, "claim_excerpt": "c1"},
+        {"source_file": "src.txt", "line_start": 2, "line_end": 2, "claim_excerpt": "c2"},
+    ]
+    citations_v2 = [
+        {"source_file": "src.txt", "line_start": 1, "line_end": 1, "claim_excerpt": "c1-updated"},
+    ]
+
+    await db.record_claim_citations("edsac", citations_v1)
+    assert await db.count_citations(page_slug="edsac") == 2
+
+    # Re-ingest: must replace, not append
+    await db.record_claim_citations("edsac", citations_v2)
+    assert await db.count_citations(page_slug="edsac") == 1
+
+    rows = await db.list_citations(page_slug="edsac")
+    assert rows[0]["claim_excerpt"] == "c1-updated"
+
+
+@pytest.mark.asyncio
+async def test_count_citations_empty(tmp_path):
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+    assert await db.count_citations() == 0
+
+
+@pytest.mark.asyncio
+async def test_count_citations_matches_inserted(tmp_path):
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+    await db.record_claim_citations("turing", [
+        {"source_file": "bio.txt", "line_start": 1, "line_end": 5, "claim_excerpt": "c1"},
+        {"source_file": "bio.txt", "line_start": 6, "line_end": 10, "claim_excerpt": "c2"},
+    ])
+    await db.record_claim_citations("hopper", [
+        {"source_file": "hist.txt", "line_start": 1, "line_end": 3, "claim_excerpt": "c3"},
+    ])
+    assert await db.count_citations() == 3
+
+
+@pytest.mark.asyncio
+async def test_count_citations_filter_by_page_slug(tmp_path):
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+    await db.record_claim_citations("turing", [
+        {"source_file": "a.txt", "line_start": 1, "line_end": 2, "claim_excerpt": "x"},
+        {"source_file": "a.txt", "line_start": 3, "line_end": 4, "claim_excerpt": "y"},
+    ])
+    await db.record_claim_citations("hopper", [
+        {"source_file": "b.txt", "line_start": 1, "line_end": 2, "claim_excerpt": "z"},
+    ])
+    assert await db.count_citations(page_slug="turing") == 2
+    assert await db.count_citations(page_slug="hopper") == 1
+    assert await db.count_citations(page_slug="nobody") == 0
+
+
+@pytest.mark.asyncio
+async def test_count_citations_filter_by_source_file(tmp_path):
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+    await db.record_claim_citations("turing", [
+        {"source_file": "bio.txt", "line_start": 1, "line_end": 2, "claim_excerpt": "x"},
+        {"source_file": "paper.txt", "line_start": 3, "line_end": 4, "claim_excerpt": "y"},
+    ])
+    assert await db.count_citations(source_file="bio.txt") == 1
+    assert await db.count_citations(source_file="paper.txt") == 1
+
+
+@pytest.mark.asyncio
+async def test_count_citation_failures_empty(tmp_path):
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+    assert await db.count_citation_failures() == 0
+
+
+@pytest.mark.asyncio
+async def test_count_citation_failures_matches_events(tmp_path):
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+    await db.write_event("citation_validation_failed",
+                         metadata={"slug": "p1", "citation": "^[x]", "reason": "broken"})
+    await db.write_event("citation_validation_failed",
+                         metadata={"slug": "p1", "citation": "^[y]", "reason": "broken"})
+    await db.write_event("ingest_complete",
+                         metadata={"slug": "p1"})  # different event, must not be counted
+    assert await db.count_citation_failures() == 2
+
+
+@pytest.mark.asyncio
+async def test_count_citation_failures_filter_by_page_slug(tmp_path):
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+    await db.write_event("citation_validation_failed",
+                         metadata={"page_slug": "turing", "citation": "^[a]", "reason": "r"})
+    await db.write_event("citation_validation_failed",
+                         metadata={"page_slug": "hopper", "citation": "^[b]", "reason": "r"})
+    assert await db.count_citation_failures(page_slug="turing") == 1
+    assert await db.count_citation_failures(page_slug="hopper") == 1
+    assert await db.count_citation_failures(page_slug="nobody") == 0

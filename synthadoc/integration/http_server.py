@@ -1573,9 +1573,13 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
     ):
         audit = app.state.orch._audit
         if broken:
-            all_failures = await audit.list_citation_failures(limit=100_000, offset=0)
+            total = await audit.count_citation_failures(page_slug=page or None)
             rows = await audit.list_citation_failures(limit=limit, offset=offset)
-            return {"total": len(all_failures), "citations": rows}
+            return {"total": total, "citations": rows}
+        total = await audit.count_citations(
+            page_slug=page or None,
+            source_file=source or None,
+        )
         rows = await audit.list_citations(
             page_slug=page or None,
             source_file=source or None,
@@ -1584,14 +1588,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             sort=sort,
             order=order,
         )
-        # Total count without limit
-        all_rows = await audit.list_citations(
-            page_slug=page or None,
-            source_file=source or None,
-            limit=100_000,
-            offset=0,
-        )
-        return {"total": len(all_rows), "citations": rows}
+        return {"total": total, "citations": rows}
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
