@@ -216,6 +216,17 @@ class AuditDB:
                     await db.commit()
                 except Exception:
                     pass  # column already exists
+            # One-time data cleanup: remove duplicate claim_citations rows that
+            # accumulated before record_claim_citations gained DELETE-before-INSERT.
+            # Keeps the highest id (most recent insert) per unique citation key.
+            await db.execute("""
+                DELETE FROM claim_citations
+                WHERE id NOT IN (
+                    SELECT MAX(id)
+                    FROM claim_citations
+                    GROUP BY page_slug, source_file, line_start, line_end
+                )
+            """)
             await db.execute(f"PRAGMA user_version = {DB_SCHEMA_VERSION}")
             await db.commit()
 
