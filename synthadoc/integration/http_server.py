@@ -636,6 +636,9 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         app.state.orch = orch
         app.state.confirm_registry = {}
         app.state.confirm_result_registry = {}
+        # Share with orch so action agent's _run_orchestrate uses the same dicts
+        orch._confirm_registry = app.state.confirm_registry
+        orch._confirm_result_registry = app.state.confirm_result_registry
         from synthadoc.agents.hint_engine import HintEngine as _HE
         _HE.configure(wiki_root / "hints.json")
         worker = asyncio.create_task(_worker_loop(orch, _session_state))

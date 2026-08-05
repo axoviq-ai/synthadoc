@@ -1200,27 +1200,11 @@ class QueryAgent:
             _action_agent = ActionAgent(self._provider, self._orchestrator,
                                         self._store._root.parent)
             if _action_agent.detect(question, history=history or []):
-                _result = await _action_agent.run(question, history=history or [])
-                if _result is not None:
-                    if _result.needs_clarification:
-                        yield {
-                            "event": "clarify",
-                            "data": {
-                                "prompt": _result.clarify_prompt,
-                                "candidates": _result.clarify_candidates,
-                                "action": _result.action_type,
-                            },
-                        }
-                        yield {"event": "done", "data": {}}
-                        return
-                    yield {"event": "status", "data": {"phase": "acting"}}
-                    yield {"event": "token", "data": {"text": _result.message}}
-                    yield {"event": "citations", "data": {"citations": []}}
-                    yield {"event": "done", "data": {
-                        "citations": [], "hints": [], "gap": not _result.success,
-                        "job_id": _result.job_id,
-                        "cacheable": False,
-                    }}
+                _had_events = False
+                async for _evt in _action_agent.run_gen(question, history=history or []):
+                    _had_events = True
+                    yield _evt
+                if _had_events:
                     return
 
         yield {"event": "status", "data": {"phase": "retrieving"}}
