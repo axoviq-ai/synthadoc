@@ -428,6 +428,36 @@ def _extract_missing_slugs(text: str) -> tuple[list[str], str]:
     return slugs, cleaned
 
 
+# ── pre_prompt helpers (stale pages / re-ingest completion detection) ─────────
+
+_STALE_SLUG_RE = re.compile(
+    r'(?:^|\n)\s*[-*]?\s*([a-z0-9][a-z0-9\-_]{2,})\s+\(',
+    re.MULTILINE,
+)
+_STALE_HEADER_RE = re.compile(r'stale pages?', re.IGNORECASE)
+_REINGEST_COMPLETE_RE = re.compile(
+    r're[-\s]?ingested\s+successfully', re.IGNORECASE
+)
+
+
+def _build_pre_prompt(answer: str) -> str | None:
+    """Return a pre_prompt string if the response has an unambiguous next step.
+
+    Returns None if no clear next action is present.
+    """
+    if _REINGEST_COMPLETE_RE.search(answer):
+        return "Run lint to promote re-ingested pages to active"
+    if _STALE_HEADER_RE.search(answer):
+        slugs = _STALE_SLUG_RE.findall(answer)
+        if slugs:
+            slug_list = ", ".join(slugs[:10])
+            return (
+                f"Re-ingest {len(slugs)} stale page{'s' if len(slugs) != 1 else ''}: "
+                f"{slug_list}"
+            )
+    return None
+
+
 class QueryAgent:
     def __init__(self, provider: LLMProvider, store: WikiStorage,
                  search: HybridSearch,
@@ -1365,7 +1395,7 @@ class QueryAgent:
         _stream_output_tokens = self._provider.last_stream_output_tokens
 
         next_hints = HintEngine.after_response(full_answer, session_mode)
-        yield {"event": "done", "data": {
+        _done_data: dict = {
             "next_hints": next_hints,
             "cacheable": not _is_live_data,
             "routing_warning": routing_warning,
@@ -1373,4 +1403,8 @@ class QueryAgent:
             "tokens_used": _stream_input_tokens + _stream_output_tokens,
             "input_tokens": _stream_input_tokens,
             "output_tokens": _stream_output_tokens,
-        }}
+        }
+        _pre_prompt = _build_pre_prompt(full_answer)
+        if _pre_prompt:
+            _done_data["pre_prompt"] = _pre_prompt
+        yield {"event": "done", "data": _done_data}

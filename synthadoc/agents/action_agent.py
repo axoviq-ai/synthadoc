@@ -325,10 +325,15 @@ class ActionAgent:
             return
         yield {"event": "token", "data": {"text": result.message}}
         yield {"event": "citations", "data": {"citations": []}}
-        yield {"event": "done", "data": {
+        from synthadoc.agents.query_agent import _build_pre_prompt  # lazy — avoids circular import
+        _pre_prompt = _build_pre_prompt(result.message)
+        _done_data: dict = {
             "citations": [], "hints": [], "gap": not result.success,
             "job_id": result.job_id, "cacheable": False,
-        }}
+        }
+        if _pre_prompt:
+            _done_data["pre_prompt"] = _pre_prompt
+        yield {"event": "done", "data": _done_data}
 
     async def _run_orchestrate(self, question: str) -> "AsyncGenerator[dict, None]":
         """Run IngestLintWorkflow via tool-call loop and yield SSE dicts."""
@@ -376,9 +381,12 @@ class ActionAgent:
             if evt["event"] == "final_text":
                 text = evt["data"]["text"]
                 yield {"event": "token", "data": {"text": text}}
-                yield {"event": "done", "data": {
-                    "citations": [], "hints": [], "cacheable": False,
-                }}
+                from synthadoc.agents.query_agent import _build_pre_prompt  # lazy — avoids circular import
+                _pre_prompt = _build_pre_prompt(text)
+                _done_data: dict = {"citations": [], "hints": [], "cacheable": False}
+                if _pre_prompt:
+                    _done_data["pre_prompt"] = _pre_prompt
+                yield {"event": "done", "data": _done_data}
             else:
                 yield evt
         # Flush any remaining buffered events
