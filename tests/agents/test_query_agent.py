@@ -726,7 +726,7 @@ async def test_no_gap_search_decompose_not_called(tmp_wiki):
     assert result.knowledge_gap is False
 
 
-@pytest.mark.skip(reason="Signal 3 (vocabulary overlap gap) has a pre-existing bug unrelated to this sprint")
+@pytest.mark.known_bug
 @pytest.mark.asyncio
 async def test_gap_detected_when_pages_are_off_topic(tmp_wiki):
     """Signal 3: gap triggers when retrieved pages share vocabulary but lack key content words.
