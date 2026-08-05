@@ -47,6 +47,7 @@ export default function App() {
         setInitialMessages([]);
         setActiveSessionId(null);
         setHintLockLeft(0);
+        setActiveTab("chat");
         await resetSession();
     }, [resetSession]);
 
@@ -69,6 +70,7 @@ export default function App() {
         if (hintsResult.status === "fulfilled") updateHints(hintsResult.value);
         setHintLockLeft(0);
         setActiveSessionId(sessionId);
+        setActiveTab("chat");
         setResetKey((k) => k + 1);
     }, [resumeSession, updateHints]);
 
