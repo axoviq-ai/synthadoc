@@ -99,6 +99,38 @@ async def test_run_scheduled_job_nonzero_exit(tmp_path):
     assert "exit code 2" in call.args[3]
 
 
+async def test_run_scheduled_job_cancelled_records_finish_and_reraises(tmp_path):
+    """CancelledError: kills proc, records 'cancelled', then re-raises so the
+    task is properly cancelled rather than swallowed."""
+    audit_db = AsyncMock()
+
+    async def _hang():
+        await asyncio.sleep(9999)
+
+    mock_proc = MagicMock()
+    mock_proc.kill = MagicMock()
+    mock_proc.communicate = _hang
+
+    entry = {"id": "sched-test-cancel", "op": "lint"}
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)):
+        task = asyncio.create_task(
+            _run_scheduled_job(entry, "test-wiki", tmp_path, audit_db, 30)
+        )
+        await asyncio.sleep(0.05)   # let it reach proc.communicate()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    mock_proc.kill.assert_called_once()
+    audit_db.record_scheduled_run_finish.assert_awaited_once()
+    call = audit_db.record_scheduled_run_finish.call_args
+    assert call.args[1] == "cancelled"
+    assert task.cancelled()
+
+
 def test_save_raw_is_atomic(tmp_path):
     """_save_raw writes via a .tmp sibling then renames — no partial file on failure."""
     sched = Scheduler(wiki="test", wiki_root=str(tmp_path))
