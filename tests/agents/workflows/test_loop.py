@@ -1,0 +1,187 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 William Johnason / axoviq.com
+import pytest
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
+
+from synthadoc.agents.workflows._base import WorkflowContext
+from synthadoc.agents.workflows._loop import _parse_tool_call, run_tool_call_loop
+from synthadoc.providers.base import CompletionResponse
+
+
+def _make_ctx():
+    events = []
+
+    async def _send(event, data):
+        events.append({"event": event, "data": data})
+
+    ctx = WorkflowContext(
+        session_id="test-session",
+        wiki_root=Path("/tmp/wiki"),
+        queue=None,
+        store=None,
+        audit_db=None,
+        send_sse_event=_send,
+        confirm_registry={},
+        confirm_result_registry={},
+    )
+    return ctx, events
+
+
+async def test_loop_emits_final_text_when_no_tool_call():
+    """Plain-text response → loop yields token chunks then final_text."""
+    ctx, events = _make_ctx()
+    provider = MagicMock()
+    provider.complete = AsyncMock(
+        return_value=CompletionResponse(
+            text="Here is my answer.", input_tokens=10, output_tokens=5
+        )
+    )
+
+    results = []
+    async for event in run_tool_call_loop(
+        system_prompt="You are helpful.",
+        initial_message="What is 2+2?",
+        tool_fns={},
+        provider=provider,
+        ctx=ctx,
+    ):
+        results.append(event)
+
+    final_events = [e for e in results if e["event"] == "final_text"]
+    assert len(final_events) == 1
+    assert final_events[0]["data"]["text"] == "Here is my answer."
+    # At least one token event should have been emitted
+    token_events = [e for e in results if e["event"] == "token"]
+    assert len(token_events) >= 1
+    # provider was called exactly once
+    assert provider.complete.call_count == 1
+
+
+async def test_loop_executes_tool_and_continues():
+    """Tool call JSON → tool executed → loop continues → plain text → final_text."""
+    ctx, events = _make_ctx()
+
+    call_count = 0
+
+    async def _complete(messages, system=None, temperature=0.0, max_tokens=4096):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return CompletionResponse(
+                text='{"tool_call": {"name": "my_tool", "input": {"x": 1}}}',
+                input_tokens=10,
+                output_tokens=10,
+            )
+        return CompletionResponse(text="Done!", input_tokens=10, output_tokens=5)
+
+    tool_calls = []
+
+    async def my_tool(x):
+        tool_calls.append(x)
+        return {"result": x * 2}
+
+    provider = MagicMock()
+    provider.complete = _complete
+
+    results = []
+    async for event in run_tool_call_loop(
+        system_prompt="You are helpful.",
+        initial_message="Do something.",
+        tool_fns={"my_tool": my_tool},
+        provider=provider,
+        ctx=ctx,
+    ):
+        results.append(event)
+
+    # Tool was called with x=1
+    assert tool_calls == [1]
+
+    # A tool_progress SSE event was emitted
+    tool_progress_events = [e for e in events if e["event"] == "tool_progress"]
+    assert len(tool_progress_events) == 1
+    assert tool_progress_events[0]["data"]["tool"] == "my_tool"
+
+    # Final text is from the second LLM response
+    final_events = [e for e in results if e["event"] == "final_text"]
+    assert len(final_events) == 1
+    assert final_events[0]["data"]["text"] == "Done!"
+
+
+def test_parse_tool_call_returns_none_for_invalid_json_input():
+    """Regex matches but json.loads fails → _parse_tool_call returns None."""
+    # Unquoted key fools the JSON parser but satisfies the regex char-class
+    text = '{"tool_call": {"name": "bad_tool", "input": {unquoted: value}}}'
+    result = _parse_tool_call(text)
+    assert result is None
+
+
+async def test_loop_retries_on_malformed_json_then_emits_plain_text():
+    """Response starts with '{' but regex fails → loop retries, eventually emits final_text."""
+    ctx, events = _make_ctx()
+
+    call_count = 0
+
+    async def _complete(messages, system=None, temperature=0.0, max_tokens=4096):
+        nonlocal call_count
+        call_count += 1
+        # Always return a malformed tool-call-looking blob that starts with '{'
+        # but does not match the regex (missing "input" key).
+        return CompletionResponse(
+            text='{"tool_call": {"name": "broken"}}',
+            input_tokens=5,
+            output_tokens=5,
+        )
+
+    provider = MagicMock()
+    provider.complete = _complete
+
+    results = []
+    async for event in run_tool_call_loop(
+        system_prompt="You are helpful.",
+        initial_message="Do something.",
+        tool_fns={},
+        provider=provider,
+        ctx=ctx,
+    ):
+        results.append(event)
+
+    # After _MAX_PARSE_RETRIES the loop gives up and emits the text as final_text
+    final_events = [e for e in results if e["event"] == "final_text"]
+    assert len(final_events) == 1
+    # provider.complete was called initial + 2 retries + 1 final = 4 total
+    assert call_count <= 4
+
+
+async def test_loop_stops_at_budget():
+    """Provider always returns a tool call → budget guard fires → final_text contains 'budget'."""
+    ctx, events = _make_ctx()
+
+    provider = MagicMock()
+    provider.complete = AsyncMock(
+        return_value=CompletionResponse(
+            text='{"tool_call": {"name": "infinite_tool", "input": {}}}',
+            input_tokens=10,
+            output_tokens=10,
+        )
+    )
+
+    async def infinite_tool():
+        return {"ok": True}
+
+    results = []
+    async for event in run_tool_call_loop(
+        system_prompt="You are helpful.",
+        initial_message="Run forever.",
+        tool_fns={"infinite_tool": infinite_tool},
+        provider=provider,
+        ctx=ctx,
+        budget=3,
+    ):
+        results.append(event)
+
+    final_events = [e for e in results if e["event"] == "final_text"]
+    assert len(final_events) == 1
+    assert "budget" in final_events[0]["data"]["text"].lower()
+    # provider.complete should be called at most budget+1 times
+    assert provider.complete.call_count <= 4
