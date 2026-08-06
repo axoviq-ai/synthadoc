@@ -46,7 +46,12 @@ async def _resolve_stale_pages(ctx: "WorkflowContext") -> list[dict]:
         raw_file = page.sources[0].file if page and page.sources else None
         if raw_file is not None:
             if not os.path.isabs(raw_file):
-                source_path: str | None = str(ctx.wiki_root / raw_file)
+                # Legacy pages store paths relative to raw_sources/ (e.g. "public-domain/foo.txt").
+                # Try wiki_root first, then wiki_root/raw_sources as fallback.
+                candidate = ctx.wiki_root / raw_file
+                if not candidate.exists():
+                    candidate = ctx.wiki_root / "raw_sources" / raw_file
+                source_path: str | None = str(candidate)
             else:
                 source_path = raw_file
         else:

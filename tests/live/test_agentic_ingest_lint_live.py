@@ -180,8 +180,13 @@ def _get_source_path_from_page(wiki_dir: Path, slug: str) -> Path | None:
             continue
         p = Path(val)
         if not p.is_absolute():
-            # Stored paths are relative to wiki_root (parent of wiki_dir)
-            p = (wiki_dir.parent / p).resolve()
+            # Legacy pages store paths relative to raw_sources/ (e.g. "public-domain/foo.txt").
+            # Try wiki_root first, then wiki_root/raw_sources as fallback.
+            wiki_root = wiki_dir.parent
+            candidate = wiki_root / p
+            if not candidate.exists():
+                candidate = wiki_root / "raw_sources" / p
+            p = candidate
         if not (p.exists() and p.is_file()):
             continue
         if p.suffix.lower() not in {".txt", ".md"}:

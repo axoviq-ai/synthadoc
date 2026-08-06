@@ -79,18 +79,21 @@ async def test_resolve_stale_pages_returns_slugs_and_paths(tmp_path):
 # ---------------------------------------------------------------------------
 
 async def test_resolve_stale_pages_resolves_relative_path(tmp_path):
-    """Relative source paths are resolved against wiki_root."""
+    """Relative source paths: wiki_root/raw_file tried first, raw_sources/ fallback second."""
     audit_db = MagicMock()
     audit_db.get_live_page_states = AsyncMock(
         return_value=[{"slug": "page-a", "state": "stale", "updated_at": "2026-01-01"}]
     )
     store = MagicMock()
     source = MagicMock()
-    source.file = "raw/a.md"  # relative path as stored by ingest
+    source.file = "raw/a.md"  # relative path — exists directly under wiki_root
     page_a = MagicMock()
     page_a.sources = [source]
     store.read_page = MagicMock(return_value=page_a)
     store.page_exists = MagicMock(return_value=True)
+
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "raw" / "a.md").write_text("hello")
 
     events: list = []
 
@@ -111,6 +114,46 @@ async def test_resolve_stale_pages_resolves_relative_path(tmp_path):
 
     assert len(result) == 1
     expected = str(tmp_path / "raw" / "a.md")
+    assert result[0]["source_path"] == expected
+
+
+async def test_resolve_stale_pages_resolves_raw_sources_fallback(tmp_path):
+    """Relative paths not found at wiki_root are retried under wiki_root/raw_sources/."""
+    audit_db = MagicMock()
+    audit_db.get_live_page_states = AsyncMock(
+        return_value=[{"slug": "page-a", "state": "stale", "updated_at": "2026-01-01"}]
+    )
+    store = MagicMock()
+    source = MagicMock()
+    source.file = "public-domain/a.txt"  # legacy format: relative to raw_sources/
+    page_a = MagicMock()
+    page_a.sources = [source]
+    store.read_page = MagicMock(return_value=page_a)
+    store.page_exists = MagicMock(return_value=True)
+
+    # File exists only under raw_sources/
+    (tmp_path / "raw_sources" / "public-domain").mkdir(parents=True)
+    (tmp_path / "raw_sources" / "public-domain" / "a.txt").write_text("content")
+
+    events: list = []
+
+    async def _send(e, d):
+        events.append({"event": e, "data": d})
+
+    ctx = WorkflowContext(
+        session_id="s1",
+        wiki_root=tmp_path,
+        queue=MagicMock(),
+        store=store,
+        audit_db=audit_db,
+        send_sse_event=_send,
+        confirm_registry={},
+        confirm_result_registry={},
+    )
+    result = await _resolve_stale_pages(ctx)
+
+    assert len(result) == 1
+    expected = str(tmp_path / "raw_sources" / "public-domain" / "a.txt")
     assert result[0]["source_path"] == expected
 
 
