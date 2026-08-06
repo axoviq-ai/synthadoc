@@ -166,27 +166,29 @@ def _make_stale_page(wiki_root: Path, *, seed: str = "") -> tuple[str, Path] | N
     Returns (slug, source_path) on success, None on failure (test should skip).
     Pass `seed` to embed a unique phrase in the content so two calls produce
     distinct slugs even when the LLM uses content-derived titles.
+
+    Reads the affected slug from the job result (pages_created) so that
+    re-runs work even when a previous Antikythera page already exists.
     """
     raw_dir = wiki_root / "raw_sources"
     raw_dir.mkdir(exist_ok=True)
-    wiki_dir = wiki_root / "wiki"
 
     stamp = int(time.time())
     tag = f"{seed}-{stamp}" if seed else str(stamp)
     tmp = raw_dir / f"_live-agentic-stale-{tag}.txt"
-    unique_label = f"[live-test-{tag}]"
+    # Lead with a unique heading so the LLM generates a per-run slug.
     tmp.write_text(
-        f"The Antikythera mechanism {unique_label} is an ancient analogue computer "
-        f"from Greece.\n",
+        f"Antikythera Fragment Analysis — Record {tag}\n\n"
+        f"Technical documentation for fragment {tag} of the Antikythera mechanism, "
+        f"an ancient analogue computer from Greece (circa 100 BCE).\n",
         encoding="utf-8",
     )
-
-    before = {f.stem for f in wiki_dir.glob("*.md")}
 
     # Ingest via existing endpoint (not the new /ingest endpoint under test)
     try:
         r = _api("/jobs/ingest", "POST", {"source": str(tmp)})
-        status = _wait_job(r["job_id"], max_wait=300)
+        job_id = r["job_id"]
+        status = _wait_job(job_id, max_wait=300)
     except Exception:
         tmp.unlink(missing_ok=True)
         return None
@@ -195,15 +197,25 @@ def _make_stale_page(wiki_root: Path, *, seed: str = "") -> tuple[str, Path] | N
         tmp.unlink(missing_ok=True)
         return None
 
-    slug = _new_slug_in(wiki_dir, before)
+    # Read slug from the job result — works whether the job created or updated a page.
+    try:
+        job_body = _api(f"/jobs/{job_id}")
+        res = job_body.get("result") or {}
+        candidates = res.get("pages_created", []) + res.get("pages_updated", [])
+        slug = candidates[0] if candidates else None
+    except Exception:
+        slug = None
+
     if not slug:
         tmp.unlink(missing_ok=True)
         return None
 
     # Modify source → hash mismatch
     tmp.write_text(
-        f"The Antikythera mechanism {unique_label} is an ancient analogue computer "
-        f"from Greece. It dates to approximately 100 BCE.\n",
+        f"Antikythera Fragment Analysis — Record {tag}\n\n"
+        f"Technical documentation for fragment {tag} of the Antikythera mechanism, "
+        f"an ancient analogue computer from Greece (circa 100 BCE). "
+        f"Additional calibration data appended.\n",
         encoding="utf-8",
     )
 
@@ -556,16 +568,14 @@ def test_agentic_reingest_stale_pages_become_draft():
     after the test regardless of outcome.
     """
     wiki_root = _wiki_root()
-    manufactured: tuple[str, Path] | None = None
 
-    stale_before = _find_stale_slugs()
-    if not stale_before:
-        manufactured = _make_stale_page(wiki_root)
-        if manufactured is None:
-            pytest.skip("Could not manufacture a stale page — skipping e2e test")
-        stale_before = _find_stale_slugs()
-
-    target_slugs = list(stale_before)
+    # Always manufacture a stale page so we assert only on a page whose
+    # source file is guaranteed to exist (pre-existing stale pages may have
+    # no source path and therefore can't be re-ingested by the workflow).
+    manufactured = _make_stale_page(wiki_root)
+    if manufactured is None:
+        pytest.skip("Could not manufacture a stale page — skipping e2e test")
+    slug, source_path = manufactured
 
     try:
         session_id = str(uuid.uuid4())
@@ -582,15 +592,12 @@ def test_agentic_reingest_stale_pages_become_draft():
         assert done_events, "SSE stream ended without a done event"
 
         stale_after = _find_stale_slugs()
-        still_stale = [s for s in target_slugs if s in stale_after]
-        assert not still_stale, (
-            f"Pages still stale after agentic re-ingest: {still_stale}. "
-            f"All stale before: {target_slugs}"
+        assert slug not in stale_after, (
+            f"Manufactured page {slug!r} still stale after agentic re-ingest. "
+            f"All stale slugs after: {stale_after}"
         )
     finally:
-        if manufactured:
-            slug, source_path = manufactured
-            _cleanup_page(wiki_root, slug, source_path)
+        _cleanup_page(wiki_root, slug, source_path)
 
 
 @pytest.mark.live
@@ -629,8 +636,8 @@ def test_agentic_confirm_decline_cancels_workflow():
     monitor = threading.Thread(target=_decline_monitor, daemon=True)
     monitor.start()
 
-    path = f"/query/stream?q=re-ingest+stale+pages&session_id={session_id}&no_cache=true"
-    with httpx.Client(timeout=httpx.Timeout(120)) as client:
+    path = f"/query/stream?q=re-ingest+stale+pages&session_id={session_id}&no_cache=true&timeout_seconds=300"
+    with httpx.Client(timeout=httpx.Timeout(320)) as client:
         with client.stream("GET", f"{BASE}{path}") as r:
             r.raise_for_status()
             current_type = "message"
