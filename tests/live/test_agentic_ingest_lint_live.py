@@ -179,7 +179,10 @@ def _get_source_path_from_page(wiki_dir: Path, slug: str) -> Path | None:
         if val.startswith("http://") or val.startswith("https://"):
             continue
         p = Path(val)
-        if not (p.is_absolute() and p.exists() and p.is_file()):
+        if not p.is_absolute():
+            # Stored paths are relative to wiki_root (parent of wiki_dir)
+            p = (wiki_dir.parent / p).resolve()
+        if not (p.exists() and p.is_file()):
             continue
         if p.suffix.lower() not in {".txt", ".md"}:
             continue

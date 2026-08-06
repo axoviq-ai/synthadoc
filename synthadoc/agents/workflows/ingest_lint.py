@@ -35,6 +35,8 @@ run_lint — queue a lint run.
 confirm — ask the user to confirm before proceeding with a potentially destructive action.
   Input: {"message": str, "yes_label": str (default "Yes"), "no_label": str (default "No")}
   Output: {"confirmed": bool}
+  If confirm returns {"confirmed": false}, respond with a brief plain-text message
+  acknowledging the cancellation (use the word "cancelled") and stop — do not call any more tools.
 
 To call a tool, respond EXACTLY with this JSON and nothing else:
 {"tool_call": {"name": "<tool_name>", "input": <input_dict>}}

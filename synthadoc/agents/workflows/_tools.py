@@ -43,7 +43,14 @@ async def _resolve_stale_pages(ctx: "WorkflowContext") -> list[dict]:
     result: list[dict] = []
     for p in stale:
         page = ctx.store.read_page(p["slug"])
-        source_path = page.sources[0].file if page and page.sources else None
+        raw_file = page.sources[0].file if page and page.sources else None
+        if raw_file is not None:
+            if not os.path.isabs(raw_file):
+                source_path: str | None = str(ctx.wiki_root / raw_file)
+            else:
+                source_path = raw_file
+        else:
+            source_path = None
         result.append(
             {
                 "slug": p["slug"],

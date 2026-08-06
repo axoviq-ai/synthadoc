@@ -47,7 +47,7 @@ def _make_ctx(audit_db=None, store=None, queue=None):
 # Test 1: _resolve_stale_pages happy path
 # ---------------------------------------------------------------------------
 
-async def test_resolve_stale_pages_returns_slugs_and_paths():
+async def test_resolve_stale_pages_returns_slugs_and_paths(tmp_path):
     """Stale pages are returned; active pages are excluded."""
     audit_db = MagicMock()
     audit_db.get_live_page_states = AsyncMock(
@@ -58,7 +58,8 @@ async def test_resolve_stale_pages_returns_slugs_and_paths():
     )
     store = MagicMock()
     source = MagicMock()
-    source.file = "/wiki/raw/a.md"
+    source_file = str(tmp_path / "raw" / "a.md")
+    source.file = source_file
     page_a = MagicMock()
     page_a.sources = [source]
     store.read_page = MagicMock(return_value=page_a)
@@ -69,8 +70,48 @@ async def test_resolve_stale_pages_returns_slugs_and_paths():
 
     assert len(result) == 1
     assert result[0]["slug"] == "page-a"
-    assert result[0]["source_path"] == "/wiki/raw/a.md"
+    assert result[0]["source_path"] == source_file
     assert "stale_since" in result[0]
+
+
+# ---------------------------------------------------------------------------
+# Test 1b: _resolve_stale_pages resolves relative source paths against wiki_root
+# ---------------------------------------------------------------------------
+
+async def test_resolve_stale_pages_resolves_relative_path(tmp_path):
+    """Relative source paths are resolved against wiki_root."""
+    audit_db = MagicMock()
+    audit_db.get_live_page_states = AsyncMock(
+        return_value=[{"slug": "page-a", "state": "stale", "updated_at": "2026-01-01"}]
+    )
+    store = MagicMock()
+    source = MagicMock()
+    source.file = "raw/a.md"  # relative path as stored by ingest
+    page_a = MagicMock()
+    page_a.sources = [source]
+    store.read_page = MagicMock(return_value=page_a)
+    store.page_exists = MagicMock(return_value=True)
+
+    events: list = []
+
+    async def _send(e, d):
+        events.append({"event": e, "data": d})
+
+    ctx = WorkflowContext(
+        session_id="s1",
+        wiki_root=tmp_path,
+        queue=MagicMock(),
+        store=store,
+        audit_db=audit_db,
+        send_sse_event=_send,
+        confirm_registry={},
+        confirm_result_registry={},
+    )
+    result = await _resolve_stale_pages(ctx)
+
+    assert len(result) == 1
+    expected = str(tmp_path / "raw" / "a.md")
+    assert result[0]["source_path"] == expected
 
 
 # ---------------------------------------------------------------------------
