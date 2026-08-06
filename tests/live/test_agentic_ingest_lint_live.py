@@ -203,16 +203,22 @@ def _make_stale_page(
     *,
     seed: str = "",
     exclude_slugs: set | None = None,
-) -> tuple[str, Path, str] | None:
+) -> tuple[str, Path, str, str] | None:
     """
-    Manufacture a stale page by borrowing an existing active page.
+    Manufacture a stale page by borrowing an existing active or draft page.
 
-    Finds an active page whose source is a local text file, backs up the
-    source content, appends a marker line (hash mismatch), and runs
-    scoped lint to mark the page stale.
+    Finds a page whose source is a local text file, reads the current source
+    content, then uses POST /lifecycle/transition to set the page to STALE in
+    both the frontmatter and audit DB.  Active pages go directly ACTIVE→STALE.
+    Draft pages are first promoted DRAFT→ACTIVE, then transitioned ACTIVE→STALE.
 
-    Returns (slug, source_path, original_content) on success, None if no
-    suitable page is found. Use _restore_stale_page() for cleanup — NOT
+    The source file is NOT modified, so the agentic workflow's own lint run sees
+    H_orig == H_orig in the ingests table (no false-positive hash-mismatch on
+    other pages).
+
+    Returns (slug, source_path, original_content, original_state) on success
+    where original_state is "active" or "draft".  Returns None if no suitable
+    page is found.  Use _restore_stale_page() for cleanup — NOT
     _cleanup_page(), which would delete real user data.
 
     `exclude_slugs`: skip these slugs (use when borrowing a second page).
@@ -226,59 +232,68 @@ def _make_stale_page(
     except Exception:
         return None
 
-    slug = None
-    source_path = None
-    original_content = None
+    def _find_candidate(target_state: str) -> tuple[str, Path, str] | None:
+        for page_info in pages:
+            if page_info.get("state") != target_state:
+                continue
+            candidate = page_info["slug"]
+            if candidate in exclude:
+                continue
+            sp = _get_source_path_from_page(wiki_dir, candidate)
+            if sp is None:
+                continue
+            try:
+                orig = sp.read_text(encoding="utf-8")
+            except Exception:
+                continue
+            return candidate, sp, orig
+        return None
 
-    for page_info in pages:
-        if page_info.get("state") != "active":
-            continue
-        candidate = page_info["slug"]
-        if candidate in exclude:
-            continue
-        sp = _get_source_path_from_page(wiki_dir, candidate)
-        if sp is None:
-            continue
+    # Prefer active pages (no extra transition needed)
+    found = _find_candidate("active")
+    original_state = "active"
+
+    # Fall back to draft pages: promote DRAFT→ACTIVE first, then ACTIVE→STALE
+    if found is None:
+        found = _find_candidate("draft")
+        if found is None:
+            return None
+        original_state = "draft"
+        slug_tmp = found[0]
         try:
-            orig = sp.read_text(encoding="utf-8")
+            r = _raw("/lifecycle/transition", "POST", {
+                "slug": slug_tmp,
+                "to_state": "active",
+                "reason": "live-test: promote draft before manufacturing stale page",
+            })
+            if r.status_code != 200:
+                return None
         except Exception:
-            continue
-        slug = candidate
-        source_path = sp
-        original_content = orig
-        break
+            return None
 
-    if slug is None:
-        return None
+    slug, source_path, original_content = found
 
-    # Append a marker line to change the source hash
-    stamp = int(time.time())
+    # Transition ACTIVE→STALE via the lifecycle API — fast (< 1 s) and
+    # surgical: only this page is affected.  The source hash in the ingests
+    # table still matches the current source file (H_orig == H_orig), so the
+    # agentic workflow's lint won't re-detect a mismatch and won't touch any
+    # other page.  The ingest LLM sees real, in-scope content and chooses
+    # action=update (not action=skip), triggering the STALE→DRAFT transition.
     try:
-        source_path.write_text(
-            original_content + f"\n<!-- live-test-{stamp} -->\n",
-            encoding="utf-8",
-        )
-    except Exception:
-        return None
-
-    # Run lifecycle-only lint to detect the hash mismatch.
-    # Must use scope="stale" — slug-scoped lint skips lifecycle checks
-    # (lint_agent.py only runs _run_lifecycle_checks for scope in ("all", "stale")).
-    try:
-        r = _api("/jobs/lint", "POST", {
-            "scope": "stale", "auto_resolve": False,
-            "adversarial": False, "lifecycle": True,
+        r = _raw("/lifecycle/transition", "POST", {
+            "slug": slug,
+            "to_state": "stale",
+            "reason": "live-test: manufacture stale page",
         })
-        _wait_job(r["job_id"], max_wait=120)
+        if r.status_code != 200:
+            return None
     except Exception:
-        source_path.write_text(original_content, encoding="utf-8")
         return None
 
     if slug not in _find_stale_slugs():
-        source_path.write_text(original_content, encoding="utf-8")
         return None
 
-    return slug, source_path, original_content
+    return slug, source_path, original_content, original_state
 
 
 def _restore_stale_page(
@@ -286,11 +301,14 @@ def _restore_stale_page(
     slug: str,
     source_path: Path,
     original_content: str,
+    *,
+    original_state: str = "active",
 ) -> None:
     """Restore a page borrowed by _make_stale_page to its pre-test state.
 
     Writes the original content back, then force-re-ingests so the DB hash
-    is updated and the page leaves stale/draft state.
+    is updated and the page leaves stale/draft state.  If original_state is
+    "active", promotes the page from DRAFT→ACTIVE after the ingest completes.
     """
     try:
         source_path.write_text(original_content, encoding="utf-8")
@@ -301,6 +319,80 @@ def _restore_stale_page(
         _wait_job(r["job_id"], max_wait=180)
     except Exception:
         pass
+    if original_state == "active":
+        try:
+            _raw("/lifecycle/transition", "POST", {
+                "slug": slug,
+                "to_state": "active",
+                "reason": "live-test: restore to original active state",
+            })
+        except Exception:
+            pass
+
+
+def _isolate_stale_pages_with_sources(wiki_root: Path) -> list[str]:
+    """Temporarily move all currently-stale pages with local text sources to ACTIVE.
+
+    This prevents the agentic workflow from picking up residual stale pages
+    during the test, ensuring only the manufactured page appears as stale.
+    Returns the slugs that were moved; pass them to _restore_isolated_pages()
+    in a finally block to restore their state after the test.
+    """
+    wiki_dir = wiki_root / "wiki"
+    moved: list[str] = []
+    try:
+        pages = _api("/lifecycle/pages").get("pages", [])
+    except Exception:
+        return []
+    for page_info in pages:
+        if page_info.get("state") != "stale":
+            continue
+        slug = page_info["slug"]
+        if _get_source_path_from_page(wiki_dir, slug) is None:
+            continue
+        try:
+            r = _raw("/lifecycle/transition", "POST", {
+                "slug": slug,
+                "to_state": "active",
+                "reason": "live-test: isolate pre-existing stale page",
+            })
+            if r.status_code == 200:
+                moved.append(slug)
+        except Exception:
+            pass
+    return moved
+
+
+def _restore_isolated_pages(slugs: list[str]) -> None:
+    """Move slugs previously isolated by _isolate_stale_pages_with_sources back to STALE."""
+    for slug in slugs:
+        try:
+            _raw("/lifecycle/transition", "POST", {
+                "slug": slug,
+                "to_state": "stale",
+                "reason": "live-test: restore isolated page",
+            })
+        except Exception:
+            pass
+
+
+def _wait_for_slug_not_stale(slug: str, timeout: int = 120) -> bool:
+    """Poll /lifecycle/pages until slug is no longer stale or timeout expires.
+
+    Returns True if the slug left stale state within the timeout.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            if slug not in _find_stale_slugs():
+                return True
+        except Exception:
+            pass
+        time.sleep(5)
+    try:
+        return slug not in _find_stale_slugs()
+    except Exception:
+        return False
 
 
 # ── Server gate ───────────────────────────────────────────────────────────────
@@ -534,10 +626,14 @@ def _stream_with_autoconfirm(
     Returns the full collected event list.
     """
     collected: list[tuple[str, dict]] = []
-    confirmed_sessions: set[str] = set()
     lock = threading.Lock()
 
     def _monitor_and_confirm():
+        # Respond to every confirm_request seen in the snapshot.  The server
+        # returns 404 if no gate is pending (already processed or popped) and
+        # 409 if the gate is already set — both are swallowed by the except.
+        # This allows the agent to call confirm multiple times: each new gate
+        # registered by tool_confirm() will be caught on the next poll cycle.
         while True:
             time.sleep(0.3)
             with lock:
@@ -545,15 +641,13 @@ def _stream_with_autoconfirm(
             for evt_type, data in snapshot:
                 if evt_type == "confirm_request":
                     sid = data.get("session_id", session_id)
-                    if sid not in confirmed_sessions:
-                        confirmed_sessions.add(sid)
-                        try:
-                            _raw("/action/confirm", "POST", {
-                                "session_id": sid,
-                                "confirmed": True,
-                            })
-                        except Exception:
-                            pass
+                    try:
+                        _raw("/action/confirm", "POST", {
+                            "session_id": sid,
+                            "confirmed": True,
+                        })
+                    except Exception:
+                        pass
                 if evt_type == "done":
                     return
 
@@ -634,15 +728,21 @@ def test_agentic_reingest_stale_pages_become_draft():
     promotion to active).
 
     Manufactures a stale page if none exists; cleans up the manufactured page
-    after the test regardless of outcome.
+    after the test regardless of outcome.  Isolates any pre-existing stale pages
+    before running the workflow so queue congestion from residual jobs does not
+    prevent the manufactured page from being processed.
     """
     wiki_root = _wiki_root()
 
-    # Borrow an existing active page — no ingest needed, guarantees in-scope content.
+    # Hide pre-existing stale pages so the workflow only sees the one we make.
+    isolated_slugs = _isolate_stale_pages_with_sources(wiki_root)
+
+    # Borrow an existing active or draft page — no source modification needed.
     manufactured = _make_stale_page(wiki_root)
     if manufactured is None:
-        pytest.skip("No active page with a local text source found — skipping e2e test")
-    slug, source_path, orig_content = manufactured
+        _restore_isolated_pages(isolated_slugs)
+        pytest.skip("No active or draft page with a local text source found — skipping e2e test")
+    slug, source_path, orig_content, orig_state = manufactured
 
     try:
         session_id = str(uuid.uuid4())
@@ -658,13 +758,18 @@ def test_agentic_reingest_stale_pages_become_draft():
         done_events = [(t, d) for t, d in events if t == "done"]
         assert done_events, "SSE stream ended without a done event"
 
+        # Safety net: give the ingest job a moment to write its final state even
+        # if tool_poll_job returned just before the DB write completed.
+        _wait_for_slug_not_stale(slug, timeout=120)
+
         stale_after = _find_stale_slugs()
         assert slug not in stale_after, (
             f"Borrowed page {slug!r} still stale after agentic re-ingest. "
             f"All stale slugs after: {stale_after}"
         )
     finally:
-        _restore_stale_page(wiki_root, slug, source_path, orig_content)
+        _restore_stale_page(wiki_root, slug, source_path, orig_content, original_state=orig_state)
+        _restore_isolated_pages(isolated_slugs)
 
 
 @pytest.mark.live
@@ -771,20 +876,26 @@ def test_agentic_partial_completion_continues_after_one_failure():
 
     Manufactures two stale pages, then deletes one source file just before
     the ingest phase runs so the agent encounters a file-not-found error
-    mid-workflow.
+    mid-workflow.  Isolates any pre-existing stale pages so the workflow only
+    sees the two manufactured pages.
     """
     wiki_root = _wiki_root()
 
+    # Hide pre-existing stale pages so the workflow only sees the two we make.
+    isolated_slugs = _isolate_stale_pages_with_sources(wiki_root)
+
     page_a = _make_stale_page(wiki_root)
     if page_a is None:
-        pytest.skip("No active page with a local text source found for page A — skipping")
-    slug_a, src_a, orig_a = page_a
+        _restore_isolated_pages(isolated_slugs)
+        pytest.skip("No active or draft page with a local text source found for page A — skipping")
+    slug_a, src_a, orig_a, orig_state_a = page_a
 
     page_b = _make_stale_page(wiki_root, exclude_slugs={slug_a})
     if page_b is None:
-        _restore_stale_page(wiki_root, slug_a, src_a, orig_a)
-        pytest.skip("No second active page with a local text source found for page B — skipping")
-    slug_b, src_b, orig_b = page_b
+        _restore_stale_page(wiki_root, slug_a, src_a, orig_a, original_state=orig_state_a)
+        _restore_isolated_pages(isolated_slugs)
+        pytest.skip("No second active or draft page with a local text source found for page B — skipping")
+    slug_b, src_b, orig_b, orig_state_b = page_b
 
     # Sabotage: rename src_b so the agent's ingest call for B gets file-not-found
     # while page A still has a reachable source.
@@ -826,8 +937,9 @@ def test_agentic_partial_completion_continues_after_one_failure():
         # Restore src_b from its backup before re-ingesting
         if src_b_bak.exists() and not src_b.exists():
             src_b_bak.rename(src_b)
-        _restore_stale_page(wiki_root, slug_a, src_a, orig_a)
-        _restore_stale_page(wiki_root, slug_b, src_b, orig_b)
+        _restore_stale_page(wiki_root, slug_a, src_a, orig_a, original_state=orig_state_a)
+        _restore_stale_page(wiki_root, slug_b, src_b, orig_b, original_state=orig_state_b)
+        _restore_isolated_pages(isolated_slugs)
 
 
 if __name__ == "__main__":

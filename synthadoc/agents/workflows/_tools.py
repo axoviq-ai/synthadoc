@@ -113,12 +113,16 @@ async def tool_ingest_source(ctx: "WorkflowContext", source_path: str) -> dict:
         return {"error": f"File not found: {source_path!r}"}
 
     # Enqueue with retries for transient queue-full errors.
+    # force=True bypasses the dedup check and uses bust_cache so the ingest
+    # agent re-evaluates the content fresh and always updates stale pages.
     last_error: str | None = None
     for delay in [0] + _INGEST_RETRY_DELAYS:
         if delay > 0:
             await asyncio.sleep(delay)
         try:
-            job_id = await ctx.queue.enqueue("ingest", {"source": source_path})
+            job_id = await ctx.queue.enqueue(
+                "ingest", {"source": source_path, "force": True}
+            )
             return {"job_id": job_id}
         except Exception as exc:  # noqa: BLE001
             last_error = str(exc)
