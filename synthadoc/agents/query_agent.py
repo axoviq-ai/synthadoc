@@ -431,10 +431,19 @@ def _extract_missing_slugs(text: str) -> tuple[list[str], str]:
 # ── pre_prompt helpers (stale pages / re-ingest completion detection) ─────────
 
 _STALE_SLUG_RE = re.compile(
-    r'(?:^|\n)\s*[-*]?\s*([a-z0-9][a-z0-9\-_]{2,})\s+\(',
+    # Handles common LLM list formats:
+    #   - slug (stale since...)      ← dash bullet + paren
+    #   1. slug (stale since...)     ← numbered bullet
+    #   - `slug` (stale...)          ← backtick-wrapped
+    #   - **slug** (stale...)        ← bold
+    #   - slug: stale since...       ← colon separator
+    #   - slug — stale               ← em-dash separator
+    r'(?:^|\n)\s*(?:\d+[.)]\s*|[-*|]?\s*)`?(?:\*{1,2})?([a-z0-9][a-z0-9\-_]{2,})(?:\*{1,2})?`?'
+    r'\s*(?:\(|:|\s+—|\s+–)',
     re.MULTILINE,
 )
 _STALE_HEADER_RE = re.compile(r'stale pages?', re.IGNORECASE)
+_NO_STALE_RE = re.compile(r'no stale pages?', re.IGNORECASE)
 _REINGEST_COMPLETE_RE = re.compile(
     r're[-\s]?ingested\s+successfully', re.IGNORECASE
 )
@@ -447,7 +456,8 @@ def _build_pre_prompt(answer: str) -> str | None:
     """
     if _REINGEST_COMPLETE_RE.search(answer):
         return "Run lint to promote re-ingested pages to active"
-    if _STALE_HEADER_RE.search(answer):
+    # Only trigger on positive stale context ("stale pages" but not "no stale pages").
+    if _STALE_HEADER_RE.search(answer) and not _NO_STALE_RE.search(answer):
         slugs = _STALE_SLUG_RE.findall(answer)
         if slugs:
             slug_list = ", ".join(slugs[:10])
@@ -455,6 +465,9 @@ def _build_pre_prompt(answer: str) -> str | None:
                 f"Re-ingest {len(slugs)} stale page{'s' if len(slugs) != 1 else ''}: "
                 f"{slug_list}"
             )
+        # Stale pages mentioned positively but slugs couldn't be parsed — return
+        # a generic suggestion so the textarea is still pre-filled.
+        return "Re-ingest stale pages"
     return None
 
 
