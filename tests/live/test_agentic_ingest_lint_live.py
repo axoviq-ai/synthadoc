@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import threading
 import time
@@ -155,88 +156,138 @@ def _cleanup_page(wiki_root: Path, slug: str, source_path: Path | None = None) -
         pass
 
 
-def _make_stale_page(wiki_root: Path, *, seed: str = "") -> tuple[str, Path] | None:
+def _get_source_path_from_page(wiki_dir: Path, slug: str) -> Path | None:
+    """Return the first local text-file source path from a wiki page's frontmatter.
+
+    Parses the YAML frontmatter for `sources[*].file`, skips URL sources and
+    binary formats (pdf, docx, etc.), and returns a Path only if the file
+    exists on disk and is safe to append a text line to.
     """
-    Manufacture a stale page for tests that need one:
-      1. Write a temp source to raw_sources/
-      2. Ingest it (hash recorded in DB)
-      3. Modify the source (hash changes)
-      4. Run lint (detects hash mismatch → marks page stale)
-
-    Returns (slug, source_path) on success, None on failure (test should skip).
-    Pass `seed` to embed a unique phrase in the content so two calls produce
-    distinct slugs even when the LLM uses content-derived titles.
-
-    Reads the affected slug from the job result (pages_created) so that
-    re-runs work even when a previous Antikythera page already exists.
-    """
-    raw_dir = wiki_root / "raw_sources"
-    raw_dir.mkdir(exist_ok=True)
-
-    stamp = int(time.time())
-    tag = f"{seed}-{stamp}" if seed else str(stamp)
-    tmp = raw_dir / f"_live-agentic-stale-{tag}.txt"
-    unique_label = f"[live-test-{tag}]"
-    tmp.write_text(
-        f"The Antikythera mechanism {unique_label} is an ancient analogue computer "
-        f"from Greece, dating to approximately 100 BCE.\n",
-        encoding="utf-8",
-    )
-
-    # Ingest via existing endpoint (not the new /ingest endpoint under test)
+    page_file = wiki_dir / f"{slug}.md"
     try:
-        r = _api("/jobs/ingest", "POST", {"source": str(tmp)})
-        job_id = r["job_id"]
-        status = _wait_job(job_id, max_wait=300)
-    except Exception as exc:
-        print(f"[_make_stale_page] ingest API error: {exc!r}")
-        tmp.unlink(missing_ok=True)
-        return None
-
-    print(f"[_make_stale_page] ingest job {job_id} status={status!r}")
-    if status != "completed":
-        tmp.unlink(missing_ok=True)
-        return None
-
-    # Read the affected slug from the job result.
-    # Only accept newly created pages (pages_created) — never touch pages the
-    # ingest merely updated, since those may be pre-existing wiki pages whose
-    # lifecycle we must not disturb.
-    try:
-        job_body = _api(f"/jobs/{job_id}")
-        res = job_body.get("result") or {}
-        print(f"[_make_stale_page] job result keys: pages_created={res.get('pages_created')!r} pages_updated={res.get('pages_updated')!r}")
-        pages_created = res.get("pages_created", [])
-        slug = pages_created[0] if pages_created else None
-    except Exception as exc:
-        print(f"[_make_stale_page] job result fetch error: {exc!r}")
-        slug = None
-
-    if not slug:
-        print(f"[_make_stale_page] no new page slug — ingest updated existing page or result empty")
-        tmp.unlink(missing_ok=True)
-        return None
-
-    # Modify source → hash mismatch
-    tmp.write_text(
-        f"The Antikythera mechanism {unique_label} is an ancient analogue computer "
-        f"from Greece, dating to approximately 100 BCE. Additional calibration notes added.\n",
-        encoding="utf-8",
-    )
-
-    # Run lint to detect staleness
-    try:
-        r = _api("/jobs/lint", "POST", {"scope": "all", "auto_resolve": False, "adversarial": False})
-        _wait_job(r["job_id"], max_wait=300)
+        text = page_file.read_text(encoding="utf-8")
     except Exception:
-        _cleanup_page(wiki_root, slug, tmp)
+        return None
+    if not text.startswith("---"):
+        return None
+    end = text.find("\n---\n", 3)
+    if end == -1:
+        return None
+    fm_text = text[3:end]
+    for m in re.finditer(r'file:\s*(.+)', fm_text):
+        val = m.group(1).strip().strip('"\'')
+        if val.startswith("http://") or val.startswith("https://"):
+            continue
+        p = Path(val)
+        if not (p.is_absolute() and p.exists() and p.is_file()):
+            continue
+        if p.suffix.lower() not in {".txt", ".md"}:
+            continue
+        return p
+    return None
+
+
+def _make_stale_page(
+    wiki_root: Path,
+    *,
+    seed: str = "",
+    exclude_slugs: set | None = None,
+) -> tuple[str, Path, str] | None:
+    """
+    Manufacture a stale page by borrowing an existing active page.
+
+    Finds an active page whose source is a local text file, backs up the
+    source content, appends a marker line (hash mismatch), and runs
+    scoped lint to mark the page stale.
+
+    Returns (slug, source_path, original_content) on success, None if no
+    suitable page is found. Use _restore_stale_page() for cleanup — NOT
+    _cleanup_page(), which would delete real user data.
+
+    `exclude_slugs`: skip these slugs (use when borrowing a second page).
+    `seed`: accepted for API compatibility but unused.
+    """
+    wiki_dir = wiki_root / "wiki"
+    exclude = set(exclude_slugs or [])
+
+    try:
+        pages = _api("/lifecycle/pages").get("pages", [])
+    except Exception:
+        return None
+
+    slug = None
+    source_path = None
+    original_content = None
+
+    for page_info in pages:
+        if page_info.get("state") != "active":
+            continue
+        candidate = page_info["slug"]
+        if candidate in exclude:
+            continue
+        sp = _get_source_path_from_page(wiki_dir, candidate)
+        if sp is None:
+            continue
+        try:
+            orig = sp.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        slug = candidate
+        source_path = sp
+        original_content = orig
+        break
+
+    if slug is None:
+        return None
+
+    # Append a marker line to change the source hash
+    stamp = int(time.time())
+    try:
+        source_path.write_text(
+            original_content + f"\n<!-- live-test-{stamp} -->\n",
+            encoding="utf-8",
+        )
+    except Exception:
+        return None
+
+    # Run lint scoped to this page to detect the hash mismatch
+    try:
+        r = _api("/jobs/lint", "POST", {
+            "scope": slug, "auto_resolve": False,
+            "adversarial": False, "lifecycle": True,
+        })
+        _wait_job(r["job_id"], max_wait=120)
+    except Exception:
+        source_path.write_text(original_content, encoding="utf-8")
         return None
 
     if slug not in _find_stale_slugs():
-        _cleanup_page(wiki_root, slug, tmp)
+        source_path.write_text(original_content, encoding="utf-8")
         return None
 
-    return slug, tmp
+    return slug, source_path, original_content
+
+
+def _restore_stale_page(
+    wiki_root: Path,
+    slug: str,
+    source_path: Path,
+    original_content: str,
+) -> None:
+    """Restore a page borrowed by _make_stale_page to its pre-test state.
+
+    Writes the original content back, then force-re-ingests so the DB hash
+    is updated and the page leaves stale/draft state.
+    """
+    try:
+        source_path.write_text(original_content, encoding="utf-8")
+    except Exception:
+        pass
+    try:
+        r = _api("/jobs/ingest", "POST", {"source": str(source_path), "force": True})
+        _wait_job(r["job_id"], max_wait=180)
+    except Exception:
+        pass
 
 
 # ── Server gate ───────────────────────────────────────────────────────────────
@@ -574,13 +625,11 @@ def test_agentic_reingest_stale_pages_become_draft():
     """
     wiki_root = _wiki_root()
 
-    # Always manufacture a stale page so we assert only on a page whose
-    # source file is guaranteed to exist (pre-existing stale pages may have
-    # no source path and therefore can't be re-ingested by the workflow).
+    # Borrow an existing active page — no ingest needed, guarantees in-scope content.
     manufactured = _make_stale_page(wiki_root)
     if manufactured is None:
-        pytest.skip("Could not manufacture a stale page — skipping e2e test")
-    slug, source_path = manufactured
+        pytest.skip("No active page with a local text source found — skipping e2e test")
+    slug, source_path, orig_content = manufactured
 
     try:
         session_id = str(uuid.uuid4())
@@ -598,11 +647,11 @@ def test_agentic_reingest_stale_pages_become_draft():
 
         stale_after = _find_stale_slugs()
         assert slug not in stale_after, (
-            f"Manufactured page {slug!r} still stale after agentic re-ingest. "
+            f"Borrowed page {slug!r} still stale after agentic re-ingest. "
             f"All stale slugs after: {stale_after}"
         )
     finally:
-        _cleanup_page(wiki_root, slug, source_path)
+        _restore_stale_page(wiki_root, slug, source_path, orig_content)
 
 
 @pytest.mark.live
@@ -713,22 +762,23 @@ def test_agentic_partial_completion_continues_after_one_failure():
     """
     wiki_root = _wiki_root()
 
-    page_a = _make_stale_page(wiki_root, seed="a")
+    page_a = _make_stale_page(wiki_root)
     if page_a is None:
-        pytest.skip("Could not manufacture stale page A — skipping partial-completion test")
-    slug_a, src_a = page_a
+        pytest.skip("No active page with a local text source found for page A — skipping")
+    slug_a, src_a, orig_a = page_a
 
-    page_b = _make_stale_page(wiki_root, seed="b")
+    page_b = _make_stale_page(wiki_root, exclude_slugs={slug_a})
     if page_b is None:
-        _cleanup_page(wiki_root, slug_a, src_a)
-        pytest.skip("Could not manufacture stale page B — skipping partial-completion test")
-    slug_b, src_b = page_b
+        _restore_stale_page(wiki_root, slug_a, src_a, orig_a)
+        pytest.skip("No second active page with a local text source found for page B — skipping")
+    slug_b, src_b, orig_b = page_b
+
+    # Sabotage: rename src_b so the agent's ingest call for B gets file-not-found
+    # while page A still has a reachable source.
+    src_b_bak = src_b.with_name(src_b.name + ".bak")
 
     try:
-        # Sabotage page B's source just before ingest would pick it up.
-        # We delete src_b immediately so the agent's ingest_source call for B
-        # receives a file-not-found error, while A proceeds normally.
-        src_b.unlink(missing_ok=True)
+        src_b.rename(src_b_bak)
 
         session_id = str(uuid.uuid4())
         events = _stream_with_autoconfirm(
@@ -757,11 +807,14 @@ def test_agentic_partial_completion_continues_after_one_failure():
         assert any(
             kw in full_text.lower() for kw in ("fail", "error", "not found", "could not")
         ), (
-            "Expected failure narrative for the page whose source was deleted"
+            "Expected failure narrative for the page whose source was missing"
         )
     finally:
-        _cleanup_page(wiki_root, slug_a, src_a)
-        _cleanup_page(wiki_root, slug_b, src_b)
+        # Restore src_b from its backup before re-ingesting
+        if src_b_bak.exists() and not src_b.exists():
+            src_b_bak.rename(src_b)
+        _restore_stale_page(wiki_root, slug_a, src_a, orig_a)
+        _restore_stale_page(wiki_root, slug_b, src_b, orig_b)
 
 
 if __name__ == "__main__":
