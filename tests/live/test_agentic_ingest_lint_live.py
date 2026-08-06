@@ -248,8 +248,11 @@ def test_post_ingest_queues_job_for_valid_source():
 
     stamp = int(time.time())
     tmp = raw_dir / f"_live-ingest-ep-{stamp}.txt"
+    unique_concept = f"live-ingest-ep-{stamp}"
+    # Use the unique concept name as the subject so the LLM slugifies it
+    # to something that cannot collide with any real wiki page.
     tmp.write_text(
-        f"The Turing machine [{stamp}] is a theoretical model of computation.\n",
+        f"The '{unique_concept}' is an automated test entry created by the live test suite.\n",
         encoding="utf-8",
     )
 

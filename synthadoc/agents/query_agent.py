@@ -442,8 +442,8 @@ _STALE_SLUG_RE = re.compile(
     r'\s*(?:\(|:|\s+—|\s+–)',
     re.MULTILINE,
 )
-_STALE_HEADER_RE = re.compile(r'stale pages?', re.IGNORECASE)
-_NO_STALE_RE = re.compile(r'no stale pages?', re.IGNORECASE)
+_STALE_HEADER_RE = re.compile(r'\bstale\b', re.IGNORECASE)
+_NO_STALE_RE = re.compile(r'\bno stale\b|0 stale|zero stale', re.IGNORECASE)
 _REINGEST_COMPLETE_RE = re.compile(
     r're[-\s]?ingested\s+successfully', re.IGNORECASE
 )
