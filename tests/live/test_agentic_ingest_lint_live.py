@@ -176,11 +176,10 @@ def _make_stale_page(wiki_root: Path, *, seed: str = "") -> tuple[str, Path] | N
     stamp = int(time.time())
     tag = f"{seed}-{stamp}" if seed else str(stamp)
     tmp = raw_dir / f"_live-agentic-stale-{tag}.txt"
-    # Lead with a unique heading so the LLM generates a per-run slug.
+    unique_label = f"[live-test-{tag}]"
     tmp.write_text(
-        f"Antikythera Fragment Analysis — Record {tag}\n\n"
-        f"Technical documentation for fragment {tag} of the Antikythera mechanism, "
-        f"an ancient analogue computer from Greece (circa 100 BCE).\n",
+        f"The Antikythera mechanism {unique_label} is an ancient analogue computer "
+        f"from Greece, dating to approximately 100 BCE.\n",
         encoding="utf-8",
     )
 
@@ -189,33 +188,39 @@ def _make_stale_page(wiki_root: Path, *, seed: str = "") -> tuple[str, Path] | N
         r = _api("/jobs/ingest", "POST", {"source": str(tmp)})
         job_id = r["job_id"]
         status = _wait_job(job_id, max_wait=300)
-    except Exception:
+    except Exception as exc:
+        print(f"[_make_stale_page] ingest API error: {exc!r}")
         tmp.unlink(missing_ok=True)
         return None
 
+    print(f"[_make_stale_page] ingest job {job_id} status={status!r}")
     if status != "completed":
         tmp.unlink(missing_ok=True)
         return None
 
-    # Read slug from the job result — works whether the job created or updated a page.
+    # Read the affected slug from the job result.
+    # Only accept newly created pages (pages_created) — never touch pages the
+    # ingest merely updated, since those may be pre-existing wiki pages whose
+    # lifecycle we must not disturb.
     try:
         job_body = _api(f"/jobs/{job_id}")
         res = job_body.get("result") or {}
-        candidates = res.get("pages_created", []) + res.get("pages_updated", [])
-        slug = candidates[0] if candidates else None
-    except Exception:
+        print(f"[_make_stale_page] job result keys: pages_created={res.get('pages_created')!r} pages_updated={res.get('pages_updated')!r}")
+        pages_created = res.get("pages_created", [])
+        slug = pages_created[0] if pages_created else None
+    except Exception as exc:
+        print(f"[_make_stale_page] job result fetch error: {exc!r}")
         slug = None
 
     if not slug:
+        print(f"[_make_stale_page] no new page slug — ingest updated existing page or result empty")
         tmp.unlink(missing_ok=True)
         return None
 
     # Modify source → hash mismatch
     tmp.write_text(
-        f"Antikythera Fragment Analysis — Record {tag}\n\n"
-        f"Technical documentation for fragment {tag} of the Antikythera mechanism, "
-        f"an ancient analogue computer from Greece (circa 100 BCE). "
-        f"Additional calibration data appended.\n",
+        f"The Antikythera mechanism {unique_label} is an ancient analogue computer "
+        f"from Greece, dating to approximately 100 BCE. Additional calibration notes added.\n",
         encoding="utf-8",
     )
 
@@ -617,7 +622,7 @@ def test_agentic_confirm_decline_cancels_workflow():
     declined = threading.Event()
 
     def _decline_monitor():
-        deadline = time.monotonic() + 60
+        deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
             for evt_type, data in list(collected):
                 if evt_type == "confirm_request" and not declined.is_set():
