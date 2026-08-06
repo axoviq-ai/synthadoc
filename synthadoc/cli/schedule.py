@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shlex
 import subprocess
 import sys
 import time
@@ -126,7 +127,7 @@ def run_cmd(
     typer.echo(f"[schedule] {run_id}  {op}  starting")
     t0 = time.monotonic()
     try:
-        cmd = [sys.executable, "-m", "synthadoc", "-w", wiki_name] + op.split()
+        cmd = [sys.executable, "-m", "synthadoc", "-w", wiki_name] + shlex.split(op)
         sub_env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
         result = subprocess.run(cmd, cwd=str(root), capture_output=True, text=True,
                                 encoding="utf-8", env=sub_env)

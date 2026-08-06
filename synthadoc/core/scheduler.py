@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import shlex
 import sys
 import time
 import uuid
@@ -159,7 +160,7 @@ async def _run_scheduled_job(
     try:
         proc = await asyncio.create_subprocess_exec(
             sys.executable, "-m", "synthadoc", "-w", wiki,
-            *op.split(),
+            *shlex.split(op),
             cwd=str(wiki_root),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
