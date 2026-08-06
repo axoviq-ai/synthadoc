@@ -337,15 +337,24 @@ class ActionAgent:
 
     async def _run_orchestrate(self, question: str, session_id: str | None = None) -> "AsyncGenerator[dict, None]":
         """Run IngestLintWorkflow via tool-call loop and yield SSE dicts."""
+        import asyncio as _asyncio
         from synthadoc.agents.workflows._base import WorkflowContext
         from synthadoc.agents.workflows._loop import run_tool_call_loop
         from synthadoc.agents.workflows.ingest_lint import IngestLintWorkflow
         from synthadoc.storage.log import AuditDB
 
-        sse_buffer: list[dict] = []
+        # Use an asyncio.Queue so side-channel events (tool_progress,
+        # confirm_request) reach the HTTP stream immediately rather than being
+        # held in a list until the next run_tool_call_loop yield.  This is
+        # critical for tool_confirm: the confirm_request SSE must reach the
+        # client before the 120-second gate timeout fires.  With the old
+        # sse_buffer approach the gate always timed out because run_tool_call_loop
+        # was blocked inside tool_confirm and never yielded to flush the buffer.
+        sse_queue: _asyncio.Queue = _asyncio.Queue()
+        _SENTINEL = object()
 
         async def _send(event: str, data: dict) -> None:
-            sse_buffer.append({"event": event, "data": data})
+            await sse_queue.put({"event": event, "data": data})
 
         audit_db = getattr(self._orch, "_audit", None)
         if audit_db is None:
@@ -369,31 +378,43 @@ class ActionAgent:
         system_prompt = await wf.build_system_prompt()
         tool_fns = wf.get_tool_fns(ctx)
 
-        async for evt in run_tool_call_loop(
-            system_prompt=system_prompt,
-            initial_message=wf.build_initial_message(question),
-            tool_fns=tool_fns,
-            provider=self._provider,
-            ctx=ctx,
-        ):
-            # Flush buffered side-channel events (tool_progress, confirm_request)
-            for pending in sse_buffer:
-                yield pending
-            sse_buffer.clear()
-            if evt["event"] == "final_text":
-                text = evt["data"]["text"]
-                yield {"event": "token", "data": {"text": text}}
-                from synthadoc.agents.query_agent import _build_pre_prompt  # lazy — avoids circular import
-                _pre_prompt = _build_pre_prompt(text)
-                _done_data: dict = {"citations": [], "hints": [], "cacheable": False}
-                if _pre_prompt:
-                    _done_data["pre_prompt"] = _pre_prompt
-                yield {"event": "done", "data": _done_data}
-            else:
-                yield evt
-        # Flush any remaining buffered events
-        for pending in sse_buffer:
-            yield pending
+        async def _run_loop() -> None:
+            try:
+                async for evt in run_tool_call_loop(
+                    system_prompt=system_prompt,
+                    initial_message=wf.build_initial_message(question),
+                    tool_fns=tool_fns,
+                    provider=self._provider,
+                    ctx=ctx,
+                ):
+                    await sse_queue.put(evt)
+            finally:
+                await sse_queue.put(_SENTINEL)
+
+        task = _asyncio.create_task(_run_loop())
+        try:
+            while True:
+                evt = await sse_queue.get()
+                if evt is _SENTINEL:
+                    break
+                if evt.get("event") == "final_text":
+                    text = evt["data"]["text"]
+                    yield {"event": "token", "data": {"text": text}}
+                    from synthadoc.agents.query_agent import _build_pre_prompt  # lazy — avoids circular import
+                    _pre_prompt = _build_pre_prompt(text)
+                    _done_data: dict = {"citations": [], "hints": [], "cacheable": False}
+                    if _pre_prompt:
+                        _done_data["pre_prompt"] = _pre_prompt
+                    yield {"event": "done", "data": _done_data}
+                else:
+                    yield evt
+        finally:
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except _asyncio.CancelledError:
+                    pass
 
     # ── private ───────────────────────────────────────────────────────────────
 

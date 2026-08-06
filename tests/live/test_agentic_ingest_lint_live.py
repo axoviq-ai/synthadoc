@@ -901,7 +901,7 @@ def test_agentic_confirm_decline_cancels_workflow():
 
 
 @pytest.mark.live
-@pytest.mark.timeout(360)
+@pytest.mark.timeout(720)
 def test_agentic_partial_completion_continues_after_one_failure():
     """
     If one of N ingest jobs fails (e.g. source file deleted between find and
@@ -934,6 +934,11 @@ def test_agentic_partial_completion_continues_after_one_failure():
     # Exclude manufactured slugs from isolated_slugs so _restore_isolated_pages
     # does not re-stale pages that the workflow just set to draft.
     isolated_slugs = [s for s in isolated_slugs if s not in {slug_a, slug_b}]
+
+    # Drain any residual jobs (e.g. lint from the previous test's workflow) so
+    # the ingest job for page A reaches the front of the queue within
+    # tool_poll_job's 120-second timeout window.
+    _wait_for_queue_idle(max_wait=300)
 
     # Sabotage: rename src_b so the agent's ingest call for B gets file-not-found
     # while page A still has a reachable source.

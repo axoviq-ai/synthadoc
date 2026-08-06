@@ -406,7 +406,7 @@ async def test_ingest_source_enqueues_valid_file(tmp_path):
     )
     result = await tool_ingest_source(ctx, str(source_file))
     assert result == {"job_id": "job-xyz"}
-    queue.enqueue.assert_called_once_with("ingest", {"source": str(source_file)})
+    queue.enqueue.assert_called_once_with("ingest", {"source": str(source_file), "force": True})
 
 
 async def test_poll_job_returns_failed_for_dead_status():
