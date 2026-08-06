@@ -32,11 +32,19 @@ run_lint — queue a lint run.
   Input: {"scope": str (default "all")}
   Output: {"job_id": str} | {"error": str}
 
-confirm — ask the user to confirm before proceeding with a potentially destructive action.
+confirm — ask the user to confirm before proceeding.
   Input: {"message": str, "yes_label": str (default "Yes"), "no_label": str (default "No")}
   Output: {"confirmed": bool}
   If confirm returns {"confirmed": false}, respond with a brief plain-text message
   acknowledging the cancellation (use the word "cancelled") and stop — do not call any more tools.
+
+Standard workflow for re-ingesting stale pages:
+1. Call find_stale_pages to list stale pages and their source paths.
+2. ALWAYS call confirm before ingesting anything — list the pages you plan to re-ingest
+   and ask whether to proceed. Never skip this step.
+3. If confirmed, call ingest_source for each page that has a valid source_path.
+4. For each ingest job, call poll_job to wait for it to finish.
+5. When all ingest jobs are done, call run_lint to refresh the lifecycle state.
 
 To call a tool, respond EXACTLY with this JSON and nothing else:
 {"tool_call": {"name": "<tool_name>", "input": <input_dict>}}

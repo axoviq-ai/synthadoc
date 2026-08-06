@@ -174,9 +174,18 @@ def _get_source_path_from_page(wiki_dir: Path, slug: str) -> Path | None:
     if end == -1:
         return None
     fm_text = text[3:end]
-    for m in re.finditer(r'file:\s*(.+)', fm_text):
-        val = m.group(1).strip().strip('"\'')
+    # Match file+hash pairs together so we can skip placeholder entries.
+    # The lint lifecycle check compares stored hash against current file hash;
+    # sources with hash="placeholder" are never marked stale even when modified.
+    for m in re.finditer(
+        r'file:\s*(?P<file>[^\n]+)\n[ \t]+hash:\s*(?P<hash>\S+)',
+        fm_text,
+    ):
+        val = m.group("file").strip().strip('"\'')
+        stored_hash = m.group("hash").strip()
         if val.startswith("http://") or val.startswith("https://"):
+            continue
+        if stored_hash == "placeholder":
             continue
         p = Path(val)
         if not p.is_absolute():
