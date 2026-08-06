@@ -188,10 +188,12 @@ async def test_confirm_tool_blocks_until_response():
 async def test_confirm_tool_timeout():
     """asyncio.TimeoutError inside wait_for → confirmed=False."""
     ctx, _ = _make_ctx()
-    with patch(
-        "synthadoc.agents.workflows._tools.asyncio.wait_for",
-        AsyncMock(side_effect=asyncio.TimeoutError),
-    ):
+
+    async def _fake_wait_for(coro, timeout):
+        coro.close()  # prevent "coroutine never awaited" warning
+        raise asyncio.TimeoutError
+
+    with patch("synthadoc.agents.workflows._tools.asyncio.wait_for", _fake_wait_for):
         result = await tool_confirm(ctx, "Are you sure?")
     assert result["confirmed"] is False
 
@@ -402,10 +404,12 @@ async def test_confirm_returns_false_when_send_sse_raises():
 async def test_confirm_cleanup_on_timeout():
     """Registry entries are cleaned up even on TimeoutError."""
     ctx, _ = _make_ctx()
-    with patch(
-        "synthadoc.agents.workflows._tools.asyncio.wait_for",
-        AsyncMock(side_effect=asyncio.TimeoutError),
-    ):
+
+    async def _fake_wait_for(coro, timeout):
+        coro.close()  # prevent "coroutine never awaited" warning
+        raise asyncio.TimeoutError
+
+    with patch("synthadoc.agents.workflows._tools.asyncio.wait_for", _fake_wait_for):
         await tool_confirm(ctx, "OK?")
     assert "s1" not in ctx.confirm_registry
     assert "s1" not in ctx.confirm_result_registry
