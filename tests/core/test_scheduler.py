@@ -131,6 +131,28 @@ async def test_run_scheduled_job_cancelled_records_finish_and_reraises(tmp_path)
     assert task.cancelled()
 
 
+async def test_run_scheduled_job_op_with_spaces_in_path(tmp_path):
+    """shlex.split preserves quoted paths with spaces — regression for op.split() bug."""
+    audit_db = AsyncMock()
+    captured_args = []
+
+    async def _fake_exec(*args, **kwargs):
+        captured_args.extend(args)
+        mock = MagicMock()
+        mock.returncode = 0
+        mock.communicate = AsyncMock(return_value=(b"", b""))
+        return mock
+
+    entry = {"id": "sched-spaces", "op": 'ingest "raw sources/my report.pdf"'}
+
+    with patch("asyncio.create_subprocess_exec", side_effect=_fake_exec):
+        await _run_scheduled_job(entry, "test-wiki", tmp_path, audit_db, job_timeout_seconds=30)
+
+    # The path with spaces must arrive as a single argument, not split into two
+    assert "raw sources/my report.pdf" in captured_args
+    assert "report.pdf" not in [a for a in captured_args if a != "raw sources/my report.pdf"]
+
+
 def test_save_raw_is_atomic(tmp_path):
     """_save_raw writes via a .tmp sibling then renames — no partial file on failure."""
     sched = Scheduler(wiki="test", wiki_root=str(tmp_path))
