@@ -88,6 +88,30 @@ def _wait_job(job_id: str, max_wait: int = 240) -> str:
     return "timeout"
 
 
+def _wait_for_queue_idle(max_wait: int = 300) -> None:
+    """Block until the job queue has no pending or running jobs.
+
+    Polls ``GET /jobs`` every 5 seconds.  Returns as soon as all known
+    jobs are in a terminal state, or after *max_wait* seconds (best-effort).
+    Used before starting a workflow to ensure residual jobs from earlier
+    tests do not delay the ingest job beyond ``tool_poll_job``'s timeout.
+    """
+    deadline = time.monotonic() + max_wait
+    while time.monotonic() < deadline:
+        try:
+            r = _raw("/jobs")
+            if r.status_code == 200:
+                active = [
+                    j for j in r.json()
+                    if isinstance(j, dict) and j.get("status") not in _TERMINAL
+                ]
+                if not active:
+                    return
+        except Exception:
+            pass
+        time.sleep(5)
+
+
 def _sse_events(path: str, *, timeout: int = 90) -> list[tuple[str, dict]]:
     """Stream a GET SSE endpoint and collect all (event_type, data) pairs.
 
@@ -720,7 +744,7 @@ def test_agentic_reingest_emits_tool_progress_events():
 
 
 @pytest.mark.live
-@pytest.mark.timeout(360)
+@pytest.mark.timeout(720)
 def test_agentic_reingest_stale_pages_become_draft():
     """
     After the agentic re-ingest workflow completes, the stale pages that were
@@ -743,6 +767,16 @@ def test_agentic_reingest_stale_pages_become_draft():
         _restore_isolated_pages(isolated_slugs)
         pytest.skip("No active or draft page with a local text source found — skipping e2e test")
     slug, source_path, orig_content, orig_state = manufactured
+
+    # The manufactured slug must not be in isolated_slugs — if it is,
+    # _restore_isolated_pages would try to re-stale it after the workflow
+    # sets it to draft, polluting subsequent test runs.
+    isolated_slugs = [s for s in isolated_slugs if s != slug]
+
+    # Drain any residual jobs from earlier tests (e.g. a long-running lint
+    # job) so the workflow's ingest job reaches the front of the queue within
+    # tool_poll_job's 120-second timeout window.
+    _wait_for_queue_idle(max_wait=300)
 
     try:
         session_id = str(uuid.uuid4())
@@ -896,6 +930,10 @@ def test_agentic_partial_completion_continues_after_one_failure():
         _restore_isolated_pages(isolated_slugs)
         pytest.skip("No second active or draft page with a local text source found for page B — skipping")
     slug_b, src_b, orig_b, orig_state_b = page_b
+
+    # Exclude manufactured slugs from isolated_slugs so _restore_isolated_pages
+    # does not re-stale pages that the workflow just set to draft.
+    isolated_slugs = [s for s in isolated_slugs if s not in {slug_a, slug_b}]
 
     # Sabotage: rename src_b so the agent's ingest call for B gets file-not-found
     # while page A still has a reachable source.
