@@ -174,18 +174,12 @@ def _get_source_path_from_page(wiki_dir: Path, slug: str) -> Path | None:
     if end == -1:
         return None
     fm_text = text[3:end]
-    # Match file+hash pairs together so we can skip placeholder entries.
-    # The lint lifecycle check compares stored hash against current file hash;
-    # sources with hash="placeholder" are never marked stale even when modified.
-    for m in re.finditer(
-        r'file:\s*(?P<file>[^\n]+)\n[ \t]+hash:\s*(?P<hash>\S+)',
-        fm_text,
-    ):
+    # Match file entries. The lint lifecycle check uses the AUDIT DB hash (not the
+    # frontmatter hash) to detect staleness — so pages with hash="placeholder" in the
+    # frontmatter can still be made stale if they have a real audit DB entry.
+    for m in re.finditer(r'file:\s*(?P<file>[^\n]+)', fm_text):
         val = m.group("file").strip().strip('"\'')
-        stored_hash = m.group("hash").strip()
         if val.startswith("http://") or val.startswith("https://"):
-            continue
-        if stored_hash == "placeholder":
             continue
         p = Path(val)
         if not p.is_absolute():
@@ -267,10 +261,12 @@ def _make_stale_page(
     except Exception:
         return None
 
-    # Run lint scoped to this page to detect the hash mismatch
+    # Run lifecycle-only lint to detect the hash mismatch.
+    # Must use scope="stale" — slug-scoped lint skips lifecycle checks
+    # (lint_agent.py only runs _run_lifecycle_checks for scope in ("all", "stale")).
     try:
         r = _api("/jobs/lint", "POST", {
-            "scope": slug, "auto_resolve": False,
+            "scope": "stale", "auto_resolve": False,
             "adversarial": False, "lifecycle": True,
         })
         _wait_job(r["job_id"], max_wait=120)
