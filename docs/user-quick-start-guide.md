@@ -808,9 +808,9 @@ diff original.md wiki/konrad-zuse.md
 
 **Step 3 — Roll back to the original body**
 
-**Via Obsidian:** click **Rollback** on the `draft → active` row. The plugin saves the
-current (edited) body as a new snapshot first, then overwrites the wiki file with the
-original — removing the added sentence. The page stays in `active` state.
+**Via Obsidian:** you are already on the diff view from Step 2 — click **Rollback to this
+version**. The plugin saves the current (edited) body as a new snapshot first, then
+overwrites the wiki file with the original — removing the added sentence.
 
 **Via CLI:**
 
