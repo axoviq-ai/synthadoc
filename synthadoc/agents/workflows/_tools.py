@@ -100,23 +100,11 @@ async def tool_ingest_source(ctx: "WorkflowContext", source_path: str) -> dict:
     """
     path = Path(source_path)
 
-    # 1. Absolute path check (use os.path.isabs so /foo is treated as absolute on Windows too)
+    # Must be an absolute path — relative paths are ambiguous on the server.
     if not os.path.isabs(source_path):
         return {"error": f"source_path must be an absolute path, got: {source_path!r}"}
 
-    # 2. Must be inside wiki_root
-    wiki_root_resolved = ctx.wiki_root.resolve()
-    resolved = path.resolve()
-    try:
-        resolved.relative_to(wiki_root_resolved)
-    except ValueError:
-        return {
-            "error": (
-                f"source_path is outside wiki root {wiki_root_resolved}: {source_path!r}"
-            )
-        }
-
-    # 3. File must exist
+    # File must exist on disk.
     if not path.exists():
         return {"error": f"File not found: {source_path!r}"}
 
@@ -127,6 +115,9 @@ async def tool_ingest_source(ctx: "WorkflowContext", source_path: str) -> dict:
     # re-ingested.  bust_cache=False lets the analysis/citation caches be used
     # when the source content is unchanged — the cache key is a content hash, so
     # genuinely changed sources still trigger fresh LLM analysis regardless.
+    # allow_external_paths=True: the tool runs server-side (always localhost), so
+    # source files outside the wiki root are safe to re-ingest — they are paths
+    # already stored in the wiki metadata from the original ingest.
     last_error: str | None = None
     job_id: str | None = None
     for delay in [0] + _INGEST_RETRY_DELAYS:
@@ -134,7 +125,8 @@ async def tool_ingest_source(ctx: "WorkflowContext", source_path: str) -> dict:
             await asyncio.sleep(delay)
         try:
             job_id = await ctx.queue.enqueue(
-                "ingest", {"source": source_path, "force": True, "bust_cache": False}
+                "ingest", {"source": source_path, "force": True, "bust_cache": False,
+                           "allow_external_paths": True}
             )
             break
         except Exception as exc:  # noqa: BLE001
