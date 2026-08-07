@@ -35,6 +35,17 @@ _VERB: dict[str, str] = {
 }
 _MAX_CLARIFY_CANDIDATES = 15
 
+# Fast-path regex: "re-ingest the <slug> page" → always orchestrate without LLM extraction.
+# Requires "the" to avoid false positives like "what does re-ingest mean?".
+# The web UI chip always emits "Re-ingest the {slug} page"; live tests use the same form.
+_SLUG_REINGEST_RE = re.compile(
+    r"\b(?:re[\-\s]?ingest|reingest)\s+the\s+"
+    r"(?!stale\b|all\b)"
+    r"[a-z0-9][a-z0-9\-_]{2,}"
+    r"(?:\s+page)?\b",
+    re.IGNORECASE,
+)
+
 _SCHEDULE_CRON_PROMPT = (
     "What schedule should this run on? (e.g. 'every night at 9 PM', 'daily at 6 AM')"
 )
@@ -120,7 +131,15 @@ _ACTION_RE = re.compile(
     # job status / job list
     r"|\bjob\w*\s+(status|detail|list|progress|result)\b"
     r"|\b(show|list|display|view|check|get)\b.{0,30}\bjob\w*\b"
-    r"|\bwhat.{0,20}\b(status|progress).{0,20}\bjob\b",
+    r"|\bwhat.{0,20}\b(status|progress).{0,20}\bjob\b"
+    # orchestrate / guided workflow / re-ingest stale pages
+    r"|\bstale\s+pages?\b"
+    r"|\borchestrat"
+    r"|\b(guided|agentic)\s+(maintenance\s+)?workflow\b"
+    # "re-ingest stale pages" — require "stale" nearby to avoid matching how-to questions
+    r"|\bre.?ingest\b.{0,60}\bstale\b|\bstale\b.{0,60}\bre.?ingest\b"
+    # "re-ingest the <slug> page" — slug-based Workflow B
+    r"|\bre.?ingest\b\s+the\s+[a-z0-9]",
     re.IGNORECASE,
 )
 
@@ -131,7 +150,7 @@ _EXTRACT_PROMPT_TEMPLATE = (
     "parameters from the user request below.\n\n"
     "Return ONLY a JSON object — no explanation, no markdown fences.\n\n"
     'Schema: {{"action": "<lint|lint_report|wiki_status|ingest|scaffold|schedule_add|schedule_list|'
-    'schedule_history|lifecycle_activate|lifecycle_archive|lifecycle_restore|job_list|job_status|none>", "params": {{...}}}}\n\n'
+    'schedule_history|lifecycle_activate|lifecycle_archive|lifecycle_restore|job_list|job_status|orchestrate|none>", "params": {{...}}}}\n\n'
     "params keys by action:\n"
     "  lint          : scope (all|contradictions|orphans|stale|citations), auto_resolve (bool)\n"
     "                  Use lint for ANY request to RUN the linter or auto-resolve issues:\n"
@@ -139,13 +158,15 @@ _EXTRACT_PROMPT_TEMPLATE = (
     "                  'resolve contradictions', 'fix contradictions', 'clear contradictions'.\n"
     "                  When 'auto-resolve' / 'auto resolve' / 'resolve' appears → set auto_resolve=true.\n"
     "                  When 'contradiction' appears → set scope='contradictions'.\n"
-    "  lint_report   : focus (optional: 'contradicted'|'orphans'|'adversarial'|'truncated'|null)\n"
-    "                  Shows current lint state; no server needed. Set focus to the specific category the user asks about.\n"
-    "                  Use lint_report for ANY question asking what orphan/contradicted/adversarial/truncated pages exist NOW.\n"
+    "  lint_report   : focus (optional: 'contradicted'|'orphans'|'adversarial'|'truncated'|'stale'|null)\n"
+    "                  Shows current lint/lifecycle state; no server needed. Set focus to the specific category the user asks about.\n"
+    "                  Use lint_report for ANY question asking what orphan/contradicted/adversarial/truncated/stale pages exist NOW.\n"
     "                  Examples: 'list contradicted pages' → focus='contradicted'\n"
     "                            'what pages are orphans?' → focus='orphans'\n"
     "                            'show adversarial warnings' → focus='adversarial'\n"
     "                            'which sources were truncated?' → focus='truncated'\n"
+    "                            'what are these stale pages?' → focus='stale'\n"
+    "                            'list stale pages' / 'which pages are stale?' → focus='stale'\n"
     "                            'show lint report' / 'full lint report' → focus=null (show all)\n"
     "  wiki_status   : (no params — live page counts grouped by lifecycle state: draft/active/stale/contradicted/archived)\n"
     "                  Use wiki_status for: 'show synthadoc status', 'wiki health', 'how many pages are active?',\n"
@@ -179,6 +200,15 @@ _EXTRACT_PROMPT_TEMPLATE = (
     "                  'what is the status of my last job'. Resolve job_id from history when the user\n"
     "                  says 'the last job', 'that job', or picks a number from a previous list.\n"
     "                  Leave job_id null when no specific job is mentioned.\n"
+    "  orchestrate   : intent (str) — use ONLY for operational requests to re-ingest or fix stale pages, "
+    "re-ingest a specific page by slug, run guided wiki maintenance, or orchestrate multi-step operations from the chat.\n"
+    "                  Do NOT use orchestrate for informational questions about which pages are stale — use lint_report focus='stale' instead.\n"
+    "                  Examples: 're-ingest stale pages' → orchestrate, intent='reingest'\n"
+    "                            'fix my stale pages' → orchestrate, intent='reingest'\n"
+    "                            're-ingest the alan-turing page' → orchestrate, intent='reingest'\n"
+    "                            'reingest wiki page my-slug' → orchestrate, intent='reingest'\n"
+    "                            'run agentic maintenance workflow' → orchestrate, intent='maintenance'\n"
+    "                            'what are these stale pages?' → lint_report, focus='stale' (NOT orchestrate)\n"
     "  none          : (no params)\n\n"
     "Cron parsing: 'daily at 6am'='0 6 * * *', 'every Sunday at 7pm'='0 19 * * 0', "
     "'every weekday at 9am'='0 9 * * 1-5', 'every hour'='0 * * * *'\n\n"
@@ -276,6 +306,146 @@ class ActionAgent:
                 message=f"Could not complete the action: {exc}",
             )
 
+    async def run_gen(
+        self, question: str, history: list[dict] | None = None, session_id: str | None = None
+    ) -> "AsyncGenerator[dict, None]":
+        """Like run(), but yields SSE event dicts for streaming.
+
+        Handles all actions including orchestrate. For non-orchestrate actions,
+        wraps the ActionResult in the standard SSE event sequence.
+        """
+        # Emit immediately so the UI shows activity while _extract() waits for the LLM.
+        yield {"event": "tool_progress", "data": {"tool": "_init", "message": "Analyzing your request..."}}
+
+        # Fast-path: slug-based reingest queries always route to orchestrate without an LLM call.
+        if _SLUG_REINGEST_RE.search(question):
+            async for evt in self._run_orchestrate(question, session_id=session_id):
+                yield evt
+            return
+
+        extraction = await self._extract(question, history=history or [])
+        if extraction is None:
+            return
+        action = extraction.get("action", "none")
+        params = extraction.get("params", {})
+        if action == "none":
+            return
+        if action == "orchestrate":
+            async for evt in self._run_orchestrate(question, session_id=session_id):
+                yield evt
+            return
+        try:
+            result = await self._dispatch(action, params)
+        except Exception as exc:
+            logger.warning("action dispatch failed in run_gen (%s): %s", action, exc)
+            result = ActionResult(
+                action_type=action, success=False,
+                message=f"Could not complete the action: {exc}",
+            )
+        if result is None:
+            return
+        if result.needs_clarification:
+            yield {"event": "clarify", "data": {
+                "prompt": result.clarify_prompt,
+                "candidates": result.clarify_candidates,
+                "action": result.action_type,
+            }}
+            yield {"event": "done", "data": {}}
+            return
+        yield {"event": "token", "data": {"text": result.message}}
+        yield {"event": "citations", "data": {"citations": []}}
+        from synthadoc.agents.query_agent import _build_pre_prompt  # lazy — avoids circular import
+        _pre_prompt = _build_pre_prompt(result.message)
+        _done_data: dict = {
+            "citations": [], "hints": [], "gap": not result.success,
+            "job_id": result.job_id, "cacheable": False,
+        }
+        if _pre_prompt:
+            _done_data["pre_prompt"] = _pre_prompt
+        yield {"event": "done", "data": _done_data}
+
+    async def _run_orchestrate(self, question: str, session_id: str | None = None) -> "AsyncGenerator[dict, None]":
+        """Run IngestLintWorkflow via tool-call loop and yield SSE dicts."""
+        import asyncio as _asyncio
+        from synthadoc.agents.workflows._base import WorkflowContext
+        from synthadoc.agents.workflows._loop import run_tool_call_loop
+        from synthadoc.agents.workflows.ingest_lint import IngestLintWorkflow
+        from synthadoc.storage.log import AuditDB
+
+        # Use an asyncio.Queue so side-channel events (tool_progress,
+        # confirm_request) reach the HTTP stream immediately rather than being
+        # held in a list until the next run_tool_call_loop yield.  This is
+        # critical for tool_confirm: the confirm_request SSE must reach the
+        # client before the 120-second gate timeout fires.  With the old
+        # sse_buffer approach the gate always timed out because run_tool_call_loop
+        # was blocked inside tool_confirm and never yielded to flush the buffer.
+        sse_queue: _asyncio.Queue = _asyncio.Queue()
+        _SENTINEL = object()
+
+        async def _send(event: str, data: dict) -> None:
+            await sse_queue.put({"event": event, "data": data})
+
+        audit_db = getattr(self._orch, "_audit", None)
+        if audit_db is None:
+            audit_path = self._wiki_root / ".synthadoc" / "audit.db"
+            audit_db = AuditDB(audit_path)
+
+        import uuid as _uuid
+        _session_id = session_id or str(_uuid.uuid4())
+        ctx = WorkflowContext(
+            session_id=_session_id,
+            wiki_root=self._wiki_root,
+            queue=getattr(self._orch, "queue", None),
+            store=getattr(self._orch, "_store", None),
+            audit_db=audit_db,
+            send_sse_event=_send,
+            confirm_registry=getattr(self._orch, "_confirm_registry", {}),
+            confirm_result_registry=getattr(self._orch, "_confirm_result_registry", {}),
+        )
+
+        wf = IngestLintWorkflow()
+        system_prompt = await wf.build_system_prompt()
+        tool_fns = wf.get_tool_fns(ctx)
+
+        async def _run_loop() -> None:
+            try:
+                async for evt in run_tool_call_loop(
+                    system_prompt=system_prompt,
+                    initial_message=wf.build_initial_message(question),
+                    tool_fns=tool_fns,
+                    provider=self._provider,
+                    ctx=ctx,
+                ):
+                    await sse_queue.put(evt)
+            finally:
+                await sse_queue.put(_SENTINEL)
+
+        task = _asyncio.create_task(_run_loop())
+        try:
+            while True:
+                evt = await sse_queue.get()
+                if evt is _SENTINEL:
+                    break
+                if evt.get("event") == "final_text":
+                    # Token chunks were already streamed via the sse_queue → do NOT
+                    # re-emit the full text here or the client receives it twice.
+                    text = evt["data"]["text"]
+                    from synthadoc.agents.query_agent import _build_pre_prompt  # lazy — avoids circular import
+                    _pre_prompt = _build_pre_prompt(text)
+                    _done_data: dict = {"citations": [], "hints": [], "cacheable": False}
+                    if _pre_prompt:
+                        _done_data["pre_prompt"] = _pre_prompt
+                    yield {"event": "done", "data": _done_data}
+                else:
+                    yield evt
+        finally:
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except _asyncio.CancelledError:
+                    pass
+
     # ── private ───────────────────────────────────────────────────────────────
 
     async def _extract(self, question: str, history: list[dict] | None = None) -> Optional[dict]:
@@ -331,8 +501,37 @@ class ActionAgent:
 
     async def _do_lint_report(self, params: dict | None = None) -> ActionResult:
         from synthadoc.agents.lint_agent import LintFocus, read_current_lint_state
-        state = read_current_lint_state(self._orch._store)
         focus = (params or {}).get("focus") or None
+
+        if focus == LintFocus.STALE:
+            audit_path = self._wiki_root / ".synthadoc" / "audit.db"
+            if not audit_path.exists():
+                return ActionResult(
+                    action_type="lint_report", success=True,
+                    message="**Stale pages (0)** — no lifecycle data yet. Run `synthadoc lint run` first.",
+                )
+            from synthadoc.storage.log import AuditDB
+            from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
+            _audit = AuditDB(audit_path)
+            await _audit.init()
+            _live = lambda slug: slug not in LINT_SKIP_SLUGS and self._orch._store.page_exists(slug)
+            all_states = await _audit.get_live_page_states(_live)
+            stale = [p for p in all_states if p.get("state") == "stale"]
+            if not stale:
+                return ActionResult(
+                    action_type="lint_report", success=True,
+                    message="**Stale pages (0)** — no stale pages found.",
+                )
+            lines = [f"**Stale pages ({len(stale)})** — source changed, re-ingest to refresh:\n"]
+            for p in stale:
+                since = p.get("updated") or p.get("created") or "unknown"
+                lines.append(f"- `{p['slug']}` (stale since {since})")
+            return ActionResult(
+                action_type="lint_report", success=True,
+                message="\n".join(lines),
+            )
+
+        state = read_current_lint_state(self._orch._store)
         parts: list[str] = []
 
         if focus in (None, LintFocus.CONTRADICTED):
@@ -444,6 +643,15 @@ class ActionAgent:
             lines.append(f"| {state} | {n} | {_NOTES[state]} |")
         if unlinted > 0:
             lines.append(f"| unlinted | {unlinted} | {_NOTES['unlinted']} |")
+        if counts.get(LifecycleState.STALE, 0) > 0:
+            all_states = await audit.get_live_page_states(_live)
+            stale_pages = [p for p in all_states if p.get("state") == "stale"]
+            if stale_pages:
+                lines.append("")
+                lines.append(f"**Stale pages ({len(stale_pages)}):**")
+                for p in stale_pages:
+                    since = p.get("updated") or p.get("created") or "unknown"
+                    lines.append(f"- `{p['slug']}` (stale since {since})")
         return ActionResult(action_type="wiki_status", success=True, message="\n".join(lines))
 
     async def _do_lint(self, params: dict) -> ActionResult:
@@ -663,7 +871,7 @@ class ActionAgent:
         await audit.init()
         await audit.set_page_state(slug, to_state, "user")
         await audit.record_lifecycle_event(slug, from_state, to_state, reason, "user",
-                                            content_snapshot=page.content)
+                                            content_snapshot=page.content, force=True)
         self._orch._bump_epoch()
         return ActionResult(
             action_type=action,

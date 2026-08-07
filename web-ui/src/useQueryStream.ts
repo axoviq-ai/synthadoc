@@ -2,7 +2,7 @@
 // Copyright (C) 2026 William Johnason / axoviq.com
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { streamQuery } from "./api";
+import { streamQuery, type ConfirmRequestData } from "./api";
 
 export interface Message {
     id: string;
@@ -17,13 +17,15 @@ export interface Message {
 
 export function useQueryStream(
     sessionId: string | null,
-    onHints: (hints: string[]) => void,
+    onHints: (hints: string[], prePrompt?: string) => void,
     initialMessages: Message[] = [],
     onComplete?: () => void,
 ) {
     const [messages, setMessages] = useState<Message[]>(initialMessages);
     const [streaming, setStreaming] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [progressLines, setProgressLines] = useState<string[]>([]);
+    const [pendingConfirm, setPendingConfirm] = useState<ConfirmRequestData | null>(null);
     const abortRef = useRef<AbortController | null>(null);
     const streamingRef = useRef(false);
     // RAF handle and accumulated text ref — kept outside send() so they survive re-renders
@@ -53,6 +55,7 @@ export function useQueryStream(
     const send = useCallback(async (question: string, noCache = false, timeoutSeconds?: number) => {
         if (!sessionId || streamingRef.current) return;
         setError(null);
+        setProgressLines([]);
         setStreaming(true);
         streamingRef.current = true;
 
@@ -103,7 +106,7 @@ export function useQueryStream(
                 },
                 onCitations: (c) => { if (!controller.signal.aborted) citations = c; },
                 onGap: (s) => { if (!controller.signal.aborted) gapSuggestions = s; },
-                onDone: (nextHints) => {
+                onDone: (nextHints, prePrompt) => {
                     if (controller.signal.aborted) return;
                     cancelFlush(); // final update carries citations + gap, skip the pending token flush
                     setMessages((prev) => {
@@ -115,7 +118,8 @@ export function useQueryStream(
                         }
                         return next;
                     });
-                    onHints(nextHints);
+                    setProgressLines([]);
+                    onHints(nextHints, prePrompt);
                     setStreaming(false);
                     streamingRef.current = false;
                     onComplete?.();
@@ -161,6 +165,14 @@ export function useQueryStream(
                         ];
                     });
                 },
+                onToolProgress: (data) => {
+                    if (controller.signal.aborted) return;
+                    setProgressLines(prev => [...prev, data.message]);
+                },
+                onConfirmRequest: (data) => {
+                    if (controller.signal.aborted) return;
+                    setPendingConfirm(data);
+                },
             }, controller.signal, noCache, timeoutSeconds);
         } catch {
             if (!controller.signal.aborted) {
@@ -173,5 +185,5 @@ export function useQueryStream(
         }
     }, [sessionId, onHints]);
 
-    return { messages, streaming, error, send };
+    return { messages, streaming, error, send, progressLines, pendingConfirm, setPendingConfirm };
 }

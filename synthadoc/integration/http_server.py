@@ -309,6 +309,15 @@ class LintRequest(BaseModel):
     check_url_availability: Optional[bool] = None  # None = use server config
 
 
+class AgentIngestRequest(BaseModel):
+    source_path: str
+
+
+class ActionConfirmRequest(BaseModel):
+    session_id: str
+    confirmed: bool
+
+
 class ScaffoldRequest(BaseModel):
     domain: str
 
@@ -501,10 +510,12 @@ async def _worker_loop(orch, session_state: dict) -> None:
                 if job.operation == "ingest":
                     source = job.payload.get("source", "")
                     force = job.payload.get("force", False)
+                    bust_cache = job.payload.get("bust_cache", force)
                     max_results = job.payload.get("max_results")
                     max_source_chars = job.payload.get("max_source_chars")
                     allow_external_paths = job.payload.get("allow_external_paths", False)
                     job_coro = orch._run_ingest(job.id, source, auto_confirm=True, force=force,
+                                                bust_cache=bust_cache,
                                                 max_results=max_results,
                                                 max_source_chars=max_source_chars,
                                                 allow_external_paths=allow_external_paths)
@@ -625,6 +636,11 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         _install_shutdown_noise_filter()
         await orch.init()
         app.state.orch = orch
+        app.state.confirm_registry = {}
+        app.state.confirm_result_registry = {}
+        # Share with orch so action agent's _run_orchestrate uses the same dicts
+        orch._confirm_registry = app.state.confirm_registry
+        orch._confirm_result_registry = app.state.confirm_result_registry
         from synthadoc.agents.hint_engine import HintEngine as _HE
         _HE.configure(wiki_root / "hints.json")
         worker = asyncio.create_task(_worker_loop(orch, _session_state))
@@ -1147,6 +1163,35 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             payload["check_url_availability"] = req.check_url_availability
         job_id = await app.state.orch.queue.enqueue("lint", payload)
         return {"job_id": job_id}
+
+    @app.post("/ingest")
+    async def agent_ingest(request: Request, req: AgentIngestRequest):
+        src = Path(req.source_path)
+        # Validate path is within wiki_root.
+        try:
+            resolved = src.resolve()
+            wiki_root_resolved = wiki_root.resolve()
+            resolved.relative_to(wiki_root_resolved)
+        except ValueError:
+            raise HTTPException(status_code=403, detail="source_path is outside wiki root")
+        if not src.exists():
+            raise HTTPException(status_code=404, detail=f"File not found: {req.source_path}")
+        try:
+            job_id = await app.state.orch.queue.enqueue("ingest", {"source": str(src)})
+        except Exception:
+            raise HTTPException(status_code=429, detail="Queue is full — retry later")
+        return {"job_id": job_id}
+
+    @app.post("/action/confirm")
+    async def action_confirm(req: ActionConfirmRequest):
+        gate = app.state.confirm_registry.get(req.session_id)
+        if gate is None:
+            raise HTTPException(status_code=404, detail="No pending confirmation for this session")
+        if gate.is_set():
+            raise HTTPException(status_code=409, detail="Confirmation already processed")
+        app.state.confirm_result_registry[req.session_id] = req.confirmed
+        gate.set()
+        return {"ok": True}
 
     @app.get("/lint/report")
     async def lint_report():
@@ -1687,7 +1732,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         await audit.set_page_state(req.slug, req.to_state, TriggerSource.USER)
         await audit.record_lifecycle_event(req.slug, from_state, req.to_state,
                                             req.reason, TriggerSource.USER,
-                                            content_snapshot=page.content)
+                                            content_snapshot=page.content, force=True)
         orch._bump_epoch()
         cascade_affected: list[str] = []
         if req.to_state == LifecycleState.ARCHIVED:

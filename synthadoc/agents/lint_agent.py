@@ -303,6 +303,7 @@ class LintFocus:
     ORPHANS      = "orphans"
     ADVERSARIAL  = "adversarial"
     TRUNCATED    = "truncated"
+    STALE        = "stale"
     ALL: frozenset[str] = frozenset({"contradicted", "orphans", "adversarial", "truncated"})
 
 
