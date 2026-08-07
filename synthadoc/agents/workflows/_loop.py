@@ -29,6 +29,14 @@ _TOOL_CALL_RE = re.compile(
 _CHUNK_SIZE = 40
 _MAX_PARSE_RETRIES = 2
 
+_TOOL_LABELS: dict[str, str] = {
+    "find_stale_pages": "Checking for stale pages",
+    "ingest_source": "Starting re-ingest",
+    "poll_job": "Checking job status",
+    "run_lint": "Running lint check",
+    "confirm": "Requesting your confirmation",
+}
+
 
 def _parse_tool_call(text: str) -> tuple[str, dict] | None:
     """Return ``(tool_name, tool_input_dict)`` when *text* contains a tool call, else ``None``."""
@@ -76,6 +84,9 @@ async def run_tool_call_loop(
     tool_count = 0
     parse_retries = 0
 
+    # Emit immediately so the UI shows activity before the first LLM round-trip.
+    await ctx.send_sse_event("tool_progress", {"tool": "_init", "message": "Working on your request..."})
+
     while True:
         response = await provider.complete(messages, system=system_prompt)
         text = response.text.strip()
@@ -108,9 +119,10 @@ async def run_tool_call_loop(
                 }
                 return
 
+            label = _TOOL_LABELS.get(tool_name, f"Calling {tool_name}")
             await ctx.send_sse_event(
                 "tool_progress",
-                {"tool": tool_name, "message": f"Calling {tool_name}..."},
+                {"tool": tool_name, "message": f"{label}..."},
             )
 
             if tool_name not in tool_fns:

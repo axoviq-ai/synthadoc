@@ -97,10 +97,11 @@ async def test_loop_executes_tool_and_continues():
     # Tool was called with x=1
     assert tool_calls == [1]
 
-    # A tool_progress SSE event was emitted
+    # tool_progress events: one initial "_init" event + one per tool call
     tool_progress_events = [e for e in events if e["event"] == "tool_progress"]
-    assert len(tool_progress_events) == 1
-    assert tool_progress_events[0]["data"]["tool"] == "my_tool"
+    assert len(tool_progress_events) >= 2
+    per_tool = [e for e in tool_progress_events if e["data"]["tool"] == "my_tool"]
+    assert len(per_tool) == 1
 
     # Final text is from the second LLM response
     final_events = [e for e in results if e["event"] == "final_text"]

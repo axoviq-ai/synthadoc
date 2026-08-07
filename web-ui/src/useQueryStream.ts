@@ -55,6 +55,7 @@ export function useQueryStream(
     const send = useCallback(async (question: string, noCache = false, timeoutSeconds?: number) => {
         if (!sessionId || streamingRef.current) return;
         setError(null);
+        setProgressLines([]);
         setStreaming(true);
         streamingRef.current = true;
 

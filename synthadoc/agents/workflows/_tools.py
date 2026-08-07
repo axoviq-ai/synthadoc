@@ -75,6 +75,9 @@ async def tool_find_stale_pages(ctx: "WorkflowContext") -> dict:
     """Return ``{"pages": [...]}`` or ``{"error": str, "pages": []}``."""
     try:
         pages = await _resolve_stale_pages(ctx)
+        n = len(pages)
+        label = f"Found {n} stale page{'s' if n != 1 else ''}" if pages else "No stale pages found"
+        await ctx.send_sse_event("tool_progress", {"tool": "find_stale_pages", "message": label})
         return {"pages": pages}
     except Exception as exc:  # noqa: BLE001
         return {"error": str(exc), "pages": []}
@@ -117,6 +120,9 @@ async def tool_ingest_source(ctx: "WorkflowContext", source_path: str) -> dict:
     if not path.exists():
         return {"error": f"File not found: {source_path!r}"}
 
+    filename = path.name
+    await ctx.send_sse_event("tool_progress", {"tool": "ingest_source", "message": f"Re-ingesting: {filename}"})
+
     # Enqueue.  force=True bypasses the dedup check so stale pages are always
     # re-ingested.  bust_cache=False lets the analysis/citation caches be used
     # when the source content is unchanged — the cache key is a content hash, so
@@ -141,6 +147,12 @@ async def tool_ingest_source(ctx: "WorkflowContext", source_path: str) -> dict:
     # Include job_id in the response so the caller can optionally verify via poll_job.
     result = await tool_poll_job(ctx, job_id, timeout_seconds=300)
     result["job_id"] = job_id
+
+    status = result.get("status", "failed")
+    if status == "success":
+        await ctx.send_sse_event("tool_progress", {"tool": "ingest_source", "message": f"✓ {filename} re-ingested"})
+    else:
+        await ctx.send_sse_event("tool_progress", {"tool": "ingest_source", "message": f"✗ {filename}: {status}"})
     return result
 
 
@@ -189,7 +201,7 @@ async def tool_poll_job(
             {
                 "tool": "poll_job",
                 "job_id": job_id,
-                "message": f"Waiting for job {job_id}... ({int(elapsed)}s elapsed)",
+                "message": f"Ingest running... ({int(elapsed)}s)",
             },
         )
         await asyncio.sleep(min(1 * (2**attempt), 30))
@@ -201,6 +213,7 @@ async def tool_run_lint(ctx: "WorkflowContext", scope: str = "all") -> dict:
 
     Returns ``{"job_id": str}`` or ``{"error": str}``.
     """
+    await ctx.send_sse_event("tool_progress", {"tool": "run_lint", "message": "Running wiki lint check..."})
     try:
         job_id = await ctx.queue.enqueue(
             "lint",
