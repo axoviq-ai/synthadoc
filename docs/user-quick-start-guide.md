@@ -746,21 +746,20 @@ snapshots carry higher index numbers.
 
 **Walkthrough: view snapshot history, compare versions, and roll back**
 
-The steps below are self-contained. Run them in order to build a two-entry snapshot
-history you can browse, diff, and roll back from — both via the CLI and the Obsidian
-Content Snapshots tab.
+The steps below simulate an accidental edit: you add a sentence to `konrad-zuse`, archive
+the page, then discover what changed and roll back to the original content.
 
-**Setup — create a second snapshot**
+**Setup — add a sentence and archive the page**
 
 After Step 7, `konrad-zuse` is in `active` state with one snapshot (the `draft → active`
-lint promotion). Archive it now to produce a second snapshot to work with:
+lint promotion from Step 7). Add a sentence to the page body and then archive it:
 
 ```bash
-# Confirm konrad-zuse is active
-synthadoc lifecycle log --state active -w history-of-computing
+# Step 1: append a demo sentence to the page (cross-platform one-liner)
+python -c "f=open('wiki/konrad-zuse.md','a',encoding='utf-8'); f.write('\nNote: this claim needs a second source before the next release.\n'); f.close()"
 
-# Archive it — captures the current body as a new snapshot
-synthadoc lifecycle archive konrad-zuse --reason "archiving for snapshot demo" -w history-of-computing
+# Step 2: archive the page — captures the edited body as a new snapshot
+synthadoc lifecycle archive konrad-zuse --reason "archiving after edit" -w history-of-computing
 ```
 
 Verify the two-entry history:
@@ -772,17 +771,12 @@ synthadoc lifecycle history konrad-zuse -w history-of-computing
 ```
 Index  Timestamp (UTC)       From → To                     Content           Reason
 ----------------------------------------------------------------------------------------------------
-    1  2026-08-07 10:15:00   active → archived              3,412 chars       archiving for snapshot demo
-    2  2026-05-28 17:54:51   draft → active                 3,412 chars       lint passed
+    1  2026-08-07 10:15:00   active → archived              4,026 chars       archiving after edit
+    2  2026-05-28 17:54:51   draft → active                 3,967 chars       lint passed
 ```
 
-Index 1 is the archive transition (newest). Index 2 is the original activation — the
-body you want to restore.
-
-> **Note:** in this demo both snapshots contain the same content because the page body
-> was not edited between activation and archiving. In a real recovery scenario — an
-> accidental overwrite, a bad re-ingest, or an Obsidian manual edit — the two bodies
-> would differ and the diff view in Step 2 would highlight exactly what changed.
+Index 1 (4,026 chars) contains the edited body with the added sentence. Index 2 (3,967
+chars) is the original activation body — the one you want to restore.
 
 **Step 1 — Browse in the Obsidian Content Snapshots tab**
 
@@ -794,29 +788,36 @@ Two rows appear:
 
 | # | Slug | Transition | By | Timestamp | Content |
 |---|------|------------|----|-----------|---------|
-| 1 | konrad-zuse | active → archived | cli | 2026-08-07 10:15 | 3,412 chars |
-| 2 | konrad-zuse | draft → active | lint | 2026-05-28 17:54 | 3,412 chars |
+| 1 | konrad-zuse | active → archived | cli | 2026-08-07 10:15 | 4,026 chars |
+| 2 | konrad-zuse | draft → active | lint | 2026-05-28 17:54 | 3,967 chars |
 
 ![Synthadoc Content Snapshots tab — list of snapshots for a page with diff view and rollback](png/synthadoc-lifecycle-snapshots.png)
 
 **Step 2 — View the diff**
 
-Click **View** on row 2 (the activation snapshot). An inline diff opens comparing that
-snapshot body against the current wiki file — added lines in green, removed lines in red,
-YAML frontmatter stripped so the diff focuses on the content that matters.
+Click **View** on row 2 (the original activation snapshot). An inline diff opens comparing
+that snapshot body against the current wiki file — added lines in green, removed lines in
+red, YAML frontmatter stripped so the diff focuses on the content that matters.
+
+The diff highlights the sentence that was added since activation:
+
+```diff
++ Note: this claim needs a second source before the next release.
+```
 
 ```bash
-# Equivalent CLI command — prints the snapshot body for manual diffing
+# Equivalent CLI commands — export the snapshot and diff it against the current file
 synthadoc lifecycle history konrad-zuse --index 2 --show-content -w history-of-computing > original.md
 diff original.md wiki/konrad-zuse.md
 ```
 
 ![Synthadoc snapshot diff view — line-by-line comparison with added/removed lines highlighted and Rollback button](png/synthadoc-lifecycle-snapshot-diff.png)
 
-**Step 3 — Roll back to the activation snapshot**
+**Step 3 — Roll back to the original activation body**
 
-**Via Obsidian:** click **Rollback** on row 2. The plugin saves the current body as a
-new snapshot first, then restores the row-2 body to the wiki file.
+**Via Obsidian:** click **Rollback** on row 2. The plugin saves the current (edited) body
+as a new snapshot first, then overwrites the wiki file with the row-2 body — removing the
+added sentence.
 
 **Via CLI:**
 
@@ -824,8 +825,9 @@ new snapshot first, then restores the row-2 body to the wiki file.
 synthadoc lifecycle rollback konrad-zuse --index 2 --reason "restoring original activation body" -w history-of-computing
 ```
 
-Both methods are equivalent. The current body is always saved before overwriting, so
-every rollback is immediately undoable.
+Both methods are equivalent. The current (edited) body is always saved before overwriting,
+so every rollback is immediately undoable. After the rollback the added sentence is gone —
+the wiki file is back to 3,967 chars.
 
 **Step 4 — Confirm: the history now has three entries**
 
@@ -836,13 +838,14 @@ synthadoc lifecycle history konrad-zuse -w history-of-computing
 ```
 Index  Timestamp (UTC)       From → To                     Content           Reason
 ----------------------------------------------------------------------------------------------------
-    1  2026-08-07 10:22:00   archived → archived            3,412 chars       rollback:2:restoring original…
-    2  2026-08-07 10:15:00   active → archived              3,412 chars       archiving for snapshot demo
-    3  2026-05-28 17:54:51   draft → active                 3,412 chars       lint passed
+    1  2026-08-07 10:22:00   archived → archived            4,026 chars       rollback:2:restoring original…
+    2  2026-08-07 10:15:00   active → archived              4,026 chars       archiving after edit
+    3  2026-05-28 17:54:51   draft → active                 3,967 chars       lint passed
 ```
 
-Index 1 is the rollback record — it preserves the body that was just replaced. To undo
-the rollback, roll back to index 1:
+Index 1 (4,026 chars) is the rollback record — the edited body that was just replaced.
+Index 3 (3,967 chars) is the original, which is now the current file content. To undo the
+rollback and get the edited body back, roll back to index 1:
 
 ```bash
 synthadoc lifecycle rollback konrad-zuse --index 1 --reason "undoing rollback" -w history-of-computing
@@ -851,7 +854,7 @@ synthadoc lifecycle rollback konrad-zuse --index 1 --reason "undoing rollback" -
 **Restore `konrad-zuse` to active state before continuing:**
 
 ```bash
-synthadoc lifecycle activate konrad-zuse -w history-of-computing
+synthadoc lifecycle activate konrad-zuse --reason "re-activating after rollback demo" -w history-of-computing
 ```
 
 ---
