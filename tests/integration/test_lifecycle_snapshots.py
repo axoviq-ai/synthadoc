@@ -198,6 +198,55 @@ def test_transition_stores_content_snapshot(tmp_wiki):
     asyncio.run(_check())
 
 
+def test_transition_always_stores_snapshot_even_when_content_unchanged(tmp_wiki):
+    """POST /lifecycle/transition records a snapshot on every manual transition.
+
+    The deduplication guard must be bypassed (force=True) so that archiving a
+    page right after activation — without editing its content — still produces a
+    second snapshot in the history.  This is the scenario a user hits when
+    following the Content Snapshots walkthrough.
+    """
+    import asyncio
+    from fastapi.testclient import TestClient
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.storage.log import AuditDB
+
+    wiki_dir = tmp_wiki / "wiki"
+    page_body = "Unchanged body for snapshot dedup-bypass test."
+    (wiki_dir / "dedup-bypass.md").write_text(
+        f"---\ntitle: Dedup Bypass\nstatus: draft\nconfidence: medium\n"
+        f"tags: []\nsources: []\n---\n\n{page_body}\n",
+        encoding="utf-8",
+    )
+
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        # First transition: draft → active
+        r1 = client.post("/lifecycle/transition", json={
+            "slug": "dedup-bypass", "to_state": "active", "reason": "activate",
+        })
+        assert r1.status_code == 200
+        # Second transition: active → archived (same content — must NOT be suppressed)
+        r2 = client.post("/lifecycle/transition", json={
+            "slug": "dedup-bypass", "to_state": "archived", "reason": "archive demo",
+        })
+        assert r2.status_code == 200
+
+    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+
+    async def _check():
+        await audit.init()
+        snapshots = await audit.list_page_snapshots("dedup-bypass")
+        assert len(snapshots) == 2, (
+            "both transitions must produce a snapshot even though content is identical"
+        )
+        assert snapshots[0]["from_state"] == "active"
+        assert snapshots[0]["to_state"] == "archived"
+        assert snapshots[1]["from_state"] == "draft"
+        assert snapshots[1]["to_state"] == "active"
+
+    asyncio.run(_check())
+
+
 # ── Task 4 tests ────────────────────────────────────────────────────────────
 
 def _make_wiki_with_snapshots(tmp_wiki):

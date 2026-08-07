@@ -1732,7 +1732,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         await audit.set_page_state(req.slug, req.to_state, TriggerSource.USER)
         await audit.record_lifecycle_event(req.slug, from_state, req.to_state,
                                             req.reason, TriggerSource.USER,
-                                            content_snapshot=page.content)
+                                            content_snapshot=page.content, force=True)
         orch._bump_epoch()
         cascade_affected: list[str] = []
         if req.to_state == LifecycleState.ARCHIVED:

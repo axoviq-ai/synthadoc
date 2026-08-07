@@ -871,7 +871,7 @@ class ActionAgent:
         await audit.init()
         await audit.set_page_state(slug, to_state, "user")
         await audit.record_lifecycle_event(slug, from_state, to_state, reason, "user",
-                                            content_snapshot=page.content)
+                                            content_snapshot=page.content, force=True)
         self._orch._bump_epoch()
         return ActionResult(
             action_type=action,

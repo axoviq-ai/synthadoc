@@ -321,7 +321,7 @@ def create_mcp_server(orchestrator):
         await orchestrator._audit.set_page_state(slug, to_state, TriggerSource.MCP)
         await orchestrator._audit.record_lifecycle_event(
             slug, from_state, to_state, reason, TriggerSource.MCP,
-            content_snapshot=page.content,
+            content_snapshot=page.content, force=True,
         )
         orchestrator._bump_epoch()
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
