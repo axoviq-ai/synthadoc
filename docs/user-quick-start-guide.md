@@ -746,30 +746,20 @@ snapshots carry higher index numbers.
 
 **Walkthrough: view snapshot history, compare versions, and roll back**
 
-The steps below simulate an accidental edit: you add a sentence to `konrad-zuse`, archive
-the page, then discover what changed and roll back to the original content.
-
-**Setup — make an edit and archive the page**
-
-> **Why this step?** To demonstrate a meaningful diff and rollback, the page needs two
-> snapshots with different content. You are adding a sentence now to simulate the kind of
-> accidental edit you would want to undo in a real scenario.
+**Setup — make an edit in Obsidian**
 
 Open `wiki/konrad-zuse.md` in Obsidian and add the following sentence at the very end
-of the page body (before any final blank line):
+of the page body:
 
 ```
 Note: this claim needs a second source before the next release.
 ```
 
-Save the file (Ctrl+S on Windows, Cmd+S on Mac). Then archive the page:
+Save (Ctrl+S on Windows, Cmd+S on Mac) and wait three seconds. The Obsidian plugin
+detects the change and automatically captures a snapshot of the page — no extra command
+needed.
 
-```bash
-synthadoc lifecycle archive konrad-zuse --reason "archiving after edit" -w history-of-computing
-```
-
-Verify the history — you should see at least two entries, with the activation snapshot
-(smaller content) being older than the archive snapshot (larger content):
+Verify two entries now appear in the history:
 
 ```bash
 synthadoc lifecycle history konrad-zuse -w history-of-computing
@@ -778,36 +768,38 @@ synthadoc lifecycle history konrad-zuse -w history-of-computing
 ```
 Index  Timestamp (UTC)       From → To                     Content           Reason
 ----------------------------------------------------------------------------------------------------
-    1  2026-08-07 10:15:00   active → archived              4,026 chars       archiving after edit
+    1  2026-08-07 10:15:00   active → active                4,026 chars       manual edit detected by Obsidian plugin
     2  2026-05-28 17:54:51   draft → active                 3,967 chars       lint passed
 ```
 
+Index 1 (4,026 chars) is the Obsidian edit snapshot — the body with the added sentence.
+Index 2 (3,967 chars) is the original activation body, before your edit.
+
 **Step 1 — Browse in the Obsidian Content Snapshots tab**
 
-Open the Obsidian plugin → find `konrad-zuse` → **Manage Page Lifecycle** → switch to
-the **Content Snapshots** tab. Type `konrad-zuse` in the **Filter by slug…** input to
-narrow the list to this page.
+Open the Obsidian plugin → find `konrad-zuse` → **Manage Page Lifecycle** → switch to the
+**Content Snapshots** tab. Type `konrad-zuse` in the **Filter by slug…** input to narrow
+the list to this page.
 
-The list shows the snapshot history, newest first. Look for the row whose **Transition**
-column reads `draft → active` — that is the original activation body, before your edit.
+Two rows appear, newest first. The `draft → active` row is the original activation body —
+the one you want to compare against.
 
 ![Synthadoc Content Snapshots tab — list of snapshots for a page with diff view and rollback](png/synthadoc-lifecycle-snapshots.png)
 
 **Step 2 — View the diff**
 
-Click **View** on the `draft → active` row (the original activation snapshot). An inline
-diff opens comparing that snapshot body against the current wiki file — added lines in
-green, removed lines in red, YAML frontmatter stripped so the diff focuses on content only.
+Click **View** on the `draft → active` row. An inline diff opens comparing that snapshot
+against the current wiki file — added lines in green, removed lines in red, YAML
+frontmatter stripped so the diff focuses on content only.
 
-The diff highlights the sentence you added:
+The diff shows the sentence you added:
 
 ```diff
 + Note: this claim needs a second source before the next release.
 ```
 
 ```bash
-# Equivalent CLI approach — check the index of the draft → active row in the history
-# output above, then export and diff:
+# Equivalent CLI approach — find the index of the draft → active row and export it:
 synthadoc lifecycle history konrad-zuse --index 2 --show-content -w history-of-computing > original.md
 diff original.md wiki/konrad-zuse.md
 ```
@@ -818,18 +810,15 @@ diff original.md wiki/konrad-zuse.md
 
 **Via Obsidian:** click **Rollback** on the `draft → active` row. The plugin saves the
 current (edited) body as a new snapshot first, then overwrites the wiki file with the
-original body — removing the added sentence.
+original — removing the added sentence. The page stays in `active` state.
 
-**Via CLI:** look up the index of the `draft → active` row in the history output, then
-run (substituting the correct index if yours differs):
+**Via CLI:**
 
 ```bash
-synthadoc lifecycle rollback konrad-zuse --index 2 --reason "restoring original activation body" -w history-of-computing
+synthadoc lifecycle rollback konrad-zuse --index 2 --reason "removing accidental note" -w history-of-computing
 ```
 
-Both methods are equivalent. The current (edited) body is always saved first as a new
-snapshot, so every rollback is immediately undoable. After the rollback the added sentence
-is gone and the wiki file is back to 3,967 chars.
+After the rollback the added sentence is gone and the wiki file is back to 3,967 chars.
 
 **Step 4 — Confirm: the history gained one entry**
 
@@ -837,35 +826,29 @@ is gone and the wiki file is back to 3,967 chars.
 synthadoc lifecycle history konrad-zuse -w history-of-computing
 ```
 
-A new index 1 row appears — the rollback record, which holds the edited body that was just
-replaced. The `draft → active` row (original content) has shifted down by one:
-
 ```
 Index  Timestamp (UTC)       From → To                     Content           Reason
 ----------------------------------------------------------------------------------------------------
-    1  2026-08-07 10:22:00   archived → archived            4,026 chars       rollback:2:restoring original…
-    2  2026-08-07 10:15:00   active → archived              4,026 chars       archiving after edit
+    1  2026-08-07 10:22:00   active → active                4,026 chars       rollback:2:removing accidental…
+    2  2026-08-07 10:15:00   active → active                4,026 chars       manual edit detected by Obsidian plugin
     3  2026-05-28 17:54:51   draft → active                 3,967 chars       lint passed
 ```
 
-To undo the rollback, roll back to index 1 (the rollback record always sits at the top):
+Index 1 is the rollback record — the edited body auto-saved before the overwrite, so the
+rollback is always undoable. Roll back to index 1 to get the edited body back.
 
-```bash
-synthadoc lifecycle rollback konrad-zuse --index 1 --reason "undoing rollback" -w history-of-computing
-```
-
-**Restore `konrad-zuse` to active state before continuing:**
-
-```bash
-synthadoc lifecycle activate konrad-zuse --reason "re-activating after rollback demo" -w history-of-computing
-```
+> **Lifecycle transitions also capture snapshots.** Every time a page changes state —
+> draft → active, active → archived, and so on — Synthadoc records a snapshot at that
+> moment, with the same diff and rollback support. You do not need to edit a page in
+> Obsidian to build up a snapshot history; routine lifecycle events produce it
+> automatically.
 
 ---
 
 **Common use cases:**
-- Recover content that was overwritten by an accidental edit or a failed re-ingest
+- Undo an accidental edit made directly in Obsidian
+- Recover content overwritten by a failed re-ingest
 - Audit exactly what a page said when it first went live
-- Compare the activation body to the current version with `diff` before deciding whether to roll back
 - Undo a rollback by rolling back to the index-1 record that was auto-saved before it
 
 #### Content Snapshots tab — reference
