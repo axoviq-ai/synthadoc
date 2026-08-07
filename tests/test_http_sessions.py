@@ -173,7 +173,7 @@ async def test_session_state_pruned_to_match_db(tmp_path):
 
 def _make_sessions_create_app(tmp_wiki):
     from synthadoc.integration.http_server import create_app
-    return create_app(wiki_root=tmp_wiki)
+    return create_app(wiki_root=tmp_wiki, enable_mcp=False)
 
 
 def test_post_sessions_new_wiki_mode(tmp_wiki):
