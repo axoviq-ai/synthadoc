@@ -145,13 +145,15 @@ _EXTRACT_PROMPT_TEMPLATE = (
     "                  'resolve contradictions', 'fix contradictions', 'clear contradictions'.\n"
     "                  When 'auto-resolve' / 'auto resolve' / 'resolve' appears → set auto_resolve=true.\n"
     "                  When 'contradiction' appears → set scope='contradictions'.\n"
-    "  lint_report   : focus (optional: 'contradicted'|'orphans'|'adversarial'|'truncated'|null)\n"
-    "                  Shows current lint state; no server needed. Set focus to the specific category the user asks about.\n"
-    "                  Use lint_report for ANY question asking what orphan/contradicted/adversarial/truncated pages exist NOW.\n"
+    "  lint_report   : focus (optional: 'contradicted'|'orphans'|'adversarial'|'truncated'|'stale'|null)\n"
+    "                  Shows current lint/lifecycle state; no server needed. Set focus to the specific category the user asks about.\n"
+    "                  Use lint_report for ANY question asking what orphan/contradicted/adversarial/truncated/stale pages exist NOW.\n"
     "                  Examples: 'list contradicted pages' → focus='contradicted'\n"
     "                            'what pages are orphans?' → focus='orphans'\n"
     "                            'show adversarial warnings' → focus='adversarial'\n"
     "                            'which sources were truncated?' → focus='truncated'\n"
+    "                            'what are these stale pages?' → focus='stale'\n"
+    "                            'list stale pages' / 'which pages are stale?' → focus='stale'\n"
     "                            'show lint report' / 'full lint report' → focus=null (show all)\n"
     "  wiki_status   : (no params — live page counts grouped by lifecycle state: draft/active/stale/contradicted/archived)\n"
     "                  Use wiki_status for: 'show synthadoc status', 'wiki health', 'how many pages are active?',\n"
@@ -185,10 +187,13 @@ _EXTRACT_PROMPT_TEMPLATE = (
     "                  'what is the status of my last job'. Resolve job_id from history when the user\n"
     "                  says 'the last job', 'that job', or picks a number from a previous list.\n"
     "                  Leave job_id null when no specific job is mentioned.\n"
-    "  orchestrate   : intent (str) — use for requests to re-ingest stale pages, run guided "
-    "wiki maintenance, or orchestrate multi-step operations from the chat.\n"
+    "  orchestrate   : intent (str) — use ONLY for operational requests to re-ingest or fix stale pages, "
+    "run guided wiki maintenance, or orchestrate multi-step operations from the chat.\n"
+    "                  Do NOT use orchestrate for informational questions about which pages are stale — use lint_report focus='stale' instead.\n"
     "                  Examples: 're-ingest stale pages' → orchestrate, intent='reingest'\n"
+    "                            'fix my stale pages' → orchestrate, intent='reingest'\n"
     "                            'run guided maintenance workflow' → orchestrate, intent='maintenance'\n"
+    "                            'what are these stale pages?' → lint_report, focus='stale' (NOT orchestrate)\n"
     "  none          : (no params)\n\n"
     "Cron parsing: 'daily at 6am'='0 6 * * *', 'every Sunday at 7pm'='0 19 * * 0', "
     "'every weekday at 9am'='0 9 * * 1-5', 'every hour'='0 * * * *'\n\n"
@@ -471,8 +476,37 @@ class ActionAgent:
 
     async def _do_lint_report(self, params: dict | None = None) -> ActionResult:
         from synthadoc.agents.lint_agent import LintFocus, read_current_lint_state
-        state = read_current_lint_state(self._orch._store)
         focus = (params or {}).get("focus") or None
+
+        if focus == LintFocus.STALE:
+            audit_path = self._wiki_root / ".synthadoc" / "audit.db"
+            if not audit_path.exists():
+                return ActionResult(
+                    action_type="lint_report", success=True,
+                    message="**Stale pages (0)** — no lifecycle data yet. Run `synthadoc lint run` first.",
+                )
+            from synthadoc.storage.log import AuditDB
+            from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
+            _audit = AuditDB(audit_path)
+            await _audit.init()
+            _live = lambda slug: slug not in LINT_SKIP_SLUGS and self._orch._store.page_exists(slug)
+            all_states = await _audit.get_live_page_states(_live)
+            stale = [p for p in all_states if p.get("state") == "stale"]
+            if not stale:
+                return ActionResult(
+                    action_type="lint_report", success=True,
+                    message="**Stale pages (0)** — no stale pages found.",
+                )
+            lines = [f"**Stale pages ({len(stale)})** — source changed, re-ingest to refresh:\n"]
+            for p in stale:
+                since = p.get("updated") or p.get("created") or "unknown"
+                lines.append(f"- `{p['slug']}` (stale since {since})")
+            return ActionResult(
+                action_type="lint_report", success=True,
+                message="\n".join(lines),
+            )
+
+        state = read_current_lint_state(self._orch._store)
         parts: list[str] = []
 
         if focus in (None, LintFocus.CONTRADICTED):
@@ -584,6 +618,15 @@ class ActionAgent:
             lines.append(f"| {state} | {n} | {_NOTES[state]} |")
         if unlinted > 0:
             lines.append(f"| unlinted | {unlinted} | {_NOTES['unlinted']} |")
+        if counts.get(LifecycleState.STALE, 0) > 0:
+            all_states = await audit.get_live_page_states(_live)
+            stale_pages = [p for p in all_states if p.get("state") == "stale"]
+            if stale_pages:
+                lines.append("")
+                lines.append(f"**Stale pages ({len(stale_pages)}):**")
+                for p in stale_pages:
+                    since = p.get("updated") or p.get("created") or "unknown"
+                    lines.append(f"- `{p['slug']}` (stale since {since})")
         return ActionResult(action_type="wiki_status", success=True, message="\n".join(lines))
 
     async def _do_lint(self, params: dict) -> ActionResult:
