@@ -35,6 +35,17 @@ _VERB: dict[str, str] = {
 }
 _MAX_CLARIFY_CANDIDATES = 15
 
+# Fast-path regex: "re-ingest the <slug> page" → always orchestrate without LLM extraction.
+# Requires "the" to avoid false positives like "what does re-ingest mean?".
+# The web UI chip always emits "Re-ingest the {slug} page"; live tests use the same form.
+_SLUG_REINGEST_RE = re.compile(
+    r"\b(?:re[\-\s]?ingest|reingest)\s+the\s+"
+    r"(?!stale\b|all\b)"
+    r"[a-z0-9][a-z0-9\-_]{2,}"
+    r"(?:\s+page)?\b",
+    re.IGNORECASE,
+)
+
 _SCHEDULE_CRON_PROMPT = (
     "What schedule should this run on? (e.g. 'every night at 9 PM', 'daily at 6 AM')"
 )
@@ -303,6 +314,12 @@ class ActionAgent:
         """
         # Emit immediately so the UI shows activity while _extract() waits for the LLM.
         yield {"event": "tool_progress", "data": {"tool": "_init", "message": "Analyzing your request..."}}
+
+        # Fast-path: slug-based reingest queries always route to orchestrate without an LLM call.
+        if _SLUG_REINGEST_RE.search(question):
+            async for evt in self._run_orchestrate(question, session_id=session_id):
+                yield evt
+            return
 
         extraction = await self._extract(question, history=history or [])
         if extraction is None:
