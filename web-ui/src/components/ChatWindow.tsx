@@ -79,12 +79,14 @@ export function ChatWindow({
         const q = input.trim();
         if (!q) return;
         setInput("");
+        onPendingPromptConsumed?.();
         send(q, noCache, timeoutSeconds);
     };
 
     const handleChipClick = useCallback((value: string) => {
+        onPendingPromptConsumed?.();
         send(value, noCache, timeoutSeconds);
-    }, [send, noCache, timeoutSeconds]);
+    }, [send, noCache, timeoutSeconds, onPendingPromptConsumed]);
 
     const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey) {
