@@ -3229,9 +3229,10 @@ Triggered by phrases such as "re-ingest stale pages" or "fix stale pages". The a
 
 1. `find_stale_pages` — returns all stale pages with their local source paths and the wiki root
 2. `confirm` — sends a `confirm_request` SSE event; the UI renders a Yes/No card; the user must approve before any page is touched
-3. `ingest_source` (one call per stale page) — enqueues each page's source file as a force-ingest job
-4. `poll_job` — waits with exponential-backoff polling until each job reaches a terminal state
-5. `run_lint` — runs a full lint pass after all ingests complete, promoting clean pages from draft to active
+3. `ingest_source` (one call per stale page, sequentially) — force-ingests the source file and waits for the job to reach a terminal state before moving to the next page
+4. `run_lint` — enqueues a full lint pass; returns a job_id
+5. `poll_job(lint_job_id)` — waits for the lint job to complete
+6. Plain-text summary of every re-ingest outcome and the lint result (pass/fail)
 
 ### Workflow B — page-by-slug reingest
 
@@ -3239,9 +3240,10 @@ Triggered by phrases such as "re-ingest the alan-turing page". A pre-LLM regex f
 
 1. `find_page_source(slug)` — looks up the source file path for the named page, regardless of its current lifecycle state (active, draft, or stale)
 2. `confirm` — shows the slug and resolved source path; requires user approval
-3. `ingest_source` — enqueues the source file as a force-ingest job (bypasses deduplication)
-4. `poll_job` — waits for the job to complete
-5. `run_lint` — lint run to re-evaluate the page after reingest
+3. `ingest_source` — force-ingests the source file and waits for the job to reach a terminal state
+4. `run_lint` — enqueues a full lint pass; returns a job_id
+5. `poll_job(lint_job_id)` — waits for the lint job to complete
+6. Plain-text summary of the ingest result and the lint result (pass/fail)
 
 ### Tool set
 
@@ -3251,9 +3253,9 @@ Both workflows share the same `IngestLintWorkflow` tool set:
 |------|-------------|
 | `find_stale_pages` | Returns `[{slug, source_path}]` for all stale pages with a local text source |
 | `find_page_source` | Looks up any page by slug regardless of lifecycle state; returns `{slug, source_path}` |
-| `ingest_source` | Enqueues a force-ingest job for a given source file path; returns `{job_id}` |
+| `ingest_source` | Force-ingests a source file and waits for the job to reach a terminal state; returns `{status, message, job_id}` |
 | `poll_job` | Polls `GET /jobs/{job_id}` with exponential backoff until terminal; returns final status |
-| `run_lint` | Enqueues a full lint run and polls to completion |
+| `run_lint` | Enqueues a full lint run; returns `{job_id}` — caller uses `poll_job` to wait for completion |
 | `confirm` | Sends a `confirm_request` SSE event and blocks until the user responds (Yes/No) |
 
 ### Web UI graph sidebar maintenance chips

@@ -2701,16 +2701,18 @@ Both workflows run as a multi-step tool-call loop driven by the action agent. Th
 **Workflow A (stale pages):**
 1. `find_stale_pages` — returns all stale pages with their local source paths
 2. `confirm` — asks user approval before touching any page
-3. `ingest_source` × N — queues one ingest job per stale page
-4. `poll_job` — waits for each job to reach a terminal state
-5. `run_lint` — checks citations and promotes clean pages to active
+3. `ingest_source` × N — force-ingests each page and waits for the job to complete (one at a time)
+4. `run_lint` — queues a full lint pass; returns a job_id
+5. `poll_job` — waits for the lint job to reach a terminal state
+6. Plain-text summary of every re-ingest outcome and the lint result (pass/fail)
 
 **Workflow B (by slug):**
 1. `find_page_source(slug)` — returns the source file path for the named page, regardless of lifecycle state
 2. `confirm` — shows slug and source path, asks approval
-3. `ingest_source` — queues the ingest job (force mode)
-4. `poll_job` — waits for the job to complete
-5. `run_lint` — lint run after reingest
+3. `ingest_source` — force-ingests the page and waits for the job to complete
+4. `run_lint` — queues a full lint pass; returns a job_id
+5. `poll_job` — waits for the lint job to reach a terminal state
+6. Plain-text summary of the ingest result and the lint result (pass/fail)
 
 Tool progress streams as inline `tool_progress` events — you see each step as it happens. A partial failure (one page fails) does not abort the workflow; remaining pages continue and all outcomes appear in the final summary. Declining confirmation exits cleanly with a cancellation message.
 
