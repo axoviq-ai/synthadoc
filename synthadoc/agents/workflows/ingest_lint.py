@@ -40,13 +40,18 @@ confirm — ask the user to confirm before proceeding.
 
 Standard workflow for re-ingesting stale pages:
 1. Call find_stale_pages to list stale pages and their source paths.
-2. ALWAYS call confirm before ingesting anything — list the pages you plan to re-ingest
-   and ask whether to proceed. Never skip this step.
-3. If confirmed, call ingest_source for each page that has a valid source_path.
-   Each call returns the outcome directly (success, failed, timeout, or error).
+2. Call confirm IMMEDIATELY after find_stale_pages — do NOT write any plain text
+   before this step.  List the pages in the confirm message and ask whether to proceed.
+   Use the confirm TOOL; do not generate a plain-text question (that exits the loop).
+3. If confirm returns {"confirmed": true}, call ingest_source for each page that has
+   a valid source_path.  Each call returns the outcome directly (success, failed,
+   timeout, or error).
 4. When all ingest calls are done, call run_lint to refresh the lifecycle state.
-5. Write a brief plain-text summary reporting the outcome for each page — include the
-   specific success or failure reason for every page processed.
+5. After run_lint, write a brief plain-text summary of the outcome for every page
+   (include the specific success or failure reason for each).
+
+Plain text ends the workflow — use it ONLY in step 5 or when confirm returns false.
+All intermediate responses (steps 1-4) must be tool calls, not plain text.
 
 To call a tool, respond EXACTLY with this JSON and nothing else:
 {"tool_call": {"name": "<tool_name>", "input": <input_dict>}}
