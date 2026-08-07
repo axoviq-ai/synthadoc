@@ -41,7 +41,7 @@ major engine feature. No setup beyond following the steps below is required.
 23. [Query caching](#step-23--query-caching)
 24. [Knowledge Graph](#knowledge-graph)
 25. [Ingest an AI session transcript](#session-ingest)
-26. [Agentic Maintenance Workflows](#step-26--agentic-maintenance-workflows)
+26. [Agentic Maintenance Workflows](#agentic-workflows)
 
 **Appendices**
 
@@ -2624,6 +2624,7 @@ synthadoc ingest --file sessions.txt -w my-wiki
 ---
 
 <a name="step-26--agentic-maintenance-workflows"></a>
+<a name="agentic-workflows"></a>
 
 ## Step 26 — Agentic Maintenance Workflows
 
