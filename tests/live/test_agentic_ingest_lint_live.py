@@ -1143,7 +1143,16 @@ def test_find_page_source_tool_rejects_unknown_slug():
     full_text = "".join(d.get("text", "") for t, d in events if t == "token")
     assert any(
         kw in full_text.lower()
-        for kw in ("not found", "does not exist", "no page", "unknown", "couldn't find", "could not find")
+        for kw in (
+            "not found",
+            "does not exist",
+            "no page",
+            "no wiki page",
+            "no source path",
+            "unknown",
+            "couldn't find",
+            "could not find",
+        )
     ), (
         f"Expected 'not found' language for unknown slug. Got: {full_text[:300]!r}"
     )

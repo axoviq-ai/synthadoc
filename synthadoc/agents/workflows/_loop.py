@@ -122,10 +122,26 @@ async def run_tool_call_loop(
         parse_retries = 0
 
         if all_calls:
+            # `confirm` is a blocking user-input gate — it must never run alongside
+            # other tool calls in the same batch.  If the LLM mixes confirm with data
+            # tools, execute only the data tools now so the LLM has context before
+            # asking the user.  If the LLM sends only confirm(s), run just the first.
+            has_confirm = any(name == "confirm" for name, _ in all_calls)
+            if has_confirm:
+                non_confirm = [(n, inp) for n, inp in all_calls if n != "confirm"]
+                if non_confirm:
+                    # Data tools present alongside confirm: run data tools only.
+                    active_calls = non_confirm
+                else:
+                    # Only confirm(s): execute the first one; discard duplicates.
+                    active_calls = all_calls[:1]
+            else:
+                active_calls = all_calls
+
             # Execute every tool call found in this response (LLM sometimes batches
             # multiple calls in one turn). Return all results before the next LLM call.
             combined: list[dict] = []
-            for tool_name, tool_input in all_calls:
+            for tool_name, tool_input in active_calls:
                 tool_count += 1
                 if tool_count > budget:
                     yield {
