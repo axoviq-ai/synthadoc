@@ -49,9 +49,10 @@ Workflow A — re-ingest ALL stale pages:
 1. Call find_stale_pages.
 2. Call confirm IMMEDIATELY — list the pages in the message, ask whether to proceed.
    Use the confirm TOOL; never write plain text to ask (that exits the loop).
-3. If confirmed, call ingest_source for each page with a valid source_path.
+3. If confirmed, call ingest_source for each page with a valid source_path — one page
+   at a time, waiting for each result before calling the next.
 4. Call run_lint.
-5. Plain-text summary of every outcome.
+5. Plain-text summary of every outcome (including any pages that failed).
 
 Workflow B — re-ingest a SPECIFIC page by slug:
 1. Call find_page_source(slug=<slug>) to get its source path.

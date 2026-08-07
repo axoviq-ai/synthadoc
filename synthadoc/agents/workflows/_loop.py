@@ -51,6 +51,18 @@ def _parse_tool_call(text: str) -> tuple[str, dict] | None:
     return match.group(1), tool_input
 
 
+def _parse_all_tool_calls(text: str) -> list[tuple[str, dict]]:
+    """Return ALL ``(tool_name, tool_input_dict)`` pairs found in *text*."""
+    results = []
+    for match in _TOOL_CALL_RE.finditer(text):
+        try:
+            tool_input = json.loads(match.group(2))
+            results.append((match.group(1), tool_input))
+        except json.JSONDecodeError:
+            pass
+    return results
+
+
 async def run_tool_call_loop(
     system_prompt: str,
     initial_message: str,
@@ -92,10 +104,10 @@ async def run_tool_call_loop(
         response = await provider.complete(messages, system=system_prompt)
         text = response.text.strip()
 
-        parsed = _parse_tool_call(text)
+        all_calls = _parse_all_tool_calls(text)
 
-        # If the response looks like JSON but the regex failed, retry up to the limit.
-        if parsed is None and text.startswith("{") and parse_retries < _MAX_PARSE_RETRIES:
+        # If the response looks like JSON but no tool call parsed, retry up to the limit.
+        if not all_calls and text.startswith("{") and parse_retries < _MAX_PARSE_RETRIES:
             parse_retries += 1
             messages.append(Message(role="assistant", content=text))
             messages.append(
@@ -109,33 +121,41 @@ async def run_tool_call_loop(
 
         parse_retries = 0
 
-        if parsed is not None:
-            tool_name, tool_input = parsed
-            tool_count += 1
+        if all_calls:
+            # Execute every tool call found in this response (LLM sometimes batches
+            # multiple calls in one turn). Return all results before the next LLM call.
+            combined: list[dict] = []
+            for tool_name, tool_input in all_calls:
+                tool_count += 1
+                if tool_count > budget:
+                    yield {
+                        "event": "final_text",
+                        "data": {"text": f"Tool call budget of {budget} exceeded."},
+                    }
+                    return
 
-            if tool_count > budget:
-                yield {
-                    "event": "final_text",
-                    "data": {"text": f"Tool call budget of {budget} exceeded."},
-                }
-                return
+                label = _TOOL_LABELS.get(tool_name, f"Calling {tool_name}")
+                await ctx.send_sse_event(
+                    "tool_progress",
+                    {"tool": tool_name, "message": f"{label}..."},
+                )
 
-            label = _TOOL_LABELS.get(tool_name, f"Calling {tool_name}")
-            await ctx.send_sse_event(
-                "tool_progress",
-                {"tool": tool_name, "message": f"{label}..."},
-            )
-
-            if tool_name not in tool_fns:
-                tool_result = {"error": f"Unknown tool: {tool_name!r}"}
-            else:
-                try:
-                    tool_result = await tool_fns[tool_name](**tool_input)
-                except TypeError as exc:
-                    tool_result = {"error": f"Invalid arguments for {tool_name!r}: {exc}"}
+                if tool_name not in tool_fns:
+                    tool_result: dict = {"error": f"Unknown tool: {tool_name!r}"}
+                else:
+                    try:
+                        tool_result = await tool_fns[tool_name](**tool_input)
+                    except TypeError as exc:
+                        tool_result = {"error": f"Invalid arguments for {tool_name!r}: {exc}"}
+                combined.append({"tool": tool_name, "result": tool_result})
 
             messages.append(Message(role="assistant", content=text))
-            messages.append(Message(role="user", content=str(tool_result)))
+            # Single call: return the result dict directly (backward-compatible format).
+            # Multiple calls: return the list so the LLM sees all results at once.
+            if len(combined) == 1:
+                messages.append(Message(role="user", content=str(combined[0]["result"])))
+            else:
+                messages.append(Message(role="user", content=str(combined)))
 
         else:
             # Plain-text response — stream as token chunks, then emit final_text.

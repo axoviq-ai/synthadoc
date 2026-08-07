@@ -41,7 +41,7 @@ major engine feature. No setup beyond following the steps below is required.
 23. [Query caching](#step-23--query-caching)
 24. [Knowledge Graph](#knowledge-graph)
 25. [Ingest an AI session transcript](#session-ingest)
-26. [Guided Maintenance Workflows](#step-26--guided-maintenance-workflows)
+26. [Agentic Maintenance Workflows](#step-26--agentic-maintenance-workflows)
 
 **Appendices**
 
@@ -2623,7 +2623,7 @@ synthadoc ingest --file sessions.txt -w my-wiki
 
 <a name="step-26--guided-maintenance-workflows"></a>
 
-## Step 26 — Guided Maintenance Workflows
+## Step 26 — Agentic Maintenance Workflows
 
 The web chat UI (and the Obsidian plugin query modal) can drive wiki maintenance conversationally — no terminal required. Type a maintenance request in plain English and the system confirms with you, re-ingests pages, and runs lint, all from a single chat turn.
 
@@ -2714,7 +2714,7 @@ Both workflows run as a multi-step tool-call loop driven by the action agent. Th
 
 Tool progress streams as inline `tool_progress` events — you see each step as it happens. A partial failure (one page fails) does not abort the workflow; remaining pages continue and all outcomes appear in the final summary. Declining confirmation exits cleanly with a cancellation message.
 
-For the full protocol specification, see [Guided Maintenance Workflows](design.md#guided-maintenance-workflows) in the design doc.
+For the full protocol specification, see [Agentic Maintenance Workflows](design.md#agentic-maintenance-workflows) in the design doc.
 
 ---
 

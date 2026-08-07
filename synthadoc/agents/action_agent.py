@@ -135,9 +135,11 @@ _ACTION_RE = re.compile(
     # orchestrate / guided workflow / re-ingest stale pages
     r"|\bstale\s+pages?\b"
     r"|\borchestrat"
-    r"|\bguided\s+workflow\b"
+    r"|\b(guided|agentic)\s+(maintenance\s+)?workflow\b"
     # "re-ingest stale pages" — require "stale" nearby to avoid matching how-to questions
-    r"|\bre.?ingest\b.{0,60}\bstale\b|\bstale\b.{0,60}\bre.?ingest\b",
+    r"|\bre.?ingest\b.{0,60}\bstale\b|\bstale\b.{0,60}\bre.?ingest\b"
+    # "re-ingest the <slug> page" — slug-based Workflow B
+    r"|\bre.?ingest\b\s+the\s+[a-z0-9]",
     re.IGNORECASE,
 )
 
@@ -205,7 +207,7 @@ _EXTRACT_PROMPT_TEMPLATE = (
     "                            'fix my stale pages' → orchestrate, intent='reingest'\n"
     "                            're-ingest the alan-turing page' → orchestrate, intent='reingest'\n"
     "                            'reingest wiki page my-slug' → orchestrate, intent='reingest'\n"
-    "                            'run guided maintenance workflow' → orchestrate, intent='maintenance'\n"
+    "                            'run agentic maintenance workflow' → orchestrate, intent='maintenance'\n"
     "                            'what are these stale pages?' → lint_report, focus='stale' (NOT orchestrate)\n"
     "  none          : (no params)\n\n"
     "Cron parsing: 'daily at 6am'='0 6 * * *', 'every Sunday at 7pm'='0 19 * * 0', "
