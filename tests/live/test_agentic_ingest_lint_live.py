@@ -769,6 +769,17 @@ def test_agentic_reingest_emits_tool_progress_events():
 
         error_events = [(t, d) for t, d in events if t == "error"]
         assert not error_events, f"Agentic workflow emitted error events: {error_events}"
+
+        # Lint must have been queued AND polled to completion — not just queued.
+        lint_progress = [d for t, d in events if t == "tool_progress" and d.get("tool") == "run_lint"]
+        assert lint_progress, (
+            "Expected a run_lint tool_progress event — lint was not called"
+        )
+        full_text = "".join(d.get("text", "") for t, d in events if t == "token")
+        assert any(
+            kw in full_text.lower()
+            for kw in ("lint", "check")
+        ), f"Expected lint result mentioned in narrative. Got: {full_text[:300]!r}"
     finally:
         _restore_stale_page(wiki_root, slug, source_path, orig_content, original_state=orig_state)
         _restore_isolated_pages(isolated_slugs)
@@ -833,6 +844,15 @@ def test_agentic_reingest_stale_pages_become_draft():
             f"All stale slugs after: {stale_after}\n"
             f"SSE event types seen: {[t for t, _ in events]}"
         )
+
+        # Lint must complete (not just be queued) — the narrative should say so.
+        lint_progress = [d for t, d in events if t == "tool_progress" and d.get("tool") == "run_lint"]
+        assert lint_progress, "Expected a run_lint tool_progress event — lint was not called"
+        full_text = "".join(d.get("text", "") for t, d in events if t == "token")
+        assert any(
+            kw in full_text.lower()
+            for kw in ("lint", "check")
+        ), f"Expected lint result in narrative. Got: {full_text[:300]!r}"
     finally:
         _restore_stale_page(wiki_root, slug, source_path, orig_content, original_state=orig_state)
         _restore_isolated_pages(isolated_slugs)
@@ -1085,6 +1105,15 @@ def test_agentic_reingest_by_slug_active_page_becomes_draft():
             or "re-ingested" in full_text.lower()
             or "ingest" in full_text.lower()
         ), f"Expected {slug!r} or ingest language in narrative. Got: {full_text[:300]!r}"
+
+        # Lint must complete (not just be queued) — run_lint tool_progress must be
+        # present and the narrative must mention the lint result.
+        lint_progress = [d for t, d in events if t == "tool_progress" and d.get("tool") == "run_lint"]
+        assert lint_progress, "Expected a run_lint tool_progress event — lint was not called"
+        assert any(
+            kw in full_text.lower()
+            for kw in ("lint", "check")
+        ), f"Expected lint result in narrative. Got: {full_text[:300]!r}"
     finally:
         _restore_stale_page(wiki_root, slug, source_path, orig_content, original_state=orig_state)
         _restore_isolated_pages(isolated_slugs)
