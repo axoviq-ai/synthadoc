@@ -428,6 +428,49 @@ def _extract_missing_slugs(text: str) -> tuple[list[str], str]:
     return slugs, cleaned
 
 
+# ── pre_prompt helpers (stale pages / re-ingest completion detection) ─────────
+
+_STALE_SLUG_RE = re.compile(
+    # Handles common LLM list formats:
+    #   - slug (stale since...)      ← dash bullet + paren
+    #   1. slug (stale since...)     ← numbered bullet
+    #   - `slug` (stale...)          ← backtick-wrapped
+    #   - **slug** (stale...)        ← bold
+    #   - slug: stale since...       ← colon separator
+    #   - slug — stale               ← em-dash separator
+    r'(?:^|\n)\s*(?:\d+[.)]\s*|[-*|]?\s*)`?(?:\*{1,2})?([a-z0-9][a-z0-9\-_]{2,})(?:\*{1,2})?`?'
+    r'\s*(?:\(|:|\s+—|\s+–)',
+    re.MULTILINE,
+)
+_STALE_HEADER_RE = re.compile(r'\bstale\b', re.IGNORECASE)
+_NO_STALE_RE = re.compile(r'\bno stale\b|0 stale|zero stale', re.IGNORECASE)
+_REINGEST_COMPLETE_RE = re.compile(
+    r're[-\s]?ingested\s+successfully', re.IGNORECASE
+)
+
+
+def _build_pre_prompt(answer: str) -> str | None:
+    """Return a pre_prompt string if the response has an unambiguous next step.
+
+    Returns None if no clear next action is present.
+    """
+    if _REINGEST_COMPLETE_RE.search(answer):
+        return "Run lint to promote re-ingested pages to active"
+    # Only trigger on positive stale context ("stale pages" but not "no stale pages").
+    if _STALE_HEADER_RE.search(answer) and not _NO_STALE_RE.search(answer):
+        slugs = _STALE_SLUG_RE.findall(answer)
+        if slugs:
+            slug_list = ", ".join(slugs[:10])
+            return (
+                f"Re-ingest {len(slugs)} stale page{'s' if len(slugs) != 1 else ''}: "
+                f"{slug_list}"
+            )
+        # No slugs parsed — the word "stale" may appear in a negation context
+        # ("no pages are in the stale state") that _NO_STALE_RE didn't catch.
+        # Don't emit a generic suggestion; require concrete slugs to be safe.
+    return None
+
+
 class QueryAgent:
     def __init__(self, provider: LLMProvider, store: WikiStorage,
                  search: HybridSearch,
@@ -1200,27 +1243,11 @@ class QueryAgent:
             _action_agent = ActionAgent(self._provider, self._orchestrator,
                                         self._store._root.parent)
             if _action_agent.detect(question, history=history or []):
-                _result = await _action_agent.run(question, history=history or [])
-                if _result is not None:
-                    if _result.needs_clarification:
-                        yield {
-                            "event": "clarify",
-                            "data": {
-                                "prompt": _result.clarify_prompt,
-                                "candidates": _result.clarify_candidates,
-                                "action": _result.action_type,
-                            },
-                        }
-                        yield {"event": "done", "data": {}}
-                        return
-                    yield {"event": "status", "data": {"phase": "acting"}}
-                    yield {"event": "token", "data": {"text": _result.message}}
-                    yield {"event": "citations", "data": {"citations": []}}
-                    yield {"event": "done", "data": {
-                        "citations": [], "hints": [], "gap": not _result.success,
-                        "job_id": _result.job_id,
-                        "cacheable": False,
-                    }}
+                _had_events = False
+                async for _evt in _action_agent.run_gen(question, history=history or [], session_id=session_id):
+                    _had_events = True
+                    yield _evt
+                if _had_events:
                     return
 
         yield {"event": "status", "data": {"phase": "retrieving"}}
@@ -1381,7 +1408,7 @@ class QueryAgent:
         _stream_output_tokens = self._provider.last_stream_output_tokens
 
         next_hints = HintEngine.after_response(full_answer, session_mode)
-        yield {"event": "done", "data": {
+        _done_data: dict = {
             "next_hints": next_hints,
             "cacheable": not _is_live_data,
             "routing_warning": routing_warning,
@@ -1389,4 +1416,8 @@ class QueryAgent:
             "tokens_used": _stream_input_tokens + _stream_output_tokens,
             "input_tokens": _stream_input_tokens,
             "output_tokens": _stream_output_tokens,
-        }}
+        }
+        _pre_prompt = _build_pre_prompt(full_answer)
+        if _pre_prompt:
+            _done_data["pre_prompt"] = _pre_prompt
+        yield {"event": "done", "data": _done_data}

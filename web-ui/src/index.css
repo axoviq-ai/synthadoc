@@ -768,5 +768,8 @@ body {
 .graph-sidebar-hint-label { font-size: 10.5px; color: #64748b; margin: 0 0 2px; text-transform: uppercase; letter-spacing: 0.05em; }
 .graph-hint-chip { background: rgba(124,58,237,0.1); border: 1px solid rgba(124,58,237,0.25); color: #c4b5fd; border-radius: 6px; padding: 5px 8px; font-size: 11.5px; text-align: left; cursor: pointer; line-height: 1.4; transition: background 0.15s; }
 .graph-hint-chip:hover { background: rgba(124,58,237,0.22); }
+.graph-sidebar-maintenance { display: flex; flex-direction: column; gap: 5px; margin-top: 4px; padding-top: 10px; border-top: 1px solid rgba(100,116,139,0.2); }
+.graph-hint-chip--maintenance { background: rgba(100,116,139,0.08); border-color: rgba(100,116,139,0.25); color: #94a3b8; }
+.graph-hint-chip--maintenance:hover { background: rgba(100,116,139,0.18); color: #cbd5e1; }
 .graph-sidebar-ask-btn { margin-top: auto; background: #7c3aed; color: #fff; border: none; border-radius: 8px; padding: 8px 14px; font-size: 13px; cursor: pointer; }
 .graph-sidebar-ask-btn:hover { background: #6d28d9; }

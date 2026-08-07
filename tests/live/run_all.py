@@ -28,6 +28,9 @@ Examples:
 
     # Run CLI and MCP only, skip plugin
     python -X utf8 tests/live/run_all.py --suite cli --suite mcp
+
+    # Run agentic workflow tests only (requires v1.2.0 feature to be shipped)
+    python -X utf8 tests/live/run_all.py --suite agentic
 """
 import argparse
 import os
@@ -53,6 +56,7 @@ SUITES = {
     "mcp":       "live_mcp_test.py",
     "plugin":    "live_plugin_test.py",
     "snapshots": "test_lifecycle_snapshots_live.py",
+    "agentic":   "test_agentic_ingest_lint_live.py",
 }
 
 PASS = "\033[92mPASS\033[0m"
@@ -135,6 +139,7 @@ def main() -> None:
         "mcp":       [],
         "plugin":    ["--wiki", args.wiki, "--url", base],
         "snapshots": [],
+        "agentic":   [],
     }
     # Per-suite environment
     suite_env = {
@@ -142,6 +147,7 @@ def main() -> None:
         "mcp":       {**os.environ, "MCP_URL": mcp_url},
         "plugin":    {**os.environ, "WIKI_NAME": args.wiki, "SYNTHADOC_URL": base},
         "snapshots": {**os.environ, "SYNTHADOC_URL": base},
+        "agentic":   {**os.environ, "SYNTHADOC_URL": base},
     }
 
     codes: dict[str, int] = {}

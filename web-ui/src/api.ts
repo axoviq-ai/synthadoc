@@ -16,14 +16,29 @@ export interface ClarifyData {
     action: string;
 }
 
+export interface ToolProgressData {
+    tool: string;
+    job_id?: string;
+    message: string;
+}
+
+export interface ConfirmRequestData {
+    session_id: string;
+    message: string;
+    yes_label: string;
+    no_label: string;
+}
+
 export interface StreamCallbacks {
     onToken: (text: string) => void;
     onCitations: (citations: string[]) => void;
     onGap: (suggestions: string[]) => void;
-    onDone: (nextHints: string[]) => void;
+    onDone: (nextHints: string[], prePrompt?: string) => void;
     onError: (msg: string) => void;
     onClarify?: (data: ClarifyData) => void;
     onNotice?: (text: string) => void;
+    onToolProgress?: (data: ToolProgressData) => void;
+    onConfirmRequest?: (data: ConfirmRequestData) => void;
 }
 
 export interface SessionSummary {
@@ -144,7 +159,29 @@ function dispatch(event: string, data: Record<string, unknown>, cb: StreamCallba
             const hints = Array.isArray(data.next_hints)
                 ? (data.next_hints as unknown[]).filter((h): h is string => typeof h === "string")
                 : [];
-            cb.onDone(hints);
+            const prePrompt = typeof data.pre_prompt === "string" ? data.pre_prompt : undefined;
+            cb.onDone(hints, prePrompt);
+            break;
+        }
+        case "tool_progress": {
+            if (cb.onToolProgress) {
+                cb.onToolProgress({
+                    tool: typeof data.tool === "string" ? data.tool : "",
+                    job_id: typeof data.job_id === "string" ? data.job_id : undefined,
+                    message: typeof data.message === "string" ? data.message : "",
+                });
+            }
+            break;
+        }
+        case "confirm_request": {
+            if (cb.onConfirmRequest) {
+                cb.onConfirmRequest({
+                    session_id: typeof data.session_id === "string" ? data.session_id : "",
+                    message: typeof data.message === "string" ? data.message : "",
+                    yes_label: typeof data.yes_label === "string" ? data.yes_label : "Yes",
+                    no_label: typeof data.no_label === "string" ? data.no_label : "No",
+                });
+            }
             break;
         }
         case "error": {

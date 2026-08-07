@@ -36,5 +36,8 @@ synthadoc/demos/*/log.md
 # subagent test scratch directories
 test_tmp/
 
+# git worktrees (isolated feature workspaces)
+.worktrees/
+
 # intermediate build output — committed artifact is synthadoc/data/web-ui/dist/
 web-ui/dist/

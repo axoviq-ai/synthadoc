@@ -41,6 +41,7 @@ major engine feature. No setup beyond following the steps below is required.
 23. [Query caching](#step-23--query-caching)
 24. [Knowledge Graph](#knowledge-graph)
 25. [Ingest an AI session transcript](#session-ingest)
+26. [Agentic Maintenance Workflows](#step-26--agentic-maintenance-workflows)
 
 **Appendices**
 
@@ -743,13 +744,22 @@ snapshots carry higher index numbers.
 
 ---
 
-**Walkthrough: recovering the original content after an accidental edit**
+**Walkthrough: view snapshot history, compare versions, and roll back**
 
-Suppose `konrad-zuse` was activated with a well-researched body (3,412 chars). You later
-edited the page and archived it — but the archived version lost some content (2,891
-chars). You want the original back.
+**Setup — make an edit in Obsidian**
 
-**Step 1 — Browse the snapshot history:**
+Open `wiki/konrad-zuse.md` in Obsidian and add the following sentence at the very end
+of the page body:
+
+```
+Note: this claim needs a second source before the next release.
+```
+
+Save (Ctrl+S on Windows, Cmd+S on Mac) and wait three seconds. The Obsidian plugin
+detects the change and automatically captures a snapshot of the page — no extra command
+needed.
+
+Verify two entries now appear in the history:
 
 ```bash
 synthadoc lifecycle history konrad-zuse -w history-of-computing
@@ -758,46 +768,59 @@ synthadoc lifecycle history konrad-zuse -w history-of-computing
 ```
 Index  Timestamp (UTC)       From → To                     Content           Reason
 ----------------------------------------------------------------------------------------------------
-    1  2026-07-15 14:22:05   active → archived              2,891 chars       retiring for demo
-    2  2026-05-10 09:14:33   draft → active                 3,412 chars       reviewed and verified
+    1  2026-08-07 10:15:00   active → active                4,026 chars       manual edit detected by Obsidian plugin
+    2  2026-05-28 17:54:51   draft → active                 3,967 chars       lint passed
 ```
 
-Index 1 is the archive transition (newest) — it captured the shorter edited body.
-Index 2 is the original activation — it captured the 3,412-char body you want back.
+Index 1 (4,026 chars) is the Obsidian edit snapshot — the body with the added sentence.
+Index 2 (3,967 chars) is the original activation body, before your edit.
 
-**Step 2 — Preview the snapshot before committing to a rollback:**
+**Step 1 — Browse in the Obsidian Content Snapshots tab**
+
+Open the Obsidian plugin → find `konrad-zuse` → **Manage Page Lifecycle** → switch to the
+**Content Snapshots** tab. Type `konrad-zuse` in the **Filter by slug…** input to narrow
+the list to this page.
+
+Two rows appear, newest first. The `draft → active` row is the original activation body —
+the one you want to compare against.
+
+![Synthadoc Content Snapshots tab — list of snapshots for a page with diff view and rollback](png/synthadoc-lifecycle-snapshots.png)
+
+**Step 2 — View the diff**
+
+Click **View** on the `draft → active` row. An inline diff opens comparing that snapshot
+against the current wiki file — added lines in green, removed lines in red, YAML
+frontmatter stripped so the diff focuses on content only.
+
+The diff shows the sentence you added:
+
+```diff
++ Note: this claim needs a second source before the next release.
+```
 
 ```bash
-synthadoc lifecycle history konrad-zuse --index 2 -w history-of-computing
-```
-
-```
-Snapshot 2  2026-05-10 09:14:33  draft → active
-Reason: reviewed and verified
-Content: 3,412 chars
-```
-
-Add `--show-content` to print the full body, or redirect to a file to diff it against
-the current version:
-
-```bash
-synthadoc lifecycle history konrad-zuse --index 2 --show-content \
-  -w history-of-computing > original.md
+# Equivalent CLI approach — find the index of the draft → active row and export it:
+synthadoc lifecycle history konrad-zuse --index 2 --show-content -w history-of-computing > original.md
 diff original.md wiki/konrad-zuse.md
 ```
 
-**Step 3 — Roll back to that snapshot:**
+![Synthadoc snapshot diff view — line-by-line comparison with added/removed lines highlighted and Rollback button](png/synthadoc-lifecycle-snapshot-diff.png)
+
+**Step 3 — Roll back to the original body**
+
+**Via Obsidian:** you are already on the diff view from Step 2 — click **Rollback to this
+version**. The plugin saves the current (edited) body as a new snapshot first, then
+overwrites the wiki file with the original — removing the added sentence.
+
+**Via CLI:**
 
 ```bash
-synthadoc lifecycle rollback konrad-zuse --index 2 \
-  --reason "restoring original activation body" -w history-of-computing
+synthadoc lifecycle rollback konrad-zuse --index 2 --reason "removing accidental note" -w history-of-computing
 ```
 
-Synthadoc saves the current body as a new snapshot **before** overwriting — so the
-rollback is always undoable — then replaces the page body with the content from
-snapshot 2.
+After the rollback the added sentence is gone and the wiki file is back to 3,967 chars.
 
-**Step 4 — Confirm: the history now has three entries:**
+**Step 4 — Confirm: the history gained one entry**
 
 ```bash
 synthadoc lifecycle history konrad-zuse -w history-of-computing
@@ -806,34 +829,32 @@ synthadoc lifecycle history konrad-zuse -w history-of-computing
 ```
 Index  Timestamp (UTC)       From → To                     Content           Reason
 ----------------------------------------------------------------------------------------------------
-    1  2026-07-29 09:35:12   archived → archived            2,891 chars       rollback:2:restoring original…
-    2  2026-07-15 14:22:05   active → archived              2,891 chars       retiring for demo
-    3  2026-05-10 09:14:33   draft → active                 3,412 chars       reviewed and verified
+    1  2026-08-07 10:22:00   active → active                4,026 chars       rollback:2:removing accidental…
+    2  2026-08-07 10:15:00   active → active                4,026 chars       manual edit detected by Obsidian plugin
+    3  2026-05-28 17:54:51   draft → active                 3,967 chars       lint passed
 ```
 
-Index 1 is the rollback record — it holds the body that was just replaced. The page body
-is now restored to 3,412 chars from snapshot 3.
+Index 1 is the rollback record — the edited body auto-saved before the overwrite, so the
+rollback is always undoable. Roll back to index 1 to get the edited body back.
 
-**To undo the rollback**, simply roll back to index 1:
-
-```bash
-synthadoc lifecycle rollback konrad-zuse --index 1 \
-  --reason "undoing rollback" -w history-of-computing
-```
+> **Lifecycle transitions also capture snapshots.** Every time a page changes state —
+> draft → active, active → archived, and so on — Synthadoc records a snapshot at that
+> moment, with the same diff and rollback support. You do not need to edit a page in
+> Obsidian to build up a snapshot history; routine lifecycle events produce it
+> automatically.
 
 ---
 
 **Common use cases:**
-- Recover content that was overwritten by an accidental edit before archiving
+- Undo an accidental edit made directly in Obsidian
+- Recover content overwritten by a failed re-ingest
 - Audit exactly what a page said when it first went live
-- Compare the activation body to the current version with `diff` before deciding whether to roll back
-- Restore a page to a known-good state after a failed re-ingest
+- Undo a rollback by rolling back to the index-1 record that was auto-saved before it
 
-#### Content Snapshots tab — browsing and rolling back in Obsidian
+#### Content Snapshots tab — reference
 
-The **Manage Page Lifecycle** modal includes a **Content Snapshots** tab where you can
-browse the full snapshot history for every page, compare any snapshot against the current
-file, and roll back — all without leaving Obsidian or touching the CLI.
+The **Content Snapshots** tab in the **Manage Page Lifecycle** modal is the Obsidian
+surface for everything above.
 
 **What the tab shows:**
 - All snapshots across all pages, sorted by slug then by index when unfiltered
@@ -843,17 +864,9 @@ file, and roll back — all without leaving Obsidian or touching the CLI.
 
 **Actions:**
 - **Click any row** — opens the corresponding wiki page in the main Obsidian panel
-- **View** — shows a line-by-line diff of the snapshot body against the current file,
-  with added lines in green and removed lines in red; YAML frontmatter is stripped from
-  both sides so the diff focuses on the content that matters
-- **Rollback** — restores the page body to that snapshot; the current body is saved as a
-  new snapshot first, so every rollback is undoable
-
-![Synthadoc Content Snapshots tab — list of snapshots for a page with diff view and rollback](png/synthadoc-lifecycle-snapshots.png)
-
-Clicking **View** on any row opens an inline diff of that snapshot against the current file. Added lines appear in green and removed lines in red. Use the **Rollback** button to restore the page to that exact version — the current body is auto-saved as a new snapshot first, keeping every rollback undoable.
-
-![Synthadoc snapshot diff view — line-by-line comparison with added/removed lines highlighted and Rollback button](png/synthadoc-lifecycle-snapshot-diff.png)
+- **View** — opens the inline diff described in Step 2 above
+- **Rollback** — executes the rollback described in Step 3 above; the current body is
+  always saved first, so every rollback is undoable
 
 ---
 
@@ -1587,10 +1600,7 @@ it proactively triggers operations on a timer, keeping the wiki fresh automatica
 ### Register a nightly batch ingest
 
 ```bash
-synthadoc schedule add \
-  --op "ingest --batch raw_sources/" \
-  --cron "0 2 * * *" \
- 
+synthadoc schedule add --op "ingest --batch raw_sources/" --cron "0 2 * * *"
 ```
 
 This registers a 2 AM daily ingest directly with the OS scheduler (`crontab` on
@@ -2141,15 +2151,10 @@ Synthadoc ships a standalone consumer agent at `tests/integration/okf_consumer_a
 
 ```bash
 # Pattern A — grounded domain Q&A: answer questions from the bundle
-python tests/integration/okf_consumer_agent.py \
-    --bundle ~/exports/history-okf \
-    --question "Who pioneered compiler development and what did they build?"
+python tests/integration/okf_consumer_agent.py --bundle ~/exports/history-okf --question "Who pioneered compiler development and what did they build?"
 
 # Pattern B — type-routed discovery: read index.md, filter by type, then answer
-python tests/integration/okf_consumer_agent.py \
-    --bundle ~/exports/history-okf \
-    --question "List all computing pioneers and their key contributions" \
-    --type person
+python tests/integration/okf_consumer_agent.py --bundle ~/exports/history-okf --question "List all computing pioneers and their key contributions" --type person
 ```
 
 The agent reads `index.md` to discover available knowledge types, loads only the concept files that match the requested type (Pattern B), builds a grounded context, and asks Claude to answer using only the OKF bundle content — citing the source file path for every claim.
@@ -2567,9 +2572,7 @@ Copy the path of the most recent file — for example:
 **2. Ingest it**
 
 ```bash
-synthadoc ingest \
-  ~/.claude/projects/-Users-yourname-workspace-my-project/2b7e1f3c-4a8d-4c9b-b5e2-1f0c3a7d2e8b.jsonl \
-  -w my-wiki
+synthadoc ingest ~/.claude/projects/-Users-yourname-workspace-my-project/2b7e1f3c-4a8d-4c9b-b5e2-1f0c3a7d2e8b.jsonl -w my-wiki
 ```
 
 Expected output:
@@ -2617,6 +2620,110 @@ synthadoc ingest --file sessions.txt -w my-wiki
 | **Private content** | Session files may contain proprietary code. Keep your wiki on a local or private server and review what the page contains before sharing. |
 | **Sanitization** | Extracted turns pass through the standard pre-LLM source sanitizer (zero-width chars, bidi overrides, HTML comments, instruction-override phrases) — the same step applied to every PDF, URL, and DOCX source. |
 | **Obsidian plugin / web UI** | Neither the Obsidian plugin nor the web UI can ingest session files directly — they do not send local filesystem paths outside the wiki root. Use the CLI (`synthadoc ingest <path>`) for session file ingestion. |
+
+---
+
+<a name="step-26--agentic-maintenance-workflows"></a>
+
+## Step 26 — Agentic Maintenance Workflows
+
+The web chat UI (and the Obsidian plugin query modal) can drive wiki maintenance conversationally — no terminal required. Type a maintenance request in plain English and the system confirms with you, re-ingests pages, and runs lint, all from a single chat turn.
+
+Two workflows are available:
+
+| Workflow | Example phrase | Scope |
+|----------|---------------|-------|
+| **Stale-pages bulk reingest** | "re-ingest stale pages" | Finds every stale page, re-ingests each one in sequence, then runs lint |
+| **Page-by-slug reingest** | "re-ingest the alan-turing page" | Re-ingests one named page regardless of state (active, draft, or stale), then runs lint |
+
+### Demo — re-ingest all stale pages (Workflow A)
+
+The History of Computing demo includes the `konrad-zuse` page whose source file can be modified to trigger stale detection. First manufacture a stale page:
+
+1. In Obsidian, open `raw_sources/konrad-zuse-z3-computer.md` and make any small change — add a word, fix a typo, or append a note at the end. Save the file.
+2. Run lint to detect the change:
+
+```bash
+# konrad-zuse transitions from active to stale
+synthadoc lint run -w history-of-computing
+synthadoc status -w history-of-computing   # stale: 1
+```
+
+Now open the web chat UI:
+
+```bash
+synthadoc web -w history-of-computing
+```
+
+Type: **"show me the wiki status"**
+
+The response shows 1 stale page. Because stale pages were detected, the chat input is
+automatically pre-filled with a suggested follow-up — something like:
+
+> *Re-ingest 1 stale page: konrad-zuse*
+
+Press **Enter** to send it. A confirmation card appears:
+
+> *Found 1 stale page: konrad-zuse. Re-ingest it?*
+> **Yes, re-ingest all** / **No, cancel**
+
+Click **Yes, re-ingest all**. Inline progress events appear:
+
+```
+Looking up stale pages…
+Re-ingesting konrad-zuse-z3-computer.md…
+Polling job…  ✓ completed
+```
+
+When done, the chat pre-fills "Run lint to promote re-ingested pages to active" — click **Send** to promote `konrad-zuse` back to active in one more step.
+
+### Demo — re-ingest a specific page by slug (Workflow B)
+
+Use this when you want to refresh one page regardless of its current lifecycle state — active, draft, or stale. No stale transition is needed.
+
+In the web chat UI, type: **"re-ingest the alan-turing page"**
+
+The agent looks up the source path and asks for confirmation:
+
+> *Re-ingest alan-turing from `.../alan-turing.md`?*
+> **Yes** / **No, cancel**
+
+Confirm. The page is force-re-ingested (bypassing deduplication). When complete, a lint run is suggested via the pre-fill button.
+
+### Maintenance chips in the web UI graph sidebar
+
+In the web UI **Graph tab**, click any node to open the node detail panel. A **Maintenance** section appears at the bottom of the panel with two chips:
+
+| Chip | What happens |
+|------|-------------|
+| **⚑ Check this page for issues** | Sends "Check the [slug] page for issues" to the chat |
+| **↻ Re-ingest this page** | Sends "Re-ingest the [slug] page" to the chat, triggering Workflow B |
+
+Clicking either chip routes the request through the normal confirmation flow — the agent confirms before doing anything.
+
+### How the agentic loop works
+
+Both workflows run as a multi-step tool-call loop driven by the action agent. The steps are:
+
+**Workflow A (stale pages):**
+1. `find_stale_pages` — returns all stale pages with their local source paths
+2. `confirm` — asks user approval before touching any page
+3. `ingest_source` × N — force-ingests each page and waits for the job to complete (one at a time)
+4. `run_lint` — queues a full lint pass; returns a job_id
+5. `poll_job` — waits for the lint job to reach a terminal state
+6. Plain-text summary of every re-ingest outcome and the lint result (pass/fail)
+
+**Workflow B (by slug):**
+1. `find_page_source(slug)` — returns the source file path for the named page, regardless of lifecycle state
+2. `confirm` — shows slug and source path, asks approval
+3. `ingest_source` — force-ingests the page and waits for the job to complete
+4. `run_lint` — queues a full lint pass; returns a job_id
+5. `poll_job` — waits for the lint job to reach a terminal state
+6. Plain-text summary of the ingest result and the lint result (pass/fail)
+
+Tool progress streams as inline `tool_progress` events — you see each step as it happens. A partial failure (one page fails) does not abort the workflow; remaining pages continue and all outcomes appear in the final summary. Declining confirmation exits cleanly with a cancellation message.
+
+For the full protocol specification, see [Agentic Maintenance Workflows](design.md#agentic-maintenance-workflows) in the design doc.
 
 ---
 
@@ -2686,6 +2793,8 @@ Key differences from the demo:
 - Drop your own source files into `raw_sources/` and run batch ingest
 - Use web search to fill knowledge gaps as your wiki grows
 - Schedule nightly ingests and weekly scaffold refresh to keep it current automatically
+
+---
 
 ---
 

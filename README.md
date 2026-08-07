@@ -198,6 +198,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **[Custom skills + CI hooks](docs/design.md#11-hook-system)** — subclass `BaseSkill` for new file formats; 2 hook events (`on_ingest_complete` + `on_lint_complete`); example git auto-commit hook included; blocking hooks can gate operations | **Yes** | Limited | No | No |
 | **[Per-source truncation flag](docs/design.md#30-per-source-truncation-flag)** — `--max-source-chars` caps any source (PDF, DOCX, web page, plain text) before the LLM call; truncated sources flagged with `truncated: true` in frontmatter and warned in lint output | **Yes** | No | No | No |
 | **[Multi-wiki isolation](docs/design.md#wiki-targeting)** — each wiki on its own port with independent config, audit trail, and job queue; switch with `synthadoc use` | **Yes** | No | Partial | No |
+| **[Agentic maintenance workflows](docs/user-quick-start-guide.md#step-26--agentic-maintenance-workflows)** — conversational wiki maintenance via agentic tool-call loop; "re-ingest stale pages" bulk-reingests every stale page; "re-ingest the [slug] page" re-ingests any single page by slug regardless of lifecycle state (active, draft, or stale); agent confirms before touching anything, streams inline progress, and runs lint on completion; graph sidebar maintenance chips in the web UI trigger the same workflows with one click — no terminal required | **Yes** | No | No | No |
 
 ### Business value
 
@@ -412,6 +413,8 @@ The guide covers:
 22. Query caching — understand how answers are cached and how to bypass with `--no-cache`
 23. Backup and restore — create a portable wiki zip, restore on a different machine
 24. Knowledge graph — weighted edges (wikilink + co-source signals), explore clusters in the web UI Graph tab, click a node to query it
+25. Ingest an AI session transcript — turn Claude Code, Codex, or chat conversations into structured wiki pages
+26. Agentic maintenance workflows — re-ingest stale pages or any named page conversationally from the web UI or Obsidian, with confirmation and real-time progress
 
 ---
 

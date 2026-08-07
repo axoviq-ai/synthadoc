@@ -367,6 +367,37 @@ def _source_in_page(page: "WikiPage", source: str) -> bool:
     return any(_files_match(s.file, source) for s in (page.sources or []))
 
 
+def _local_source_exists(file: str, wiki_root: "Path | None") -> bool:
+    """Return True when a local (non-URL) source file still exists on disk.
+
+    Handles both absolute stored paths and legacy relative paths (resolved
+    against ``wiki_root/raw_sources/`` then ``wiki_root/``).
+    """
+    p = Path(file)
+    if p.is_absolute():
+        return p.exists()
+    if wiki_root:
+        return (
+            (wiki_root / "raw_sources" / file).exists()
+            or (wiki_root / file).exists()
+        )
+    return p.exists()
+
+
+def _purge_dead_sources(page: "WikiPage", wiki_root: "Path | None") -> None:
+    """Remove local-file source refs whose files no longer exist on disk.
+
+    Called during force re-ingest so that the subsequent lint run does not
+    immediately re-stale the page because of deleted temp or moved files.
+    """
+    if not page.sources:
+        return
+    page.sources = [
+        s for s in page.sources
+        if not s.file or is_url(s.file) or _local_source_exists(s.file, wiki_root)
+    ]
+
+
 def _append_source_ref(page: "WikiPage", ref: "SourceRef") -> None:
     """Append or update ref in page.sources, deduplicating on file path alone.
 
@@ -697,6 +728,37 @@ class IngestAgent:
             self._provider, ri.branches, context, multi=False
         )
         return result[0] if result else next(iter(ri.branches))
+
+    async def _promote_stale_source_to_draft(self, source: str) -> None:
+        """Find the stale page backed by *source* and promote it to DRAFT.
+
+        Called when ``force=True`` and the LLM returns ``action=skip`` so that
+        the agentic re-ingest workflow does not leave known-stale pages in STALE
+        state when the source content has not changed since the last ingest.
+        """
+        _p_resolved = Path(source).resolve()
+        for _slug in self._store.list_pages():
+            _pg = self._store.read_page(_slug)
+            _backed_by_source = _pg and _pg.sources and any(
+                Path(s.file).resolve() == _p_resolved for s in _pg.sources
+            )
+            if _pg and _pg.status == LifecycleState.STALE and _backed_by_source:
+                with self._store.page_lock(_slug):
+                    _pg = self._store.read_page(_slug)
+                    if _pg and _pg.status == LifecycleState.STALE:
+                        _pg.status = LifecycleState.DRAFT
+                        _purge_dead_sources(_pg, self._wiki_root)
+                        self._store.write_page(_slug, _pg)
+                        self._search.invalidate_index()
+                if self._audit:
+                    await self._audit.set_page_state(_slug, LifecycleState.DRAFT, TriggerSource.INGEST)
+                    await self._audit.record_lifecycle_event(
+                        _slug, LifecycleState.STALE, LifecycleState.DRAFT,
+                        "re-ingest of stale page (skipped: content unchanged)",
+                        TriggerSource.INGEST,
+                    )
+                logger.info("ingest skip+force: promoted stale page slug=%s to draft", _slug)
+                break
 
     async def _analyse(self, text: str, bust_cache: bool = False) -> dict:
         """Step 1 — analysis pass: entity extraction + summary + OKF type. Cached by content hash."""
@@ -1057,6 +1119,8 @@ class IngestAgent:
             )
             result.skipped = True
             result.skip_reason = "out of scope (purpose.md)"
+            if force and self._needs_file_check(source):
+                await self._promote_stale_source_to_draft(source)
             # Record the current hash so lint doesn't mark the page stale on the
             # next run just because the audit DB never saw this file version.
             await self._audit.record_ingest(src_hash, src_size, source,
@@ -1114,6 +1178,8 @@ class IngestAgent:
                         if page.status == LifecycleState.STALE:
                             page.status = LifecycleState.DRAFT
                             self._stale_to_draft_slug = target
+                        if force:
+                            _purge_dead_sources(page, self._wiki_root)
                         _backfill_okf_fields(page, analysis, source)
                         page.updated = date.today().isoformat()
                         if extracted.metadata.get("has_summary"):
@@ -1170,6 +1236,8 @@ class IngestAgent:
                             if page.status == LifecycleState.STALE:
                                 page.status = LifecycleState.DRAFT
                                 self._stale_to_draft_slug = slug
+                            if force:
+                                _purge_dead_sources(page, self._wiki_root)
                             _backfill_okf_fields(page, analysis, source)
                             page.updated = date.today().isoformat()
                             if extracted.metadata.get("has_summary"):

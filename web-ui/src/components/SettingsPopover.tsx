@@ -5,7 +5,7 @@ import { useRef, useEffect } from "react";
 
 const STORAGE_KEY_TIMEOUT = "synthadoc.queryTimeoutSeconds";
 const STORAGE_KEY_MAX_RESULTS = "synthadoc.maxSearchResults";
-export const DEFAULT_TIMEOUT = 60;
+export const DEFAULT_TIMEOUT = 300;
 export const DEFAULT_MAX_RESULTS = 5;
 
 export function readTimeoutSetting(): number {

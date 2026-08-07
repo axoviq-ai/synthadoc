@@ -65,8 +65,10 @@
       "keywords": ["stale", "outdated", "old"],
       "answer_keywords": ["stale"],
       "hints": [
-        "How do I mark a page as active?",
+        "Re-ingest stale pages",
+        "What are these stale pages?",
         "How do I run a lint check?",
+        "How do I mark a page as active?",
         "Which pages need review?"
       ]
     },
@@ -173,6 +175,15 @@
         "Show failed and skipped jobs",
         "Show pending jobs",
         "Check job status"
+      ]
+    },
+    {
+      "keywords": ["re-ingest", "reingest", "ingested"],
+      "answer_keywords": ["re-ingested", "ingested successfully"],
+      "hints": [
+        "Run lint now",
+        "Show updated wiki status",
+        "Show lint report"
       ]
     },
     {
