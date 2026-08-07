@@ -136,6 +136,22 @@ export function GraphSidebar({ node, clusterColor, edges, totalNodes, onAsk, onC
                 ))}
             </div>
 
+            <div className="graph-sidebar-maintenance">
+                <p className="graph-sidebar-hint-label">Maintenance:</p>
+                <button
+                    className="graph-hint-chip graph-hint-chip--maintenance"
+                    onClick={() => onAsk(`Check the ${node.slug} page for issues`, [])}
+                >
+                    ⚑ Check this page for issues
+                </button>
+                <button
+                    className="graph-hint-chip graph-hint-chip--maintenance"
+                    onClick={() => onAsk(`Re-ingest the ${node.slug} page`, [])}
+                >
+                    ↻ Re-ingest this page
+                </button>
+            </div>
+
             <button
                 className="graph-sidebar-ask-btn"
                 onClick={() => onAsk(`Tell me about ${displayTitle}`, hints)}
