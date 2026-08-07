@@ -51,16 +51,18 @@ Workflow A — re-ingest ALL stale pages:
    Use the confirm TOOL; never write plain text to ask (that exits the loop).
 3. If confirmed, call ingest_source for each page with a valid source_path — one page
    at a time, waiting for each result before calling the next.
-4. Call run_lint.
-5. Plain-text summary of every outcome (including any pages that failed).
+4. Call run_lint — it returns a job_id.
+5. Call poll_job(job_id=<lint_job_id>) to wait for the lint job to complete.
+6. Plain-text summary of every re-ingest outcome AND the lint result (pass/fail).
 
 Workflow B — re-ingest a SPECIFIC page by slug:
 1. Call find_page_source(slug=<slug>) to get its source path.
 2. Call confirm IMMEDIATELY — include the slug and path in the message.
    Use the confirm TOOL; never write plain text to ask (that exits the loop).
 3. If confirmed, call ingest_source(source_path=<path>).
-4. Call run_lint.
-5. Plain-text summary.
+4. Call run_lint — it returns a job_id.
+5. Call poll_job(job_id=<lint_job_id>) to wait for the lint job to complete.
+6. Plain-text summary of the ingest result and the lint result (pass/fail).
 
 Plain text ends the workflow — use it ONLY in the final summary step or when
 confirm returns false. All intermediate steps must be tool calls, not plain text.
