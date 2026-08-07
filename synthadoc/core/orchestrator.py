@@ -212,7 +212,8 @@ class Orchestrator:
         return len(jobs)
 
     async def _run_ingest(self, job_id: str, source: str, auto_confirm: bool,
-                          force: bool = False, max_results: int | None = None,
+                          force: bool = False, bust_cache: bool | None = None,
+                          max_results: int | None = None,
                           max_source_chars: int | None = None,
                           allow_external_paths: bool = False) -> None:
         # auto_confirm is reserved for when user-facing confirmation prompts are added.
@@ -278,7 +279,8 @@ class Orchestrator:
                 cfg=cfg,
                 allow_external_paths=allow_external_paths,
             )
-            result = await agent.ingest(source, force=force, bust_cache=force)
+            _bust = force if bust_cache is None else bust_cache
+            result = await agent.ingest(source, force=force, bust_cache=_bust)
             result.cost_usd = estimate_cost(
                 _agent_cfg.model,
                 result.input_tokens,

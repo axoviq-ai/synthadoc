@@ -510,10 +510,12 @@ async def _worker_loop(orch, session_state: dict) -> None:
                 if job.operation == "ingest":
                     source = job.payload.get("source", "")
                     force = job.payload.get("force", False)
+                    bust_cache = job.payload.get("bust_cache", force)
                     max_results = job.payload.get("max_results")
                     max_source_chars = job.payload.get("max_source_chars")
                     allow_external_paths = job.payload.get("allow_external_paths", False)
                     job_coro = orch._run_ingest(job.id, source, auto_confirm=True, force=force,
+                                                bust_cache=bust_cache,
                                                 max_results=max_results,
                                                 max_source_chars=max_source_chars,
                                                 allow_external_paths=allow_external_paths)

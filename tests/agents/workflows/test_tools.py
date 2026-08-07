@@ -381,13 +381,16 @@ async def test_tool_run_lint_custom_scope():
 
 
 async def test_ingest_source_enqueues_valid_file(tmp_path):
-    """Valid in-root file → job_id returned and enqueue called."""
+    """Valid in-root file → enqueued, polled, and success returned."""
     source_file = tmp_path / "raw" / "doc.md"
     source_file.parent.mkdir(parents=True)
     source_file.write_text("hello")
 
     queue = MagicMock()
     queue.enqueue = AsyncMock(return_value="job-xyz")
+    completed_job = MagicMock()
+    completed_job.status = JobStatus.COMPLETED
+    queue.get_job = AsyncMock(return_value=completed_job)
 
     events: list = []
 
@@ -405,8 +408,10 @@ async def test_ingest_source_enqueues_valid_file(tmp_path):
         confirm_result_registry={},
     )
     result = await tool_ingest_source(ctx, str(source_file))
-    assert result == {"job_id": "job-xyz"}
-    queue.enqueue.assert_called_once_with("ingest", {"source": str(source_file), "force": True})
+    assert result["status"] == "success"
+    assert result["job_id"] == "job-xyz"
+    queue.enqueue.assert_called_once_with("ingest", {"source": str(source_file), "force": True, "bust_cache": False})
+    queue.get_job.assert_called_once_with("job-xyz")
 
 
 async def test_poll_job_returns_failed_for_dead_status():

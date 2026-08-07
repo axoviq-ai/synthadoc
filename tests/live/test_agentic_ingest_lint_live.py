@@ -678,8 +678,8 @@ def _stream_with_autoconfirm(
     monitor = threading.Thread(target=_monitor_and_confirm, daemon=True)
     monitor.start()
 
-    path = f"/query/stream?q={q}&session_id={session_id}&no_cache=true&timeout_seconds=300"
-    with httpx.Client(timeout=httpx.Timeout(timeout)) as client:
+    path = f"/query/stream?q={q}&session_id={session_id}&no_cache=true&timeout_seconds={timeout}"
+    with httpx.Client(timeout=httpx.Timeout(timeout + 30)) as client:
         with client.stream("GET", f"{BASE}{path}") as r:
             r.raise_for_status()
             current_type = "message"
@@ -744,7 +744,7 @@ def test_agentic_reingest_emits_tool_progress_events():
 
 
 @pytest.mark.live
-@pytest.mark.timeout(720)
+@pytest.mark.timeout(900)
 def test_agentic_reingest_stale_pages_become_draft():
     """
     After the agentic re-ingest workflow completes, the stale pages that were
@@ -783,7 +783,7 @@ def test_agentic_reingest_stale_pages_become_draft():
         events = _stream_with_autoconfirm(
             "re-ingest+stale+pages",
             session_id,
-            timeout=300,
+            timeout=600,
         )
 
         error_events = [(t, d) for t, d in events if t == "error"]
@@ -799,7 +799,8 @@ def test_agentic_reingest_stale_pages_become_draft():
         stale_after = _find_stale_slugs()
         assert slug not in stale_after, (
             f"Borrowed page {slug!r} still stale after agentic re-ingest. "
-            f"All stale slugs after: {stale_after}"
+            f"All stale slugs after: {stale_after}\n"
+            f"SSE event types seen: {[t for t, _ in events]}"
         )
     finally:
         _restore_stale_page(wiki_root, slug, source_path, orig_content, original_state=orig_state)
@@ -901,7 +902,7 @@ def test_agentic_confirm_decline_cancels_workflow():
 
 
 @pytest.mark.live
-@pytest.mark.timeout(720)
+@pytest.mark.timeout(900)
 def test_agentic_partial_completion_continues_after_one_failure():
     """
     If one of N ingest jobs fails (e.g. source file deleted between find and
@@ -937,7 +938,7 @@ def test_agentic_partial_completion_continues_after_one_failure():
 
     # Drain any residual jobs (e.g. lint from the previous test's workflow) so
     # the ingest job for page A reaches the front of the queue within
-    # tool_poll_job's 120-second timeout window.
+    # tool_poll_job's timeout window.
     _wait_for_queue_idle(max_wait=300)
 
     # Sabotage: rename src_b so the agent's ingest call for B gets file-not-found
@@ -951,7 +952,7 @@ def test_agentic_partial_completion_continues_after_one_failure():
         events = _stream_with_autoconfirm(
             "re-ingest+stale+pages",
             session_id,
-            timeout=300,
+            timeout=600,
         )
 
         # Stream must complete

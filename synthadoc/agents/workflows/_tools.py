@@ -81,14 +81,19 @@ async def tool_find_stale_pages(ctx: "WorkflowContext") -> dict:
 
 
 async def tool_ingest_source(ctx: "WorkflowContext", source_path: str) -> dict:
-    """Validate *source_path* and enqueue an ingest job.
+    """Validate *source_path*, enqueue an ingest job, wait for it to finish, and return the outcome.
 
     Validation order:
     1. Must be an absolute path.
     2. Must resolve within ``ctx.wiki_root``.
     3. File must exist on disk.
 
-    Returns ``{"job_id": str}`` on success or ``{"error": str}`` on failure.
+    Returns::
+
+        {"status": "success", "message": str}  — ingest completed successfully
+        {"status": "failed",  "message": str}  — job reached a terminal failure state
+        {"status": "timeout", "message": str}  — job did not complete within 300 s
+        {"error": str}                          — validation error (bad path, file missing)
     """
     path = Path(source_path)
 
@@ -112,27 +117,37 @@ async def tool_ingest_source(ctx: "WorkflowContext", source_path: str) -> dict:
     if not path.exists():
         return {"error": f"File not found: {source_path!r}"}
 
-    # Enqueue with retries for transient queue-full errors.
-    # force=True bypasses the dedup check and uses bust_cache so the ingest
-    # agent re-evaluates the content fresh and always updates stale pages.
+    # Enqueue.  force=True bypasses the dedup check so stale pages are always
+    # re-ingested.  bust_cache=False lets the analysis/citation caches be used
+    # when the source content is unchanged — the cache key is a content hash, so
+    # genuinely changed sources still trigger fresh LLM analysis regardless.
     last_error: str | None = None
+    job_id: str | None = None
     for delay in [0] + _INGEST_RETRY_DELAYS:
         if delay > 0:
             await asyncio.sleep(delay)
         try:
             job_id = await ctx.queue.enqueue(
-                "ingest", {"source": source_path, "force": True}
+                "ingest", {"source": source_path, "force": True, "bust_cache": False}
             )
-            return {"job_id": job_id}
+            break
         except Exception as exc:  # noqa: BLE001
             last_error = str(exc)
-    return {"error": f"Failed to enqueue after retries: {last_error}"}
+
+    if job_id is None:
+        return {"error": f"Failed to enqueue after retries: {last_error}"}
+
+    # Poll until terminal so the caller gets the outcome in a single tool call.
+    # Include job_id in the response so the caller can optionally verify via poll_job.
+    result = await tool_poll_job(ctx, job_id, timeout_seconds=300)
+    result["job_id"] = job_id
+    return result
 
 
 async def tool_poll_job(
     ctx: "WorkflowContext",
     job_id: str,
-    timeout_seconds: int = 120,
+    timeout_seconds: int = 240,
 ) -> dict:
     """Poll a job until it reaches a terminal state or the timeout expires.
 
