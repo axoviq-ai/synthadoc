@@ -2649,15 +2649,20 @@ synthadoc lint run -w history-of-computing
 synthadoc status -w history-of-computing   # stale: 1
 ```
 
-Now open the web chat UI and ask the agent to fix it:
+Now open the web chat UI:
 
 ```bash
 synthadoc web -w history-of-computing
 ```
 
-Type: **"re-ingest stale pages"**
+Type: **"show me the wiki status"**
 
-The response lists the stale pages and a confirmation card appears:
+The response shows 1 stale page. Because stale pages were detected, the chat input is
+automatically pre-filled with a suggested follow-up — something like:
+
+> *Re-ingest 1 stale page: konrad-zuse*
+
+Press **Enter** to send it. A confirmation card appears:
 
 > *Found 1 stale page: konrad-zuse. Re-ingest it?*
 > **Yes, re-ingest all** / **No, cancel**
