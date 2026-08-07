@@ -2640,11 +2640,11 @@ Two workflows are available:
 
 The History of Computing demo includes the `konrad-zuse` page whose source file can be modified to trigger stale detection. First manufacture a stale page:
 
-```bash
-# Append a space to the source file to change its hash
-echo " " >> raw_sources/konrad-zuse-z3-computer.md
+1. In Obsidian, open `raw_sources/konrad-zuse-z3-computer.md` and make any small change — add a word, fix a typo, or append a note at the end. Save the file.
+2. Run lint to detect the change:
 
-# Run lint to detect the change — konrad-zuse transitions from active to stale
+```bash
+# konrad-zuse transitions from active to stale
 synthadoc lint run -w history-of-computing
 synthadoc status -w history-of-computing   # stale: 1
 ```
