@@ -465,9 +465,9 @@ def _build_pre_prompt(answer: str) -> str | None:
                 f"Re-ingest {len(slugs)} stale page{'s' if len(slugs) != 1 else ''}: "
                 f"{slug_list}"
             )
-        # Stale pages mentioned positively but slugs couldn't be parsed — return
-        # a generic suggestion so the textarea is still pre-filled.
-        return "Re-ingest stale pages"
+        # No slugs parsed — the word "stale" may appear in a negation context
+        # ("no pages are in the stale state") that _NO_STALE_RE didn't catch.
+        # Don't emit a generic suggestion; require concrete slugs to be safe.
     return None
 
 

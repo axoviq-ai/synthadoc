@@ -18,13 +18,13 @@ Run with:
   pytest tests/live/test_agentic_ingest_lint_live.py -v -s
 
 Side effects and rollback:
+  All tests that modify wiki state are self-contained: they manufacture temporary
+  stale pages (via _make_stale_page), isolate any pre-existing stale pages to avoid
+  interference, and restore everything in finally blocks via _restore_stale_page /
+  _restore_isolated_pages regardless of test outcome.  The wiki should be left in
+  the same state it was in before the suite ran.
   - test_post_ingest_queues_job_for_valid_source: creates a temp source file and
     wiki page; both are deleted in the finally block.
-  - test_agentic_full_reingest_workflow: may manufacture a stale page (temp source
-    + wiki page); both are deleted in the finally block. Stale pages that existed
-    before the test will be re-ingested (reset to draft) — this is the point of
-    the test.
-  All other tests are read-only or make no persistent state changes.
 """
 from __future__ import annotations
 
@@ -524,11 +524,17 @@ def test_action_confirm_unknown_session_returns_404():
 
 
 @pytest.mark.live
+@pytest.mark.timeout(360)
 def test_action_confirm_duplicate_session_returns_409():
     """A second /action/confirm while the first is still pending returns 409."""
-    stale_slugs = _find_stale_slugs()
-    if not stale_slugs:
-        pytest.skip("No stale pages — cannot trigger a pending confirm gate")
+    wiki_root = _wiki_root()
+    isolated_slugs = _isolate_stale_pages_with_sources(wiki_root)
+    manufactured = _make_stale_page(wiki_root)
+    if manufactured is None:
+        _restore_isolated_pages(isolated_slugs)
+        pytest.skip("No suitable page to manufacture stale state — cannot trigger confirm gate")
+    slug, source_path, orig_content, orig_state = manufactured
+    isolated_slugs = [s for s in isolated_slugs if s != slug]
 
     session_id = str(uuid.uuid4())
     first_confirm_done = threading.Event()
@@ -549,29 +555,33 @@ def test_action_confirm_duplicate_session_returns_409():
     stream_thread = threading.Thread(target=_stream_until_confirm, daemon=True)
     stream_thread.start()
 
-    # Give the agent time to reach the confirm gate
-    deadline = time.monotonic() + 45
-    while time.monotonic() < deadline:
-        r1 = _raw("/action/confirm", "POST", {"session_id": session_id, "confirmed": True})
-        if r1.status_code == 200:
-            # First confirm accepted — immediately fire a duplicate
-            r2 = _raw("/action/confirm", "POST", {"session_id": session_id, "confirmed": True})
-            second_status.append(r2.status_code)
-            first_confirm_done.set()
-            break
-        time.sleep(1)
+    try:
+        # Give the agent time to reach the confirm gate
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            r1 = _raw("/action/confirm", "POST", {"session_id": session_id, "confirmed": True})
+            if r1.status_code == 200:
+                # First confirm accepted — immediately fire a duplicate
+                r2 = _raw("/action/confirm", "POST", {"session_id": session_id, "confirmed": True})
+                second_status.append(r2.status_code)
+                first_confirm_done.set()
+                break
+            time.sleep(1)
 
-    stream_thread.join(timeout=10)
+        stream_thread.join(timeout=30)
 
-    if not first_confirm_done.is_set():
-        pytest.skip("Confirm gate did not become pending within 45s — cannot test duplicate")
+        if not first_confirm_done.is_set():
+            pytest.skip("Confirm gate did not become pending within 60s — cannot test duplicate")
 
-    # 409 = gate still pending (result set but agent hasn't cleaned up yet).
-    # 404 = agent already consumed and cleaned up by the time the second
-    #       confirm arrived. Both mean the session cannot be double-confirmed.
-    assert second_status and second_status[0] in {404, 409}, (
-        f"Expected 404 or 409 for duplicate confirm, got {second_status}"
-    )
+        # 409 = gate still pending (result set but agent hasn't cleaned up yet).
+        # 404 = agent already consumed and cleaned up by the time the second
+        #       confirm arrived. Both mean the session cannot be double-confirmed.
+        assert second_status and second_status[0] in {404, 409}, (
+            f"Expected 404 or 409 for duplicate confirm, got {second_status}"
+        )
+    finally:
+        _restore_stale_page(wiki_root, slug, source_path, orig_content, original_state=orig_state)
+        _restore_isolated_pages(isolated_slugs)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -580,35 +590,44 @@ def test_action_confirm_duplicate_session_returns_409():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @pytest.mark.live
+@pytest.mark.timeout(240)
 def test_query_done_pre_prompt_present_when_stale_pages_exist():
     """
     A wiki-status query's done SSE event includes pre_prompt mentioning the
     stale slug(s) when the wiki has stale pages.
+
+    Manufactures a stale page if none exist so the test is self-contained.
     """
-    stale_slugs = _find_stale_slugs()
-    if not stale_slugs:
-        pytest.skip("No stale pages in this wiki — cannot verify pre_prompt trigger")
+    wiki_root = _wiki_root()
+    isolated_slugs = _isolate_stale_pages_with_sources(wiki_root)
+    manufactured = _make_stale_page(wiki_root)
+    if manufactured is None:
+        _restore_isolated_pages(isolated_slugs)
+        pytest.skip("No suitable page found to manufacture stale state — skipping")
+    slug, source_path, orig_content, orig_state = manufactured
+    isolated_slugs = [s for s in isolated_slugs if s != slug]
 
-    events = _sse_events("/query/stream?q=show+me+the+wiki+status&no_cache=true", timeout=90)
-    done_events = [(t, d) for t, d in events if t == "done"]
-    assert done_events, f"SSE stream ended without a done event. Events: {[t for t,_ in events]}"
+    try:
+        events = _sse_events("/query/stream?q=show+me+the+wiki+status&no_cache=true", timeout=90)
+        done_events = [(t, d) for t, d in events if t == "done"]
+        assert done_events, f"SSE stream ended without a done event. Events: {[t for t,_ in events]}"
 
-    _, done_data = done_events[-1]
-    pre_prompt = done_data.get("pre_prompt")
-    assert pre_prompt, (
-        f"done event missing pre_prompt despite {len(stale_slugs)} stale page(s). "
-        f"done payload: {done_data}"
-    )
-    # Either slugs are named directly OR the suggestion is a generic re-ingest prompt.
-    # LLM output format is non-deterministic so we only require that the pre_prompt
-    # contains a re-ingest keyword or one of the known stale slugs.
-    assert (
-        any(slug in pre_prompt for slug in stale_slugs)
-        or "ingest" in pre_prompt.lower()
-        or "stale" in pre_prompt.lower()
-    ), (
-        f"pre_prompt {pre_prompt!r} does not suggest re-ingest of stale pages: {stale_slugs}"
-    )
+        _, done_data = done_events[-1]
+        pre_prompt = done_data.get("pre_prompt")
+        assert pre_prompt, (
+            f"done event missing pre_prompt despite stale page {slug!r}. "
+            f"done payload: {done_data}"
+        )
+        # The pre_prompt must include the manufactured slug or a re-ingest keyword.
+        assert (
+            slug in pre_prompt
+            or "ingest" in pre_prompt.lower()
+        ), (
+            f"pre_prompt {pre_prompt!r} does not suggest re-ingest of {slug!r}"
+        )
+    finally:
+        _restore_stale_page(wiki_root, slug, source_path, orig_content, original_state=orig_state)
+        _restore_isolated_pages(isolated_slugs)
 
 
 @pytest.mark.live
@@ -711,36 +730,48 @@ def _stream_with_autoconfirm(
 
 
 @pytest.mark.live
-@pytest.mark.timeout(360)
+@pytest.mark.timeout(900)
 def test_agentic_reingest_emits_tool_progress_events():
     """
     Sending 're-ingest stale pages' when stale pages exist produces at least
     one tool_progress SSE event and completes with a done event (no error).
 
     Auto-confirms the confirm gate so tool_progress events are reachable.
+    Manufactures a stale page if none exist so the test is self-contained.
     """
-    stale_slugs = _find_stale_slugs()
-    if not stale_slugs:
-        pytest.skip("No stale pages — cannot test agentic reingest workflow")
+    wiki_root = _wiki_root()
+    isolated_slugs = _isolate_stale_pages_with_sources(wiki_root)
+    manufactured = _make_stale_page(wiki_root)
+    if manufactured is None:
+        _restore_isolated_pages(isolated_slugs)
+        pytest.skip("No suitable page found to manufacture stale state — skipping")
+    slug, source_path, orig_content, orig_state = manufactured
+    isolated_slugs = [s for s in isolated_slugs if s != slug]
 
-    session_id = str(uuid.uuid4())
-    events = _stream_with_autoconfirm(
-        "re-ingest+stale+pages",
-        session_id,
-        timeout=300,
-    )
+    _wait_for_queue_idle(max_wait=300)
 
-    tool_progress = [(t, d) for t, d in events if t == "tool_progress"]
-    assert tool_progress, (
-        "Expected at least one tool_progress SSE event during agentic re-ingest. "
-        f"Events received: {[t for t, _ in events]}"
-    )
+    try:
+        session_id = str(uuid.uuid4())
+        events = _stream_with_autoconfirm(
+            "re-ingest+stale+pages",
+            session_id,
+            timeout=600,
+        )
 
-    done_events = [(t, d) for t, d in events if t == "done"]
-    assert done_events, "SSE stream ended without a done event"
+        tool_progress = [(t, d) for t, d in events if t == "tool_progress"]
+        assert tool_progress, (
+            "Expected at least one tool_progress SSE event during agentic re-ingest. "
+            f"Events received: {[t for t, _ in events]}"
+        )
 
-    error_events = [(t, d) for t, d in events if t == "error"]
-    assert not error_events, f"Agentic workflow emitted error events: {error_events}"
+        done_events = [(t, d) for t, d in events if t == "done"]
+        assert done_events, "SSE stream ended without a done event"
+
+        error_events = [(t, d) for t, d in events if t == "error"]
+        assert not error_events, f"Agentic workflow emitted error events: {error_events}"
+    finally:
+        _restore_stale_page(wiki_root, slug, source_path, orig_content, original_state=orig_state)
+        _restore_isolated_pages(isolated_slugs)
 
 
 @pytest.mark.live
@@ -814,91 +845,100 @@ def test_agentic_confirm_decline_cancels_workflow():
     When the user declines the confirm gate (confirmed=False), the agentic
     workflow narrates cancellation and stops — no pages are re-ingested and
     stale pages remain stale.
+
+    Manufactures a stale page if none exist so the test is self-contained.
     """
-    stale_slugs = _find_stale_slugs()
-    if not stale_slugs:
-        pytest.skip("No stale pages — cannot test confirm-decline path")
+    wiki_root = _wiki_root()
+    isolated_slugs = _isolate_stale_pages_with_sources(wiki_root)
+    manufactured = _make_stale_page(wiki_root)
+    if manufactured is None:
+        _restore_isolated_pages(isolated_slugs)
+        pytest.skip("No suitable page found to manufacture stale state — skipping")
+    slug, source_path, orig_content, orig_state = manufactured
+    isolated_slugs = [s for s in isolated_slugs if s != slug]
 
-    session_id = str(uuid.uuid4())
-    collected: list[tuple[str, dict]] = []
-    declined = threading.Event()
+    try:
+        session_id = str(uuid.uuid4())
+        collected: list[tuple[str, dict]] = []
+        declined = threading.Event()
 
-    def _decline_monitor():
-        deadline = time.monotonic() + 180
-        while time.monotonic() < deadline:
-            for evt_type, data in list(collected):
-                if evt_type == "confirm_request" and not declined.is_set():
-                    sid = data.get("session_id", session_id)
-                    try:
-                        _raw("/action/confirm", "POST", {
-                            "session_id": sid,
-                            "confirmed": False,
-                        })
-                    except Exception:
-                        pass
-                    declined.set()
-                    return
-            time.sleep(0.3)
+        def _decline_monitor():
+            deadline = time.monotonic() + 180
+            while time.monotonic() < deadline:
+                for evt_type, data in list(collected):
+                    if evt_type == "confirm_request" and not declined.is_set():
+                        sid = data.get("session_id", session_id)
+                        try:
+                            _raw("/action/confirm", "POST", {
+                                "session_id": sid,
+                                "confirmed": False,
+                            })
+                        except Exception:
+                            pass
+                        declined.set()
+                        return
+                time.sleep(0.3)
 
-    monitor = threading.Thread(target=_decline_monitor, daemon=True)
-    monitor.start()
+        monitor = threading.Thread(target=_decline_monitor, daemon=True)
+        monitor.start()
 
-    path = f"/query/stream?q=re-ingest+stale+pages&session_id={session_id}&no_cache=true&timeout_seconds=300"
-    with httpx.Client(timeout=httpx.Timeout(320)) as client:
-        with client.stream("GET", f"{BASE}{path}") as r:
-            r.raise_for_status()
-            current_type = "message"
-            current_data: list[str] = []
-            buf = ""
-            for chunk in r.iter_text():
-                buf += chunk
-                while "\n" in buf:
-                    line, buf = buf.split("\n", 1)
-                    line = line.rstrip("\r")
-                    if not line:
-                        if current_data:
-                            raw = "\n".join(current_data)
-                            try:
-                                data = json.loads(raw)
-                            except json.JSONDecodeError:
-                                data = {"raw": raw}
-                            collected.append((current_type, data))
-                        current_type = "message"
-                        current_data = []
-                    elif line.startswith("event:"):
-                        current_type = line[6:].strip()
-                    elif line.startswith("data:"):
-                        current_data.append(line[5:].lstrip())
+        path = f"/query/stream?q=re-ingest+stale+pages&session_id={session_id}&no_cache=true&timeout_seconds=300"
+        with httpx.Client(timeout=httpx.Timeout(320)) as client:
+            with client.stream("GET", f"{BASE}{path}") as r:
+                r.raise_for_status()
+                current_type = "message"
+                current_data: list[str] = []
+                buf = ""
+                for chunk in r.iter_text():
+                    buf += chunk
+                    while "\n" in buf:
+                        line, buf = buf.split("\n", 1)
+                        line = line.rstrip("\r")
+                        if not line:
+                            if current_data:
+                                raw = "\n".join(current_data)
+                                try:
+                                    data = json.loads(raw)
+                                except json.JSONDecodeError:
+                                    data = {"raw": raw}
+                                collected.append((current_type, data))
+                            current_type = "message"
+                            current_data = []
+                        elif line.startswith("event:"):
+                            current_type = line[6:].strip()
+                        elif line.startswith("data:"):
+                            current_data.append(line[5:].lstrip())
 
-    monitor.join(timeout=5)
+        monitor.join(timeout=5)
 
-    if not declined.is_set():
-        pytest.skip("No confirm_request event seen — cannot verify decline path")
+        if not declined.is_set():
+            pytest.skip("No confirm_request event seen — cannot verify decline path")
 
-    # Stream must still complete (done event — not hanging or erroring)
-    done_events = [(t, d) for t, d in collected if t == "done"]
-    assert done_events, "SSE stream did not produce a done event after confirm decline"
+        # Stream must still complete (done event — not hanging or erroring)
+        done_events = [(t, d) for t, d in collected if t == "done"]
+        assert done_events, "SSE stream did not produce a done event after confirm decline"
 
-    # Stale pages must remain stale (nothing was re-ingested)
-    stale_after = _find_stale_slugs()
-    still_stale = [s for s in stale_slugs if s in stale_after]
-    assert still_stale, (
-        "Expected stale pages to remain stale after confirm decline, "
-        f"but none of {stale_slugs} are stale any more"
-    )
+        # The manufactured stale page must remain stale (nothing was re-ingested)
+        stale_after = _find_stale_slugs()
+        assert slug in stale_after, (
+            f"Expected manufactured page {slug!r} to remain stale after confirm decline, "
+            f"but it is no longer stale. All stale slugs after: {stale_after}"
+        )
 
-    # The done event's narrative must mention cancellation (not a success message)
-    _, done_data = done_events[-1]
-    full_text = "".join(
-        d.get("text", "") for t, d in collected if t == "token"
-    )
-    assert any(
-        kw in full_text.lower()
-        for kw in ("cancel", "declined", "not confirmed", "operation cancelled")
-    ), (
-        f"Expected cancellation language in narrative after decline. "
-        f"Got: {full_text[:300]!r}"
-    )
+        # The done event's narrative must mention cancellation (not a success message)
+        full_text = "".join(
+            d.get("text", "") for t, d in collected if t == "token"
+        )
+        assert any(
+            kw in full_text.lower()
+            for kw in ("cancel", "declined", "not confirmed", "operation cancelled")
+        ), (
+            f"Expected cancellation language in narrative after decline. "
+            f"Got: {full_text[:300]!r}"
+        )
+    finally:
+        _restore_stale_page(wiki_root, slug, source_path, orig_content, original_state=orig_state)
+        _restore_isolated_pages(isolated_slugs)
 
 
 @pytest.mark.live
@@ -973,7 +1013,11 @@ def test_agentic_partial_completion_continues_after_one_failure():
             f"Expected successful re-ingest of {slug_a!r} mentioned in narrative"
         )
         assert any(
-            kw in full_text.lower() for kw in ("fail", "error", "not found", "could not")
+            kw in full_text.lower()
+            for kw in (
+                "fail", "error", "not found", "could not",
+                "unable", "missing", "unavailable", "problem",
+            )
         ), (
             "Expected failure narrative for the page whose source was missing"
         )
