@@ -2621,7 +2621,7 @@ synthadoc ingest --file sessions.txt -w my-wiki
 
 ---
 
-<a name="step-26--guided-maintenance-workflows"></a>
+<a name="step-26--agentic-maintenance-workflows"></a>
 
 ## Step 26 — Agentic Maintenance Workflows
 

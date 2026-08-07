@@ -413,6 +413,8 @@ The guide covers:
 22. Query caching — understand how answers are cached and how to bypass with `--no-cache`
 23. Backup and restore — create a portable wiki zip, restore on a different machine
 24. Knowledge graph — weighted edges (wikilink + co-source signals), explore clusters in the web UI Graph tab, click a node to query it
+25. Ingest an AI session transcript — turn Claude Code, Codex, or chat conversations into structured wiki pages
+26. Agentic maintenance workflows — re-ingest stale pages or any named page conversationally from the web UI or Obsidian, with confirmation and real-time progress
 
 ---
 
