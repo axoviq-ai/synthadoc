@@ -732,9 +732,11 @@ class IngestAgent:
     async def _promote_stale_source_to_draft(self, source: str) -> None:
         """Find the stale page backed by *source* and promote it to DRAFT.
 
-        Called when ``force=True`` and the LLM returns ``action=skip`` so that
-        the agentic re-ingest workflow does not leave known-stale pages in STALE
-        state when the source content has not changed since the last ingest.
+        Called when ``force=True`` on any ingest path so that the agentic
+        re-ingest workflow does not leave known-stale pages in STALE state when
+        the LLM chose to update or create a *different* page, or when the source
+        content has not changed since the last ingest (``action=skip``).
+        Idempotent: only promotes pages still in STALE state.
         """
         _p_resolved = Path(source).resolve()
         for _slug in self._store.list_pages():
@@ -1369,4 +1371,9 @@ class IngestAgent:
                     self._stale_to_draft_slug, LifecycleState.STALE, LifecycleState.DRAFT,
                     "re-ingest of stale page", TriggerSource.INGEST
                 )
+        # Ensure the stale page that originally owned this source file is promoted
+        # to draft even when the LLM chose to update or create a *different* page.
+        # Idempotent — pages already in draft/active state are skipped.
+        if force and self._needs_file_check(source):
+            await self._promote_stale_source_to_draft(source)
         return result
