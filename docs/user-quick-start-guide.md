@@ -760,8 +760,7 @@ lint promotion). Archive it now to produce a second snapshot to work with:
 synthadoc lifecycle log --state active -w history-of-computing
 
 # Archive it — captures the current body as a new snapshot
-synthadoc lifecycle archive konrad-zuse \
-  --reason "archiving for snapshot demo" -w history-of-computing
+synthadoc lifecycle archive konrad-zuse --reason "archiving for snapshot demo" -w history-of-computing
 ```
 
 Verify the two-entry history:
@@ -808,8 +807,7 @@ YAML frontmatter stripped so the diff focuses on the content that matters.
 
 ```bash
 # Equivalent CLI command — prints the snapshot body for manual diffing
-synthadoc lifecycle history konrad-zuse --index 2 --show-content \
-  -w history-of-computing > original.md
+synthadoc lifecycle history konrad-zuse --index 2 --show-content -w history-of-computing > original.md
 diff original.md wiki/konrad-zuse.md
 ```
 
@@ -823,8 +821,7 @@ new snapshot first, then restores the row-2 body to the wiki file.
 **Via CLI:**
 
 ```bash
-synthadoc lifecycle rollback konrad-zuse --index 2 \
-  --reason "restoring original activation body" -w history-of-computing
+synthadoc lifecycle rollback konrad-zuse --index 2 --reason "restoring original activation body" -w history-of-computing
 ```
 
 Both methods are equivalent. The current body is always saved before overwriting, so
@@ -848,8 +845,7 @@ Index 1 is the rollback record — it preserves the body that was just replaced.
 the rollback, roll back to index 1:
 
 ```bash
-synthadoc lifecycle rollback konrad-zuse --index 1 \
-  --reason "undoing rollback" -w history-of-computing
+synthadoc lifecycle rollback konrad-zuse --index 1 --reason "undoing rollback" -w history-of-computing
 ```
 
 **Restore `konrad-zuse` to active state before continuing:**
@@ -1615,10 +1611,7 @@ it proactively triggers operations on a timer, keeping the wiki fresh automatica
 ### Register a nightly batch ingest
 
 ```bash
-synthadoc schedule add \
-  --op "ingest --batch raw_sources/" \
-  --cron "0 2 * * *" \
- 
+synthadoc schedule add --op "ingest --batch raw_sources/" --cron "0 2 * * *"
 ```
 
 This registers a 2 AM daily ingest directly with the OS scheduler (`crontab` on
@@ -2169,15 +2162,10 @@ Synthadoc ships a standalone consumer agent at `tests/integration/okf_consumer_a
 
 ```bash
 # Pattern A — grounded domain Q&A: answer questions from the bundle
-python tests/integration/okf_consumer_agent.py \
-    --bundle ~/exports/history-okf \
-    --question "Who pioneered compiler development and what did they build?"
+python tests/integration/okf_consumer_agent.py --bundle ~/exports/history-okf --question "Who pioneered compiler development and what did they build?"
 
 # Pattern B — type-routed discovery: read index.md, filter by type, then answer
-python tests/integration/okf_consumer_agent.py \
-    --bundle ~/exports/history-okf \
-    --question "List all computing pioneers and their key contributions" \
-    --type person
+python tests/integration/okf_consumer_agent.py --bundle ~/exports/history-okf --question "List all computing pioneers and their key contributions" --type person
 ```
 
 The agent reads `index.md` to discover available knowledge types, loads only the concept files that match the requested type (Pattern B), builds a grounded context, and asks Claude to answer using only the OKF bundle content — citing the source file path for every claim.
@@ -2595,9 +2583,7 @@ Copy the path of the most recent file — for example:
 **2. Ingest it**
 
 ```bash
-synthadoc ingest \
-  ~/.claude/projects/-Users-yourname-workspace-my-project/2b7e1f3c-4a8d-4c9b-b5e2-1f0c3a7d2e8b.jsonl \
-  -w my-wiki
+synthadoc ingest ~/.claude/projects/-Users-yourname-workspace-my-project/2b7e1f3c-4a8d-4c9b-b5e2-1f0c3a7d2e8b.jsonl -w my-wiki
 ```
 
 Expected output:
