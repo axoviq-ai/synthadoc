@@ -198,10 +198,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **[Custom skills + CI hooks](docs/design.md#11-hook-system)** — subclass `BaseSkill` for new file formats; 2 hook events (`on_ingest_complete` + `on_lint_complete`); example git auto-commit hook included; blocking hooks can gate operations | **Yes** | Limited | No | No |
 | **[Per-source truncation flag](docs/design.md#30-per-source-truncation-flag)** — `--max-source-chars` caps any source (PDF, DOCX, web page, plain text) before the LLM call; truncated sources flagged with `truncated: true` in frontmatter and warned in lint output | **Yes** | No | No | No |
 | **[Multi-wiki isolation](docs/design.md#wiki-targeting)** — each wiki on its own port with independent config, audit trail, and job queue; switch with `synthadoc use` | **Yes** | No | Partial | No |
-
-- **Guided Maintenance Workflows** — ask the chat to "re-ingest stale pages" and the
-  wiki agent finds stale sources, confirms with you, re-ingests each one, and optionally
-  runs lint — all from a single conversational turn. No terminal required.
+| **[Guided maintenance workflows](docs/user-quick-start-guide.md#step-26--guided-maintenance-workflows)** — conversational wiki maintenance via agentic tool-call loop; "re-ingest stale pages" bulk-reingests every stale page; "re-ingest the alan-turing page" re-ingests any single page by slug regardless of lifecycle state (active, draft, or stale); agent confirms before touching anything, streams inline progress, and runs lint on completion; graph sidebar maintenance chips in the web UI trigger the same workflows with one click — no terminal required | **Yes** | No | No | No |
 
 ### Business value
 

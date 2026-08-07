@@ -41,6 +41,7 @@ major engine feature. No setup beyond following the steps below is required.
 23. [Query caching](#step-23--query-caching)
 24. [Knowledge Graph](#knowledge-graph)
 25. [Ingest an AI session transcript](#session-ingest)
+26. [Guided Maintenance Workflows](#step-26--guided-maintenance-workflows)
 
 **Appendices**
 
@@ -2620,6 +2621,103 @@ synthadoc ingest --file sessions.txt -w my-wiki
 
 ---
 
+<a name="step-26--guided-maintenance-workflows"></a>
+
+## Step 26 — Guided Maintenance Workflows
+
+The web chat UI (and the Obsidian plugin query modal) can drive wiki maintenance conversationally — no terminal required. Type a maintenance request in plain English and the system confirms with you, re-ingests pages, and runs lint, all from a single chat turn.
+
+Two workflows are available:
+
+| Workflow | Example phrase | Scope |
+|----------|---------------|-------|
+| **Stale-pages bulk reingest** | "re-ingest stale pages" | Finds every stale page, re-ingests each one in sequence, then runs lint |
+| **Page-by-slug reingest** | "re-ingest the alan-turing page" | Re-ingests one named page regardless of state (active, draft, or stale), then runs lint |
+
+### Demo — re-ingest all stale pages (Workflow A)
+
+The History of Computing demo includes the `konrad-zuse` page whose source file can be modified to trigger stale detection. First manufacture a stale page:
+
+```bash
+# Append a space to the source file to change its hash
+echo " " >> raw_sources/konrad-zuse-z3-computer.md
+
+# Run lint to detect the change — konrad-zuse transitions from active to stale
+synthadoc lint run -w history-of-computing
+synthadoc status -w history-of-computing   # stale: 1
+```
+
+Now open the web chat UI and ask the agent to fix it:
+
+```bash
+synthadoc web -w history-of-computing
+```
+
+Type: **"re-ingest stale pages"**
+
+The response lists the stale pages and a confirmation card appears:
+
+> *Found 1 stale page: konrad-zuse. Re-ingest it?*
+> **Yes, re-ingest all** / **No, cancel**
+
+Click **Yes, re-ingest all**. Inline progress events appear:
+
+```
+Looking up stale pages…
+Re-ingesting konrad-zuse-z3-computer.md…
+Polling job…  ✓ completed
+```
+
+When done, the chat pre-fills "Run lint to promote re-ingested pages to active" — click **Send** to promote `konrad-zuse` back to active in one more step.
+
+### Demo — re-ingest a specific page by slug (Workflow B)
+
+Use this when you want to refresh one page regardless of its current lifecycle state — active, draft, or stale. No stale transition is needed.
+
+In the web chat UI, type: **"re-ingest the alan-turing page"**
+
+The agent looks up the source path and asks for confirmation:
+
+> *Re-ingest alan-turing from `.../alan-turing.md`?*
+> **Yes** / **No, cancel**
+
+Confirm. The page is force-re-ingested (bypassing deduplication). When complete, a lint run is suggested via the pre-fill button.
+
+### Maintenance chips in the web UI graph sidebar
+
+In the web UI **Graph tab**, click any node to open the node detail panel. A **Maintenance** section appears at the bottom of the panel with two chips:
+
+| Chip | What happens |
+|------|-------------|
+| **⚑ Check this page for issues** | Sends "Check the [slug] page for issues" to the chat |
+| **↻ Re-ingest this page** | Sends "Re-ingest the [slug] page" to the chat, triggering Workflow B |
+
+Clicking either chip routes the request through the normal confirmation flow — the agent confirms before doing anything.
+
+### How the agentic loop works
+
+Both workflows run as a multi-step tool-call loop driven by the action agent. The steps are:
+
+**Workflow A (stale pages):**
+1. `find_stale_pages` — returns all stale pages with their local source paths
+2. `confirm` — asks user approval before touching any page
+3. `ingest_source` × N — queues one ingest job per stale page
+4. `poll_job` — waits for each job to reach a terminal state
+5. `run_lint` — checks citations and promotes clean pages to active
+
+**Workflow B (by slug):**
+1. `find_page_source(slug)` — returns the source file path for the named page, regardless of lifecycle state
+2. `confirm` — shows slug and source path, asks approval
+3. `ingest_source` — queues the ingest job (force mode)
+4. `poll_job` — waits for the job to complete
+5. `run_lint` — lint run after reingest
+
+Tool progress streams as inline `tool_progress` events — you see each step as it happens. A partial failure (one page fails) does not abort the workflow; remaining pages continue and all outcomes appear in the final summary. Declining confirmation exits cleanly with a cancellation message.
+
+For the full protocol specification, see [Guided Maintenance Workflows](design.md#guided-maintenance-workflows) in the design doc.
+
+---
+
 ## Citation quality
 
 Generated pages include inline citation markers that link each claim to the
@@ -2688,16 +2786,6 @@ Key differences from the demo:
 - Schedule nightly ingests and weekly scaffold refresh to keep it current automatically
 
 ---
-
-### Resolving stale pages from the chat
-
-1. Ask: *"show me the wiki status"*
-2. The response lists any stale pages. A **Re-ingest stale pages** hint button appears.
-3. Click it (or type the phrase). The wiki agent confirms: *"I'll re-ingest N pages. Confirm?"*
-4. Click **Yes, re-ingest all**. Progress appears inline as each page is re-ingested.
-5. When done, click **Run lint now** to promote the pages to active status.
-
-You can also type these requests directly without clicking hint chips.
 
 ---
 
