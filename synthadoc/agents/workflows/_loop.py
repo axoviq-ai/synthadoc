@@ -31,6 +31,7 @@ _MAX_PARSE_RETRIES = 2
 
 _TOOL_LABELS: dict[str, str] = {
     "find_stale_pages": "Checking for stale pages",
+    "find_page_source": "Looking up page source",
     "ingest_source": "Starting re-ingest",
     "poll_job": "Checking job status",
     "run_lint": "Running lint check",

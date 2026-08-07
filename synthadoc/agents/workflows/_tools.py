@@ -32,6 +32,21 @@ _TERMINAL_STATUSES: frozenset[str] = frozenset(
 # ---------------------------------------------------------------------------
 
 
+def _resolve_source_path(wiki_root: Path, raw_file: str) -> str:
+    """Resolve a source file path stored in page metadata to an absolute string.
+
+    Absolute paths are returned as-is.  Relative paths (legacy format, e.g.
+    ``"public-domain/foo.txt"``) are first tried directly under *wiki_root*; if
+    that file doesn't exist the path is retried under ``wiki_root/raw_sources/``.
+    """
+    if os.path.isabs(raw_file):
+        return raw_file
+    candidate = wiki_root / raw_file
+    if not candidate.exists():
+        candidate = wiki_root / "raw_sources" / raw_file
+    return str(candidate)
+
+
 async def _resolve_stale_pages(ctx: "WorkflowContext") -> list[dict]:
     """Return stale page descriptors.
 
@@ -44,18 +59,9 @@ async def _resolve_stale_pages(ctx: "WorkflowContext") -> list[dict]:
     for p in stale:
         page = ctx.store.read_page(p["slug"])
         raw_file = page.sources[0].file if page and page.sources else None
-        if raw_file is not None:
-            if not os.path.isabs(raw_file):
-                # Legacy pages store paths relative to raw_sources/ (e.g. "public-domain/foo.txt").
-                # Try wiki_root first, then wiki_root/raw_sources as fallback.
-                candidate = ctx.wiki_root / raw_file
-                if not candidate.exists():
-                    candidate = ctx.wiki_root / "raw_sources" / raw_file
-                source_path: str | None = str(candidate)
-            else:
-                source_path = raw_file
-        else:
-            source_path = None
+        source_path: str | None = (
+            _resolve_source_path(ctx.wiki_root, raw_file) if raw_file is not None else None
+        )
         result.append(
             {
                 "slug": p["slug"],
@@ -69,6 +75,28 @@ async def _resolve_stale_pages(ctx: "WorkflowContext") -> list[dict]:
 # ---------------------------------------------------------------------------
 # Public tool functions
 # ---------------------------------------------------------------------------
+
+
+async def tool_find_page_source(ctx: "WorkflowContext", slug: str) -> dict:
+    """Look up the source file path for any wiki page by slug, regardless of lifecycle state.
+
+    Returns::
+
+        {"slug": str, "source_path": str}  — page found with a local source file
+        {"error": str}                      — page not found or has no local source
+    """
+    page = ctx.store.read_page(slug)
+    if page is None:
+        return {"error": f"Page {slug!r} not found in this wiki"}
+    raw_file = page.sources[0].file if page.sources else None
+    if raw_file is None:
+        return {"error": f"Page {slug!r} has no local source file recorded"}
+    source_path = _resolve_source_path(ctx.wiki_root, raw_file)
+    await ctx.send_sse_event(
+        "tool_progress",
+        {"tool": "find_page_source", "message": f"Found source for {slug}"},
+    )
+    return {"slug": slug, "source_path": source_path}
 
 
 async def tool_find_stale_pages(ctx: "WorkflowContext") -> dict:

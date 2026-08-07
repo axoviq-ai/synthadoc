@@ -1030,5 +1030,116 @@ def test_agentic_partial_completion_continues_after_one_failure():
         _restore_isolated_pages(isolated_slugs)
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Group 5: Slug-based reingest (Workflow B)
+# Re-ingesting a specific active or draft page by naming its slug.
+# ══════════════════════════════════════════════════════════════════════════════
+
+@pytest.mark.live
+@pytest.mark.timeout(900)
+def test_agentic_reingest_by_slug_active_page_becomes_draft():
+    """
+    'Re-ingest the <slug> page' on an active page triggers Workflow B:
+    find_page_source → confirm → ingest_source → run_lint, and the page
+    transitions from active to draft (re-ingested, awaiting lint promotion).
+
+    Borrows an existing active page, runs the slug-based reingest workflow
+    with auto-confirm, then restores the page to its original state.
+    """
+    wiki_root = _wiki_root()
+    wiki_dir = wiki_root / "wiki"
+
+    # Find any active page with a local text source.
+    try:
+        pages = _api("/lifecycle/pages").get("pages", [])
+    except Exception:
+        pytest.skip("Could not fetch lifecycle pages")
+
+    candidate = None
+    for page_info in pages:
+        if page_info.get("state") != "active":
+            continue
+        slug = page_info["slug"]
+        sp = _get_source_path_from_page(wiki_dir, slug)
+        if sp is None:
+            continue
+        try:
+            orig = sp.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        candidate = (slug, sp, orig)
+        break
+
+    if candidate is None:
+        pytest.skip("No active page with a local text source — skipping slug-based reingest test")
+
+    slug, source_path, orig_content = candidate
+
+    _wait_for_queue_idle(max_wait=300)
+
+    try:
+        session_id = str(uuid.uuid4())
+        query = f"re-ingest+the+{slug}+page"
+        events = _stream_with_autoconfirm(query, session_id, timeout=600)
+
+        error_events = [(t, d) for t, d in events if t == "error"]
+        assert not error_events, f"Agentic workflow emitted error events: {error_events}"
+
+        done_events = [(t, d) for t, d in events if t == "done"]
+        assert done_events, "SSE stream ended without a done event"
+
+        # At least one tool_progress event must be present (workflow ran, not a simple query)
+        tool_progress = [(t, d) for t, d in events if t == "tool_progress"]
+        assert tool_progress, "Expected tool_progress events during slug-based reingest"
+
+        # The page must have left active state (re-ingest resets it to draft)
+        _wait_for_slug_not_stale(slug, timeout=60)  # reused: waits until not active either
+        state_after = next(
+            (p.get("state") for p in _api("/lifecycle/pages").get("pages", []) if p["slug"] == slug),
+            None,
+        )
+        assert state_after == "draft", (
+            f"Expected {slug!r} to be in draft after re-ingest, got {state_after!r}"
+        )
+
+        # Summary narrative must mention the slug or re-ingest
+        full_text = "".join(d.get("text", "") for t, d in events if t == "token")
+        assert slug in full_text or "re-ingested" in full_text.lower(), (
+            f"Expected {slug!r} or 're-ingested' in narrative. Got: {full_text[:300]!r}"
+        )
+    finally:
+        _restore_stale_page(wiki_root, slug, source_path, orig_content, original_state="active")
+
+
+@pytest.mark.live
+@pytest.mark.timeout(300)
+def test_find_page_source_tool_rejects_unknown_slug():
+    """
+    Asking to re-ingest a slug that does not exist in the wiki produces
+    a narrative that mentions the page was not found — the workflow does not
+    hang or produce an SSE error event.
+    """
+    _wait_for_queue_idle(max_wait=60)
+
+    session_id = str(uuid.uuid4())
+    nonexistent = "this-slug-does-not-exist-xyz-live-test"
+    query = f"re-ingest+the+{nonexistent}+page"
+    events = _stream_with_autoconfirm(query, session_id, timeout=180)
+
+    error_events = [(t, d) for t, d in events if t == "error"]
+    assert not error_events, f"Stream emitted unexpected error events: {error_events}"
+
+    done_events = [(t, d) for t, d in events if t == "done"]
+    assert done_events, "SSE stream ended without a done event"
+
+    full_text = "".join(d.get("text", "") for t, d in events if t == "token")
+    assert any(
+        kw in full_text.lower()
+        for kw in ("not found", "does not exist", "no page", "unknown", "couldn't find", "could not find")
+    ), (
+        f"Expected 'not found' language for unknown slug. Got: {full_text[:300]!r}"
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v", "-s"]))

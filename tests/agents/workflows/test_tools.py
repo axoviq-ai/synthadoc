@@ -11,8 +11,10 @@ import pytest
 
 from synthadoc.agents.workflows._base import WorkflowContext
 from synthadoc.agents.workflows._tools import (
+    _resolve_source_path,
     _resolve_stale_pages,
     tool_confirm,
+    tool_find_page_source,
     tool_find_stale_pages,
     tool_ingest_source,
     tool_poll_job,
@@ -504,3 +506,73 @@ async def test_confirm_cleanup_on_timeout():
         await tool_confirm(ctx, "OK?")
     assert "s1" not in ctx.confirm_registry
     assert "s1" not in ctx.confirm_result_registry
+
+
+# ---------------------------------------------------------------------------
+# _resolve_source_path helper
+# ---------------------------------------------------------------------------
+
+def test_resolve_source_path_absolute(tmp_path):
+    """Absolute paths are returned unchanged."""
+    p = str(tmp_path / "file.md")
+    assert _resolve_source_path(tmp_path, p) == p
+
+
+def test_resolve_source_path_relative_direct(tmp_path):
+    """Relative path found directly under wiki_root → wiki_root / raw_file."""
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "raw" / "a.md").write_text("x")
+    result = _resolve_source_path(tmp_path, "raw/a.md")
+    assert result == str(tmp_path / "raw" / "a.md")
+
+
+def test_resolve_source_path_relative_raw_sources_fallback(tmp_path):
+    """Relative path not found at wiki_root → retried under wiki_root/raw_sources/."""
+    (tmp_path / "raw_sources" / "sub").mkdir(parents=True)
+    (tmp_path / "raw_sources" / "sub" / "b.txt").write_text("x")
+    result = _resolve_source_path(tmp_path, "sub/b.txt")
+    assert result == str(tmp_path / "raw_sources" / "sub" / "b.txt")
+
+
+# ---------------------------------------------------------------------------
+# tool_find_page_source
+# ---------------------------------------------------------------------------
+
+async def test_find_page_source_happy_path(tmp_path):
+    """Known slug with an absolute source path → slug and source_path returned."""
+    src = tmp_path / "doc.md"
+    src.write_text("content")
+
+    store = MagicMock()
+    source = MagicMock()
+    source.file = str(src)
+    page = MagicMock()
+    page.sources = [source]
+    store.read_page = MagicMock(return_value=page)
+
+    ctx, events = _make_ctx(store=store)
+    result = await tool_find_page_source(ctx, "my-slug")
+
+    assert result == {"slug": "my-slug", "source_path": str(src)}
+    assert any(e["event"] == "tool_progress" for e in events)
+
+
+async def test_find_page_source_unknown_slug():
+    """Unknown slug → error dict."""
+    store = MagicMock()
+    store.read_page = MagicMock(return_value=None)
+    ctx, _ = _make_ctx(store=store)
+    result = await tool_find_page_source(ctx, "no-such-page")
+    assert "error" in result
+    assert "no-such-page" in result["error"]
+
+
+async def test_find_page_source_no_sources():
+    """Page with empty sources list → error dict."""
+    store = MagicMock()
+    page = MagicMock()
+    page.sources = []
+    store.read_page = MagicMock(return_value=page)
+    ctx, _ = _make_ctx(store=store)
+    result = await tool_find_page_source(ctx, "no-source-page")
+    assert "error" in result

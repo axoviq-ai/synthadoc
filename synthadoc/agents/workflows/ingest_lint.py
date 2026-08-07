@@ -8,6 +8,7 @@ from typing import Awaitable, Callable
 from synthadoc.agents.workflows._base import AgenticWorkflow, WorkflowContext
 from synthadoc.agents.workflows._tools import (
     tool_confirm,
+    tool_find_page_source,
     tool_find_stale_pages,
     tool_ingest_source,
     tool_poll_job,
@@ -20,7 +21,13 @@ find_stale_pages — list all stale wiki pages with their source file paths.
   Input: {}
   Output: {"pages": [{"slug": str, "source_path": str|null, "stale_since": str}]}
 
+find_page_source — look up the source file path for any wiki page by slug,
+  regardless of its current lifecycle state (active, draft, stale, etc.).
+  Input: {"slug": str}
+  Output: {"slug": str, "source_path": str} | {"error": str}
+
 ingest_source — re-ingest one source file and return the outcome when the job finishes.
+  Always force-processes the file even if it hasn't changed.
   Input: {"source_path": str}
   Output: {"status": "success"|"failed"|"timeout", "message": str, "job_id": str} | {"error": str}
 
@@ -38,20 +45,24 @@ confirm — ask the user to confirm before proceeding.
   If confirm returns {"confirmed": false}, respond with a brief plain-text message
   acknowledging the cancellation (use the word "cancelled") and stop.
 
-Standard workflow for re-ingesting stale pages:
-1. Call find_stale_pages to list stale pages and their source paths.
-2. Call confirm IMMEDIATELY after find_stale_pages — do NOT write any plain text
-   before this step.  List the pages in the confirm message and ask whether to proceed.
-   Use the confirm TOOL; do not generate a plain-text question (that exits the loop).
-3. If confirm returns {"confirmed": true}, call ingest_source for each page that has
-   a valid source_path.  Each call returns the outcome directly (success, failed,
-   timeout, or error).
-4. When all ingest calls are done, call run_lint to refresh the lifecycle state.
-5. After run_lint, write a brief plain-text summary of the outcome for every page
-   (include the specific success or failure reason for each).
+Workflow A — re-ingest ALL stale pages:
+1. Call find_stale_pages.
+2. Call confirm IMMEDIATELY — list the pages in the message, ask whether to proceed.
+   Use the confirm TOOL; never write plain text to ask (that exits the loop).
+3. If confirmed, call ingest_source for each page with a valid source_path.
+4. Call run_lint.
+5. Plain-text summary of every outcome.
 
-Plain text ends the workflow — use it ONLY in step 5 or when confirm returns false.
-All intermediate responses (steps 1-4) must be tool calls, not plain text.
+Workflow B — re-ingest a SPECIFIC page by slug:
+1. Call find_page_source(slug=<slug>) to get its source path.
+2. Call confirm IMMEDIATELY — include the slug and path in the message.
+   Use the confirm TOOL; never write plain text to ask (that exits the loop).
+3. If confirmed, call ingest_source(source_path=<path>).
+4. Call run_lint.
+5. Plain-text summary.
+
+Plain text ends the workflow — use it ONLY in the final summary step or when
+confirm returns false. All intermediate steps must be tool calls, not plain text.
 
 To call a tool, respond EXACTLY with this JSON and nothing else:
 {"tool_call": {"name": "<tool_name>", "input": <input_dict>}}
@@ -70,6 +81,7 @@ class IngestLintWorkflow(AgenticWorkflow):
     def get_tool_fns(self, ctx: WorkflowContext) -> dict[str, Callable[..., Awaitable[dict]]]:
         return {
             "find_stale_pages": functools.partial(tool_find_stale_pages, ctx),
+            "find_page_source": functools.partial(tool_find_page_source, ctx),
             "ingest_source": functools.partial(tool_ingest_source, ctx),
             "poll_job": functools.partial(tool_poll_job, ctx),
             "run_lint": functools.partial(tool_run_lint, ctx),
