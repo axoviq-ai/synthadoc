@@ -299,6 +299,9 @@ class ActionAgent:
         Handles all actions including orchestrate. For non-orchestrate actions,
         wraps the ActionResult in the standard SSE event sequence.
         """
+        # Emit immediately so the UI shows activity while _extract() waits for the LLM.
+        yield {"event": "tool_progress", "data": {"tool": "_init", "message": "Analyzing your request..."}}
+
         extraction = await self._extract(question, history=history or [])
         if extraction is None:
             return
@@ -403,8 +406,9 @@ class ActionAgent:
                 if evt is _SENTINEL:
                     break
                 if evt.get("event") == "final_text":
+                    # Token chunks were already streamed via the sse_queue → do NOT
+                    # re-emit the full text here or the client receives it twice.
                     text = evt["data"]["text"]
-                    yield {"event": "token", "data": {"text": text}}
                     from synthadoc.agents.query_agent import _build_pre_prompt  # lazy — avoids circular import
                     _pre_prompt = _build_pre_prompt(text)
                     _done_data: dict = {"citations": [], "hints": [], "cacheable": False}

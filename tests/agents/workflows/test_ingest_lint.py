@@ -95,7 +95,7 @@ async def test_action_agent_run_gen_yields_sse_for_orchestrate():
 
 
 async def test_action_agent_run_gen_returns_none_action_silently():
-    """run_gen() when action=none yields nothing."""
+    """run_gen() when action=none: only the initial tool_progress is emitted, no token/done."""
     from synthadoc.agents.action_agent import ActionAgent
     from synthadoc.providers.base import CompletionResponse
 
@@ -109,7 +109,9 @@ async def test_action_agent_run_gen_returns_none_action_silently():
     orch._confirm_result_registry = {}
     agent = ActionAgent(provider, orch, Path("/wiki"))
     events = [e async for e in agent.run_gen("hello world")]
-    assert events == []
+    # Only the initial "Analyzing your request..." tool_progress fires before _extract()
+    assert all(e["event"] == "tool_progress" for e in events)
+    assert not any(e["event"] in ("token", "done") for e in events)
 
 
 async def test_action_agent_run_gen_non_orchestrate_yields_token_and_done():

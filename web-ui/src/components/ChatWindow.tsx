@@ -68,6 +68,12 @@ export function ChatWindow({
         if (el) el.scrollTop = el.scrollHeight;
     }, [messages]);
 
+    // Scroll to bottom when the confirm card appears so it's always visible
+    useLayoutEffect(() => {
+        const el = messagesRef.current;
+        if (el && pendingConfirm) el.scrollTop = el.scrollHeight;
+    }, [pendingConfirm]);
+
     useEffect(() => {
         if (pendingPrompt != null) {
             setInput(pendingPrompt);
