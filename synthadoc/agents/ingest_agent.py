@@ -739,10 +739,26 @@ class IngestAgent:
         Idempotent: only promotes pages still in STALE state.
         """
         _p_resolved = Path(source).resolve()
+        _wiki = self._wiki_root
+
+        def _resolve_source_file(file: str) -> Path:
+            """Resolve a stored source file path to absolute, mirroring _local_source_exists."""
+            _sp = Path(file)
+            if _sp.is_absolute():
+                return _sp.resolve()
+            if _wiki is not None:
+                _cand = _wiki / "raw_sources" / file
+                if _cand.exists():
+                    return _cand.resolve()
+                _cand = _wiki / file
+                if _cand.exists():
+                    return _cand.resolve()
+            return _sp.resolve()
+
         for _slug in self._store.list_pages():
             _pg = self._store.read_page(_slug)
             _backed_by_source = _pg and _pg.sources and any(
-                Path(s.file).resolve() == _p_resolved for s in _pg.sources
+                _resolve_source_file(s.file) == _p_resolved for s in _pg.sources
             )
             if _pg and _pg.status == LifecycleState.STALE and _backed_by_source:
                 with self._store.page_lock(_slug):
