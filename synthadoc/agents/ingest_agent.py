@@ -732,15 +732,33 @@ class IngestAgent:
     async def _promote_stale_source_to_draft(self, source: str) -> None:
         """Find the stale page backed by *source* and promote it to DRAFT.
 
-        Called when ``force=True`` and the LLM returns ``action=skip`` so that
-        the agentic re-ingest workflow does not leave known-stale pages in STALE
-        state when the source content has not changed since the last ingest.
+        Called when ``force=True`` on any ingest path so that the agentic
+        re-ingest workflow does not leave known-stale pages in STALE state when
+        the LLM chose to update or create a *different* page, or when the source
+        content has not changed since the last ingest (``action=skip``).
+        Idempotent: only promotes pages still in STALE state.
         """
         _p_resolved = Path(source).resolve()
+        _wiki = self._wiki_root
+
+        def _resolve_source_file(file: str) -> Path:
+            """Resolve a stored source file path to absolute, mirroring _local_source_exists."""
+            _sp = Path(file)
+            if _sp.is_absolute():
+                return _sp.resolve()
+            if _wiki is not None:
+                _cand = _wiki / "raw_sources" / file
+                if _cand.exists():
+                    return _cand.resolve()
+                _cand = _wiki / file
+                if _cand.exists():
+                    return _cand.resolve()
+            return _sp.resolve()
+
         for _slug in self._store.list_pages():
             _pg = self._store.read_page(_slug)
             _backed_by_source = _pg and _pg.sources and any(
-                Path(s.file).resolve() == _p_resolved for s in _pg.sources
+                _resolve_source_file(s.file) == _p_resolved for s in _pg.sources
             )
             if _pg and _pg.status == LifecycleState.STALE and _backed_by_source:
                 with self._store.page_lock(_slug):
@@ -1369,4 +1387,9 @@ class IngestAgent:
                     self._stale_to_draft_slug, LifecycleState.STALE, LifecycleState.DRAFT,
                     "re-ingest of stale page", TriggerSource.INGEST
                 )
+        # Ensure the stale page that originally owned this source file is promoted
+        # to draft even when the LLM chose to update or create a *different* page.
+        # Idempotent — pages already in draft/active state are skipped.
+        if force and self._needs_file_check(source):
+            await self._promote_stale_source_to_draft(source)
         return result
