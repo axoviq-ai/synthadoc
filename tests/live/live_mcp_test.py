@@ -507,9 +507,11 @@ async def run_tests():
             else:
                 fail("synthadoc_export(invalid format)", f"expected 'unknown format' error, got: {r}")
 
-            # ── 13. duplicate-snapshot dedup ────────────────────────────────
-            # Validates the fix for: synthadoc_lifecycle after synthadoc_write_page
-            # must NOT create a second content snapshot for the same content.
+            # ── 13. snapshot-per-event verification ──────────────────────────
+            # write_page records 1 snapshot (content changed).
+            # lifecycle transition records 1 more snapshot (force=True always
+            # snapshots state changes so every deliberate transition is auditable).
+            # Expected delta: before+2.
             # snapshot count for active_slug via HTTP /pages/{slug}/history
             print("\n[13] duplicate-snapshot dedup: write_page then lifecycle")
             if active_slug:
@@ -540,7 +542,7 @@ async def run_tests():
                     else:
                         ok("dedup(write_page snapshot)", "write_page recorded snapshot as expected")
 
-                    # 2. Lifecycle transition with the SAME content — must NOT add a second snapshot
+                    # 2. Lifecycle transition — force=True means it always records a snapshot
                     lc = await call(session, "synthadoc_lifecycle",
                                     {"slug": active_slug, "to_state": "stale",
                                      "reason": "dedup test — lifecycle after write"})
@@ -549,16 +551,16 @@ async def run_tests():
                     else:
                         ok("dedup(lifecycle transition)", "active→stale succeeded")
 
-                    # 3. Verify snapshot count increased by exactly 1
+                    # 3. Verify snapshot count increased by exactly 2
                     after = _snap_count(active_slug)
                     if after is None:
                         warn("dedup(snapshot count after)", "could not reach HTTP /pages/.../history")
-                    elif after == before + 1:
-                        ok("dedup(no duplicate)", f"snapshot count before={before} after={after} — exactly 1 new snapshot, no duplicate")
                     elif after == before + 2:
-                        fail("dedup(no duplicate)", f"snapshot count before={before} after={after} — DUPLICATE: both write_page and lifecycle created a snapshot")
+                        ok("dedup(both snapshots)", f"snapshot count before={before} after={after} — write_page and lifecycle each recorded a snapshot")
+                    elif after == before + 1:
+                        fail("dedup(both snapshots)", f"snapshot count before={before} after={after} — expected +2 (write_page + lifecycle with force=True), only got +1")
                     else:
-                        warn("dedup(no duplicate)", f"snapshot count before={before} after={after} — unexpected delta={after - before}")
+                        warn("dedup(both snapshots)", f"snapshot count before={before} after={after} — unexpected delta={after - before}")
 
                     # 4. Restore: transition back to active, then restore original content
                     await call(session, "synthadoc_lifecycle",

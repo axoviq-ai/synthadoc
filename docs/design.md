@@ -3280,7 +3280,7 @@ In the web UI **Graph tab**, the node detail panel includes a **Maintenance** se
 - Maximum 30 tool calls per action; confirmation timeout 120 seconds (defaults to declined on timeout)
 - A single tool failure does not abort the workflow — remaining pages in Workflow A continue, and all outcomes are summarised in the final narrative
 
-→ User walkthrough: [Quick-Start Guide §26 — Agentic Maintenance Workflows](docs/user-quick-start-guide.md#step-26--agentic-maintenance-workflows)
+→ User walkthrough: [Quick-Start Guide §26 — Agentic Maintenance Workflows](docs/user-quick-start-guide.md#agentic-workflows)
 
 ---
 
