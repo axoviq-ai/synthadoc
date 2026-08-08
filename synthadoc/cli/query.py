@@ -2,12 +2,21 @@
 # Copyright (C) 2026 Paul Chen / axoviq.com
 from __future__ import annotations
 
+import re as _re
 from typing import Optional
 
 import typer
 
 from synthadoc.cli.main import app
-from synthadoc.cli._http import get, get_stream
+from synthadoc.cli._http import get, get_stream, post
+
+# Queries that route to the agentic workflow (orchestrate action).
+# These need a much longer server timeout and interactive confirm handling.
+_WORKFLOW_RE = _re.compile(
+    r"\bre.?ingest\b|\bstale\s+pages?\b|\borchestrat|\bagentic\s+workflow",
+    _re.IGNORECASE,
+)
+_WORKFLOW_TIMEOUT = 600  # seconds
 
 
 def _format_gap_callout(suggested_searches: list[str], wiki: str) -> str:
@@ -45,6 +54,12 @@ def _stream_query(wiki: str, question: str, no_cache: bool, timeout: int) -> Non
         for event_name, data in get_stream(wiki, "/query/stream", timeout=timeout, **params):
             if event_name == "token":
                 typer.echo(data.get("text", ""), nl=False)
+            elif event_name == "tool_progress":
+                msg = data.get("message", "")
+                if msg:
+                    typer.echo(f"  {msg}", err=True)
+            elif event_name == "confirm_request":
+                _handle_confirm(wiki, data)
             elif event_name == "citations":
                 citations = data.get("citations", [])
             elif event_name == "gap":
@@ -53,7 +68,7 @@ def _stream_query(wiki: str, question: str, no_cache: bool, timeout: int) -> Non
             elif event_name == "error":
                 msg = data.get("message", "unknown error")
                 typer.echo(f"\nError: {msg}", err=True)
-                if "timed out" in msg.lower():
+                if "timed out" in msg.lower() and not _WORKFLOW_RE.search(question):
                     typer.echo(
                         f"Tip: local models on CPU-only machines are significantly slower than GPU-accelerated "
                         f"or cloud inference. Pass --timeout {timeout * 2} to allow more time, or switch to a "
@@ -72,6 +87,22 @@ def _stream_query(wiki: str, question: str, no_cache: bool, timeout: int) -> Non
         typer.echo(_format_gap_callout(suggested, wiki))
 
 
+def _handle_confirm(wiki: str, data: dict) -> None:
+    """Print a confirmation prompt and POST the user's response to /action/confirm."""
+    message = data.get("message", "Proceed?")
+    session_id = data.get("session_id", "")
+    yes_label = data.get("yes_label", "Yes")
+    no_label = data.get("no_label", "No")
+    typer.echo(f"\n{message}")
+    response = typer.prompt(f"  [{yes_label}/{no_label}]", default="n", prompt_suffix=" > ")
+    confirmed = response.strip().lower() in ("y", "yes", yes_label.lower())
+    if session_id:
+        try:
+            post(wiki, "/action/confirm", {"session_id": session_id, "confirmed": confirmed})
+        except Exception:
+            pass  # Confirm gate will time out on the server if the POST fails
+
+
 @app.command("query")
 def query_cmd(
     question: str = typer.Argument(..., help="Question to ask the wiki"),
@@ -84,6 +115,8 @@ def query_cmd(
     """Query the wiki. Requires synthadoc serve to be running."""
     from synthadoc.cli._wiki import resolve_wiki
     wiki = resolve_wiki(wiki)
+    if _WORKFLOW_RE.search(question) and timeout < _WORKFLOW_TIMEOUT:
+        timeout = _WORKFLOW_TIMEOUT
     if no_stream:
         params = {"q": question, "timeout_seconds": timeout}
         if no_cache:

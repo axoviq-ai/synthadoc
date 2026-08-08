@@ -496,6 +496,23 @@ class ActionAgent:
             return await self._do_job_list(params)
         if action == "job_status":
             return await self._do_job_status(params)
+        if action == "orchestrate":
+            # Agentic workflows only run on the streaming path (run_gen / query/stream).
+            # The blocking path cannot handle multi-step tool-call loops or confirmation gates.
+            return ActionResult(
+                action_type="orchestrate",
+                success=False,
+                message=(
+                    "**Re-ingest and agentic maintenance workflows** require the streaming "
+                    "chat interface and cannot run in `--no-stream` mode.\n\n"
+                    "Each ingest step can take several seconds and the workflow pauses for "
+                    "a user confirmation before touching any page.\n\n"
+                    "Use the web UI, Obsidian plugin, or the streaming CLI:\n"
+                    "```bash\n"
+                    "synthadoc query 're-ingest stale pages'\n"
+                    "```"
+                ),
+            )
         return ActionResult(action_type=action, success=False,
                             message=f"Unknown action type: `{action}`")
 
