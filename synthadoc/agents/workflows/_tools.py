@@ -35,10 +35,14 @@ _TERMINAL_STATUSES: frozenset[str] = frozenset(
 def _resolve_source_path(wiki_root: Path, raw_file: str) -> str:
     """Resolve a source file path stored in page metadata to an absolute string.
 
-    Absolute paths are returned as-is.  Relative paths (legacy format, e.g.
-    ``"public-domain/foo.txt"``) are first tried directly under *wiki_root*; if
-    that file doesn't exist the path is retried under ``wiki_root/raw_sources/``.
+    URLs (http/https) are returned as-is — they are re-ingested directly by the
+    ingest agent.  Absolute local paths are returned as-is.  Relative paths
+    (legacy format, e.g. ``"public-domain/foo.txt"``) are first tried directly
+    under *wiki_root*; if that file doesn't exist the path is retried under
+    ``wiki_root/raw_sources/``.
     """
+    if raw_file.startswith(("http://", "https://")):
+        return raw_file
     if os.path.isabs(raw_file):
         return raw_file
     candidate = wiki_root / raw_file
@@ -112,12 +116,10 @@ async def tool_find_stale_pages(ctx: "WorkflowContext") -> dict:
 
 
 async def tool_ingest_source(ctx: "WorkflowContext", source_path: str) -> dict:
-    """Validate *source_path*, enqueue an ingest job, wait for it to finish, and return the outcome.
+    """Enqueue an ingest job for *source_path*, wait for it to finish, and return the outcome.
 
-    Validation order:
-    1. Must be an absolute path.
-    2. Must resolve within ``ctx.wiki_root``.
-    3. File must exist on disk.
+    Accepts both local file paths and URLs (http/https).  For local paths the
+    file must exist on disk; for URLs the ingest agent handles fetching directly.
 
     Returns::
 
@@ -126,18 +128,20 @@ async def tool_ingest_source(ctx: "WorkflowContext", source_path: str) -> dict:
         {"status": "timeout", "message": str}  — job did not complete within 300 s
         {"error": str}                          — validation error (bad path, file missing)
     """
-    path = Path(source_path)
+    is_url = source_path.startswith(("http://", "https://"))
 
-    # Must be an absolute path — relative paths are ambiguous on the server.
-    if not os.path.isabs(source_path):
-        return {"error": f"source_path must be an absolute path, got: {source_path!r}"}
+    if is_url:
+        label = source_path
+    else:
+        # Must be an absolute path — relative paths are ambiguous on the server.
+        if not os.path.isabs(source_path):
+            return {"error": f"source_path must be an absolute path, got: {source_path!r}"}
+        path = Path(source_path)
+        if not path.exists():
+            return {"error": f"File not found: {source_path!r}"}
+        label = path.name
 
-    # File must exist on disk.
-    if not path.exists():
-        return {"error": f"File not found: {source_path!r}"}
-
-    filename = path.name
-    await ctx.send_sse_event("tool_progress", {"tool": "ingest_source", "message": f"Re-ingesting: {filename}"})
+    await ctx.send_sse_event("tool_progress", {"tool": "ingest_source", "message": f"Re-ingesting: {label}"})
 
     # Enqueue.  force=True bypasses the dedup check so stale pages are always
     # re-ingested.  bust_cache=False lets the analysis/citation caches be used
@@ -170,9 +174,9 @@ async def tool_ingest_source(ctx: "WorkflowContext", source_path: str) -> dict:
 
     status = result.get("status", "failed")
     if status == "success":
-        await ctx.send_sse_event("tool_progress", {"tool": "ingest_source", "message": f"✓ {filename} re-ingested"})
+        await ctx.send_sse_event("tool_progress", {"tool": "ingest_source", "message": f"✓ {label} re-ingested"})
     else:
-        await ctx.send_sse_event("tool_progress", {"tool": "ingest_source", "message": f"✗ {filename}: {status}"})
+        await ctx.send_sse_event("tool_progress", {"tool": "ingest_source", "message": f"✗ {label}: {status}"})
     return result
 
 

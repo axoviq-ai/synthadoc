@@ -875,12 +875,11 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
 
     # ── agentic reingest (v1.2.0 — skipped until feature ships) ─────────────
     print("\n[26] agentic reingest via CLI query")
-    # The agentic tool-call loop lives in the action agent, so the CLI query
-    # command can trigger it without the web UI.  This test verifies that the
-    # intent is routed to the orchestrate action and produces sensible output.
-    # Until v1.2.0 is shipped the agent will not recognise "orchestrate" and
-    # will respond with informational text — the test WARNs rather than FAILs
-    # so it doesn't block the overall live suite.
+    # Agentic workflows require the streaming path (query/stream).  The --no-stream
+    # flag hits the blocking /query endpoint, which correctly returns an explanatory
+    # fallback message rather than silently failing.  This test verifies that the
+    # intent is routed to the orchestrate action and the response contains reingest-
+    # related language (either from the fallback message or from an actual run).
     _stale_check = run(["lifecycle", "log"] + w)
     _has_stale = "stale" in (_stale_check.stdout + _stale_check.stderr).lower()
     if not _has_stale:
@@ -889,12 +888,12 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
         r_agentic = run(["query", "re-ingest stale pages", "--no-stream"] + w)
         _agentic_out = (r_agentic.stdout + r_agentic.stderr).lower()
         if r_agentic.returncode != 0:
-            warn("agentic reingest", f"query exited {r_agentic.returncode}: {_agentic_out[:200]}")
+            fail("agentic reingest", f"query exited {r_agentic.returncode}: {_agentic_out[:200]}")
         elif any(kw in _agentic_out for kw in ("re-ingested", "ingest", "job", "tool_progress")):
-            ok("agentic reingest", "agent produced reingest-related output")
+            ok("agentic reingest", "agent routed to orchestrate action")
         else:
-            warn("agentic reingest",
-                 "query returned but no reingest language detected — v1.2.0 may not be shipped yet")
+            fail("agentic reingest",
+                 "query returned but no reingest language detected")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
