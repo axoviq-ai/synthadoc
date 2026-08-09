@@ -10,6 +10,7 @@ from synthadoc.agents.workflows._tools import (
     tool_confirm,
     tool_find_page_source,
     tool_find_stale_pages,
+    tool_get_page_states,
     tool_ingest_source,
     tool_poll_job,
     tool_run_lint,
@@ -39,6 +40,12 @@ run_lint — queue a lint run.
   Input: {"scope": str (default "all")}
   Output: {"job_id": str} | {"error": str}
 
+get_page_states — return the current lifecycle state of one or more pages.
+  Input: {"slugs": [str, ...]}
+  Output: {"pages": [{"slug": str, "state": str}]}
+  state is one of: "active", "stale", "draft", "archived", "unknown".
+  Call this AFTER lint completes to confirm whether the re-ingest achieved its goal.
+
 confirm — ask the user to confirm before proceeding.
   Input: {"message": str, "yes_label": str (default "Yes"), "no_label": str (default "No")}
   Output: {"confirmed": bool}
@@ -53,7 +60,10 @@ Workflow A — re-ingest ALL stale pages:
    at a time, waiting for each result before calling the next.
 4. Call run_lint — it returns a job_id.
 5. Call poll_job(job_id=<lint_job_id>) to wait for the lint job to complete.
-6. Plain-text summary of every re-ingest outcome AND the lint result (pass/fail).
+6. Call get_page_states with the slugs of every page you attempted to re-ingest.
+7. Plain-text summary of every re-ingest outcome, the lint result (pass/fail), and
+   a "Page states after re-ingest" section listing each slug with its current state.
+   Use ✓ for active, ✗ for stale, and ○ for draft/archived/unknown.
 
 Workflow B — re-ingest a SPECIFIC page by slug:
 1. Call find_page_source(slug=<slug>) to get its source path.
@@ -62,7 +72,9 @@ Workflow B — re-ingest a SPECIFIC page by slug:
 3. If confirmed, call ingest_source(source_path=<path>).
 4. Call run_lint — it returns a job_id.
 5. Call poll_job(job_id=<lint_job_id>) to wait for the lint job to complete.
-6. Plain-text summary of the ingest result and the lint result (pass/fail).
+6. Call get_page_states(slugs=[<slug>]) to check the page's current lifecycle state.
+7. Plain-text summary of the ingest result, the lint result (pass/fail), and the
+   final page state. Use ✓ for active, ✗ for stale, ○ for draft/archived/unknown.
 
 Plain text ends the workflow — use it ONLY in the final summary step or when
 confirm returns false. All intermediate steps must be tool calls, not plain text.
@@ -88,5 +100,6 @@ class IngestLintWorkflow(AgenticWorkflow):
             "ingest_source": functools.partial(tool_ingest_source, ctx),
             "poll_job": functools.partial(tool_poll_job, ctx),
             "run_lint": functools.partial(tool_run_lint, ctx),
+            "get_page_states": functools.partial(tool_get_page_states, ctx),
             "confirm": functools.partial(tool_confirm, ctx),
         }
