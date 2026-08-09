@@ -611,6 +611,8 @@ def _test_context_budget() -> None:
         "wikilinks", "wiki", "obsidian", "dataview", "audit", "hooks", "skills",
     })
 
+    _SLUG_SUFFIX_EXCLUDES = ("sessions", "overview", "summary", "transcript")
+
     def _is_good_node(n: dict) -> bool:
         if not isinstance(n, dict) or not n.get("slug"):
             return False
@@ -620,6 +622,8 @@ def _test_context_budget() -> None:
         if slug[:1].isdigit():           # date-prefixed slug (e.g. 2023-01-31-paper)
             return False
         if slug.startswith("youtube-"):  # YouTube video slug (e.g. youtube-yevjcec34rw)
+            return False
+        if slug.endswith(_SLUG_SUFFIX_EXCLUDES):  # thin-content pages (session logs, overviews)
             return False
         term = _topic_term(n)
         if term.isdigit():               # bare numeric title (e.g. "73")
