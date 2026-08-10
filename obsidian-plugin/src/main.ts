@@ -4206,10 +4206,11 @@ export class LifecycleModal extends Modal {
                 this.app.workspace.openLinkText(snap.slug, "", false);
             });
 
+            const snapTs = snap.timestamp ? new Date(snap.timestamp).toLocaleString() : "—";
             const cells: string[] = [
                 snap.slug,
                 String(snap.snap_index),
-                (snap.timestamp ?? "").slice(0, 19),
+                snapTs,
                 `${snap.from_state ?? "null"} → ${snap.to_state}`,
                 `${(snap.content_length ?? 0).toLocaleString()} chars`,
                 (snap.reason ?? "").slice(0, 40),
@@ -5023,7 +5024,7 @@ export class SnapshotContentModal extends Modal {
         const meta = header.createEl("p");
         meta.style.cssText = "margin:4px 0;font-size:11px;color:var(--text-muted)";
         meta.setText(
-            `${(this.snap.timestamp ?? "").slice(0, 19)} UTC · ` +
+            `${this.snap.timestamp ? new Date(this.snap.timestamp).toLocaleString() : "—"} · ` +
             `${this.snap.from_state ?? "null"} → ${this.snap.to_state} · ${this.snap.reason ?? ""}`
         );
 
