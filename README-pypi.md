@@ -43,9 +43,31 @@ Synthadoc reads your raw source documents — PDFs, spreadsheets, PPTs, web page
 
 ---
 
-[![Watch the Synthadoc demo](https://img.youtube.com/vi/rIGO6zi9XQE/maxresdefault.jpg)](https://www.youtube.com/watch?v=rIGO6zi9XQE)
-
-▶ [From Documents to Wiki — demo walkthrough](https://www.youtube.com/watch?v=rIGO6zi9XQE) · Also watch: [Four Interfaces: CLI, Obsidian, Web UI & MCP](https://youtu.be/ue_kHhG0iog)
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <a href="https://www.youtube.com/watch?v=rIGO6zi9XQE">
+        <img src="https://img.youtube.com/vi/rIGO6zi9XQE/mqdefault.jpg" width="260" alt="From Documents to Wiki — demo walkthrough"/>
+      </a>
+      <br/>
+      <a href="https://www.youtube.com/watch?v=rIGO6zi9XQE">▶ From Documents to Wiki</a>
+    </td>
+    <td align="center" width="33%">
+      <a href="https://youtu.be/ue_kHhG0iog">
+        <img src="https://img.youtube.com/vi/ue_kHhG0iog/mqdefault.jpg" width="260" alt="Four Interfaces: CLI, Obsidian, Web UI & MCP"/>
+      </a>
+      <br/>
+      <a href="https://youtu.be/ue_kHhG0iog">▶ Four Interfaces: CLI, Obsidian, Web UI & MCP</a>
+    </td>
+    <td align="center" width="33%">
+      <a href="https://www.youtube.com/watch?v=ojBtNlXVHQk">
+        <img src="https://img.youtube.com/vi/ojBtNlXVHQk/mqdefault.jpg" width="260" alt="Agentic Maintenance Workflow"/>
+      </a>
+      <br/>
+      <a href="https://www.youtube.com/watch?v=ojBtNlXVHQk">▶ Agentic Maintenance Workflow</a>
+    </td>
+  </tr>
+</table>
 
 ---
 
