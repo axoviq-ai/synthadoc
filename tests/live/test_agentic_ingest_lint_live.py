@@ -775,6 +775,13 @@ def test_agentic_reingest_emits_tool_progress_events():
         assert lint_progress, (
             "Expected a run_lint tool_progress event — lint was not called"
         )
+
+        # get_page_states must be called after lint to confirm goal was achieved.
+        states_progress = [d for t, d in events if t == "tool_progress" and d.get("tool") == "get_page_states"]
+        assert states_progress, (
+            "Expected a get_page_states tool_progress event — page states were not checked after lint"
+        )
+
         full_text = "".join(d.get("text", "") for t, d in events if t == "token")
         assert any(
             kw in full_text.lower()
@@ -853,6 +860,16 @@ def test_agentic_reingest_stale_pages_become_draft():
             kw in full_text.lower()
             for kw in ("lint", "check")
         ), f"Expected lint result in narrative. Got: {full_text[:300]!r}"
+
+        # get_page_states must follow lint and page states must appear in the narrative.
+        states_progress = [d for t, d in events if t == "tool_progress" and d.get("tool") == "get_page_states"]
+        assert states_progress, (
+            "Expected a get_page_states tool_progress event — page states not checked after lint"
+        )
+        assert any(
+            kw in full_text.lower()
+            for kw in ("active", "stale", "page state", "✓", "✗")
+        ), f"Expected page state in narrative. Got: {full_text[:300]!r}"
     finally:
         _restore_stale_page(wiki_root, slug, source_path, orig_content, original_state=orig_state)
         _restore_isolated_pages(isolated_slugs)
@@ -992,6 +1009,17 @@ def test_agentic_partial_completion_continues_after_one_failure():
         pytest.skip("No second active or draft page with a local text source found for page B — skipping")
     slug_b, src_b, orig_b, orig_state_b = page_b
 
+    # Guard: if both pages resolve to the same source file, renaming src_b would
+    # also break src_a, making a partial-completion test impossible on this wiki.
+    if src_a == src_b:
+        _restore_stale_page(wiki_root, slug_a, src_a, orig_a, original_state=orig_state_a)
+        _restore_stale_page(wiki_root, slug_b, src_b, orig_b, original_state=orig_state_b)
+        _restore_isolated_pages(isolated_slugs)
+        pytest.skip(
+            f"Both manufactured pages share the same source file ({src_a.name!r}) — "
+            "cannot sabotage one without breaking the other; skipping partial-failure test"
+        )
+
     # Exclude manufactured slugs from isolated_slugs so _restore_isolated_pages
     # does not re-stale pages that the workflow just set to draft.
     isolated_slugs = [s for s in isolated_slugs if s not in {slug_a, slug_b}]
@@ -1114,6 +1142,16 @@ def test_agentic_reingest_by_slug_active_page_becomes_draft():
             kw in full_text.lower()
             for kw in ("lint", "check")
         ), f"Expected lint result in narrative. Got: {full_text[:300]!r}"
+
+        # get_page_states must be called and the final state of the slug reported.
+        states_progress = [d for t, d in events if t == "tool_progress" and d.get("tool") == "get_page_states"]
+        assert states_progress, (
+            "Expected a get_page_states tool_progress event — page state not checked after lint"
+        )
+        assert any(
+            kw in full_text.lower()
+            for kw in ("active", "stale", "page state", "✓", "✗")
+        ), f"Expected page state in narrative. Got: {full_text[:300]!r}"
     finally:
         _restore_stale_page(wiki_root, slug, source_path, orig_content, original_state=orig_state)
         _restore_isolated_pages(isolated_slugs)
@@ -1146,12 +1184,14 @@ def test_find_page_source_tool_rejects_unknown_slug():
         for kw in (
             "not found",
             "does not exist",
+            "doesn't exist",
             "no page",
             "no wiki page",
             "no source path",
             "unknown",
             "couldn't find",
             "could not find",
+            "don't exist",
         )
     ), (
         f"Expected 'not found' language for unknown slug. Got: {full_text[:300]!r}"
