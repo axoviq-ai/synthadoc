@@ -253,6 +253,31 @@ async def tool_run_lint(ctx: "WorkflowContext", scope: str = "all") -> dict:
         return {"error": str(exc)}
 
 
+async def tool_get_page_states(ctx: "WorkflowContext", slugs: list[str]) -> dict:
+    """Return the current lifecycle state of one or more wiki pages by slug.
+
+    Returns::
+
+        {"pages": [{"slug": str, "state": str}]}
+
+    ``state`` is one of ``"active"``, ``"stale"``, ``"draft"``, ``"archived"``,
+    or ``"unknown"`` if the page has no lifecycle record yet.
+    """
+    results: list[dict] = []
+    for slug in slugs:
+        try:
+            row = await ctx.audit_db.get_page_state(slug)
+            state = row["state"] if row else "unknown"
+        except Exception:  # noqa: BLE001
+            state = "unknown"
+        results.append({"slug": slug, "state": state})
+    await ctx.send_sse_event(
+        "tool_progress",
+        {"tool": "get_page_states", "message": "Checking page states after re-ingest..."},
+    )
+    return {"pages": results}
+
+
 async def tool_confirm(
     ctx: "WorkflowContext",
     message: str,

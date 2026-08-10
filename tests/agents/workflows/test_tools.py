@@ -16,6 +16,7 @@ from synthadoc.agents.workflows._tools import (
     tool_confirm,
     tool_find_page_source,
     tool_find_stale_pages,
+    tool_get_page_states,
     tool_ingest_source,
     tool_poll_job,
     tool_run_lint,
@@ -565,6 +566,44 @@ async def test_find_page_source_unknown_slug():
     result = await tool_find_page_source(ctx, "no-such-page")
     assert "error" in result
     assert "no-such-page" in result["error"]
+
+
+async def test_get_page_states_returns_state_for_each_slug():
+    """tool_get_page_states maps each slug to its current lifecycle state."""
+    audit_db = MagicMock()
+    audit_db.get_page_state = AsyncMock(side_effect=lambda slug: {
+        "slug": slug, "state": "active" if slug == "page-a" else "stale",
+        "updated_at": "2026-01-01", "triggered_by": "lint",
+    })
+    ctx, events = _make_ctx(audit_db=audit_db)
+    result = await tool_get_page_states(ctx, ["page-a", "page-b"])
+    assert result == {"pages": [{"slug": "page-a", "state": "active"}, {"slug": "page-b", "state": "stale"}]}
+    assert any(e["event"] == "tool_progress" for e in events)
+
+
+async def test_get_page_states_returns_unknown_when_no_db_row():
+    """Slug with no page_states row → state='unknown'."""
+    audit_db = MagicMock()
+    audit_db.get_page_state = AsyncMock(return_value=None)
+    ctx, _ = _make_ctx(audit_db=audit_db)
+    result = await tool_get_page_states(ctx, ["ghost-page"])
+    assert result == {"pages": [{"slug": "ghost-page", "state": "unknown"}]}
+
+
+async def test_get_page_states_handles_db_exception_gracefully():
+    """DB error for a slug → state='unknown', no exception raised."""
+    audit_db = MagicMock()
+    audit_db.get_page_state = AsyncMock(side_effect=RuntimeError("db error"))
+    ctx, _ = _make_ctx(audit_db=audit_db)
+    result = await tool_get_page_states(ctx, ["some-page"])
+    assert result == {"pages": [{"slug": "some-page", "state": "unknown"}]}
+
+
+async def test_get_page_states_empty_slugs_list():
+    """Empty slug list → empty pages list."""
+    ctx, _ = _make_ctx()
+    result = await tool_get_page_states(ctx, [])
+    assert result == {"pages": []}
 
 
 async def test_find_page_source_no_sources():
