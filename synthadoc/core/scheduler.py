@@ -143,6 +143,15 @@ def _kill_proc(proc: object) -> None:
             pass
 
 
+async def _kill_and_drain_proc(proc: object) -> None:
+    """Kill a subprocess then wait for it to exit so pipe handles are released."""
+    _kill_proc(proc)
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=5.0)  # type: ignore[union-attr]
+    except (asyncio.TimeoutError, ProcessLookupError):
+        pass
+
+
 async def _run_scheduled_job(
     entry: dict, wiki: str, wiki_root: Path, audit_db: "AuditDB",
     job_timeout_seconds: int,
@@ -183,12 +192,12 @@ async def _run_scheduled_job(
             logger.warning("[schedule] %s  %s  %.1fs  failed (%s)", run_id, op, duration, err)
     except asyncio.TimeoutError:
         duration = time.monotonic() - t0
-        _kill_proc(proc)
+        await _kill_and_drain_proc(proc)
         err = f"timed out after {job_timeout_seconds}s"
         await audit_db.record_scheduled_run_finish(run_id, "failed", duration, err)
         logger.warning("[schedule] %s  %s  %.1fs  %s", run_id, op, duration, err)
     except asyncio.CancelledError:
-        _kill_proc(proc)
+        await _kill_and_drain_proc(proc)
         duration = time.monotonic() - t0
         try:
             await audit_db.record_scheduled_run_finish(run_id, "cancelled", duration)

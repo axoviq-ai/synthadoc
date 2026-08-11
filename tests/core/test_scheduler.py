@@ -43,7 +43,7 @@ def test_scheduler_apply_from_config(tmp_path):
 # ------------------------------------------------------------------
 
 async def test_run_scheduled_job_timeout_kills_proc(tmp_path):
-    """Hanging subprocess: TimeoutError kills the process and records 'failed'."""
+    """Hanging subprocess: TimeoutError kills the process, drains pipes, and records 'failed'."""
     audit_db = AsyncMock()
 
     async def _hang():
@@ -52,6 +52,7 @@ async def test_run_scheduled_job_timeout_kills_proc(tmp_path):
     mock_proc = MagicMock()
     mock_proc.kill = MagicMock()
     mock_proc.communicate = _hang
+    mock_proc.wait = AsyncMock(return_value=None)
 
     entry = {"id": "sched-test-timeout", "op": "lint"}
 
@@ -59,6 +60,7 @@ async def test_run_scheduled_job_timeout_kills_proc(tmp_path):
         await _run_scheduled_job(entry, "test-wiki", tmp_path, audit_db, job_timeout_seconds=0.05)
 
     mock_proc.kill.assert_called_once()
+    mock_proc.wait.assert_awaited_once()
     call = audit_db.record_scheduled_run_finish.call_args
     assert call.args[1] == "failed"
     assert "timed out" in call.args[3]
@@ -100,7 +102,7 @@ async def test_run_scheduled_job_nonzero_exit(tmp_path):
 
 
 async def test_run_scheduled_job_cancelled_records_finish_and_reraises(tmp_path):
-    """CancelledError: kills proc, records 'cancelled', then re-raises so the
+    """CancelledError: kills proc, drains pipes, records 'cancelled', then re-raises so the
     task is properly cancelled rather than swallowed."""
     audit_db = AsyncMock()
 
@@ -110,6 +112,7 @@ async def test_run_scheduled_job_cancelled_records_finish_and_reraises(tmp_path)
     mock_proc = MagicMock()
     mock_proc.kill = MagicMock()
     mock_proc.communicate = _hang
+    mock_proc.wait = AsyncMock(return_value=None)
 
     entry = {"id": "sched-test-cancel", "op": "lint"}
 
@@ -125,6 +128,7 @@ async def test_run_scheduled_job_cancelled_records_finish_and_reraises(tmp_path)
             pass
 
     mock_proc.kill.assert_called_once()
+    mock_proc.wait.assert_awaited_once()
     audit_db.record_scheduled_run_finish.assert_awaited_once()
     call = audit_db.record_scheduled_run_finish.call_args
     assert call.args[1] == "cancelled"
