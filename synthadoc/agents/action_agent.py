@@ -429,13 +429,9 @@ class ActionAgent:
                 if evt.get("event") == "final_text":
                     # Token chunks were already streamed via the sse_queue → do NOT
                     # re-emit the full text here or the client receives it twice.
-                    text = evt["data"]["text"]
-                    from synthadoc.agents.query_agent import _build_pre_prompt  # lazy — avoids circular import
-                    _pre_prompt = _build_pre_prompt(text)
-                    _done_data: dict = {"citations": [], "hints": [], "cacheable": False}
-                    if _pre_prompt:
-                        _done_data["pre_prompt"] = _pre_prompt
-                    yield {"event": "done", "data": _done_data}
+                    # No pre_prompt: the workflow already ran lint and reported page
+                    # states, so there is no unambiguous next step to suggest.
+                    yield {"event": "done", "data": {"citations": [], "hints": [], "cacheable": False}}
                 else:
                     yield evt
         finally:
