@@ -74,6 +74,12 @@ export function ChatWindow({
         if (el && pendingConfirm) el.scrollTop = el.scrollHeight;
     }, [pendingConfirm]);
 
+    // Scroll to bottom as workflow tool_progress lines arrive
+    useLayoutEffect(() => {
+        const el = messagesRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
+    }, [progressLines]);
+
     useEffect(() => {
         if (pendingPrompt != null) {
             setInput(pendingPrompt);
