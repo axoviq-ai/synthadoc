@@ -262,6 +262,29 @@ def _assert_stream_complete(events: list[tuple[str, dict]]) -> dict:
     return done
 
 
+# ── Session-scoped stale page cleanup ────────────────────────────────────────
+
+@pytest.fixture(autouse=True, scope="module")
+def _cleanup_stale_bwl_pages():
+    """Delete any bwl-test-* pages left behind by a previous interrupted run.
+
+    Runs once at module start (setup) and once at module teardown, so even
+    pages stranded by a crash or keyboard interrupt are removed before the
+    next suite execution.
+    """
+    def _sweep():
+        try:
+            wiki_root = _wiki_root()
+        except Exception:
+            return
+        for md in (wiki_root / "wiki").glob(f"{_TEST_PREFIX}*.md"):
+            _delete_page(wiki_root, md.stem)
+
+    _sweep()
+    yield
+    _sweep()
+
+
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
 @pytest.mark.live
