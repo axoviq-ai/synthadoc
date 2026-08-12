@@ -3,6 +3,7 @@
 
 export interface SSECallbacks {
     onStatus?: (phase: string, sources?: number) => void;
+    onToolProgress?: (tool: string, message: string) => void;
     onToken: (text: string) => void;
     onCitations: (citations: string[]) => void;
     onGap?: (suggestions: string[]) => void;
@@ -54,6 +55,9 @@ async function _dispatch(event: string, data: Record<string, unknown>, cb: SSECa
     switch (event) {
         case "status":
             cb.onStatus?.(data.phase as string, data.sources as number | undefined);
+            break;
+        case "tool_progress":
+            cb.onToolProgress?.(data.tool as string, data.message as string);
             break;
         case "token":
             cb.onToken(data.text as string);
