@@ -82,7 +82,7 @@ def _stream_incremental(
     done_flag: threading.Event,
     timeout: int = 180,
 ) -> None:
-    """Stream POST /action, appending events to *events_out* as they arrive.
+    """Stream GET /query/stream, appending events to *events_out* as they arrive.
 
     Runs in a background thread so a concurrent confirm-watcher can see events
     before the stream completes — necessary because the workflow blocks on the
@@ -92,9 +92,11 @@ def _stream_incremental(
     current_data: list[str] = []
     buf = ""
     try:
-        path = f"/action?session_id={session_id}"
-        with httpx.Client(timeout=httpx.Timeout(timeout)) as client:
-            with client.stream("POST", f"{BASE}{path}", json={"question": question}) as r:
+        from urllib.parse import quote
+        q = quote(question, safe="")
+        path = f"/query/stream?q={q}&session_id={session_id}&no_cache=true&timeout_seconds={timeout}"
+        with httpx.Client(timeout=httpx.Timeout(timeout + 30)) as client:
+            with client.stream("GET", f"{BASE}{path}") as r:
                 r.raise_for_status()
                 for chunk in r.iter_text():
                     buf += chunk
