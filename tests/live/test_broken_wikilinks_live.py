@@ -26,7 +26,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import textwrap
 import threading
 import time
 import uuid
@@ -192,17 +191,19 @@ def _unique_slug(suffix: str = "") -> str:
 def _page_md(slug: str, broken_refs: list[str], real_refs: list[str] | None = None) -> str:
     broken_part = " ".join(f"[[{r}]]" for r in broken_refs)
     real_part = " ".join(f"[[{r}]]" for r in (real_refs or []))
-    return textwrap.dedent(f"""\
-        ---
-        title: "{slug}"
-        status: draft
-        sources: []
-        ---
-        Test page for broken wikilinks live test.
-
-        Broken refs: {broken_part}
-        {("Real refs: " + real_part) if real_part else ""}
-    """)
+    body = f"Test page for broken wikilinks live test.\n\nBroken refs: {broken_part}"
+    if real_part:
+        body += f"\nReal refs: {real_part}"
+    return (
+        f"---\n"
+        f"title: {slug}\n"
+        f"status: draft\n"
+        f"confidence: medium\n"
+        f"tags: []\n"
+        f"sources: []\n"
+        f"---\n\n"
+        f"{body}\n"
+    )
 
 
 def _create_active_page(wiki_root: Path, slug: str,
@@ -212,7 +213,11 @@ def _create_active_page(wiki_root: Path, slug: str,
     (wiki_root / "wiki" / f"{slug}.md").write_text(
         _page_md(slug, broken_refs, real_refs), encoding="utf-8"
     )
-    _api("/lifecycle/transition", "POST", {"slug": slug, "to": "active"})
+    _api("/lifecycle/transition", "POST", {
+        "slug": slug,
+        "to_state": "active",
+        "reason": "BWL live test setup",
+    })
 
 
 def _delete_page(wiki_root: Path, slug: str) -> None:
@@ -495,7 +500,11 @@ def test_stale_pages_excluded_from_scan():
         # Stale page with a broken ref
         _create_active_page(wiki_root, stale_slug, broken_refs=[broken_ref])
         created.append(stale_slug)
-        _api("/lifecycle/transition", "POST", {"slug": stale_slug, "to": "stale"})
+        _api("/lifecycle/transition", "POST", {
+            "slug": stale_slug,
+            "to_state": "stale",
+            "reason": "BWL live test setup",
+        })
 
         session_id = str(uuid.uuid4())
         # Decline — we only want to inspect detection, not apply changes
