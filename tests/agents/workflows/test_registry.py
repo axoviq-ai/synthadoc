@@ -93,6 +93,38 @@ def test_registry_loop_routes_wikilinks_question_to_broken_wikilinks_workflow():
     assert matched is BrokenWikilinksWorkflow
 
 
+def test_scaffold_workflow_match_re_hits_action_phrases():
+    from synthadoc.agents.workflows.scaffold import ScaffoldWorkflow
+
+    match = ScaffoldWorkflow.MATCH_RE
+    assert match.search("run scaffold")
+    assert match.search("please run scaffold now")
+    assert match.search("rebuild scaffold")
+    assert match.search("regenerate the scaffold")
+    assert match.search("regenerate scaffold for my wiki")
+
+
+def test_scaffold_workflow_match_re_misses_query_phrases():
+    from synthadoc.agents.workflows.scaffold import ScaffoldWorkflow
+
+    match = ScaffoldWorkflow.MATCH_RE
+    assert not match.search("what is scaffold?")
+    assert not match.search("how does scaffold work?")
+    assert not match.search("show me the scaffold files")
+
+
+def test_registry_loop_routes_scaffold_question_to_scaffold_workflow():
+    from synthadoc.agents.workflows._registry import ROUTED_WORKFLOWS
+    from synthadoc.agents.workflows.scaffold import ScaffoldWorkflow
+
+    question = "run scaffold"
+    matched = next(
+        (wf for wf in ROUTED_WORKFLOWS if wf.MATCH_RE and wf.MATCH_RE.search(question)),
+        None,
+    )
+    assert matched is ScaffoldWorkflow
+
+
 def test_registry_loop_returns_none_for_unrouted_question():
     from synthadoc.agents.workflows._registry import ROUTED_WORKFLOWS
 

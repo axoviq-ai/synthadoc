@@ -474,6 +474,84 @@ async def tool_apply_link_fixes(
     return {"status": "success", "changes": total_changes, "page": page_slug}
 
 
+async def tool_get_scaffold_preview(ctx: "WorkflowContext") -> dict:
+    """Return the domain and list of files that a scaffold run will overwrite.
+
+    Reads the domain from the workflow context (set from wiki config at
+    startup).  Lists every file the scaffold job unconditionally writes plus
+    ``ROUTING.md`` when it already exists (it is regenerated, not created from
+    scratch).
+
+    Returns::
+
+        {"domain": str, "files_to_overwrite": [str]}
+    """
+    domain = ctx.domain or "General"
+
+    files: list[str] = [
+        str(ctx.wiki_root / "wiki" / "index.md"),
+        str(ctx.wiki_root / "wiki" / "purpose.md"),
+        str(ctx.wiki_root / "AGENTS.md"),
+        str(ctx.wiki_root / "CLAUDE.md"),
+        str(ctx.wiki_root / "GEMINI.md"),
+    ]
+    routing = ctx.wiki_root / "ROUTING.md"
+    if routing.exists():
+        files.append(str(routing))
+
+    await ctx.send_sse_event(
+        "tool_progress",
+        {"tool": "get_scaffold_preview", "message": f"Domain: {domain!r}"},
+    )
+    return {"domain": domain, "files_to_overwrite": files}
+
+
+async def tool_run_scaffold(ctx: "WorkflowContext", domain: str) -> dict:
+    """Enqueue a scaffold job, wait for it to finish, and return the outcome.
+
+    Returns::
+
+        {"status": "success", "domain": str, "categories_updated": int,
+         "routing_regenerated": bool}
+        {"status": "failed"|"timeout", "message": str}
+        {"error": str}  — enqueue failed
+    """
+    await ctx.send_sse_event(
+        "tool_progress",
+        {"tool": "run_scaffold", "message": f"Running scaffold for '{domain}'..."},
+    )
+    try:
+        job_id = await ctx.queue.enqueue("scaffold", {"domain": domain})
+    except Exception as exc:  # noqa: BLE001
+        return {"error": str(exc)}
+
+    poll_result = await tool_poll_job(ctx, job_id, timeout_seconds=300, job_label="Scaffold")
+    if poll_result.get("status") != "success":
+        return poll_result
+
+    categories_updated = 0
+    routing_regenerated = False
+    try:
+        job = await ctx.queue.get_job(job_id)
+        if job and job.result:
+            categories_updated = job.result.get("categories_updated", 0)
+            routing_regenerated = bool(job.result.get("routing_regenerated", False))
+    except Exception:  # noqa: BLE001
+        pass
+
+    await ctx.send_sse_event(
+        "tool_progress",
+        {"tool": "run_scaffold",
+         "message": f"✓ Scaffold complete — {categories_updated} page{'s' if categories_updated != 1 else ''} categorised"},
+    )
+    return {
+        "status": "success",
+        "domain": domain,
+        "categories_updated": categories_updated,
+        "routing_regenerated": routing_regenerated,
+    }
+
+
 async def tool_confirm(
     ctx: "WorkflowContext",
     message: str,

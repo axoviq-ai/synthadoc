@@ -24,6 +24,7 @@ class WorkflowContext:
     send_sse_event: SseEventFn
     confirm_registry: dict[str, asyncio.Event]
     confirm_result_registry: dict[str, bool]
+    domain: str = ""
 
 
 class AgenticWorkflow(ABC):

@@ -424,6 +424,8 @@ class ActionAgent:
 
         import uuid as _uuid
         _session_id = session_id or str(_uuid.uuid4())
+        _cfg = getattr(self._orch, "_cfg", None)
+        _domain = getattr(getattr(_cfg, "wiki", None), "domain", "") or ""
         ctx = WorkflowContext(
             session_id=_session_id,
             wiki_root=self._wiki_root,
@@ -433,6 +435,7 @@ class ActionAgent:
             send_sse_event=_send,
             confirm_registry=getattr(self._orch, "_confirm_registry", {}),
             confirm_result_registry=getattr(self._orch, "_confirm_result_registry", {}),
+            domain=_domain,
         )
 
         wf = workflow if workflow is not None else IngestLintWorkflow()
