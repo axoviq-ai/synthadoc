@@ -151,7 +151,15 @@ _ACTION_RE = re.compile(
     # "re-ingest stale pages" — require "stale" nearby to avoid matching how-to questions
     r"|\bre.?ingest\b.{0,60}\bstale\b|\bstale\b.{0,60}\bre.?ingest\b"
     # "re-ingest the <slug> page" — slug-based Workflow B
-    r"|\bre.?ingest\b\s+the\s+[a-z0-9]",
+    r"|\bre.?ingest\b\s+the\s+[a-z0-9]"
+    # broken wikilinks / dead links — Workflow C
+    r"|\bbroken\b.{0,40}\b(?:wiki\s*links?|links?)\b"
+    r"|\b(?:wiki\s*links?|links?)\b.{0,40}\bbroken\b"
+    r"|\b(?:dead|dangling)\b.{0,30}\b(?:wiki\s*links?|links?)\b"
+    r"|\bfix\b.{0,40}\b(?:dead|dangling|broken)\b.{0,30}\b(?:wiki\s*links?|links?)\b"
+    r"|\bscan\b.{0,40}\bwiki\s*links?\b"
+    r"|\bcheck\b.{0,40}\bwiki\s*links?\b"
+    r"|\blink\s+integrit",
     re.IGNORECASE,
 )
 
