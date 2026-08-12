@@ -67,4 +67,4 @@ async def test_write_claim_citations_no_op_for_empty_list(tmp_path):
 @pytest.mark.asyncio
 async def test_schema_version_bumped(tmp_path):
     from synthadoc.storage.log import DB_SCHEMA_VERSION
-    assert DB_SCHEMA_VERSION == 4
+    assert DB_SCHEMA_VERSION == 5

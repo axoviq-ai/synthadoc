@@ -11,8 +11,8 @@ from synthadoc.storage.log import AuditDB, DB_SCHEMA_VERSION
 
 # ── Task 1 tests ────────────────────────────────────────────────────────────
 
-def test_schema_version_is_4():
-    assert DB_SCHEMA_VERSION == 4
+def test_schema_version_is_5():
+    assert DB_SCHEMA_VERSION == 5
 
 
 @pytest.mark.asyncio
