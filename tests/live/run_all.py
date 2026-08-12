@@ -31,6 +31,9 @@ Examples:
 
     # Run agentic workflow tests only (requires v1.2.0 feature to be shipped)
     python -X utf8 tests/live/run_all.py --suite agentic
+
+    # Run lint report workflow tests only (requires v1.2.1 feature to be shipped)
+    python -X utf8 tests/live/run_all.py --suite lint_report
 """
 import argparse
 import os
@@ -58,6 +61,7 @@ SUITES = {
     "snapshots":        "test_lifecycle_snapshots_live.py",
     "agentic":          "test_agentic_ingest_lint_live.py",
     "broken_wikilinks": "test_broken_wikilinks_live.py",
+    "lint_report":      "test_lint_report_workflow_live.py",
 }
 
 PASS = "\033[92mPASS\033[0m"
@@ -142,6 +146,7 @@ def main() -> None:
         "snapshots":        [],
         "agentic":          [],
         "broken_wikilinks": [],
+        "lint_report":      [],
     }
     # Per-suite environment
     suite_env = {
@@ -151,6 +156,7 @@ def main() -> None:
         "snapshots":        {**os.environ, "SYNTHADOC_URL": base},
         "agentic":          {**os.environ, "SYNTHADOC_URL": base},
         "broken_wikilinks": {**os.environ, "SYNTHADOC_URL": base},
+        "lint_report":      {**os.environ, "SYNTHADOC_URL": base},
     }
 
     codes: dict[str, int] = {}
