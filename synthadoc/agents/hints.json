@@ -114,6 +114,16 @@
       ]
     },
     {
+      "keywords": ["broken wikilink", "broken link", "dead link", "dangling link", "link integrity", "wikilink"],
+      "answer_keywords": ["broken wikilink", "broken wikilinks", "broken link", "broken links", "dead link", "dead links", "dangling link", "dangling links"],
+      "hints": [
+        "Scan for broken wikilinks",
+        "Fix broken wikilinks",
+        "Check wikilink integrity",
+        "Show my lint report"
+      ]
+    },
+    {
       "keywords": ["lint", "contradiction", "dangling"],
       "answer_keywords": ["lint", "dangling"],
       "hints": [

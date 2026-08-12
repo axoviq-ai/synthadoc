@@ -447,6 +447,14 @@ _NO_STALE_RE = re.compile(r'\bno stale\b|0 stale|zero stale', re.IGNORECASE)
 _REINGEST_COMPLETE_RE = re.compile(
     r're[-\s]?ingested\s+successfully', re.IGNORECASE
 )
+_BROKEN_LINKS_RE = re.compile(
+    r'\bbroken\s+wikilinks?\b|\bdead\s+(?:wiki\s*)?links?\b|\bdangling\s+(?:wiki\s*)?links?\b',
+    re.IGNORECASE,
+)
+_NO_BROKEN_LINKS_RE = re.compile(
+    r'\bno\s+broken\b|0\s+broken|zero\s+broken|link\s+integrity\s+is\s+clean',
+    re.IGNORECASE,
+)
 
 
 def _build_pre_prompt(answer: str) -> str | None:
@@ -468,6 +476,9 @@ def _build_pre_prompt(answer: str) -> str | None:
         # No slugs parsed — the word "stale" may appear in a negation context
         # ("no pages are in the stale state") that _NO_STALE_RE didn't catch.
         # Don't emit a generic suggestion; require concrete slugs to be safe.
+    # Trigger when lint/status reports broken wikilinks.
+    if _BROKEN_LINKS_RE.search(answer) and not _NO_BROKEN_LINKS_RE.search(answer):
+        return "Scan for broken wikilinks"
     return None
 
 
