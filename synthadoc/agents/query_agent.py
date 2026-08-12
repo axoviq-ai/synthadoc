@@ -545,6 +545,16 @@ class QueryAgent:
             matched = [f"### {p.title}\n{p.content}" for p in _SYSTEM_KNOWLEDGE]
         return "\n\n".join(matched)
 
+    def _warned_pages(self) -> list[tuple[str, int]]:
+        """Return (slug, warning_count) sorted by count desc for pages that have lint_warnings."""
+        warned = [
+            (slug, len(page.lint_warnings))
+            for slug in self._store.list_pages()
+            if (page := self._store.read_page(slug)) and page.lint_warnings
+        ]
+        warned.sort(key=lambda x: x[1], reverse=True)
+        return warned
+
     async def _fetch_live_wiki_data(self, question: str) -> str:
         """Return a formatted snapshot of live wiki lifecycle data if the question asks for it.
 
@@ -594,12 +604,7 @@ class QueryAgent:
 
             # Adversarial warnings — read directly from page frontmatter
             if any(kw in q_lower for kw in _ADVERSARIAL_TRIGGERS):
-                warned: list[tuple[str, int]] = []
-                for slug in self._store.list_pages():
-                    page = self._store.read_page(slug)
-                    if page and page.lint_warnings:
-                        warned.append((slug, len(page.lint_warnings)))
-                warned.sort(key=lambda x: x[1], reverse=True)
+                warned = self._warned_pages()
                 if warned:
                     lines.append("\n### Pages with adversarial warnings")
                     for slug, n in warned:
@@ -677,16 +682,11 @@ class QueryAgent:
                     lines.append("\n### Currently contradicted pages\n  (none)")
 
                 # Adversarial warnings — current live state from page frontmatter
-                warned: list[tuple[str, int]] = []
-                for _slug in self._store.list_pages():
-                    _page = self._store.read_page(_slug)
-                    if _page and _page.lint_warnings:
-                        warned.append((_slug, len(_page.lint_warnings)))
-                warned.sort(key=lambda x: x[1], reverse=True)
+                warned = self._warned_pages()
                 if warned:
                     lines.append("\n### Pages with adversarial warnings")
-                    for _slug, _n in warned:
-                        lines.append(f"  - [[{_slug}]]  ({_n} warning{'s' if _n != 1 else ''})")
+                    for slug, n in warned:
+                        lines.append(f"  - [[{slug}]]  ({n} warning{'s' if n != 1 else ''})")
                 else:
                     lines.append("\n### Pages with adversarial warnings\n  (none)")
 
