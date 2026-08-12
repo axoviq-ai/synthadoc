@@ -46,17 +46,18 @@ _SLUG_REINGEST_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Fast-path regex: broken wikilink scan/fix queries → BrokenWikilinksWorkflow.
-_BROKEN_WIKILINKS_RE = re.compile(
+# Broken wikilinks pattern — shared between _ACTION_RE (detect gate) and the
+# fast-path in run_gen (Workflow C routing). Update once to keep both in sync.
+_BROKEN_WIKILINKS_PAT = (
     r"\bbroken\b.{0,40}\b(?:wiki\s*links?|links?)\b"
     r"|\b(?:wiki\s*links?|links?)\b.{0,40}\bbroken\b"
     r"|\bfix\b.{0,40}\b(?:dead|dangling|broken)\b.{0,30}\b(?:wiki\s*links?|links?)\b"
     r"|\b(?:dead|dangling)\b.{0,30}\b(?:wiki\s*links?|links?)\b"
     r"|\bscan\b.{0,40}\b(?:wiki\s*links?|links?)\b"
     r"|\bcheck\b.{0,40}\bwiki\s*links?\b"
-    r"|\blink\s+integrit",
-    re.IGNORECASE,
+    r"|\blink\s+integrit"
 )
+_BROKEN_WIKILINKS_RE = re.compile(_BROKEN_WIKILINKS_PAT, re.IGNORECASE)
 
 _SCHEDULE_CRON_PROMPT = (
     "What schedule should this run on? (e.g. 'every night at 9 PM', 'daily at 6 AM')"
@@ -152,14 +153,8 @@ _ACTION_RE = re.compile(
     r"|\bre.?ingest\b.{0,60}\bstale\b|\bstale\b.{0,60}\bre.?ingest\b"
     # "re-ingest the <slug> page" — slug-based Workflow B
     r"|\bre.?ingest\b\s+the\s+[a-z0-9]"
-    # broken wikilinks / dead links — Workflow C
-    r"|\bbroken\b.{0,40}\b(?:wiki\s*links?|links?)\b"
-    r"|\b(?:wiki\s*links?|links?)\b.{0,40}\bbroken\b"
-    r"|\b(?:dead|dangling)\b.{0,30}\b(?:wiki\s*links?|links?)\b"
-    r"|\bfix\b.{0,40}\b(?:dead|dangling|broken)\b.{0,30}\b(?:wiki\s*links?|links?)\b"
-    r"|\bscan\b.{0,40}\bwiki\s*links?\b"
-    r"|\bcheck\b.{0,40}\bwiki\s*links?\b"
-    r"|\blink\s+integrit",
+    # broken wikilinks / dead links — Workflow C (shared with _BROKEN_WIKILINKS_PAT)
+    r"|" + _BROKEN_WIKILINKS_PAT,
     re.IGNORECASE,
 )
 
