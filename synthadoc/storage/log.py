@@ -9,7 +9,7 @@ from typing import Callable, Optional
 
 import aiosqlite
 
-DB_SCHEMA_VERSION: int = 4
+DB_SCHEMA_VERSION: int = 5
 
 CITATION_EXCERPT_LEN = 100
 
@@ -118,6 +118,19 @@ class AuditDB:
                 await db.commit()
             except Exception:
                 pass  # column already exists
+
+        # Secondary indexes — idempotent via IF NOT EXISTS; placed after column
+        # migrations so referenced columns (e.g. content_snapshot) are guaranteed
+        # to exist before the partial index is created.
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS idx_audit_events_event ON audit_events(event)",
+            "CREATE INDEX IF NOT EXISTS idx_lifecycle_events_slug ON lifecycle_events(slug)",
+            "CREATE INDEX IF NOT EXISTS idx_lifecycle_slug_snapshot ON lifecycle_events(slug) WHERE content_snapshot IS NOT NULL",
+            "CREATE INDEX IF NOT EXISTS idx_claim_citations_page_slug ON claim_citations(page_slug)",
+            "CREATE INDEX IF NOT EXISTS idx_claim_citations_source_file ON claim_citations(source_file)",
+        ):
+            await db.execute(sql)
+        await db.commit()
 
         # Data migrations — idempotent by SQL semantics
         # Remove duplicate claim_citations rows accumulated before
