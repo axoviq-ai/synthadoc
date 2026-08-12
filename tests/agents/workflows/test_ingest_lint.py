@@ -141,7 +141,9 @@ async def test_action_agent_run_gen_non_orchestrate_yields_token_and_done():
         job_id="abc123",
     )
     with patch.object(agent, "_dispatch", AsyncMock(return_value=lint_result)):
-        events = [e async for e in agent.run_gen("run lint")]
+        # "queue a lint check" avoids the _LINT_RUN_RE fast-path while still
+        # exercising the _extract → _dispatch SSE flow under test.
+        events = [e async for e in agent.run_gen("queue a lint check")]
 
     event_types = [e["event"] for e in events]
     assert "token" in event_types

@@ -255,6 +255,56 @@ async def tool_run_lint(ctx: "WorkflowContext", scope: str = "all") -> dict:
         return {"error": str(exc)}
 
 
+async def tool_get_lint_report(ctx: "WorkflowContext") -> dict:
+    """Read the full lint state from the audit DB and page frontmatter.
+
+    Returns::
+
+        {
+          "last_run": {
+            "timestamp": str, "dangling_removed": int, "orphans": int,
+            "contradictions_resolved": int, "contradictions_flagged": int
+          },
+          "contradicted_pages": [{"slug": str, "since": str}],
+          "adversarial_warnings": [{"slug": str, "count": int}],
+          "orphan_slugs": [str]
+        }
+
+    "last_run" is an empty dict if no lint run has been recorded yet.
+    """
+    await ctx.send_sse_event(
+        "tool_progress",
+        {"tool": "get_lint_report", "message": "Reading lint report..."},
+    )
+    summary = await ctx.audit_db.get_last_lint_summary() if ctx.audit_db else None
+
+    all_states = await ctx.audit_db.get_live_page_states(ctx.store.page_exists) \
+        if ctx.audit_db else []
+    contradicted = [
+        {"slug": p["slug"], "since": (p.get("updated_at") or "")[:10]}
+        for p in all_states if p.get("state") == "contradicted"
+    ]
+
+    warned: list[dict] = []
+    orphan_slugs: list[str] = []
+    if ctx.store:
+        for slug in ctx.store.list_pages():
+            page = ctx.store.read_page(slug)
+            if page and page.lint_warnings:
+                warned.append({"slug": slug, "count": len(page.lint_warnings)})
+            if page and page.orphan:
+                orphan_slugs.append(slug)
+        warned.sort(key=lambda x: x["count"], reverse=True)
+        orphan_slugs.sort()
+
+    return {
+        "last_run": summary or {},
+        "contradicted_pages": contradicted,
+        "adversarial_warnings": warned,
+        "orphan_slugs": orphan_slugs,
+    }
+
+
 async def tool_get_page_states(ctx: "WorkflowContext", slugs: list[str]) -> dict:
     """Return the current lifecycle state of one or more wiki pages by slug.
 

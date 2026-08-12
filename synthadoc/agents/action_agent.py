@@ -59,6 +59,15 @@ _BROKEN_WIKILINKS_PAT = (
 )
 _BROKEN_WIKILINKS_RE = re.compile(_BROKEN_WIKILINKS_PAT, re.IGNORECASE)
 
+# "run lint", "lint run", "run lint and report", "run lint and show" etc.
+# Requires an explicit action verb so "show me my lint report" stays a query.
+_LINT_RUN_RE = re.compile(
+    r"\brun\s+lint\b"
+    r"|\blint\s+run\b"
+    r"|\brun\b.{0,20}\blint\b",
+    re.IGNORECASE,
+)
+
 _SCHEDULE_CRON_PROMPT = (
     "What schedule should this run on? (e.g. 'every night at 9 PM', 'daily at 6 AM')"
 )
@@ -331,6 +340,13 @@ class ActionAgent:
         """
         # Emit immediately so the UI shows activity while _extract() waits for the LLM.
         yield {"event": "tool_progress", "data": {"tool": "_init", "message": "Analyzing your request..."}}
+
+        # Fast-path: "run lint …" → LintReportWorkflow (no LLM extraction).
+        if _LINT_RUN_RE.search(question):
+            from synthadoc.agents.workflows.lint_report import LintReportWorkflow
+            async for evt in self._run_orchestrate(question, session_id=session_id, workflow=LintReportWorkflow()):
+                yield evt
+            return
 
         # Fast-path: broken wikilinks queries → BrokenWikilinksWorkflow (no LLM extraction).
         if _BROKEN_WIKILINKS_RE.search(question):
