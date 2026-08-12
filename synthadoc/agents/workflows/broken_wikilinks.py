@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import functools
+import re
 from typing import TYPE_CHECKING, Awaitable, Callable
 
 from synthadoc.agents.workflows._base import AgenticWorkflow, WorkflowContext
@@ -112,6 +113,17 @@ When you have no more tool calls to make, produce a plain-text summary (no JSON)
 
 class BrokenWikilinksWorkflow(AgenticWorkflow):
     """Scan active wiki pages for broken [[wikilinks]] and fix them interactively."""
+
+    MATCH_RE = re.compile(
+        r"\bbroken\b.{0,40}\b(?:wiki\s*links?|links?)\b"
+        r"|\b(?:wiki\s*links?|links?)\b.{0,40}\bbroken\b"
+        r"|\bfix\b.{0,40}\b(?:dead|dangling|broken)\b.{0,30}\b(?:wiki\s*links?|links?)\b"
+        r"|\b(?:dead|dangling)\b.{0,30}\b(?:wiki\s*links?|links?)\b"
+        r"|\bscan\b.{0,40}\b(?:wiki\s*links?|links?)\b"
+        r"|\bcheck\b.{0,40}\bwiki\s*links?\b"
+        r"|\blink\s+integrit",
+        re.IGNORECASE,
+    )
 
     async def build_system_prompt(self) -> str:
         return _SYSTEM_PROMPT

@@ -3221,7 +3221,7 @@ This design lets users annotate any section of `purpose.md` without losing their
 
 ## Agentic Maintenance Workflows
 
-The web chat UI and Obsidian plugin query modal support conversational wiki maintenance through an agentic tool-call loop. Three workflows are available:
+The web chat UI and Obsidian plugin query modal support conversational wiki maintenance through an agentic tool-call loop. Four workflows are available:
 
 ### Workflow A — stale-pages bulk reingest
 
@@ -3287,6 +3287,15 @@ Triggered by phrases such as "scan for broken wikilinks", "fix broken links", or
 
 Broken links with a fuzzy suggestion are replaced with `[[corrected-slug]]`. Broken links with no close match are unlinked — the link markup is removed while any display text is preserved.
 
+### Workflow D — lint run and full report
+
+Triggered by phrases such as "run lint and show me the report" or "lint run". A pre-LLM regex fast-path routes directly to `LintReportWorkflow` without an LLM classification call:
+
+1. `run_lint` — enqueues a full lint pass; returns `{job_id}`
+2. `poll_job(job_id, timeout_seconds=300)` — waits for the lint job to reach a terminal state
+3. `get_lint_report` — reads the last recorded lint summary from the audit DB plus per-page frontmatter (contradicted state, adversarial warnings, orphan flag)
+4. Plain-text report: dangling links removed, orphan pages, contradictions, contradicted pages (with state-change date), adversarial warnings (slug + count), orphan slugs
+
 ### Tool sets by workflow
 
 **IngestLintWorkflow** (Workflows A and B):
@@ -3312,6 +3321,14 @@ Broken links with a fuzzy suggestion are replaced with `[[corrected-slug]]`. Bro
 | `poll_job` | Polls a job to terminal state |
 | `get_page_states` | Returns the current lifecycle state for a list of slugs |
 
+**LintReportWorkflow** (Workflow D):
+
+| Tool | Description |
+|------|-------------|
+| `run_lint` | Enqueues a full lint pass; returns `{job_id}` |
+| `poll_job` | Waits for the lint job to reach a terminal state |
+| `get_lint_report` | Reads last lint summary from audit DB and per-page frontmatter; returns contradicted pages, adversarial warnings, and orphan slugs |
+
 ### Web UI graph sidebar maintenance chips
 
 In the web UI **Graph tab**, the node detail panel includes a **Maintenance** section with two chips that trigger the same workflows without typing:
@@ -3323,21 +3340,29 @@ In the web UI **Graph tab**, the node detail panel includes a **Maintenance** se
 
 ### SSE protocol extensions (v1.2.0)
 
-- `tool_progress` — `{tool, job_id?, message}` — emitted at each tool step so the UI shows inline progress
+- `tool_progress` — `{tool, job_id?, message}` — emitted at each tool step so the UI shows inline progress; the `message` field names the active workflow (e.g. `"Lint running... (12s)"`, `"Ingest running... (5s)"`)
 - `confirm_request` — `{session_id, message, yes_label, no_label}` — requires a user decision before proceeding
 - `done.pre_prompt` — optional string in the `done` event that pre-fills the chat textarea with the natural next action (e.g. "Run lint to promote re-ingested pages to active")
 
 ### Routing and loop constraints
 
-- Phrases matching `re-ingest the <slug> page` are intercepted by a compiled regex fast-path and routed to `IngestLintWorkflow` — no LLM call is made
-- Phrases matching broken wikilink intent (`scan for broken wikilinks`, `fix broken links`, `check wikilink integrity`) are intercepted by a separate regex fast-path and routed to `BrokenWikilinksWorkflow` — no LLM call is made
-- Phrases matching `re-ingest stale pages` / `fix stale pages` are routed via LLM intent extraction
+Fast-path routing uses a **workflow registry** (`synthadoc/agents/workflows/_registry.py`). Each workflow that needs pre-LLM routing declares a `MATCH_RE` class attribute; the action agent iterates the registry and routes to the first match — no LLM call is made.
+
+The LLM-extraction gate (`_ACTION_RE` in `action_agent.py`) is a separate, more conservative pattern set used to decide whether to invoke the LLM at all. Workflow `MATCH_RE` patterns are intentionally not merged into `_ACTION_RE` because fast-path patterns can be broader than what `_ACTION_RE` should allow (e.g. `LintReportWorkflow.MATCH_RE` matches "How do I run a lint check?" which is a question, not an action). Only patterns whose false-positive risk is acceptable should be added to `_ACTION_RE`.
+
+- Phrases matching `MATCH_RE` of any registered workflow → routed directly, no LLM extraction
+- Phrases matching `re-ingest the <slug> page` → routed to `IngestLintWorkflow` via a separate slug-specific fast-path (this workflow has no `MATCH_RE` because the slug is captured at routing time)
+- Phrases matching `re-ingest stale pages` / `fix stale pages` → routed via LLM intent extraction
 - Maximum 30 tool calls per action; confirmation timeout 120 seconds (defaults to declined on timeout)
 - A single tool failure does not abort the workflow — remaining pages continue and all outcomes are summarised in the final narrative
 
 ### Adding a new workflow
 
-Implement `AgenticWorkflow` (three abstract methods: `build_system_prompt`, `build_initial_message`, `get_tool_fns`), register the routing trigger in the action agent. The loop machinery — tool dispatch, result injection, termination detection, 30-call cap, 120-second confirmation timeout — is inherited automatically.
+1. Create a new module under `synthadoc/agents/workflows/` implementing `AgenticWorkflow` (three abstract methods: `build_system_prompt`, `build_initial_message`, `get_tool_fns`).
+2. If the workflow needs pre-LLM fast-path routing, set `MATCH_RE = re.compile(r"...", re.IGNORECASE)` as a class attribute.
+3. Add one import line and one entry to `ROUTED_WORKFLOWS` in `synthadoc/agents/workflows/_registry.py`.
+
+No other file needs to change. The routing loop, `_ACTION_RE` gate, and test scaffolding all update automatically. The loop machinery — tool dispatch, result injection, termination detection, 30-call cap, 120-second confirmation timeout — is inherited automatically from `AgenticWorkflow`.
 
 → User walkthrough: [Quick-Start Guide §26 — Agentic Maintenance Workflows](docs/user-quick-start-guide.md#agentic-workflows)
 

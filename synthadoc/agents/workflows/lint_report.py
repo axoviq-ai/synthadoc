@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import functools
+import re
 from typing import TYPE_CHECKING, Awaitable, Callable
 
 from synthadoc.agents.workflows._base import AgenticWorkflow, WorkflowContext
@@ -88,6 +89,13 @@ intermediate steps must be tool calls, not prose.
 
 class LintReportWorkflow(AgenticWorkflow):
     """Run a full lint pass then surface the complete report in one shot."""
+
+    MATCH_RE = re.compile(
+        r"\brun\s+lint\b"
+        r"|\blint\s+run\b"
+        r"|\brun\b.{0,20}\blint\b",
+        re.IGNORECASE,
+    )
 
     async def build_system_prompt(self) -> str:
         return _SYSTEM_PROMPT

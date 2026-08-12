@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
+from synthadoc.agents.workflows._registry import ROUTED_WORKFLOWS
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.wiki import LifecycleState
 
@@ -46,8 +47,9 @@ _SLUG_REINGEST_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Broken wikilinks pattern — shared between _ACTION_RE (detect gate) and the
-# fast-path in run_gen (Workflow C routing). Update once to keep both in sync.
+# Broken-wikilinks sub-pattern kept here for _ACTION_RE (the LLM extraction gate).
+# The actual fast-path routing uses BrokenWikilinksWorkflow.MATCH_RE via ROUTED_WORKFLOWS;
+# both patterns must stay identical.
 _BROKEN_WIKILINKS_PAT = (
     r"\bbroken\b.{0,40}\b(?:wiki\s*links?|links?)\b"
     r"|\b(?:wiki\s*links?|links?)\b.{0,40}\bbroken\b"
@@ -56,16 +58,6 @@ _BROKEN_WIKILINKS_PAT = (
     r"|\bscan\b.{0,40}\b(?:wiki\s*links?|links?)\b"
     r"|\bcheck\b.{0,40}\bwiki\s*links?\b"
     r"|\blink\s+integrit"
-)
-_BROKEN_WIKILINKS_RE = re.compile(_BROKEN_WIKILINKS_PAT, re.IGNORECASE)
-
-# "run lint", "lint run", "run lint and report", "run lint and show" etc.
-# Requires an explicit action verb so "show me my lint report" stays a query.
-_LINT_RUN_RE = re.compile(
-    r"\brun\s+lint\b"
-    r"|\blint\s+run\b"
-    r"|\brun\b.{0,20}\blint\b",
-    re.IGNORECASE,
 )
 
 _SCHEDULE_CRON_PROMPT = (
@@ -162,7 +154,7 @@ _ACTION_RE = re.compile(
     r"|\bre.?ingest\b.{0,60}\bstale\b|\bstale\b.{0,60}\bre.?ingest\b"
     # "re-ingest the <slug> page" — slug-based Workflow B
     r"|\bre.?ingest\b\s+the\s+[a-z0-9]"
-    # broken wikilinks / dead links — Workflow C (shared with _BROKEN_WIKILINKS_PAT)
+    # broken wikilinks / dead links — kept in sync with BrokenWikilinksWorkflow.MATCH_RE
     r"|" + _BROKEN_WIKILINKS_PAT,
     re.IGNORECASE,
 )
@@ -341,19 +333,13 @@ class ActionAgent:
         # Emit immediately so the UI shows activity while _extract() waits for the LLM.
         yield {"event": "tool_progress", "data": {"tool": "_init", "message": "Analyzing your request..."}}
 
-        # Fast-path: "run lint …" → LintReportWorkflow (no LLM extraction).
-        if _LINT_RUN_RE.search(question):
-            from synthadoc.agents.workflows.lint_report import LintReportWorkflow
-            async for evt in self._run_orchestrate(question, session_id=session_id, workflow=LintReportWorkflow()):
-                yield evt
-            return
-
-        # Fast-path: broken wikilinks queries → BrokenWikilinksWorkflow (no LLM extraction).
-        if _BROKEN_WIKILINKS_RE.search(question):
-            from synthadoc.agents.workflows.broken_wikilinks import BrokenWikilinksWorkflow
-            async for evt in self._run_orchestrate(question, session_id=session_id, workflow=BrokenWikilinksWorkflow()):
-                yield evt
-            return
+        # Fast-path: registry-based workflow routing (no LLM extraction).
+        # Each workflow declares its own MATCH_RE; first match wins.
+        for _wf_cls in ROUTED_WORKFLOWS:
+            if _wf_cls.MATCH_RE and _wf_cls.MATCH_RE.search(question):
+                async for evt in self._run_orchestrate(question, session_id=session_id, workflow=_wf_cls()):
+                    yield evt
+                return
 
         # Fast-path: slug-based reingest queries always route to orchestrate without an LLM call.
         if _SLUG_REINGEST_RE.search(question):
