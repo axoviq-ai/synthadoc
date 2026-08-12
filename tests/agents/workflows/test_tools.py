@@ -11,9 +11,13 @@ import pytest
 
 from synthadoc.agents.workflows._base import WorkflowContext
 from synthadoc.agents.workflows._tools import (
+    _apply_single_fix,
+    _normalize_slug,
     _resolve_source_path,
     _resolve_stale_pages,
+    tool_apply_link_fixes,
     tool_confirm,
+    tool_find_broken_wikilinks,
     tool_find_page_source,
     tool_find_stale_pages,
     tool_get_page_states,
@@ -266,6 +270,198 @@ async def test_confirm_tool_blocks_until_response():
     result = await tool_confirm(ctx, "Are you sure?")
     assert result["confirmed"] is True
     assert any(e["event"] == "confirm_request" for e in events)
+
+
+# ---------------------------------------------------------------------------
+# Test 7: _apply_single_fix — unit tests for the link replacement helper
+# ---------------------------------------------------------------------------
+
+def test_apply_single_fix_replaces_plain_link():
+    content = "See [[typo-slug]] for details."
+    new, n = _apply_single_fix(content, "typo-slug", "correct-slug")
+    assert new == "See [[correct-slug]] for details."
+    assert n == 1
+
+
+def test_apply_single_fix_preserves_display_text():
+    content = "See [[typo-slug|Display Name]] here."
+    new, n = _apply_single_fix(content, "typo-slug", "correct-slug")
+    assert new == "See [[correct-slug|Display Name]] here."
+    assert n == 1
+
+
+def test_apply_single_fix_removes_link_when_new_ref_is_none():
+    content = "See [[dead-slug]] for details."
+    new, n = _apply_single_fix(content, "dead-slug", None)
+    assert "[[" not in new
+    assert "dead-slug" in new  # display text preserved
+    assert n == 1
+
+
+def test_apply_single_fix_removes_link_keeps_display_text_when_none():
+    content = "See [[dead-slug|Nice Name]] here."
+    new, n = _apply_single_fix(content, "dead-slug", None)
+    assert "[[" not in new
+    assert "Nice Name" in new
+    assert n == 1
+
+
+def test_apply_single_fix_ignores_unrelated_links():
+    content = "[[other-page]] and [[typo-slug]]"
+    new, n = _apply_single_fix(content, "typo-slug", "fixed-slug")
+    assert "[[other-page]]" in new
+    assert "[[fixed-slug]]" in new
+    assert n == 1
+
+
+def test_apply_single_fix_case_insensitive():
+    content = "See [[Typo Slug]] here."
+    new, n = _apply_single_fix(content, "typo-slug", "correct-slug")
+    assert "[[correct-slug]]" in new
+    assert n == 1
+
+
+# ---------------------------------------------------------------------------
+# Test 8: tool_find_broken_wikilinks
+# ---------------------------------------------------------------------------
+
+def _make_page(content: str):
+    page = MagicMock()
+    page.content = content
+    return page
+
+
+async def test_find_broken_wikilinks_happy_path():
+    """Broken link is detected; fuzzy suggestion provided when close match exists."""
+    audit_db = MagicMock()
+    audit_db.get_live_page_states = AsyncMock(
+        return_value=[{"slug": "page-a", "state": "active"}]
+    )
+    store = MagicMock()
+    store.all_slugs = MagicMock(return_value=["alan-turing", "ada-lovelace"])
+    store.read_page = MagicMock(return_value=_make_page("See [[alan-tunring]] for details."))
+    store.page_exists = MagicMock(return_value=True)
+
+    ctx, events = _make_ctx(audit_db=audit_db, store=store)
+    result = await tool_find_broken_wikilinks(ctx)
+
+    assert result["total_broken"] == 1
+    assert result["scanned"] == 1
+    assert result["pages"][0]["slug"] == "page-a"
+    broken = result["pages"][0]["broken_links"][0]
+    assert broken["ref"] == "alan-tunring"
+    assert broken["suggestion"] == "alan-turing"
+
+
+async def test_find_broken_wikilinks_no_broken_links():
+    """All wikilinks resolve — returns empty pages list."""
+    audit_db = MagicMock()
+    audit_db.get_live_page_states = AsyncMock(
+        return_value=[{"slug": "page-a", "state": "active"}]
+    )
+    store = MagicMock()
+    store.all_slugs = MagicMock(return_value=["alan-turing"])
+    store.read_page = MagicMock(return_value=_make_page("See [[alan-turing]] here."))
+    store.page_exists = MagicMock(return_value=True)
+
+    ctx, _ = _make_ctx(audit_db=audit_db, store=store)
+    result = await tool_find_broken_wikilinks(ctx)
+
+    assert result["total_broken"] == 0
+    assert result["pages"] == []
+
+
+async def test_find_broken_wikilinks_no_suggestion_for_distant_slug():
+    """No suggestion returned when the broken ref has no close fuzzy match."""
+    audit_db = MagicMock()
+    audit_db.get_live_page_states = AsyncMock(
+        return_value=[{"slug": "page-a", "state": "active"}]
+    )
+    store = MagicMock()
+    store.all_slugs = MagicMock(return_value=["completely-different"])
+    store.read_page = MagicMock(return_value=_make_page("See [[xyz-nothing]] here."))
+    store.page_exists = MagicMock(return_value=True)
+
+    ctx, _ = _make_ctx(audit_db=audit_db, store=store)
+    result = await tool_find_broken_wikilinks(ctx)
+
+    assert result["total_broken"] == 1
+    assert result["pages"][0]["broken_links"][0]["suggestion"] is None
+
+
+async def test_find_broken_wikilinks_skips_stale_pages():
+    """Stale pages are not included in the scan."""
+    audit_db = MagicMock()
+    audit_db.get_live_page_states = AsyncMock(
+        return_value=[
+            {"slug": "active-page", "state": "active"},
+            {"slug": "stale-page",  "state": "stale"},
+        ]
+    )
+    store = MagicMock()
+    store.all_slugs = MagicMock(return_value=["real-slug"])
+
+    def _read(slug):
+        return _make_page(f"See [[broken-{slug}]] here.")
+
+    store.read_page = MagicMock(side_effect=_read)
+    store.page_exists = MagicMock(return_value=True)
+
+    ctx, _ = _make_ctx(audit_db=audit_db, store=store)
+    result = await tool_find_broken_wikilinks(ctx)
+
+    scanned_slugs = [p["slug"] for p in result["pages"]]
+    assert "stale-page" not in scanned_slugs
+    assert result["scanned"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Test 9: tool_apply_link_fixes
+# ---------------------------------------------------------------------------
+
+async def test_apply_link_fixes_happy_path():
+    """Fixes are applied to page content and written back to the store."""
+    page = _make_page("See [[typo-slug]] for details.")
+    store = MagicMock()
+    store.read_page = MagicMock(return_value=page)
+    store.page_lock = MagicMock(return_value=MagicMock(__enter__=MagicMock(return_value=None), __exit__=MagicMock(return_value=False)))
+    store.write_page = MagicMock()
+
+    ctx, events = _make_ctx(store=store)
+    result = await tool_apply_link_fixes(
+        ctx, "page-a", [{"old_ref": "typo-slug", "new_ref": "correct-slug"}]
+    )
+
+    assert result["status"] == "success"
+    assert result["changes"] == 1
+    store.write_page.assert_called_once()
+    assert any(e["event"] == "tool_progress" for e in events)
+
+
+async def test_apply_link_fixes_page_not_found():
+    """Returns error when the page slug does not exist."""
+    store = MagicMock()
+    store.read_page = MagicMock(return_value=None)
+
+    ctx, _ = _make_ctx(store=store)
+    result = await tool_apply_link_fixes(ctx, "missing", [{"old_ref": "x", "new_ref": "y"}])
+
+    assert result["status"] == "error"
+    assert "not found" in result["error"]
+
+
+async def test_apply_link_fixes_no_changes():
+    """Returns success with changes=0 when old_ref is not found in content."""
+    store = MagicMock()
+    store.read_page = MagicMock(return_value=_make_page("No wikilinks here."))
+    store.page_lock = MagicMock(return_value=MagicMock(__enter__=MagicMock(return_value=None), __exit__=MagicMock(return_value=False)))
+
+    ctx, _ = _make_ctx(store=store)
+    result = await tool_apply_link_fixes(ctx, "page-a", [{"old_ref": "ghost", "new_ref": "target"}])
+
+    assert result["status"] == "success"
+    assert result["changes"] == 0
+    store.write_page.assert_not_called() if hasattr(store, "write_page") else None
 
 
 # ---------------------------------------------------------------------------

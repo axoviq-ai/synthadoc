@@ -9,7 +9,9 @@ WorkflowContext.
 from __future__ import annotations
 
 import asyncio
+import difflib
 import os
+import re
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -276,6 +278,149 @@ async def tool_get_page_states(ctx: "WorkflowContext", slugs: list[str]) -> dict
         {"tool": "get_page_states", "message": "Checking page states after re-ingest..."},
     )
     return {"pages": results}
+
+
+# Extracts wikilink slug, excluding display text and anchors: [[slug]], [[slug|text]], [[slug#anchor]]
+_WIKILINK_SCAN_RE = re.compile(r"\[\[([^\]|#]+?)(?:[|#][^\]]*)?\]\]")
+
+# Captures slug + optional suffix (|display or #anchor) for targeted replacement
+_WIKILINK_REPLACE_RE = re.compile(r"\[\[([^\]|#]+?)((?:[|#][^\]]*))?\]\]")
+
+
+def _normalize_slug(raw: str) -> str:
+    return raw.strip().lower().replace(" ", "-")
+
+
+def _apply_single_fix(content: str, old_ref: str, new_ref: str | None) -> tuple[str, int]:
+    """Replace all [[old_ref]] occurrences with [[new_ref]] or plain display text.
+
+    Returns (updated_content, number_of_replacements).
+    """
+    changes = 0
+
+    def _replacer(m: re.Match) -> str:
+        nonlocal changes
+        if _normalize_slug(m.group(1)) != old_ref:
+            return m.group(0)
+        suffix = m.group(2) or ""
+        changes += 1
+        if new_ref:
+            return f"[[{new_ref}{suffix}]]"
+        # Remove link — keep display text if present, else the raw slug text
+        if suffix.startswith("|"):
+            return suffix[1:]
+        return m.group(1).strip()
+
+    return _WIKILINK_REPLACE_RE.sub(_replacer, content), changes
+
+
+async def tool_find_broken_wikilinks(ctx: "WorkflowContext") -> dict:
+    """Scan all *active* wiki pages for ``[[slug]]`` references that resolve to no existing page.
+
+    Stale, draft, and archived pages are excluded — they must be promoted to
+    active first to be included in the scan.
+
+    Uses ``difflib.get_close_matches`` (stdlib, no extra dependency) to suggest
+    fuzzy corrections for likely typos.
+
+    Returns::
+
+        {
+          "pages":        [{"slug": str, "broken_links": [{"ref": str, "suggestion": str|null}]}],
+          "scanned":      int,   # number of active pages scanned
+          "total_broken": int,   # total broken link references found
+        }
+    """
+    all_states = await ctx.audit_db.get_live_page_states(ctx.store.page_exists)
+    active_slugs: set[str] = {p["slug"] for p in all_states if p.get("state") == "active"}
+    all_slugs: list[str] = ctx.store.all_slugs()
+    all_slug_set: set[str] = set(all_slugs)
+
+    n_active = len(active_slugs)
+    await ctx.send_sse_event(
+        "tool_progress",
+        {"tool": "find_broken_wikilinks",
+         "message": f"Scanning {n_active} active page{'s' if n_active != 1 else ''} for broken wikilinks..."},
+    )
+
+    pages_with_issues: list[dict] = []
+    total_broken = 0
+
+    for slug in sorted(active_slugs):
+        page = ctx.store.read_page(slug)
+        if not page or not page.content:
+            continue
+        refs = _WIKILINK_SCAN_RE.findall(page.content)
+        broken: list[dict] = []
+        seen: set[str] = set()
+        for ref in refs:
+            normalized = _normalize_slug(ref)
+            if normalized in all_slug_set or normalized in seen:
+                continue
+            seen.add(normalized)
+            matches = difflib.get_close_matches(normalized, all_slugs, n=1, cutoff=0.72)
+            broken.append({"ref": normalized, "suggestion": matches[0] if matches else None})
+        if broken:
+            pages_with_issues.append({"slug": slug, "broken_links": broken})
+            total_broken += len(broken)
+
+    n_pages = len(pages_with_issues)
+    if n_pages:
+        msg = (
+            f"Found {total_broken} broken wikilink{'s' if total_broken != 1 else ''} "
+            f"across {n_pages} active page{'s' if n_pages != 1 else ''}"
+        )
+    else:
+        msg = f"No broken wikilinks found across {n_active} active page{'s' if n_active != 1 else ''}"
+
+    await ctx.send_sse_event("tool_progress", {"tool": "find_broken_wikilinks", "message": msg})
+    return {"pages": pages_with_issues, "scanned": n_active, "total_broken": total_broken}
+
+
+async def tool_apply_link_fixes(
+    ctx: "WorkflowContext",
+    page_slug: str,
+    fixes: list[dict],
+) -> dict:
+    """Apply wikilink corrections to a single wiki page's content.
+
+    Each entry in *fixes* is ``{"old_ref": str, "new_ref": str | null}``.
+    ``new_ref=null`` removes the link entirely, keeping any display text.
+
+    Writes directly to the wiki store (same path used by ``cascade_archive``).
+
+    Returns::
+
+        {"status": "success", "changes": int, "page": str}
+        {"status": "error",   "error": str}
+    """
+    page = ctx.store.read_page(page_slug)
+    if page is None:
+        return {"status": "error", "error": f"Page {page_slug!r} not found"}
+
+    content = page.content
+    total_changes = 0
+    for fix in fixes:
+        old_ref = fix.get("old_ref", "").strip()
+        new_ref = fix.get("new_ref") or None  # treat empty string as None
+        if not old_ref:
+            continue
+        content, n = _apply_single_fix(content, old_ref, new_ref)
+        total_changes += n
+
+    if total_changes == 0:
+        return {"status": "success", "changes": 0, "page": page_slug}
+
+    page.content = content
+    with ctx.store.page_lock(page_slug):
+        ctx.store.write_page(page_slug, page)
+
+    await ctx.send_sse_event(
+        "tool_progress",
+        {"tool": "apply_link_fixes",
+         "message": f"✓ {page_slug}: {total_changes} link{'s' if total_changes != 1 else ''} fixed"},
+    )
+    return {"status": "success", "changes": total_changes, "page": page_slug}
 
 
 async def tool_confirm(

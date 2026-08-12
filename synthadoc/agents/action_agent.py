@@ -46,6 +46,18 @@ _SLUG_REINGEST_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Fast-path regex: broken wikilink scan/fix queries → BrokenWikilinksWorkflow.
+_BROKEN_WIKILINKS_RE = re.compile(
+    r"\bbroken\b.{0,40}\b(?:wiki\s*links?|links?)\b"
+    r"|\b(?:wiki\s*links?|links?)\b.{0,40}\bbroken\b"
+    r"|\bfix\b.{0,40}\b(?:dead|dangling|broken)\b.{0,30}\b(?:wiki\s*links?|links?)\b"
+    r"|\b(?:dead|dangling)\b.{0,30}\b(?:wiki\s*links?|links?)\b"
+    r"|\bscan\b.{0,40}\b(?:wiki\s*links?|links?)\b"
+    r"|\bcheck\b.{0,40}\bwiki\s*links?\b"
+    r"|\blink\s+integrit",
+    re.IGNORECASE,
+)
+
 _SCHEDULE_CRON_PROMPT = (
     "What schedule should this run on? (e.g. 'every night at 9 PM', 'daily at 6 AM')"
 )
@@ -317,6 +329,13 @@ class ActionAgent:
         # Emit immediately so the UI shows activity while _extract() waits for the LLM.
         yield {"event": "tool_progress", "data": {"tool": "_init", "message": "Analyzing your request..."}}
 
+        # Fast-path: broken wikilinks queries → BrokenWikilinksWorkflow (no LLM extraction).
+        if _BROKEN_WIKILINKS_RE.search(question):
+            from synthadoc.agents.workflows.broken_wikilinks import BrokenWikilinksWorkflow
+            async for evt in self._run_orchestrate(question, session_id=session_id, workflow=BrokenWikilinksWorkflow()):
+                yield evt
+            return
+
         # Fast-path: slug-based reingest queries always route to orchestrate without an LLM call.
         if _SLUG_REINGEST_RE.search(question):
             async for evt in self._run_orchestrate(question, session_id=session_id):
@@ -364,10 +383,18 @@ class ActionAgent:
             _done_data["pre_prompt"] = _pre_prompt
         yield {"event": "done", "data": _done_data}
 
-    async def _run_orchestrate(self, question: str, session_id: str | None = None) -> "AsyncGenerator[dict, None]":
-        """Run IngestLintWorkflow via tool-call loop and yield SSE dicts."""
+    async def _run_orchestrate(
+        self,
+        question: str,
+        session_id: str | None = None,
+        workflow: "AgenticWorkflow | None" = None,
+    ) -> "AsyncGenerator[dict, None]":
+        """Run an AgenticWorkflow via the tool-call loop and yield SSE dicts.
+
+        Defaults to IngestLintWorkflow when *workflow* is not provided.
+        """
         import asyncio as _asyncio
-        from synthadoc.agents.workflows._base import WorkflowContext
+        from synthadoc.agents.workflows._base import AgenticWorkflow, WorkflowContext
         from synthadoc.agents.workflows._loop import run_tool_call_loop
         from synthadoc.agents.workflows.ingest_lint import IngestLintWorkflow
         from synthadoc.storage.log import AuditDB
@@ -403,7 +430,7 @@ class ActionAgent:
             confirm_result_registry=getattr(self._orch, "_confirm_result_registry", {}),
         )
 
-        wf = IngestLintWorkflow()
+        wf = workflow if workflow is not None else IngestLintWorkflow()
         system_prompt = await wf.build_system_prompt()
         tool_fns = wf.get_tool_fns(ctx)
 

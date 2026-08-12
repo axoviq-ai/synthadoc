@@ -3221,7 +3221,7 @@ This design lets users annotate any section of `purpose.md` without losing their
 
 ## Agentic Maintenance Workflows
 
-The web chat UI and Obsidian plugin query modal support conversational wiki maintenance through an agentic tool-call loop. Two workflows are available:
+The web chat UI and Obsidian plugin query modal support conversational wiki maintenance through an agentic tool-call loop. Three workflows are available:
 
 ### Workflow A — stale-pages bulk reingest
 
@@ -3273,12 +3273,71 @@ In the web UI **Graph tab**, the node detail panel includes a **Maintenance** se
 - `confirm_request` — `{session_id, message, yes_label, no_label}` — requires a user decision before proceeding
 - `done.pre_prompt` — optional string in the `done` event that pre-fills the chat textarea with the natural next action (e.g. "Run lint to promote re-ingested pages to active")
 
+### Workflow C — broken wikilinks scan and fix
+
+Triggered by phrases such as "scan for broken wikilinks", "fix broken links", or "check wikilink integrity". A pre-LLM regex fast-path in the action agent catches this pattern and routes directly to `BrokenWikilinksWorkflow`:
+
+1. `find_broken_wikilinks` — scans all **active** pages for `[[slug]]` references that resolve to no existing page; stale, draft, and archived pages are excluded from the scan. Uses `difflib.get_close_matches` (stdlib) to suggest corrections for likely typos
+2. If no broken links found: reports a clean wiki and stops
+3. `confirm` — presents the full fix scope to the user: every affected page, each broken reference, and the proposed fix (fuzzy suggestion or link removal)
+4. `apply_link_fixes` — applies corrections one page at a time; writes directly to the wiki `.md` file (same path as `cascade_archive`); content snapshots record the before/after diff
+5. `run_lint` → `poll_job` — validates link integrity after all fixes are applied
+6. `get_page_states` — checks the final lifecycle state of all fixed pages
+7. Plain-text summary: pages scanned, links fixed, per-page breakdown, lint result, page states
+
+Broken links with a fuzzy suggestion are replaced with `[[corrected-slug]]`. Broken links with no close match are unlinked — the link markup is removed while any display text is preserved.
+
+### Tool sets by workflow
+
+**IngestLintWorkflow** (Workflows A and B):
+
+| Tool | Description |
+|------|-------------|
+| `find_stale_pages` | Returns `[{slug, source_path}]` for all stale pages with a local text source |
+| `find_page_source` | Looks up any page by slug regardless of lifecycle state; returns `{slug, source_path}` |
+| `ingest_source` | Force-ingests a source file and waits for the job to reach a terminal state; returns `{status, message, job_id}` |
+| `poll_job` | Polls `GET /jobs/{job_id}` with exponential backoff until terminal; returns final status |
+| `run_lint` | Enqueues a full lint run; returns `{job_id}` — caller uses `poll_job` to wait for completion |
+| `confirm` | Sends a `confirm_request` SSE event and blocks until the user responds (Yes/No) |
+| `get_page_states` | Returns the current lifecycle state for a list of slugs |
+
+**BrokenWikilinksWorkflow** (Workflow C):
+
+| Tool | Description |
+|------|-------------|
+| `find_broken_wikilinks` | Scans active pages for `[[slug]]` refs that resolve to no existing page; returns broken refs with fuzzy suggestions |
+| `apply_link_fixes` | Applies `{old_ref → new_ref}` corrections to a single page; `new_ref=null` removes the link |
+| `confirm` | Sends a `confirm_request` SSE event and blocks until the user responds |
+| `run_lint` | Enqueues a lint pass to validate link integrity after fixes |
+| `poll_job` | Polls a job to terminal state |
+| `get_page_states` | Returns the current lifecycle state for a list of slugs |
+
+### Web UI graph sidebar maintenance chips
+
+In the web UI **Graph tab**, the node detail panel includes a **Maintenance** section with two chips that trigger the same workflows without typing:
+
+| Chip | Sent query | Workflow |
+|------|-----------|---------|
+| **⚑ Check this page for issues** | `"Check the {slug} page for issues"` | Lint-style analysis for the selected page |
+| **↻ Re-ingest this page** | `"Re-ingest the {slug} page"` | Triggers Workflow B for the selected node |
+
+### SSE protocol extensions (v1.2.0)
+
+- `tool_progress` — `{tool, job_id?, message}` — emitted at each tool step so the UI shows inline progress
+- `confirm_request` — `{session_id, message, yes_label, no_label}` — requires a user decision before proceeding
+- `done.pre_prompt` — optional string in the `done` event that pre-fills the chat textarea with the natural next action (e.g. "Run lint to promote re-ingested pages to active")
+
 ### Routing and loop constraints
 
-- Phrases matching `re-ingest the <slug> page` are intercepted by a compiled regex fast-path in the action agent and routed directly to `IngestLintWorkflow` — no LLM classification call is made, ensuring consistent routing
+- Phrases matching `re-ingest the <slug> page` are intercepted by a compiled regex fast-path and routed to `IngestLintWorkflow` — no LLM call is made
+- Phrases matching broken wikilink intent (`scan for broken wikilinks`, `fix broken links`, `check wikilink integrity`) are intercepted by a separate regex fast-path and routed to `BrokenWikilinksWorkflow` — no LLM call is made
 - Phrases matching `re-ingest stale pages` / `fix stale pages` are routed via LLM intent extraction
 - Maximum 30 tool calls per action; confirmation timeout 120 seconds (defaults to declined on timeout)
-- A single tool failure does not abort the workflow — remaining pages in Workflow A continue, and all outcomes are summarised in the final narrative
+- A single tool failure does not abort the workflow — remaining pages continue and all outcomes are summarised in the final narrative
+
+### Adding a new workflow
+
+Implement `AgenticWorkflow` (three abstract methods: `build_system_prompt`, `build_initial_message`, `get_tool_fns`), register the routing trigger in the action agent. The loop machinery — tool dispatch, result injection, termination detection, 30-call cap, 120-second confirmation timeout — is inherited automatically.
 
 → User walkthrough: [Quick-Start Guide §26 — Agentic Maintenance Workflows](docs/user-quick-start-guide.md#agentic-workflows)
 
