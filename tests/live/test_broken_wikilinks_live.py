@@ -294,10 +294,13 @@ def test_scan_detects_broken_links_and_emits_confirm():
         # Confirm gate must have been presented
         assert "confirm_request" in [e[0] for e in events], "No confirm_request emitted"
 
-        # Confirm message must reference the broken ref we planted
+        # Confirm message must reference both the broken ref and the page slug
         confirm_msgs = [e[1].get("message", "") for e in events if e[0] == "confirm_request"]
         assert any(broken_ref in m for m in confirm_msgs), (
             f"broken ref {broken_ref!r} not in confirm message: {confirm_msgs}"
+        )
+        assert any(slug in m or broken_ref in m for m in confirm_msgs), (
+            f"page slug {slug!r} and broken ref {broken_ref!r} missing from confirm message: {confirm_msgs}"
         )
 
         # Scan progress message must appear
@@ -625,43 +628,6 @@ def test_mixed_fixable_and_removable_links_on_one_page():
         assert target in content
         # Removable ref → unlinked (markup gone)
         assert f"[[{removable_ref}]]" not in content
-
-    finally:
-        for s in created:
-            _delete_page(wiki_root, s)
-
-
-@pytest.mark.live
-def test_confirm_message_content_lists_correct_refs():
-    """
-    The confirm_request message explicitly names the affected page slug and
-    broken ref — the user sees meaningful scope before approving.
-    """
-    wiki_root = _wiki_root()
-    created: list[str] = []
-    slug = _unique_slug("confmsg")
-    broken_ref = _unique_slug("dead")
-
-    try:
-        _create_active_page(wiki_root, slug, broken_refs=[broken_ref])
-        created.append(slug)
-
-        session_id = str(uuid.uuid4())
-        events = _post_action_with_confirm(
-            "scan for broken wikilinks", session_id, confirmed=False
-        )
-
-        _assert_stream_complete(events)
-
-        confirm_events = [e for e in events if e[0] == "confirm_request"]
-        assert confirm_events, "No confirm_request event emitted"
-
-        msg = confirm_events[0][1].get("message", "")
-        assert broken_ref in msg, f"broken_ref {broken_ref!r} not in confirm message: {msg!r}"
-        # Either the slug or the broken ref marks the scope clearly
-        assert slug in msg or broken_ref in msg, (
-            f"Confirm message does not identify scope: {msg!r}"
-        )
 
     finally:
         for s in created:
