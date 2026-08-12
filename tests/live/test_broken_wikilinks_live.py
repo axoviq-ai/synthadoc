@@ -32,6 +32,8 @@ import time
 import uuid
 from pathlib import Path
 
+import sys
+
 import httpx
 import pytest
 
@@ -693,3 +695,7 @@ def test_lint_runs_after_fixes_and_get_page_states_fires():
     finally:
         for s in created:
             _delete_page(wiki_root, s)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main([__file__, "-v", "-s"]))
