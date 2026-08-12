@@ -3221,7 +3221,7 @@ This design lets users annotate any section of `purpose.md` without losing their
 
 ## Agentic Maintenance Workflows
 
-The web chat UI and Obsidian plugin query modal support conversational wiki maintenance through an agentic tool-call loop. Four workflows are available:
+The web chat UI and Obsidian plugin query modal support conversational wiki maintenance through an agentic tool-call loop. The CLI does not expose workflows — it uses the job queue directly via `synthadoc lint`, `synthadoc ingest`, etc. Four workflows are available:
 
 ### Workflow A — stale-pages bulk reingest
 
