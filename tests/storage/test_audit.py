@@ -185,3 +185,45 @@ async def test_update_ingest_cost_patches_most_recent_record(tmp_wiki):
     history, _ = await db.list_ingests(limit=1)
     assert len(history) == 1
     assert abs(history[0]["cost_usd"] - 0.0312) < 1e-9
+
+
+@pytest.mark.asyncio
+async def test_get_last_lint_summary_returns_none_when_no_run(tmp_wiki):
+    """get_last_lint_summary() must return None before any lint run is recorded."""
+    db = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await db.init()
+    assert await db.get_last_lint_summary() is None
+
+
+@pytest.mark.asyncio
+async def test_record_lint_run_stored_and_retrievable(tmp_wiki):
+    """record_lint_run() must persist stats readable via get_last_lint_summary()."""
+    db = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await db.init()
+    await db.record_lint_run(
+        dangling_removed=3,
+        orphans=5,
+        contradictions_resolved=1,
+        contradictions_flagged=2,
+    )
+    summary = await db.get_last_lint_summary()
+    assert summary is not None
+    assert summary["dangling_removed"] == 3
+    assert summary["orphans"] == 5
+    assert summary["contradictions_resolved"] == 1
+    assert summary["contradictions_flagged"] == 2
+    assert "timestamp" in summary
+
+
+@pytest.mark.asyncio
+async def test_get_last_lint_summary_returns_most_recent(tmp_wiki):
+    """get_last_lint_summary() must return the most recent run when multiple exist."""
+    db = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await db.init()
+    await db.record_lint_run(dangling_removed=1, orphans=2,
+                             contradictions_resolved=0, contradictions_flagged=1)
+    await db.record_lint_run(dangling_removed=7, orphans=0,
+                             contradictions_resolved=3, contradictions_flagged=0)
+    summary = await db.get_last_lint_summary()
+    assert summary is not None
+    assert summary["dangling_removed"] == 7

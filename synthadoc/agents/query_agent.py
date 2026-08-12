@@ -233,6 +233,12 @@ _LIVE_DATA_TRIGGERS: frozenset[str] = frozenset({
     "job", "jobs", "job id", "job status", "ingest job", "queue",
     "pending jobs", "failed job", "dead job",
     "wiki status", "page status", "show status",
+    "lint", "lint report", "lint run", "lint results", "lint check",
+})
+
+_LINT_TRIGGERS: frozenset[str] = frozenset({
+    "lint", "lint report", "lint run", "lint results", "lint check", "lint status",
+    "last lint", "lint summary",
 })
 
 _RECENT_CHANGE_TRIGGERS: frozenset[str] = frozenset({
@@ -639,6 +645,26 @@ class QueryAgent:
                             lines.append(f"  - [[{slug}]]  (from {src}, {date})" if src else f"  - [[{slug}]]  ({date})")
                 else:
                     lines.append(f"\n### Pages ingested or updated in the last {_window_label}\n  (none)")
+
+            # Last lint run statistics
+            if any(kw in q_lower for kw in _LINT_TRIGGERS):
+                lint_summary = await audit.get_last_lint_summary()
+                if lint_summary:
+                    ts = (lint_summary.get("timestamp") or "")[:16].replace("T", " ")
+                    dangling = lint_summary.get("dangling_removed", 0)
+                    orphans_n = lint_summary.get("orphans", 0)
+                    c_res = lint_summary.get("contradictions_resolved", 0)
+                    c_flag = lint_summary.get("contradictions_flagged", 0)
+                    lines.append(f"\n### Last lint run ({ts} UTC)")
+                    if dangling:
+                        lines.append(f"  Dangling links removed : {dangling}")
+                    lines.append(f"  Orphans found          : {orphans_n}")
+                    lines.append(f"  Contradictions         : {c_res} resolved, {c_flag} flagged")
+                else:
+                    lines.append(
+                        "\n### Lint report\n"
+                        "  (no lint run recorded yet — run `synthadoc lint run`)"
+                    )
 
             # Job status — detect a specific 8-char hex job ID or list recent jobs
             if any(kw in q_lower for kw in _JOB_TRIGGERS) and self._orchestrator is not None:

@@ -567,6 +567,42 @@ class AuditDB:
             )
             await db.commit()
 
+    async def record_lint_run(
+        self,
+        dangling_removed: int,
+        orphans: int,
+        contradictions_resolved: int,
+        contradictions_flagged: int,
+    ) -> None:
+        """Persist lint run statistics so the query agent can surface them."""
+        await self.write_event(
+            "lint_complete",
+            metadata={
+                "dangling_removed": dangling_removed,
+                "orphans": orphans,
+                "contradictions_resolved": contradictions_resolved,
+                "contradictions_flagged": contradictions_flagged,
+            },
+        )
+
+    async def get_last_lint_summary(self) -> dict | None:
+        """Return metadata from the most recent lint_complete event, or None."""
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT timestamp, metadata FROM audit_events "
+                "WHERE event = 'lint_complete' ORDER BY id DESC LIMIT 1"
+            ) as cur:
+                row = await cur.fetchone()
+        if row is None:
+            return None
+        try:
+            data = json.loads(row["metadata"])
+            data["timestamp"] = row["timestamp"]
+            return data
+        except (json.JSONDecodeError, KeyError):
+            return None
+
     async def set_page_state(self, slug: str, state: str, triggered_by: str) -> None:
         ts = datetime.now(timezone.utc).isoformat()
         async with aiosqlite.connect(self._path) as db:
