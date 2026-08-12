@@ -3221,7 +3221,7 @@ This design lets users annotate any section of `purpose.md` without losing their
 
 ## Agentic Maintenance Workflows
 
-The web chat UI and Obsidian plugin query modal support conversational wiki maintenance through an agentic tool-call loop. The CLI does not expose workflows — it uses the job queue directly via `synthadoc lint`, `synthadoc ingest`, etc. Four workflows are available:
+The web chat UI, Obsidian plugin query modal, and `synthadoc query` CLI command all support conversational wiki maintenance through an agentic tool-call loop — they all reach `ActionAgent.run_gen` via the `/query/stream` SSE endpoint. (`synthadoc lint` and `synthadoc ingest` are direct job-queue commands and bypass the workflow system entirely.) Four workflows are available:
 
 ### Workflow A — stale-pages bulk reingest
 
