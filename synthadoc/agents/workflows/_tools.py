@@ -171,7 +171,7 @@ async def tool_ingest_source(ctx: "WorkflowContext", source_path: str) -> dict:
 
     # Poll until terminal so the caller gets the outcome in a single tool call.
     # Include job_id in the response so the caller can optionally verify via poll_job.
-    result = await tool_poll_job(ctx, job_id, timeout_seconds=300)
+    result = await tool_poll_job(ctx, job_id, timeout_seconds=300, job_label="Ingest")
     result["job_id"] = job_id
 
     status = result.get("status", "failed")
@@ -186,6 +186,7 @@ async def tool_poll_job(
     ctx: "WorkflowContext",
     job_id: str,
     timeout_seconds: int = 240,
+    job_label: str = "Job",
 ) -> dict:
     """Poll a job until it reaches a terminal state or the timeout expires.
 
@@ -227,7 +228,7 @@ async def tool_poll_job(
             {
                 "tool": "poll_job",
                 "job_id": job_id,
-                "message": f"Ingest running... ({int(elapsed)}s)",
+                "message": f"{job_label} running... ({int(elapsed)}s)",
             },
         )
         await asyncio.sleep(min(1 * (2**attempt), 30))

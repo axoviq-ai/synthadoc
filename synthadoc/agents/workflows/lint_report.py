@@ -98,6 +98,6 @@ class LintReportWorkflow(AgenticWorkflow):
     def get_tool_fns(self, ctx: WorkflowContext) -> dict[str, Callable[..., Awaitable[dict]]]:
         return {
             "run_lint":        functools.partial(tool_run_lint, ctx),
-            "poll_job":        functools.partial(tool_poll_job, ctx),
+            "poll_job":        functools.partial(tool_poll_job, ctx, job_label="Lint"),
             "get_lint_report": functools.partial(tool_get_lint_report, ctx),
         }
