@@ -3350,6 +3350,8 @@ Fast-path routing uses a **workflow registry** (`synthadoc/agents/workflows/_reg
 
 The LLM-extraction gate (`_ACTION_RE` in `action_agent.py`) is a separate, more conservative pattern set used to decide whether to invoke the LLM at all. Workflow `MATCH_RE` patterns are intentionally not merged into `_ACTION_RE` because fast-path patterns can be broader than what `_ACTION_RE` should allow (e.g. `LintReportWorkflow.MATCH_RE` matches "How do I run a lint check?" which is a question, not an action). Only patterns whose false-positive risk is acceptable should be added to `_ACTION_RE`.
 
+**`_BROKEN_WIKILINKS_PAT` sync requirement:** `BrokenWikilinksWorkflow.MATCH_RE` has a corresponding plain-string constant (`_BROKEN_WIKILINKS_PAT`) in `action_agent.py` that forms part of `_ACTION_RE`. When `BrokenWikilinksWorkflow.MATCH_RE` changes, `_BROKEN_WIKILINKS_PAT` must be updated manually to match — there is no automated sync. A `MATCH_RE` pattern whose phrases have no corresponding `_ACTION_RE` entry is unreachable dead code: the query is diverted to `QueryAgent` before the registry loop is ever consulted. The removal of `|\blint\s+run\b` from `LintReportWorkflow.MATCH_RE` illustrates this: the verb-last phrase "lint run" was never covered by `_ACTION_RE`, so the branch could never fire.
+
 - Phrases matching `MATCH_RE` of any registered workflow → routed directly, no LLM extraction
 - Phrases matching `re-ingest the <slug> page` → routed to `IngestLintWorkflow` via a separate slug-specific fast-path (this workflow has no `MATCH_RE` because the slug is captured at routing time)
 - Phrases matching `re-ingest stale pages` / `fix stale pages` → routed via LLM intent extraction
@@ -3361,8 +3363,9 @@ The LLM-extraction gate (`_ACTION_RE` in `action_agent.py`) is a separate, more 
 1. Create a new module under `synthadoc/agents/workflows/` implementing `AgenticWorkflow` (three abstract methods: `build_system_prompt`, `build_initial_message`, `get_tool_fns`).
 2. If the workflow needs pre-LLM fast-path routing, set `MATCH_RE = re.compile(r"...", re.IGNORECASE)` as a class attribute.
 3. Add one import line and one entry to `ROUTED_WORKFLOWS` in `synthadoc/agents/workflows/_registry.py`.
+4. Add a phrase-pattern covering the workflow's trigger phrases to `_ACTION_RE` in `action_agent.py`. A `MATCH_RE` whose phrases are absent from `_ACTION_RE` is unreachable dead code — queries are diverted to `QueryAgent` before the registry loop runs.
 
-No other file needs to change. The routing loop, `_ACTION_RE` gate, and test scaffolding all update automatically. The loop machinery — tool dispatch, result injection, termination detection, 30-call cap, 120-second confirmation timeout — is inherited automatically from `AgenticWorkflow`.
+The routing loop and test scaffolding update automatically from steps 2–3. Step 4 is always manual. The loop machinery — tool dispatch, result injection, termination detection, 30-call cap, 120-second confirmation timeout — is inherited automatically from `AgenticWorkflow`.
 
 → User walkthrough: [Quick-Start Guide §26 — Agentic Maintenance Workflows](docs/user-quick-start-guide.md#agentic-workflows)
 

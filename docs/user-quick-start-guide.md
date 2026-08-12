@@ -2630,13 +2630,14 @@ synthadoc ingest --file sessions.txt -w my-wiki
 
 The web chat UI (and the Obsidian plugin query modal) can drive wiki maintenance conversationally — no terminal required. Type a maintenance request in plain English and the system confirms with you, re-ingests pages, fixes broken links, and runs lint, all from a single chat turn.
 
-Three workflows are available:
+Four workflows are available:
 
 | Workflow | Example phrase | Scope |
 |----------|---------------|-------|
 | **Stale-pages bulk reingest** | "re-ingest stale pages" | Finds every stale page, re-ingests each one in sequence, then runs lint |
 | **Page-by-slug reingest** | "re-ingest the alan-turing page" | Re-ingests one named page regardless of state (active, draft, or stale), then runs lint |
 | **Broken wikilinks scan and fix** | "scan for broken wikilinks" | Scans all active pages for `[[slug]]` references that resolve to no existing page; suggests corrections and fixes them after confirmation |
+| **Lint run and full report** | "run lint" | Runs a full lint pass, waits for it to complete, then surfaces the complete report in a single conversational turn |
 
 ### Demo — re-ingest all stale pages (Workflow A)
 
@@ -2705,27 +2706,87 @@ Clicking either chip routes the request through the normal confirmation flow —
 
 ### Demo — scan and fix broken wikilinks (Workflow C)
 
-If a page contains `[[alan-tunring]]` (a typo) and no page with that slug exists, the broken wikilinks workflow finds it and proposes a fix.
+**Setup — manufacture broken wikilinks in the History of Computing demo wiki**
 
-In the web chat UI, type: **"scan for broken wikilinks"**
+Open these three files in Obsidian (Edit view or any text editor) and convert the bare slug references to wikilinks, then save each file:
 
-The agent scans all active pages and, if broken links are found, presents a confirmation card listing every affected page and the proposed correction:
+| File | Change |
+|------|--------|
+| `wiki/eniac.md` | Change `john-mauchly` to `[[john-mauchly]]` in the Designers section |
+| `wiki/history-of-computing.md` | Change `ada-lovelace` to `[[ada-lovelace]]` in the 1843 milestone entry |
+| `wiki/grace-hopper.md` | Change `harvard-mark-i` to `[[harvard-mark-i]]` in the first paragraph |
 
-> *Found 2 broken wikilinks across 1 page:*
-> *• alan-page: [[alan-tunring]] → [[alan-turing]] (fuzzy match)*
-> *• alan-page: [[missing-ref]] → remove link (no similar page found)*
+None of these slugs have a corresponding `.md` page in the wiki — `john-mauchly`, `ada-lovelace`, and `harvard-mark-i` are referenced but uncompiled, making them broken wikilinks.
+
+**Run the workflow**
+
+In the web chat UI or Obsidian query modal, type: **"scan for broken wikilinks"**
+
+The agent scans all active pages and presents a confirmation card listing every affected page and proposed fix:
+
+> *Found 3 broken wikilinks across 3 pages:*
+> *• eniac: `[[john-mauchly]]` → remove link (no similar page found)*
+> *• grace-hopper: `[[harvard-mark-i]]` → remove link (no similar page found)*
+> *• history-of-computing: `[[ada-lovelace]]` → remove link (no similar page found)*
 > *Stale/draft pages were excluded. Promote them to active to include in the scan.*
 > **Yes, fix all** / **No, cancel**
 
-Click **Yes, fix all**. The agent applies each fix directly to the page, runs a lint pass to validate, and reports the final state of each page.
+Click **Yes, fix all**. The agent removes the `[[...]]` markup from each page while preserving the display text, runs a lint pass to validate, and reports the final state of each page.
+
+> **Fuzzy suggestions:** When the broken link is a likely typo — for example `[[alan-tunring]]` where `alan-turing` exists — the agent proposes a corrected replacement instead of a removal. The fix scope shows both the original and the suggested target before you confirm.
 
 If your wiki has no broken links, the workflow reports: *"No broken wikilinks found. Wiki link integrity is clean."* — no confirmation card appears.
 
 **Only active pages are scanned.** If a stale or draft page has broken links, promote it to active first, then re-run the scan.
 
+---
+
+### Demo — run lint and view the full report (Workflow D)
+
+Workflow D runs a full lint pass from a single chat message and immediately streams the results — no separate `synthadoc lint run` needed.
+
+In the web chat UI or Obsidian query modal, type: **"run lint and show me the report"**
+
+Inline progress messages appear as the agent works:
+
+```
+Running lint check…
+Lint running... (8s)
+Fetching lint report…
+```
+
+When the lint job completes, the agent streams a structured report:
+
+```
+### Lint Report (2026-08-12)
+
+**Summary**
+- Dangling links removed: 3
+- Orphan pages: 26
+- Contradictions: 0 resolved, 0 flagged
+
+**Contradicted Pages**
+(none)
+
+**Adversarial Warnings**
+(none)
+
+**Orphan Pages**
+- ajay-bhatt
+- antikythera-mechanism
+- ...
+```
+
+No confirmation is required — lint runs and reports autonomously. Any other triggering phrase also works:
+
+- `"run lint"`
+- `"run a full lint check and show me what needs attention"`
+
+> **Tip:** Use Workflow D to get a full picture first, then follow up in the same session: "scan for broken wikilinks" (Workflow C) or "re-ingest stale pages" (Workflow A).
+
 ### How the agentic loop works
 
-All three workflows run as a multi-step tool-call loop driven by the action agent. The steps are:
+All four workflows run as a multi-step tool-call loop driven by the action agent. The steps are:
 
 **Workflow A (stale pages):**
 1. `find_stale_pages` — returns all stale pages with their local source paths
@@ -2751,7 +2812,13 @@ All three workflows run as a multi-step tool-call loop driven by the action agen
 5. `run_lint` → `poll_job` → `get_page_states`
 6. Plain-text summary
 
-Tool progress streams as inline events — you see each step as it happens. Declining confirmation exits cleanly. A single-page failure does not abort Workflow A — remaining pages continue and all outcomes appear in the final summary.
+**Workflow D (lint run and report):**
+1. `run_lint` — enqueues a full lint pass; returns a job_id
+2. `poll_job` — waits for the lint job to reach a terminal state
+3. `get_lint_report` — reads the current lint state from wiki files: orphans, contradictions, adversarial warnings, citation issues
+4. Plain-text report: summary counts, contradicted pages with state-change dates, adversarial warnings by slug, orphan slugs
+
+Tool progress streams as inline events — you see each step as it happens. Declining confirmation exits cleanly. A single-page failure does not abort Workflow A — remaining pages continue and all outcomes appear in the final summary. Workflow D requires no confirmation — lint is a read-and-report operation that does not modify pages.
 
 For the full protocol specification, see [Agentic Maintenance Workflows](design.md#agentic-maintenance-workflows) in the design doc.
 
