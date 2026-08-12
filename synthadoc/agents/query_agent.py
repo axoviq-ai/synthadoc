@@ -646,7 +646,7 @@ class QueryAgent:
                 else:
                     lines.append(f"\n### Pages ingested or updated in the last {_window_label}\n  (none)")
 
-            # Last lint run statistics
+            # Full lint report — aggregate stats + live contradicted/orphan/warnings
             if any(kw in q_lower for kw in _LINT_TRIGGERS):
                 lint_summary = await audit.get_last_lint_summary()
                 if lint_summary:
@@ -665,6 +665,42 @@ class QueryAgent:
                         "\n### Lint report\n"
                         "  (no lint run recorded yet — run `synthadoc lint run`)"
                     )
+
+                # Contradicted pages — current live state
+                contradicted_pages = [p for p in all_page_states if p["state"] == "contradicted"]
+                if contradicted_pages:
+                    lines.append("\n### Currently contradicted pages")
+                    for p in contradicted_pages:
+                        since = p.get("updated_at", "")[:10]
+                        lines.append(f"  - {p['slug']}  (since {since})" if since else f"  - {p['slug']}")
+                else:
+                    lines.append("\n### Currently contradicted pages\n  (none)")
+
+                # Adversarial warnings — current live state from page frontmatter
+                warned: list[tuple[str, int]] = []
+                for _slug in self._store.list_pages():
+                    _page = self._store.read_page(_slug)
+                    if _page and _page.lint_warnings:
+                        warned.append((_slug, len(_page.lint_warnings)))
+                warned.sort(key=lambda x: x[1], reverse=True)
+                if warned:
+                    lines.append("\n### Pages with adversarial warnings")
+                    for _slug, _n in warned:
+                        lines.append(f"  - [[{_slug}]]  ({_n} warning{'s' if _n != 1 else ''})")
+                else:
+                    lines.append("\n### Pages with adversarial warnings\n  (none)")
+
+                # Orphan pages — current live state from page frontmatter
+                orphan_slugs = sorted(
+                    s for s in self._store.list_pages()
+                    if ((_p := self._store.read_page(s)) and _p.orphan)
+                )
+                if orphan_slugs:
+                    lines.append("\n### Orphan pages (no inbound links)")
+                    for s in orphan_slugs:
+                        lines.append(f"  - {s}")
+                else:
+                    lines.append("\n### Orphan pages\n  (none)")
 
             # Job status — detect a specific 8-char hex job ID or list recent jobs
             if any(kw in q_lower for kw in _JOB_TRIGGERS) and self._orchestrator is not None:
