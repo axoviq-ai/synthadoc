@@ -38,7 +38,6 @@ def test_lint_report_workflow_match_re_hits_action_phrases():
     match = LintReportWorkflow.MATCH_RE
     assert match.search("run lint and show me the report")
     assert match.search("run lint")
-    assert match.search("lint run")
     assert match.search("please run a full lint")
 
 

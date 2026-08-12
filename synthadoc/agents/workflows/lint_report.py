@@ -92,7 +92,6 @@ class LintReportWorkflow(AgenticWorkflow):
 
     MATCH_RE = re.compile(
         r"\brun\s+lint\b"
-        r"|\blint\s+run\b"
         r"|\brun\b.{0,20}\blint\b",
         re.IGNORECASE,
     )
