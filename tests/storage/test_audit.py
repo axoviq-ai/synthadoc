@@ -1,7 +1,28 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 William Johnason / axoviq.com
+import aiosqlite
 import pytest
 from synthadoc.storage.log import AuditDB, LogWriter
+
+
+@pytest.mark.asyncio
+async def test_audit_db_indexes_exist(tmp_wiki):
+    """AuditDB.init() must create all expected secondary indexes."""
+    db = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    await db.init()
+    expected = {
+        "idx_audit_events_event",
+        "idx_lifecycle_events_slug",
+        "idx_lifecycle_slug_snapshot",
+        "idx_claim_citations_page_slug",
+        "idx_claim_citations_source_file",
+    }
+    async with aiosqlite.connect(tmp_wiki / ".synthadoc" / "audit.db") as conn:
+        async with conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'"
+        ) as cur:
+            found = {row[0] for row in await cur.fetchall()}
+    assert expected <= found
 
 
 @pytest.mark.asyncio
