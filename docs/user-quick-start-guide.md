@@ -2630,7 +2630,7 @@ synthadoc ingest --file sessions.txt -w my-wiki
 
 The web chat UI (and the Obsidian plugin query modal) can drive wiki maintenance conversationally — no terminal required. Type a maintenance request in plain English and the system confirms with you, re-ingests pages, fixes broken links, and runs lint, all from a single chat turn.
 
-Four workflows are available:
+Five workflows are available:
 
 | Workflow | Example phrase | Scope |
 |----------|---------------|-------|
@@ -2638,6 +2638,7 @@ Four workflows are available:
 | **Page-by-slug reingest** | "re-ingest the alan-turing page" | Re-ingests one named page regardless of state (active, draft, or stale), then runs lint |
 | **Broken wikilinks scan and fix** | "scan for broken wikilinks" | Scans all active pages for `[[slug]]` references that resolve to no existing page; suggests corrections and fixes them after confirmation |
 | **Lint run and full report** | "run lint" | Runs a full lint pass, waits for it to complete, then surfaces the complete report in a single conversational turn |
+| **Scaffold and report** | "run scaffold" | Previews the domain and files to overwrite, asks for confirmation, then regenerates `index.md`, `purpose.md`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` |
 
 ### Demo — re-ingest all stale pages (Workflow A)
 
@@ -2784,9 +2785,54 @@ No confirmation is required — lint runs and reports autonomously. Any other tr
 
 > **Tip:** Use Workflow D to get a full picture first, then follow up in the same session: "scan for broken wikilinks" (Workflow C) or "re-ingest stale pages" (Workflow A).
 
+---
+
+### Demo — run scaffold (Workflow E)
+
+Workflow E regenerates the wiki's core scaffold files from a single chat message. It shows you what will be overwritten and requires confirmation before writing anything.
+
+In the web chat UI or Obsidian query modal, type: **"run scaffold"**
+
+The agent first previews the operation:
+
+```
+Domain: History of Computing
+Files that will be overwritten:
+  wiki/index.md
+  wiki/purpose.md
+  AGENTS.md
+  CLAUDE.md
+  GEMINI.md
+  ROUTING.md  ← only listed if it already exists
+
+User-written content above the <!-- synthadoc:scaffold --> marker is preserved.
+Run scaffold for 'History of Computing'?
+```
+
+Click **Run scaffold** to confirm. Inline progress appears as the job runs:
+
+```
+Running scaffold for 'History of Computing'...
+Scaffold running... (8s)
+✓ Scaffold complete — 14 pages categorised
+```
+
+The final report shows:
+- Domain scaffolded
+- Files written
+- Number of pages updated with category labels (`categories_updated`)
+- Whether `ROUTING.md` was regenerated
+
+Any other triggering phrase also works:
+
+- `"rebuild scaffold"`
+- `"regenerate scaffold for my wiki"`
+
+> **Tip:** Re-run Workflow E after adding a significant batch of new pages to keep the index categories and AGENTS.md guidelines current with the wiki's actual scope.
+
 ### How the agentic loop works
 
-All four workflows run as a multi-step tool-call loop driven by the action agent. The steps are:
+All five workflows run as a multi-step tool-call loop driven by the action agent. The steps are:
 
 **Workflow A (stale pages):**
 1. `find_stale_pages` — returns all stale pages with their local source paths
@@ -2818,7 +2864,13 @@ All four workflows run as a multi-step tool-call loop driven by the action agent
 3. `get_lint_report` — reads the current lint state from wiki files: orphans, contradictions, adversarial warnings, citation issues
 4. Plain-text report: summary counts, contradicted pages with state-change dates, adversarial warnings by slug, orphan slugs
 
-Tool progress streams as inline events — you see each step as it happens. Declining confirmation exits cleanly. A single-page failure does not abort Workflow A — remaining pages continue and all outcomes appear in the final summary. Workflow D requires no confirmation — lint is a read-and-report operation that does not modify pages.
+**Workflow E (scaffold and report):**
+1. `get_scaffold_preview` — reads the configured domain and lists files to overwrite
+2. `confirm` — shows domain and file list; user must approve before anything is written
+3. `run_scaffold(domain)` — enqueues the scaffold job, waits for completion, reads `categories_updated` and `routing_regenerated` from the job result
+4. Plain-text report: domain, files written, pages categorised, ROUTING.md status
+
+Tool progress streams as inline events — you see each step as it happens. Declining confirmation exits cleanly. A single-page failure does not abort Workflow A — remaining pages continue and all outcomes appear in the final summary. Workflow D requires no confirmation — lint is a read-and-report operation that does not modify pages. Workflow E always confirms before writing scaffold files.
 
 For the full protocol specification, see [Agentic Maintenance Workflows](design.md#agentic-maintenance-workflows) in the design doc.
 

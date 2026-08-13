@@ -3221,7 +3221,7 @@ This design lets users annotate any section of `purpose.md` without losing their
 
 ## Agentic Maintenance Workflows
 
-The web chat UI, Obsidian plugin query modal, and `synthadoc query` CLI command all support conversational wiki maintenance through an agentic tool-call loop — they all reach `ActionAgent.run_gen` via the `/query/stream` SSE endpoint. (`synthadoc lint` and `synthadoc ingest` are direct job-queue commands and bypass the workflow system entirely.) Four workflows are available:
+The web chat UI, Obsidian plugin query modal, and `synthadoc query` CLI command all support conversational wiki maintenance through an agentic tool-call loop — they all reach `ActionAgent.run_gen` via the `/query/stream` SSE endpoint. (`synthadoc lint` and `synthadoc ingest` are direct job-queue commands and bypass the workflow system entirely.) Five workflows are available:
 
 ### Workflow A — stale-pages bulk reingest
 
@@ -3296,6 +3296,18 @@ Triggered by phrases such as "run lint and show me the report" or "lint run". A 
 3. `get_lint_report` — reads the last recorded lint summary from the audit DB plus per-page frontmatter (contradicted state, adversarial warnings, orphan flag)
 4. Plain-text report: dangling links removed, orphan pages, contradictions, contradicted pages (with state-change date), adversarial warnings (slug + count), orphan slugs
 
+### Workflow E — scaffold and report
+
+Triggered by phrases such as "run scaffold" or "regenerate scaffold". A pre-LLM regex fast-path routes directly to `ScaffoldWorkflow` with a confirm gate before any file is written:
+
+1. `get_scaffold_preview` — reads the domain from `WorkflowContext.domain` (set from `cfg.wiki.domain` at startup) and lists every file that will be overwritten: `wiki/index.md`, `wiki/purpose.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, plus `ROUTING.md` if it already exists
+2. `confirm` — presents the domain and file list; the user must approve before the scaffold job is enqueued
+3. If declined: reports cancellation and stops
+4. `run_scaffold(domain)` — enqueues `POST /jobs/scaffold`, polls until terminal, reads `job.result` to extract `categories_updated` and `routing_regenerated`
+5. Plain-text report: domain scaffolded, files written, pages categorised, whether ROUTING.md was regenerated, preservation note for user-written sections above the `<!-- synthadoc:scaffold -->` marker
+
+`run_scaffold` is the server-side equivalent of the `synthadoc scaffold` CLI poll loop — both enqueue the job and read `job.result.categories_updated` on completion.
+
 ### Tool sets by workflow
 
 **IngestLintWorkflow** (Workflows A and B):
@@ -3328,6 +3340,14 @@ Triggered by phrases such as "run lint and show me the report" or "lint run". A 
 | `run_lint` | Enqueues a full lint pass; returns `{job_id}` |
 | `poll_job` | Waits for the lint job to reach a terminal state |
 | `get_lint_report` | Reads last lint summary from audit DB and per-page frontmatter; returns contradicted pages, adversarial warnings, and orphan slugs |
+
+**ScaffoldWorkflow** (Workflow E):
+
+| Tool | Description |
+|------|-------------|
+| `get_scaffold_preview` | Reads domain from `WorkflowContext.domain`; returns domain and list of files to overwrite |
+| `confirm` | Sends a `confirm_request` SSE event and blocks until user responds |
+| `run_scaffold` | Enqueues scaffold job, polls to terminal state, reads `job.result` for `categories_updated` and `routing_regenerated` |
 
 ### Web UI graph sidebar maintenance chips
 
