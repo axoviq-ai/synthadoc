@@ -10,8 +10,8 @@ To add a new workflow with fast-path routing:
      action_agent.py — a MATCH_RE whose phrases have no _ACTION_RE coverage
      is unreachable dead code.
 
-No other file needs to change.  ActionAgent reads ROUTED_WORKFLOWS at startup
-and routes to the first matching workflow.
+Beyond these four steps, no other file needs to change.  ActionAgent reads
+ROUTED_WORKFLOWS at startup and routes to the first matching workflow.
 """
 from __future__ import annotations
 
