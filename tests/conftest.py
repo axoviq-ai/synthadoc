@@ -79,8 +79,10 @@ def tmp_wiki(tmp_path: Path) -> Path:
     # starts.  On Windows CI, sqlite3.connect() on a brand-new file triggers an AV
     # scan; creating them here (outside the event loop) prevents that scan from
     # blocking aiosqlite threads during app startup and timing out long test suites.
-    # audit.db is intentionally excluded — some tests assert on its absence.
-    for _db in ("jobs.db", "cache.db"):
+    # audit.db is included: tests that call _fetch_live_wiki_data and expect ""
+    # still pass because the function returns "" for an empty (data-less) DB, the
+    # same result as for a missing file.
+    for _db in ("jobs.db", "cache.db", "audit.db"):
         with sqlite3.connect(sd / _db):
             pass
     return tmp_path
