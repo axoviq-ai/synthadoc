@@ -61,6 +61,27 @@ def test_agent_thinking_propagates_through_resolve(tmp_path):
     assert resolved.thinking == "disabled"
 
 
+def test_build_default_agents_config_returns_none():
+    """_build_default_agents_config is a sentinel that returns None (line 278)."""
+    from synthadoc.config import _build_default_agents_config
+    result = _build_default_agents_config()
+    assert result is None
+
+
+def test_raw_to_config_raises_when_source_has_agents_but_no_default():
+    """source_has_agents=True with no agents.default → ValueError (line 308)."""
+    from synthadoc.config import _raw_to_config
+    with pytest.raises(ValueError, match="agents.default"):
+        _raw_to_config({"agents": {}}, source_has_agents=True)
+
+
+def test_raw_to_config_raises_when_no_default_in_raw():
+    """source_has_agents=False with no agents.default → ValueError (line 318)."""
+    from synthadoc.config import _raw_to_config
+    with pytest.raises(ValueError, match="agents.default"):
+        _raw_to_config({}, source_has_agents=False)
+
+
 def test_cost_defaults():
     cfg = load_config()
     assert cfg.cost.soft_warn_usd == 0.50

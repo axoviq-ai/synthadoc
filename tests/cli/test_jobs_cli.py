@@ -57,6 +57,14 @@ def test_jobs_cancel_with_yes_skips_confirmation(tmp_path):
     assert "3" in result.output
 
 
+def test_jobs_cancel_without_yes_prompts_and_proceeds(tmp_path):
+    """jobs cancel without --yes shows confirmation prompt (line 121); 'y' proceeds."""
+    with patch("synthadoc.cli._http.post", return_value={"cancelled": 2}):
+        result = runner.invoke(app, ["jobs", "cancel", "--wiki", str(tmp_path)], input="y\n")
+    assert result.exit_code == 0, result.output
+    assert "2" in result.output
+
+
 def test_jobs_list_passes_sort_params_to_api(tmp_path):
     """--sort and --order are forwarded as query params."""
     mock_jobs = [

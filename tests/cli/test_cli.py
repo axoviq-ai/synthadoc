@@ -190,6 +190,15 @@ def test_resolve_wiki_path_falls_back_to_filesystem(tmp_path, monkeypatch):
     assert result == tmp_path / "some-dir"
 
 
+def test_resolve_wiki_path_wrapper_in_main(tmp_path, monkeypatch):
+    """_resolve_wiki_path in cli.main delegates to install.resolve_wiki_path (lines 25-26)."""
+    import synthadoc.cli.install as install_mod
+    monkeypatch.setattr(install_mod, "_REGISTRY", tmp_path / "wikis.json")
+    from synthadoc.cli.main import _resolve_wiki_path
+    result = _resolve_wiki_path(str(tmp_path / "my-wiki"))
+    assert result == tmp_path / "my-wiki"
+
+
 # ---------------------------------------------------------------------------
 # demo list
 # ---------------------------------------------------------------------------

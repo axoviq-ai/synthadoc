@@ -134,3 +134,74 @@ def test_registry_loop_returns_none_for_unrouted_question():
         None,
     )
     assert matched is None
+
+
+# ---------------------------------------------------------------------------
+# LintReportWorkflow method coverage (lines 100, 103, 106)
+# ---------------------------------------------------------------------------
+
+from pathlib import Path as _Path
+
+
+def _make_wf_ctx():
+    async def _send(e, d):
+        pass
+    from synthadoc.agents.workflows._base import WorkflowContext
+    return WorkflowContext(
+        session_id="wf-test",
+        wiki_root=_Path("/tmp/wiki"),
+        queue=None, store=None, audit_db=None,
+        send_sse_event=_send,
+        confirm_registry={}, confirm_result_registry={},
+    )
+
+
+async def test_lint_report_workflow_build_system_prompt_returns_string():
+    from synthadoc.agents.workflows.lint_report import LintReportWorkflow
+    wf = LintReportWorkflow()
+    prompt = await wf.build_system_prompt()
+    assert isinstance(prompt, str)
+    assert len(prompt) > 50
+
+
+def test_lint_report_workflow_build_initial_message_echoes_input():
+    from synthadoc.agents.workflows.lint_report import LintReportWorkflow
+    wf = LintReportWorkflow()
+    assert wf.build_initial_message("run lint") == "run lint"
+    assert wf.build_initial_message("some other phrase") == "some other phrase"
+
+
+def test_lint_report_workflow_get_tool_fns_returns_expected_keys():
+    from synthadoc.agents.workflows.lint_report import LintReportWorkflow
+    wf = LintReportWorkflow()
+    ctx = _make_wf_ctx()
+    fns = wf.get_tool_fns(ctx)
+    assert set(fns.keys()) == {"run_lint", "poll_job", "get_lint_report"}
+    assert all(callable(f) for f in fns.values())
+
+
+# ---------------------------------------------------------------------------
+# ScaffoldWorkflow method coverage (lines 103, 106, 109)
+# ---------------------------------------------------------------------------
+
+async def test_scaffold_workflow_build_system_prompt_returns_string():
+    from synthadoc.agents.workflows.scaffold import ScaffoldWorkflow
+    wf = ScaffoldWorkflow()
+    prompt = await wf.build_system_prompt()
+    assert isinstance(prompt, str)
+    assert len(prompt) > 50
+
+
+def test_scaffold_workflow_build_initial_message_echoes_input():
+    from synthadoc.agents.workflows.scaffold import ScaffoldWorkflow
+    wf = ScaffoldWorkflow()
+    assert wf.build_initial_message("run scaffold") == "run scaffold"
+
+
+def test_scaffold_workflow_get_tool_fns_returns_expected_keys():
+    from synthadoc.agents.workflows.scaffold import ScaffoldWorkflow
+    wf = ScaffoldWorkflow()
+    ctx = _make_wf_ctx()
+    fns = wf.get_tool_fns(ctx)
+    assert set(fns.keys()) == {"get_scaffold_preview", "confirm", "run_scaffold"}
+    assert all(callable(f) for f in fns.values())

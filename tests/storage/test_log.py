@@ -233,6 +233,81 @@ async def test_append_message_no_metadata_returns_empty_lists(tmp_path):
     assert result[1]["gap_suggestions"] == []
 
 
+# ---------------------------------------------------------------------------
+# strip_frontmatter — unclosed block (line 28)
+# ---------------------------------------------------------------------------
+
+def test_strip_frontmatter_returns_text_when_closing_marker_absent():
+    """Text starting with --- but no closing --- → text returned unchanged (line 28)."""
+    from synthadoc.storage.log import strip_frontmatter
+    text = "---\ntitle: No Closing Marker\nThis text has no end fence"
+    assert strip_frontmatter(text) == text
+
+
+# ---------------------------------------------------------------------------
+# Coverage: exception branches in AuditDB
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_list_citation_failures_handles_invalid_json_metadata(tmp_path):
+    """Metadata that is not valid JSON → exception caught, empty dict used (lines 507-508)."""
+    import aiosqlite
+    from synthadoc.storage.log import AuditDB
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+    async with aiosqlite.connect(tmp_path / "audit.db") as conn:
+        await conn.execute(
+            "INSERT INTO audit_events (job_id, event, timestamp, metadata) VALUES (?,?,?,?)",
+            ("job-bad", "citation_validation_failed", "2026-01-01T00:00:00", "NOT_VALID_JSON"),
+        )
+        await conn.commit()
+    results = await db.list_citation_failures()
+    assert len(results) == 1
+    assert results[0]["page_slug"] is None
+    assert results[0]["citation"] is None
+
+
+@pytest.mark.asyncio
+async def test_get_last_lint_summary_returns_none_for_invalid_json(tmp_path):
+    """lint_complete event with invalid JSON metadata → returns None (lines 603-604)."""
+    import aiosqlite
+    from synthadoc.storage.log import AuditDB
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+    async with aiosqlite.connect(tmp_path / "audit.db") as conn:
+        await conn.execute(
+            "INSERT INTO audit_events (job_id, event, timestamp, metadata) VALUES (?,?,?,?)",
+            ("job-lint", "lint_complete", "2026-01-01T00:00:00", "NOT_VALID_JSON"),
+        )
+        await conn.commit()
+    result = await db.get_last_lint_summary()
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_snapshot_by_index_returns_none_when_row_not_found(tmp_path):
+    """list_page_snapshots returns an ID that no longer exists → returns None (line 758)."""
+    from unittest.mock import AsyncMock, patch
+    from synthadoc.storage.log import AuditDB
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+    with patch.object(db, "list_page_snapshots", new=AsyncMock(return_value=[{"id": 99999}])):
+        result = await db.get_snapshot_by_index("ghost-page", 1)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_list_sessions_skips_sessions_without_user_messages(tmp_path):
+    """Session with only assistant messages is excluded from results (line 1053)."""
+    from synthadoc.storage.log import AuditDB
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+    await db.create_session("s-assistant-only", "POWER_USER")
+    await db.append_message("s-assistant-only", "assistant", "I am the assistant.")
+    sessions = await db.list_sessions()
+    assert not any(s["session_id"] == "s-assistant-only" for s in sessions)
+
+
 @pytest.mark.asyncio
 async def test_list_sessions_empty_returns_empty(tmp_path):
     from synthadoc.storage.log import AuditDB

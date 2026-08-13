@@ -178,6 +178,15 @@ def test_windowed_stale_as_whole_word_still_fires():
     assert "How do I run a lint check?" in hints
 
 
+# ── _kw_match — empty keywords guard (line 128) ───────────────────────────────
+
+def test_kw_match_returns_false_for_empty_keywords():
+    """Empty keywords list → returns False without building a regex (line 128)."""
+    from synthadoc.agents.hint_engine import _kw_match
+    assert _kw_match("some text with words", []) is False
+    assert _kw_match("", []) is False
+
+
 def test_windowed_pdf_url_in_domain_answer_does_not_fire_ingest_hints():
     # "pdf" and "url" in a financial answer (e.g. "the PDF report", "the filing URL")
     # must NOT trigger ingest hints; only "ingest" is in answer_keywords.
