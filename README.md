@@ -14,7 +14,7 @@
       '-+###############+-'
 
        S Y N T H A D O C
-    Community Edition  v1.2.0
+    Community Edition  v1.2.1
   ────────────────────────────────
   Domain-agnostic LLM wiki engine
 ```
@@ -30,10 +30,11 @@
 <a href="https://github.com/axoviq-ai/synthadoc/tree/main/hooks"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.hooks&label=Hook%20events&color=teal" alt="Hook events"/></a>
 <a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.cli_commands&label=CLI%20commands&color=darkblue" alt="CLI commands"/></a>
 <a href="https://github.com/axoviq-ai/synthadoc/tree/main/obsidian-plugin"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.obsidian_commands&label=Obsidian%20commands&color=blueviolet" alt="Obsidian commands"/></a>
-<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.2.0-brightgreen.svg" alt="Version"/></a>
+<a href="https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#agentic-workflows"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.maintenance_workflows&label=Maintenance%20workflows&color=green" alt="Maintenance workflows"/></a>
+<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.2.1-brightgreen.svg" alt="Version"/></a>
 </p>
 
-**Document version: v1.2.0**
+**Document version: v1.2.1**
 
 **Engineered for solo users and enterprises alike, providing a domain-specific knowledge base that scales seamlessly while maintaining accuracy through autonomous self-optimization.**
 
@@ -68,6 +69,12 @@ Synthadoc reads your raw source documents — PDFs, spreadsheets, PPTs, web page
     </td>
   </tr>
 </table>
+
+<!-- pypi-strip-start -->
+<p align="center">
+  <a href="docs/media/README.md">📝 Blogs & Media — YouTube · Coderlegion · DEV.to · Medium</a>
+</p>
+<!-- pypi-strip-end -->
 
 ---
 
@@ -220,7 +227,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **[Custom skills + CI hooks](docs/design.md#11-hook-system)** — subclass `BaseSkill` for new file formats; 2 hook events (`on_ingest_complete` + `on_lint_complete`); example git auto-commit hook included; blocking hooks can gate operations | **Yes** | Limited | No | No |
 | **[Per-source truncation flag](docs/design.md#30-per-source-truncation-flag)** — `--max-source-chars` caps any source (PDF, DOCX, web page, plain text) before the LLM call; truncated sources flagged with `truncated: true` in frontmatter and warned in lint output | **Yes** | No | No | No |
 | **[Multi-wiki isolation](docs/design.md#wiki-targeting)** — each wiki on its own port with independent config, audit trail, and job queue; switch with `synthadoc use` | **Yes** | No | Partial | No |
-| **[Agentic maintenance workflows](docs/user-quick-start-guide.md#agentic-workflows)** — five conversational workflows via web UI, Obsidian query modal, or `synthadoc query` CLI: (A) "re-ingest stale pages" — bulk re-ingests every stale page, confirms before touching anything, runs lint on completion; (B) "re-ingest the [slug] page" — re-ingests any single page regardless of lifecycle state; (C) "scan for broken wikilinks" — scans active pages for dead `[[slug]]` references, proposes fuzzy-matched corrections, applies fixes after confirmation; (D) "run lint" — runs a full lint pass and streams the complete report in one turn, no confirmation needed; (E) "run scaffold" — previews domain and files to overwrite, confirms, then regenerates `index.md`, `purpose.md`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`; graph sidebar maintenance chips in the web UI trigger workflows with one click — no terminal required | **Yes** | No | No | No |
+| **[Agentic maintenance workflows](docs/user-quick-start-guide.md#agentic-workflows)** — five conversational workflows (re-ingest stale pages, re-ingest by slug, broken wikilinks scan and fix, lint report, scaffold regeneration) via web UI, Obsidian query modal, or `synthadoc query` CLI; confirm-before-act gate on all destructive operations; graph sidebar chips trigger workflows with one click — no terminal required | **Yes** | No | No | No |
 
 ### Business value
 
@@ -1222,7 +1229,7 @@ Custom skills, LLM providers, hooks, cache control, and per-wiki AGENTS.md are d
 ## Links
 
 <!-- pypi-strip-start -->
-- Blogs & Media: [docs/media/](docs/media/README.md) — DEV.to, Medium, Coderlegion, YouTube
+- Blogs & Media: [docs/media/](docs/media/README.md) — YouTube, Coderlegion, DEV.to, Medium
 <!-- pypi-strip-end -->
 - Design document: [docs/design.md](docs/design.md)
 - Customization: [docs/design.md — Customization](docs/design.md#customization)
