@@ -91,8 +91,8 @@ class LintReportWorkflow(AgenticWorkflow):
     """Run a full lint pass then surface the complete report in one shot."""
 
     MATCH_RE = re.compile(
-        r"\brun\s+lint\b"
-        r"|\brun\b.{0,20}\blint\b",
+        r"^(please\s+)?\brun\b.{0,20}\blint\b"
+        r"|^(can|could|would)\s+(you\s+)?(please\s+)?\brun\b.{0,20}\blint\b",
         re.IGNORECASE,
     )
 

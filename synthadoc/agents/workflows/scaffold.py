@@ -94,7 +94,8 @@ class ScaffoldWorkflow(AgenticWorkflow):
     """Regenerate core wiki scaffold files with a confirm gate before running."""
 
     MATCH_RE = re.compile(
-        r"\brun\s+scaffold\b"
+        r"^(please\s+)?\brun\b.{0,20}\bscaffold\b"
+        r"|^(can|could|would)\s+(you\s+)?(please\s+)?\brun\b.{0,20}\bscaffold\b"
         r"|\b(?:rebuild|regenerate)\b.{0,20}\bscaffold\b",
         re.IGNORECASE,
     )
