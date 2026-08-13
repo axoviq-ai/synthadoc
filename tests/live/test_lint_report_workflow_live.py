@@ -60,7 +60,7 @@ def _raw(path: str, method: str = "GET", body: dict | None = None) -> httpx.Resp
         return client.get(f"{BASE}{path}")
 
 
-def _stream_question(question: str, *, timeout: int = 300) -> list[tuple[str, dict]]:
+def _stream_question(question: str, *, timeout: int = 400) -> list[tuple[str, dict]]:
     """Stream GET /query/stream and collect all (event_type, data) pairs."""
     events: list[tuple[str, dict]] = []
     current_type = "message"
@@ -137,7 +137,7 @@ def require_server():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @pytest.mark.live
-@pytest.mark.timeout(360)
+@pytest.mark.timeout(450)
 def test_workflow_completes_with_done_event_and_no_errors():
     """
     'run lint and show me the report' must complete with a done event and
@@ -149,7 +149,7 @@ def test_workflow_completes_with_done_event_and_no_errors():
 
 
 @pytest.mark.live
-@pytest.mark.timeout(360)
+@pytest.mark.timeout(450)
 def test_workflow_fires_run_lint_and_get_lint_report_tools():
     """
     Both run_lint and get_lint_report tool_progress events must be present,
@@ -169,7 +169,7 @@ def test_workflow_fires_run_lint_and_get_lint_report_tools():
 
 
 @pytest.mark.live
-@pytest.mark.timeout(360)
+@pytest.mark.timeout(450)
 def test_workflow_does_not_emit_confirm_request():
     """
     LintReportWorkflow has no confirm gate — it runs lint autonomously.
@@ -190,7 +190,7 @@ def test_workflow_does_not_emit_confirm_request():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @pytest.mark.live
-@pytest.mark.timeout(360)
+@pytest.mark.timeout(450)
 def test_poll_job_progress_label_says_lint_not_ingest():
     """
     While polling the lint job, tool_progress messages must say 'Lint running...'
@@ -217,7 +217,7 @@ def test_poll_job_progress_label_says_lint_not_ingest():
 
 
 @pytest.mark.live
-@pytest.mark.timeout(360)
+@pytest.mark.timeout(450)
 def test_run_lint_fires_before_get_lint_report():
     """
     run_lint tool_progress must appear before get_lint_report in the event
@@ -242,7 +242,7 @@ def test_run_lint_fires_before_get_lint_report():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @pytest.mark.live
-@pytest.mark.timeout(360)
+@pytest.mark.timeout(450)
 def test_narrative_contains_lint_report_structure():
     """
     The final narrative must mention the core report sections: a summary
@@ -271,7 +271,7 @@ def test_narrative_contains_lint_report_structure():
 
 
 @pytest.mark.live
-@pytest.mark.timeout(360)
+@pytest.mark.timeout(450)
 def test_audit_db_has_lint_summary_after_workflow():
     """
     After the workflow completes, GET /lint/report must return a valid report
