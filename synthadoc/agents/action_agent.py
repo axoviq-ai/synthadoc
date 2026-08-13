@@ -60,6 +60,19 @@ _BROKEN_WIKILINKS_PAT = (
     r"|\blink\s+integrit"
 )
 
+# Ingest-lint workflow phrases must appear in _ACTION_RE so that is_action_question()
+# routes these messages to ActionAgent before the fast-path MATCH_RE can fire.
+# Keep this sub-pattern in sync with IngestLintWorkflow.MATCH_RE.
+_INGEST_LINT_PAT = (
+    r"\bstale\s+pages?\b"
+    r"|\borchestrat"
+    r"|\b(guided|agentic)\s+(maintenance\s+)?workflow\b"
+    # "re-ingest stale pages" — require "stale" nearby to avoid matching how-to questions
+    r"|\bre.?ingest\b.{0,60}\bstale\b|\bstale\b.{0,60}\bre.?ingest\b"
+    # "re-ingest the <slug> page" — slug-based Workflow B
+    r"|\bre.?ingest\b\s+the\s+[a-z0-9]"
+)
+
 _SCHEDULE_CRON_PROMPT = (
     "What schedule should this run on? (e.g. 'every night at 9 PM', 'daily at 6 AM')"
 )
@@ -146,14 +159,8 @@ _ACTION_RE = re.compile(
     r"|\bjob\w*\s+(status|detail|list|progress|result)\b"
     r"|\b(show|list|display|view|check|get)\b.{0,30}\bjob\w*\b"
     r"|\bwhat.{0,20}\b(status|progress).{0,20}\bjob\b"
-    # orchestrate / guided workflow / re-ingest stale pages
-    r"|\bstale\s+pages?\b"
-    r"|\borchestrat"
-    r"|\b(guided|agentic)\s+(maintenance\s+)?workflow\b"
-    # "re-ingest stale pages" — require "stale" nearby to avoid matching how-to questions
-    r"|\bre.?ingest\b.{0,60}\bstale\b|\bstale\b.{0,60}\bre.?ingest\b"
-    # "re-ingest the <slug> page" — slug-based Workflow B
-    r"|\bre.?ingest\b\s+the\s+[a-z0-9]"
+    # orchestrate / guided workflow / re-ingest — kept in sync with IngestLintWorkflow.MATCH_RE
+    r"|" + _INGEST_LINT_PAT
     # broken wikilinks / dead links — kept in sync with BrokenWikilinksWorkflow.MATCH_RE
     r"|" + _BROKEN_WIKILINKS_PAT,
     re.IGNORECASE,

@@ -173,7 +173,7 @@ async def tool_ingest_source(ctx: "WorkflowContext", source_path: str) -> dict:
 
     # Poll until terminal so the caller gets the outcome in a single tool call.
     # Include job_id in the response so the caller can optionally verify via poll_job.
-    result = await tool_poll_job(ctx, job_id, timeout_seconds=300, job_label="Ingest")
+    result = await tool_poll_job(ctx, job_id, timeout_seconds=300, job_label=f"Ingest: {label}")
     result["job_id"] = job_id
 
     status = result.get("status", "failed")
