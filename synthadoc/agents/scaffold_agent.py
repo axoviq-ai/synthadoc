@@ -7,6 +7,7 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 from typing import Optional
 
 from synthadoc.providers.base import LLMProvider, Message
@@ -23,6 +24,20 @@ _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
 _FM_STRIP_RE = re.compile(r"^---\s*\n.*?\n---\s*\n+", re.DOTALL)
 _H1_STRIP_RE = re.compile(r"^#[^#][^\n]*\n+")
 _SECTION_SPLIT_RE = re.compile(r"(^## .+$)", re.MULTILINE)
+
+
+def scaffold_output_paths(wiki_root: Path, *, include_routing: bool = False) -> list[Path]:
+    """Canonical list of paths that a scaffold run writes."""
+    paths: list[Path] = [
+        wiki_root / "wiki" / "index.md",
+        wiki_root / "wiki" / "purpose.md",
+        wiki_root / "AGENTS.md",
+        wiki_root / "CLAUDE.md",
+        wiki_root / "GEMINI.md",
+    ]
+    if include_routing:
+        paths.append(wiki_root / "ROUTING.md")
+    return paths
 
 
 def _coerce_scaffold_dict(value: object) -> dict | None:

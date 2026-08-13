@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from synthadoc.agents.workflows._base import WorkflowContext
 
+from synthadoc.agents.scaffold_agent import scaffold_output_paths
+
 # Retry delays (seconds) when the job queue is temporarily unavailable.
 # The first attempt uses 0 delay; subsequent attempts use these values.
 _INGEST_RETRY_DELAYS: list[int] = [2, 4, 8]
@@ -488,16 +490,8 @@ async def tool_get_scaffold_preview(ctx: "WorkflowContext") -> dict:
     """
     domain = ctx.domain or "General"
 
-    files: list[str] = [
-        str(ctx.wiki_root / "wiki" / "index.md"),
-        str(ctx.wiki_root / "wiki" / "purpose.md"),
-        str(ctx.wiki_root / "AGENTS.md"),
-        str(ctx.wiki_root / "CLAUDE.md"),
-        str(ctx.wiki_root / "GEMINI.md"),
-    ]
-    routing = ctx.wiki_root / "ROUTING.md"
-    if routing.exists():
-        files.append(str(routing))
+    routing_exists = (ctx.wiki_root / "ROUTING.md").exists()
+    files = [str(p) for p in scaffold_output_paths(ctx.wiki_root, include_routing=routing_exists)]
 
     await ctx.send_sse_event(
         "tool_progress",
