@@ -47,9 +47,9 @@ _SLUG_REINGEST_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Broken-wikilinks sub-pattern kept here for _ACTION_RE (the LLM extraction gate).
-# The actual fast-path routing uses BrokenWikilinksWorkflow.MATCH_RE via ROUTED_WORKFLOWS;
-# both patterns must stay identical.
+# Broken-wikilinks phrases must appear in _ACTION_RE so that is_action_question()
+# routes these messages to ActionAgent before the fast-path MATCH_RE can fire.
+# Keep this sub-pattern in sync with BrokenWikilinksWorkflow.MATCH_RE.
 _BROKEN_WIKILINKS_PAT = (
     r"\bbroken\b.{0,40}\b(?:wiki\s*links?|links?)\b"
     r"|\b(?:wiki\s*links?|links?)\b.{0,40}\bbroken\b"
