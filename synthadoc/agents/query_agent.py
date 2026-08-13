@@ -233,6 +233,12 @@ _LIVE_DATA_TRIGGERS: frozenset[str] = frozenset({
     "job", "jobs", "job id", "job status", "ingest job", "queue",
     "pending jobs", "failed job", "dead job",
     "wiki status", "page status", "show status",
+    "lint", "lint report", "lint run", "lint results", "lint check",
+})
+
+_LINT_TRIGGERS: frozenset[str] = frozenset({
+    "lint", "lint report", "lint run", "lint results", "lint check", "lint status",
+    "last lint", "lint summary",
 })
 
 _RECENT_CHANGE_TRIGGERS: frozenset[str] = frozenset({
@@ -447,6 +453,14 @@ _NO_STALE_RE = re.compile(r'\bno stale\b|0 stale|zero stale', re.IGNORECASE)
 _REINGEST_COMPLETE_RE = re.compile(
     r're[-\s]?ingested\s+successfully', re.IGNORECASE
 )
+_BROKEN_LINKS_RE = re.compile(
+    r'\bbroken\s+wikilinks?\b|\bdead\s+(?:wiki\s*)?links?\b|\bdangling\s+(?:wiki\s*)?links?\b',
+    re.IGNORECASE,
+)
+_NO_BROKEN_LINKS_RE = re.compile(
+    r'\bno\s+broken\b|0\s+broken|zero\s+broken|link\s+integrity\s+is\s+clean',
+    re.IGNORECASE,
+)
 
 
 def _build_pre_prompt(answer: str) -> str | None:
@@ -468,6 +482,9 @@ def _build_pre_prompt(answer: str) -> str | None:
         # No slugs parsed — the word "stale" may appear in a negation context
         # ("no pages are in the stale state") that _NO_STALE_RE didn't catch.
         # Don't emit a generic suggestion; require concrete slugs to be safe.
+    # Trigger when lint/status reports broken wikilinks.
+    if _BROKEN_LINKS_RE.search(answer) and not _NO_BROKEN_LINKS_RE.search(answer):
+        return "Scan for broken wikilinks"
     return None
 
 
@@ -528,6 +545,16 @@ class QueryAgent:
             matched = [f"### {p.title}\n{p.content}" for p in _SYSTEM_KNOWLEDGE]
         return "\n\n".join(matched)
 
+    def _warned_pages(self) -> list[tuple[str, int]]:
+        """Return (slug, warning_count) sorted by count desc for pages that have lint_warnings."""
+        warned = [
+            (slug, len(page.lint_warnings))
+            for slug in self._store.list_pages()
+            if (page := self._store.read_page(slug)) and page.lint_warnings
+        ]
+        warned.sort(key=lambda x: x[1], reverse=True)
+        return warned
+
     async def _fetch_live_wiki_data(self, question: str) -> str:
         """Return a formatted snapshot of live wiki lifecycle data if the question asks for it.
 
@@ -577,12 +604,7 @@ class QueryAgent:
 
             # Adversarial warnings — read directly from page frontmatter
             if any(kw in q_lower for kw in _ADVERSARIAL_TRIGGERS):
-                warned: list[tuple[str, int]] = []
-                for slug in self._store.list_pages():
-                    page = self._store.read_page(slug)
-                    if page and page.lint_warnings:
-                        warned.append((slug, len(page.lint_warnings)))
-                warned.sort(key=lambda x: x[1], reverse=True)
+                warned = self._warned_pages()
                 if warned:
                     lines.append("\n### Pages with adversarial warnings")
                     for slug, n in warned:
@@ -628,6 +650,57 @@ class QueryAgent:
                             lines.append(f"  - [[{slug}]]  (from {src}, {date})" if src else f"  - [[{slug}]]  ({date})")
                 else:
                     lines.append(f"\n### Pages ingested or updated in the last {_window_label}\n  (none)")
+
+            # Full lint report — aggregate stats + live contradicted/orphan/warnings
+            if any(kw in q_lower for kw in _LINT_TRIGGERS):
+                lint_summary = await audit.get_last_lint_summary()
+                if lint_summary:
+                    ts = (lint_summary.get("timestamp") or "")[:16].replace("T", " ")
+                    dangling = lint_summary.get("dangling_removed", 0)
+                    orphans_n = lint_summary.get("orphans", 0)
+                    c_res = lint_summary.get("contradictions_resolved", 0)
+                    c_flag = lint_summary.get("contradictions_flagged", 0)
+                    lines.append(f"\n### Last lint run ({ts} UTC)")
+                    if dangling:
+                        lines.append(f"  Dangling links removed : {dangling}")
+                    lines.append(f"  Orphans found          : {orphans_n}")
+                    lines.append(f"  Contradictions         : {c_res} resolved, {c_flag} flagged")
+                else:
+                    lines.append(
+                        "\n### Lint report\n"
+                        "  (no lint run recorded yet — run `synthadoc lint run`)"
+                    )
+
+                # Contradicted pages — current live state
+                contradicted_pages = [p for p in all_page_states if p["state"] == "contradicted"]
+                if contradicted_pages:
+                    lines.append("\n### Currently contradicted pages")
+                    for p in contradicted_pages:
+                        since = p.get("updated_at", "")[:10]
+                        lines.append(f"  - {p['slug']}  (since {since})" if since else f"  - {p['slug']}")
+                else:
+                    lines.append("\n### Currently contradicted pages\n  (none)")
+
+                # Adversarial warnings — current live state from page frontmatter
+                warned = self._warned_pages()
+                if warned:
+                    lines.append("\n### Pages with adversarial warnings")
+                    for slug, n in warned:
+                        lines.append(f"  - [[{slug}]]  ({n} warning{'s' if n != 1 else ''})")
+                else:
+                    lines.append("\n### Pages with adversarial warnings\n  (none)")
+
+                # Orphan pages — current live state from page frontmatter
+                orphan_slugs = sorted(
+                    s for s in self._store.list_pages()
+                    if ((_p := self._store.read_page(s)) and _p.orphan)
+                )
+                if orphan_slugs:
+                    lines.append("\n### Orphan pages (no inbound links)")
+                    for s in orphan_slugs:
+                        lines.append(f"  - {s}")
+                else:
+                    lines.append("\n### Orphan pages\n  (none)")
 
             # Job status — detect a specific 8-char hex job ID or list recent jobs
             if any(kw in q_lower for kw in _JOB_TRIGGERS) and self._orchestrator is not None:

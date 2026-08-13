@@ -124,6 +124,22 @@ def test_toml_value_list():
     assert result == '[1, "two"]'
 
 
+def test_toml_value_string_uses_json_dumps():
+    """String falls through to json.dumps fallback (line 50)."""
+    from synthadoc.cli.candidates import _toml_value
+    assert _toml_value("hello world") == '"hello world"'
+
+
+def test_staging_policy_invalid_min_confidence(tmp_path):
+    """Invalid --min-confidence → prints error and exits 1 (lines 125-126)."""
+    w = _make_wiki_with_candidate(tmp_path)
+    result = runner.invoke(app, [
+        "staging", "policy", "threshold", "--min-confidence", "invalid-level", "--wiki", str(w)
+    ])
+    assert result.exit_code != 0
+    assert "min-confidence" in result.output
+
+
 # ── _patch_toml() ────────────────────────────────────────────────────────────
 
 def test_patch_toml_creates_new_section(tmp_path):

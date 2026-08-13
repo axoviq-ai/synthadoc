@@ -78,6 +78,19 @@ def test_routing_validate_reports_unassigned(tmp_path):
     assert "von-neumann-architecture" in result.output
 
 
+def test_routing_validate_fully_clean_reports_ok(tmp_path):
+    """All pages assigned, no dangling slugs → prints clean message (lines 74-75)."""
+    w = _make_wiki(tmp_path)
+    full_routing = (
+        "## People\n- [[alan-turing]]\n- [[grace-hopper]]\n\n"
+        "## Hardware\n- [[von-neumann-architecture]]\n"
+    )
+    (w / "ROUTING.md").write_text(full_routing)
+    result = runner.invoke(app, ["routing", "validate", "--wiki", str(w)])
+    assert result.exit_code == 0, result.output
+    assert "clean" in result.output
+
+
 def test_routing_clean_removes_dangling(tmp_path):
     w = _make_wiki(tmp_path)
     (w / "ROUTING.md").write_text(ROUTING_WITH_DANGLING)

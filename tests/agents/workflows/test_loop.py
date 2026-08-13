@@ -5,7 +5,11 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 from synthadoc.agents.workflows._base import WorkflowContext
-from synthadoc.agents.workflows._loop import _parse_tool_call, run_tool_call_loop
+from synthadoc.agents.workflows._loop import (
+    _parse_all_tool_calls,
+    _parse_tool_call,
+    run_tool_call_loop,
+)
 from synthadoc.providers.base import CompletionResponse
 
 
@@ -321,4 +325,132 @@ async def test_loop_confirm_not_duplicated_when_batched_twice():
 
     # Only the first confirm ran; the second was discarded
     assert confirm_calls == ["first"]
+    assert any(e["event"] == "final_text" for e in results)
+
+
+# ---------------------------------------------------------------------------
+# _parse_tool_call — no-match and success paths (lines 46, 51)
+# ---------------------------------------------------------------------------
+
+def test_parse_tool_call_returns_none_when_no_pattern_match():
+    """Plain text with no tool_call JSON → returns None."""
+    assert _parse_tool_call("This is just plain text.") is None
+    assert _parse_tool_call("") is None
+
+
+def test_parse_tool_call_returns_name_and_input_on_valid_call():
+    """Well-formed tool call JSON → returns (tool_name, input_dict)."""
+    text = '{"tool_call": {"name": "my_tool", "input": {"x": 42}}}'
+    result = _parse_tool_call(text)
+    assert result is not None
+    name, inp = result
+    assert name == "my_tool"
+    assert inp == {"x": 42}
+
+
+# ---------------------------------------------------------------------------
+# _parse_all_tool_calls — invalid JSON exception path (lines 61-62)
+# ---------------------------------------------------------------------------
+
+def test_parse_all_tool_calls_skips_entry_with_invalid_json():
+    """When one match has invalid JSON for 'input', it is silently skipped."""
+    text = (
+        '{"tool_call": {"name": "good_tool", "input": {"a": 1}}}\n'
+        '{"tool_call": {"name": "bad_tool", "input": {not_valid_json}}}'
+    )
+    results = _parse_all_tool_calls(text)
+    # Only the valid entry should be returned
+    assert len(results) == 1
+    assert results[0][0] == "good_tool"
+
+
+# ---------------------------------------------------------------------------
+# run_tool_call_loop — TypeError in tool args (lines 164-165)
+# ---------------------------------------------------------------------------
+
+async def test_loop_handles_type_error_in_tool_args():
+    """Tool function rejects call due to wrong arg types → error fed back to LLM, loop finishes."""
+    ctx, _ = _make_ctx()
+
+    call_count = 0
+
+    async def _complete(messages, system=None, **_kw):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            # sends unexpected arg 'bad_arg'; strict_tool requires 'required_arg'
+            return CompletionResponse(
+                text='{"tool_call": {"name": "strict_tool", "input": {"bad_arg": 99}}}',
+                input_tokens=5, output_tokens=5,
+            )
+        return CompletionResponse(text="Fixed.", input_tokens=5, output_tokens=5)
+
+    async def strict_tool(required_arg: int) -> dict:
+        return {"ok": required_arg}
+
+    provider = MagicMock()
+    provider.complete = _complete
+
+    results = []
+    async for event in run_tool_call_loop(
+        system_prompt="sys",
+        initial_message="go",
+        tool_fns={"strict_tool": strict_tool},
+        provider=provider,
+        ctx=ctx,
+    ):
+        results.append(event)
+
+    assert any(e["event"] == "final_text" for e in results)
+    assert call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# run_tool_call_loop — multiple non-confirm tool calls in one turn (line 174)
+# ---------------------------------------------------------------------------
+
+async def test_loop_handles_multiple_tool_calls_in_one_response():
+    """LLM emits two non-confirm tool calls in one turn; both run and combined results returned."""
+    ctx, _ = _make_ctx()
+
+    call_count = 0
+    tool_a_calls: list = []
+    tool_b_calls: list = []
+
+    async def _complete(messages, system=None, **_kw):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return CompletionResponse(
+                text=(
+                    '{"tool_call": {"name": "tool_a", "input": {"v": 1}}}\n'
+                    '{"tool_call": {"name": "tool_b", "input": {"v": 2}}}'
+                ),
+                input_tokens=10, output_tokens=10,
+            )
+        return CompletionResponse(text="Both done.", input_tokens=5, output_tokens=5)
+
+    async def tool_a(v: int) -> dict:
+        tool_a_calls.append(v)
+        return {"a": v}
+
+    async def tool_b(v: int) -> dict:
+        tool_b_calls.append(v)
+        return {"b": v}
+
+    provider = MagicMock()
+    provider.complete = _complete
+
+    results = []
+    async for event in run_tool_call_loop(
+        system_prompt="sys",
+        initial_message="run both",
+        tool_fns={"tool_a": tool_a, "tool_b": tool_b},
+        provider=provider,
+        ctx=ctx,
+    ):
+        results.append(event)
+
+    assert tool_a_calls == [1]
+    assert tool_b_calls == [2]
     assert any(e["event"] == "final_text" for e in results)

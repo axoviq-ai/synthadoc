@@ -11,15 +11,22 @@ import pytest
 
 from synthadoc.agents.workflows._base import WorkflowContext
 from synthadoc.agents.workflows._tools import (
+    _apply_single_fix,
+    _normalize_slug,
     _resolve_source_path,
     _resolve_stale_pages,
+    tool_apply_link_fixes,
     tool_confirm,
+    tool_find_broken_wikilinks,
     tool_find_page_source,
     tool_find_stale_pages,
+    tool_get_lint_report,
     tool_get_page_states,
+    tool_get_scaffold_preview,
     tool_ingest_source,
     tool_poll_job,
     tool_run_lint,
+    tool_run_scaffold,
 )
 from synthadoc.core.queue import JobStatus
 
@@ -266,6 +273,198 @@ async def test_confirm_tool_blocks_until_response():
     result = await tool_confirm(ctx, "Are you sure?")
     assert result["confirmed"] is True
     assert any(e["event"] == "confirm_request" for e in events)
+
+
+# ---------------------------------------------------------------------------
+# Test 7: _apply_single_fix — unit tests for the link replacement helper
+# ---------------------------------------------------------------------------
+
+def test_apply_single_fix_replaces_plain_link():
+    content = "See [[typo-slug]] for details."
+    new, n = _apply_single_fix(content, "typo-slug", "correct-slug")
+    assert new == "See [[correct-slug]] for details."
+    assert n == 1
+
+
+def test_apply_single_fix_preserves_display_text():
+    content = "See [[typo-slug|Display Name]] here."
+    new, n = _apply_single_fix(content, "typo-slug", "correct-slug")
+    assert new == "See [[correct-slug|Display Name]] here."
+    assert n == 1
+
+
+def test_apply_single_fix_removes_link_when_new_ref_is_none():
+    content = "See [[dead-slug]] for details."
+    new, n = _apply_single_fix(content, "dead-slug", None)
+    assert "[[" not in new
+    assert "dead-slug" in new  # display text preserved
+    assert n == 1
+
+
+def test_apply_single_fix_removes_link_keeps_display_text_when_none():
+    content = "See [[dead-slug|Nice Name]] here."
+    new, n = _apply_single_fix(content, "dead-slug", None)
+    assert "[[" not in new
+    assert "Nice Name" in new
+    assert n == 1
+
+
+def test_apply_single_fix_ignores_unrelated_links():
+    content = "[[other-page]] and [[typo-slug]]"
+    new, n = _apply_single_fix(content, "typo-slug", "fixed-slug")
+    assert "[[other-page]]" in new
+    assert "[[fixed-slug]]" in new
+    assert n == 1
+
+
+def test_apply_single_fix_case_insensitive():
+    content = "See [[Typo Slug]] here."
+    new, n = _apply_single_fix(content, "typo-slug", "correct-slug")
+    assert "[[correct-slug]]" in new
+    assert n == 1
+
+
+# ---------------------------------------------------------------------------
+# Test 8: tool_find_broken_wikilinks
+# ---------------------------------------------------------------------------
+
+def _make_page(content: str):
+    page = MagicMock()
+    page.content = content
+    return page
+
+
+async def test_find_broken_wikilinks_happy_path():
+    """Broken link is detected; fuzzy suggestion provided when close match exists."""
+    audit_db = MagicMock()
+    audit_db.get_live_page_states = AsyncMock(
+        return_value=[{"slug": "page-a", "state": "active"}]
+    )
+    store = MagicMock()
+    store.all_slugs = MagicMock(return_value=["alan-turing", "ada-lovelace"])
+    store.read_page = MagicMock(return_value=_make_page("See [[alan-tunring]] for details."))
+    store.page_exists = MagicMock(return_value=True)
+
+    ctx, events = _make_ctx(audit_db=audit_db, store=store)
+    result = await tool_find_broken_wikilinks(ctx)
+
+    assert result["total_broken"] == 1
+    assert result["scanned"] == 1
+    assert result["pages"][0]["slug"] == "page-a"
+    broken = result["pages"][0]["broken_links"][0]
+    assert broken["ref"] == "alan-tunring"
+    assert broken["suggestion"] == "alan-turing"
+
+
+async def test_find_broken_wikilinks_no_broken_links():
+    """All wikilinks resolve — returns empty pages list."""
+    audit_db = MagicMock()
+    audit_db.get_live_page_states = AsyncMock(
+        return_value=[{"slug": "page-a", "state": "active"}]
+    )
+    store = MagicMock()
+    store.all_slugs = MagicMock(return_value=["alan-turing"])
+    store.read_page = MagicMock(return_value=_make_page("See [[alan-turing]] here."))
+    store.page_exists = MagicMock(return_value=True)
+
+    ctx, _ = _make_ctx(audit_db=audit_db, store=store)
+    result = await tool_find_broken_wikilinks(ctx)
+
+    assert result["total_broken"] == 0
+    assert result["pages"] == []
+
+
+async def test_find_broken_wikilinks_no_suggestion_for_distant_slug():
+    """No suggestion returned when the broken ref has no close fuzzy match."""
+    audit_db = MagicMock()
+    audit_db.get_live_page_states = AsyncMock(
+        return_value=[{"slug": "page-a", "state": "active"}]
+    )
+    store = MagicMock()
+    store.all_slugs = MagicMock(return_value=["completely-different"])
+    store.read_page = MagicMock(return_value=_make_page("See [[xyz-nothing]] here."))
+    store.page_exists = MagicMock(return_value=True)
+
+    ctx, _ = _make_ctx(audit_db=audit_db, store=store)
+    result = await tool_find_broken_wikilinks(ctx)
+
+    assert result["total_broken"] == 1
+    assert result["pages"][0]["broken_links"][0]["suggestion"] is None
+
+
+async def test_find_broken_wikilinks_skips_stale_pages():
+    """Stale pages are not included in the scan."""
+    audit_db = MagicMock()
+    audit_db.get_live_page_states = AsyncMock(
+        return_value=[
+            {"slug": "active-page", "state": "active"},
+            {"slug": "stale-page",  "state": "stale"},
+        ]
+    )
+    store = MagicMock()
+    store.all_slugs = MagicMock(return_value=["real-slug"])
+
+    def _read(slug):
+        return _make_page(f"See [[broken-{slug}]] here.")
+
+    store.read_page = MagicMock(side_effect=_read)
+    store.page_exists = MagicMock(return_value=True)
+
+    ctx, _ = _make_ctx(audit_db=audit_db, store=store)
+    result = await tool_find_broken_wikilinks(ctx)
+
+    scanned_slugs = [p["slug"] for p in result["pages"]]
+    assert "stale-page" not in scanned_slugs
+    assert result["scanned"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Test 9: tool_apply_link_fixes
+# ---------------------------------------------------------------------------
+
+async def test_apply_link_fixes_happy_path():
+    """Fixes are applied to page content and written back to the store."""
+    page = _make_page("See [[typo-slug]] for details.")
+    store = MagicMock()
+    store.read_page = MagicMock(return_value=page)
+    store.page_lock = MagicMock(return_value=MagicMock(__enter__=MagicMock(return_value=None), __exit__=MagicMock(return_value=False)))
+    store.write_page = MagicMock()
+
+    ctx, events = _make_ctx(store=store)
+    result = await tool_apply_link_fixes(
+        ctx, "page-a", [{"old_ref": "typo-slug", "new_ref": "correct-slug"}]
+    )
+
+    assert result["status"] == "success"
+    assert result["changes"] == 1
+    store.write_page.assert_called_once()
+    assert any(e["event"] == "tool_progress" for e in events)
+
+
+async def test_apply_link_fixes_page_not_found():
+    """Returns error when the page slug does not exist."""
+    store = MagicMock()
+    store.read_page = MagicMock(return_value=None)
+
+    ctx, _ = _make_ctx(store=store)
+    result = await tool_apply_link_fixes(ctx, "missing", [{"old_ref": "x", "new_ref": "y"}])
+
+    assert result["status"] == "error"
+    assert "not found" in result["error"]
+
+
+async def test_apply_link_fixes_no_changes():
+    """Returns success with changes=0 when old_ref is not found in content."""
+    store = MagicMock()
+    store.read_page = MagicMock(return_value=_make_page("No wikilinks here."))
+    store.page_lock = MagicMock(return_value=MagicMock(__enter__=MagicMock(return_value=None), __exit__=MagicMock(return_value=False)))
+
+    ctx, _ = _make_ctx(store=store)
+    result = await tool_apply_link_fixes(ctx, "page-a", [{"old_ref": "ghost", "new_ref": "target"}])
+
+    assert result["status"] == "success"
+    assert result["changes"] == 0
+    store.write_page.assert_not_called() if hasattr(store, "write_page") else None
 
 
 # ---------------------------------------------------------------------------
@@ -615,3 +814,366 @@ async def test_find_page_source_no_sources():
     ctx, _ = _make_ctx(store=store)
     result = await tool_find_page_source(ctx, "no-source-page")
     assert "error" in result
+
+
+# ---------------------------------------------------------------------------
+# _resolve_source_path — URL passthrough (line 47)
+# ---------------------------------------------------------------------------
+
+def test_resolve_source_path_url_is_returned_unchanged():
+    """HTTP and HTTPS URLs are returned as-is without any path manipulation."""
+    url = "https://example.com/article"
+    assert _resolve_source_path(Path("/wiki"), url) == url
+
+    http_url = "http://example.com/page"
+    assert _resolve_source_path(Path("/wiki"), http_url) == http_url
+
+
+# ---------------------------------------------------------------------------
+# tool_ingest_source — URL enqueue path (line 136) and failure branches
+# ---------------------------------------------------------------------------
+
+async def test_ingest_source_url_enqueues_and_succeeds():
+    """URL source_path → label=URL, enqueue called, returns success on COMPLETED job."""
+    url = "https://example.com/doc"
+    queue = MagicMock()
+    queue.enqueue = AsyncMock(return_value="job-url-1")
+    completed_job = MagicMock()
+    completed_job.status = JobStatus.COMPLETED
+    queue.get_job = AsyncMock(return_value=completed_job)
+
+    ctx, _ = _make_ctx(queue=queue)
+    result = await tool_ingest_source(ctx, url)
+    assert result["status"] == "success"
+    call_kwargs = queue.enqueue.call_args[0]
+    assert call_kwargs[1]["source"] == url
+
+
+async def test_ingest_source_all_retries_fail_returns_error(tmp_path):
+    """All enqueue attempts raise → error key returned; sleep is called for non-zero delays."""
+    source_file = tmp_path / "doc.md"
+    source_file.write_text("content")
+
+    queue = MagicMock()
+    queue.enqueue = AsyncMock(side_effect=RuntimeError("queue down"))
+
+    ctx, _ = _make_ctx(queue=queue)
+    with patch("synthadoc.agents.workflows._tools.asyncio.sleep", AsyncMock()):
+        result = await tool_ingest_source(ctx, str(source_file))
+
+    assert "error" in result
+    assert "queue down" in result["error"]
+
+
+async def test_ingest_source_failed_poll_returns_failed_status(tmp_path):
+    """Enqueue succeeds but job ends with DEAD status → failure SSE progress and failed result."""
+    source_file = tmp_path / "doc.md"
+    source_file.write_text("content")
+
+    queue = MagicMock()
+    queue.enqueue = AsyncMock(return_value="job-fail-1")
+    dead_job = MagicMock()
+    dead_job.status = JobStatus.DEAD
+    queue.get_job = AsyncMock(return_value=dead_job)
+
+    ctx, events = _make_ctx(queue=queue)
+    result = await tool_ingest_source(ctx, str(source_file))
+
+    assert result["status"] == "failed"
+    progress_msgs = [e["data"]["message"] for e in events if e["event"] == "tool_progress"
+                     and e["data"].get("tool") == "ingest_source"]
+    assert any("✗" in m or "failed" in m.lower() for m in progress_msgs)
+
+
+# ---------------------------------------------------------------------------
+# tool_run_lint — enqueue failure branch (lines 255-256)
+# ---------------------------------------------------------------------------
+
+async def test_tool_run_lint_returns_error_when_enqueue_fails():
+    """Queue.enqueue raising → error key returned."""
+    queue = MagicMock()
+    queue.enqueue = AsyncMock(side_effect=RuntimeError("queue unavailable"))
+    ctx, _ = _make_ctx(queue=queue)
+    result = await tool_run_lint(ctx)
+    assert "error" in result
+    assert "queue unavailable" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# tool_get_lint_report (lines 276-301)
+# ---------------------------------------------------------------------------
+
+async def test_tool_get_lint_report_returns_full_structure():
+    """Returns last_run, contradicted_pages, adversarial_warnings, orphan_slugs."""
+    audit_db = MagicMock()
+    audit_db.get_last_lint_summary = AsyncMock(return_value={
+        "timestamp": "2026-07-01T10:00:00",
+        "dangling_removed": 2,
+        "orphans": 1,
+        "contradictions_resolved": 0,
+        "contradictions_flagged": 1,
+    })
+    audit_db.get_live_page_states = AsyncMock(return_value=[
+        {"slug": "page-c", "state": "contradicted", "updated_at": "2026-07-01T09:00:00"},
+        {"slug": "page-a", "state": "active", "updated_at": "2026-07-01"},
+    ])
+
+    store = MagicMock()
+    store.page_exists = MagicMock(return_value=True)
+    store.list_pages = MagicMock(return_value=["page-a", "page-c"])
+
+    warned_page = MagicMock()
+    warned_page.lint_warnings = ["adversarial content detected"]
+    warned_page.orphan = False
+
+    orphan_page = MagicMock()
+    orphan_page.lint_warnings = []
+    orphan_page.orphan = True
+
+    def _read(slug):
+        return warned_page if slug == "page-a" else orphan_page
+
+    store.read_page = MagicMock(side_effect=_read)
+
+    ctx, events = _make_ctx(audit_db=audit_db, store=store)
+    result = await tool_get_lint_report(ctx)
+
+    assert "last_run" in result
+    assert result["last_run"]["dangling_removed"] == 2
+    assert any(p["slug"] == "page-c" for p in result["contradicted_pages"])
+    assert any(p["slug"] == "page-a" for p in result["adversarial_warnings"])
+    assert "page-c" in result["orphan_slugs"]
+    assert any(e["event"] == "tool_progress" for e in events)
+
+
+async def test_tool_get_lint_report_with_no_audit_db():
+    """When audit_db is None, returns empty last_run and empty lists."""
+    store = MagicMock()
+    store.list_pages = MagicMock(return_value=[])
+
+    ctx, _ = _make_ctx(store=store)
+    result = await tool_get_lint_report(ctx)
+
+    assert result["last_run"] == {}
+    assert result["contradicted_pages"] == []
+    assert result["adversarial_warnings"] == []
+    assert result["orphan_slugs"] == []
+
+
+# ---------------------------------------------------------------------------
+# tool_find_broken_wikilinks — page with no content branch (line 403)
+# ---------------------------------------------------------------------------
+
+async def test_find_broken_wikilinks_skips_page_with_none_content():
+    """Active page whose read_page returns None is skipped silently."""
+    audit_db = MagicMock()
+    audit_db.get_live_page_states = AsyncMock(
+        return_value=[{"slug": "null-page", "state": "active"}]
+    )
+    store = MagicMock()
+    store.all_slugs = MagicMock(return_value=["real-slug"])
+    store.read_page = MagicMock(return_value=None)
+    store.page_exists = MagicMock(return_value=True)
+
+    ctx, _ = _make_ctx(audit_db=audit_db, store=store)
+    result = await tool_find_broken_wikilinks(ctx)
+
+    assert result["total_broken"] == 0
+    assert result["pages"] == []
+
+
+async def test_find_broken_wikilinks_skips_page_with_empty_content():
+    """Active page with empty content string is skipped silently."""
+    audit_db = MagicMock()
+    audit_db.get_live_page_states = AsyncMock(
+        return_value=[{"slug": "empty-page", "state": "active"}]
+    )
+    store = MagicMock()
+    store.all_slugs = MagicMock(return_value=["real-slug"])
+    empty_page = MagicMock()
+    empty_page.content = ""
+    store.read_page = MagicMock(return_value=empty_page)
+    store.page_exists = MagicMock(return_value=True)
+
+    ctx, _ = _make_ctx(audit_db=audit_db, store=store)
+    result = await tool_find_broken_wikilinks(ctx)
+
+    assert result["total_broken"] == 0
+
+
+# ---------------------------------------------------------------------------
+# tool_apply_link_fixes — empty old_ref skip branch (line 458)
+# ---------------------------------------------------------------------------
+
+async def test_apply_link_fixes_skips_fix_with_empty_old_ref():
+    """Fixes whose old_ref is empty string are silently skipped (no changes)."""
+    page = _make_page("See [[valid-link]] here.")
+    store = MagicMock()
+    store.read_page = MagicMock(return_value=page)
+
+    ctx, _ = _make_ctx(store=store)
+    result = await tool_apply_link_fixes(
+        ctx, "page-a", [{"old_ref": "", "new_ref": "something"}]
+    )
+
+    assert result["status"] == "success"
+    assert result["changes"] == 0
+
+
+# ---------------------------------------------------------------------------
+# tool_get_scaffold_preview (lines 489-506)
+# ---------------------------------------------------------------------------
+
+async def test_tool_get_scaffold_preview_returns_domain_and_standard_files(tmp_path):
+    """Returns domain from ctx and lists the five standard scaffold files."""
+    wiki_sub = tmp_path / "wiki"
+    wiki_sub.mkdir()
+
+    ctx, events = _make_ctx()
+    # Rebuild ctx with real tmp_path and domain
+    events2: list = []
+
+    async def _send(e, d):
+        events2.append({"event": e, "data": d})
+
+    from synthadoc.agents.workflows._base import WorkflowContext
+    ctx2 = WorkflowContext(
+        session_id="s1",
+        wiki_root=tmp_path,
+        queue=None, store=None, audit_db=None,
+        send_sse_event=_send,
+        confirm_registry={}, confirm_result_registry={},
+        domain="History",
+    )
+
+    result = await tool_get_scaffold_preview(ctx2)
+
+    assert result["domain"] == "History"
+    files = result["files_to_overwrite"]
+    assert any("index.md" in f for f in files)
+    assert any("purpose.md" in f for f in files)
+    assert any("AGENTS.md" in f for f in files)
+    assert any(e["event"] == "tool_progress" for e in events2)
+
+
+async def test_tool_get_scaffold_preview_includes_routing_when_present(tmp_path):
+    """ROUTING.md is appended to files_to_overwrite only when it already exists."""
+    routing = tmp_path / "ROUTING.md"
+    routing.write_text("# Routing")
+
+    events: list = []
+
+    async def _send(e, d):
+        events.append({"event": e, "data": d})
+
+    from synthadoc.agents.workflows._base import WorkflowContext
+    ctx = WorkflowContext(
+        session_id="s1",
+        wiki_root=tmp_path,
+        queue=None, store=None, audit_db=None,
+        send_sse_event=_send,
+        confirm_registry={}, confirm_result_registry={},
+        domain="Science",
+    )
+
+    result = await tool_get_scaffold_preview(ctx)
+
+    assert any("ROUTING.md" in f for f in result["files_to_overwrite"])
+
+
+async def test_tool_get_scaffold_preview_defaults_domain_when_empty(tmp_path):
+    """When ctx.domain is empty string, 'General' is used as the domain."""
+    events: list = []
+
+    async def _send(e, d):
+        events.append({"event": e, "data": d})
+
+    from synthadoc.agents.workflows._base import WorkflowContext
+    ctx = WorkflowContext(
+        session_id="s1",
+        wiki_root=tmp_path,
+        queue=None, store=None, audit_db=None,
+        send_sse_event=_send,
+        confirm_registry={}, confirm_result_registry={},
+        domain="",
+    )
+
+    result = await tool_get_scaffold_preview(ctx)
+    assert result["domain"] == "General"
+
+
+# ---------------------------------------------------------------------------
+# tool_run_scaffold (lines 519-547)
+# ---------------------------------------------------------------------------
+
+async def test_tool_run_scaffold_success():
+    """Enqueue succeeds, job completes, returns categories_updated and routing_regenerated."""
+    queue = MagicMock()
+    queue.enqueue = AsyncMock(return_value="scaffold-job-1")
+
+    completed_job = MagicMock()
+    completed_job.status = JobStatus.COMPLETED
+    completed_job.result = {"categories_updated": 5, "routing_regenerated": True}
+    queue.get_job = AsyncMock(return_value=completed_job)
+
+    ctx, events = _make_ctx(queue=queue)
+    result = await tool_run_scaffold(ctx, "Computing")
+
+    assert result["status"] == "success"
+    assert result["domain"] == "Computing"
+    assert result["categories_updated"] == 5
+    assert result["routing_regenerated"] is True
+    assert any(e["event"] == "tool_progress" for e in events)
+
+
+async def test_tool_run_scaffold_returns_error_when_enqueue_fails():
+    """queue.enqueue raising → error key returned immediately."""
+    queue = MagicMock()
+    queue.enqueue = AsyncMock(side_effect=RuntimeError("scaffold queue full"))
+
+    ctx, _ = _make_ctx(queue=queue)
+    result = await tool_run_scaffold(ctx, "Science")
+
+    assert "error" in result
+    assert "scaffold queue full" in result["error"]
+
+
+async def test_tool_run_scaffold_returns_poll_result_when_job_fails():
+    """Job ends with DEAD status → poll_result returned without scaffold result."""
+    queue = MagicMock()
+    queue.enqueue = AsyncMock(return_value="scaffold-dead-1")
+
+    dead_job = MagicMock()
+    dead_job.status = JobStatus.DEAD
+    queue.get_job = AsyncMock(return_value=dead_job)
+
+    ctx, _ = _make_ctx(queue=queue)
+    result = await tool_run_scaffold(ctx, "History")
+
+    assert result.get("status") == "failed"
+
+
+async def test_tool_run_scaffold_handles_get_job_exception_after_poll():
+    """Second get_job call (reading result) raises → exception swallowed, defaults returned."""
+    queue = MagicMock()
+    queue.enqueue = AsyncMock(return_value="scaffold-exc-1")
+
+    call_count = 0
+
+    async def _get_job(job_id):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            job = MagicMock()
+            job.status = JobStatus.COMPLETED
+            return job
+        raise RuntimeError("db gone after poll")
+
+    queue.get_job = _get_job
+
+    ctx, events = _make_ctx(queue=queue)
+    result = await tool_run_scaffold(ctx, "Art")
+
+    assert result["status"] == "success"
+    assert result["categories_updated"] == 0
+    assert result["routing_regenerated"] is False

@@ -3221,7 +3221,7 @@ This design lets users annotate any section of `purpose.md` without losing their
 
 ## Agentic Maintenance Workflows
 
-The web chat UI and Obsidian plugin query modal support conversational wiki maintenance through an agentic tool-call loop. Two workflows are available:
+The web chat UI, Obsidian plugin query modal, and `synthadoc query` CLI command all support conversational wiki maintenance through an agentic tool-call loop — they all reach `ActionAgent.run_gen` via the `/query/stream` SSE endpoint. (`synthadoc lint` and `synthadoc ingest` are direct job-queue commands and bypass the workflow system entirely.) Five workflows are available:
 
 ### Workflow A — stale-pages bulk reingest
 
@@ -3273,12 +3273,119 @@ In the web UI **Graph tab**, the node detail panel includes a **Maintenance** se
 - `confirm_request` — `{session_id, message, yes_label, no_label}` — requires a user decision before proceeding
 - `done.pre_prompt` — optional string in the `done` event that pre-fills the chat textarea with the natural next action (e.g. "Run lint to promote re-ingested pages to active")
 
+### Workflow C — broken wikilinks scan and fix
+
+Triggered by phrases such as "scan for broken wikilinks", "fix broken links", or "check wikilink integrity". A pre-LLM regex fast-path in the action agent catches this pattern and routes directly to `BrokenWikilinksWorkflow`:
+
+1. `find_broken_wikilinks` — scans all **active** pages for `[[slug]]` references that resolve to no existing page; stale, draft, and archived pages are excluded from the scan. Uses `difflib.get_close_matches` (stdlib) to suggest corrections for likely typos
+2. If no broken links found: reports a clean wiki and stops
+3. `confirm` — presents the full fix scope to the user: every affected page, each broken reference, and the proposed fix (fuzzy suggestion or link removal)
+4. `apply_link_fixes` — applies corrections one page at a time; writes directly to the wiki `.md` file (same path as `cascade_archive`); content snapshots record the before/after diff
+5. `run_lint` → `poll_job` — validates link integrity after all fixes are applied
+6. `get_page_states` — checks the final lifecycle state of all fixed pages
+7. Plain-text summary: pages scanned, links fixed, per-page breakdown, lint result, page states
+
+Broken links with a fuzzy suggestion are replaced with `[[corrected-slug]]`. Broken links with no close match are unlinked — the link markup is removed while any display text is preserved.
+
+### Workflow D — lint run and full report
+
+Triggered by phrases such as "run lint and show me the report" or "lint run". A pre-LLM regex fast-path routes directly to `LintReportWorkflow` without an LLM classification call:
+
+1. `run_lint` — enqueues a full lint pass; returns `{job_id}`
+2. `poll_job(job_id, timeout_seconds=300)` — waits for the lint job to reach a terminal state
+3. `get_lint_report` — reads the last recorded lint summary from the audit DB plus per-page frontmatter (contradicted state, adversarial warnings, orphan flag)
+4. Plain-text report: dangling links removed, orphan pages, contradictions, contradicted pages (with state-change date), adversarial warnings (slug + count), orphan slugs
+
+### Workflow E — scaffold and report
+
+Triggered by phrases such as "run scaffold" or "regenerate scaffold". A pre-LLM regex fast-path routes directly to `ScaffoldWorkflow` with a confirm gate before any file is written:
+
+1. `get_scaffold_preview` — reads the domain from `WorkflowContext.domain` (set from `cfg.wiki.domain` at startup) and lists every file that will be overwritten: `wiki/index.md`, `wiki/purpose.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, plus `ROUTING.md` if it already exists
+2. `confirm` — presents the domain and file list; the user must approve before the scaffold job is enqueued
+3. If declined: reports cancellation and stops
+4. `run_scaffold(domain)` — enqueues `POST /jobs/scaffold`, polls until terminal, reads `job.result` to extract `categories_updated` and `routing_regenerated`
+5. Plain-text report: domain scaffolded, files written, pages categorised, whether ROUTING.md was regenerated, preservation note for user-written sections above the `<!-- synthadoc:scaffold -->` marker
+
+`run_scaffold` is the server-side equivalent of the `synthadoc scaffold` CLI poll loop — both enqueue the job and read `job.result.categories_updated` on completion.
+
+### Tool sets by workflow
+
+**IngestLintWorkflow** (Workflows A and B):
+
+| Tool | Description |
+|------|-------------|
+| `find_stale_pages` | Returns `[{slug, source_path}]` for all stale pages with a local text source |
+| `find_page_source` | Looks up any page by slug regardless of lifecycle state; returns `{slug, source_path}` |
+| `ingest_source` | Force-ingests a source file and waits for the job to reach a terminal state; returns `{status, message, job_id}` |
+| `poll_job` | Polls `GET /jobs/{job_id}` with exponential backoff until terminal; returns final status |
+| `run_lint` | Enqueues a full lint run; returns `{job_id}` — caller uses `poll_job` to wait for completion |
+| `confirm` | Sends a `confirm_request` SSE event and blocks until the user responds (Yes/No) |
+| `get_page_states` | Returns the current lifecycle state for a list of slugs |
+
+**BrokenWikilinksWorkflow** (Workflow C):
+
+| Tool | Description |
+|------|-------------|
+| `find_broken_wikilinks` | Scans active pages for `[[slug]]` refs that resolve to no existing page; returns broken refs with fuzzy suggestions |
+| `apply_link_fixes` | Applies `{old_ref → new_ref}` corrections to a single page; `new_ref=null` removes the link |
+| `confirm` | Sends a `confirm_request` SSE event and blocks until the user responds |
+| `run_lint` | Enqueues a lint pass to validate link integrity after fixes |
+| `poll_job` | Polls a job to terminal state |
+| `get_page_states` | Returns the current lifecycle state for a list of slugs |
+
+**LintReportWorkflow** (Workflow D):
+
+| Tool | Description |
+|------|-------------|
+| `run_lint` | Enqueues a full lint pass; returns `{job_id}` |
+| `poll_job` | Waits for the lint job to reach a terminal state |
+| `get_lint_report` | Reads last lint summary from audit DB and per-page frontmatter; returns contradicted pages, adversarial warnings, and orphan slugs |
+
+**ScaffoldWorkflow** (Workflow E):
+
+| Tool | Description |
+|------|-------------|
+| `get_scaffold_preview` | Reads domain from `WorkflowContext.domain`; returns domain and list of files to overwrite |
+| `confirm` | Sends a `confirm_request` SSE event and blocks until user responds |
+| `run_scaffold` | Enqueues scaffold job, polls to terminal state, reads `job.result` for `categories_updated` and `routing_regenerated` |
+
+### Web UI graph sidebar maintenance chips
+
+In the web UI **Graph tab**, the node detail panel includes a **Maintenance** section with two chips that trigger the same workflows without typing:
+
+| Chip | Sent query | Workflow |
+|------|-----------|---------|
+| **⚑ Check this page for issues** | `"Check the {slug} page for issues"` | Lint-style analysis for the selected page |
+| **↻ Re-ingest this page** | `"Re-ingest the {slug} page"` | Triggers Workflow B for the selected node |
+
+### SSE protocol extensions (v1.2.0)
+
+- `tool_progress` — `{tool, job_id?, message}` — emitted at each tool step so the UI shows inline progress; the `message` field names the active workflow (e.g. `"Lint running... (12s)"`, `"Ingest running... (5s)"`)
+- `confirm_request` — `{session_id, message, yes_label, no_label}` — requires a user decision before proceeding
+- `done.pre_prompt` — optional string in the `done` event that pre-fills the chat textarea with the natural next action (e.g. "Run lint to promote re-ingested pages to active")
+
 ### Routing and loop constraints
 
-- Phrases matching `re-ingest the <slug> page` are intercepted by a compiled regex fast-path in the action agent and routed directly to `IngestLintWorkflow` — no LLM classification call is made, ensuring consistent routing
-- Phrases matching `re-ingest stale pages` / `fix stale pages` are routed via LLM intent extraction
+Fast-path routing uses a **workflow registry** (`synthadoc/agents/workflows/_registry.py`). Each workflow that needs pre-LLM routing declares a `MATCH_RE` class attribute; the action agent iterates the registry and routes to the first match — no LLM call is made.
+
+The LLM-extraction gate (`_ACTION_RE` in `action_agent.py`) is a separate, more conservative pattern set used to decide whether to invoke the LLM at all. Workflow `MATCH_RE` patterns are intentionally not merged into `_ACTION_RE` because fast-path patterns can be broader than what `_ACTION_RE` should allow (e.g. `LintReportWorkflow.MATCH_RE` matches "How do I run a lint check?" which is a question, not an action). Only patterns whose false-positive risk is acceptable should be added to `_ACTION_RE`.
+
+**`_BROKEN_WIKILINKS_PAT` sync requirement:** `BrokenWikilinksWorkflow.MATCH_RE` has a corresponding plain-string constant (`_BROKEN_WIKILINKS_PAT`) in `action_agent.py` that forms part of `_ACTION_RE`. When `BrokenWikilinksWorkflow.MATCH_RE` changes, `_BROKEN_WIKILINKS_PAT` must be updated manually to match — there is no automated sync. A `MATCH_RE` pattern whose phrases have no corresponding `_ACTION_RE` entry is unreachable dead code: the query is diverted to `QueryAgent` before the registry loop is ever consulted. The removal of `|\blint\s+run\b` from `LintReportWorkflow.MATCH_RE` illustrates this: the verb-last phrase "lint run" was never covered by `_ACTION_RE`, so the branch could never fire.
+
+- Phrases matching `MATCH_RE` of any registered workflow → routed directly, no LLM extraction
+- Phrases matching `re-ingest the <slug> page` → routed to `IngestLintWorkflow` via a separate slug-specific fast-path (this workflow has no `MATCH_RE` because the slug is captured at routing time)
+- Phrases matching `re-ingest stale pages` / `fix stale pages` → routed via LLM intent extraction
 - Maximum 30 tool calls per action; confirmation timeout 120 seconds (defaults to declined on timeout)
-- A single tool failure does not abort the workflow — remaining pages in Workflow A continue, and all outcomes are summarised in the final narrative
+- A single tool failure does not abort the workflow — remaining pages continue and all outcomes are summarised in the final narrative
+
+### Adding a new workflow
+
+1. Create a new module under `synthadoc/agents/workflows/` implementing `AgenticWorkflow` (three abstract methods: `build_system_prompt`, `build_initial_message`, `get_tool_fns`).
+2. If the workflow needs pre-LLM fast-path routing, set `MATCH_RE = re.compile(r"...", re.IGNORECASE)` as a class attribute.
+3. Add one import line and one entry to `ROUTED_WORKFLOWS` in `synthadoc/agents/workflows/_registry.py`.
+4. Add a phrase-pattern covering the workflow's trigger phrases to `_ACTION_RE` in `action_agent.py`. A `MATCH_RE` whose phrases are absent from `_ACTION_RE` is unreachable dead code — queries are diverted to `QueryAgent` before the registry loop runs.
+
+The routing loop and test scaffolding update automatically from steps 2–3. Step 4 is always manual. The loop machinery — tool dispatch, result injection, termination detection, 30-call cap, 120-second confirmation timeout — is inherited automatically from `AgenticWorkflow`.
 
 → User walkthrough: [Quick-Start Guide §26 — Agentic Maintenance Workflows](docs/user-quick-start-guide.md#agentic-workflows)
 

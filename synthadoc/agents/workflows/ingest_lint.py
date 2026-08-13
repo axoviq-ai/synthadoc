@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import functools
+import re
 from typing import Awaitable, Callable
 
 from synthadoc.agents.workflows._base import AgenticWorkflow, WorkflowContext
@@ -87,6 +88,15 @@ When you have a final message for the user, respond with plain text only (no too
 
 
 class IngestLintWorkflow(AgenticWorkflow):
+    MATCH_RE = re.compile(
+        r"\bstale\s+pages?\b"
+        r"|\borchestrat"
+        r"|\b(guided|agentic)\s+(maintenance\s+)?workflow\b"
+        r"|\bre.?ingest\b.{0,60}\bstale\b|\bstale\b.{0,60}\bre.?ingest\b"
+        r"|\bre.?ingest\b\s+the\s+[a-z0-9]",
+        re.IGNORECASE,
+    )
+
     async def build_system_prompt(self) -> str:
         return _SYSTEM_PROMPT
 

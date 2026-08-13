@@ -2430,6 +2430,7 @@ class QueryModal extends Modal {
             try {
                 await api.queryStream(input.value.trim(), undefined, {
                     onStatus: (phase) => { statusEl.setText(phase === "retrieving" ? "Searching…" : "Generating…"); },
+                    onToolProgress: (_tool, message) => { if (message) statusEl.setText(message); },
                     onToken: (text) => {
                         fullAnswer += text;
                         streamEl.textContent = (streamEl.textContent ?? "") + text;

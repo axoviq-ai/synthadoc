@@ -175,6 +175,33 @@ def test_scaffold_no_marker_returns_new_content():
     assert result == "## People\n- [[alan-turing]]\n"
 
 
+# ── _build_skill_files branch coverage ───────────────────────────────────────
+
+def test_build_skill_files_uses_list_guidelines():
+    """agents_guidelines as a list → each item becomes a bullet (line 485)."""
+    agent = ScaffoldAgent(provider=AsyncMock())
+    agents_md, _, _ = agent._build_skill_files(
+        "ML",
+        {"agents_guidelines": ["Summarize claims.", "Use [[wikilinks]]."]},
+        7070,
+    )
+    assert "- Summarize claims." in agents_md
+    assert "- Use [[wikilinks]]." in agents_md
+
+
+def test_build_skill_files_falls_back_when_all_lines_strip_empty():
+    """All list items strip to empty → bullets fallback fires (line 494)."""
+    agent = ScaffoldAgent(provider=AsyncMock())
+    # A list of whitespace-only strings — no bullet survives the strip
+    agents_md, _, _ = agent._build_skill_files(
+        "ML",
+        {"agents_guidelines": ["  ", "\t"]},
+        7070,
+    )
+    assert isinstance(agents_md, str)
+    assert len(agents_md) > 0
+
+
 def test_scaffold_marker_without_user_zone():
     from synthadoc.agents.scaffold_agent import SCAFFOLD_MARKER, preserve_user_zone
     existing = f"{SCAFFOLD_MARKER}\n\n## Old Section\n"

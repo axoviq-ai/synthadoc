@@ -61,3 +61,43 @@ def test_pre_prompt_generated_for_reingest_complete():
     prompt = _build_pre_prompt(answer)
     assert prompt is not None
     assert "lint" in prompt.lower()
+
+
+def test_pre_prompt_generated_for_broken_wikilinks():
+    from synthadoc.agents.query_agent import _build_pre_prompt
+    answer = "Your wiki has 3 broken wikilinks: [[missingA]], [[missingB]], [[missingC]]."
+    prompt = _build_pre_prompt(answer)
+    assert prompt is not None
+    assert "broken" in prompt.lower() or "wikilink" in prompt.lower()
+
+
+def test_pre_prompt_generated_for_dead_links():
+    from synthadoc.agents.query_agent import _build_pre_prompt
+    answer = "Lint found 2 dead links in your active pages."
+    prompt = _build_pre_prompt(answer)
+    assert prompt is not None
+    assert "broken" in prompt.lower() or "wikilink" in prompt.lower()
+
+
+def test_pre_prompt_absent_when_no_broken_links():
+    from synthadoc.agents.query_agent import _build_pre_prompt
+    answer = "No broken wikilinks detected. Link integrity is clean."
+    prompt = _build_pre_prompt(answer)
+    assert prompt is None
+
+
+def test_pre_prompt_absent_when_zero_broken_links():
+    from synthadoc.agents.query_agent import _build_pre_prompt
+    answer = "Scan complete: 0 broken links found across all active pages."
+    prompt = _build_pre_prompt(answer)
+    assert prompt is None
+
+
+def test_broken_wikilinks_hint_chip_in_answer():
+    engine = _engine()
+    hints, _ = engine.after_response_windowed(
+        answer="Your wiki has 2 broken wikilinks pointing to non-existent pages.",
+        mode="wiki", cursor=0,
+    )
+    assert any("broken" in h.lower() or "wikilink" in h.lower() for h in hints), \
+        f"Expected broken wikilinks hint, got: {hints}"
