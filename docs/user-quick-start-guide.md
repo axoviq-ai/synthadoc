@@ -1,6 +1,6 @@
 ﻿# Synthadoc User Quick-Start Guide
 
-**Version: v1.2.0 (Community Edition)**
+**Version: v1.2.1 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
@@ -2671,15 +2671,18 @@ Press **Enter** to send it. A confirmation card appears:
 > *Found 1 stale page: konrad-zuse. Re-ingest it?*
 > **Yes, re-ingest all** / **No, cancel**
 
-Click **Yes, re-ingest all**. Inline progress events appear:
+Click **Yes, re-ingest all**. Inline progress events stream as the workflow runs each step:
 
 ```
 Looking up stale pages…
 Re-ingesting konrad-zuse-z3-computer.md…
 Polling job…  ✓ completed
+Running lint…
+Lint running... (8s)  ✓ completed
+Checking page states…
 ```
 
-When done, the chat pre-fills "Run lint to promote re-ingested pages to active" — click **Send** to promote `konrad-zuse` back to active in one more step.
+When done, the workflow writes a plain-text summary showing the re-ingest outcome, the lint result (pass/fail), and the final lifecycle state of each page — `konrad-zuse` appears as ✓ active. No second step is needed: lint runs as part of the workflow.
 
 ### Demo — re-ingest a specific page by slug (Workflow B)
 
@@ -2692,7 +2695,18 @@ The agent looks up the source path and asks for confirmation:
 > *Re-ingest alan-turing from `.../alan-turing.md`?*
 > **Yes** / **No, cancel**
 
-Confirm. The page is force-re-ingested (bypassing deduplication). When complete, a lint run is suggested via the pre-fill button.
+Confirm. Inline progress events stream as the workflow runs:
+
+```
+Looking up source for alan-turing…
+Re-ingesting alan-turing.md…
+Polling job…  ✓ completed
+Running lint…
+Lint running... (8s)  ✓ completed
+Checking page states…
+```
+
+When done, the workflow writes a plain-text summary showing the re-ingest outcome, the lint result, and the final lifecycle state — `alan-turing` appears as ✓ active. Lint runs as part of the workflow; no second step is needed.
 
 ### Maintenance chips in the web UI graph sidebar
 
@@ -2830,49 +2844,21 @@ Any other triggering phrase also works:
 
 > **Tip:** Re-run Workflow E after adding a significant batch of new pages to keep the index categories and AGENTS.md guidelines current with the wiki's actual scope.
 
-### How the agentic loop works
+### How it works
 
-All five workflows run as a multi-step tool-call loop driven by the action agent. The steps are:
+Each workflow runs as an agentic tool-call loop that streams inline progress after every step — you see what the agent is doing as it happens. All destructive operations (re-ingest, link fix, scaffold write) require your explicit confirmation before anything is changed. Declining exits cleanly with no side effects.
 
-**Workflow A (stale pages):**
-1. `find_stale_pages` — returns all stale pages with their local source paths
-2. `confirm` — asks user approval before touching any page
-3. `ingest_source` × N — force-ingests each page and waits for the job to complete (one at a time)
-4. `run_lint` — queues a full lint pass; returns a job_id
-5. `poll_job` — waits for the lint job to reach a terminal state
-6. `get_page_states` — checks the final lifecycle state of each re-ingested page
-7. Plain-text summary of every re-ingest outcome, the lint result, and page states
+**Key behaviours by workflow:**
 
-**Workflow B (by slug):**
-1. `find_page_source(slug)` — returns the source file path for the named page, regardless of lifecycle state
-2. `confirm` — shows slug and source path, asks approval
-3. `ingest_source` — force-ingests the page and waits for the job to complete
-4. `run_lint` → `poll_job` → `get_page_states`
-5. Plain-text summary
+| Workflow | Confirmation | Key behaviour |
+|----------|-------------|---------------|
+| **A — stale bulk** | ✓ required | Re-ingests pages one at a time; a single failure does not abort the run — remaining pages continue |
+| **B — by slug** | ✓ required | Force-re-ingests regardless of current lifecycle state |
+| **C — broken wikilinks** | ✓ required (if any found) | If the wiki is already clean, the workflow stops after scanning — no card appears |
+| **D — lint report** | none | Lint is read-only; runs and reports autonomously |
+| **E — scaffold** | ✓ required | User-written content above `<!-- synthadoc:scaffold -->` markers is always preserved |
 
-**Workflow C (broken wikilinks):**
-1. `find_broken_wikilinks` — scans all active pages; returns broken refs with fuzzy suggestions
-2. If none found: reports clean wiki and stops (no confirmation needed)
-3. `confirm` — shows full scope: every broken ref and its proposed fix
-4. `apply_link_fixes` × N — applies corrections one page at a time
-5. `run_lint` → `poll_job` → `get_page_states`
-6. Plain-text summary
-
-**Workflow D (lint run and report):**
-1. `run_lint` — enqueues a full lint pass; returns a job_id
-2. `poll_job` — waits for the lint job to reach a terminal state
-3. `get_lint_report` — reads the current lint state from wiki files: orphans, contradictions, adversarial warnings, citation issues
-4. Plain-text report: summary counts, contradicted pages with state-change dates, adversarial warnings by slug, orphan slugs
-
-**Workflow E (scaffold and report):**
-1. `get_scaffold_preview` — reads the configured domain and lists files to overwrite
-2. `confirm` — shows domain and file list; user must approve before anything is written
-3. `run_scaffold(domain)` — enqueues the scaffold job, waits for completion, reads `categories_updated` and `routing_regenerated` from the job result
-4. Plain-text report: domain, files written, pages categorised, ROUTING.md status
-
-Tool progress streams as inline events — you see each step as it happens. Declining confirmation exits cleanly. A single-page failure does not abort Workflow A — remaining pages continue and all outcomes appear in the final summary. Workflow D requires no confirmation — lint is a read-and-report operation that does not modify pages. Workflow E always confirms before writing scaffold files.
-
-For the full protocol specification, see [Agentic Maintenance Workflows](design.md#agentic-maintenance-workflows) in the design doc.
+For tool-level detail — per-workflow tool sets, SSE extensions (`tool_progress`, `confirm_request`, `done.pre_prompt`), routing architecture, and loop constraints — see [§ Agentic Maintenance Workflows](design.md#agentic-maintenance-workflows) in the design doc.
 
 ---
 

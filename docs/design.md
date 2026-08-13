@@ -1,6 +1,6 @@
 # Synthadoc — Design Document
 
-**Version:** 1.2.0  
+**Version:** 1.2.1  
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -3368,9 +3368,9 @@ In the web UI **Graph tab**, the node detail panel includes a **Maintenance** se
 
 Fast-path routing uses a **workflow registry** (`synthadoc/agents/workflows/_registry.py`). Each workflow that needs pre-LLM routing declares a `MATCH_RE` class attribute; the action agent iterates the registry and routes to the first match — no LLM call is made.
 
-The LLM-extraction gate (`_ACTION_RE` in `action_agent.py`) is a separate, more conservative pattern set used to decide whether to invoke the LLM at all. Workflow `MATCH_RE` patterns are intentionally not merged into `_ACTION_RE` because fast-path patterns can be broader than what `_ACTION_RE` should allow (e.g. `LintReportWorkflow.MATCH_RE` matches "How do I run a lint check?" which is a question, not an action). Only patterns whose false-positive risk is acceptable should be added to `_ACTION_RE`.
+The LLM-extraction gate (`_ACTION_RE` in `action_agent.py`) is a separate, more conservative pattern set used to decide whether to invoke the LLM at all. `_ROUTED_PAT` — a union of every registered workflow's `MATCH_RE` pattern, built dynamically at import time from `ROUTED_WORKFLOWS` — is included in `_ACTION_RE` automatically. Adding a workflow to `ROUTED_WORKFLOWS` therefore extends `_ACTION_RE` coverage with no manual edit required.
 
-**`_BROKEN_WIKILINKS_PAT` sync requirement:** `BrokenWikilinksWorkflow.MATCH_RE` has a corresponding plain-string constant (`_BROKEN_WIKILINKS_PAT`) in `action_agent.py` that forms part of `_ACTION_RE`. When `BrokenWikilinksWorkflow.MATCH_RE` changes, `_BROKEN_WIKILINKS_PAT` must be updated manually to match — there is no automated sync. A `MATCH_RE` pattern whose phrases have no corresponding `_ACTION_RE` entry is unreachable dead code: the query is diverted to `QueryAgent` before the registry loop is ever consulted. The removal of `|\blint\s+run\b` from `LintReportWorkflow.MATCH_RE` illustrates this: the verb-last phrase "lint run" was never covered by `_ACTION_RE`, so the branch could never fire.
+One constraint applies to `MATCH_RE` patterns that use generic imperative verbs (e.g. `\brun\b`): these must be anchored with `^` so they do not match how-to questions ("How do I run lint?") that share the same verb. Domain-specific phrases (e.g. `\bbroken\s+wikilinks\b`, `\bstale\s+pages\b`) are specific enough that anchoring is not required.
 
 - Phrases matching `MATCH_RE` of any registered workflow → routed directly, no LLM extraction
 - Phrases matching `re-ingest the <slug> page` → routed to `IngestLintWorkflow` via a separate slug-specific fast-path (this workflow has no `MATCH_RE` because the slug is captured at routing time)
@@ -3381,11 +3381,10 @@ The LLM-extraction gate (`_ACTION_RE` in `action_agent.py`) is a separate, more 
 ### Adding a new workflow
 
 1. Create a new module under `synthadoc/agents/workflows/` implementing `AgenticWorkflow` (three abstract methods: `build_system_prompt`, `build_initial_message`, `get_tool_fns`).
-2. If the workflow needs pre-LLM fast-path routing, set `MATCH_RE = re.compile(r"...", re.IGNORECASE)` as a class attribute.
+2. If the workflow needs pre-LLM fast-path routing, set `MATCH_RE = re.compile(r"...", re.IGNORECASE)` as a class attribute. Anchor imperative-verb patterns with `^` (see routing constraints above).
 3. Add one import line and one entry to `ROUTED_WORKFLOWS` in `synthadoc/agents/workflows/_registry.py`.
-4. Add a phrase-pattern covering the workflow's trigger phrases to `_ACTION_RE` in `action_agent.py`. A `MATCH_RE` whose phrases are absent from `_ACTION_RE` is unreachable dead code — queries are diverted to `QueryAgent` before the registry loop runs.
 
-The routing loop and test scaffolding update automatically from steps 2–3. Step 4 is always manual. The loop machinery — tool dispatch, result injection, termination detection, 30-call cap, 120-second confirmation timeout — is inherited automatically from `AgenticWorkflow`.
+No other file needs to change. `_ROUTED_PAT` is rebuilt from `ROUTED_WORKFLOWS` at import time, so `_ACTION_RE` coverage extends automatically. The loop machinery — tool dispatch, result injection, termination detection, 30-call cap, 120-second confirmation timeout — is inherited automatically from `AgenticWorkflow`.
 
 → User walkthrough: [Quick-Start Guide §26 — Agentic Maintenance Workflows](docs/user-quick-start-guide.md#agentic-workflows)
 
@@ -3459,10 +3458,20 @@ All three files share identical body content generated from the same template; t
 
 ## Appendix A — Release Feature Index
 
+### v1.2.1
+
+- **Three additional agentic maintenance workflows** — extending the pluggable workflow registry introduced in v1.2.0 with three new conversational workflows: **Workflow C** (broken wikilinks scan and fix — "scan for broken wikilinks") scans all active pages for dead `[[slug]]` references, proposes fuzzy-matched corrections with `difflib`, and applies fixes after confirmation; **Workflow D** (lint run and full report — "run lint") runs a full lint pass and streams the complete report in one turn with no confirmation gate; **Workflow E** (scaffold regeneration — "run scaffold") previews domain and files to overwrite, confirms, then regenerates `wiki/index.md`, `wiki/purpose.md`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`. All three are fully pluggable: each is a self-contained module implementing `AgenticWorkflow` with a `MATCH_RE` class attribute; adding a workflow to `ROUTED_WORKFLOWS` in `_registry.py` automatically extends `_ACTION_RE` coverage via the dynamic `_ROUTED_PAT` union — no other file changes required.
+- **`get_page_states` step in agentic reingest** — Workflows A and B now call `get_page_states` after the lint run completes, returning the final lifecycle state (`active`, `stale`, `draft`, `archived`) of every re-ingested page as part of the completion summary.
+- **`synthadoc query` CLI agentic routing** — the `synthadoc query` CLI command now routes through the same action-agent path as the web UI chat, enabling all five agentic maintenance workflows from the terminal.
+- **Audit DB secondary indexes** — `audit_events`, `lifecycle_events`, and `claim_citations` tables now carry secondary indexes on their most-queried foreign-key and timestamp columns, eliminating full-table scans on large audit databases.
+- **Web UI auto-scroll during agentic workflows** — the content panel now auto-scrolls to the bottom during agentic workflow progress so inline `tool_progress` events stay visible without manual scrolling.
+- **`pre_prompt` suppression after completion** — the `done.pre_prompt` field is now cleared after the user sends the suggested follow-up action, preventing the suggestion from re-appearing on the next turn.
+- **Scheduler subprocess pipe draining** — the scheduler now drains stdout/stderr from killed or timed-out subprocess pipes before closing them, eliminating `BrokenPipeError` noise on timeout and cancellation.
+- **Snapshot timestamps in local time** — lifecycle content snapshot timestamps are now displayed in the user's local timezone rather than UTC in the Obsidian Content Snapshots tab and the CLI `lifecycle history` output.
+
 ### v1.2.0
 
 - **Agentic Ingest & Lint Workflow** — conversational agentic loop in the web UI chat that orchestrates re-ingest and lint runs without the user leaving the chat. Two workflows: **Workflow A** (bulk stale reingest — "re-ingest stale pages") finds every stale page, confirms, re-ingests each one, then runs lint; **Workflow B** (by-slug reingest — "re-ingest the alan-turing page") re-ingests any single page by slug regardless of lifecycle state (active, draft, or stale). Built on a tool-call loop in the action agent: six tools (`find_stale_pages`, `find_page_source`, `ingest_source`, `poll_job`, `run_lint`, `confirm`); two new SSE event types (`tool_progress`, `confirm_request`); new `POST /ingest` and `POST /action/confirm` HTTP endpoints. Slug-based requests are intercepted by a regex fast-path before LLM extraction for reliable routing. Errors return as structured `tool_result` payloads — the stream never dies on a tool failure; partial completion continues with remaining pages. Graph sidebar maintenance chips in the web UI trigger both workflows with one click.
-- **Agentic Maintenance Workflows** — user-facing conversational maintenance experience built on the Agentic Ingest & Lint Workflow; covers both workflows (stale-bulk and by-slug), the full tool set, graph sidebar chips, SSE protocol extensions (`tool_progress`, `confirm_request`, `done.pre_prompt`), and loop constraints (30-call cap, 120-second confirmation timeout). See [§ Agentic Maintenance Workflows](#agentic-maintenance-workflows).
 - **Content snapshots and rollback** — page body captured at every lifecycle transition (manual CLI/Obsidian/MCP, lint-driven auto-transition); browse per-page version history with `synthadoc lifecycle history`; restore any prior version with `synthadoc lifecycle rollback` (saves current body first so rollback is always undoable). Content Snapshots tab added to the Obsidian Lifecycle modal. See [§23 Page Content Snapshots](#page-content-snapshots).
 - **Background vault monitoring** — Obsidian plugin registers `vault.on("modify")` with a 2-second per-slug debounce; on each quiet period it posts `POST /pages/{slug}/snapshot` to capture manual edits that do not trigger a lifecycle transition. Server-side deduplication ensures no snapshot is written when content is unchanged. See [§8 Background vault monitoring](#background-vault-monitoring-v120).
 - **Atomic page writes** — `WikiStorage.write_page` now writes to a `.tmp` sibling then calls `os.replace()`, eliminating the risk of a partial page file on mid-write crash or disk error. Shared `atomic_write_text()` utility in `synthadoc/utils.py` consolidates the pattern used by `write_page`, `Scheduler._save_raw`, and `Orchestrator._auto_block_domain` (BUG-24).
