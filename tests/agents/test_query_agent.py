@@ -2279,7 +2279,7 @@ async def test_query_system_knowledge_no_wiki_citations(tmp_wiki):
 
 @pytest.mark.asyncio
 async def test_fetch_live_wiki_data_no_db_returns_empty(tmp_wiki):
-    """Returns empty string gracefully when audit.db does not exist."""
+    """Returns empty string gracefully when audit.db has no lifecycle data."""
     store = WikiStorage(tmp_wiki / "wiki")
     search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
     agent = QueryAgent(provider=AsyncMock(), store=store, search=search)
