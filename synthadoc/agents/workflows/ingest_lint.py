@@ -88,7 +88,6 @@ When you have a final message for the user, respond with plain text only (no too
 
 
 class IngestLintWorkflow(AgenticWorkflow):
-    # Keep in sync with _INGEST_LINT_PAT in action_agent.py.
     MATCH_RE = re.compile(
         r"\bstale\s+pages?\b"
         r"|\borchestrat"

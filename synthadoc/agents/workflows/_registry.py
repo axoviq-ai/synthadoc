@@ -6,12 +6,10 @@ To add a new workflow with fast-path routing:
   1. Implement AgenticWorkflow in a new module under synthadoc/agents/workflows/.
   2. Set MATCH_RE = re.compile(r"...", re.IGNORECASE) on the class.
   3. Add one import line and one entry in ROUTED_WORKFLOWS below.
-  4. Add a phrase-pattern covering the trigger phrases to _ACTION_RE in
-     action_agent.py — a MATCH_RE whose phrases have no _ACTION_RE coverage
-     is unreachable dead code.
 
-Beyond these four steps, no other file needs to change.  ActionAgent reads
-ROUTED_WORKFLOWS at startup and routes to the first matching workflow.
+No other file needs to change.  ActionAgent reads ROUTED_WORKFLOWS at startup,
+derives _ACTION_RE coverage automatically from each workflow's MATCH_RE, and
+routes directly to the first matching workflow — no LLM extraction required.
 """
 from __future__ import annotations
 

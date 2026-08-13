@@ -47,30 +47,12 @@ _SLUG_REINGEST_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Broken-wikilinks phrases must appear in _ACTION_RE so that is_action_question()
-# routes these messages to ActionAgent before the fast-path MATCH_RE can fire.
-# Keep this sub-pattern in sync with BrokenWikilinksWorkflow.MATCH_RE.
-_BROKEN_WIKILINKS_PAT = (
-    r"\bbroken\b.{0,40}\b(?:wiki\s*links?|links?)\b"
-    r"|\b(?:wiki\s*links?|links?)\b.{0,40}\bbroken\b"
-    r"|\bfix\b.{0,40}\b(?:dead|dangling|broken)\b.{0,30}\b(?:wiki\s*links?|links?)\b"
-    r"|\b(?:dead|dangling)\b.{0,30}\b(?:wiki\s*links?|links?)\b"
-    r"|\bscan\b.{0,40}\b(?:wiki\s*links?|links?)\b"
-    r"|\bcheck\b.{0,40}\bwiki\s*links?\b"
-    r"|\blink\s+integrit"
-)
-
-# Ingest-lint workflow phrases must appear in _ACTION_RE so that is_action_question()
-# routes these messages to ActionAgent before the fast-path MATCH_RE can fire.
-# Keep this sub-pattern in sync with IngestLintWorkflow.MATCH_RE.
-_INGEST_LINT_PAT = (
-    r"\bstale\s+pages?\b"
-    r"|\borchestrat"
-    r"|\b(guided|agentic)\s+(maintenance\s+)?workflow\b"
-    # "re-ingest stale pages" — require "stale" nearby to avoid matching how-to questions
-    r"|\bre.?ingest\b.{0,60}\bstale\b|\bstale\b.{0,60}\bre.?ingest\b"
-    # "re-ingest the <slug> page" — slug-based Workflow B
-    r"|\bre.?ingest\b\s+the\s+[a-z0-9]"
+# Union of every routed workflow's MATCH_RE pattern, built at import time so
+# _ACTION_RE automatically covers any workflow added to ROUTED_WORKFLOWS.
+_ROUTED_PAT = "|".join(
+    wf.MATCH_RE.pattern
+    for wf in ROUTED_WORKFLOWS
+    if wf.MATCH_RE is not None
 )
 
 _SCHEDULE_CRON_PROMPT = (
@@ -159,10 +141,8 @@ _ACTION_RE = re.compile(
     r"|\bjob\w*\s+(status|detail|list|progress|result)\b"
     r"|\b(show|list|display|view|check|get)\b.{0,30}\bjob\w*\b"
     r"|\bwhat.{0,20}\b(status|progress).{0,20}\bjob\b"
-    # orchestrate / guided workflow / re-ingest — kept in sync with IngestLintWorkflow.MATCH_RE
-    r"|" + _INGEST_LINT_PAT
-    # broken wikilinks / dead links — kept in sync with BrokenWikilinksWorkflow.MATCH_RE
-    r"|" + _BROKEN_WIKILINKS_PAT,
+    # routed-workflow fast-path phrases — auto-derived from ROUTED_WORKFLOWS
+    r"|" + _ROUTED_PAT,
     re.IGNORECASE,
 )
 
