@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
+from synthadoc.agents.workflows._registry import ROUTED_WORKFLOWS
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.wiki import LifecycleState
 
@@ -44,6 +45,14 @@ _SLUG_REINGEST_RE = re.compile(
     r"[a-z0-9][a-z0-9\-_]{2,}"
     r"(?:\s+page)?\b",
     re.IGNORECASE,
+)
+
+# Union of every routed workflow's MATCH_RE pattern, built at import time so
+# _ACTION_RE automatically covers any workflow added to ROUTED_WORKFLOWS.
+_ROUTED_PAT = "|".join(
+    wf.MATCH_RE.pattern
+    for wf in ROUTED_WORKFLOWS
+    if wf.MATCH_RE is not None
 )
 
 _SCHEDULE_CRON_PROMPT = (
@@ -132,14 +141,8 @@ _ACTION_RE = re.compile(
     r"|\bjob\w*\s+(status|detail|list|progress|result)\b"
     r"|\b(show|list|display|view|check|get)\b.{0,30}\bjob\w*\b"
     r"|\bwhat.{0,20}\b(status|progress).{0,20}\bjob\b"
-    # orchestrate / guided workflow / re-ingest stale pages
-    r"|\bstale\s+pages?\b"
-    r"|\borchestrat"
-    r"|\b(guided|agentic)\s+(maintenance\s+)?workflow\b"
-    # "re-ingest stale pages" — require "stale" nearby to avoid matching how-to questions
-    r"|\bre.?ingest\b.{0,60}\bstale\b|\bstale\b.{0,60}\bre.?ingest\b"
-    # "re-ingest the <slug> page" — slug-based Workflow B
-    r"|\bre.?ingest\b\s+the\s+[a-z0-9]",
+    # routed-workflow fast-path phrases — auto-derived from ROUTED_WORKFLOWS
+    r"|" + _ROUTED_PAT,
     re.IGNORECASE,
 )
 
@@ -317,6 +320,14 @@ class ActionAgent:
         # Emit immediately so the UI shows activity while _extract() waits for the LLM.
         yield {"event": "tool_progress", "data": {"tool": "_init", "message": "Analyzing your request..."}}
 
+        # Fast-path: registry-based workflow routing (no LLM extraction).
+        # Each workflow declares its own MATCH_RE; first match wins.
+        for _wf_cls in ROUTED_WORKFLOWS:
+            if _wf_cls.MATCH_RE and _wf_cls.MATCH_RE.search(question):
+                async for evt in self._run_orchestrate(question, session_id=session_id, workflow=_wf_cls()):
+                    yield evt
+                return
+
         # Fast-path: slug-based reingest queries always route to orchestrate without an LLM call.
         if _SLUG_REINGEST_RE.search(question):
             async for evt in self._run_orchestrate(question, session_id=session_id):
@@ -364,10 +375,18 @@ class ActionAgent:
             _done_data["pre_prompt"] = _pre_prompt
         yield {"event": "done", "data": _done_data}
 
-    async def _run_orchestrate(self, question: str, session_id: str | None = None) -> "AsyncGenerator[dict, None]":
-        """Run IngestLintWorkflow via tool-call loop and yield SSE dicts."""
+    async def _run_orchestrate(
+        self,
+        question: str,
+        session_id: str | None = None,
+        workflow: "AgenticWorkflow | None" = None,
+    ) -> "AsyncGenerator[dict, None]":
+        """Run an AgenticWorkflow via the tool-call loop and yield SSE dicts.
+
+        Defaults to IngestLintWorkflow when *workflow* is not provided.
+        """
         import asyncio as _asyncio
-        from synthadoc.agents.workflows._base import WorkflowContext
+        from synthadoc.agents.workflows._base import AgenticWorkflow, WorkflowContext
         from synthadoc.agents.workflows._loop import run_tool_call_loop
         from synthadoc.agents.workflows.ingest_lint import IngestLintWorkflow
         from synthadoc.storage.log import AuditDB
@@ -392,6 +411,8 @@ class ActionAgent:
 
         import uuid as _uuid
         _session_id = session_id or str(_uuid.uuid4())
+        _cfg = getattr(self._orch, "_cfg", None)
+        _domain = getattr(getattr(_cfg, "wiki", None), "domain", "") or ""
         ctx = WorkflowContext(
             session_id=_session_id,
             wiki_root=self._wiki_root,
@@ -401,9 +422,10 @@ class ActionAgent:
             send_sse_event=_send,
             confirm_registry=getattr(self._orch, "_confirm_registry", {}),
             confirm_result_registry=getattr(self._orch, "_confirm_result_registry", {}),
+            domain=_domain,
         )
 
-        wf = IngestLintWorkflow()
+        wf = workflow if workflow is not None else IngestLintWorkflow()
         system_prompt = await wf.build_system_prompt()
         tool_fns = wf.get_tool_fns(ctx)
 

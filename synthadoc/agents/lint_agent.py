@@ -974,4 +974,14 @@ class LintAgent:
                            flagged=report.contradictions_found - report.contradictions_resolved,
                            orphans=len(report.orphan_slugs),
                            dangling_removed=report.dangling_links_removed)
+        if self._audit:
+            try:
+                await self._audit.record_lint_run(
+                    dangling_removed=report.dangling_links_removed,
+                    orphans=len(report.orphan_slugs),
+                    contradictions_resolved=report.contradictions_resolved,
+                    contradictions_flagged=report.contradictions_found - report.contradictions_resolved,
+                )
+            except Exception:
+                pass
         return report

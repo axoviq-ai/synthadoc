@@ -43,6 +43,19 @@ def test_ingest_manifest_urls_not_mangled(tmp_path):
     assert payload["source"] == "https://en.wikipedia.org/wiki/Alan_Turing"
 
 
+def test_ingest_single_source_with_max_source_chars(tmp_path):
+    """--max-source-chars is forwarded in the POST body (line 106)."""
+    doc = tmp_path / "doc.md"
+    doc.write_text("# Doc", encoding="utf-8")
+    with patch("synthadoc.cli.ingest.post", return_value={"job_id": "job-42"}) as mock_post:
+        result = runner.invoke(app, [
+            "ingest", str(doc), "--max-source-chars", "50000", "-w", "."
+        ])
+    assert result.exit_code == 0, result.output
+    body = mock_post.call_args[0][2]
+    assert body["max_source_chars"] == 50000
+
+
 def test_ingest_manifest_skips_blanks_and_comments(tmp_path):
     """Blank lines and # comment lines in a manifest are silently skipped."""
     doc = tmp_path / "doc.md"

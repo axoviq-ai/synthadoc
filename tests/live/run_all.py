@@ -31,6 +31,13 @@ Examples:
 
     # Run agentic workflow tests only (requires v1.2.0 feature to be shipped)
     python -X utf8 tests/live/run_all.py --suite agentic
+
+    # Run lint report workflow tests only (requires v1.2.1 feature to be shipped)
+    python -X utf8 tests/live/run_all.py --suite lint_report
+
+    # Run scaffold workflow tests only (requires v1.2.1 feature to be shipped)
+    # Note: the accept-path tests re-scaffold the wiki (index.md etc. overwritten)
+    python -X utf8 tests/live/run_all.py --suite scaffold
 """
 import argparse
 import os
@@ -52,11 +59,14 @@ def _configured_wiki() -> str:
 HERE = Path(__file__).parent
 
 SUITES = {
-    "cli":       "live_cli_test.py",
-    "mcp":       "live_mcp_test.py",
-    "plugin":    "live_plugin_test.py",
-    "snapshots": "test_lifecycle_snapshots_live.py",
-    "agentic":   "test_agentic_ingest_lint_live.py",
+    "cli":              "live_cli_test.py",
+    "mcp":              "live_mcp_test.py",
+    "plugin":           "live_plugin_test.py",
+    "snapshots":        "test_lifecycle_snapshots_live.py",
+    "agentic":          "test_agentic_ingest_lint_live.py",
+    "broken_wikilinks": "test_broken_wikilinks_live.py",
+    "lint_report":      "test_lint_report_workflow_live.py",
+    "scaffold":         "test_scaffold_workflow_live.py",
 }
 
 PASS = "\033[92mPASS\033[0m"
@@ -135,19 +145,25 @@ def main() -> None:
 
     # Per-suite CLI args (override env vars for explicit invocation)
     suite_args = {
-        "cli":       ["--wiki", args.wiki, "--url", base + "/"],
-        "mcp":       [],
-        "plugin":    ["--wiki", args.wiki, "--url", base],
-        "snapshots": [],
-        "agentic":   [],
+        "cli":              ["--wiki", args.wiki, "--url", base + "/"],
+        "mcp":              [],
+        "plugin":           ["--wiki", args.wiki, "--url", base],
+        "snapshots":        [],
+        "agentic":          [],
+        "broken_wikilinks": [],
+        "lint_report":      [],
+        "scaffold":         [],
     }
     # Per-suite environment
     suite_env = {
-        "cli":       {**os.environ, "WIKI_NAME": args.wiki, "SYNTHADOC_URL": base + "/"},
-        "mcp":       {**os.environ, "MCP_URL": mcp_url},
-        "plugin":    {**os.environ, "WIKI_NAME": args.wiki, "SYNTHADOC_URL": base},
-        "snapshots": {**os.environ, "SYNTHADOC_URL": base},
-        "agentic":   {**os.environ, "SYNTHADOC_URL": base},
+        "cli":              {**os.environ, "WIKI_NAME": args.wiki, "SYNTHADOC_URL": base + "/"},
+        "mcp":              {**os.environ, "MCP_URL": mcp_url},
+        "plugin":           {**os.environ, "WIKI_NAME": args.wiki, "SYNTHADOC_URL": base},
+        "snapshots":        {**os.environ, "SYNTHADOC_URL": base},
+        "agentic":          {**os.environ, "SYNTHADOC_URL": base},
+        "broken_wikilinks": {**os.environ, "SYNTHADOC_URL": base},
+        "lint_report":      {**os.environ, "SYNTHADOC_URL": base},
+        "scaffold":         {**os.environ, "SYNTHADOC_URL": base},
     }
 
     codes: dict[str, int] = {}

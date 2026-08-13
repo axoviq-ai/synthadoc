@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,10 +24,22 @@ class WorkflowContext:
     send_sse_event: SseEventFn
     confirm_registry: dict[str, asyncio.Event]
     confirm_result_registry: dict[str, bool]
+    domain: str = ""
 
 
 class AgenticWorkflow(ABC):
-    """Abstract base class for all agentic workflows."""
+    """Abstract base class for all agentic workflows.
+
+    Optional class attribute — set on subclasses that need fast-path routing:
+
+        MATCH_RE = re.compile(r"...", re.IGNORECASE)
+
+    When set, ActionAgent's run_gen checks this pattern before calling the LLM
+    and routes directly to this workflow on a match.  Workflows without MATCH_RE
+    are reached only via LLM intent extraction.
+    """
+
+    MATCH_RE: re.Pattern | None = None
 
     @abstractmethod
     async def build_system_prompt(self) -> str:
