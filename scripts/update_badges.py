@@ -89,6 +89,21 @@ def count_hooks() -> int:
     return sum(1 for p in hooks_dir.glob("*.py"))
 
 
+def count_maintenance_workflows() -> int:
+    """Count agentic maintenance workflow classes in synthadoc/agents/workflows/.
+
+    Each workflow is a concrete subclass of AgenticWorkflow — identified by
+    'class <Name>Workflow(AgenticWorkflow)' declarations in the workflows package.
+    """
+    import re
+    workflows_dir = ROOT / "synthadoc" / "agents" / "workflows"
+    pattern = re.compile(r"^class \w+Workflow\(AgenticWorkflow\)", re.MULTILINE)
+    return sum(
+        len(pattern.findall(p.read_text(encoding="utf-8")))
+        for p in workflows_dir.glob("*.py")
+    )
+
+
 def read_coverage(coverage_json: Path) -> int:
     """Return total coverage as an integer (e.g. 87).
 
@@ -126,6 +141,7 @@ def main() -> None:
         "mcp_tools": count_mcp_tools(),
         "agents": count_agents(),
         "hooks": count_hooks(),
+        "maintenance_workflows": count_maintenance_workflows(),
     }
 
     badges_path = ROOT / "docs" / "badges.json"

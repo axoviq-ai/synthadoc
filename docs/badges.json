@@ -6,5 +6,6 @@
   "coverage": 91,
   "coverage_color": "brightgreen",
   "mcp_tools": 12,
-  "agents": 11
+  "agents": 11,
+  "maintenance_workflows": 4
 }
