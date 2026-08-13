@@ -2695,7 +2695,18 @@ The agent looks up the source path and asks for confirmation:
 > *Re-ingest alan-turing from `.../alan-turing.md`?*
 > **Yes** / **No, cancel**
 
-Confirm. The page is force-re-ingested (bypassing deduplication). When complete, a lint run is suggested via the pre-fill button.
+Confirm. Inline progress events stream as the workflow runs:
+
+```
+Looking up source for alan-turing…
+Re-ingesting alan-turing.md…
+Polling job…  ✓ completed
+Running lint…
+Lint running... (8s)  ✓ completed
+Checking page states…
+```
+
+When done, the workflow writes a plain-text summary showing the re-ingest outcome, the lint result, and the final lifecycle state — `alan-turing` appears as ✓ active. Lint runs as part of the workflow; no second step is needed.
 
 ### Maintenance chips in the web UI graph sidebar
 
