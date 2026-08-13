@@ -2671,15 +2671,18 @@ Press **Enter** to send it. A confirmation card appears:
 > *Found 1 stale page: konrad-zuse. Re-ingest it?*
 > **Yes, re-ingest all** / **No, cancel**
 
-Click **Yes, re-ingest all**. Inline progress events appear:
+Click **Yes, re-ingest all**. Inline progress events stream as the workflow runs each step:
 
 ```
 Looking up stale pages…
 Re-ingesting konrad-zuse-z3-computer.md…
 Polling job…  ✓ completed
+Running lint…
+Lint running... (8s)  ✓ completed
+Checking page states…
 ```
 
-When done, the chat pre-fills "Run lint to promote re-ingested pages to active" — click **Send** to promote `konrad-zuse` back to active in one more step.
+When done, the workflow writes a plain-text summary showing the re-ingest outcome, the lint result (pass/fail), and the final lifecycle state of each page — `konrad-zuse` appears as ✓ active. No second step is needed: lint runs as part of the workflow.
 
 ### Demo — re-ingest a specific page by slug (Workflow B)
 
