@@ -34,6 +34,10 @@ Examples:
 
     # Run lint report workflow tests only (requires v1.2.1 feature to be shipped)
     python -X utf8 tests/live/run_all.py --suite lint_report
+
+    # Run scaffold workflow tests only (requires v1.2.1 feature to be shipped)
+    # Note: the accept-path tests re-scaffold the wiki (index.md etc. overwritten)
+    python -X utf8 tests/live/run_all.py --suite scaffold
 """
 import argparse
 import os
@@ -62,6 +66,7 @@ SUITES = {
     "agentic":          "test_agentic_ingest_lint_live.py",
     "broken_wikilinks": "test_broken_wikilinks_live.py",
     "lint_report":      "test_lint_report_workflow_live.py",
+    "scaffold":         "test_scaffold_workflow_live.py",
 }
 
 PASS = "\033[92mPASS\033[0m"
@@ -147,6 +152,7 @@ def main() -> None:
         "agentic":          [],
         "broken_wikilinks": [],
         "lint_report":      [],
+        "scaffold":         [],
     }
     # Per-suite environment
     suite_env = {
@@ -157,6 +163,7 @@ def main() -> None:
         "agentic":          {**os.environ, "SYNTHADOC_URL": base},
         "broken_wikilinks": {**os.environ, "SYNTHADOC_URL": base},
         "lint_report":      {**os.environ, "SYNTHADOC_URL": base},
+        "scaffold":         {**os.environ, "SYNTHADOC_URL": base},
     }
 
     codes: dict[str, int] = {}
