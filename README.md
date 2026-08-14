@@ -74,6 +74,9 @@ Synthadoc reads your raw source documents — PDFs, spreadsheets, PPTs, web page
 <p align="center">
   <a href="docs/media/README.md">📝 Blogs & Media — YouTube · Coderlegion · DEV.to · Medium</a>
 </p>
+<p align="center">
+  <a href="docs/example/aquaflow/README.md">📂 End-to-end Example — AquaFlow Capital M&amp;A due diligence walkthrough</a>
+</p>
 <!-- pypi-strip-end -->
 
 ---
