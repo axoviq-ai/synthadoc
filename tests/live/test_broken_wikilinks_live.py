@@ -288,6 +288,7 @@ def _cleanup_stale_bwl_pages():
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
 @pytest.mark.live
+@pytest.mark.timeout(300)
 def test_scan_detects_broken_links_and_emits_confirm():
     """
     Workflow scans active pages, finds broken [[wikilinks]], emits tool_progress
@@ -338,6 +339,7 @@ def test_scan_detects_broken_links_and_emits_confirm():
 
 
 @pytest.mark.live
+@pytest.mark.timeout(300)
 def test_fix_with_fuzzy_suggestion_updates_page_content():
     """
     Typo wikilink with a close fuzzy match is replaced with the corrected slug.
@@ -397,6 +399,7 @@ def test_fix_with_fuzzy_suggestion_updates_page_content():
 
 
 @pytest.mark.live
+@pytest.mark.timeout(300)
 def test_remove_link_with_no_fuzzy_match():
     """
     Completely alien broken ref (no close fuzzy match) is unlinked from the page.
@@ -431,6 +434,7 @@ def test_remove_link_with_no_fuzzy_match():
 
 
 @pytest.mark.live
+@pytest.mark.timeout(300)
 def test_declined_workflow_makes_no_changes():
     """Declining confirmation leaves page content byte-for-byte identical."""
     wiki_root = _wiki_root()
@@ -474,6 +478,7 @@ def test_declined_workflow_makes_no_changes():
 
 
 @pytest.mark.live
+@pytest.mark.timeout(300)
 def test_clean_wiki_reports_no_broken_links():
     """When only valid wikilinks exist, workflow reports clean — no confirm_request."""
     wiki_root = _wiki_root()
@@ -512,6 +517,7 @@ def test_clean_wiki_reports_no_broken_links():
 
 
 @pytest.mark.live
+@pytest.mark.timeout(300)
 def test_stale_pages_excluded_from_scan():
     """Broken links in stale pages are not reported; only active pages are scanned."""
     wiki_root = _wiki_root()
@@ -561,6 +567,7 @@ def test_stale_pages_excluded_from_scan():
 
 
 @pytest.mark.live
+@pytest.mark.timeout(300)
 def test_multi_page_scan_and_fix():
     """
     Three pages, each with a broken wikilink. All three are detected and fixed
@@ -619,6 +626,7 @@ def test_multi_page_scan_and_fix():
 
 
 @pytest.mark.live
+@pytest.mark.timeout(300)
 def test_mixed_fixable_and_removable_links_on_one_page():
     """
     One page has two broken refs: one with a fuzzy suggestion (corrected) and
@@ -658,6 +666,7 @@ def test_mixed_fixable_and_removable_links_on_one_page():
 
 
 @pytest.mark.live
+@pytest.mark.timeout(300)
 def test_lint_runs_after_fixes_and_get_page_states_fires():
     """
     After applying fixes, run_lint and get_page_states tool_progress events

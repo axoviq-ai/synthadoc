@@ -20,6 +20,16 @@ class JobStatus(str, Enum):
     SKIPPED = "skipped"       # deliberately not retried (e.g. domain auto-blocked)
     CANCELLED = "cancelled"   # pending job cancelled by user
 
+    @property
+    def is_terminal(self) -> bool:
+        """True when the job has reached a final state and will not progress further.
+
+        Defined by exclusion: every status is terminal except PENDING and
+        IN_PROGRESS.  Adding a new status to this enum makes it terminal
+        automatically unless it is explicitly added here.
+        """
+        return self not in (JobStatus.PENDING, JobStatus.IN_PROGRESS)
+
 
 @dataclass
 class Job:

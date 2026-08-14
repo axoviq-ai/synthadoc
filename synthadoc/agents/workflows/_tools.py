@@ -13,6 +13,7 @@ import difflib
 import os
 import re
 import time
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -20,15 +21,30 @@ if TYPE_CHECKING:
     from synthadoc.agents.workflows._base import WorkflowContext
 
 from synthadoc.agents.scaffold_agent import scaffold_output_paths
+from synthadoc.core.queue import JobStatus
 
 # Retry delays (seconds) when the job queue is temporarily unavailable.
 # The first attempt uses 0 delay; subsequent attempts use these values.
 _INGEST_RETRY_DELAYS: list[int] = [2, 4, 8]
 
-# JobStatus.value strings that indicate the job has reached a terminal state.
-_TERMINAL_STATUSES: frozenset[str] = frozenset(
-    {"completed", "failed", "dead", "cancelled", "skipped"}
-)
+
+class ToolStatus(str, Enum):
+    """Tool-call result status codes returned by workflow tool functions.
+
+    Distinct from :class:`~synthadoc.core.queue.JobStatus`, which represents
+    the state of a queued background job.  These codes describe the *outcome
+    of a single tool call* as seen by the LLM loop.
+
+    Because this is a ``str`` mixin enum, members compare equal to their plain
+    string values (``ToolStatus.SUCCESS == "success"`` is ``True``).  Return
+    dicts therefore store plain string literals — transparent to LLM
+    serialisation via ``str(result_dict)`` — while comparison sites use the
+    typed members to eliminate magic strings.
+    """
+    SUCCESS = "success"
+    FAILED  = "failed"
+    TIMEOUT = "timeout"
+    ERROR   = "error"
 
 
 # ---------------------------------------------------------------------------
@@ -176,11 +192,13 @@ async def tool_ingest_source(ctx: "WorkflowContext", source_path: str) -> dict:
     result = await tool_poll_job(ctx, job_id, timeout_seconds=300, job_label=f"Ingest: {label}")
     result["job_id"] = job_id
 
-    status = result.get("status", "failed")
-    if status == "success":
+    status = result.get("status", ToolStatus.FAILED)
+    if status == ToolStatus.SUCCESS:
         await ctx.send_sse_event("tool_progress", {"tool": "ingest_source", "message": f"✓ {label} re-ingested"})
+    elif status == ToolStatus.TIMEOUT:
+        await ctx.send_sse_event("tool_progress", {"tool": "ingest_source", "message": f"✗ {label}: timed out"})
     else:
-        await ctx.send_sse_event("tool_progress", {"tool": "ingest_source", "message": f"✗ {label}: {status}"})
+        await ctx.send_sse_event("tool_progress", {"tool": "ingest_source", "message": f"✗ {label}: failed"})
     return result
 
 
@@ -214,8 +232,8 @@ async def tool_poll_job(
         except Exception as exc:  # noqa: BLE001
             return {"status": "failed", "message": f"Queue error for job {job_id}: {exc}"}
 
-        if job is not None and job.status.value in _TERMINAL_STATUSES:
-            if job.status.value == "completed":
+        if job is not None and job.status.is_terminal:
+            if job.status == JobStatus.COMPLETED:
                 return {
                     "status": "success",
                     "message": f"Job {job_id} completed successfully",
@@ -520,7 +538,7 @@ async def tool_run_scaffold(ctx: "WorkflowContext", domain: str) -> dict:
         return {"error": str(exc)}
 
     poll_result = await tool_poll_job(ctx, job_id, timeout_seconds=300, job_label="Scaffold")
-    if poll_result.get("status") != "success":
+    if poll_result.get("status") != ToolStatus.SUCCESS:
         return poll_result
 
     categories_updated = 0
