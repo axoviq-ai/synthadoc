@@ -885,6 +885,25 @@ async def test_ingest_source_failed_poll_returns_failed_status(tmp_path):
     assert any("✗" in m or "failed" in m.lower() for m in progress_msgs)
 
 
+async def test_ingest_source_timeout_poll_emits_timed_out_message(tmp_path):
+    """Poll times out → status=timeout and SSE progress message says 'timed out'."""
+    source_file = tmp_path / "doc.md"
+    source_file.write_text("content")
+
+    queue = MagicMock()
+    queue.enqueue = AsyncMock(return_value="job-timeout-1")
+
+    ctx, events = _make_ctx(queue=queue)
+    timeout_result = {"status": "timeout", "message": "Job job-timeout-1 timed out after 300s"}
+    with patch("synthadoc.agents.workflows._tools.tool_poll_job", AsyncMock(return_value=timeout_result)):
+        result = await tool_ingest_source(ctx, str(source_file))
+
+    assert result["status"] == "timeout"
+    progress_msgs = [e["data"]["message"] for e in events if e["event"] == "tool_progress"
+                     and e["data"].get("tool") == "ingest_source"]
+    assert any("timed out" in m for m in progress_msgs)
+
+
 # ---------------------------------------------------------------------------
 # tool_run_lint — enqueue failure branch (lines 255-256)
 # ---------------------------------------------------------------------------
