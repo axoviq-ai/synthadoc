@@ -25,11 +25,6 @@ from synthadoc.agents.scaffold_agent import scaffold_output_paths
 # The first attempt uses 0 delay; subsequent attempts use these values.
 _INGEST_RETRY_DELAYS: list[int] = [2, 4, 8]
 
-# JobStatus.value strings that indicate the job has reached a terminal state.
-_TERMINAL_STATUSES: frozenset[str] = frozenset(
-    {"completed", "failed", "dead", "cancelled", "skipped"}
-)
-
 
 # ---------------------------------------------------------------------------
 # Internal helper
@@ -214,7 +209,7 @@ async def tool_poll_job(
         except Exception as exc:  # noqa: BLE001
             return {"status": "failed", "message": f"Queue error for job {job_id}: {exc}"}
 
-        if job is not None and job.status.value in _TERMINAL_STATUSES:
+        if job is not None and job.status.is_terminal:
             if job.status.value == "completed":
                 return {
                     "status": "success",
