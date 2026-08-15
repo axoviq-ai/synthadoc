@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Copyright (C) 2026 William Johnason / axoviq.com
+# Copyright (C) 2026 Paul Chen / axoviq.com
 """Shared helpers for Synthadoc live test scripts."""
 import shutil
 import tempfile
