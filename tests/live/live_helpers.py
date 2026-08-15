@@ -2,8 +2,21 @@
 # Copyright (C) 2026 Paul Chen / axoviq.com
 """Shared helpers for Synthadoc live test scripts."""
 import shutil
+import signal
+import sys
 import tempfile
 from pathlib import Path
+
+
+def register_sigterm_handler() -> None:
+    """Route SIGTERM → sys.exit(1) so that atexit handlers (e.g. wiki restore) fire.
+
+    Python's default SIGTERM disposition terminates the process immediately,
+    bypassing atexit.  Replacing it with sys.exit() lets the normal shutdown
+    sequence run.  Call this once, early in main(), after any atexit.register()
+    calls have been set up.
+    """
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(1))
 
 
 def backup_wiki(wiki_root: Path) -> Path | None:

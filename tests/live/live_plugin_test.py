@@ -111,6 +111,7 @@ import urllib.parse
 import urllib.request
 
 from live_helpers import backup_wiki as _backup_wiki_impl
+from live_helpers import register_sigterm_handler as _register_sigterm_handler
 from live_helpers import restore_wiki as _restore_wiki_impl
 
 # ── Configuration ─────────────────────────────────────────────────────────────
@@ -984,6 +985,7 @@ def main(no_restore: bool = False) -> None:
                     _restore_wiki_impl(snap, live_root, WIKI_NAME)
 
                 atexit.register(_restore_on_exit, _snap, _wiki_root)
+                _register_sigterm_handler()
             else:
                 print("  snapshot   : failed — wiki will not be auto-restored")
 

@@ -47,6 +47,7 @@ import sys
 from pathlib import Path
 
 from live_helpers import backup_wiki as _backup_wiki
+from live_helpers import register_sigterm_handler as _register_sigterm_handler
 from live_helpers import restore_wiki as _restore_wiki
 
 _DEFAULT_WIKI_FILE = Path.home() / ".synthadoc" / "default_wiki"
@@ -160,6 +161,7 @@ def main() -> None:
         _snap = _backup_wiki(_wiki_root)
         if _snap:
             atexit.register(_restore_wiki, _snap, _wiki_root, args.wiki)
+            _register_sigterm_handler()
 
     # Per-suite CLI args (override env vars for explicit invocation)
     suite_args = {
