@@ -40,12 +40,55 @@ Examples:
     python -X utf8 tests/live/run_all.py --suite scaffold
 """
 import argparse
+import atexit
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 _DEFAULT_WIKI_FILE = Path.home() / ".synthadoc" / "default_wiki"
+
+
+def _backup_wiki(wiki_root: Path) -> Path | None:
+    """Snapshot wiki/ and .synthadoc/ before any suite mutates them."""
+    snap = Path(tempfile.mkdtemp(prefix="synthadoc-live-backup-"))
+    try:
+        shutil.copytree(wiki_root / "wiki", snap / "wiki")
+        if (wiki_root / ".synthadoc").exists():
+            shutil.copytree(wiki_root / ".synthadoc", snap / ".synthadoc")
+        return snap
+    except Exception as exc:
+        print(f"  [WARN] snapshot failed ({exc}) — wiki will not be auto-restored")
+        shutil.rmtree(snap, ignore_errors=True)
+        return None
+
+
+def _restore_wiki(snap: Path, wiki_root: Path, wiki_name: str) -> None:
+    """Restore wiki/ and .synthadoc/ from snapshot; print restart reminder."""
+    try:
+        if (wiki_root / "wiki").exists():
+            shutil.rmtree(wiki_root / "wiki")
+        shutil.copytree(snap / "wiki", wiki_root / "wiki")
+        if (snap / ".synthadoc").exists():
+            if (wiki_root / ".synthadoc").exists():
+                shutil.rmtree(wiki_root / ".synthadoc")
+            shutil.copytree(snap / ".synthadoc", wiki_root / ".synthadoc")
+        shutil.rmtree(snap, ignore_errors=True)
+        print()
+        print("=" * 64)
+        print("  Wiki restored to pre-test state.")
+        print("  Restart the server to pick up the restored DB:")
+        print(f"    synthadoc serve -w {wiki_name}")
+        print("=" * 64)
+    except Exception as exc:
+        print()
+        print("=" * 64)
+        print(f"  Restore failed: {exc}")
+        print(f"  Snapshot preserved at: {snap}")
+        print(f"  Restore manually, then: synthadoc serve -w {wiki_name}")
+        print("=" * 64)
 
 
 def _configured_wiki() -> str:
@@ -122,10 +165,15 @@ def main() -> None:
     # every server-dependent command with ERR-SRV-001.
     import json as _json
     import urllib.request as _urlreq
+    _snap: Path | None = None
+    _wiki_root: Path | None = None
     try:
         with _urlreq.urlopen(f"{base}/status", timeout=5) as _r:
             _status = _json.loads(_r.read())
         _serving = Path(_status.get("wiki", "")).name
+        _wiki_root_str = _status.get("wiki", "")
+        if _wiki_root_str:
+            _wiki_root = Path(_wiki_root_str)
         if _serving and _serving != args.wiki:
             print(f"\nERROR: wiki/URL mismatch.")
             print(f"  Server at {base} is serving wiki '{_serving}',")
@@ -140,14 +188,23 @@ def main() -> None:
             print(f"         {sys.executable} -X utf8 tests/live/run_all.py --wiki {_serving}")
             print(f"         {sys.executable} -X utf8 tests/live/run_all.py")
             sys.exit(1)
+    except SystemExit:
+        raise
     except Exception:
         pass  # server not yet up — individual suites will handle this gracefully
+
+    # Take a snapshot of the wiki before any suite can mutate it so we can
+    # restore it automatically when all suites complete (or on Ctrl-C / error).
+    if _wiki_root is not None:
+        _snap = _backup_wiki(_wiki_root)
+        if _snap:
+            atexit.register(_restore_wiki, _snap, _wiki_root, args.wiki)
 
     # Per-suite CLI args (override env vars for explicit invocation)
     suite_args = {
         "cli":              ["--wiki", args.wiki, "--url", base + "/"],
         "mcp":              [],
-        "plugin":           ["--wiki", args.wiki, "--url", base],
+        "plugin":           ["--wiki", args.wiki, "--url", base, "--no-restore"],
         "snapshots":        [],
         "agentic":          [],
         "broken_wikilinks": [],
@@ -165,6 +222,20 @@ def main() -> None:
         "lint_report":      {**os.environ, "SYNTHADOC_URL": base},
         "scaffold":         {**os.environ, "SYNTHADOC_URL": base},
     }
+
+    print(f"\n{'='*64}")
+    print("  SYNTHADOC LIVE TESTS")
+    print(f"{'='*64}")
+    print(f"  url        : {base}")
+    print(f"  wiki       : {args.wiki}")
+    print(f"  suites     : {', '.join(to_run)}")
+    if _snap:
+        print(f"  snapshot   : {_snap}  (restored on exit)")
+    elif _wiki_root:
+        print("  snapshot   : failed — wiki will not be auto-restored")
+    else:
+        print("  snapshot   : skipped (server not reachable yet)")
+    print(f"{'='*64}")
 
     codes: dict[str, int] = {}
     for name in to_run:

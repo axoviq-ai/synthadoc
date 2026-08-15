@@ -474,7 +474,6 @@ def _backup_wiki() -> pathlib.Path | None:
         print(f"  {WARN} snapshot failed ({exc}) — wiki will not be auto-restored")
         shutil.rmtree(snap, ignore_errors=True)
         return None
-    info(f"snapshot created: {snap}  (auto-restored after tests)")
     return snap
 
 
@@ -1017,6 +1016,19 @@ def main(no_restore: bool = False) -> None:
     print("  Synthadoc Live Plugin REST API Test")
     print(f"  server URL : {SYNTHADOC_URL}")
     print(f"  wiki name  : {WIKI_NAME}")
+
+    # ── Snapshot wiki before any mutations ────────────────────────────────────
+    # atexit ensures restore runs on normal exit, exception, and Ctrl-C alike.
+    if no_restore:
+        print("  snapshot   : disabled (--no-restore)")
+    else:
+        _snap = _backup_wiki()
+        if _snap:
+            print(f"  snapshot   : {_snap}  (restored on exit)")
+            atexit.register(_restore_wiki, _snap)
+        else:
+            print("  snapshot   : failed — wiki will not be auto-restored")
+
     print("=" * 64)
 
     # ── Pre-flight: cancel any pending jobs from previous test runs ──────────
@@ -1027,13 +1039,6 @@ def main(no_restore: bool = False) -> None:
         _n = _body.get("cancelled", 0)
         if _n:
             print(f"  [pre-flight] cancelled {_n} pending job(s) from previous run(s)")
-
-    # ── Snapshot wiki before any mutations ────────────────────────────────────
-    # atexit ensures restore runs on normal exit, exception, and Ctrl-C alike.
-    if not no_restore:
-        _snap = _backup_wiki()
-        if _snap:
-            atexit.register(_restore_wiki, _snap)
 
     # ── Ribbon icon ───────────────────────────────────────────────────────────
     print("\n[Ribbon] api.health() + api.status()")
