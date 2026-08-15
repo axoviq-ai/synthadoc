@@ -165,6 +165,12 @@ _STOPWORDS = frozenset({
     # "cover" describe the wiki's own structure, not page content, so they never
     # appear frequently in pages and always trigger false-positive gap detection.
     "topic", "cover", "scope", "about",
+    # Request-framing verbs: "Tell me about X", "Show me X", "Explain X",
+    # "Describe X", "Give me …", "Find out about X", "List X".
+    # These verbs describe HOW the user wants the answer, not what the wiki
+    # covers — they never appear ≥2 times in any page and always produce
+    # Signal 5 false positives when they end up in the key-term set.
+    "tell", "show", "explain", "describe", "give", "find", "list",
     # Superlative/comparative query qualifiers: "Which company has the highest X?"
     # These are framing words in questions but rarely repeat in content pages —
     # a page saying "GreenField has the highest leverage" won't repeat "highest"
