@@ -455,40 +455,6 @@ def sse_probe(path: str, timeout: int = 12) -> tuple[int, str, str]:
 
 # ── Wiki root discovery via CLI ────────────────────────────────────────────────
 
-def _backup_wiki() -> pathlib.Path | None:
-    """Snapshot wiki/ and .synthadoc/ into a temp directory before tests run.
-
-    Returns the snapshot path so it can be passed to _restore_wiki() afterward.
-    Returns None if the wiki root cannot be discovered (backup is skipped and a
-    warning is printed, but the test run continues).
-    """
-    wiki_root = _discover_wiki_root()
-    if not wiki_root:
-        print(f"  {WARN} could not discover wiki root — snapshot skipped; wiki will not be auto-restored")
-        return None
-    return _backup_wiki_impl(wiki_root)
-
-
-def _restore_wiki(snap: pathlib.Path) -> None:
-    """Restore wiki/ and .synthadoc/ from the snapshot created by _backup_wiki().
-
-    The server must be restarted afterward so it picks up the restored audit.db.
-    If the wiki root cannot be re-discovered (e.g. server was killed), prints
-    manual restore instructions and preserves the snapshot directory.
-    """
-    wiki_root = _discover_wiki_root()
-    if not wiki_root:
-        print()
-        print("=" * 64)
-        print("  Could not auto-restore (server not reachable).")
-        print("  Restore manually:")
-        print(f"    cp -r {snap}/wiki      <wiki-root>/wiki")
-        print(f"    cp -r {snap}/.synthadoc <wiki-root>/.synthadoc")
-        print(f"  Then restart: synthadoc serve -w {WIKI_NAME}")
-        print("=" * 64)
-        return
-    _restore_wiki_impl(snap, wiki_root, WIKI_NAME)
-
 
 def _discover_wiki_root() -> pathlib.Path | None:
     try:
@@ -993,12 +959,33 @@ def main(no_restore: bool = False) -> None:
     if no_restore:
         print("  snapshot   : disabled (--no-restore)")
     else:
-        _snap = _backup_wiki()
-        if _snap:
-            print(f"  snapshot   : {_snap}  (restored on exit)")
-            atexit.register(_restore_wiki, _snap)
-        else:
+        _wiki_root = _discover_wiki_root()
+        if not _wiki_root:
+            print(f"  {WARN} could not discover wiki root — snapshot skipped; wiki will not be auto-restored")
             print("  snapshot   : failed — wiki will not be auto-restored")
+        else:
+            _snap = _backup_wiki_impl(_wiki_root)
+            if _snap:
+                print(f"  snapshot   : {_snap}  (restored on exit)")
+
+                def _restore_on_exit(snap: pathlib.Path, wiki_root: pathlib.Path) -> None:
+                    """Re-discover wiki root at exit; fall back to manual instructions."""
+                    live_root = _discover_wiki_root() or wiki_root
+                    if not _discover_wiki_root():
+                        print()
+                        print("=" * 64)
+                        print("  Could not auto-restore (server not reachable).")
+                        print("  Restore manually:")
+                        print(f"    cp -r {snap}/wiki      <wiki-root>/wiki")
+                        print(f"    cp -r {snap}/.synthadoc <wiki-root>/.synthadoc")
+                        print(f"  Then restart: synthadoc serve -w {WIKI_NAME}")
+                        print("=" * 64)
+                        return
+                    _restore_wiki_impl(snap, live_root, WIKI_NAME)
+
+                atexit.register(_restore_on_exit, _snap, _wiki_root)
+            else:
+                print("  snapshot   : failed — wiki will not be auto-restored")
 
     print("=" * 64)
 
