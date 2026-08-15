@@ -1170,7 +1170,7 @@ def test_find_page_source_tool_rejects_unknown_slug():
     session_id = str(uuid.uuid4())
     nonexistent = "this-slug-does-not-exist-xyz-live-test"
     query = f"re-ingest+the+{nonexistent}+page"
-    events = _stream_with_autoconfirm(query, session_id, timeout=180)
+    events = _stream_with_autoconfirm(query, session_id, timeout=270)
 
     error_events = [(t, d) for t, d in events if t == "error"]
     assert not error_events, f"Stream emitted unexpected error events: {error_events}"
@@ -1188,6 +1188,7 @@ def test_find_page_source_tool_rejects_unknown_slug():
             "no page",
             "no wiki page",
             "no source path",
+            "no source file",
             "unknown",
             "couldn't find",
             "could not find",

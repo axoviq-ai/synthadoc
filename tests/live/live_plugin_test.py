@@ -98,6 +98,7 @@ no Obsidian runtime needed.  Organized by the 14 plugin commands + ribbon icon.
   All other calls are read-only or idempotent.
 """
 import argparse
+import atexit
 import http.client
 import json
 import os
@@ -108,6 +109,10 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+
+from live_helpers import backup_wiki as _backup_wiki_impl
+from live_helpers import register_sigterm_handler as _register_sigterm_handler
+from live_helpers import restore_wiki as _restore_wiki_impl
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 _DEFAULT_WIKI_FILE = pathlib.Path.home() / ".synthadoc" / "default_wiki"
@@ -450,6 +455,7 @@ def sse_probe(path: str, timeout: int = 12) -> tuple[int, str, str]:
         return 0, "", str(e)
 
 # ── Wiki root discovery via CLI ────────────────────────────────────────────────
+
 
 def _discover_wiki_root() -> pathlib.Path | None:
     try:
@@ -943,11 +949,46 @@ def _test_graph_lazy_hydration() -> None:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-def main() -> None:
+def main(no_restore: bool = False) -> None:
     print("=" * 64)
     print("  Synthadoc Live Plugin REST API Test")
     print(f"  server URL : {SYNTHADOC_URL}")
     print(f"  wiki name  : {WIKI_NAME}")
+
+    # ── Snapshot wiki before any mutations ────────────────────────────────────
+    # atexit ensures restore runs on normal exit, exception, and Ctrl-C alike.
+    if no_restore:
+        print("  snapshot   : disabled (--no-restore)")
+    else:
+        _wiki_root = _discover_wiki_root()
+        if not _wiki_root:
+            print(f"  {WARN} could not discover wiki root — snapshot skipped; wiki will not be auto-restored")
+            print("  snapshot   : failed — wiki will not be auto-restored")
+        else:
+            _snap = _backup_wiki_impl(_wiki_root)
+            if _snap:
+                print(f"  snapshot   : {_snap}  (restored on exit)")
+
+                def _restore_on_exit(snap: pathlib.Path, wiki_root: pathlib.Path) -> None:
+                    """Re-discover wiki root at exit; fall back to manual instructions."""
+                    live_root = _discover_wiki_root() or wiki_root
+                    if not _discover_wiki_root():
+                        print()
+                        print("=" * 64)
+                        print("  Could not auto-restore (server not reachable).")
+                        print("  Restore manually:")
+                        print(f"    cp -r {snap}/wiki      <wiki-root>/wiki")
+                        print(f"    cp -r {snap}/.synthadoc <wiki-root>/.synthadoc")
+                        print(f"  Then restart: synthadoc serve -w {WIKI_NAME}")
+                        print("=" * 64)
+                        return
+                    _restore_wiki_impl(snap, live_root, WIKI_NAME)
+
+                atexit.register(_restore_on_exit, _snap, _wiki_root)
+                _register_sigterm_handler()
+            else:
+                print("  snapshot   : failed — wiki will not be auto-restored")
+
     print("=" * 64)
 
     # ── Pre-flight: cancel any pending jobs from previous test runs ──────────
@@ -1538,7 +1579,11 @@ if __name__ == "__main__":
         default=os.environ.get("WIKI_NAME", _configured_wiki()),
         help="Wiki name for CLI fallback to discover wiki root (overrides WIKI_NAME env var; default: `synthadoc use` setting)",
     )
+    parser.add_argument(
+        "--no-restore", action="store_true",
+        help="Skip wiki snapshot and post-test restore (useful when inspecting state after a run)",
+    )
     args = parser.parse_args()
     SYNTHADOC_URL = args.url.rstrip("/")
     WIKI_NAME = args.wiki
-    main()
+    main(no_restore=args.no_restore)
