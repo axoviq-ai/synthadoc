@@ -1188,6 +1188,7 @@ def test_find_page_source_tool_rejects_unknown_slug():
             "no page",
             "no wiki page",
             "no source path",
+            "no source file",
             "unknown",
             "couldn't find",
             "could not find",
