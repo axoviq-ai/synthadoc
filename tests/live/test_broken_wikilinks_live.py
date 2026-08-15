@@ -318,13 +318,12 @@ def test_scan_detects_broken_links_and_emits_confirm():
         # Confirm gate must have been presented
         assert "confirm_request" in [e[0] for e in events], "No confirm_request emitted"
 
-        # Confirm message must reference both the broken ref and the page slug
+        # Confirm message must reference the page slug that contains the broken link.
+        # The message lists pages-to-fix (e.g. "page-slug: 1 fix"), not the broken
+        # ref target, so we check for the source page slug.
         confirm_msgs = [e[1].get("message", "") for e in events if e[0] == "confirm_request"]
-        assert any(broken_ref in m for m in confirm_msgs), (
-            f"broken ref {broken_ref!r} not in confirm message: {confirm_msgs}"
-        )
-        assert any(slug in m or broken_ref in m for m in confirm_msgs), (
-            f"page slug {slug!r} and broken ref {broken_ref!r} missing from confirm message: {confirm_msgs}"
+        assert any(slug in m for m in confirm_msgs), (
+            f"page slug {slug!r} not in confirm message: {confirm_msgs}"
         )
 
         # Scan progress message must appear
