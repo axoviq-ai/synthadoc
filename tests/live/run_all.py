@@ -42,53 +42,14 @@ Examples:
 import argparse
 import atexit
 import os
-import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
+from live_helpers import backup_wiki as _backup_wiki
+from live_helpers import restore_wiki as _restore_wiki
+
 _DEFAULT_WIKI_FILE = Path.home() / ".synthadoc" / "default_wiki"
-
-
-def _backup_wiki(wiki_root: Path) -> Path | None:
-    """Snapshot wiki/ and .synthadoc/ before any suite mutates them."""
-    snap = Path(tempfile.mkdtemp(prefix="synthadoc-live-backup-"))
-    try:
-        shutil.copytree(wiki_root / "wiki", snap / "wiki")
-        if (wiki_root / ".synthadoc").exists():
-            shutil.copytree(wiki_root / ".synthadoc", snap / ".synthadoc")
-        return snap
-    except Exception as exc:
-        print(f"  [WARN] snapshot failed ({exc}) — wiki will not be auto-restored")
-        shutil.rmtree(snap, ignore_errors=True)
-        return None
-
-
-def _restore_wiki(snap: Path, wiki_root: Path, wiki_name: str) -> None:
-    """Restore wiki/ and .synthadoc/ from snapshot; print restart reminder."""
-    try:
-        if (wiki_root / "wiki").exists():
-            shutil.rmtree(wiki_root / "wiki")
-        shutil.copytree(snap / "wiki", wiki_root / "wiki")
-        if (snap / ".synthadoc").exists():
-            if (wiki_root / ".synthadoc").exists():
-                shutil.rmtree(wiki_root / ".synthadoc")
-            shutil.copytree(snap / ".synthadoc", wiki_root / ".synthadoc")
-        shutil.rmtree(snap, ignore_errors=True)
-        print()
-        print("=" * 64)
-        print("  Wiki restored to pre-test state.")
-        print("  Restart the server to pick up the restored DB:")
-        print(f"    synthadoc serve -w {wiki_name}")
-        print("=" * 64)
-    except Exception as exc:
-        print()
-        print("=" * 64)
-        print(f"  Restore failed: {exc}")
-        print(f"  Snapshot preserved at: {snap}")
-        print(f"  Restore manually, then: synthadoc serve -w {wiki_name}")
-        print("=" * 64)
 
 
 def _configured_wiki() -> str:

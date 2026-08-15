@@ -103,14 +103,15 @@ import http.client
 import json
 import os
 import pathlib
-import shutil
 import subprocess
 import sys
-import tempfile
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+
+from live_helpers import backup_wiki as _backup_wiki_impl
+from live_helpers import restore_wiki as _restore_wiki_impl
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 _DEFAULT_WIKI_FILE = pathlib.Path.home() / ".synthadoc" / "default_wiki"
@@ -465,16 +466,7 @@ def _backup_wiki() -> pathlib.Path | None:
     if not wiki_root:
         print(f"  {WARN} could not discover wiki root — snapshot skipped; wiki will not be auto-restored")
         return None
-    snap = pathlib.Path(tempfile.mkdtemp(prefix="synthadoc-live-backup-"))
-    try:
-        shutil.copytree(wiki_root / "wiki", snap / "wiki")
-        if (wiki_root / ".synthadoc").exists():
-            shutil.copytree(wiki_root / ".synthadoc", snap / ".synthadoc")
-    except Exception as exc:
-        print(f"  {WARN} snapshot failed ({exc}) — wiki will not be auto-restored")
-        shutil.rmtree(snap, ignore_errors=True)
-        return None
-    return snap
+    return _backup_wiki_impl(wiki_root)
 
 
 def _restore_wiki(snap: pathlib.Path) -> None:
@@ -495,28 +487,7 @@ def _restore_wiki(snap: pathlib.Path) -> None:
         print(f"  Then restart: synthadoc serve -w {WIKI_NAME}")
         print("=" * 64)
         return
-    try:
-        if (wiki_root / "wiki").exists():
-            shutil.rmtree(wiki_root / "wiki")
-        shutil.copytree(snap / "wiki", wiki_root / "wiki")
-        if (snap / ".synthadoc").exists():
-            if (wiki_root / ".synthadoc").exists():
-                shutil.rmtree(wiki_root / ".synthadoc")
-            shutil.copytree(snap / ".synthadoc", wiki_root / ".synthadoc")
-        shutil.rmtree(snap, ignore_errors=True)
-        print()
-        print("=" * 64)
-        print("  Wiki restored to pre-test state.")
-        print("  Restart the server to pick up the restored DB:")
-        print(f"    synthadoc serve -w {WIKI_NAME}")
-        print("=" * 64)
-    except Exception as exc:
-        print()
-        print("=" * 64)
-        print(f"  Restore failed: {exc}")
-        print(f"  Snapshot preserved at: {snap}")
-        print(f"  Restore manually, then: synthadoc serve -w {WIKI_NAME}")
-        print("=" * 64)
+    _restore_wiki_impl(snap, wiki_root, WIKI_NAME)
 
 
 def _discover_wiki_root() -> pathlib.Path | None:
