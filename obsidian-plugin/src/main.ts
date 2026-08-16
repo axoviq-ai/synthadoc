@@ -1619,10 +1619,15 @@ class LintRunModal extends Modal {
                                 const orphans: string[] = report.orphans ?? [];
                                 const adversarialWarnings: any[] = report.adversarial_warnings ?? [];
                                 const truncatedSources: any[] = report.truncated_sources ?? [];
+                                const demotions: number = job.result?.adversarial_demotions ?? 0;
+                                const gateDemotedSlugs = new Set<string>(
+                                    adversarialWarnings.map((w: any) => w.slug as string)
+                                );
                                 out.empty();
                                 const summary = out.createEl("p");
                                 summary.style.cssText = "font-weight:bold;margin-bottom:6px";
-                                summary.setText(`✅ Done — ${contradictions.length} contradiction(s), ${orphans.length} orphan(s), ${adversarialWarnings.length} adversarial warning(s), ${truncatedSources.length} truncated source(s).`);
+                                const demotionStr = demotions > 0 ? `, ${demotions} gate-demoted` : "";
+                                summary.setText(`✅ Done — ${contradictions.length} contradiction(s), ${orphans.length} orphan(s), ${adversarialWarnings.length} adversarial warning(s)${demotionStr}, ${truncatedSources.length} truncated source(s).`);
                                 if (adversarialWarnings.length > 0 || truncatedSources.length > 0) {
                                     const advHint = out.createEl("p", { text: "Open Lint report → to see full details." });
                                     advHint.style.cssText = "font-size:11px;color:var(--text-muted);margin-top:4px";
@@ -1637,11 +1642,17 @@ class LintRunModal extends Modal {
                                     if (d.unresolved_note) {
                                         block.createEl("div", { text: `⚠ Auto-resolve failed: ${d.unresolved_note}` }).style.cssText = "font-size:11px;color:var(--text-warning);margin-top:2px";
                                     }
+                                    if (!d.contradiction_note && !d.unresolved_note && gateDemotedSlugs.has(d.slug)) {
+                                        block.createEl("div", { text: "⚔ auto-demoted by adversarial gate — check Lint report → Adversarial tab" }).style.cssText = "font-size:11px;color:var(--color-orange,#f59e0b);margin-top:2px";
+                                    }
                                 }
                                 if (orphans.length > 0) {
                                     out.createEl("p", { text: `Orphans: ${orphans.join(", ")}` }).style.cssText = "font-size:12px;color:var(--text-muted)";
                                 }
-                                new Notice(`Synthadoc: lint done — ${contradictions.length} contradictions, ${orphans.length} orphans, ${adversarialWarnings.length} adversarial warnings, ${truncatedSources.length} truncated sources`);
+                                const noticeStr = demotions > 0
+                                    ? `Synthadoc: lint done — ${contradictions.length} contradictions (${demotions} gate-demoted), ${orphans.length} orphans, ${adversarialWarnings.length} adversarial warnings, ${truncatedSources.length} truncated sources`
+                                    : `Synthadoc: lint done — ${contradictions.length} contradictions, ${orphans.length} orphans, ${adversarialWarnings.length} adversarial warnings, ${truncatedSources.length} truncated sources`;
+                                new Notice(noticeStr);
                             } catch {
                                 out.empty();
                                 out.createEl("p", { text: "✅ Lint complete. Could not load report." });
@@ -1746,6 +1757,9 @@ class LintReportModal extends Modal {
                 (sum: number, issues: any[]) => sum + issues.length, 0);
             const totalAdvWarnings = adversarialWarnings.reduce(
                 (sum: number, p: any) => sum + ((p.warnings as any[])?.length ?? 0), 0);
+            const gateDemotedSlugs = new Set<string>(
+                adversarialWarnings.map((w: any) => w.slug as string)
+            );
 
             // Tab bar
             const tabBar = out.createEl("div");
@@ -1791,20 +1805,31 @@ class LintReportModal extends Modal {
             } else {
                 const ul = panels["Contradictions"].createEl("ul");
                 details.forEach(({ slug, contradiction_note, unresolved_note }) => {
+                    const isGateDemoted = !contradiction_note && !unresolved_note && gateDemotedSlugs.has(slug);
                     const li = ul.createEl("li");
-                    li.createEl("code", { text: slug });
-                    li.appendText(" — open the page, resolve the conflict, set status: active");
-                    if (contradiction_note) {
+                    const slugLink = li.createEl("a", { text: slug });
+                    slugLink.style.cssText = "cursor:pointer;font-family:var(--font-monospace);font-size:var(--font-smaller);font-weight:600";
+                    slugLink.onclick = () => this.app.workspace.openLinkText(slug, "", false);
+                    if (isGateDemoted) {
+                        li.appendText(" — auto-demoted by adversarial gate");
                         const n = li.createEl("div");
                         n.style.cssText = "font-size:11px;margin-top:2px";
-                        const wfl = n.createEl("span", { text: "Why flagged: " });
-                        wfl.style.cssText = "color:var(--color-orange,#f59e0b);font-weight:600";
-                        n.createEl("span", { text: contradiction_note })
-                            .style.cssText = "color:var(--text-muted)";
-                    }
-                    if (unresolved_note) {
-                        const n = li.createEl("div", { text: `⚠ Auto-resolve failed: ${unresolved_note}` });
-                        n.style.cssText = "font-size:11px;color:var(--text-warning);margin-top:2px";
+                        n.createEl("span", { text: "⚔ Fix the flagged claims (see Adversarial tab), then set status: active" })
+                            .style.cssText = "color:var(--color-orange,#f59e0b)";
+                    } else {
+                        li.appendText(" — open the page, resolve the conflict, set status: active");
+                        if (contradiction_note) {
+                            const n = li.createEl("div");
+                            n.style.cssText = "font-size:11px;margin-top:2px";
+                            const wfl = n.createEl("span", { text: "Why flagged: " });
+                            wfl.style.cssText = "color:var(--color-orange,#f59e0b);font-weight:600";
+                            n.createEl("span", { text: contradiction_note })
+                                .style.cssText = "color:var(--text-muted)";
+                        }
+                        if (unresolved_note) {
+                            const n = li.createEl("div", { text: `⚠ Auto-resolve failed: ${unresolved_note}` });
+                            n.style.cssText = "font-size:11px;color:var(--text-warning);margin-top:2px";
+                        }
                     }
                 });
             }
