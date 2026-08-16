@@ -449,15 +449,7 @@ ingested topics and link into the existing graph.
 
 ![Obsidian Graph View after batch ingest](png/synthadoc-graph-after.png)
 
-Run a few queries that use the new content:
-
-```bash
-synthadoc query "What was the Bombe machine and who built it?"
-synthadoc query "Who invented FORTRAN and when?"
-synthadoc query "What did Konrad Zuse contribute to computing history?"
-```
-
-> **Pages are created as `draft`.** Every page produced by ingest starts in the `draft` state — compiled but not yet reviewed. Only `active` and `stale` pages enter the BM25 search index; `draft`, `contradicted`, and `archived` pages are excluded from query results. Running lint (Step 7) promotes clean pages to `active`, which marks them as human-reviewed, enters them into the search index, and protects them from being overwritten by future ingest.
+> **Pages are created as `draft` — queries come after lint.** Every page produced by ingest starts in the `draft` state — compiled but not yet reviewed. Only `active` and `stale` pages enter the BM25 search index; `draft`, `contradicted`, and `archived` pages are excluded from query results. Run lint in Step 7 to promote clean pages to `active` first, then verify with queries at the end of that step.
 
 > **Pre-LLM sanitizer (v1.0):** Before sending any source to the LLM, Synthadoc strips zero-width characters, bidirectional text overrides, hidden HTML, and instruction-override phrases that could cause the model to misinterpret content. This runs automatically — no configuration needed. See [design.md §29](design.md#29-pre-llm-source-sanitizer) for the full table of sanitizer categories, actions, and warning behaviour.
 
@@ -560,6 +552,18 @@ You can also open the report from the Obsidian plugin — open the command palet
 
 The contradicted `grace-hopper` page is explained and resolved in Step 9.
 
+### 5. Verify with queries
+
+All pages are now `active` and in the search index. Run queries that use content from the newly ingested sources:
+
+```bash
+synthadoc query "What was the Bombe machine and who built it?"
+synthadoc query "Who invented FORTRAN and when?"
+synthadoc query "What did Konrad Zuse contribute to computing history?"
+```
+
+Each answer should cite specific source lines from the ingested files. If a query returns no results or thin answers, check `synthadoc status` — any page still in `draft` or `contradicted` is excluded from the index until it is promoted or resolved.
+
 ---
 
 <a name="lifecycle"></a>
@@ -577,7 +581,7 @@ Most knowledge bases treat every page the same — ingested means trusted. Synth
 | -------------- | ----------------------------------------- | ----------------------------------------------- | ------------------------------------------ |
 | `draft`        | Compiled but not yet lint-reviewed        | Automatic on ingest                             | Run lint to auto-promote clean pages       |
 | `active`       | Lint-reviewed, current, trusted           | Lint auto-promotes from`draft`                  | No action needed                           |
-| `contradicted` | Two or more sources conflict              | Lint detects contradiction automatically        | Re-ingest corrected source, or archive     |
+| `contradicted` | Sources conflict, or adversarial gate fired | Lint detects contradiction or ≥ threshold adversarial warnings | Resolve conflict or fix flagged claims, then re-lint |
 | `stale`        | Source file has changed since last ingest | Lint detects SHA-256 hash mismatch              | Re-ingest the updated source with`--force` |
 | `archived`     | Source removed or explicitly retired      | Lint auto-archives on missing source; or manual | Restore to`draft` if source returns        |
 
