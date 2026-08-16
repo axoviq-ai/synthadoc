@@ -161,7 +161,7 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
         re.IGNORECASE,
     )
 
-    def build_system_prompt(self) -> str:
+    async def build_system_prompt(self) -> str:
         return _SYSTEM_PROMPT
 
     def build_initial_message(

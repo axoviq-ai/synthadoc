@@ -34,15 +34,14 @@ def test_match_re_does_not_match_unrelated():
     assert not re_pattern.search("what pages are stale?")
 
 
-def test_build_system_prompt_is_non_empty():
+@pytest.mark.asyncio
+async def test_build_system_prompt_is_non_empty():
     from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
     wf = ContradictionResolverWorkflow()
-    prompt = wf.build_system_prompt()
+    prompt = await wf.build_system_prompt()
     assert isinstance(prompt, str)
     assert len(prompt) > 200
-    # Must describe the strategy menu
     assert "Strategy 1" in prompt or "content rewrite" in prompt.lower()
-    # Must mention the cap (3 attempts)
     assert "3" in prompt
 
 
