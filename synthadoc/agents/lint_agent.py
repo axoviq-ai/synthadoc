@@ -597,6 +597,43 @@ class LintAgent:
         )
         return True
 
+    async def _skip_resolve_for_gate(
+        self, slug: str, page: "WikiPage", report: LintReport
+    ) -> bool:
+        """Block auto-resolve when the page still exceeds the adversarial gate threshold.
+
+        Promoting a page that still has ≥ threshold warnings would be immediately
+        undone by the next lint run, creating an active↔contradicted cycle.
+
+        Returns True (caller must skip resolve) if the gate blocks promotion,
+        False if auto-resolve may proceed normally.
+        """
+        if self._cfg is None:
+            return False
+        threshold = self._cfg.lint.adversarial_gate_threshold
+        if threshold is None or threshold <= 0:
+            return False
+        warning_count = len(page.lint_warnings or [])
+        if warning_count < threshold:
+            return False
+        _log.warning(
+            "[lint] auto-resolve skipped: %s — adversarial gate: "
+            "%d warning(s) ≥ threshold %d. Edit page content to "
+            "address flagged claims first.",
+            slug, warning_count, threshold,
+        )
+        report.adversarial_gate_skipped_resolve.append(slug)
+        if self._audit:
+            await self._audit.record_lifecycle_event(
+                slug,
+                LifecycleState.CONTRADICTED,
+                LifecycleState.CONTRADICTED,
+                f"auto-resolve skipped: adversarial gate — "
+                f"{warning_count} warning(s) ≥ threshold {threshold}",
+                TriggerSource.LINT,
+            )
+        return True
+
     async def _transition(self, slug: str, page: "WikiPage", from_state: str,
                           to_state: str, reason: str) -> None:
         if self._audit:
@@ -863,31 +900,8 @@ class LintAgent:
                         await self._audit.record_audit_event(
                             job_id, "contradiction_found", {"slug": slug})
                     if auto_resolve:
-                        # Guard: if page still has adversarial warnings at or above the gate
-                        # threshold, promoting it would be undone on the next lint run.
-                        # Skip auto-resolve, surface the reason, and leave the page contradicted.
-                        if self._cfg is not None:
-                            _gate_threshold = self._cfg.lint.adversarial_gate_threshold
-                            if _gate_threshold is not None and _gate_threshold > 0:
-                                _wc = len(page.lint_warnings or [])
-                                if _wc >= _gate_threshold:
-                                    _log.warning(
-                                        "[lint] auto-resolve skipped: %s — adversarial gate: "
-                                        "%d warning(s) ≥ threshold %d. Edit page content to "
-                                        "address flagged claims first.",
-                                        slug, _wc, _gate_threshold,
-                                    )
-                                    report.adversarial_gate_skipped_resolve.append(slug)
-                                    if self._audit:
-                                        await self._audit.record_lifecycle_event(
-                                            slug,
-                                            LifecycleState.CONTRADICTED,
-                                            LifecycleState.CONTRADICTED,
-                                            f"auto-resolve skipped: adversarial gate — "
-                                            f"{_wc} warning(s) ≥ threshold {_gate_threshold}",
-                                            TriggerSource.LINT,
-                                        )
-                                    continue
+                        if await self._skip_resolve_for_gate(slug, page, report):
+                            continue
                         note = page.contradiction_note or ""
                         prompt = (
                             "A wiki page has been flagged as contradicted by a new source.\n"
