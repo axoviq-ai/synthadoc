@@ -86,6 +86,10 @@ class VectorStore:
 _EMBED_MODEL_NAME = "BAAI/bge-small-en-v1.5"
 _COMPOUND_RE = re.compile(r"[a-z0-9]+(?:_[a-z0-9]+)+")
 
+# Only pages in these lifecycle states enter the BM25 corpus.
+# contradicted, archived, and draft pages must not answer queries.
+_QUERY_STATES: frozenset[str] = frozenset({"active", "stale"})
+
 
 class HybridSearch:
     """BM25 full-text search with optional vector re-ranking via fastembed."""
@@ -165,7 +169,9 @@ class HybridSearch:
             if slug in LINT_SKIP_SLUGS:
                 continue
             page = self._store.read_page(slug)
-            text = f"{page.title} {' '.join(page.tags)} {page.content}" if page else ""
+            if not page or page.status not in _QUERY_STATES:
+                continue
+            text = f"{page.title} {' '.join(page.tags)} {page.content}"
             tokenized.append(self._tokenize(text))
             filtered_slugs.append(slug)
         self._cached_corpus = (filtered_slugs, tokenized)
