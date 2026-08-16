@@ -262,6 +262,21 @@ def _validate_provider(agent: AgentConfig) -> None:
         )
 
 
+def _validate_lint(lint: "LintConfig") -> None:
+    if (
+        lint.adversarial_gate_threshold is not None
+        and lint.adversarial_gate_threshold > 0
+        and lint.adversarial_max_per_page < lint.adversarial_gate_threshold
+    ):
+        raise ValueError(
+            f"[ERR-CFG-010] adversarial_max_per_page ({lint.adversarial_max_per_page}) "
+            f"is less than adversarial_gate_threshold ({lint.adversarial_gate_threshold}). "
+            f"The gate can never fire because the adversarial agent is capped below the "
+            f"threshold. Set adversarial_max_per_page >= adversarial_gate_threshold in "
+            f"config.toml."
+        )
+
+
 def _validate_ingest_staging(policy: str, confidence_min: str) -> None:
     if policy not in STAGING_POLICIES:
         raise ValueError(
@@ -452,6 +467,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
             if "adversarial_gate_threshold" in lt else None
         ),
     )
+    _validate_lint(lint)
 
     # --- audit ---
     at = raw.get("audit", {})
