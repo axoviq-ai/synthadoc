@@ -49,6 +49,7 @@ class LintReport:
     lifecycle_archived: int = 0
     lifecycle_synced: int = 0
     adversarial_demotions: int = 0
+    adversarial_gate_skipped_resolve: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -847,6 +848,31 @@ class LintAgent:
                         await self._audit.record_audit_event(
                             job_id, "contradiction_found", {"slug": slug})
                     if auto_resolve:
+                        # Guard: if page still has adversarial warnings at or above the gate
+                        # threshold, promoting it would be undone on the next lint run.
+                        # Skip auto-resolve, surface the reason, and leave the page contradicted.
+                        if self._cfg is not None:
+                            _gate_threshold = self._cfg.lint.adversarial_gate_threshold
+                            if _gate_threshold is not None and _gate_threshold > 0:
+                                _wc = len(page.lint_warnings or [])
+                                if _wc >= _gate_threshold:
+                                    _log.warning(
+                                        "[lint] auto-resolve skipped: %s — adversarial gate: "
+                                        "%d warning(s) ≥ threshold %d. Edit page content to "
+                                        "address flagged claims first.",
+                                        slug, _wc, _gate_threshold,
+                                    )
+                                    report.adversarial_gate_skipped_resolve.append(slug)
+                                    if self._audit:
+                                        await self._audit.record_lifecycle_event(
+                                            slug,
+                                            LifecycleState.CONTRADICTED,
+                                            LifecycleState.CONTRADICTED,
+                                            f"auto-resolve skipped: adversarial gate — "
+                                            f"{_wc} warning(s) ≥ threshold {_gate_threshold}",
+                                            TriggerSource.LINT,
+                                        )
+                                    continue
                         note = page.contradiction_note or ""
                         prompt = (
                             "A wiki page has been flagged as contradicted by a new source.\n"

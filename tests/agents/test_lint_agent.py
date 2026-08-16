@@ -1560,3 +1560,140 @@ async def test_lint_graph_build_exception_swallowed(tmp_wiki):
     # Should complete without raising — graph exception is swallowed
     report = await agent.lint(scope="all", adversarial=False)
     assert report is not None
+
+
+# ── Adversarial gate: auto-resolve cycle prevention ───────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_auto_resolve_skipped_when_gate_threshold_exceeded(tmp_wiki):
+    """Auto-resolve is skipped for contradicted pages whose lint_warnings meet the gate threshold."""
+    from synthadoc.storage.wiki import WikiStorage, WikiPage
+    from synthadoc.storage.log import LogWriter
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    page = WikiPage(
+        title="Flagged Page", tags=[],
+        content="This page has contested claims.",
+        status="contradicted", confidence="medium",
+        sources=[], contradiction_note="Two sources conflict on this claim.",
+    )
+    # Simulate 3 adversarial warnings already on this page
+    page.lint_warnings = [
+        {"claim": "Claim A", "concern": "Overstated"},
+        {"claim": "Claim B", "concern": "Unsupported"},
+        {"claim": "Claim C", "concern": "Disputed"},
+    ]
+    store.write_page("flagged-page", page)
+
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    provider = AsyncMock()
+    # Provider should NOT be called — the guard fires before the LLM call
+    provider.complete = AsyncMock(return_value=CompletionResponse(
+        text='{"resolvable": true, "reason": "resolved", "resolution": "Updated content."}',
+        input_tokens=10, output_tokens=10,
+    ))
+
+    agent = LintAgent(provider=provider, store=store, log_writer=log)
+    agent._cfg = _gate_cfg(3)  # threshold = 3
+
+    report = await agent.lint(scope="contradictions", auto_resolve=True)
+
+    # Page must stay contradicted — guard blocked the promotion
+    refreshed = store.read_page("flagged-page")
+    assert refreshed is not None
+    assert refreshed.status == "contradicted"
+
+    # Report must record the skip
+    assert "flagged-page" in report.adversarial_gate_skipped_resolve
+
+    # LLM must NOT have been called
+    provider.complete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_auto_resolve_proceeds_when_gate_disabled(tmp_wiki):
+    """Auto-resolve runs normally when adversarial_gate_threshold is None (gate off)."""
+    import json
+    from synthadoc.storage.wiki import WikiStorage, WikiPage
+    from synthadoc.storage.log import LogWriter
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    page = WikiPage(
+        title="Gate Off Page", tags=[],
+        content="Contested content.",
+        status="contradicted", confidence="medium",
+        sources=[], contradiction_note="Sources conflict.",
+    )
+    page.lint_warnings = [
+        {"claim": "Claim A", "concern": "Overstated"},
+        {"claim": "Claim B", "concern": "Unsupported"},
+        {"claim": "Claim C", "concern": "Disputed"},
+    ]
+    store.write_page("gate-off-page", page)
+
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    provider = AsyncMock()
+    provider.complete = AsyncMock(return_value=CompletionResponse(
+        text=json.dumps({
+            "resolvable": True,
+            "reason": "Claims reconciled",
+            "resolution": "Updated page content with both perspectives.",
+        }),
+        input_tokens=20, output_tokens=20,
+    ))
+
+    agent = LintAgent(provider=provider, store=store, log_writer=log)
+    agent._cfg = _gate_cfg(None)  # gate disabled
+
+    report = await agent.lint(scope="contradictions", auto_resolve=True)
+
+    # Page should be promoted — gate is off, auto-resolve ran
+    refreshed = store.read_page("gate-off-page")
+    assert refreshed is not None
+    assert refreshed.status == "active"
+    assert report.adversarial_gate_skipped_resolve == []
+    provider.complete.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_auto_resolve_proceeds_when_warnings_below_threshold(tmp_wiki):
+    """Auto-resolve runs when page warnings are below the gate threshold."""
+    import json
+    from synthadoc.storage.wiki import WikiStorage, WikiPage
+    from synthadoc.storage.log import LogWriter
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    page = WikiPage(
+        title="Below Threshold Page", tags=[],
+        content="Mostly accurate content with one issue.",
+        status="contradicted", confidence="medium",
+        sources=[], contradiction_note="Minor conflict.",
+    )
+    page.lint_warnings = [
+        {"claim": "Claim A", "concern": "Slightly overstated"},
+    ]  # 1 warning, threshold is 3
+    store.write_page("below-threshold-page", page)
+
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    provider = AsyncMock()
+    provider.complete = AsyncMock(return_value=CompletionResponse(
+        text=json.dumps({
+            "resolvable": True,
+            "reason": "Minor issue resolved",
+            "resolution": "Corrected content.",
+        }),
+        input_tokens=15, output_tokens=15,
+    ))
+
+    agent = LintAgent(provider=provider, store=store, log_writer=log)
+    agent._cfg = _gate_cfg(3)  # threshold = 3, but only 1 warning
+
+    report = await agent.lint(scope="contradictions", auto_resolve=True)
+
+    # Auto-resolve should have run — 1 warning < threshold 3
+    refreshed = store.read_page("below-threshold-page")
+    assert refreshed is not None
+    assert refreshed.status == "active"
+    assert report.adversarial_gate_skipped_resolve == []
+    provider.complete.assert_called_once()

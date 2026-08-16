@@ -1,0 +1,2 @@
+[lint]
+adversarial_gate_threshold = 3
