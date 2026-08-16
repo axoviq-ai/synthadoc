@@ -36,6 +36,11 @@ _TOOL_LABELS: dict[str, str] = {
     "poll_job": "Checking job status",
     "run_lint": "Running lint check",
     "confirm": "Requesting your confirmation",
+    "tool_read_page_content":          "Reading page content",
+    "tool_run_scoped_lint":            "Running scoped re-lint",
+    "tool_propose_and_apply":          "Proposing change",
+    "tool_transition_lifecycle_state": "Transitioning lifecycle state",
+    "tool_get_wiki_status":            "Checking wiki status",
 }
 
 
