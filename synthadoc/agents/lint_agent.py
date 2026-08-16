@@ -48,6 +48,8 @@ class LintReport:
     lifecycle_stale: int = 0
     lifecycle_archived: int = 0
     lifecycle_synced: int = 0
+    adversarial_demotions: int = 0
+    adversarial_gate_skipped_resolve: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -531,11 +533,12 @@ class LintAgent:
                          "concern": "adversarial-pass-skipped: rate limit — consider a paid model or a higher rate-limit tier"}], 0
             return [], 0
 
-    async def _run_adversarial_pass(self, slugs: list[str]) -> tuple[list[dict], int]:
+    async def _run_adversarial_pass(self, slugs: list[str]) -> tuple[list[dict], int, int]:
         """Concurrent adversarial review of all non-skip pages.
 
-        Returns (adversarial_warnings_list, total_tokens).
+        Returns (adversarial_warnings_list, total_tokens, adversarial_demotions).
         adversarial_warnings_list: [{slug, warnings}] for pages with at least one warning.
+        adversarial_demotions: count of pages auto-transitioned to contradicted this pass.
         """
         scan = [
             (s, self._store.read_page(s))
@@ -544,7 +547,7 @@ class LintAgent:
         ]
         scan = [(s, p) for s, p in scan if p is not None]
         if not scan:
-            return [], 0
+            return [], 0, 0
 
         sem = asyncio.Semaphore(self._adversarial_concurrency)
 
@@ -558,14 +561,78 @@ class LintAgent:
 
         all_warnings: list[dict] = []
         total_tokens = 0
+        adv_demotions = 0
         for (slug, page), (warnings, tokens) in zip(scan, results):
             total_tokens += tokens
             page.lint_warnings = warnings
             self._store.write_page(slug, page)
+            if await self._apply_adversarial_gate(slug, page, warnings):
+                adv_demotions += 1
             if warnings:
                 all_warnings.append({"slug": slug, "warnings": warnings})
 
-        return all_warnings, total_tokens
+        return all_warnings, total_tokens, adv_demotions
+
+    async def _apply_adversarial_gate(
+        self, slug: str, page: "WikiPage", warnings: list[dict]
+    ) -> bool:
+        """Demote *page* to contradicted if its warning count meets the gate threshold.
+
+        Returns True if the page was demoted, False otherwise (gate disabled,
+        threshold not met, or page already in a non-gateable state).
+        """
+        if self._cfg is None:
+            return False
+        threshold = self._cfg.lint.adversarial_gate_threshold
+        if threshold is None or threshold <= 0:
+            return False
+        if len(warnings) < threshold:
+            return False
+        if page.status not in (LifecycleState.ACTIVE, LifecycleState.STALE):
+            return False
+        await self._transition(
+            slug, page, page.status, LifecycleState.CONTRADICTED,
+            f"auto-demoted: {len(warnings)} adversarial warning(s)"
+            f" ≥ gate threshold {threshold}",
+        )
+        return True
+
+    async def _skip_resolve_for_gate(
+        self, slug: str, page: "WikiPage", report: LintReport
+    ) -> bool:
+        """Block auto-resolve when the page still exceeds the adversarial gate threshold.
+
+        Promoting a page that still has ≥ threshold warnings would be immediately
+        undone by the next lint run, creating an active↔contradicted cycle.
+
+        Returns True (caller must skip resolve) if the gate blocks promotion,
+        False if auto-resolve may proceed normally.
+        """
+        if self._cfg is None:
+            return False
+        threshold = self._cfg.lint.adversarial_gate_threshold
+        if threshold is None or threshold <= 0:
+            return False
+        warning_count = len(page.lint_warnings or [])
+        if warning_count < threshold:
+            return False
+        _log.warning(
+            "[lint] auto-resolve skipped: %s — adversarial gate: "
+            "%d warning(s) ≥ threshold %d. Edit page content to "
+            "address flagged claims first.",
+            slug, warning_count, threshold,
+        )
+        report.adversarial_gate_skipped_resolve.append(slug)
+        if self._audit:
+            await self._audit.record_lifecycle_event(
+                slug,
+                LifecycleState.CONTRADICTED,
+                LifecycleState.CONTRADICTED,
+                f"auto-resolve skipped: adversarial gate — "
+                f"{warning_count} warning(s) ≥ threshold {threshold}",
+                TriggerSource.LINT,
+            )
+        return True
 
     async def _transition(self, slug: str, page: "WikiPage", from_state: str,
                           to_state: str, reason: str) -> None:
@@ -833,6 +900,8 @@ class LintAgent:
                         await self._audit.record_audit_event(
                             job_id, "contradiction_found", {"slug": slug})
                     if auto_resolve:
+                        if await self._skip_resolve_for_gate(slug, page, report):
+                            continue
                         note = page.contradiction_note or ""
                         prompt = (
                             "A wiki page has been flagged as contradicted by a new source.\n"
@@ -940,9 +1009,10 @@ class LintAgent:
         if scope == "all":
             if adversarial:
                 # slugs was re-read after dangling-link cleanup — use the up-to-date list
-                adv_warnings, adv_tokens = await self._run_adversarial_pass(slugs)
+                adv_warnings, adv_tokens, adv_demotions = await self._run_adversarial_pass(slugs)
                 report.adversarial_warnings = adv_warnings
                 report.tokens_used += adv_tokens
+                report.adversarial_demotions = adv_demotions
             else:
                 # --no-adversarial: clear stale lint_warnings from all pages
                 for slug in [s for s in slugs if s not in LINT_SKIP_SLUGS]:

@@ -1,0 +1,3 @@
+[lint]
+adversarial_max_per_page = 3
+adversarial_gate_threshold = 3

@@ -282,12 +282,18 @@ max_file_mb  = 5
 backup_count = 5
 
 [lint]
-# Maximum number of adversarial concerns flagged per page (default: 2).
-# Raise to 3-5 for a more thorough review; lower to 1 for a tighter signal-to-noise ratio.
-adversarial_max_per_page = 2
+# Maximum number of adversarial concerns flagged per page.
+# MUST be >= adversarial_gate_threshold for the gate to be able to fire.
+# Raise to 4-5 for a deeper review; lower to 1-2 for less noise on large wikis.
+adversarial_max_per_page = 3
 # Maximum number of pages reviewed concurrently during adversarial pass (default: 8).
 # Lower to 2-4 on free-tier or rate-limited LLM providers; raise to 16+ on paid tiers.
 adversarial_concurrency = 8
+# Pages with this many or more adversarial warnings are auto-demoted to contradicted.
+# Gate fires when the LLM hits its full warning cap (max_per_page) — a strong signal.
+# Must be <= adversarial_max_per_page. Recommended: 3 (general), 2 (compliance-sensitive).
+# Comment out or remove to disable auto-demotion.
+adversarial_gate_threshold = 3
 
 [search]
 vector = false             # set to true to enable semantic re-ranking (downloads ~130 MB model once)

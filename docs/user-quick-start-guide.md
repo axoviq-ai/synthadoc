@@ -449,15 +449,7 @@ ingested topics and link into the existing graph.
 
 ![Obsidian Graph View after batch ingest](png/synthadoc-graph-after.png)
 
-Run a few queries that use the new content:
-
-```bash
-synthadoc query "What was the Bombe machine and who built it?"
-synthadoc query "Who invented FORTRAN and when?"
-synthadoc query "What did Konrad Zuse contribute to computing history?"
-```
-
-> **Pages are created as `draft`.** Every page produced by ingest starts in the `draft` state — compiled but not yet reviewed. Draft pages are immediately queryable; BM25 retrieval includes all pages regardless of lifecycle state. Running lint (Step 7) promotes clean pages to `active`, which marks them as human-reviewed and protects them from being overwritten by future ingest.
+> **Pages are created as `draft` — queries come after lint.** Every page produced by ingest starts in the `draft` state — compiled but not yet reviewed. Only `active` and `stale` pages enter the BM25 search index; `draft`, `contradicted`, and `archived` pages are excluded from query results. Run lint in Step 7 to promote clean pages to `active` first, then verify with queries at the end of that step.
 
 > **Pre-LLM sanitizer (v1.0):** Before sending any source to the LLM, Synthadoc strips zero-width characters, bidirectional text overrides, hidden HTML, and instruction-override phrases that could cause the model to misinterpret content. This runs automatically — no configuration needed. See [design.md §29](design.md#29-pre-llm-source-sanitizer) for the full table of sanitizer categories, actions, and warning behaviour.
 
@@ -560,6 +552,18 @@ You can also open the report from the Obsidian plugin — open the command palet
 
 The contradicted `grace-hopper` page is explained and resolved in Step 9.
 
+### 5. Verify with queries
+
+All pages are now `active` and in the search index. Run queries that use content from the newly ingested sources:
+
+```bash
+synthadoc query "What was the Bombe machine and who built it?"
+synthadoc query "Who invented FORTRAN and when?"
+synthadoc query "What did Konrad Zuse contribute to computing history?"
+```
+
+Each answer should cite specific source lines from the ingested files. If a query returns no results or thin answers, check `synthadoc status` — any page still in `draft` or `contradicted` is excluded from the index until it is promoted or resolved.
+
 ---
 
 <a name="lifecycle"></a>
@@ -577,7 +581,7 @@ Most knowledge bases treat every page the same — ingested means trusted. Synth
 | -------------- | ----------------------------------------- | ----------------------------------------------- | ------------------------------------------ |
 | `draft`        | Compiled but not yet lint-reviewed        | Automatic on ingest                             | Run lint to auto-promote clean pages       |
 | `active`       | Lint-reviewed, current, trusted           | Lint auto-promotes from`draft`                  | No action needed                           |
-| `contradicted` | Two or more sources conflict              | Lint detects contradiction automatically        | Re-ingest corrected source, or archive     |
+| `contradicted` | Sources conflict, or adversarial gate fired | Lint detects contradiction or ≥ threshold adversarial warnings | Resolve conflict or fix flagged claims, then re-lint |
 | `stale`        | Source file has changed since last ingest | Lint detects SHA-256 hash mismatch              | Re-ingest the updated source with`--force` |
 | `archived`     | Source removed or explicitly retired      | Lint auto-archives on missing source; or manual | Restore to`draft` if source returns        |
 
@@ -1119,7 +1123,7 @@ The pre-built pages already contain the kinds of sweeping historical claims an a
 reviewer will flag — no additional ingest is needed before this step, though running Step 6
 first gives the adversarial review more content to work with.
 
-The reviewer flags **up to 2 issues per page by default** (configurable via `adversarial_max_per_page` in `config.toml`) and only flags claims it is highly confident
+The reviewer flags **up to 3 issues per page by default** (configurable via `adversarial_max_per_page` in `config.toml`) and only flags claims it is highly confident
 about — defensible or nuanced statements are skipped. The full history-of-computing demo
 wiki (13 pre-built pages plus pages created in Step 6) typically produces **10–15 warnings**,
 giving a meaningful but not overwhelming signal.
@@ -1235,10 +1239,28 @@ By default the adversarial reviewer flags at most 2 issues per page. Raise the c
 ```toml
 # config.toml
 [lint]
-adversarial_max_per_page = 2  # raise to 3–5 for a deeper review; lower to 1 for less noise
+adversarial_max_per_page = 3  # must be >= adversarial_gate_threshold; raise to 4–5 for a deeper review
 ```
 
 If `[lint]` is absent from `config.toml`, Synthadoc defaults to 2 — no file change needed.
+
+### Optional — automatic page demotion (adversarial gate)
+
+When a page accumulates too many adversarial warnings it is a signal that its claims are contested and it should not be serving as an authoritative source in query answers. The **adversarial gate** automates this: at the end of every lint run, any `active` or `stale` page whose warning count reaches or exceeds the threshold is automatically transitioned to `contradicted`.
+
+New wikis created with `synthadoc init` have the gate enabled at `3` by default. Existing wikis upgrading to v1.3.0 have the gate disabled — enable it by adding one line to `config.toml`:
+
+```toml
+# config.toml
+[lint]
+adversarial_gate_threshold = 3   # recommended: 3 (general), 1 (compliance-sensitive)
+```
+
+The demotion is auditable — it appears in `synthadoc lifecycle log` with reason `"auto-demoted: N adversarial warning(s) ≥ gate threshold T"` — and is reversible with `synthadoc lifecycle activate <slug> --reason "..."` after you resolve the flagged claims.
+
+Pages already in `contradicted`, `archived`, or `draft` states are never affected by the gate. Setting the value to `0` or removing the key disables the gate entirely.
+
+The number of pages auto-demoted during each lint run is shown in `synthadoc lint report` under the **Adversarial** tab as **Auto-demoted**.
 
 ### Optional — appoint a dedicated judge model
 

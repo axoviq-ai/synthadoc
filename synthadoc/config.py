@@ -176,9 +176,14 @@ class WikiConfig:
 
 @dataclass
 class LintConfig:
-    adversarial_max_per_page: int = 2   # max issues flagged per page by adversarial pass
+    adversarial_max_per_page: int = 3   # max issues flagged per page; must be >= adversarial_gate_threshold
     adversarial_concurrency: int = 8    # max parallel LLM calls during adversarial pass
     check_url_availability: bool = False  # HTTP HEAD check for URL sources (opt-in — adds network calls to lint)
+    adversarial_gate_threshold: Optional[int] = None
+    # Pages with this many or more adversarial warnings are auto-transitioned to
+    # contradicted at the end of each adversarial pass.
+    # None = gate disabled. 0 is never accepted — use None to disable.
+    # Recommended starting value: 3 (general wikis), 1 (compliance-sensitive).
 
 
 @dataclass
@@ -254,6 +259,21 @@ def _validate_provider(agent: AgentConfig) -> None:
         raise ValueError(
             f"Unknown provider '{agent.provider}'. "
             f"Must be one of: {', '.join(sorted(KNOWN_PROVIDERS))}"
+        )
+
+
+def _validate_lint(lint: "LintConfig") -> None:
+    if (
+        lint.adversarial_gate_threshold is not None
+        and lint.adversarial_gate_threshold > 0
+        and lint.adversarial_max_per_page < lint.adversarial_gate_threshold
+    ):
+        raise ValueError(
+            f"[ERR-CFG-010] adversarial_max_per_page ({lint.adversarial_max_per_page}) "
+            f"is less than adversarial_gate_threshold ({lint.adversarial_gate_threshold}). "
+            f"The gate can never fire because the adversarial agent is capped below the "
+            f"threshold. Set adversarial_max_per_page >= adversarial_gate_threshold in "
+            f"config.toml."
         )
 
 
@@ -439,10 +459,15 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
     # --- lint ---
     lt = raw.get("lint", {})
     lint = LintConfig(
-        adversarial_max_per_page=int(lt.get("adversarial_max_per_page", 2)),
+        adversarial_max_per_page=int(lt.get("adversarial_max_per_page", 3)),
         adversarial_concurrency=int(lt.get("adversarial_concurrency", 8)),
         check_url_availability=bool(lt.get("check_url_availability", False)),
+        adversarial_gate_threshold=(
+            int(lt["adversarial_gate_threshold"])
+            if "adversarial_gate_threshold" in lt else None
+        ),
     )
+    _validate_lint(lint)
 
     # --- audit ---
     at = raw.get("audit", {})

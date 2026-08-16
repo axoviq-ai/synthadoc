@@ -1067,9 +1067,10 @@ async def test_run_adversarial_pass_empty_scan(tmp_path):
         log_writer=MagicMock(),
     )
     # No pages in the store — scan is empty
-    result, tokens = await lint._run_adversarial_pass([])
+    result, tokens, demotions = await lint._run_adversarial_pass([])
     assert result == []
     assert tokens == 0
+    assert demotions == 0
 
 
 @pytest.mark.asyncio

@@ -2,9 +2,9 @@
 # Copyright (C) 2026 Paul Chen / axoviq.com
 """Tests for synthadoc.utils shared utilities."""
 import pathlib
-from unittest.mock import patch
+from unittest.mock import patch, call
 
-from synthadoc.utils import atomic_write_text
+from synthadoc.utils import atomic_write_text, _replace_windows
 
 
 def test_atomic_write_text_creates_file(tmp_path):
@@ -48,6 +48,93 @@ def test_atomic_write_text_uses_unix_line_endings_via_spy(tmp_path):
     assert calls
     for kwargs in calls:
         assert kwargs.get("newline") == "\n"
+
+
+# ---------------------------------------------------------------------------
+# Windows retry path — _replace_windows
+# ---------------------------------------------------------------------------
+
+def test_replace_windows_succeeds_immediately(tmp_path):
+    """No retries needed: succeeds on first attempt."""
+    src = tmp_path / "page.tmp"
+    dst = tmp_path / "page.md"
+    src.write_text("content", encoding="utf-8")
+    _replace_windows(src, dst, retries=3, base_delay=0)
+    assert dst.read_text(encoding="utf-8") == "content"
+    assert not src.exists()
+
+
+def test_replace_windows_retries_on_permission_error(tmp_path):
+    """Succeeds after two transient PermissionErrors."""
+    src = tmp_path / "page.tmp"
+    dst = tmp_path / "page.md"
+    src.write_text("content", encoding="utf-8")
+
+    attempts = []
+
+    real_replace = __import__("os").replace
+
+    def flaky_replace(s, d):
+        attempts.append(1)
+        if len(attempts) < 3:
+            raise PermissionError(5, "Access is denied")
+        real_replace(s, d)
+
+    with patch("synthadoc.utils.os.replace", side_effect=flaky_replace), \
+         patch("synthadoc.utils.time.sleep"):
+        _replace_windows(src, dst, retries=5, base_delay=0.001)
+
+    assert len(attempts) == 3
+    assert dst.read_text(encoding="utf-8") == "content"
+
+
+def test_replace_windows_raises_after_max_retries(tmp_path):
+    """Propagates PermissionError once all retries are exhausted."""
+    src = tmp_path / "page.tmp"
+    dst = tmp_path / "page.md"
+    src.write_text("content", encoding="utf-8")
+
+    with patch("synthadoc.utils.os.replace", side_effect=PermissionError(5, "Access is denied")), \
+         patch("synthadoc.utils.time.sleep"), \
+         __import__("pytest").raises(PermissionError):
+        _replace_windows(src, dst, retries=3, base_delay=0.001)
+
+
+def test_replace_windows_non_permission_error_propagates_immediately(tmp_path):
+    """Non-PermissionError is not retried."""
+    src = tmp_path / "page.tmp"
+    dst = tmp_path / "page.md"
+    src.write_text("content", encoding="utf-8")
+
+    attempts = []
+
+    def raises_oserror(s, d):
+        attempts.append(1)
+        raise OSError("disk full")
+
+    with patch("synthadoc.utils.os.replace", side_effect=raises_oserror), \
+         __import__("pytest").raises(OSError, match="disk full"):
+        _replace_windows(src, dst, retries=5, base_delay=0.001)
+
+    assert len(attempts) == 1  # no retry
+
+
+def test_atomic_write_text_uses_windows_path_on_win32(tmp_path):
+    """On win32, atomic_write_text delegates replace to _replace_windows."""
+    target = tmp_path / "page.md"
+    with patch("synthadoc.utils.sys.platform", "win32"), \
+         patch("synthadoc.utils._replace_windows") as mock_rw:
+        atomic_write_text(target, "body\n")
+    mock_rw.assert_called_once()
+
+
+def test_atomic_write_text_uses_os_replace_on_posix(tmp_path):
+    """On non-win32, atomic_write_text calls os.replace directly."""
+    target = tmp_path / "page.md"
+    with patch("synthadoc.utils.sys.platform", "linux"), \
+         patch("synthadoc.utils.os.replace") as mock_replace:
+        atomic_write_text(target, "body\n")
+    mock_replace.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
