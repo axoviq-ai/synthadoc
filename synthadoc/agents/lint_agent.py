@@ -568,7 +568,7 @@ class LintAgent:
             # Adversarial gate: auto-demote pages that exceed the warning threshold
             if self._cfg is not None:
                 threshold = self._cfg.lint.adversarial_gate_threshold
-                if threshold is not None and len(warnings) >= threshold:
+                if threshold is not None and threshold > 0 and len(warnings) >= threshold:
                     if page.status in (LifecycleState.ACTIVE, LifecycleState.STALE):
                         await self._transition(
                             slug, page, page.status, LifecycleState.CONTRADICTED,

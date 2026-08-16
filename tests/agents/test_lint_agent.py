@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
 import pytest
-from unittest.mock import AsyncMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 from synthadoc.agents.lint_agent import LintAgent, LintReport, find_orphan_slugs, _fix_dangling_wikilinks, LINT_SKIP_SLUGS, LINT_SKIP_SOURCE_SLUGS, _parse_adversarial_response, _check_page_citations, _citation_source_names, read_current_lint_state
 from synthadoc.providers.base import CompletionResponse
 from synthadoc.storage.wiki import WikiStorage, WikiPage, SourceRef
@@ -1242,9 +1243,6 @@ async def test_lint_transition_draft_to_active_records_reason(tmp_wiki):
 
 # ── Adversarial gate ───────────────────────────────────────────────────────────
 
-from types import SimpleNamespace
-from unittest.mock import patch
-
 
 def _gate_cfg(threshold):
     """Minimal Config-like object with just the lint and audit fields."""
@@ -1390,15 +1388,43 @@ async def test_adversarial_gate_skips_archived_page(tmp_wiki):
     assert report.adversarial_demotions == 0
 
 
+@pytest.mark.asyncio
+async def test_adversarial_gate_threshold_zero_disables_gate(tmp_wiki):
+    """When adversarial_gate_threshold is 0, pages are never auto-demoted (disabled)."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("problematic", WikiPage(
+        title="Problematic", tags=[], content="Page with many warnings.",
+        status="active", confidence="high", sources=[]))
+
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    provider = AsyncMock()
+    provider.complete.return_value = CompletionResponse(
+        text="", input_tokens=10, output_tokens=0)
+
+    agent = LintAgent(
+        provider=provider, store=store, log_writer=log,
+        cfg=_gate_cfg(threshold=0))
+
+    many_warnings = [{"claim": f"Claim {i}", "concern": "disputed"} for i in range(5)]
+
+    async def _mock_single(slug, content):
+        return many_warnings, 50
+
+    with patch.object(agent, "_adversarial_single", side_effect=_mock_single):
+        report = await agent.lint(scope="all", adversarial=True, lifecycle=False)
+
+    page = store.read_page("problematic")
+    assert page is not None
+    assert page.status == "active", f"Expected active (threshold=0 disables gate), got {page.status!r}"
+    assert report.adversarial_demotions == 0
+
+
 # ── Coverage: exception paths ──────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
 async def test_adversarial_single_generic_exception_returns_empty(tmp_wiki):
     """_adversarial_single returns ([], 0) when the LLM raises a non-rate-limit exception."""
-    from synthadoc.storage.wiki import WikiStorage, WikiPage
-    from synthadoc.storage.log import LogWriter
-
     store = WikiStorage(tmp_wiki / "wiki")
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
 
@@ -1415,10 +1441,6 @@ async def test_adversarial_single_generic_exception_returns_empty(tmp_wiki):
 @pytest.mark.asyncio
 async def test_lint_auto_resolve_unparseable_response(tmp_wiki):
     """When _parse_json_response raises an exception, decision defaults to unresolvable."""
-    from unittest.mock import patch as _patch_gate
-    from synthadoc.storage.wiki import WikiStorage, WikiPage
-    from synthadoc.storage.log import LogWriter
-
     store = WikiStorage(tmp_wiki / "wiki")
     store.write_page("conflict-page", WikiPage(
         title="Conflict", tags=[],
@@ -1435,7 +1457,7 @@ async def test_lint_auto_resolve_unparseable_response(tmp_wiki):
     agent = LintAgent(provider=provider, store=store, log_writer=log)
 
     # Patch _parse_json_response to raise an exception → hits except block at lint_agent.py:874
-    with _patch_gate("synthadoc.agents.ingest_agent._parse_json_response", side_effect=Exception("parse error")):
+    with patch("synthadoc.agents.ingest_agent._parse_json_response", side_effect=Exception("parse error")):
         report = await agent.lint(scope="contradictions", auto_resolve=True)
 
     assert report.contradictions_found == 1
@@ -1450,8 +1472,6 @@ async def test_lint_auto_resolve_unparseable_response(tmp_wiki):
 async def test_lint_auto_resolve_empty_resolution_appends_note(tmp_wiki):
     """When auto_resolve=True and JSON has resolvable=true but empty resolution, page content gets an auto-resolved note."""
     import json
-    from synthadoc.storage.wiki import WikiStorage, WikiPage
-    from synthadoc.storage.log import LogWriter
 
     store = WikiStorage(tmp_wiki / "wiki")
     original_content = "⚠ This page has a contradiction."
@@ -1488,9 +1508,6 @@ async def test_lint_auto_resolve_empty_resolution_appends_note(tmp_wiki):
 async def test_check_page_citations_ioerror_ignored(tmp_wiki):
     """OSError reading a citation file is swallowed (lines 162-163)."""
     from pathlib import Path
-    from unittest.mock import patch
-    from synthadoc.storage.wiki import WikiPage, SourceRef
-    from synthadoc.agents.lint_agent import _check_page_citations
 
     # Create the extracted txt file so txt_path.exists() is True
     extracted = tmp_wiki / ".synthadoc" / "extracted"
@@ -1517,9 +1534,6 @@ async def test_check_page_citations_ioerror_ignored(tmp_wiki):
 @pytest.mark.asyncio
 async def test_lint_graph_build_exception_swallowed(tmp_wiki):
     """Exception during graph build in lint(scope='all') is swallowed (lines 985-986)."""
-    from synthadoc.storage.wiki import WikiStorage, WikiPage
-    from synthadoc.storage.log import LogWriter
-
     store = WikiStorage(tmp_wiki / "wiki")
     store.write_page("graph-page", WikiPage(
         title="Graph Test", tags=[],

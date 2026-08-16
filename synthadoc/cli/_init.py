@@ -289,7 +289,7 @@ adversarial_max_per_page = 2
 # Lower to 2-4 on free-tier or rate-limited LLM providers; raise to 16+ on paid tiers.
 adversarial_concurrency = 8
 # Pages with this many or more adversarial warnings are auto-set to contradicted on lint.
-# Remove the comment prefix to enable. Recommended: 3 (general wikis), 1 (compliance-sensitive).
+# Recommended: 3 (general wikis), 1 (compliance-sensitive). Comment out or remove to disable.
 adversarial_gate_threshold = 3
 
 [search]
