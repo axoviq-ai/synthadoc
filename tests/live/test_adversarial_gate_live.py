@@ -110,6 +110,49 @@ def _page_state(slug: str) -> str | None:
     return None
 
 
+def _snapshot_page_states() -> dict[str, str]:
+    """Return {slug: state} for every page currently tracked in the lifecycle DB."""
+    data = _api("/lifecycle/pages")
+    return {
+        p["slug"]: p["state"]
+        for p in data.get("pages", [])
+        if isinstance(p, dict) and p.get("slug")
+    }
+
+
+def _restore_collateral_demotions(
+    before: dict[str, str],
+    exclude_slug: str,
+) -> None:
+    """Undo gate demotions that hit real wiki pages during the full-wiki lint.
+
+    The adversarial gate test must run scope='all' (no per-slug lint exists),
+    so real wiki pages can be demoted if they happen to hit the threshold.
+    After the test this function re-transitions any such page back to its
+    pre-test state so downstream suites see a clean wiki.
+
+    *before* — snapshot taken just before the lint job was enqueued.
+    *exclude_slug* — the test slug whose demotion is intentional; skip it.
+    """
+    try:
+        after = _snapshot_page_states()
+        for slug, pre_state in before.items():
+            if slug == exclude_slug:
+                continue
+            post_state = after.get(slug, pre_state)
+            if post_state == "contradicted" and pre_state in ("active", "stale"):
+                try:
+                    _transition(
+                        slug,
+                        pre_state,
+                        "live test cleanup — restoring collateral adversarial gate demotion",
+                    )
+                except Exception:
+                    pass  # best effort; wiki restore at suite end is the safety net
+    except Exception:
+        pass  # best effort
+
+
 def _lifecycle_events(slug: str) -> list[dict]:
     """Return all lifecycle events for *slug*."""
     data = _api(f"/lifecycle/events?slug={slug}")
@@ -194,6 +237,7 @@ def test_gate_demotes_page_on_lint_run():
         pytest.skip("Cannot determine wiki path from /status — skipping")
 
     _setup_test_page(wiki_path)
+    pre_lint_states = _snapshot_page_states()
     try:
         before_ts = datetime.now(timezone.utc).isoformat()
 
@@ -222,6 +266,8 @@ def test_gate_demotes_page_on_lint_run():
         )
 
     finally:
+        # Restore any real wiki pages that the full-wiki lint accidentally demoted.
+        _restore_collateral_demotions(pre_lint_states, _GATE_SLUG)
         _cleanup_test_page(wiki_path)
 
 
@@ -242,6 +288,7 @@ def test_auto_resolve_does_not_re_promote_gate_demoted_page():
         pytest.skip("Cannot determine wiki path from /status — skipping")
 
     _setup_test_page(wiki_path)
+    pre_lint_states = _snapshot_page_states()
     try:
         # Step 1: trigger gate demotion
         job1 = _run_lint(scope="all")
@@ -283,4 +330,6 @@ def test_auto_resolve_does_not_re_promote_gate_demoted_page():
         )
 
     finally:
+        # Restore any real wiki pages that the full-wiki lint accidentally demoted.
+        _restore_collateral_demotions(pre_lint_states, _GATE_SLUG)
         _cleanup_test_page(wiki_path)
