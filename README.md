@@ -171,9 +171,9 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | --- | --- | --- | --- | --- |
 | **[Ingest-time synthesis](docs/design.md#ingestagent)** — sources compiled into the wiki at ingest; not re-summarised at query time | **Yes** | No | Partial | No |
 | **[Contradiction detection & resolution](docs/user-quick-start-guide.md#step-9--resolve-a-contradiction)** — conflicting claims flagged `status: contradicted`; auto-resolve available; full conflict history | **Yes** | No | No | No |
-| **[Adversarial claim review](docs/user-quick-start-guide.md#step-11--run-the-adversarial-review)** — concurrent second-LLM pass flags overstated claims, unsupported superlatives, and contestable facts per page | **Yes** | No | No | No |
+| **[Adversarial claim review + gate](docs/user-quick-start-guide.md#step-11--run-the-adversarial-review)** — concurrent second-LLM pass flags overstated claims, unsupported superlatives, and contestable facts per page; configurable gate auto-demotes pages that exceed the warning threshold to `contradicted` | **Yes** | No | No | No |
 | **[Claim-level provenance](docs/user-quick-start-guide.md#step-20--establish-claim-level-provenance)** — `^[file:L-L]` citation on every claim; Source Viewer in Obsidian; PDF page resolution; broken-citation lint | **Yes** | No | Partial | No |
-| **[5-state lifecycle machine](docs/user-quick-start-guide.md#step-8--manage-page-lifecycle)** — `draft → active → contradicted / stale → archived`; auto-transitions via lint; immutable event log; cascade link cleanup on archive (immediate, no lint run required) | **Yes** | No | No | No |
+| **[5-state lifecycle machine](docs/user-quick-start-guide.md#step-8--manage-page-lifecycle)** — `draft → active → contradicted / stale → archived`; auto-transitions via lint; immutable event log; cascade link cleanup on archive; only `active` and `stale` pages enter the BM25 search index | **Yes** | No | No | No |
 | **[Pre-LLM source sanitizer](docs/design.md#29-pre-llm-source-sanitizer)** — strips zero-width chars, bidi overrides, hidden HTML, and instruction-override phrases before any LLM call | **Yes** | No | No | No |
 
 ### Knowledge Structure

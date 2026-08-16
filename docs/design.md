@@ -273,6 +273,8 @@ Question
 
 **BM25 corpus cache:** `HybridSearch` builds the BM25 corpus once per server session and caches it in memory (`_cached_corpus`). The cache is invalidated by `invalidate_index()` after every `write_page()` call in IngestAgent, so queries always see current wiki content without redundant disk reads.
 
+**Lifecycle-aware corpus filter _(v1.3.0)_:** Only pages with `status: active` or `status: stale` enter the BM25 index. Pages with `status: contradicted`, `status: archived`, or `status: draft` are excluded at corpus build time. This ensures that pages flagged as conflicted or not yet reviewed do not contribute candidates to query answers. The constant `_QUERY_STATES = frozenset({"active", "stale"})` in `storage/search.py` is the single source of truth for which states participate in retrieval.
+
 #### Knowledge Gap Workflow
 
 After the BM25 merge step, a knowledge gap is detected when ANY of three independent signals fire (gap is skipped when `gap_score_threshold = 0`):
@@ -392,6 +394,8 @@ Runs against the entire wiki or a scoped subset:
 **Auto-generated page exclusions:** The pages `index`, `dashboard`, `overview`, `log`, and `purpose` are excluded from both orphan detection and contradiction checking. Links from these pages do not count as real inbound references — a page linked only from `overview.md` is still reported as an orphan. These pages are also never flagged as contradicted by the ingest pipeline.
 
 **Adversarial review _(v0.5.0)_:** After structural checks complete, `LintAgent` runs an independent LLM review of every non-excluded page concurrently via `asyncio.gather()` — a 100-page wiki completes in wall-clock time equal to one call. The adversarial provider is configured via `[agents].adversarial` (falls back to `[agents].default` if absent); using a different model family from the ingest model reduces self-serving bias. Results are stored as `lint_warnings: [{claim, concern}]` in each page's YAML frontmatter. The cap is `adversarial_max_per_page` (default 2). Rate-limit failures are caught per-page and stored as non-fatal entries. Skipped entirely when `--no-adversarial` is passed to `lint run`; in that case, existing `lint_warnings` are cleared from all pages.
+
+**Adversarial gate _(v1.3.0)_:** When `adversarial_gate_threshold` is set in `[lint]` of `config.toml`, any `active` or `stale` page that accumulates that many or more adversarial warnings during a lint run is automatically transitioned to `contradicted` at the end of the adversarial pass. The transition is recorded in the lifecycle audit trail with the reason `"auto-demoted: N adversarial warning(s) ≥ gate threshold T"`. Pages already in `contradicted`, `archived`, or `draft` states are never affected by the gate. Setting the value to `0` or omitting the key entirely disables the gate. New wikis created with `synthadoc init` have the gate enabled at `3` by default. Existing wikis upgrading to v1.3.0 have the gate disabled until `adversarial_gate_threshold` is explicitly added to `config.toml`. The count of auto-demotions in each lint run is reported in `LintReport.adversarial_demotions` and shown in `synthadoc lint report`. Recommended values: `3` for general wikis, `1` for compliance-sensitive corpora.
 
 ### SkillAgent
 

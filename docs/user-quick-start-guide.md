@@ -457,7 +457,7 @@ synthadoc query "Who invented FORTRAN and when?"
 synthadoc query "What did Konrad Zuse contribute to computing history?"
 ```
 
-> **Pages are created as `draft`.** Every page produced by ingest starts in the `draft` state — compiled but not yet reviewed. Draft pages are immediately queryable; BM25 retrieval includes all pages regardless of lifecycle state. Running lint (Step 7) promotes clean pages to `active`, which marks them as human-reviewed and protects them from being overwritten by future ingest.
+> **Pages are created as `draft`.** Every page produced by ingest starts in the `draft` state — compiled but not yet reviewed. Only `active` and `stale` pages enter the BM25 search index; `draft`, `contradicted`, and `archived` pages are excluded from query results. Running lint (Step 7) promotes clean pages to `active`, which marks them as human-reviewed, enters them into the search index, and protects them from being overwritten by future ingest.
 
 > **Pre-LLM sanitizer (v1.0):** Before sending any source to the LLM, Synthadoc strips zero-width characters, bidirectional text overrides, hidden HTML, and instruction-override phrases that could cause the model to misinterpret content. This runs automatically — no configuration needed. See [design.md §29](design.md#29-pre-llm-source-sanitizer) for the full table of sanitizer categories, actions, and warning behaviour.
 
@@ -1239,6 +1239,24 @@ adversarial_max_per_page = 2  # raise to 3–5 for a deeper review; lower to 1 f
 ```
 
 If `[lint]` is absent from `config.toml`, Synthadoc defaults to 2 — no file change needed.
+
+### Optional — automatic page demotion (adversarial gate)
+
+When a page accumulates too many adversarial warnings it is a signal that its claims are contested and it should not be serving as an authoritative source in query answers. The **adversarial gate** automates this: at the end of every lint run, any `active` or `stale` page whose warning count reaches or exceeds the threshold is automatically transitioned to `contradicted`.
+
+New wikis created with `synthadoc init` have the gate enabled at `3` by default. Existing wikis upgrading to v1.3.0 have the gate disabled — enable it by adding one line to `config.toml`:
+
+```toml
+# config.toml
+[lint]
+adversarial_gate_threshold = 3   # recommended: 3 (general), 1 (compliance-sensitive)
+```
+
+The demotion is auditable — it appears in `synthadoc lifecycle log` with reason `"auto-demoted: N adversarial warning(s) ≥ gate threshold T"` — and is reversible with `synthadoc lifecycle activate <slug> --reason "..."` after you resolve the flagged claims.
+
+Pages already in `contradicted`, `archived`, or `draft` states are never affected by the gate. Setting the value to `0` or removing the key disables the gate entirely.
+
+The number of pages auto-demoted during each lint run is shown in `synthadoc lint report` under the **Adversarial** tab as **Auto-demoted**.
 
 ### Optional — appoint a dedicated judge model
 
