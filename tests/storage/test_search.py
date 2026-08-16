@@ -645,3 +645,94 @@ def test_searchresult_tf_fallback_defaults_false():
     from synthadoc.storage.search import SearchResult
     r = SearchResult(slug="test", score=1.0, title="T", snippet="s")
     assert r.tf_fallback is False
+
+
+# ── Lifecycle-aware corpus filter ─────────────────────────────────────────────
+
+def _make_status_page(content: str, status: str) -> WikiPage:
+    return WikiPage(
+        title=content[:20], tags=[], content=content,
+        status=status, confidence="high", sources=[]
+    )
+
+
+def test_corpus_excludes_contradicted_pages(tmp_wiki):
+    """contradicted pages must not appear in BM25 results."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("clean", _make_status_page(
+        "The transformer architecture uses self-attention.", "active"))
+    store.write_page("dirty", _make_status_page(
+        "The transformer architecture uses self-attention.", "contradicted"))
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    results = search.bm25_search(["transformer", "attention"], top_n=10)
+    slugs = [r.slug for r in results]
+    assert "clean" in slugs
+    assert "dirty" not in slugs
+
+
+def test_corpus_excludes_archived_pages(tmp_wiki):
+    """archived pages must not appear in BM25 results."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("live", _make_status_page(
+        "Backpropagation trains neural networks.", "active"))
+    store.write_page("retired", _make_status_page(
+        "Backpropagation trains neural networks.", "archived"))
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    results = search.bm25_search(["backpropagation", "neural"], top_n=10)
+    slugs = [r.slug for r in results]
+    assert "live" in slugs
+    assert "retired" not in slugs
+
+
+def test_corpus_excludes_draft_pages(tmp_wiki):
+    """draft pages must not appear in BM25 results."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("published", _make_status_page(
+        "Support vector machines classify data points.", "active"))
+    store.write_page("wip", _make_status_page(
+        "Support vector machines classify data points.", "draft"))
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    results = search.bm25_search(["support", "vector", "machines"], top_n=10)
+    slugs = [r.slug for r in results]
+    assert "published" in slugs
+    assert "wip" not in slugs
+
+
+def test_corpus_includes_stale_pages(tmp_wiki):
+    """stale pages must still appear in BM25 results (outdated but valid)."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("old-but-valid", _make_status_page(
+        "Random forests aggregate decision tree predictions.", "stale"))
+    store.write_page("padding-1", _make_status_page("Unrelated padding one.", "active"))
+    store.write_page("padding-2", _make_status_page("Unrelated padding two.", "active"))
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+    results = search.bm25_search(["random", "forest", "decision", "tree"], top_n=10)
+    assert any(r.slug == "old-but-valid" for r in results)
+
+
+def test_corpus_cache_invalidated_on_status_change(tmp_wiki):
+    """After a page transitions to contradicted and the cache is dropped,
+    the next search excludes it."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    content = "Gradient descent minimises the loss function iteratively."
+    store.write_page("grad-page", _make_status_page(content, "active"))
+    store.write_page("pad-1", _make_status_page("Unrelated padding alpha.", "active"))
+    store.write_page("pad-2", _make_status_page("Unrelated padding beta.", "active"))
+
+    search = HybridSearch(store, tmp_wiki / ".synthadoc" / "embeddings.db")
+
+    # First search: page is active → should be found
+    results_before = search.bm25_search(["gradient", "descent", "loss"], top_n=10)
+    assert any(r.slug == "grad-page" for r in results_before)
+
+    # Simulate page being transitioned to contradicted
+    page = store.read_page("grad-page")
+    page.status = "contradicted"
+    store.write_page("grad-page", page)
+
+    # Invalidate the in-memory corpus cache
+    search.invalidate_index()
+
+    # Second search: page is contradicted → must not appear
+    results_after = search.bm25_search(["gradient", "descent", "loss"], top_n=10)
+    assert not any(r.slug == "grad-page" for r in results_after)

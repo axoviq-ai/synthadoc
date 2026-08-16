@@ -273,6 +273,8 @@ Question
 
 **BM25 corpus cache:** `HybridSearch` builds the BM25 corpus once per server session and caches it in memory (`_cached_corpus`). The cache is invalidated by `invalidate_index()` after every `write_page()` call in IngestAgent, so queries always see current wiki content without redundant disk reads.
 
+**Lifecycle-aware corpus filter _(v1.3.0)_:** Only pages with `status: active` or `status: stale` enter the BM25 index. Pages with `status: contradicted`, `status: archived`, or `status: draft` are excluded at corpus build time. This ensures that pages flagged as conflicted or not yet reviewed do not contribute candidates to query answers. The constant `_QUERY_STATES = frozenset({"active", "stale"})` in `storage/search.py` is the single source of truth for which states participate in retrieval.
+
 #### Knowledge Gap Workflow
 
 After the BM25 merge step, a knowledge gap is detected when ANY of three independent signals fire (gap is skipped when `gap_score_threshold = 0`):
@@ -392,6 +394,8 @@ Runs against the entire wiki or a scoped subset:
 **Auto-generated page exclusions:** The pages `index`, `dashboard`, `overview`, `log`, and `purpose` are excluded from both orphan detection and contradiction checking. Links from these pages do not count as real inbound references — a page linked only from `overview.md` is still reported as an orphan. These pages are also never flagged as contradicted by the ingest pipeline.
 
 **Adversarial review _(v0.5.0)_:** After structural checks complete, `LintAgent` runs an independent LLM review of every non-excluded page concurrently via `asyncio.gather()` — a 100-page wiki completes in wall-clock time equal to one call. The adversarial provider is configured via `[agents].adversarial` (falls back to `[agents].default` if absent); using a different model family from the ingest model reduces self-serving bias. Results are stored as `lint_warnings: [{claim, concern}]` in each page's YAML frontmatter. The cap is `adversarial_max_per_page` (default 2). Rate-limit failures are caught per-page and stored as non-fatal entries. Skipped entirely when `--no-adversarial` is passed to `lint run`; in that case, existing `lint_warnings` are cleared from all pages.
+
+**Adversarial gate _(v1.3.0)_:** When `adversarial_gate_threshold` is set in `[lint]` of `config.toml`, any `active` or `stale` page that accumulates that many or more adversarial warnings during a lint run is automatically transitioned to `contradicted` at the end of the adversarial pass. The transition is recorded in the lifecycle audit trail with the reason `"auto-demoted: N adversarial warning(s) ≥ gate threshold T"`. Pages already in `contradicted`, `archived`, or `draft` states are never affected by the gate. Setting the value to `0` or omitting the key entirely disables the gate. New wikis created with `synthadoc init` have the gate enabled at `3` by default. Existing wikis upgrading to v1.3.0 have the gate disabled until `adversarial_gate_threshold` is explicitly added to `config.toml`. The count of auto-demotions in each lint run is reported in `LintReport.adversarial_demotions` and shown in `synthadoc lint report`. Recommended values: `3` for general wikis, `1` for compliance-sensitive corpora.
 
 ### SkillAgent
 
@@ -1329,7 +1333,7 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 | `agents.llm_timeout_seconds` | int | `0` | Per-call LLM timeout in seconds; `0` = no limit. Set to e.g. `90` when using reasoning models (MiniMax-M2.5, DeepSeek-R1) that can exceed their internal generation budget silently. Restart required. |
 | `agents.scaffold_max_tokens` | int | `8192` | Max output tokens for the scaffold (page generation) agent. Increase to `16384`+ when using reasoning models on large wikis where the default budget is exhausted. |
 | `agents.query_max_tokens` | int | `8192` | Max output tokens for the query agent. Increase if reasoning models exhaust their budget before completing the answer. |
-| `lint.adversarial_max_per_page` | int | `2` | Maximum adversarial warnings flagged per page. Raise to 3–5 for a thorough audit; lower to 1 to reduce noise on large wikis. |
+| `lint.adversarial_max_per_page` | int | `3` | Maximum adversarial warnings flagged per page. Must be ≥ `adversarial_gate_threshold` for the gate to fire. Raise to 4–5 for a thorough audit; lower to 1–2 to reduce noise on large wikis. |
 | `lint.check_url_availability` | bool | `false` | When `true`, lint performs an HTTP HEAD check on every URL source and flags unreachable URLs. Adds network calls to each lint run; opt-in only. |
 | `server.host` | str | `"127.0.0.1"` | Bind address. Change to `"0.0.0.0"` to expose the server on all interfaces (e.g. for LAN access). No built-in auth — restrict via firewall when exposing. |
 | `server.port` | int | `7070` | HTTP listen port. Change when running multiple wikis simultaneously. |
@@ -2074,7 +2078,7 @@ The key architectural decision is cross-model independence. When the adversarial
 
 The adversarial review runs as the final phase of every `synthadoc lint run`. After orphan detection and contradiction checks complete, `LintAgent` calls `_adversarial_single(slug, content)` for every non-excluded page concurrently via `asyncio.gather()`. A 100-page wiki completes in the same wall-clock time as a single LLM call.
 
-Each `_adversarial_single` call prompts the adversarial model to act as a skeptical editor and return a JSON array of `{claim, concern}` objects. Results are capped at `adversarial_max_per_page` (default 2) per page. Failures are caught per-page — rate-limit errors and parse failures are stored as non-fatal warning entries and never abort the lint job.
+Each `_adversarial_single` call prompts the adversarial model to act as a skeptical editor and return a JSON array of `{claim, concern}` objects. Results are capped at `adversarial_max_per_page` (default 3) per page. Failures are caught per-page — rate-limit errors and parse failures are stored as non-fatal warning entries and never abort the lint job.
 
 When `--no-adversarial` is passed to `lint run`, the adversarial phase is skipped entirely and any existing `lint_warnings` are cleared from all page frontmatter.
 
@@ -2105,7 +2109,7 @@ lint        = { provider = "minimax",   model = "MiniMax-M2.5" }
 adversarial = { provider = "anthropic", model = "claude-sonnet-4-6" }   # independent judge — different model family
 
 [lint]
-adversarial_max_per_page = 2   # raise to 3–5 for a deeper audit; lower to 1 for less noise
+adversarial_max_per_page = 3   # must be >= adversarial_gate_threshold; raise to 4–5 for a deeper audit
 ```
 
 `[agents].adversarial` falls back to `[agents].default` if absent — the adversarial pass always runs, it just uses the same model as ingest (less effective, still useful).

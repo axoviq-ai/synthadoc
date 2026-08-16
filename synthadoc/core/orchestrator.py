@@ -712,6 +712,7 @@ class Orchestrator:
                 "orphans": report.orphan_slugs,
                 "dangling_links_removed": report.dangling_links_removed,
                 "adversarial_warnings": sum(len(w["warnings"]) for w in report.adversarial_warnings),
+                "adversarial_demotions": report.adversarial_demotions,
                 "tokens_used": report.tokens_used,
             })
             self._hooks.fire("on_lint_complete", {

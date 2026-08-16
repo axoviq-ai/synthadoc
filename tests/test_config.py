@@ -333,3 +333,69 @@ def test_ingest_config_max_source_chars_custom():
         name = f.name
     cfg = load_config(project_config=pathlib.Path(name))
     assert cfg.ingest.max_source_chars == 64000
+
+
+def test_lint_adversarial_gate_threshold_parsed(tmp_path):
+    """adversarial_gate_threshold is parsed as int when present in [lint]."""
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents]\ndefault = { provider = "anthropic", model = "claude-opus-4-6" }\n'
+        '[lint]\nadversarial_max_per_page = 5\nadversarial_gate_threshold = 5\n'
+    )
+    cfg = load_config(project_config=cfg_file)
+    assert cfg.lint.adversarial_gate_threshold == 5
+
+
+def test_lint_adversarial_gate_threshold_defaults_to_none(tmp_path):
+    """adversarial_gate_threshold is None (gate disabled) when key is absent from config."""
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents]\ndefault = { provider = "anthropic", model = "claude-opus-4-6" }\n'
+    )
+    cfg = load_config(project_config=cfg_file)
+    assert cfg.lint.adversarial_gate_threshold is None
+
+
+def test_lint_validation_raises_when_max_below_threshold(tmp_path):
+    """[ERR-CFG-010] load_config raises ValueError when max_per_page < gate_threshold."""
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents]\ndefault = { provider = "anthropic", model = "claude-opus-4-6" }\n'
+        '[lint]\nadversarial_max_per_page = 2\nadversarial_gate_threshold = 3\n'
+    )
+    with pytest.raises(ValueError, match="ERR-CFG-010"):
+        load_config(project_config=cfg_file)
+
+
+def test_lint_validation_passes_when_max_equals_threshold(tmp_path):
+    """load_config succeeds when max_per_page == gate_threshold (boundary case)."""
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents]\ndefault = { provider = "anthropic", model = "claude-opus-4-6" }\n'
+        '[lint]\nadversarial_max_per_page = 3\nadversarial_gate_threshold = 3\n'
+    )
+    cfg = load_config(project_config=cfg_file)
+    assert cfg.lint.adversarial_max_per_page == 3
+    assert cfg.lint.adversarial_gate_threshold == 3
+
+
+def test_lint_validation_passes_when_threshold_disabled(tmp_path):
+    """load_config succeeds when gate_threshold is absent (gate disabled), even with low max."""
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents]\ndefault = { provider = "anthropic", model = "claude-opus-4-6" }\n'
+        '[lint]\nadversarial_max_per_page = 1\n'
+    )
+    cfg = load_config(project_config=cfg_file)
+    assert cfg.lint.adversarial_gate_threshold is None
+
+
+def test_lint_validation_passes_when_threshold_zero(tmp_path):
+    """load_config succeeds when gate_threshold = 0 (semantically disabled); max can be anything."""
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents]\ndefault = { provider = "anthropic", model = "claude-opus-4-6" }\n'
+        '[lint]\nadversarial_max_per_page = 1\nadversarial_gate_threshold = 0\n'
+    )
+    cfg = load_config(project_config=cfg_file)
+    assert cfg.lint.adversarial_gate_threshold == 0

@@ -57,9 +57,9 @@ The synthesis of GNU tools and the Linux kernel transformed software production 
 
 ## Linux and the GNU Project (1991)
 
-In August 1991, 21-year-old Linus Torvalds, a university student in Helsinki, Finland, announced a new Unix-like kernel that would eventually become Linux. The timing was significant: the GNU Project had already created most of a free Unix-compatible operating system—except for a working kernel. When Torvalds released his kernel, it filled this critical gap, allowing the GNU tools to run on a complete, free operating system.
+In August 1991, 21-year-old Linus Torvalds, a university student in Helsinki, Finland, announced a new Unix-like kernel that would eventually become Linux. The timing was significant: the GNU Project had already created most of a free Unix-compatible operating system—except for a working kernel. Torvalds initially released his kernel under a licence that prohibited commercial use; he adopted the GNU General Public License in early 1992, after which the kernel could be freely combined with the GNU tools.
 
-The combination of GNU utilities (the compiler, editors, shells, and core utilities) with Torvalds' Linux kernel created a powerful alternative to commercial Unix systems. This synergy made Linux the flagship success of the free software movement.
+The combination of GNU utilities (the compiler, editors, shells, and core utilities) with Torvalds' Linux kernel — after his 1992 switch to the GPL — created a powerful alternative to commercial Unix systems. This synergy made Linux the flagship success of the free software movement.
 
 Thousands of volunteers worldwide contributed to Linux's development, testing, documentation, and distribution. This volunteer-driven model proved that collaborative, community-built software could compete with—and often surpass—commercially developed operating systems.
 
@@ -132,7 +132,7 @@ The movement demonstrated that publicly available source code that could be free
 
 While the GNU Project produced a complete suite of Unix-compatible tools — including the GCC compiler, bash shell, and glibc — by the early 1990s it lacked a working kernel (the HURD kernel remained unfinished). This gap was filled in 1991 when [[linus-torvalds|Linus Torvalds]], a computer science student at the University of Helsinki, released the Linux kernel, initially targeting Intel 386 hardware.
 
-The combination of GNU tools with the Linux kernel produced the first complete free Unix-like operating system. Crucially, Torvalds adopted the GPL for Linux, ensuring that the combined GNU/Linux system remained free software. The distributed, collaborative development model that emerged — with contributors worldwide submitting code via the internet — became a template for large-scale open source collaboration.
+The combination of GNU tools with the Linux kernel produced the first complete free Unix-like operating system. Crucially, Torvalds adopted the GPL for Linux in early 1992 — after initially releasing the kernel under a more restrictive licence — ensuring that the combined GNU/Linux system remained free software. The distributed, collaborative development model that emerged — with contributors worldwide submitting code via the internet — became a template for large-scale open source collaboration.
 
 ## Eric Raymond and the Open Source Philosophy
 

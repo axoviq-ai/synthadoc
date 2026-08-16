@@ -22,7 +22,7 @@ updated: '2026-07-12'
 ---
 # Grace Hopper
 
-Grace Brewster Murray Hopper (1906–1992) was an American computer scientist and United States Navy rear admiral. She pioneered the idea that programs could be written in human-readable language and automatically translated to machine instructions — an idea her contemporaries dismissed as impossible.
+Grace Brewster Murray Hopper (1906–1992) was an American computer scientist and United States Navy rear admiral. She is credited with inventing the compiler — the program that translates human-readable source code into machine instructions — and with coining the term "debugging" after removing the first literal computer bug from the Harvard Mark II in 1947. Her invention of COBOL established the template for business programming languages that remains in use today.
 
 ## Education and Early Career
 
@@ -44,7 +44,7 @@ After the war, Hopper joined the Eckert-Mauchly Computer Corporation (later abso
 
 In 1952, Hopper developed the A-0 system for the UNIVAC I. A-0 allowed a programmer to write mathematical expressions using symbolic notation that the system would then translate into machine code. For many years, A-0 was widely credited in popular accounts and biographical summaries as the first compiler — a program that translates human-readable source code into machine-executable instructions.
 
-However, this attribution has been challenged by some historians of computing. Critics, including authors cited in recent scholarship such as the "first-compiler-controversy" source, argue that A-0 was more accurately a linker or loader rather than a true compiler in the modern sense, since it primarily combined pre-written subroutines into executable programs rather than translating higher-level source code. From this perspective, the IBM FORTRAN compiler released in 1957 is often identified as the first genuine compiler, because it performed full source-to-machine-code translation with significant optimization.
+However, this attribution has been challenged by some historians of computing. Critics argue that A-0 was more accurately a linker or loader rather than a true compiler in the modern sense, since it primarily combined pre-written subroutines into executable programs rather than translating higher-level source code. From this perspective, the IBM FORTRAN compiler released in 1957 is often identified as the first genuine compiler, because it performed full source-to-machine-code translation with significant optimization.
 
 The distinction hinges on how one defines a "compiler": under a broad definition that includes any system automating the production of machine code from symbolic input, A-0's claim is defensible; under a stricter definition requiring translation of source language into equivalent machine code, the title tends to be assigned to FORTRAN. Both views remain present in the historical literature.
 
