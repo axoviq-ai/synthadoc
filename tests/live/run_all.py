@@ -38,6 +38,10 @@ Examples:
     # Run scaffold workflow tests only (requires v1.2.1 feature to be shipped)
     # Note: the accept-path tests re-scaffold the wiki (index.md etc. overwritten)
     python -X utf8 tests/live/run_all.py --suite scaffold
+
+    # Run adversarial gate tests only (requires v1.3.0 feature; history-of-computing wiki)
+    # Verifies gate demotion and auto-resolve cycle prevention against a live server.
+    python -X utf8 tests/live/run_all.py --suite adversarial_gate
 """
 import argparse
 import atexit
@@ -72,6 +76,7 @@ SUITES = {
     "broken_wikilinks": "test_broken_wikilinks_live.py",
     "lint_report":      "test_lint_report_workflow_live.py",
     "scaffold":         "test_scaffold_workflow_live.py",
+    "adversarial_gate": "test_adversarial_gate_live.py",
 }
 
 PASS = "\033[92mPASS\033[0m"
@@ -173,6 +178,7 @@ def main() -> None:
         "broken_wikilinks": [],
         "lint_report":      [],
         "scaffold":         [],
+        "adversarial_gate": [],
     }
     # Per-suite environment
     suite_env = {
@@ -184,6 +190,7 @@ def main() -> None:
         "broken_wikilinks": {**os.environ, "SYNTHADOC_URL": base},
         "lint_report":      {**os.environ, "SYNTHADOC_URL": base},
         "scaffold":         {**os.environ, "SYNTHADOC_URL": base},
+        "adversarial_gate": {**os.environ, "SYNTHADOC_URL": base},
     }
 
     print(f"\n{'='*64}")
