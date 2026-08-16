@@ -1119,7 +1119,7 @@ The pre-built pages already contain the kinds of sweeping historical claims an a
 reviewer will flag — no additional ingest is needed before this step, though running Step 6
 first gives the adversarial review more content to work with.
 
-The reviewer flags **up to 2 issues per page by default** (configurable via `adversarial_max_per_page` in `config.toml`) and only flags claims it is highly confident
+The reviewer flags **up to 3 issues per page by default** (configurable via `adversarial_max_per_page` in `config.toml`) and only flags claims it is highly confident
 about — defensible or nuanced statements are skipped. The full history-of-computing demo
 wiki (13 pre-built pages plus pages created in Step 6) typically produces **10–15 warnings**,
 giving a meaningful but not overwhelming signal.
@@ -1235,7 +1235,7 @@ By default the adversarial reviewer flags at most 2 issues per page. Raise the c
 ```toml
 # config.toml
 [lint]
-adversarial_max_per_page = 2  # raise to 3–5 for a deeper review; lower to 1 for less noise
+adversarial_max_per_page = 3  # must be >= adversarial_gate_threshold; raise to 4–5 for a deeper review
 ```
 
 If `[lint]` is absent from `config.toml`, Synthadoc defaults to 2 — no file change needed.
