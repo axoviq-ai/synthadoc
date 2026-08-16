@@ -566,21 +566,36 @@ class LintAgent:
             total_tokens += tokens
             page.lint_warnings = warnings
             self._store.write_page(slug, page)
-            # Adversarial gate: auto-demote pages that exceed the warning threshold
-            if self._cfg is not None:
-                threshold = self._cfg.lint.adversarial_gate_threshold
-                if threshold is not None and threshold > 0 and len(warnings) >= threshold:
-                    if page.status in (LifecycleState.ACTIVE, LifecycleState.STALE):
-                        await self._transition(
-                            slug, page, page.status, LifecycleState.CONTRADICTED,
-                            f"auto-demoted: {len(warnings)} adversarial warning(s)"
-                            f" ≥ gate threshold {threshold}",
-                        )
-                        adv_demotions += 1
+            if await self._apply_adversarial_gate(slug, page, warnings):
+                adv_demotions += 1
             if warnings:
                 all_warnings.append({"slug": slug, "warnings": warnings})
 
         return all_warnings, total_tokens, adv_demotions
+
+    async def _apply_adversarial_gate(
+        self, slug: str, page: "WikiPage", warnings: list[dict]
+    ) -> bool:
+        """Demote *page* to contradicted if its warning count meets the gate threshold.
+
+        Returns True if the page was demoted, False otherwise (gate disabled,
+        threshold not met, or page already in a non-gateable state).
+        """
+        if self._cfg is None:
+            return False
+        threshold = self._cfg.lint.adversarial_gate_threshold
+        if threshold is None or threshold <= 0:
+            return False
+        if len(warnings) < threshold:
+            return False
+        if page.status not in (LifecycleState.ACTIVE, LifecycleState.STALE):
+            return False
+        await self._transition(
+            slug, page, page.status, LifecycleState.CONTRADICTED,
+            f"auto-demoted: {len(warnings)} adversarial warning(s)"
+            f" ≥ gate threshold {threshold}",
+        )
+        return True
 
     async def _transition(self, slug: str, page: "WikiPage", from_state: str,
                           to_state: str, reason: str) -> None:
