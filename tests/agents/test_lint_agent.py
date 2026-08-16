@@ -1479,3 +1479,70 @@ async def test_lint_auto_resolve_empty_resolution_appends_note(tmp_wiki):
     assert page.status == "active"
     # Content must include the auto-resolved marker
     assert "Auto-resolved" in page.content
+
+
+# ── Coverage: OSError and graph exception paths ───────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_check_page_citations_ioerror_ignored(tmp_wiki):
+    """OSError reading a citation file is swallowed (lines 162-163)."""
+    from pathlib import Path
+    from unittest.mock import patch
+    from synthadoc.storage.wiki import WikiPage, SourceRef
+    from synthadoc.agents.lint_agent import _check_page_citations
+
+    # Create the extracted txt file so txt_path.exists() is True
+    extracted = tmp_wiki / ".synthadoc" / "extracted"
+    extracted.mkdir(parents=True, exist_ok=True)
+    txt_file = extracted / "report.txt"
+    txt_file.write_text("line1\nline2\nline3", encoding="utf-8")
+
+    page = WikiPage(
+        title="Citation Test", tags=[],
+        content="Some claim ^[report.txt:1-2]",
+        status="active", confidence="high",
+        sources=[SourceRef(file="raw_sources/report.txt", hash="abc", size=0, ingested="2026-01-01")],
+        contradiction_note=None,
+    )
+
+    # Patch Path.read_text to raise OSError
+    with patch("pathlib.Path.read_text", side_effect=OSError("permission denied")):
+        issues = _check_page_citations("citation-test", page, extracted_dir=extracted)
+
+    # OSError should be swallowed — no issues reported for ioerror
+    assert all(i.get("reason") != "ioerror" for i in issues)
+
+
+@pytest.mark.asyncio
+async def test_lint_graph_build_exception_swallowed(tmp_wiki):
+    """Exception during graph build in lint(scope='all') is swallowed (lines 985-986)."""
+    from synthadoc.storage.wiki import WikiStorage, WikiPage
+    from synthadoc.storage.log import LogWriter
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("graph-page", WikiPage(
+        title="Graph Test", tags=[],
+        content="Simple page content.",
+        status="active", confidence="high",
+        sources=[], contradiction_note=None,
+    ))
+
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    provider = AsyncMock()
+    provider.complete.return_value = CompletionResponse(text="ok", input_tokens=5, output_tokens=5)
+
+    agent = LintAgent(provider=provider, store=store, log_writer=log)
+
+    # Inject a fake audit with all required async methods
+    mock_audit = AsyncMock()
+    mock_audit.write_graph = AsyncMock(side_effect=RuntimeError("graph boom"))
+    mock_audit.get_all_page_states = AsyncMock(return_value={})
+    mock_audit.record_audit_event = AsyncMock()
+    mock_audit.record_lifecycle_event = AsyncMock()
+    mock_audit.delete_graph_node = AsyncMock()
+    agent._audit = mock_audit
+
+    # Should complete without raising — graph exception is swallowed
+    report = await agent.lint(scope="all", adversarial=False)
+    assert report is not None
