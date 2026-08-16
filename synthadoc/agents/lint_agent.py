@@ -48,6 +48,7 @@ class LintReport:
     lifecycle_stale: int = 0
     lifecycle_archived: int = 0
     lifecycle_synced: int = 0
+    adversarial_demotions: int = 0
     warnings: list[str] = field(default_factory=list)
 
 

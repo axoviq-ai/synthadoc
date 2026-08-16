@@ -333,3 +333,24 @@ def test_ingest_config_max_source_chars_custom():
         name = f.name
     cfg = load_config(project_config=pathlib.Path(name))
     assert cfg.ingest.max_source_chars == 64000
+
+
+def test_lint_adversarial_gate_threshold_parsed(tmp_path):
+    """adversarial_gate_threshold is parsed as int when present in [lint]."""
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents]\ndefault = { provider = "anthropic", model = "claude-opus-4-6" }\n'
+        '[lint]\nadversarial_gate_threshold = 5\n'
+    )
+    cfg = load_config(project_config=cfg_file)
+    assert cfg.lint.adversarial_gate_threshold == 5
+
+
+def test_lint_adversarial_gate_threshold_defaults_to_none(tmp_path):
+    """adversarial_gate_threshold is None (gate disabled) when key is absent from config."""
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[agents]\ndefault = { provider = "anthropic", model = "claude-opus-4-6" }\n'
+    )
+    cfg = load_config(project_config=cfg_file)
+    assert cfg.lint.adversarial_gate_threshold is None
