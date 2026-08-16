@@ -1243,7 +1243,7 @@ async def test_lint_transition_draft_to_active_records_reason(tmp_wiki):
 # ── Adversarial gate ───────────────────────────────────────────────────────────
 
 from types import SimpleNamespace
-from unittest.mock import patch, AsyncMock as _AsyncMock_gate
+from unittest.mock import patch
 
 
 def _gate_cfg(threshold):
@@ -1363,7 +1363,7 @@ async def test_adversarial_gate_skips_already_contradicted_page(tmp_wiki):
 
 @pytest.mark.asyncio
 async def test_adversarial_gate_skips_archived_page(tmp_wiki):
-    """archived pages are excluded from adversarial scan entirely (LINT_SKIP_SLUGS check)."""
+    """Archived pages are not in (ACTIVE, STALE) — gate guard prevents demotion."""
     store = WikiStorage(tmp_wiki / "wiki")
     store.write_page("retired", WikiPage(
         title="Retired", tags=[], content="Archived page with many issues.",
@@ -1378,10 +1378,7 @@ async def test_adversarial_gate_skips_archived_page(tmp_wiki):
         provider=provider, store=store, log_writer=log,
         cfg=_gate_cfg(threshold=1))
 
-    call_log = []
-
     async def _mock_single(slug, content):
-        call_log.append(slug)
         return [{"claim": "Claim", "concern": "disputed"}], 20
 
     with patch.object(agent, "_adversarial_single", side_effect=_mock_single):
@@ -1391,3 +1388,94 @@ async def test_adversarial_gate_skips_archived_page(tmp_wiki):
     page = store.read_page("retired")
     assert page.status == "archived"
     assert report.adversarial_demotions == 0
+
+
+# ── Coverage: exception paths ──────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_adversarial_single_generic_exception_returns_empty(tmp_wiki):
+    """_adversarial_single returns ([], 0) when the LLM raises a non-rate-limit exception."""
+    from synthadoc.storage.wiki import WikiStorage, WikiPage
+    from synthadoc.storage.log import LogWriter
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+
+    provider = AsyncMock()
+    provider.complete.side_effect = Exception("connection timeout from network")
+
+    agent = LintAgent(provider=provider, store=store, log_writer=log)
+
+    warnings, tokens = await agent._adversarial_single("some-slug", "Some page content here.")
+    assert warnings == []
+    assert tokens == 0
+
+
+@pytest.mark.asyncio
+async def test_lint_auto_resolve_unparseable_response(tmp_wiki):
+    """When _parse_json_response raises an exception, decision defaults to unresolvable."""
+    from unittest.mock import patch as _patch_gate
+    from synthadoc.storage.wiki import WikiStorage, WikiPage
+    from synthadoc.storage.log import LogWriter
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("conflict-page", WikiPage(
+        title="Conflict", tags=[],
+        content="⚠ This page has a contradiction.",
+        status="contradicted", confidence="low",
+        sources=[], contradiction_note="Two sources disagree."))
+
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    provider = AsyncMock()
+    provider.complete.return_value = CompletionResponse(
+        text='{"resolvable": true, "reason": "resolved", "resolution": "content"}',
+        input_tokens=20, output_tokens=10)
+
+    agent = LintAgent(provider=provider, store=store, log_writer=log)
+
+    # Patch _parse_json_response to raise an exception → hits except block at lint_agent.py:874
+    with _patch_gate("synthadoc.agents.ingest_agent._parse_json_response", side_effect=Exception("parse error")):
+        report = await agent.lint(scope="contradictions", auto_resolve=True)
+
+    assert report.contradictions_found == 1
+    # Page remains contradicted because exception made it unresolvable
+    page = store.read_page("conflict-page")
+    assert page is not None
+    assert page.status == "contradicted"
+    assert page.unresolved_note == "auto-resolve returned unparseable output"
+
+
+@pytest.mark.asyncio
+async def test_lint_auto_resolve_empty_resolution_appends_note(tmp_wiki):
+    """When auto_resolve=True and JSON has resolvable=true but empty resolution, page content gets an auto-resolved note."""
+    import json
+    from synthadoc.storage.wiki import WikiStorage, WikiPage
+    from synthadoc.storage.log import LogWriter
+
+    store = WikiStorage(tmp_wiki / "wiki")
+    original_content = "⚠ This page has a contradiction."
+    store.write_page("resolvable-page", WikiPage(
+        title="Resolvable", tags=[],
+        content=original_content,
+        status="contradicted", confidence="low",
+        sources=[], contradiction_note="Sources conflict on date."))
+
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    provider = AsyncMock()
+    provider.complete.return_value = CompletionResponse(
+        text=json.dumps({
+            "resolvable": True,
+            "reason": "Dates reconciled",
+            "resolution": ""   # empty resolution → line 884 path
+        }),
+        input_tokens=20, output_tokens=10)
+
+    agent = LintAgent(provider=provider, store=store, log_writer=log)
+    report = await agent.lint(scope="contradictions", auto_resolve=True)
+
+    page = store.read_page("resolvable-page")
+    assert page is not None
+    assert page.status == "active"
+    # Content must include the auto-resolved marker
+    assert "Auto-resolved" in page.content
