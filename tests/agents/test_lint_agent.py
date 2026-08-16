@@ -1238,3 +1238,156 @@ async def test_lint_transition_draft_to_active_records_reason(tmp_wiki):
     assert events[0]["from_state"] == "draft"
     assert events[0]["to_state"] == "active"
     assert events[0]["reason"] == "lint passed"
+
+
+# ── Adversarial gate ───────────────────────────────────────────────────────────
+
+from types import SimpleNamespace
+from unittest.mock import patch, AsyncMock as _AsyncMock_gate
+
+
+def _gate_cfg(threshold):
+    """Minimal Config-like object with just the lint and audit fields."""
+    return SimpleNamespace(
+        lint=SimpleNamespace(
+            adversarial_gate_threshold=threshold,
+            adversarial_max_per_page=2,
+            adversarial_concurrency=1,
+            check_url_availability=False,
+        ),
+        audit=SimpleNamespace(lifecycle_retention_days=0, url_staleness_days=0),
+    )
+
+
+@pytest.mark.asyncio
+async def test_adversarial_gate_demotes_page_at_threshold(tmp_wiki):
+    """A page with warning count == threshold transitions to contradicted."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("suspect", WikiPage(
+        title="Suspect", tags=[], content="A disputed factual claim lives here.",
+        status="active", confidence="high", sources=[]))
+    # Need 3+ pages so BM25 IDF doesn't collapse (not relevant here, but good practice)
+    store.write_page("pad-a", WikiPage(title="Pad A", tags=[], content="Unrelated alpha.",
+        status="active", confidence="high", sources=[]))
+    store.write_page("pad-b", WikiPage(title="Pad B", tags=[], content="Unrelated beta.",
+        status="active", confidence="high", sources=[]))
+
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    provider = AsyncMock()
+    provider.complete.return_value = CompletionResponse(
+        text="", input_tokens=10, output_tokens=0)
+
+    agent = LintAgent(
+        provider=provider, store=store, log_writer=log,
+        cfg=_gate_cfg(threshold=3))
+
+    three_warnings = [
+        {"claim": "Claim A", "concern": "unverified"},
+        {"claim": "Claim B", "concern": "disputed"},
+        {"claim": "Claim C", "concern": "contradicted by source X"},
+    ]
+
+    async def _mock_single(slug, content):
+        if slug == "suspect":
+            return three_warnings, 50
+        return [], 10
+
+    with patch.object(agent, "_adversarial_single", side_effect=_mock_single):
+        report = await agent.lint(scope="all", adversarial=True, lifecycle=False)
+
+    page = store.read_page("suspect")
+    assert page is not None
+    assert page.status == "contradicted", f"Expected contradicted, got {page.status!r}"
+    assert report.adversarial_demotions == 1
+
+
+@pytest.mark.asyncio
+async def test_adversarial_gate_disabled_when_threshold_is_none(tmp_wiki):
+    """When adversarial_gate_threshold is None, pages are never auto-demoted."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("clean-enough", WikiPage(
+        title="Clean", tags=[], content="Many warnings but gate is off.",
+        status="active", confidence="high", sources=[]))
+
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    provider = AsyncMock()
+    provider.complete.return_value = CompletionResponse(
+        text="", input_tokens=10, output_tokens=0)
+
+    agent = LintAgent(
+        provider=provider, store=store, log_writer=log,
+        cfg=_gate_cfg(threshold=None))
+
+    ten_warnings = [{"claim": f"Claim {i}", "concern": "disputed"} for i in range(10)]
+
+    async def _mock_single(slug, content):
+        return ten_warnings, 50
+
+    with patch.object(agent, "_adversarial_single", side_effect=_mock_single):
+        report = await agent.lint(scope="all", adversarial=True, lifecycle=False)
+
+    page = store.read_page("clean-enough")
+    assert page is not None
+    assert page.status == "active", f"Expected active (gate off), got {page.status!r}"
+    assert report.adversarial_demotions == 0
+
+
+@pytest.mark.asyncio
+async def test_adversarial_gate_skips_already_contradicted_page(tmp_wiki):
+    """A page already contradicted is never transitioned again (idempotent)."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("already-bad", WikiPage(
+        title="Already Bad", tags=[], content="Already contradicted content.",
+        status="contradicted", confidence="low", sources=[]))
+
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    provider = AsyncMock()
+    provider.complete.return_value = CompletionResponse(
+        text="", input_tokens=10, output_tokens=0)
+
+    agent = LintAgent(
+        provider=provider, store=store, log_writer=log,
+        cfg=_gate_cfg(threshold=1))
+
+    async def _mock_single(slug, content):
+        return [{"claim": "Claim", "concern": "disputed"}], 20
+
+    with patch.object(agent, "_adversarial_single", side_effect=_mock_single):
+        report = await agent.lint(scope="all", adversarial=True, lifecycle=False)
+
+    page = store.read_page("already-bad")
+    # Status unchanged; no extra transition fired
+    assert page.status == "contradicted"
+    assert report.adversarial_demotions == 0
+
+
+@pytest.mark.asyncio
+async def test_adversarial_gate_skips_archived_page(tmp_wiki):
+    """archived pages are excluded from adversarial scan entirely (LINT_SKIP_SLUGS check)."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("retired", WikiPage(
+        title="Retired", tags=[], content="Archived page with many issues.",
+        status="archived", confidence="low", sources=[]))
+
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+    provider = AsyncMock()
+    provider.complete.return_value = CompletionResponse(
+        text="", input_tokens=10, output_tokens=0)
+
+    agent = LintAgent(
+        provider=provider, store=store, log_writer=log,
+        cfg=_gate_cfg(threshold=1))
+
+    call_log = []
+
+    async def _mock_single(slug, content):
+        call_log.append(slug)
+        return [{"claim": "Claim", "concern": "disputed"}], 20
+
+    with patch.object(agent, "_adversarial_single", side_effect=_mock_single):
+        report = await agent.lint(scope="all", adversarial=True, lifecycle=False)
+
+    # archived page's status is not in (ACTIVE, STALE) → gate guard prevents demotion
+    page = store.read_page("retired")
+    assert page.status == "archived"
+    assert report.adversarial_demotions == 0

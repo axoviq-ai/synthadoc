@@ -532,11 +532,12 @@ class LintAgent:
                          "concern": "adversarial-pass-skipped: rate limit — consider a paid model or a higher rate-limit tier"}], 0
             return [], 0
 
-    async def _run_adversarial_pass(self, slugs: list[str]) -> tuple[list[dict], int]:
+    async def _run_adversarial_pass(self, slugs: list[str]) -> tuple[list[dict], int, int]:
         """Concurrent adversarial review of all non-skip pages.
 
-        Returns (adversarial_warnings_list, total_tokens).
+        Returns (adversarial_warnings_list, total_tokens, adversarial_demotions).
         adversarial_warnings_list: [{slug, warnings}] for pages with at least one warning.
+        adversarial_demotions: count of pages auto-transitioned to contradicted this pass.
         """
         scan = [
             (s, self._store.read_page(s))
@@ -545,7 +546,7 @@ class LintAgent:
         ]
         scan = [(s, p) for s, p in scan if p is not None]
         if not scan:
-            return [], 0
+            return [], 0, 0
 
         sem = asyncio.Semaphore(self._adversarial_concurrency)
 
@@ -559,14 +560,26 @@ class LintAgent:
 
         all_warnings: list[dict] = []
         total_tokens = 0
+        adv_demotions = 0
         for (slug, page), (warnings, tokens) in zip(scan, results):
             total_tokens += tokens
             page.lint_warnings = warnings
             self._store.write_page(slug, page)
+            # Adversarial gate: auto-demote pages that exceed the warning threshold
+            if self._cfg is not None:
+                threshold = self._cfg.lint.adversarial_gate_threshold
+                if threshold is not None and len(warnings) >= threshold:
+                    if page.status in (LifecycleState.ACTIVE, LifecycleState.STALE):
+                        await self._transition(
+                            slug, page, page.status, LifecycleState.CONTRADICTED,
+                            f"auto-demoted: {len(warnings)} adversarial warning(s)"
+                            f" ≥ gate threshold {threshold}",
+                        )
+                        adv_demotions += 1
             if warnings:
                 all_warnings.append({"slug": slug, "warnings": warnings})
 
-        return all_warnings, total_tokens
+        return all_warnings, total_tokens, adv_demotions
 
     async def _transition(self, slug: str, page: "WikiPage", from_state: str,
                           to_state: str, reason: str) -> None:
@@ -941,9 +954,10 @@ class LintAgent:
         if scope == "all":
             if adversarial:
                 # slugs was re-read after dangling-link cleanup — use the up-to-date list
-                adv_warnings, adv_tokens = await self._run_adversarial_pass(slugs)
+                adv_warnings, adv_tokens, adv_demotions = await self._run_adversarial_pass(slugs)
                 report.adversarial_warnings = adv_warnings
                 report.tokens_used += adv_tokens
+                report.adversarial_demotions = adv_demotions
             else:
                 # --no-adversarial: clear stale lint_warnings from all pages
                 for slug in [s for s in slugs if s not in LINT_SKIP_SLUGS]:
