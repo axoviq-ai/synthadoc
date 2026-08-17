@@ -167,15 +167,10 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
     def build_initial_message(
         self,
         user_input: str,
-        *,
-        session_id: str = "",
-        wiki_root=None,
-        store=None,
         **_kwargs,
     ) -> str:
-        import re as _re
-        slug_match = _re.search(r"--slug\s+(\S+)", user_input, _re.IGNORECASE)
-        type_match = _re.search(r"--type\s+(gate|conflict|all)", user_input, _re.IGNORECASE)
+        slug_match = re.search(r"--slug\s+(\S+)", user_input, re.IGNORECASE)
+        type_match = re.search(r"--type\s+(gate|conflict|all)", user_input, re.IGNORECASE)
 
         slug = slug_match.group(1) if slug_match else None
         scope = type_match.group(1) if type_match else "all"

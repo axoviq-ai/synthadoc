@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from pathlib import Path
 
 from synthadoc.agents.lint_agent import LintAgent, LintReport

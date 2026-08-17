@@ -641,6 +641,19 @@ async def tool_read_page_content(ctx: "WorkflowContext", slug: str) -> dict:
     }
 
 
+def _load_gate_threshold(wiki_root: Path) -> "int | None":
+    """Load adversarial_gate_threshold from config.toml; return None if unavailable."""
+    try:
+        cfg_path = wiki_root / ".synthadoc" / "config.toml"
+        if cfg_path.exists():
+            from synthadoc.config import load_config
+            cfg = load_config(project_config=cfg_path)
+            return cfg.lint.adversarial_gate_threshold
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
 async def tool_run_scoped_lint(ctx: "WorkflowContext", slug: str) -> dict:
     """Re-lint a single page (adversarial + contradiction check only).
 
@@ -691,19 +704,6 @@ async def tool_run_scoped_lint(ctx: "WorkflowContext", slug: str) -> dict:
     )
     return {"pass": passed, "warnings_count": warnings_count,
             "contradiction_note": contradiction_note}
-
-
-def _load_gate_threshold(wiki_root: Path) -> "int | None":
-    """Load adversarial_gate_threshold from config.toml; return None if unavailable."""
-    try:
-        cfg_path = wiki_root / ".synthadoc" / "config.toml"
-        if cfg_path.exists():
-            from synthadoc.config import load_config
-            cfg = load_config(project_config=cfg_path)
-            return cfg.lint.adversarial_gate_threshold
-    except Exception:  # noqa: BLE001
-        pass
-    return None
 
 
 async def tool_propose_and_apply(

@@ -109,6 +109,38 @@ async def test_get_contradicted_pages_type_classification(tmp_path):
     assert by_slug["unknown"] == "unknown"
 
 
+@pytest.mark.asyncio
+async def test_get_contradicted_pages_both_type_included_in_gate_scope(tmp_path):
+    """A 'both'-type page (warnings + note) must appear under scope='gate'."""
+    pages = {
+        "both": _contradicted(warnings=[{"claim": "x"}], note="conflict note"),
+        "conflict_only": _contradicted(warnings=[], note="conflict note"),
+    }
+    store = _make_store(tmp_path, pages)
+    ctx = _ctx(tmp_path, store)
+    from synthadoc.agents.workflows.contradiction_resolver_tools import tool_get_contradicted_pages
+    result = await tool_get_contradicted_pages(ctx, scope="gate")
+    slugs = [p["slug"] for p in result["pages"]]
+    assert "both" in slugs, "'both' page must appear under scope='gate'"
+    assert "conflict_only" not in slugs
+
+
+@pytest.mark.asyncio
+async def test_get_contradicted_pages_both_type_included_in_conflict_scope(tmp_path):
+    """A 'both'-type page (warnings + note) must appear under scope='conflict'."""
+    pages = {
+        "both": _contradicted(warnings=[{"claim": "x"}], note="conflict note"),
+        "gate_only": _contradicted(warnings=[{"claim": "x"}], note=None),
+    }
+    store = _make_store(tmp_path, pages)
+    ctx = _ctx(tmp_path, store)
+    from synthadoc.agents.workflows.contradiction_resolver_tools import tool_get_contradicted_pages
+    result = await tool_get_contradicted_pages(ctx, scope="conflict")
+    slugs = [p["slug"] for p in result["pages"]]
+    assert "both" in slugs, "'both' page must appear under scope='conflict'"
+    assert "gate_only" not in slugs
+
+
 # ── tool_read_source_content ──────────────────────────────────────────────────
 
 @pytest.mark.asyncio

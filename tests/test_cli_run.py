@@ -58,10 +58,10 @@ def test_run_contradiction_resolver_with_slug():
             "-w", "test-wiki",
         ])
 
-    if mock_sq.called:
-        call_args = mock_sq.call_args
-        question = call_args[0][1] if len(call_args[0]) > 1 else ""
-        assert "alan-turing" in question
+    assert mock_sq.called
+    call_args = mock_sq.call_args
+    question = call_args[0][1] if len(call_args[0]) > 1 else ""
+    assert "alan-turing" in question
 
 
 def test_run_contradiction_resolver_with_type_gate():
@@ -77,10 +77,10 @@ def test_run_contradiction_resolver_with_type_gate():
             "-w", "test-wiki",
         ])
 
-    if mock_sq.called:
-        call_args = mock_sq.call_args
-        question = call_args[0][1] if len(call_args[0]) > 1 else ""
-        assert "gate" in question
+    assert mock_sq.called
+    call_args = mock_sq.call_args
+    question = call_args[0][1] if len(call_args[0]) > 1 else ""
+    assert "gate" in question
 
 
 def test_workflow_re_matches_contradiction_resolver():
