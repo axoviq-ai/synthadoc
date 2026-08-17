@@ -45,6 +45,11 @@ marked 'contradicted'. A contradicted page may be:
   • Both: both signals present.
   • Unknown: contradicted state with no clear signal — skip with a plain-text note.
 
+━━━ TOOL-CALL WIRE FORMAT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Emit EXACTLY this JSON object (no markdown fences, no XML, no prose) to call a tool:
+{"tool_call": {"name": "<tool_name>", "input": {<args>}}}
+When you have a final message for the user, respond with plain text only (no JSON).
+
 ━━━ TOOL INVENTORY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 tool_get_contradicted_pages(scope)     → list contradicted pages (scope: all/gate/conflict)
 tool_read_page_content(slug)           → current content + lint_warnings + contradiction_note
