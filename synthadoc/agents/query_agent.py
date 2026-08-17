@@ -467,6 +467,14 @@ _NO_BROKEN_LINKS_RE = re.compile(
     r'\bno\s+broken\b|0\s+broken|zero\s+broken|link\s+integrity\s+is\s+clean',
     re.IGNORECASE,
 )
+_CONTRADICTED_COUNT_RE = re.compile(
+    r'\b([1-9]\d*)\s+contradicted\b',
+    re.IGNORECASE,
+)
+_NO_CONTRADICTED_RE = re.compile(
+    r'\b0\s+contradicted\b|no\s+contradicted|zero\s+contradicted',
+    re.IGNORECASE,
+)
 
 
 def _build_pre_prompt(answer: str) -> str | None:
@@ -491,6 +499,16 @@ def _build_pre_prompt(answer: str) -> str | None:
     # Trigger when lint/status reports broken wikilinks.
     if _BROKEN_LINKS_RE.search(answer) and not _NO_BROKEN_LINKS_RE.search(answer):
         return "Scan for broken wikilinks"
+    # Contradicted page hint — fires after a lint job that found contradicted pages
+    if not _NO_CONTRADICTED_RE.search(answer):
+        m = _CONTRADICTED_COUNT_RE.search(answer)
+        if m:
+            n = int(m.group(1))
+            page_word = "page" if n == 1 else "pages"
+            return (
+                f"{n} {page_word} marked contradicted — "
+                "run the contradiction resolver to fix them interactively?"
+            )
     return None
 
 
