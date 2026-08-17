@@ -9,7 +9,11 @@ These tests require:
   3. pytest-asyncio, httpx
 
 Run with:
-  pytest tests/live/ -m live -v --wiki <wiki-name>
+  pytest tests/live/test_contradiction_resolver_live.py -m live -v
+
+Environment variables:
+  SYNTHADOC_WIKI       Wiki name (default: demo)
+  SYNTHADOC_URL        Server base URL (default: http://127.0.0.1:7070)
 
 Skip in CI: these tests are marked @pytest.mark.live and are excluded from
 the standard test suite by default. They are run manually before a feature
@@ -28,7 +32,7 @@ from typing import Optional
 import pytest
 
 WIKI = os.environ.get("SYNTHADOC_WIKI", "demo")
-SERVER_URL = os.environ.get("SYNTHADOC_SERVER_URL", "http://127.0.0.1:8001")
+BASE = os.environ.get("SYNTHADOC_URL", "http://127.0.0.1:7070").rstrip("/")
 
 
 def _cli(*args: str, check: bool = True) -> subprocess.CompletedProcess:
@@ -51,7 +55,7 @@ def check_server():
     """Verify the server is running before live tests execute."""
     import httpx
     try:
-        resp = httpx.get(f"{SERVER_URL}/health", timeout=5)
+        resp = httpx.get(f"{BASE}/health", timeout=5)
         assert resp.status_code in (200, 204)
     except Exception as exc:
         pytest.skip(f"Server not reachable at {SERVER_URL}: {exc}")
@@ -273,7 +277,7 @@ def test_case5b_pre_prompt_fires_after_lint():
     try:
         with httpx.stream(
             "GET",
-            f"{SERVER_URL}/query/stream",
+            f"{BASE}/query/stream",
             params={"question": "run lint", "wiki": WIKI},
             timeout=60,
         ) as resp:
