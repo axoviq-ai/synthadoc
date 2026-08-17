@@ -282,20 +282,42 @@ def find_orphan_slugs(
 
 
 def _parse_adversarial_response(text: str) -> list[dict]:
-    """Parse LLM adversarial response into list of {claim, concern} dicts."""
+    """Parse LLM adversarial response into list of {claim, concern} dicts.
+
+    Robust to common LLM formatting quirks: markdown fences, preamble text
+    before the JSON array, and trailing commentary after it.
+    Returns an empty list (not None) on complete parse failure — callers must
+    log a warning when the response was non-empty but yielded no items.
+    """
     raw = text.strip()
-    raw = re.sub(r"^```(?:json)?\s*\n?", "", raw)
-    raw = re.sub(r"\n?```\s*$", "", raw).strip()
-    try:
-        parsed = _json.loads(raw)
-        if isinstance(parsed, list):
-            return [
-                {"claim": item.get("claim"), "concern": item.get("concern")}
-                for item in parsed
-                if isinstance(item, dict) and item.get("concern")
-            ]
-    except Exception:
-        pass
+    # Fast path: strip markdown fences and try direct parse.
+    raw_stripped = re.sub(r"^```(?:json)?\s*\n?", "", raw)
+    raw_stripped = re.sub(r"\n?```\s*$", "", raw_stripped).strip()
+    for candidate in (raw_stripped, raw):
+        try:
+            parsed = _json.loads(candidate)
+            if isinstance(parsed, list):
+                return [
+                    {"claim": item.get("claim"), "concern": item.get("concern")}
+                    for item in parsed
+                    if isinstance(item, dict) and item.get("concern")
+                ]
+        except Exception:
+            pass
+    # Fallback: extract the first [...] block from within preamble/postamble text.
+    # Handles responses like "Based on my review:\n[{...}]" that json.loads rejects.
+    m = re.search(r"\[.*?\]", raw, re.DOTALL)
+    if m:
+        try:
+            parsed = _json.loads(m.group(0))
+            if isinstance(parsed, list):
+                return [
+                    {"claim": item.get("claim"), "concern": item.get("concern")}
+                    for item in parsed
+                    if isinstance(item, dict) and item.get("concern")
+                ]
+        except Exception:
+            pass
     return []
 
 
@@ -525,12 +547,31 @@ class LintAgent:
                 messages=[Message(role="user", content=prompt)],
                 temperature=0.0,
             )
-            return _parse_adversarial_response(resp.text), resp.total_tokens
+            warnings = _parse_adversarial_response(resp.text)
+            # Truncate: the LLM may return more items than asked (ignoring "up to N").
+            # Storing extras inflates lint_warnings and skews _skip_resolve_for_gate.
+            warnings = warnings[:n]
+            if not warnings and resp.text.strip() not in ("[]", "[ ]", ""):
+                # Non-empty response that yielded no warnings — likely unparseable JSON.
+                _log.warning(
+                    "[adversarial] unparseable response for slug=%s — "
+                    "treating as no warnings. raw=%r",
+                    slug, resp.text[:300],
+                )
+            else:
+                _log.debug("[adversarial] slug=%s → %d warning(s)", slug, len(warnings))
+            return warnings, resp.total_tokens
         except Exception as exc:
             err = str(exc).lower()
             if "429" in str(exc) or "rate limit" in err or "rate_limit" in err or "too many" in err:
+                _log.warning(
+                    "[adversarial] rate-limited for slug=%s — adversarial pass skipped. "
+                    "Lower adversarial_concurrency (currently %d) or use a higher rate-limit tier.",
+                    slug, self._adversarial_concurrency,
+                )
                 return [{"claim": None,
                          "concern": "adversarial-pass-skipped: rate limit — consider a paid model or a higher rate-limit tier"}], 0
+            _log.warning("[adversarial] unexpected error for slug=%s: %s", slug, exc)
             return [], 0
 
     async def _run_adversarial_pass(self, slugs: list[str]) -> tuple[list[dict], int, int]:
