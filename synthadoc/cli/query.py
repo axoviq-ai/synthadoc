@@ -13,10 +13,12 @@ from synthadoc.cli._http import get, get_stream, post
 # Queries that route to the agentic workflow (orchestrate action).
 # These need a much longer server timeout and interactive confirm handling.
 _WORKFLOW_RE = _re.compile(
-    r"\bre.?ingest\b|\bstale\s+pages?\b|\borchestrat|\bagentic\s+workflow",
+    r"\bre.?ingest\b|\bstale\s+pages?\b|\borchestrat|\bagentic\s+workflow"
+    r"|\bcontradiction.{0,30}\bresolv|\bresolv.{0,30}\bcontradict"
+    r"|\bfix\s+contradicted\b|\bcontradiction\s+resolver\b",
     _re.IGNORECASE,
 )
-_WORKFLOW_TIMEOUT = 600  # seconds
+_WORKFLOW_TIMEOUT = 3600  # seconds — contradiction resolver can run for up to 1 hour
 
 
 def _format_gap_callout(suggested_searches: list[str], wiki: str) -> str:
