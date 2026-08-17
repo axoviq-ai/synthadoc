@@ -1,7 +1,3 @@
 [lint]
 adversarial_max_per_page = 3
-# Keep concurrency low on free/rate-limited providers (e.g. MiniMax, Groq).
-# With concurrency=8 and 15+ pages, MiniMax-M3 rate-limits silently, making
-# the adversarial gate unreliable.  2 is safe for most paid tiers.
-adversarial_concurrency = 2
 adversarial_gate_threshold = 2
