@@ -3521,9 +3521,29 @@ confirming whether *contradicted* reaches zero or identifying what remains.
 
 ### How to trigger
 
-**Web UI:** A hint chip appears in the interface whenever one or more pages are
-in *contradicted* state. After a lint run that found contradicted pages, a
-suggestion also appears in the response. Clicking either opens the workflow.
+**Web UI — pre-prompt:** After any conversational response that mentions at least
+one contradicted page (detected by the regex `\b([1-9]\d*)\s+contradicted\b` in
+the answer text), the server attaches a `pre_prompt` field to the `done` SSE
+event. The web UI renders this as a clickable suggestion below the assistant's
+reply — not a chip, but a pre-filled input that submits automatically when
+clicked:
+
+> "2 pages marked contradicted — run the contradiction resolver to fix them interactively?"
+
+The pre-prompt fires after lint runs, status queries, lint reports, or any other
+response that surfaces a non-zero contradicted count. It does not fire when the
+answer explicitly reports zero pages (`\b0\s+contradicted\b|no\s+contradicted`
+guard). It is cleared once the user sends the suggestion, so it does not
+re-appear on subsequent turns.
+
+**Web UI — hint chips:** Two chip pools surface the resolver without a query
+being needed first:
+
+- `HEALTH_CHECK` and `POWER_USER` mode chip pools always include
+  "Run contradiction resolver" and "List contradicted pages".
+- The `lint / contradiction` topic-pattern (triggered when a response mentions
+  "lint", "contradiction", or "dangling") appends "Run contradiction resolver"
+  and "List contradicted pages" as follow-up chips below the response.
 
 **CLI:**
 ```bash
@@ -3532,6 +3552,46 @@ synthadoc run contradiction-resolver --slug alan-turing   # one page
 synthadoc run contradiction-resolver --type gate  # gate-demoted pages only
 synthadoc run contradiction-resolver --type conflict  # source conflicts only
 ```
+
+`--slug` still calls `tool_get_contradicted_pages(scope="all")` internally and
+filters to the given slug after the list is returned. `--type gate` matches pages
+that carry `lint_warnings`; `--type conflict` matches pages that carry a
+`contradiction_note`. Both flags can be combined with `--slug`.
+
+### Scoped re-lint
+
+After each content rewrite the resolver does not re-lint the entire wiki.
+`tool_run_scoped_lint` enqueues a single-page job:
+
+```json
+{ "scope": "slug", "slug": "<page>", "lifecycle": false }
+```
+
+The full adversarial review runs on just that page. The resolver polls the job to
+completion, then reads the page back from the store and evaluates two conditions:
+
+1. `lint_warnings` count is below `adversarial_gate_threshold` (or zero if no
+   threshold is configured).
+2. `contradiction_note` is absent — cleared by the ingest pipeline when a
+   source-conflict is successfully reconciled, or absent for gate-only pages.
+
+If both conditions pass the page is promoted. If either fails a different
+strategy is selected and the loop repeats (up to 3 attempts per page before
+escalation).
+
+### Audit trail
+
+`tool_transition_lifecycle_state` writes to two separate DB tables when it
+promotes a page back to *active*:
+
+| Call | Table | Read by |
+|---|---|---|
+| `set_page_state(slug, to_state, "workflow")` | `page_states` | `GET /lifecycle/pages` (current lifecycle state) |
+| `record_lifecycle_event(slug, from_state, to_state, reason, "workflow")` | `lifecycle_events` | `GET /lifecycle/events?slug=…` (immutable audit log) |
+
+Each call is wrapped in an independent `try/except` block — a DB failure in
+either does not abort the workflow. The page file is written first via
+`WikiStorage.write_page`; the two DB writes follow.
 
 ---
 

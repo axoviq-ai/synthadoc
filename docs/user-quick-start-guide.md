@@ -912,13 +912,31 @@ The contradiction resolver is a conversational workflow that walks through each
 contradicted page one at a time, proposes a fix, shows you the exact diff, and
 asks for your approval before writing anything.
 
+> **Two sources of contradicted pages**
+>
+> - **Source conflict** — a newly ingested document contradicts an existing page;
+>   the page is flagged `status: contradicted` with a `contradiction_note`
+>   describing the conflict. This is the scenario demonstrated in this step.
+> - **Adversarial gate** — during a lint run the adversarial reviewer flags a page
+>   for dubious or unsupported claims at or above the configured threshold (see
+>   Step 27). The page is auto-demoted to `contradicted`. The resolver handles both
+>   types through the same workflow.
+
 **From the web UI:**
 
-After the lint run in Step 7, a hint appears in the chat panel:
+After any response that mentions contradicted pages — a lint run, a status query,
+or a lint report — a pre-filled suggestion appears below the assistant's reply:
 
 > "1 page marked contradicted — run the contradiction resolver to fix them interactively?"
 
-Click it to start the resolver. Alternatively, type:
+Click it to send. The suggestion fires automatically whenever the LLM's answer
+includes a non-zero contradicted page count; it clears once you act on it.
+
+"Run contradiction resolver" also appears as a chip in the sidebar whenever the
+chat mode is set to **Health Check** or **Power User**, and as a follow-up chip
+after any response about lint or contradiction topics.
+
+Alternatively, type:
 
 > "Run contradiction resolver"
 
@@ -2674,7 +2692,7 @@ synthadoc ingest --file sessions.txt -w my-wiki
 
 The web chat UI (and the Obsidian plugin query modal) can drive wiki maintenance conversationally — no terminal required. Type a maintenance request in plain English and the system confirms with you, re-ingests pages, fixes broken links, and runs lint, all from a single chat turn.
 
-Five workflows are available:
+Six workflows are available:
 
 | Workflow | Example phrase | Scope |
 |----------|---------------|-------|
@@ -2683,6 +2701,7 @@ Five workflows are available:
 | **Broken wikilinks scan and fix** | "scan for broken wikilinks" | Scans all active pages for `[[slug]]` references that resolve to no existing page; suggests corrections and fixes them after confirmation |
 | **Lint run and full report** | "run lint" | Runs a full lint pass, waits for it to complete, then surfaces the complete report in a single conversational turn |
 | **Scaffold and report** | "run scaffold" | Previews the domain and files to overwrite, asks for confirmation, then regenerates `index.md`, `purpose.md`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` |
+| **Contradiction resolver** | "run contradiction resolver" | For each contradicted page: reads content and sources, proposes a rewrite, shows the full diff, applies after approval, re-lints the page, and promotes it to *active* if it passes |
 
 ### Demo — re-ingest all stale pages (Workflow A)
 
@@ -2888,9 +2907,93 @@ Any other triggering phrase also works:
 
 > **Tip:** Re-run Workflow E after adding a significant batch of new pages to keep the index categories and AGENTS.md guidelines current with the wiki's actual scope.
 
+### Demo — resolve contradicted pages (Workflow F)
+
+**Prerequisites:** At least one page in `contradicted` state. Complete Step 9
+setup (ingest `first-compiler-controversy.pdf`) or run a full lint pass — the
+adversarial gate will demote any page whose flagged-claim count meets the
+threshold.
+
+Open the web chat UI. If a previous response mentioned contradicted pages, a
+pre-filled suggestion appears below it — click it directly:
+
+> *1 page marked contradicted — run the contradiction resolver to fix them interactively?*
+
+Or type: **"run contradiction resolver"**
+
+**Step 1 — Cost estimate and approval**
+
+```
+Scope: all  ·  1 contradicted page  ·  estimated ~0.1s / ~$0.003
+Proceed?
+```
+
+> **Yes, proceed** / **No, cancel**
+
+Click **Yes, proceed**.
+
+**Step 2 — Propose rewrite**
+
+The agent reads the current page and the conflicting source (for source-conflict
+pages) or the flagged claims (for gate-demoted pages), formulates a reconciling
+rewrite, and displays the full unified diff:
+
+```diff
+- Grace Hopper completed the A-0 compiler in 1952, making it the first
+- compiler ever written.
++ Grace Hopper completed the A-0 system in 1952 — a pioneering loader and
++ linker that automated the assembly of code from reusable subroutines.
++ The first production compiler is generally credited to the FORTRAN team
++ at IBM (1957).
+```
+
+> *Apply this change?*
+> **Apply** / **Skip this page**
+
+Click **Apply**.
+
+**Step 3 — Scoped re-lint**
+
+```
+Re-linting grace-hopper…
+Scoped lint running... (14s)  ✓ passed — 0 warnings, no contradiction note
+✅ grace-hopper → active  (strategy: Strategy 1 — Content rewrite, attempt 1)
+```
+
+**Step 4 — Final summary**
+
+```
+Contradiction Resolver — Complete
+
+✅ Fixed (1):
+  grace-hopper — Strategy 1 — Content rewrite
+
+⚠ Unresolved (0):
+⏭ Skipped (0):
+
+Wiki lifecycle counts: draft=0  active=12  stale=0  contradicted=0  archived=1
+```
+
+The contradicted count reaches zero — no further action needed.
+
+> **Tip:** If the rewrite does not pass re-lint on the first attempt, the
+> workflow automatically selects a different strategy (web ingest, force
+> re-ingest, or cross-page resolution) for up to 3 attempts. After 3 failures
+> it escalates with a plain-language diagnosis and concrete suggestions, leaving
+> the page in *contradicted* for manual review.
+
+**Scoping the resolver**
+
+```bash
+synthadoc run contradiction-resolver                    # all contradicted pages
+synthadoc run contradiction-resolver --slug grace-hopper   # one page
+synthadoc run contradiction-resolver --type gate           # adversarial-gate demotions only
+synthadoc run contradiction-resolver --type conflict       # source-conflict demotions only
+```
+
 ### How it works
 
-Each workflow runs as an agentic tool-call loop that streams inline progress after every step — you see what the agent is doing as it happens. All destructive operations (re-ingest, link fix, scaffold write) require your explicit confirmation before anything is changed. Declining exits cleanly with no side effects.
+Each workflow runs as an agentic tool-call loop that streams inline progress after every step — you see what the agent is doing as it happens. All destructive operations (re-ingest, link fix, scaffold write, content rewrite) require your explicit confirmation before anything is changed. Declining exits cleanly with no side effects.
 
 **Key behaviours by workflow:**
 
@@ -2901,8 +3004,9 @@ Each workflow runs as an agentic tool-call loop that streams inline progress aft
 | **C — broken wikilinks** | ✓ required (if any found) | If the wiki is already clean, the workflow stops after scanning — no card appears |
 | **D — lint report** | none | Lint is read-only; runs and reports autonomously |
 | **E — scaffold** | ✓ required | User-written content above `<!-- synthadoc:scaffold -->` markers is always preserved |
+| **F — contradiction resolver** | ✓ required ×2 (cost + each diff) | Shows full diff before every write; re-lints only the changed page; promotes on pass or escalates after 3 failed attempts |
 
-For tool-level detail — per-workflow tool sets, SSE extensions (`tool_progress`, `confirm_request`, `done.pre_prompt`), routing architecture, and loop constraints — see [§ Agentic Maintenance Workflows](design.md#agentic-maintenance-workflows) in the design doc.
+For tool-level detail — per-workflow tool sets, SSE extensions (`tool_progress`, `confirm_request`, `done.pre_prompt`), routing architecture, loop constraints, pre-prompt mechanics, and audit trail — see [§35 Contradiction Resolver Workflow](design.md#35-contradiction-resolver-workflow) in the design doc.
 
 ---
 
