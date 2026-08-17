@@ -807,6 +807,13 @@ async def tool_transition_lifecycle_state(
     ctx.store.write_page(slug, page)
 
     if ctx.audit_db:
+        # Update page_states so GET /lifecycle/pages reflects the change immediately.
+        # This is separate from the audit event — set_page_state owns the current-state
+        # table; record_lifecycle_event owns the immutable event log.
+        try:
+            await ctx.audit_db.set_page_state(slug, to_state, "workflow")
+        except Exception:  # noqa: BLE001
+            pass  # DB failure must not abort the workflow
         try:
             await ctx.audit_db.record_lifecycle_event(
                 slug, from_state, to_state, reason, "workflow",

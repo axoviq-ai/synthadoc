@@ -105,10 +105,13 @@ STEP 4 — Per-page resolution loop
 
     4f. If applied: call tool_run_scoped_lint(slug).
 
-    4g. If lint PASS: call tool_transition_lifecycle_state(slug, to_state="active",
-        reason=f"resolved by contradiction-resolver — strategy: {strategy_name}").
-        Print a mini-summary: "✅ <slug> — fixed (strategy: <name>, attempt <N>)".
-        Break the strategy loop for this page.
+    4g. If lint PASS:
+        ⚠ MANDATORY TOOL CALL — you MUST call this before outputting any text:
+        tool_transition_lifecycle_state(slug, to_state="active",
+            reason=f"resolved by contradiction-resolver — strategy: {strategy_name}, attempt <N>")
+        After the tool call succeeds: add slug to your internal "fixed" list, then
+        continue to step 4j (next page) or step 5 (final summary) if last page.
+        Do NOT output any plain text here — text output ends the entire workflow.
 
     4h. If lint FAIL (attempt < 3): diagnose why, select a DIFFERENT strategy:
           Attempt 2: if source is missing/outdated → Strategy 2 (web ingest) or
@@ -141,7 +144,8 @@ STEP 6 — Ground-truth confirmation
 • Plain text ENDS THE LOOP — use it ONLY for the final summary (step 5/6),
   or when cancelling (steps 2 and 3).
 • ALWAYS call tool_run_scoped_lint after every applied change.
-• ALWAYS call tool_transition_lifecycle_state(slug, to_state="active", reason=...) when scoped lint passes.
+• ALWAYS call tool_transition_lifecycle_state AS A TOOL CALL (not in text) when scoped lint passes.
+  This call MUST happen before any plain-text output — even a one-line summary ends the workflow.
 • NEVER transition to active before scoped lint passes.
 • NEVER repeat the same strategy on the same page.
 • Cap is HARD at 3 attempts per page — escalate on the 4th failure.

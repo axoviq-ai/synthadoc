@@ -228,6 +228,22 @@ async def test_transition_lifecycle_state_records_audit_event(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_transition_lifecycle_state_updates_page_states_db(tmp_path):
+    """set_page_state must be called so GET /lifecycle/pages reflects the change.
+
+    tool_transition_lifecycle_state writes the file (store) and must also update
+    the page_states DB table so the lifecycle API endpoint returns the new state
+    without requiring a subsequent lint run to sync it.
+    """
+    store = _make_store(tmp_path, {"p": _page(status=LifecycleState.CONTRADICTED)})
+    ctx = _ctx(tmp_path, store)
+    from synthadoc.agents.workflows._tools import tool_transition_lifecycle_state
+    result = await tool_transition_lifecycle_state(ctx, slug="p", to_state="active", reason="test")
+    assert result["success"] is True
+    ctx.audit_db.set_page_state.assert_awaited_once_with("p", "active", "workflow")
+
+
+@pytest.mark.asyncio
 async def test_transition_lifecycle_state_missing_page(tmp_path):
     store = _make_store(tmp_path, {})
     ctx = _ctx(tmp_path, store)
