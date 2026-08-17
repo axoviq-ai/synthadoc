@@ -71,4 +71,48 @@ describe("ConfirmCard", () => {
         expect(onDecline).toHaveBeenCalledOnce();
         vi.useRealTimers();
     });
+
+    it("renders diff viewer when diff prop is provided", () => {
+        const diff = [
+            "--- slug (current)",
+            "+++ slug (proposed)",
+            "@@ -1,3 +1,3 @@",
+            " unchanged line",
+            "-removed line",
+            "+added line",
+        ].join("\n");
+        render(
+            <ConfirmCard
+                message="Apply changes to `slug`?"
+                yesLabel="Apply"
+                noLabel="Skip"
+                diff={diff}
+                onConfirm={vi.fn()}
+                onDecline={vi.fn()}
+            />
+        );
+        // Verify file headers, hunk marker, and changed lines are rendered.
+        // Context lines have a leading space that getByText normalization strips —
+        // testing the changed-line markers (+/-) is sufficient to verify the viewer.
+        expect(screen.getByText("--- slug (current)")).toBeDefined();
+        expect(screen.getByText("+++ slug (proposed)")).toBeDefined();
+        expect(screen.getByText("@@ -1,3 +1,3 @@")).toBeDefined();
+        expect(screen.getByText("-removed line")).toBeDefined();
+        expect(screen.getByText("+added line")).toBeDefined();
+    });
+
+    it("does not render diff viewer when diff prop is absent", () => {
+        render(
+            <ConfirmCard
+                message="Continue?"
+                yesLabel="Yes"
+                noLabel="No"
+                onConfirm={vi.fn()}
+                onDecline={vi.fn()}
+            />
+        );
+        // No diff lines should be present
+        expect(screen.queryByText(/^@@/)).toBeNull();
+        expect(screen.queryByText(/^\+\+\+/)).toBeNull();
+    });
 });

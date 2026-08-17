@@ -569,12 +569,18 @@ async def tool_confirm(
     message: str,
     yes_label: str = "Yes",
     no_label: str = "No",
+    *,
+    diff: str | None = None,
 ) -> dict:
     """Send a confirmation request to the client and wait for the response.
 
     Registers an :class:`asyncio.Event` gate in ``ctx.confirm_registry`` keyed
     by ``ctx.session_id``.  The HTTP handler resolves the gate when the user
     responds.
+
+    When *diff* is provided (a unified-diff string), it is included in the SSE
+    payload so the web UI can render a syntax-highlighted diff viewer alongside
+    the confirmation buttons rather than embedding raw diff text in *message*.
 
     Returns ``{"confirmed": bool}``.  Times out with ``{"confirmed": False}``
     after 120 seconds.
@@ -583,16 +589,16 @@ async def tool_confirm(
     ctx.confirm_registry[ctx.session_id] = gate
     ctx.confirm_result_registry[ctx.session_id] = False
     try:
+        payload: dict = {
+            "session_id": ctx.session_id,
+            "message": message,
+            "yes_label": yes_label,
+            "no_label": no_label,
+        }
+        if diff is not None:
+            payload["diff"] = diff
         try:
-            await ctx.send_sse_event(
-                "confirm_request",
-                {
-                    "session_id": ctx.session_id,
-                    "message": message,
-                    "yes_label": yes_label,
-                    "no_label": no_label,
-                },
-            )
+            await ctx.send_sse_event("confirm_request", payload)
         except Exception:  # noqa: BLE001
             return {"confirmed": False}
         try:
@@ -743,14 +749,13 @@ async def tool_propose_and_apply(
         diff_preview += f"\n... ({len(diff_lines) - 80} more lines not shown)"
 
     confirm_message = (
-        f"**Strategy:** {strategy_name}\n"
+        f"**Strategy:** {strategy_name}\n\n"
         f"**Rationale:** {rationale}\n\n"
-        f"Proposed changes to `{slug}`:\n\n"
-        f"```diff\n{diff_preview}\n```\n\n"
-        "Apply this change?"
+        f"Apply changes to `{slug}`?"
     )
     result = await tool_confirm(
-        ctx, message=confirm_message, yes_label="Apply", no_label="Skip"
+        ctx, message=confirm_message, yes_label="Apply", no_label="Skip",
+        diff=diff_preview,
     )
     confirmed = result.get("confirmed", False)
     if confirmed:

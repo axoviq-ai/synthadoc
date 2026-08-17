@@ -27,6 +27,8 @@ export interface ConfirmRequestData {
     message: string;
     yes_label: string;
     no_label: string;
+    /** Unified diff string — present only for diff-review confirms (e.g. contradiction resolver). */
+    diff?: string;
 }
 
 export interface StreamCallbacks {
