@@ -3008,23 +3008,7 @@ Each workflow runs as an agentic tool-call loop that streams inline progress aft
 
 For tool-level detail — per-workflow tool sets, SSE extensions (`tool_progress`, `confirm_request`, `done.pre_prompt`), routing architecture, loop constraints, pre-prompt mechanics, and audit trail — see [§35 Contradiction Resolver Workflow](design.md#35-contradiction-resolver-workflow) in the design doc.
 
-### `synthadoc workflow` — CLI command reference
-
-All workflows are launched with `synthadoc workflow run <name> [OPTIONS]`.
-
-| Command | Options | What it does |
-|---------|---------|--------------|
-| `synthadoc workflow run contradiction-resolver` | | Resolve all contradicted pages interactively |
-| | `--slug SLUG` | Limit to one page by slug |
-| | `--type adversarial` | Only pages demoted by the adversarial gate |
-| | `--type source-conflict` | Only pages with source-level contradictions |
-| | `-w, --wiki WIKI` | Target wiki (defaults to saved default or `SYNTHADOC_WIKI`) |
-| | `--timeout SECONDS` | Max wait time (default: 3600) |
-
-> **Note** — Workflows A–E (stale re-ingest, broken wikilinks, lint report, scaffold) are launched
-> via the web UI or natural-language queries (`"re-ingest stale pages"`, `"scan for broken wikilinks"`,
-> etc.). `synthadoc workflow run` is the dedicated CLI entry point for the contradiction resolver;
-> additional workflows will be added here in future releases.
+→ Full CLI command reference: [README — Agentic workflows](../README.md#agentic-workflows)
 
 ---
 
