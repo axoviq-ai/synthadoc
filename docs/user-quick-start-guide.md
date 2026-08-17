@@ -1288,12 +1288,12 @@ If `[lint]` is absent from `config.toml`, Synthadoc defaults to 2 — no file ch
 
 When a page accumulates too many adversarial warnings it is a signal that its claims are contested and it should not be serving as an authoritative source in query answers. The **adversarial gate** automates this: at the end of every lint run, any `active` or `stale` page whose warning count reaches or exceeds the threshold is automatically transitioned to `contradicted`.
 
-New wikis created with `synthadoc init` have the gate enabled at `3` by default. Existing wikis upgrading to v1.3.0 have the gate disabled — enable it by adding one line to `config.toml`:
+New wikis created with `synthadoc init` have the gate enabled at `2` by default. Existing wikis upgrading to v1.3.0 have the gate disabled — enable it by adding one line to `config.toml`:
 
 ```toml
 # config.toml
 [lint]
-adversarial_gate_threshold = 3   # recommended: 3 (general), 1 (compliance-sensitive)
+adversarial_gate_threshold = 2   # recommended: 2 (general), 1 (compliance-sensitive)
 ```
 
 The demotion is auditable — it appears in `synthadoc lifecycle log` with reason `"auto-demoted: N adversarial warning(s) ≥ gate threshold T"` — and is reversible with `synthadoc lifecycle activate <slug> --reason "..."` after you resolve the flagged claims.
