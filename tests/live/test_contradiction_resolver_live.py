@@ -38,14 +38,14 @@ BASE = os.environ.get("SYNTHADOC_URL", "http://127.0.0.1:7070").rstrip("/")
 def _cli(*args: str, check: bool = True) -> subprocess.CompletedProcess:
     """Run a synthadoc CLI command against WIKI and return its result."""
     cmd = ["synthadoc", "-w", WIKI, *args]
-    return subprocess.run(cmd, capture_output=True, text=True, check=check)
+    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", check=check)
 
 
 def _run_workflow(*args: str, timeout: int = 300, input_text: str = "") -> subprocess.CompletedProcess:
     """Run contradiction-resolver workflow via CLI, providing input for prompts."""
     cmd = ["synthadoc", "-w", WIKI, "run", "contradiction-resolver", *args]
     return subprocess.run(
-        cmd, capture_output=True, text=True,
+        cmd, capture_output=True, text=True, encoding="utf-8",
         input=input_text, timeout=timeout, check=False,
     )
 
@@ -58,7 +58,7 @@ def check_server():
         resp = httpx.get(f"{BASE}/health", timeout=5)
         assert resp.status_code in (200, 204)
     except Exception as exc:
-        pytest.skip(f"Server not reachable at {SERVER_URL}: {exc}")
+        pytest.skip(f"Server not reachable at {BASE}: {exc}")
 
 
 # ── Case 1: Gate-demoted page — Strategy 1 succeeds ──────────────────────────────
@@ -79,8 +79,7 @@ def test_case1_gate_demoted_fix():
       - synthadoc status confirms contradicted: 0
     """
     # Verify setup: contradicted page exists
-    status_output = _cli("status").stdout
-    if "contradicted" not in status_output.lower():
+    if not _get_contradicted_slugs():
         pytest.skip("No contradicted pages — run setup steps first")
 
     # Run resolver, auto-approving all prompts
@@ -103,11 +102,19 @@ def test_case1_gate_demoted_fix():
 def test_case1_lifecycle_event_recorded():
     """After Case 1, lifecycle event must be recorded for alan-turing."""
     # This test runs after test_case1_gate_demoted_fix
-    # Check audit trail via CLI
-    audit_output = _cli("audit", "events", "--slug", "alan-turing").stdout
-    assert "contradiction-resolver" in audit_output.lower() or \
-           "resolved" in audit_output.lower(), (
-        f"Expected resolver lifecycle event in audit, got:\n{audit_output}"
+    # Check audit trail: dump all events as JSON and filter for alan-turing + resolver keywords
+    import json as _json
+    raw = _cli("audit", "events", "--json").stdout
+    events = _json.loads(raw)
+    relevant = [
+        e for e in events
+        if "alan-turing" in str(e).lower()
+        and ("contradiction" in str(e).lower() or "resolved" in str(e).lower())
+    ]
+    assert len(relevant) > 0, (
+        f"No resolver lifecycle event for alan-turing in audit.\n"
+        f"Total events: {len(events)}\n"
+        f"First few: {events[:5]}"
     )
 
 
@@ -304,18 +311,32 @@ def test_case5b_pre_prompt_fires_after_lint():
 # ── Helper ────────────────────────────────────────────────────────────────────
 
 def _get_contradicted_slugs() -> list[str]:
-    """Return slugs currently in contradicted state by parsing `synthadoc status`."""
+    """Return slugs currently in contradicted state by parsing `synthadoc lint report`.
+
+    `synthadoc status` only shows counts and always prints the "contradicted" label
+    even when count is 0 — useless for slug extraction.  `synthadoc lint report`
+    emits a "Contradicted pages (N)" header followed by indented slug lines:
+
+        Contradicted pages (2) - need review:
+
+          alan-turing
+            Why flagged: ...
+          eniac
+            Why flagged: ...
+
+    We parse that section to get the actual slugs.
+    """
+    import re
     try:
-        result = _cli("status")
+        result = _cli("lint", "report", check=False)
         output = result.stdout + result.stderr
-        # Look for contradicted count
-        import re
-        m = re.search(r"contradicted\s+(\d+)", output, re.IGNORECASE)
-        if m and int(m.group(1)) == 0:
+        # Header present only when count > 0
+        m = re.search(r"Contradicted pages \((\d+)\)", output)
+        if not m or int(m.group(1)) == 0:
             return []
-        # Try to extract slugs from status detail if shown
-        slugs = re.findall(r"^\s+([a-z][a-z0-9-]+)\s+.*contradicted", output,
-                            re.IGNORECASE | re.MULTILINE)
+        # Slug lines: exactly 2 leading spaces, a slug, optional trailing whitespace.
+        # The indented "Why flagged:" and "-> Open …" lines start with 4+ spaces.
+        slugs = re.findall(r"^  ([a-z][a-z0-9-]+)\s*$", output, re.MULTILINE)
         return slugs
     except Exception:
         return []
