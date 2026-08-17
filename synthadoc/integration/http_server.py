@@ -1001,6 +1001,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         orch = app.state.orch
         session_id = str(_uuid.uuid4())
         page_count = len(orch._store.list_pages())
+        summary: dict = {}
         if page_count < 5:
             mode = "NEW_WIKI"
         elif not await orch._audit.has_prior_sessions():
@@ -1015,7 +1016,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         return {
             "session_id": session_id,
             "mode": mode,
-            "initial_hints": HintEngine.initial_hints(mode),
+            "initial_hints": HintEngine.initial_hints(mode, context=summary),
             "wiki_name": wiki_root.name,
         }
 

@@ -54,6 +54,46 @@ def test_initial_hints_are_mode_first():
     assert hints[0] == "How do I ingest my first document?"
 
 
+def test_initial_hints_context_contradicted_surfaces_resolver():
+    """When contradicted > 0, 'Run contradiction resolver' is the first chip."""
+    hints = HintEngine.initial_hints("HEALTH_CHECK", context={"contradicted": 7, "stale": 0})
+    assert len(hints) == 3
+    assert hints[0] == "Run contradiction resolver"
+
+
+def test_initial_hints_context_stale_surfaces_reingest():
+    """When stale > 0 and no contradicted pages, 'Re-ingest stale pages' is the first chip."""
+    hints = HintEngine.initial_hints("HEALTH_CHECK", context={"contradicted": 0, "stale": 3})
+    assert len(hints) == 3
+    assert hints[0] == "Re-ingest stale pages"
+
+
+def test_initial_hints_context_both_contradicted_and_stale():
+    """When both issues present, resolver comes before re-ingest."""
+    hints = HintEngine.initial_hints("HEALTH_CHECK", context={"contradicted": 2, "stale": 5})
+    assert hints[0] == "Run contradiction resolver"
+    assert hints[1] == "Re-ingest stale pages"
+    assert len(hints) == 3
+
+
+def test_initial_hints_context_no_issues_falls_back_to_pool():
+    """With no health issues in context, falls back to normal pool order."""
+    hints_no_ctx = HintEngine.initial_hints("HEALTH_CHECK")
+    hints_clean = HintEngine.initial_hints("HEALTH_CHECK", context={"contradicted": 0, "stale": 0})
+    assert hints_no_ctx == hints_clean
+
+
+def test_initial_hints_context_none_unchanged():
+    """context=None (default) leaves behaviour identical to no-arg call."""
+    assert HintEngine.initial_hints("POWER_USER") == HintEngine.initial_hints("POWER_USER", context=None)
+
+
+def test_initial_hints_context_dedupes_priority_chips():
+    """Priority chips that also appear in the pool are not repeated."""
+    hints = HintEngine.initial_hints("HEALTH_CHECK", context={"contradicted": 1, "stale": 1})
+    assert len(hints) == len(set(hints)), "duplicate chips in initial hints"
+
+
 # ── after_response_windowed ───────────────────────────────────────────────────
 
 def test_windowed_advances_cursor():

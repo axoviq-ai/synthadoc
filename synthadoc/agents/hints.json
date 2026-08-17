@@ -20,13 +20,14 @@
       "Show my lint report"
     ],
     "HEALTH_CHECK": [
+      "Run contradiction resolver",
+      "Re-ingest stale pages",
+      "Show my lint report",
       "Show wiki status",
       "Run Synthadoc status",
-      "Show my lint report",
       "Which pages are marked stale?",
       "What pages are orphan pages?",
       "List contradicted pages",
-      "Run contradiction resolver",
       "Which pages have adversarial warnings?",
       "Which sources were truncated?",
       "Show me recently updated wiki pages",
