@@ -10,15 +10,20 @@ Tests verify that:
      page (cycling prevention), and records the skip in the lifecycle audit trail.
 
 Self-contained: creates a dedicated test page (_live-test-adv-gate) in the
-wiki filesystem with five obviously false claims, runs lint, verifies
+wiki filesystem with seven obviously false claims, runs lint, verifies
 behaviour, then archives + deletes the page in a finally block.
 Real wiki content is never modified.
 
 Prerequisites:
   - synthadoc serve -w <wiki> running on SYNTHADOC_URL
-  - adversarial_gate_threshold = 3 in the wiki's config.toml
+  - adversarial_gate_threshold = 2 in the wiki's config.toml
   - adversarial_max_per_page  = 3 in the wiki's config.toml
     (must be ≥ threshold for the gate to have any chance of firing)
+
+Note: threshold=2 (not 3) ensures the gate fires even when the LLM is
+conservative.  With threshold=3 the gate only fires when the LLM hits its
+absolute cap, which is model-dependent and unreliable.  The test page has
+7 unambiguous false claims — any LLM should flag at least 2.
 
 Run:
   pytest tests/live/test_adversarial_gate_live.py -v -s
@@ -270,15 +275,15 @@ def test_gate_demotes_page_on_lint_run():
         assert state == "contradicted", (
             f"Expected '{_GATE_SLUG}' to be 'contradicted' after gate lint, "
             f"got '{state}'. "
-            f"The adversarial gate is disabled or the threshold is too high. "
+            f"The adversarial gate is disabled or the threshold is too high for your LLM. "
             f"Add the following to your wiki's config.toml under [lint]:\n\n"
             f"  adversarial_max_per_page = 3\n"
-            f"  adversarial_gate_threshold = 3\n\n"
+            f"  adversarial_gate_threshold = 2\n\n"
             f"Rule: adversarial_max_per_page must be >= adversarial_gate_threshold. "
             f"The test page contains 7 unambiguous false claims across physics, "
-            f"medicine, and history — the LLM should flag at least 3 reliably. "
+            f"medicine, and history — the LLM should flag at least 2 reliably. "
             f"If the config is set correctly and the gate still does not fire, "
-            f"lower adversarial_gate_threshold to 2 in config.toml."
+            f"lower adversarial_gate_threshold to 1 in config.toml."
         )
 
         events = _lifecycle_events(_GATE_SLUG)
@@ -327,15 +332,15 @@ def test_auto_resolve_does_not_re_promote_gate_demoted_page():
         assert state_after_gate == "contradicted", (
             f"Gate did not fire — '{_GATE_SLUG}' is '{state_after_gate}', "
             f"not 'contradicted'. "
-            f"The adversarial gate is disabled or the threshold is too high. "
+            f"The adversarial gate is disabled or the threshold is too high for your LLM. "
             f"Add the following to your wiki's config.toml under [lint]:\n\n"
             f"  adversarial_max_per_page = 3\n"
-            f"  adversarial_gate_threshold = 3\n\n"
+            f"  adversarial_gate_threshold = 2\n\n"
             f"Rule: adversarial_max_per_page must be >= adversarial_gate_threshold. "
             f"The test page contains 7 unambiguous false claims across physics, "
-            f"medicine, and history — the LLM should flag at least 3 reliably. "
+            f"medicine, and history — the LLM should flag at least 2 reliably. "
             f"If the config is set correctly and the gate still does not fire, "
-            f"lower adversarial_gate_threshold to 2 in config.toml."
+            f"lower adversarial_gate_threshold to 1 in config.toml."
         )
 
         before_resolve_ts = datetime.now(timezone.utc).isoformat()

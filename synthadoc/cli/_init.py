@@ -290,10 +290,11 @@ adversarial_max_per_page = 3
 # Lower to 2-4 on free-tier or rate-limited LLM providers; raise to 16+ on paid tiers.
 adversarial_concurrency = 8
 # Pages with this many or more adversarial warnings are auto-demoted to contradicted.
-# Gate fires when the LLM hits its full warning cap (max_per_page) — a strong signal.
-# Must be <= adversarial_max_per_page. Recommended: 3 (general), 2 (compliance-sensitive).
+# Must be <= adversarial_max_per_page. Recommended: 2 (general — reliable across models),
+# 1 (compliance-sensitive). Setting to max_per_page fires only when the LLM is fully
+# saturated, which is model-dependent; 2 gives a one-warning margin that most models hit.
 # Comment out or remove to disable auto-demotion.
-adversarial_gate_threshold = 3
+adversarial_gate_threshold = 2
 
 [search]
 vector = false             # set to true to enable semantic re-ranking (downloads ~130 MB model once)
