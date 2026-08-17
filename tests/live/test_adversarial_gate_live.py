@@ -27,6 +27,7 @@ Run:
 from __future__ import annotations
 
 import os
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -368,3 +369,7 @@ def test_auto_resolve_does_not_re_promote_gate_demoted_page():
         # Restore any real wiki pages that the full-wiki lint accidentally demoted.
         _restore_collateral_demotions(pre_lint_states, _GATE_SLUG)
         _cleanup_test_page(wiki_path)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main([__file__, "-v", "-s"]))

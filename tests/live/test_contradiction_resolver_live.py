@@ -36,6 +36,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -643,3 +644,7 @@ def test_case5b_pre_prompt_fires_after_lint():
         pytest.xfail(
             "LLM response did not include contradicted count phrase — pre_prompt not triggered"
         )
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main([__file__, "-v", "-s"]))
