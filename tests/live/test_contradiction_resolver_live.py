@@ -335,75 +335,24 @@ def test_case1_gate_demoted_fix():
             f"got {final_state!r}\n"
             f"Resolver output (last 1000 chars):\n{output[-1000:]}"
         )
+
+        # Audit trail: resolver must have recorded a contradicted→active event.
+        # This verifies tool_transition_lifecycle_state calls record_lifecycle_event,
+        # not just that the page file and page_states table were updated.
+        events = _lifecycle_events(_RESOLVER_SLUG)
+        fix_events = [
+            e for e in events
+            if e.get("from_state") == "contradicted" and e.get("to_state") == "active"
+        ]
+        assert fix_events, (
+            f"Resolver promoted {_RESOLVER_SLUG!r} to active but no "
+            f"contradicted→active lifecycle event was recorded. "
+            f"tool_transition_lifecycle_state must call both set_page_state "
+            f"and record_lifecycle_event.\nAll events: {events}"
+        )
     finally:
         _restore_collateral_demotions(pre_lint_states, _RESOLVER_SLUG)
         _cleanup_test_page(wiki_path)
-
-
-@pytest.mark.live
-def test_case1_lifecycle_event_recorded():
-    """After Case 1, the resolver must have recorded a lifecycle transition.
-
-    Checks GET /lifecycle/events for the test slug.  The resolver fix creates
-    an event with from_state=contradicted, to_state=active — distinct from the
-    initial active transition created by the test setup.
-    """
-    events = _lifecycle_events(_RESOLVER_SLUG)
-    if not events:
-        pytest.skip(
-            f"No lifecycle events for {_RESOLVER_SLUG!r} — "
-            "Case 1 may not have run, or events were purged."
-        )
-
-    # If the page was never demoted to contradicted (e.g. the adversarial gate
-    # threshold is not configured in this wiki), Case 1 would have been skipped
-    # and there will be no contradicted-phase events.  Skip here too.
-    page_was_contradicted = any(
-        e.get("from_state") == "contradicted" or e.get("to_state") == "contradicted"
-        for e in events
-    )
-    if not page_was_contradicted:
-        pytest.skip(
-            f"{_RESOLVER_SLUG!r} was never demoted to contradicted — "
-            "Case 1 was likely skipped (adversarial gate did not fire). "
-            "Check adversarial_gate_threshold in config.toml."
-        )
-
-    # Before asserting that a fix event exists, detect the "Case 1 xfailed" scenario:
-    # the resolver started (page was demoted to contradicted) but the stream was cut
-    # off before completion.  In that case the page transitions directly from
-    # contradicted → archived (cleanup) with no contradicted → active fix event in
-    # between.  Mirror the xfail so this test doesn't hard-fail when Case 1 didn't.
-    demotion_events = sorted(
-        [e for e in events if e.get("to_state") == "contradicted"],
-        key=lambda e: e.get("timestamp", ""),
-    )
-    if demotion_events:
-        last_demotion_ts = demotion_events[-1].get("timestamp", "")
-        post_demotion = [
-            e for e in events
-            if (e.get("timestamp") or "") > last_demotion_ts
-        ]
-        post_has_active = any(e.get("to_state") == "active" for e in post_demotion)
-        post_has_archived = any(e.get("to_state") == "archived" for e in post_demotion)
-        if post_has_archived and not post_has_active:
-            pytest.xfail(
-                f"Case 1 resolver stream was cut off — {_RESOLVER_SLUG!r} went from "
-                f"contradicted directly to archived without a fix event. "
-                "This test passes only when Case 1 fully completes. "
-                "Re-run to check for a transient LLM API issue."
-            )
-
-    # The resolver fix is the only transition contradicted → active.
-    fix_events = [
-        e for e in events
-        if e.get("from_state") == "contradicted" and e.get("to_state") == "active"
-    ]
-    assert fix_events, (
-        f"Expected a from_state=contradicted → to_state=active lifecycle event "
-        f"for {_RESOLVER_SLUG!r} (the resolver fix).\n"
-        f"All events: {events}"
-    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
