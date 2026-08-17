@@ -8,8 +8,6 @@ Each subcommand builds a natural-language query string and sends it to the
 all SSE events including confirm_request (user approval prompts), so the full
 agentic loop works identically via CLI and web UI.
 """
-from __future__ import annotations
-
 from typing import Optional
 
 import typer
