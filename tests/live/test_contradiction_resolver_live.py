@@ -293,7 +293,12 @@ def test_case1_gate_demoted_fix():
         if state != "contradicted":
             pytest.skip(
                 f"Test page not demoted to contradicted after lint (state={state!r}). "
-                "Verify adversarial_gate_threshold is configured in config.toml."
+                "The adversarial gate is disabled or the threshold is too high. "
+                "To enable it, add the following to your wiki's config.toml under [lint]:\n\n"
+                "  adversarial_max_per_page = 3\n"
+                "  adversarial_gate_threshold = 3\n\n"
+                "Rule: adversarial_max_per_page must be >= adversarial_gate_threshold. "
+                "The test page contains 5 false claims so any threshold <= 3 will fire."
             )
 
         # Run resolver, auto-approving cost estimate and the proposed diff.
@@ -572,7 +577,15 @@ def test_case5_cli_parity():
 
         state = _page_state(_RESOLVER_SLUG)
         if state != "contradicted":
-            pytest.skip(f"Test page not demoted (state={state!r}) — check gate threshold config")
+            pytest.skip(
+                f"Test page not demoted (state={state!r}). "
+                "The adversarial gate is disabled or the threshold is too high. "
+                "To enable it, add the following to your wiki's config.toml under [lint]:\n\n"
+                "  adversarial_max_per_page = 3\n"
+                "  adversarial_gate_threshold = 3\n\n"
+                "Rule: adversarial_max_per_page must be >= adversarial_gate_threshold. "
+                "The test page contains 5 false claims so any threshold <= 3 will fire."
+            )
 
         result = _run_workflow(
             "--slug", _RESOLVER_SLUG,

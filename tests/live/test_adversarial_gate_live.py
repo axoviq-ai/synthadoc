@@ -253,8 +253,12 @@ def test_gate_demotes_page_on_lint_run():
         assert state == "contradicted", (
             f"Expected '{_GATE_SLUG}' to be 'contradicted' after gate lint, "
             f"got '{state}'. "
-            f"Check that adversarial_max_per_page ≥ adversarial_gate_threshold "
-            f"in config.toml."
+            f"The adversarial gate is disabled or the threshold is too high. "
+            f"Add the following to your wiki's config.toml under [lint]:\n\n"
+            f"  adversarial_max_per_page = 3\n"
+            f"  adversarial_gate_threshold = 3\n\n"
+            f"Rule: adversarial_max_per_page must be >= adversarial_gate_threshold. "
+            f"The test page contains 5 false claims so any threshold <= 3 will fire."
         )
 
         events = _lifecycle_events(_GATE_SLUG)
@@ -303,8 +307,12 @@ def test_auto_resolve_does_not_re_promote_gate_demoted_page():
         assert state_after_gate == "contradicted", (
             f"Gate did not fire — '{_GATE_SLUG}' is '{state_after_gate}', "
             f"not 'contradicted'. "
-            f"Check that adversarial_max_per_page ≥ adversarial_gate_threshold "
-            f"in config.toml."
+            f"The adversarial gate is disabled or the threshold is too high. "
+            f"Add the following to your wiki's config.toml under [lint]:\n\n"
+            f"  adversarial_max_per_page = 3\n"
+            f"  adversarial_gate_threshold = 3\n\n"
+            f"Rule: adversarial_max_per_page must be >= adversarial_gate_threshold. "
+            f"The test page contains 5 false claims so any threshold <= 3 will fire."
         )
 
         before_resolve_ts = datetime.now(timezone.utc).isoformat()
