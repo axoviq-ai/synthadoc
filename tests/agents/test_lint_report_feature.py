@@ -470,6 +470,8 @@ def test_lint_topic_pattern_includes_truncation_hints():
         question="What lint issues were found?",
     )
     assert any(h in hints for h in [
+        "Run contradiction resolver",
+        "List contradicted pages",
         "Which sources were truncated?",
         "Show adversarial warnings",
         "Show my lint report",
