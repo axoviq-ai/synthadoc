@@ -592,8 +592,8 @@ class LintAgent:
             return False
         await self._transition(
             slug, page, page.status, LifecycleState.CONTRADICTED,
-            f"auto-demoted: {len(warnings)} adversarial warning(s)"
-            f" ≥ gate threshold {threshold}",
+            f"auto-demoted: adversarial gate — "
+            f"{len(warnings)} warning(s) ≥ threshold {threshold}",
         )
         return True
 
