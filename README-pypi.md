@@ -770,6 +770,31 @@ synthadoc lint run --no-lifecycle -w my-wiki
 synthadoc lint report -w my-wiki
 ```
 
+### Agentic workflows
+
+Agentic workflows run as interactive tool-call loops — they stream progress inline, ask for approval before any destructive change, and exit cleanly if you decline.
+
+```bash
+# Resolve all contradicted pages (shows cost estimate + diff for each page before writing)
+synthadoc workflow run contradiction-resolver -w my-wiki
+
+# Resolve only one page by slug
+synthadoc workflow run contradiction-resolver --slug alan-turing -w my-wiki
+
+# Scope to pages demoted by the adversarial gate
+synthadoc workflow run contradiction-resolver --type adversarial -w my-wiki
+
+# Scope to pages with source-level contradictions
+synthadoc workflow run contradiction-resolver --type source-conflict -w my-wiki
+
+# Custom timeout (default 3600 s)
+synthadoc workflow run contradiction-resolver --timeout 7200 -w my-wiki
+```
+
+The resolver lists contradicted pages, estimates cost, then walks through each page: reads the content and conflicting sources, proposes a rewrite, shows the full unified diff, and waits for your approval. After an approved write it re-lints the page and promotes it to *active* on pass, or escalates after 3 failed attempts.
+
+→ Full walkthrough and web UI path: [Quick-Start Guide — Step 9](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-9--resolve-a-contradiction)
+
 ### Managing page lifecycle
 
 ```bash
