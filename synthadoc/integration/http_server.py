@@ -521,13 +521,17 @@ async def _worker_loop(orch, session_state: dict) -> None:
                                                 allow_external_paths=allow_external_paths)
                 elif job.operation == "lint":
                     scope = job.payload.get("scope", "all")
+                    slug = job.payload.get("slug")
                     auto_resolve = job.payload.get("auto_resolve", False)
                     adversarial = job.payload.get("adversarial", True)
                     lifecycle = job.payload.get("lifecycle", True)
                     check_url_availability = job.payload.get("check_url_availability")  # None = use config
-                    job_coro = orch._run_lint(job.id, scope=scope, auto_resolve=auto_resolve,
-                                              adversarial=adversarial, lifecycle=lifecycle,
-                                              check_url_availability=check_url_availability)
+                    job_coro = orch._run_lint(
+                        job.id, scope=scope, slug=slug,
+                        auto_resolve=auto_resolve, adversarial=adversarial,
+                        lifecycle=lifecycle,
+                        check_url_availability=check_url_availability,
+                    )
                 elif job.operation == "scaffold":
                     domain = job.payload.get("domain", "")
                     job_coro = orch._run_scaffold(job.id, domain=domain)

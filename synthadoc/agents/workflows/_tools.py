@@ -604,3 +604,251 @@ async def tool_confirm(
     finally:
         ctx.confirm_registry.pop(ctx.session_id, None)
         ctx.confirm_result_registry.pop(ctx.session_id, None)
+
+
+# ---------------------------------------------------------------------------
+# Generic content and lifecycle tools (v1.3.0 framework extension)
+# Usable by any workflow — not contradiction-resolver-specific.
+# ---------------------------------------------------------------------------
+
+
+async def tool_read_page_content(ctx: "WorkflowContext", slug: str) -> dict:
+    """Return the full content and metadata for a single wiki page.
+
+    Any workflow that needs to read a page before editing it should use this
+    tool instead of accessing ctx.store directly.
+
+    Returns::
+
+        {"slug": str, "title": str, "content": str, "lint_warnings": list,
+         "contradiction_note": str | None, "status": str}
+        {"error": str}  — page not found
+    """
+    page = ctx.store.read_page(slug)
+    if page is None:
+        return {"error": f"Page not found: {slug!r}"}
+    await ctx.send_sse_event(
+        "tool_progress",
+        {"tool": "read_page_content", "message": f"Reading page: {slug}"},
+    )
+    return {
+        "slug": slug,
+        "title": page.title or slug,
+        "content": page.content or "",
+        "lint_warnings": page.lint_warnings or [],
+        "contradiction_note": page.contradiction_note,
+        "status": page.status if page.status else "unknown",
+    }
+
+
+def _load_gate_threshold(wiki_root: Path) -> "int | None":
+    """Load adversarial_gate_threshold from config.toml; return None if unavailable."""
+    try:
+        cfg_path = wiki_root / ".synthadoc" / "config.toml"
+        if cfg_path.exists():
+            from synthadoc.config import load_config
+            cfg = load_config(project_config=cfg_path)
+            return cfg.lint.adversarial_gate_threshold
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+async def tool_run_scoped_lint(ctx: "WorkflowContext", slug: str) -> dict:
+    """Re-lint a single page (adversarial + contradiction check only).
+
+    Enqueues a ``scope="slug"`` lint job, waits for completion, then reads
+    the page's updated state from the store.  Intended for fix-verify loops:
+    run after applying a change to check whether the page now passes the gate.
+
+    Returns::
+
+        {"pass": bool, "warnings_count": int, "contradiction_note": str | None}
+        {"pass": False, "error": str}  — enqueue or poll failure
+    """
+    await ctx.send_sse_event(
+        "tool_progress",
+        {"tool": "run_scoped_lint", "message": f"Re-linting {slug}..."},
+    )
+    try:
+        job_id = await ctx.queue.enqueue(
+            "lint",
+            {"scope": "slug", "slug": slug, "adversarial": True, "lifecycle": False},
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {"pass": False, "warnings_count": 0, "contradiction_note": None,
+                "error": str(exc)}
+
+    poll_result = await tool_poll_job(
+        ctx, job_id, timeout_seconds=120, job_label=f"Scoped lint: {slug}"
+    )
+    if poll_result.get("status") != ToolStatus.SUCCESS:
+        return {"pass": False, "warnings_count": 0, "contradiction_note": None,
+                "error": poll_result.get("message", "lint job did not succeed")}
+
+    page = ctx.store.read_page(slug)
+    if page is None:
+        return {"pass": False, "warnings_count": 0, "contradiction_note": None,
+                "error": "Page disappeared after lint"}
+
+    warnings_count = len(page.lint_warnings or [])
+    contradiction_note = page.contradiction_note
+    threshold = _load_gate_threshold(ctx.wiki_root)
+    gate_ok = threshold is None or threshold <= 0 or warnings_count < threshold
+    passed = gate_ok and not contradiction_note
+
+    await ctx.send_sse_event(
+        "tool_progress",
+        {"tool": "run_scoped_lint",
+         "message": f"{'✓' if passed else '✗'} {slug}: {'passed' if passed else 'failed'}"},
+    )
+    return {"pass": passed, "warnings_count": warnings_count,
+            "contradiction_note": contradiction_note}
+
+
+async def tool_propose_and_apply(
+    ctx: "WorkflowContext",
+    slug: str,
+    new_content: str,
+    strategy_name: str,
+    rationale: str,
+) -> dict:
+    """Show a unified diff to the user and write the page only if they approve.
+
+    The diff is embedded in a ``confirm_request`` SSE message so both the web
+    UI modal and the CLI terminal receive it.  Approval calls
+    ``ctx.store.write_page``; rejection leaves the page unchanged.
+
+    Does NOT alter the page's lifecycle state — callers must call
+    ``tool_transition_lifecycle_state`` separately after lint passes.
+
+    Returns::
+
+        {"applied": bool, "diff_preview": str}
+        {"applied": False, "error": str}  — page not found
+    """
+    page = ctx.store.read_page(slug)
+    if page is None:
+        return {"applied": False, "diff_preview": "",
+                "error": f"Page not found: {slug!r}"}
+
+    old_lines = (page.content or "").splitlines(keepends=True)
+    new_lines = new_content.splitlines(keepends=True)
+    diff_lines = list(difflib.unified_diff(
+        old_lines, new_lines,
+        fromfile=f"{slug} (current)", tofile=f"{slug} (proposed)", n=3,
+    ))
+    diff_preview = "".join(diff_lines[:80])
+    if len(diff_lines) > 80:
+        diff_preview += f"\n... ({len(diff_lines) - 80} more lines not shown)"
+
+    confirm_message = (
+        f"**Strategy:** {strategy_name}\n"
+        f"**Rationale:** {rationale}\n\n"
+        f"Proposed changes to `{slug}`:\n\n"
+        f"```diff\n{diff_preview}\n```\n\n"
+        "Apply this change?"
+    )
+    result = await tool_confirm(
+        ctx, message=confirm_message, yes_label="Apply", no_label="Skip"
+    )
+    confirmed = result.get("confirmed", False)
+    if confirmed:
+        page.content = new_content
+        ctx.store.write_page(slug, page)
+        await ctx.send_sse_event(
+            "tool_progress",
+            {"tool": "propose_and_apply", "message": f"✓ Applied {strategy_name} to {slug}"},
+        )
+    return {"applied": confirmed, "diff_preview": diff_preview}
+
+
+_VALID_STATES: frozenset[str] = frozenset(
+    {"active", "draft", "stale", "contradicted", "archived"}
+)
+
+
+async def tool_transition_lifecycle_state(
+    ctx: "WorkflowContext",
+    slug: str,
+    to_state: str,
+    reason: str,
+) -> dict:
+    """Transition a page to a new lifecycle state and record an audit event.
+
+    Validates the target state string before writing.  Any workflow that
+    moves pages between states should use this tool so the audit trail is
+    always complete.
+
+    LifecycleState in this codebase uses plain string constants (not an enum).
+    Assigning page.status = to_state is correct; do NOT call LifecycleState(to_state).
+
+    Returns::
+
+        {"success": True, "from_state": str, "to_state": str}
+        {"success": False, "error": str}
+    """
+    if to_state not in _VALID_STATES:
+        return {
+            "success": False,
+            "error": f"Unknown lifecycle state {to_state!r}. Valid: {sorted(_VALID_STATES)}",
+        }
+
+    page = ctx.store.read_page(slug)
+    if page is None:
+        return {"success": False, "error": f"Page not found: {slug!r}"}
+
+    from_state = page.status if page.status else "unknown"
+    page.status = to_state  # LifecycleState constants are plain strings
+
+    if to_state == "active":
+        page.contradiction_note = None  # clear stale contradiction note on promotion
+
+    ctx.store.write_page(slug, page)
+
+    if ctx.audit_db:
+        try:
+            await ctx.audit_db.record_lifecycle_event(
+                slug, from_state, to_state, reason, "workflow",
+                content_snapshot=page.content or None,
+            )
+        except Exception:  # noqa: BLE001
+            pass  # audit failure must not abort the workflow
+
+    await ctx.send_sse_event(
+        "tool_progress",
+        {"tool": "transition_lifecycle_state",
+         "message": f"✓ {slug}: {from_state} → {to_state}"},
+    )
+    return {"success": True, "from_state": from_state, "to_state": to_state}
+
+
+async def tool_get_wiki_status(ctx: "WorkflowContext") -> dict:
+    """Return a lifecycle state count for every page in the wiki.
+
+    Useful as a final ground-truth check at the end of a maintenance workflow.
+
+    Returns::
+
+        {"active": int, "draft": int, "stale": int,
+         "contradicted": int, "archived": int}
+    """
+    counts: dict[str, int] = {
+        "active": 0, "draft": 0, "stale": 0, "contradicted": 0, "archived": 0,
+    }
+    for slug in ctx.store.list_pages():
+        page = ctx.store.read_page(slug)
+        if page is None:
+            continue
+        key = page.status if page.status else "draft"
+        if key in counts:
+            counts[key] += 1
+    await ctx.send_sse_event(
+        "tool_progress",
+        {"tool": "get_wiki_status",
+         "message": (
+             f"Wiki status: {counts['active']} active, "
+             f"{counts['contradicted']} contradicted"
+         )},
+    )
+    return counts

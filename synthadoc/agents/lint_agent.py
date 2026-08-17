@@ -354,7 +354,7 @@ def read_current_lint_state(store: WikiStorage) -> LintStateSummary:
 
 class LintAgent:
     def __init__(self, provider: LLMProvider, store: WikiStorage,
-                 log_writer: LogWriter, confidence_threshold: float = 0.85,
+                 log_writer: "LogWriter | None" = None, confidence_threshold: float = 0.85,
                  audit_db: AuditDB | None = None,
                  adversarial_provider: LLMProvider | None = None,
                  adversarial_max_per_page: int = 2,
@@ -882,11 +882,32 @@ class LintAgent:
             )
             report.dangling_links_removed += len(_affected)
 
-    async def lint(self, scope: str = "all", auto_resolve: bool = False,
+    async def lint(self, scope: str = "all", slug: Optional[str] = None,
+                   auto_resolve: bool = False,
                    adversarial: bool = True, lifecycle: bool = True,
                    check_url_availability: Optional[bool] = None,
                    job_id: str = "system") -> LintReport:
         report = LintReport()
+
+        # ── scoped single-page re-lint ────────────────────────────────────────────
+        if scope == "slug":
+            if not slug or slug in LINT_SKIP_SLUGS:
+                return report
+            page = self._store.read_page(slug)
+            if page is None:
+                return report
+            if adversarial and self._adversarial_provider is not None:
+                adv_warnings, adv_tokens, _ = await self._run_adversarial_pass([slug])
+                report.tokens_used += adv_tokens
+                if adv_warnings:
+                    report.adversarial_warnings = adv_warnings
+            # Re-read page after adversarial pass may have updated lint_warnings
+            page = self._store.read_page(slug)
+            if page and page.contradiction_note:
+                report.contradictions_found = 1
+            return report
+        # ── end scoped re-lint ────────────────────────────────────────────────────
+
         slugs = self._store.list_pages()
 
         if scope in ("all", "contradictions"):

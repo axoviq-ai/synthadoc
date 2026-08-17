@@ -898,7 +898,7 @@ Contradicted pages (1) - need review:
 
   grace-hopper
     -> Open wiki/grace-hopper.md, resolve the conflict, then set status: active
-    -> Or re-run: synthadoc lint run --auto-resolve
+    -> Or run: synthadoc run contradiction-resolver
 ```
 
 **In Obsidian:** open `wiki/dashboard.md` — `grace-hopper` appears in the
@@ -906,7 +906,53 @@ Contradicted pages (1) - need review:
 
 ![Dashboard showing contradicted page](png/synthadoc-wiki-conflict.png)
 
-### Option 1 — Manual resolution (recommended first time)
+### Option 1 — Agentic contradiction resolver (recommended)
+
+The contradiction resolver is a conversational workflow that walks through each
+contradicted page one at a time, proposes a fix, shows you the exact diff, and
+asks for your approval before writing anything.
+
+**From the web UI:**
+
+After the lint run in Step 7, a hint appears in the chat panel:
+
+> "1 page marked contradicted — run the contradiction resolver to fix them interactively?"
+
+Click it to start the resolver. Alternatively, type:
+
+> "Run contradiction resolver"
+
+The resolver will:
+
+1. Show the list of contradicted pages and a cost estimate, then ask "Proceed?"
+2. For each page: read the current content and the conflicting source, propose a
+   rewrite that reconciles both views fairly, and display the full unified diff.
+3. Ask "Apply this change?" — you approve or skip each one individually.
+4. After you approve, re-lint only that page. If it passes, the page is
+   automatically promoted to *active*. If it fails, a different strategy is tried
+   (up to 3 attempts per page).
+5. Print a final summary: fixed, unresolved, and skipped counts, followed by the
+   updated lifecycle state counts as ground truth.
+
+**From the CLI:**
+
+```bash
+# Resolve all contradicted pages
+synthadoc run contradiction-resolver
+
+# Resolve only the grace-hopper page
+synthadoc run contradiction-resolver --slug grace-hopper
+
+# Resolve only gate-demoted pages (adversarial warnings)
+synthadoc run contradiction-resolver --type gate
+
+# Resolve only source-conflict pages
+synthadoc run contradiction-resolver --type conflict
+```
+
+The CLI renders the same approval prompts and diff previews as the web UI.
+
+### Option 2 — Manual resolution
 
 1. Open `wiki/grace-hopper.md` in Obsidian
 2. Edit the body to reflect a nuanced view — Hopper pioneered automated code generation
@@ -914,7 +960,10 @@ Contradicted pages (1) - need review:
 3. Change `status: contradicted` → `status: active` in the Properties panel
 4. Save — the Contradicted pages table clears immediately
 
-### Option 2 — LLM auto-resolve
+This is fast for a single well-understood conflict, but leaves no lifecycle audit record
+of the reasoning.
+
+### Option 3 — LLM auto-resolve (headless)
 
 ```bash
 synthadoc lint run --auto-resolve
@@ -922,47 +971,24 @@ synthadoc jobs status <job-id>
 ```
 
 The LLM proposes a resolution, appends it as a `**Resolution:**` block, and sets
-`status: active`. Review the result in Obsidian and edit if needed.
+`status: active`. No approval step — suitable for CI or batch processing where
+interactive review is not practical.
 
 Or from Obsidian: Command Palette → `Synthadoc: Lint: run with auto-resolve`.
 
-### Option 3 — Resolve via MCP (Claude Desktop or Claude Code)
+### Option 4 — Resolve via MCP (Claude Desktop or Claude Code)
 
 > **Prerequisite:** Synthadoc must be registered as an MCP server in Claude. See [Appendix I — Connect Claude via MCP](#appendix-i--connect-claude-via-mcp) for the `claude mcp add` command and Claude Desktop config.
 
-With Synthadoc connected as an MCP server, Claude can resolve contradictions using its own LLM — the brain/memory architecture in action. Claude reasons about the conflict, writes the resolution, then commits the lifecycle transition with a proper audit trail.
+With Synthadoc connected as an MCP server, Claude can resolve contradictions using its
+own LLM — the brain/memory architecture in action. Claude reasons about the conflict,
+writes the resolution, then commits the lifecycle transition with a proper audit trail.
 
 Ask Claude in a single prompt:
 
 > "The grace-hopper page is contradicted. Read it, resolve the A-0 compiler controversy by presenting both scholarly views fairly, update the page, then mark it active with a reason."
 
-Claude will execute this as three tool calls in sequence:
-
-**1. Read the page**
-```
-synthadoc_read_page("grace-hopper")
-```
-
-**2. Write the resolved content**
-```
-synthadoc_write_page(
-  slug="grace-hopper",
-  content="<Claude's synthesized resolution>",
-)
-```
-This updates the content, clears the `contradiction_note`, and bumps the wiki epoch.
-
-**3. Transition the lifecycle state**
-```
-synthadoc_lifecycle(
-  slug="grace-hopper",
-  to_state="active",
-  reason="Resolved: A-0 compiler controversy — both scholarly views preserved",
-)
-```
-This writes a permanent audit record: who triggered it (`mcp`), when, and why.
-
-The audit trail for the full resolution looks like:
+Claude will execute this as three tool calls in sequence and produce an audit trail:
 
 ```
 Slug          From          To      By    Timestamp            Reason
@@ -971,10 +997,6 @@ grace-hopper  draft         active  lint    2026-05-28T17:54:51  lint passed
 grace-hopper  active  contradicted  lint    2026-05-28T18:30:00  conflict: A-0 compiler claim
 grace-hopper  contradicted  active  mcp     2026-06-18T21:45:00  Resolved: A-0 controversy — both views preserved
 ```
-
-> **Why this is better than Option 1:** The audit trail records that the resolution was applied, when, and with what stated reason — not just that the file was edited. Option 1 (direct file edit) leaves no lifecycle record.
->
-> **Why this is better than Option 2:** Claude's LLM (Anthropic) has stronger editorial reasoning than Synthadoc's configured provider, and can draw on conversation context — for example, if you've been discussing the controversy in the same session.
 
 > **Dashboard still showing the contradiction?** Dataview may be serving stale metadata.
 > Drop the cache: `Ctrl/Cmd+P` → **Dataview: Drop all cached file metadata**, then reopen

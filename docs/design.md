@@ -43,6 +43,7 @@
 32. [Knowledge Graph](#32-knowledge-graph)
 33. [Multi-Platform Agent Skill Files](#33-multi-platform-agent-skill-files)
 34. [Synthadoc Scaffold Marker](#34-synthadoc-scaffold-marker)
+35. [Contradiction Resolver Workflow](#35-contradiction-resolver-workflow)
 
 **Appendices**
 - [Appendix A — Release Feature Index](#appendix-a--release-feature-index)
@@ -3457,6 +3458,80 @@ All three files share identical body content generated from the same template; t
 - Agent session files produced by Claude Code (`.jsonl` under `~/.claude/projects/`) can themselves be ingested into the wiki, capturing the reasoning behind design decisions alongside the source documents.
 
 → See [README.md — Interfaces & Integration](../README.md#interfaces--integration) for the feature comparison row and quick-start instructions.
+
+---
+
+## 35. Contradiction Resolver Workflow
+
+When the adversarial lint gate or source-conflict detection marks a page as
+*contradicted*, it needs human-reviewed remediation before it can return to
+*active* status. The contradiction resolver handles this through a structured,
+interactive agentic loop.
+
+### Contradiction types
+
+Two kinds of contradicted page are in scope:
+
+**Gate-demoted** pages have been flagged by the adversarial reviewer for
+containing a number of dubious, unsupported, or factually questionable claims
+that meets or exceeds the configured threshold. The specific flagged claims are
+shown to the resolver agent as context.
+
+**Source-conflict** pages were demoted because a newly ingested source
+contradicts the existing content. The conflict note and the original source
+content are provided to the resolver agent as context.
+
+A page can be in both categories simultaneously; the resolver addresses both
+signals in a single rewrite.
+
+### Per-page resolution loop
+
+For each selected page, the workflow:
+
+1. Reads the current content and any available source material.
+2. Selects a resolution strategy and explains its reasoning.
+3. Proposes a specific change — displaying the full diff — and asks for your
+   approval before writing anything.
+4. Applies the change only if you approve.
+5. Re-lints the page (only that page, not the whole wiki) to verify the fix.
+6. If the page passes, it is promoted back to *active* with a lifecycle event
+   naming the strategy used.
+7. If the page fails, a different strategy is selected and the loop repeats.
+   After three failed attempts the workflow escalates — providing a plain-language
+   diagnosis and concrete suggestions for manual action.
+
+Between pages, the workflow asks "Continue to next page?" so you can stop at
+any point.
+
+### Strategy menu
+
+| Strategy | When it runs |
+|---|---|
+| Content rewrite | Always the first attempt — rewrites the page to remove unsupported claims or reconcile conflicting sources with explicit hedging |
+| Web ingest for better grounding | After a failed first attempt when the agent judges the page lacks authoritative sourcing — proposes fetching a specific URL |
+| Force source re-ingest | Source file exists but may be outdated — proposes re-ingesting with a force flag |
+| Cross-page resolution | The conflict stems from a related page's reference — proposes modifying the referring page |
+| Escalate | Cap reached (3 attempts) — detailed diagnosis and concrete next steps, page remains *contradicted* |
+
+### Final confirmation
+
+After all pages are processed, a summary shows fixed, unresolved, and skipped
+counts. The workflow then runs a full lifecycle status check as ground truth —
+confirming whether *contradicted* reaches zero or identifying what remains.
+
+### How to trigger
+
+**Web UI:** A hint chip appears in the interface whenever one or more pages are
+in *contradicted* state. After a lint run that found contradicted pages, a
+suggestion also appears in the response. Clicking either opens the workflow.
+
+**CLI:**
+```bash
+synthadoc run contradiction-resolver              # all contradicted pages
+synthadoc run contradiction-resolver --slug alan-turing   # one page
+synthadoc run contradiction-resolver --type gate  # gate-demoted pages only
+synthadoc run contradiction-resolver --type conflict  # source conflicts only
+```
 
 ---
 

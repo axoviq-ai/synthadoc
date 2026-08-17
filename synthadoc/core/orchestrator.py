@@ -673,7 +673,8 @@ class Orchestrator:
         await self._queue.fail(job_id, str(exc))
         return False
 
-    async def _run_lint(self, job_id: str, scope: str = "all", auto_resolve: bool = False,
+    async def _run_lint(self, job_id: str, scope: str = "all", slug: Optional[str] = None,
+                        auto_resolve: bool = False,
                         adversarial: bool = True, lifecycle: bool = True,
                         check_url_availability: Optional[bool] = None) -> None:
         from synthadoc.agents.lint_agent import LintAgent
@@ -702,9 +703,9 @@ class Orchestrator:
                 adversarial_concurrency=self._cfg.lint.adversarial_concurrency,
                 wiki_root=self._root,
                 cfg=self._cfg,
-            ).lint(scope=scope, auto_resolve=auto_resolve, adversarial=adversarial,
-                   lifecycle=lifecycle, check_url_availability=check_url_availability,
-                   job_id=job_id)
+            ).lint(scope=scope, slug=slug, auto_resolve=auto_resolve,
+                   adversarial=adversarial, lifecycle=lifecycle,
+                   check_url_availability=check_url_availability, job_id=job_id)
             await self._queue.complete(job_id, result={
                 "contradictions_found": report.contradictions_found,
                 "contradictions_resolved": report.contradictions_resolved,
