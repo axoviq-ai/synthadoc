@@ -2703,7 +2703,7 @@ Six workflows are available:
 | **Scaffold and report** | "run scaffold" | Previews the domain and files to overwrite, asks for confirmation, then regenerates `index.md`, `purpose.md`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` |
 | **Contradiction resolver** | "run contradiction resolver" | For each contradicted page: reads content and sources, proposes a rewrite, shows the full diff, applies after approval, re-lints the page, and promotes it to *active* if it passes |
 
-### Demo — re-ingest all stale pages (Workflow A)
+### Demo — re-ingest all stale pages
 
 The History of Computing demo includes the `konrad-zuse` page whose source file can be modified to trigger stale detection. First manufacture a stale page:
 
@@ -2747,7 +2747,7 @@ Checking page states…
 
 When done, the workflow writes a plain-text summary showing the re-ingest outcome, the lint result (pass/fail), and the final lifecycle state of each page — `konrad-zuse` appears as ✓ active. No second step is needed: lint runs as part of the workflow.
 
-### Demo — re-ingest a specific page by slug (Workflow B)
+### Demo — re-ingest a specific page by slug
 
 Use this when you want to refresh one page regardless of its current lifecycle state — active, draft, or stale. No stale transition is needed.
 
@@ -2778,11 +2778,11 @@ In the web UI **Graph tab**, click any node to open the node detail panel. A **M
 | Chip | What happens |
 |------|-------------|
 | **⚑ Check this page for issues** | Sends "Check the [slug] page for issues" to the chat |
-| **↻ Re-ingest this page** | Sends "Re-ingest the [slug] page" to the chat, triggering Workflow B |
+| **↻ Re-ingest this page** | Sends "Re-ingest the [slug] page" to the chat, triggering a page-by-slug reingest |
 
 Clicking either chip routes the request through the normal confirmation flow — the agent confirms before doing anything.
 
-### Demo — scan and fix broken wikilinks (Workflow C)
+### Demo — scan and fix broken wikilinks
 
 **Setup — manufacture broken wikilinks in the History of Computing demo wiki**
 
@@ -2819,9 +2819,9 @@ If your wiki has no broken links, the workflow reports: *"No broken wikilinks fo
 
 ---
 
-### Demo — run lint and view the full report (Workflow D)
+### Demo — run lint and view the full report
 
-Workflow D runs a full lint pass from a single chat message and immediately streams the results — no separate `synthadoc lint run` needed.
+This workflow runs a full lint pass from a single chat message and immediately streams the results — no separate `synthadoc lint run` needed.
 
 In the web chat UI or Obsidian query modal, type: **"run lint and show me the report"**
 
@@ -2860,13 +2860,13 @@ No confirmation is required — lint runs and reports autonomously. Any other tr
 - `"run lint"`
 - `"run a full lint check and show me what needs attention"`
 
-> **Tip:** Use Workflow D to get a full picture first, then follow up in the same session: "scan for broken wikilinks" (Workflow C) or "re-ingest stale pages" (Workflow A).
+> **Tip:** Run lint first to get a full picture, then follow up in the same session: "scan for broken wikilinks" or "re-ingest stale pages".
 
 ---
 
-### Demo — run scaffold (Workflow E)
+### Demo — run scaffold
 
-Workflow E regenerates the wiki's core scaffold files from a single chat message. It shows you what will be overwritten and requires confirmation before writing anything.
+This workflow regenerates the wiki's core scaffold files from a single chat message. It shows you what will be overwritten and requires confirmation before writing anything.
 
 In the web chat UI or Obsidian query modal, type: **"run scaffold"**
 
@@ -2905,9 +2905,9 @@ Any other triggering phrase also works:
 - `"rebuild scaffold"`
 - `"regenerate scaffold for my wiki"`
 
-> **Tip:** Re-run Workflow E after adding a significant batch of new pages to keep the index categories and AGENTS.md guidelines current with the wiki's actual scope.
+> **Tip:** Re-run scaffold after adding a significant batch of new pages to keep the index categories and AGENTS.md guidelines current with the wiki's actual scope.
 
-### Demo — resolve contradicted pages (Workflow F)
+### Demo — resolve contradicted pages
 
 **Prerequisites:** At least one page in `contradicted` state. Complete Step 9
 setup (ingest `first-compiler-controversy.pdf`) or run a full lint pass — the
