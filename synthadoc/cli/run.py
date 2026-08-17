@@ -25,7 +25,7 @@ run_app = typer.Typer(
 @run_app.command("contradiction-resolver")
 def contradiction_resolver_cmd(
     slug: Optional[str] = typer.Option(
-        None, "--slug", help="Resolve only this page slug."
+        None, "--slug", metavar="SLUG", help="Resolve only this page slug."
     ),
     type_: Optional[str] = typer.Option(
         None, "--type", metavar="TYPE",

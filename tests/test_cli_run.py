@@ -4,9 +4,21 @@
 """Tests for synthadoc/cli/run.py — the 'synthadoc run' subcommand."""
 from __future__ import annotations
 
+import re
 import pytest
 from typer.testing import CliRunner
 from unittest.mock import patch, MagicMock
+
+
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI colour/style escape sequences from *text*.
+
+    Older versions of rich (Python 3.11 CI) render option names with colour
+    codes inserted between the two leading dashes, e.g. ``-\\x1b[...]-slug``,
+    which breaks plain substring checks.  Stripping ANSI codes first makes
+    the assertions version-agnostic.
+    """
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 
 def test_run_command_exists_on_app():
@@ -19,13 +31,19 @@ def test_run_command_exists_on_app():
 
 
 def test_run_contradiction_resolver_help():
-    """contradiction-resolver subcommand shows help without error."""
+    """contradiction-resolver subcommand shows help without error.
+
+    The output is stripped of ANSI escape codes before asserting: older rich
+    versions insert colour codes between the leading dashes of each option name
+    (``-\\x1b[...]-slug``), which breaks a plain ``in`` check.
+    """
     from synthadoc.cli.main import app
     runner = CliRunner()
     result = runner.invoke(app, ["run", "contradiction-resolver", "--help"])
     assert result.exit_code == 0
-    assert "--slug" in result.output
-    assert "--type" in result.output
+    clean = _strip_ansi(result.output)
+    assert "--slug" in clean
+    assert "--type" in clean
 
 
 def test_run_contradiction_resolver_calls_stream_query():
