@@ -312,6 +312,86 @@ async def test_transition_lifecycle_state_invalid_state_string(tmp_path):
     assert "error" in result
 
 
+@pytest.mark.asyncio
+async def test_transition_lifecycle_state_updates_markdown_file_frontmatter(tmp_path):
+    """The markdown file on disk must have status: active after transition.
+
+    Regression guard for the concern that the workflow might update only the
+    audit DB while leaving the .md file with status: contradicted in its
+    YAML frontmatter.  We read the raw file bytes — not WikiStorage — so
+    the assertion is independent of any in-memory cache or ORM layer.
+    """
+    store = _make_store(tmp_path, {
+        "grace-hopper": _page(status=LifecycleState.CONTRADICTED)
+    })
+    ctx = _ctx(tmp_path, store)
+    from synthadoc.agents.workflows._tools import tool_transition_lifecycle_state
+    result = await tool_transition_lifecycle_state(
+        ctx, slug="grace-hopper", to_state="active",
+        reason="resolved by resolver — strategy: Content rewrite, attempt 1",
+    )
+    assert result["success"] is True
+    # Read the RAW FILE to verify frontmatter — not just the in-memory store.
+    page_file = tmp_path / "wiki" / "grace-hopper.md"
+    raw = page_file.read_text(encoding="utf-8")
+    assert "status: active" in raw, (
+        "Expected 'status: active' in markdown frontmatter after transition; "
+        f"got:\n{raw[:500]}"
+    )
+    assert "status: contradicted" not in raw
+
+
+@pytest.mark.asyncio
+async def test_propose_then_transition_raw_file_consistent(tmp_path):
+    """End-to-end: propose→apply clears contradiction_note; transition sets status active.
+
+    Both operations write to the same .md file.  This test reads the raw file
+    after each step to confirm the on-disk state is always internally consistent:
+    no contradiction_note left behind when content is approved, and status is
+    definitively 'active' after the lifecycle transition.
+    """
+    store = _make_store(tmp_path, {
+        "grace-hopper": _page(
+            status=LifecycleState.CONTRADICTED,
+            content="old content",
+            note="New source contradicts claim about COBOL",
+        )
+    })
+    ctx = _ctx(tmp_path, store)
+    page_file = tmp_path / "wiki" / "grace-hopper.md"
+
+    # Step 1: apply new content — this clears contradiction_note.
+    with patch("synthadoc.agents.workflows._tools.tool_confirm",
+               new_callable=AsyncMock, return_value={"confirmed": True}):
+        from synthadoc.agents.workflows._tools import tool_propose_and_apply
+        applied = await tool_propose_and_apply(
+            ctx, slug="grace-hopper",
+            new_content="reconciled content with explicit sourcing",
+            strategy_name="Strategy 1 — Content rewrite",
+            rationale="addresses source conflict",
+        )
+    assert applied["applied"] is True
+    raw_after_apply = page_file.read_text(encoding="utf-8")
+    # contradiction_note must be gone; status is still contradicted at this stage.
+    assert "contradiction_note" not in raw_after_apply
+    assert "status: contradicted" in raw_after_apply
+
+    # Step 2: transition to active — only changes status.
+    from synthadoc.agents.workflows._tools import tool_transition_lifecycle_state
+    result = await tool_transition_lifecycle_state(
+        ctx, slug="grace-hopper", to_state="active",
+        reason="resolved by resolver — strategy: Content rewrite, attempt 1",
+    )
+    assert result["success"] is True
+    raw_after_transition = page_file.read_text(encoding="utf-8")
+    assert "status: active" in raw_after_transition, (
+        "Expected 'status: active' in markdown frontmatter after transition; "
+        f"got:\n{raw_after_transition[:500]}"
+    )
+    assert "status: contradicted" not in raw_after_transition
+    assert "contradiction_note" not in raw_after_transition
+
+
 # ── tool_get_wiki_status ──────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
