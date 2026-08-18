@@ -191,6 +191,52 @@ async def test_propose_and_apply_diff_in_confirm_message(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_propose_and_apply_clears_contradiction_note_on_approval(tmp_path):
+    """Approving a content change must clear contradiction_note so scoped lint can pass.
+
+    Root cause of source-conflict pages always failing: tool_run_scoped_lint
+    evaluates `passed = gate_ok and not contradiction_note`.  If the note
+    is not cleared when new content is applied, the lint gate is permanently
+    locked for conflict-type pages.
+    """
+    store = _make_store(tmp_path, {
+        "p": _page(content="old", note="New source contradicts claim X")
+    })
+    ctx = _ctx(tmp_path, store)
+
+    with patch("synthadoc.agents.workflows._tools.tool_confirm",
+               new_callable=AsyncMock, return_value={"confirmed": True}):
+        from synthadoc.agents.workflows._tools import tool_propose_and_apply
+        result = await tool_propose_and_apply(
+            ctx, slug="p", new_content="reconciled content",
+            strategy_name="Strategy 1 — Content rewrite", rationale="fix conflict"
+        )
+
+    assert result["applied"] is True
+    # contradiction_note MUST be None after applying so scoped lint can pass
+    assert store.read_page("p").contradiction_note is None
+
+
+@pytest.mark.asyncio
+async def test_propose_and_apply_preserves_contradiction_note_on_rejection(tmp_path):
+    """Rejecting a change must leave contradiction_note intact."""
+    store = _make_store(tmp_path, {
+        "p": _page(content="old", note="conflict note")
+    })
+    ctx = _ctx(tmp_path, store)
+
+    with patch("synthadoc.agents.workflows._tools.tool_confirm",
+               new_callable=AsyncMock, return_value={"confirmed": False}):
+        from synthadoc.agents.workflows._tools import tool_propose_and_apply
+        await tool_propose_and_apply(
+            ctx, slug="p", new_content="new",
+            strategy_name="Rewrite", rationale="fix"
+        )
+
+    assert store.read_page("p").contradiction_note == "conflict note"
+
+
+@pytest.mark.asyncio
 async def test_propose_and_apply_missing_page_returns_error(tmp_path):
     store = _make_store(tmp_path, {})
     ctx = _ctx(tmp_path, store)
@@ -393,3 +439,34 @@ async def test_get_wiki_status_skips_none_pages(tmp_path):
     result = await tool_get_wiki_status(ctx)
     assert result["active"] == 1
     assert result["draft"] == 0
+
+
+# ── tool_notify ───────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_tool_notify_sends_notice_sse_event(tmp_path):
+    """tool_notify sends a notice SSE event and returns {"sent": True}.
+
+    This tool exists specifically so the contradiction resolver can communicate
+    escalation messages mid-workflow without emitting plain text, which would
+    terminate the tool-call loop.
+    """
+    store = _make_store(tmp_path, {})
+    ctx = _ctx(tmp_path, store)
+    from synthadoc.agents.workflows._tools import tool_notify
+    result = await tool_notify(ctx, message="⚠ grace-hopper failed after 3 attempts", level="warning")
+    assert result == {"sent": True}
+    ctx.send_sse_event.assert_awaited_once_with(
+        "notice",
+        {"text": "⚠ grace-hopper failed after 3 attempts", "level": "warning"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_tool_notify_default_level_is_info(tmp_path):
+    store = _make_store(tmp_path, {})
+    ctx = _ctx(tmp_path, store)
+    from synthadoc.agents.workflows._tools import tool_notify
+    await tool_notify(ctx, message="status update")
+    _, event_data = ctx.send_sse_event.call_args.args
+    assert event_data["level"] == "info"

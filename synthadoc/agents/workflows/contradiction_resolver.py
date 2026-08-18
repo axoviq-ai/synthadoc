@@ -17,6 +17,7 @@ from synthadoc.agents.workflows._base import AgenticWorkflow
 from synthadoc.agents.workflows._tools import (
     tool_confirm,
     tool_ingest_source,
+    tool_notify,
     tool_poll_job,
     tool_read_page_content,
     tool_run_scoped_lint,
@@ -69,6 +70,10 @@ tool_cost_estimate(page_count)         → shows estimate to user as a notice AN
 tool_confirm(message, yes_label, no_label)   → prompt user for yes/no decision
                                          (for inter-page decisions only — NOT
                                           for the initial cost-estimate gate)
+tool_notify(message, level)            → send a notice to the user WITHOUT ending
+                                         the loop. Use for mid-workflow status
+                                         messages (e.g. escalation notices after
+                                         3 failures). level: "info"|"warning"|"error"
 tool_ingest_source(source_path)        → enqueue ingest job; returns job_id
 tool_poll_job(job_id, timeout_seconds) → poll until job terminal; returns status dict
 
@@ -137,9 +142,11 @@ STEP 4 — Per-page resolution loop
         Repeat from 4c.
 
     4i. If cap reached (3 failed attempts): Strategy 5 — Escalate.
-        Provide a plain-language diagnosis and concrete suggested next steps.
-        Print: "⚠ <slug> — unresolved after 3 attempts\\n  Diagnosis: ...\\n  Suggested: ..."
-        Mark as unresolved.
+        Do NOT output plain text (it would end the entire workflow).
+        Instead call tool_notify with level="warning":
+          message: "⚠ <slug> — unresolved after 3 attempts\n  Diagnosis: <why each strategy failed>\n  Suggested: <concrete next steps for the user>"
+        Add slug to your internal "unresolved" list.
+        Then continue immediately to step 4j (inter-page confirm).
 
     4j. Between pages: if more pages remain, call tool_confirm with
         "Continue to next page (<next_slug>)?", yes_label="Continue", no_label="Stop".
@@ -221,6 +228,7 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
             "tool_get_wiki_status":            p(tool_get_wiki_status, ctx),
             # Shared tools (from _tools.py — also used by other workflows)
             "tool_confirm":                    p(tool_confirm, ctx),
+            "tool_notify":                     p(tool_notify, ctx),
             "tool_ingest_source":              p(tool_ingest_source, ctx),
             "tool_poll_job":                   p(tool_poll_job, ctx),
         }

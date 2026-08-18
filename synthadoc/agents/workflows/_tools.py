@@ -760,6 +760,11 @@ async def tool_propose_and_apply(
     confirmed = result.get("confirmed", False)
     if confirmed:
         page.content = new_content
+        # Clear the contradiction note so scoped lint can pass for source-conflict
+        # pages.  tool_run_scoped_lint marks a page as failed if contradiction_note
+        # is not None, regardless of content quality.  Applying approved new content
+        # is the act of resolving the conflict, so the note must be cleared here.
+        page.contradiction_note = None
         ctx.store.write_page(slug, page)
         await ctx.send_sse_event(
             "tool_progress",
@@ -833,6 +838,21 @@ async def tool_transition_lifecycle_state(
          "message": f"✓ {slug}: {from_state} → {to_state}"},
     )
     return {"success": True, "from_state": from_state, "to_state": to_state}
+
+
+async def tool_notify(ctx: "WorkflowContext", message: str, level: str = "info") -> dict:
+    """Send a non-blocking notice SSE event to the user without ending the loop.
+
+    Use this in place of plain-text output whenever you need to communicate
+    a status update mid-workflow (e.g. escalation messages, skip notices).
+    Unlike plain-text output, this tool call does NOT terminate the loop.
+
+    level: "info" | "warning" | "error"  (for UI styling; "info" is the default)
+
+    Returns: {"sent": True}
+    """
+    await ctx.send_sse_event("notice", {"text": message, "level": level})
+    return {"sent": True}
 
 
 async def tool_get_wiki_status(ctx: "WorkflowContext") -> dict:
