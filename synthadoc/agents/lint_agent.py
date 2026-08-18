@@ -374,6 +374,48 @@ def read_current_lint_state(store: WikiStorage) -> LintStateSummary:
     )
 
 
+# ── Adversarial content-hash cache ────────────────────────────────────────────
+# Persists between lint runs so the adversarial LLM is NOT re-called for pages
+# whose content is unchanged.  Without this, LLM non-determinism causes
+# borderline pages to cross the gate threshold on repeated lint runs, growing
+# the contradicted count even when nothing in the wiki has changed.
+#
+# Format: {slug: sha256_hex_of_page_content}
+# Stored at: <wiki_root>/.synthadoc/adv_hashes.json
+
+_ADV_HASHES_REL = Path(".synthadoc") / "adv_hashes.json"
+
+
+def _content_hash(content: str) -> str:
+    """Return a short SHA-256 hex digest of the page content."""
+    return hashlib.sha256(content.encode("utf-8", errors="replace")).hexdigest()
+
+
+def _load_adv_hash_cache(wiki_root: Path) -> dict[str, str]:
+    """Load the adversarial content-hash cache from disk; return empty dict on any error."""
+    path = wiki_root / _ADV_HASHES_REL
+    if not path.exists():
+        return {}
+    try:
+        data = _json.loads(path.read_text(encoding="utf-8"))
+        return {k: v for k, v in data.items() if isinstance(k, str) and isinstance(v, str)}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _save_adv_hash_cache(wiki_root: Path, cache: dict[str, str]) -> None:
+    """Persist the adversarial content-hash cache to disk, ignoring write errors."""
+    path = wiki_root / _ADV_HASHES_REL
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(_json.dumps(cache, indent=2, sort_keys=True), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+
+
 class LintAgent:
     def __init__(self, provider: LLMProvider, store: WikiStorage,
                  log_writer: "LogWriter | None" = None, confidence_threshold: float = 0.85,
@@ -580,6 +622,10 @@ class LintAgent:
         Returns (adversarial_warnings_list, total_tokens, adversarial_demotions).
         adversarial_warnings_list: [{slug, warnings}] for pages with at least one warning.
         adversarial_demotions: count of pages auto-transitioned to contradicted this pass.
+
+        Pages whose content is unchanged since the last scan are skipped (LLM not
+        called, existing lint_warnings kept) so LLM non-determinism cannot fire the
+        adversarial gate on repeated lint runs when nothing in the wiki has changed.
         """
         scan = [
             (s, self._store.read_page(s))
@@ -590,20 +636,37 @@ class LintAgent:
         if not scan:
             return [], 0, 0
 
+        # Load persistent content-hash cache to detect unchanged pages.
+        adv_cache = _load_adv_hash_cache(self._wiki_root)
+        cache_dirty = False
+
+        # Partition: pages with matching hash skip the LLM; others get a fresh call.
+        cached_pairs: list[tuple[str, "WikiPage"]] = []  # type: ignore[name-defined]
+        fresh_pairs:  list[tuple[str, "WikiPage"]] = []  # type: ignore[name-defined]
+        for slug, page in scan:
+            if adv_cache.get(slug) == _content_hash(page.content or ""):
+                cached_pairs.append((slug, page))
+            else:
+                fresh_pairs.append((slug, page))
+
         sem = asyncio.Semaphore(self._adversarial_concurrency)
 
         async def _bounded(slug: str, content: str) -> tuple[list[dict], int]:
             async with sem:
                 return await self._adversarial_single(slug, content)
 
-        results = await asyncio.gather(
-            *(_bounded(s, p.content) for s, p in scan)
+        # Run LLM only for fresh pages.
+        fresh_results: list[tuple[list[dict], int]] = (
+            list(await asyncio.gather(*(_bounded(s, p.content) for s, p in fresh_pairs)))
+            if fresh_pairs else []
         )
 
         all_warnings: list[dict] = []
         total_tokens = 0
         adv_demotions = 0
-        for (slug, page), (warnings, tokens) in zip(scan, results):
+
+        # Fresh pages: update warnings, write, run gate, update cache.
+        for (slug, page), (warnings, tokens) in zip(fresh_pairs, fresh_results):
             total_tokens += tokens
             page.lint_warnings = warnings
             self._store.write_page(slug, page)
@@ -611,6 +674,18 @@ class LintAgent:
                 adv_demotions += 1
             if warnings:
                 all_warnings.append({"slug": slug, "warnings": warnings})
+            adv_cache[slug] = _content_hash(page.content or "")
+            cache_dirty = True
+
+        # Cached pages: content unchanged — report existing warnings, skip gate
+        # (it already fired when the page was first scanned, and the page status
+        # already reflects that decision).
+        for slug, page in cached_pairs:
+            if page.lint_warnings:
+                all_warnings.append({"slug": slug, "warnings": page.lint_warnings})
+
+        if cache_dirty:
+            _save_adv_hash_cache(self._wiki_root, adv_cache)
 
         return all_warnings, total_tokens, adv_demotions
 
@@ -809,7 +884,9 @@ class LintAgent:
                     continue
 
                 # Check 2: stale detection -- source file hash changed
-                if current == LifecycleState.ACTIVE and self._audit:
+                # Also fires for contradicted pages: an updated source likely
+                # resolves the contradiction and must be re-ingested to confirm.
+                if current in (LifecycleState.ACTIVE, LifecycleState.CONTRADICTED) and self._audit:
                     for src_ref in page.sources:
                         if src_ref.file and not is_url(src_ref.file):
                             src_path = raw_sources_dir / src_ref.file
@@ -817,7 +894,7 @@ class LintAgent:
                                 current_hash = hashlib.sha256(src_path.read_bytes()).hexdigest()
                                 record = await self._audit.find_by_source_path(str(src_path))
                                 if record and record.get("source_hash") is not None and record.get("source_hash") != current_hash:
-                                    await self._transition(slug, page, LifecycleState.ACTIVE,
+                                    await self._transition(slug, page, current,
                                                            LifecycleState.STALE,
                                                            "source file modified since last ingest")
                                     report.lifecycle_stale += 1
