@@ -230,7 +230,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **[Custom skills + CI hooks](docs/design.md#11-hook-system)** — subclass `BaseSkill` for new file formats; 2 hook events (`on_ingest_complete` + `on_lint_complete`); example git auto-commit hook included; blocking hooks can gate operations | **Yes** | Limited | No | No |
 | **[Per-source truncation flag](docs/design.md#30-per-source-truncation-flag)** — `--max-source-chars` caps any source (PDF, DOCX, web page, plain text) before the LLM call; truncated sources flagged with `truncated: true` in frontmatter and warned in lint output | **Yes** | No | No | No |
 | **[Multi-wiki isolation](docs/design.md#wiki-targeting)** — each wiki on its own port with independent config, audit trail, and job queue; switch with `synthadoc use` | **Yes** | No | Partial | No |
-| **[Agentic maintenance workflows](docs/user-quick-start-guide.md#agentic-workflows)** — five conversational workflows (re-ingest stale pages, re-ingest by slug, broken wikilinks scan and fix, lint report, scaffold regeneration) via web UI, Obsidian query modal, or `synthadoc query` CLI; confirm-before-act gate on all destructive operations; graph sidebar chips trigger workflows with one click — no terminal required | **Yes** | No | No | No |
+| **[Agentic maintenance workflows](docs/user-quick-start-guide.md#agentic-workflows)** — six conversational workflows (re-ingest stale pages, re-ingest by slug, broken wikilinks scan and fix, lint report, scaffold regeneration, **contradiction resolver**) via web UI, Obsidian query modal, or `synthadoc query` CLI; confirm-before-act gate on all destructive operations; contradiction resolver shows full diff before every write and never applies a change without approval; graph sidebar chips trigger workflows with one click — no terminal required | **Yes** | No | No | No |
 
 ### Business value
 
@@ -446,7 +446,7 @@ The guide covers:
 23. Backup and restore — create a portable wiki zip, restore on a different machine
 24. Knowledge graph — weighted edges (wikilink + co-source signals), explore clusters in the web UI Graph tab, click a node to query it
 25. Ingest an AI session transcript — turn Claude Code, Codex, or chat conversations into structured wiki pages
-26. Agentic maintenance workflows — five conversational workflows via web UI, Obsidian query modal, or CLI: bulk re-ingest stale pages, re-ingest any named page by slug, scan and fix broken wikilinks, run lint and view the full report, run scaffold and regenerate wiki files — agent confirms before touching anything, streams inline progress
+26. Agentic maintenance workflows — six conversational workflows via web UI, Obsidian query modal, or CLI: bulk re-ingest stale pages, re-ingest any named page by slug, scan and fix broken wikilinks, run lint and view the full report, run scaffold and regenerate wiki files, resolve contradicted pages interactively (diff shown before every write, human approval required) — agent confirms before touching anything, streams inline progress
 
 ---
 
@@ -780,6 +780,31 @@ synthadoc lint run --no-lifecycle -w my-wiki
 # Instant report (reads wiki files directly, no server needed)
 synthadoc lint report -w my-wiki
 ```
+
+### Agentic workflows
+
+Agentic workflows run as interactive tool-call loops — they stream progress inline, ask for approval before any destructive change, and exit cleanly if you decline.
+
+```bash
+# Resolve all contradicted pages (shows cost estimate + diff for each page before writing)
+synthadoc workflow run contradiction-resolver -w my-wiki
+
+# Resolve only one page by slug
+synthadoc workflow run contradiction-resolver --slug alan-turing -w my-wiki
+
+# Scope to pages demoted by the adversarial gate
+synthadoc workflow run contradiction-resolver --type adversarial -w my-wiki
+
+# Scope to pages with source-level contradictions
+synthadoc workflow run contradiction-resolver --type source-conflict -w my-wiki
+
+# Custom timeout (default 3600 s)
+synthadoc workflow run contradiction-resolver --timeout 7200 -w my-wiki
+```
+
+The resolver lists contradicted pages, estimates cost, then walks through each page: reads the content and conflicting sources, proposes a rewrite, shows the full unified diff, and waits for your approval. After an approved write it re-lints the page and promotes it to *active* on pass, or escalates after 3 failed attempts.
+
+→ Full walkthrough and web UI path: [Quick-Start Guide — Step 9](docs/user-quick-start-guide.md#step-9--resolve-a-contradiction)
 
 ### Managing page lifecycle
 

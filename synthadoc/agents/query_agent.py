@@ -467,6 +467,29 @@ _NO_BROKEN_LINKS_RE = re.compile(
     r'\bno\s+broken\b|0\s+broken|zero\s+broken|link\s+integrity\s+is\s+clean',
     re.IGNORECASE,
 )
+_CONTRADICTED_COUNT_RE = re.compile(
+    r'\b([1-9]\d*)\s+contradicted\b',
+    re.IGNORECASE,
+)
+# Additional patterns matching the two non-LLM output formats:
+#   Lint report:   "**Contradicted pages (4)** — resolve..."
+#   Wiki-status:   "| contradicted | 4 | conflicting..."
+_CONTRADICTED_PARENS_RE = re.compile(
+    r'\bcontradicted\b[^(\n]*\(([1-9]\d*)\)',
+    re.IGNORECASE,
+)
+_CONTRADICTED_TABLE_RE = re.compile(
+    r'\|\s*contradicted\s*\|\s*([1-9]\d*)\s*\|',
+    re.IGNORECASE,
+)
+_NO_CONTRADICTED_RE = re.compile(
+    r'\b0\s+contradicted\b|no\s+contradicted|zero\s+contradicted'
+    # wiki-status table with 0:  "| contradicted | 0 |"
+    r'|\|\s*contradicted\s*\|\s*0\s*\|'
+    # lint-report header with 0: "Contradicted pages (0)"
+    r'|\bcontradicted\b[^(\n]*\(0\)',
+    re.IGNORECASE,
+)
 
 
 def _build_pre_prompt(answer: str) -> str | None:
@@ -491,6 +514,21 @@ def _build_pre_prompt(answer: str) -> str | None:
     # Trigger when lint/status reports broken wikilinks.
     if _BROKEN_LINKS_RE.search(answer) and not _NO_BROKEN_LINKS_RE.search(answer):
         return "Scan for broken wikilinks"
+    # Contradicted page hint — fires after a lint job / status report that
+    # found contradicted pages.  Three output formats are matched:
+    #   1. LLM text:       "2 contradicted pages found"
+    #   2. Lint report:    "**Contradicted pages (4)** — ..."
+    #   3. Wiki-status:    "| contradicted | 4 | ..."
+    if not _NO_CONTRADICTED_RE.search(answer):
+        for pat in (_CONTRADICTED_COUNT_RE, _CONTRADICTED_PARENS_RE, _CONTRADICTED_TABLE_RE):
+            m = pat.search(answer)
+            if m:
+                n = int(m.group(1))
+                page_word = "page" if n == 1 else "pages"
+                return (
+                    f"{n} {page_word} marked contradicted — "
+                    "run the contradiction resolver to fix them interactively?"
+                )
     return None
 
 

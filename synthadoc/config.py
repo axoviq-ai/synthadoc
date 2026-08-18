@@ -184,6 +184,7 @@ class LintConfig:
     # contradicted at the end of each adversarial pass.
     # None = gate disabled. 0 is never accepted — use None to disable.
     # Recommended starting value: 3 (general wikis), 1 (compliance-sensitive).
+    contradiction_resolver_timeout_seconds: int = 3600
 
 
 @dataclass

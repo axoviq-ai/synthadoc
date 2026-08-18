@@ -27,6 +27,8 @@ export interface ConfirmRequestData {
     message: string;
     yes_label: string;
     no_label: string;
+    /** Unified diff string — present only for diff-review confirms (e.g. contradiction resolver). */
+    diff?: string;
 }
 
 export interface StreamCallbacks {
@@ -180,6 +182,7 @@ function dispatch(event: string, data: Record<string, unknown>, cb: StreamCallba
                     message: typeof data.message === "string" ? data.message : "",
                     yes_label: typeof data.yes_label === "string" ? data.yes_label : "Yes",
                     no_label: typeof data.no_label === "string" ? data.no_label : "No",
+                    diff: typeof data.diff === "string" ? data.diff : undefined,
                 });
             }
             break;

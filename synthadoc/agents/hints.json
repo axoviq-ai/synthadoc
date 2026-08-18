@@ -20,9 +20,11 @@
       "Show my lint report"
     ],
     "HEALTH_CHECK": [
+      "Run contradiction resolver",
+      "Re-ingest stale pages",
+      "Show my lint report",
       "Show wiki status",
       "Run Synthadoc status",
-      "Show my lint report",
       "Which pages are marked stale?",
       "What pages are orphan pages?",
       "List contradicted pages",
@@ -45,6 +47,7 @@
       "Which sources were truncated?",
       "What pages are orphan pages?",
       "List contradicted pages",
+      "Run contradiction resolver",
       "Run Synthadoc status",
       "Activate a draft page",
       "Archive a stale page",
@@ -129,6 +132,7 @@
       "hints": [
         "What pages are orphan pages?",
         "List contradicted pages",
+        "Run contradiction resolver",
         "Show adversarial warnings",
         "Which sources were truncated?",
         "Run lint on contradictions only",

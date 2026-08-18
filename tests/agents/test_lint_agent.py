@@ -336,6 +336,51 @@ def test_parse_adversarial_response_skips_entries_without_concern():
     assert result[0]["claim"] == "Y"
 
 
+def test_parse_adversarial_response_with_preamble_text():
+    """Fallback regex extraction handles LLM preamble before the JSON array."""
+    text = (
+        'Based on my review, I found these issues:\n'
+        '[{"claim": "The Earth is flat.", "concern": "Contradicts established science."}]'
+    )
+    result = _parse_adversarial_response(text)
+    assert len(result) == 1
+    assert result[0]["claim"] == "The Earth is flat."
+
+
+def test_parse_adversarial_response_with_trailing_commentary():
+    """Fallback regex extraction handles JSON array followed by text."""
+    text = (
+        '[{"claim": "Vaccines cause autism.", "concern": "Retracted Wakefield study."}]\n'
+        "Please review these findings carefully."
+    )
+    result = _parse_adversarial_response(text)
+    assert len(result) == 1
+    assert result[0]["concern"] == "Retracted Wakefield study."
+
+
+@pytest.mark.asyncio
+async def test_adversarial_single_logs_warning_on_unparseable_response(tmp_wiki):
+    """_adversarial_single emits a WARNING when the LLM returns non-empty non-parseable text."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    log = LogWriter(tmp_wiki / "wiki" / "log.md")
+
+    provider = AsyncMock()
+    provider.complete.return_value = CompletionResponse(
+        text="I cannot identify any factual concerns with this page.",
+        input_tokens=10, output_tokens=10,
+    )
+
+    agent = LintAgent(provider=provider, store=store, log_writer=log)
+
+    with patch("synthadoc.agents.lint_agent._log") as mock_log:
+        warnings, tokens = await agent._adversarial_single("some-slug", "Some page content.")
+    assert warnings == []
+    assert tokens == 20  # total_tokens = input_tokens(10) + output_tokens(10)
+    # Must log a WARNING so the operator can see the parse failure
+    mock_log.warning.assert_called_once()
+    assert "unparseable" in mock_log.warning.call_args[0][0]
+
+
 @pytest.mark.asyncio
 async def test_adversarial_pass_stores_warnings(tmp_wiki):
     store = WikiStorage(tmp_wiki / "wiki")

@@ -41,3 +41,4 @@ test_tmp/
 
 # intermediate build output — committed artifact is synthadoc/data/web-ui/dist/
 web-ui/dist/
+.superpowers/
