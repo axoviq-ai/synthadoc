@@ -44,7 +44,10 @@ marked 'contradicted'. A contradicted page may be:
   • Source-conflict: ingest detected that a new source contradicts the existing content.
     Signal: contradiction_note frontmatter field.
   • Both: both signals present.
-  • Unknown: contradicted state with no clear signal — skip with a plain-text note.
+  • Unknown: contradicted state with no lint_warnings and no contradiction_note —
+    run a fresh lint to determine whether the contradicted state is stale metadata
+    (lint passes → auto-transition to active) or a real issue (lint fails → treat
+    as gate-demoted with the fresh warnings).
 
 ━━━ TOOL-CALL WIRE FORMAT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Emit EXACTLY this JSON object (no markdown fences, no XML, no prose) to call a tool:
@@ -102,7 +105,17 @@ STEP 4 — Per-page resolution loop
   For each page from step 1:
 
     4a. Detect type (gate / conflict / both / unknown from tool result).
-        Unknown → skip, note in final summary.
+
+        Unknown — status is contradicted but no lint_warnings and no contradiction_note:
+          i.  Call tool_run_scoped_lint(slug) to get a fresh lint result.
+          ii. If lint PASS → the contradicted state is stale metadata; transition:
+                call tool_transition_lifecycle_state(slug, to_state="active",
+                  reason="resolved: clean lint with no contradiction signals — contradicted state was stale")
+              Add slug to the "fixed" list and continue to step 4j.
+          iii.If lint FAIL → the page has real issues; treat as gate-demoted using
+              the fresh lint_warnings from this lint result and proceed from step 4c
+              with Strategy 1.
+          Do NOT skip unknown pages without first running tool_run_scoped_lint.
 
     4b. Read page: call tool_read_page_content(slug).
         If conflict or both: also call tool_read_source_content(slug).
