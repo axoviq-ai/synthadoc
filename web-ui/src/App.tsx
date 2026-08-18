@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 Paul Chen / axoviq.com
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useSession } from "./useSession";
 import { useSessions } from "./useSessions";
-import { getSessionMessages, getHints } from "./api";
+import { getSessionMessages, getHints, getLifecycleStatus } from "./api";
 import { Sidebar } from "./components/Sidebar";
 import { ChatWindow } from "./components/ChatWindow";
 import { GraphView } from "./components/GraphView";
@@ -26,8 +26,34 @@ export default function App() {
     const [graphHints, setGraphHints] = useState<string[]>([]);
     const [hintLockLeft, setHintLockLeft] = useState(0);
 
+    // Guard: only auto-fill the Ask field once per page load (not on every session reset).
+    const initialPromptSetRef = useRef(false);
+
     // Displayed hints: graph-sourced (pinned) hints take priority while the lock is active
     const displayHints = hintLockLeft > 0 ? graphHints : hints;
+
+    // On initial session load: fetch lifecycle status and pre-fill the Ask field with
+    // the most urgent maintenance action (priority: contradicted > stale).
+    // Mirrors the same priority as _build_pre_prompt in query_agent.py.
+    useEffect(() => {
+        if (!session?.session_id || initialPromptSetRef.current) return;
+        initialPromptSetRef.current = true;
+        getLifecycleStatus().then((status) => {
+            const contradicted = status.contradicted ?? 0;
+            const stale = status.stale ?? 0;
+            if (contradicted > 0) {
+                const pageWord = contradicted === 1 ? "page" : "pages";
+                setPendingPrompt(
+                    `${contradicted} ${pageWord} marked contradicted — run the contradiction resolver to fix them interactively?`
+                );
+            } else if (stale > 0) {
+                const pageWord = stale === 1 ? "page" : "pages";
+                setPendingPrompt(`Re-ingest ${stale} stale ${pageWord}`);
+            }
+        }).catch(() => {
+            // Silently ignore — pre-fill is optional, not critical
+        });
+    }, [session?.session_id]);
 
     // Called from ChatWindow after each streamed response
     const handleChatHints = useCallback((newHints: string[], prePrompt?: string) => {
