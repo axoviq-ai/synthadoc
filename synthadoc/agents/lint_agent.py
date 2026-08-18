@@ -809,7 +809,9 @@ class LintAgent:
                     continue
 
                 # Check 2: stale detection -- source file hash changed
-                if current == LifecycleState.ACTIVE and self._audit:
+                # Also fires for contradicted pages: an updated source likely
+                # resolves the contradiction and must be re-ingested to confirm.
+                if current in (LifecycleState.ACTIVE, LifecycleState.CONTRADICTED) and self._audit:
                     for src_ref in page.sources:
                         if src_ref.file and not is_url(src_ref.file):
                             src_path = raw_sources_dir / src_ref.file
@@ -817,7 +819,7 @@ class LintAgent:
                                 current_hash = hashlib.sha256(src_path.read_bytes()).hexdigest()
                                 record = await self._audit.find_by_source_path(str(src_path))
                                 if record and record.get("source_hash") is not None and record.get("source_hash") != current_hash:
-                                    await self._transition(slug, page, LifecycleState.ACTIVE,
+                                    await self._transition(slug, page, current,
                                                            LifecycleState.STALE,
                                                            "source file modified since last ingest")
                                     report.lifecycle_stale += 1
