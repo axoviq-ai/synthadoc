@@ -162,6 +162,12 @@ def _find_stale_slugs() -> list[str]:
     return [p["slug"] for p in result.get("pages", []) if p.get("state") == "stale"]
 
 
+def _find_contradicted_slugs() -> list[str]:
+    """Return slugs currently in contradicted state according to /lifecycle/pages."""
+    result = _api("/lifecycle/pages")
+    return [p["slug"] for p in result.get("pages", []) if p.get("state") == "contradicted"]
+
+
 def _new_slug_in(wiki_dir: Path, before: set[str]) -> str | None:
     """Return the first new slug that appeared in wiki_dir since before was snapped."""
     now = {f.stem for f in wiki_dir.glob("*.md")}
@@ -633,12 +639,24 @@ def test_query_done_pre_prompt_present_when_stale_pages_exist():
 @pytest.mark.live
 def test_query_done_pre_prompt_absent_when_no_stale_pages():
     """
-    When no stale pages are present, the done SSE event has no pre_prompt
-    (so the textarea is not pre-filled with a stale-reingest suggestion).
+    When no actionable pages exist (no stale, no contradicted), the done SSE
+    event has no pre_prompt (so the textarea is not pre-filled with a
+    suggestion to run a workflow).
+
+    Note: contradicted pages also trigger a pre_prompt (contradiction resolver
+    hint), so the test must skip when either condition exists.
     """
     stale_slugs = _find_stale_slugs()
     if stale_slugs:
         pytest.skip("Wiki has stale pages — cannot verify pre_prompt is absent")
+
+    contradicted_slugs = _find_contradicted_slugs()
+    if contradicted_slugs:
+        pytest.skip(
+            f"Wiki has {len(contradicted_slugs)} contradicted page(s) — "
+            "they also trigger a pre_prompt (contradiction resolver hint); "
+            "cannot verify pre_prompt is absent"
+        )
 
     events = _sse_events("/query/stream?q=show+me+the+wiki+status&no_cache=true", timeout=90)
     done_events = [(t, d) for t, d in events if t == "done"]
@@ -647,7 +665,7 @@ def test_query_done_pre_prompt_absent_when_no_stale_pages():
     _, done_data = done_events[-1]
     pre_prompt = done_data.get("pre_prompt")
     assert not pre_prompt, (
-        f"done event carries pre_prompt={pre_prompt!r} but no stale pages exist"
+        f"done event carries pre_prompt={pre_prompt!r} but no stale or contradicted pages exist"
     )
 
 
@@ -1189,6 +1207,7 @@ def test_find_page_source_tool_rejects_unknown_slug():
             "no wiki page",
             "no source path",
             "no source file",
+            "no source found",   # "No source found for page …" (tool_read_source_content)
             "unknown",
             "couldn't find",
             "could not find",
