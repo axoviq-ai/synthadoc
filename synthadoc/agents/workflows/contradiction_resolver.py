@@ -133,12 +133,26 @@ STEP 4 — Per-page resolution loop
         continue to step 4j (next page) or step 5 (final summary) if last page.
         Do NOT output any plain text here — text output ends the entire workflow.
 
-    4h. If lint FAIL (attempt < 3): diagnose why, select a DIFFERENT strategy:
-          Attempt 2: if source is missing/outdated → Strategy 2 (web ingest) or
-                     Strategy 3 (force re-ingest); otherwise Strategy 1 with a
-                     different rewrite angle.
-          Attempt 3: Strategy 4 (cross-page) if applicable, otherwise another
-                     Strategy 1 variant with explicit hedging language.
+    4h. If lint FAIL (attempt < 3): diagnose the failure, then escalate to the next
+        strategy — NEVER use Strategy 1 again after the first attempt fails.
+
+          Attempt 2 — always Strategy 2 or 3 (never Strategy 1):
+            • Strategy 2 (Web ingest) — search for current authoritative sources
+              to support, replace, or provide grounding for the disputed claims.
+              Use this for gate-demoted pages (lint_warnings) where the claims
+              need better citation, and for source-conflict pages where a newer
+              web source may supersede the contradiction.
+            • Strategy 3 (Force re-ingest) — force-reingest the page's source_path
+              if source_path is available and the source itself may have updated.
+            Choose whichever fits the failure diagnosis; prefer Strategy 2 for
+            gate-demoted pages, Strategy 3 for source-conflict pages.
+
+          Attempt 3 — must be a strategy not yet tried:
+            • Strategy 4 (Cross-page resolution) — if linked wiki pages contain
+              information that can resolve or corroborate the disputed content.
+            • The other of Strategy 2 / Strategy 3 if it wasn't used in attempt 2.
+            Never return to Strategy 1.
+
         Repeat from 4c.
 
     4i. If cap reached (3 failed attempts): Strategy 5 — Escalate.
@@ -171,7 +185,9 @@ STEP 6 — Ground-truth confirmation
 • ALWAYS call tool_transition_lifecycle_state AS A TOOL CALL (not in text) when scoped lint passes.
   This call MUST happen before any plain-text output — even a one-line summary ends the workflow.
 • NEVER transition to active before scoped lint passes.
-• NEVER repeat the same strategy on the same page.
+• NEVER use Strategy 1 more than once per page. After Strategy 1 fails, always
+  escalate to Strategy 2, 3, or 4 — never return to Strategy 1 with "a different
+  angle". A different angle is still Strategy 1 and is still forbidden.
 • Cap is HARD at 3 attempts per page — escalate on the 4th failure.
 • Do NOT call tool_propose_and_apply and tool_confirm in the same tool-call batch.
 """
