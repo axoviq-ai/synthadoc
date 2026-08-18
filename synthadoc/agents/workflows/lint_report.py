@@ -90,6 +90,9 @@ intermediate steps must be tool calls, not prose.
 class LintReportWorkflow(AgenticWorkflow):
     """Run a full lint pass then surface the complete report in one shot."""
 
+    NAME = "lint-report"
+    DESCRIPTION = "Run a full lint pass and surface the complete report."
+
     MATCH_RE = re.compile(
         r"^(please\s+)?\brun\b.{0,20}\blint\b"
         r"|^(can|could|would)\s+(you\s+)?(please\s+)?\brun\b.{0,20}\blint\b",

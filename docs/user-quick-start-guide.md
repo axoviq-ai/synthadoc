@@ -898,7 +898,7 @@ Contradicted pages (1) - need review:
 
   grace-hopper
     -> Open wiki/grace-hopper.md, resolve the conflict, then set status: active
-    -> Or run: synthadoc workflow run contradiction-resolver
+    -> Or run: synthadoc workflow run --name contradiction-resolver
 ```
 
 **In Obsidian:** open `wiki/dashboard.md` — `grace-hopper` appears in the
@@ -958,16 +958,16 @@ The resolver will:
 
 ```bash
 # Resolve all contradicted pages
-synthadoc workflow run contradiction-resolver
+synthadoc workflow run --name contradiction-resolver
 
 # Resolve only the grace-hopper page
-synthadoc workflow run contradiction-resolver --slug grace-hopper
+synthadoc workflow run --name contradiction-resolver --slug grace-hopper
 
 # Resolve only adversarial-gate demotions
-synthadoc workflow run contradiction-resolver --type adversarial
+synthadoc workflow run --name contradiction-resolver --type adversarial
 
 # Resolve only source-conflict demotions
-synthadoc workflow run contradiction-resolver --type source-conflict
+synthadoc workflow run --name contradiction-resolver --type source-conflict
 ```
 
 The CLI renders the same approval prompts and diff previews as the web UI.
@@ -2903,10 +2903,10 @@ The contradicted count reaches zero — no further action needed.
 **Scoping the resolver**
 
 ```bash
-synthadoc workflow run contradiction-resolver                           # all contradicted pages
-synthadoc workflow run contradiction-resolver --slug grace-hopper       # one page
-synthadoc workflow run contradiction-resolver --type adversarial        # adversarial-gate demotions only
-synthadoc workflow run contradiction-resolver --type source-conflict    # source-conflict demotions only
+synthadoc workflow run --name contradiction-resolver                             # all contradicted pages
+synthadoc workflow run --name contradiction-resolver --slug grace-hopper         # one page
+synthadoc workflow run --name contradiction-resolver --type adversarial          # adversarial-gate demotions only
+synthadoc workflow run --name contradiction-resolver --type source-conflict      # source-conflict demotions only
 ```
 
 ---

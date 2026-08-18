@@ -1012,8 +1012,12 @@ synthadoc
 │   └── lifecycle
 │       └── purge -w wiki (--before <date> | --keep-latest <n>)
 ├── workflow
-│   └── run
-│       └── contradiction-resolver [--slug SLUG] [--type adversarial|source-conflict] [-w wiki] [--timeout N]
+│   ├── list
+│   └── run --name NAME [WORKFLOW_ARGS...] [-w wiki] [--timeout N]
+│       # NAME is one of: lint-report | broken-wikilinks | scaffold
+│       #                  contradiction-resolver | ingest-lint
+│       # Workflow-specific args (forwarded verbatim):
+│       #   contradiction-resolver: [--slug SLUG] [--type adversarial|source-conflict|gate|conflict]
 ├── backup [-w wiki] [--output <dir>] [--no-sources] [--no-exports] [--no-cache]
 ├── restore <backup.zip> [--name <wiki>] [--target <dir>] [--port <N>]
 ├── cache clear [-w wiki]
@@ -3550,16 +3554,16 @@ being needed first:
 
 **CLI:**
 ```bash
-synthadoc run contradiction-resolver              # all contradicted pages
-synthadoc run contradiction-resolver --slug alan-turing   # one page
-synthadoc run contradiction-resolver --type gate  # gate-demoted pages only
-synthadoc run contradiction-resolver --type conflict  # source conflicts only
+synthadoc workflow run --name contradiction-resolver              # all contradicted pages
+synthadoc workflow run --name contradiction-resolver --slug alan-turing   # one page
+synthadoc workflow run --name contradiction-resolver --type adversarial   # gate-demoted pages only
+synthadoc workflow run --name contradiction-resolver --type source-conflict  # source conflicts only
 ```
 
 `--slug` still calls `tool_get_contradicted_pages(scope="all")` internally and
-filters to the given slug after the list is returned. `--type gate` matches pages
-that carry `lint_warnings`; `--type conflict` matches pages that carry a
-`contradiction_note`. Both flags can be combined with `--slug`.
+filters to the given slug after the list is returned. `--type adversarial` (alias `gate`)
+matches pages that carry `lint_warnings`; `--type source-conflict` (alias `conflict`) matches
+pages that carry a `contradiction_note`. Both flags can be combined with `--slug`.
 
 ### Scoped re-lint
 
@@ -3605,6 +3609,7 @@ either does not abort the workflow. The page file is written first via
 - **Adversarial Lint Gate** — a new `adversarial_gate_threshold` config key (default `None`, disabled) triggers automatic lifecycle demotion of any page whose adversarial-reviewer warning count reaches or exceeds the threshold. When the gate fires, the page transitions from its current state to `contradicted` and the reason is recorded in the lifecycle audit trail as `auto-demoted: adversarial gate`. A companion guard prevents `--auto-resolve` from re-promoting gate-demoted pages in the same lint run (cycling prevention), recorded as `auto-resolve skipped: adversarial gate`. `adversarial_max_per_page` caps the flagged-claim count per page (default 5). See [§21 Adversarial Review](#21-adversarial-review).
 - **Contradiction Resolver Workflow** — an interactive agentic loop (`synthadoc workflow run contradiction-resolver`) that resolves pages in `contradicted` state one at a time. The workflow: lists all contradicted pages and shows a cost estimate (requiring confirmation); for each page reads the current content and the conflicting source or flagged claims, proposes a reconciling rewrite, and displays the full unified diff before writing; runs a scoped lint pass on the changed page; promotes to `active` on pass; tries up to 3 alternative strategies on failure (web ingest, force re-ingest, cross-page resolution) before escalating with a plain-language diagnosis. Supports `--slug` (single page), `--type adversarial` / `--type source-conflict` (scoped), and `--timeout` flags. Accessible from the web UI via the **"Run contradiction resolver"** hint chip (shown whenever the wiki has contradicted pages), via the pre-filled `done.pre_prompt` suggestion after any response that mentions contradicted pages, or via free-text query. See [§35 Contradiction Resolver Workflow](#35-contradiction-resolver-workflow).
 - **Generic workflow tool extensions** — `tool_propose_and_apply` and `tool_transition_lifecycle_state` added to the shared workflow tool library; any future workflow can reuse diff-before-write approval and lifecycle state transitions without re-implementing them.
+- **Pluggable workflow CLI** — `synthadoc workflow run` is now a single generic command with `--name NAME` instead of one hardcoded subcommand per workflow. All 5 registered workflows (`lint-report`, `broken-wikilinks`, `scaffold`, `contradiction-resolver`, `ingest-lint`) are exposed automatically via `NAME`/`DESCRIPTION` class attributes and `CLI_REGISTRY`. `synthadoc workflow list` enumerates all registered workflows with descriptions. Workflow-specific options (e.g. `--slug`, `--type`) are forwarded verbatim to the workflow and parsed by its own `build_initial_message`. Adding a new workflow requires no CLI changes.
 
 ### v1.2.1
 

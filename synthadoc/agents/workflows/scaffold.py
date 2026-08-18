@@ -93,6 +93,9 @@ When you have no more tool calls to make, produce a plain-text summary (no JSON)
 class ScaffoldWorkflow(AgenticWorkflow):
     """Regenerate core wiki scaffold files with a confirm gate before running."""
 
+    NAME = "scaffold"
+    DESCRIPTION = "Regenerate core wiki scaffold files (confirm gate before writing)."
+
     MATCH_RE = re.compile(
         r"^(please\s+)?\brun\b.{0,20}\bscaffold\b"
         r"|^(can|could|would)\s+(you\s+)?(please\s+)?\brun\b.{0,20}\bscaffold\b"

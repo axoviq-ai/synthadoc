@@ -5,11 +5,14 @@
 To add a new workflow with fast-path routing:
   1. Implement AgenticWorkflow in a new module under synthadoc/agents/workflows/.
   2. Set MATCH_RE = re.compile(r"...", re.IGNORECASE) on the class.
-  3. Add one import line and one entry in ROUTED_WORKFLOWS below.
+  3. Set NAME and DESCRIPTION on the class to expose it via the CLI.
+  4. Add one import line and one entry in ROUTED_WORKFLOWS below.
 
 No other file needs to change.  ActionAgent reads ROUTED_WORKFLOWS at startup,
 derives _ACTION_RE coverage automatically from each workflow's MATCH_RE, and
 routes directly to the first matching workflow — no LLM extraction required.
+CLI_REGISTRY is derived automatically from ROUTED_WORKFLOWS.NAME entries and
+drives ``synthadoc workflow list`` and ``synthadoc workflow run --name``.
 """
 from __future__ import annotations
 
@@ -26,6 +29,14 @@ ROUTED_WORKFLOWS: list[type[AgenticWorkflow]] = [
     LintReportWorkflow,
     BrokenWikilinksWorkflow,
     ScaffoldWorkflow,
-    ContradictionResolverWorkflow,   # NEW — more specific than IngestLintWorkflow
+    ContradictionResolverWorkflow,   # more specific than IngestLintWorkflow
     IngestLintWorkflow,
 ]
+
+# Workflows available via ``synthadoc workflow run --name <name>``.
+# Populated automatically from ROUTED_WORKFLOWS entries that have NAME set.
+CLI_REGISTRY: dict[str, type[AgenticWorkflow]] = {
+    wf.NAME: wf
+    for wf in ROUTED_WORKFLOWS
+    if wf.NAME is not None
+}

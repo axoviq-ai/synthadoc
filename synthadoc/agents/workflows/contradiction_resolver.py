@@ -180,6 +180,10 @@ STEP 6 — Ground-truth confirmation
 class ContradictionResolverWorkflow(AgenticWorkflow):
     """Closed-loop agentic remediation for contradicted wiki pages."""
 
+    NAME = "contradiction-resolver"
+    DESCRIPTION = "Interactively resolve pages in 'contradicted' state (diff-before-write approval)."
+    CLI_ARGS = "[--slug SLUG]  [--type adversarial|source-conflict]"
+
     MATCH_RE: re.Pattern = re.compile(
         r"\bcontradiction.{0,30}\bresolv"
         r"|\bresolv.{0,30}\bcontradict"
@@ -198,16 +202,27 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
     async def build_system_prompt(self) -> str:
         return _SYSTEM_PROMPT
 
+    # Map user-facing --type names to internal scope tokens.
+    _TYPE_REMAP: dict[str, str] = {
+        "adversarial": "gate",
+        "source-conflict": "conflict",
+    }
+
     def build_initial_message(
         self,
         user_input: str,
         **_kwargs,
     ) -> str:
         slug_match = re.search(r"--slug\s+(\S+)", user_input, re.IGNORECASE)
-        type_match = re.search(r"--type\s+(gate|conflict|all)", user_input, re.IGNORECASE)
+        type_match = re.search(
+            r"--type\s+(gate|adversarial|conflict|source-conflict|all)",
+            user_input,
+            re.IGNORECASE,
+        )
 
         slug = slug_match.group(1) if slug_match else None
-        scope = type_match.group(1) if type_match else "all"
+        raw_type = type_match.group(1).lower() if type_match else "all"
+        scope = self._TYPE_REMAP.get(raw_type, raw_type)
 
         msg_parts = ["Run the contradiction resolver workflow."]
         msg_parts.append(f"Scope: {scope}")
