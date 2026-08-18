@@ -2868,6 +2868,8 @@ rewrite, and displays the full unified diff:
 
 Click **Apply**.
 
+![Contradiction resolver — diff approval UI with 6 contradicted pages queued](png/contradiction-resolver.png)
+
 **Step 3 — Scoped re-lint**
 
 ```
