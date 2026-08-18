@@ -96,7 +96,7 @@ def _handle_confirm(wiki: str, data: dict) -> None:
     yes_label = data.get("yes_label", "Yes")
     no_label = data.get("no_label", "No")
     typer.echo(f"\n{message}")
-    response = typer.prompt(f"  [{yes_label}/{no_label}]", default="n", prompt_suffix=" > ")
+    response = typer.prompt(f"  [{yes_label}/{no_label}]", default="y", prompt_suffix=" > ")
     confirmed = response.strip().lower() in ("y", "yes", yes_label.lower())
     if session_id:
         try:
