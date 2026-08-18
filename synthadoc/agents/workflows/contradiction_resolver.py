@@ -151,6 +151,8 @@ STEP 4 — Per-page resolution loop
     4j. Between pages: if more pages remain, call tool_confirm with
         "Continue to next page (<next_slug>)?", yes_label="Continue", no_label="Stop".
         If not confirmed: stop the loop (treat remaining pages as skipped).
+        ⚠ MANDATORY — do NOT output any plain text before calling tool_confirm here.
+        Text output ends the entire workflow before the confirmation is shown.
 
 STEP 5 — Final summary
   Print a formatted summary:
