@@ -495,10 +495,35 @@ _NO_CONTRADICTED_RE = re.compile(
 def _build_pre_prompt(answer: str) -> str | None:
     """Return a pre_prompt string if the response has an unambiguous next step.
 
+    Priority order (highest first):
+      1. Re-ingest just completed → prompt to run lint
+      2. Contradicted pages present → prompt to run the resolver
+         (contradicted is more critical than stale: it serves actively
+         conflicting information in query answers; stale is merely outdated)
+      3. Stale pages present (with named slugs) → prompt to re-ingest
+      4. Broken wikilinks → prompt to scan
+
     Returns None if no clear next action is present.
     """
     if _REINGEST_COMPLETE_RE.search(answer):
         return "Run lint to promote re-ingested pages to active"
+    # Contradicted page hint — fires after a lint job / status report that
+    # found contradicted pages.  Three output formats are matched:
+    #   1. LLM text:       "2 contradicted pages found"
+    #   2. Lint report:    "**Contradicted pages (4)** — ..."
+    #   3. Wiki-status:    "| contradicted | 4 | ..."
+    # Checked before stale: contradicted pages serve actively conflicting
+    # information and take precedence when both conditions are present.
+    if not _NO_CONTRADICTED_RE.search(answer):
+        for pat in (_CONTRADICTED_COUNT_RE, _CONTRADICTED_PARENS_RE, _CONTRADICTED_TABLE_RE):
+            m = pat.search(answer)
+            if m:
+                n = int(m.group(1))
+                page_word = "page" if n == 1 else "pages"
+                return (
+                    f"{n} {page_word} marked contradicted — "
+                    "run the contradiction resolver to fix them interactively?"
+                )
     # Only trigger on positive stale context ("stale pages" but not "no stale pages").
     if _STALE_HEADER_RE.search(answer) and not _NO_STALE_RE.search(answer):
         slugs = _STALE_SLUG_RE.findall(answer)
@@ -514,21 +539,6 @@ def _build_pre_prompt(answer: str) -> str | None:
     # Trigger when lint/status reports broken wikilinks.
     if _BROKEN_LINKS_RE.search(answer) and not _NO_BROKEN_LINKS_RE.search(answer):
         return "Scan for broken wikilinks"
-    # Contradicted page hint — fires after a lint job / status report that
-    # found contradicted pages.  Three output formats are matched:
-    #   1. LLM text:       "2 contradicted pages found"
-    #   2. Lint report:    "**Contradicted pages (4)** — ..."
-    #   3. Wiki-status:    "| contradicted | 4 | ..."
-    if not _NO_CONTRADICTED_RE.search(answer):
-        for pat in (_CONTRADICTED_COUNT_RE, _CONTRADICTED_PARENS_RE, _CONTRADICTED_TABLE_RE):
-            m = pat.search(answer)
-            if m:
-                n = int(m.group(1))
-                page_word = "page" if n == 1 else "pages"
-                return (
-                    f"{n} {page_word} marked contradicted — "
-                    "run the contradiction resolver to fix them interactively?"
-                )
     return None
 
 
