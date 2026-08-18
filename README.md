@@ -598,6 +598,8 @@ For the full configuration reference — layer precedence, global vs. per-projec
 
 ## Command Reference by Use Case
 
+> **Full CLI command tree** (all subcommands, flags, and groupings): [docs/design.md — Command tree](docs/design.md#command-tree)
+
 ### Setting up a wiki
 
 ```bash
