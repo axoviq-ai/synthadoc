@@ -282,20 +282,42 @@ def find_orphan_slugs(
 
 
 def _parse_adversarial_response(text: str) -> list[dict]:
-    """Parse LLM adversarial response into list of {claim, concern} dicts."""
+    """Parse LLM adversarial response into list of {claim, concern} dicts.
+
+    Robust to common LLM formatting quirks: markdown fences, preamble text
+    before the JSON array, and trailing commentary after it.
+    Returns an empty list (not None) on complete parse failure — callers must
+    log a warning when the response was non-empty but yielded no items.
+    """
     raw = text.strip()
-    raw = re.sub(r"^```(?:json)?\s*\n?", "", raw)
-    raw = re.sub(r"\n?```\s*$", "", raw).strip()
-    try:
-        parsed = _json.loads(raw)
-        if isinstance(parsed, list):
-            return [
-                {"claim": item.get("claim"), "concern": item.get("concern")}
-                for item in parsed
-                if isinstance(item, dict) and item.get("concern")
-            ]
-    except Exception:
-        pass
+    # Fast path: strip markdown fences and try direct parse.
+    raw_stripped = re.sub(r"^```(?:json)?\s*\n?", "", raw)
+    raw_stripped = re.sub(r"\n?```\s*$", "", raw_stripped).strip()
+    for candidate in (raw_stripped, raw):
+        try:
+            parsed = _json.loads(candidate)
+            if isinstance(parsed, list):
+                return [
+                    {"claim": item.get("claim"), "concern": item.get("concern")}
+                    for item in parsed
+                    if isinstance(item, dict) and item.get("concern")
+                ]
+        except Exception:
+            pass
+    # Fallback: extract the first [...] block from within preamble/postamble text.
+    # Handles responses like "Based on my review:\n[{...}]" that json.loads rejects.
+    m = re.search(r"\[.*?\]", raw, re.DOTALL)
+    if m:
+        try:
+            parsed = _json.loads(m.group(0))
+            if isinstance(parsed, list):
+                return [
+                    {"claim": item.get("claim"), "concern": item.get("concern")}
+                    for item in parsed
+                    if isinstance(item, dict) and item.get("concern")
+                ]
+        except Exception:
+            pass
     return []
 
 
@@ -354,7 +376,7 @@ def read_current_lint_state(store: WikiStorage) -> LintStateSummary:
 
 class LintAgent:
     def __init__(self, provider: LLMProvider, store: WikiStorage,
-                 log_writer: LogWriter, confidence_threshold: float = 0.85,
+                 log_writer: "LogWriter | None" = None, confidence_threshold: float = 0.85,
                  audit_db: AuditDB | None = None,
                  adversarial_provider: LLMProvider | None = None,
                  adversarial_max_per_page: int = 2,
@@ -525,12 +547,31 @@ class LintAgent:
                 messages=[Message(role="user", content=prompt)],
                 temperature=0.0,
             )
-            return _parse_adversarial_response(resp.text), resp.total_tokens
+            warnings = _parse_adversarial_response(resp.text)
+            # Truncate: the LLM may return more items than asked (ignoring "up to N").
+            # Storing extras inflates lint_warnings and skews _skip_resolve_for_gate.
+            warnings = warnings[:n]
+            if not warnings and resp.text.strip() not in ("[]", "[ ]", ""):
+                # Non-empty response that yielded no warnings — likely unparseable JSON.
+                _log.warning(
+                    "[adversarial] unparseable response for slug=%s — "
+                    "treating as no warnings. raw=%r",
+                    slug, resp.text[:300],
+                )
+            else:
+                _log.debug("[adversarial] slug=%s → %d warning(s)", slug, len(warnings))
+            return warnings, resp.total_tokens
         except Exception as exc:
             err = str(exc).lower()
             if "429" in str(exc) or "rate limit" in err or "rate_limit" in err or "too many" in err:
+                _log.warning(
+                    "[adversarial] rate-limited for slug=%s — adversarial pass skipped. "
+                    "Lower adversarial_concurrency (currently %d) or use a higher rate-limit tier.",
+                    slug, self._adversarial_concurrency,
+                )
                 return [{"claim": None,
                          "concern": "adversarial-pass-skipped: rate limit — consider a paid model or a higher rate-limit tier"}], 0
+            _log.warning("[adversarial] unexpected error for slug=%s: %s", slug, exc)
             return [], 0
 
     async def _run_adversarial_pass(self, slugs: list[str]) -> tuple[list[dict], int, int]:
@@ -592,8 +633,8 @@ class LintAgent:
             return False
         await self._transition(
             slug, page, page.status, LifecycleState.CONTRADICTED,
-            f"auto-demoted: {len(warnings)} adversarial warning(s)"
-            f" ≥ gate threshold {threshold}",
+            f"auto-demoted: adversarial gate — "
+            f"{len(warnings)} warning(s) ≥ threshold {threshold}",
         )
         return True
 
@@ -882,11 +923,32 @@ class LintAgent:
             )
             report.dangling_links_removed += len(_affected)
 
-    async def lint(self, scope: str = "all", auto_resolve: bool = False,
+    async def lint(self, scope: str = "all", slug: Optional[str] = None,
+                   auto_resolve: bool = False,
                    adversarial: bool = True, lifecycle: bool = True,
                    check_url_availability: Optional[bool] = None,
                    job_id: str = "system") -> LintReport:
         report = LintReport()
+
+        # ── scoped single-page re-lint ────────────────────────────────────────────
+        if scope == "slug":
+            if not slug or slug in LINT_SKIP_SLUGS:
+                return report
+            page = self._store.read_page(slug)
+            if page is None:
+                return report
+            if adversarial and self._adversarial_provider is not None:
+                adv_warnings, adv_tokens, _ = await self._run_adversarial_pass([slug])
+                report.tokens_used += adv_tokens
+                if adv_warnings:
+                    report.adversarial_warnings = adv_warnings
+            # Re-read page after adversarial pass may have updated lint_warnings
+            page = self._store.read_page(slug)
+            if page and page.contradiction_note:
+                report.contradictions_found = 1
+            return report
+        # ── end scoped re-lint ────────────────────────────────────────────────────
+
         slugs = self._store.list_pages()
 
         if scope in ("all", "contradictions"):

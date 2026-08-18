@@ -13,9 +13,13 @@ describe("ToolProgressBlock", () => {
         expect(screen.getByText(/re-ingesting/i)).toBeDefined();
     });
 
-    it("collapses when collapsed prop is true", () => {
-        render(<ToolProgressBlock lines={["Working..."]} collapsed />);
-        const content = screen.queryByText("Working...");
-        expect(content).toBeNull();
+    it("always shows latest line; hides history when collapsed", () => {
+        // ToolProgressBlock always renders the latest progress message.
+        // When collapsed, history entries (all but the last line) are hidden.
+        render(<ToolProgressBlock lines={["older step", "Working..."]} collapsed />);
+        // Latest line is always visible.
+        expect(screen.getByText("Working...")).toBeDefined();
+        // History (older entries) is hidden when collapsed.
+        expect(screen.queryByText("older step")).toBeNull();
     });
 });

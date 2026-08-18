@@ -521,13 +521,17 @@ async def _worker_loop(orch, session_state: dict) -> None:
                                                 allow_external_paths=allow_external_paths)
                 elif job.operation == "lint":
                     scope = job.payload.get("scope", "all")
+                    slug = job.payload.get("slug")
                     auto_resolve = job.payload.get("auto_resolve", False)
                     adversarial = job.payload.get("adversarial", True)
                     lifecycle = job.payload.get("lifecycle", True)
                     check_url_availability = job.payload.get("check_url_availability")  # None = use config
-                    job_coro = orch._run_lint(job.id, scope=scope, auto_resolve=auto_resolve,
-                                              adversarial=adversarial, lifecycle=lifecycle,
-                                              check_url_availability=check_url_availability)
+                    job_coro = orch._run_lint(
+                        job.id, scope=scope, slug=slug,
+                        auto_resolve=auto_resolve, adversarial=adversarial,
+                        lifecycle=lifecycle,
+                        check_url_availability=check_url_availability,
+                    )
                 elif job.operation == "scaffold":
                     domain = job.payload.get("domain", "")
                     job_coro = orch._run_scaffold(job.id, domain=domain)
@@ -997,6 +1001,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         orch = app.state.orch
         session_id = str(_uuid.uuid4())
         page_count = len(orch._store.list_pages())
+        summary: dict = {}
         if page_count < 5:
             mode = "NEW_WIKI"
         elif not await orch._audit.has_prior_sessions():
@@ -1011,7 +1016,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         return {
             "session_id": session_id,
             "mode": mode,
-            "initial_hints": HintEngine.initial_hints(mode),
+            "initial_hints": HintEngine.initial_hints(mode, context=summary),
             "wiki_name": wiki_root.name,
         }
 

@@ -251,8 +251,31 @@ class HintEngine:
         return _pool_cache[mode]
 
     @staticmethod
-    def initial_hints(mode: SessionMode) -> list[str]:
-        return HintEngine.build_pool(mode)[:_INITIAL_HINT_COUNT]
+    def initial_hints(mode: SessionMode, *, context: dict | None = None) -> list[str]:
+        """Return the first *_INITIAL_HINT_COUNT* hints for *mode*.
+
+        When *context* carries live wiki health data (keys ``"contradicted"``
+        and ``"stale"`` as returned by ``get_lifecycle_summary``), health-state
+        chips are prepended so the most urgent action is always visible on
+        cold-start — even before the user has typed anything.
+
+        Priority order (highest first):
+        1. "Run contradiction resolver" — when contradicted > 0
+        2. "Re-ingest stale pages"     — when stale > 0
+        3. Remaining chips from the mode pool (deduped)
+        """
+        pool = HintEngine.build_pool(mode)
+        if context:
+            priority: list[str] = []
+            if context.get("contradicted", 0) > 0:
+                priority.append("Run contradiction resolver")
+            if context.get("stale", 0) > 0:
+                priority.append("Re-ingest stale pages")
+            if priority:
+                seen = set(priority)
+                extras = [h for h in pool if h not in seen]
+                return (priority + extras)[:_INITIAL_HINT_COUNT]
+        return pool[:_INITIAL_HINT_COUNT]
 
     @staticmethod
     def after_response(answer: str, mode: SessionMode) -> list[str]:

@@ -898,7 +898,7 @@ Contradicted pages (1) - need review:
 
   grace-hopper
     -> Open wiki/grace-hopper.md, resolve the conflict, then set status: active
-    -> Or re-run: synthadoc lint run --auto-resolve
+    -> Or run: synthadoc workflow run contradiction-resolver
 ```
 
 **In Obsidian:** open `wiki/dashboard.md` — `grace-hopper` appears in the
@@ -906,7 +906,71 @@ Contradicted pages (1) - need review:
 
 ![Dashboard showing contradicted page](png/synthadoc-wiki-conflict.png)
 
-### Option 1 — Manual resolution (recommended first time)
+### Option 1 — Agentic contradiction resolver (recommended)
+
+The contradiction resolver is a conversational workflow that walks through each
+contradicted page one at a time, proposes a fix, shows you the exact diff, and
+asks for your approval before writing anything.
+
+> **Two sources of contradicted pages**
+>
+> - **Source conflict** — a newly ingested document contradicts an existing page;
+>   the page is flagged `status: contradicted` with a `contradiction_note`
+>   describing the conflict. This is the scenario demonstrated in this step.
+> - **Adversarial gate** — during a lint run the adversarial reviewer flags a page
+>   for dubious or unsupported claims at or above the configured threshold (see
+>   Step 27). The page is auto-demoted to `contradicted`. The resolver handles both
+>   types through the same workflow.
+
+**From the web UI:**
+
+After any response that mentions contradicted pages — a lint run, a status query,
+or a lint report — a pre-filled suggestion appears below the assistant's reply:
+
+> "1 page marked contradicted — run the contradiction resolver to fix them interactively?"
+
+Click it to send. The suggestion fires automatically whenever the LLM's answer
+includes a non-zero contradicted page count; it clears once you act on it.
+
+"Run contradiction resolver" also appears as a chip in the sidebar whenever the
+chat mode is set to **Health Check** or **Power User**, and as a follow-up chip
+after any response about lint or contradiction topics.
+
+Alternatively, type:
+
+> "Run contradiction resolver"
+
+The resolver will:
+
+1. Show the list of contradicted pages and a cost estimate, then ask "Proceed?"
+2. For each page: read the current content and the conflicting source, propose a
+   rewrite that reconciles both views fairly, and display the full unified diff.
+3. Ask "Apply this change?" — you approve or skip each one individually.
+4. After you approve, re-lint only that page. If it passes, the page is
+   automatically promoted to *active*. If it fails, a different strategy is tried
+   (up to 3 attempts per page).
+5. Print a final summary: fixed, unresolved, and skipped counts, followed by the
+   updated lifecycle state counts as ground truth.
+
+**From the CLI:**
+
+```bash
+# Resolve all contradicted pages
+synthadoc workflow run contradiction-resolver
+
+# Resolve only the grace-hopper page
+synthadoc workflow run contradiction-resolver --slug grace-hopper
+
+# Resolve only adversarial-gate demotions
+synthadoc workflow run contradiction-resolver --type adversarial
+
+# Resolve only source-conflict demotions
+synthadoc workflow run contradiction-resolver --type source-conflict
+```
+
+The CLI renders the same approval prompts and diff previews as the web UI.
+
+### Option 2 — Manual resolution
 
 1. Open `wiki/grace-hopper.md` in Obsidian
 2. Edit the body to reflect a nuanced view — Hopper pioneered automated code generation
@@ -914,7 +978,10 @@ Contradicted pages (1) - need review:
 3. Change `status: contradicted` → `status: active` in the Properties panel
 4. Save — the Contradicted pages table clears immediately
 
-### Option 2 — LLM auto-resolve
+This is fast for a single well-understood conflict, but leaves no lifecycle audit record
+of the reasoning.
+
+### Option 3 — LLM auto-resolve (headless)
 
 ```bash
 synthadoc lint run --auto-resolve
@@ -922,47 +989,24 @@ synthadoc jobs status <job-id>
 ```
 
 The LLM proposes a resolution, appends it as a `**Resolution:**` block, and sets
-`status: active`. Review the result in Obsidian and edit if needed.
+`status: active`. No approval step — suitable for CI or batch processing where
+interactive review is not practical.
 
 Or from Obsidian: Command Palette → `Synthadoc: Lint: run with auto-resolve`.
 
-### Option 3 — Resolve via MCP (Claude Desktop or Claude Code)
+### Option 4 — Resolve via MCP (Claude Desktop or Claude Code)
 
 > **Prerequisite:** Synthadoc must be registered as an MCP server in Claude. See [Appendix I — Connect Claude via MCP](#appendix-i--connect-claude-via-mcp) for the `claude mcp add` command and Claude Desktop config.
 
-With Synthadoc connected as an MCP server, Claude can resolve contradictions using its own LLM — the brain/memory architecture in action. Claude reasons about the conflict, writes the resolution, then commits the lifecycle transition with a proper audit trail.
+With Synthadoc connected as an MCP server, Claude can resolve contradictions using its
+own LLM — the brain/memory architecture in action. Claude reasons about the conflict,
+writes the resolution, then commits the lifecycle transition with a proper audit trail.
 
 Ask Claude in a single prompt:
 
 > "The grace-hopper page is contradicted. Read it, resolve the A-0 compiler controversy by presenting both scholarly views fairly, update the page, then mark it active with a reason."
 
-Claude will execute this as three tool calls in sequence:
-
-**1. Read the page**
-```
-synthadoc_read_page("grace-hopper")
-```
-
-**2. Write the resolved content**
-```
-synthadoc_write_page(
-  slug="grace-hopper",
-  content="<Claude's synthesized resolution>",
-)
-```
-This updates the content, clears the `contradiction_note`, and bumps the wiki epoch.
-
-**3. Transition the lifecycle state**
-```
-synthadoc_lifecycle(
-  slug="grace-hopper",
-  to_state="active",
-  reason="Resolved: A-0 compiler controversy — both scholarly views preserved",
-)
-```
-This writes a permanent audit record: who triggered it (`mcp`), when, and why.
-
-The audit trail for the full resolution looks like:
+Claude will execute this as three tool calls in sequence and produce an audit trail:
 
 ```
 Slug          From          To      By    Timestamp            Reason
@@ -971,10 +1015,6 @@ grace-hopper  draft         active  lint    2026-05-28T17:54:51  lint passed
 grace-hopper  active  contradicted  lint    2026-05-28T18:30:00  conflict: A-0 compiler claim
 grace-hopper  contradicted  active  mcp     2026-06-18T21:45:00  Resolved: A-0 controversy — both views preserved
 ```
-
-> **Why this is better than Option 1:** The audit trail records that the resolution was applied, when, and with what stated reason — not just that the file was edited. Option 1 (direct file edit) leaves no lifecycle record.
->
-> **Why this is better than Option 2:** Claude's LLM (Anthropic) has stronger editorial reasoning than Synthadoc's configured provider, and can draw on conversation context — for example, if you've been discussing the controversy in the same session.
 
 > **Dashboard still showing the contradiction?** Dataview may be serving stale metadata.
 > Drop the cache: `Ctrl/Cmd+P` → **Dataview: Drop all cached file metadata**, then reopen
@@ -1248,12 +1288,12 @@ If `[lint]` is absent from `config.toml`, Synthadoc defaults to 2 — no file ch
 
 When a page accumulates too many adversarial warnings it is a signal that its claims are contested and it should not be serving as an authoritative source in query answers. The **adversarial gate** automates this: at the end of every lint run, any `active` or `stale` page whose warning count reaches or exceeds the threshold is automatically transitioned to `contradicted`.
 
-New wikis created with `synthadoc init` have the gate enabled at `3` by default. Existing wikis upgrading to v1.3.0 have the gate disabled — enable it by adding one line to `config.toml`:
+New wikis created with `synthadoc init` have the gate enabled at `2` by default. Existing wikis upgrading to v1.3.0 have the gate disabled — enable it by adding one line to `config.toml`:
 
 ```toml
 # config.toml
 [lint]
-adversarial_gate_threshold = 3   # recommended: 3 (general), 1 (compliance-sensitive)
+adversarial_gate_threshold = 2   # recommended: 2 (general), 1 (compliance-sensitive)
 ```
 
 The demotion is auditable — it appears in `synthadoc lifecycle log` with reason `"auto-demoted: N adversarial warning(s) ≥ gate threshold T"` — and is reversible with `synthadoc lifecycle activate <slug> --reason "..."` after you resolve the flagged claims.
@@ -2652,7 +2692,7 @@ synthadoc ingest --file sessions.txt -w my-wiki
 
 The web chat UI (and the Obsidian plugin query modal) can drive wiki maintenance conversationally — no terminal required. Type a maintenance request in plain English and the system confirms with you, re-ingests pages, fixes broken links, and runs lint, all from a single chat turn.
 
-Five workflows are available:
+Six workflows are available:
 
 | Workflow | Example phrase | Scope |
 |----------|---------------|-------|
@@ -2661,8 +2701,9 @@ Five workflows are available:
 | **Broken wikilinks scan and fix** | "scan for broken wikilinks" | Scans all active pages for `[[slug]]` references that resolve to no existing page; suggests corrections and fixes them after confirmation |
 | **Lint run and full report** | "run lint" | Runs a full lint pass, waits for it to complete, then surfaces the complete report in a single conversational turn |
 | **Scaffold and report** | "run scaffold" | Previews the domain and files to overwrite, asks for confirmation, then regenerates `index.md`, `purpose.md`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` |
+| **Contradiction resolver** | "run contradiction resolver" | For each contradicted page: reads content and sources, proposes a rewrite, shows the full diff, applies after approval, re-lints the page, and promotes it to *active* if it passes |
 
-### Demo — re-ingest all stale pages (Workflow A)
+### Demo — re-ingest all stale pages
 
 The History of Computing demo includes the `konrad-zuse` page whose source file can be modified to trigger stale detection. First manufacture a stale page:
 
@@ -2706,7 +2747,7 @@ Checking page states…
 
 When done, the workflow writes a plain-text summary showing the re-ingest outcome, the lint result (pass/fail), and the final lifecycle state of each page — `konrad-zuse` appears as ✓ active. No second step is needed: lint runs as part of the workflow.
 
-### Demo — re-ingest a specific page by slug (Workflow B)
+### Demo — re-ingest a specific page by slug
 
 Use this when you want to refresh one page regardless of its current lifecycle state — active, draft, or stale. No stale transition is needed.
 
@@ -2737,11 +2778,11 @@ In the web UI **Graph tab**, click any node to open the node detail panel. A **M
 | Chip | What happens |
 |------|-------------|
 | **⚑ Check this page for issues** | Sends "Check the [slug] page for issues" to the chat |
-| **↻ Re-ingest this page** | Sends "Re-ingest the [slug] page" to the chat, triggering Workflow B |
+| **↻ Re-ingest this page** | Sends "Re-ingest the [slug] page" to the chat, triggering a page-by-slug reingest |
 
 Clicking either chip routes the request through the normal confirmation flow — the agent confirms before doing anything.
 
-### Demo — scan and fix broken wikilinks (Workflow C)
+### Demo — scan and fix broken wikilinks
 
 **Setup — manufacture broken wikilinks in the History of Computing demo wiki**
 
@@ -2778,9 +2819,9 @@ If your wiki has no broken links, the workflow reports: *"No broken wikilinks fo
 
 ---
 
-### Demo — run lint and view the full report (Workflow D)
+### Demo — run lint and view the full report
 
-Workflow D runs a full lint pass from a single chat message and immediately streams the results — no separate `synthadoc lint run` needed.
+This workflow runs a full lint pass from a single chat message and immediately streams the results — no separate `synthadoc lint run` needed.
 
 In the web chat UI or Obsidian query modal, type: **"run lint and show me the report"**
 
@@ -2819,13 +2860,13 @@ No confirmation is required — lint runs and reports autonomously. Any other tr
 - `"run lint"`
 - `"run a full lint check and show me what needs attention"`
 
-> **Tip:** Use Workflow D to get a full picture first, then follow up in the same session: "scan for broken wikilinks" (Workflow C) or "re-ingest stale pages" (Workflow A).
+> **Tip:** Run lint first to get a full picture, then follow up in the same session: "scan for broken wikilinks" or "re-ingest stale pages".
 
 ---
 
-### Demo — run scaffold (Workflow E)
+### Demo — run scaffold
 
-Workflow E regenerates the wiki's core scaffold files from a single chat message. It shows you what will be overwritten and requires confirmation before writing anything.
+This workflow regenerates the wiki's core scaffold files from a single chat message. It shows you what will be overwritten and requires confirmation before writing anything.
 
 In the web chat UI or Obsidian query modal, type: **"run scaffold"**
 
@@ -2864,11 +2905,95 @@ Any other triggering phrase also works:
 - `"rebuild scaffold"`
 - `"regenerate scaffold for my wiki"`
 
-> **Tip:** Re-run Workflow E after adding a significant batch of new pages to keep the index categories and AGENTS.md guidelines current with the wiki's actual scope.
+> **Tip:** Re-run scaffold after adding a significant batch of new pages to keep the index categories and AGENTS.md guidelines current with the wiki's actual scope.
+
+### Demo — resolve contradicted pages
+
+**Prerequisites:** At least one page in `contradicted` state. Complete Step 9
+setup (ingest `first-compiler-controversy.pdf`) or run a full lint pass — the
+adversarial gate will demote any page whose flagged-claim count meets the
+threshold.
+
+Open the web chat UI. If a previous response mentioned contradicted pages, a
+pre-filled suggestion appears below it — click it directly:
+
+> *1 page marked contradicted — run the contradiction resolver to fix them interactively?*
+
+Or type: **"run contradiction resolver"**
+
+**Step 1 — Cost estimate and approval**
+
+```
+Scope: all  ·  1 contradicted page  ·  estimated ~0.1s / ~$0.003
+Proceed?
+```
+
+> **Yes, proceed** / **No, cancel**
+
+Click **Yes, proceed**.
+
+**Step 2 — Propose rewrite**
+
+The agent reads the current page and the conflicting source (for source-conflict
+pages) or the flagged claims (for gate-demoted pages), formulates a reconciling
+rewrite, and displays the full unified diff:
+
+```diff
+- Grace Hopper completed the A-0 compiler in 1952, making it the first
+- compiler ever written.
++ Grace Hopper completed the A-0 system in 1952 — a pioneering loader and
++ linker that automated the assembly of code from reusable subroutines.
++ The first production compiler is generally credited to the FORTRAN team
++ at IBM (1957).
+```
+
+> *Apply this change?*
+> **Apply** / **Skip this page**
+
+Click **Apply**.
+
+**Step 3 — Scoped re-lint**
+
+```
+Re-linting grace-hopper…
+Scoped lint running... (14s)  ✓ passed — 0 warnings, no contradiction note
+✅ grace-hopper → active  (strategy: Strategy 1 — Content rewrite, attempt 1)
+```
+
+**Step 4 — Final summary**
+
+```
+Contradiction Resolver — Complete
+
+✅ Fixed (1):
+  grace-hopper — Strategy 1 — Content rewrite
+
+⚠ Unresolved (0):
+⏭ Skipped (0):
+
+Wiki lifecycle counts: draft=0  active=12  stale=0  contradicted=0  archived=1
+```
+
+The contradicted count reaches zero — no further action needed.
+
+> **Tip:** If the rewrite does not pass re-lint on the first attempt, the
+> workflow automatically selects a different strategy (web ingest, force
+> re-ingest, or cross-page resolution) for up to 3 attempts. After 3 failures
+> it escalates with a plain-language diagnosis and concrete suggestions, leaving
+> the page in *contradicted* for manual review.
+
+**Scoping the resolver**
+
+```bash
+synthadoc workflow run contradiction-resolver                           # all contradicted pages
+synthadoc workflow run contradiction-resolver --slug grace-hopper       # one page
+synthadoc workflow run contradiction-resolver --type adversarial        # adversarial-gate demotions only
+synthadoc workflow run contradiction-resolver --type source-conflict    # source-conflict demotions only
+```
 
 ### How it works
 
-Each workflow runs as an agentic tool-call loop that streams inline progress after every step — you see what the agent is doing as it happens. All destructive operations (re-ingest, link fix, scaffold write) require your explicit confirmation before anything is changed. Declining exits cleanly with no side effects.
+Each workflow runs as an agentic tool-call loop that streams inline progress after every step — you see what the agent is doing as it happens. All destructive operations (re-ingest, link fix, scaffold write, content rewrite) require your explicit confirmation before anything is changed. Declining exits cleanly with no side effects.
 
 **Key behaviours by workflow:**
 
@@ -2879,8 +3004,11 @@ Each workflow runs as an agentic tool-call loop that streams inline progress aft
 | **C — broken wikilinks** | ✓ required (if any found) | If the wiki is already clean, the workflow stops after scanning — no card appears |
 | **D — lint report** | none | Lint is read-only; runs and reports autonomously |
 | **E — scaffold** | ✓ required | User-written content above `<!-- synthadoc:scaffold -->` markers is always preserved |
+| **F — contradiction resolver** | ✓ required ×2 (cost + each diff) | Shows full diff before every write; re-lints only the changed page; promotes on pass or escalates after 3 failed attempts |
 
-For tool-level detail — per-workflow tool sets, SSE extensions (`tool_progress`, `confirm_request`, `done.pre_prompt`), routing architecture, and loop constraints — see [§ Agentic Maintenance Workflows](design.md#agentic-maintenance-workflows) in the design doc.
+For tool-level detail — per-workflow tool sets, SSE extensions (`tool_progress`, `confirm_request`, `done.pre_prompt`), routing architecture, loop constraints, pre-prompt mechanics, and audit trail — see [§35 Contradiction Resolver Workflow](design.md#35-contradiction-resolver-workflow) in the design doc.
+
+→ Full CLI command reference: [README — Agentic workflows](../README.md#agentic-workflows)
 
 ---
 

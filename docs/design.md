@@ -43,6 +43,7 @@
 32. [Knowledge Graph](#32-knowledge-graph)
 33. [Multi-Platform Agent Skill Files](#33-multi-platform-agent-skill-files)
 34. [Synthadoc Scaffold Marker](#34-synthadoc-scaffold-marker)
+35. [Contradiction Resolver Workflow](#35-contradiction-resolver-workflow)
 
 **Appendices**
 - [Appendix A — Release Feature Index](#appendix-a--release-feature-index)
@@ -395,7 +396,7 @@ Runs against the entire wiki or a scoped subset:
 
 **Adversarial review _(v0.5.0)_:** After structural checks complete, `LintAgent` runs an independent LLM review of every non-excluded page concurrently via `asyncio.gather()` — a 100-page wiki completes in wall-clock time equal to one call. The adversarial provider is configured via `[agents].adversarial` (falls back to `[agents].default` if absent); using a different model family from the ingest model reduces self-serving bias. Results are stored as `lint_warnings: [{claim, concern}]` in each page's YAML frontmatter. The cap is `adversarial_max_per_page` (default 2). Rate-limit failures are caught per-page and stored as non-fatal entries. Skipped entirely when `--no-adversarial` is passed to `lint run`; in that case, existing `lint_warnings` are cleared from all pages.
 
-**Adversarial gate _(v1.3.0)_:** When `adversarial_gate_threshold` is set in `[lint]` of `config.toml`, any `active` or `stale` page that accumulates that many or more adversarial warnings during a lint run is automatically transitioned to `contradicted` at the end of the adversarial pass. The transition is recorded in the lifecycle audit trail with the reason `"auto-demoted: N adversarial warning(s) ≥ gate threshold T"`. Pages already in `contradicted`, `archived`, or `draft` states are never affected by the gate. Setting the value to `0` or omitting the key entirely disables the gate. New wikis created with `synthadoc init` have the gate enabled at `3` by default. Existing wikis upgrading to v1.3.0 have the gate disabled until `adversarial_gate_threshold` is explicitly added to `config.toml`. The count of auto-demotions in each lint run is reported in `LintReport.adversarial_demotions` and shown in `synthadoc lint report`. Recommended values: `3` for general wikis, `1` for compliance-sensitive corpora.
+**Adversarial gate _(v1.3.0)_:** When `adversarial_gate_threshold` is set in `[lint]` of `config.toml`, any `active` or `stale` page that accumulates that many or more adversarial warnings during a lint run is automatically transitioned to `contradicted` at the end of the adversarial pass. The transition is recorded in the lifecycle audit trail with the reason `"auto-demoted: adversarial gate — N warning(s) ≥ threshold T"`. Pages already in `contradicted`, `archived`, or `draft` states are never affected by the gate. Setting the value to `0` or omitting the key entirely disables the gate. New wikis created with `synthadoc init` have the gate enabled at `2` by default. Existing wikis upgrading to v1.3.0 have the gate disabled until `adversarial_gate_threshold` is explicitly added to `config.toml`. The count of auto-demotions in each lint run is reported in `LintReport.adversarial_demotions` and shown in `synthadoc lint report`. Recommended values: `2` for general wikis (reliable across model families — gives a one-warning margin rather than requiring the LLM to hit its absolute cap), `1` for compliance-sensitive corpora.
 
 ### SkillAgent
 
@@ -3225,9 +3226,9 @@ This design lets users annotate any section of `purpose.md` without losing their
 
 ## Agentic Maintenance Workflows
 
-The web chat UI, Obsidian plugin query modal, and `synthadoc query` CLI command all support conversational wiki maintenance through an agentic tool-call loop — they all reach `ActionAgent.run_gen` via the `/query/stream` SSE endpoint. (`synthadoc lint` and `synthadoc ingest` are direct job-queue commands and bypass the workflow system entirely.) Five workflows are available:
+The web chat UI, Obsidian plugin query modal, and `synthadoc query` CLI command all support conversational wiki maintenance through an agentic tool-call loop — they all reach `ActionAgent.run_gen` via the `/query/stream` SSE endpoint. (`synthadoc lint` and `synthadoc ingest` are direct job-queue commands and bypass the workflow system entirely.) The following workflows are available:
 
-### Workflow A — stale-pages bulk reingest
+### Stale-pages bulk reingest
 
 Triggered by phrases such as "re-ingest stale pages" or "fix stale pages". The action agent routes the intent to the `IngestLintWorkflow` orchestrator:
 
@@ -3238,7 +3239,7 @@ Triggered by phrases such as "re-ingest stale pages" or "fix stale pages". The a
 5. `poll_job(lint_job_id)` — waits for the lint job to complete
 6. Plain-text summary of every re-ingest outcome and the lint result (pass/fail)
 
-### Workflow B — page-by-slug reingest
+### Page-by-slug reingest
 
 Triggered by phrases such as "re-ingest the alan-turing page". A pre-LLM regex fast-path in the action agent catches this pattern and routes directly to `IngestLintWorkflow` without an LLM classification call, ensuring reliable routing regardless of how the user phrases the request:
 
@@ -3269,7 +3270,7 @@ In the web UI **Graph tab**, the node detail panel includes a **Maintenance** se
 | Chip | Sent query | Workflow |
 |------|-----------|---------|
 | **⚑ Check this page for issues** | `"Check the {slug} page for issues"` | Lint-style analysis for the selected page |
-| **↻ Re-ingest this page** | `"Re-ingest the {slug} page"` | Triggers Workflow B for the selected node |
+| **↻ Re-ingest this page** | `"Re-ingest the {slug} page"` | Triggers the page-by-slug reingest workflow |
 
 ### SSE protocol extensions (v1.2.0)
 
@@ -3277,7 +3278,7 @@ In the web UI **Graph tab**, the node detail panel includes a **Maintenance** se
 - `confirm_request` — `{session_id, message, yes_label, no_label}` — requires a user decision before proceeding
 - `done.pre_prompt` — optional string in the `done` event that pre-fills the chat textarea with the natural next action (e.g. "Run lint to promote re-ingested pages to active")
 
-### Workflow C — broken wikilinks scan and fix
+### Broken wikilinks scan and fix
 
 Triggered by phrases such as "scan for broken wikilinks", "fix broken links", or "check wikilink integrity". A pre-LLM regex fast-path in the action agent catches this pattern and routes directly to `BrokenWikilinksWorkflow`:
 
@@ -3291,7 +3292,7 @@ Triggered by phrases such as "scan for broken wikilinks", "fix broken links", or
 
 Broken links with a fuzzy suggestion are replaced with `[[corrected-slug]]`. Broken links with no close match are unlinked — the link markup is removed while any display text is preserved.
 
-### Workflow D — lint run and full report
+### Lint run and full report
 
 Triggered by phrases such as "run lint and show me the report" or "lint run". A pre-LLM regex fast-path routes directly to `LintReportWorkflow` without an LLM classification call:
 
@@ -3300,7 +3301,7 @@ Triggered by phrases such as "run lint and show me the report" or "lint run". A 
 3. `get_lint_report` — reads the last recorded lint summary from the audit DB plus per-page frontmatter (contradicted state, adversarial warnings, orphan flag)
 4. Plain-text report: dangling links removed, orphan pages, contradictions, contradicted pages (with state-change date), adversarial warnings (slug + count), orphan slugs
 
-### Workflow E — scaffold and report
+### Scaffold and report
 
 Triggered by phrases such as "run scaffold" or "regenerate scaffold". A pre-LLM regex fast-path routes directly to `ScaffoldWorkflow` with a confirm gate before any file is written:
 
@@ -3314,7 +3315,7 @@ Triggered by phrases such as "run scaffold" or "regenerate scaffold". A pre-LLM 
 
 ### Tool sets by workflow
 
-**IngestLintWorkflow** (Workflows A and B):
+**IngestLintWorkflow** (stale-pages bulk reingest and page-by-slug reingest):
 
 | Tool | Description |
 |------|-------------|
@@ -3326,7 +3327,7 @@ Triggered by phrases such as "run scaffold" or "regenerate scaffold". A pre-LLM 
 | `confirm` | Sends a `confirm_request` SSE event and blocks until the user responds (Yes/No) |
 | `get_page_states` | Returns the current lifecycle state for a list of slugs |
 
-**BrokenWikilinksWorkflow** (Workflow C):
+**BrokenWikilinksWorkflow** (broken wikilinks scan and fix):
 
 | Tool | Description |
 |------|-------------|
@@ -3337,7 +3338,7 @@ Triggered by phrases such as "run scaffold" or "regenerate scaffold". A pre-LLM 
 | `poll_job` | Polls a job to terminal state |
 | `get_page_states` | Returns the current lifecycle state for a list of slugs |
 
-**LintReportWorkflow** (Workflow D):
+**LintReportWorkflow** (lint run and full report):
 
 | Tool | Description |
 |------|-------------|
@@ -3345,7 +3346,7 @@ Triggered by phrases such as "run scaffold" or "regenerate scaffold". A pre-LLM 
 | `poll_job` | Waits for the lint job to reach a terminal state |
 | `get_lint_report` | Reads last lint summary from audit DB and per-page frontmatter; returns contradicted pages, adversarial warnings, and orphan slugs |
 
-**ScaffoldWorkflow** (Workflow E):
+**ScaffoldWorkflow** (scaffold and report):
 
 | Tool | Description |
 |------|-------------|
@@ -3360,7 +3361,7 @@ In the web UI **Graph tab**, the node detail panel includes a **Maintenance** se
 | Chip | Sent query | Workflow |
 |------|-----------|---------|
 | **⚑ Check this page for issues** | `"Check the {slug} page for issues"` | Lint-style analysis for the selected page |
-| **↻ Re-ingest this page** | `"Re-ingest the {slug} page"` | Triggers Workflow B for the selected node |
+| **↻ Re-ingest this page** | `"Re-ingest the {slug} page"` | Triggers the page-by-slug reingest workflow |
 
 ### SSE protocol extensions (v1.2.0)
 
@@ -3460,12 +3461,146 @@ All three files share identical body content generated from the same template; t
 
 ---
 
+## 35. Contradiction Resolver Workflow
+
+When the adversarial lint gate or source-conflict detection marks a page as
+*contradicted*, it needs human-reviewed remediation before it can return to
+*active* status. The contradiction resolver handles this through a structured,
+interactive agentic loop.
+
+### Contradiction types
+
+Two kinds of contradicted page are in scope:
+
+**Gate-demoted** pages have been flagged by the adversarial reviewer for
+containing a number of dubious, unsupported, or factually questionable claims
+that meets or exceeds the configured threshold. The specific flagged claims are
+shown to the resolver agent as context.
+
+**Source-conflict** pages were demoted because a newly ingested source
+contradicts the existing content. The conflict note and the original source
+content are provided to the resolver agent as context.
+
+A page can be in both categories simultaneously; the resolver addresses both
+signals in a single rewrite.
+
+### Per-page resolution loop
+
+For each selected page, the workflow:
+
+1. Reads the current content and any available source material.
+2. Selects a resolution strategy and explains its reasoning.
+3. Proposes a specific change — displaying the full diff — and asks for your
+   approval before writing anything.
+4. Applies the change only if you approve.
+5. Re-lints the page (only that page, not the whole wiki) to verify the fix.
+6. If the page passes, it is promoted back to *active* with a lifecycle event
+   naming the strategy used.
+7. If the page fails, a different strategy is selected and the loop repeats.
+   After three failed attempts the workflow escalates — providing a plain-language
+   diagnosis and concrete suggestions for manual action.
+
+Between pages, the workflow asks "Continue to next page?" so you can stop at
+any point.
+
+### Strategy menu
+
+| Strategy | When it runs |
+|---|---|
+| Content rewrite | Always the first attempt — rewrites the page to remove unsupported claims or reconcile conflicting sources with explicit hedging |
+| Web ingest for better grounding | After a failed first attempt when the agent judges the page lacks authoritative sourcing — proposes fetching a specific URL |
+| Force source re-ingest | Source file exists but may be outdated — proposes re-ingesting with a force flag |
+| Cross-page resolution | The conflict stems from a related page's reference — proposes modifying the referring page |
+| Escalate | Cap reached (3 attempts) — detailed diagnosis and concrete next steps, page remains *contradicted* |
+
+### Final confirmation
+
+After all pages are processed, a summary shows fixed, unresolved, and skipped
+counts. The workflow then runs a full lifecycle status check as ground truth —
+confirming whether *contradicted* reaches zero or identifying what remains.
+
+### How to trigger
+
+**Web UI — pre-prompt:** After any conversational response that mentions at least
+one contradicted page (detected by the regex `\b([1-9]\d*)\s+contradicted\b` in
+the answer text), the server attaches a `pre_prompt` field to the `done` SSE
+event. The web UI renders this as a clickable suggestion below the assistant's
+reply — not a chip, but a pre-filled input that submits automatically when
+clicked:
+
+> "2 pages marked contradicted — run the contradiction resolver to fix them interactively?"
+
+The pre-prompt fires after lint runs, status queries, lint reports, or any other
+response that surfaces a non-zero contradicted count. It does not fire when the
+answer explicitly reports zero pages (`\b0\s+contradicted\b|no\s+contradicted`
+guard). It is cleared once the user sends the suggestion, so it does not
+re-appear on subsequent turns.
+
+**Web UI — hint chips:** Two chip pools surface the resolver without a query
+being needed first:
+
+- `HEALTH_CHECK` and `POWER_USER` mode chip pools always include
+  "Run contradiction resolver" and "List contradicted pages".
+- The `lint / contradiction` topic-pattern (triggered when a response mentions
+  "lint", "contradiction", or "dangling") appends "Run contradiction resolver"
+  and "List contradicted pages" as follow-up chips below the response.
+
+**CLI:**
+```bash
+synthadoc run contradiction-resolver              # all contradicted pages
+synthadoc run contradiction-resolver --slug alan-turing   # one page
+synthadoc run contradiction-resolver --type gate  # gate-demoted pages only
+synthadoc run contradiction-resolver --type conflict  # source conflicts only
+```
+
+`--slug` still calls `tool_get_contradicted_pages(scope="all")` internally and
+filters to the given slug after the list is returned. `--type gate` matches pages
+that carry `lint_warnings`; `--type conflict` matches pages that carry a
+`contradiction_note`. Both flags can be combined with `--slug`.
+
+### Scoped re-lint
+
+After each content rewrite the resolver does not re-lint the entire wiki.
+`tool_run_scoped_lint` enqueues a single-page job:
+
+```json
+{ "scope": "slug", "slug": "<page>", "lifecycle": false }
+```
+
+The full adversarial review runs on just that page. The resolver polls the job to
+completion, then reads the page back from the store and evaluates two conditions:
+
+1. `lint_warnings` count is below `adversarial_gate_threshold` (or zero if no
+   threshold is configured).
+2. `contradiction_note` is absent — cleared by the ingest pipeline when a
+   source-conflict is successfully reconciled, or absent for gate-only pages.
+
+If both conditions pass the page is promoted. If either fails a different
+strategy is selected and the loop repeats (up to 3 attempts per page before
+escalation).
+
+### Audit trail
+
+`tool_transition_lifecycle_state` writes to two separate DB tables when it
+promotes a page back to *active*:
+
+| Call | Table | Read by |
+|---|---|---|
+| `set_page_state(slug, to_state, "workflow")` | `page_states` | `GET /lifecycle/pages` (current lifecycle state) |
+| `record_lifecycle_event(slug, from_state, to_state, reason, "workflow")` | `lifecycle_events` | `GET /lifecycle/events?slug=…` (immutable audit log) |
+
+Each call is wrapped in an independent `try/except` block — a DB failure in
+either does not abort the workflow. The page file is written first via
+`WikiStorage.write_page`; the two DB writes follow.
+
+---
+
 ## Appendix A — Release Feature Index
 
 ### v1.2.1
 
-- **Three additional agentic maintenance workflows** — extending the pluggable workflow registry introduced in v1.2.0 with three new conversational workflows: **Workflow C** (broken wikilinks scan and fix — "scan for broken wikilinks") scans all active pages for dead `[[slug]]` references, proposes fuzzy-matched corrections with `difflib`, and applies fixes after confirmation; **Workflow D** (lint run and full report — "run lint") runs a full lint pass and streams the complete report in one turn with no confirmation gate; **Workflow E** (scaffold regeneration — "run scaffold") previews domain and files to overwrite, confirms, then regenerates `wiki/index.md`, `wiki/purpose.md`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`. All three are fully pluggable: each is a self-contained module implementing `AgenticWorkflow` with a `MATCH_RE` class attribute; adding a workflow to `ROUTED_WORKFLOWS` in `_registry.py` automatically extends `_ACTION_RE` coverage via the dynamic `_ROUTED_PAT` union — no other file changes required.
-- **`get_page_states` step in agentic reingest** — Workflows A and B now call `get_page_states` after the lint run completes, returning the final lifecycle state (`active`, `stale`, `draft`, `archived`) of every re-ingested page as part of the completion summary.
+- **Three additional agentic maintenance workflows** — extending the pluggable workflow registry introduced in v1.2.0 with three new conversational workflows: **broken wikilinks scan and fix** ("scan for broken wikilinks") scans all active pages for dead `[[slug]]` references, proposes fuzzy-matched corrections with `difflib`, and applies fixes after confirmation; **lint run and full report** ("run lint") runs a full lint pass and streams the complete report in one turn with no confirmation gate; **scaffold regeneration** ("run scaffold") previews domain and files to overwrite, confirms, then regenerates `wiki/index.md`, `wiki/purpose.md`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`. All three are fully pluggable: each is a self-contained module implementing `AgenticWorkflow` with a `MATCH_RE` class attribute; adding a workflow to `ROUTED_WORKFLOWS` in `_registry.py` automatically extends `_ACTION_RE` coverage via the dynamic `_ROUTED_PAT` union — no other file changes required.
+- **`get_page_states` step in agentic reingest** — The stale-pages and page-by-slug reingest workflows now call `get_page_states` after the lint run completes, returning the final lifecycle state (`active`, `stale`, `draft`, `archived`) of every re-ingested page as part of the completion summary.
 - **`synthadoc query` CLI agentic routing** — the `synthadoc query` CLI command now routes through the same action-agent path as the web UI chat, enabling all five agentic maintenance workflows from the terminal.
 - **Audit DB secondary indexes** — `audit_events`, `lifecycle_events`, and `claim_citations` tables now carry secondary indexes on their most-queried foreign-key and timestamp columns, eliminating full-table scans on large audit databases.
 - **Web UI auto-scroll during agentic workflows** — the content panel now auto-scrolls to the bottom during agentic workflow progress so inline `tool_progress` events stay visible without manual scrolling.
@@ -3475,7 +3610,7 @@ All three files share identical body content generated from the same template; t
 
 ### v1.2.0
 
-- **Agentic Ingest & Lint Workflow** — conversational agentic loop in the web UI chat that orchestrates re-ingest and lint runs without the user leaving the chat. Two workflows: **Workflow A** (bulk stale reingest — "re-ingest stale pages") finds every stale page, confirms, re-ingests each one, then runs lint; **Workflow B** (by-slug reingest — "re-ingest the alan-turing page") re-ingests any single page by slug regardless of lifecycle state (active, draft, or stale). Built on a tool-call loop in the action agent: six tools (`find_stale_pages`, `find_page_source`, `ingest_source`, `poll_job`, `run_lint`, `confirm`); two new SSE event types (`tool_progress`, `confirm_request`); new `POST /ingest` and `POST /action/confirm` HTTP endpoints. Slug-based requests are intercepted by a regex fast-path before LLM extraction for reliable routing. Errors return as structured `tool_result` payloads — the stream never dies on a tool failure; partial completion continues with remaining pages. Graph sidebar maintenance chips in the web UI trigger both workflows with one click.
+- **Agentic Ingest & Lint Workflow** — conversational agentic loop in the web UI chat that orchestrates re-ingest and lint runs without the user leaving the chat. Two workflows: **stale-pages bulk reingest** ("re-ingest stale pages") finds every stale page, confirms, re-ingests each one, then runs lint; **page-by-slug reingest** ("re-ingest the alan-turing page") re-ingests any single page by slug regardless of lifecycle state (active, draft, or stale). Built on a tool-call loop in the action agent: six tools (`find_stale_pages`, `find_page_source`, `ingest_source`, `poll_job`, `run_lint`, `confirm`); two new SSE event types (`tool_progress`, `confirm_request`); new `POST /ingest` and `POST /action/confirm` HTTP endpoints. Slug-based requests are intercepted by a regex fast-path before LLM extraction for reliable routing. Errors return as structured `tool_result` payloads — the stream never dies on a tool failure; partial completion continues with remaining pages. Graph sidebar maintenance chips in the web UI trigger both workflows with one click.
 - **Content snapshots and rollback** — page body captured at every lifecycle transition (manual CLI/Obsidian/MCP, lint-driven auto-transition); browse per-page version history with `synthadoc lifecycle history`; restore any prior version with `synthadoc lifecycle rollback` (saves current body first so rollback is always undoable). Content Snapshots tab added to the Obsidian Lifecycle modal. See [§23 Page Content Snapshots](#page-content-snapshots).
 - **Background vault monitoring** — Obsidian plugin registers `vault.on("modify")` with a 2-second per-slug debounce; on each quiet period it posts `POST /pages/{slug}/snapshot` to capture manual edits that do not trigger a lifecycle transition. Server-side deduplication ensures no snapshot is written when content is unchanged. See [§8 Background vault monitoring](#background-vault-monitoring-v120).
 - **Atomic page writes** — `WikiStorage.write_page` now writes to a `.tmp` sibling then calls `os.replace()`, eliminating the risk of a partial page file on mid-write crash or disk error. Shared `atomic_write_text()` utility in `synthadoc/utils.py` consolidates the pattern used by `write_page`, `Scheduler._save_raw`, and `Orchestrator._auto_block_domain` (BUG-24).
