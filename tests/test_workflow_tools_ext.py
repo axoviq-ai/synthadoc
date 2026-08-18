@@ -341,6 +341,31 @@ async def test_get_wiki_status_empty_wiki(tmp_path):
     assert all(v == 0 for v in result.values())
 
 
+@pytest.mark.asyncio
+async def test_get_wiki_status_excludes_system_pages(tmp_path):
+    """System pages (index, log, dashboard, etc.) must not appear in the count.
+
+    These pages are in SYSTEM_PAGE_SLUGS and are excluded by synthadoc status.
+    tool_get_wiki_status must match that behaviour so the final workflow summary
+    is consistent with what the user sees in the CLI.
+    """
+    store = _make_store(tmp_path, {
+        "real-page": _page(status=LifecycleState.ACTIVE),
+        # System pages — must all be excluded from counts
+        "index":     _page(status=LifecycleState.ACTIVE),
+        "log":       _page(status=LifecycleState.ACTIVE),
+        "dashboard": _page(status=LifecycleState.ACTIVE),
+        "purpose":   _page(status=LifecycleState.ACTIVE),
+        "overview":  _page(status=LifecycleState.ACTIVE),
+    })
+    ctx = _ctx(tmp_path, store)
+    from synthadoc.agents.workflows._tools import tool_get_wiki_status
+    result = await tool_get_wiki_status(ctx)
+    # Only "real-page" counts — the 5 system pages must be excluded.
+    assert result["active"] == 1
+    assert sum(result.values()) == 1
+
+
 # ── additional coverage tests ─────────────────────────────────────────────────
 
 @pytest.mark.asyncio

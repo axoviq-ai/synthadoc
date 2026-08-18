@@ -856,7 +856,10 @@ async def tool_notify(ctx: "WorkflowContext", message: str, level: str = "info")
 
 
 async def tool_get_wiki_status(ctx: "WorkflowContext") -> dict:
-    """Return a lifecycle state count for every page in the wiki.
+    """Return a lifecycle state count for user-managed pages in the wiki.
+
+    System pages (index, log, dashboard, purpose, overview) are excluded
+    so the count matches what ``synthadoc status`` reports.
 
     Useful as a final ground-truth check at the end of a maintenance workflow.
 
@@ -865,10 +868,14 @@ async def tool_get_wiki_status(ctx: "WorkflowContext") -> dict:
         {"active": int, "draft": int, "stale": int,
          "contradicted": int, "archived": int}
     """
+    from synthadoc.storage.wiki import SYSTEM_PAGE_SLUGS  # avoid top-level circular import
+
     counts: dict[str, int] = {
         "active": 0, "draft": 0, "stale": 0, "contradicted": 0, "archived": 0,
     }
     for slug in ctx.store.list_pages():
+        if slug in SYSTEM_PAGE_SLUGS:
+            continue
         page = ctx.store.read_page(slug)
         if page is None:
             continue
