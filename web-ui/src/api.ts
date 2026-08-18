@@ -84,6 +84,22 @@ export async function getHints(mode: string): Promise<string[]> {
     return data.hints ?? [];
 }
 
+export interface LifecycleStatus {
+    draft?: number;
+    active?: number;
+    contradicted?: number;
+    stale?: number;
+    archived?: number;
+    unlinted?: number;
+    draft_candidates?: number;
+}
+
+export async function getLifecycleStatus(): Promise<LifecycleStatus> {
+    const resp = await fetch(`${BASE}/lifecycle/status`, { cache: "no-store" });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.json();
+}
+
 export async function streamQuery(
     question: string,
     sessionId: string,
