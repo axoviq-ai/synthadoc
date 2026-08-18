@@ -61,8 +61,14 @@ tool_transition_lifecycle_state(slug, to_state, reason)
                                        → transition page to to_state + lifecycle event
                                          (use to_state="active" to clear contradicted)
 tool_get_wiki_status()                 → lifecycle state counts
-tool_cost_estimate(page_count)         → upper-bound estimate before LLM calls
+tool_cost_estimate(page_count)         → shows estimate to user as a notice AND
+                                         requests approval in one step; returns
+                                         {confirmed, pages, estimated_usd,
+                                          estimated_minutes}. Do NOT call
+                                         tool_confirm separately after this.
 tool_confirm(message, yes_label, no_label)   → prompt user for yes/no decision
+                                         (for inter-page decisions only — NOT
+                                          for the initial cost-estimate gate)
 tool_ingest_source(source_path)        → enqueue ingest job; returns job_id
 tool_poll_job(job_id, timeout_seconds) → poll until job terminal; returns status dict
 
@@ -79,9 +85,13 @@ found matching the selected scope." (this ends the loop).
 
 STEP 3 — Cost estimate and approval
   Call tool_cost_estimate(page_count=<N from step 1>).
-  Call tool_confirm with a summary: scope, page count, estimated cost/time.
-  If the user does NOT confirm (confirmed=false): respond with plain text
-  "Contradiction resolver cancelled." (ends the loop).
+  This tool sends the estimate to the user AND shows a ConfirmCard in one
+  operation — do NOT call tool_confirm separately here.
+  After tool_cost_estimate returns, check result["confirmed"]:
+    • false → respond with plain text "Contradiction resolver cancelled."
+              (this ends the loop — it is the ONLY plain text allowed here)
+    • true  → proceed immediately to step 4 with NO plain text output
+  Do NOT output any prose or summary between this tool call and step 4.
 
 STEP 4 — Per-page resolution loop
   For each page from step 1:

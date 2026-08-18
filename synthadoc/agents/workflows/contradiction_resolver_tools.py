@@ -114,19 +114,52 @@ async def tool_read_source_content(ctx: "WorkflowContext", slug: str) -> dict:
 
 
 async def tool_cost_estimate(ctx: "WorkflowContext", page_count: int) -> dict:
-    """Upper-bound cost estimate for resolving page_count contradicted pages.
+    """Upper-bound cost estimate AND user approval gate (combined).
 
-    Based on this workflow's token profile (adversarial re-lint x strategies).
-    Other workflows would compute different constants.
+    Sends the estimate as a notice SSE event so the user sees it immediately,
+    then calls tool_confirm internally to ask whether to proceed.  Combining
+    both steps into one tool call prevents the LLM from accidentally producing
+    a plain-text summary between the estimate and the approval request, which
+    would terminate the workflow loop prematurely.
 
-    Returns: {"pages", "estimated_tokens", "estimated_usd", "estimated_minutes"}
+    Returns: {"confirmed": bool, "pages", "estimated_tokens",
+              "estimated_usd", "estimated_minutes"}
     """
+    from synthadoc.agents.workflows._tools import tool_confirm  # avoid circular at module level
+
     tokens = _TOKENS_PER_PAGE_UPPER * max(page_count, 1)
     usd = (tokens / 1000) * _USD_PER_1K_TOKENS
     minutes = max(1, (page_count * _SECONDS_PER_PAGE) // 60)
-    return {
+    estimate = {
         "pages": page_count,
         "estimated_tokens": tokens,
         "estimated_usd": round(usd, 4),
         "estimated_minutes": minutes,
     }
+
+    # Show the estimate as a notice so the user can read it while the ConfirmCard loads.
+    notice_text = (
+        f"Updated estimate: {page_count} page(s), "
+        f"~${estimate['estimated_usd']:.2f}, "
+        f"about {estimate['estimated_minutes']} minute(s)."
+    )
+    try:
+        await ctx.send_sse_event("notice", {"text": notice_text})
+    except Exception:  # noqa: BLE001
+        pass
+
+    # Ask for approval — this blocks until the user responds (or 120 s timeout).
+    confirm_result = await tool_confirm(
+        ctx,
+        message=(
+            f"**Contradiction Resolver — ready to start**\n\n"
+            f"- Pages to process: **{page_count}**\n"
+            f"- Estimated cost: ~**${estimate['estimated_usd']:.2f}**\n"
+            f"- Estimated time: ~**{estimate['estimated_minutes']} min**\n\n"
+            "Proceed with resolution?"
+        ),
+        yes_label="Proceed",
+        no_label="Cancel",
+    )
+
+    return {**estimate, "confirmed": confirm_result.get("confirmed", False)}

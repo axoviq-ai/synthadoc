@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from synthadoc.storage.wiki import WikiPage, WikiStorage, LifecycleState
 
@@ -180,27 +180,69 @@ async def test_read_source_fallback_none(tmp_path):
 
 
 # ── tool_cost_estimate ────────────────────────────────────────────────────────
+# tool_cost_estimate now calls tool_confirm internally (via a deferred import
+# from _tools.py), so all tests must patch that dependency.
+
+_CONFIRM_PATCH = "synthadoc.agents.workflows._tools.tool_confirm"
+
 
 @pytest.mark.asyncio
 async def test_cost_estimate_positive_values(tmp_path):
+    """Returns correct estimate fields and forwards confirmed=True from tool_confirm."""
     store = _make_store(tmp_path, {})
     ctx = _ctx(tmp_path, store)
-    from synthadoc.agents.workflows.contradiction_resolver_tools import tool_cost_estimate
-    result = await tool_cost_estimate(ctx, page_count=4)
+    with patch(_CONFIRM_PATCH, new_callable=AsyncMock,
+               return_value={"confirmed": True}):
+        from synthadoc.agents.workflows.contradiction_resolver_tools import tool_cost_estimate
+        result = await tool_cost_estimate(ctx, page_count=4)
     assert result["pages"] == 4
     assert result["estimated_tokens"] > 0
     assert result["estimated_usd"] >= 0.0
     assert result["estimated_minutes"] > 0
+    assert result["confirmed"] is True
 
 
 @pytest.mark.asyncio
 async def test_cost_estimate_single_page(tmp_path):
+    """Scaling: 4-page estimate has more tokens than 1-page estimate."""
     store = _make_store(tmp_path, {})
     ctx = _ctx(tmp_path, store)
-    from synthadoc.agents.workflows.contradiction_resolver_tools import tool_cost_estimate
-    one = await tool_cost_estimate(ctx, page_count=1)
-    four = await tool_cost_estimate(ctx, page_count=4)
+    with patch(_CONFIRM_PATCH, new_callable=AsyncMock,
+               return_value={"confirmed": True}):
+        from synthadoc.agents.workflows.contradiction_resolver_tools import tool_cost_estimate
+        one = await tool_cost_estimate(ctx, page_count=1)
+        four = await tool_cost_estimate(ctx, page_count=4)
     assert four["estimated_tokens"] > one["estimated_tokens"]
+
+
+@pytest.mark.asyncio
+async def test_cost_estimate_sends_notice_sse(tmp_path):
+    """tool_cost_estimate emits a notice SSE event with the formatted estimate."""
+    store = _make_store(tmp_path, {})
+    ctx = _ctx(tmp_path, store)
+    with patch(_CONFIRM_PATCH, new_callable=AsyncMock,
+               return_value={"confirmed": True}):
+        from synthadoc.agents.workflows.contradiction_resolver_tools import tool_cost_estimate
+        await tool_cost_estimate(ctx, page_count=3)
+    ctx.send_sse_event.assert_awaited_once()
+    event_name, event_data = ctx.send_sse_event.call_args.args
+    assert event_name == "notice"
+    assert "3" in event_data["text"]  # page count mentioned in notice text
+
+
+@pytest.mark.asyncio
+async def test_cost_estimate_confirmed_false_propagates(tmp_path):
+    """When tool_confirm returns confirmed=False, the result reflects that."""
+    store = _make_store(tmp_path, {})
+    ctx = _ctx(tmp_path, store)
+    with patch(_CONFIRM_PATCH, new_callable=AsyncMock,
+               return_value={"confirmed": False}):
+        from synthadoc.agents.workflows.contradiction_resolver_tools import tool_cost_estimate
+        result = await tool_cost_estimate(ctx, page_count=2)
+    assert result["confirmed"] is False
+    # Estimate fields must still be present even on cancellation
+    assert result["pages"] == 2
+    assert "estimated_usd" in result
 
 
 # ── extra coverage: extracted fallback and missing page ──────────────────────
