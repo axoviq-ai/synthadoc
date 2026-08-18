@@ -57,3 +57,12 @@ class AgenticWorkflow(ABC):
     ) -> dict[str, Callable[..., Awaitable[dict]]]:
         """Return a mapping of tool name → async callable for this workflow."""
         ...
+
+    def get_tool_budget(self) -> int:
+        """Maximum tool calls before the loop is forcibly terminated.
+
+        Workflows that process many pages (e.g. ContradictionResolverWorkflow)
+        should override this to a higher value.  The default of 30 is suitable
+        for single-run workflows like IngestLintWorkflow.
+        """
+        return 30

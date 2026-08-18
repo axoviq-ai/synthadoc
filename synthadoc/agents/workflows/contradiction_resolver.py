@@ -170,6 +170,12 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
         re.IGNORECASE,
     )
 
+    def get_tool_budget(self) -> int:
+        # Each page requires ~6 tool calls (read, propose, lint, transition, confirm ×2)
+        # plus 3 setup calls and 1 final status call.  Allow up to 20 pages with retry
+        # headroom: 3 + 20 × 10 + 1 = 204 → round to 200 for a clean limit.
+        return 200
+
     async def build_system_prompt(self) -> str:
         return _SYSTEM_PROMPT
 

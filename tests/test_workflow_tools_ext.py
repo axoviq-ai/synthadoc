@@ -172,8 +172,8 @@ async def test_propose_and_apply_diff_in_confirm_message(tmp_path):
     ctx = _ctx(tmp_path, store)
     captured = []
 
-    async def _capture_confirm(ctx, message, yes_label="", no_label=""):
-        captured.append(message)
+    async def _capture_confirm(ctx, message, yes_label="", no_label="", *, diff=None):
+        captured.append({"message": message, "diff": diff})
         return {"confirmed": False}
 
     with patch("synthadoc.agents.workflows._tools.tool_confirm", side_effect=_capture_confirm):
@@ -184,7 +184,10 @@ async def test_propose_and_apply_diff_in_confirm_message(tmp_path):
         )
 
     assert captured
-    assert "line b" in captured[0] or "-line b" in captured[0]
+    # The diff is now passed separately as the `diff` kwarg, not embedded in the message.
+    # Check that the unified diff shows the removed line.
+    assert captured[0]["diff"] is not None
+    assert "-line b" in captured[0]["diff"] or "line b" in captured[0]["diff"]
 
 
 @pytest.mark.asyncio

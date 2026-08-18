@@ -429,6 +429,8 @@ class ActionAgent:
         system_prompt = await wf.build_system_prompt()
         tool_fns = wf.get_tool_fns(ctx)
 
+        budget = wf.get_tool_budget()
+
         async def _run_loop() -> None:
             try:
                 async for evt in run_tool_call_loop(
@@ -437,6 +439,7 @@ class ActionAgent:
                     tool_fns=tool_fns,
                     provider=self._provider,
                     ctx=ctx,
+                    budget=budget,
                 ):
                     await sse_queue.put(evt)
             finally:

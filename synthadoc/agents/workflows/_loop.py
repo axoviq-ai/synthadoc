@@ -130,13 +130,15 @@ async def run_tool_call_loop(
         parse_retries = 0
 
         if all_calls:
-            # `confirm` is a blocking user-input gate — it must never run alongside
-            # other tool calls in the same batch.  If the LLM mixes confirm with data
-            # tools, execute only the data tools now so the LLM has context before
-            # asking the user.  If the LLM sends only confirm(s), run just the first.
-            has_confirm = any(name == "confirm" for name, _ in all_calls)
+            # `confirm` / `tool_confirm` is a blocking user-input gate — it must
+            # never run alongside other tool calls in the same batch.  If the LLM
+            # mixes confirm with data tools, execute only the data tools now so the
+            # LLM has context before asking the user.  If the LLM sends only
+            # confirm(s), run just the first.
+            _CONFIRM_NAMES = {"confirm", "tool_confirm"}
+            has_confirm = any(name in _CONFIRM_NAMES for name, _ in all_calls)
             if has_confirm:
-                non_confirm = [(n, inp) for n, inp in all_calls if n != "confirm"]
+                non_confirm = [(n, inp) for n, inp in all_calls if n not in _CONFIRM_NAMES]
                 if non_confirm:
                     # Data tools present alongside confirm: run data tools only.
                     active_calls = non_confirm
@@ -152,10 +154,14 @@ async def run_tool_call_loop(
             for tool_name, tool_input in active_calls:
                 tool_count += 1
                 if tool_count > budget:
-                    yield {
-                        "event": "final_text",
-                        "data": {"text": f"Tool call budget of {budget} exceeded."},
-                    }
+                    msg = (
+                        f"⚠ The workflow reached its tool-call limit ({budget} calls) "
+                        f"before completing all pages. Pages not yet processed remain "
+                        f"contradicted. You can re-run the resolver to continue."
+                    )
+                    for i in range(0, max(len(msg), 1), _CHUNK_SIZE):
+                        yield {"event": "token", "data": {"text": msg[i : i + _CHUNK_SIZE]}}
+                    yield {"event": "final_text", "data": {"text": msg}}
                     return
 
                 label = _TOOL_LABELS.get(tool_name, f"Calling {tool_name}")

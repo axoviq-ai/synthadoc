@@ -186,8 +186,12 @@ async def test_loop_stops_at_budget():
         results.append(event)
 
     final_events = [e for e in results if e["event"] == "final_text"]
+    token_events = [e for e in results if e["event"] == "token"]
     assert len(final_events) == 1
-    assert "budget" in final_events[0]["data"]["text"].lower()
+    # Budget-exceeded message is sent as token chunks before final_text.
+    # Check that "limit" or "budget" appears in either the tokens or final_text.
+    full_text = "".join(e["data"]["text"] for e in token_events) + final_events[0]["data"]["text"]
+    assert "limit" in full_text.lower() or "budget" in full_text.lower()
     # provider.complete should be called at most budget+1 times
     assert provider.complete.call_count <= 4
 
