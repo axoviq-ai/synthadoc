@@ -89,16 +89,11 @@ When you have no more tool calls to make, produce a plain-text summary (no JSON)
 5. Call confirm with the full scope.
    - If declined: report "Re-ingest declined by user." STOP.
 6. For each page in pages (one at a time):
-   - Build the fixes list from that page's broken_links array in the step 1 result.
-     For EACH entry in broken_links — process every entry independently:
-     * If entry.suggestion is a non-null string → new_ref = entry.suggestion
-       (the link is corrected to that slug)
-     * If entry.suggestion is null → new_ref = null
-       (the link markup is removed; display text is kept)
-     ⚠ Do NOT default to null for an entry that has a suggestion string.
-       A page may have a mix of correctable and removable links — apply the
-       correct new_ref to each one individually.
-   - Call apply_link_fixes with page_slug and the full fixes list.
+   - Build the fixes list from that page's broken_links (the find_broken_wikilinks result).
+     For each broken_link entry: new_ref = entry.suggestion.
+     Suggestion is a slug string → correct the link. Suggestion is null → remove the link.
+     Treat each entry independently — do not use null for a link that has a suggestion.
+   - Call apply_link_fixes with page_slug and fixes.
 7. Call run_lint (scope="all") to revalidate the wiki. Blocks until done.
 8. Call get_page_states with the slugs of all pages that had fixes applied.
 9. Write a plain-text summary:
