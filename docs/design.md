@@ -3611,7 +3611,7 @@ any point.
 | Web ingest for better grounding | After a failed first attempt when the agent judges the page lacks authoritative sourcing — proposes fetching a specific URL      |
 | Force source re-ingest          | Source file exists but may be outdated — proposes re-ingesting with a force flag                                                 |
 | Cross-page resolution           | The conflict stems from a related page's reference — proposes modifying the referring page                                       |
-| Escalate                        | Cap reached (3 attempts) — detailed diagnosis and concrete next steps, page remains*contradicted*                                |
+| Escalate                        | Cap reached (4 attempts) — detailed diagnosis and concrete next steps, page remains*contradicted*                                |
 
 ### Final confirmation
 
@@ -3677,7 +3677,7 @@ completion, then reads the page back from the store and evaluates two conditions
    source-conflict is successfully reconciled, or absent for gate-only pages.
 
 If both conditions pass the page is promoted. If either fails a different
-strategy is selected and the loop repeats (up to 3 attempts per page before
+strategy is selected and the loop repeats (up to 4 attempts per page before
 escalation).
 
 ### Audit trail
