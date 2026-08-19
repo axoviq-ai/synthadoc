@@ -13,7 +13,6 @@ from synthadoc.agents.workflows._tools import (
     tool_confirm,
     tool_find_broken_wikilinks,
     tool_get_page_states,
-    tool_poll_job,
     tool_run_lint,
 )
 
@@ -54,14 +53,9 @@ Input:  {"message": str, "yes_label": str, "no_label": str}
 Output: {"confirmed": bool}
 
 ### run_lint
-Enqueue a full lint pass to validate link integrity after fixes are applied.
+Run a full lint pass to validate link integrity after fixes are applied. Blocks until done.
 Input:  {}
-Output: {"job_id": str}
-
-### poll_job
-Wait for a job to reach a terminal state.
-Input:  {"job_id": str, "timeout_seconds": int}
-Output: {"status": "success"|"failed"|"timeout", "message": str}
+Output: {"status": "success"|"failed"|"timeout", "message": str} | {"error": str}
 
 ### get_page_states
 Return the current lifecycle state of one or more pages.
@@ -98,10 +92,9 @@ When you have no more tool calls to make, produce a plain-text summary (no JSON)
    - Build the fixes list from its broken_links:
      * new_ref = suggestion  (or null if suggestion is null)
    - Call apply_link_fixes with page_slug and fixes.
-7. Call run_lint (scope="all") to revalidate the wiki.
-8. Call poll_job with the returned job_id (timeout_seconds=300).
-9. Call get_page_states with the slugs of all pages that had fixes applied.
-10. Write a plain-text summary:
+7. Call run_lint (scope="all") to revalidate the wiki. Blocks until done.
+8. Call get_page_states with the slugs of all pages that had fixes applied.
+9. Write a plain-text summary:
     - N active pages scanned
     - M broken links found and fixed across K pages
     - Per-page: "  • <slug>: N fix(es)" — include pages where changes==0 as no-ops
@@ -140,6 +133,5 @@ class BrokenWikilinksWorkflow(AgenticWorkflow):
             "apply_link_fixes":      functools.partial(tool_apply_link_fixes, ctx),
             "confirm":               functools.partial(tool_confirm, ctx),
             "run_lint":              functools.partial(tool_run_lint, ctx),
-            "poll_job":              functools.partial(tool_poll_job, ctx),
             "get_page_states":       functools.partial(tool_get_page_states, ctx),
         }
