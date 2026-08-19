@@ -4,8 +4,8 @@
 Live integration tests for the Lint Run & Report Workflow (Workflow D, v1.2.1).
 
 Triggered by phrases such as "run lint and show me the report" or "lint run".
-The workflow runs three tools in sequence:
-  run_lint → poll_job → get_lint_report
+The workflow runs two tools in sequence:
+  run_lint → get_lint_report
 
 Run as a named suite:
   python -X utf8 tests/live/run_all.py --suite lint_report
@@ -153,8 +153,8 @@ def test_workflow_completes_with_done_event_and_no_errors():
 def test_workflow_fires_run_lint_and_get_lint_report_tools():
     """
     Both run_lint and get_lint_report tool_progress events must be present,
-    confirming the three-step sequence (run_lint → poll_job → get_lint_report)
-    executed rather than the response coming from cached query data.
+    confirming the two-step sequence (run_lint → get_lint_report) executed
+    rather than the response coming from cached query data.
     """
     events = _stream_question("run lint and show me the report")
     _assert_stream_complete(events)
@@ -193,10 +193,10 @@ def test_workflow_does_not_emit_confirm_request():
 @pytest.mark.timeout(450)
 def test_poll_job_progress_label_says_lint_not_ingest():
     """
-    While polling the lint job, tool_progress messages must say 'Lint running...'
+    While the lint job is running, tool_progress messages must say 'Lint running...'
     (not 'Ingest running...') — regression guard for the job_label fix.
-    Only asserts when poll_job actually emitted a progress message, which happens
-    if the lint job takes more than one poll cycle.
+    Polling now happens inside run_lint; only asserts when at least one
+    'running' progress message was emitted (fast wikis may skip this).
     """
     events = _stream_question("run lint and show me the report")
     _assert_stream_complete(events)

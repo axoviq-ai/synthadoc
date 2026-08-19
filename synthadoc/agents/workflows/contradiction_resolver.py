@@ -138,7 +138,12 @@ STEP 4 — Per-page resolution loop
 
     4f. If applied: call tool_run_scoped_lint(slug).
 
-    4g. If lint PASS:
+    4g. If lint PASS (tool result contains pass: True):
+        ⚠ STOP — do NOT call tool_propose_and_apply again.
+        pass: True is the ONLY field that determines pass/fail.
+        warnings_count may be non-zero even on a passing result — the linter
+        records soft informational notes on a passing page; this is expected
+        and does NOT mean another rewrite is needed.
         ⚠ MANDATORY TOOL CALL — you MUST call this before outputting any text:
         tool_transition_lifecycle_state(slug, to_state="active",
             reason=f"resolved by contradiction-resolver — strategy: {strategy_name}, attempt <N>")
@@ -146,32 +151,37 @@ STEP 4 — Per-page resolution loop
         continue to step 4j (next page) or step 5 (final summary) if last page.
         Do NOT output any plain text here — text output ends the entire workflow.
 
-    4h. If lint FAIL (attempt < 3): diagnose the failure, then escalate to the next
-        strategy — NEVER use Strategy 1 again after the first attempt fails.
+    4h. If lint FAIL (attempt < 4): diagnose the failure, then select the next strategy.
+        Prefer Strategy 2, 3, or 4 when they could reasonably address the failure.
+        Strategy 1 (content rewrite) may be reused only after other options are
+        exhausted or clearly inapplicable.
 
-          Attempt 2 — always Strategy 2 or 3 (never Strategy 1):
-            • Strategy 2 (Web ingest) — search for current authoritative sources
-              to support, replace, or provide grounding for the disputed claims.
-              Use this for gate-demoted pages (lint_warnings) where the claims
-              need better citation, and for source-conflict pages where a newer
-              web source may supersede the contradiction.
-            • Strategy 3 (Force re-ingest) — force-reingest the page's source_path
-              if source_path is available and the source itself may have updated.
-            Choose whichever fits the failure diagnosis; prefer Strategy 2 for
-            gate-demoted pages, Strategy 3 for source-conflict pages.
+          Attempt 2 — prefer Strategy 2 or 3; use Strategy 1 only if both are clearly
+            inapplicable (no source_path, web ingest irrelevant for the specific failure):
+            • Strategy 2 (Web ingest) — preferred for gate-demoted pages; search for
+              current authoritative sources to support, replace, or ground disputed claims.
+            • Strategy 3 (Force re-ingest) — preferred for source-conflict pages when
+              source_path is available and the source itself may have updated.
 
-          Attempt 3 — must be a strategy not yet tried:
+          Attempt 3 — use a strategy not yet tried; Strategy 1 (second use) is allowed
+            only if strategies 2, 3, and 4 have all been tried or clearly ruled out:
             • Strategy 4 (Cross-page resolution) — if linked wiki pages contain
               information that can resolve or corroborate the disputed content.
             • The other of Strategy 2 / Strategy 3 if it wasn't used in attempt 2.
-            Never return to Strategy 1.
+            • Strategy 1 (second use) — only if 2, 3, and 4 are all exhausted. Target
+              different specific claims than attempt 1, or use stronger hedging and
+              explicit source attribution for each disputed claim.
+
+          Attempt 4 — any remaining untried strategy; if all others have been tried,
+            reuse Strategy 1 with a substantially different approach: target different
+            claims, restructure the affected section, or add explicit per-claim citations.
 
         Repeat from 4c.
 
-    4i. If cap reached (3 failed attempts): Strategy 5 — Escalate.
+    4i. If cap reached (4 failed attempts): Strategy 5 — Escalate.
         Do NOT output plain text (it would end the entire workflow).
         Instead call tool_notify with level="warning":
-          message: "⚠ <slug> — unresolved after 3 attempts\n  Diagnosis: <why each strategy failed>\n  Suggested: <concrete next steps for the user>"
+          message: "⚠ <slug> — unresolved after 4 attempts\n  Diagnosis: <why each strategy failed>\n  Suggested: <concrete next steps for the user>"
         Add slug to your internal "unresolved" list.
         Then continue immediately to step 4j (inter-page confirm).
 
@@ -195,13 +205,22 @@ STEP 6 — Ground-truth confirmation
 • Plain text ENDS THE LOOP — use it ONLY for the final summary (step 5/6),
   or when cancelling (steps 2 and 3).
 • ALWAYS call tool_run_scoped_lint after every applied change.
+• When tool_run_scoped_lint returns pass: True — IMMEDIATELY call
+  tool_transition_lifecycle_state. Do NOT call tool_propose_and_apply again.
+  pass: True is final. warnings_count may still be non-zero; that is normal
+  and must NEVER trigger another rewrite attempt.
 • ALWAYS call tool_transition_lifecycle_state AS A TOOL CALL (not in text) when scoped lint passes.
   This call MUST happen before any plain-text output — even a one-line summary ends the workflow.
 • NEVER transition to active before scoped lint passes.
-• NEVER use Strategy 1 more than once per page. After Strategy 1 fails, always
-  escalate to Strategy 2, 3, or 4 — never return to Strategy 1 with "a different
-  angle". A different angle is still Strategy 1 and is still forbidden.
-• Cap is HARD at 3 attempts per page — escalate on the 4th failure.
+• Call tool_propose_and_apply at most ONCE per attempt. After calling it
+  (whether the user approves or skips), move to the next step immediately —
+  never call tool_propose_and_apply again within the same attempt.
+• Prefer Strategy 2, 3, or 4 when they could reasonably address the failure.
+  Strategy 1 (content rewrite) may be reused, but only after considering whether
+  web ingest, re-ingest, or cross-page resolution is a better fit for the specific
+  root cause. Do not reflexively reuse Strategy 1 when another approach targets
+  the actual problem. Strategy 1 may be used at most twice per page.
+• Cap is HARD at 4 attempts per page — escalate on the 5th failure.
 • Do NOT call tool_propose_and_apply and tool_confirm in the same tool-call batch.
 """
 
@@ -223,10 +242,10 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
     )
 
     def get_tool_budget(self) -> int:
-        # Each page requires ~6 tool calls (read, propose, lint, transition, confirm ×2)
-        # plus 3 setup calls and 1 final status call.  Allow up to 20 pages with retry
-        # headroom: 3 + 20 × 10 + 1 = 204 → round to 200 for a clean limit.
-        return 200
+        # Each page requires ~8 tool calls (read, propose, lint, transition, confirm ×2)
+        # with 4-attempt retry headroom.  Allow up to 20 pages:
+        # 3 setup + 20 × 12 + 1 final = 244 → round to 250.
+        return 250
 
     async def build_system_prompt(self) -> str:
         return _SYSTEM_PROMPT

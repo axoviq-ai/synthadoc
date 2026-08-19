@@ -559,12 +559,15 @@ async def test_tool_find_stale_pages_returns_error_on_exception():
 
 
 async def test_tool_run_lint_enqueues_job():
-    """tool_run_lint enqueues a lint job and returns the job_id."""
+    """tool_run_lint enqueues a lint job, polls it, and returns final status."""
     queue = MagicMock()
     queue.enqueue = AsyncMock(return_value="lint-001")
+    completed_job = MagicMock()
+    completed_job.status = JobStatus.COMPLETED
+    queue.get_job = AsyncMock(return_value=completed_job)
     ctx, _ = _make_ctx(queue=queue)
     result = await tool_run_lint(ctx)
-    assert result == {"job_id": "lint-001"}
+    assert result["status"] == "success"
     queue.enqueue.assert_called_once_with(
         "lint",
         {"scope": "all", "auto_resolve": False, "adversarial": False, "lifecycle": True},
@@ -575,9 +578,12 @@ async def test_tool_run_lint_custom_scope():
     """tool_run_lint passes through a custom scope."""
     queue = MagicMock()
     queue.enqueue = AsyncMock(return_value="lint-002")
+    completed_job = MagicMock()
+    completed_job.status = JobStatus.COMPLETED
+    queue.get_job = AsyncMock(return_value=completed_job)
     ctx, _ = _make_ctx(queue=queue)
     result = await tool_run_lint(ctx, scope="page-a")
-    assert result == {"job_id": "lint-002"}
+    assert result["status"] == "success"
     queue.enqueue.assert_called_once_with(
         "lint",
         {"scope": "page-a", "auto_resolve": False, "adversarial": False, "lifecycle": True},
