@@ -138,7 +138,12 @@ STEP 4 — Per-page resolution loop
 
     4f. If applied: call tool_run_scoped_lint(slug).
 
-    4g. If lint PASS:
+    4g. If lint PASS (tool result contains pass: True):
+        ⚠ STOP — do NOT call tool_propose_and_apply again.
+        pass: True is the ONLY field that determines pass/fail.
+        warnings_count may be non-zero even on a passing result — the linter
+        records soft informational notes on a passing page; this is expected
+        and does NOT mean another rewrite is needed.
         ⚠ MANDATORY TOOL CALL — you MUST call this before outputting any text:
         tool_transition_lifecycle_state(slug, to_state="active",
             reason=f"resolved by contradiction-resolver — strategy: {strategy_name}, attempt <N>")
@@ -200,9 +205,16 @@ STEP 6 — Ground-truth confirmation
 • Plain text ENDS THE LOOP — use it ONLY for the final summary (step 5/6),
   or when cancelling (steps 2 and 3).
 • ALWAYS call tool_run_scoped_lint after every applied change.
+• When tool_run_scoped_lint returns pass: True — IMMEDIATELY call
+  tool_transition_lifecycle_state. Do NOT call tool_propose_and_apply again.
+  pass: True is final. warnings_count may still be non-zero; that is normal
+  and must NEVER trigger another rewrite attempt.
 • ALWAYS call tool_transition_lifecycle_state AS A TOOL CALL (not in text) when scoped lint passes.
   This call MUST happen before any plain-text output — even a one-line summary ends the workflow.
 • NEVER transition to active before scoped lint passes.
+• Call tool_propose_and_apply at most ONCE per attempt. After calling it
+  (whether the user approves or skips), move to the next step immediately —
+  never call tool_propose_and_apply again within the same attempt.
 • Prefer Strategy 2, 3, or 4 when they could reasonably address the failure.
   Strategy 1 (content rewrite) may be reused, but only after considering whether
   web ingest, re-ingest, or cross-page resolution is a better fit for the specific
