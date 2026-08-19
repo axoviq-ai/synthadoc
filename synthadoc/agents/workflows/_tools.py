@@ -256,9 +256,17 @@ async def tool_poll_job(
 
 
 async def tool_run_lint(ctx: "WorkflowContext", scope: str = "all") -> dict:
-    """Enqueue a lint job and return its ID.
+    """Enqueue a lint job, poll until it completes, and return the final status.
 
-    Returns ``{"job_id": str}`` or ``{"error": str}``.
+    Mirrors ``tool_ingest_source``: the caller gets a single blocking call
+    rather than a job_id that needs a separate ``poll_job`` follow-up.
+
+    Returns::
+
+        {"status": "success",  "message": str}  — lint completed
+        {"status": "failed",   "message": str}  — lint hit a terminal failure
+        {"status": "timeout",  "message": str}  — timed out (5 min limit)
+        {"error": str}                           — failed to enqueue
     """
     await ctx.send_sse_event("tool_progress", {"tool": "run_lint", "message": "Running wiki lint check..."})
     try:
@@ -271,9 +279,10 @@ async def tool_run_lint(ctx: "WorkflowContext", scope: str = "all") -> dict:
                 "lifecycle": True,
             },
         )
-        return {"job_id": job_id}
     except Exception as exc:  # noqa: BLE001
         return {"error": str(exc)}
+
+    return await tool_poll_job(ctx, job_id, timeout_seconds=300, job_label="Lint")
 
 
 async def tool_get_lint_report(ctx: "WorkflowContext") -> dict:

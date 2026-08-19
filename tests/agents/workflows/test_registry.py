@@ -176,7 +176,7 @@ def test_lint_report_workflow_get_tool_fns_returns_expected_keys():
     wf = LintReportWorkflow()
     ctx = _make_wf_ctx()
     fns = wf.get_tool_fns(ctx)
-    assert set(fns.keys()) == {"run_lint", "poll_job", "get_lint_report"}
+    assert set(fns.keys()) == {"run_lint", "get_lint_report"}
     assert all(callable(f) for f in fns.values())
 
 
