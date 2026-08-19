@@ -1,6 +1,6 @@
 # Synthadoc — Design Document
 
-**Version:** 1.2.1  
+**Version:** 1.3.0
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -46,6 +46,7 @@
 35. [Contradiction Resolver Workflow](#35-contradiction-resolver-workflow)
 
 **Appendices**
+
 - [Appendix A — Release Feature Index](#appendix-a--release-feature-index)
 
 ---
@@ -124,24 +125,26 @@ Content with [[wikilinks]] to related pages…
 
 `resource` and `sources` are complementary, not duplicates:
 
-| | `resource` | `sources` |
-|---|---|---|
-| Purpose | OKF external citation — one clean URL for agents and humans to follow | Synthadoc internal provenance — full audit record per contributing file |
-| Cardinality | Single string (or absent) | Array — grows as more files are ingested into the same page |
-| Contents | URL only | File path, SHA-256 hash, byte size, ingestion timestamp |
-| Used for | OKF compatibility; agent consumption without Synthadoc-specific knowledge | Dedup, stale detection, cost audit trail |
-| Local file sources | Absent | Present (file path + hash) |
-| URL sources | Set to the source URL | Also present (URL + hash of URL string) |
+
+|                    | `resource`                                                                | `sources`                                                                |
+| ------------------ | ------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Purpose            | OKF external citation — one clean URL for agents and humans to follow    | Synthadoc internal provenance — full audit record per contributing file |
+| Cardinality        | Single string (or absent)                                                 | Array — grows as more files are ingested into the same page             |
+| Contents           | URL only                                                                  | File path, SHA-256 hash, byte size, ingestion timestamp                  |
+| Used for           | OKF compatibility; agent consumption without Synthadoc-specific knowledge | Dedup, stale detection, cost audit trail                                 |
+| Local file sources | Absent                                                                    | Present (file path + hash)                                               |
+| URL sources        | Set to the source URL                                                     | Also present (URL + hash of URL string)                                  |
 
 **`status` values:**
 
-| Value | Meaning |
-|-------|---------|
-| `draft` | Newly compiled — not yet lint-reviewed |
-| `active` | Lint-reviewed, current, trusted |
+
+| Value          | Meaning                                                 |
+| -------------- | ------------------------------------------------------- |
+| `draft`        | Newly compiled — not yet lint-reviewed                 |
+| `active`       | Lint-reviewed, current, trusted                         |
 | `contradicted` | A new source conflicts with this page; needs resolution |
-| `stale` | Source file changed since last ingest |
-| `archived` | Source removed or manually retired |
+| `stale`        | Source file changed since last ingest                   |
+| `archived`     | Source removed or manually retired                      |
 
 New pages are created with `status: draft`. Lint promotes them to `active` automatically when all checks pass. See [§23 Lifecycle Machine](#23-lifecycle-machine) for full transition rules.
 
@@ -211,16 +214,17 @@ All agents are async Python classes. They receive a job context, write results t
 
 Five-pass pipeline:
 
-| Pass | Model | Purpose |
-|------|-------|---------|
-| 0 — Vision (optional) | Default | Extract text from image sources (`is_image=True`); requires a vision-capable provider |
-| 0b — Key Data Extraction | None (regex) | Deterministic pre-processor: extracts numbers, percentages, currency amounts, ratios, formulas, underscore identifiers, and date ranges from source text via regex; appends them as a `[Key Data — extracted by pre-processor]` section before any LLM sees the text. Zero token cost; cannot hallucinate. Anchors the synthesis LLM to all quantitative candidates. |
-| 1 — Analysis (`_analyse()`) | Default | Extract entities, tags, and a 3-sentence summary from raw text. Result cached under key `analyse-v1` keyed by SHA-256 of the text. |
-| 2 — Candidate search | None (BM25) | Find existing wiki pages related to extracted entities |
-| 3 — Decision | Default | LLM reads the full source text (bounded by `max_source_chars`) + BM25 candidates + `purpose.md` scope + status of each candidate page. Outputs per-page action: `create`, `update`, `flag`, `skip`. **RULE 1b:** a page with `status='active'` is human-reviewed and authoritative — when the source provides a conflicting value, date, formula, or conclusion, the action must be `flag`, not `update`. The only exception is a source that adds a topic the page does not yet mention at all. Decision cache version: `v2`. |
-| 4 — Citation annotation (`_annotate_citations()`) | Default | For each page section being written, the LLM reads the section alongside the numbered source text and inserts `^[filename:L-L]` inline citation markers at the end of substantive paragraphs. Results cached by section SHA-256. Falls back gracefully (returns original section) on any LLM or parse failure — ingest always completes. Citations are recorded in `audit.db` `claim_citations` table. If no citation markers are present in the returned body, a `citation_pass4_no_markers` WARNING audit event is written — the page is still saved but the condition is flagged for re-ingest with a more capable model. Zero-citation results are not cached so a subsequent re-ingest can succeed. |
-| 5 — Write | None | Apply actions; update frontmatter; write `[[wikilinks]]`; fire hooks. For local sources, writes a `.txt` sidecar to `.synthadoc/extracted/` (all file types) and a pagemap JSON sidecar when PDF page boundaries are available. |
-| 6 — Overview | Default | Regenerate `wiki/overview.md` if any pages were created or updated |
+
+| Pass                                               | Model        | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| -------------------------------------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0 — Vision (optional)                             | Default      | Extract text from image sources (`is_image=True`); requires a vision-capable provider                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| 0b — Key Data Extraction                          | None (regex) | Deterministic pre-processor: extracts numbers, percentages, currency amounts, ratios, formulas, underscore identifiers, and date ranges from source text via regex; appends them as a`[Key Data — extracted by pre-processor]` section before any LLM sees the text. Zero token cost; cannot hallucinate. Anchors the synthesis LLM to all quantitative candidates.                                                                                                                                                                                                                                                                                                                                      |
+| 1 — Analysis (`_analyse()`)                       | Default      | Extract entities, tags, and a 3-sentence summary from raw text. Result cached under key`analyse-v1` keyed by SHA-256 of the text.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| 2 — Candidate search                              | None (BM25)  | Find existing wiki pages related to extracted entities                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| 3 — Decision                                      | Default      | LLM reads the full source text (bounded by`max_source_chars`) + BM25 candidates + `purpose.md` scope + status of each candidate page. Outputs per-page action: `create`, `update`, `flag`, `skip`. **RULE 1b:** a page with `status='active'` is human-reviewed and authoritative — when the source provides a conflicting value, date, formula, or conclusion, the action must be `flag`, not `update`. The only exception is a source that adds a topic the page does not yet mention at all. Decision cache version: `v2`.                                                                                                                                                                            |
+| 4 — Citation annotation (`_annotate_citations()`) | Default      | For each page section being written, the LLM reads the section alongside the numbered source text and inserts`^[filename:L-L]` inline citation markers at the end of substantive paragraphs. Results cached by section SHA-256. Falls back gracefully (returns original section) on any LLM or parse failure — ingest always completes. Citations are recorded in `audit.db` `claim_citations` table. If no citation markers are present in the returned body, a `citation_pass4_no_markers` WARNING audit event is written — the page is still saved but the condition is flagged for re-ingest with a more capable model. Zero-citation results are not cached so a subsequent re-ingest can succeed. |
+| 5 — Write                                         | None         | Apply actions; update frontmatter; write`[[wikilinks]]`; fire hooks. For local sources, writes a `.txt` sidecar to `.synthadoc/extracted/` (all file types) and a pagemap JSON sidecar when PDF page boundaries are available.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| 6 — Overview                                      | Default      | Regenerate`wiki/overview.md` if any pages were created or updated                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 
 **Analysis caching:** The analysis step is expensive (full text read + LLM call). Results are cached in `cache.db` by text SHA-256. Subsequent ingests of the same source (e.g. after a `--force` that hits the decision cache miss) re-use the analysis result without a new LLM call.
 
@@ -266,6 +270,7 @@ Question
 ```
 
 **Decomposition behaviour:**
+
 - Simple questions decompose to a single sub-question — identical behaviour to v0.1
 - Compound questions (e.g. "Who invented FORTRAN and what was the Bombe machine?") decompose into one sub-question per part — each part retrieved independently, pages merged before synthesis
 - Comparative questions (e.g. "Compare Turing's contributions with Von Neumann's") retrieve both subjects in parallel
@@ -320,6 +325,7 @@ User input: "search for: yard gardening in Canadian climate zones"
 ```
 
 **Key design decisions:**
+
 - Uses a **separate prompt** from `QueryAgent.decompose()` — query decomposition asks "what distinct *questions* does this ask?" (natural-language sub-questions) while search decomposition asks "what distinct *search strings* would find the best authoritative sources?" (terse keyword phrases). The outputs are fundamentally different — they must not share a prompt.
 - Implemented as `SearchDecomposeAgent` in `synthadoc/agents/search_decompose_agent.py` — kept separate to avoid coupling the two decomposition strategies.
 - Cap: 4 search strings maximum — prevents runaway Tavily API spend.
@@ -363,6 +369,7 @@ to ~/.cache/fastembed/. This is a one-time download.
 **Fallback:** If `embeddings.db` is empty, the model is unavailable, or `fastembed` is not installed, BM25 ranking is used automatically with no error.
 
 **Performance notes:**
+
 - First enable on a large wiki may take several minutes to embed all pages. Subsequent server starts are instant (model and embeddings already cached).
 - The re-ranking step is CPU-only and adds single-digit milliseconds per query after migration.
 - Set `vector = false` to revert to BM25-only at any time. Existing embeddings are not deleted.
@@ -373,18 +380,19 @@ to ~/.cache/fastembed/. This is a one-time download.
 
 Runs against the entire wiki or a scoped subset:
 
-| Check | What it finds |
-|-------|---------------|
-| Contradiction | Pages with `status: contradicted` |
-| Orphan | Pages with zero inbound `[[wikilinks]]` |
-| Stale | Pages whose `sources[]` entries no longer exist on disk |
-| Missing link | Entity mentioned in page body but no wikilink created |
-| Adversarial review _(v0.5.0)_ | Independent LLM pass that flags overstated claims, unsupported assertions, and high-confidence statements the source material does not support |
-| Lifecycle — archived detection _(v0.6.0)_ | Source file no longer on disk → transition page to `archived` |
-| Lifecycle — stale detection _(v0.6.0)_ | SHA-256 hash of source on disk ≠ recorded ingest hash → transition page to `stale` |
-| Lifecycle — draft promotion _(v0.6.0)_ | `draft` page with no active issues → transition to `active` |
-| Lifecycle — manual-edit sync _(v0.6.0)_ | Frontmatter `status` differs from `page_states` DB record → reconcile DB to match |
-| Citation presence (Check 5b) | Page body has ≥ 50 words and zero `^[filename:L-L]` citation markers → WARNING. Diagnostic only — does not block promotion to `active`. Indicates the annotation pass failed to produce markers, usually a model-compatibility issue (use Gemini 2.5 Flash or higher for reliable citation annotation). |
+
+| Check                                     | What it finds                                                                                                                                                                                                                                                                                             |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Contradiction                             | Pages with`status: contradicted`                                                                                                                                                                                                                                                                          |
+| Orphan                                    | Pages with zero inbound`[[wikilinks]]`                                                                                                                                                                                                                                                                    |
+| Stale                                     | Pages whose`sources[]` entries no longer exist on disk                                                                                                                                                                                                                                                    |
+| Missing link                              | Entity mentioned in page body but no wikilink created                                                                                                                                                                                                                                                     |
+| Adversarial review_(v0.5.0)_              | Independent LLM pass that flags overstated claims, unsupported assertions, and high-confidence statements the source material does not support                                                                                                                                                            |
+| Lifecycle — archived detection_(v0.6.0)_ | Source file no longer on disk → transition page to`archived`                                                                                                                                                                                                                                             |
+| Lifecycle — stale detection_(v0.6.0)_    | SHA-256 hash of source on disk ≠ recorded ingest hash → transition page to`stale`                                                                                                                                                                                                                       |
+| Lifecycle — draft promotion_(v0.6.0)_    | `draft` page with no active issues → transition to `active`                                                                                                                                                                                                                                              |
+| Lifecycle — manual-edit sync_(v0.6.0)_   | Frontmatter`status` differs from `page_states` DB record → reconcile DB to match                                                                                                                                                                                                                         |
+| Citation presence (Check 5b)              | Page body has ≥ 50 words and zero`^[filename:L-L]` citation markers → WARNING. Diagnostic only — does not block promotion to `active`. Indicates the annotation pass failed to produce markers, usually a model-compatibility issue (use Gemini 2.5 Flash or higher for reliable citation annotation). |
 
 **Auto-resolution:** For contradictions, LintAgent asks the LLM to propose a resolution with a confidence score. If score ≥ `auto_resolve_confidence_threshold` (default 0.85), applies automatically. Below threshold, queues for human review.
 
@@ -408,13 +416,14 @@ When a source is a URL or an intent phrase (e.g. `search for: Dennis Ritchie`), 
 
 Serialises the wiki to one of five formats with zero additional LLM calls. Invoked via `synthadoc export --format <fmt>` or the Obsidian **Export Wiki** command.
 
-| Format | Output |
-|--------|--------|
-| `llms.txt` | Active pages as a compact index (title + first-line summary) in the [llmstxt.org](https://llmstxt.org) spec; pages with `contradicted` or `stale` status appear in a **Needs Review** section |
-| `llms-full.txt` | Full page content for all pages, separated by `---` dividers with status and confidence headers; no size limit |
-| `graphml` | Directed wikilink graph — one node per page, one edge per `[[wikilink]]`; includes `label` (Gephi), `y:NodeLabel` (yEd), status, confidence, orphan flag, inbound link count, and routing branch per node |
-| `json` | Full structured dump: content, tags, sources, claims (from audit DB), lifecycle history, routing branch memberships, per-page `ingest_cost_usd` and `ingest_tokens`, and total compilation cost |
-| `okf` | [OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle directory — one Markdown file per page with conformant YAML frontmatter (`type`, `title`, `description`, `resource`, `tags`, `timestamp`); `index.md` grouped by knowledge type; `log.md` lifecycle history; `[[wikilinks]]` rewritten to relative OKF paths |
+
+| Format          | Output                                                                                                                                                                                                                                                                                                                                                          |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `llms.txt`      | Active pages as a compact index (title + first-line summary) in the[llmstxt.org](https://llmstxt.org) spec; pages with `contradicted` or `stale` status appear in a **Needs Review** section                                                                                                                                                                    |
+| `llms-full.txt` | Full page content for all pages, separated by`---` dividers with status and confidence headers; no size limit                                                                                                                                                                                                                                                   |
+| `graphml`       | Directed wikilink graph — one node per page, one edge per`[[wikilink]]`; includes `label` (Gephi), `y:NodeLabel` (yEd), status, confidence, orphan flag, inbound link count, and routing branch per node                                                                                                                                                       |
+| `json`          | Full structured dump: content, tags, sources, claims (from audit DB), lifecycle history, routing branch memberships, per-page`ingest_cost_usd` and `ingest_tokens`, and total compilation cost                                                                                                                                                                  |
+| `okf`           | [OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle directory — one Markdown file per page with conformant YAML frontmatter (`type`, `title`, `description`, `resource`, `tags`, `timestamp`); `index.md` grouped by knowledge type; `log.md` lifecycle history; `[[wikilinks]]` rewritten to relative OKF paths |
 
 **Status filter:** All formats accept `--status-filter active|contradicted|stale|archived|draft|all` (default `all`) to scope the export to a lifecycle subset. For `okf`, the accepted values are `all` (active + contradicted, the default) or `active` only — draft, stale, and archived pages are always excluded from OKF bundles regardless of the flag.
 
@@ -484,11 +493,12 @@ The Markdown body is for human readers and LLMs — never engine-parsed. Use it 
 
 ### 3-Tier Lazy Loading
 
-| Tier | What loads | When |
-|------|-----------|------|
-| 1 — Metadata | `SkillMeta` parsed from `SKILL.md` frontmatter | Always; startup |
-| 2 — Body | Full skill class via `importlib.util` | When a matching source is encountered |
-| 3 — Resources | Files from `assets/` or `references/` via `get_resource()` | On first access within the skill |
+
+| Tier           | What loads                                                | When                                  |
+| -------------- | --------------------------------------------------------- | ------------------------------------- |
+| 1 — Metadata  | `SkillMeta` parsed from `SKILL.md` frontmatter            | Always; startup                       |
+| 2 — Body      | Full skill class via`importlib.util`                      | When a matching source is encountered |
+| 3 — Resources | Files from`assets/` or `references/` via `get_resource()` | On first access within the skill      |
 
 This means importing 20 skills costs essentially zero memory until they are needed.
 
@@ -504,18 +514,19 @@ For URL sources, **longest prefix wins**: the matched extension string length de
 
 ### Built-in Skills
 
-| Skill | Extensions | Intent phrases | Notes |
-|-------|-----------|---------------|-------|
-| `pdf` | `.pdf` | `pdf`, `research paper`, `document` | pypdf primary; pdfminer.six fallback if yield < 50 chars/page |
-| `url` | `http://`, `https://` | `fetch url`, `web page`, `website` | httpx fetch + BeautifulSoup clean |
-| `markdown` | `.md`, `.txt` | `markdown`, `text file`, `notes` | Direct read |
-| `docx` | `.docx` | `word document`, `docx` | python-docx |
-| `pptx` | `.pptx` | `powerpoint`, `presentation`, `pptx` | python-pptx; each slide rendered as a titled section; speaker notes appended when present |
-| `xlsx` | `.xlsx`, `.csv` | `spreadsheet`, `excel`, `csv` | openpyxl |
-| `image` | `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.tiff` | `image`, `screenshot`, `diagram`, `photo` | Base64 + vision LLM |
-| `web_search` | _(none)_ | `search for`, `find on the web`, `look up`, `web search`, `browse` | Calls Tavily API; returns top result URLs as child sources enqueued individually. Requires `TAVILY_API_KEY`. |
-| `youtube` | `https://www.youtube.com/`, `https://youtu.be/` | `youtube video`, `youtube lecture`, `youtube talk` | Extracts captions via YouTube caption system; no API key or audio download needed. Generates an executive summary (what the video covers, main topics, key takeaway) followed by the full timestamped transcript. Skips gracefully when no captions are available. |
-| `session` | `.jsonl` | `claude session`, `codex session`, `cursor session`, `ai session`, `session history` | Extracts human-readable turns from AI coding session transcripts. Supports Claude Code JSONL format and Codex/Cursor format. Filters tool calls, thinking blocks, and sub-agent scaffolding. Short turns (< 20 assistant words, < 3 user words) are skipped. No external dependencies. |
+
+| Skill        | Extensions                                        | Intent phrases                                                                       | Notes                                                                                                                                                                                                                                                                                  |
+| ------------ | ------------------------------------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pdf`        | `.pdf`                                            | `pdf`, `research paper`, `document`                                                  | pypdf primary; pdfminer.six fallback if yield < 50 chars/page                                                                                                                                                                                                                          |
+| `url`        | `http://`, `https://`                             | `fetch url`, `web page`, `website`                                                   | httpx fetch + BeautifulSoup clean                                                                                                                                                                                                                                                      |
+| `markdown`   | `.md`, `.txt`                                     | `markdown`, `text file`, `notes`                                                     | Direct read                                                                                                                                                                                                                                                                            |
+| `docx`       | `.docx`                                           | `word document`, `docx`                                                              | python-docx                                                                                                                                                                                                                                                                            |
+| `pptx`       | `.pptx`                                           | `powerpoint`, `presentation`, `pptx`                                                 | python-pptx; each slide rendered as a titled section; speaker notes appended when present                                                                                                                                                                                              |
+| `xlsx`       | `.xlsx`, `.csv`                                   | `spreadsheet`, `excel`, `csv`                                                        | openpyxl                                                                                                                                                                                                                                                                               |
+| `image`      | `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.tiff` | `image`, `screenshot`, `diagram`, `photo`                                            | Base64 + vision LLM                                                                                                                                                                                                                                                                    |
+| `web_search` | _(none)_                                          | `search for`, `find on the web`, `look up`, `web search`, `browse`                   | Calls Tavily API; returns top result URLs as child sources enqueued individually. Requires`TAVILY_API_KEY`.                                                                                                                                                                            |
+| `youtube`    | `https://www.youtube.com/`, `https://youtu.be/`   | `youtube video`, `youtube lecture`, `youtube talk`                                   | Extracts captions via YouTube caption system; no API key or audio download needed. Generates an executive summary (what the video covers, main topics, key takeaway) followed by the full timestamped transcript. Skips gracefully when no captions are available.                     |
+| `session`    | `.jsonl`                                          | `claude session`, `codex session`, `cursor session`, `ai session`, `session history` | Extracts human-readable turns from AI coding session transcripts. Supports Claude Code JSONL format and Codex/Cursor format. Filters tool calls, thinking blocks, and sub-agent scaffolding. Short turns (< 20 assistant words, < 3 user words) are skipped. No external dependencies. |
 
 ### Session Skill — AI Session History Ingestion
 
@@ -523,26 +534,28 @@ The `session` skill turns AI coding session history files (`.jsonl`) into search
 
 **Supported formats**
 
-| Format | File origin | Detection |
-|--------|-------------|-----------|
-| Claude Code | `~/.claude/projects/<hash>/<session-id>.jsonl` | `obj.type` ∈ `{"user", "assistant"}` with nested `obj.message` |
-| Codex / Cursor | Export from OpenAI Codex or Cursor IDE | `obj.role` at top level, no `message` wrapper |
+
+| Format         | File origin                                    | Detection                                                       |
+| -------------- | ---------------------------------------------- | --------------------------------------------------------------- |
+| Claude Code    | `~/.claude/projects/<hash>/<session-id>.jsonl` | `obj.type` ∈ `{"user", "assistant"}` with nested `obj.message` |
+| Codex / Cursor | Export from OpenAI Codex or Cursor IDE         | `obj.role` at top level, no `message` wrapper                   |
 
 Format is auto-detected from the first 30 parseable lines. Files that match neither format are parsed as Codex (fallback).
 
 **Filtering rules**
 
-| Content | Kept? | Reason |
-|---------|-------|--------|
-| User text ≥ 3 words | ✓ | Substantive question or instruction |
-| Assistant text ≥ 20 words | ✓ | Substantive answer |
-| User text < 3 words (`"ok"`, `"yes"`) | ✗ | Too terse to be useful |
-| Assistant text < 20 words | ✗ | Acknowledgement or one-liner |
-| `isSidechain: true` lines | ✗ | Sub-agent scaffolding (not the user's conversation) |
-| `tool_use` blocks | ✗ | Shell commands / file writes — not final output |
-| `tool_result` blocks | ✗ | Raw output — avoids leaking file contents or credentials |
-| `thinking` blocks | ✗ | Internal reasoning — not the final answer |
-| `permission-mode`, `system`, `last-prompt` lines | ✗ | Session metadata, not conversation |
+
+| Content                                          | Kept? | Reason                                                    |
+| ------------------------------------------------ | ----- | --------------------------------------------------------- |
+| User text ≥ 3 words                             | ✓    | Substantive question or instruction                       |
+| Assistant text ≥ 20 words                       | ✓    | Substantive answer                                        |
+| User text < 3 words (`"ok"`, `"yes"`)            | ✗    | Too terse to be useful                                    |
+| Assistant text < 20 words                        | ✗    | Acknowledgement or one-liner                              |
+| `isSidechain: true` lines                        | ✗    | Sub-agent scaffolding (not the user's conversation)       |
+| `tool_use` blocks                                | ✗    | Shell commands / file writes — not final output          |
+| `tool_result` blocks                             | ✗    | Raw output — avoids leaking file contents or credentials |
+| `thinking` blocks                                | ✗    | Internal reasoning — not the final answer                |
+| `permission-mode`, `system`, `last-prompt` lines | ✗    | Session metadata, not conversation                        |
 
 After extraction the text passes through Synthadoc's standard pre-LLM source sanitizer
 (zero-width characters, bidi overrides, HTML comments, hidden CSS spans, base64 blobs ≥ 200 chars,
@@ -578,13 +591,14 @@ The skill sets `metadata["suggested_slug"]` to `session-YYYY-MM-DD-<topic>` wher
 
 Skills are discovered from five locations in priority order:
 
-| Source | Path | Override priority |
-|--------|------|------------------|
-| `extra_dirs` (programmatic) | Passed at `SkillAgent()` init | Highest |
-| Local wiki | `<wiki-root>/skills/` | High |
-| Global user | `~/.synthadoc/skills/` | Medium |
-| pip entry points | `entry_points('synthadoc.skills')` | Low |
-| Built-in | Ships with package (`synthadoc/skills/`) | Lowest |
+
+| Source                      | Path                                     | Override priority |
+| --------------------------- | ---------------------------------------- | ----------------- |
+| `extra_dirs` (programmatic) | Passed at`SkillAgent()` init             | Highest           |
+| Local wiki                  | `<wiki-root>/skills/`                    | High              |
+| Global user                 | `~/.synthadoc/skills/`                   | Medium            |
+| pip entry points            | `entry_points('synthadoc.skills')`       | Low               |
+| Built-in                    | Ships with package (`synthadoc/skills/`) | Lowest            |
 
 No server restart needed — registry cache detects changes automatically on next startup.
 
@@ -638,75 +652,81 @@ SQLite. Two key tables:
 
 **`ingest_log`**
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | INTEGER PK | |
-| `source` | TEXT | Original path or URL |
-| `hash` | TEXT | `sha256:<hex>` |
-| `size` | INTEGER | Bytes |
-| `cost_usd` | REAL | |
-| `tokens` | INTEGER | |
-| `pages_created` | TEXT | JSON array of slugs |
-| `pages_updated` | TEXT | JSON array of slugs |
-| `ingested_at` | TEXT | UTC ISO-8601 |
+
+| Column          | Type       | Notes                |
+| --------------- | ---------- | -------------------- |
+| `id`            | INTEGER PK |                      |
+| `source`        | TEXT       | Original path or URL |
+| `hash`          | TEXT       | `sha256:<hex>`       |
+| `size`          | INTEGER    | Bytes                |
+| `cost_usd`      | REAL       |                      |
+| `tokens`        | INTEGER    |                      |
+| `pages_created` | TEXT       | JSON array of slugs  |
+| `pages_updated` | TEXT       | JSON array of slugs  |
+| `ingested_at`   | TEXT       | UTC ISO-8601         |
 
 **`audit_events`**
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | INTEGER PK | |
-| `event` | TEXT | e.g. `contradiction_found`, `auto_resolved`, `cost_gate_triggered` |
-| `details` | TEXT | JSON |
-| `recorded_at` | TEXT | UTC ISO-8601 |
+
+| Column        | Type       | Notes                                                             |
+| ------------- | ---------- | ----------------------------------------------------------------- |
+| `id`          | INTEGER PK |                                                                   |
+| `event`       | TEXT       | e.g.`contradiction_found`, `auto_resolved`, `cost_gate_triggered` |
+| `details`     | TEXT       | JSON                                                              |
+| `recorded_at` | TEXT       | UTC ISO-8601                                                      |
 
 **`queries`** _(added in v0.2.0)_
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | INTEGER PK | |
-| `question` | TEXT | Original question text |
-| `sub_questions_count` | INTEGER | Number of sub-questions decomposed (1 for simple questions) |
-| `tokens` | INTEGER | Answer call token usage |
-| `cost_usd` | REAL | Approximate cost (answer tokens × rate) |
-| `queried_at` | TEXT | UTC ISO-8601 |
+
+| Column                | Type       | Notes                                                       |
+| --------------------- | ---------- | ----------------------------------------------------------- |
+| `id`                  | INTEGER PK |                                                             |
+| `question`            | TEXT       | Original question text                                      |
+| `sub_questions_count` | INTEGER    | Number of sub-questions decomposed (1 for simple questions) |
+| `tokens`              | INTEGER    | Answer call token usage                                     |
+| `cost_usd`            | REAL       | Approximate cost (answer tokens × rate)                    |
+| `queried_at`          | TEXT       | UTC ISO-8601                                                |
 
 **`claim_citations`** _(added in v0.5.0)_
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | INTEGER PK | |
-| `page_slug` | TEXT | Wiki page the citation belongs to |
-| `source_file` | TEXT | Filename of the raw source (basename only) |
-| `line_start` | INTEGER | First line of the supporting passage |
-| `line_end` | INTEGER | Last line of the supporting passage |
-| `claim_excerpt` | TEXT | First ~100 chars of the annotated paragraph (for display) |
-| `ingested_at` | TEXT | UTC ISO-8601 |
+
+| Column          | Type       | Notes                                                     |
+| --------------- | ---------- | --------------------------------------------------------- |
+| `id`            | INTEGER PK |                                                           |
+| `page_slug`     | TEXT       | Wiki page the citation belongs to                         |
+| `source_file`   | TEXT       | Filename of the raw source (basename only)                |
+| `line_start`    | INTEGER    | First line of the supporting passage                      |
+| `line_end`      | INTEGER    | Last line of the supporting passage                       |
+| `claim_excerpt` | TEXT       | First ~100 chars of the annotated paragraph (for display) |
+| `ingested_at`   | TEXT       | UTC ISO-8601                                              |
 
 **`page_states`** _(added in v0.6.0)_
 
 Fast slug-keyed current state index. One row per wiki page.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `slug` | TEXT PK | Wiki page slug |
-| `state` | TEXT | One of: `draft`, `active`, `contradicted`, `stale`, `archived` |
-| `updated_at` | TEXT | UTC ISO-8601 — when this row was last modified |
-| `triggered_by` | TEXT | Who caused the last transition: `ingest`, `lint`, `cli`, `api` |
+
+| Column         | Type    | Notes                                                         |
+| -------------- | ------- | ------------------------------------------------------------- |
+| `slug`         | TEXT PK | Wiki page slug                                                |
+| `state`        | TEXT    | One of:`draft`, `active`, `contradicted`, `stale`, `archived` |
+| `updated_at`   | TEXT    | UTC ISO-8601 — when this row was last modified               |
+| `triggered_by` | TEXT    | Who caused the last transition:`ingest`, `lint`, `cli`, `api` |
 
 **`lifecycle_events`** _(added in v0.6.0)_
 
 Immutable append-only audit log of every lifecycle transition.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | INTEGER PK | |
-| `slug` | TEXT | Wiki page slug |
-| `from_state` | TEXT | Previous state (`null` on first creation) |
-| `to_state` | TEXT | New state |
-| `reason` | TEXT | Human-readable reason (empty string if none provided) |
-| `triggered_by` | TEXT | `ingest`, `lint`, `cli`, `api` |
-| `timestamp` | TEXT | UTC ISO-8601 |
-| `content_snapshot` | TEXT | Full page body at the moment of the event; NULL when the event carries no content change (e.g. ingest-agent transitions). See [§23 Page Content Snapshots](#page-content-snapshots) for the full capture policy. |
+
+| Column             | Type       | Notes                                                                                                                                                                                                            |
+| ------------------ | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`               | INTEGER PK |                                                                                                                                                                                                                  |
+| `slug`             | TEXT       | Wiki page slug                                                                                                                                                                                                   |
+| `from_state`       | TEXT       | Previous state (`null` on first creation)                                                                                                                                                                        |
+| `to_state`         | TEXT       | New state                                                                                                                                                                                                        |
+| `reason`           | TEXT       | Human-readable reason (empty string if none provided)                                                                                                                                                            |
+| `triggered_by`     | TEXT       | `ingest`, `lint`, `cli`, `api`                                                                                                                                                                                   |
+| `timestamp`        | TEXT       | UTC ISO-8601                                                                                                                                                                                                     |
+| `content_snapshot` | TEXT       | Full page body at the moment of the event; NULL when the event carries no content change (e.g. ingest-agent transitions). See[§23 Page Content Snapshots](#page-content-snapshots) for the full capture policy. |
 
 ### jobs.db — Job queue
 
@@ -753,40 +773,42 @@ Note: BM25 IDF requires a minimum of 3 documents in the corpus for non-zero scor
 
 ### Endpoints
 
-| Method | Path | Request | Response |
-|--------|------|---------|----------|
-| `POST` | `/jobs/ingest` | `{source: str}` | `{job_id: str}` |
-| `POST` | `/jobs/lint` | `{scope?: str}` | `{job_id: str}` |
-| `GET` | `/jobs` | `?status=<filter>&sort=<col>&order=<dir>` | `[Job]` |
-| `GET` | `/jobs/{id}` | — | `Job` |
-| `DELETE` | `/jobs/{id}` | — | `{deleted: job_id}` |
-| `POST` | `/jobs/{id}/retry` | — | `{retried: job_id}` — resets a `dead` or `failed` job to `pending`; returns an optional `warning` field if the job status is unusual |
-| `GET` | `/query` | `?q=<question>` | `{answer: str, citations: [str]}` |
-| `POST` | `/query` | `{question: str, save?: bool}` | `{answer: str, citations: [str], slug?: str}` |
-| `GET` | `/status` | — | `WikiStatus` |
-| `GET` | `/lint/report` | — | `LintReport` |
-| `GET` | `/health` | — | `{status: "ok"}` |
-| `GET` | `/provenance/citations` _(v0.5.0)_ | `?page=<slug>&source=<file>&broken=<bool>&limit=N&offset=N&sort=<col>&order=<dir>` | `{total: int, citations: [CitationRow]}` |
-| `GET` | `/lifecycle/status` _(v0.6.0)_ | — | `{draft: int, active: int, contradicted: int, stale: int, archived: int}` |
-| `GET` | `/lifecycle/events` _(v0.6.0)_ | `?slug=<slug>&to_state=<state>&limit=N&offset=N` | `{total: int, events: [LifecycleEvent]}` |
-| `POST` | `/lifecycle/transition` _(v0.6.0)_ | `{slug: str, to_state: str, reason?: str}` | `{slug, from_state, to_state, timestamp, cascade_links_removed_from: [str]}` _(cascade field added v1.0.2)_ |
-| `GET` | `/query/stream` _(v0.7.0)_ | `?q=<question>&no_cache=<bool>&timeout_seconds=N` _(timeout added v0.8.0)_ | SSE stream of `data: <token>\n\n` events, terminated by `data: [DONE]\n\n` |
-| `GET` | `/app` _(v0.7.0)_ | — | Serves the React SPA (web chat UI) |
-| `GET` | `/sessions` _(v0.8.0)_ | — | `[{session_id, first_q, last_active, turn_count, questions: [str]}]` |
-| `GET` | `/sessions/{session_id}/messages` _(v0.8.0)_ | — | `[{role, content, timestamp}]` |
-| `GET` | `/graph` _(v1.0.0)_ | — | `{status, node_count, edge_count, cluster_count, nodes: [...], edges: [...]}` or `{status: "computing"}` on first call |
-| `GET` | `/pages/{slug}/history` | `?index=N&include_content=true` | List content snapshots; ?index=N&include_content=true for single |
-| `POST` | `/pages/{slug}/rollback` | `{index: int, reason: str}` | Restore page body to snapshot N |
-| `POST` | `/pages/{slug}/snapshot` | `{content: str, reason?: str}` | Record a content snapshot only when content differs from the last stored snapshot (`recorded: true/false`). Called by the Obsidian plugin on vault modify events. |
-| `DELETE` | `/pages/{slug}/history` | — | Delete all lifecycle events (including snapshots) for a slug; intended for test teardown. |
+
+| Method   | Path                                         | Request                                                                            | Response                                                                                                                                                          |
+| -------- | -------------------------------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST`   | `/jobs/ingest`                               | `{source: str}`                                                                    | `{job_id: str}`                                                                                                                                                   |
+| `POST`   | `/jobs/lint`                                 | `{scope?: str}`                                                                    | `{job_id: str}`                                                                                                                                                   |
+| `GET`    | `/jobs`                                      | `?status=<filter>&sort=<col>&order=<dir>`                                          | `[Job]`                                                                                                                                                           |
+| `GET`    | `/jobs/{id}`                                 | —                                                                                 | `Job`                                                                                                                                                             |
+| `DELETE` | `/jobs/{id}`                                 | —                                                                                 | `{deleted: job_id}`                                                                                                                                               |
+| `POST`   | `/jobs/{id}/retry`                           | —                                                                                 | `{retried: job_id}` — resets a `dead` or `failed` job to `pending`; returns an optional `warning` field if the job status is unusual                             |
+| `GET`    | `/query`                                     | `?q=<question>`                                                                    | `{answer: str, citations: [str]}`                                                                                                                                 |
+| `POST`   | `/query`                                     | `{question: str, save?: bool}`                                                     | `{answer: str, citations: [str], slug?: str}`                                                                                                                     |
+| `GET`    | `/status`                                    | —                                                                                 | `WikiStatus`                                                                                                                                                      |
+| `GET`    | `/lint/report`                               | —                                                                                 | `LintReport`                                                                                                                                                      |
+| `GET`    | `/health`                                    | —                                                                                 | `{status: "ok"}`                                                                                                                                                  |
+| `GET`    | `/provenance/citations` _(v0.5.0)_           | `?page=<slug>&source=<file>&broken=<bool>&limit=N&offset=N&sort=<col>&order=<dir>` | `{total: int, citations: [CitationRow]}`                                                                                                                          |
+| `GET`    | `/lifecycle/status` _(v0.6.0)_               | —                                                                                 | `{draft: int, active: int, contradicted: int, stale: int, archived: int}`                                                                                         |
+| `GET`    | `/lifecycle/events` _(v0.6.0)_               | `?slug=<slug>&to_state=<state>&limit=N&offset=N`                                   | `{total: int, events: [LifecycleEvent]}`                                                                                                                          |
+| `POST`   | `/lifecycle/transition` _(v0.6.0)_           | `{slug: str, to_state: str, reason?: str}`                                         | `{slug, from_state, to_state, timestamp, cascade_links_removed_from: [str]}` _(cascade field added v1.0.2)_                                                       |
+| `GET`    | `/query/stream` _(v0.7.0)_                   | `?q=<question>&no_cache=<bool>&timeout_seconds=N` _(timeout added v0.8.0)_         | SSE stream of`data: <token>\n\n` events, terminated by `data: [DONE]\n\n`                                                                                         |
+| `GET`    | `/app` _(v0.7.0)_                            | —                                                                                 | Serves the React SPA (web chat UI)                                                                                                                                |
+| `GET`    | `/sessions` _(v0.8.0)_                       | —                                                                                 | `[{session_id, first_q, last_active, turn_count, questions: [str]}]`                                                                                              |
+| `GET`    | `/sessions/{session_id}/messages` _(v0.8.0)_ | —                                                                                 | `[{role, content, timestamp}]`                                                                                                                                    |
+| `GET`    | `/graph` _(v1.0.0)_                          | —                                                                                 | `{status, node_count, edge_count, cluster_count, nodes: [...], edges: [...]}` or `{status: "computing"}` on first call                                            |
+| `GET`    | `/pages/{slug}/history`                      | `?index=N&include_content=true`                                                    | List content snapshots; ?index=N&include_content=true for single                                                                                                  |
+| `POST`   | `/pages/{slug}/rollback`                     | `{index: int, reason: str}`                                                        | Restore page body to snapshot N                                                                                                                                   |
+| `POST`   | `/pages/{slug}/snapshot`                     | `{content: str, reason?: str}`                                                     | Record a content snapshot only when content differs from the last stored snapshot (`recorded: true/false`). Called by the Obsidian plugin on vault modify events. |
+| `DELETE` | `/pages/{slug}/history`                      | —                                                                                 | Delete all lifecycle events (including snapshots) for a slug; intended for test teardown.                                                                         |
 
 **`GET /jobs` query parameters:**
 
-| Parameter | Values | Default | Description |
-|-----------|--------|---------|-------------|
-| `status` | `pending` \| `in_progress` \| `completed` \| `failed` \| `skipped` \| `dead` \| `cancelled` | _(all)_ | Filter to one status |
-| `sort` | `created_at` \| `status` \| `operation` | `created_at` | Column to sort by |
-| `order` | `asc` \| `desc` | `asc` | Sort direction |
+
+| Parameter | Values                                                                                      | Default      | Description          |
+| --------- | ------------------------------------------------------------------------------------------- | ------------ | -------------------- |
+| `status`  | `pending` \| `in_progress` \| `completed` \| `failed` \| `skipped` \| `dead` \| `cancelled` | _(all)_      | Filter to one status |
+| `sort`    | `created_at` \| `status` \| `operation`                                                     | `created_at` | Column to sort by    |
+| `order`   | `asc` \| `desc`                                                                             | `asc`        | Sort direction       |
 
 **Operation types:** `ingest` (file/URL/web-search ingest jobs) and `lint` (lint pass jobs).
 
@@ -849,6 +871,7 @@ The `progress` field is updated in real time during execution (e.g. `{"phase": "
 ### Path resolution
 
 `POST /jobs/ingest` accepts:
+
 - Absolute path: `/home/user/docs/report.pdf`
 - Vault-relative path: `raw_sources/report.pdf` (resolved against `wiki_root`)
 - URL: `https://example.com/article`
@@ -864,13 +887,14 @@ for example, Claude Code session transcripts at `~/.claude/projects/<hash>/<id>.
 
 **Client behaviour summary:**
 
-| Client | Sends `allow_external_paths` | Can ingest outside wiki root? |
-|--------|------------------------------|-------------------------------|
-| CLI (`synthadoc ingest <path>`) | `true` (automatic, local file paths only) | Yes — server is localhost |
-| Obsidian plugin | Never sent (field omitted → defaults `false`) | No — wiki-relative paths and URLs only |
-| Web UI | Never sent (field omitted → defaults `false`) | No — wiki-relative paths and URLs only |
-| Direct HTTP API (localhost) | Set manually in request body | Yes — if request from 127.0.0.1/::1 |
-| Direct HTTP API (remote) | Ignored by server | No — server silently treats as `false` |
+
+| Client                          | Sends`allow_external_paths`                   | Can ingest outside wiki root?           |
+| ------------------------------- | --------------------------------------------- | --------------------------------------- |
+| CLI (`synthadoc ingest <path>`) | `true` (automatic, local file paths only)     | Yes — server is localhost              |
+| Obsidian plugin                 | Never sent (field omitted → defaults`false`) | No — wiki-relative paths and URLs only |
+| Web UI                          | Never sent (field omitted → defaults`false`) | No — wiki-relative paths and URLs only |
+| Direct HTTP API (localhost)     | Set manually in request body                  | Yes — if request from 127.0.0.1/::1    |
+| Direct HTTP API (remote)        | Ignored by server                             | No — server silently treats as`false`  |
 
 ### Background worker
 
@@ -880,8 +904,8 @@ The HTTP server runs a background task that polls `jobs.db` every 2 seconds and 
 
 ## 8. Obsidian Plugin
 
-**Package:** `synthadoc-obsidian` (TypeScript)  
-**Location:** `obsidian-plugin/` in the repo  
+**Package:** `synthadoc-obsidian` (TypeScript)
+**Location:** `obsidian-plugin/` in the repo
 **Version:** 1.1.0
 
 Each vault configures its server URL in plugin settings (default `http://127.0.0.1:7070`).
@@ -894,21 +918,22 @@ Reload the plugin (toggle off/on) after copying — a full Obsidian restart is n
 
 ### Command palette
 
-| Command | Behaviour |
-|---------|-----------|
-| `Synthadoc: Ingest...` | Tabbed modal with four ingest modes. **Web search** — type a topic, set max results (1–50, default 20) and poll interval (500–10 000 ms, default 2000 ms); polls live showing phase text, pages list, and per-URL errors until all fan-out jobs settle. `Ctrl/Cmd+Enter` to submit. **From URL** — paste any URL and queue it for ingest; polls job status live. **All sources in folder** — queues every supported file in the configured raw sources folder. **Pick files** — click **Browse…** to select a folder from the OS picker, then **Scan** to list supported files; wiki sub-folder contents and common system files are excluded automatically; select files and click **Ingest selected**. |
-| `Synthadoc: Query: ask the wiki...` | Responsive modal (min 520px, 60vw, max 860px); markdown-rendered answer with citation footer; stays open when clicking elsewhere — must be closed explicitly via ✕ or Escape |
-| `Synthadoc: Lint: report` | 3-tab modal — **Contradictions**, **Orphans**, **Adversarial** _(v0.5.0)_. The Adversarial tab shows each flagged claim (orange) with its concern and suggested re-ingest commands. |
-| `Synthadoc: Lint: run...` | Modal with **Auto-resolve** and **Skip adversarial review** _(v0.5.0)_ checkboxes. Queues a lint job; polls progress live; reports contradiction, orphan, and adversarial warning counts when complete. Tick **Skip adversarial review** to run structural-only lint (also clears existing `lint_warnings`). |
-| `Synthadoc: View Page Provenance` _(v0.5.0)_ | Sortable, paginated table of every claim citation recorded across the wiki — page, claim excerpt, source file, line range, and ingest timestamp. Draggable; all cell content is selectable and copyable. Click any row to open the Source Viewer showing the exact source lines with ±5 lines of context. For PDF sources a page-jump button opens the native PDF viewer at the correct page. |
-| `Synthadoc: Manage Page Lifecycle` _(v0.6.0)_ | Three-tab modal. **Current States** — sortable, filterable, paginated table (dynamic row count based on modal height) of all wiki pages with their current lifecycle state and last transition timestamp; click column headers to sort; each row shows valid transition buttons with a reason dialog before committing; draft/stale badge links on the lint modal and jobs panel open the table pre-filtered to that state. **Audit Log** — full history of every state transition across all pages, searchable by slug, filterable by target state, sortable by any column, with pagination and a purge footer (keep latest N per slug, or purge events before a date). **Content Snapshots** _(v1.2.0)_ — flat list of all snapshots across all pages, grouped by slug and sorted by index when unfiltered; filter-by-slug input with a × clear button; each row shows slug, snapshot index, state transition, triggered-by, timestamp, and size; click a row to open the corresponding wiki page; **View** button shows the snapshot diff against the current file body (LCS diff, YAML frontmatter stripped); **Rollback** button restores the page body to that snapshot (saves current body first, making rollback undoable). |
-| `Synthadoc: Jobs...` | Modal with status-filter checkboxes (pending, in_progress, completed, failed, skipped, dead, cancelled), sortable results table (click **Status**, **Operation**, or **Created** headers to sort ascending; click again to reverse; ▲/▼ indicates active sort, ⇅ indicates unsorted; default: newest first), error detail rows for failed/dead/cancelled jobs, pagination (25 per page), auto-refresh countdown, a **Retry selected** button (enabled when ≥ 1 selected job is failed/dead/cancelled) and a **Delete selected** button (enabled when ≥ 1 job is selected). A **Purge old jobs** footer row lets you set a day threshold and remove old completed/dead jobs in one click. |
-| `Synthadoc: Routing: manage ROUTING.md...` | Modal panel with three buttons. **Init** creates ROUTING.md from the current index.md branch structure (enabled only when ROUTING.md does not exist). **Validate** reports two things: dangling slugs (pages listed in ROUTING.md that no longer exist in the wiki) and unassigned slugs (pages that exist in index.md but are not listed in any ROUTING.md branch). Enabled only when ROUTING.md exists. **Clean** removes dangling slugs from ROUTING.md (enabled only when ROUTING.md exists). After each action the result appears inline with per-entry `[Branch] [[slug]]` detail rows. |
-| `Synthadoc: Staging: manage staging policy...` | Modal panel showing the current policy state. A segmented control switches between **Off**, **All**, and **Threshold**. When **Threshold** is selected, a second segmented control sets the minimum confidence (**High** / **Medium** / **Low**). A **Save** button persists the change via the HTTP API and updates the inline status. A footer link opens the Candidates modal directly. |
-| `Synthadoc: Candidates: review candidate pages...` | Paginated table (50 per page) of all staged candidate pages. Each row shows the slug, a colour-coded confidence badge, and a checkbox. **Promote All** and **Discard All** act on every candidate; **Promote Selected** and **Discard Selected** act on checked rows. The table reloads automatically after each action. A footer link opens the Staging policy modal. |
-| `Synthadoc: Context: build context pack...` | Modal with a goal/question text area, a token budget field (default 4000), and a **Build Context Pack** button (`Ctrl/Cmd+Enter` also triggers). The server decomposes the goal, retrieves and ranks wiki pages via BM25, and packs them within the budget. The result is rendered as cited Markdown in a read-only text area. **Copy to Clipboard** copies the content to the OS clipboard. **Save as .md** downloads the Markdown file with a slug-derived filename. |
-| `Synthadoc: Audit...` | Tabbed modal with four audit views, each loading automatically on open. **Query history** — paginated (50 per page) query records with question, sub-question count, token use, cost, and timestamp; ← Prev / Page X of Y (Z total) / Next → / ↻ Reload controls. **Ingest history** — paginated (50 per page) ingest records with source filename, wiki page slug, tokens, cost, and ingested-at timestamp; same pager controls. **Events** — paginated (100 per page) raw audit events with timestamp, job ID, event type, and metadata; same pager controls. **Cost summary** — total tokens and cost over the last N days (default 30) plus per-day breakdown. |
-| `Graph: show knowledge graph` _(v1.1.0)_ | Open the knowledge graph panel — draggable modal with Canvas force-directed graph, type filter dropdown, cluster legend, hover tooltip showing title/slug/type/state/cluster/connections, and click-to-open page in current pane. System pages (index, overview, dashboard, purpose, log) are excluded. Capped at 300 most-connected nodes for large wikis with an explanatory banner. |
+
+| Command                                            | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Synthadoc: Ingest...`                             | Tabbed modal with four ingest modes.**Web search** — type a topic, set max results (1–50, default 20) and poll interval (500–10 000 ms, default 2000 ms); polls live showing phase text, pages list, and per-URL errors until all fan-out jobs settle. `Ctrl/Cmd+Enter` to submit. **From URL** — paste any URL and queue it for ingest; polls job status live. **All sources in folder** — queues every supported file in the configured raw sources folder. **Pick files** — click **Browse…** to select a folder from the OS picker, then **Scan** to list supported files; wiki sub-folder contents and common system files are excluded automatically; select files and click **Ingest selected**.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `Synthadoc: Query: ask the wiki...`                | Responsive modal (min 520px, 60vw, max 860px); markdown-rendered answer with citation footer; stays open when clicking elsewhere — must be closed explicitly via ✕ or Escape                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `Synthadoc: Lint: report`                          | 3-tab modal —**Contradictions**, **Orphans**, **Adversarial** _(v0.5.0)_. The Adversarial tab shows each flagged claim (orange) with its concern and suggested re-ingest commands.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `Synthadoc: Lint: run...`                          | Modal with**Auto-resolve** and **Skip adversarial review** _(v0.5.0)_ checkboxes. Queues a lint job; polls progress live; reports contradiction, orphan, and adversarial warning counts when complete. Tick **Skip adversarial review** to run structural-only lint (also clears existing `lint_warnings`).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `Synthadoc: View Page Provenance` _(v0.5.0)_       | Sortable, paginated table of every claim citation recorded across the wiki — page, claim excerpt, source file, line range, and ingest timestamp. Draggable; all cell content is selectable and copyable. Click any row to open the Source Viewer showing the exact source lines with ±5 lines of context. For PDF sources a page-jump button opens the native PDF viewer at the correct page.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `Synthadoc: Manage Page Lifecycle` _(v0.6.0)_      | Three-tab modal.**Current States** — sortable, filterable, paginated table (dynamic row count based on modal height) of all wiki pages with their current lifecycle state and last transition timestamp; click column headers to sort; each row shows valid transition buttons with a reason dialog before committing; draft/stale badge links on the lint modal and jobs panel open the table pre-filtered to that state. **Audit Log** — full history of every state transition across all pages, searchable by slug, filterable by target state, sortable by any column, with pagination and a purge footer (keep latest N per slug, or purge events before a date). **Content Snapshots** _(v1.2.0)_ — flat list of all snapshots across all pages, grouped by slug and sorted by index when unfiltered; filter-by-slug input with a × clear button; each row shows slug, snapshot index, state transition, triggered-by, timestamp, and size; click a row to open the corresponding wiki page; **View** button shows the snapshot diff against the current file body (LCS diff, YAML frontmatter stripped); **Rollback** button restores the page body to that snapshot (saves current body first, making rollback undoable). |
+| `Synthadoc: Jobs...`                               | Modal with status-filter checkboxes (pending, in_progress, completed, failed, skipped, dead, cancelled), sortable results table (click**Status**, **Operation**, or **Created** headers to sort ascending; click again to reverse; ▲/▼ indicates active sort, ⇅ indicates unsorted; default: newest first), error detail rows for failed/dead/cancelled jobs, pagination (25 per page), auto-refresh countdown, a **Retry selected** button (enabled when ≥ 1 selected job is failed/dead/cancelled) and a **Delete selected** button (enabled when ≥ 1 job is selected). A **Purge old jobs** footer row lets you set a day threshold and remove old completed/dead jobs in one click.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `Synthadoc: Routing: manage ROUTING.md...`         | Modal panel with three buttons.**Init** creates ROUTING.md from the current index.md branch structure (enabled only when ROUTING.md does not exist). **Validate** reports two things: dangling slugs (pages listed in ROUTING.md that no longer exist in the wiki) and unassigned slugs (pages that exist in index.md but are not listed in any ROUTING.md branch). Enabled only when ROUTING.md exists. **Clean** removes dangling slugs from ROUTING.md (enabled only when ROUTING.md exists). After each action the result appears inline with per-entry `[Branch] [[slug]]` detail rows.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `Synthadoc: Staging: manage staging policy...`     | Modal panel showing the current policy state. A segmented control switches between**Off**, **All**, and **Threshold**. When **Threshold** is selected, a second segmented control sets the minimum confidence (**High** / **Medium** / **Low**). A **Save** button persists the change via the HTTP API and updates the inline status. A footer link opens the Candidates modal directly.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `Synthadoc: Candidates: review candidate pages...` | Paginated table (50 per page) of all staged candidate pages. Each row shows the slug, a colour-coded confidence badge, and a checkbox.**Promote All** and **Discard All** act on every candidate; **Promote Selected** and **Discard Selected** act on checked rows. The table reloads automatically after each action. A footer link opens the Staging policy modal.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `Synthadoc: Context: build context pack...`        | Modal with a goal/question text area, a token budget field (default 4000), and a**Build Context Pack** button (`Ctrl/Cmd+Enter` also triggers). The server decomposes the goal, retrieves and ranks wiki pages via BM25, and packs them within the budget. The result is rendered as cited Markdown in a read-only text area. **Copy to Clipboard** copies the content to the OS clipboard. **Save as .md** downloads the Markdown file with a slug-derived filename.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `Synthadoc: Audit...`                              | Tabbed modal with four audit views, each loading automatically on open.**Query history** — paginated (50 per page) query records with question, sub-question count, token use, cost, and timestamp; ← Prev / Page X of Y (Z total) / Next → / ↻ Reload controls. **Ingest history** — paginated (50 per page) ingest records with source filename, wiki page slug, tokens, cost, and ingested-at timestamp; same pager controls. **Events** — paginated (100 per page) raw audit events with timestamp, job ID, event type, and metadata; same pager controls. **Cost summary** — total tokens and cost over the last N days (default 30) plus per-day breakdown.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `Graph: show knowledge graph` _(v1.1.0)_           | Open the knowledge graph panel — draggable modal with Canvas force-directed graph, type filter dropdown, cluster legend, hover tooltip showing title/slug/type/state/cluster/connections, and click-to-open page in current pane. System pages (index, overview, dashboard, purpose, log) are excluded. Capped at 300 most-connected nodes for large wikis with an explanatory banner.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 ### Ribbon icon
 
@@ -921,10 +946,11 @@ If the icon is not visible, make sure the plugin is enabled under **Settings →
 
 ### Settings
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| Server URL | `http://127.0.0.1:7070` | HTTP server for this vault |
-| Raw sources folder | `raw_sources` | Folder scanned by "Ingest all sources" |
+
+| Setting            | Default                 | Description                            |
+| ------------------ | ----------------------- | -------------------------------------- |
+| Server URL         | `http://127.0.0.1:7070` | HTTP server for this vault             |
+| Raw sources folder | `raw_sources`           | Folder scanned by "Ingest all sources" |
 
 ### Background vault monitoring _(v1.2.0)_
 
@@ -952,7 +978,6 @@ without requiring any explicit user action.
 ---
 
 ## 9. CLI
-
 
 The CLI is a thin HTTP client — it posts jobs to the running server and polls for results. No LLM agents run in the CLI process.
 
@@ -1012,8 +1037,12 @@ synthadoc
 │   └── lifecycle
 │       └── purge -w wiki (--before <date> | --keep-latest <n>)
 ├── workflow
-│   └── run
-│       └── contradiction-resolver [--slug SLUG] [--type adversarial|source-conflict] [-w wiki] [--timeout N]
+│   ├── list
+│   └── run --name NAME [WORKFLOW_ARGS...] [-w wiki] [--timeout N]
+│       # NAME is one of: lint-report | broken-wikilinks | scaffold
+│       #                  contradiction-resolver | ingest-lint
+│       # Workflow-specific args (forwarded verbatim):
+│       #   contradiction-resolver: [--slug SLUG] [--type adversarial|source-conflict|gate|conflict]
 ├── backup [-w wiki] [--output <dir>] [--no-sources] [--no-exports] [--no-cache]
 ├── restore <backup.zip> [--name <wiki>] [--target <dir>] [--port <N>]
 ├── cache clear [-w wiki]
@@ -1030,14 +1059,15 @@ synthadoc
 
 ### `schedule` sub-commands
 
-| Command | Description |
-|---|---|
-| `schedule add --op "<cmd>" --cron "<expr>"` | Register a single recurring job with the scheduler |
-| `schedule apply` | Bulk-register all jobs declared in `[[schedule.jobs]]` in `config.toml`; idempotent alternative to running `schedule add` once per job |
-| `schedule list` | List all registered jobs with their cron expression, next run time, last run time, and last result |
-| `schedule remove <id>` | Remove a registered job by ID |
-| `schedule run --op "<cmd>"` | Execute an operation immediately and record the result in the audit trail |
-| `schedule history` | Show recent scheduled run history from the audit trail |
+
+| Command                                     | Description                                                                                                                           |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `schedule add --op "<cmd>" --cron "<expr>"` | Register a single recurring job with the scheduler                                                                                    |
+| `schedule apply`                            | Bulk-register all jobs declared in`[[schedule.jobs]]` in `config.toml`; idempotent alternative to running `schedule add` once per job |
+| `schedule list`                             | List all registered jobs with their cron expression, next run time, last run time, and last result                                    |
+| `schedule remove <id>`                      | Remove a registered job by ID                                                                                                         |
+| `schedule run --op "<cmd>"`                 | Execute an operation immediately and record the result in the audit trail                                                             |
+| `schedule history`                          | Show recent scheduled run history from the audit trail                                                                                |
 
 `schedule apply` is the recommended setup path when jobs are declared in `config.toml`. It reads the `[[schedule.jobs]]` array and registers every entry in one command, making schedule configuration reproducible and version-controllable:
 
@@ -1057,12 +1087,13 @@ synthadoc schedule apply -w my-wiki
 
 ### `query` options
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--save` | off | Save the answer as a new wiki page |
-| `--no-stream` | off | Disable token-by-token streaming; print the full answer when complete. Use in scripts, pipes, or terminals that do not handle ANSI escape codes. |
-| `--no-cache` | off | Bypass the query result cache and always call the LLM. |
-| `--timeout N` | `60` | Seconds to wait for the LLM response. Increase for slower providers (e.g. `--timeout 120` for MiniMax reasoning models) |
+
+| Flag          | Default | Description                                                                                                                                      |
+| ------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--save`      | off     | Save the answer as a new wiki page                                                                                                               |
+| `--no-stream` | off     | Disable token-by-token streaming; print the full answer when complete. Use in scripts, pipes, or terminals that do not handle ANSI escape codes. |
+| `--no-cache`  | off     | Bypass the query result cache and always call the LLM.                                                                                           |
+| `--timeout N` | `60`    | Seconds to wait for the LLM response. Increase for slower providers (e.g.`--timeout 120` for MiniMax reasoning models)                           |
 
 ### `ingest --analyse-only`
 
@@ -1141,33 +1172,34 @@ Every user-facing error carries a stable code in the format `[ERR-<CATEGORY>-<NN
 
 **File:** `synthadoc/errors.py`
 
-| Code | Meaning |
-|------|---------|
-| `ERR-SRV-001` | No server listening for the requested wiki |
-| `ERR-SRV-002` | Port already bound by another process |
-| `ERR-SRV-003` | Server returned a 4xx/5xx HTTP response |
-| `ERR-SRV-004` | Background server process exited immediately |
-| `ERR-WIKI-001` | Wiki root directory does not exist |
-| `ERR-WIKI-002` | Directory exists but missing `wiki/` subfolder |
-| `ERR-WIKI-003` | `wiki/` directory is not writable |
-| `ERR-WIKI-004` | Install target already exists on disk |
-| `ERR-WIKI-005` | Unknown demo template name |
-| `ERR-WIKI-006` | Name not in `~/.synthadoc/wikis.json` |
-| `ERR-WIKI-007` | Backup requires a newer `db_schema_version` than installed |
-| `ERR-CFG-001` | Required API key environment variable not set |
-| `ERR-CFG-002` | Provider name not recognised |
-| `ERR-SKILL-001` | No skill matched the source string |
-| `ERR-SKILL-002` | Required pip package for skill not installed |
-| `ERR-SKILL-003` | URL returned 403 (bot/paywall protection) |
-| `ERR-SKILL-004` | `TAVILY_API_KEY` not set for web search |
-| `ERR-INGEST-001` | Source file or directory not found |
-| `ERR-INGEST-002` | Source file exists but is empty |
-| `ERR-INGEST-003` | `--batch` target is not a directory |
-| `ERR-QUERY-001` | LLM synthesis timed out; retry the query |
-| `ERR-JOB-001` | Job ID does not exist in `jobs.db` |
-| `ERR-PROV-001` | Daily API quota exhausted for today |
-| `ERR-PROV-002` | Coding tool CLI usage quota exhausted |
-| `ERR-AGENT-001` | LLM agent call failed (empty response, bad JSON, timeout) |
+
+| Code             | Meaning                                                   |
+| ---------------- | --------------------------------------------------------- |
+| `ERR-SRV-001`    | No server listening for the requested wiki                |
+| `ERR-SRV-002`    | Port already bound by another process                     |
+| `ERR-SRV-003`    | Server returned a 4xx/5xx HTTP response                   |
+| `ERR-SRV-004`    | Background server process exited immediately              |
+| `ERR-WIKI-001`   | Wiki root directory does not exist                        |
+| `ERR-WIKI-002`   | Directory exists but missing`wiki/` subfolder             |
+| `ERR-WIKI-003`   | `wiki/` directory is not writable                         |
+| `ERR-WIKI-004`   | Install target already exists on disk                     |
+| `ERR-WIKI-005`   | Unknown demo template name                                |
+| `ERR-WIKI-006`   | Name not in`~/.synthadoc/wikis.json`                      |
+| `ERR-WIKI-007`   | Backup requires a newer`db_schema_version` than installed |
+| `ERR-CFG-001`    | Required API key environment variable not set             |
+| `ERR-CFG-002`    | Provider name not recognised                              |
+| `ERR-SKILL-001`  | No skill matched the source string                        |
+| `ERR-SKILL-002`  | Required pip package for skill not installed              |
+| `ERR-SKILL-003`  | URL returned 403 (bot/paywall protection)                 |
+| `ERR-SKILL-004`  | `TAVILY_API_KEY` not set for web search                   |
+| `ERR-INGEST-001` | Source file or directory not found                        |
+| `ERR-INGEST-002` | Source file exists but is empty                           |
+| `ERR-INGEST-003` | `--batch` target is not a directory                       |
+| `ERR-QUERY-001`  | LLM synthesis timed out; retry the query                  |
+| `ERR-JOB-001`    | Job ID does not exist in`jobs.db`                         |
+| `ERR-PROV-001`   | Daily API quota exhausted for today                       |
+| `ERR-PROV-002`   | Coding tool CLI usage quota exhausted                     |
+| `ERR-AGENT-001`  | LLM agent call failed (empty response, bad JSON, timeout) |
 
 **CLI errors** go through the `cli_error(code, message, hint)` helper, which prints `[ERR-XXX-NNN] message` to stderr with an optional hint line and exits with code 1. **Agent and skill errors** embed the code directly in the exception message string so it surfaces in the job `error` field.
 
@@ -1210,22 +1242,24 @@ default = { provider = "gemini", model = "gemini-2.5-flash" }
 
 Required environment variables per provider:
 
-| Provider | Env var | Free tier | Vision |
-|----------|---------|-----------|--------|
-| `anthropic` | `ANTHROPIC_API_KEY` | No (pay-per-token) | Yes |
-| `openai` | `OPENAI_API_KEY` | No (pay-per-token) | Yes |
-| `gemini` | `GEMINI_API_KEY` | **Yes** — 15 RPM / 1M tokens/day on Flash | Yes |
-| `groq` | `GROQ_API_KEY` | **Yes** — generous free tier on Llama/Mixtral models | No |
-| `minimax` | `MINIMAX_API_KEY` | No (pay-per-token) | Yes (M2.5 / M2.7 natively multimodal) |
-| `deepseek` | `DEEPSEEK_API_KEY` | No (pay-per-token, very cheap) | No (text-only) |
-| `qwen` | `QWEN_API_KEY` | Yes — 1M free tokens (90-day trial), then paid DashScope | Model-dependent |
-| `ollama` | _(none)_ | **Yes** — fully local; **GPU required** — CPU-only inference is too slow for interactive use | Model-dependent |
+
+| Provider    | Env var             | Free tier                                                                                      | Vision                                |
+| ----------- | ------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------- |
+| `anthropic` | `ANTHROPIC_API_KEY` | No (pay-per-token)                                                                             | Yes                                   |
+| `openai`    | `OPENAI_API_KEY`    | No (pay-per-token)                                                                             | Yes                                   |
+| `gemini`    | `GEMINI_API_KEY`    | **Yes** — 15 RPM / 1M tokens/day on Flash                                                     | Yes                                   |
+| `groq`      | `GROQ_API_KEY`      | **Yes** — generous free tier on Llama/Mixtral models                                          | No                                    |
+| `minimax`   | `MINIMAX_API_KEY`   | No (pay-per-token)                                                                             | Yes (M2.5 / M2.7 natively multimodal) |
+| `deepseek`  | `DEEPSEEK_API_KEY`  | No (pay-per-token, very cheap)                                                                 | No (text-only)                        |
+| `qwen`      | `QWEN_API_KEY`      | Yes — 1M free tokens (90-day trial), then paid DashScope                                      | Model-dependent                       |
+| `ollama`    | _(none)_            | **Yes** — fully local; **GPU required** — CPU-only inference is too slow for interactive use | Model-dependent                       |
 
 ### Coding tool CLI providers — no API key needed
 
 If you have an active **Claude Code** subscription, or want to use the free **Opencode Zen** tier, you can use either as the LLM provider with no separate API key.
 
 **Requirements:** the CLI tool must be installed and reachable on `PATH`:
+
 - Claude Code: `claude` binary — install via `npm install -g @anthropic-ai/claude-code`
 - Opencode: `opencode` binary — install via `npm install -g opencode`
 
@@ -1251,6 +1285,7 @@ synthadoc serve -w <wiki-name> --provider claude-code
 ```
 
 **Limitations:**
+
 - Vector search (`search.vector = true`) is not supported — search falls back to BM25-only. Sufficient for wikis up to a few hundred pages.
 - Quota is shared with your coding tool usage. Heavy batch ingest consumes from the same daily budget. Quota exhaustion permanently fails the job (no retry) with a clear message.
 
@@ -1319,62 +1354,63 @@ cron = "0 3 * * 0"   # every Sunday at 03:00
 
 ### Config keys reference
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `wiki.domain` | str | `"General"` | Topic scope of the wiki. Used in prompts to keep ingest focused. Example: `"Machine Learning"` or `"Quantum Computing"`. |
-| `agents.default.provider` | str | `"gemini"` | LLM provider: `anthropic`, `openai`, `gemini`, `groq`, `minimax`, `deepseek`, `qwen`, `ollama` |
-| `agents.default.model` | str | `"gemini-2.5-flash"` | Model ID passed to the provider API |
-| `agents.default.base_url` | str | `""` | Override the provider's API endpoint. Use this to point any OpenAI-compatible provider at a custom URL (e.g. a local proxy or a private deployment). |
-| `agents.default.thinking` | str | `""` | Reasoning mode: `"disabled"` turns off chain-of-thought (faster, cheaper on MiniMax M3 and Qwen); `"enabled"` or `"adaptive"` turns it on. Empty string uses the provider's default. Applies to `minimax`, `qwen` (DashScope), and `deepseek` providers; ignored by others. |
-| `agents.ingest.provider` | str | (inherits default) | Override provider/model for the ingest agent only. Useful to use a cheap fast model for ingest while keeping a high-quality model for queries. |
-| `agents.ingest.model` | str | (inherits default) | Model ID for the ingest agent override. |
-| `agents.query.provider` | str | (inherits default) | Override provider/model for query answering only. |
-| `agents.query.model` | str | (inherits default) | Model ID for the query agent override. |
-| `agents.lint.provider` | str | (inherits default) | Override provider/model for the lint agent only. |
-| `agents.lint.model` | str | (inherits default) | Model ID for the lint agent override. |
-| `agents.adversarial.provider` | str | (inherits default) | Dedicated LLM provider for adversarial lint review. Falls back to `agents.default` when not set. Cross-model adversarial reduces self-serving bias — a different model family evaluates claims independently. |
-| `agents.adversarial.model` | str | (inherits default) | Model ID for the adversarial reviewer. For maximum independence, choose a model from a different family than the ingest model. |
-| `agents.llm_timeout_seconds` | int | `0` | Per-call LLM timeout in seconds; `0` = no limit. Set to e.g. `90` when using reasoning models (MiniMax-M2.5, DeepSeek-R1) that can exceed their internal generation budget silently. Restart required. |
-| `agents.scaffold_max_tokens` | int | `8192` | Max output tokens for the scaffold (page generation) agent. Increase to `16384`+ when using reasoning models on large wikis where the default budget is exhausted. |
-| `agents.query_max_tokens` | int | `8192` | Max output tokens for the query agent. Increase if reasoning models exhaust their budget before completing the answer. |
-| `lint.adversarial_max_per_page` | int | `3` | Maximum adversarial warnings flagged per page. Must be ≥ `adversarial_gate_threshold` for the gate to fire. Raise to 4–5 for a thorough audit; lower to 1–2 to reduce noise on large wikis. |
-| `lint.check_url_availability` | bool | `false` | When `true`, lint performs an HTTP HEAD check on every URL source and flags unreachable URLs. Adds network calls to each lint run; opt-in only. |
-| `server.host` | str | `"127.0.0.1"` | Bind address. Change to `"0.0.0.0"` to expose the server on all interfaces (e.g. for LAN access). No built-in auth — restrict via firewall when exposing. |
-| `server.port` | int | `7070` | HTTP listen port. Change when running multiple wikis simultaneously. |
-| `ingest.max_pages_per_ingest` | int | `15` | Max pages one ingest job may create or update. |
-| `ingest.chunk_size` | int | `1500` | Text chunk size in characters for BM25 indexing. |
-| `ingest.chunk_overlap` | int | `150` | Overlap between consecutive chunks. |
-| `ingest.fetch_timeout_seconds` | int | `30` | Seconds to wait for a URL response before failing the fetch. |
-| `ingest.staging_policy` | str | `"off"` | Candidate staging gate: `"off"` = commit pages immediately; `"all"` = stage all new pages for review; `"threshold"` = stage only pages below `staging_confidence_min`. |
-| `ingest.staging_confidence_min` | str | `"high"` | Minimum confidence to auto-commit when `staging_policy = "threshold"`. Values: `"high"`, `"medium"`, `"low"`. Pages below this threshold are held as candidates. |
-| `query.gap_score_threshold` | float | `2.0` | BM25 score below which a knowledge gap is detected and `suggested_searches` are returned instead of (or alongside) an answer. Lower = more sensitive gap detection. |
-| `query.context_token_budget` | int | `4000` | Token budget for context pack assembly. Increase for richer context on complex queries; decrease if hitting prompt size limits. |
-| `queue.max_parallel_ingest` | int | `4` | Reserved for future parallel execution. The worker currently processes jobs sequentially; this field has no runtime effect. |
-| `queue.max_retries` | int | `3` | Retries before job → dead |
-| `queue.backoff_base_seconds` | int | `30` | Exponential backoff base; delays are `min(base × 2^(attempt−1), 300)` seconds |
-| `cache.version` | str | `"4"` | Bump to invalidate all cached LLM responses without touching source code |
-| `cost.soft_warn_usd` | float | `0.50` | Emit `logger.warning` in server log when per-job ingest cost exceeds this threshold; job continues normally |
-| `cost.hard_gate_usd` | float | `2.00` | Permanently fail the ingest job (DEAD) and record a `cost_gate_exceeded` audit event when per-job cost exceeds this threshold |
-| `cost.auto_resolve_confidence_threshold` | float | `0.85` | Auto-apply lint resolutions above this score |
-| `chat.conversation_history_turns` | int | `5` | Number of prior conversation turns injected into each query prompt for multi-turn context. Set to `0` to disable conversation history (each query answered independently). |
-| `chat.session_retention_days` | int | `30` | Days to retain chat session history in `audit.db`. Sessions older than this are pruned automatically. |
-| `audit.lifecycle_retention_days` | int | `0` | Days to retain lifecycle events in `audit.db`. `0` = keep forever. When set, events older than this threshold are pruned at the end of each lint run. |
-| `audit.url_staleness_days` | int | `0` | Days after which URL-sourced pages are automatically marked `stale` if the source URL has not been re-ingested. `0` = disabled. |
-| `logs.level` | str | `"INFO"` | Console log level: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
-| `logs.max_file_mb` | int | `5` | Rotate `synthadoc.log` at this size (MB) |
-| `logs.backup_count` | int | `5` | Rotated log files to keep; total disk ≈ `max_file_mb × (backup_count + 1)` |
-| `web_search.provider` | str | `"tavily"` | Web search provider (currently only `tavily` supported) |
-| `web_search.max_results` | int | `20` | Maximum results fetched per web search query |
-| `search.vector` | bool | `false` | Enable semantic re-ranking; downloads `BAAI/bge-small-en-v1.5` (~130 MB) once on first enable |
-| `search.vector_top_candidates` | int | `20` | BM25 candidate pool size when vector re-ranking is active |
-| `ingest.max_source_chars` | int | `32000` | Character limit applied to each source before the LLM call. Sources exceeding this limit are truncated; the page's `sources:` frontmatter entry gets `truncated: true` and lint emits a warning. Override per-run with `--max-source-chars N`. _(v1.0.0)_ |
-| `ingest.citation_source_lines` | int | `400` | Number of source lines the LLM sees during Pass 4 (citation annotation). Increase if lint reports `out_of_range` on long sources such as transcripts or PDFs. Raise `citation_max_tokens` in proportion when increasing this value. |
-| `ingest.citation_max_tokens` | int | `8192` | Output token budget for the annotated section returned by Pass 4. Increase when `citation_source_lines` is raised or wiki sections are long, to avoid truncated annotations. |
-| `query.context_wiki_pct` | float | `0.60` | Fraction of the model context window reserved for wiki source pages. _(v1.0.0)_ |
-| `query.context_history_pct` | float | `0.20` | Fraction reserved for conversation history. _(v1.0.0)_ |
-| `query.context_system_pct` | float | `0.15` | Fraction reserved for system prompt and instructions. Parsed and validated but not yet enforced as a hard cap in v1.0.0. _(v1.0.0)_ |
-| `query.context_index_pct` | float | `0.05` | Fraction reserved for the wiki index preamble. Parsed and validated but not yet enforced as a hard cap in v1.0.0. _(v1.0.0)_ |
-| `query.context_window` | int | _(auto)_ | Override the built-in context window lookup for the configured model. Use when running a local or custom model whose window size is not in the built-in table. _(v1.0.0)_ |
+
+| Key                                      | Type  | Default              | Description                                                                                                                                                                                                                                                                |
+| ---------------------------------------- | ----- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `wiki.domain`                            | str   | `"General"`          | Topic scope of the wiki. Used in prompts to keep ingest focused. Example:`"Machine Learning"` or `"Quantum Computing"`.                                                                                                                                                    |
+| `agents.default.provider`                | str   | `"gemini"`           | LLM provider:`anthropic`, `openai`, `gemini`, `groq`, `minimax`, `deepseek`, `qwen`, `ollama`                                                                                                                                                                              |
+| `agents.default.model`                   | str   | `"gemini-2.5-flash"` | Model ID passed to the provider API                                                                                                                                                                                                                                        |
+| `agents.default.base_url`                | str   | `""`                 | Override the provider's API endpoint. Use this to point any OpenAI-compatible provider at a custom URL (e.g. a local proxy or a private deployment).                                                                                                                       |
+| `agents.default.thinking`                | str   | `""`                 | Reasoning mode:`"disabled"` turns off chain-of-thought (faster, cheaper on MiniMax M3 and Qwen); `"enabled"` or `"adaptive"` turns it on. Empty string uses the provider's default. Applies to `minimax`, `qwen` (DashScope), and `deepseek` providers; ignored by others. |
+| `agents.ingest.provider`                 | str   | (inherits default)   | Override provider/model for the ingest agent only. Useful to use a cheap fast model for ingest while keeping a high-quality model for queries.                                                                                                                             |
+| `agents.ingest.model`                    | str   | (inherits default)   | Model ID for the ingest agent override.                                                                                                                                                                                                                                    |
+| `agents.query.provider`                  | str   | (inherits default)   | Override provider/model for query answering only.                                                                                                                                                                                                                          |
+| `agents.query.model`                     | str   | (inherits default)   | Model ID for the query agent override.                                                                                                                                                                                                                                     |
+| `agents.lint.provider`                   | str   | (inherits default)   | Override provider/model for the lint agent only.                                                                                                                                                                                                                           |
+| `agents.lint.model`                      | str   | (inherits default)   | Model ID for the lint agent override.                                                                                                                                                                                                                                      |
+| `agents.adversarial.provider`            | str   | (inherits default)   | Dedicated LLM provider for adversarial lint review. Falls back to`agents.default` when not set. Cross-model adversarial reduces self-serving bias — a different model family evaluates claims independently.                                                              |
+| `agents.adversarial.model`               | str   | (inherits default)   | Model ID for the adversarial reviewer. For maximum independence, choose a model from a different family than the ingest model.                                                                                                                                             |
+| `agents.llm_timeout_seconds`             | int   | `0`                  | Per-call LLM timeout in seconds;`0` = no limit. Set to e.g. `90` when using reasoning models (MiniMax-M2.5, DeepSeek-R1) that can exceed their internal generation budget silently. Restart required.                                                                      |
+| `agents.scaffold_max_tokens`             | int   | `8192`               | Max output tokens for the scaffold (page generation) agent. Increase to`16384`+ when using reasoning models on large wikis where the default budget is exhausted.                                                                                                          |
+| `agents.query_max_tokens`                | int   | `8192`               | Max output tokens for the query agent. Increase if reasoning models exhaust their budget before completing the answer.                                                                                                                                                     |
+| `lint.adversarial_max_per_page`          | int   | `3`                  | Maximum adversarial warnings flagged per page. Must be ≥`adversarial_gate_threshold` for the gate to fire. Raise to 4–5 for a thorough audit; lower to 1–2 to reduce noise on large wikis.                                                                              |
+| `lint.check_url_availability`            | bool  | `false`              | When`true`, lint performs an HTTP HEAD check on every URL source and flags unreachable URLs. Adds network calls to each lint run; opt-in only.                                                                                                                             |
+| `server.host`                            | str   | `"127.0.0.1"`        | Bind address. Change to`"0.0.0.0"` to expose the server on all interfaces (e.g. for LAN access). No built-in auth — restrict via firewall when exposing.                                                                                                                  |
+| `server.port`                            | int   | `7070`               | HTTP listen port. Change when running multiple wikis simultaneously.                                                                                                                                                                                                       |
+| `ingest.max_pages_per_ingest`            | int   | `15`                 | Max pages one ingest job may create or update.                                                                                                                                                                                                                             |
+| `ingest.chunk_size`                      | int   | `1500`               | Text chunk size in characters for BM25 indexing.                                                                                                                                                                                                                           |
+| `ingest.chunk_overlap`                   | int   | `150`                | Overlap between consecutive chunks.                                                                                                                                                                                                                                        |
+| `ingest.fetch_timeout_seconds`           | int   | `30`                 | Seconds to wait for a URL response before failing the fetch.                                                                                                                                                                                                               |
+| `ingest.staging_policy`                  | str   | `"off"`              | Candidate staging gate:`"off"` = commit pages immediately; `"all"` = stage all new pages for review; `"threshold"` = stage only pages below `staging_confidence_min`.                                                                                                      |
+| `ingest.staging_confidence_min`          | str   | `"high"`             | Minimum confidence to auto-commit when`staging_policy = "threshold"`. Values: `"high"`, `"medium"`, `"low"`. Pages below this threshold are held as candidates.                                                                                                            |
+| `query.gap_score_threshold`              | float | `2.0`                | BM25 score below which a knowledge gap is detected and`suggested_searches` are returned instead of (or alongside) an answer. Lower = more sensitive gap detection.                                                                                                         |
+| `query.context_token_budget`             | int   | `4000`               | Token budget for context pack assembly. Increase for richer context on complex queries; decrease if hitting prompt size limits.                                                                                                                                            |
+| `queue.max_parallel_ingest`              | int   | `4`                  | Reserved for future parallel execution. The worker currently processes jobs sequentially; this field has no runtime effect.                                                                                                                                                |
+| `queue.max_retries`                      | int   | `3`                  | Retries before job → dead                                                                                                                                                                                                                                                 |
+| `queue.backoff_base_seconds`             | int   | `30`                 | Exponential backoff base; delays are`min(base × 2^(attempt−1), 300)` seconds                                                                                                                                                                                             |
+| `cache.version`                          | str   | `"4"`                | Bump to invalidate all cached LLM responses without touching source code                                                                                                                                                                                                   |
+| `cost.soft_warn_usd`                     | float | `0.50`               | Emit`logger.warning` in server log when per-job ingest cost exceeds this threshold; job continues normally                                                                                                                                                                 |
+| `cost.hard_gate_usd`                     | float | `2.00`               | Permanently fail the ingest job (DEAD) and record a`cost_gate_exceeded` audit event when per-job cost exceeds this threshold                                                                                                                                               |
+| `cost.auto_resolve_confidence_threshold` | float | `0.85`               | Auto-apply lint resolutions above this score                                                                                                                                                                                                                               |
+| `chat.conversation_history_turns`        | int   | `5`                  | Number of prior conversation turns injected into each query prompt for multi-turn context. Set to`0` to disable conversation history (each query answered independently).                                                                                                  |
+| `chat.session_retention_days`            | int   | `30`                 | Days to retain chat session history in`audit.db`. Sessions older than this are pruned automatically.                                                                                                                                                                       |
+| `audit.lifecycle_retention_days`         | int   | `0`                  | Days to retain lifecycle events in`audit.db`. `0` = keep forever. When set, events older than this threshold are pruned at the end of each lint run.                                                                                                                       |
+| `audit.url_staleness_days`               | int   | `0`                  | Days after which URL-sourced pages are automatically marked`stale` if the source URL has not been re-ingested. `0` = disabled.                                                                                                                                             |
+| `logs.level`                             | str   | `"INFO"`             | Console log level:`DEBUG`, `INFO`, `WARNING`, `ERROR`                                                                                                                                                                                                                      |
+| `logs.max_file_mb`                       | int   | `5`                  | Rotate`synthadoc.log` at this size (MB)                                                                                                                                                                                                                                    |
+| `logs.backup_count`                      | int   | `5`                  | Rotated log files to keep; total disk ≈`max_file_mb × (backup_count + 1)`                                                                                                                                                                                                |
+| `web_search.provider`                    | str   | `"tavily"`           | Web search provider (currently only`tavily` supported)                                                                                                                                                                                                                     |
+| `web_search.max_results`                 | int   | `20`                 | Maximum results fetched per web search query                                                                                                                                                                                                                               |
+| `search.vector`                          | bool  | `false`              | Enable semantic re-ranking; downloads`BAAI/bge-small-en-v1.5` (~130 MB) once on first enable                                                                                                                                                                               |
+| `search.vector_top_candidates`           | int   | `20`                 | BM25 candidate pool size when vector re-ranking is active                                                                                                                                                                                                                  |
+| `ingest.max_source_chars`                | int   | `32000`              | Character limit applied to each source before the LLM call. Sources exceeding this limit are truncated; the page's`sources:` frontmatter entry gets `truncated: true` and lint emits a warning. Override per-run with `--max-source-chars N`. _(v1.0.0)_                   |
+| `ingest.citation_source_lines`           | int   | `400`                | Number of source lines the LLM sees during Pass 4 (citation annotation). Increase if lint reports`out_of_range` on long sources such as transcripts or PDFs. Raise `citation_max_tokens` in proportion when increasing this value.                                         |
+| `ingest.citation_max_tokens`             | int   | `8192`               | Output token budget for the annotated section returned by Pass 4. Increase when`citation_source_lines` is raised or wiki sections are long, to avoid truncated annotations.                                                                                                |
+| `query.context_wiki_pct`                 | float | `0.60`               | Fraction of the model context window reserved for wiki source pages._(v1.0.0)_                                                                                                                                                                                             |
+| `query.context_history_pct`              | float | `0.20`               | Fraction reserved for conversation history._(v1.0.0)_                                                                                                                                                                                                                      |
+| `query.context_system_pct`               | float | `0.15`               | Fraction reserved for system prompt and instructions. Parsed and validated but not yet enforced as a hard cap in v1.0.0._(v1.0.0)_                                                                                                                                         |
+| `query.context_index_pct`                | float | `0.05`               | Fraction reserved for the wiki index preamble. Parsed and validated but not yet enforced as a hard cap in v1.0.0._(v1.0.0)_                                                                                                                                                |
+| `query.context_window`                   | int   | _(auto)_             | Override the built-in context window lookup for the configured model. Use when running a local or custom model whose window size is not in the built-in table._(v1.0.0)_                                                                                                   |
 
 ---
 
@@ -1401,14 +1437,16 @@ on_lint_complete   = { cmd = "python hooks/notify.py", blocking = true }   # blo
 
 Two events are fired in v0.1:
 
-| Event | Fires when | Context fields |
-|-------|-----------|----------------|
+
+| Event                | Fires when                        | Context fields                                                                                          |
+| -------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `on_ingest_complete` | A source is successfully ingested | `event`, `wiki`, `source`, `pages_created`, `pages_updated`, `pages_flagged`, `tokens_used`, `cost_usd` |
-| `on_lint_complete` | A lint run finishes | `event`, `wiki`, `contradictions_found`, `orphans` |
+| `on_lint_complete`   | A lint run finishes               | `event`, `wiki`, `contradictions_found`, `orphans`                                                      |
 
 ### Context JSON examples
 
 **on_ingest_complete**
+
 ```json
 {
   "event": "on_ingest_complete",
@@ -1423,6 +1461,7 @@ Two events are fired in v0.1:
 ```
 
 **on_lint_complete**
+
 ```json
 {
   "event": "on_lint_complete",
@@ -1484,12 +1523,13 @@ The default (`"4"`) is defined in `synthadoc/core/cache.py`. Custom skill author
 
 **Invalidation triggers:**
 
-| Trigger | Behavior |
-|---------|----------|
-| Source content changes | New SHA-256 → cache miss → fresh LLM call |
-| `[cache] version` bumped in config | All old entries bypassed |
-| `ingest --force` | `bust_cache=True` → skips `cache.get()`, repopulates |
-| `cache clear` | Deletes all rows from `cache.db` |
+
+| Trigger                            | Behavior                                              |
+| ---------------------------------- | ----------------------------------------------------- |
+| Source content changes             | New SHA-256 → cache miss → fresh LLM call           |
+| `[cache] version` bumped in config | All old entries bypassed                              |
+| `ingest --force`                   | `bust_cache=True` → skips `cache.get()`, repopulates |
+| `cache clear`                      | Deletes all rows from`cache.db`                       |
 
 ### Layer 3 — Query result cache (`cache.db` — `query_cache` table)
 
@@ -1506,11 +1546,12 @@ def make_query_cache_key(question: str, epoch: int, model: str = "") -> str:
 
 **Invalidation triggers:**
 
-| Trigger | Behavior |
-|---------|----------|
-| Any `ingest` or lifecycle change | `wiki_epoch` incremented → all query cache entries for prior epoch bypassed |
-| `--no-cache` flag on query | Cache lookup skipped; fresh LLM call; result repopulated |
-| `cache clear` | Deletes all rows from both `response_cache` and `query_cache` tables |
+
+| Trigger                         | Behavior                                                                     |
+| ------------------------------- | ---------------------------------------------------------------------------- |
+| Any`ingest` or lifecycle change | `wiki_epoch` incremented → all query cache entries for prior epoch bypassed |
+| `--no-cache` flag on query      | Cache lookup skipped; fresh LLM call; result repopulated                     |
+| `cache clear`                   | Deletes all rows from both`response_cache` and `query_cache` tables          |
 
 ### Layer 4 — Provider prompt cache
 
@@ -1528,10 +1569,11 @@ Cost tracking is live: `estimate_cost()` is called after each ingest and query o
 
 ### Thresholds
 
-| Threshold | Default | Behaviour |
-|-----------|---------|-----------|
-| `soft_warn_usd` | $0.50 | `logger.warning` in server log; job continues normally |
-| `hard_gate_usd` | $2.00 | Server/ingest path: records `cost_gate_exceeded` audit event + permanently fails job (DEAD). Interactive CLI: prompts `Proceed? [y/N]` |
+
+| Threshold       | Default | Behaviour                                                                                                                             |
+| --------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `soft_warn_usd` | $0.50   | `logger.warning` in server log; job continues normally                                                                                |
+| `hard_gate_usd` | $2.00   | Server/ingest path: records`cost_gate_exceeded` audit event + permanently fails job (DEAD). Interactive CLI: prompts `Proceed? [y/N]` |
 
 ### Cost Tracking and Pricing
 
@@ -1552,18 +1594,20 @@ LLM call → CompletionResponse(input_tokens, output_tokens)
 A static Python dict maps model name → `(input_usd_per_token, output_usd_per_token)`.
 Separate input and output rates reflect real-world API pricing (output tokens cost 3–5× more than input tokens for most models).
 
-| Provider | Example model | Input (per token) | Output (per token) |
-|---|---|---|---|
-| Anthropic | claude-haiku-4-5-20251001 | $0.000001 | $0.000005 |
-| Anthropic | claude-sonnet-4-6 | $0.000003 | $0.000015 |
-| Anthropic | claude-opus-4-7 | $0.000005 | $0.000025 |
-| OpenAI | gpt-4o-mini | $0.00000015 | $0.0000006 |
-| Gemini | gemini-2.5-flash | $0.0000003 | $0.0000025 |
-| Groq | llama-3.3-70b-versatile | $0.00000059 | $0.00000079 |
-| MiniMax | MiniMax-M2.5 | $0.00000015 | $0.0000012 |
-| MiniMax | MiniMax-M2.7 | $0.0000003 | $0.0000012 |
+
+| Provider  | Example model             | Input (per token) | Output (per token) |
+| --------- | ------------------------- | ----------------- | ------------------ |
+| Anthropic | claude-haiku-4-5-20251001 | $0.000001         | $0.000005          |
+| Anthropic | claude-sonnet-4-6         | $0.000003         | $0.000015          |
+| Anthropic | claude-opus-4-7           | $0.000005         | $0.000025          |
+| OpenAI    | gpt-4o-mini               | $0.00000015       | $0.0000006         |
+| Gemini    | gemini-2.5-flash          | $0.0000003        | $0.0000025         |
+| Groq      | llama-3.3-70b-versatile   | $0.00000059       | $0.00000079        |
+| MiniMax   | MiniMax-M2.5              | $0.00000015       | $0.0000012         |
+| MiniMax   | MiniMax-M2.7              | $0.0000003        | $0.0000012         |
 
 **Special cases:**
+
 - **Ollama (local inference):** Always `$0.00` regardless of token count — `is_local=True` short-circuits the calculation.
 - **Unknown models:** Use a conservative fallback rate (`$0.000003` per token for both input and output) rather than crashing or silently reporting `$0.00`.
 
@@ -1599,7 +1643,7 @@ The HTTP server always passes `auto_confirm=True` (no interactive terminal avail
 
 ## 14. Job Queue
 
-**File:** `synthadoc/core/queue.py`  
+**File:** `synthadoc/core/queue.py`
 **Storage:** `<wiki-root>/.synthadoc/jobs.db` (SQLite)
 
 ### State transitions
@@ -1615,14 +1659,15 @@ in_progress → dead         (retryable error; retries == max_retries)
 in_progress → skipped      (system-initiated skip; e.g. auto-blocked domain)
 ```
 
-| Status | Meaning | Action |
-|--------|---------|--------|
-| `failed` | Non-retryable error (e.g. stub skill, bad source) | Inspect error; fix source; enqueue again |
-| `dead` | Retryable error exhausted max retries | `synthadoc jobs retry <id>` to reset to pending |
-| `skipped` | System-initiated permanent skip (e.g. domain auto-blocked after repeated 403s) | No action needed; remove domain from blocked list to re-enable |
-| `cancelled` | Pending job cancelled by user via `synthadoc jobs cancel` | Re-enqueue manually if cancelled in error |
 
-**Backoff formula:** `min(backoff_base_seconds × 2^(attempt − 1), 300)`  
+| Status      | Meaning                                                                        | Action                                                         |
+| ----------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------- |
+| `failed`    | Non-retryable error (e.g. stub skill, bad source)                              | Inspect error; fix source; enqueue again                       |
+| `dead`      | Retryable error exhausted max retries                                          | `synthadoc jobs retry <id>` to reset to pending                |
+| `skipped`   | System-initiated permanent skip (e.g. domain auto-blocked after repeated 403s) | No action needed; remove domain from blocked list to re-enable |
+| `cancelled` | Pending job cancelled by user via`synthadoc jobs cancel`                       | Re-enqueue manually if cancelled in error                      |
+
+**Backoff formula:** `min(backoff_base_seconds × 2^(attempt − 1), 300)`
 With the default base of 30 s: attempt 1 waits 30 s, attempt 2 waits 60 s, attempt 3 waits 120 s (all capped at 300 s). The `retry_after` timestamp is stored in the jobs table; `dequeue()` skips any job whose `retry_after` is still in the future. Applied only to transient errors (network timeouts, connection failures, 5xx responses).
 
 **Persistence:** Jobs survive server restarts. `in_progress` jobs at shutdown are reset to `pending` on startup.
@@ -1656,16 +1701,17 @@ Suppressed to WARNING: `httpx`, `httpcore`, `uvicorn.access`, `anthropic`, `open
 
 ### Log record fields
 
-| Field | Always present | Source |
-|-------|---------------|--------|
-| `ts` | Yes | `record.created` |
-| `level` | Yes | `record.levelname` |
-| `logger` | Yes | `record.name` |
-| `msg` | Yes | `record.getMessage()` |
-| `job_id` | Job context only | `LoggerAdapter.extra` |
+
+| Field       | Always present   | Source                |
+| ----------- | ---------------- | --------------------- |
+| `ts`        | Yes              | `record.created`      |
+| `level`     | Yes              | `record.levelname`    |
+| `logger`    | Yes              | `record.name`         |
+| `msg`       | Yes              | `record.getMessage()` |
+| `job_id`    | Job context only | `LoggerAdapter.extra` |
 | `operation` | Job context only | `LoggerAdapter.extra` |
-| `wiki` | Job context only | `LoggerAdapter.extra` |
-| `trace_id` | When OTel active | OTel span context |
+| `wiki`      | Job context only | `LoggerAdapter.extra` |
+| `trace_id`  | When OTel active | OTel span context     |
 
 ### Job-scoped logging
 
@@ -1701,13 +1747,14 @@ Spans cover: full operation tree (orchestrator → agent → LLM calls → stora
 
 ### Log level guidance
 
-| Level | When to use |
-|-------|------------|
-| `DEBUG` | LLM prompt bodies, cache key details, BM25 scores, entity extraction details |
-| `INFO` | Job lifecycle, page created/updated, server started, lint summary |
-| `WARNING` | Soft failures (network unreachable), suspicious patterns |
-| `ERROR` | Job failed, API error, file write failed |
-| `CRITICAL` | Server cannot start |
+
+| Level      | When to use                                                                  |
+| ---------- | ---------------------------------------------------------------------------- |
+| `DEBUG`    | LLM prompt bodies, cache key details, BM25 scores, entity extraction details |
+| `INFO`     | Job lifecycle, page created/updated, server started, lint summary            |
+| `WARNING`  | Soft failures (network unreachable), suspicious patterns                     |
+| `ERROR`    | Job failed, API error, file write failed                                     |
+| `CRITICAL` | Server cannot start                                                          |
 
 ---
 
@@ -1755,6 +1802,7 @@ This section is for developers building custom skills or LLM providers.
 4. Implement `extract(source: str) -> ExtractedContent`.
 
 **Folder layout:**
+
 ```
 slack_export/
   SKILL.md
@@ -1766,6 +1814,7 @@ slack_export/
 ```
 
 **`SKILL.md`:**
+
 ```yaml
 ---
 name: slack_export
@@ -1784,6 +1833,7 @@ Loads all JSON channel files from a Slack export ZIP and returns the message tex
 ```
 
 **`scripts/main.py`:**
+
 ```python
 # SPDX-License-Identifier: MIT
 from synthadoc.skills.base import BaseSkill, ExtractedContent
@@ -1853,10 +1903,11 @@ Hooks fire after key operations. They can be in any language; the process receiv
 
 **Available events:**
 
-| Event | Fired after | JSON context fields |
-|---|---|---|
+
+| Event                | Fired after                | JSON context fields                                                                                     |
+| -------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `on_ingest_complete` | Every completed ingest job | `event`, `wiki`, `source`, `pages_created`, `pages_updated`, `pages_flagged`, `tokens_used`, `cost_usd` |
-| `on_lint_complete` | Every completed lint run | `event`, `wiki`, `contradictions_found`, `orphans` |
+| `on_lint_complete`   | Every completed lint run   | `event`, `wiki`, `contradictions_found`, `orphans`                                                      |
 
 **Register hooks in `.synthadoc/config.toml`:**
 
@@ -1924,11 +1975,12 @@ Pages may carry an `aliases:` list in YAML frontmatter. `QueryAgent._expand_alia
 
 ### CLI commands
 
-| Command | Description |
-|---|---|
-| `synthadoc routing init` | Generate ROUTING.md from current index.md branch structure |
-| `synthadoc routing validate` | Report dangling slugs and unassigned slugs (dry run) |
-| `synthadoc routing clean` | Remove dangling slugs from ROUTING.md |
+
+| Command                      | Description                                                |
+| ---------------------------- | ---------------------------------------------------------- |
+| `synthadoc routing init`     | Generate ROUTING.md from current index.md branch structure |
+| `synthadoc routing validate` | Report dangling slugs and unassigned slugs (dry run)       |
+| `synthadoc routing clean`    | Remove dangling slugs from ROUTING.md                      |
 
 All commands accept `-w <wiki>` / `--wiki <wiki>` to target a specific wiki.
 
@@ -1936,10 +1988,11 @@ All commands accept `-w <wiki>` / `--wiki <wiki>` to target a specific wiki.
 
 The `Routing: manage ROUTING.md...` command opens a `RoutingModal`. On open it calls `GET /routing/status` and enables or disables the three buttons accordingly:
 
-| State | Init | Validate | Clean |
-|---|---|---|---|
-| ROUTING.md absent | enabled | disabled | disabled |
-| ROUTING.md present | disabled | enabled | enabled |
+
+| State              | Init     | Validate | Clean    |
+| ------------------ | -------- | -------- | -------- |
+| ROUTING.md absent  | enabled  | disabled | disabled |
+| ROUTING.md present | disabled | enabled  | enabled  |
 | Server unreachable | disabled | disabled | disabled |
 
 After each action the result appears in an inline result area with per-entry `[Branch] [[slug]]` detail rows. The ROUTING.md preview box (max-height 120 px, scrollable) is shown/refreshed by Init and Clean operations.
@@ -1952,11 +2005,12 @@ After each action the result appears in an inline result area with per-entry `[B
 
 New pages can be routed to `wiki/candidates/` instead of `wiki/` based on the `[ingest] staging_policy` setting:
 
-| Value | Behaviour |
-|---|---|
-| `off` | All new pages go directly to `wiki/` (default) |
-| `all` | All new pages go to `wiki/candidates/` |
-| `threshold` | Pages below `staging_confidence_min` go to `wiki/candidates/` |
+
+| Value       | Behaviour                                                    |
+| ----------- | ------------------------------------------------------------ |
+| `off`       | All new pages go directly to`wiki/` (default)                |
+| `all`       | All new pages go to`wiki/candidates/`                        |
+| `threshold` | Pages below`staging_confidence_min` go to `wiki/candidates/` |
 
 `staging_confidence_min` values: `high` (default), `medium`, `low`. Confidence ordering: `high > medium > low`.
 
@@ -1966,29 +2020,31 @@ New pages can be routed to `wiki/candidates/` instead of `wiki/` based on the `[
 
 ### CLI commands
 
-| Command | Description |
-|---|---|
-| `synthadoc staging policy [off\|all\|threshold]` | Show or set the staging policy |
-| `synthadoc staging policy --min-confidence <level>` | Set minimum confidence threshold |
-| `synthadoc candidates list` | List all candidate pages with confidence and date |
-| `synthadoc candidates promote <slug>` | Move a candidate to `wiki/` |
-| `synthadoc candidates promote --all` | Promote all candidates |
-| `synthadoc candidates discard <slug>` | Delete a candidate |
-| `synthadoc candidates discard --all` | Delete all candidates |
+
+| Command                                             | Description                                       |
+| --------------------------------------------------- | ------------------------------------------------- |
+| `synthadoc staging policy [off|all|threshold]`      | Show or set the staging policy                    |
+| `synthadoc staging policy --min-confidence <level>` | Set minimum confidence threshold                  |
+| `synthadoc candidates list`                         | List all candidate pages with confidence and date |
+| `synthadoc candidates promote <slug>`               | Move a candidate to`wiki/`                        |
+| `synthadoc candidates promote --all`                | Promote all candidates                            |
+| `synthadoc candidates discard <slug>`               | Delete a candidate                                |
+| `synthadoc candidates discard --all`                | Delete all candidates                             |
 
 Policy changes take effect on the next ingest job — no server restart needed.
 
 ### HTTP API
 
-| Method | Path | Request | Response |
-|--------|------|---------|----------|
-| `GET` | `/staging/policy` | — | `{policy: str, confidence_min: str\|null}` |
-| `POST` | `/staging/policy` | `{policy: str, confidence_min?: str}` | `{policy: str, confidence_min: str\|null}` |
-| `GET` | `/candidates` | — | `[{slug: str, title: str, confidence: str, ingested_at: str}]` |
-| `POST` | `/candidates/promote-all` | — | `{promoted: int, updated: int}` |
-| `POST` | `/candidates/discard-all` | — | `{discarded: int}` |
-| `POST` | `/candidates/{slug}/promote` | — | `{promoted: slug, new: bool, updated: bool}` |
-| `POST` | `/candidates/{slug}/discard` | — | `{discarded: slug}` |
+
+| Method | Path                         | Request                               | Response                                                       |
+| ------ | ---------------------------- | ------------------------------------- | -------------------------------------------------------------- |
+| `GET`  | `/staging/policy`            | —                                    | `{policy: str, confidence_min: str|null}`                      |
+| `POST` | `/staging/policy`            | `{policy: str, confidence_min?: str}` | `{policy: str, confidence_min: str|null}`                      |
+| `GET`  | `/candidates`                | —                                    | `[{slug: str, title: str, confidence: str, ingested_at: str}]` |
+| `POST` | `/candidates/promote-all`    | —                                    | `{promoted: int, updated: int}`                                |
+| `POST` | `/candidates/discard-all`    | —                                    | `{discarded: int}`                                             |
+| `POST` | `/candidates/{slug}/promote` | —                                    | `{promoted: slug, new: bool, updated: bool}`                   |
+| `POST` | `/candidates/{slug}/discard` | —                                    | `{discarded: slug}`                                            |
 
 Promote moves the file from `wiki/candidates/<slug>.md` to `wiki/<slug>.md`. If a page with the same slug already exists in `wiki/` (a staged update to an existing page), the existing file is overwritten. Only newly created pages (not overwrites) are indexed into BM25.
 
@@ -2030,13 +2086,14 @@ Method: `await agent.build(goal, token_budget=None) → ContextPack`
 
 ### ContextPack
 
-| Field | Type | Description |
-|---|---|---|
-| `goal` | `str` | The input goal string |
-| `token_budget` | `int` | Effective budget used |
-| `tokens_used` | `int` | Tokens consumed by included pages |
-| `pages` | `list[ContextPage]` | Included pages, ranked by relevance |
-| `omitted` | `list[ContextPage]` | Pages excluded due to budget |
+
+| Field          | Type                | Description                         |
+| -------------- | ------------------- | ----------------------------------- |
+| `goal`         | `str`               | The input goal string               |
+| `token_budget` | `int`               | Effective budget used               |
+| `tokens_used`  | `int`               | Tokens consumed by included pages   |
+| `pages`        | `list[ContextPage]` | Included pages, ranked by relevance |
+| `omitted`      | `list[ContextPage]` | Pages excluded due to budget        |
 
 `ContextPack.to_markdown()` renders a human-readable evidence pack. `ContextPack.to_dict()` returns a JSON-serialisable dict for the REST API.
 
@@ -2120,11 +2177,12 @@ adversarial_max_per_page = 3   # must be >= adversarial_gate_threshold; raise to
 
 ### CLI commands
 
-| Command | Description |
-|---|---|
-| `synthadoc lint run` | Full lint pass including adversarial review |
-| `synthadoc lint run --no-adversarial` | Structural-only lint; clears existing `lint_warnings` |
-| `synthadoc lint report` | Show warnings — CLI output has a dedicated Adversarial section |
+
+| Command                               | Description                                                     |
+| ------------------------------------- | --------------------------------------------------------------- |
+| `synthadoc lint run`                  | Full lint pass including adversarial review                     |
+| `synthadoc lint run --no-adversarial` | Structural-only lint; clears existing`lint_warnings`            |
+| `synthadoc lint report`               | Show warnings — CLI output has a dedicated Adversarial section |
 
 ### HTTP API
 
@@ -2173,10 +2231,11 @@ Results are cached by section SHA-256 so re-ingest of unchanged sections does no
 
 To support the Source Viewer in Obsidian, `_write_sidecar()` writes two files to `.synthadoc/extracted/` for every locally ingested source:
 
-| File | Contents | Source types |
-|------|----------|-------------|
-| `<basename>.txt` | Plain UTF-8 extracted text with line numbers preserved | All local file types |
-| `<basename>.pagemap.json` | JSON array mapping line numbers to PDF page numbers | PDF only |
+
+| File                      | Contents                                               | Source types         |
+| ------------------------- | ------------------------------------------------------ | -------------------- |
+| `<basename>.txt`          | Plain UTF-8 extracted text with line numbers preserved | All local file types |
+| `<basename>.pagemap.json` | JSON array mapping line numbers to PDF page numbers    | PDF only             |
 
 The pagemap enables the "Open PDF at page N →" button in the Source Viewer to resolve a line range to the correct PDF page without re-parsing the document. Web and YouTube sources do not produce sidecars (no stable local path to key on).
 
@@ -2184,15 +2243,16 @@ The pagemap enables the "Open PDF at page N →" button in the Source Viewer to 
 
 Stored in `audit.db`. Written by `AuditDB.record_claim_citations()` after each annotated page section is saved.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | INTEGER PK | |
-| `page_slug` | TEXT | Wiki page the citation belongs to |
-| `source_file` | TEXT | Basename of the raw source file |
-| `line_start` | INTEGER | First line of the supporting passage |
-| `line_end` | INTEGER | Last line of the supporting passage |
-| `claim_excerpt` | TEXT | First ~100 chars of the annotated paragraph |
-| `ingested_at` | TEXT | UTC ISO-8601 |
+
+| Column          | Type       | Notes                                       |
+| --------------- | ---------- | ------------------------------------------- |
+| `id`            | INTEGER PK |                                             |
+| `page_slug`     | TEXT       | Wiki page the citation belongs to           |
+| `source_file`   | TEXT       | Basename of the raw source file             |
+| `line_start`    | INTEGER    | First line of the supporting passage        |
+| `line_end`      | INTEGER    | Last line of the supporting passage         |
+| `claim_excerpt` | TEXT       | First ~100 chars of the annotated paragraph |
+| `ingested_at`   | TEXT       | UTC ISO-8601                                |
 
 ### HTTP API
 
@@ -2211,11 +2271,12 @@ Response: `{total: int, citations: [CitationRow]}`
 
 ### CLI commands
 
-| Command | Description |
-|---|---|
-| `synthadoc audit citations -w <wiki>` | Last 50 citations across the whole wiki |
-| `synthadoc audit citations -w <wiki> --page <slug>` | All citations for one page |
-| `synthadoc audit citations -w <wiki> --broken` | Citations that failed line-range validation |
+
+| Command                                             | Description                                 |
+| --------------------------------------------------- | ------------------------------------------- |
+| `synthadoc audit citations -w <wiki>`               | Last 50 citations across the whole wiki     |
+| `synthadoc audit citations -w <wiki> --page <slug>` | All citations for one page                  |
+| `synthadoc audit citations -w <wiki> --broken`      | Citations that failed line-range validation |
 
 ### Obsidian plugin
 
@@ -2233,7 +2294,6 @@ For PDF sources, if the pagemap sidecar exists and the target page is > 1, a **"
 
 ---
 
-
 ## 23. Lifecycle Machine
 
 ### Concept
@@ -2242,33 +2302,35 @@ Every wiki page moves through a defined set of states that reflect its review st
 
 ### States
 
-| State | Meaning | How to reach it |
-|---|---|---|
-| `draft` | Newly compiled, not yet lint-reviewed | Automatic on ingest |
-| `active` | Lint-reviewed, current, trusted | Lint auto-promotes from `draft` |
-| `contradicted` | Conflict detected | Lint detects contradiction between sources |
-| `stale` | Source file changed since last ingest | Lint detects SHA-256 hash mismatch |
-| `archived` | Source removed or explicitly retired | Lint auto-archives on missing source; or manual |
+
+| State          | Meaning                               | How to reach it                                 |
+| -------------- | ------------------------------------- | ----------------------------------------------- |
+| `draft`        | Newly compiled, not yet lint-reviewed | Automatic on ingest                             |
+| `active`       | Lint-reviewed, current, trusted       | Lint auto-promotes from`draft`                  |
+| `contradicted` | Conflict detected                     | Lint detects contradiction between sources      |
+| `stale`        | Source file changed since last ingest | Lint detects SHA-256 hash mismatch              |
+| `archived`     | Source removed or explicitly retired  | Lint auto-archives on missing source; or manual |
 
 ### Transition rules
 
 Automated transitions (lint, ingest) write state directly and are not subject to the graph. User-driven transitions (CLI, HTTP API, MCP) are validated against `ALLOWED_LIFECYCLE_TRANSITIONS` in `synthadoc/storage/wiki.py`; invalid paths are rejected with HTTP 422 or an MCP error dict.
 
-| From | To | Trigger | Notes |
-|---|---|---|---|
-| _(none)_ | `draft` | ingest | New page created by ingest |
-| `draft` | `active` | lint, cli/api/mcp | Lint auto-promotes when all checks pass; or manual activate |
-| `draft` | `archived` | cli/api/mcp | Abandon a draft without publishing |
-| `active` | `contradicted` | lint, cli/api/mcp | Lint detects conflict automatically; or user manually flags |
-| `active` | `stale` | lint | Local source: SHA-256 hash mismatch; URL source older than `url_staleness_days` |
-| `active` | `archived` | lint, cli/api/mcp | Lint: local source missing or URL 404/410; or manual retire |
-| `stale` | `draft` | cli/api/mcp | Revise stale content — puts page back in review queue |
-| `stale` | `active` | cli/api/mcp | Re-validate without revision — user confirms content still accurate |
-| `stale` | `archived` | lint, cli/api/mcp | Lint: source gone; or manual archive |
-| `contradicted` | `draft` | cli/api/mcp | Revise contradicted content — resets to review queue |
-| `contradicted` | `active` | cli/api/mcp | Resolve contradiction and re-activate directly |
-| `contradicted` | `archived` | cli/api/mcp | Archive after reviewing the conflict |
-| `archived` | `draft` | cli/api/mcp | Restore for revision — places page back in review queue |
+
+| From           | To             | Trigger           | Notes                                                                          |
+| -------------- | -------------- | ----------------- | ------------------------------------------------------------------------------ |
+| _(none)_       | `draft`        | ingest            | New page created by ingest                                                     |
+| `draft`        | `active`       | lint, cli/api/mcp | Lint auto-promotes when all checks pass; or manual activate                    |
+| `draft`        | `archived`     | cli/api/mcp       | Abandon a draft without publishing                                             |
+| `active`       | `contradicted` | lint, cli/api/mcp | Lint detects conflict automatically; or user manually flags                    |
+| `active`       | `stale`        | lint              | Local source: SHA-256 hash mismatch; URL source older than`url_staleness_days` |
+| `active`       | `archived`     | lint, cli/api/mcp | Lint: local source missing or URL 404/410; or manual retire                    |
+| `stale`        | `draft`        | cli/api/mcp       | Revise stale content — puts page back in review queue                         |
+| `stale`        | `active`       | cli/api/mcp       | Re-validate without revision — user confirms content still accurate           |
+| `stale`        | `archived`     | lint, cli/api/mcp | Lint: source gone; or manual archive                                           |
+| `contradicted` | `draft`        | cli/api/mcp       | Revise contradicted content — resets to review queue                          |
+| `contradicted` | `active`       | cli/api/mcp       | Resolve contradiction and re-activate directly                                 |
+| `contradicted` | `archived`     | cli/api/mcp       | Archive after reviewing the conflict                                           |
+| `archived`     | `draft`        | cli/api/mcp       | Restore for revision — places page back in review queue                       |
 
 Transitions not in this table are rejected. Notable blocked paths: `stale ↔ contradicted` (different issue types that should not be crossed directly), `archived → active/stale/contradicted` (must go through `draft` for re-review first), `draft → stale/contradicted` (unpublished pages cannot be in those states).
 
@@ -2413,11 +2475,12 @@ synthadoc audit lifecycle purge -w <wiki> --keep-latest <n>
 
 ### HTTP API
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/lifecycle/status` | Current state counts from `page_states` |
-| `GET` | `/lifecycle/events` | Paginated event log (`slug`, `to_state`, `limit`, `offset` query params) |
-| `POST` | `/lifecycle/transition` | Body: `{slug, to_state, reason?}` — validates allowed transition, writes both tables |
+
+| Method | Path                    | Description                                                                          |
+| ------ | ----------------------- | ------------------------------------------------------------------------------------ |
+| `GET`  | `/lifecycle/status`     | Current state counts from`page_states`                                               |
+| `GET`  | `/lifecycle/events`     | Paginated event log (`slug`, `to_state`, `limit`, `offset` query params)             |
+| `POST` | `/lifecycle/transition` | Body:`{slug, to_state, reason?}` — validates allowed transition, writes both tables |
 
 ### Obsidian plugin
 
@@ -2446,11 +2509,12 @@ A content snapshot is a copy of the page body (`WikiPage.content`) stored in the
 `content_snapshot` column of a `lifecycle_events` row. Three distinct triggers produce
 snapshots; ingest-agent transitions never do (ingest does not change existing content):
 
-| Trigger | When it fires | Dedup? |
-|---------|--------------|--------|
-| **Manual lifecycle transition** | User calls `lifecycle activate`, `lifecycle archive`, `lifecycle restore` via CLI, the Obsidian Lifecycle modal, the REST API, or the MCP tool | No — always records |
-| **Lint-driven state change** | `LintAgent._transition()` fires: draft → active (promotion), active → stale (hash mismatch), active → archived (source gone), contradicted → active (auto-resolve) | No — always records; for auto-resolve, captures the post-resolution body that was just written |
-| **Manual file edit in Obsidian** | The Obsidian plugin's `vault.on("modify")` handler fires after a 2-second debounce on any `.md` file at the vault root | Yes — `AuditLog.snapshot_if_changed()` compares incoming content to the last stored snapshot and only writes a new row when content differs |
+
+| Trigger                          | When it fires                                                                                                                                                          | Dedup?                                                                                                                                      |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Manual lifecycle transition**  | User calls`lifecycle activate`, `lifecycle archive`, `lifecycle restore` via CLI, the Obsidian Lifecycle modal, the REST API, or the MCP tool                          | No — always records                                                                                                                        |
+| **Lint-driven state change**     | `LintAgent._transition()` fires: draft → active (promotion), active → stale (hash mismatch), active → archived (source gone), contradicted → active (auto-resolve) | No — always records; for auto-resolve, captures the post-resolution body that was just written                                             |
+| **Manual file edit in Obsidian** | The Obsidian plugin's`vault.on("modify")` handler fires after a 2-second debounce on any `.md` file at the vault root                                                  | Yes —`AuditLog.snapshot_if_changed()` compares incoming content to the last stored snapshot and only writes a new row when content differs |
 
 For the manual-edit trigger the `from_state` and `to_state` columns are both set to the
 current page state (no lifecycle transition occurs — this is a pure content checkpoint).
@@ -2486,35 +2550,38 @@ The `synthadoc export` command serializes the wiki in five machine-readable form
 
 **`graphml`** — Standard GraphML 1.1. Nodes = pages; edges = wikilinks extracted from page bodies. Node attributes:
 
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `label` | string | Human-readable page title — read by Gephi and Cytoscape as the display label |
-| `title` | string | Same as `label`; retained for backwards compatibility |
-| `status` | string | Lifecycle state (`draft`, `active`, `contradicted`, `stale`, `archived`) |
-| `confidence` | string | Ingest confidence level |
-| `orphan` | boolean | `true` if the page has zero inbound wikilinks |
-| `citation_count` | int | Reserved; always `0` in current release |
-| `inbound_link_count` | int | Number of other pages that link to this page |
-| `routing_branch` | string | Branch name from ROUTING.md membership |
+
+| Attribute            | Type    | Description                                                                   |
+| -------------------- | ------- | ----------------------------------------------------------------------------- |
+| `label`              | string  | Human-readable page title — read by Gephi and Cytoscape as the display label |
+| `title`              | string  | Same as`label`; retained for backwards compatibility                          |
+| `status`             | string  | Lifecycle state (`draft`, `active`, `contradicted`, `stale`, `archived`)      |
+| `confidence`         | string  | Ingest confidence level                                                       |
+| `orphan`             | boolean | `true` if the page has zero inbound wikilinks                                 |
+| `citation_count`     | int     | Reserved; always`0` in current release                                        |
+| `inbound_link_count` | int     | Number of other pages that link to this page                                  |
+| `routing_branch`     | string  | Branch name from ROUTING.md membership                                        |
 
 All edges carry `edge_type="wikilink"`. Self-links are suppressed. The file also embeds a `y:ShapeNode/y:NodeLabel` element (yEd namespace) so node labels render natively when the file is opened in **yEd Graph Editor**. No position data is embedded — run the tool's layout algorithm after import. Tested tools: yEd (Layout → Organic or Hierarchical), Gephi (enable labels via the Aα button in the bottom toolbar; run ForceAtlas2), Cytoscape (File → Import → Network from File).
 
 **`json`** — Agent-ready structured dump. Each page object contains:
 
-| Field | Description |
-|-------|-------------|
-| `claims[]` | Source file, line range, claim excerpt — from the claim provenance audit database |
-| `lifecycle_history[]` | Every state transition with `from`, `to`, `timestamp`, `triggered_by`, `reason` |
-| `ingest_cost_usd` | Cumulative LLM cost (USD) across all source files that contributed to this page |
-| `ingest_tokens` | Cumulative token count across all ingest calls for this page |
-| `sources[]` | Source file metadata: file, hash, size, ingested timestamp |
-| `lint_warnings[]` | Adversarial review findings: `{claim, concern}` pairs |
+
+| Field                 | Description                                                                        |
+| --------------------- | ---------------------------------------------------------------------------------- |
+| `claims[]`            | Source file, line range, claim excerpt — from the claim provenance audit database |
+| `lifecycle_history[]` | Every state transition with`from`, `to`, `timestamp`, `triggered_by`, `reason`     |
+| `ingest_cost_usd`     | Cumulative LLM cost (USD) across all source files that contributed to this page    |
+| `ingest_tokens`       | Cumulative token count across all ingest calls for this page                       |
+| `sources[]`           | Source file metadata: file, hash, size, ingested timestamp                         |
+| `lint_warnings[]`     | Adversarial review findings:`{claim, concern}` pairs                               |
 
 Wiki-level fields: `total_compilation_cost_usd`, `routing.branch_memberships`, `exported_at`, `page_count`.
 
 **`okf`** — [Open Knowledge Format v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle directory. Unlike other formats, `okf` produces a **directory tree** rather than a single file. The bundle is directly consumable by any OKF-aware agent or tool without code changes.
 
 Bundle layout:
+
 ```
 <output-dir>/
   index.md        # OKF index — pages grouped by knowledge type
@@ -2552,18 +2619,20 @@ Outputs to stdout by default; `--output` writes to a file. For `--format okf`, `
 
 Accepts `{ format, status_filter }`. Returns raw content with appropriate `Content-Type`:
 
-| Format | Content-Type |
-|--------|-------------|
-| `llms.txt`, `llms-full.txt` | `text/plain; charset=utf-8` |
-| `graphml` | `application/xml` |
-| `json` | `application/json` |
-| `okf` | `application/json` — a JSON object mapping relative file paths to file contents (`{"index.md": "...", "wiki/alan-turing.md": "..."}`) |
+
+| Format                      | Content-Type                                                                                                                           |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `llms.txt`, `llms-full.txt` | `text/plain; charset=utf-8`                                                                                                            |
+| `graphml`                   | `application/xml`                                                                                                                      |
+| `json`                      | `application/json`                                                                                                                     |
+| `okf`                       | `application/json` — a JSON object mapping relative file paths to file contents (`{"index.md": "...", "wiki/alan-turing.md": "..."}`) |
 
 Returns 422 for unknown format. No LLM calls.
 
 ### Obsidian
 
 **`Synthadoc: Export Wiki`** opens a modal with:
+
 - A brief description panel explaining each format
 - Format dropdown (json / llms.txt / llms-full.txt / graphml / okf)
 - Output path field (full-width, pre-filled with today's date and correct extension, editable)
@@ -2593,17 +2662,18 @@ data: {"event": "citations", "data": {"citations": ["alan-turing", "enigma"]}}
 data: {"event": "done", "data": {"next_hints": [...], "input_tokens": 1240, "output_tokens": 380, "tokens_used": 1620}}
 ```
 
-| Event | Payload | When |
-|---|---|---|
-| `status` | `{"phase": "retrieving"}` | Phase 1 starts |
-| `status` | `{"phase": "synthesizing", "sources": N}` | Phase 2 starts |
-| `token` | `{"text": "…"}` | Each LLM token |
-| `citations` | `{"citations": […]}` | After last token |
-| `gap` | `{"suggested_searches": […]}` | If knowledge gap detected |
-| `clarify` | `{"prompt": "…", "candidates": ["slug-1", …], "action": "…"}` | Action agent needs disambiguation (e.g. which page to activate) |
-| `notice` | `{"text": "…"}` | System message (e.g. conversation history was compressed) |
-| `done` | `{"next_hints": […], "input_tokens": N, "output_tokens": N, "tokens_used": N}` | Stream complete |
-| `error` | `{"message": "…"}` | On any exception |
+
+| Event       | Payload                                                                         | When                                                            |
+| ----------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `status`    | `{"phase": "retrieving"}`                                                       | Phase 1 starts                                                  |
+| `status`    | `{"phase": "synthesizing", "sources": N}`                                       | Phase 2 starts                                                  |
+| `token`     | `{"text": "…"}`                                                                | Each LLM token                                                  |
+| `citations` | `{"citations": […]}`                                                           | After last token                                                |
+| `gap`       | `{"suggested_searches": […]}`                                                  | If knowledge gap detected                                       |
+| `clarify`   | `{"prompt": "…", "candidates": ["slug-1", …], "action": "…"}`                | Action agent needs disambiguation (e.g. which page to activate) |
+| `notice`    | `{"text": "…"}`                                                                | System message (e.g. conversation history was compressed)       |
+| `done`      | `{"next_hints": […], "input_tokens": N, "output_tokens": N, "tokens_used": N}` | Stream complete                                                 |
+| `error`     | `{"message": "…"}`                                                             | On any exception                                                |
 
 The CLI `synthadoc query` renders tokens as they arrive using ANSI cursor control. Pass `--no-stream` to fall back to the blocking `POST /query` endpoint and print the full answer when complete.
 
@@ -2615,18 +2685,19 @@ Streaming LLM responses do not return token counts in the same way as blocking c
 
 **Provider-side collection** — each `LLMProvider` subclass exposes two instance attributes: `last_stream_input_tokens` and `last_stream_output_tokens`. These default to `0` and are populated from the API-specific usage field when the stream ends:
 
-| Provider | Mechanism | Verified |
-|---|---|---|
-| OpenAI | `stream_options={"include_usage": True}` passed to `chat.completions.create()`; final chunk carries `chunk.usage.prompt_tokens` / `completion_tokens` with empty `choices` | ✅ |
-| Anthropic | `message_start` event → `event.message.usage.input_tokens`; `message_delta` event → `event.usage.output_tokens` | ✅ |
-| Ollama | Final chunk with `done=True` → `prompt_eval_count` / `eval_count` | ✅ |
-| DeepSeek | Same `OpenAIProvider` path as OpenAI; DeepSeek's OpenAI-compatible API supports `stream_options` | ✅ |
-| MiniMax (reasoning: M2.5+) | Detects `<think>` in stream → falls back to blocking `complete()` → captures exact counts from `resp.usage` | ✅ |
-| MiniMax (non-reasoning, e.g. M3 thinking=disabled) | Same `OpenAIProvider` path; MiniMax API silently ignores `stream_options`. Falls back to character-based estimate (÷ 3.5 chars/token) from prompt + answer lengths. Accuracy ±20%. | ✅ estimated |
-| Gemini | Same `OpenAIProvider` path via `generativelanguage.googleapis.com/v1beta/openai/`; Google's compatibility layer honours `stream_options` — verified live (Gemini 2.5 Flash Lite, 50K tokens) | ✅ |
-| Groq | Same `OpenAIProvider` path; Groq's OpenAI-compatible API supports `stream_options` | ✅ |
-| Qwen (DashScope) | Same `OpenAIProvider` path via DashScope; `stream_options` honoured — verified live (qwen-plus, 28K tokens) | ✅ |
-| Qwen (Ollama) | Ollama path → `prompt_eval_count` / `eval_count` | ✅ |
+
+| Provider                                           | Mechanism                                                                                                                                                                                    | Verified     |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| OpenAI                                             | `stream_options={"include_usage": True}` passed to `chat.completions.create()`; final chunk carries `chunk.usage.prompt_tokens` / `completion_tokens` with empty `choices`                   | ✅           |
+| Anthropic                                          | `message_start` event → `event.message.usage.input_tokens`; `message_delta` event → `event.usage.output_tokens`                                                                            | ✅           |
+| Ollama                                             | Final chunk with`done=True` → `prompt_eval_count` / `eval_count`                                                                                                                            | ✅           |
+| DeepSeek                                           | Same`OpenAIProvider` path as OpenAI; DeepSeek's OpenAI-compatible API supports `stream_options`                                                                                              | ✅           |
+| MiniMax (reasoning: M2.5+)                         | Detects`<think>` in stream → falls back to blocking `complete()` → captures exact counts from `resp.usage`                                                                                 | ✅           |
+| MiniMax (non-reasoning, e.g. M3 thinking=disabled) | Same`OpenAIProvider` path; MiniMax API silently ignores `stream_options`. Falls back to character-based estimate (÷ 3.5 chars/token) from prompt + answer lengths. Accuracy ±20%.          | ✅ estimated |
+| Gemini                                             | Same`OpenAIProvider` path via `generativelanguage.googleapis.com/v1beta/openai/`; Google's compatibility layer honours `stream_options` — verified live (Gemini 2.5 Flash Lite, 50K tokens) | ✅           |
+| Groq                                               | Same`OpenAIProvider` path; Groq's OpenAI-compatible API supports `stream_options`                                                                                                            | ✅           |
+| Qwen (DashScope)                                   | Same`OpenAIProvider` path via DashScope; `stream_options` honoured — verified live (qwen-plus, 28K tokens)                                                                                  | ✅           |
+| Qwen (Ollama)                                      | Ollama path →`prompt_eval_count` / `eval_count`                                                                                                                                             | ✅           |
 
 **Forwarding to `done` event** — after `complete_stream()` is exhausted, `QueryAgent.run_stream()` reads the provider attributes and includes them in the final `done` event payload: `input_tokens`, `output_tokens`, `tokens_used`.
 
@@ -2648,11 +2719,12 @@ cache_key = hash(
 
 **Wiki epoch** is an integer stored in `cache.db` that increments on every event that changes wiki content:
 
-| Event | Effect on epoch |
-|-------|----------------|
-| `ingest` completes (pages written) | epoch + 1 |
-| `lifecycle transition` (any state change) | epoch + 1 |
-| `cache clear` | epoch reset to 0 |
+
+| Event                                     | Effect on epoch  |
+| ----------------------------------------- | ---------------- |
+| `ingest` completes (pages written)        | epoch + 1        |
+| `lifecycle transition` (any state change) | epoch + 1        |
+| `cache clear`                             | epoch reset to 0 |
 
 Because the epoch is part of the cache key, any structural change to the wiki automatically invalidates all cached query answers — there is no explicit expiry TTL. Answers cached before an ingest are never served after it.
 
@@ -2680,21 +2752,23 @@ The web chat UI is a React single-page application served at `GET /app` by the S
 
 Each browser session is assigned a `session_id` (UUID) on `POST /sessions`. The server maintains a lightweight in-memory store per session:
 
-| Field | Type | Description |
-|---|---|---|
-| `session_id` | UUID | Unique identifier for this browser session |
-| `mode` | str | Session mode (`NEW_WIKI`, `EXPLORER`, `HEALTH_CHECK`, `POWER_USER`) |
-| `cursor` | int | Current position in the hint pool for windowed rotation |
-| `last_hints` | list[str] | Hints returned in the previous response (used for deduplication) |
+
+| Field        | Type      | Description                                                         |
+| ------------ | --------- | ------------------------------------------------------------------- |
+| `session_id` | UUID      | Unique identifier for this browser session                          |
+| `mode`       | str       | Session mode (`NEW_WIKI`, `EXPLORER`, `HEALTH_CHECK`, `POWER_USER`) |
+| `cursor`     | int       | Current position in the hint pool for windowed rotation             |
+| `last_hints` | list[str] | Hints returned in the previous response (used for deduplication)    |
 
 **Session mode** is derived from the wiki's current state at `POST /sessions`:
 
-| Mode | Condition | Hint behaviour |
-|---|---|---|
-| `NEW_WIKI` | `WikiStorage.count_pages() < 5` | Onboarding chips — guides user through first ingest |
-| `EXPLORER` | ≥5 pages, no prior `chat_sessions` rows | Discovery chips — broad overview questions |
-| `HEALTH_CHECK` | ≥5 pages, prior sessions, ≥1 `stale` page | Lifecycle chips — suggests running lint or reviewing stale pages |
-| `POWER_USER` | ≥5 pages, prior sessions, no stale pages | Context-sensitive follow-up chips |
+
+| Mode           | Condition                                  | Hint behaviour                                                    |
+| -------------- | ------------------------------------------ | ----------------------------------------------------------------- |
+| `NEW_WIKI`     | `WikiStorage.count_pages() < 5`            | Onboarding chips — guides user through first ingest              |
+| `EXPLORER`     | ≥5 pages, no prior`chat_sessions` rows    | Discovery chips — broad overview questions                       |
+| `HEALTH_CHECK` | ≥5 pages, prior sessions, ≥1`stale` page | Lifecycle chips — suggests running lint or reviewing stale pages |
+| `POWER_USER`   | ≥5 pages, prior sessions, no stale pages  | Context-sensitive follow-up chips                                 |
 
 The mode is returned by `POST /sessions` and also visible as a badge in the UI header.
 
@@ -2729,6 +2803,7 @@ Each `GET /query/stream` call may include a `session_id` (UUID from `POST /sessi
 The left navigation bar in the web UI is driven by `GET /sessions` (returns up to 20 recent sessions, ordered by `last_active DESC`) rather than `localStorage`, so history is consistent across browser tabs and survives page refreshes.
 
 **2-level collapsible tree:**
+
 - Sessions with a single user turn appear as a flat entry showing the question text and relative timestamp.
 - Sessions with two or more user turns render as a collapsible group: the root row shows the first question plus a turn count badge (e.g. `3 turns`); a **▸** chevron toggles expansion; expanded child rows show each follow-up question with a `↳` indent.
 
@@ -2738,10 +2813,11 @@ The left navigation bar in the web UI is driven by `GET /sessions` (returns up t
 
 **API surface:**
 
-| Endpoint | Description |
-|---|---|
-| `GET /sessions?limit=N` | Returns `[{session_id, mode, created_at, last_active, turns: [str]}]` — `turns` is the list of user message contents in chronological order |
-| `GET /sessions/{session_id}/messages` | Returns `[{role, content}]` for every message in the session, oldest first |
+
+| Endpoint                              | Description                                                                                                                                 |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /sessions?limit=N`               | Returns`[{session_id, mode, created_at, last_active, turns: [str]}]` — `turns` is the list of user message contents in chronological order |
+| `GET /sessions/{session_id}/messages` | Returns`[{role, content}]` for every message in the session, oldest first                                                                   |
 
 **Configuration:**
 
@@ -2784,11 +2860,12 @@ synthadoc serve -w my-wiki --port 7070
 
 ### Transport options
 
-| Client | Transport | Config mechanism |
-|---|---|---|
-| Claude Desktop | stdio | `command` + `args` in `mcpServers` JSON |
-| Claude Code CLI | SSE (`--transport sse`) | `claude mcp add --transport sse <name> <url>` |
-| n8n, LangGraph, custom agents | HTTP/SSE | Direct HTTP connection to `/mcp/sse` |
+
+| Client                        | Transport               | Config mechanism                              |
+| ----------------------------- | ----------------------- | --------------------------------------------- |
+| Claude Desktop                | stdio                   | `command` + `args` in `mcpServers` JSON       |
+| Claude Code CLI               | SSE (`--transport sse`) | `claude mcp add --transport sse <name> <url>` |
+| n8n, LangGraph, custom agents | HTTP/SSE                | Direct HTTP connection to`/mcp/sse`           |
 
 Claude Desktop does not support `"url"`-based HTTP connections in its `mcpServers` config — stdio is the only supported transport. Claude Code supports both SSE and stdio. The SSE endpoint path is exactly `/mcp/sse` (not `/mcp` or `/mcp/`).
 
@@ -2804,20 +2881,21 @@ For Claude Desktop, `mcpServers` key names must use underscores (e.g. `synthadoc
 
 ### Tool reference
 
-| Tool | Parameters | Returns | LLM cost |
-|---|---|---|---|
-| `synthadoc_search` | `terms: str` | `{results: [{slug, score, title, snippet}]}` | Claude only |
-| `synthadoc_read_page` | `slug: str` | `{slug, title, content, status, type, tags, lint_warnings, sources}` or `{error, slug}` | Claude only |
-| `synthadoc_list_pages` | `status?: str` (default `"all"`) | `{pages: [{slug, title, status, type, has_sources}], total: int}` | Neither |
-| `synthadoc_context` | `goal: str`, `token_budget?: int` (default `10000`) | `{goal, token_budget, tokens_used, pages: [{slug, relevance, excerpt, source, confidence, tags, estimated_tokens}], omitted: [{slug, estimated_tokens}]}` | Neither |
-| `synthadoc_export` | `format?: str` (default `"okf"`), `output_path?: str` (okf defaults to `<wiki>/exports/<name>-okf-<date>/`), `status_filter?: str` (default `"all"`) | okf writes folder to disk → `{format, output_path, files_written, pages}`. Other formats: with `output_path` → `{format, output_path, pages}`; without → `{format, content, pages}`. Formats: `okf`, `llms.txt`, `llms-full.txt`, `json`, `graphml` | Neither |
-| `synthadoc_write_page` | `slug: str`, `content: str`, `title?: str` | `{slug, title, status}` or `{error, slug}` | Neither |
-| `synthadoc_status` | *(none)* | `{pages: int, wiki: str}` | Neither |
-| `synthadoc_jobs` | `status?: str` (default `"all"`) | `{jobs: [{id, operation, status, created, source?, error?}]}` | Neither |
-| `synthadoc_lifecycle` | `slug: str`, `to_state: str`, `reason: str` | `{slug, from_state, to_state, reason, timestamp, cascade_links_removed_from: [str]}` or `{error, cascade_links_removed_from: []}` _(cascade field added v1.0.2)_ | Neither |
-| `synthadoc_lint_report` | *(none)* | `{contradicted: [str], orphans: [str], adversarial_warnings: int, adversarial_pages: [str]}` | Neither |
-| `synthadoc_ingest` | `source: str` | `{job_id, source}` | Synthadoc |
-| `synthadoc_lint` | `scope?: str` (default `"all"`) | `{job_id, scope}` | Synthadoc |
+
+| Tool                    | Parameters                                                                                                                                           | Returns                                                                                                                                                                                                                                               | LLM cost    |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| `synthadoc_search`      | `terms: str`                                                                                                                                         | `{results: [{slug, score, title, snippet}]}`                                                                                                                                                                                                          | Claude only |
+| `synthadoc_read_page`   | `slug: str`                                                                                                                                          | `{slug, title, content, status, type, tags, lint_warnings, sources}` or `{error, slug}`                                                                                                                                                               | Claude only |
+| `synthadoc_list_pages`  | `status?: str` (default `"all"`)                                                                                                                     | `{pages: [{slug, title, status, type, has_sources}], total: int}`                                                                                                                                                                                     | Neither     |
+| `synthadoc_context`     | `goal: str`, `token_budget?: int` (default `10000`)                                                                                                  | `{goal, token_budget, tokens_used, pages: [{slug, relevance, excerpt, source, confidence, tags, estimated_tokens}], omitted: [{slug, estimated_tokens}]}`                                                                                             | Neither     |
+| `synthadoc_export`      | `format?: str` (default `"okf"`), `output_path?: str` (okf defaults to `<wiki>/exports/<name>-okf-<date>/`), `status_filter?: str` (default `"all"`) | okf writes folder to disk →`{format, output_path, files_written, pages}`. Other formats: with `output_path` → `{format, output_path, pages}`; without → `{format, content, pages}`. Formats: `okf`, `llms.txt`, `llms-full.txt`, `json`, `graphml` | Neither     |
+| `synthadoc_write_page`  | `slug: str`, `content: str`, `title?: str`                                                                                                           | `{slug, title, status}` or `{error, slug}`                                                                                                                                                                                                            | Neither     |
+| `synthadoc_status`      | *(none)*                                                                                                                                             | `{pages: int, wiki: str}`                                                                                                                                                                                                                             | Neither     |
+| `synthadoc_jobs`        | `status?: str` (default `"all"`)                                                                                                                     | `{jobs: [{id, operation, status, created, source?, error?}]}`                                                                                                                                                                                         | Neither     |
+| `synthadoc_lifecycle`   | `slug: str`, `to_state: str`, `reason: str`                                                                                                          | `{slug, from_state, to_state, reason, timestamp, cascade_links_removed_from: [str]}` or `{error, cascade_links_removed_from: []}` _(cascade field added v1.0.2)_                                                                                      | Neither     |
+| `synthadoc_lint_report` | *(none)*                                                                                                                                             | `{contradicted: [str], orphans: [str], adversarial_warnings: int, adversarial_pages: [str]}`                                                                                                                                                          | Neither     |
+| `synthadoc_ingest`      | `source: str`                                                                                                                                        | `{job_id, source}`                                                                                                                                                                                                                                    | Synthadoc   |
+| `synthadoc_lint`        | `scope?: str` (default `"all"`)                                                                                                                      | `{job_id, scope}`                                                                                                                                                                                                                                     | Synthadoc   |
 
 Valid `to_state` values for `synthadoc_lifecycle`: `active`, `draft`, `stale`, `contradicted`, `archived`.
 
@@ -2833,10 +2911,11 @@ Valid `status` values for `synthadoc_jobs` and `synthadoc_list_pages`: `all`, `p
 
 The MCP integration separates reasoning from persistence:
 
-| Layer | Role | What it handles |
-|---|---|---|
-| Claude (Desktop or Code) | **Brain** — reasoning, synthesis, editorial judgment | Tool chaining, cross-domain inference, writing quality |
-| Synthadoc MCP | **Memory** — domain knowledge, lifecycle, audit | BM25 search, page storage, 5-state lifecycle, immutable event log |
+
+| Layer                    | Role                                                  | What it handles                                                   |
+| ------------------------ | ----------------------------------------------------- | ----------------------------------------------------------------- |
+| Claude (Desktop or Code) | **Brain** — reasoning, synthesis, editorial judgment | Tool chaining, cross-domain inference, writing quality            |
+| Synthadoc MCP            | **Memory** — domain knowledge, lifecycle, audit      | BM25 search, page storage, 5-state lifecycle, immutable event log |
 
 Practical consequences:
 
@@ -2865,10 +2944,11 @@ The audit trail records the same fields as a manual CLI transition — the MCP p
 
 ### CLI flags
 
-| Flag | Effect |
-|---|---|
-| `--mcp-only` | Start only the MCP endpoint; suppress HTTP REST API and web UI |
-| `--http-only` | Start only the HTTP server; suppress the MCP mount |
+
+| Flag          | Effect                                                         |
+| ------------- | -------------------------------------------------------------- |
+| `--mcp-only`  | Start only the MCP endpoint; suppress HTTP REST API and web UI |
+| `--http-only` | Start only the HTTP server; suppress the MCP mount             |
 
 Default (no flag): both MCP and HTTP start together on the same port.
 
@@ -2936,13 +3016,14 @@ Every backup contains a `manifest.json` at the zip root:
 
 ### Restore conflict rules
 
-| Situation | Behaviour |
-|---|---|
-| Name not in registry | Register normally |
-| Name in registry, path exists | Hard stop — use `--name` to rename or `synthadoc uninstall` first |
-| Name in registry, path gone (stale) | Proceed with a printed note; stale entry is overwritten |
-| Demo wiki renamed via `--name` | Warn + `y/N` prompt (breaks `demo sync`) |
-| Port taken | System suggests the next available port; user confirms or overrides |
+
+| Situation                           | Behaviour                                                           |
+| ----------------------------------- | ------------------------------------------------------------------- |
+| Name not in registry                | Register normally                                                   |
+| Name in registry, path exists       | Hard stop — use`--name` to rename or `synthadoc uninstall` first   |
+| Name in registry, path gone (stale) | Proceed with a printed note; stale entry is overwritten             |
+| Demo wiki renamed via`--name`       | Warn +`y/N` prompt (breaks `demo sync`)                             |
+| Port taken                          | System suggests the next available port; user confirms or overrides |
 
 ### CLI commands
 
@@ -2960,16 +3041,18 @@ synthadoc restore <backup.zip> [--name <new-name>] [--target <dir>] [--port <por
 
 Every source document passes through a sanitizer immediately after text extraction, before any LLM call. The sanitizer removes six categories of content that could manipulate the LLM or degrade compilation quality:
 
-| Category | Action | Warning logged? |
-|---|---|---|
-| Zero-width characters (U+200B, U+200C, U+200D, U+FEFF) | Removed silently | No |
-| Bidi override characters (U+202A–U+202E, U+2066–U+2069) | Removed | Yes |
-| HTML comments (`<!-- ... -->`) | Removed silently | No |
-| Hidden CSS spans (`display:none`, `visibility:hidden`) | Removed silently | No |
-| Base64 blobs ≥ 200 consecutive characters | Replaced with `[base64 content removed]` | Yes |
-| Instruction-override phrases (8 patterns: "ignore previous instructions", "disregard the above", "override your system prompt", etc.) | Replaced with `[redacted]` | Always |
+
+| Category                                                                                                                              | Action                                  | Warning logged? |
+| ------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | --------------- |
+| Zero-width characters (U+200B, U+200C, U+200D, U+FEFF)                                                                                | Removed silently                        | No              |
+| Bidi override characters (U+202A–U+202E, U+2066–U+2069)                                                                             | Removed                                 | Yes             |
+| HTML comments (`<!-- ... -->`)                                                                                                        | Removed silently                        | No              |
+| Hidden CSS spans (`display:none`, `visibility:hidden`)                                                                                | Removed silently                        | No              |
+| Base64 blobs ≥ 200 consecutive characters                                                                                            | Replaced with`[base64 content removed]` | Yes             |
+| Instruction-override phrases (8 patterns: "ignore previous instructions", "disregard the above", "override your system prompt", etc.) | Replaced with`[redacted]`               | Always          |
 
 When content is removed and a warning is appropriate, the server logs a `WARN` entry:
+
 ```
 [WARN] sanitizer stripped content from 'papers/survey.pdf': bidi overrides, instruction-override phrase
 ```
@@ -3018,12 +3101,13 @@ The same `max_source_chars` field is accepted by the HTTP `POST /jobs/ingest` bo
 
 Query context is allocated proportionally to the configured model's context window, replacing the prior hard cap. The default allocation:
 
-| Slice | Default | Purpose |
-|---|---|---|
-| `context_wiki_pct` | 60% | Wiki page content (ranked by BM25 + vector score) |
-| `context_history_pct` | 20% | Chat turn history (newest-first, oldest dropped when over budget) |
-| `context_system_pct` | 15% | System prompt and purpose document |
-| `context_index_pct` | 5% | `ROUTING.md` and search index |
+
+| Slice                 | Default | Purpose                                                           |
+| --------------------- | ------- | ----------------------------------------------------------------- |
+| `context_wiki_pct`    | 60%     | Wiki page content (ranked by BM25 + vector score)                 |
+| `context_history_pct` | 20%     | Chat turn history (newest-first, oldest dropped when over budget) |
+| `context_system_pct`  | 15%     | System prompt and purpose document                                |
+| `context_index_pct`   | 5%      | `ROUTING.md` and search index                                     |
 
 Percentages must sum to ≤ 100. Configure in `[query]`:
 
@@ -3042,13 +3126,14 @@ context_index_pct     = 5
 
 Synthadoc ships a built-in prefix-matched table:
 
-| Model | Context window |
-|---|---|
+
+| Model                                                   | Context window |
+| ------------------------------------------------------- | -------------- |
 | `claude-opus-4*`, `claude-sonnet-4*`, `claude-haiku-4*` | 200,000 tokens |
-| `gpt-4o*`, `gpt-4-turbo*` | 128,000 tokens |
-| `gpt-4` (exact) | 8,192 tokens |
-| `gpt-3.5-turbo*` | 16,385 tokens |
-| Unknown / fallback | 128,000 tokens |
+| `gpt-4o*`, `gpt-4-turbo*`                               | 128,000 tokens |
+| `gpt-4` (exact)                                         | 8,192 tokens   |
+| `gpt-3.5-turbo*`                                        | 16,385 tokens  |
+| Unknown / fallback                                      | 128,000 tokens |
 
 Set `context_window = N` in config to override the map (useful for local Ollama models with non-standard context sizes).
 
@@ -3078,9 +3163,10 @@ CREATE TABLE graph_edges (
 
 Edge weight is a composite signal from two sources:
 
-| Edge type | Source | Weight contribution |
-|-----------|--------|---------------------|
-| `wikilink` | `[[slug]]` occurrences in page body | +1 per occurrence |
+
+| Edge type   | Source                                                     | Weight contribution  |
+| ----------- | ---------------------------------------------------------- | -------------------- |
+| `wikilink`  | `[[slug]]` occurrences in page body                        | +1 per occurrence    |
 | `co_source` | pages compiled from the same source file (matched by hash) | +2 per shared source |
 
 Most edges are `mixed` (have both types). Pure `co_source` edges surface hidden relationships — pages compiled from the same source document are linked immediately after ingest, before any wikilinks are created. `edge_type` is stored on each edge so the web UI can render co-source edges with a different visual style.
@@ -3125,15 +3211,16 @@ The five structural system pages — `overview`, `index`, `dashboard`, `purpose`
 
 The Obsidian plugin includes a **draggable modal** knowledge graph panel (`Graph: show knowledge graph` command). It fetches from the same `GET /graph` endpoint as the web UI and renders a force-directed Canvas 2D simulation using Verlet integration (no external library). System pages are already excluded from the server response.
 
-| Feature | Obsidian panel | Web UI Graph tab |
-|---------|----------------|-----------------|
-| Engine | Canvas 2D + Verlet | D3.js SVG |
-| Node click | Opens the wiki page in the current pane | Opens the node sidebar with "Ask about this →" |
-| **Best for** | **Navigating to and editing pages** | **Asking questions about a page** |
-| Draggable panel | Yes — drag header to reposition | Fixed tab layout |
-| Node cap | 300 most-connected (see note) | No cap |
-| Cluster legend | Yes | Yes |
-| Type filter | Yes | Yes |
+
+| Feature         | Obsidian panel                          | Web UI Graph tab                                |
+| --------------- | --------------------------------------- | ----------------------------------------------- |
+| Engine          | Canvas 2D + Verlet                      | D3.js SVG                                       |
+| Node click      | Opens the wiki page in the current pane | Opens the node sidebar with "Ask about this →" |
+| **Best for**    | **Navigating to and editing pages**     | **Asking questions about a page**               |
+| Draggable panel | Yes — drag header to reposition        | Fixed tab layout                                |
+| Node cap        | 300 most-connected (see note)           | No cap                                          |
+| Cluster legend  | Yes                                     | Yes                                             |
+| Type filter     | Yes                                     | Yes                                             |
 
 **Rule of thumb:** Use the **web UI** when you want to ask questions about a node. Use the **Obsidian panel** when you want to navigate to and edit a page.
 
@@ -3149,11 +3236,12 @@ The Obsidian plugin includes a **draggable modal** knowledge graph panel (`Graph
 
 `synthadoc init` and `synthadoc scaffold` write three agent skill files at the wiki root:
 
-| File | Format | Read by |
-|------|--------|---------|
-| `AGENTS.md` | OpenAI Agents SDK / Codex / OpenCode | Codex CLI, OpenCode, generic agents |
-| `CLAUDE.md` | Claude Code / Anthropic | Claude Code (loaded automatically when the wiki folder is opened) |
-| `GEMINI.md` | Gemini CLI | Gemini CLI |
+
+| File        | Format                               | Read by                                                           |
+| ----------- | ------------------------------------ | ----------------------------------------------------------------- |
+| `AGENTS.md` | OpenAI Agents SDK / Codex / OpenCode | Codex CLI, OpenCode, generic agents                               |
+| `CLAUDE.md` | Claude Code / Anthropic              | Claude Code (loaded automatically when the wiki folder is opened) |
+| `GEMINI.md` | Gemini CLI                           | Gemini CLI                                                        |
 
 All three files carry **identical content**: a title block, the LLM-generated domain guidelines for the wiki, a quick-reference CLI command table, and an MCP tool table. The only difference is the heading comment. This means any AI coding tool that opens the wiki root gets full Synthadoc guidance without manual setup.
 
@@ -3257,23 +3345,25 @@ Triggered by phrases such as "re-ingest the alan-turing page". A pre-LLM regex f
 
 Both workflows share the same `IngestLintWorkflow` tool set:
 
-| Tool | Description |
-|------|-------------|
-| `find_stale_pages` | Returns `[{slug, source_path}]` for all stale pages with a local text source |
-| `find_page_source` | Looks up any page by slug regardless of lifecycle state; returns `{slug, source_path}` |
-| `ingest_source` | Force-ingests a source file and waits for the job to reach a terminal state; returns `{status, message, job_id}` |
-| `poll_job` | Polls `GET /jobs/{job_id}` with exponential backoff until terminal; returns final status |
-| `run_lint` | Enqueues a full lint run; returns `{job_id}` — caller uses `poll_job` to wait for completion |
-| `confirm` | Sends a `confirm_request` SSE event and blocks until the user responds (Yes/No) |
+
+| Tool               | Description                                                                                                     |
+| ------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `find_stale_pages` | Returns`[{slug, source_path}]` for all stale pages with a local text source                                     |
+| `find_page_source` | Looks up any page by slug regardless of lifecycle state; returns`{slug, source_path}`                           |
+| `ingest_source`    | Force-ingests a source file and waits for the job to reach a terminal state; returns`{status, message, job_id}` |
+| `poll_job`         | Polls`GET /jobs/{job_id}` with exponential backoff until terminal; returns final status                         |
+| `run_lint`         | Enqueues a full lint run; returns`{job_id}` — caller uses `poll_job` to wait for completion                    |
+| `confirm`          | Sends a`confirm_request` SSE event and blocks until the user responds (Yes/No)                                  |
 
 ### Web UI graph sidebar maintenance chips
 
 In the web UI **Graph tab**, the node detail panel includes a **Maintenance** section with two chips that trigger the same workflows without typing:
 
-| Chip | Sent query | Workflow |
-|------|-----------|---------|
-| **⚑ Check this page for issues** | `"Check the {slug} page for issues"` | Lint-style analysis for the selected page |
-| **↻ Re-ingest this page** | `"Re-ingest the {slug} page"` | Triggers the page-by-slug reingest workflow |
+
+| Chip                              | Sent query                           | Workflow                                    |
+| --------------------------------- | ------------------------------------ | ------------------------------------------- |
+| **⚑ Check this page for issues** | `"Check the {slug} page for issues"` | Lint-style analysis for the selected page   |
+| **↻ Re-ingest this page**        | `"Re-ingest the {slug} page"`        | Triggers the page-by-slug reingest workflow |
 
 ### SSE protocol extensions (v1.2.0)
 
@@ -3320,51 +3410,56 @@ Triggered by phrases such as "run scaffold" or "regenerate scaffold". A pre-LLM 
 
 **IngestLintWorkflow** (stale-pages bulk reingest and page-by-slug reingest):
 
-| Tool | Description |
-|------|-------------|
-| `find_stale_pages` | Returns `[{slug, source_path}]` for all stale pages with a local text source |
-| `find_page_source` | Looks up any page by slug regardless of lifecycle state; returns `{slug, source_path}` |
-| `ingest_source` | Force-ingests a source file and waits for the job to reach a terminal state; returns `{status, message, job_id}` |
-| `poll_job` | Polls `GET /jobs/{job_id}` with exponential backoff until terminal; returns final status |
-| `run_lint` | Enqueues a full lint run; returns `{job_id}` — caller uses `poll_job` to wait for completion |
-| `confirm` | Sends a `confirm_request` SSE event and blocks until the user responds (Yes/No) |
-| `get_page_states` | Returns the current lifecycle state for a list of slugs |
+
+| Tool               | Description                                                                                                     |
+| ------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `find_stale_pages` | Returns`[{slug, source_path}]` for all stale pages with a local text source                                     |
+| `find_page_source` | Looks up any page by slug regardless of lifecycle state; returns`{slug, source_path}`                           |
+| `ingest_source`    | Force-ingests a source file and waits for the job to reach a terminal state; returns`{status, message, job_id}` |
+| `poll_job`         | Polls`GET /jobs/{job_id}` with exponential backoff until terminal; returns final status                         |
+| `run_lint`         | Enqueues a full lint run; returns`{job_id}` — caller uses `poll_job` to wait for completion                    |
+| `confirm`          | Sends a`confirm_request` SSE event and blocks until the user responds (Yes/No)                                  |
+| `get_page_states`  | Returns the current lifecycle state for a list of slugs                                                         |
 
 **BrokenWikilinksWorkflow** (broken wikilinks scan and fix):
 
-| Tool | Description |
-|------|-------------|
-| `find_broken_wikilinks` | Scans active pages for `[[slug]]` refs that resolve to no existing page; returns broken refs with fuzzy suggestions |
-| `apply_link_fixes` | Applies `{old_ref → new_ref}` corrections to a single page; `new_ref=null` removes the link |
-| `confirm` | Sends a `confirm_request` SSE event and blocks until the user responds |
-| `run_lint` | Enqueues a lint pass to validate link integrity after fixes |
-| `poll_job` | Polls a job to terminal state |
-| `get_page_states` | Returns the current lifecycle state for a list of slugs |
+
+| Tool                    | Description                                                                                                        |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `find_broken_wikilinks` | Scans active pages for`[[slug]]` refs that resolve to no existing page; returns broken refs with fuzzy suggestions |
+| `apply_link_fixes`      | Applies`{old_ref → new_ref}` corrections to a single page; `new_ref=null` removes the link                        |
+| `confirm`               | Sends a`confirm_request` SSE event and blocks until the user responds                                              |
+| `run_lint`              | Enqueues a lint pass to validate link integrity after fixes                                                        |
+| `poll_job`              | Polls a job to terminal state                                                                                      |
+| `get_page_states`       | Returns the current lifecycle state for a list of slugs                                                            |
 
 **LintReportWorkflow** (lint run and full report):
 
-| Tool | Description |
-|------|-------------|
-| `run_lint` | Enqueues a full lint pass; returns `{job_id}` |
-| `poll_job` | Waits for the lint job to reach a terminal state |
+
+| Tool              | Description                                                                                                                        |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `run_lint`        | Enqueues a full lint pass; returns`{job_id}`                                                                                       |
+| `poll_job`        | Waits for the lint job to reach a terminal state                                                                                   |
 | `get_lint_report` | Reads last lint summary from audit DB and per-page frontmatter; returns contradicted pages, adversarial warnings, and orphan slugs |
 
 **ScaffoldWorkflow** (scaffold and report):
 
-| Tool | Description |
-|------|-------------|
-| `get_scaffold_preview` | Reads domain from `WorkflowContext.domain`; returns domain and list of files to overwrite |
-| `confirm` | Sends a `confirm_request` SSE event and blocks until user responds |
-| `run_scaffold` | Enqueues scaffold job, polls to terminal state, reads `job.result` for `categories_updated` and `routing_regenerated` |
+
+| Tool                   | Description                                                                                                          |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `get_scaffold_preview` | Reads domain from`WorkflowContext.domain`; returns domain and list of files to overwrite                             |
+| `confirm`              | Sends a`confirm_request` SSE event and blocks until user responds                                                    |
+| `run_scaffold`         | Enqueues scaffold job, polls to terminal state, reads`job.result` for `categories_updated` and `routing_regenerated` |
 
 ### Web UI graph sidebar maintenance chips
 
 In the web UI **Graph tab**, the node detail panel includes a **Maintenance** section with two chips that trigger the same workflows without typing:
 
-| Chip | Sent query | Workflow |
-|------|-----------|---------|
-| **⚑ Check this page for issues** | `"Check the {slug} page for issues"` | Lint-style analysis for the selected page |
-| **↻ Re-ingest this page** | `"Re-ingest the {slug} page"` | Triggers the page-by-slug reingest workflow |
+
+| Chip                              | Sent query                           | Workflow                                    |
+| --------------------------------- | ------------------------------------ | ------------------------------------------- |
+| **⚑ Check this page for issues** | `"Check the {slug} page for issues"` | Lint-style analysis for the selected page   |
+| **↻ Re-ingest this page**        | `"Re-ingest the {slug} page"`        | Triggers the page-by-slug reingest workflow |
 
 ### SSE protocol extensions (v1.2.0)
 
@@ -3430,11 +3525,12 @@ Three cache layers (embedding, LLM response, provider prompt cache) invalidate a
 
 Every Synthadoc wiki ships three companion files that give AI coding agents a complete, self-contained operating guide for the wiki:
 
-| File | Platform |
-|---|---|
-| `AGENTS.md` | Codex CLI, OpenCode, and any agent that reads the AGENTS.md convention |
+
+| File        | Platform                                                                                       |
+| ----------- | ---------------------------------------------------------------------------------------------- |
+| `AGENTS.md` | Codex CLI, OpenCode, and any agent that reads the AGENTS.md convention                         |
 | `CLAUDE.md` | Claude Code (this session's tool) — highest-priority instruction source in Claude's hierarchy |
-| `GEMINI.md` | Gemini CLI — relevant because Synthadoc's default LLM provider is `gemini-2.5-flash-lite` |
+| `GEMINI.md` | Gemini CLI — relevant because Synthadoc's default LLM provider is`gemini-2.5-flash-lite`      |
 
 All three files share identical body content generated from the same template; they differ only in their H1 heading so each agent recognises its own file first. The body covers:
 
@@ -3508,13 +3604,14 @@ any point.
 
 ### Strategy menu
 
-| Strategy | When it runs |
-|---|---|
-| Content rewrite | Always the first attempt — rewrites the page to remove unsupported claims or reconcile conflicting sources with explicit hedging |
-| Web ingest for better grounding | After a failed first attempt when the agent judges the page lacks authoritative sourcing — proposes fetching a specific URL |
-| Force source re-ingest | Source file exists but may be outdated — proposes re-ingesting with a force flag |
-| Cross-page resolution | The conflict stems from a related page's reference — proposes modifying the referring page |
-| Escalate | Cap reached (3 attempts) — detailed diagnosis and concrete next steps, page remains *contradicted* |
+
+| Strategy                        | When it runs                                                                                                                      |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Content rewrite                 | Always the first attempt — rewrites the page to remove unsupported claims or reconcile conflicting sources with explicit hedging |
+| Web ingest for better grounding | After a failed first attempt when the agent judges the page lacks authoritative sourcing — proposes fetching a specific URL      |
+| Force source re-ingest          | Source file exists but may be outdated — proposes re-ingesting with a force flag                                                 |
+| Cross-page resolution           | The conflict stems from a related page's reference — proposes modifying the referring page                                       |
+| Escalate                        | Cap reached (3 attempts) — detailed diagnosis and concrete next steps, page remains*contradicted*                                |
 
 ### Final confirmation
 
@@ -3549,17 +3646,18 @@ being needed first:
   and "List contradicted pages" as follow-up chips below the response.
 
 **CLI:**
+
 ```bash
-synthadoc run contradiction-resolver              # all contradicted pages
-synthadoc run contradiction-resolver --slug alan-turing   # one page
-synthadoc run contradiction-resolver --type gate  # gate-demoted pages only
-synthadoc run contradiction-resolver --type conflict  # source conflicts only
+synthadoc workflow run --name contradiction-resolver              # all contradicted pages
+synthadoc workflow run --name contradiction-resolver --slug alan-turing   # one page
+synthadoc workflow run --name contradiction-resolver --type adversarial   # gate-demoted pages only
+synthadoc workflow run --name contradiction-resolver --type source-conflict  # source conflicts only
 ```
 
 `--slug` still calls `tool_get_contradicted_pages(scope="all")` internally and
-filters to the given slug after the list is returned. `--type gate` matches pages
-that carry `lint_warnings`; `--type conflict` matches pages that carry a
-`contradiction_note`. Both flags can be combined with `--slug`.
+filters to the given slug after the list is returned. `--type adversarial` (alias `gate`)
+matches pages that carry `lint_warnings`; `--type source-conflict` (alias `conflict`) matches
+pages that carry a `contradiction_note`. Both flags can be combined with `--slug`.
 
 ### Scoped re-lint
 
@@ -3587,9 +3685,10 @@ escalation).
 `tool_transition_lifecycle_state` writes to two separate DB tables when it
 promotes a page back to *active*:
 
-| Call | Table | Read by |
-|---|---|---|
-| `set_page_state(slug, to_state, "workflow")` | `page_states` | `GET /lifecycle/pages` (current lifecycle state) |
+
+| Call                                                                     | Table              | Read by                                               |
+| ------------------------------------------------------------------------ | ------------------ | ----------------------------------------------------- |
+| `set_page_state(slug, to_state, "workflow")`                             | `page_states`      | `GET /lifecycle/pages` (current lifecycle state)      |
 | `record_lifecycle_event(slug, from_state, to_state, reason, "workflow")` | `lifecycle_events` | `GET /lifecycle/events?slug=…` (immutable audit log) |
 
 Each call is wrapped in an independent `try/except` block — a DB failure in
@@ -3605,6 +3704,7 @@ either does not abort the workflow. The page file is written first via
 - **Adversarial Lint Gate** — a new `adversarial_gate_threshold` config key (default `None`, disabled) triggers automatic lifecycle demotion of any page whose adversarial-reviewer warning count reaches or exceeds the threshold. When the gate fires, the page transitions from its current state to `contradicted` and the reason is recorded in the lifecycle audit trail as `auto-demoted: adversarial gate`. A companion guard prevents `--auto-resolve` from re-promoting gate-demoted pages in the same lint run (cycling prevention), recorded as `auto-resolve skipped: adversarial gate`. `adversarial_max_per_page` caps the flagged-claim count per page (default 5). See [§21 Adversarial Review](#21-adversarial-review).
 - **Contradiction Resolver Workflow** — an interactive agentic loop (`synthadoc workflow run contradiction-resolver`) that resolves pages in `contradicted` state one at a time. The workflow: lists all contradicted pages and shows a cost estimate (requiring confirmation); for each page reads the current content and the conflicting source or flagged claims, proposes a reconciling rewrite, and displays the full unified diff before writing; runs a scoped lint pass on the changed page; promotes to `active` on pass; tries up to 3 alternative strategies on failure (web ingest, force re-ingest, cross-page resolution) before escalating with a plain-language diagnosis. Supports `--slug` (single page), `--type adversarial` / `--type source-conflict` (scoped), and `--timeout` flags. Accessible from the web UI via the **"Run contradiction resolver"** hint chip (shown whenever the wiki has contradicted pages), via the pre-filled `done.pre_prompt` suggestion after any response that mentions contradicted pages, or via free-text query. See [§35 Contradiction Resolver Workflow](#35-contradiction-resolver-workflow).
 - **Generic workflow tool extensions** — `tool_propose_and_apply` and `tool_transition_lifecycle_state` added to the shared workflow tool library; any future workflow can reuse diff-before-write approval and lifecycle state transitions without re-implementing them.
+- **Pluggable workflow CLI** — `synthadoc workflow run` is now a single generic command with `--name NAME` instead of one hardcoded subcommand per workflow. All 5 registered workflows (`lint-report`, `broken-wikilinks`, `scaffold`, `contradiction-resolver`, `ingest-lint`) are exposed automatically via `NAME`/`DESCRIPTION` class attributes and `CLI_REGISTRY`. `synthadoc workflow list` enumerates all registered workflows with descriptions. Workflow-specific options (e.g. `--slug`, `--type`) are forwarded verbatim to the workflow and parsed by its own `build_initial_message`. Adding a new workflow requires no CLI changes.
 
 ### v1.2.1
 
@@ -3713,6 +3813,7 @@ either does not abort the workflow. The page file is written first via
 - **OKF `type:` field** — IngestAgent now writes a `type:` frontmatter field on every compiled page (values: `concept`, `person`, `organization`, `technology`, `event`, `location`, `product`). The field is required by OKF v0.1 and enables type-grouped `index.md` in the export bundle. Pages ingested before v0.9.0 can be backfilled via `synthadoc demo sync` (demo wikis) or re-running `synthadoc ingest` (custom wikis).
 - **`synthadoc demo sync` — optional wiki name** — running `synthadoc demo sync` without a wiki name argument syncs all registered demo wikis in one pass. The sync step also backfills `type:` on existing pages that were compiled before v0.9.0 without the field.
 - **SSE shutdown stability** — a log filter installed on `uvicorn.error` at startup suppresses three benign error classes that appear when the server exits while SSE connections are open: `asyncio.CancelledError`, `KeyboardInterrupt`, and the `RuntimeError("Expected ASGI message 'http.response.body'…")` that Starlette's error middleware raises after cancellation. Actual errors during normal operation are unaffected.
+
 ### v0.8.0 (Community Edition)
 
 - **Multi-turn conversation** — the web chat UI maintains conversation history across turns within a session. History is stored in `audit.db` per session and loaded server-side on each request (up to `conversation_history_turns` turns, default 5). Follow-up questions are rewritten into standalone form by a dedicated rewrite component before BM25 retrieval, so context-dependent phrases ("What came after that?") resolve correctly. When the session exceeds the turn limit, a summarization component compresses the oldest turns into a `[Session summary]` entry; a `notice` SSE event is emitted the first time compression occurs.
@@ -3749,13 +3850,13 @@ either does not abort the workflow. The page file is written first via
 - **Lifecycle Obsidian plugin** — `Synthadoc: Manage Page Lifecycle` command opens `LifecycleModal`: sortable, filterable, paginated table of all pages with current state and last transition; valid transition action buttons per row; `ReasonModal` prompts for reason before committing; draft/stale badge links on lint modal and jobs panel open the table pre-filtered
 - **Export formats** — `synthadoc export --format <fmt>` serializes the wiki in four formats assembled server-side with zero LLM calls: `llms.txt` (navigation index per llmstxt.org spec — active pages in `## Pages`, contradicted/stale in `## Needs Review`, archived omitted); `llms-full.txt` (flat content dump with `---` separators, provenance footnotes preserved verbatim, no size limit); `graphml` (standard GraphML 1.1 — node attributes include `label`/`title`, `status`, `confidence`, `orphan`, `inbound_link_count`, `routing_branch`; edges=wikilinks; dual-label support: `label` key for Gephi/Cytoscape, `y:NodeLabel` for yEd; no position data — run tool layout after import); `json` (agent-ready dump with `claims[]`, `lifecycle_history[]`, per-page `ingest_cost_usd` and `ingest_tokens`, `total_compilation_cost_usd`, `routing.branch_memberships`); all formats accept `--status` filter (`all`/`active`/`draft`/`stale`/`contradicted`/`archived`); `POST /export` endpoint accepts `{format, status_filter}`; Obsidian **Export Wiki** command — format dropdown, full-width output path, status filter, Export button, View Graph inline preview button (graphml only)
 
-
 ### v0.5.0 (Community Edition)
 
 - **Adversarial review** — concurrent independent LLM review of every wiki page after lint runs; flags overstated claims, unsupported assertions, and high-confidence statements the source material does not support; results stored as `lint_warnings: [{claim, concern}]` in page frontmatter; surfaced in redesigned 3-tab `Lint: report` modal (Contradictions / Orphans / Adversarial) and redesigned `synthadoc lint report` CLI output; configured via `[agents].adversarial` and `[lint].adversarial_max_per_page` (default 2) in `config.toml`; skipped with `synthadoc lint run --no-adversarial` (also clears stale warnings); cross-model review — a different model family from the ingest model reduces self-serving bias; concurrent via `asyncio.gather()` — a 100-page wiki completes in the same wall-clock time as one call; per-page rate-limit failures are non-fatal
 - **Claim-level provenance** — during ingest, Pass 4 (`_annotate_citations()`) reads each page section alongside numbered source text and inserts `^[filename:L-L]` inline citation markers at the end of substantive paragraphs; markers map compiled claims to exact source line ranges; stored in the page body, recorded in `audit.db` `claim_citations` table, and validated by lint; local source sidecars written to `.synthadoc/extracted/` (plain-text `.txt` for all file types; pagemap JSON for PDFs to resolve line numbers to PDF page numbers); in Obsidian (Reading View only) markers render as interactive citation chips — one click opens the Source Viewer showing the referenced lines with ±5 lines of context; PDF sources show a page-jump button; `GET /provenance/citations` endpoint powers the **View Page Provenance** modal (sortable, paginated citation table); `synthadoc audit citations` CLI queries the same table with `--page` and `--broken` filters
 - **Routing Obsidian plugin** — `Synthadoc: Routing: manage ROUTING.md...` command palette entry opens a modal panel with three buttons: **Init** creates ROUTING.md from the current index.md branch structure (enabled only when ROUTING.md does not exist), **Validate** reports dangling slugs, **Clean** removes dangling slugs from ROUTING.md; after each action results appear inline
 - **Candidates Staging Obsidian plugin** — `Synthadoc: Staging: manage staging policy...` and `Synthadoc: Candidates: review candidate pages...` command palette entries; Staging modal shows policy state with segmented controls; Candidates modal shows a paginated table with promote/discard bulk and per-row actions
+
 ### v0.4.0 (Community Edition)
 
 - **Routing layer** — `ROUTING.md` groups wiki pages into named topic branches; `QueryAgent` picks 1–2 branches via a lightweight LLM call and restricts BM25 to those slugs, reducing noise on large wikis; falls back to full-corpus search when no branch is selected; `IngestAgent` auto-places new pages into the best branch on create
@@ -3830,4 +3931,3 @@ either does not abort the workflow. The page file is written first via
 - **Multi-wiki** — unlimited isolated wikis, each on its own port
 - **OpenTelemetry** — traces, metrics, structured logs; OTLP export optional
 - **Cross-platform** — Windows, Linux, macOS
-

@@ -114,6 +114,9 @@ When you have no more tool calls to make, produce a plain-text summary (no JSON)
 class BrokenWikilinksWorkflow(AgenticWorkflow):
     """Scan active wiki pages for broken [[wikilinks]] and fix them interactively."""
 
+    NAME = "broken-wikilinks"
+    DESCRIPTION = "Scan all pages for broken [[wikilinks]] and fix them interactively."
+
     MATCH_RE = re.compile(
         r"\bbroken\b.{0,40}\b(?:wiki\s*links?|links?)\b"
         r"|\b(?:wiki\s*links?|links?)\b.{0,40}\bbroken\b"

@@ -41,6 +41,16 @@ class AgenticWorkflow(ABC):
 
     MATCH_RE: re.Pattern | None = None
 
+    # Set on subclasses that register with the CLI registry.
+    # ``NAME`` is the ``--name`` value for ``synthadoc workflow run``.
+    # ``DESCRIPTION`` is shown by ``synthadoc workflow list``.
+    # ``CLI_ARGS`` is a compact one-line summary of workflow-specific extra
+    # arguments forwarded after ``--name NAME`` (e.g. ``[--slug SLUG]``).
+    # Leave None for workflows that take no extra arguments.
+    NAME: str | None = None
+    DESCRIPTION: str | None = None
+    CLI_ARGS: str | None = None
+
     @abstractmethod
     async def build_system_prompt(self) -> str:
         """Return the system prompt for the LLM."""

@@ -248,7 +248,7 @@ def _cli(*args: str, check: bool = True) -> subprocess.CompletedProcess:
 
 def _run_workflow(*args: str, timeout: int = 300, input_text: str = "") -> subprocess.CompletedProcess:
     """Run the contradiction-resolver workflow via CLI, feeding *input_text* to stdin."""
-    cmd = ["synthadoc", "-w", WIKI, "run", "contradiction-resolver", *args]
+    cmd = ["synthadoc", "-w", WIKI, "workflow", "run", "--name", "contradiction-resolver", *args]
     return subprocess.run(
         cmd, capture_output=True, text=True, encoding="utf-8",
         input=input_text, timeout=timeout, check=False,
@@ -423,7 +423,7 @@ def test_case3_multi_page_all_scope():
     """Multiple contradicted pages processed sequentially with scope=all.
 
     Setup: At least 2 pages in contradicted state.
-    Run: synthadoc run contradiction-resolver (no --slug)
+    Run: synthadoc workflow run --name contradiction-resolver (no --slug)
     Expected:
       - Output contains "Fixed" with a count ≥ 1.
     Restores all targeted pages to contradicted in the finally block.
@@ -596,15 +596,14 @@ def test_case5_cli_parity():
 
         # Guard: the workflow must reach a completion marker before we make any
         # meaningful assertion.  A missing marker means the stream was cut off
-        # mid-workflow, or the 'synthadoc run' CLI command is not yet available.
+        # mid-workflow or the server did not respond in time.
         # xfail rather than fail so this does not block CI.
         _COMPLETION_MARKERS = ("Fixed", "Unresolved", "Contradiction Resolver — Complete")
         if not any(m in output for m in _COMPLETION_MARKERS):
             pytest.xfail(
                 f"Case 5: CLI resolver did not produce a completion summary "
                 f"(returncode={result.returncode}, {len(output)} chars). "
-                "Either the 'synthadoc run' command is not yet implemented, "
-                "or the stream was cut off mid-workflow.\n"
+                "The stream may have been cut off mid-workflow.\n"
                 f"Last 400 chars: {output[-400:]}"
             )
 

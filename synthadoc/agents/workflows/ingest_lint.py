@@ -93,6 +93,12 @@ When you have a final message for the user, respond with plain text only (no too
 
 
 class IngestLintWorkflow(AgenticWorkflow):
+    """Re-ingest stale pages (bulk) or any specific page by slug, then run lint."""
+
+    NAME = "ingest-lint"
+    DESCRIPTION = "Re-ingest stale pages (bulk) or any page by slug, then run lint."
+    CLI_ARGS = "[--slug SLUG]  (omit to re-ingest all stale pages)"
+
     MATCH_RE = re.compile(
         r"\bstale\s+pages?\b"
         r"|\borchestrat"

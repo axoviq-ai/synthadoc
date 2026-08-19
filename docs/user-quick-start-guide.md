@@ -1,6 +1,6 @@
 ﻿# Synthadoc User Quick-Start Guide
 
-**Version: v1.2.1 (Community Edition)**
+**Version: v1.3.0 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
@@ -208,15 +208,15 @@ history-of-computing/
 **Open these files in Obsidian now:**
 
 
-| File                  | What to look at                                                   |
-| --------------------- | ----------------------------------------------------------------- |
-| `wiki/index.md`       | Pre-generated category structure with`[[wikilinks]]` to each page |
-| `wiki/dashboard.md`   | Live Dataview tables — contradictions, orphans, recently added / updated / archived |
-| `wiki/alan-turing.md` | YAML frontmatter:`status`, `confidence`, `tags`, `sources[]`      |
-| `AGENTS.md`           | Domain-specific guidelines for Codex/OpenCode agents — LLM reads this on every ingest |
-| `CLAUDE.md`           | Same guidelines in Claude Code format — loaded automatically when you open this folder in Claude Code |
-| `GEMINI.md`           | Same guidelines in Gemini CLI format |
-| `wiki/purpose.md`     | Scope definition for History of Computing — five sections (Overview, What Belongs, Out of Scope, Intended Audience, Primary Use Cases). Each section contains a `<!-- synthadoc:scaffold -->` marker: content you add **above** a marker is preserved when you re-run `synthadoc scaffold`; content below is refreshed by the LLM. |
+| File                  | What to look at                                                                                                                                                                                                                                                                                                                    |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `wiki/index.md`       | Pre-generated category structure with`[[wikilinks]]` to each page                                                                                                                                                                                                                                                                  |
+| `wiki/dashboard.md`   | Live Dataview tables — contradictions, orphans, recently added / updated / archived                                                                                                                                                                                                                                               |
+| `wiki/alan-turing.md` | YAML frontmatter:`status`, `confidence`, `tags`, `sources[]`                                                                                                                                                                                                                                                                       |
+| `AGENTS.md`           | Domain-specific guidelines for Codex/OpenCode agents — LLM reads this on every ingest                                                                                                                                                                                                                                             |
+| `CLAUDE.md`           | Same guidelines in Claude Code format — loaded automatically when you open this folder in Claude Code                                                                                                                                                                                                                             |
+| `GEMINI.md`           | Same guidelines in Gemini CLI format                                                                                                                                                                                                                                                                                               |
+| `wiki/purpose.md`     | Scope definition for History of Computing — five sections (Overview, What Belongs, Out of Scope, Intended Audience, Primary Use Cases). Each section contains a`<!-- synthadoc:scaffold -->` marker: content you add **above** a marker is preserved when you re-run `synthadoc scaffold`; content below is refreshed by the LLM. |
 
 > **Upgrading an existing wiki?** If your wiki was created before v1.0.2, it will have `AGENTS.md` but not `CLAUDE.md` or `GEMINI.md`. Run `synthadoc scaffold` once to generate all three with LLM-produced guidelines that match your current wiki content.
 
@@ -224,13 +224,14 @@ history-of-computing/
 
 `wiki/dashboard.md` contains four live Dataview tables. Open it in Obsidian (Reading View) after installing the Dataview plugin to see them update automatically as you work through this guide.
 
-| Section | What it shows | Powered by |
-|---------|--------------|------------|
-| **Contradicted pages** | Pages whose sources conflict — need manual resolution | `status = "contradicted"` |
-| **Orphan pages** | Pages with no inbound `[[wikilinks]]` — run lint first to populate | `orphan = true` (set by lint) |
-| **Recently added** | The 10 most recently created pages, newest first | `created` frontmatter field |
-| **Recently updated** | Pages that have been re-ingested with new source material since their initial creation | `updated` frontmatter field — only present after a re-ingest |
-| **Recently archived** | Pages currently in `archived` state — retired from active use | `status = "archived"` |
+
+| Section                | What it shows                                                                          | Powered by                                                    |
+| ---------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| **Contradicted pages** | Pages whose sources conflict — need manual resolution                                 | `status = "contradicted"`                                     |
+| **Orphan pages**       | Pages with no inbound`[[wikilinks]]` — run lint first to populate                     | `orphan = true` (set by lint)                                 |
+| **Recently added**     | The 10 most recently created pages, newest first                                       | `created` frontmatter field                                   |
+| **Recently updated**   | Pages that have been re-ingested with new source material since their initial creation | `updated` frontmatter field — only present after a re-ingest |
+| **Recently archived**  | Pages currently in`archived` state — retired from active use                          | `status = "archived"`                                         |
 
 **Recently added vs. Recently updated** — these are intentionally separate:
 
@@ -367,10 +368,11 @@ an alias and one is a longer substring of the query, the longer one takes preced
 
 Every page compiled by Synthadoc also carries two fields that align with Google's [Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md):
 
-| Field | What it contains | Set by |
-|-------|-----------------|--------|
-| `type` | Knowledge classifier: `concept`, `person`, `technology`, `event`, `organization`, `location`, or `product` | Ingest — LLM classifies during the analysis pass |
-| `resource` | Primary source URL (only present for URL-sourced pages) | Ingest — auto-populated from the URL |
+
+| Field      | What it contains                                                                                          | Set by                                            |
+| ---------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `type`     | Knowledge classifier:`concept`, `person`, `technology`, `event`, `organization`, `location`, or `product` | Ingest — LLM classifies during the analysis pass |
+| `resource` | Primary source URL (only present for URL-sourced pages)                                                   | Ingest — auto-populated from the URL             |
 
 These fields make Synthadoc wikis directly consumable by any OKF-aware agent without an export step. Pages ingested from local files have no `resource` field.
 
@@ -577,13 +579,13 @@ Most knowledge bases treat every page the same — ingested means trusted. Synth
 ### Lifecycle states
 
 
-| State          | Meaning                                   | How it is reached                               | What to do                                 |
-| -------------- | ----------------------------------------- | ----------------------------------------------- | ------------------------------------------ |
-| `draft`        | Compiled but not yet lint-reviewed        | Automatic on ingest                             | Run lint to auto-promote clean pages       |
-| `active`       | Lint-reviewed, current, trusted           | Lint auto-promotes from`draft`                  | No action needed                           |
+| State          | Meaning                                     | How it is reached                                               | What to do                                           |
+| -------------- | ------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------- |
+| `draft`        | Compiled but not yet lint-reviewed          | Automatic on ingest                                             | Run lint to auto-promote clean pages                 |
+| `active`       | Lint-reviewed, current, trusted             | Lint auto-promotes from`draft`                                  | No action needed                                     |
 | `contradicted` | Sources conflict, or adversarial gate fired | Lint detects contradiction or ≥ threshold adversarial warnings | Resolve conflict or fix flagged claims, then re-lint |
-| `stale`        | Source file has changed since last ingest | Lint detects SHA-256 hash mismatch              | Re-ingest the updated source with`--force` |
-| `archived`     | Source removed or explicitly retired      | Lint auto-archives on missing source; or manual | Restore to`draft` if source returns        |
+| `stale`        | Source file has changed since last ingest   | Lint detects SHA-256 hash mismatch                              | Re-ingest the updated source with`--force`           |
+| `archived`     | Source removed or explicitly retired        | Lint auto-archives on missing source; or manual                 | Restore to`draft` if source returns                  |
 
 ### Check lifecycle status (CLI)
 
@@ -732,11 +734,12 @@ konrad-zuse   draft   active  lint    2026-05-28T18:31:23  lint passed
 Synthadoc automatically captures a **content snapshot** — a frozen copy of the page body
 — every time anything meaningful happens to a page. Three situations trigger a snapshot:
 
-| Trigger | What causes it | Example |
-|---------|---------------|---------|
-| **Manual lifecycle transition** | You activate, archive, or restore a page via the CLI, Obsidian plugin, API, or the MCP `synthadoc_lifecycle` tool | `synthadoc lifecycle activate konrad-zuse` |
-| **Lint-driven state change** | Lint promotes a page, marks it stale, archives it for a missing source, or auto-resolves a contradiction | `synthadoc lint run --auto-resolve` |
-| **Manual file edit in Obsidian** | You edit a wiki page directly in Obsidian; the plugin detects the save and sends the content to the server (2-second debounce, only records when content actually changed) | Edit `wiki/orphan-page.md` in Obsidian and save |
+
+| Trigger                          | What causes it                                                                                                                                                             | Example                                        |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| **Manual lifecycle transition**  | You activate, archive, or restore a page via the CLI, Obsidian plugin, API, or the MCP`synthadoc_lifecycle` tool                                                           | `synthadoc lifecycle activate konrad-zuse`     |
+| **Lint-driven state change**     | Lint promotes a page, marks it stale, archives it for a missing source, or auto-resolves a contradiction                                                                   | `synthadoc lint run --auto-resolve`            |
+| **Manual file edit in Obsidian** | You edit a wiki page directly in Obsidian; the plugin detects the save and sends the content to the server (2-second debounce, only records when content actually changed) | Edit`wiki/orphan-page.md` in Obsidian and save |
 
 Snapshots are listed **newest-first**. Index 1 is always the most recent snapshot; older
 snapshots carry higher index numbers.
@@ -850,6 +853,7 @@ rollback is always undoable. Roll back to index 1 to get the edited body back.
 ---
 
 **Common use cases:**
+
 - Undo an accidental edit made directly in Obsidian
 - Recover content overwritten by a failed re-ingest
 - Audit exactly what a page said when it first went live
@@ -861,12 +865,14 @@ The **Content Snapshots** tab in the **Manage Page Lifecycle** modal is the Obsi
 surface for everything above.
 
 **What the tab shows:**
+
 - All snapshots across all pages, sorted by slug then by index when unfiltered
 - Snapshot index (1 = newest per slug), the state transition that triggered it, who
   triggered it (`lint`, `cli`, `api`, `MANUAL_EDIT`), the timestamp, and the content size
 - A **Filter by slug…** input with a × clear button to narrow the list to one page
 
 **Actions:**
+
 - **Click any row** — opens the corresponding wiki page in the main Obsidian panel
 - **View** — opens the inline diff described in Step 2 above
 - **Rollback** — executes the rollback described in Step 3 above; the current body is
@@ -898,7 +904,7 @@ Contradicted pages (1) - need review:
 
   grace-hopper
     -> Open wiki/grace-hopper.md, resolve the conflict, then set status: active
-    -> Or run: synthadoc workflow run contradiction-resolver
+    -> Or run: synthadoc workflow run --name contradiction-resolver
 ```
 
 **In Obsidian:** open `wiki/dashboard.md` — `grace-hopper` appears in the
@@ -958,16 +964,16 @@ The resolver will:
 
 ```bash
 # Resolve all contradicted pages
-synthadoc workflow run contradiction-resolver
+synthadoc workflow run --name contradiction-resolver
 
 # Resolve only the grace-hopper page
-synthadoc workflow run contradiction-resolver --slug grace-hopper
+synthadoc workflow run --name contradiction-resolver --slug grace-hopper
 
 # Resolve only adversarial-gate demotions
-synthadoc workflow run contradiction-resolver --type adversarial
+synthadoc workflow run --name contradiction-resolver --type adversarial
 
 # Resolve only source-conflict demotions
-synthadoc workflow run contradiction-resolver --type source-conflict
+synthadoc workflow run --name contradiction-resolver --type source-conflict
 ```
 
 The CLI renders the same approval prompts and diff previews as the web UI.
@@ -2068,21 +2074,23 @@ Synthadoc exports your wiki in five machine-readable formats — all assembled s
 
 ### What each format contains
 
-| Format          | What it exports                                                                                                                                                                                                                                   | Best used for                                                    |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `llms.txt`      | Page titles + one-line summaries, structured per the [llmstxt.org](https://llmstxt.org) spec. Contradicted/stale pages appear in a **Needs Review** section; archived pages are omitted.                                                          | Feeding AI assistants a compact, navigable wiki index            |
-| `llms-full.txt` | Full page content for all pages, separated by `---` dividers, with status and confidence headers. Provenance footnotes (`^[source.txt:42-58]`) are preserved verbatim. No size limit.                                                             | Large-context LLM prompts, RAG pipelines, offline reading        |
-| `graphml`       | Directed wikilink graph — one node per page, one edge per `[[wikilink]]`. Each node carries the page title, lifecycle state, confidence level, orphan flag, inbound link count, and routing branch. Compatible with yEd, Gephi, and Cytoscape.   | Visualising knowledge structure, detecting hub pages and orphans |
-| `json`          | Full structured dump per page: content, tags, sources, claims with source line ranges, lifecycle transition history, routing branch, and per-page ingest cost and token usage. Wiki-level: total compilation cost and routing branch memberships. | Agent pipelines, programmatic processing, compliance audits      |
-| `okf`           | [OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle directory — one Markdown file per page with conformant YAML frontmatter, an `index.md` grouped by knowledge type, and a `log.md` change log. `[[wikilinks]]` are rewritten to OKF relative paths. Default includes **active + contradicted** pages only; contradicted pages carry a `> **Contradiction:** …` blockquote in the body. | Any OKF-aware agent or tool — **zero code changes needed**       |
+
+| Format          | What it exports                                                                                                                                                                                                                                                                                                                                                                                                                          | Best used for                                                    |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `llms.txt`      | Page titles + one-line summaries, structured per the[llmstxt.org](https://llmstxt.org) spec. Contradicted/stale pages appear in a **Needs Review** section; archived pages are omitted.                                                                                                                                                                                                                                                  | Feeding AI assistants a compact, navigable wiki index            |
+| `llms-full.txt` | Full page content for all pages, separated by`---` dividers, with status and confidence headers. Provenance footnotes (`^[source.txt:42-58]`) are preserved verbatim. No size limit.                                                                                                                                                                                                                                                     | Large-context LLM prompts, RAG pipelines, offline reading        |
+| `graphml`       | Directed wikilink graph — one node per page, one edge per`[[wikilink]]`. Each node carries the page title, lifecycle state, confidence level, orphan flag, inbound link count, and routing branch. Compatible with yEd, Gephi, and Cytoscape.                                                                                                                                                                                           | Visualising knowledge structure, detecting hub pages and orphans |
+| `json`          | Full structured dump per page: content, tags, sources, claims with source line ranges, lifecycle transition history, routing branch, and per-page ingest cost and token usage. Wiki-level: total compilation cost and routing branch memberships.                                                                                                                                                                                        | Agent pipelines, programmatic processing, compliance audits      |
+| `okf`           | [OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle directory — one Markdown file per page with conformant YAML frontmatter, an `index.md` grouped by knowledge type, and a `log.md` change log. `[[wikilinks]]` are rewritten to OKF relative paths. Default includes **active + contradicted** pages only; contradicted pages carry a `> **Contradiction:** …` blockquote in the body. | Any OKF-aware agent or tool —**zero code changes needed**       |
 
 ### Status filter — export only what you trust
 
 The `--status` flag scopes the export to a specific lifecycle state:
 
+
 | Value           | What is included                  | When to use it                                                                    |
 | --------------- | --------------------------------- | --------------------------------------------------------------------------------- |
-| `all` (default) | Every non-archived page¹          | Full snapshot                                                                     |
+| `all` (default) | Every non-archived page¹         | Full snapshot                                                                     |
 | `active`        | Only lint-reviewed, trusted pages | **Recommended for AI consumption** — avoids feeding unreviewed content to an LLM |
 | `draft`         | Pages awaiting first lint pass    | Reviewing what has been ingested but not yet approved                             |
 | `stale`         | Pages whose source has changed    | Identifying content that needs re-ingest                                          |
@@ -2535,12 +2543,13 @@ Click **Ask about this →** to jump to the Chat tab with a pre-filled query abo
 
 Synthadoc provides two knowledge graph views powered by the same `GET /graph` endpoint. Choose based on what you want to do next:
 
-| I want to… | Use |
-|---|---|
-| Ask a question about a page | **Web UI Graph tab** — click a node → "Ask about this →" |
-| Read or edit a page I found in the graph | **Obsidian panel** — click a node to open it in the current pane |
-| Explore graph topology while staying in Obsidian | **Obsidian panel** |
-| See graph and chat side by side | **Web UI** |
+
+| I want to…                                      | Use                                                               |
+| ------------------------------------------------ | ----------------------------------------------------------------- |
+| Ask a question about a page                      | **Web UI Graph tab** — click a node → "Ask about this →"       |
+| Read or edit a page I found in the graph         | **Obsidian panel** — click a node to open it in the current pane |
+| Explore graph topology while staying in Obsidian | **Obsidian panel**                                                |
+| See graph and chat side by side                  | **Web UI**                                                        |
 
 > **Rule of thumb:** Use the **web UI** when you want to ask questions about a node. Use the **Obsidian panel** when you want to navigate to and edit a page.
 
@@ -2551,6 +2560,7 @@ You can explore the same knowledge graph without leaving Obsidian. Open the comm
 The panel shows all wiki pages as force-directed nodes coloured by cluster. Use the **type filter** dropdown to narrow to a specific knowledge type (concept, person, event…). If your wiki has more than 300 pages, the 300 most-connected are shown with an explanatory banner — use the type filter to narrow the view.
 
 **Interactions:**
+
 - **Hover** a node — tooltip shows title, slug, type, state, cluster, and connection count.
 - **Click** a node — opens the wiki page in the current pane; the node is highlighted gold.
 - **Drag** a node — re-pins it to a new position.
@@ -2675,14 +2685,15 @@ synthadoc ingest --file sessions.txt -w my-wiki
 
 ### Limitations and tips
 
-| Concern | Detail |
-|---------|--------|
-| **Long sessions** | Very long sessions are truncated at `max_source_chars` (default 400 000 chars). Raise the limit with `--max-source-chars 800000` for very active sessions. |
-| **Tool output excluded** | Shell output and file reads are stripped from the wiki page. Re-ingest the original source files separately if you need the file contents indexed. |
-| **Re-ingest is safe** | Synthadoc deduplicates by source hash — re-ingesting the same `.jsonl` file will update the existing page rather than create a duplicate. |
-| **Codex / Cursor sessions** | The same command works for Codex and Cursor `.jsonl` exports — format is detected automatically. |
-| **Private content** | Session files may contain proprietary code. Keep your wiki on a local or private server and review what the page contains before sharing. |
-| **Sanitization** | Extracted turns pass through the standard pre-LLM source sanitizer (zero-width chars, bidi overrides, HTML comments, instruction-override phrases) — the same step applied to every PDF, URL, and DOCX source. |
+
+| Concern                      | Detail                                                                                                                                                                                                             |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Long sessions**            | Very long sessions are truncated at`max_source_chars` (default 400 000 chars). Raise the limit with `--max-source-chars 800000` for very active sessions.                                                          |
+| **Tool output excluded**     | Shell output and file reads are stripped from the wiki page. Re-ingest the original source files separately if you need the file contents indexed.                                                                 |
+| **Re-ingest is safe**        | Synthadoc deduplicates by source hash — re-ingesting the same`.jsonl` file will update the existing page rather than create a duplicate.                                                                          |
+| **Codex / Cursor sessions**  | The same command works for Codex and Cursor`.jsonl` exports — format is detected automatically.                                                                                                                   |
+| **Private content**          | Session files may contain proprietary code. Keep your wiki on a local or private server and review what the page contains before sharing.                                                                          |
+| **Sanitization**             | Extracted turns pass through the standard pre-LLM source sanitizer (zero-width chars, bidi overrides, HTML comments, instruction-override phrases) — the same step applied to every PDF, URL, and DOCX source.    |
 | **Obsidian plugin / web UI** | Neither the Obsidian plugin nor the web UI can ingest session files directly — they do not send local filesystem paths outside the wiki root. Use the CLI (`synthadoc ingest <path>`) for session file ingestion. |
 
 ---
@@ -2696,14 +2707,15 @@ The web chat UI (and the Obsidian plugin query modal) can drive wiki maintenance
 
 Six workflows are available:
 
-| Workflow | Example phrase | Scope |
-|----------|---------------|-------|
-| **Stale-pages bulk reingest** | "re-ingest stale pages" | Finds every stale page, re-ingests each one in sequence, then runs lint |
-| **Page-by-slug reingest** | "re-ingest the alan-turing page" | Re-ingests one named page regardless of state (active, draft, or stale), then runs lint |
-| **Broken wikilinks scan and fix** | "scan for broken wikilinks" | Scans all active pages for `[[slug]]` references that resolve to no existing page; suggests corrections and fixes them after confirmation |
-| **Lint run and full report** | "run lint" | Runs a full lint pass, waits for it to complete, then surfaces the complete report in a single conversational turn |
-| **Scaffold and report** | "run scaffold" | Previews the domain and files to overwrite, asks for confirmation, then regenerates `index.md`, `purpose.md`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` |
-| **Contradiction resolver** | "run contradiction resolver" | For each contradicted page: reads content and sources, proposes a rewrite, shows the full diff, applies after approval, re-lints the page, and promotes it to *active* if it passes |
+
+| Workflow                          | Example phrase                   | Scope                                                                                                                                                                              |
+| --------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Stale-pages bulk reingest**     | "re-ingest stale pages"          | Finds every stale page, re-ingests each one in sequence, then runs lint                                                                                                            |
+| **Page-by-slug reingest**         | "re-ingest the alan-turing page" | Re-ingests one named page regardless of state (active, draft, or stale), then runs lint                                                                                            |
+| **Broken wikilinks scan and fix** | "scan for broken wikilinks"      | Scans all active pages for`[[slug]]` references that resolve to no existing page; suggests corrections and fixes them after confirmation                                           |
+| **Lint run and full report**      | "run lint"                       | Runs a full lint pass, waits for it to complete, then surfaces the complete report in a single conversational turn                                                                 |
+| **Scaffold and report**           | "run scaffold"                   | Previews the domain and files to overwrite, asks for confirmation, then regenerates`index.md`, `purpose.md`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`                             |
+| **Contradiction resolver**        | "run contradiction resolver"     | For each contradicted page: reads content and sources, proposes a rewrite, shows the full diff, applies after approval, re-lints the page, and promotes it to*active* if it passes |
 
 ### Demo — re-ingest all stale pages
 
@@ -2777,10 +2789,11 @@ When done, the workflow writes a plain-text summary showing the re-ingest outcom
 
 In the web UI **Graph tab**, click any node to open the node detail panel. A **Maintenance** section appears at the bottom of the panel with two chips:
 
-| Chip | What happens |
-|------|-------------|
-| **⚑ Check this page for issues** | Sends "Check the [slug] page for issues" to the chat |
-| **↻ Re-ingest this page** | Sends "Re-ingest the [slug] page" to the chat, triggering a page-by-slug reingest |
+
+| Chip                              | What happens                                                                      |
+| --------------------------------- | --------------------------------------------------------------------------------- |
+| **⚑ Check this page for issues** | Sends "Check the [slug] page for issues" to the chat                              |
+| **↻ Re-ingest this page**        | Sends "Re-ingest the [slug] page" to the chat, triggering a page-by-slug reingest |
 
 Clicking either chip routes the request through the normal confirmation flow — the agent confirms before doing anything.
 
@@ -2790,11 +2803,12 @@ Clicking either chip routes the request through the normal confirmation flow —
 
 Open these three files in Obsidian (Edit view or any text editor) and convert the bare slug references to wikilinks, then save each file:
 
-| File | Change |
-|------|--------|
-| `wiki/eniac.md` | Change `john-mauchly` to `[[john-mauchly]]` in the Designers section |
-| `wiki/history-of-computing.md` | Change `ada-lovelace` to `[[ada-lovelace]]` in the 1843 milestone entry |
-| `wiki/grace-hopper.md` | Change `harvard-mark-i` to `[[harvard-mark-i]]` in the first paragraph |
+
+| File                           | Change                                                                 |
+| ------------------------------ | ---------------------------------------------------------------------- |
+| `wiki/eniac.md`                | Change`john-mauchly` to `[[john-mauchly]]` in the Designers section    |
+| `wiki/history-of-computing.md` | Change`ada-lovelace` to `[[ada-lovelace]]` in the 1843 milestone entry |
+| `wiki/grace-hopper.md`         | Change`harvard-mark-i` to `[[harvard-mark-i]]` in the first paragraph  |
 
 None of these slugs have a corresponding `.md` page in the wiki — `john-mauchly`, `ada-lovelace`, and `harvard-mark-i` are referenced but uncompiled, making them broken wikilinks.
 
@@ -2834,7 +2848,7 @@ Open the web chat UI. You have three entry points:
 - **Pre-filled suggestion:** After any response that mentions contradicted pages, a pre-filled prompt appears below the reply — click it directly:
 
   > *1 page marked contradicted — run the contradiction resolver to fix them interactively?*
-
+  >
 - **Free text:** Type **"run contradiction resolver"** at any time.
 
 **Step 1 — Cost estimate and approval**
@@ -2903,10 +2917,10 @@ The contradicted count reaches zero — no further action needed.
 **Scoping the resolver**
 
 ```bash
-synthadoc workflow run contradiction-resolver                           # all contradicted pages
-synthadoc workflow run contradiction-resolver --slug grace-hopper       # one page
-synthadoc workflow run contradiction-resolver --type adversarial        # adversarial-gate demotions only
-synthadoc workflow run contradiction-resolver --type source-conflict    # source-conflict demotions only
+synthadoc workflow run --name contradiction-resolver                             # all contradicted pages
+synthadoc workflow run --name contradiction-resolver --slug grace-hopper         # one page
+synthadoc workflow run --name contradiction-resolver --type adversarial          # adversarial-gate demotions only
+synthadoc workflow run --name contradiction-resolver --type source-conflict      # source-conflict demotions only
 ```
 
 ---
@@ -2987,6 +3001,7 @@ Scaffold running... (8s)
 ```
 
 The final report shows:
+
 - Domain scaffolded
 - Files written
 - Number of pages updated with category labels (`categories_updated`)
@@ -3005,13 +3020,14 @@ Each workflow runs as an agentic tool-call loop that streams inline progress aft
 
 **Key behaviours by workflow:**
 
-| Workflow | Confirmation | Key behaviour |
-|----------|-------------|---------------|
-| **Stale bulk** | ✓ required | Re-ingests pages one at a time; a single failure does not abort the run — remaining pages continue |
-| **By slug** | ✓ required | Force-re-ingests regardless of current lifecycle state |
-| **Broken wikilinks** | ✓ required (if any found) | If the wiki is already clean, the workflow stops after scanning — no card appears |
-| **Lint report** | none | Lint is read-only; runs and reports autonomously |
-| **Scaffold** | ✓ required | User-written content above `<!-- synthadoc:scaffold -->` markers is always preserved |
+
+| Workflow                   | Confirmation                       | Key behaviour                                                                                                             |
+| -------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| **Stale bulk**             | ✓ required                        | Re-ingests pages one at a time; a single failure does not abort the run — remaining pages continue                       |
+| **By slug**                | ✓ required                        | Force-re-ingests regardless of current lifecycle state                                                                    |
+| **Broken wikilinks**       | ✓ required (if any found)         | If the wiki is already clean, the workflow stops after scanning — no card appears                                        |
+| **Lint report**            | none                               | Lint is read-only; runs and reports autonomously                                                                          |
+| **Scaffold**               | ✓ required                        | User-written content above`<!-- synthadoc:scaffold -->` markers is always preserved                                       |
 | **Contradiction resolver** | ✓ required ×2 (cost + each diff) | Shows full diff before every write; re-lints only the changed page; promotes on pass or escalates after 3 failed attempts |
 
 For tool-level detail — per-workflow tool sets, SSE extensions (`tool_progress`, `confirm_request`, `done.pre_prompt`), routing architecture, loop constraints, pre-prompt mechanics, and audit trail — see [§35 Contradiction Resolver Workflow](design.md#35-contradiction-resolver-workflow) in the design doc.
@@ -3049,9 +3065,8 @@ To promote a page to active: `synthadoc lifecycle activate <slug>`
 
 After upgrading Synthadoc, sync your demo wikis to pick up new content:
 
-    synthadoc demo sync --force   # overwrite existing wiki pages from the latest template (picks up citation markers and other page updates)
-    synthadoc demo sync           # additive only — copies new raw_sources and new wiki pages; existing wiki pages are not overwritten
-
+synthadoc demo sync --force   # overwrite existing wiki pages from the latest template (picks up citation markers and other page updates)
+synthadoc demo sync           # additive only — copies new raw_sources and new wiki pages; existing wiki pages are not overwritten
 ---
 
 ## Uninstall a wiki
@@ -3067,7 +3082,6 @@ To uninstall:
 ```bash
 synthadoc uninstall history-of-computing
 ```
-
 The command asks for two confirmations — a yes/no prompt and then requires you to type the wiki name — before anything is deleted. This applies to both demo wikis and your own wikis.
 
 ---
@@ -3132,16 +3146,16 @@ All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synt
 ### Wiki
 
 
-| Command                                   | What it does                                                                                                                   |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `Synthadoc: Wiki: regenerate scaffold...` | Rewrites `index.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, and `purpose.md` using the LLM. Polls job status live. All existing wiki pages are preserved. |
+| Command                                   | What it does                                                                                                                                             |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Synthadoc: Wiki: regenerate scaffold...` | Rewrites`index.md`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, and `purpose.md` using the LLM. Polls job status live. All existing wiki pages are preserved. |
 
 ### Lifecycle
 
 
-| Command                            | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Synthadoc: Manage Page Lifecycle` | Two-tab modal. **Current States tab** — sortable, filterable, paginated table of all wiki pages with their current lifecycle state (`draft`, `active`, `contradicted`, `stale`, `archived`) and last transition timestamp. State filter checkboxes narrow the table. Click column headers to sort. Each row shows valid transition action buttons — click to trigger a transition; a reason dialog appears before committing. Draft and stale badge links on the lint modal and jobs panel open this table pre-filtered to that state. **Audit Log tab** — full history of every lifecycle state transition across all pages; searchable by slug, filterable by target state, sortable by any column, with pagination. Each row shows slug, From state, To state, triggered-by (`ingest`, `lint`, `cli`, `api`), timestamp, and reason. |
+| Command                            | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Synthadoc: Manage Page Lifecycle` | Two-tab modal.**Current States tab** — sortable, filterable, paginated table of all wiki pages with their current lifecycle state (`draft`, `active`, `contradicted`, `stale`, `archived`) and last transition timestamp. State filter checkboxes narrow the table. Click column headers to sort. Each row shows valid transition action buttons — click to trigger a transition; a reason dialog appears before committing. Draft and stale badge links on the lint modal and jobs panel open this table pre-filtered to that state. **Audit Log tab** — full history of every lifecycle state transition across all pages; searchable by slug, filterable by target state, sortable by any column, with pagination. Each row shows slug, From state, To state, triggered-by (`ingest`, `lint`, `cli`, `api`), timestamp, and reason. |
 
 ### Audit
 
@@ -3175,8 +3189,8 @@ All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synt
 ### Export
 
 
-| Command                  | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Command                  | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Synthadoc: Export Wiki` | Modal with a format dropdown (`okf`, `json`, `llms.txt`, `llms-full.txt`, `graphml`), a full-width output path field pre-filled with today's date and the correct extension, and a status filter selector. A brief description at the top explains what each format contains. Click **Export** to write the file to your vault's `exports/` folder; the file opens automatically. For GraphML format, a **View Graph** button also appears for an inline Cytoscape.js preview — nodes are coloured by lifecycle state (active=green, draft=yellow, stale=orange, contradicted=red, archived=grey) and edges represent wikilinks. To load the graph in a dedicated tool, export to file and open in **yEd**, **Gephi**, or **Cytoscape**. |
 
 > **UX note:** All modals are draggable and support full text selection and copy-paste.
@@ -3204,20 +3218,17 @@ git init
 git add .
 git commit -m "init: initial wiki snapshot"
 ```
-
 **2. Copy the hook script:**
 
 ```bash
 cp /path/to/synthadoc-repo/hooks/git-auto-commit.py .
 ```
-
 **3. Add to `.synthadoc/config.toml`:**
 
 ```toml
 [hooks]
 on_ingest_complete = "python git-auto-commit.py"
 ```
-
 **4. Restart the server** to pick up the config change.
 
 ### Verify
@@ -3227,12 +3238,10 @@ After the next ingest:
 ```bash
 git log --oneline -3
 ```
-
 ```
 a3f1b2c wiki: ingest konrad-zuse-z3-computer.md → created konrad-zuse
 d9e4c81 wiki: ingest turing-enigma-decryption.pdf → updated alan-turing
 ```
-
 > **More hooks:** see [`hooks/README.md`](../hooks/README.md) for the full library and
 > contribution guidelines. Available events: `on_ingest_complete`, `on_lint_complete`.
 
@@ -3280,7 +3289,6 @@ default = { provider = "gemini",    model = "gemini-2.5-flash" }                
 # default = { provider = "claude-code" }                                             # Claude Code CLI (no API key)
 # default = { provider = "opencode", model = "opencode/big-pickle" }                # Opencode Zen (free; connect first: opencode → /connect → select Zen)
 ```
-
 Restart `synthadoc serve`. The startup banner confirms `LLM: <provider>/<model>`.
 
 > **Rate limit tips:**
@@ -3312,7 +3320,6 @@ set TAVILY_API_KEY=tvly-your-key-here
 # Windows (cmd.exe — permanent)
 setx TAVILY_API_KEY tvly-your-key-here
 ```
-
 If this key is absent, the server starts normally but web search jobs fail with
 `[ERR-SKILL-004]`. All other features work without it.
 
@@ -3333,7 +3340,6 @@ Settings are resolved in three layers — later layers win:
 2. ~/.synthadoc/config.toml   (global — your preferences across all wikis)
 3. <wiki-root>/.synthadoc/config.toml   (per-project — overrides for one wiki)
 ```
-
 Neither file is required. If both are absent, the built-in defaults take effect.
 
 ### Global config — `~/.synthadoc/config.toml`
@@ -3349,7 +3355,6 @@ lint    = { provider = "groq",   model = "llama-3.3-70b-versatile" }  # cheaper 
 research = "~/wikis/research"
 work     = "~/wikis/work"
 ```
-
 Common reason to edit: switching from the Anthropic default to Gemini Flash (free tier) so all wikis use it without touching each project config.
 
 ### Per-project config — `<wiki-root>/.synthadoc/config.toml`
@@ -3379,7 +3384,6 @@ max_results = 20
 [hooks]
 on_ingest_complete = "python git-auto-commit.py"
 ```
-
 Common reason to edit: each wiki needs its own port when running multiple wikis at the same time.
 
 Full config reference including all keys, defaults, and multi-wiki setup: [docs/design.md — Configuration](design.md#configuration).
@@ -3397,7 +3401,6 @@ synthadoc install my-research --target ~/wikis --domain "My research domain"
 synthadoc use my-research
 synthadoc status
 ```
-
 `--domain` is a free-text description of the subject area — the LLM uses it to generate
 domain-aware starter files: `wiki/index.md`, `wiki/purpose.md`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`.
 
@@ -3406,7 +3409,6 @@ domain-aware starter files: `wiki/index.md`, `wiki/purpose.md`, `AGENTS.md`, `CL
 ```bash
 synthadoc serve -w my-research
 ```
-
 ### 3. Scaffold
 
 Before ingesting any content, run scaffold once to build a clean, domain-aware index:
@@ -3414,7 +3416,6 @@ Before ingesting any content, run scaffold once to build a clean, domain-aware i
 ```bash
 synthadoc scaffold
 ```
-
 ### 4. Ingest sources
 
 ```bash
@@ -3423,20 +3424,17 @@ synthadoc ingest "https://example.com/article"
 synthadoc ingest "search for: <your domain topic>"
 synthadoc jobs list
 ```
-
 ### 5. Query
 
 ```bash
 synthadoc query "What are the key themes?"
 ```
-
 ### 6. Lint
 
 ```bash
 synthadoc lint report
 synthadoc lint run --auto-resolve
 ```
-
 ### 7. Open in Obsidian
 
 Open `~/wikis/my-research` as an Obsidian vault.
@@ -3449,7 +3447,6 @@ synthadoc status               # checks finance-wiki
 synthadoc status -w legal-wiki # one-off check without switching
 synthadoc use                  # confirm which wiki is active
 ```
-
 
 | Method                         | Scope                               |
 | ------------------------------ | ----------------------------------- |
@@ -3472,7 +3469,6 @@ Open `.synthadoc/config.toml` in your wiki root, comment out the active `default
 # default = { provider = "claude-code" }                                       # no API key — uses your Claude Code subscription
 # default = { provider = "opencode", model = "opencode/big-pickle" }          # free via Opencode Zen — connect first: opencode → /connect → select Zen
 ```
-
 For Claude Code, `model` is optional — omit it to use Claude Code's own configured default. For Opencode, specify `model = "opencode/big-pickle"` to use the free Zen tier. Restart the server after saving.
 
 Ensure the tool is installed and authenticated in your terminal before starting the server. No environment variables are required.
@@ -3492,7 +3488,6 @@ synthadoc serve -w my-wiki
 synthadoc ingest "https://example.com/article" -w my-wiki
 synthadoc query "What does the article cover?" -w my-wiki
 ```
-
 The output is identical to a direct API provider. The only difference is that each LLM call is handled by Claude Code or Opencode running as a subprocess.
 
 > **Performance note:** CLI providers add subprocess startup overhead per LLM call. For high-volume batch ingest, a direct API provider (`anthropic`, `gemini`, etc.) is faster.
@@ -3504,7 +3499,6 @@ If your coding tool quota is exhausted and you need to continue ingesting, overr
 ```bash
 synthadoc serve -w my-wiki --provider anthropic
 ```
-
 This uses `ANTHROPIC_API_KEY` (or whichever provider you specify) for that session only. When quota resets, restart without `--provider` to return to the CLI provider.
 
 ### Troubleshooting
@@ -3576,10 +3570,11 @@ Synthadoc exposes an MCP server so Claude Desktop, Claude Code, or any MCP-compa
 
 ### Transport options
 
-| | Claude Desktop | Claude Code CLI | Custom agents (n8n, LangGraph…) |
-|---|---|---|---|
-| **stdio** (`--mcp-only`) | Yes — only option | Yes | No |
-| **HTTP/SSE** (`url`) | No — not supported | Yes | Yes |
+
+|                          | Claude Desktop      | Claude Code CLI | Custom agents (n8n, LangGraph…) |
+| ------------------------ | ------------------- | --------------- | -------------------------------- |
+| **stdio** (`--mcp-only`) | Yes — only option  | Yes             | No                               |
+| **HTTP/SSE** (`url`)     | No — not supported | Yes             | Yes                              |
 
 Claude Desktop only supports stdio — it spawns Synthadoc as a subprocess and manages the process lifecycle. HTTP/SSE is available for Claude Code and any custom MCP client.
 
@@ -3618,14 +3613,12 @@ Register each wiki as a separate entry. Synthadoc prefixes every tool descriptio
   }
 }
 ```
-
 **Claude Code / custom agents (HTTP/SSE):**
 
 ```powershell
 synthadoc serve -w "C:\wikis\history-of-computing"   # port 7070
 synthadoc serve -w "C:\wikis\ai-research"             # port 7071
 ```
-
 ```json
 {
   "mcpServers": {
@@ -3634,7 +3627,6 @@ synthadoc serve -w "C:\wikis\ai-research"             # port 7071
   }
 }
 ```
-
 ---
 
 ### Claude Desktop
@@ -3648,7 +3640,6 @@ Claude Desktop uses a restricted PATH and will not find `synthadoc` by name alon
 ```powershell
 (Get-Command synthadoc).Source
 ```
-
 Typical result on Windows: `C:\Users\<you>\AppData\Roaming\Python\Python314\Scripts\synthadoc.exe`
 
 **Step 2 — Add the config entry**
@@ -3663,7 +3654,6 @@ Typical result on Windows: `C:\Users\<you>\AppData\Roaming\Python\Python314\Scri
   }
 }
 ```
-
 Use **absolute paths** for both `synthadoc.exe` and the wiki root. Relative paths and wiki name aliases do not work from Claude Desktop. Key names must use underscores, not hyphens — Claude Desktop rejects hyphenated server names.
 
 **Step 3 — Restart Claude Desktop**
@@ -3683,13 +3673,11 @@ Claude Code supports both SSE (recommended — connects to a running server) and
 ```powershell
 synthadoc serve -w "C:\Users\<you>\wikis\history-of-computing"
 ```
-
 **Step 2 — Register the MCP server**
 
 ```powershell
 claude mcp add --transport sse synthadoc-history-of-computing http://127.0.0.1:7070/mcp/sse
 ```
-
 > Use `--transport sse`, not `--transport http` — FastMCP uses the SSE protocol, not Streamable HTTP.
 
 **Step 3 — Verify**
@@ -3697,7 +3685,6 @@ claude mcp add --transport sse synthadoc-history-of-computing http://127.0.0.1:7
 ```powershell
 claude mcp list
 ```
-
 `synthadoc-history-of-computing` should show `✔ Connected`.
 
 **Step 4 — Test in a Claude Code session**
@@ -3705,7 +3692,6 @@ claude mcp list
 ```powershell
 claude
 ```
-
 Ask: `What's the status of my wiki?` — Claude Code calls `synthadoc_status` directly against the running server.
 
 #### stdio transport
@@ -3715,7 +3701,6 @@ Use this if you don't want to manage a separate server process:
 ```powershell
 claude mcp add synthadoc-history-of-computing "C:\Users\<you>\...\synthadoc.exe" -- serve -w "C:\Users\<you>\wikis\history-of-computing" --mcp-only
 ```
-
 ---
 
 ### HTTP/SSE (n8n, LangGraph, custom agents)
@@ -3725,13 +3710,11 @@ The same endpoint works for any MCP-compatible client:
 ```
 MCP SSE endpoint: http://127.0.0.1:7070/mcp/sse
 ```
-
 No API key required. Verify it is live:
 
 ```
 curl -i http://127.0.0.1:7070/mcp/sse
 ```
-
 You should receive `HTTP/1.1 200 OK` with `content-type: text/event-stream` and the connection will hang open (correct — SSE streams stay open).
 
 ---
@@ -3740,36 +3723,39 @@ You should receive `HTTP/1.1 200 OK` with `content-type: text/event-stream` and 
 
 **Wiki content questions** — Claude fetches raw content and synthesises the answer itself (no LLM call on the Synthadoc side):
 
-| Example prompt | Tool used |
-|---|---|
-| "What's the status of my wiki?" | `synthadoc_status` |
-| "List all pages in the wiki" | `synthadoc_list_pages` |
-| "Show me only the active pages" | `synthadoc_list_pages` (status filter) |
-| "Search for Grace Hopper" | `synthadoc_search` |
-| "Read the grace-hopper page" | `synthadoc_read_page` |
-| "What does my wiki say about quantum error correction?" | `synthadoc_search` + `synthadoc_read_page` |
-| "Show me the adversarial warnings for the early-neural-networks page" | `synthadoc_read_page` |
-| "Which pages have citations? Show me what they are." | `synthadoc_list_pages` + `synthadoc_read_page` |
-| "Build me a context pack on early neural networks" | `synthadoc_context` |
-| "Export my wiki in OKF format" | `synthadoc_export` (okf — writes folder to default path, tells you where) |
-| "Export only active pages as llms.txt" | `synthadoc_export` (format + status_filter, returns content inline) |
+
+| Example prompt                                                        | Tool used                                                                  |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| "What's the status of my wiki?"                                       | `synthadoc_status`                                                         |
+| "List all pages in the wiki"                                          | `synthadoc_list_pages`                                                     |
+| "Show me only the active pages"                                       | `synthadoc_list_pages` (status filter)                                     |
+| "Search for Grace Hopper"                                             | `synthadoc_search`                                                         |
+| "Read the grace-hopper page"                                          | `synthadoc_read_page`                                                      |
+| "What does my wiki say about quantum error correction?"               | `synthadoc_search` + `synthadoc_read_page`                                 |
+| "Show me the adversarial warnings for the early-neural-networks page" | `synthadoc_read_page`                                                      |
+| "Which pages have citations? Show me what they are."                  | `synthadoc_list_pages` + `synthadoc_read_page`                             |
+| "Build me a context pack on early neural networks"                    | `synthadoc_context`                                                        |
+| "Export my wiki in OKF format"                                        | `synthadoc_export` (okf — writes folder to default path, tells you where) |
+| "Export only active pages as llms.txt"                                | `synthadoc_export` (format + status_filter, returns content inline)        |
 
 **Wiki health — zero cost, instant:**
 
-| Example prompt | Tool used |
-|---|---|
+
+| Example prompt                  | Tool used               |
+| ------------------------------- | ----------------------- |
 | "Which pages are contradicted?" | `synthadoc_lint_report` |
-| "Are there any orphan pages?" | `synthadoc_lint_report` |
+| "Are there any orphan pages?"   | `synthadoc_lint_report` |
 | "Give me a wiki health summary" | `synthadoc_lint_report` |
 
 **Synthadoc operations** — Claude manages the wiki on your behalf:
 
-| Example prompt | Tool used |
-|---|---|
-| "List recent jobs" | `synthadoc_jobs` |
-| "Show me any failed or skipped jobs" | `synthadoc_jobs` |
-| "Ingest this URL: https://example.com/paper" | `synthadoc_ingest` |
-| "Run a full lint check on the wiki" | `synthadoc_lint` |
+
+| Example prompt                                        | Tool used             |
+| ----------------------------------------------------- | --------------------- |
+| "List recent jobs"                                    | `synthadoc_jobs`      |
+| "Show me any failed or skipped jobs"                  | `synthadoc_jobs`      |
+| "Ingest this URL: https://example.com/paper"          | `synthadoc_ingest`    |
+| "Run a full lint check on the wiki"                   | `synthadoc_lint`      |
 | "Mark the grace-hopper page as stale — needs review" | `synthadoc_lifecycle` |
 
 ---
@@ -3800,15 +3786,15 @@ Conference (where "artificial intelligence" was coined), and the first AI winter
 computing-history-timeline — Traces from Ada Lovelace (1843) through Turing (1936), von Neumann
 architecture (1945), and includes tags for deep-learning milestones.
 ```
-
 **What the response tells you:**
 
-| Field | Meaning |
-|---|---|
-| `tokens_used / token_budget` | How much of the budget was consumed — pages stop being added once the budget is full |
-| `relevance` | BM25 score — higher means stronger keyword match to your goal |
-| `confidence` | LLM-assigned confidence in the page's coverage of the topic |
-| `omitted` | Pages that were relevant but didn't fit within the budget (none here — only 13% used) |
+
+| Field                        | Meaning                                                                                |
+| ---------------------------- | -------------------------------------------------------------------------------------- |
+| `tokens_used / token_budget` | How much of the budget was consumed — pages stop being added once the budget is full  |
+| `relevance`                  | BM25 score — higher means stronger keyword match to your goal                         |
+| `confidence`                 | LLM-assigned confidence in the page's coverage of the topic                            |
+| `omitted`                    | Pages that were relevant but didn't fit within the budget (none here — only 13% used) |
 
 To request a tighter pack (forces prioritisation and shows omitted pages clearly):
 
@@ -3820,26 +3806,28 @@ To request a tighter pack (forces prioritisation and shows omitted pages clearly
 
 **Claude** = Claude's LLM synthesises the answer (no Synthadoc LLM call). **Synthadoc** = Synthadoc's configured LLM provider runs (tokens billed to your provider account). **Neither** = pure data read or write, no LLM involved.
 
-| Tool | Parameters | What it does | Who calls LLM? |
-|---|---|---|---|
-| `synthadoc_search` | `terms: str` | BM25 keyword search — returns ranked titles, slugs, and snippets | Claude |
-| `synthadoc_read_page` | `slug: str` | Read a page's full content, status, type, tags, adversarial warnings, and source citations | Claude |
-| `synthadoc_list_pages` | `status?: str` (default `"all"`) | List all pages with title, status, type, and `has_sources` flag; filterable by lifecycle state | Neither |
-| `synthadoc_write_page` | `slug: str`, `content: str`, `title?: str` | Update page content (clears contradiction note, bumps epoch) | Neither |
-| `synthadoc_status` | *(none)* | Get wiki page count and path | Neither |
-| `synthadoc_jobs` | `status?: str` (`all`/`pending`/`running`/`completed`/`failed`/`skipped`/`cancelled`/`dead`) | List recent jobs, optionally filtered by status | Neither |
-| `synthadoc_lifecycle` | `slug: str`, `to_state: str`, `reason: str` | Transition a page's lifecycle state; writes an immutable audit record | Neither |
-| `synthadoc_lint_report` | *(none)* | Instant wiki health read — contradicted pages, orphans, adversarial warning counts; **no job, no LLM** | Neither |
-| `synthadoc_context` | `goal: str`, `token_budget?: int` (default `10000`) | Build a token-budgeted context pack — ranked excerpts that fit within the budget; omitted slugs listed separately | Neither |
-| `synthadoc_export` | `format?: str` (default `"okf"`), `output_path?: str` (okf defaults to `<wiki>/exports/<name>-okf-<date>/`), `status_filter?: str` (default `"all"`) | Export the wiki. okf writes a folder to disk and tells you where; other formats return content inline or to a file. Formats: `okf`, `llms.txt`, `llms-full.txt`, `json`, `graphml` | Neither |
-| `synthadoc_ingest` | `source: str` | Enqueue a URL or file for ingest — returns a job ID | Synthadoc |
-| `synthadoc_lint` | `scope?: str` (default `"all"`) | Enqueue a full LLM lint analysis — returns a job ID; use `synthadoc_jobs` to poll | Synthadoc |
+
+| Tool                    | Parameters                                                                                                                                           | What it does                                                                                                                                                                      | Who calls LLM? |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| `synthadoc_search`      | `terms: str`                                                                                                                                         | BM25 keyword search — returns ranked titles, slugs, and snippets                                                                                                                 | Claude         |
+| `synthadoc_read_page`   | `slug: str`                                                                                                                                          | Read a page's full content, status, type, tags, adversarial warnings, and source citations                                                                                        | Claude         |
+| `synthadoc_list_pages`  | `status?: str` (default `"all"`)                                                                                                                     | List all pages with title, status, type, and`has_sources` flag; filterable by lifecycle state                                                                                     | Neither        |
+| `synthadoc_write_page`  | `slug: str`, `content: str`, `title?: str`                                                                                                           | Update page content (clears contradiction note, bumps epoch)                                                                                                                      | Neither        |
+| `synthadoc_status`      | *(none)*                                                                                                                                             | Get wiki page count and path                                                                                                                                                      | Neither        |
+| `synthadoc_jobs`        | `status?: str` (`all`/`pending`/`running`/`completed`/`failed`/`skipped`/`cancelled`/`dead`)                                                         | List recent jobs, optionally filtered by status                                                                                                                                   | Neither        |
+| `synthadoc_lifecycle`   | `slug: str`, `to_state: str`, `reason: str`                                                                                                          | Transition a page's lifecycle state; writes an immutable audit record                                                                                                             | Neither        |
+| `synthadoc_lint_report` | *(none)*                                                                                                                                             | Instant wiki health read — contradicted pages, orphans, adversarial warning counts;**no job, no LLM**                                                                            | Neither        |
+| `synthadoc_context`     | `goal: str`, `token_budget?: int` (default `10000`)                                                                                                  | Build a token-budgeted context pack — ranked excerpts that fit within the budget; omitted slugs listed separately                                                                | Neither        |
+| `synthadoc_export`      | `format?: str` (default `"okf"`), `output_path?: str` (okf defaults to `<wiki>/exports/<name>-okf-<date>/`), `status_filter?: str` (default `"all"`) | Export the wiki. okf writes a folder to disk and tells you where; other formats return content inline or to a file. Formats:`okf`, `llms.txt`, `llms-full.txt`, `json`, `graphml` | Neither        |
+| `synthadoc_ingest`      | `source: str`                                                                                                                                        | Enqueue a URL or file for ingest — returns a job ID                                                                                                                              | Synthadoc      |
+| `synthadoc_lint`        | `scope?: str` (default `"all"`)                                                                                                                      | Enqueue a full LLM lint analysis — returns a job ID; use`synthadoc_jobs` to poll                                                                                                 | Synthadoc      |
 
 Valid `to_state` values for `synthadoc_lifecycle`: `active`, `draft`, `stale`, `contradicted`, `archived`.
 
 > **lint vs. lint_report:** Use `synthadoc_lint_report` to check current wiki health instantly (no tokens spent). Use `synthadoc_lint` when you want to run fresh LLM analysis — it enqueues a background job and returns a job ID.
 
 > **Tuning the context budget:** `synthadoc_context` defaults to 10 000 tokens per pack. Pass `token_budget` in the tool call to override for a single request (e.g. `token_budget: 20000`). To change the project-wide default, add this to `.synthadoc/config.toml`:
+>
 > ```toml
 > [query]
 > context_token_budget = 20000
@@ -3852,15 +3840,18 @@ For architecture details and the brain/memory use case framing, see [docs/design
 ### Troubleshooting
 
 **Server does not appear in the panel**
+
 - Use the full path to `synthadoc.exe`, not the bare command name
 - Use absolute paths for the wiki root — aliases and relative paths are not resolved by Claude Desktop
 - Fully quit Claude Desktop from the system tray before reopening (window close is not a full restart)
 
 **Server appears but shows an error badge**
+
 - Click **View Logs** in the Developer panel to see the startup error
 - Verify the wiki path exists and contains a `.synthadoc/` directory (run `synthadoc serve -w <path> --mcp-only` manually to confirm it starts)
 
 **SSE endpoint returns 404**
+
 - The correct URL is `/mcp/sse`, not `/mcp` or `/mcp/`
 - Verify the server is running with `curl -i http://127.0.0.1:7070/`
 
@@ -3872,70 +3863,71 @@ For architecture details and the brain/memory use case framing, see [docs/design
 
 ### When to use it
 
-| Scenario | Command |
-|---|---|
-| Move wiki to another machine | `backup` on old machine, `restore` on new |
-| Snapshot before a risky operation (routing clean, adversarial lint) | `backup` before running the operation |
-| Development workflow: freeze a good state, do risky dev, restore if needed | `backup` → dev work → `restore` |
-| CI/test fixture: start from a known state before each run | `restore` at test start |
-| Share an exact wiki state with a colleague | Send the zip, they run `restore` |
+
+| Scenario                                                                   | Command                                   |
+| -------------------------------------------------------------------------- | ----------------------------------------- |
+| Move wiki to another machine                                               | `backup` on old machine, `restore` on new |
+| Snapshot before a risky operation (routing clean, adversarial lint)        | `backup` before running the operation     |
+| Development workflow: freeze a good state, do risky dev, restore if needed | `backup` → dev work → `restore`         |
+| CI/test fixture: start from a known state before each run                  | `restore` at test start                   |
+| Share an exact wiki state with a colleague                                 | Send the zip, they run`restore`           |
 
 ### Backup
 
 ```
 synthadoc backup -w <wiki>
 ```
-
 Creates a timestamped compressed zip in the current directory:
+
 ```
 synthadoc-backup-history-of-computing-20260624-103000.zip
 ```
-
 **What's included by default:** wiki pages, candidates, config, audit database, exports, query cache, raw sources, and root-level wiki files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `ROUTING.md`, `log.md`, and any `*.txt` batch ingest files) when present.
 
 **Flags:**
+
 ```
 --output <dir>       Write zip to this directory (default: current directory)
 --no-sources         Exclude raw_sources/ (reduces size for large crawled wikis)
 --no-exports         Exclude exports/ directory
 --no-cache           Exclude cache.db
 ```
-
 ### Restore
 
 ```
 synthadoc restore <backup.zip>
 ```
-
 Restores to the same directory as the zip file by default. Detects port conflicts and suggests the next free port.
 
 **Flags:**
+
 ```
 --name <name>        Restore under a different wiki name
 --target <dir>       Parent directory for the restored wiki (default: zip's folder)
 --port <N>           Use this port (skips interactive prompt)
 ```
-
 **Post-restore checklist (printed automatically):**
+
 1. Set your LLM API key in your environment
 2. `synthadoc serve -w <wiki-name>`
 3. Open the vault in Obsidian — the Obsidian plugin is reinstalled and pre-enabled automatically; Server URL is updated to match the restored port, no manual steps needed
 
 ### What is and isn't backed up
 
-| Item | Included? | Notes |
-|---|---|---|
-| `wiki/*.md` | ✓ Always | All compiled wiki pages |
-| `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `ROUTING.md`, `log.md` | ✓ Always | Wiki root files |
-| `hooks/` | ✓ Always | User hook scripts |
-| `.synthadoc/config.toml` | ✓ Always | Server config |
-| `.synthadoc/audit.db` | ✓ Always | Full audit trail, lifecycle state, chat history |
-| `.synthadoc/extracted/` | ✓ Always | Text sidecars + PDF pagemaps — required by Source Viewer and Provenance modal |
-| `.synthadoc/cache.db` | ✓ Default | Skip with `--no-cache` |
-| `exports/` | ✓ Default | Skip with `--no-exports` |
-| `raw_sources/` | ✓ Default | Skip with `--no-sources` to reduce zip size |
-| LLM API keys | ✗ Never | Never stored in config; set via environment variable |
-| `jobs.db` | ✗ Never | Stale job queue; job *history* is in `audit.db` |
-| `embeddings.db` | ✗ Never | Rebuilt automatically on next server start |
-| `server.pid` | ✗ Never | Machine-specific process ID |
-| `logs/` | ✗ Never | Server application logs |
+
+| Item                                                          | Included?  | Notes                                                                          |
+| ------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------ |
+| `wiki/*.md`                                                   | ✓ Always  | All compiled wiki pages                                                        |
+| `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `ROUTING.md`, `log.md` | ✓ Always  | Wiki root files                                                                |
+| `hooks/`                                                      | ✓ Always  | User hook scripts                                                              |
+| `.synthadoc/config.toml`                                      | ✓ Always  | Server config                                                                  |
+| `.synthadoc/audit.db`                                         | ✓ Always  | Full audit trail, lifecycle state, chat history                                |
+| `.synthadoc/extracted/`                                       | ✓ Always  | Text sidecars + PDF pagemaps — required by Source Viewer and Provenance modal |
+| `.synthadoc/cache.db`                                         | ✓ Default | Skip with`--no-cache`                                                          |
+| `exports/`                                                    | ✓ Default | Skip with`--no-exports`                                                        |
+| `raw_sources/`                                                | ✓ Default | Skip with`--no-sources` to reduce zip size                                     |
+| LLM API keys                                                  | ✗ Never   | Never stored in config; set via environment variable                           |
+| `jobs.db`                                                     | ✗ Never   | Stale job queue; job*history* is in `audit.db`                                 |
+| `embeddings.db`                                               | ✗ Never   | Rebuilt automatically on next server start                                     |
+| `server.pid`                                                  | ✗ Never   | Machine-specific process ID                                                    |
+| `logs/`                                                       | ✗ Never   | Server application logs                                                        |
