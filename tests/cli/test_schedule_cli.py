@@ -89,10 +89,16 @@ def test_schedule_run_uses_wiki_root_as_cwd(tmp_path):
         captured["cwd"] = kwargs.get("cwd")
         return MagicMock(returncode=0)
 
-    with patch("subprocess.run", side_effect=fake_run):
-        result = runner.invoke(app, [
-            "schedule", "run", "--op", "lint run", "--wiki", str(wiki),
-        ])
+    with patch("synthadoc.storage.log.AuditDB") as MockDB:
+        instance = MagicMock()
+        instance.init = AsyncMock()
+        instance.record_scheduled_run_start = AsyncMock()
+        instance.record_scheduled_run_finish = AsyncMock()
+        MockDB.return_value = instance
+        with patch("subprocess.run", side_effect=fake_run):
+            result = runner.invoke(app, [
+                "schedule", "run", "--op", "lint run", "--wiki", str(wiki),
+            ])
     assert result.exit_code == 0, result.output
     assert captured["cwd"] == str(wiki)
 

@@ -14,7 +14,7 @@
       '-+###############+-'
 
        S Y N T H A D O C
-    Community Edition  v1.2.1
+    Community Edition  v1.3.0
   ────────────────────────────────
   Domain-agnostic LLM wiki engine
 ```
@@ -34,7 +34,7 @@
 <a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.2.1-brightgreen.svg" alt="Version"/></a>
 </p>
 
-**Document version: v1.2.1**
+**Document version: v1.3.0**
 
 **Engineered for solo users and enterprises alike, providing a domain-specific knowledge base that scales seamlessly while maintaining accuracy through autonomous self-optimization.**
 
@@ -71,11 +71,12 @@ Synthadoc reads your raw source documents — PDFs, spreadsheets, PPTs, web page
 </table>
 
 <!-- pypi-strip-start -->
+
 <p align="center">
   <a href="docs/media/README.md">📝 Blogs & Media — YouTube · Coderlegion · DEV.to · Medium</a>
 </p>
 <p align="center">
-  <a href="docs/example/aquaflow/README.md">📂 End-to-end Example — AquaFlow Capital M&amp;A due diligence walkthrough</a>
+  <a href="docs/example/aquaflow/README.md">📂 End-to-end Example — AquaFlow Capital M&A due diligence walkthrough</a>
 </p>
 <!-- pypi-strip-end -->
 
@@ -126,13 +127,13 @@ Most knowledge-management tools retrieve and summarize at query time. Synthadoc 
 **Long-term alignment:**
 
 
-| Direction                | How Synthadoc moves there                                                                                                                                                                                               |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Agent orchestration      | Orchestrator dispatches parallel ingest, query, and lint sub-agents with cost guards and retry backoff                                                                                                       |
-| Sub-agent skills/plugins | Featuring a 3-tier lazy-load capability system, the platform allows for the injection of custom skills and hooks via a plug-and-play interface, ensuring core stability is never compromised during extension           |
-| LLM wiki vs. RAG         | Pre-compiled structured knowledge beats query-time synthesis for contradiction detection, graph traversal, and offline access                                                                                           |
-| CLI / HTTP               | A unified interface via CLI and RESTful endpoints, the system streamlines full-spectrum integration: from data ingestion and querying to automated linting, security auditing, and job orchestration                    |
-| Local-first              | All data stays on your machine; localhost-only network binding; no cloud dependency except the LLM API itself                                                                                                           |
+| Direction                | How Synthadoc moves there                                                                                                                                                                                                                         |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Agent orchestration      | Orchestrator dispatches parallel ingest, query, and lint sub-agents with cost guards and retry backoff                                                                                                                                            |
+| Sub-agent skills/plugins | Featuring a 3-tier lazy-load capability system, the platform allows for the injection of custom skills and hooks via a plug-and-play interface, ensuring core stability is never compromised during extension                                     |
+| LLM wiki vs. RAG         | Pre-compiled structured knowledge beats query-time synthesis for contradiction detection, graph traversal, and offline access                                                                                                                     |
+| CLI / HTTP               | A unified interface via CLI and RESTful endpoints, the system streamlines full-spectrum integration: from data ingestion and querying to automated linting, security auditing, and job orchestration                                              |
+| Local-first              | All data stays on your machine; localhost-only network binding; no cloud dependency except the LLM API itself                                                                                                                                     |
 | Provider choice          | LLM backends including free-tier Gemini and Groq, paid Anthropic/OpenAI/DeepSeek/MiniMax/Qwen (DashScope), local Ollama and Qwen, and coding-tool CLI providers (Claude Code, Opencode) — no API key required if you already have a subscription |
 
 ---
@@ -141,19 +142,20 @@ Most knowledge-management tools retrieve and summarize at query time. Synthadoc 
 
 RAG retrieves document chunks at query time. Synthadoc **compiles** knowledge at ingest — synthesising sources into a linked, audited wiki graph so contradictions are caught, claims are traced to sources, and the artifact survives outside the tool.
 
-| Problem | Synthadoc approach |
-| --- | --- |
-| **Contradictions blended silently** | Ingest-time conflict detection; page flagged `status: contradicted`; auto-resolve or queue for human review |
-| **No links between related content** | `[[wikilinks]]` auto-built on every ingest pass; weighted graph (wikilink + co-source signals) with Louvain clustering in web UI |
-| **Orphan pages never surfaced** | Lint reports unreferenced pages with ready-to-paste index entries |
-| **LLM output can be overconfident** | Adversarial second-LLM pass flags overstated claims, unsupported superlatives, and contestable facts per page |
-| **Claims lack source traceability** | `^[file:L-L]` citation on every claim; Source Viewer in Obsidian; PDF page resolution; broken-citation lint |
-| **Knowledge lifecycle invisible** | 5-state machine (`draft → active → contradicted / stale → archived`); auto-transitions via lint; immutable event log |
-| **Repeat ingest is expensive** | 3-layer cache (embedding, LLM, provider prompt) — repeat lint on unchanged pages costs near-zero tokens |
-| **Knowledge locked in proprietary tools** | Plain Markdown + YAML frontmatter; OKF v0.1 compatible; fully offline-readable in any editor |
-| **Wiki structure drifts with growth** | `scaffold` regenerates index, AGENTS.md, and purpose.md from current wiki state without touching linked pages |
-| **Migration requires full re-ingestion** | Single-zip backup + restore with port/domain rewriting; no re-ingestion needed |
-| **Cost and compliance exposure** | Localhost-only; per-job token+cost log; configurable soft-warn and hard-gate thresholds |
+
+| Problem                                   | Synthadoc approach                                                                                                               |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| **Contradictions blended silently**       | Ingest-time conflict detection; page flagged`status: contradicted`; auto-resolve or queue for human review                       |
+| **No links between related content**      | `[[wikilinks]]` auto-built on every ingest pass; weighted graph (wikilink + co-source signals) with Louvain clustering in web UI |
+| **Orphan pages never surfaced**           | Lint reports unreferenced pages with ready-to-paste index entries                                                                |
+| **LLM output can be overconfident**       | Adversarial second-LLM pass flags overstated claims, unsupported superlatives, and contestable facts per page                    |
+| **Claims lack source traceability**       | `^[file:L-L]` citation on every claim; Source Viewer in Obsidian; PDF page resolution; broken-citation lint                      |
+| **Knowledge lifecycle invisible**         | 5-state machine (`draft → active → contradicted / stale → archived`); auto-transitions via lint; immutable event log          |
+| **Repeat ingest is expensive**            | 3-layer cache (embedding, LLM, provider prompt) — repeat lint on unchanged pages costs near-zero tokens                         |
+| **Knowledge locked in proprietary tools** | Plain Markdown + YAML frontmatter; OKF v0.1 compatible; fully offline-readable in any editor                                     |
+| **Wiki structure drifts with growth**     | `scaffold` regenerates index, AGENTS.md, and purpose.md from current wiki state without touching linked pages                    |
+| **Migration requires full re-ingestion**  | Single-zip backup + restore with port/domain rewriting; no re-ingestion needed                                                   |
+| **Cost and compliance exposure**          | Localhost-only; per-job token+cost log; configurable soft-warn and hard-gate thresholds                                          |
 
 > **Citation quality:** Generated pages include inline citations linking every claim to its source lines. Pages without citations trigger a model-compatibility warning — use Gemini 2.5 Flash or higher for reliable citation annotation.
 >
@@ -167,80 +169,87 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 
 ### Knowledge Quality
 
-| Capability | Synthadoc | Typical RAG | NotebookLM | Notion AI |
-| --- | --- | --- | --- | --- |
-| **[Ingest-time synthesis](docs/design.md#ingestagent)** — sources compiled into the wiki at ingest; not re-summarised at query time | **Yes** | No | Partial | No |
-| **[Contradiction detection & resolution](docs/user-quick-start-guide.md#step-9--resolve-a-contradiction)** — conflicting claims flagged `status: contradicted`; auto-resolve available; full conflict history | **Yes** | No | No | No |
-| **[Adversarial claim review + gate](docs/user-quick-start-guide.md#step-11--run-the-adversarial-review)** — concurrent second-LLM pass flags overstated claims, unsupported superlatives, and contestable facts per page; configurable gate auto-demotes pages that exceed the warning threshold to `contradicted` | **Yes** | No | No | No |
-| **[Claim-level provenance](docs/user-quick-start-guide.md#step-20--establish-claim-level-provenance)** — `^[file:L-L]` citation on every claim; Source Viewer in Obsidian; PDF page resolution; broken-citation lint | **Yes** | No | Partial | No |
-| **[5-state lifecycle machine](docs/user-quick-start-guide.md#step-8--manage-page-lifecycle)** — `draft → active → contradicted / stale → archived`; auto-transitions via lint; immutable event log; cascade link cleanup on archive; only `active` and `stale` pages enter the BM25 search index | **Yes** | No | No | No |
-| **[Pre-LLM source sanitizer](docs/design.md#29-pre-llm-source-sanitizer)** — strips zero-width chars, bidi overrides, hidden HTML, and instruction-override phrases before any LLM call | **Yes** | No | No | No |
+
+| Capability                                                                                                                                                                                                                                                                                                          | Synthadoc | Typical RAG | NotebookLM | Notion AI |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ----------- | ---------- | --------- |
+| **[Ingest-time synthesis](docs/design.md#ingestagent)** — sources compiled into the wiki at ingest; not re-summarised at query time                                                                                                                                                                                | **Yes**   | No          | Partial    | No        |
+| **[Contradiction detection & resolution](docs/user-quick-start-guide.md#step-9--resolve-a-contradiction)** — conflicting claims flagged `status: contradicted`; auto-resolve available; full conflict history                                                                                                      | **Yes**   | No          | No         | No        |
+| **[Adversarial claim review + gate](docs/user-quick-start-guide.md#step-11--run-the-adversarial-review)** — concurrent second-LLM pass flags overstated claims, unsupported superlatives, and contestable facts per page; configurable gate auto-demotes pages that exceed the warning threshold to `contradicted` | **Yes**   | No          | No         | No        |
+| **[Claim-level provenance](docs/user-quick-start-guide.md#step-20--establish-claim-level-provenance)** — `^[file:L-L]` citation on every claim; Source Viewer in Obsidian; PDF page resolution; broken-citation lint                                                                                               | **Yes**   | No          | Partial    | No        |
+| **[5-state lifecycle machine](docs/user-quick-start-guide.md#step-8--manage-page-lifecycle)** — `draft → active → contradicted / stale → archived`; auto-transitions via lint; immutable event log; cascade link cleanup on archive; only `active` and `stale` pages enter the BM25 search index                | **Yes**   | No          | No         | No        |
+| **[Pre-LLM source sanitizer](docs/design.md#29-pre-llm-source-sanitizer)** — strips zero-width chars, bidi overrides, hidden HTML, and instruction-override phrases before any LLM call                                                                                                                            | **Yes**   | No          | No         | No        |
 
 ### Knowledge Structure
 
-| Capability | Synthadoc | Typical RAG | NotebookLM | Notion AI |
-| --- | --- | --- | --- | --- |
-| **[Weighted knowledge graph + D3 visualisation](docs/user-quick-start-guide.md#step-24--knowledge-graph)** — `[[wikilinks]]` auto-built at ingest; co-source edges connect pages compiled from the same document; edge thickness reflects combined weight; dashed edges for co-source-only relationships; Louvain cluster colouring; click node to query; Obsidian graph panel: same graph inside Obsidian via Canvas, type filter, click node to open page | **Yes** | No | Partial | No |
-| **[Orphan page detection](docs/user-quick-start-guide.md#step-10--fix-an-orphan-page)** — unreferenced pages surfaced by lint with ready-to-paste index entries | **Yes** | No | No | No |
-| **[Query-scoped routing](docs/user-quick-start-guide.md#step-17--set-up-routingmd--scoped-search)** — ROUTING.md maps wiki branches to page slugs; queries auto-select relevant branches; new pages auto-slotted | **Yes** | No | No | No |
-| **[Candidates staging](docs/user-quick-start-guide.md#step-18--configure-candidates-staging)** — ingest pages to a staging area first; review, promote, or discard before they enter the live wiki | **Yes** | No | No | No |
-| **[Scaffold automation](docs/user-quick-start-guide.md#step-14--enrich-the-wiki-with-scaffold)** — regenerates index categories, AGENTS.md/CLAUDE.md/GEMINI.md, and purpose.md from current wiki state; protected pages never overwritten | **Yes** | No | No | No |
+
+| Capability                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Synthadoc | Typical RAG | NotebookLM | Notion AI |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- | ----------- | ---------- | --------- |
+| **[Weighted knowledge graph + D3 visualisation](docs/user-quick-start-guide.md#step-24--knowledge-graph)** — `[[wikilinks]]` auto-built at ingest; co-source edges connect pages compiled from the same document; edge thickness reflects combined weight; dashed edges for co-source-only relationships; Louvain cluster colouring; click node to query; Obsidian graph panel: same graph inside Obsidian via Canvas, type filter, click node to open page | **Yes**   | No          | Partial    | No        |
+| **[Orphan page detection](docs/user-quick-start-guide.md#step-10--fix-an-orphan-page)** — unreferenced pages surfaced by lint with ready-to-paste index entries                                                                                                                                                                                                                                                                                             | **Yes**   | No          | No         | No        |
+| **[Query-scoped routing](docs/user-quick-start-guide.md#step-17--set-up-routingmd--scoped-search)** — ROUTING.md maps wiki branches to page slugs; queries auto-select relevant branches; new pages auto-slotted                                                                                                                                                                                                                                            | **Yes**   | No          | No         | No        |
+| **[Candidates staging](docs/user-quick-start-guide.md#step-18--configure-candidates-staging)** — ingest pages to a staging area first; review, promote, or discard before they enter the live wiki                                                                                                                                                                                                                                                          | **Yes**   | No          | No         | No        |
+| **[Scaffold automation](docs/user-quick-start-guide.md#step-14--enrich-the-wiki-with-scaffold)** — regenerates index categories, AGENTS.md/CLAUDE.md/GEMINI.md, and purpose.md from current wiki state; protected pages never overwritten                                                                                                                                                                                                                   | **Yes**   | No          | No         | No        |
 
 ### Search & Query
 
-| Capability | Synthadoc | Typical RAG | NotebookLM | Notion AI |
-| --- | --- | --- | --- | --- |
-| **[Query decomposition + gap detection](docs/user-quick-start-guide.md#knowledge-gap-detection)** — compound questions split into parallel BM25 sub-queries; thin results trigger a knowledge-gap callout with suggested web searches | **Yes** | Partial | No | No |
-| **[BM25 TF fallback + compound identifier search](docs/design.md#queryagent)** — reliable results on small corpora (IDF collapse → TF fallback); underscore identifiers expanded at index and query time so `capex growth` matches `capex_growth` | **Yes** | No | No | No |
-| **[Web search → wiki pages](docs/user-quick-start-guide.md#step-12--web-search-ingestion)** — Tavily search fans out into parallel URL ingest jobs; gap callout in web UI suggests searches inline | **Yes** | No | No | No |
-| **[Semantic re-ranking](docs/design.md#semantic-re-ranking)** — optional vector re-ranking (`BAAI/bge-small-en-v1.5`) improves recall on conceptually related queries; BM25 stays as fallback | **Yes** (optional) | Varies | No | No |
-| **[Streaming output + query cache](docs/user-quick-start-guide.md#step-23--query-caching)** — token-by-token streaming; cache key = question + wiki version; auto-invalidates on ingest or lifecycle change | **Yes** | Partial | Partial | Partial |
-| **[Proportional context budget](docs/design.md#31-proportional-context-budget)** — sources allocated proportionally to model context window (60 % wiki / 20 % history / 15 % system / 5 % index); replaces fixed top-N cap | **Yes** | No | No | No |
+
+| Capability                                                                                                                                                                                                                                          | Synthadoc          | Typical RAG | NotebookLM | Notion AI |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ----------- | ---------- | --------- |
+| **[Query decomposition + gap detection](docs/user-quick-start-guide.md#knowledge-gap-detection)** — compound questions split into parallel BM25 sub-queries; thin results trigger a knowledge-gap callout with suggested web searches              | **Yes**            | Partial     | No         | No        |
+| **[BM25 TF fallback + compound identifier search](docs/design.md#queryagent)** — reliable results on small corpora (IDF collapse → TF fallback); underscore identifiers expanded at index and query time so `capex growth` matches `capex_growth` | **Yes**            | No          | No         | No        |
+| **[Web search → wiki pages](docs/user-quick-start-guide.md#step-12--web-search-ingestion)** — Tavily search fans out into parallel URL ingest jobs; gap callout in web UI suggests searches inline                                                | **Yes**            | No          | No         | No        |
+| **[Semantic re-ranking](docs/design.md#semantic-re-ranking)** — optional vector re-ranking (`BAAI/bge-small-en-v1.5`) improves recall on conceptually related queries; BM25 stays as fallback                                                      | **Yes** (optional) | Varies      | No         | No        |
+| **[Streaming output + query cache](docs/user-quick-start-guide.md#step-23--query-caching)** — token-by-token streaming; cache key = question + wiki version; auto-invalidates on ingest or lifecycle change                                        | **Yes**            | Partial     | Partial    | Partial   |
+| **[Proportional context budget](docs/design.md#31-proportional-context-budget)** — sources allocated proportionally to model context window (60 % wiki / 20 % history / 15 % system / 5 % index); replaces fixed top-N cap                         | **Yes**            | No          | No         | No        |
 
 ### Interfaces & Integration
 
-| Capability | Synthadoc | Typical RAG | NotebookLM | Notion AI |
-| --- | --- | --- | --- | --- |
-| **[Obsidian integration](docs/user-quick-start-guide.md#step-3--open-the-vault-in-obsidian)** — native plugin: ingest modal, streaming query, lint report, lifecycle controls, context pack builder, provenance viewer, export modal, **knowledge graph panel** (Canvas force graph, type filter, hover tooltip, click-to-open page); **background vault monitoring** (auto-snapshot on every file save, 2 s debounce, dedup so unchanged saves are free); Reading View set as default on install so citation chips are visible immediately | **Yes** | No | No | No |
-| **[Web chat UI](docs/user-quick-start-guide.md#step-22--use-the-web-chat-ui)** — `synthadoc web`: streaming answers, session sidebar, multi-turn history, knowledge-gap callouts, knowledge graph tab | **Yes** | No | Yes | Yes |
-| **[MCP server](docs/design.md#27-mcp-server)** — 12 tools; Claude Desktop (stdio), Claude Code (SSE), n8n/LangGraph (HTTP/SSE); brain+memory architecture; no double-LLM cost for reads | **Yes** | No | No | No |
-| **[Context packs](docs/user-quick-start-guide.md#step-19--build-a-context-pack)** — goal → sub-questions → token-budget evidence pack; REST + MCP callable; paste into any LLM chat as grounded context | **Yes** | No | No | No |
-| **[Export formats](docs/user-quick-start-guide.md#step-21--export-your-wiki)** — `llms.txt`, `llms-full.txt`, GraphML, JSON (provenance + lifecycle), OKF v0.1 bundle; lifecycle-filtered; zero extra LLM calls | **Yes** | No | Partial | No |
-| **[Multi-platform agent skill files](docs/design.md#multi-platform-agent-skill-files)** — `AGENTS.md` (Codex/OpenCode), `CLAUDE.md` (Claude Code), `GEMINI.md` (Gemini CLI); all include full CLI quick-reference, domain guidelines, MCP tool table; regenerated by `scaffold` | **Yes** | No | No | No |
+
+| Capability                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Synthadoc | Typical RAG | NotebookLM | Notion AI |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ----------- | ---------- | --------- |
+| **[Obsidian integration](docs/user-quick-start-guide.md#step-3--open-the-vault-in-obsidian)** — native plugin: ingest modal, streaming query, lint report, lifecycle controls, context pack builder, provenance viewer, export modal, **knowledge graph panel** (Canvas force graph, type filter, hover tooltip, click-to-open page); **background vault monitoring** (auto-snapshot on every file save, 2 s debounce, dedup so unchanged saves are free); Reading View set as default on install so citation chips are visible immediately | **Yes**   | No          | No         | No        |
+| **[Web chat UI](docs/user-quick-start-guide.md#step-22--use-the-web-chat-ui)** — `synthadoc web`: streaming answers, session sidebar, multi-turn history, knowledge-gap callouts, knowledge graph tab                                                                                                                                                                                                                                                                                                                                       | **Yes**   | No          | Yes        | Yes       |
+| **[MCP server](docs/design.md#27-mcp-server)** — 12 tools; Claude Desktop (stdio), Claude Code (SSE), n8n/LangGraph (HTTP/SSE); brain+memory architecture; no double-LLM cost for reads                                                                                                                                                                                                                                                                                                                                                     | **Yes**   | No          | No         | No        |
+| **[Context packs](docs/user-quick-start-guide.md#step-19--build-a-context-pack)** — goal → sub-questions → token-budget evidence pack; REST + MCP callable; paste into any LLM chat as grounded context                                                                                                                                                                                                                                                                                                                                   | **Yes**   | No          | No         | No        |
+| **[Export formats](docs/user-quick-start-guide.md#step-21--export-your-wiki)** — `llms.txt`, `llms-full.txt`, GraphML, JSON (provenance + lifecycle), OKF v0.1 bundle; lifecycle-filtered; zero extra LLM calls                                                                                                                                                                                                                                                                                                                             | **Yes**   | No          | Partial    | No        |
+| **[Multi-platform agent skill files](docs/design.md#multi-platform-agent-skill-files)** — `AGENTS.md` (Codex/OpenCode), `CLAUDE.md` (Claude Code), `GEMINI.md` (Gemini CLI); all include full CLI quick-reference, domain guidelines, MCP tool table; regenerated by `scaffold`                                                                                                                                                                                                                                                             | **Yes**   | No          | No         | No        |
 
 ### Content Sources
 
-| Capability | Synthadoc | Typical RAG | NotebookLM | Notion AI |
-| --- | --- | --- | --- | --- |
-| **[Multi-format ingest](docs/design.md#built-in-skills)** — PDF, DOCX, PPTX, XLSX/CSV, Markdown, TXT, images (vision), web URLs, YouTube transcripts, AI session transcripts (.jsonl) | **Yes** | Varies | Partial | Partial |
-| **[Web search decomposition](docs/user-quick-start-guide.md#step-12--web-search-ingestion)** — broad topics decomposed into focused Tavily keyword searches; results merged and deduplicated | **Yes** | No | No | Partial |
-| **[YouTube transcript ingest](docs/user-quick-start-guide.md#step-13--ingest-a-youtube-video)** — timestamped transcript + executive summary; no API key; auto-generated captions supported | **Yes** | No | Yes | No |
-| **[Multilingual / CJK queries](docs/design.md#queryagent)** — Chinese, Japanese, Korean — no false knowledge gaps | **Yes** | Limited | No | No |
-| **[Multiple LLM providers + coding tools](docs/user-quick-start-guide.md#appendix-c--switching-llm-providers)** — Gemini, Groq, Qwen, MiniMax, DeepSeek, Anthropic, OpenAI, Ollama; Claude Code and Opencode (no API key needed) | **Yes** | No | No | No |
+
+| Capability                                                                                                                                                                                                                        | Synthadoc | Typical RAG | NotebookLM | Notion AI |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ----------- | ---------- | --------- |
+| **[Multi-format ingest](docs/design.md#built-in-skills)** — PDF, DOCX, PPTX, XLSX/CSV, Markdown, TXT, images (vision), web URLs, YouTube transcripts, AI session transcripts (.jsonl)                                            | **Yes**   | Varies      | Partial    | Partial   |
+| **[Web search decomposition](docs/user-quick-start-guide.md#step-12--web-search-ingestion)** — broad topics decomposed into focused Tavily keyword searches; results merged and deduplicated                                     | **Yes**   | No          | No         | Partial   |
+| **[YouTube transcript ingest](docs/user-quick-start-guide.md#step-13--ingest-a-youtube-video)** — timestamped transcript + executive summary; no API key; auto-generated captions supported                                      | **Yes**   | No          | Yes        | No        |
+| **[Multilingual / CJK queries](docs/design.md#queryagent)** — Chinese, Japanese, Korean — no false knowledge gaps                                                                                                               | **Yes**   | Limited     | No         | No        |
+| **[Multiple LLM providers + coding tools](docs/user-quick-start-guide.md#appendix-c--switching-llm-providers)** — Gemini, Groq, Qwen, MiniMax, DeepSeek, Anthropic, OpenAI, Ollama; Claude Code and Opencode (no API key needed) | **Yes**   | No          | No         | No        |
 
 ### Operations & Trust
 
-| Capability | Synthadoc | Typical RAG | NotebookLM | Notion AI |
-| --- | --- | --- | --- | --- |
-| **Local-first + offline artifact** — source documents never leave your machine; compiled wiki is plain Markdown, fully readable offline in any editor without the server | **Yes** | Varies | No | No |
-| **[Portable backup / restore](docs/design.md#28-backup--restore)** — single zip: wiki pages + audit/lifecycle DB + config; port and domain rewriting on restore; migrate machines without re-ingesting | **Yes** | No — re-ingest required | No — AI metadata lost | No |
-| **[Lifecycle content snapshots + rollback](docs/user-quick-start-guide.md#snapshots-and-content-recovery)** — page body captured at every lifecycle transition (manual CLI/Obsidian, lint-driven auto-transition, or Obsidian vault save); deduplicated so unchanged saves cost nothing; browse per-page version history with `lifecycle history` (newest-first, with reason); restore any prior version with `lifecycle rollback`; rollback saves the current body first so it is always undoable | **Yes** | No | No | Partial — Notion has time-based edit history (plan-gated, no lifecycle tie, no auditable rollback) |
-| **[Cost guard + full audit trail](docs/user-quick-start-guide.md#step-15--audit-features)** — per-job token + cost log; soft-warn and hard-gate thresholds; `audit citations` validates every claim citation; immutable event log | **Yes** | No | No | No |
-| **[Resumable job queue + retry](docs/design.md#14-job-queue)** — every ingest/lint job persisted with status and error; batch a hundred documents and resume after a crash | **Yes** | No | No | No |
-| **[Custom skills + CI hooks](docs/design.md#11-hook-system)** — subclass `BaseSkill` for new file formats; 2 hook events (`on_ingest_complete` + `on_lint_complete`); example git auto-commit hook included; blocking hooks can gate operations | **Yes** | Limited | No | No |
-| **[Per-source truncation flag](docs/design.md#30-per-source-truncation-flag)** — `--max-source-chars` caps any source (PDF, DOCX, web page, plain text) before the LLM call; truncated sources flagged with `truncated: true` in frontmatter and warned in lint output | **Yes** | No | No | No |
-| **[Multi-wiki isolation](docs/design.md#wiki-targeting)** — each wiki on its own port with independent config, audit trail, and job queue; switch with `synthadoc use` | **Yes** | No | Partial | No |
-| **[Agentic maintenance workflows](docs/user-quick-start-guide.md#agentic-workflows)** — six conversational workflows (re-ingest stale pages, re-ingest by slug, broken wikilinks scan and fix, lint report, scaffold regeneration, **contradiction resolver**) via web UI, Obsidian query modal, or `synthadoc query` CLI; confirm-before-act gate on all destructive operations; contradiction resolver shows full diff before every write and never applies a change without approval; graph sidebar chips trigger workflows with one click — no terminal required | **Yes** | No | No | No |
+
+| Capability                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Synthadoc | Typical RAG              | NotebookLM             | Notion AI                                                                                           |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ------------------------ | ---------------------- | --------------------------------------------------------------------------------------------------- |
+| **Local-first + offline artifact** — source documents never leave your machine; compiled wiki is plain Markdown, fully readable offline in any editor without the server                                                                                                                                                                                                                                                                                                                                                                                              | **Yes**   | Varies                   | No                     | No                                                                                                  |
+| **[Portable backup / restore](docs/design.md#28-backup--restore)** — single zip: wiki pages + audit/lifecycle DB + config; port and domain rewriting on restore; migrate machines without re-ingesting                                                                                                                                                                                                                                                                                                                                                                | **Yes**   | No — re-ingest required | No — AI metadata lost | No                                                                                                  |
+| **[Lifecycle content snapshots + rollback](docs/user-quick-start-guide.md#snapshots-and-content-recovery)** — page body captured at every lifecycle transition (manual CLI/Obsidian, lint-driven auto-transition, or Obsidian vault save); deduplicated so unchanged saves cost nothing; browse per-page version history with `lifecycle history` (newest-first, with reason); restore any prior version with `lifecycle rollback`; rollback saves the current body first so it is always undoable                                                                    | **Yes**   | No                       | No                     | Partial — Notion has time-based edit history (plan-gated, no lifecycle tie, no auditable rollback) |
+| **[Cost guard + full audit trail](docs/user-quick-start-guide.md#step-15--audit-features)** — per-job token + cost log; soft-warn and hard-gate thresholds; `audit citations` validates every claim citation; immutable event log                                                                                                                                                                                                                                                                                                                                     | **Yes**   | No                       | No                     | No                                                                                                  |
+| **[Resumable job queue + retry](docs/design.md#14-job-queue)** — every ingest/lint job persisted with status and error; batch a hundred documents and resume after a crash                                                                                                                                                                                                                                                                                                                                                                                            | **Yes**   | No                       | No                     | No                                                                                                  |
+| **[Custom skills + CI hooks](docs/design.md#11-hook-system)** — subclass `BaseSkill` for new file formats; 2 hook events (`on_ingest_complete` + `on_lint_complete`); example git auto-commit hook included; blocking hooks can gate operations                                                                                                                                                                                                                                                                                                                       | **Yes**   | Limited                  | No                     | No                                                                                                  |
+| **[Per-source truncation flag](docs/design.md#30-per-source-truncation-flag)** — `--max-source-chars` caps any source (PDF, DOCX, web page, plain text) before the LLM call; truncated sources flagged with `truncated: true` in frontmatter and warned in lint output                                                                                                                                                                                                                                                                                                | **Yes**   | No                       | No                     | No                                                                                                  |
+| **[Multi-wiki isolation](docs/design.md#wiki-targeting)** — each wiki on its own port with independent config, audit trail, and job queue; switch with `synthadoc use`                                                                                                                                                                                                                                                                                                                                                                                                | **Yes**   | No                       | Partial                | No                                                                                                  |
+| **[Agentic maintenance workflows](docs/user-quick-start-guide.md#agentic-workflows)** — six conversational workflows (re-ingest stale pages, re-ingest by slug, broken wikilinks scan and fix, lint report, scaffold regeneration, **contradiction resolver**) via web UI, Obsidian query modal, or `synthadoc query` CLI; confirm-before-act gate on all destructive operations; contradiction resolver shows full diff before every write and never applies a change without approval; graph sidebar chips trigger workflows with one click — no terminal required | **Yes**   | No                       | No                     | No                                                                                                  |
 
 ### Business value
 
-| Value | How |
-| --- | --- |
-| **Faster onboarding** | New team members query the wiki instead of digging through documents |
-| **Audit trail** | Every ingest recorded in `audit.db` with source hash, token count, and timestamp |
-| **Cost control** | Configurable thresholds; 3-layer cache reduces repeat spend |
-| **Compliance** | Local-first — source documents and compiled knowledge never leave your machine |
-| **Extensibility** | Hooks fire on every event; custom skills load without a server restart |
+
+| Value                 | How                                                                             |
+| --------------------- | ------------------------------------------------------------------------------- |
+| **Faster onboarding** | New team members query the wiki instead of digging through documents            |
+| **Audit trail**       | Every ingest recorded in`audit.db` with source hash, token count, and timestamp |
+| **Cost control**      | Configurable thresholds; 3-layer cache reduces repeat spend                     |
+| **Compliance**        | Local-first — source documents and compiled knowledge never leave your machine |
+| **Extensibility**     | Hooks fire on every event; custom skills load without a server restart          |
 
 ---
 
@@ -324,18 +333,19 @@ cd ..
 
 Synthadoc defaults to **Gemini Flash** — free tier, no credit card, 1 million tokens per day. Get a key at **aistudio.google.com/app/apikey** (click "Create API key").
 
-| Provider         | Free tier                                                | Vision          | Get key                                                           |
-| ---------------- | -------------------------------------------------------- | --------------- | ----------------------------------------------------------------- |
-| **Gemini Flash** | Yes — 15 RPM / 1M tokens/day, no credit card            | Yes             | [aistudio.google.com](https://aistudio.google.com/app/apikey)    |
-| Groq             | Yes — rate-limited                                       | No              | [console.groq.com](https://console.groq.com/keys)                |
-| Ollama           | Yes — runs locally, no key (**GPU required**)            | Model-dependent | [ollama.com](https://ollama.com)                                  |
-| Qwen             | Yes — 1M free tokens (90-day trial), then paid DashScope | Model-dependent | [bailian.console.aliyun.com](https://bailian.console.aliyun.com/) |
-| MiniMax          | No — pay-per-token                                       | Yes             | [platform.minimax.io](https://platform.minimax.io/)               |
-| DeepSeek         | No — pay-per-token (very cheap text rates)               | No              | [platform.deepseek.com](https://platform.deepseek.com/api_keys)  |
-| Anthropic        | No                                                       | Yes             | [console.anthropic.com](https://console.anthropic.com/)           |
-| OpenAI           | No                                                       | Yes             | [platform.openai.com](https://platform.openai.com/api-keys)      |
-| **Claude Code**  | Included with subscription — no API key                  | No              | Set `provider = "claude-code"` in config.toml                    |
-| **Opencode**     | Free via Opencode Zen — no API key                       | No              | Set `provider = "opencode", model = "opencode/big-pickle"` in config.toml; connect first: run `opencode` → `/connect` → select Zen |
+
+| Provider         | Free tier                                                 | Vision          | Get key                                                                                                                             |
+| ---------------- | --------------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| **Gemini Flash** | Yes — 15 RPM / 1M tokens/day, no credit card             | Yes             | [aistudio.google.com](https://aistudio.google.com/app/apikey)                                                                       |
+| Groq             | Yes — rate-limited                                       | No              | [console.groq.com](https://console.groq.com/keys)                                                                                   |
+| Ollama           | Yes — runs locally, no key (**GPU required**)            | Model-dependent | [ollama.com](https://ollama.com)                                                                                                    |
+| Qwen             | Yes — 1M free tokens (90-day trial), then paid DashScope | Model-dependent | [bailian.console.aliyun.com](https://bailian.console.aliyun.com/)                                                                   |
+| MiniMax          | No — pay-per-token                                       | Yes             | [platform.minimax.io](https://platform.minimax.io/)                                                                                 |
+| DeepSeek         | No — pay-per-token (very cheap text rates)               | No              | [platform.deepseek.com](https://platform.deepseek.com/api_keys)                                                                     |
+| Anthropic        | No                                                        | Yes             | [console.anthropic.com](https://console.anthropic.com/)                                                                             |
+| OpenAI           | No                                                        | Yes             | [platform.openai.com](https://platform.openai.com/api-keys)                                                                         |
+| **Claude Code**  | Included with subscription — no API key                  | No              | Set`provider = "claude-code"` in config.toml                                                                                        |
+| **Opencode**     | Free via Opencode Zen — no API key                       | No              | Set`provider = "opencode", model = "opencode/big-pickle"` in config.toml; connect first: run `opencode` → `/connect` → select Zen |
 
 ```bash
 # macOS / Linux — add to ~/.bashrc or ~/.zshrc to persist
@@ -470,13 +480,14 @@ synthadoc status                        # confirm the wiki registered correctly 
 
 `--domain` is a free-text description of the subject area — the LLM uses it to generate five domain-aware starter files via scaffold:
 
-| File                | Purpose                                                                     |
-| ------------------- | --------------------------------------------------------------------------- |
-| `wiki/index.md`     | Table of contents — domain-relevant categories with `[[wikilinks]]`        |
-| `wiki/purpose.md`   | Scope declaration — used by the ingest agent to filter out-of-scope sources at ingest time, and injected as a pinned preamble into every query synthesis prompt so the LLM understands the wiki's domain boundaries when answering |
-| `AGENTS.md`         | LLM behaviour guidelines (tone, terminology, synthesis style) — read by Codex CLI, OpenCode, and generic OpenAI Agents tooling |
-| `CLAUDE.md`         | Same content as `AGENTS.md` — loaded automatically by Claude Code when the wiki folder is open |
-| `GEMINI.md`         | Same content as `AGENTS.md` — loaded automatically by Gemini CLI |
+
+| File              | Purpose                                                                                                                                                                                                                             |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `wiki/index.md`   | Table of contents — domain-relevant categories with`[[wikilinks]]`                                                                                                                                                                 |
+| `wiki/purpose.md` | Scope declaration — used by the ingest agent to filter out-of-scope sources at ingest time, and injected as a pinned preamble into every query synthesis prompt so the LLM understands the wiki's domain boundaries when answering |
+| `AGENTS.md`       | LLM behaviour guidelines (tone, terminology, synthesis style) — read by Codex CLI, OpenCode, and generic OpenAI Agents tooling                                                                                                     |
+| `CLAUDE.md`       | Same content as`AGENTS.md` — loaded automatically by Claude Code when the wiki folder is open                                                                                                                                      |
+| `GEMINI.md`       | Same content as`AGENTS.md` — loaded automatically by Gemini CLI                                                                                                                                                                    |
 
 `wiki/dashboard.md` is also created during install (a static template — not LLM-generated). `ROUTING.md` is optional and generated separately via `synthadoc routing init` after pages accumulate.
 
@@ -788,23 +799,32 @@ synthadoc lint report -w my-wiki
 Agentic workflows run as interactive tool-call loops — they stream progress inline, ask for approval before any destructive change, and exit cleanly if you decline.
 
 ```bash
-# Resolve all contradicted pages (shows cost estimate + diff for each page before writing)
-synthadoc workflow run contradiction-resolver -w my-wiki
+# List all available workflows (with descriptions and accepted parameters)
+synthadoc workflow list
+
+# Run a workflow by name
+synthadoc workflow run --name lint-report -w my-wiki
+synthadoc workflow run --name broken-wikilinks -w my-wiki
+synthadoc workflow run --name scaffold -w my-wiki
+synthadoc workflow run --name ingest-lint -w my-wiki
+
+# Contradiction resolver — resolve all contradicted pages
+synthadoc workflow run --name contradiction-resolver -w my-wiki
 
 # Resolve only one page by slug
-synthadoc workflow run contradiction-resolver --slug alan-turing -w my-wiki
+synthadoc workflow run --name contradiction-resolver --slug alan-turing -w my-wiki
 
 # Scope to pages demoted by the adversarial gate
-synthadoc workflow run contradiction-resolver --type adversarial -w my-wiki
+synthadoc workflow run --name contradiction-resolver --type adversarial -w my-wiki
 
 # Scope to pages with source-level contradictions
-synthadoc workflow run contradiction-resolver --type source-conflict -w my-wiki
+synthadoc workflow run --name contradiction-resolver --type source-conflict -w my-wiki
 
 # Custom timeout (default 3600 s)
-synthadoc workflow run contradiction-resolver --timeout 7200 -w my-wiki
+synthadoc workflow run --name contradiction-resolver --timeout 7200 -w my-wiki
 ```
 
-The resolver lists contradicted pages, estimates cost, then walks through each page: reads the content and conflicting sources, proposes a rewrite, shows the full unified diff, and waits for your approval. After an approved write it re-lints the page and promotes it to *active* on pass, or escalates after 3 failed attempts.
+The contradiction resolver lists contradicted pages, estimates cost, then walks through each page: reads the content and conflicting sources, proposes a rewrite, shows the full unified diff, and waits for your approval. After an approved write it re-lints the page and promotes it to *active* on pass, or escalates after 3 failed attempts.
 
 → Full walkthrough and web UI path: [Quick-Start Guide — Step 9](docs/user-quick-start-guide.md#step-9--resolve-a-contradiction)
 
@@ -958,23 +978,25 @@ synthadoc schedule history --limit 50 -w my-wiki
 
 **Cron expression format:** `minute  hour  day-of-month  month  day-of-week`
 
-| Field | Range | Examples |
-|-------|-------|---------|
-| minute | 0–59 | `0` = on the hour |
-| hour | 0–23 | `2` = 2 AM, `22` = 10 PM |
-| day of month | 1–31 | `*` = every day |
-| month | 1–12 | `*` = every month |
-| day of week | 0–6 | `0` = Sunday, `1` = Monday |
+
+| Field        | Range | Examples                   |
+| ------------ | ----- | -------------------------- |
+| minute       | 0–59 | `0` = on the hour          |
+| hour         | 0–23 | `2` = 2 AM, `22` = 10 PM   |
+| day of month | 1–31 | `*` = every day            |
+| month        | 1–12 | `*` = every month          |
+| day of week  | 0–6  | `0` = Sunday, `1` = Monday |
 
 Common schedules:
 
-| Expression | Meaning |
-|------------|---------|
-| `0 2 * * *` | Every day at 2 AM |
-| `0 22 * * *` | Every night at 10 PM |
-| `0 3 * * 0` | Every Sunday at 3 AM |
-| `0 */6 * * *` | Every 6 hours |
-| `30 8 * * 1-5` | Weekdays at 8:30 AM |
+
+| Expression     | Meaning              |
+| -------------- | -------------------- |
+| `0 2 * * *`    | Every day at 2 AM    |
+| `0 22 * * *`   | Every night at 10 PM |
+| `0 3 * * 0`    | Every Sunday at 3 AM |
+| `0 */6 * * *`  | Every 6 hours        |
+| `30 8 * * 1-5` | Weekdays at 8:30 AM  |
 
 ### Routing
 
@@ -1259,12 +1281,19 @@ Custom skills, LLM providers, hooks, cache control, and per-wiki AGENTS.md are d
 ## Links
 
 <!-- pypi-strip-start -->
+
 - Blogs & Media: [docs/media/](docs/media/README.md) — YouTube, Coderlegion, DEV.to, Medium
+
 <!-- pypi-strip-end -->
+
 - Design document: [docs/design.md](docs/design.md)
 - Customization: [docs/design.md — Customization](docs/design.md#customization)
 - Quick-Start Guide: [docs/user-quick-start-guide.md](docs/user-quick-start-guide.md)
+
 <!-- pypi-strip-start -->
+
 - Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
+
 <!-- pypi-strip-end -->
+
 - GitHub: [axoviq-ai/synthadoc](https://github.com/axoviq-ai/synthadoc)
