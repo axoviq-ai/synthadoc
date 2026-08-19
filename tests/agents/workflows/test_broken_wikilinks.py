@@ -35,7 +35,7 @@ def _make_ctx():
 async def test_system_prompt_contains_all_tool_names():
     wf = BrokenWikilinksWorkflow()
     prompt = await wf.build_system_prompt()
-    for tool in ("find_broken_wikilinks", "apply_link_fixes", "confirm", "run_lint", "poll_job", "get_page_states"):
+    for tool in ("find_broken_wikilinks", "apply_link_fixes", "confirm", "run_lint", "get_page_states"):
         assert tool in prompt, f"Missing tool {tool!r} in system prompt"
 
 
@@ -62,7 +62,7 @@ def test_get_tool_fns_returns_all_expected_tools():
     wf = BrokenWikilinksWorkflow()
     ctx = _make_ctx()
     fns = wf.get_tool_fns(ctx)
-    expected = {"find_broken_wikilinks", "apply_link_fixes", "confirm", "run_lint", "poll_job", "get_page_states"}
+    expected = {"find_broken_wikilinks", "apply_link_fixes", "confirm", "run_lint", "get_page_states"}
     assert set(fns.keys()) == expected
 
 

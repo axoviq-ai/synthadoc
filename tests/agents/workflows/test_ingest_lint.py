@@ -40,7 +40,7 @@ def test_ingest_lint_tool_fns_are_all_callable():
     fns = wf.get_tool_fns(ctx)
     assert set(fns) == {
         "find_stale_pages", "find_page_source",
-        "ingest_source", "poll_job", "run_lint", "get_page_states", "confirm",
+        "ingest_source", "run_lint", "get_page_states", "confirm",
     }
     for name, fn in fns.items():
         assert callable(fn), f"{name} not callable"
