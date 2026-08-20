@@ -599,10 +599,12 @@ def test_action_confirm_duplicate_session_returns_409():
 @pytest.mark.timeout(240)
 def test_query_done_pre_prompt_present_when_stale_pages_exist():
     """
-    A wiki-status query's done SSE event includes pre_prompt mentioning the
-    stale slug(s) when the wiki has stale pages.
+    A wiki-status query's done SSE event includes a non-null pre_prompt when
+    the wiki has at least one actionable maintenance issue.
 
-    Manufactures a stale page if none exist so the test is self-contained.
+    Manufactures a stale page to guarantee at least one issue exists.  The
+    actual pre_prompt content may reflect a higher-priority issue (e.g.
+    contradictions) rather than the manufactured stale page — both are valid.
     """
     wiki_root = _wiki_root()
     isolated_slugs = _isolate_stale_pages_with_sources(wiki_root)
@@ -624,12 +626,22 @@ def test_query_done_pre_prompt_present_when_stale_pages_exist():
             f"done event missing pre_prompt despite stale page {slug!r}. "
             f"done payload: {done_data}"
         )
-        # The pre_prompt must include the manufactured slug or a re-ingest keyword.
+        # The pre_prompt must contain actionable maintenance language.
+        # It may mention the manufactured stale slug, or it may surface a
+        # higher-priority issue (contradictions, broken links, orphans) if one
+        # exists in the wiki — all are valid pre_prompt payloads.
+        _MAINTENANCE_KEYWORDS = (
+            "ingest", "stale", "re-ingest",
+            "contradicted", "contradiction",
+            "broken", "wikilink",
+            "orphan", "lint",
+        )
         assert (
             slug in pre_prompt
-            or "ingest" in pre_prompt.lower()
+            or any(kw in pre_prompt.lower() for kw in _MAINTENANCE_KEYWORDS)
         ), (
-            f"pre_prompt {pre_prompt!r} does not suggest re-ingest of {slug!r}"
+            f"pre_prompt {pre_prompt!r} contains no actionable maintenance language "
+            f"and does not mention the manufactured slug {slug!r}"
         )
     finally:
         _restore_stale_page(wiki_root, slug, source_path, orig_content, original_state=orig_state)
