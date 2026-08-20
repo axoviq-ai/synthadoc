@@ -1091,6 +1091,27 @@ function makeDraggable(modalEl: HTMLElement, handle: HTMLElement): void {
     });
 }
 
+/**
+ * Render a server-offline notice into `container`.
+ * Used by any modal that fetches data on open and would otherwise silently
+ * display an empty list when the server is unreachable.
+ */
+function renderServerOfflineNotice(container: HTMLElement): void {
+    const p = container.createEl("p");
+    p.style.cssText = "color:var(--text-error);padding:12px 8px;font-size:13px";
+    p.setText("⚠ Server not reachable. Start the Synthadoc server (synthadoc serve) and try again.");
+}
+
+/**
+ * Render a muted empty-state message into `container`.
+ * Paired with renderServerOfflineNotice: one of the two is called whenever
+ * a data list is empty, so the user always gets a clear explanation.
+ */
+function renderEmptyNotice(container: HTMLElement, text: string): void {
+    container.createEl("p", { text })
+        .style.cssText = "color:var(--text-muted);padding:16px";
+}
+
 const TERMINAL_STATUSES = new Set(["completed", "failed", "skipped", "dead", "cancelled"]);
 const JOBS_PAGE_SIZE = 25;
 
@@ -3467,6 +3488,7 @@ class ProvenanceModal extends Modal {
     private total = 0;
     private tableWrap: HTMLElement | null = null;
     private pagerWrap: HTMLElement | null = null;
+    private _serverError = false;
 
     constructor(app: App, private serverUrl: string, private wikiRoot: string, private initialSlug: string = "") {
         super(app);
@@ -3556,9 +3578,11 @@ class ProvenanceModal extends Modal {
             const data = await resp.json() as { citations: Record<string, unknown>[]; total: number };
             this.allRows = data.citations || [];
             this.total = data.total || 0;
+            this._serverError = false;
         } catch {
             this.allRows = [];
             this.total = 0;
+            this._serverError = true;
         }
     }
 
@@ -3623,8 +3647,11 @@ class ProvenanceModal extends Modal {
         if (!this.tableWrap) return;
         this.tableWrap.empty();
         if (this.allRows.length === 0) {
-            this.tableWrap.createEl("p", { text: "No citations found." })
-                .style.cssText = "color:var(--text-muted)";
+            if (this._serverError) {
+                renderServerOfflineNotice(this.tableWrap);
+            } else {
+                renderEmptyNotice(this.tableWrap, "No citations found.");
+            }
             return;
         }
         const table = this.tableWrap.createEl("table");
@@ -3807,6 +3834,10 @@ export class LifecycleModal extends Modal {
     // computed page sizes: derived from container height each render cycle
     private _statesPageSize = 50;
     private _auditPageSize = 50;
+    // server-reachability flags: set on fetch failure, cleared on success
+    private _fetchError = false;
+    private _auditFetchError = false;
+    private _snapFetchError = false;
 
     constructor(
         app: App,
@@ -4076,8 +4107,10 @@ export class LifecycleModal extends Modal {
         try {
             const result = await api.lifecyclePages() as any;
             this._pages = result.pages ?? [];
+            this._fetchError = false;
         } catch {
             this._pages = [];
+            this._fetchError = true;
         }
         this._renderAll();
     }
@@ -4086,8 +4119,10 @@ export class LifecycleModal extends Modal {
         try {
             const result = await api.lifecycleEvents({ limit: 1000 }) as any;
             this._auditEvents = result.events ?? [];
+            this._auditFetchError = false;
         } catch {
             this._auditEvents = [];
+            this._auditFetchError = true;
         }
         this._renderAuditAll();
     }
@@ -4155,8 +4190,10 @@ export class LifecycleModal extends Modal {
         try {
             const data = await (api as any).snapshotList(this._snapSlugFilter || undefined) as any;
             this._snapRows = data.snapshots ?? [];
+            this._snapFetchError = false;
         } catch {
             this._snapRows = [];
+            this._snapFetchError = true;
         }
         this._renderSnapTable();
     }
@@ -4174,12 +4211,16 @@ export class LifecycleModal extends Modal {
                 (a.snap_index ?? 0) - (b.snap_index ?? 0));
 
         if (visible.length === 0) {
-            const msg = this._snapTableWrap.createEl("p");
-            msg.style.cssText = "color:var(--text-muted);font-style:italic;padding:12px 0";
-            msg.setText(
-                "No snapshots recorded. Snapshots are captured on manual lifecycle " +
-                "transitions (activate, archive, restore)."
-            );
+            if (this._snapFetchError) {
+                renderServerOfflineNotice(this._snapTableWrap);
+            } else {
+                const msg = this._snapTableWrap.createEl("p");
+                msg.style.cssText = "color:var(--text-muted);font-style:italic;padding:12px 0";
+                msg.setText(
+                    "No snapshots recorded. Snapshots are captured on manual lifecycle " +
+                    "transitions (activate, archive, restore)."
+                );
+            }
             if (this._snapPagerWrap) this._snapPagerWrap.empty();
             return;
         }
@@ -4419,8 +4460,11 @@ export class LifecycleModal extends Modal {
         const slice = sorted.slice(this._page * this._statesPageSize, (this._page + 1) * this._statesPageSize);
 
         if (sorted.length === 0) {
-            this._tableWrap.createEl("p", { text: "No pages found." })
-                .style.cssText = "color:var(--text-muted);padding:16px";
+            if (this._fetchError) {
+                renderServerOfflineNotice(this._tableWrap);
+            } else {
+                renderEmptyNotice(this._tableWrap, "No pages found.");
+            }
             return;
         }
 
@@ -4517,8 +4561,11 @@ export class LifecycleModal extends Modal {
         this._auditTableWrap.empty();
 
         if (this._auditEvents.length === 0) {
-            this._auditTableWrap.createEl("p", { text: "No audit events found." })
-                .style.cssText = "color:var(--text-muted);padding:16px";
+            if (this._auditFetchError) {
+                renderServerOfflineNotice(this._auditTableWrap);
+            } else {
+                renderEmptyNotice(this._auditTableWrap, "No audit events found.");
+            }
             return;
         }
 
