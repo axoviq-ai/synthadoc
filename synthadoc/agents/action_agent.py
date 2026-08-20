@@ -423,6 +423,10 @@ class ActionAgent:
             confirm_registry=getattr(self._orch, "_confirm_registry", {}),
             confirm_result_registry=getattr(self._orch, "_confirm_result_registry", {}),
             domain=_domain,
+            bump_epoch=getattr(self._orch, "_bump_epoch", None),
+            invalidate_search=getattr(
+                getattr(self._orch, "_search", None), "invalidate_index", None
+            ),
         )
 
         wf = workflow if workflow is not None else IngestLintWorkflow()
