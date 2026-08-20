@@ -825,6 +825,14 @@ async def tool_transition_lifecycle_state(
 
     ctx.store.write_page(slug, page)
 
+    # Invalidate the query cache and search index so the next query reflects
+    # the new lifecycle state.  Both hooks are None in tests and CLI contexts
+    # that don't wire up the orchestrator.
+    if ctx.bump_epoch:
+        ctx.bump_epoch()
+    if ctx.invalidate_search:
+        ctx.invalidate_search()
+
     if ctx.audit_db:
         # Update page_states so GET /lifecycle/pages reflects the change immediately.
         # This is separate from the audit event — set_page_state owns the current-state
