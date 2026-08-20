@@ -25,6 +25,10 @@ class WorkflowContext:
     confirm_registry: dict[str, asyncio.Event]
     confirm_result_registry: dict[str, bool]
     domain: str = ""
+    # Cache-invalidation hooks wired up by ActionAgent from the orchestrator.
+    # None in tests that don't need cache coherence.
+    bump_epoch: "Callable[[], None] | None" = None
+    invalidate_search: "Callable[[], None] | None" = None
 
 
 class AgenticWorkflow(ABC):

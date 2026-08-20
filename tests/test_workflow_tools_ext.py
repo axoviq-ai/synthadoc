@@ -392,6 +392,68 @@ async def test_propose_then_transition_raw_file_consistent(tmp_path):
     assert "contradiction_note" not in raw_after_transition
 
 
+# ── tool_transition_lifecycle_state — cache invalidation hooks ───────────────
+
+@pytest.mark.asyncio
+async def test_transition_calls_bump_epoch_and_invalidate_search_on_success(tmp_path):
+    """bump_epoch and invalidate_search must fire after a successful transition."""
+    store = _make_store(tmp_path, {
+        "grace-hopper": _page(status=LifecycleState.CONTRADICTED),
+    })
+    ctx = _ctx(tmp_path, store)
+    ctx.bump_epoch = MagicMock()
+    ctx.invalidate_search = MagicMock()
+
+    from synthadoc.agents.workflows._tools import tool_transition_lifecycle_state
+    result = await tool_transition_lifecycle_state(
+        ctx, slug="grace-hopper", to_state="active",
+        reason="resolver fixed it",
+    )
+
+    assert result["success"] is True
+    ctx.bump_epoch.assert_called_once()
+    ctx.invalidate_search.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_transition_skips_hooks_when_page_not_found(tmp_path):
+    """bump_epoch and invalidate_search must NOT fire when the page doesn't exist."""
+    store = _make_store(tmp_path, {})
+    ctx = _ctx(tmp_path, store)
+    ctx.bump_epoch = MagicMock()
+    ctx.invalidate_search = MagicMock()
+
+    from synthadoc.agents.workflows._tools import tool_transition_lifecycle_state
+    result = await tool_transition_lifecycle_state(
+        ctx, slug="nonexistent-slug", to_state="active",
+        reason="should not matter",
+    )
+
+    assert result["success"] is False
+    ctx.bump_epoch.assert_not_called()
+    ctx.invalidate_search.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_transition_hooks_none_safe(tmp_path):
+    """When bump_epoch / invalidate_search are None (no orchestrator), no error."""
+    store = _make_store(tmp_path, {
+        "ada-lovelace": _page(status=LifecycleState.DRAFT),
+    })
+    ctx = _ctx(tmp_path, store)
+    # MagicMock auto-creates .bump_epoch and .invalidate_search as MagicMocks;
+    # override with None to test the None-safe guard in _tools.py.
+    ctx.bump_epoch = None
+    ctx.invalidate_search = None
+
+    from synthadoc.agents.workflows._tools import tool_transition_lifecycle_state
+    result = await tool_transition_lifecycle_state(
+        ctx, slug="ada-lovelace", to_state="active",
+        reason="no cache hooks wired",
+    )
+    assert result["success"] is True  # must not raise
+
+
 # ── tool_get_wiki_status ──────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
