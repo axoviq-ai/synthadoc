@@ -774,7 +774,8 @@ async def tool_propose_and_apply(
         # is not None, regardless of content quality.  Applying approved new content
         # is the act of resolving the conflict, so the note must be cleared here.
         page.contradiction_note = None
-        ctx.store.write_page(slug, page)
+        with ctx.store.page_lock(slug):
+            ctx.store.write_page(slug, page)
         await ctx.send_sse_event(
             "tool_progress",
             {"tool": "propose_and_apply", "message": f"✓ Applied {strategy_name} to {slug}"},
