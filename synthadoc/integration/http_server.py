@@ -85,10 +85,18 @@ def _install_shutdown_noise_filter() -> None:
     logging.getLogger("uvicorn.error").addFilter(_Filter())
 
 
+# Provider-switching hint appended to error messages for quota / rate-limit errors.
+# Defined once here so it stays consistent across all HTTP error handlers.
+_SWITCH_PROVIDER_HINT = (
+    "Switch to another provider by editing [agents] in .synthadoc/config.toml "
+    "and restarting the server "
+    "(options: anthropic, openai, gemini, groq, minimax, deepseek, ollama)."
+)
+
+
 def _classify_llm_error(exc: Exception) -> "HTTPException | None":
     """Return a meaningful HTTPException for known LLM API error codes, or None."""
     from synthadoc.errors import DailyQuotaExhaustedException, CodingToolQuotaExhaustedException
-    _SWITCH = "Switch to another provider by editing [agents] in .synthadoc/config.toml and restarting the server (options: anthropic, openai, gemini, groq, minimax, deepseek, ollama)."
     # RuntimeError raised by CodingToolCLIProvider._parse_output (claude-code / opencode)
     # carries the tool's own error message — surface it without a stack trace.
     if isinstance(exc, RuntimeError):
@@ -101,12 +109,12 @@ def _classify_llm_error(exc: Exception) -> "HTTPException | None":
     if isinstance(exc, DailyQuotaExhaustedException):
         return HTTPException(
             status_code=503,
-            detail=f"Daily quota exhausted for {exc.provider} — no requests possible until midnight UTC. {_SWITCH}",
+            detail=f"Daily quota exhausted for {exc.provider} — no requests possible until midnight UTC. {_SWITCH_PROVIDER_HINT}",
         )
     if isinstance(exc, CodingToolQuotaExhaustedException):
         return HTTPException(
             status_code=503,
-            detail=f"Coding tool quota exhausted — {exc}. {_SWITCH}",
+            detail=f"Coding tool quota exhausted — {exc}. {_SWITCH_PROVIDER_HINT}",
         )
 
     # openai/anthropic SDKs set status_code directly on the exception;
@@ -154,7 +162,7 @@ def _classify_llm_error(exc: Exception) -> "HTTPException | None":
         detail = err_msg or str(exc)
         return HTTPException(
             status_code=403,
-            detail=f"LLM provider quota or permission error (403): {detail}. {_SWITCH}",
+            detail=f"LLM provider quota or permission error (403): {detail}. {_SWITCH_PROVIDER_HINT}",
         )
     if code == 400:
         body = getattr(exc, "body", None) or {}
@@ -175,21 +183,20 @@ def _classify_llm_error(exc: Exception) -> "HTTPException | None":
         return HTTPException(
             status_code=413,
             detail=f"LLM provider rejected request as too large (413): {detail}. "
-                   f"Reduce context via max_source_chars in .synthadoc/config.toml, or {_SWITCH}",
+                   f"Reduce context via max_source_chars in .synthadoc/config.toml, or {_SWITCH_PROVIDER_HINT}",
         )
     if code == 429:
         msg = str(exc)
-        _SWITCH_429 = "Switch to another provider by editing [agents] in .synthadoc/config.toml and restarting the server (options: anthropic, openai, gemini, groq, minimax, deepseek, ollama)."
         if "generativelanguage.googleapis.com" in msg or "gemini" in msg.lower():
-            hint = f"Gemini free-tier quota exhausted. Wait for the daily reset or switch providers. {_SWITCH_429}"
+            hint = f"Gemini free-tier quota exhausted. Wait for the daily reset or switch providers. {_SWITCH_PROVIDER_HINT}"
         elif "groq" in msg.lower():
-            hint = f"Groq rate limit hit. Wait for the retry window or switch providers. {_SWITCH_429}"
+            hint = f"Groq rate limit hit. Wait for the retry window or switch providers. {_SWITCH_PROVIDER_HINT}"
         elif "anthropic" in msg.lower():
-            hint = f"Anthropic rate limit hit. Wait a moment or switch providers. {_SWITCH_429}"
+            hint = f"Anthropic rate limit hit. Wait a moment or switch providers. {_SWITCH_PROVIDER_HINT}"
         elif "openai" in msg.lower():
-            hint = f"OpenAI rate limit hit. Wait a moment or switch providers. {_SWITCH_429}"
+            hint = f"OpenAI rate limit hit. Wait a moment or switch providers. {_SWITCH_PROVIDER_HINT}"
         else:
-            hint = f"LLM provider rate limit hit. Wait a moment or switch providers. {_SWITCH_429}"
+            hint = f"LLM provider rate limit hit. Wait a moment or switch providers. {_SWITCH_PROVIDER_HINT}"
         return HTTPException(
             status_code=429,
             detail=f"LLM quota exceeded (429). {hint}",
