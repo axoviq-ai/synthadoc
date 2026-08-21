@@ -796,9 +796,10 @@ async def tool_transition_lifecycle_state(
 ) -> dict:
     """Transition a page to a new lifecycle state and record an audit event.
 
-    Validates the target state string before writing.  Any workflow that
-    moves pages between states should use this tool so the audit trail is
-    always complete.
+    Validates both the target state name and the transition graph before
+    writing — the same rules enforced by the HTTP endpoint and MCP server.
+    Any workflow that moves pages between states should use this tool so the
+    audit trail is always complete.
 
     LifecycleState in this codebase uses plain string constants (not an enum).
     Assigning page.status = to_state is correct; do NOT call LifecycleState(to_state).
@@ -808,6 +809,8 @@ async def tool_transition_lifecycle_state(
         {"success": True, "from_state": str, "to_state": str}
         {"success": False, "error": str}
     """
+    from synthadoc.storage.wiki import validate_lifecycle_transition
+
     if to_state not in _VALID_STATES:
         return {
             "success": False,
@@ -819,6 +822,15 @@ async def tool_transition_lifecycle_state(
         return {"success": False, "error": f"Page not found: {slug!r}"}
 
     from_state = page.status if page.status else "unknown"
+
+    # Enforce the lifecycle state-machine graph — same rules as the HTTP endpoint
+    # and MCP server.  Lint and ingest bypass this check intentionally (they write
+    # via write_page() directly); this tool is user-driven and must not be more
+    # permissive than the other user-facing surfaces.
+    err = validate_lifecycle_transition(from_state, to_state)
+    if err:
+        return {"success": False, "error": err}
+
     page.status = to_state  # LifecycleState constants are plain strings
 
     if to_state == "active":
