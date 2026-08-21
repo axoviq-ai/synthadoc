@@ -454,6 +454,84 @@ async def test_transition_hooks_none_safe(tmp_path):
     assert result["success"] is True  # must not raise
 
 
+# ── tool_transition_lifecycle_state — state-machine graph enforcement ─────────
+
+@pytest.mark.asyncio
+async def test_transition_rejects_forbidden_path_archived_to_active(tmp_path):
+    """archived → active is not in ALLOWED_LIFECYCLE_TRANSITIONS; must be rejected."""
+    store = _make_store(tmp_path, {
+        "alan-turing": _page(status=LifecycleState.ARCHIVED),
+    })
+    ctx = _ctx(tmp_path, store)
+
+    from synthadoc.agents.workflows._tools import tool_transition_lifecycle_state
+    result = await tool_transition_lifecycle_state(
+        ctx, slug="alan-turing", to_state="active",
+        reason="trying a forbidden path",
+    )
+
+    assert result["success"] is False
+    assert "not permitted" in result["error"]
+    # Verify the page was NOT written.
+    page = store.read_page("alan-turing")
+    assert page.status == LifecycleState.ARCHIVED
+
+
+@pytest.mark.asyncio
+async def test_transition_rejects_same_state(tmp_path):
+    """active → active must be rejected (same-state is never a valid transition)."""
+    store = _make_store(tmp_path, {
+        "ada-lovelace": _page(status=LifecycleState.ACTIVE),
+    })
+    ctx = _ctx(tmp_path, store)
+
+    from synthadoc.agents.workflows._tools import tool_transition_lifecycle_state
+    result = await tool_transition_lifecycle_state(
+        ctx, slug="ada-lovelace", to_state="active",
+        reason="no-op same-state",
+    )
+
+    assert result["success"] is False
+    assert "already in state" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_transition_rejects_draft_to_stale(tmp_path):
+    """draft → stale is not in ALLOWED_LIFECYCLE_TRANSITIONS; must be rejected."""
+    store = _make_store(tmp_path, {
+        "eniac": _page(status=LifecycleState.DRAFT),
+    })
+    ctx = _ctx(tmp_path, store)
+
+    from synthadoc.agents.workflows._tools import tool_transition_lifecycle_state
+    result = await tool_transition_lifecycle_state(
+        ctx, slug="eniac", to_state="stale",
+        reason="trying another forbidden path",
+    )
+
+    assert result["success"] is False
+    assert "not permitted" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_transition_allows_contradicted_to_active(tmp_path):
+    """contradicted → active is the resolver's valid path; must succeed."""
+    store = _make_store(tmp_path, {
+        "grace-hopper": _page(status=LifecycleState.CONTRADICTED),
+    })
+    ctx = _ctx(tmp_path, store)
+
+    from synthadoc.agents.workflows._tools import tool_transition_lifecycle_state
+    result = await tool_transition_lifecycle_state(
+        ctx, slug="grace-hopper", to_state="active",
+        reason="resolved by contradiction-resolver — strategy: Content rewrite, attempt 1",
+    )
+
+    assert result["success"] is True
+    assert result["from_state"] == "contradicted"
+    assert result["to_state"] == "active"
+
+
 # ── tool_get_wiki_status ──────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
