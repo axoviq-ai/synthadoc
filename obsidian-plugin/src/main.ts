@@ -2834,28 +2834,76 @@ class AuditModal extends Modal {
             summarySection.style.display = "";
         };
 
+        // ── _pollJob: poll a background job until terminal, updating statusLine ─
+        const _pollJob = async (
+            jobId: string,
+            progressLabel: (p: any) => string,
+            onDone: () => Promise<void>,
+            onError: (msg: string) => void,
+            btnsToDisable: HTMLButtonElement[],
+        ) => {
+            const POLL_MS = 3000;
+            const poll = async () => {
+                try {
+                    const job = await (api as any).job(jobId) as any;
+                    const status: string = job.status ?? "unknown";
+                    if (status === "pending" || status === "running") {
+                        const progress = job.progress ?? {};
+                        const checked = progress.pages_checked ?? 0;
+                        const total = progress.pages_total ?? 0;
+                        const phase: string = progress.phase ?? "starting";
+                        const current: string = progress.current_slug ?? "";
+                        if (phase === "auditing" && total > 0) {
+                            statusLine.textContent =
+                                `⏳ ${progressLabel(progress)} — ${checked}/${total} pages` +
+                                (current ? ` (checking "${current}")` : "");
+                        } else {
+                            statusLine.textContent = `⏳ ${progressLabel(progress)} — starting…`;
+                        }
+                        setTimeout(poll, POLL_MS);
+                    } else if (status === "complete") {
+                        await onDone();
+                    } else {
+                        // failed / dead
+                        onError(job.error ?? "Audit failed — check the server log for details.");
+                        btnsToDisable.forEach(b => { b.disabled = false; });
+                    }
+                } catch {
+                    onError("Lost connection to server — is synthadoc serve running?");
+                    btnsToDisable.forEach(b => { b.disabled = false; });
+                }
+            };
+            poll();
+        };
+
         // ── Run Audit handler ─────────────────────────────────────────────────
         runBtn.addEventListener("click", async () => {
             runBtn.disabled = true;
             const slug = getPageSlug();
             statusLine.textContent = slug
-                ? `⏳ Running audit for "${slug}"…`
-                : "⏳ Running audit for all active pages… (this may take a while)";
+                ? `⏳ Starting audit for "${slug}"…`
+                : "⏳ Starting audit for all active pages…";
             tableWrap.empty();
             pagerWrap.empty();
             summarySection.style.display = "none";
             try {
                 const r = await (api as any).auditCitationsFaithfulness(slug, false) as any;
-                _faithResults = (r.results ?? []) as FaithResult[];
-                _faithPage = 0;
-                statusLine.textContent = "";
-                renderTable();
-                // Refresh cache view (stale list may have cleared)
-                const cached = await (api as any).getFaithfulnessCache();
-                _applyCache(cached);
+                const jobId: string = r.job_id;
+                if (!jobId) throw new Error("No job_id returned");
+                _pollJob(
+                    jobId,
+                    () => "Auditing citations",
+                    async () => {
+                        const cached = await (api as any).getFaithfulnessCache();
+                        _faithPage = 0;
+                        _applyCache(cached);
+                        runBtn.disabled = false;
+                    },
+                    (msg: string) => { statusLine.textContent = msg; },
+                    [runBtn],
+                );
             } catch {
                 statusLine.textContent = "Audit failed — is synthadoc serve running?";
-            } finally {
                 runBtn.disabled = false;
             }
         });
@@ -2912,17 +2960,32 @@ class AuditModal extends Modal {
             rerunStaleBtn.disabled = true;
             runBtn.disabled = true;
             const n = _staleSlugsList.length;
-            statusLine.textContent = `⏳ Re-auditing ${n} stale page${n !== 1 ? "s" : ""}…`;
+            statusLine.textContent = `⏳ Starting re-audit of ${n} stale page${n !== 1 ? "s" : ""}…`;
             try {
-                await (api as any).auditCitationsFaithfulness(undefined, false, true);
-                const cached = await (api as any).getFaithfulnessCache();
-                _faithPage = 0;
-                _applyCache(cached);
-                statusLine.textContent = "";
+                const r = await (api as any).auditCitationsFaithfulness(undefined, false, true) as any;
+                const jobId: string = r.job_id;
+                if (!jobId) throw new Error("No job_id returned");
+                _pollJob(
+                    jobId,
+                    () => "Re-auditing stale pages",
+                    async () => {
+                        const cached = await (api as any).getFaithfulnessCache();
+                        _faithPage = 0;
+                        _applyCache(cached);
+                        rerunStaleBtn.disabled = false;
+                        runBtn.disabled = false;
+                    },
+                    (msg: string) => {
+                        console.error("Citation faithfulness re-run error:", msg);
+                        statusLine.textContent = msg;
+                        rerunStaleBtn.disabled = false;
+                        runBtn.disabled = false;
+                    },
+                    [rerunStaleBtn, runBtn],
+                );
             } catch (e) {
                 console.error("Citation faithfulness re-run error:", e);
-                statusLine.textContent = "Re-audit failed — check the server log for details.";
-            } finally {
+                statusLine.textContent = "Re-audit failed — is synthadoc serve running?";
                 rerunStaleBtn.disabled = false;
                 runBtn.disabled = false;
             }

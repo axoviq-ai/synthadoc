@@ -327,10 +327,32 @@ def _run_faithfulness(
             console.print("[yellow]Audit cancelled.[/yellow]")
             raise typer.Exit(1)
 
-    results = asyncio.run(run_faithfulness_audit(wiki_root, store, provider, page))
-    _render_faithfulness(results, as_json)
+    # Run the audit slug-by-slug so progress is visible for large wikis
+    from synthadoc.agents.faithfulness_cache import merge_results_into_cache
+    from synthadoc.storage.wiki import LifecycleState
 
-    has_issues = any(r.verdict in ("drift", "hallucination") for r in results)
+    if page:
+        slugs_to_audit = [page] if store.read_page(page) is not None else []
+    else:
+        slugs_to_audit = [
+            s for s in store.all_slugs()
+            if (p := store.read_page(s)) is not None
+            and p.status == LifecycleState.ACTIVE
+        ]
+
+    all_results: list = []
+    total = len(slugs_to_audit)
+    for i, slug in enumerate(slugs_to_audit, 1):
+        console.print(f"[dim]({i}/{total})[/dim] Checking [bold]{slug}[/bold]…")
+        page_results = asyncio.run(
+            run_faithfulness_audit(wiki_root, store, provider, slug)
+        )
+        all_results.extend(page_results)
+
+    merge_results_into_cache(wiki_root, all_results, store, checked_slugs=slugs_to_audit)
+    _render_faithfulness(all_results, as_json)
+
+    has_issues = any(r.verdict in ("drift", "hallucination") for r in all_results)
     raise SystemExit(1 if has_issues else 0)
 
 

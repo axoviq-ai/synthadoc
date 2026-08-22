@@ -76,6 +76,36 @@ def _api(path: str, method: str = "GET", body: dict | None = None) -> dict:
         return r.json()
 
 
+def _run_audit(page_slug: str | None = None, stale_only: bool = False,
+               poll_interval: float = 2.0, max_wait: float = 180.0) -> dict:
+    """POST /audit/citations/faithfulness, then poll /jobs/{id} until terminal.
+
+    Returns the job object once complete.  Raises AssertionError if the job
+    fails or the wait exceeds max_wait seconds.
+    """
+    body: dict = {}
+    if page_slug:
+        body["page_slug"] = page_slug
+    if stale_only:
+        body["stale_only"] = True
+
+    resp = _api("/audit/citations/faithfulness", method="POST", body=body)
+    job_id: str = resp.get("job_id", "")
+    assert job_id, f"Expected job_id in response, got: {resp}"
+
+    deadline = time.time() + max_wait
+    while time.time() < deadline:
+        job = _api(f"/jobs/{job_id}")
+        status = job.get("status", "unknown")
+        if status == "complete":
+            return job
+        if status in ("failed", "dead"):
+            pytest.fail(f"Faithfulness job {job_id} ended with status={status!r}: {job}")
+        time.sleep(poll_interval)
+
+    pytest.fail(f"Faithfulness job {job_id} did not complete within {max_wait}s")
+
+
 def _get_wiki_path() -> Path | None:
     """Return the wiki root path reported by /status, or None if unreachable."""
     try:
@@ -237,14 +267,14 @@ def test_faithfulness_per_page_audit(faith_test_page):
     rated 'supported'; xfail is used rather than a hard fail so a single
     conservative LLM response doesn't block CI.
     """
-    resp = _api("/audit/citations/faithfulness", method="POST", body={
-        "page_slug": _FAITH_SLUG,
-    })
-    assert "results" in resp, f"Expected 'results' key in response: {resp}"
-    assert resp.get("pages_checked", 0) >= 1, f"Expected pages_checked >= 1: {resp}"
-    assert resp.get("citations_checked", 0) >= 1, f"Expected citations_checked >= 1: {resp}"
+    _run_audit(page_slug=_FAITH_SLUG)
 
-    for r in resp["results"]:
+    # Verdicts are now in the cache — read them from there
+    cache = _api("/audit/citations/faithfulness/cache")
+    slug_results = [r for r in cache.get("results", []) if r.get("slug") == _FAITH_SLUG]
+    assert slug_results, f"Expected results for {_FAITH_SLUG!r} in cache after audit: {cache}"
+
+    for r in slug_results:
         assert r.get("verdict") in _VALID_VERDICTS, (
             f"Unexpected verdict '{r.get('verdict')}' for "
             f"citation {r.get('citation_marker')!r}"
@@ -254,7 +284,7 @@ def test_faithfulness_per_page_audit(faith_test_page):
     # xfail rather than hard-fail: conservative LLM runs occasionally miss
     # even clear contradictions.
     contradicted_marker = f"^[{_SOURCE_FILENAME}:2-2]"
-    verdicts = {r["citation_marker"]: r["verdict"] for r in resp["results"]}
+    verdicts = {r["citation_marker"]: r["verdict"] for r in slug_results}
     if verdicts.get(contradicted_marker) == "supported":
         pytest.xfail(
             f"LLM rated the contradicted citation as 'supported' on this run. "
@@ -275,9 +305,7 @@ def test_faithfulness_cache_reflects_audit(faith_test_page):
     and must NOT list that slug in stale_slugs.
     """
     # Run the audit to populate the cache.
-    _api("/audit/citations/faithfulness", method="POST", body={
-        "page_slug": _FAITH_SLUG,
-    })
+    _run_audit(page_slug=_FAITH_SLUG)
 
     cache = _api("/audit/citations/faithfulness/cache")
     assert "results" in cache, f"Expected 'results' in cache response: {cache}"
@@ -329,9 +357,7 @@ def test_faithfulness_cache_invalidated_on_source_update(faith_test_page):
 
     # ── Steps 1–3: audit with T1, verify fresh ────────────────────────────────
     _write_page_with_ingested(wiki_path, _T1)
-    _api("/audit/citations/faithfulness", method="POST", body={
-        "page_slug": _FAITH_SLUG,
-    })
+    _run_audit(page_slug=_FAITH_SLUG)
     cache = _api("/audit/citations/faithfulness/cache")
     assert _FAITH_SLUG not in cache["stale_slugs"], (
         f"Expected {_FAITH_SLUG!r} fresh after first audit (T1); "
@@ -347,9 +373,7 @@ def test_faithfulness_cache_invalidated_on_source_update(faith_test_page):
     )
 
     # ── Steps 6–7: re-audit with T2, verify fresh again ──────────────────────
-    _api("/audit/citations/faithfulness", method="POST", body={
-        "page_slug": _FAITH_SLUG,
-    })
+    _run_audit(page_slug=_FAITH_SLUG)
     cache = _api("/audit/citations/faithfulness/cache")
     assert _FAITH_SLUG not in cache["stale_slugs"], (
         f"Expected {_FAITH_SLUG!r} fresh after re-audit (T2); "

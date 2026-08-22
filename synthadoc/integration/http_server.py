@@ -548,6 +548,12 @@ async def _worker_loop(orch, session_state: dict) -> None:
                 elif job.operation == "scaffold":
                     domain = job.payload.get("domain", "")
                     job_coro = orch._run_scaffold(job.id, domain=domain)
+                elif job.operation == "faithfulness":
+                    page_slug = job.payload.get("page_slug")
+                    stale_only = job.payload.get("stale_only", False)
+                    job_coro = orch._run_faithfulness(
+                        job.id, page_slug=page_slug, stale_only=stale_only
+                    )
                 else:
                     job_coro = None
                 if job_coro is not None:
@@ -629,32 +635,6 @@ def _find_dist_dir() -> Path:
     return Path(__file__).parent.parent.parent / "web-ui" / "dist"
 
 
-async def _run_stale_faithfulness(wiki_root, store, provider, page_slug: str | None = None) -> dict:
-    """Run faithfulness audit only for stale pages and merge results into cache."""
-    from synthadoc.agents.faithfulness_cache import (
-        read_cache,
-        get_stale_slugs,
-        merge_results_into_cache,
-    )
-    from synthadoc.agents.citation_faithfulness import run_faithfulness_audit
-
-    cache = read_cache(wiki_root)
-    stale = get_stale_slugs(cache.get("entries", {}), store)
-    if page_slug:
-        stale = [s for s in stale if s == page_slug]
-    if not stale:
-        return {"results": [], "pages_checked": 0, "citations_checked": 0,
-                "message": "All cached results are up to date."}
-    all_results: list = []
-    for slug in stale:
-        all_results.extend(await run_faithfulness_audit(wiki_root, store, provider, slug))
-    merge_results_into_cache(wiki_root, all_results, store, checked_slugs=stale)
-    return {
-        "results": [{"slug": r.slug, "citation_marker": r.citation_marker,
-                     "verdict": r.verdict, "reason": r.reason} for r in all_results],
-        "pages_checked": len({r.slug for r in all_results}),
-        "citations_checked": len(all_results),
-    }
 
 
 def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mcp: bool = True) -> FastAPI:
@@ -1482,22 +1462,16 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
     @app.post("/audit/citations/faithfulness")
     async def audit_citations_faithfulness(req: CitationFaithfulnessRequest):
         from synthadoc.agents.citation_faithfulness import (
-            run_faithfulness_audit,
             estimate_faithfulness_tokens,
             extract_citations_for_check,
         )
-        from synthadoc.providers import make_provider as _make_provider
         from synthadoc.providers.pricing import estimate_cost as _estimate_cost
         from synthadoc.storage.wiki import WikiStorage as _WikiStorage, LifecycleState as _LifecycleState
 
         orch = app.state.orch
         wiki_root = orch._root
         store = _WikiStorage(wiki_root / "wiki")
-        provider = _make_provider("query", orch._cfg)
         agent_cfg = orch._cfg.agents.resolve("query")
-
-        if req.stale_only and not req.dry_run:
-            return await _run_stale_faithfulness(wiki_root, store, provider, req.page_slug)
 
         if req.dry_run:
             extracted_dir = wiki_root / ".synthadoc" / "extracted"
@@ -1527,31 +1501,17 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                 "estimated_cost_usd": round(est_cost, 6),
             }
 
-        results = await run_faithfulness_audit(
-            wiki_root, store, provider, req.page_slug
+        # Enqueue as a background job so the server stays responsive during long audits
+        job_id = await orch.queue.enqueue(
+            "faithfulness",
+            {
+                "page_slug": req.page_slug,
+                "stale_only": req.stale_only,
+            },
         )
-        # Compute audit scope so citation-free pages get a cache entry too
-        if req.page_slug:
-            audit_scope = [req.page_slug] if store.read_page(req.page_slug) is not None else []
-        else:
-            audit_scope = [
-                s for s in store.all_slugs()
-                if (p := store.read_page(s)) is not None and p.status == _LifecycleState.ACTIVE
-            ]
-        from synthadoc.agents.faithfulness_cache import merge_results_into_cache as _merge_cache
-        _merge_cache(wiki_root, results, store, checked_slugs=audit_scope)
         return {
-            "results": [
-                {
-                    "slug": r.slug,
-                    "citation_marker": r.citation_marker,
-                    "verdict": r.verdict,
-                    "reason": r.reason,
-                }
-                for r in results
-            ],
-            "pages_checked": len({r.slug for r in results}),
-            "citations_checked": len(results),
+            "job_id": job_id,
+            "message": "Citation faithfulness audit started — poll /jobs/{job_id} for progress.",
         }
 
     @app.get("/audit/citations/faithfulness/cache")
