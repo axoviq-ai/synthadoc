@@ -1,11 +1,14 @@
-﻿# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
 from __future__ import annotations
 
 import asyncio
 import json
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from synthadoc.storage.wiki import WikiStorage
 
 import typer
 from rich.console import Console
@@ -137,10 +140,19 @@ def citations_cmd(
     page: Optional[str] = typer.Option(None, "--page", help="Filter by page slug"),
     source: Optional[str] = typer.Option(None, "--source", help="Filter by source filename"),
     broken: bool = typer.Option(False, "--broken", help="Show validation failures only"),
+    faithfulness: bool = typer.Option(
+        False, "--faithfulness",
+        help="Verify claim text is supported by cited source lines (LLM audit, opt-in)."
+    ),
+    yes: bool = typer.Option(False, "--yes", help="Skip cost confirmation (faithfulness mode only)"),
     limit: int = typer.Option(50, "--limit", "-n"),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Show claim-level citations and validation failures."""
+    """Show claim-level citations, validation failures, or run a faithfulness audit."""
+    if faithfulness:
+        _run_faithfulness(wiki=wiki, page=page, yes=yes, as_json=as_json)
+        return
+
     import json as _json
     from synthadoc.cli._wiki import resolve_wiki
     db_wiki = resolve_wiki(wiki)
@@ -185,6 +197,137 @@ def citations_cmd(
             claim = (r.get("claim_excerpt") or "")[:60]
             table.add_row(page_s, src, lines, claim)
         console.print(table)
+
+
+def _collect_checks_for_cost(
+    wiki_root: "Path",
+    store: "WikiStorage",
+    page_slug: Optional[str],
+) -> "dict[str, list]":
+    """Collect citation checks without any LLM calls (for cost estimation)."""
+    from synthadoc.agents.citation_faithfulness import extract_citations_for_check
+    extracted_dir = wiki_root / ".synthadoc" / "extracted"
+    pages_with_checks = {}
+
+    if page_slug is not None:
+        slugs = [page_slug]
+    else:
+        slugs = store.all_slugs()
+
+    for slug in slugs:
+        page = store.read_page(slug)
+        if page is None or page.status != "active":
+            continue
+        checks, _ = extract_citations_for_check(slug, page, extracted_dir)
+        if checks:
+            pages_with_checks[slug] = checks
+    return pages_with_checks
+
+
+def _render_faithfulness(results: list, as_json: bool) -> None:
+    import json as _json
+
+    if as_json:
+        typer.echo(_json.dumps(
+            [{"slug": r.slug, "citation_marker": r.citation_marker,
+              "verdict": r.verdict, "reason": r.reason}
+             for r in results],
+            indent=2,
+        ))
+        return
+
+    if not results:
+        typer.echo("No citations found in active pages.")
+        return
+
+    _VERDICT_STYLE = {
+        "supported":     ("[green]✅ supported[/green]", ""),
+        "drift":         ("[yellow]⚠️  drift[/yellow]", ""),
+        "hallucination": ("[red]❌ hallucination[/red]", ""),
+        "skipped":       ("[dim]—  skipped[/dim]", ""),
+    }
+    slugs = sorted({r.slug for r in results})
+    n_pages = len(slugs)
+    table = Table(
+        title=f"Citation Faithfulness Report — {len(results)} citations across {n_pages} pages"
+    )
+    table.add_column("Page", style="cyan", no_wrap=True)
+    table.add_column("Citation", no_wrap=True)
+    table.add_column("Verdict")
+    table.add_column("Reason")
+    for r in results:
+        verdict_cell = _VERDICT_STYLE.get(r.verdict, (r.verdict, ""))[0]
+        table.add_row(r.slug, r.citation_marker, verdict_cell, r.reason or "")
+    console.print(table)
+
+    counts = {"hallucination": 0, "drift": 0, "supported": 0, "skipped": 0}
+    for r in results:
+        counts[r.verdict] = counts.get(r.verdict, 0) + 1
+    summary_parts = []
+    if counts["hallucination"]:
+        summary_parts.append(f"[red]{counts['hallucination']} hallucination{'s' if counts['hallucination'] != 1 else ''}[/red]")
+    if counts["drift"]:
+        summary_parts.append(f"[yellow]{counts['drift']} drift{'s' if counts['drift'] != 1 else ''}[/yellow]")
+    if counts["supported"]:
+        summary_parts.append(f"[green]{counts['supported']} supported[/green]")
+    if counts["skipped"]:
+        summary_parts.append(f"[dim]{counts['skipped']} skipped[/dim]")
+    console.print("\nSummary: " + " · ".join(summary_parts))
+
+
+def _run_faithfulness(
+    wiki: Optional[str],
+    page: Optional[str],
+    yes: bool,
+    as_json: bool,
+) -> None:
+    from synthadoc.cli._wiki import resolve_wiki
+    from synthadoc.cli.install import resolve_wiki_path
+    from synthadoc.config import load_config
+    from synthadoc.storage.wiki import WikiStorage
+    from synthadoc.providers import make_provider
+    from synthadoc.agents.citation_faithfulness import (
+        run_faithfulness_audit,
+        estimate_faithfulness_tokens,
+    )
+    from synthadoc.core.cost_guard import CostGuard, CostEstimate
+    from synthadoc.providers.pricing import estimate_cost
+
+    wiki_name = resolve_wiki(wiki)
+    wiki_root = resolve_wiki_path(wiki_name)
+    cfg = load_config(project_config=wiki_root / ".synthadoc" / "config.toml")
+    store = WikiStorage(wiki_root / "wiki")
+    provider = make_provider("query", cfg)
+    agent_cfg = cfg.agents.resolve("query")
+
+    if not yes:
+        pages_with_checks = _collect_checks_for_cost(wiki_root, store, page)
+        total_citations = sum(len(v) for v in pages_with_checks.values())
+        est_tokens = estimate_faithfulness_tokens(pages_with_checks)
+        est_cost = estimate_cost(
+            agent_cfg.model,
+            input_tokens=est_tokens,
+            output_tokens=est_tokens // 5,
+            is_local=agent_cfg.is_local,
+        )
+        guard = CostGuard(cfg.cost)
+        guard.check(
+            CostEstimate(
+                tokens=est_tokens,
+                cost_usd=est_cost,
+                operation=(
+                    f"citation faithfulness audit "
+                    f"({total_citations} citations across {len(pages_with_checks)} pages)"
+                ),
+            ),
+            interactive=True,
+        )
+
+    results = asyncio.run(run_faithfulness_audit(wiki_root, store, provider, page))
+    _render_faithfulness(results, as_json)
+
+    has_issues = any(r.verdict in ("drift", "hallucination") for r in results)
+    raise SystemExit(1 if has_issues else 0)
 
 
 lifecycle_audit_app = typer.Typer(help="Lifecycle event management.")
