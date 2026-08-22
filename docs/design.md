@@ -1,6 +1,6 @@
 ﻿# Synthadoc — Design Document
 
-**Version:** 1.3.0
+**Version:** 1.3.1
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -461,6 +461,16 @@ On-demand audit agent that verifies each claim's faithfulness to its cited sourc
 
 **Invocation:** Opt-in only — called via `synthadoc audit citations --faithfulness` or `POST /audit/citations/faithfulness`. Never runs as part of default lint. Runs against active pages by default; scoped to a single slug with `--page`.
 
+**Execution model (job engine):** The non-dry-run API path enqueues a background job and returns `{job_id, message}` immediately. The orchestrator's `_run_faithfulness` coroutine dispatches per the job payload (`page_slug`, `stale_only`), emits per-page progress updates via `update_progress(job_id, {phase, current_slug, pages_checked, pages_total})`, and writes the merged cache on completion via `complete(job_id, result={pages_checked, citations_checked})`. Clients poll `GET /jobs/{job_id}` every 3 seconds; the Obsidian plugin renders live progress (current slug + checked/total count) while the job is in `in_progress` state. Both Run Audit and Re-run Audit buttons are disabled for the duration of the job. If the plugin is closed and reopened while a job is still running, the tab auto-resumes polling by querying `GET /jobs?status=in_progress` and `GET /jobs?status=pending` for any `faithfulness` operation on tab open, restoring the progress display seamlessly.
+
+**CLI delegation:** The CLI delegates all LLM work to the running server — no API key or LLM provider is needed in the terminal process. Cost checks still run locally from the wiki files (reading page frontmatter and citation counts), but the actual audit is dispatched via `POST /audit/citations/faithfulness` and polled on `GET /jobs/{job_id}` with per-page progress printed to the terminal. This mirrors the same delegation pattern as `synthadoc lint run`.
+
+**Cache-aware CLI:** Before posting, the CLI reads the local cache to determine scope automatically:
+- **No cache** → full run across all active pages.
+- **Cache with stale pages** → `stale_only=True` to re-audit only the changed pages; unchanged pages are served from cache at no cost.
+- **Cache fully fresh** → results are printed from cache immediately without any server round-trip or LLM calls.
+- **`--force` flag** → always enqueues a full run regardless of cache state.
+
 | Step | What happens |
 |---|---|
 | 1 — Scope | Iterate active pages (or the filtered slug). Pages with zero citations are skipped. |
@@ -828,7 +838,7 @@ Note: BM25 IDF requires a minimum of 3 documents in the corpus for non-zero scor
 | `POST`   | `/pages/{slug}/rollback`                     | `{index: int, reason: str}`                                                        | Restore page body to snapshot N                                                                                                                                   |
 | `POST`   | `/pages/{slug}/snapshot`                     | `{content: str, reason?: str}`                                                     | Record a content snapshot only when content differs from the last stored snapshot (`recorded: true/false`). Called by the Obsidian plugin on vault modify events. |
 | `DELETE` | `/pages/{slug}/history`                      | —                                                                                 | Delete all lifecycle events (including snapshots) for a slug; intended for test teardown.                                                                         |
-| `POST`   | `/audit/citations/faithfulness`              | `{page?: str, dry_run?: bool, stale_only?: bool}`                                | `[FaithfulnessResult]` — opt-in LLM faithfulness audit; `dry_run=true` returns cost estimate only; `stale_only=true` restricts run to stale pages            |
+| `POST`   | `/audit/citations/faithfulness`              | `{page?: str, dry_run?: bool, stale_only?: bool}`                                | `{job_id: str, message: str}` — enqueues a background faithfulness audit job; poll `GET /jobs/{job_id}` for progress and completion. `dry_run=true` returns cost estimate synchronously (`{pages, citations, estimated_cost_usd}`) without enqueuing a job; `stale_only=true` restricts the enqueued run to stale pages |
 | `GET`    | `/audit/citations/faithfulness/cache`        | —                                                                                | `{results:[{slug,citation_marker,verdict,reason,checked_at}], stale_slugs, total_slugs_cached, last_checked_at}` — cached results with per-row audit timestamp; no LLM calls |
 
 **`GET /jobs` query parameters:**
@@ -840,7 +850,7 @@ Note: BM25 IDF requires a minimum of 3 documents in the corpus for non-zero scor
 | `sort`    | `created_at` \| `status` \| `operation`                                                     | `created_at` | Column to sort by    |
 | `order`   | `asc` \| `desc`                                                                             | `asc`        | Sort direction       |
 
-**Operation types:** `ingest` (file/URL/web-search ingest jobs) and `lint` (lint pass jobs).
+**Operation types:** `ingest` (file/URL/web-search ingest jobs), `lint` (lint pass jobs), and `faithfulness` (citation faithfulness audit jobs).
 
 **Job object:**
 
@@ -3737,7 +3747,15 @@ either does not abort the workflow. The page file is written first via
 
 ### v1.3.1
 
-- **Citation Faithfulness Audit** — opt-in LLM audit that verifies each `^[file:L-L]` claim is actually supported by the referenced source lines. One LLM call per page (batch all citations). Results classified as `supported`, `drift`, `hallucination`, or `skipped`. CLI: `synthadoc audit citations --faithfulness [--page <slug>] [--yes] [--json]`. API: `POST /audit/citations/faithfulness` and `GET /audit/citations/faithfulness/cache`. Results persist in `.synthadoc/faithfulness-cache.json` keyed by per-page `ingested` timestamp; stale detection re-uses the same key without re-running unchanged pages. See [§4 CitationFaithfulnessAgent](#citationfaithfulnessagent).
+- **Citation Faithfulness Audit** — opt-in LLM audit that verifies each `^[file:L-L]` claim is actually supported by the referenced source lines. One LLM call per page (batch all citations). Results classified as `supported`, `drift`, `hallucination`, or `skipped`. CLI: `synthadoc audit citations --faithfulness [--page <slug>] [--yes] [--json] [--force]`. API: `POST /audit/citations/faithfulness` (enqueues background job, returns `{job_id}`) and `GET /audit/citations/faithfulness/cache`. Results persist in `.synthadoc/faithfulness-cache.json` keyed by per-page `ingested` timestamp; stale detection re-uses the same key without re-running unchanged pages. See [§4 CitationFaithfulnessAgent](#citationfaithfulnessagent).
+- **Background job engine for faithfulness audit** — `POST /audit/citations/faithfulness` now returns `{job_id, message}` immediately and runs the audit in the orchestrator's job worker loop. Per-page progress (`phase`, `current_slug`, `pages_checked`, `pages_total`) is emitted via `update_progress`; results are written to cache on `complete`. The `faithfulness` operation type is added to the job engine alongside `ingest` and `lint`.
+- **CLI delegation — no API key in terminal** — `synthadoc audit citations --faithfulness` delegates LLM work to the running server (same pattern as `synthadoc lint run`). The terminal process performs only a local cost check; the audit job is enqueued via HTTP and polled with per-page progress output. No provider API key is required in the shell environment.
+- **Cache-aware CLI** — the CLI reads the local faithfulness cache before posting: no cache → full run; stale pages present → `stale_only=True`; cache fully fresh → results printed from cache at no cost. `--force` overrides all cache decisions and always enqueues a full run.
+- **Plugin: resume polling on tab re-open** — if a faithfulness job is still running when the plugin is closed and reopened, the Citation faithfulness tab auto-detects the in-progress job via `GET /jobs?status=in_progress` on tab open, disables both audit buttons, and resumes the live progress display until completion.
+- **Plugin: clickable page links** — each row in the Citation faithfulness results table now renders the page slug as a clickable link. Clicking opens the page in the active Obsidian editor leaf, locates the citation marker in the document body using offset-to-position conversion, selects it, and scrolls it into view — navigating directly to the specific citation that needs attention.
+- **Tab name casing** — the Citation Faithfulness tab is now labelled **"Citation faithfulness"** (lowercase f) to match the "Query history" and "Ingest history" naming pattern used elsewhere in the Audit plugin.
+- **Rich markup escaping in CLI output** — citation markers containing `[...]` (e.g. `^[arpanet.pdf:3-5]`) are now passed through `rich.markup.escape()` before being placed in Rich table cells, preventing the bracket content from being silently consumed as a Rich markup tag and displaying only `^`.
+- **Citation and Reason column widths** — the CLI faithfulness table now constrains the **Citation** column to `max_width=44` and sets `min_width=45` on the **Reason** column, giving the human-readable diagnosis the majority of the horizontal space while keeping the marker compact.
 - **`last_checked_at` and per-row `checked_at`** — `GET /audit/citations/faithfulness/cache` now returns `last_checked_at` (most recent audit timestamp across all entries) and `checked_at` per result row, enabling the Obsidian tab to display a "Last audited: …" footer and a per-citation "Audited" column in local time.
 - **YAML date normalisation in `_page_key`** — PyYAML parses unquoted date frontmatter (e.g. `ingested: 2026-04-08`) as Python `date` objects, which are not JSON-serialisable. `_page_key()` now calls `.isoformat()` on any `date`/`datetime` value before returning, fixing `TypeError: Object of type date is not JSON serializable` on wikis with pre-existing unquoted date fields.
 - **Citation Faithfulness tab — 7 UX improvements** — (1) scope selector replaced with a button-group toggle (**All active pages** / **Specific page**); (2) cost estimate auto-calculated on tab open and slug change, no Estimate button required; (3) fuzzy slug autocomplete fetches active slugs from `/lifecycle/pages` and filters as the user types; (4) run button dynamically labelled **▶ Run Audit** / **▶ Re-run Audit** based on cached state; (5) "Audited" column added to the results table showing per-citation local timestamp; (6) stale banner now includes an inline explanation of what stale means and what re-running does; (7) verdict summary promoted to a coloured badge row with counts and an editorial guidance paragraph.
