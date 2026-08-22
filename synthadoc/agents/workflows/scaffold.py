@@ -87,6 +87,15 @@ When you have no more tool calls to make, produce a plain-text summary (no JSON)
    - N pages updated with category labels (categories_updated)
    - Whether ROUTING.md was regenerated (routing_regenerated true/false)
    - A reminder: "User-written sections above the scaffold marker were preserved."
+
+## CRITICAL RULE — confirm before run_scaffold
+
+You MUST call confirm (step 2) and receive {"confirmed": true} before calling run_scaffold.
+- Calling run_scaffold without first calling confirm is STRICTLY PROHIBITED.
+- If confirm returns {"confirmed": false}, write "Scaffold cancelled by user." and STOP.
+  Do NOT call run_scaffold under any circumstances when confirmed is false.
+- The sequence is always: get_scaffold_preview → confirm → run_scaffold (if confirmed).
+  Skipping the confirm step and jumping directly to run_scaffold is WRONG.
 """
 
 
