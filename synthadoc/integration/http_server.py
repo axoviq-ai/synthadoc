@@ -684,12 +684,13 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
     _session_state: dict[str, dict] = {}  # session_id -> {"mode": str, "cursor": int}
 
     from fastapi.middleware.cors import CORSMiddleware
+    _port = cfg.server.port  # use the configured port, not a hardcoded default
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
             "app://obsidian.md",
-            "http://localhost", "http://localhost:3000", "http://localhost:5173", "http://localhost:7070",
-            "http://127.0.0.1", "http://127.0.0.1:3000", "http://127.0.0.1:5173", "http://127.0.0.1:7070",
+            "http://localhost", "http://localhost:3000", "http://localhost:5173", f"http://localhost:{_port}",
+            "http://127.0.0.1", "http://127.0.0.1:3000", "http://127.0.0.1:5173", f"http://127.0.0.1:{_port}",
         ],
         allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["Content-Type"],
