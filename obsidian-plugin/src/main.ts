@@ -2398,6 +2398,7 @@ class AuditModal extends Modal {
             citation_marker: string;
             verdict: string;
             reason: string;
+            checked_at?: string;
         };
 
         const VERDICT_ORDER: Record<string, number> = {
@@ -2420,8 +2421,188 @@ class AuditModal extends Modal {
         let _faithPage = 0;
         let _faithSortBy: "slug" | "verdict" = "slug";
         let _faithSortAsc = true;
+        let _staleSlugsList: string[] = [];
+        let _slugList: string[] = [];                  // active slugs for autocomplete
+        let _lastEstimateScope = "";                   // scope key when estimate was cached
+        let _lastEstimate: any = null;                 // cached estimate payload
+        let _estimateTimer: ReturnType<typeof setTimeout> | null = null;
+        type Scope = "all" | "specific";
+        let _scope: Scope = "all";
 
-        // ── Sort ─────────────────────────────────────────────────────────────
+        // ── Description blurb ────────────────────────────────────────────────
+        const desc = panel.createEl("p");
+        desc.style.cssText = "font-size:12px;color:var(--text-muted);margin:0 0 10px";
+        desc.textContent = "Verifies each claim is supported by its cited source. "
+            + "Citations are classified as Supported ✅, Drift ⚠️ (overstated or extrapolated), "
+            + "or Hallucination ❌ (contradicted or unsupported). "
+            + "Review flagged entries and correct the affected pages.";
+
+        // ── Cost estimate bar (auto-calculated) ───────────────────────────────
+        const costBar = panel.createEl("div");
+        costBar.style.cssText = "font-size:12px;background:var(--background-modifier-hover);"
+            + "border-radius:4px;padding:6px 10px;margin-bottom:10px;color:var(--text-muted)";
+        costBar.textContent = "⏳ Calculating cost estimate…";
+
+        const _showEstimate = (r: any, scopeLabel: string) => {
+            if (!r || r.pages === 0) {
+                costBar.textContent = `No active citations found in ${scopeLabel}.`;
+            } else {
+                costBar.textContent =
+                    `📊 ${scopeLabel}  ·  ${r.pages} page${r.pages !== 1 ? "s" : ""}`
+                    + `  ·  ${r.citations} citation${r.citations !== 1 ? "s" : ""}`
+                    + `  ·  ~${(r.estimated_tokens ?? 0).toLocaleString()} tokens`
+                    + `  ·  $${(r.estimated_cost_usd ?? 0).toFixed(4)} estimated`;
+            }
+        };
+
+        const _fetchEstimate = async (slug?: string) => {
+            const scopeKey = slug ?? "__all__";
+            // Return cached value if scope hasn't changed
+            if (scopeKey === _lastEstimateScope && _lastEstimate !== null) {
+                _showEstimate(_lastEstimate, slug ? `"${slug}"` : "all active pages");
+                return;
+            }
+            costBar.textContent = "⏳ Calculating cost estimate…";
+            try {
+                const r = await (api as any).auditCitationsFaithfulness(slug, true) as any;
+                _lastEstimate = r;
+                _lastEstimateScope = scopeKey;
+                _showEstimate(r, slug ? `"${slug}"` : "all active pages");
+            } catch {
+                costBar.textContent = "Could not estimate cost — is synthadoc serve running?";
+            }
+        };
+
+        const _scheduleEstimate = (slug?: string) => {
+            if (_estimateTimer) clearTimeout(_estimateTimer);
+            _estimateTimer = setTimeout(() => _fetchEstimate(slug), 500);
+        };
+
+        // ── Scope toggle (button group) ───────────────────────────────────────
+        const scopeRow = panel.createEl("div");
+        scopeRow.style.cssText = "display:flex;align-items:flex-start;gap:12px;margin-bottom:10px;flex-wrap:wrap";
+
+        const scopeLabel = scopeRow.createEl("span");
+        scopeLabel.style.cssText = "font-size:12px;color:var(--text-muted);line-height:28px;flex-shrink:0";
+        scopeLabel.textContent = "Scope:";
+
+        const scopeGroup = scopeRow.createEl("div");
+        scopeGroup.style.cssText = "display:flex;border:1px solid var(--background-modifier-border);border-radius:4px;overflow:hidden";
+
+        const btnAll  = scopeGroup.createEl("button", { text: "All active pages" }) as HTMLButtonElement;
+        const btnSpec = scopeGroup.createEl("button", { text: "Specific page" })   as HTMLButtonElement;
+        const _scopeBtnBase = "padding:4px 12px;font-size:12px;border:none;cursor:pointer;transition:background 0.15s";
+        const _scopeBtnActive = _scopeBtnBase + ";background:var(--interactive-accent);color:var(--text-on-accent)";
+        const _scopeBtnInactive = _scopeBtnBase + ";background:transparent;color:var(--text-normal)";
+        btnAll.style.cssText  = _scopeBtnActive;
+        btnSpec.style.cssText = _scopeBtnInactive;
+
+        // Slug autocomplete widget (shown only for "Specific page") ──────────
+        const slugWrap = scopeRow.createEl("div");
+        slugWrap.style.cssText = "position:relative;display:none";
+
+        const slugInput = slugWrap.createEl("input") as HTMLInputElement;
+        slugInput.placeholder = "Type to search page slug…";
+        slugInput.autocomplete = "off";
+        slugInput.style.cssText = "padding:4px 10px;font-size:12px;width:220px;"
+            + "border:1px solid var(--background-modifier-border);border-radius:4px;"
+            + "background:var(--background-primary);color:var(--text-normal)";
+
+        const slugDropdown = slugWrap.createEl("div");
+        slugDropdown.style.cssText = "display:none;position:absolute;top:100%;left:0;z-index:9999;"
+            + "background:var(--background-primary);border:1px solid var(--background-modifier-border);"
+            + "border-radius:4px;max-height:200px;overflow-y:auto;min-width:220px;box-shadow:0 4px 12px rgba(0,0,0,0.15)";
+
+        const _renderSlugDropdown = (query: string) => {
+            slugDropdown.empty();
+            if (!query && _slugList.length === 0) { slugDropdown.style.display = "none"; return; }
+            const matches = query
+                ? _slugList.filter(s => s.toLowerCase().includes(query.toLowerCase())).slice(0, 10)
+                : _slugList.slice(0, 10);
+            if (matches.length === 0) { slugDropdown.style.display = "none"; return; }
+            slugDropdown.style.display = "block";
+            for (const slug of matches) {
+                const item = slugDropdown.createEl("div", { text: slug });
+                item.style.cssText = "padding:6px 10px;cursor:pointer;font-size:12px;"
+                    + "border-bottom:1px solid var(--background-modifier-border-subtle)";
+                item.addEventListener("mouseenter", () => { item.style.background = "var(--background-modifier-hover)"; });
+                item.addEventListener("mouseleave", () => { item.style.background = ""; });
+                item.addEventListener("mousedown", (e) => {
+                    e.preventDefault(); // prevent blur before click registers
+                    slugInput.value = slug;
+                    slugDropdown.style.display = "none";
+                    _lastEstimate = null; // invalidate cache for new slug
+                    _fetchEstimate(slug);
+                });
+            }
+        };
+
+        slugInput.addEventListener("input", () => {
+            const q = slugInput.value.trim();
+            _renderSlugDropdown(q);
+            _lastEstimate = null;
+            _scheduleEstimate(q || undefined);
+        });
+        slugInput.addEventListener("focus", () => _renderSlugDropdown(slugInput.value.trim()));
+        slugInput.addEventListener("blur", () => {
+            // Delay to let mousedown on dropdown fire first
+            setTimeout(() => { slugDropdown.style.display = "none"; }, 150);
+        });
+
+        // Fetch active slugs when switching to "specific" scope ───────────────
+        const _fetchSlugs = async () => {
+            if (_slugList.length > 0) return;
+            try {
+                const data = await api.lifecyclePages() as any;
+                _slugList = ((data.pages ?? []) as any[])
+                    .filter((p: any) => p.state === "active" || p.status === "active")
+                    .map((p: any) => p.slug as string)
+                    .sort();
+            } catch { _slugList = []; }
+        };
+
+        // Scope toggle logic ──────────────────────────────────────────────────
+        const _setScope = (s: Scope) => {
+            _scope = s;
+            if (s === "all") {
+                btnAll.style.cssText  = _scopeBtnActive;
+                btnSpec.style.cssText = _scopeBtnInactive;
+                slugWrap.style.display = "none";
+                slugDropdown.style.display = "none";
+                _lastEstimate = null;
+                _fetchEstimate(undefined);
+            } else {
+                btnAll.style.cssText  = _scopeBtnInactive;
+                btnSpec.style.cssText = _scopeBtnActive;
+                slugWrap.style.display = "";
+                slugInput.value = "";
+                costBar.textContent = "Type a page slug above to estimate cost.";
+                _lastEstimate = null;
+                _fetchSlugs();
+            }
+        };
+        btnAll.addEventListener("click",  () => _setScope("all"));
+        btnSpec.addEventListener("click", () => _setScope("specific"));
+
+        // Current slug helper ─────────────────────────────────────────────────
+        const getPageSlug = (): string | undefined =>
+            _scope === "specific" && slugInput.value.trim() ? slugInput.value.trim() : undefined;
+
+        // ── Run Audit button ──────────────────────────────────────────────────
+        const runRow = panel.createEl("div");
+        runRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:8px";
+        const runBtn = runRow.createEl("button", { text: "▶ Run Audit" }) as HTMLButtonElement;
+        runBtn.title = "Run the LLM faithfulness check for the selected scope. "
+            + "The server calls the LLM once per page — cost is shown above.";
+        const runHint = runRow.createEl("span");
+        runHint.style.cssText = "font-size:11px;color:var(--text-faint)";
+        runHint.textContent = "Checks each claim against its cited source using an LLM judge";
+
+        // ── Status line ───────────────────────────────────────────────────────
+        const statusLine = panel.createEl("div");
+        statusLine.style.cssText = "font-size:12px;color:var(--text-muted);margin-bottom:6px;min-height:18px";
+
+        // ── Sort helpers ──────────────────────────────────────────────────────
         const sortResults = (results: FaithResult[]) =>
             [...results].sort((a, b) => {
                 let cmp = 0;
@@ -2435,69 +2616,64 @@ class AuditModal extends Modal {
                 return _faithSortAsc ? cmp : -cmp;
             });
 
-        // ── Controls row ─────────────────────────────────────────────────────
-        const ctrlRow = panel.createEl("div");
-        ctrlRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap";
-
-        const scopeSel = ctrlRow.createEl("select") as HTMLSelectElement;
-        scopeSel.style.cssText = "padding:4px 8px;font-size:13px";
-        for (const opt of ["All active pages", "Specific page"]) {
-            scopeSel.createEl("option", { text: opt, value: opt });
-        }
-
-        const slugInput = ctrlRow.createEl("input") as HTMLInputElement;
-        slugInput.placeholder = "page slug";
-        slugInput.style.cssText = "padding:4px 8px;font-size:13px;display:none";
-
-        scopeSel.addEventListener("change", () => {
-            slugInput.style.display = scopeSel.value === "Specific page" ? "" : "none";
-        });
-
-        const estimateBtn = ctrlRow.createEl("button", { text: "Estimate cost" }) as HTMLButtonElement;
-        const runBtn = ctrlRow.createEl("button", { text: "▶ Run" }) as HTMLButtonElement;
-
-        const statusLine = panel.createEl("div");
-        statusLine.style.cssText = "font-size:12px;color:var(--text-muted);margin-bottom:8px;min-height:18px";
+        // ── Compact date formatter ────────────────────────────────────────────
+        const _fmtDate = (ts: string | undefined): string => {
+            if (!ts) return "—";
+            try {
+                return new Date(ts).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
+            } catch { return ts; }
+        };
 
         // ── Table wrapper ─────────────────────────────────────────────────────
         const tableWrap = panel.createEl("div");
-        tableWrap.style.cssText = "max-height:55vh;overflow-y:auto";
+        tableWrap.style.cssText = "max-height:48vh;overflow-y:auto;overflow-x:auto";
 
         const pagerWrap = panel.createEl("div");
-        const summaryLine = panel.createEl("div");
-        summaryLine.style.cssText = "font-size:12px;color:var(--text-muted);margin-top:8px";
+
+        // ── Summary section ───────────────────────────────────────────────────
+        const summarySection = panel.createEl("div");
+        summarySection.style.cssText = "display:none;margin-top:10px";
+
+        const summaryBar = summarySection.createEl("div");
+        summaryBar.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;align-items:center;"
+            + "padding:8px 10px;border-radius:4px;background:var(--background-modifier-hover);"
+            + "font-size:13px;font-weight:500";
+
+        const summaryGuidance = summarySection.createEl("p");
+        summaryGuidance.style.cssText = "font-size:11px;color:var(--text-muted);margin:6px 0 0";
+
+        // ── Stale banner (shown when pages need re-audit) ─────────────────────
+        const staleBar = panel.createEl("div");
+        staleBar.style.cssText = "display:none;background:rgba(255,183,77,0.12);"
+            + "border:1px solid rgba(255,183,77,0.4);border-radius:4px;"
+            + "padding:8px 12px;margin-top:10px;font-size:12px";
+        const staleRow = staleBar.createEl("div");
+        staleRow.style.cssText = "display:flex;align-items:center;gap:10px;flex-wrap:wrap";
+        const staleIcon = staleRow.createEl("span", { text: "⚠️" });
+        staleIcon.style.flexShrink = "0";
+        const staleText = staleRow.createEl("span");
+        staleText.style.cssText = "flex:1;color:var(--text-normal)";
+        const rerunStaleBtn = staleRow.createEl("button", { text: "Re-run stale audit →" }) as HTMLButtonElement;
+        rerunStaleBtn.title = "Run the LLM faithfulness check for stale pages only";
+        const staleExplain = staleBar.createEl("p");
+        staleExplain.style.cssText = "margin:4px 0 0;font-size:11px;color:var(--text-muted)";
+        staleExplain.textContent = "A page is stale when its source was re-ingested after the last audit. "
+            + "Re-running updates only those pages — it does not re-check pages that are already fresh.";
+
+        // ── Last audited footer ───────────────────────────────────────────────
         const lastAuditedLine = panel.createEl("div");
-        lastAuditedLine.style.cssText = "font-size:11px;color:var(--text-faint);margin-top:4px";
+        lastAuditedLine.style.cssText = "font-size:11px;color:var(--text-faint);margin-top:6px";
 
-        // ── Scope helper ──────────────────────────────────────────────────────
-        const getPageSlug = () =>
-            scopeSel.value === "Specific page" && slugInput.value.trim()
-                ? slugInput.value.trim()
-                : undefined;
-
-        // ── Estimate ──────────────────────────────────────────────────────────
-        estimateBtn.addEventListener("click", async () => {
-            estimateBtn.disabled = true;
-            statusLine.textContent = "⏳ Estimating…";
-            try {
-                const r = await (api as any).auditCitationsFaithfulness(getPageSlug(), true) as any;
-                statusLine.textContent =
-                    `${r.pages} pages · ${r.citations} citations · ~${(r.estimated_tokens ?? 0).toLocaleString()} tokens · $${(r.estimated_cost_usd ?? 0).toFixed(4)} — click ▶ Run to proceed.`;
-            } catch {
-                statusLine.textContent = "Error estimating cost. Is synthadoc serve running?";
-            } finally {
-                estimateBtn.disabled = false;
-            }
-        });
-
-        // ── Run ───────────────────────────────────────────────────────────────
+        // ── renderTable ───────────────────────────────────────────────────────
         const renderTable = () => {
             tableWrap.empty();
             pagerWrap.empty();
+            summarySection.style.display = "none";
 
             if (_faithResults.length === 0) {
-                tableWrap.createEl("p", { text: "No citations found in active pages." });
-                summaryLine.textContent = "";
+                tableWrap.createEl("p", {
+                    text: "No citation results yet — click ▶ Run Audit above to check your wiki.",
+                }).style.cssText = "font-size:12px;color:var(--text-muted);padding:8px 0";
                 return;
             }
 
@@ -2508,12 +2684,13 @@ class AuditModal extends Modal {
 
             // ── Table ─────────────────────────────────────────────────────────
             const table = tableWrap.createEl("table");
-            table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px";
+            table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px;min-width:600px";
             const thead = table.createEl("thead").createEl("tr");
 
             const makeSortHeader = (label: string, key: "slug" | "verdict", width: string) => {
                 const th = thead.createEl("th");
-                th.style.cssText = `width:${width};text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border);cursor:pointer;user-select:none`;
+                th.style.cssText = `width:${width};text-align:left;padding:4px 8px;`
+                    + `border-bottom:1px solid var(--background-modifier-border);cursor:pointer;user-select:none`;
                 const indicator = _faithSortBy === key ? (_faithSortAsc ? " ▲" : " ▼") : " ⇅";
                 th.textContent = label + indicator;
                 th.addEventListener("click", () => {
@@ -2525,13 +2702,15 @@ class AuditModal extends Modal {
             };
             const makeHeader = (label: string, width: string) => {
                 const th = thead.createEl("th", { text: label });
-                th.style.cssText = `width:${width};text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border)`;
+                th.style.cssText = `width:${width};text-align:left;padding:4px 8px;`
+                    + `border-bottom:1px solid var(--background-modifier-border)`;
             };
 
-            makeSortHeader("Page", "slug", "22%");
-            makeHeader("Citation", "26%");
-            makeSortHeader("Verdict", "verdict", "16%");
+            makeSortHeader("Page", "slug", "20%");
+            makeHeader("Citation", "22%");
+            makeSortHeader("Verdict", "verdict", "14%");
             makeHeader("Reason", "auto");
+            makeHeader("Audited", "12%");
 
             // ── Body with slug-band coloring ──────────────────────────────────
             const tbody = table.createEl("tbody");
@@ -2541,23 +2720,33 @@ class AuditModal extends Modal {
                 if (row.slug !== lastSlug) { lastSlug = row.slug; groupIdx = (groupIdx + 1) % 2; }
                 const baseBg = GROUP_COLORS[groupIdx];
                 const tr = tbody.createEl("tr");
-                tr.style.cssText = `background:${baseBg};`;
+                tr.style.cssText = `background:${baseBg}`;
                 tr.addEventListener("mouseenter", () => { tr.style.background = "var(--background-modifier-hover)"; });
                 tr.addEventListener("mouseleave", () => { tr.style.background = baseBg; });
 
                 const chip = VERDICT_CHIP[row.verdict] ?? { icon: row.verdict, color: "inherit" };
-                const cells: Array<{ text?: string; html?: string }> = [
-                    { text: row.slug },
-                    { text: row.citation_marker },
-                    { html: `<span style="color:${chip.color}">${chip.icon} ${row.verdict}</span>` },
-                    { text: row.reason ?? "" },
-                ];
-                for (const cell of cells) {
-                    const td = tr.createEl("td");
-                    td.style.cssText = "padding:4px 8px;vertical-align:top;border-bottom:1px solid var(--background-modifier-border-subtle)";
-                    if (cell.html) td.innerHTML = cell.html;
-                    else td.textContent = cell.text ?? "";
-                }
+                const tdStyle = "padding:4px 8px;vertical-align:top;"
+                    + "border-bottom:1px solid var(--background-modifier-border-subtle)";
+
+                const tdSlug = tr.createEl("td");
+                tdSlug.style.cssText = tdStyle;
+                tdSlug.textContent = row.slug;
+
+                const tdCite = tr.createEl("td");
+                tdCite.style.cssText = tdStyle + ";font-family:monospace;font-size:11px;word-break:break-all";
+                tdCite.textContent = row.citation_marker;
+
+                const tdVerdict = tr.createEl("td");
+                tdVerdict.style.cssText = tdStyle;
+                tdVerdict.innerHTML = `<span style="color:${chip.color}">${chip.icon} ${row.verdict}</span>`;
+
+                const tdReason = tr.createEl("td");
+                tdReason.style.cssText = tdStyle;
+                tdReason.textContent = row.reason ?? "";
+
+                const tdDate = tr.createEl("td");
+                tdDate.style.cssText = tdStyle + ";white-space:nowrap;font-size:11px;color:var(--text-faint)";
+                tdDate.textContent = _fmtDate(row.checked_at);
             }
 
             // ── Pagination ────────────────────────────────────────────────────
@@ -2577,98 +2766,124 @@ class AuditModal extends Modal {
             // ── Summary ───────────────────────────────────────────────────────
             const counts: Record<string, number> = { hallucination: 0, drift: 0, supported: 0, skipped: 0 };
             for (const r of _faithResults) counts[r.verdict] = (counts[r.verdict] ?? 0) + 1;
-            const parts: string[] = [];
-            if (counts.hallucination) parts.push(`${counts.hallucination} hallucination${counts.hallucination !== 1 ? "s" : ""}`);
-            if (counts.drift)         parts.push(`${counts.drift} drift${counts.drift !== 1 ? "s" : ""}`);
-            if (counts.supported)     parts.push(`${counts.supported} supported`);
-            if (counts.skipped)       parts.push(`${counts.skipped} skipped`);
-            summaryLine.textContent = "Summary (all results): " + parts.join(" · ");
+
+            summaryBar.empty();
+            const addBadge = (icon: string, n: number, label: string, color: string) => {
+                if (!n) return;
+                const badge = summaryBar.createEl("span");
+                badge.style.cssText = `color:${color}`;
+                badge.textContent = `${icon} ${n} ${label}${n !== 1 ? "s" : ""}`;
+            };
+            addBadge("❌", counts.hallucination, "hallucination", "var(--color-red)");
+            addBadge("⚠️",  counts.drift,         "drift",         "var(--color-yellow)");
+            addBadge("✅", counts.supported,      "supported",     "var(--color-green)");
+            if (counts.skipped) {
+                const badge = summaryBar.createEl("span");
+                badge.style.cssText = "color:var(--text-muted)";
+                badge.textContent = `— ${counts.skipped} skipped`;
+            }
+
+            const hasIssues = counts.hallucination + counts.drift > 0;
+            summaryGuidance.textContent = hasIssues
+                ? "Hallucinations and drifts indicate claims that need editorial review. "
+                    + "Open the flagged page in Obsidian, locate the citation marker, "
+                    + "and either correct the claim to match its source or update the source reference."
+                : counts.supported > 0
+                    ? "All audited citations are supported — no action needed."
+                    : "";
+
+            summarySection.style.display = "";
         };
 
-        // ── Stale banner ──────────────────────────────────────────────────────
-        const staleBar = panel.createEl("div");
-        staleBar.style.cssText = "display:none;background:rgba(255,183,77,0.15);border-radius:4px;padding:6px 10px;margin-bottom:8px;font-size:12px";
-        const staleInner = staleBar.createEl("div");
-        staleInner.style.cssText = "display:flex;align-items:center;gap:8px";
-        const staleLabel = staleInner.createEl("span");
-        const rerunStaleBtn = staleInner.createEl("button", { text: "Re-run stale" }) as HTMLButtonElement;
-
-        let _staleSlugsList: string[] = [];
-
+        // ── Run Audit handler ─────────────────────────────────────────────────
         runBtn.addEventListener("click", async () => {
             runBtn.disabled = true;
-            estimateBtn.disabled = true;
-            statusLine.textContent = "⏳ Running faithfulness check…";
+            const slug = getPageSlug();
+            statusLine.textContent = slug
+                ? `⏳ Running audit for "${slug}"…`
+                : "⏳ Running audit for all active pages… (this may take a while)";
             tableWrap.empty();
             pagerWrap.empty();
-            summaryLine.textContent = "";
+            summarySection.style.display = "none";
             try {
-                const r = await (api as any).auditCitationsFaithfulness(getPageSlug(), false) as any;
+                const r = await (api as any).auditCitationsFaithfulness(slug, false) as any;
                 _faithResults = (r.results ?? []) as FaithResult[];
                 _faithPage = 0;
                 statusLine.textContent = "";
                 renderTable();
+                // Refresh cache view (stale list may have cleared)
+                const cached = await (api as any).getFaithfulnessCache();
+                _applyCache(cached);
             } catch {
-                statusLine.textContent = "Error: is synthadoc serve running?";
+                statusLine.textContent = "Audit failed — is synthadoc serve running?";
             } finally {
                 runBtn.disabled = false;
-                estimateBtn.disabled = false;
             }
         });
 
-        // ── Auto-load cache on tab open ───────────────────────────────────────
-        const _applyCache = (cached: { results: FaithResult[]; stale_slugs: string[]; last_checked_at?: string }) => {
+        // ── _applyCache ───────────────────────────────────────────────────────
+        const _applyCache = (cached: {
+            results: FaithResult[];
+            stale_slugs: string[];
+            last_checked_at?: string;
+        }) => {
             _faithResults = cached.results ?? [];
             _staleSlugsList = cached.stale_slugs ?? [];
             if (_faithResults.length > 0) {
                 _faithPage = 0;
                 renderTable();
             }
+            // Stale banner
             if (_staleSlugsList.length > 0) {
-                staleLabel.textContent =
-                    `${_staleSlugsList.length} page${_staleSlugsList.length !== 1 ? "s" : ""} updated since last audit`;
+                const n = _staleSlugsList.length;
+                staleText.textContent =
+                    `${n} page${n !== 1 ? "s" : ""} re-ingested since last audit — verdicts may be outdated.`;
                 staleBar.style.display = "block";
-                statusLine.textContent = "";
+                if (_faithResults.length === 0) {
+                    statusLine.textContent = "";
+                }
             } else {
                 staleBar.style.display = "none";
                 if (_faithResults.length === 0) {
-                    statusLine.textContent = "No cached results — click ▶ Run to audit.";
-                } else {
-                    statusLine.textContent = "";
+                    statusLine.textContent = "No cached results yet — click ▶ Run Audit to begin.";
                 }
             }
+            // Last audited footer
             if (cached.last_checked_at) {
-                const localTs = new Date(cached.last_checked_at).toLocaleString();
-                lastAuditedLine.textContent = `Last audited: ${localTs}`;
+                lastAuditedLine.textContent = `Last audited: ${new Date(cached.last_checked_at).toLocaleString()}`;
             } else {
                 lastAuditedLine.textContent = "";
             }
         };
 
+        // ── Auto-load cache on tab open ───────────────────────────────────────
         (async () => {
             statusLine.textContent = "⏳ Loading cached results…";
             try {
                 const cached = await (api as any).getFaithfulnessCache();
                 _applyCache(cached);
             } catch {
-                statusLine.textContent = "Could not load cache. Is synthadoc serve running?";
+                statusLine.textContent = "Could not load cache — is synthadoc serve running?";
             }
+            // Auto-fetch cost estimate for the default scope (all active pages)
+            _fetchEstimate(undefined);
         })();
 
         // ── Re-run stale handler ──────────────────────────────────────────────
         rerunStaleBtn.addEventListener("click", async () => {
             rerunStaleBtn.disabled = true;
             runBtn.disabled = true;
-            statusLine.textContent =
-                `⏳ Re-running ${_staleSlugsList.length} stale page(s)…`;
+            const n = _staleSlugsList.length;
+            statusLine.textContent = `⏳ Re-auditing ${n} stale page${n !== 1 ? "s" : ""}…`;
             try {
                 await (api as any).auditCitationsFaithfulness(undefined, false, true);
                 const cached = await (api as any).getFaithfulnessCache();
                 _faithPage = 0;
                 _applyCache(cached);
+                statusLine.textContent = "";
             } catch (e) {
                 console.error("Citation faithfulness re-run error:", e);
-                statusLine.textContent = "Re-run failed — check the server log for details.";
+                statusLine.textContent = "Re-audit failed — check the server log for details.";
             } finally {
                 rerunStaleBtn.disabled = false;
                 runBtn.disabled = false;

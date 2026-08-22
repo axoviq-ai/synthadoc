@@ -1574,12 +1574,14 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         for slug, entry in entries.items():
             if entry.get("checked_at"):
                 checked_at_values.append(entry["checked_at"])
+            entry_checked_at = entry.get("checked_at", "")
             for r in entry.get("results", []):
                 all_results.append({
                     "slug": slug,
                     "citation_marker": r.get("citation_marker", ""),
                     "verdict": r.get("verdict", "skipped"),
                     "reason": r.get("reason", ""),
+                    "checked_at": entry_checked_at,
                 })
 
         # Most recent audit timestamp across all entries (ISO UTC string or None)
