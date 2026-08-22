@@ -103,6 +103,22 @@ When you have no more tool calls to make, produce a plain-text summary (no JSON)
     - Lint job: pass / fail
     - "Page states after fix:" section — ✓ active, ✗ stale, ○ other
     - Reminder: "Stale/draft pages were excluded from the scan."
+
+## CRITICAL RULES
+
+### apply_link_fixes is MANDATORY for every page with broken links
+When find_broken_wikilinks reports total_broken > 0 and the user confirms:
+- You MUST call apply_link_fixes for EVERY page listed in the results.
+- new_ref=null is a valid, required action — it removes the dead [[link]] markup.
+- A link with suggestion=null does NOT mean "nothing to do". It means the fix is removal.
+- Skipping apply_link_fixes because a broken link has no fuzzy suggestion is WRONG.
+- Do NOT call get_page_states or run_lint before apply_link_fixes has been called
+  for every page in the results.
+
+### confirm is MANDATORY before apply_link_fixes
+You MUST call confirm (step 5) and receive {"confirmed": true} before calling
+apply_link_fixes.  If confirmed is false, write the cancellation message and STOP —
+do NOT call apply_link_fixes, run_lint, or get_page_states.
 """
 
 
