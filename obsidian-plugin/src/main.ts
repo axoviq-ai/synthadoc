@@ -109,12 +109,6 @@ export default class SynthadocPlugin extends Plugin {
         });
 
         this.addCommand({
-            id: "synthadoc-audit-faithfulness",
-            name: "Audit: citation faithfulness...",
-            callback: () => new AuditModal(this.app, "Citation Faithfulness").open(),
-        });
-
-        this.addCommand({
             id: "synthadoc-routing",
             name: "Routing: manage ROUTING.md...",
             callback: () => new RoutingModal(this.app).open(),
@@ -2074,11 +2068,8 @@ class ScaffoldModal extends Modal {
 }
 
 class AuditModal extends Modal {
-    private _initialTab: string;
-
-    constructor(app: App, initialTab = "Query history") {
+    constructor(app: App) {
         super(app);
-        this._initialTab = initialTab;
     }
 
     onOpen() {
@@ -2124,7 +2115,7 @@ class AuditModal extends Modal {
         this._buildEventsTab(panels["Events"]);
         this._buildCostSummaryTab(panels["Cost summary"]);
         this._buildCitationFaithfulnessTab(panels["Citation Faithfulness"]);
-        switchTab(this._initialTab as TabName);
+        switchTab("Query history");
     }
 
     private _buildQueryHistoryTab(panel: HTMLElement) {
