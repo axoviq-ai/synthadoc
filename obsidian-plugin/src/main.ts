@@ -2428,6 +2428,7 @@ class AuditModal extends Modal {
         let _estimateTimer: ReturnType<typeof setTimeout> | null = null;
         type Scope = "all" | "specific";
         let _scope: Scope = "all";
+        let _filterSlug: string | null = null;  // non-null = show only this slug's rows
 
         // ── Description blurb ────────────────────────────────────────────────
         const desc = panel.createEl("p");
@@ -2533,6 +2534,10 @@ class AuditModal extends Modal {
                     slugDropdown.style.display = "none";
                     _lastEstimate = null; // invalidate cache for new slug
                     _fetchEstimate(slug);
+                    // Filter table to this slug immediately
+                    _filterSlug = slug;
+                    _faithPage = 0;
+                    renderTable();
                 });
             }
         };
@@ -2542,6 +2547,10 @@ class AuditModal extends Modal {
             _renderSlugDropdown(q);
             _lastEstimate = null;
             _scheduleEstimate(q || undefined);
+            // Update table to show cached results for current typed slug (or prompt if empty)
+            _filterSlug = q || null;
+            _faithPage = 0;
+            renderTable();
         });
         slugInput.addEventListener("focus", () => _renderSlugDropdown(slugInput.value.trim()));
         slugInput.addEventListener("blur", () => {
@@ -2564,6 +2573,8 @@ class AuditModal extends Modal {
         // Scope toggle logic ──────────────────────────────────────────────────
         const _setScope = (s: Scope) => {
             _scope = s;
+            _filterSlug = null;
+            _faithPage = 0;
             if (s === "all") {
                 btnAll.style.cssText  = _scopeBtnActive;
                 btnSpec.style.cssText = _scopeBtnInactive;
@@ -2571,6 +2582,7 @@ class AuditModal extends Modal {
                 slugDropdown.style.display = "none";
                 _lastEstimate = null;
                 _fetchEstimate(undefined);
+                renderTable();   // restore full results view
             } else {
                 btnAll.style.cssText  = _scopeBtnInactive;
                 btnSpec.style.cssText = _scopeBtnActive;
@@ -2579,6 +2591,7 @@ class AuditModal extends Modal {
                 costBar.textContent = "Type a page slug above to estimate cost.";
                 _lastEstimate = null;
                 _fetchSlugs();
+                renderTable();   // show "select a slug" prompt
             }
         };
         btnAll.addEventListener("click",  () => _setScope("all"));
@@ -2670,14 +2683,28 @@ class AuditModal extends Modal {
             pagerWrap.empty();
             summarySection.style.display = "none";
 
-            if (_faithResults.length === 0) {
+            // "Specific page" with no slug chosen yet — show a prompt instead of all rows
+            if (_scope === "specific" && !_filterSlug) {
                 tableWrap.createEl("p", {
-                    text: "No citation results yet — click ▶ Run Audit above to check your wiki.",
+                    text: "Select a page slug above to view its cached audit results.",
                 }).style.cssText = "font-size:12px;color:var(--text-muted);padding:8px 0";
                 return;
             }
 
-            const sorted = sortResults(_faithResults);
+            const displayResults = _filterSlug
+                ? _faithResults.filter(r => r.slug === _filterSlug)
+                : _faithResults;
+
+            if (displayResults.length === 0) {
+                const msg = _filterSlug
+                    ? `No cached results for "${_filterSlug}" — click ▶ Run Audit to check this page.`
+                    : "No citation results yet — click ▶ Run Audit above to check your wiki.";
+                tableWrap.createEl("p", { text: msg })
+                    .style.cssText = "font-size:12px;color:var(--text-muted);padding:8px 0";
+                return;
+            }
+
+            const sorted = sortResults(displayResults);
             const totalPages = Math.max(1, Math.ceil(sorted.length / FAITH_PAGE_SIZE));
             _faithPage = Math.min(_faithPage, totalPages - 1);
             const pageRows = sorted.slice(_faithPage * FAITH_PAGE_SIZE, (_faithPage + 1) * FAITH_PAGE_SIZE);
@@ -2757,7 +2784,7 @@ class AuditModal extends Modal {
                 prev.disabled = _faithPage === 0;
                 prev.onclick = () => { _faithPage--; renderTable(); };
                 bar.createEl("span").textContent =
-                    `Page ${_faithPage + 1} / ${totalPages}  (${_faithResults.length} citations)`;
+                    `Page ${_faithPage + 1} / ${totalPages}  (${displayResults.length} citations)`;
                 const next = bar.createEl("button", { text: "Next →" }) as HTMLButtonElement;
                 next.disabled = _faithPage >= totalPages - 1;
                 next.onclick = () => { _faithPage++; renderTable(); };
@@ -2765,7 +2792,7 @@ class AuditModal extends Modal {
 
             // ── Summary ───────────────────────────────────────────────────────
             const counts: Record<string, number> = { hallucination: 0, drift: 0, supported: 0, skipped: 0 };
-            for (const r of _faithResults) counts[r.verdict] = (counts[r.verdict] ?? 0) + 1;
+            for (const r of displayResults) counts[r.verdict] = (counts[r.verdict] ?? 0) + 1;
 
             summaryBar.empty();
             const addBadge = (icon: string, n: number, label: string, color: string) => {
