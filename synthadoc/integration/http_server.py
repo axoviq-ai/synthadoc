@@ -1440,6 +1440,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
     class CitationFaithfulnessRequest(BaseModel):
         page_slug: Optional[str] = None
         dry_run: bool = False
+        stale_only: bool = False  # only run for stale slugs (per cache)
 
     @app.post("/audit/citations/faithfulness")
     async def audit_citations_faithfulness(req: CitationFaithfulnessRequest):
@@ -1457,6 +1458,29 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         store = _WikiStorage(wiki_root / "wiki")
         provider = _make_provider("query", orch._cfg)
         agent_cfg = orch._cfg.agents.resolve("query")
+
+        if req.stale_only and not req.dry_run:
+            from synthadoc.agents.faithfulness_cache import (
+                read_cache as _read_cache,
+                get_stale_slugs as _get_stale_slugs,
+                merge_results_into_cache as _merge,
+            )
+            _cache = _read_cache(wiki_root)
+            _stale = _get_stale_slugs(_cache.get("entries", {}), store)
+            if not _stale:
+                return {"results": [], "pages_checked": 0, "citations_checked": 0,
+                        "message": "All cached results are up to date."}
+            all_results: list = []
+            for _slug in _stale:
+                _slug_results = await run_faithfulness_audit(wiki_root, store, provider, _slug)
+                all_results.extend(_slug_results)
+            _merge(wiki_root, all_results, store)
+            return {
+                "results": [{"slug": r.slug, "citation_marker": r.citation_marker,
+                              "verdict": r.verdict, "reason": r.reason} for r in all_results],
+                "pages_checked": len({r.slug for r in all_results}),
+                "citations_checked": len(all_results),
+            }
 
         if req.dry_run:
             extracted_dir = wiki_root / ".synthadoc" / "extracted"
@@ -1489,6 +1513,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         results = await run_faithfulness_audit(
             wiki_root, store, provider, req.page_slug
         )
+        from synthadoc.agents.faithfulness_cache import merge_results_into_cache as _merge_cache
+        _merge_cache(wiki_root, results, store)
         return {
             "results": [
                 {
@@ -1501,6 +1527,37 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             ],
             "pages_checked": len({r.slug for r in results}),
             "citations_checked": len(results),
+        }
+
+    @app.get("/audit/citations/faithfulness/cache")
+    async def get_faithfulness_cache():
+        from synthadoc.agents.faithfulness_cache import (
+            read_cache as _read_cache,
+            get_stale_slugs as _get_stale_slugs,
+        )
+        from synthadoc.storage.wiki import WikiStorage as _WikiStorage
+
+        orch = app.state.orch
+        wiki_root = orch._root
+        store = _WikiStorage(wiki_root / "wiki")
+        cache = _read_cache(wiki_root)
+        entries = cache.get("entries", {})
+        stale_slugs = _get_stale_slugs(entries, store)
+
+        all_results = []
+        for slug, entry in entries.items():
+            for r in entry.get("results", []):
+                all_results.append({
+                    "slug": slug,
+                    "citation_marker": r.get("citation_marker", ""),
+                    "verdict": r.get("verdict", "skipped"),
+                    "reason": r.get("reason", ""),
+                })
+
+        return {
+            "results": all_results,
+            "stale_slugs": stale_slugs,
+            "total_slugs_cached": len(entries),
         }
 
     # ── Routing ───────────────────────────────────────────────────────────────
