@@ -477,9 +477,11 @@ On-demand audit agent that verifies each claim's faithfulness to its cited sourc
 
 **Robustness:** JSON response validated with `json.loads()` before any verdict is trusted. Malformed LLM response marks all citations for that page `skipped` with `reason="LLM parse error"`.
 
-**Dry-run mode:** `dry_run=True` returns token/cost estimate only — no LLM calls. Used by the Obsidian tab's "Estimate cost" button.
+**Dry-run mode:** `dry_run=True` returns token/cost estimate only — no LLM calls. The Obsidian tab auto-triggers dry-run on open (all-pages scope) and on each slug change (specific-page scope) to keep the cost bar current without any user action.
 
-**Result cache:** After every live run, results are written to `.synthadoc/faithfulness-cache.json`, keyed per page by the maximum `ingested` timestamp across its sources. On the next Obsidian tab open, cached results load immediately without LLM calls. Pages whose `ingested` timestamp has changed since the last audit are flagged as stale. The "Re-run stale" button re-runs only those pages and merges results back into the cache; unchanged pages are served from cache at no cost.
+**Result cache:** After every live run, results are written to `.synthadoc/faithfulness-cache.json`, keyed per page by the maximum `ingested` timestamp across its sources. The cache schema is `{version:1, entries:{<slug>:{page_key:str|null, checked_at:ISO_UTC, results:[{citation_marker, verdict, reason}]}}}`. `GET /audit/citations/faithfulness/cache` flattens entries into a single results array, each row carrying `slug`, `citation_marker`, `verdict`, `reason`, and `checked_at`; the response also includes `stale_slugs`, `total_slugs_cached`, and `last_checked_at` (the most recent `checked_at` across all cached entries). On the next Obsidian tab open, cached results load immediately without LLM calls. Pages whose `ingested` timestamp has changed since the last audit are flagged as stale and listed in the yellow stale banner. The **Re-run stale** button re-runs only those pages and merges results back into the cache; unchanged pages are served from cache at no cost.
+
+**YAML date normalisation:** PyYAML parses unquoted YAML date values (e.g. `ingested: 2026-04-08`) as Python `date` objects. `_page_key()` normalises these via `.isoformat()` so the cache key is always a JSON-serialisable string and compares correctly against stored string keys. YAML writes quotes dates in ISO-8601 form so newly ingested pages are unaffected; only pre-existing pages written without quotes need this guard.
 
 ---
 
@@ -826,8 +828,8 @@ Note: BM25 IDF requires a minimum of 3 documents in the corpus for non-zero scor
 | `POST`   | `/pages/{slug}/rollback`                     | `{index: int, reason: str}`                                                        | Restore page body to snapshot N                                                                                                                                   |
 | `POST`   | `/pages/{slug}/snapshot`                     | `{content: str, reason?: str}`                                                     | Record a content snapshot only when content differs from the last stored snapshot (`recorded: true/false`). Called by the Obsidian plugin on vault modify events. |
 | `DELETE` | `/pages/{slug}/history`                      | —                                                                                 | Delete all lifecycle events (including snapshots) for a slug; intended for test teardown.                                                                         |
-| `POST`   | `/audit/citations/faithfulness`              | `{page?: str, dry_run?: bool}`                                                   | `[FaithfulnessResult]` — opt-in LLM faithfulness audit; `dry_run=true` returns cost estimate only                                                            |
-| `GET`    | `/audit/citations/faithfulness/cache`        | —                                                                                | Return cached results + `stale_slugs` list (no LLM calls)                                                                                                    |
+| `POST`   | `/audit/citations/faithfulness`              | `{page?: str, dry_run?: bool, stale_only?: bool}`                                | `[FaithfulnessResult]` — opt-in LLM faithfulness audit; `dry_run=true` returns cost estimate only; `stale_only=true` restricts run to stale pages            |
+| `GET`    | `/audit/citations/faithfulness/cache`        | —                                                                                | `{results:[{slug,citation_marker,verdict,reason,checked_at}], stale_slugs, total_slugs_cached, last_checked_at}` — cached results with per-row audit timestamp; no LLM calls |
 
 **`GET /jobs` query parameters:**
 
@@ -3732,6 +3734,13 @@ either does not abort the workflow. The page file is written first via
 ---
 
 ## Appendix A — Release Feature Index
+
+### v1.3.1
+
+- **Citation Faithfulness Audit** — opt-in LLM audit that verifies each `^[file:L-L]` claim is actually supported by the referenced source lines. One LLM call per page (batch all citations). Results classified as `supported`, `drift`, `hallucination`, or `skipped`. CLI: `synthadoc audit citations --faithfulness [--page <slug>] [--yes] [--json]`. API: `POST /audit/citations/faithfulness` and `GET /audit/citations/faithfulness/cache`. Results persist in `.synthadoc/faithfulness-cache.json` keyed by per-page `ingested` timestamp; stale detection re-uses the same key without re-running unchanged pages. See [§4 CitationFaithfulnessAgent](#citationfaithfulnessagent).
+- **`last_checked_at` and per-row `checked_at`** — `GET /audit/citations/faithfulness/cache` now returns `last_checked_at` (most recent audit timestamp across all entries) and `checked_at` per result row, enabling the Obsidian tab to display a "Last audited: …" footer and a per-citation "Audited" column in local time.
+- **YAML date normalisation in `_page_key`** — PyYAML parses unquoted date frontmatter (e.g. `ingested: 2026-04-08`) as Python `date` objects, which are not JSON-serialisable. `_page_key()` now calls `.isoformat()` on any `date`/`datetime` value before returning, fixing `TypeError: Object of type date is not JSON serializable` on wikis with pre-existing unquoted date fields.
+- **Citation Faithfulness tab — 7 UX improvements** — (1) scope selector replaced with a button-group toggle (**All active pages** / **Specific page**); (2) cost estimate auto-calculated on tab open and slug change, no Estimate button required; (3) fuzzy slug autocomplete fetches active slugs from `/lifecycle/pages` and filters as the user types; (4) run button dynamically labelled **▶ Run Audit** / **▶ Re-run Audit** based on cached state; (5) "Audited" column added to the results table showing per-citation local timestamp; (6) stale banner now includes an inline explanation of what stale means and what re-running does; (7) verdict summary promoted to a coloured badge row with counts and an editorial guidance paragraph.
 
 ### v1.3.0
 

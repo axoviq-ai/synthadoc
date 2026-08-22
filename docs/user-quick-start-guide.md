@@ -1,6 +1,6 @@
 ﻿# Synthadoc User Quick-Start Guide
 
-**Version: v1.3.0 (Community Edition)**
+**Version: v1.3.1 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
@@ -2071,7 +2071,7 @@ The structural citation check confirms that each `^[filename:L-L]` marker refere
 **CLI walkthrough:**
 
 ```bash
-# Estimate cost before committing
+# Estimate cost before committing (no LLM calls)
 synthadoc audit citations --faithfulness
 
 # Skip the cost prompt (e.g. in CI)
@@ -2099,17 +2099,26 @@ The command exits with code `1` when any drift or hallucination is found, making
 
 1. Open the command palette and run **Synthadoc: Audit: citation faithfulness...**  
    (Or open the Audit modal and click the **Citation Faithfulness** tab.)
-2. Choose scope: "All active pages" or "Specific page" (enter the slug).
-3. Click **Estimate cost** to see the token and cost estimate before running.
-4. The tab opens with the **last cached results** already loaded (if any). A yellow banner appears when one or more pages have been updated since the last run — click **Re-run stale** to update only those pages without re-checking the rest.
-5. To run a full fresh audit of all pages, click **▶ Run**.
-6. Results appear in a sortable, paginated table (25 rows per page). Click the **Page** or **Verdict** column header to sort.
+2. The tab opens with the **last cached results** already loaded (if any), and automatically calculates a cost estimate for the current scope — no button press required.
+3. Choose scope using the button group at the top: **All active pages** runs the audit across every active page; **Specific page** reveals a slug search field with fuzzy autocomplete (fetched from your active pages). Switching scope immediately filters the results table and refreshes the cost estimate.
+4. When a specific page is selected and it has been audited before, the table shows only that page's cached results. If it has not been audited yet, a prompt appears — click **▶ Run Audit** to check it.
+5. A yellow banner appears when one or more pages have been re-ingested since the last audit — click **Re-run stale** to update only those pages without re-checking the rest. The banner explains what "stale" means and what the re-run will do.
+6. To run a full fresh audit, click **▶ Run Audit** (shown when no results exist) or **▶ Re-run Audit** (shown when cached results are already present).
+7. Results appear in a sortable, paginated table (25 rows per page) with columns: **Page**, **Citation**, **Verdict**, **Reason**, and **Audited** (the local date and time of the last audit for that citation). Click the **Page** or **Verdict** column header to sort. A "Last audited: …" line below the table shows the most recent audit timestamp across all cached results.
+8. The **verdict summary** at the bottom shows coloured counts — ❌ hallucinations in red, ⚠️ drifts in amber, ✅ supported in green — alongside guidance on what to do next.
 
 **What to do with drift or hallucination results:**
 
-- **Re-ingest the source** — the source document may have been updated since ingest.
-- **Use the Contradiction Resolver** — if the page was demoted to `contradicted`, the resolver workflow can help rewrite or re-ground the affected claims.
-- **Manually revise the page** — edit the claim to match what the source actually says.
+Citation faithfulness is **informational** — it flags which claims need attention, but corrections are manual. When you see ❌ hallucinations or ⚠️ drifts:
+
+1. Sort the table by **Verdict** to bring flagged entries to the top.
+2. Note the **Page** slug and **Citation** marker (e.g. `^[arpanet.pdf:3-5]`).
+3. Open that page in Obsidian, find the citation marker in the body text, and locate the referenced lines in `.synthadoc/extracted/` (or click the citation chip in Reading View to open the Source Viewer).
+4. Choose a correction:
+   - **Correct the claim** — rewrite it to accurately reflect what the source says.
+   - **Update the source reference** — point the marker at a source that does support the claim.
+   - **Re-ingest with a newer source** — if the original document has been updated, re-ingest it with `synthadoc ingest <file> --force` and re-run the audit.
+   - **Use the Contradiction Resolver** — if the page was demoted to `contradicted`, the resolver workflow can help rewrite or re-ground the affected claims.
 
 ---
 
