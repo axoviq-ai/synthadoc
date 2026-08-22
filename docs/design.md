@@ -1,4 +1,4 @@
-# Synthadoc — Design Document
+﻿# Synthadoc — Design Document
 
 **Version:** 1.3.0
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
@@ -455,6 +455,30 @@ Builds token-budgeted context packs for MCP tool consumers. See [Section 20 — 
 
 Decomposes a web search intent into 1–4 terse keyword search strings optimised for authoritative source retrieval. Uses a separate prompt from `QueryAgent`'s question decomposition — search decomposition asks "what distinct search strings would find the best sources?" (terse keyword phrases) rather than "what distinct questions does this ask?" (natural-language sub-questions). See [Web search fan-out](#web-search-fan-out) in the IngestAgent section.
 
+### CitationFaithfulnessAgent
+
+On-demand audit agent that verifies each claim's faithfulness to its cited source lines. Unlike the structural citation lint (which validates citation *reference integrity*) and the adversarial reviewer (which checks claims against general world knowledge), this agent checks whether the specific source lines actually support the specific claim text preceding each `^[filename:L-L]` marker.
+
+**Invocation:** Opt-in only — called via `synthadoc audit citations --faithfulness` or `POST /audit/citations/faithfulness`. Never runs as part of default lint. Runs against active pages by default; scoped to a single slug with `--page`.
+
+| Step | What happens |
+|---|---|
+| 1 — Scope | Iterate active pages (or the filtered slug). Pages with zero citations are skipped. |
+| 2 — Extraction | For each `^[file:L1-L2]` in the page body: extract claim text (backward scan to sentence boundary, ≤400 chars) + read lines L1–L2 from `.synthadoc/extracted/<file>.txt`. Missing sidecar → emit `skipped` result immediately. |
+| 3 — Cost estimate | Compute `Σ(200 per page + 150 per citation)` tokens. Call `CostGuard.check()` before any LLM calls (CLI path only). |
+| 4 — LLM evaluation | One call per page: numbered citation list (claim + source lines) → structured JSON response with `verdict` per citation. |
+| 5 — Result emission | One result per citation: `supported \| drift \| hallucination \| skipped`. |
+
+**Batch per page:** All citations for a page are sent in one prompt — same pattern as the adversarial reviewer. Wall-clock time equals one LLM call per page, not one per citation.
+
+**Source line resolution:** Follows the same two-step lookup as the structural citation lint — exact filename match first, then `stem + ".txt"` fallback. Supports both local-file and URL-ingested sources.
+
+**Verdict definitions:** `supported` — source clearly backs claim; `drift` — claim overstates or misrepresents; `hallucination` — source contradicts or is unrelated; `skipped` — sidecar missing or LLM returned unparseable output.
+
+**Robustness:** JSON response validated with `json.loads()` before any verdict is trusted. Malformed LLM response marks all citations for that page `skipped` with `reason="LLM parse error"`.
+
+**Dry-run mode:** `dry_run=True` returns token/cost estimate only — no LLM calls. Used by the Obsidian tab's "Estimate cost" button.
+
 ---
 
 ## 5. Skills System
@@ -800,6 +824,7 @@ Note: BM25 IDF requires a minimum of 3 documents in the corpus for non-zero scor
 | `POST`   | `/pages/{slug}/rollback`                     | `{index: int, reason: str}`                                                        | Restore page body to snapshot N                                                                                                                                   |
 | `POST`   | `/pages/{slug}/snapshot`                     | `{content: str, reason?: str}`                                                     | Record a content snapshot only when content differs from the last stored snapshot (`recorded: true/false`). Called by the Obsidian plugin on vault modify events. |
 | `DELETE` | `/pages/{slug}/history`                      | —                                                                                 | Delete all lifecycle events (including snapshots) for a slug; intended for test teardown.                                                                         |
+| `POST`   | `/audit/citations/faithfulness`              | `{page?: str, dry_run?: bool}`                                                   | `[FaithfulnessResult]` — opt-in LLM faithfulness audit; `dry_run=true` returns cost estimate only                                                            |
 
 **`GET /jobs` query parameters:**
 
@@ -1033,7 +1058,13 @@ synthadoc
 │   ├── cost [-w wiki] [--days N] [--json]
 │   ├── queries [-w wiki] [--limit N] [--offset N] [--json]
 │   ├── events [-w wiki] [--limit N] [--offset N] [--json]
-│   ├── citations [-w wiki] [--page <slug>] [--source <file>] [--broken] [--json]
+│   ├── citations [-w wiki]
+│   │   ├── --broken
+│   │   ├── --source <file>
+│   │   ├── --page <slug>
+│   │   ├── --faithfulness     # LLM faithfulness audit (opt-in)
+│   │   │   └── --yes          # skip cost confirmation
+│   │   └── --json
 │   └── lifecycle
 │       └── purge -w wiki (--before <date> | --keep-latest <n>)
 ├── workflow

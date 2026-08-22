@@ -1,4 +1,4 @@
-# Synthadoc
+﻿# Synthadoc
 
 ```
       .-+###############+-.
@@ -239,6 +239,8 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **[Per-source truncation flag](docs/design.md#30-per-source-truncation-flag)** — `--max-source-chars` caps any source (PDF, DOCX, web page, plain text) before the LLM call; truncated sources flagged with `truncated: true` in frontmatter and warned in lint output                                                                                                                                                                                                                                                                                                | **Yes**   | No                       | No                     | No                                                                                                  |
 | **[Multi-wiki isolation](docs/design.md#wiki-targeting)** — each wiki on its own port with independent config, audit trail, and job queue; switch with `synthadoc use`                                                                                                                                                                                                                                                                                                                                                                                                | **Yes**   | No                       | Partial                | No                                                                                                  |
 | **[Agentic maintenance workflows](docs/user-quick-start-guide.md#agentic-workflows)** — six conversational workflows (re-ingest stale pages, re-ingest by slug, broken wikilinks scan and fix, lint report, scaffold regeneration, **contradiction resolver**) via web UI, Obsidian query modal, or `synthadoc workflow` CLI; confirm-before-act gate on all destructive operations; contradiction resolver shows full diff before every write and never applies a change without approval; graph sidebar chips trigger workflows with one click — no terminal required | **Yes**   | No                       | No                     | No                                                                                                  |
+
+**Citation faithfulness audit** — None of the analysed competitors (llm_wiki, OmegaWiki, llm-wiki-compiler, Lucas, Pratiyush, NVK) implement structured citation provenance with automated semantic faithfulness checking. Synthadoc is the only system that records which source lines each claim is drawn from and can verify, on demand, that the claim text is actually supported by those lines.
 
 ### Business value
 
@@ -945,6 +947,14 @@ synthadoc audit citations --page alan-turing -w my-wiki # citations for one page
 synthadoc audit citations --source turing.pdf -w my-wiki # citations from one source
 synthadoc audit citations --broken -w my-wiki           # validation failures only
 synthadoc audit citations --json -w my-wiki             # raw JSON for scripting
+```
+
+**Audit citation faithfulness**
+```bash
+synthadoc audit citations --faithfulness              # all active pages
+synthadoc audit citations --faithfulness --page SLUG  # single page
+synthadoc audit citations --faithfulness --yes        # skip cost prompt
+synthadoc audit citations --faithfulness --json       # machine-readable output
 ```
 
 ### Scheduling recurring jobs

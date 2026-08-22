@@ -2064,6 +2064,53 @@ The lint report also shows a **Citation Issues** section listing any broken, out
 synthadoc lint report
 ```
 
+### Checking citation faithfulness
+
+The structural citation check confirms that each `^[filename:L-L]` marker references a known source file and valid line range. **Citation faithfulness** goes further: it uses an LLM to verify that the claim text preceding each marker is actually supported by those source lines.
+
+**CLI walkthrough:**
+
+```bash
+# Estimate cost before committing
+synthadoc audit citations --faithfulness
+
+# Skip the cost prompt (e.g. in CI)
+synthadoc audit citations --faithfulness --yes
+
+# Scope to one page for a quick spot check
+synthadoc audit citations --faithfulness --page bell-labs
+
+# Machine-readable output
+synthadoc audit citations --faithfulness --json
+```
+
+The report shows one row per citation with a verdict:
+
+| Verdict | Meaning |
+|---|---|
+| ✅ supported | Source lines clearly back the claim |
+| ⚠️ drift | Claim overstates or partially misrepresents the source |
+| ❌ hallucination | Source contradicts or is unrelated to the claim |
+| — skipped | Source file not available on disk |
+
+The command exits with code `1` when any drift or hallucination is found, making it easy to use in CI pipelines.
+
+**Obsidian walkthrough:**
+
+1. Open the command palette and run **Synthadoc: Audit: citation faithfulness...**  
+   (Or open the Audit modal and click the **Citation Faithfulness** tab.)
+2. Choose scope: "All active pages" or "Specific page" (enter the slug).
+3. Click **Estimate cost** to see the token and cost estimate before running.
+4. Click **▶ Run** to start the audit.
+5. Results appear in a sortable, paginated table (25 rows per page).  
+   Click the **Page** or **Verdict** column header to sort.
+
+**What to do with drift or hallucination results:**
+
+- **Re-ingest the source** — the source document may have been updated since ingest.
+- **Use the Contradiction Resolver** — if the page was demoted to `contradicted`, the resolver workflow can help rewrite or re-ground the affected claims.
+- **Manually revise the page** — edit the claim to match what the source actually says.
+
 ---
 
 ## Step 21 — Export your wiki
