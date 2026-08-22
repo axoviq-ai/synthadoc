@@ -109,6 +109,12 @@ export default class SynthadocPlugin extends Plugin {
         });
 
         this.addCommand({
+            id: "synthadoc-audit-faithfulness",
+            name: "Audit: citation faithfulness...",
+            callback: () => new AuditModal(this.app, "Citation Faithfulness").open(),
+        });
+
+        this.addCommand({
             id: "synthadoc-routing",
             name: "Routing: manage ROUTING.md...",
             callback: () => new RoutingModal(this.app).open(),
@@ -2068,6 +2074,13 @@ class ScaffoldModal extends Modal {
 }
 
 class AuditModal extends Modal {
+    private _initialTab: string;
+
+    constructor(app: App, initialTab = "Query history") {
+        super(app);
+        this._initialTab = initialTab;
+    }
+
     onOpen() {
         this.modalEl.style.width = "clamp(560px, 70vw, 960px)";
         const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
@@ -2079,8 +2092,8 @@ class AuditModal extends Modal {
         const tabBar = contentEl.createEl("div");
         tabBar.style.cssText = "display:flex;gap:0;margin-bottom:16px;border-bottom:1px solid var(--background-modifier-border)";
 
-        type TabName = "Query history" | "Ingest history" | "Events" | "Cost summary";
-        const tabNames: TabName[] = ["Query history", "Ingest history", "Events", "Cost summary"];
+        type TabName = "Query history" | "Ingest history" | "Events" | "Cost summary" | "Citation Faithfulness";
+        const tabNames: TabName[] = ["Query history", "Ingest history", "Events", "Cost summary", "Citation Faithfulness"];
         const panels: Record<TabName, HTMLElement> = {} as any;
         const tabBtns: Record<TabName, HTMLElement> = {} as any;
 
@@ -2110,7 +2123,8 @@ class AuditModal extends Modal {
         this._buildIngestHistoryTab(panels["Ingest history"]);
         this._buildEventsTab(panels["Events"]);
         this._buildCostSummaryTab(panels["Cost summary"]);
-        switchTab("Query history");
+        this._buildCitationFaithfulnessTab(panels["Citation Faithfulness"]);
+        switchTab(this._initialTab as TabName);
     }
 
     private _buildQueryHistoryTab(panel: HTMLElement) {
@@ -2384,6 +2398,220 @@ class AuditModal extends Modal {
 
         btn.onclick = load;
         load();
+    }
+
+    private _buildCitationFaithfulnessTab(panel: HTMLElement) {
+        // ── Types ────────────────────────────────────────────────────────────
+        type FaithResult = {
+            slug: string;
+            citation_marker: string;
+            verdict: string;
+            reason: string;
+        };
+
+        const VERDICT_ORDER: Record<string, number> = {
+            hallucination: 0, drift: 1, supported: 2, skipped: 3,
+        };
+        const VERDICT_CHIP: Record<string, { icon: string; color: string }> = {
+            supported:     { icon: "✅", color: "var(--color-green)"  },
+            drift:         { icon: "⚠️",  color: "var(--color-yellow)" },
+            hallucination: { icon: "❌", color: "var(--color-red)"    },
+            skipped:       { icon: "—",  color: "var(--text-muted)"   },
+        };
+        const GROUP_COLORS = [
+            "rgba(100,149,237,0.10)",
+            "rgba(255,183,77,0.10)",
+        ];
+        const FAITH_PAGE_SIZE = 25;
+
+        // ── State ────────────────────────────────────────────────────────────
+        let _faithResults: FaithResult[] = [];
+        let _faithPage = 0;
+        let _faithSortBy: "slug" | "verdict" = "slug";
+        let _faithSortAsc = true;
+
+        // ── Sort ─────────────────────────────────────────────────────────────
+        const sortResults = (results: FaithResult[]) =>
+            [...results].sort((a, b) => {
+                let cmp = 0;
+                if (_faithSortBy === "slug") {
+                    cmp = a.slug.localeCompare(b.slug)
+                       || (VERDICT_ORDER[a.verdict] ?? 4) - (VERDICT_ORDER[b.verdict] ?? 4);
+                } else {
+                    cmp = (VERDICT_ORDER[a.verdict] ?? 4) - (VERDICT_ORDER[b.verdict] ?? 4)
+                       || a.slug.localeCompare(b.slug);
+                }
+                return _faithSortAsc ? cmp : -cmp;
+            });
+
+        // ── Controls row ─────────────────────────────────────────────────────
+        const ctrlRow = panel.createEl("div");
+        ctrlRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap";
+
+        const scopeSel = ctrlRow.createEl("select") as HTMLSelectElement;
+        scopeSel.style.cssText = "padding:4px 8px;font-size:13px";
+        for (const opt of ["All active pages", "Specific page"]) {
+            scopeSel.createEl("option", { text: opt, value: opt });
+        }
+
+        const slugInput = ctrlRow.createEl("input") as HTMLInputElement;
+        slugInput.placeholder = "page slug";
+        slugInput.style.cssText = "padding:4px 8px;font-size:13px;display:none";
+
+        scopeSel.addEventListener("change", () => {
+            slugInput.style.display = scopeSel.value === "Specific page" ? "" : "none";
+        });
+
+        const estimateBtn = ctrlRow.createEl("button", { text: "Estimate cost" }) as HTMLButtonElement;
+        const runBtn = ctrlRow.createEl("button", { text: "▶ Run" }) as HTMLButtonElement;
+
+        const statusLine = panel.createEl("div");
+        statusLine.style.cssText = "font-size:12px;color:var(--text-muted);margin-bottom:8px;min-height:18px";
+
+        // ── Table wrapper ─────────────────────────────────────────────────────
+        const tableWrap = panel.createEl("div");
+        tableWrap.style.cssText = "max-height:55vh;overflow-y:auto";
+
+        const pagerWrap = panel.createEl("div");
+        const summaryLine = panel.createEl("div");
+        summaryLine.style.cssText = "font-size:12px;color:var(--text-muted);margin-top:8px";
+
+        // ── Scope helper ──────────────────────────────────────────────────────
+        const getPageSlug = () =>
+            scopeSel.value === "Specific page" && slugInput.value.trim()
+                ? slugInput.value.trim()
+                : undefined;
+
+        // ── Estimate ──────────────────────────────────────────────────────────
+        estimateBtn.addEventListener("click", async () => {
+            estimateBtn.disabled = true;
+            statusLine.textContent = "⏳ Estimating…";
+            try {
+                const r = await (api as any).auditCitationsFaithfulness(getPageSlug(), true) as any;
+                statusLine.textContent =
+                    `${r.pages} pages · ${r.citations} citations · ~${(r.estimated_tokens ?? 0).toLocaleString()} tokens · $${(r.estimated_cost_usd ?? 0).toFixed(4)} — click ▶ Run to proceed.`;
+            } catch {
+                statusLine.textContent = "Error estimating cost. Is synthadoc serve running?";
+            } finally {
+                estimateBtn.disabled = false;
+            }
+        });
+
+        // ── Run ───────────────────────────────────────────────────────────────
+        const renderTable = () => {
+            tableWrap.empty();
+            pagerWrap.empty();
+
+            if (_faithResults.length === 0) {
+                tableWrap.createEl("p", { text: "No citations found in active pages." });
+                summaryLine.textContent = "";
+                return;
+            }
+
+            const sorted = sortResults(_faithResults);
+            const totalPages = Math.max(1, Math.ceil(sorted.length / FAITH_PAGE_SIZE));
+            _faithPage = Math.min(_faithPage, totalPages - 1);
+            const pageRows = sorted.slice(_faithPage * FAITH_PAGE_SIZE, (_faithPage + 1) * FAITH_PAGE_SIZE);
+
+            // ── Table ─────────────────────────────────────────────────────────
+            const table = tableWrap.createEl("table");
+            table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px";
+            const thead = table.createEl("thead").createEl("tr");
+
+            const makeSortHeader = (label: string, key: "slug" | "verdict", width: string) => {
+                const th = thead.createEl("th");
+                th.style.cssText = `width:${width};text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border);cursor:pointer;user-select:none`;
+                const indicator = _faithSortBy === key ? (_faithSortAsc ? " ▲" : " ▼") : " ⇅";
+                th.textContent = label + indicator;
+                th.addEventListener("click", () => {
+                    if (_faithSortBy === key) { _faithSortAsc = !_faithSortAsc; }
+                    else { _faithSortBy = key; _faithSortAsc = true; }
+                    _faithPage = 0;
+                    renderTable();
+                });
+            };
+            const makeHeader = (label: string, width: string) => {
+                const th = thead.createEl("th", { text: label });
+                th.style.cssText = `width:${width};text-align:left;padding:4px 8px;border-bottom:1px solid var(--background-modifier-border)`;
+            };
+
+            makeSortHeader("Page", "slug", "22%");
+            makeHeader("Citation", "26%");
+            makeSortHeader("Verdict", "verdict", "16%");
+            makeHeader("Reason", "auto");
+
+            // ── Body with slug-band coloring ──────────────────────────────────
+            const tbody = table.createEl("tbody");
+            let lastSlug = "";
+            let groupIdx = -1;
+            for (const row of pageRows) {
+                if (row.slug !== lastSlug) { lastSlug = row.slug; groupIdx = (groupIdx + 1) % 2; }
+                const baseBg = GROUP_COLORS[groupIdx];
+                const tr = tbody.createEl("tr");
+                tr.style.cssText = `background:${baseBg};`;
+                tr.addEventListener("mouseenter", () => { tr.style.background = "var(--background-modifier-hover)"; });
+                tr.addEventListener("mouseleave", () => { tr.style.background = baseBg; });
+
+                const chip = VERDICT_CHIP[row.verdict] ?? { icon: row.verdict, color: "inherit" };
+                const cells: Array<{ text?: string; html?: string }> = [
+                    { text: row.slug },
+                    { text: row.citation_marker },
+                    { html: `<span style="color:${chip.color}">${chip.icon} ${row.verdict}</span>` },
+                    { text: row.reason ?? "" },
+                ];
+                for (const cell of cells) {
+                    const td = tr.createEl("td");
+                    td.style.cssText = "padding:4px 8px;vertical-align:top;border-bottom:1px solid var(--background-modifier-border-subtle)";
+                    if (cell.html) td.innerHTML = cell.html;
+                    else td.textContent = cell.text ?? "";
+                }
+            }
+
+            // ── Pagination ────────────────────────────────────────────────────
+            if (totalPages > 1) {
+                const bar = pagerWrap.createEl("div");
+                bar.style.cssText = "display:flex;gap:6px;align-items:center;padding:6px 0";
+                const prev = bar.createEl("button", { text: "← Prev" }) as HTMLButtonElement;
+                prev.disabled = _faithPage === 0;
+                prev.onclick = () => { _faithPage--; renderTable(); };
+                bar.createEl("span").textContent =
+                    `Page ${_faithPage + 1} / ${totalPages}  (${_faithResults.length} citations)`;
+                const next = bar.createEl("button", { text: "Next →" }) as HTMLButtonElement;
+                next.disabled = _faithPage >= totalPages - 1;
+                next.onclick = () => { _faithPage++; renderTable(); };
+            }
+
+            // ── Summary ───────────────────────────────────────────────────────
+            const counts: Record<string, number> = { hallucination: 0, drift: 0, supported: 0, skipped: 0 };
+            for (const r of _faithResults) counts[r.verdict] = (counts[r.verdict] ?? 0) + 1;
+            const parts: string[] = [];
+            if (counts.hallucination) parts.push(`${counts.hallucination} hallucination${counts.hallucination !== 1 ? "s" : ""}`);
+            if (counts.drift)         parts.push(`${counts.drift} drift${counts.drift !== 1 ? "s" : ""}`);
+            if (counts.supported)     parts.push(`${counts.supported} supported`);
+            if (counts.skipped)       parts.push(`${counts.skipped} skipped`);
+            summaryLine.textContent = "Summary (all results): " + parts.join(" · ");
+        };
+
+        runBtn.addEventListener("click", async () => {
+            runBtn.disabled = true;
+            estimateBtn.disabled = true;
+            statusLine.textContent = "⏳ Running faithfulness check…";
+            tableWrap.empty();
+            pagerWrap.empty();
+            summaryLine.textContent = "";
+            try {
+                const r = await (api as any).auditCitationsFaithfulness(getPageSlug(), false) as any;
+                _faithResults = (r.results ?? []) as FaithResult[];
+                _faithPage = 0;
+                statusLine.textContent = "";
+                renderTable();
+            } catch {
+                statusLine.textContent = "Error: is synthadoc serve running?";
+            } finally {
+                runBtn.disabled = false;
+                estimateBtn.disabled = false;
+            }
+        });
     }
 
     onClose() { this.contentEl.empty(); }
