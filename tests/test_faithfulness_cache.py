@@ -157,3 +157,22 @@ def test_merge_results_preserves_other_entries(tmp_path):
     cache = read_cache(tmp_path)
     assert cache["entries"]["transistor"]["results"][0]["verdict"] == "drift"
     assert "bell-labs" in cache["entries"]
+
+
+def test_merge_results_stamps_citation_free_slug(tmp_path):
+    """A checked slug with no results gets an empty cache entry (not permanently stale)."""
+    store = _make_wiki_storage(tmp_path, {"no-citations": _make_page(["2026-08-15T10:00:00Z"])})
+    merge_results_into_cache(tmp_path, [], store, checked_slugs=["no-citations"])
+    cache = read_cache(tmp_path)
+    assert "no-citations" in cache["entries"]
+    assert cache["entries"]["no-citations"]["results"] == []
+    assert cache["entries"]["no-citations"]["page_key"] == "2026-08-15T10:00:00Z"
+
+
+def test_get_stale_slugs_citation_free_after_stamp(tmp_path):
+    """After stamping a citation-free page, it is no longer stale."""
+    store = _make_wiki_storage(tmp_path, {"no-citations": _make_page(["2026-08-15T10:00:00Z"])})
+    merge_results_into_cache(tmp_path, [], store, checked_slugs=["no-citations"])
+    cache = read_cache(tmp_path)
+    stale = get_stale_slugs(cache["entries"], store)
+    assert "no-citations" not in stale

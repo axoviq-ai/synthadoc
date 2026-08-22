@@ -616,7 +616,7 @@ def _find_dist_dir() -> Path:
     return Path(__file__).parent.parent.parent / "web-ui" / "dist"
 
 
-async def _run_stale_faithfulness(wiki_root, store, provider) -> dict:
+async def _run_stale_faithfulness(wiki_root, store, provider, page_slug: str | None = None) -> dict:
     """Run faithfulness audit only for stale pages and merge results into cache."""
     from synthadoc.agents.faithfulness_cache import (
         read_cache,
@@ -627,13 +627,15 @@ async def _run_stale_faithfulness(wiki_root, store, provider) -> dict:
 
     cache = read_cache(wiki_root)
     stale = get_stale_slugs(cache.get("entries", {}), store)
+    if page_slug:
+        stale = [s for s in stale if s == page_slug]
     if not stale:
         return {"results": [], "pages_checked": 0, "citations_checked": 0,
                 "message": "All cached results are up to date."}
     all_results: list = []
     for slug in stale:
         all_results.extend(await run_faithfulness_audit(wiki_root, store, provider, slug))
-    merge_results_into_cache(wiki_root, all_results, store)
+    merge_results_into_cache(wiki_root, all_results, store, checked_slugs=stale)
     return {
         "results": [{"slug": r.slug, "citation_marker": r.citation_marker,
                      "verdict": r.verdict, "reason": r.reason} for r in all_results],
@@ -1486,7 +1488,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         agent_cfg = orch._cfg.agents.resolve("query")
 
         if req.stale_only and not req.dry_run:
-            return await _run_stale_faithfulness(wiki_root, store, provider)
+            return await _run_stale_faithfulness(wiki_root, store, provider, req.page_slug)
 
         if req.dry_run:
             extracted_dir = wiki_root / ".synthadoc" / "extracted"
@@ -1519,8 +1521,16 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         results = await run_faithfulness_audit(
             wiki_root, store, provider, req.page_slug
         )
+        # Compute audit scope so citation-free pages get a cache entry too
+        if req.page_slug:
+            audit_scope = [req.page_slug] if store.read_page(req.page_slug) is not None else []
+        else:
+            audit_scope = [
+                s for s in store.all_slugs()
+                if (p := store.read_page(s)) is not None and p.status == "active"
+            ]
         from synthadoc.agents.faithfulness_cache import merge_results_into_cache as _merge_cache
-        _merge_cache(wiki_root, results, store)
+        _merge_cache(wiki_root, results, store, checked_slugs=audit_scope)
         return {
             "results": [
                 {

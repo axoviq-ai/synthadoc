@@ -74,8 +74,14 @@ def merge_results_into_cache(
     wiki_root: Path,
     results: "list[FaithfulnessResult]",
     store: "WikiStorage",
+    checked_slugs: "list[str] | None" = None,
 ) -> None:
-    """Update cache entries for every slug that appears in results."""
+    """Update cache entries for every slug that appears in results.
+
+    If checked_slugs is provided, also write empty-result entries for any
+    checked slug that produced no citations — preventing them from appearing
+    as stale on subsequent calls.
+    """
     cache = read_cache(wiki_root)
     checked_at = datetime.now(timezone.utc).isoformat()
 
@@ -95,5 +101,17 @@ def merge_results_into_cache(
             "checked_at": checked_at,
             "results": slug_results,
         }
+
+    # Write empty entries for checked slugs that produced no citations
+    if checked_slugs:
+        for slug in checked_slugs:
+            if slug not in by_slug:
+                page = store.read_page(slug)
+                key = _page_key(page) if page else None
+                cache["entries"][slug] = {
+                    "page_key": key,
+                    "checked_at": checked_at,
+                    "results": [],
+                }
 
     write_cache(wiki_root, cache)
