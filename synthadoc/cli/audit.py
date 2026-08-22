@@ -256,10 +256,10 @@ def _render_faithfulness(results: list, as_json: bool) -> None:
     table = Table(
         title=f"Citation Faithfulness Report — {len(results)} citations across {n_pages} pages"
     )
-    table.add_column("Page", style="cyan", no_wrap=True)
-    table.add_column("Citation", no_wrap=True)
-    table.add_column("Verdict")
-    table.add_column("Reason")
+    table.add_column("Page", style="cyan", no_wrap=True, max_width=30)
+    table.add_column("Citation", no_wrap=True, max_width=44)
+    table.add_column("Verdict", no_wrap=True)
+    table.add_column("Reason", min_width=45)
     for r in results:
         verdict_cell = _VERDICT_STYLE.get(r.verdict, (r.verdict, ""))[0]
         table.add_row(r.slug, _escape(r.citation_marker), verdict_cell, r.reason or "")
