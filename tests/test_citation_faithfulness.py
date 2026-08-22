@@ -322,3 +322,35 @@ def test_run_audit_skips_pages_with_no_citations(tmp_path):
     assert len(results) == 0
     # Provider should NOT have been called (no LLM calls for pages without citations)
     provider.complete.assert_not_called()
+
+
+def test_check_page_top_level_array_response():
+    """LLM returns a top-level JSON array instead of object → all skipped."""
+    checks = [
+        CitationToCheck(
+            citation_marker="^[src.txt:1-2]",
+            claim_text="claim",
+            source_lines="line 1\nline 2",
+            source_file="src.txt",
+            line_start=1,
+            line_end=2,
+        )
+    ]
+    provider = _mock_provider('[{"index": 1, "verdict": "supported", "reason": "ok"}]')
+    results = asyncio.run(check_page_faithfulness("pg", checks, provider))
+    assert len(results) == 1
+    assert results[0].verdict == "skipped"
+    assert "LLM parse error" in results[0].reason
+
+
+def test_run_audit_nonexistent_slug_filter(tmp_path):
+    """page_slug_filter naming a missing slug returns empty list without calling provider."""
+    extracted = tmp_path / ".synthadoc" / "extracted"
+    extracted.mkdir(parents=True)
+    store = _make_wiki_storage(tmp_path, {})
+    provider = _mock_provider(_json.dumps({"results": []}))
+    results = asyncio.run(
+        run_faithfulness_audit(tmp_path, store, provider, page_slug_filter="no-such-page")
+    )
+    assert results == []
+    provider.complete.assert_not_called()

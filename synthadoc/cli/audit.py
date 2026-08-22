@@ -290,7 +290,7 @@ def _run_faithfulness(
         run_faithfulness_audit,
         estimate_faithfulness_tokens,
     )
-    from synthadoc.core.cost_guard import CostGuard, CostEstimate
+    from synthadoc.core.cost_guard import CostGuard, CostEstimate, CostGateError
     from synthadoc.providers.pricing import estimate_cost
 
     wiki_name = resolve_wiki(wiki)
@@ -311,17 +311,21 @@ def _run_faithfulness(
             is_local=agent_cfg.is_local,
         )
         guard = CostGuard(cfg.cost)
-        guard.check(
-            CostEstimate(
-                tokens=est_tokens,
-                cost_usd=est_cost,
-                operation=(
-                    f"citation faithfulness audit "
-                    f"({total_citations} citations across {len(pages_with_checks)} pages)"
+        try:
+            guard.check(
+                CostEstimate(
+                    tokens=est_tokens,
+                    cost_usd=est_cost,
+                    operation=(
+                        f"citation faithfulness audit "
+                        f"({total_citations} citations across {len(pages_with_checks)} pages)"
+                    ),
                 ),
-            ),
-            interactive=True,
-        )
+                interactive=True,
+            )
+        except CostGateError:
+            console.print("[yellow]Audit cancelled.[/yellow]")
+            raise typer.Exit(1)
 
     results = asyncio.run(run_faithfulness_audit(wiki_root, store, provider, page))
     _render_faithfulness(results, as_json)

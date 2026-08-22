@@ -190,7 +190,7 @@ async def check_page_faithfulness(
     try:
         parsed = json.loads(response.text)
         raw_results: list[dict] = parsed.get("results", [])
-    except (json.JSONDecodeError, AttributeError):
+    except (json.JSONDecodeError, AttributeError, TypeError):
         return [
             FaithfulnessResult(
                 slug=slug,
