@@ -2847,7 +2847,8 @@ class AuditModal extends Modal {
                 try {
                     const job = await (api as any).job(jobId) as any;
                     const status: string = job.status ?? "unknown";
-                    if (status === "pending" || status === "running") {
+                    if (!TERMINAL_STATUSES.has(status)) {
+                        // pending or in_progress
                         const progress = job.progress ?? {};
                         const checked = progress.pages_checked ?? 0;
                         const total = progress.pages_total ?? 0;
@@ -2861,10 +2862,10 @@ class AuditModal extends Modal {
                             statusLine.textContent = `⏳ ${progressLabel(progress)} — starting…`;
                         }
                         setTimeout(poll, POLL_MS);
-                    } else if (status === "complete") {
+                    } else if (status === "completed") {
                         await onDone();
                     } else {
-                        // failed / dead
+                        // failed / dead / skipped / cancelled
                         onError(job.error ?? "Audit failed — check the server log for details.");
                         btnsToDisable.forEach(b => { b.disabled = false; });
                     }
