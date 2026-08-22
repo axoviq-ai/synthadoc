@@ -1435,6 +1435,74 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         pack = await agent.build(req.goal, token_budget=budget)
         return pack.to_dict()
 
+    # ── Citation Faithfulness Audit ────────────────────────────────────────────
+
+    class CitationFaithfulnessRequest(BaseModel):
+        page_slug: Optional[str] = None
+        dry_run: bool = False
+
+    @app.post("/audit/citations/faithfulness")
+    async def audit_citations_faithfulness(req: CitationFaithfulnessRequest):
+        from synthadoc.agents.citation_faithfulness import (
+            run_faithfulness_audit,
+            estimate_faithfulness_tokens,
+            extract_citations_for_check,
+        )
+        from synthadoc.providers import make_provider as _make_provider
+        from synthadoc.providers.pricing import estimate_cost as _estimate_cost
+        from synthadoc.storage.wiki import WikiStorage as _WikiStorage
+
+        orch = app.state.orch
+        wiki_root = orch._root
+        store = _WikiStorage(wiki_root / "wiki")
+        provider = _make_provider("query", orch._cfg)
+        agent_cfg = orch._cfg.agents.resolve("query")
+
+        if req.dry_run:
+            extracted_dir = wiki_root / ".synthadoc" / "extracted"
+            pages_with_checks: dict = {}
+
+            slugs = [req.page_slug] if req.page_slug else store.all_slugs()
+            for slug in slugs:
+                page = store.read_page(slug)
+                if page is None or page.status != "active":
+                    continue
+                checks, _ = extract_citations_for_check(slug, page, extracted_dir)
+                if checks:
+                    pages_with_checks[slug] = checks
+
+            total_citations = sum(len(v) for v in pages_with_checks.values())
+            est_tokens = estimate_faithfulness_tokens(pages_with_checks)
+            est_cost = _estimate_cost(
+                agent_cfg.model,
+                input_tokens=est_tokens,
+                output_tokens=est_tokens // 5,
+                is_local=agent_cfg.is_local,
+            )
+            return {
+                "pages": len(pages_with_checks),
+                "citations": total_citations,
+                "estimated_tokens": est_tokens,
+                "estimated_cost_usd": round(est_cost, 6),
+            }
+
+        results = await run_faithfulness_audit(
+            wiki_root, store, provider, req.page_slug
+        )
+        return {
+            "results": [
+                {
+                    "slug": r.slug,
+                    "citation_marker": r.citation_marker,
+                    "verdict": r.verdict,
+                    "reason": r.reason,
+                }
+                for r in results
+            ],
+            "pages_checked": len({r.slug for r in results}),
+            "citations_checked": len(results),
+        }
+
     # ── Routing ───────────────────────────────────────────────────────────────
     from synthadoc.core.routing import RoutingIndex as _RI
 
