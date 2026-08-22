@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from synthadoc.agents.citations import CITATION_RE
 from synthadoc.providers.base import LLMProvider, Message
+from synthadoc.storage.wiki import LifecycleState
 
 if TYPE_CHECKING:
     from synthadoc.storage.wiki import WikiPage, WikiStorage
@@ -267,7 +268,7 @@ async def run_faithfulness_audit(
 
     for slug in slugs_to_check:
         page = store.read_page(slug)
-        if page is None or page.status != "active":
+        if page is None or page.status != LifecycleState.ACTIVE:
             continue
 
         checks, skipped = extract_citations_for_check(slug, page, extracted_dir)

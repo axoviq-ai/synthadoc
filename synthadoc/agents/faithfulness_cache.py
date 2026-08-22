@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from synthadoc.storage.wiki import LifecycleState
+
 if TYPE_CHECKING:
     from synthadoc.agents.citation_faithfulness import FaithfulnessResult
     from synthadoc.storage.wiki import WikiPage, WikiStorage
@@ -61,7 +63,7 @@ def get_stale_slugs(cache_entries: dict, store: "WikiStorage") -> list[str]:
     stale: list[str] = []
     for slug in store.all_slugs():
         page = store.read_page(slug)
-        if page is None or page.status != "active":
+        if page is None or page.status != LifecycleState.ACTIVE:
             continue
         key = _page_key(page)
         entry = cache_entries.get(slug)

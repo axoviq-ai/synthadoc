@@ -1479,7 +1479,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         )
         from synthadoc.providers import make_provider as _make_provider
         from synthadoc.providers.pricing import estimate_cost as _estimate_cost
-        from synthadoc.storage.wiki import WikiStorage as _WikiStorage
+        from synthadoc.storage.wiki import WikiStorage as _WikiStorage, LifecycleState as _LifecycleState
 
         orch = app.state.orch
         wiki_root = orch._root
@@ -1497,7 +1497,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             slugs = [req.page_slug] if req.page_slug else store.all_slugs()
             for slug in slugs:
                 page = store.read_page(slug)
-                if page is None or page.status != "active":
+                if page is None or page.status != _LifecycleState.ACTIVE:
                     continue
                 checks, _ = extract_citations_for_check(slug, page, extracted_dir)
                 if checks:
@@ -1527,7 +1527,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         else:
             audit_scope = [
                 s for s in store.all_slugs()
-                if (p := store.read_page(s)) is not None and p.status == "active"
+                if (p := store.read_page(s)) is not None and p.status == _LifecycleState.ACTIVE
             ]
         from synthadoc.agents.faithfulness_cache import merge_results_into_cache as _merge_cache
         _merge_cache(wiki_root, results, store, checked_slugs=audit_scope)
