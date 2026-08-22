@@ -2538,6 +2538,7 @@ class AuditModal extends Modal {
                     _filterSlug = slug;
                     _faithPage = 0;
                     renderTable();
+                    _updateRunBtn();
                 });
             }
         };
@@ -2551,6 +2552,7 @@ class AuditModal extends Modal {
             _filterSlug = q || null;
             _faithPage = 0;
             renderTable();
+            _updateRunBtn();
         });
         slugInput.addEventListener("focus", () => _renderSlugDropdown(slugInput.value.trim()));
         slugInput.addEventListener("blur", () => {
@@ -2583,6 +2585,7 @@ class AuditModal extends Modal {
                 _lastEstimate = null;
                 _fetchEstimate(undefined);
                 renderTable();   // restore full results view
+                _updateRunBtn();
             } else {
                 btnAll.style.cssText  = _scopeBtnInactive;
                 btnSpec.style.cssText = _scopeBtnActive;
@@ -2592,6 +2595,7 @@ class AuditModal extends Modal {
                 _lastEstimate = null;
                 _fetchSlugs();
                 renderTable();   // show "select a slug" prompt
+                _updateRunBtn();
             }
         };
         btnAll.addEventListener("click",  () => _setScope("all"));
@@ -2610,6 +2614,14 @@ class AuditModal extends Modal {
         const runHint = runRow.createEl("span");
         runHint.style.cssText = "font-size:11px;color:var(--text-faint)";
         runHint.textContent = "Checks each claim against its cited source using an LLM judge";
+
+        // ── Run button label (Run Audit vs Re-run Audit) ──────────────────────
+        const _updateRunBtn = () => {
+            const hasResults = _scope === "specific"
+                ? (_filterSlug ? _faithResults.some(r => r.slug === _filterSlug) : false)
+                : _faithResults.length > 0;
+            runBtn.textContent = hasResults ? "▶ Re-run Audit" : "▶ Run Audit";
+        };
 
         // ── Status line ───────────────────────────────────────────────────────
         const statusLine = panel.createEl("div");
@@ -2879,6 +2891,7 @@ class AuditModal extends Modal {
             } else {
                 lastAuditedLine.textContent = "";
             }
+            _updateRunBtn();
         };
 
         // ── Auto-load cache on tab open ───────────────────────────────────────
