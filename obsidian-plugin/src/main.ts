@@ -2952,6 +2952,41 @@ class AuditModal extends Modal {
             } catch {
                 statusLine.textContent = "Could not load cache — is synthadoc serve running?";
             }
+
+            // Resume polling if a faithfulness job is already running in the background
+            try {
+                const activeJobs: any[] = [
+                    ...await (api as any).jobs("in_progress"),
+                    ...await (api as any).jobs("pending"),
+                ];
+                const activeJob = activeJobs.find((j: any) => j.operation === "faithfulness");
+                if (activeJob) {
+                    runBtn.disabled = true;
+                    rerunStaleBtn.disabled = true;
+                    statusLine.textContent = "⏳ Audit job already running in background…";
+                    _pollJob(
+                        activeJob.id,
+                        () => "Auditing citations",
+                        async () => {
+                            const cached = await (api as any).getFaithfulnessCache();
+                            _faithPage = 0;
+                            _applyCache(cached);
+                            runBtn.disabled = false;
+                            rerunStaleBtn.disabled = false;
+                        },
+                        (msg: string) => {
+                            statusLine.textContent = msg;
+                            runBtn.disabled = false;
+                            rerunStaleBtn.disabled = false;
+                        },
+                        [runBtn, rerunStaleBtn],
+                    );
+                    return; // skip cost estimate while job is running
+                }
+            } catch {
+                // Non-fatal: job-list failure should not prevent the tab from loading
+            }
+
             // Auto-fetch cost estimate for the default scope (all active pages)
             _fetchEstimate(undefined);
         })();
