@@ -2083,8 +2083,8 @@ class AuditModal extends Modal {
         const tabBar = contentEl.createEl("div");
         tabBar.style.cssText = "display:flex;gap:0;margin-bottom:16px;border-bottom:1px solid var(--background-modifier-border)";
 
-        type TabName = "Query history" | "Ingest history" | "Events" | "Cost summary" | "Citation Faithfulness";
-        const tabNames: TabName[] = ["Query history", "Ingest history", "Events", "Cost summary", "Citation Faithfulness"];
+        type TabName = "Query history" | "Ingest history" | "Events" | "Cost summary" | "Citation faithfulness";
+        const tabNames: TabName[] = ["Query history", "Ingest history", "Events", "Cost summary", "Citation faithfulness"];
         const panels: Record<TabName, HTMLElement> = {} as any;
         const tabBtns: Record<TabName, HTMLElement> = {} as any;
 
@@ -2114,7 +2114,7 @@ class AuditModal extends Modal {
         this._buildIngestHistoryTab(panels["Ingest history"]);
         this._buildEventsTab(panels["Events"]);
         this._buildCostSummaryTab(panels["Cost summary"]);
-        this._buildCitationFaithfulnessTab(panels["Citation Faithfulness"]);
+        this._buildCitationFaithfulnessTab(panels["Citation faithfulness"]);
         switchTab("Query history");
     }
 
