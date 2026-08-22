@@ -73,12 +73,16 @@ When you have no more tool calls to make, produce a plain-text summary (no JSON)
 
 ### Phase 1 — Scan
 1. Call find_broken_wikilinks (no arguments).
-2. If total_broken == 0:
-   Write a plain-text summary: "No broken wikilinks found across N active pages.
-   Wiki link integrity is clean."
-   Note: "Stale/draft pages were excluded from the scan."
-   STOP — do not call any more tools.
-3. If total_broken > 0: proceed to Phase 2.
+2. Check total_broken in the result:
+   - If total_broken == 0: write the clean-wiki summary below and STOP.
+     Do NOT call any more tools.
+   - If total_broken > 0: your NEXT action MUST be a confirm tool call (step 5).
+     Do NOT write any plain text yet. Plain text ends the workflow — you may only
+     write plain text AFTER completing all of Phase 2 (steps 4–9).
+
+#### Clean-wiki summary template (only when total_broken == 0)
+"No broken wikilinks found across N active pages. Wiki link integrity is clean.
+Note: Stale/draft pages were excluded from the scan."
 
 ### Phase 2 — Fix
 4. Build a confirm message listing every affected page, each broken ref, and its fix:
@@ -119,6 +123,16 @@ When find_broken_wikilinks reports total_broken > 0 and the user confirms:
 You MUST call confirm (step 5) and receive {"confirmed": true} before calling
 apply_link_fixes.  If confirmed is false, write the cancellation message and STOP —
 do NOT call apply_link_fixes, run_lint, or get_page_states.
+
+### Never exit to plain text while broken links remain unfixed
+When find_broken_wikilinks returns total_broken > 0, producing a plain-text response
+before completing Phase 2 is WRONG.  The only valid plain-text responses are:
+  (a) The clean-wiki summary (only when total_broken == 0).
+  (b) "Re-ingest declined by user." (only when confirm returns confirmed=false).
+  (c) The final summary at step 9 (only after apply_link_fixes, run_lint, and
+      get_page_states have all been called).
+Any other plain-text output when broken links exist terminates the workflow without
+fixing them — this is a bug.  Always call confirm next after finding broken links.
 """
 
 
