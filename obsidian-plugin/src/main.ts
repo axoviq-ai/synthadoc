@@ -2769,7 +2769,27 @@ class AuditModal extends Modal {
 
                 const tdSlug = tr.createEl("td");
                 tdSlug.style.cssText = tdStyle;
-                tdSlug.textContent = row.slug;
+                const slugLink = tdSlug.createEl("a", { text: row.slug });
+                slugLink.style.cssText =
+                    "color:var(--link-color);cursor:pointer;text-decoration:underline";
+                slugLink.addEventListener("click", async (e) => {
+                    e.preventDefault();
+                    const wikiPath = `wiki/${row.slug}.md`;
+                    const file = this.app.vault.getAbstractFileByPath(wikiPath);
+                    if (!(file instanceof TFile)) return;
+                    const leaf = this.app.workspace.getLeaf(false);
+                    await leaf.openFile(file);
+                    const view = leaf.view;
+                    if (!(view instanceof MarkdownView)) return;
+                    const editor = view.editor;
+                    const content = editor.getValue();
+                    const markerIdx = content.indexOf(row.citation_marker);
+                    if (markerIdx === -1) return;
+                    const fromPos = editor.offsetToPos(markerIdx);
+                    const toPos = editor.offsetToPos(markerIdx + row.citation_marker.length);
+                    editor.setSelection(fromPos, toPos);
+                    editor.scrollIntoView({ from: fromPos, to: toPos }, true);
+                });
 
                 const tdCite = tr.createEl("td");
                 tdCite.style.cssText = tdStyle + ";font-family:monospace;font-size:11px;word-break:break-all";
