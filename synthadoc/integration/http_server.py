@@ -395,6 +395,12 @@ class ExportRequest(BaseModel):
     context_pack: str | None = None
 
 
+class CitationFaithfulnessRequest(BaseModel):
+    page_slug: Optional[str] = None
+    dry_run: bool = False
+    stale_only: bool = False  # only run for stale slugs (per cache)
+
+
 def _load_blocked_domains(wiki_root: Path) -> set[str]:
     """Return the set of auto-blocked domains from .synthadoc/blocked_domains.json."""
     import json as _json_mod
@@ -1464,11 +1470,6 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         return pack.to_dict()
 
     # ── Citation Faithfulness Audit ────────────────────────────────────────────
-
-    class CitationFaithfulnessRequest(BaseModel):
-        page_slug: Optional[str] = None
-        dry_run: bool = False
-        stale_only: bool = False  # only run for stale slugs (per cache)
 
     @app.post("/audit/citations/faithfulness")
     async def audit_citations_faithfulness(req: CitationFaithfulnessRequest):
