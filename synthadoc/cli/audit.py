@@ -281,15 +281,19 @@ def _run_faithfulness(
     yes: bool,
     as_json: bool,
 ) -> None:
+    """Delegate the faithfulness audit to the running server (no API key required here).
+
+    The server owns the LLM provider and runs the audit as a background job.
+    The CLI enqueues the job, polls for progress, then reads the finished
+    results from the faithfulness cache.
+    """
+    import time
     from synthadoc.cli._wiki import resolve_wiki
     from synthadoc.cli.install import resolve_wiki_path
+    from synthadoc.cli._http import post as http_post, get as http_get
     from synthadoc.config import load_config
     from synthadoc.storage.wiki import WikiStorage
-    from synthadoc.providers import make_provider
-    from synthadoc.agents.citation_faithfulness import (
-        run_faithfulness_audit,
-        estimate_faithfulness_tokens,
-    )
+    from synthadoc.agents.citation_faithfulness import estimate_faithfulness_tokens
     from synthadoc.core.cost_guard import CostGuard, CostEstimate, CostGateError
     from synthadoc.providers.pricing import estimate_cost
 
@@ -297,9 +301,9 @@ def _run_faithfulness(
     wiki_root = resolve_wiki_path(wiki_name)
     cfg = load_config(project_config=wiki_root / ".synthadoc" / "config.toml")
     store = WikiStorage(wiki_root / "wiki")
-    provider = make_provider("query", cfg)
     agent_cfg = cfg.agents.resolve("query")
 
+    # ── Cost check (local, no API key needed) ────────────────────────────────
     if not yes:
         pages_with_checks = _collect_checks_for_cost(wiki_root, store, page)
         total_citations = sum(len(v) for v in pages_with_checks.values())
@@ -327,29 +331,65 @@ def _run_faithfulness(
             console.print("[yellow]Audit cancelled.[/yellow]")
             raise typer.Exit(1)
 
-    # Run the audit slug-by-slug so progress is visible for large wikis
-    from synthadoc.agents.faithfulness_cache import merge_results_into_cache
-    from synthadoc.storage.wiki import LifecycleState
+    # ── Enqueue job on the running server ─────────────────────────────────────
+    body: dict = {}
+    if page:
+        body["page_slug"] = page
+    result = http_post(wiki_name, "/audit/citations/faithfulness", body)
+    job_id: str = result.get("job_id", "")
+    if not job_id:
+        console.print(f"[red]Unexpected response from server:[/red] {result}")
+        raise typer.Exit(1)
+
+    console.print(f"[dim]Job {job_id[:8]}… enqueued — waiting for results[/dim]")
+
+    # ── Poll until terminal ───────────────────────────────────────────────────
+    POLL_SECONDS = 3
+    while True:
+        job = http_get(wiki_name, f"/jobs/{job_id}")
+        status: str = job.get("status", "unknown")
+        if status in ("pending", "in_progress"):
+            progress = job.get("progress") or {}
+            phase = progress.get("phase", "starting")
+            checked = progress.get("pages_checked", 0)
+            total_pages = progress.get("pages_total", 0)
+            current = progress.get("current_slug", "")
+            if phase == "auditing" and total_pages:
+                msg = f"[dim]({checked}/{total_pages})[/dim] Checking [bold]{current}[/bold]…"
+            else:
+                msg = "[dim]Starting audit…[/dim]"
+            console.print(msg)
+            time.sleep(POLL_SECONDS)
+        elif status == "completed":
+            break
+        else:
+            error = job.get("error") or "unknown error"
+            console.print(f"[red]Audit job {status}:[/red] {error}")
+            raise typer.Exit(1)
+
+    # ── Read results from cache and display ───────────────────────────────────
+    from synthadoc.agents.faithfulness_cache import read_cache
+    from synthadoc.agents.citation_faithfulness import FaithfulnessResult
+
+    cache = read_cache(wiki_root)
+    entries = cache.get("entries", {})
 
     if page:
-        slugs_to_audit = [page] if store.read_page(page) is not None else []
+        slugs_to_show = [page] if page in entries else []
     else:
-        slugs_to_audit = [
-            s for s in store.all_slugs()
-            if (p := store.read_page(s)) is not None
-            and p.status == LifecycleState.ACTIVE
-        ]
+        slugs_to_show = list(entries.keys())
 
-    all_results: list = []
-    total = len(slugs_to_audit)
-    for i, slug in enumerate(slugs_to_audit, 1):
-        console.print(f"[dim]({i}/{total})[/dim] Checking [bold]{slug}[/bold]…")
-        page_results = asyncio.run(
-            run_faithfulness_audit(wiki_root, store, provider, slug)
-        )
-        all_results.extend(page_results)
+    all_results: list[FaithfulnessResult] = []
+    for slug in slugs_to_show:
+        entry = entries.get(slug, {})
+        for r in entry.get("results", []):
+            all_results.append(FaithfulnessResult(
+                slug=slug,
+                citation_marker=r["citation_marker"],
+                verdict=r["verdict"],
+                reason=r.get("reason", ""),
+            ))
 
-    merge_results_into_cache(wiki_root, all_results, store, checked_slugs=slugs_to_audit)
     _render_faithfulness(all_results, as_json)
 
     has_issues = any(r.verdict in ("drift", "hallucination") for r in all_results)
