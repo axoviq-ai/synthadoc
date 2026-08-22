@@ -46,6 +46,11 @@ Examples:
     # Run contradiction resolver tests only (requires v1.3.0 feature; history-of-computing wiki)
     # Verifies gate-demoted and source-conflict pages are resolved interactively.
     python -X utf8 tests/live/run_all.py --suite contradiction_resolver
+
+    # Run citation faithfulness audit tests only (requires v1.3.1 feature)
+    # Verifies dry-run cost estimate, per-page LLM verdicts, cache write,
+    # and cache invalidation when a source's ingested timestamp advances.
+    python -X utf8 tests/live/run_all.py --suite citation_faithfulness
 """
 import argparse
 import atexit
@@ -82,6 +87,7 @@ SUITES = {
     "scaffold":                 "test_scaffold_workflow_live.py",
     "adversarial_gate":         "test_adversarial_gate_live.py",
     "contradiction_resolver":   "test_contradiction_resolver_live.py",
+    "citation_faithfulness":    "test_citation_faithfulness_live.py",
 }
 
 PASS = "\033[92mPASS\033[0m"
@@ -189,6 +195,7 @@ def main() -> None:
         "scaffold":                 [],
         "adversarial_gate":         [],
         "contradiction_resolver":   [],
+        "citation_faithfulness":    [],
     }
     # Per-suite environment
     suite_env = {
@@ -202,6 +209,7 @@ def main() -> None:
         "scaffold":                 {**os.environ, "SYNTHADOC_URL": base},
         "adversarial_gate":         {**os.environ, "SYNTHADOC_URL": base},
         "contradiction_resolver":   {**os.environ, "SYNTHADOC_URL": base},
+        "citation_faithfulness":    {**os.environ, "SYNTHADOC_URL": base},
     }
 
     print(f"\n{'='*64}")

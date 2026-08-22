@@ -9,6 +9,9 @@ Manual integration tests that run against a live server and LLM.  Not run by CI.
 | `live_cli_test.py` | 44 CLI commands via `python -m synthadoc` | 59 |
 | `live_mcp_test.py` | 12 MCP tools via SSE transport | ~30 |
 | `live_plugin_test.py` | 37 REST API endpoints used by the Obsidian plugin | ~40 |
+| `test_adversarial_gate_live.py` | Gate demotion + cycle prevention (v1.3.0) | 2 |
+| `test_contradiction_resolver_live.py` | Interactive contradiction resolver workflow (v1.3.0) | varies |
+| `test_citation_faithfulness_live.py` | Faithfulness audit: dry-run cost, LLM verdicts, cache write + invalidation (v1.3.1) | 4 |
 
 ## Prerequisites
 
@@ -68,6 +71,9 @@ python -X utf8 tests/live/run_all.py -w my-other-wiki --url http://127.0.0.1:707
 python -X utf8 tests/live/run_all.py --suite cli
 python -X utf8 tests/live/run_all.py --suite mcp
 python -X utf8 tests/live/run_all.py --suite plugin
+python -X utf8 tests/live/run_all.py --suite adversarial_gate
+python -X utf8 tests/live/run_all.py --suite contradiction_resolver
+python -X utf8 tests/live/run_all.py --suite citation_faithfulness
 ```
 
 ### Two suites, skip one
@@ -133,6 +139,23 @@ python -X utf8 tests/live/live_plugin_test.py
 SYNTHADOC_URL=http://127.0.0.1:7070 python -X utf8 tests/live/live_plugin_test.py
 ```
 
+### Citation faithfulness audit test (v1.3.1)
+
+```
+pytest tests/live/test_citation_faithfulness_live.py -v -s
+```
+
+```powershell
+# PowerShell
+$env:SYNTHADOC_URL = "http://127.0.0.1:7070"
+pytest tests/live/test_citation_faithfulness_live.py -v -s
+```
+
+```bash
+# bash
+SYNTHADOC_URL=http://127.0.0.1:7070 pytest tests/live/test_citation_faithfulness_live.py -v -s
+```
+
 ## Environment variables
 
 | Variable | Default | Used by |
@@ -167,3 +190,5 @@ All tests are designed to leave the wiki in its original state:
 | Plugin | staging policy — changed to `off` | restored before test ends |
 | MCP | `synthadoc_write_page` — content modified | original content restored |
 | MCP | lifecycle — 1 active page marked stale | restored to `active` |
+| Citation faithfulness | `_live-test-faith-audit` page + `_live-test-faith-source.txt` created | archived + deleted in fixture teardown |
+| Citation faithfulness | `.synthadoc/faithfulness-cache.json` — entry written for test slug | entry persists but test slug is archived and removed, so it becomes inactive and is ignored by future stale checks |

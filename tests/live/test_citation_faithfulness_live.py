@@ -27,6 +27,7 @@ Run:
 from __future__ import annotations
 
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -350,3 +351,7 @@ def test_faithfulness_cache_invalidated_on_source_update(faith_test_page):
         f"Expected {_FAITH_SLUG!r} fresh after re-audit (T2); "
         f"stale_slugs: {cache['stale_slugs']}"
     )
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main([__file__, "-v", "-s"]))
