@@ -285,6 +285,10 @@ def test_faithfulness_cache_reflects_audit(faith_test_page):
     assert "total_slugs_cached" in cache, (
         f"Expected 'total_slugs_cached' in cache response: {cache}"
     )
+    # last_checked_at must be a non-empty ISO UTC string after at least one audit.
+    assert cache.get("last_checked_at"), (
+        f"Expected 'last_checked_at' to be set after audit: {cache}"
+    )
 
     # The test slug must not appear as stale — it was just audited.
     assert _FAITH_SLUG not in cache["stale_slugs"], (
