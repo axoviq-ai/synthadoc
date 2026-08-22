@@ -10,10 +10,10 @@ Tests verify that:
   3. GET /audit/citations/faithfulness/cache reflects results after a run
      and does not list the audited page as stale.
 
-Self-contained: creates a dedicated test page (_live-test-faith-audit) in
-the wiki filesystem with one faithful citation and one that contradicts its
-source, then archives and removes both the page and the extracted source
-file in a finally block.  Real wiki content is never modified.
+Self-contained: the faith_test_page fixture creates a dedicated test page
+(_live-test-faith-audit) and extracted source file in the live wiki
+filesystem, then archives and removes both in its teardown.  Real wiki
+content is never modified.
 
 Prerequisites:
   - synthadoc serve -w <wiki> running on SYNTHADOC_URL
@@ -111,7 +111,12 @@ def _setup_test_page(wiki_path: Path) -> None:
 
 
 def _cleanup_test_page(wiki_path: Path) -> None:
-    """Archive the test slug and remove the wiki file + source (best effort)."""
+    """Archive the test slug and remove the wiki file + source (best effort).
+
+    Each step is wrapped individually so a failure in one doesn't skip the
+    rest.  The lifecycle transition may legitimately fail if setup didn't
+    complete — that is expected and ignored.
+    """
     try:
         _transition(
             _FAITH_SLUG,
@@ -132,7 +137,7 @@ def _cleanup_test_page(wiki_path: Path) -> None:
         pass
 
 
-# ── Server gate ───────────────────────────────────────────────────────────────
+# ── Fixtures ──────────────────────────────────────────────────────────────────
 
 @pytest.fixture(autouse=True)
 def require_server():
@@ -143,40 +148,56 @@ def require_server():
         pytest.skip("Synthadoc server not running — skipping live tests")
 
 
+@pytest.fixture
+def faith_test_page():
+    """Create the test page + source; guarantee teardown after every test.
+
+    The try/finally wraps both setup and yield so _cleanup_test_page runs
+    even when:
+      - setup fails partway through (file written but transition errored)
+      - the test body raises an assertion error
+      - the test is timed out
+      - the test is interrupted with Ctrl-C (KeyboardInterrupt)
+
+    Yields the wiki root Path so tests can inspect the filesystem if needed.
+    """
+    wiki_path = _get_wiki_path()
+    if wiki_path is None:
+        pytest.skip("Cannot determine wiki path from /status — skipping")
+
+    try:
+        _setup_test_page(wiki_path)
+        yield wiki_path
+    finally:
+        _cleanup_test_page(wiki_path)
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Test 1 — dry_run returns a cost estimate without LLM calls
 # ══════════════════════════════════════════════════════════════════════════════
 
 @pytest.mark.live
 @pytest.mark.timeout(60)
-def test_faithfulness_dry_run():
+def test_faithfulness_dry_run(faith_test_page):
     """dry_run=true returns pages/citations/cost without making LLM calls.
 
     This test does not require ANTHROPIC_API_KEY in the server (no LLM
     call is made), so it is the fastest signal that the endpoint is wired up.
     """
-    wiki_path = _get_wiki_path()
-    if wiki_path is None:
-        pytest.skip("Cannot determine wiki path from /status — skipping")
-
-    _setup_test_page(wiki_path)
-    try:
-        resp = _api("/audit/citations/faithfulness", method="POST", body={
-            "page_slug": _FAITH_SLUG,
-            "dry_run": True,
-        })
-        assert "pages" in resp, f"Expected 'pages' key in dry-run response: {resp}"
-        assert "citations" in resp, f"Expected 'citations' key in dry-run response: {resp}"
-        assert "estimated_cost_usd" in resp, (
-            f"Expected 'estimated_cost_usd' in dry-run response: {resp}"
-        )
-        assert resp["pages"] >= 1, f"Expected pages >= 1, got: {resp['pages']}"
-        assert resp["citations"] >= 1, f"Expected citations >= 1, got: {resp['citations']}"
-        assert isinstance(resp["estimated_cost_usd"], (int, float)), (
-            f"Expected numeric cost, got: {resp['estimated_cost_usd']!r}"
-        )
-    finally:
-        _cleanup_test_page(wiki_path)
+    resp = _api("/audit/citations/faithfulness", method="POST", body={
+        "page_slug": _FAITH_SLUG,
+        "dry_run": True,
+    })
+    assert "pages" in resp, f"Expected 'pages' key in dry-run response: {resp}"
+    assert "citations" in resp, f"Expected 'citations' key in dry-run response: {resp}"
+    assert "estimated_cost_usd" in resp, (
+        f"Expected 'estimated_cost_usd' in dry-run response: {resp}"
+    )
+    assert resp["pages"] >= 1, f"Expected pages >= 1, got: {resp['pages']}"
+    assert resp["citations"] >= 1, f"Expected citations >= 1, got: {resp['citations']}"
+    assert isinstance(resp["estimated_cost_usd"], (int, float)), (
+        f"Expected numeric cost, got: {resp['estimated_cost_usd']!r}"
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -185,7 +206,7 @@ def test_faithfulness_dry_run():
 
 @pytest.mark.live
 @pytest.mark.timeout(120)
-def test_faithfulness_per_page_audit():
+def test_faithfulness_per_page_audit(faith_test_page):
     """Per-page audit returns per-citation verdicts in {supported, drift, hallucination, skipped}.
 
     The test page has one citation whose claim is faithful to its source and
@@ -193,41 +214,29 @@ def test_faithfulness_per_page_audit():
     rated 'supported'; xfail is used rather than a hard fail so a single
     conservative LLM response doesn't block CI.
     """
-    wiki_path = _get_wiki_path()
-    if wiki_path is None:
-        pytest.skip("Cannot determine wiki path from /status — skipping")
+    resp = _api("/audit/citations/faithfulness", method="POST", body={
+        "page_slug": _FAITH_SLUG,
+    })
+    assert "results" in resp, f"Expected 'results' key in response: {resp}"
+    assert resp.get("pages_checked", 0) >= 1, f"Expected pages_checked >= 1: {resp}"
+    assert resp.get("citations_checked", 0) >= 1, f"Expected citations_checked >= 1: {resp}"
 
-    _setup_test_page(wiki_path)
-    try:
-        resp = _api("/audit/citations/faithfulness", method="POST", body={
-            "page_slug": _FAITH_SLUG,
-        })
-        assert "results" in resp, f"Expected 'results' key in response: {resp}"
-        assert resp.get("pages_checked", 0) >= 1, (
-            f"Expected pages_checked >= 1: {resp}"
-        )
-        assert resp.get("citations_checked", 0) >= 1, (
-            f"Expected citations_checked >= 1: {resp}"
+    for r in resp["results"]:
+        assert r.get("verdict") in _VALID_VERDICTS, (
+            f"Unexpected verdict '{r.get('verdict')}' for "
+            f"citation {r.get('citation_marker')!r}"
         )
 
-        for r in resp["results"]:
-            assert r.get("verdict") in _VALID_VERDICTS, (
-                f"Unexpected verdict '{r.get('verdict')}' for "
-                f"citation {r.get('citation_marker')!r}"
-            )
-
-        # The second citation misrepresents its source — should not be supported.
-        # xfail rather than hard-fail: conservative LLM runs occasionally miss
-        # even clear contradictions.
-        contradicted_marker = f"^[{_SOURCE_FILENAME}:2-2]"
-        verdicts = {r["citation_marker"]: r["verdict"] for r in resp["results"]}
-        if verdicts.get(contradicted_marker) == "supported":
-            pytest.xfail(
-                f"LLM rated the contradicted citation as 'supported' on this run. "
-                f"Full verdicts: {verdicts}"
-            )
-    finally:
-        _cleanup_test_page(wiki_path)
+    # The second citation misrepresents its source — should not be supported.
+    # xfail rather than hard-fail: conservative LLM runs occasionally miss
+    # even clear contradictions.
+    contradicted_marker = f"^[{_SOURCE_FILENAME}:2-2]"
+    verdicts = {r["citation_marker"]: r["verdict"] for r in resp["results"]}
+    if verdicts.get(contradicted_marker) == "supported":
+        pytest.xfail(
+            f"LLM rated the contradicted citation as 'supported' on this run. "
+            f"Full verdicts: {verdicts}"
+        )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -236,37 +245,26 @@ def test_faithfulness_per_page_audit():
 
 @pytest.mark.live
 @pytest.mark.timeout(120)
-def test_faithfulness_cache_reflects_audit():
-    """GET /audit/citations/faithfulness/cache returns the entry after a full run.
+def test_faithfulness_cache_reflects_audit(faith_test_page):
+    """GET /audit/citations/faithfulness/cache reflects results after a full run.
 
     After POST (full run), the cache must contain an entry for the test slug
     and must NOT list that slug in stale_slugs.
     """
-    wiki_path = _get_wiki_path()
-    if wiki_path is None:
-        pytest.skip("Cannot determine wiki path from /status — skipping")
+    # Run the audit to populate the cache.
+    _api("/audit/citations/faithfulness", method="POST", body={
+        "page_slug": _FAITH_SLUG,
+    })
 
-    _setup_test_page(wiki_path)
-    try:
-        # Run the audit to populate the cache.
-        _api("/audit/citations/faithfulness", method="POST", body={
-            "page_slug": _FAITH_SLUG,
-        })
+    cache = _api("/audit/citations/faithfulness/cache")
+    assert "results" in cache, f"Expected 'results' in cache response: {cache}"
+    assert "stale_slugs" in cache, f"Expected 'stale_slugs' in cache response: {cache}"
+    assert "total_slugs_cached" in cache, (
+        f"Expected 'total_slugs_cached' in cache response: {cache}"
+    )
 
-        # Fetch the cache endpoint.
-        cache = _api("/audit/citations/faithfulness/cache")
-        assert "results" in cache, f"Expected 'results' in cache response: {cache}"
-        assert "stale_slugs" in cache, (
-            f"Expected 'stale_slugs' in cache response: {cache}"
-        )
-        assert "total_slugs_cached" in cache, (
-            f"Expected 'total_slugs_cached' in cache response: {cache}"
-        )
-
-        # The test slug must not appear as stale — it was just audited.
-        assert _FAITH_SLUG not in cache["stale_slugs"], (
-            f"Expected {_FAITH_SLUG!r} to be cached (not stale) after audit. "
-            f"stale_slugs: {cache['stale_slugs']}"
-        )
-    finally:
-        _cleanup_test_page(wiki_path)
+    # The test slug must not appear as stale — it was just audited.
+    assert _FAITH_SLUG not in cache["stale_slugs"], (
+        f"Expected {_FAITH_SLUG!r} to be cached (not stale) after audit. "
+        f"stale_slugs: {cache['stale_slugs']}"
+    )
