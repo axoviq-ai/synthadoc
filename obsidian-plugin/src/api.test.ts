@@ -748,3 +748,18 @@ describe("api.auditCitationsFaithfulness", () => {
         );
     });
 });
+
+describe("api.getFaithfulnessCache", () => {
+    it("getFaithfulnessCache calls GET /audit/citations/faithfulness/cache", async () => {
+        mockResponse({
+            results: [], stale_slugs: [], total_slugs_cached: 0,
+        });
+        await (api as any).getFaithfulnessCache();
+        expect(mockRequestUrl).toHaveBeenCalledWith(
+            expect.objectContaining({
+                url: "http://127.0.0.1:7070/audit/citations/faithfulness/cache",
+                method: "GET",
+            })
+        );
+    });
+});

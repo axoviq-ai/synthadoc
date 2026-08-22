@@ -479,6 +479,8 @@ On-demand audit agent that verifies each claim's faithfulness to its cited sourc
 
 **Dry-run mode:** `dry_run=True` returns token/cost estimate only — no LLM calls. Used by the Obsidian tab's "Estimate cost" button.
 
+**Result cache:** After every live run, results are written to `.synthadoc/faithfulness-cache.json`, keyed per page by the maximum `ingested` timestamp across its sources. On the next Obsidian tab open, cached results load immediately without LLM calls. Pages whose `ingested` timestamp has changed since the last audit are flagged as stale. The "Re-run stale" button re-runs only those pages and merges results back into the cache; unchanged pages are served from cache at no cost.
+
 ---
 
 ## 5. Skills System
@@ -825,6 +827,7 @@ Note: BM25 IDF requires a minimum of 3 documents in the corpus for non-zero scor
 | `POST`   | `/pages/{slug}/snapshot`                     | `{content: str, reason?: str}`                                                     | Record a content snapshot only when content differs from the last stored snapshot (`recorded: true/false`). Called by the Obsidian plugin on vault modify events. |
 | `DELETE` | `/pages/{slug}/history`                      | —                                                                                 | Delete all lifecycle events (including snapshots) for a slug; intended for test teardown.                                                                         |
 | `POST`   | `/audit/citations/faithfulness`              | `{page?: str, dry_run?: bool}`                                                   | `[FaithfulnessResult]` — opt-in LLM faithfulness audit; `dry_run=true` returns cost estimate only                                                            |
+| `GET`    | `/audit/citations/faithfulness/cache`        | —                                                                                | Return cached results + `stale_slugs` list (no LLM calls)                                                                                                    |
 
 **`GET /jobs` query parameters:**
 

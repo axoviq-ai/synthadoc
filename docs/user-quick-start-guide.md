@@ -2101,9 +2101,9 @@ The command exits with code `1` when any drift or hallucination is found, making
    (Or open the Audit modal and click the **Citation Faithfulness** tab.)
 2. Choose scope: "All active pages" or "Specific page" (enter the slug).
 3. Click **Estimate cost** to see the token and cost estimate before running.
-4. Click **▶ Run** to start the audit.
-5. Results appear in a sortable, paginated table (25 rows per page).  
-   Click the **Page** or **Verdict** column header to sort.
+4. The tab opens with the **last cached results** already loaded (if any). A yellow banner appears when one or more pages have been updated since the last run — click **Re-run stale** to update only those pages without re-checking the rest.
+5. To run a full fresh audit of all pages, click **▶ Run**.
+6. Results appear in a sortable, paginated table (25 rows per page). Click the **Page** or **Verdict** column header to sort.
 
 **What to do with drift or hallucination results:**
 

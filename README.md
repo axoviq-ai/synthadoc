@@ -955,6 +955,7 @@ synthadoc audit citations --faithfulness              # all active pages
 synthadoc audit citations --faithfulness --page SLUG  # single page
 synthadoc audit citations --faithfulness --yes        # skip cost prompt
 synthadoc audit citations --faithfulness --json       # machine-readable output
+# Results cached per-page; Obsidian tab shows cached results instantly on open
 ```
 
 ### Scheduling recurring jobs

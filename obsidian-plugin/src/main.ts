@@ -2592,6 +2592,16 @@ class AuditModal extends Modal {
             summaryLine.textContent = "Summary (all results): " + parts.join(" · ");
         };
 
+        // ── Stale banner ──────────────────────────────────────────────────────
+        const staleBar = panel.createEl("div");
+        staleBar.style.cssText = "display:none;background:rgba(255,183,77,0.15);border-radius:4px;padding:6px 10px;margin-bottom:8px;font-size:12px";
+        const staleInner = staleBar.createEl("div");
+        staleInner.style.cssText = "display:flex;align-items:center;gap:8px";
+        const staleLabel = staleInner.createEl("span");
+        const rerunStaleBtn = staleInner.createEl("button", { text: "Re-run stale" }) as HTMLButtonElement;
+
+        let _staleSlugsList: string[] = [];
+
         runBtn.addEventListener("click", async () => {
             runBtn.disabled = true;
             estimateBtn.disabled = true;
@@ -2610,6 +2620,70 @@ class AuditModal extends Modal {
             } finally {
                 runBtn.disabled = false;
                 estimateBtn.disabled = false;
+            }
+        });
+
+        // ── Auto-load cache on tab open ───────────────────────────────────────
+        (async () => {
+            statusLine.textContent = "⏳ Loading cached results…";
+            try {
+                const cached = await (api as any).getFaithfulnessCache() as {
+                    results: FaithResult[];
+                    stale_slugs: string[];
+                    total_slugs_cached: number;
+                };
+                _faithResults = cached.results ?? [];
+                _staleSlugsList = cached.stale_slugs ?? [];
+                if (_faithResults.length > 0) {
+                    _faithPage = 0;
+                    renderTable();
+                }
+                if (_staleSlugsList.length > 0) {
+                    staleLabel.textContent =
+                        `${_staleSlugsList.length} page${_staleSlugsList.length !== 1 ? "s" : ""} updated since last audit`;
+                    staleBar.style.display = "block";
+                    statusLine.textContent = "";
+                } else {
+                    staleBar.style.display = "none";
+                    if (_faithResults.length === 0) {
+                        statusLine.textContent = "No cached results — click ▶ Run to audit.";
+                    } else {
+                        statusLine.textContent = "";
+                    }
+                }
+            } catch {
+                statusLine.textContent = "Could not load cache. Is synthadoc serve running?";
+            }
+        })();
+
+        // ── Re-run stale handler ──────────────────────────────────────────────
+        rerunStaleBtn.addEventListener("click", async () => {
+            rerunStaleBtn.disabled = true;
+            runBtn.disabled = true;
+            statusLine.textContent =
+                `⏳ Re-running ${_staleSlugsList.length} stale page(s)…`;
+            try {
+                await (api as any).auditCitationsFaithfulness(undefined, false, true);
+                const cached = await (api as any).getFaithfulnessCache() as {
+                    results: FaithResult[];
+                    stale_slugs: string[];
+                    total_slugs_cached: number;
+                };
+                _faithResults = cached.results ?? [];
+                _staleSlugsList = cached.stale_slugs ?? [];
+                _faithPage = 0;
+                staleBar.style.display = _staleSlugsList.length > 0 ? "block" : "none";
+                if (_staleSlugsList.length > 0) {
+                    staleLabel.textContent =
+                        `${_staleSlugsList.length} page${_staleSlugsList.length !== 1 ? "s" : ""} updated since last audit`;
+                }
+                statusLine.textContent = "";
+                renderTable();
+            } catch {
+                statusLine.textContent = "Error during re-run.";
+            } finally {
+                rerunStaleBtn.disabled = false;
+                runBtn.disabled = false;
             }
         });
     }
