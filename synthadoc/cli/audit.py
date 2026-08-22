@@ -230,6 +230,7 @@ def _collect_checks_for_cost(
 
 def _render_faithfulness(results: list, as_json: bool) -> None:
     import json as _json
+    from rich.markup import escape as _escape
 
     if as_json:
         typer.echo(_json.dumps(
@@ -261,7 +262,7 @@ def _render_faithfulness(results: list, as_json: bool) -> None:
     table.add_column("Reason")
     for r in results:
         verdict_cell = _VERDICT_STYLE.get(r.verdict, (r.verdict, ""))[0]
-        table.add_row(r.slug, r.citation_marker, verdict_cell, r.reason or "")
+        table.add_row(r.slug, _escape(r.citation_marker), verdict_cell, r.reason or "")
     console.print(table)
 
     counts = {"hallucination": 0, "drift": 0, "supported": 0, "skipped": 0}
