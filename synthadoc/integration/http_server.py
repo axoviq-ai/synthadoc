@@ -1570,7 +1570,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         stale_slugs = _get_stale_slugs(entries, store)
 
         all_results = []
+        checked_at_values: list[str] = []
         for slug, entry in entries.items():
+            if entry.get("checked_at"):
+                checked_at_values.append(entry["checked_at"])
             for r in entry.get("results", []):
                 all_results.append({
                     "slug": slug,
@@ -1579,10 +1582,14 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                     "reason": r.get("reason", ""),
                 })
 
+        # Most recent audit timestamp across all entries (ISO UTC string or None)
+        last_checked_at = max(checked_at_values) if checked_at_values else None
+
         return {
             "results": all_results,
             "stale_slugs": stale_slugs,
             "total_slugs_cached": len(entries),
+            "last_checked_at": last_checked_at,
         }
 
     # ── Routing ───────────────────────────────────────────────────────────────

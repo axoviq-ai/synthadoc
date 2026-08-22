@@ -181,12 +181,24 @@ async def check_page_faithfulness(
     Unknown verdict strings are treated as skipped.
     """
     user_msg = _build_user_message(slug, checks)
-    response = await provider.complete(
-        messages=[Message(role="user", content=user_msg)],
-        system=_SYSTEM_PROMPT,
-        temperature=0.0,
-        max_tokens=2048,
-    )
+    try:
+        response = await provider.complete(
+            messages=[Message(role="user", content=user_msg)],
+            system=_SYSTEM_PROMPT,
+            temperature=0.0,
+            max_tokens=2048,
+        )
+    except Exception as exc:
+        reason = f"LLM error: {str(exc)[:80]}"
+        return [
+            FaithfulnessResult(
+                slug=slug,
+                citation_marker=c.citation_marker,
+                verdict="skipped",
+                reason=reason,
+            )
+            for c in checks
+        ]
 
     try:
         parsed = json.loads(response.text)

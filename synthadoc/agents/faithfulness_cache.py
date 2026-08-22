@@ -30,9 +30,24 @@ def _cache_path(wiki_root: Path) -> Path:
 
 
 def _page_key(page: "WikiPage") -> str | None:
-    """Return the max ingested timestamp across all sources, or None."""
-    timestamps = [s.ingested for s in page.sources if s.ingested]
-    return max(timestamps) if timestamps else None
+    """Return the max ingested timestamp across all sources, as an ISO string, or None.
+
+    YAML parsers may return date/datetime objects rather than strings when the
+    ingested value is unquoted (e.g. ``ingested: 2026-07-15``).  We normalise
+    to a string so the result is always JSON-serialisable and compares correctly
+    against the string already stored in the cache JSON.
+    """
+    raw = [s.ingested for s in page.sources if s.ingested]
+    if not raw:
+        return None
+    # Convert each value to a comparable, serialisable string.
+    strs: list[str] = []
+    for v in raw:
+        if hasattr(v, "isoformat"):      # datetime.date / datetime.datetime
+            strs.append(v.isoformat())
+        else:
+            strs.append(str(v))
+    return max(strs)
 
 
 def read_cache(wiki_root: Path) -> dict:

@@ -3,6 +3,7 @@
 """Unit tests for faithfulness_cache module."""
 from __future__ import annotations
 import json
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -58,6 +59,49 @@ def test_page_key_max_of_multiple():
 def test_page_key_skips_empty_ingested():
     page = _make_page(["", "2026-08-15T10:00:00Z", ""])
     assert _page_key(page) == "2026-08-15T10:00:00Z"
+
+
+def test_page_key_date_object():
+    """PyYAML parses bare date values (e.g. 'ingested: 2026-04-08') as date objects.
+    _page_key must normalise these to ISO strings so json.dumps doesn't raise."""
+    page = WikiPage(
+        title="T", tags=[], content="", status="active", confidence="high",
+        sources=[SourceRef(file="s.txt", hash="", size=0, ingested=date(2026, 4, 8))],  # type: ignore[arg-type]
+    )
+    result = _page_key(page)
+    assert isinstance(result, str)
+    assert result == "2026-04-08"
+
+
+def test_page_key_datetime_object():
+    """datetime objects are also normalised to ISO strings."""
+    dt = datetime(2026, 8, 15, 10, 0, 0, tzinfo=timezone.utc)
+    page = WikiPage(
+        title="T", tags=[], content="", status="active", confidence="high",
+        sources=[SourceRef(file="s.txt", hash="", size=0, ingested=dt)],  # type: ignore[arg-type]
+    )
+    result = _page_key(page)
+    assert isinstance(result, str)
+    assert result == dt.isoformat()
+
+
+def test_page_key_date_is_json_serializable(tmp_path):
+    """After the fix, merge_results_into_cache must not raise TypeError for date-type ingested."""
+    import json as _json
+    from synthadoc.agents.faithfulness_cache import merge_results_into_cache as _merge
+
+    wiki_dir = tmp_path / "wiki"
+    wiki_dir.mkdir()
+    store = WikiStorage(wiki_dir)
+    page = WikiPage(
+        title="T", tags=[], content="", status="active", confidence="high",
+        sources=[SourceRef(file="s.txt", hash="", size=0, ingested=date(2026, 4, 8))],  # type: ignore[arg-type]
+    )
+    store.write_page("test-slug", page)
+    # Should not raise TypeError
+    _merge(tmp_path, [], store, checked_slugs=["test-slug"])
+    cache = read_cache(tmp_path)
+    assert cache["entries"]["test-slug"]["page_key"] == "2026-04-08"
 
 
 # -- read_cache / write_cache --------------------------------------------------

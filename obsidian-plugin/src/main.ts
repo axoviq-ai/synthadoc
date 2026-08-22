@@ -2466,6 +2466,8 @@ class AuditModal extends Modal {
         const pagerWrap = panel.createEl("div");
         const summaryLine = panel.createEl("div");
         summaryLine.style.cssText = "font-size:12px;color:var(--text-muted);margin-top:8px";
+        const lastAuditedLine = panel.createEl("div");
+        lastAuditedLine.style.cssText = "font-size:11px;color:var(--text-faint);margin-top:4px";
 
         // ── Scope helper ──────────────────────────────────────────────────────
         const getPageSlug = () =>
@@ -2615,33 +2617,39 @@ class AuditModal extends Modal {
         });
 
         // ── Auto-load cache on tab open ───────────────────────────────────────
+        const _applyCache = (cached: { results: FaithResult[]; stale_slugs: string[]; last_checked_at?: string }) => {
+            _faithResults = cached.results ?? [];
+            _staleSlugsList = cached.stale_slugs ?? [];
+            if (_faithResults.length > 0) {
+                _faithPage = 0;
+                renderTable();
+            }
+            if (_staleSlugsList.length > 0) {
+                staleLabel.textContent =
+                    `${_staleSlugsList.length} page${_staleSlugsList.length !== 1 ? "s" : ""} updated since last audit`;
+                staleBar.style.display = "block";
+                statusLine.textContent = "";
+            } else {
+                staleBar.style.display = "none";
+                if (_faithResults.length === 0) {
+                    statusLine.textContent = "No cached results — click ▶ Run to audit.";
+                } else {
+                    statusLine.textContent = "";
+                }
+            }
+            if (cached.last_checked_at) {
+                const localTs = new Date(cached.last_checked_at).toLocaleString();
+                lastAuditedLine.textContent = `Last audited: ${localTs}`;
+            } else {
+                lastAuditedLine.textContent = "";
+            }
+        };
+
         (async () => {
             statusLine.textContent = "⏳ Loading cached results…";
             try {
-                const cached = await (api as any).getFaithfulnessCache() as {
-                    results: FaithResult[];
-                    stale_slugs: string[];
-                    total_slugs_cached: number;
-                };
-                _faithResults = cached.results ?? [];
-                _staleSlugsList = cached.stale_slugs ?? [];
-                if (_faithResults.length > 0) {
-                    _faithPage = 0;
-                    renderTable();
-                }
-                if (_staleSlugsList.length > 0) {
-                    staleLabel.textContent =
-                        `${_staleSlugsList.length} page${_staleSlugsList.length !== 1 ? "s" : ""} updated since last audit`;
-                    staleBar.style.display = "block";
-                    statusLine.textContent = "";
-                } else {
-                    staleBar.style.display = "none";
-                    if (_faithResults.length === 0) {
-                        statusLine.textContent = "No cached results — click ▶ Run to audit.";
-                    } else {
-                        statusLine.textContent = "";
-                    }
-                }
+                const cached = await (api as any).getFaithfulnessCache();
+                _applyCache(cached);
             } catch {
                 statusLine.textContent = "Could not load cache. Is synthadoc serve running?";
             }
@@ -2655,23 +2663,12 @@ class AuditModal extends Modal {
                 `⏳ Re-running ${_staleSlugsList.length} stale page(s)…`;
             try {
                 await (api as any).auditCitationsFaithfulness(undefined, false, true);
-                const cached = await (api as any).getFaithfulnessCache() as {
-                    results: FaithResult[];
-                    stale_slugs: string[];
-                    total_slugs_cached: number;
-                };
-                _faithResults = cached.results ?? [];
-                _staleSlugsList = cached.stale_slugs ?? [];
+                const cached = await (api as any).getFaithfulnessCache();
                 _faithPage = 0;
-                staleBar.style.display = _staleSlugsList.length > 0 ? "block" : "none";
-                if (_staleSlugsList.length > 0) {
-                    staleLabel.textContent =
-                        `${_staleSlugsList.length} page${_staleSlugsList.length !== 1 ? "s" : ""} updated since last audit`;
-                }
-                statusLine.textContent = "";
-                renderTable();
-            } catch {
-                statusLine.textContent = "Error during re-run.";
+                _applyCache(cached);
+            } catch (e) {
+                console.error("Citation faithfulness re-run error:", e);
+                statusLine.textContent = "Re-run failed — check the server log for details.";
             } finally {
                 rerunStaleBtn.disabled = false;
                 runBtn.disabled = false;
