@@ -2827,6 +2827,7 @@ class AuditModal extends Modal {
             stale_slugs: string[];
             last_checked_at?: string;
         }) => {
+            statusLine.textContent = "";          // always clear "Loading…" on success
             _faithResults = cached.results ?? [];
             _staleSlugsList = cached.stale_slugs ?? [];
             if (_faithResults.length > 0) {
@@ -2839,9 +2840,6 @@ class AuditModal extends Modal {
                 staleText.textContent =
                     `${n} page${n !== 1 ? "s" : ""} re-ingested since last audit — verdicts may be outdated.`;
                 staleBar.style.display = "block";
-                if (_faithResults.length === 0) {
-                    statusLine.textContent = "";
-                }
             } else {
                 staleBar.style.display = "none";
                 if (_faithResults.length === 0) {
