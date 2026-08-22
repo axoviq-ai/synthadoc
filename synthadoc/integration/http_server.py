@@ -616,6 +616,32 @@ def _find_dist_dir() -> Path:
     return Path(__file__).parent.parent.parent / "web-ui" / "dist"
 
 
+async def _run_stale_faithfulness(wiki_root, store, provider) -> dict:
+    """Run faithfulness audit only for stale pages and merge results into cache."""
+    from synthadoc.agents.faithfulness_cache import (
+        read_cache,
+        get_stale_slugs,
+        merge_results_into_cache,
+    )
+    from synthadoc.agents.citation_faithfulness import run_faithfulness_audit
+
+    cache = read_cache(wiki_root)
+    stale = get_stale_slugs(cache.get("entries", {}), store)
+    if not stale:
+        return {"results": [], "pages_checked": 0, "citations_checked": 0,
+                "message": "All cached results are up to date."}
+    all_results: list = []
+    for slug in stale:
+        all_results.extend(await run_faithfulness_audit(wiki_root, store, provider, slug))
+    merge_results_into_cache(wiki_root, all_results, store)
+    return {
+        "results": [{"slug": r.slug, "citation_marker": r.citation_marker,
+                     "verdict": r.verdict, "reason": r.reason} for r in all_results],
+        "pages_checked": len({r.slug for r in all_results}),
+        "citations_checked": len(all_results),
+    }
+
+
 def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mcp: bool = True) -> FastAPI:
     import os
     import synthadoc
@@ -1460,27 +1486,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         agent_cfg = orch._cfg.agents.resolve("query")
 
         if req.stale_only and not req.dry_run:
-            from synthadoc.agents.faithfulness_cache import (
-                read_cache as _read_cache,
-                get_stale_slugs as _get_stale_slugs,
-                merge_results_into_cache as _merge,
-            )
-            _cache = _read_cache(wiki_root)
-            _stale = _get_stale_slugs(_cache.get("entries", {}), store)
-            if not _stale:
-                return {"results": [], "pages_checked": 0, "citations_checked": 0,
-                        "message": "All cached results are up to date."}
-            all_results: list = []
-            for _slug in _stale:
-                _slug_results = await run_faithfulness_audit(wiki_root, store, provider, _slug)
-                all_results.extend(_slug_results)
-            _merge(wiki_root, all_results, store)
-            return {
-                "results": [{"slug": r.slug, "citation_marker": r.citation_marker,
-                              "verdict": r.verdict, "reason": r.reason} for r in all_results],
-                "pages_checked": len({r.slug for r in all_results}),
-                "citations_checked": len(all_results),
-            }
+            return await _run_stale_faithfulness(wiki_root, store, provider)
 
         if req.dry_run:
             extracted_dir = wiki_root / ".synthadoc" / "extracted"
