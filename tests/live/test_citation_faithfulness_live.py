@@ -172,6 +172,28 @@ def faith_test_page():
         _cleanup_test_page(wiki_path)
 
 
+# ── Invalidation helpers ──────────────────────────────────────────────────────
+
+def _write_page_with_ingested(wiki_path: Path, ts: str) -> None:
+    """Overwrite the test page with a sources.ingested timestamp for cache-key testing."""
+    page_file = wiki_path / "wiki" / f"{_FAITH_SLUG}.md"
+    page_file.write_text(
+        "---\n"
+        "title: Internet History Test\n"
+        "status: active\n"
+        "sources:\n"
+        f"  - file: {_SOURCE_FILENAME}\n"
+        "    hash: abc\n"
+        "    size: 100\n"
+        f"    ingested: '{ts}'\n"
+        "---\n\n"
+        "ARPANET laid the groundwork for the modern Internet starting in the late 1960s."
+        f"^[{_SOURCE_FILENAME}:1-1]\n",
+        encoding="utf-8",
+    )
+    time.sleep(0.3)  # let filesystem settle
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Test 1 — dry_run returns a cost estimate without LLM calls
 # ══════════════════════════════════════════════════════════════════════════════
@@ -266,5 +288,65 @@ def test_faithfulness_cache_reflects_audit(faith_test_page):
     # The test slug must not appear as stale — it was just audited.
     assert _FAITH_SLUG not in cache["stale_slugs"], (
         f"Expected {_FAITH_SLUG!r} to be cached (not stale) after audit. "
+        f"stale_slugs: {cache['stale_slugs']}"
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Test 4 — cache invalidation when source ingested timestamp advances
+# ══════════════════════════════════════════════════════════════════════════════
+
+@pytest.mark.live
+@pytest.mark.timeout(180)
+def test_faithfulness_cache_invalidated_on_source_update(faith_test_page):
+    """Cache entry becomes stale when a page's source ingested timestamp changes.
+
+    Validates the per-page invalidation contract:
+        page_key = max(sources[].ingested)
+
+    When a source's ingested timestamp advances (i.e. the source was
+    re-ingested), the stored page_key no longer matches the current one
+    and the page must appear as stale in GET /cache.
+
+    Steps:
+      1. Rewrite test page with sources.ingested = T1
+      2. POST audit (page_slug) — cache entry written with page_key = T1
+      3. GET /cache — slug NOT in stale_slugs  (fresh)
+      4. Rewrite test page with sources.ingested = T2 (simulate re-ingest)
+      5. GET /cache — slug IS in stale_slugs  (invalidated by timestamp change)
+      6. POST audit again — cache entry updated with page_key = T2
+      7. GET /cache — slug NOT in stale_slugs  (fresh again)
+    """
+    wiki_path = faith_test_page
+
+    _T1 = "2026-01-01T00:00:00+00:00"
+    _T2 = "2026-06-01T00:00:00+00:00"
+
+    # ── Steps 1–3: audit with T1, verify fresh ────────────────────────────────
+    _write_page_with_ingested(wiki_path, _T1)
+    _api("/audit/citations/faithfulness", method="POST", body={
+        "page_slug": _FAITH_SLUG,
+    })
+    cache = _api("/audit/citations/faithfulness/cache")
+    assert _FAITH_SLUG not in cache["stale_slugs"], (
+        f"Expected {_FAITH_SLUG!r} fresh after first audit (T1); "
+        f"stale_slugs: {cache['stale_slugs']}"
+    )
+
+    # ── Steps 4–5: advance timestamp, verify stale ────────────────────────────
+    _write_page_with_ingested(wiki_path, _T2)
+    cache = _api("/audit/citations/faithfulness/cache")
+    assert _FAITH_SLUG in cache["stale_slugs"], (
+        f"Expected {_FAITH_SLUG!r} stale after ingested timestamp advanced "
+        f"from {_T1!r} to {_T2!r}; stale_slugs: {cache['stale_slugs']}"
+    )
+
+    # ── Steps 6–7: re-audit with T2, verify fresh again ──────────────────────
+    _api("/audit/citations/faithfulness", method="POST", body={
+        "page_slug": _FAITH_SLUG,
+    })
+    cache = _api("/audit/citations/faithfulness/cache")
+    assert _FAITH_SLUG not in cache["stale_slugs"], (
+        f"Expected {_FAITH_SLUG!r} fresh after re-audit (T2); "
         f"stale_slugs: {cache['stale_slugs']}"
     )
