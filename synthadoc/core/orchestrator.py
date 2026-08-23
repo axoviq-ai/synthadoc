@@ -747,7 +747,19 @@ class Orchestrator:
 
         wiki_root = self._root
         store = WikiStorage(wiki_root / "wiki")
-        provider = make_provider("query", self._cfg)
+        provider = make_provider("adversarial", self._cfg)
+        faith_cfg = self._cfg.agents.resolve("adversarial")
+        if self._cfg.agents.adversarial is None:
+            logger.info(
+                "Faithfulness audit: %s/%s (default — tip: set [agents].adversarial in "
+                "config.toml to use a dedicated judge model)",
+                faith_cfg.provider, faith_cfg.model,
+            )
+        else:
+            logger.info(
+                "Faithfulness audit: %s/%s (dedicated judge)",
+                faith_cfg.provider, faith_cfg.model,
+            )
 
         try:
             # Determine the set of slugs to audit
