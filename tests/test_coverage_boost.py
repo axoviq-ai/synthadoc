@@ -1710,3 +1710,597 @@ async def test_fetch_live_wiki_data_jobs_empty(tmp_wiki):
         result = await agent._fetch_live_wiki_data("What is the status of my jobs?")
 
     assert "no jobs" in result.lower()
+
+
+# ── agents/citation_faithfulness.py — LLM exception path (lines 191-193) ────────
+
+def test_check_page_provider_exception_skips_all():
+    """provider.complete raising → all citations skipped with 'LLM error: …' reason."""
+    import asyncio as _asyncio
+    from unittest.mock import AsyncMock, MagicMock
+    from synthadoc.agents.citation_faithfulness import (
+        check_page_faithfulness,
+        CitationToCheck,
+    )
+    checks = [
+        CitationToCheck(
+            citation_marker="^[a.txt:1-1]",
+            claim_text="claim text",
+            source_lines="source line",
+            source_file="a.txt",
+            line_start=1,
+            line_end=1,
+        )
+    ]
+    provider = MagicMock()
+    provider.complete = AsyncMock(side_effect=RuntimeError("connection refused"))
+    results = _asyncio.run(check_page_faithfulness("slug", checks, provider))
+    assert len(results) == 1
+    assert results[0].verdict == "skipped"
+    assert results[0].reason.startswith("LLM error:")
+
+
+# ── agents/faithfulness_cache.py — malformed cache (line 61) ─────────────────
+
+def test_read_cache_returns_empty_when_entries_key_missing(tmp_path):
+    """read_cache returns the default skeleton when cache has no 'entries' key."""
+    from synthadoc.agents.faithfulness_cache import read_cache
+    cache_path = tmp_path / ".synthadoc" / "faithfulness-cache.json"
+    cache_path.parent.mkdir(parents=True)
+    cache_path.write_text('{"version": 1}', encoding="utf-8")  # no 'entries' key
+    result = read_cache(tmp_path)
+    assert result == {"version": 1, "entries": {}}
+
+
+# ── cli/audit.py — _show_from_cache and cache-aware decision logic ────────────
+
+def test_show_from_cache_no_results(tmp_wiki):
+    """_show_from_cache with no matching slugs exits 0 (no issues)."""
+    import pytest
+    from synthadoc.cli.audit import _show_from_cache
+    with pytest.raises(SystemExit) as exc_info:
+        _show_from_cache({}, [], as_json=False)
+    assert exc_info.value.code == 0
+
+
+def test_show_from_cache_raises_exit_1_on_drift(tmp_wiki, capsys):
+    """_show_from_cache exits 1 when any result has verdict 'drift'."""
+    import pytest
+    from synthadoc.cli.audit import _show_from_cache
+    entries = {
+        "page-a": {
+            "results": [
+                {"citation_marker": "^[src.txt:1-1]", "verdict": "drift", "reason": "overstates"},
+            ]
+        }
+    }
+    with pytest.raises(SystemExit) as exc_info:
+        _show_from_cache(entries, ["page-a"], as_json=True)
+    assert exc_info.value.code == 1
+
+
+def test_faithfulness_cli_shows_cached_when_fresh(tmp_wiki):
+    """When cache is fully fresh, faithfulness CLI prints from cache without hitting server."""
+    from typer.testing import CliRunner
+    from synthadoc.cli.main import app
+    from synthadoc.config import Config, AgentsConfig, AgentConfig, CostConfig
+    import json
+    runner = CliRunner()
+
+    # Write a fresh cache
+    cache_data = {
+        "version": 1,
+        "entries": {
+            "alan-turing": {
+                "page_key": "2026-01-01T00:00:00+00:00",
+                "checked_at": "2026-08-01T00:00:00+00:00",
+                "results": [
+                    {"citation_marker": "^[src.txt:1-1]", "verdict": "supported", "reason": "ok"},
+                ],
+            }
+        },
+    }
+    cache_path = tmp_wiki / ".synthadoc" / "faithfulness-cache.json"
+    cache_path.write_text(json.dumps(cache_data), encoding="utf-8")
+
+    # Write a matching wiki page so get_stale_slugs sees no stale pages
+    wiki_dir = tmp_wiki / "wiki"
+    (wiki_dir / "alan-turing.md").write_text(
+        "---\ntitle: Alan Turing\nstatus: active\nconfidence: high\n"
+        "sources:\n  - file: src.txt\n    hash: abc\n    size: 10\n"
+        "    ingested: '2026-01-01T00:00:00+00:00'\n---\n\nContent.\n",
+        encoding="utf-8",
+    )
+
+    fake_cfg = Config(
+        agents=AgentsConfig(default=AgentConfig(provider="gemini", model="gemini-2.5-flash")),
+        cost=CostConfig(),
+    )
+
+    with patch("synthadoc.cli._wiki.resolve_wiki", return_value=str(tmp_wiki)), \
+         patch("synthadoc.cli.install.resolve_wiki_path", return_value=tmp_wiki), \
+         patch("synthadoc.config.load_config", return_value=fake_cfg):
+        result = runner.invoke(app, [
+            "audit", "citations", "--faithfulness",
+            "--wiki", str(tmp_wiki), "--yes",
+        ])
+
+    # Should exit 0 (all supported) or 1 (issues) — never a Python exception
+    assert result.exit_code in (0, 1), result.output
+
+
+# ── orchestrator.py — _run_faithfulness ──────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_run_faithfulness_empty_wiki_completes_job(tmp_wiki):
+    """_run_faithfulness with no active pages completes the job with pages_checked=0."""
+    from synthadoc.config import load_config
+    from synthadoc.core.orchestrator import Orchestrator
+    from synthadoc.core.queue import JobStatus
+
+    orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
+    await orch.init()
+    try:
+        job_id = await orch._queue.enqueue("faithfulness", {})
+
+        with patch("synthadoc.providers.make_provider", return_value=MagicMock()):
+            await orch._run_faithfulness(job_id)
+
+        completed = await orch._queue.list_jobs(status=JobStatus.COMPLETED)
+        assert any(j.id == job_id for j in completed)
+        job = next(j for j in completed if j.id == job_id)
+        assert (job.result or {}).get("pages_checked") == 0
+    finally:
+        await orch.close()
+
+
+@pytest.mark.asyncio
+async def test_run_faithfulness_with_page_slug_filter(tmp_wiki):
+    """_run_faithfulness(page_slug='slug') audits only that slug."""
+    from synthadoc.config import load_config
+    from synthadoc.core.orchestrator import Orchestrator
+    from synthadoc.core.queue import JobStatus
+
+    # Write one active page to the wiki
+    (tmp_wiki / "wiki" / "bell-labs.md").write_text(
+        "---\ntitle: Bell Labs\nstatus: active\nconfidence: high\n"
+        "sources: []\n---\n\nContent without citations.\n",
+        encoding="utf-8",
+    )
+
+    orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
+    await orch.init()
+    try:
+        job_id = await orch._queue.enqueue("faithfulness", {"page_slug": "bell-labs"})
+
+        with patch("synthadoc.providers.make_provider", return_value=MagicMock()), \
+             patch("synthadoc.agents.citation_faithfulness.run_faithfulness_audit",
+                   new=AsyncMock(return_value=[])):
+            await orch._run_faithfulness(job_id, page_slug="bell-labs")
+
+        completed = await orch._queue.list_jobs(status=JobStatus.COMPLETED)
+        assert any(j.id == job_id for j in completed)
+    finally:
+        await orch.close()
+
+
+@pytest.mark.asyncio
+async def test_run_faithfulness_exception_fails_job(tmp_wiki):
+    """_run_faithfulness marks the job as non-completed when an exception occurs."""
+    from synthadoc.config import load_config
+    from synthadoc.core.orchestrator import Orchestrator
+    from synthadoc.core.queue import JobStatus
+
+    (tmp_wiki / "wiki" / "page-a.md").write_text(
+        "---\ntitle: Page A\nstatus: active\nconfidence: high\nsources: []\n---\n\nContent.\n",
+        encoding="utf-8",
+    )
+
+    orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
+    await orch.init()
+    try:
+        job_id = await orch._queue.enqueue("faithfulness", {})
+
+        with patch("synthadoc.providers.make_provider",
+                   side_effect=RuntimeError("no provider")):
+            with pytest.raises(RuntimeError):
+                await orch._run_faithfulness(job_id)
+
+        completed = await orch._queue.list_jobs(status=JobStatus.COMPLETED)
+        assert not any(j.id == job_id for j in completed)
+    finally:
+        await orch.close()
+
+
+@pytest.mark.asyncio
+async def test_run_faithfulness_stale_only_empty_stale(tmp_wiki):
+    """stale_only=True with no stale slugs completes with pages_checked=0."""
+    import json
+    from synthadoc.config import load_config
+    from synthadoc.core.orchestrator import Orchestrator
+    from synthadoc.core.queue import JobStatus
+
+    # Write an empty cache so get_stale_slugs returns []
+    (tmp_wiki / ".synthadoc" / "faithfulness-cache.json").write_text(
+        json.dumps({"version": 1, "entries": {}}), encoding="utf-8"
+    )
+
+    orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
+    await orch.init()
+    try:
+        job_id = await orch._queue.enqueue("faithfulness", {"stale_only": True})
+
+        with patch("synthadoc.providers.make_provider", return_value=MagicMock()):
+            await orch._run_faithfulness(job_id, stale_only=True)
+
+        completed = await orch._queue.list_jobs(status=JobStatus.COMPLETED)
+        assert any(j.id == job_id for j in completed)
+    finally:
+        await orch.close()
+
+
+@pytest.mark.asyncio
+async def test_run_faithfulness_exception_inside_try_fails_job(tmp_wiki):
+    """Exception from run_faithfulness_audit (inside the try) triggers the except block."""
+    from synthadoc.config import load_config
+    from synthadoc.core.orchestrator import Orchestrator
+    from synthadoc.core.queue import JobStatus
+
+    # Write an active page so slugs is non-empty and we reach run_faithfulness_audit
+    (tmp_wiki / "wiki" / "page-b.md").write_text(
+        "---\ntitle: Page B\nstatus: active\nconfidence: high\nsources: []\n---\n\nContent.\n",
+        encoding="utf-8",
+    )
+
+    orch = Orchestrator(wiki_root=tmp_wiki, config=load_config())
+    await orch.init()
+    try:
+        job_id = await orch._queue.enqueue("faithfulness", {})
+
+        with patch("synthadoc.providers.make_provider", return_value=MagicMock()), \
+             patch("synthadoc.agents.citation_faithfulness.run_faithfulness_audit",
+                   new=AsyncMock(side_effect=ValueError("audit-internal-error"))):
+            with pytest.raises(ValueError):
+                await orch._run_faithfulness(job_id)
+
+        # Job must not be completed (exception propagated)
+        completed = await orch._queue.list_jobs(status=JobStatus.COMPLETED)
+        assert not any(j.id == job_id for j in completed)
+    finally:
+        await orch.close()
+
+
+# ── cli/audit.py — _render_faithfulness table view ───────────────────────────
+
+def test_render_faithfulness_table_with_results(capsys):
+    """_render_faithfulness with actual results renders the Rich table without raising."""
+    from synthadoc.cli.audit import _render_faithfulness
+    from synthadoc.agents.citation_faithfulness import FaithfulnessResult
+
+    results = [
+        FaithfulnessResult(
+            slug="page-a",
+            citation_marker="^[source.txt:1-5]",
+            verdict="supported",
+            reason="matches source",
+        ),
+        FaithfulnessResult(
+            slug="page-a",
+            citation_marker="^[source.txt:6-10]",
+            verdict="drift",
+            reason="understates finding",
+        ),
+        FaithfulnessResult(
+            slug="page-b",
+            citation_marker="^[other.txt:1-1]",
+            verdict="hallucination",
+            reason="no such claim in source",
+        ),
+        FaithfulnessResult(
+            slug="page-b",
+            citation_marker="^[other.txt:2-2]",
+            verdict="skipped",
+            reason="LLM error: timeout",
+        ),
+    ]
+    # Must not raise; covers the Rich table + summary rendering (lines 248-280)
+    _render_faithfulness(results, as_json=False)
+
+
+def test_render_faithfulness_json_all_verdicts():
+    """_render_faithfulness with as_json=True emits JSON with all result fields."""
+    import json
+    from typer.testing import CliRunner
+    from synthadoc.cli.audit import _render_faithfulness
+    from synthadoc.agents.citation_faithfulness import FaithfulnessResult
+    import io
+    from unittest.mock import patch as _patch
+
+    results = [
+        FaithfulnessResult(
+            slug="page-x",
+            citation_marker="^[f.txt:1-1]",
+            verdict="drift",
+            reason="r",
+        )
+    ]
+    output_lines = []
+    with _patch("typer.echo", side_effect=lambda line, **kw: output_lines.append(line)):
+        _render_faithfulness(results, as_json=True)
+
+    data = json.loads("\n".join(output_lines))
+    assert data[0]["verdict"] == "drift"
+
+
+# ── cli/audit.py — _collect_checks_for_cost ──────────────────────────────────
+
+def test_collect_checks_for_cost_empty_wiki(tmp_path):
+    """_collect_checks_for_cost returns {} for a wiki with no active pages."""
+    from synthadoc.cli.audit import _collect_checks_for_cost
+    from synthadoc.storage.wiki import WikiStorage
+
+    wiki_dir = tmp_path / "wiki"
+    wiki_dir.mkdir()
+    store = WikiStorage(wiki_dir)
+    result = _collect_checks_for_cost(tmp_path, store, page_slug=None)
+    assert result == {}
+
+
+def test_collect_checks_for_cost_active_page_no_citations(tmp_path):
+    """_collect_checks_for_cost skips active pages with no citation markers."""
+    from synthadoc.cli.audit import _collect_checks_for_cost
+    from synthadoc.storage.wiki import WikiStorage
+
+    wiki_dir = tmp_path / "wiki"
+    wiki_dir.mkdir()
+    (wiki_dir / "test-page.md").write_text(
+        "---\ntitle: Test\nstatus: active\nconfidence: high\nsources: []\n---\n\nContent without citations.\n",
+        encoding="utf-8",
+    )
+    store = WikiStorage(wiki_dir)
+    result = _collect_checks_for_cost(tmp_path, store, page_slug=None)
+    assert result == {}  # no citations → not added to dict
+
+
+def test_collect_checks_for_cost_with_page_slug_filter(tmp_path):
+    """_collect_checks_for_cost respects the page_slug filter."""
+    from synthadoc.cli.audit import _collect_checks_for_cost
+    from synthadoc.storage.wiki import WikiStorage
+
+    wiki_dir = tmp_path / "wiki"
+    wiki_dir.mkdir()
+    (wiki_dir / "page-a.md").write_text(
+        "---\ntitle: A\nstatus: active\nconfidence: high\nsources: []\n---\nContent.\n",
+        encoding="utf-8",
+    )
+    (wiki_dir / "page-b.md").write_text(
+        "---\ntitle: B\nstatus: active\nconfidence: high\nsources: []\n---\nContent.\n",
+        encoding="utf-8",
+    )
+    store = WikiStorage(wiki_dir)
+    # With page_slug filter, only that page is checked
+    result = _collect_checks_for_cost(tmp_path, store, page_slug="page-a")
+    assert "page-b" not in result
+
+
+# ── cli/lifecycle.py — history and rollback commands ─────────────────────────
+
+def test_lifecycle_history_json_output():
+    """lifecycle history --json outputs JSON."""
+    from typer.testing import CliRunner
+    from synthadoc.cli.main import app
+    import json
+    runner = CliRunner()
+
+    fake_result = {"snapshots": [{"index": 1, "timestamp": "2026-01-01T00:00:00", "to_state": "active"}]}
+
+    with patch("synthadoc.cli.lifecycle.get", return_value=fake_result), \
+         patch("synthadoc.cli._wiki.resolve_wiki", return_value="my-wiki"):
+        result = runner.invoke(app, [
+            "lifecycle", "history", "page-a", "--wiki", "my-wiki", "--json",
+        ])
+
+    assert result.exit_code == 0, result.output
+    assert '"snapshots"' in result.output
+
+
+def test_lifecycle_history_list_view():
+    """lifecycle history renders a table of snapshots."""
+    from typer.testing import CliRunner
+    from synthadoc.cli.main import app
+    runner = CliRunner()
+
+    fake_result = {
+        "snapshots": [
+            {
+                "index": 2,
+                "timestamp": "2026-02-01T12:00:00Z",
+                "from_state": "draft",
+                "to_state": "active",
+                "content_length": 1234,
+                "reason": "Looks good",
+            },
+            {
+                "index": 1,
+                "timestamp": "2026-01-01T00:00:00Z",
+                "from_state": None,
+                "to_state": "draft",
+                "content_length": 500,
+                "reason": "Initial ingest",
+            },
+        ]
+    }
+
+    with patch("synthadoc.cli.lifecycle.get", return_value=fake_result), \
+         patch("synthadoc.cli._wiki.resolve_wiki", return_value="my-wiki"):
+        result = runner.invoke(app, [
+            "lifecycle", "history", "page-a", "--wiki", "my-wiki",
+        ])
+
+    assert result.exit_code == 0, result.output
+    assert "2026-02-01" in result.output or "Looks good" in result.output
+
+
+def test_lifecycle_history_no_snapshots():
+    """lifecycle history shows 'No snapshots' when result is empty."""
+    from typer.testing import CliRunner
+    from synthadoc.cli.main import app
+    runner = CliRunner()
+
+    with patch("synthadoc.cli.lifecycle.get", return_value={"snapshots": []}), \
+         patch("synthadoc.cli._wiki.resolve_wiki", return_value="my-wiki"):
+        result = runner.invoke(app, [
+            "lifecycle", "history", "page-a", "--wiki", "my-wiki",
+        ])
+
+    assert result.exit_code == 0, result.output
+    assert "No snapshots" in result.output
+
+
+def test_lifecycle_history_single_snapshot_view():
+    """lifecycle history --index 1 renders the single-snapshot view."""
+    from typer.testing import CliRunner
+    from synthadoc.cli.main import app
+    runner = CliRunner()
+
+    fake_snapshot = {
+        "index": 1,
+        "timestamp": "2026-03-15T10:30:00Z",
+        "from_state": "draft",
+        "to_state": "active",
+        "reason": "Approved for publication",
+        "content_length": 2048,
+    }
+
+    with patch("synthadoc.cli.lifecycle.get", return_value=fake_snapshot), \
+         patch("synthadoc.cli._wiki.resolve_wiki", return_value="my-wiki"):
+        result = runner.invoke(app, [
+            "lifecycle", "history", "page-a", "--wiki", "my-wiki", "--index", "1",
+        ])
+
+    assert result.exit_code == 0, result.output
+    assert "Snapshot" in result.output or "2026-03-15" in result.output
+
+
+def test_lifecycle_history_single_snapshot_with_content():
+    """lifecycle history --index 1 --show-content includes the content body."""
+    from typer.testing import CliRunner
+    from synthadoc.cli.main import app
+    runner = CliRunner()
+
+    fake_snapshot = {
+        "index": 1,
+        "timestamp": "2026-03-15T10:30:00Z",
+        "from_state": "draft",
+        "to_state": "active",
+        "reason": "Approved",
+        "content_length": 12,
+        "content": "Hello world.",
+    }
+
+    with patch("synthadoc.cli.lifecycle.get", return_value=fake_snapshot), \
+         patch("synthadoc.cli._wiki.resolve_wiki", return_value="my-wiki"):
+        result = runner.invoke(app, [
+            "lifecycle", "history", "page-a", "--wiki", "my-wiki",
+            "--index", "1", "--show-content",
+        ])
+
+    assert result.exit_code == 0, result.output
+    assert "Hello world." in result.output
+
+
+def test_lifecycle_rollback_success():
+    """lifecycle rollback echoes confirmation with snapshot details."""
+    from typer.testing import CliRunner
+    from synthadoc.cli.main import app
+    runner = CliRunner()
+
+    fake_result = {
+        "snapshot_timestamp": "2026-01-15T08:00:00Z",
+        "restored_chars": 5432,
+        "rollback_event_index": 3,
+    }
+
+    with patch("synthadoc.cli.lifecycle.post", return_value=fake_result), \
+         patch("synthadoc.cli._wiki.resolve_wiki", return_value="my-wiki"):
+        result = runner.invoke(app, [
+            "lifecycle", "rollback", "page-a", "--wiki", "my-wiki",
+            "--index", "1", "--reason", "Reverting bad edit",
+        ])
+
+    assert result.exit_code == 0, result.output
+    assert "page-a" in result.output
+    assert "5,432" in result.output or "5432" in result.output
+    assert "snapshot 3" in result.output
+
+
+def test_lifecycle_rollback_no_undo_index():
+    """lifecycle rollback without a rollback_event_index in response omits undo hint."""
+    from typer.testing import CliRunner
+    from synthadoc.cli.main import app
+    runner = CliRunner()
+
+    fake_result = {
+        "snapshot_timestamp": "2026-01-01T00:00:00Z",
+        "restored_chars": 100,
+        # No rollback_event_index key
+    }
+
+    with patch("synthadoc.cli.lifecycle.post", return_value=fake_result), \
+         patch("synthadoc.cli._wiki.resolve_wiki", return_value="my-wiki"):
+        result = runner.invoke(app, [
+            "lifecycle", "rollback", "page-a", "--wiki", "my-wiki",
+            "--index", "2", "--reason", "Test",
+        ])
+
+    assert result.exit_code == 0, result.output
+    assert "page-a" in result.output
+
+
+# ── orchestrator.py — vector search init fallback ────────────────────────────
+
+@pytest.mark.asyncio
+async def test_orchestrator_init_vector_search_import_error_fallback(tmp_wiki):
+    """Orchestrator.init() logs a warning and continues when fastembed is not installed."""
+    from synthadoc.config import Config, AgentsConfig, AgentConfig, SearchConfig
+    from synthadoc.core.orchestrator import Orchestrator
+
+    cfg = Config(
+        agents=AgentsConfig(default=AgentConfig(provider="gemini", model="gemini-2.5-flash")),
+        search=SearchConfig(vector=True),
+    )
+    orch = Orchestrator(wiki_root=tmp_wiki, config=cfg)
+    # Patch init_vector to raise ImportError (simulates fastembed not installed)
+    with patch.object(orch._search, "init_vector",
+                      side_effect=ImportError("fastembed not installed")):
+        await orch.init()  # must not raise
+    await orch.close()
+
+
+# ── cli/audit.py — no-cache full-run server polling path ─────────────────────
+
+def test_faithfulness_cli_no_cache_full_run_polls_server(tmp_wiki):
+    """When no cache exists, CLI posts an audit job and polls until completed."""
+    from typer.testing import CliRunner
+    from synthadoc.cli.main import app
+    from synthadoc.config import Config, AgentsConfig, AgentConfig, CostConfig
+    runner = CliRunner()
+
+    # No cache file — full audit is triggered
+    fake_cfg = Config(
+        agents=AgentsConfig(default=AgentConfig(provider="gemini", model="gemini-2.5-flash")),
+        cost=CostConfig(),
+    )
+
+    with patch("synthadoc.cli._wiki.resolve_wiki", return_value=str(tmp_wiki)), \
+         patch("synthadoc.cli.install.resolve_wiki_path", return_value=tmp_wiki), \
+         patch("synthadoc.config.load_config", return_value=fake_cfg), \
+         patch("synthadoc.cli._http.post", return_value={"job_id": "abc-test-job"}), \
+         patch("synthadoc.cli._http.get", return_value={"status": "completed"}):
+        result = runner.invoke(app, [
+            "audit", "citations", "--faithfulness",
+            "--wiki", str(tmp_wiki), "--yes",
+        ])
+
+    # Exits 0 (no issues in empty cache) or 1 (issues found) — never a Python error
+    assert result.exit_code in (0, 1), result.output

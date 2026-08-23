@@ -28,6 +28,7 @@ def scaffold_cmd(
     """
     from synthadoc.cli._wiki import resolve_wiki
     from synthadoc.cli._http import get, post
+    from synthadoc.core.queue import JobStatus
 
     wiki = resolve_wiki(wiki)
 
@@ -60,7 +61,7 @@ def scaffold_cmd(
             typer.echo("Monitor progress with: synthadoc jobs")
             break
         status = job.get("status", "")
-        if status == "completed":
+        if status == JobStatus.COMPLETED:
             cats = (job.get("result") or {}).get("categories_updated", 0)
             typer.echo("Scaffold complete.")
             typer.echo("  index.md    updated")
@@ -70,7 +71,7 @@ def scaffold_cmd(
             typer.echo("  purpose.md  updated")
             typer.echo(f"  categories  stamped on {cats} page(s)")
             break
-        if status in ("failed", "dead"):
+        if status in (JobStatus.FAILED, JobStatus.DEAD):
             error = job.get("error") or "unknown error"
             E.cli_error(E.AGENT_FAILED, f"Scaffold failed: {error}",
                         "Check `synthadoc jobs` for details.")
