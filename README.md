@@ -691,7 +691,7 @@ synthadoc serve -w my-wiki --verbose
 synthadoc ingest report.pdf -w my-wiki
 synthadoc ingest https://example.com/article -w my-wiki
 
-# Entire folder (parallel, up to max_parallel_ingest at a time)
+# Entire folder — enqueues each file; the worker processes jobs sequentially
 synthadoc ingest --batch raw_sources/ -w my-wiki
 
 # Manifest file — ingest a curated list of sources in one shot.
