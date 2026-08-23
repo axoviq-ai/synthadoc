@@ -311,7 +311,7 @@ def _run_faithfulness(
         read_cache,
         get_stale_slugs,
     )
-    from synthadoc.core.cost_guard import CostGuard, CostEstimate, CostGateError
+
     from synthadoc.providers.pricing import estimate_cost
     from synthadoc.core.queue import JobStatus
 
@@ -319,7 +319,7 @@ def _run_faithfulness(
     wiki_root = resolve_wiki_path(wiki_name)
     cfg = load_config(project_config=wiki_root / ".synthadoc" / "config.toml")
     store = WikiStorage(wiki_root / "wiki")
-    agent_cfg = cfg.agents.resolve("query")
+    agent_cfg = cfg.agents.resolve("adversarial")
 
     # ── Determine audit scope from cache ─────────────────────────────────────
     cache = read_cache(wiki_root)
@@ -359,7 +359,7 @@ def _run_faithfulness(
             console.print("[dim]Cache is up to date. Use --force to re-audit.[/dim]")
         return
 
-    # ── Cost check for pages that will be audited (local, no API key) ────────
+    # ── Cost estimate + confirmation (always shown when LLM run is needed) ────
     if not yes:
         scope_page = page if (page and not stale_only) else None
         pages_with_checks = _collect_checks_for_cost(wiki_root, store, scope_page)
@@ -371,23 +371,28 @@ def _run_faithfulness(
             output_tokens=est_tokens // 5,
             is_local=agent_cfg.is_local,
         )
-        guard = CostGuard(cfg.cost)
-        try:
-            guard.check(
-                CostEstimate(
-                    tokens=est_tokens,
-                    cost_usd=est_cost,
-                    operation=(
-                        f"citation faithfulness audit "
-                        f"({'stale pages only' if stale_only else 'all active pages'}"
-                        f", {total_citations} citations across {len(pages_with_checks)} pages)"
-                    ),
-                ),
-                interactive=True,
+        # Hard gate: block immediately if over the configured cost ceiling.
+        if est_cost >= cfg.cost.hard_gate_usd:
+            console.print(
+                f"[red]Cost gate:[/red] faithfulness audit estimated "
+                f"${est_cost:.4f} — exceeds hard_gate_usd "
+                f"${cfg.cost.hard_gate_usd:.2f}. "
+                f"Raise [cost].hard_gate_usd in config.toml or scope to a single page."
             )
-        except CostGateError:
-            console.print("[yellow]Audit cancelled.[/yellow]")
             raise typer.Exit(1)
+        # Always confirm before any LLM run, regardless of cost size.
+        scope_desc = "stale pages only" if stale_only else "all active pages"
+        console.print(
+            f"\n[bold]Citation faithfulness audit[/bold] — {scope_desc}\n"
+            f"  {len(pages_with_checks)} page(s)  ·  "
+            f"{total_citations} citation(s)  ·  "
+            f"~{est_tokens:,} tokens  ·  "
+            f"${est_cost:.4f} estimated"
+        )
+        confirm = input("\nRun audit? [y/N] ").strip().lower()
+        if confirm != "y":
+            console.print("[yellow]Audit cancelled.[/yellow]")
+            raise typer.Exit(0)
 
     # ── Enqueue job on the running server ─────────────────────────────────────
     body: dict = {}
