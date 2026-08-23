@@ -2134,6 +2134,42 @@ Citation faithfulness is **informational** — it flags which claims need attent
    - **Re-ingest with a newer source** — if the original document has been updated, re-ingest it with `synthadoc ingest <file> --force` and re-run the audit.
    - **Use the Contradiction Resolver** — if the page was demoted to `contradicted`, the resolver workflow can help rewrite or re-ground the affected claims.
 
+**Configuring a dedicated judge model for faithfulness:**
+
+The faithfulness audit uses the same LLM you have configured under `[agents.adversarial]` — the same dedicated judge model that runs the adversarial lint pass. This is intentional: both tasks are *judgment* tasks (the model reads content and renders a verdict), so sharing one "judge" role keeps configuration simple.
+
+By default, if you have not set `[agents.adversarial]`, the audit falls back to your `[agents]` default model. To use a different, potentially cheaper or more neutral model for all judgment tasks — both adversarial lint and citation faithfulness — set it once in `synthadoc.toml`:
+
+```toml
+[agents]
+provider = "anthropic"
+model    = "claude-sonnet-5"   # used for ingest and query
+
+[agents.adversarial]
+provider = "anthropic"
+model    = "claude-haiku-4-5-20251001"   # judge model: runs adversarial lint + faithfulness audit
+```
+
+Or point faithfulness (and adversarial lint) at a different provider entirely:
+
+```toml
+[agents.adversarial]
+provider = "openai"
+model    = "gpt-4o-mini"
+```
+
+When the server starts an audit job you will see a line in its log confirming which model is in use:
+
+```
+Faithfulness audit: anthropic/claude-haiku-4-5-20251001 (dedicated judge)
+```
+
+If `[agents.adversarial]` is not set:
+
+```
+Faithfulness audit: anthropic/claude-sonnet-5 (default — tip: set [agents].adversarial in config.toml to use a dedicated judge model)
+```
+
 ---
 
 ## Step 21 — Export your wiki
