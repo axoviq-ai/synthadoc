@@ -2897,36 +2897,77 @@ class AuditModal extends Modal {
             poll();
         };
 
-        // ── Run Audit handler ─────────────────────────────────────────────────
-        runBtn.addEventListener("click", async () => {
-            runBtn.disabled = true;
-            const slug = getPageSlug();
-            statusLine.textContent = slug
-                ? `⏳ Starting audit for "${slug}"…`
-                : "⏳ Starting audit for all active pages…";
-            tableWrap.empty();
-            pagerWrap.empty();
-            summarySection.style.display = "none";
-            try {
-                const r = await (api as any).auditCitationsFaithfulness(slug, false) as any;
-                const jobId: string = r.job_id;
-                if (!jobId) throw new Error("No job_id returned");
-                _pollJob(
-                    jobId,
-                    () => "Auditing citations",
-                    async () => {
-                        const cached = await (api as any).getFaithfulnessCache();
-                        _faithPage = 0;
-                        _applyCache(cached);
-                        runBtn.disabled = false;
-                    },
-                    (msg: string) => { statusLine.textContent = msg; },
-                    [runBtn],
-                );
-            } catch {
-                statusLine.textContent = "Audit failed — is synthadoc serve running?";
-                runBtn.disabled = false;
+        // ── Cost confirmation dialog ───────────────────────────────────────────
+        // Shown before any LLM audit job is submitted so the user can review
+        // the estimated cost and confirm. Cache auto-loading on tab open (read-only)
+        // needs no confirmation — this gate applies only to the two run buttons.
+        const _showRunConfirmation = (scopeLabel: string, onConfirm: () => void) => {
+            const modal = new Modal(this.app);
+            modal.contentEl.createEl("h3", { text: "Confirm citation audit" })
+                .style.cssText = "margin:0 0 12px";
+            const intro = modal.contentEl.createEl("p");
+            intro.style.cssText = "font-size:13px;margin:0 0 10px";
+            intro.textContent = `Run LLM faithfulness check for ${scopeLabel}?`;
+            const est = _lastEstimate;
+            const estLine = modal.contentEl.createEl("p");
+            estLine.style.cssText =
+                "font-size:12px;color:var(--text-muted);background:var(--background-modifier-hover);"
+                + "border-radius:4px;padding:6px 10px;margin:0 0 16px";
+            if (est && (est.pages ?? 0) > 0) {
+                estLine.textContent =
+                    `${est.pages} page${est.pages !== 1 ? "s" : ""}`
+                    + `  ·  ${est.citations} citation${est.citations !== 1 ? "s" : ""}`
+                    + `  ·  ~${(est.estimated_tokens ?? 0).toLocaleString()} tokens`
+                    + `  ·  $${(est.estimated_cost_usd ?? 0).toFixed(4)} estimated`;
+            } else {
+                estLine.textContent = "Cost estimate not yet available — proceed with caution.";
             }
+            const btnRow = modal.contentEl.createEl("div");
+            btnRow.style.cssText = "display:flex;gap:8px;justify-content:flex-end";
+            const cancelBtn = btnRow.createEl("button", { text: "Cancel" }) as HTMLButtonElement;
+            cancelBtn.style.cssText = "padding:6px 16px;font-size:13px;cursor:pointer;border-radius:4px";
+            const confirmBtn = btnRow.createEl("button", { text: "Run audit" }) as HTMLButtonElement;
+            confirmBtn.style.cssText =
+                "background:var(--interactive-accent);color:var(--text-on-accent);"
+                + "border:none;padding:6px 16px;border-radius:4px;cursor:pointer;font-size:13px";
+            cancelBtn.addEventListener("click", () => modal.close());
+            confirmBtn.addEventListener("click", () => { modal.close(); onConfirm(); });
+            modal.open();
+        };
+
+        // ── Run Audit handler ─────────────────────────────────────────────────
+        runBtn.addEventListener("click", () => {
+            const slug = getPageSlug();
+            const scopeLabel = slug ? `"${slug}"` : "all active pages";
+            _showRunConfirmation(scopeLabel, async () => {
+                runBtn.disabled = true;
+                statusLine.textContent = slug
+                    ? `⏳ Starting audit for "${slug}"…`
+                    : "⏳ Starting audit for all active pages…";
+                tableWrap.empty();
+                pagerWrap.empty();
+                summarySection.style.display = "none";
+                try {
+                    const r = await (api as any).auditCitationsFaithfulness(slug, false) as any;
+                    const jobId: string = r.job_id;
+                    if (!jobId) throw new Error("No job_id returned");
+                    _pollJob(
+                        jobId,
+                        () => "Auditing citations",
+                        async () => {
+                            const cached = await (api as any).getFaithfulnessCache();
+                            _faithPage = 0;
+                            _applyCache(cached);
+                            runBtn.disabled = false;
+                        },
+                        (msg: string) => { statusLine.textContent = msg; },
+                        [runBtn],
+                    );
+                } catch {
+                    statusLine.textContent = "Audit failed — is synthadoc serve running?";
+                    runBtn.disabled = false;
+                }
+            });
         });
 
         // ── _applyCache ───────────────────────────────────────────────────────
@@ -3012,39 +3053,41 @@ class AuditModal extends Modal {
         })();
 
         // ── Re-run stale handler ──────────────────────────────────────────────
-        rerunStaleBtn.addEventListener("click", async () => {
-            rerunStaleBtn.disabled = true;
-            runBtn.disabled = true;
+        rerunStaleBtn.addEventListener("click", () => {
             const n = _staleSlugsList.length;
-            statusLine.textContent = `⏳ Starting re-audit of ${n} stale page${n !== 1 ? "s" : ""}…`;
-            try {
-                const r = await (api as any).auditCitationsFaithfulness(undefined, false, true) as any;
-                const jobId: string = r.job_id;
-                if (!jobId) throw new Error("No job_id returned");
-                _pollJob(
-                    jobId,
-                    () => "Re-auditing stale pages",
-                    async () => {
-                        const cached = await (api as any).getFaithfulnessCache();
-                        _faithPage = 0;
-                        _applyCache(cached);
-                        rerunStaleBtn.disabled = false;
-                        runBtn.disabled = false;
-                    },
-                    (msg: string) => {
-                        console.error("Citation faithfulness re-run error:", msg);
-                        statusLine.textContent = msg;
-                        rerunStaleBtn.disabled = false;
-                        runBtn.disabled = false;
-                    },
-                    [rerunStaleBtn, runBtn],
-                );
-            } catch (e) {
-                console.error("Citation faithfulness re-run error:", e);
-                statusLine.textContent = "Re-audit failed — is synthadoc serve running?";
-                rerunStaleBtn.disabled = false;
-                runBtn.disabled = false;
-            }
+            _showRunConfirmation(`${n} stale page${n !== 1 ? "s" : ""}`, async () => {
+                rerunStaleBtn.disabled = true;
+                runBtn.disabled = true;
+                statusLine.textContent = `⏳ Starting re-audit of ${n} stale page${n !== 1 ? "s" : ""}…`;
+                try {
+                    const r = await (api as any).auditCitationsFaithfulness(undefined, false, true) as any;
+                    const jobId: string = r.job_id;
+                    if (!jobId) throw new Error("No job_id returned");
+                    _pollJob(
+                        jobId,
+                        () => "Re-auditing stale pages",
+                        async () => {
+                            const cached = await (api as any).getFaithfulnessCache();
+                            _faithPage = 0;
+                            _applyCache(cached);
+                            rerunStaleBtn.disabled = false;
+                            runBtn.disabled = false;
+                        },
+                        (msg: string) => {
+                            console.error("Citation faithfulness re-run error:", msg);
+                            statusLine.textContent = msg;
+                            rerunStaleBtn.disabled = false;
+                            runBtn.disabled = false;
+                        },
+                        [rerunStaleBtn, runBtn],
+                    );
+                } catch (e) {
+                    console.error("Citation faithfulness re-run error:", e);
+                    statusLine.textContent = "Re-audit failed — is synthadoc serve running?";
+                    rerunStaleBtn.disabled = false;
+                    runBtn.disabled = false;
+                }
+            });
         });
     }
 
