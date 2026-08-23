@@ -208,24 +208,13 @@ def _collect_checks_for_cost(
     store: "WikiStorage",
     page_slug: Optional[str],
 ) -> "dict[str, list]":
-    """Collect citation checks without any LLM calls (for cost estimation)."""
-    from synthadoc.agents.citation_faithfulness import extract_citations_for_check
-    extracted_dir = wiki_root / ".synthadoc" / "extracted"
-    pages_with_checks = {}
+    """Thin wrapper kept for call-site compatibility.
 
-    if page_slug is not None:
-        slugs = [page_slug]
-    else:
-        slugs = store.all_slugs()
-
-    for slug in slugs:
-        page = store.read_page(slug)
-        if page is None or page.status != "active":
-            continue
-        checks, _ = extract_citations_for_check(slug, page, extracted_dir)
-        if checks:
-            pages_with_checks[slug] = checks
-    return pages_with_checks
+    Delegates to ``citation_faithfulness.collect_checks_for_pages``, which is
+    also used by the HTTP dry-run endpoint so the logic lives in one place.
+    """
+    from synthadoc.agents.citation_faithfulness import collect_checks_for_pages
+    return collect_checks_for_pages(wiki_root, store, page_slug)
 
 
 def _render_faithfulness(results: list, as_json: bool) -> None:

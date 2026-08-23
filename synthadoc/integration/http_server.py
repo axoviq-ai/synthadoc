@@ -1461,12 +1461,9 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     @app.post("/audit/citations/faithfulness")
     async def audit_citations_faithfulness(req: CitationFaithfulnessRequest):
-        from synthadoc.agents.citation_faithfulness import (
-            estimate_faithfulness_tokens,
-            extract_citations_for_check,
-        )
+        from synthadoc.agents.citation_faithfulness import estimate_faithfulness_tokens
         from synthadoc.providers.pricing import estimate_cost as _estimate_cost
-        from synthadoc.storage.wiki import WikiStorage as _WikiStorage, LifecycleState as _LifecycleState
+        from synthadoc.storage.wiki import WikiStorage as _WikiStorage
 
         orch = app.state.orch
         wiki_root = orch._root
@@ -1474,17 +1471,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         agent_cfg = orch._cfg.agents.resolve("adversarial")
 
         if req.dry_run:
-            extracted_dir = wiki_root / ".synthadoc" / "extracted"
-            pages_with_checks: dict = {}
-
-            slugs = [req.page_slug] if req.page_slug else store.all_slugs()
-            for slug in slugs:
-                page = store.read_page(slug)
-                if page is None or page.status != _LifecycleState.ACTIVE:
-                    continue
-                checks, _ = extract_citations_for_check(slug, page, extracted_dir)
-                if checks:
-                    pages_with_checks[slug] = checks
+            from synthadoc.agents.citation_faithfulness import collect_checks_for_pages
+            pages_with_checks = collect_checks_for_pages(wiki_root, store, req.page_slug)
 
             total_citations = sum(len(v) for v in pages_with_checks.values())
             est_tokens = estimate_faithfulness_tokens(pages_with_checks)

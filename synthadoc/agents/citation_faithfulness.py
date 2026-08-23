@@ -241,6 +241,36 @@ async def check_page_faithfulness(
     return results
 
 
+def collect_checks_for_pages(
+    wiki_root: Path,
+    store: "WikiStorage",
+    page_slug: str | None = None,
+) -> "dict[str, list[CitationToCheck]]":
+    """Collect citation checks across active pages without any LLM calls.
+
+    Used by the CLI and the HTTP dry-run endpoint to estimate cost before
+    submitting a faithfulness audit job.  Returns a mapping of slug →
+    list[CitationToCheck] for every active page that has at least one citation.
+
+    Args:
+        wiki_root: Root of the wiki (parent of the ``wiki/`` directory).
+        store:     Open WikiStorage instance.
+        page_slug: If given, restrict to that one page; otherwise all active pages.
+    """
+    extracted_dir = wiki_root / ".synthadoc" / "extracted"
+    pages_with_checks: dict[str, list[CitationToCheck]] = {}
+
+    slugs = [page_slug] if page_slug is not None else store.all_slugs()
+    for slug in slugs:
+        page = store.read_page(slug)
+        if page is None or page.status != LifecycleState.ACTIVE:
+            continue
+        checks, _ = extract_citations_for_check(slug, page, extracted_dir)
+        if checks:
+            pages_with_checks[slug] = checks
+    return pages_with_checks
+
+
 def estimate_faithfulness_tokens(
     pages_with_checks: dict[str, list[CitationToCheck]],
 ) -> int:
