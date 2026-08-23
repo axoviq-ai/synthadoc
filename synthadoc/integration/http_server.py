@@ -17,6 +17,9 @@ from typing import Optional
 
 import logging
 import re
+import shutil
+import tomllib
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +223,7 @@ _HISTORY_OVERFLOW_NOTICE = (
     ".synthadoc/config.toml."
 )
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
-_FM_RE = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
+_FM_RE = re.compile(r"^---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|$)", re.DOTALL)
 
 
 class ContentSizeLimitMiddleware:
@@ -380,10 +383,9 @@ class PurgeEventsRequest(BaseModel):
     @field_validator("before_date")
     @classmethod
     def _validate_date_format(cls, v: Optional[str]) -> Optional[str]:
-        import re as _re
         if v is None:
             return v
-        if not _re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
             raise ValueError("before_date must be in YYYY-MM-DD format")
         return v
 
@@ -1222,7 +1224,6 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     @app.get("/lint/report")
     async def lint_report():
-        import yaml as _yaml
         from synthadoc.agents.lint_agent import find_orphan_slugs, LINT_SKIP_SLUGS
         from synthadoc.cli.lint import _is_reingestable
         wiki_dir = wiki_root / "wiki"
@@ -1237,7 +1238,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                 fm: dict = {}
                 if fm_m:
                     try:
-                        fm = _yaml.safe_load(fm_m.group(1)) or {}
+                        fm = yaml.safe_load(fm_m.group(1)) or {}
                     except Exception:
                         pass
                 contradiction_details.append({
@@ -1258,7 +1259,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             fm = {}
             if fm_m:
                 try:
-                    fm = _yaml.safe_load(fm_m.group(1)) or {}
+                    fm = yaml.safe_load(fm_m.group(1)) or {}
                 except Exception:
                     pass
             title = fm.get("title") or slug.replace("-", " ").title()
@@ -1307,19 +1308,16 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         # Citation issues — same logic as CLI lint report
         from synthadoc.agents.lint_agent import _check_page_citations, LINT_SKIP_SLUGS as _SKIP
         from synthadoc.storage.wiki import WikiPage as _WP, SourceRef as _SR
-        import re as _re
-        _FM_RE2 = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
         extracted_dir = wiki_root / ".synthadoc" / "extracted"
         citation_issues_by_slug: dict[str, list[dict]] = {}
         for stem, text in page_texts.items():
             if stem in _SKIP:
                 continue
-            _fm_m = _FM_RE2.match(text)
+            _fm_m = _FM_RE.match(text)
             _fm: dict = {}
             if _fm_m:
                 try:
-                    import yaml as _yaml2
-                    _fm = _yaml2.safe_load(_fm_m.group(1)) or {}
+                    _fm = yaml.safe_load(_fm_m.group(1)) or {}
                 except Exception:
                     pass
             _body = text[_fm_m.end():] if _fm_m else text
@@ -1616,9 +1614,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     @app.get("/staging/policy")
     async def staging_policy_get():
-        import tomllib as _tomllib
         cfg_path = _staging_cfg_path()
-        raw = _tomllib.loads(cfg_path.read_text(encoding="utf-8")) if cfg_path.exists() else {}
+        raw = tomllib.loads(cfg_path.read_text(encoding="utf-8")) if cfg_path.exists() else {}
         ig = raw.get("ingest", {})
         return {
             "policy": ig.get("staging_policy", "off"),
@@ -1627,7 +1624,6 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     @app.post("/staging/policy")
     async def staging_policy_set(req: StagingPolicyRequest):
-        import tomllib as _tomllib
         from synthadoc.cli.candidates import _patch_toml as _cand_patch_toml
         if req.policy not in STAGING_POLICIES:
             raise HTTPException(400, f"policy must be one of: {', '.join(sorted(STAGING_POLICIES))}")
@@ -1639,7 +1635,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         if req.confidence_min:
             updates["staging_confidence_min"] = req.confidence_min
         _cand_patch_toml(cfg_path, "ingest", updates)
-        raw = _tomllib.loads(cfg_path.read_text(encoding="utf-8"))
+        raw = tomllib.loads(cfg_path.read_text(encoding="utf-8"))
         ig = raw.get("ingest", {})
         return {
             "policy": ig.get("staging_policy", "off"),
@@ -1674,7 +1670,6 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         from synthadoc.cli.candidates import _read_frontmatter as _cand_read_fm
         from synthadoc.cli.candidates import _add_to_index as _cand_add_to_index
         from synthadoc.cli.candidates import _page_title as _cand_page_title
-        import shutil as _shutil
         cd = _cand_dir()
         wd = _wiki_dir()
         pages = sorted(cd.glob("*.md")) if cd.exists() else []
@@ -1684,7 +1679,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             dest = wd / src.name
             is_new = not dest.exists()
             title = _cand_page_title(src)
-            _shutil.move(str(src), str(dest))
+            shutil.move(str(src), str(dest))
             promoted.append((src.stem, title))
             if is_new:
                 new_pages.append((src.stem, title))
@@ -1704,7 +1699,6 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     @app.post("/candidates/{slug}/promote")
     async def candidates_promote_one(slug: str):
-        import shutil as _shutil
         from synthadoc.cli.candidates import _add_to_index as _cand_add_to_index
         from synthadoc.cli.candidates import _page_title as _cand_page_title
         cd = _cand_dir()
@@ -1715,7 +1709,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         dest = wd / src.name
         is_new = not dest.exists()
         title = _cand_page_title(src)
-        _shutil.move(str(src), str(dest))
+        shutil.move(str(src), str(dest))
         if is_new:
             _cand_add_to_index(wd, [(slug, title)])
         return {"slug": slug, "promoted": True, "updated": not is_new}
