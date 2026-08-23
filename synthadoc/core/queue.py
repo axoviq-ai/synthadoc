@@ -50,7 +50,7 @@ _MAX_BACKOFF_SECONDS: int = 300
 
 class JobQueue:
     def __init__(self, db_path: Path, max_retries: int = 3,
-                 backoff_base_seconds: int = 30) -> None:
+                 backoff_base_seconds: int = 5) -> None:
         self._path = Path(db_path)
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._max_retries = max_retries
