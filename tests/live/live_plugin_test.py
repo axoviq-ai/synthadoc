@@ -114,6 +114,8 @@ from live_helpers import backup_wiki as _backup_wiki_impl
 from live_helpers import register_sigterm_handler as _register_sigterm_handler
 from live_helpers import restore_wiki as _restore_wiki_impl
 
+from synthadoc.core.queue import JobStatus
+
 # ── Configuration ─────────────────────────────────────────────────────────────
 _DEFAULT_WIKI_FILE = pathlib.Path.home() / ".synthadoc" / "default_wiki"
 
@@ -196,6 +198,13 @@ def DELETE(path: str, timeout: int = 10) -> tuple[int, dict | str]:
 
 
 _TERMINAL_STATES = {"completed", "failed", "cancelled", "dead", "skipped"}
+
+
+class _SkipTest(Exception):
+    """Raised by a live test when its precondition isn't met (e.g. no active/stale
+    pages exist).  The caller maps this to a WARN rather than a FAIL so the suite
+    does not block CI on a wiki that simply hasn't been promoted yet.
+    """
 
 
 def _cleanup_job_pages(job_id: str) -> list[str]:
@@ -638,11 +647,23 @@ def _test_context_budget() -> None:
             return False
         return True
 
-    # Prefer active pages (linted, real content); fall back to any good node
-    active_nodes = [n for n in nodes if _is_good_node(n) and n.get("state") == "active"]
-    good_nodes = active_nodes if len(active_nodes) >= 3 else [n for n in nodes if _is_good_node(n)]
-    if not good_nodes:                   # absolute fallback: any node with a slug
-        good_nodes = [n for n in nodes if isinstance(n, dict) and n.get("slug")]
+    # BM25 only indexes pages whose lifecycle state is "active" or "stale".
+    # Querying a page in "draft" / "contradicted" / "archived" state always
+    # returns 0 candidates → gap fires → 0 citations.  Select only queryable
+    # pages so we test what the context-budget feature actually does.
+    _QUERYABLE_STATES = frozenset({"active", "stale"})
+    active_nodes     = [n for n in nodes if _is_good_node(n) and n.get("state") == "active"]
+    queryable_nodes  = [n for n in nodes if _is_good_node(n) and n.get("state") in _QUERYABLE_STATES]
+
+    if not queryable_nodes:
+        raise _SkipTest(
+            f"no active/stale pages in {node_count}-page wiki — "
+            "run `synthadoc lint` or promote pages to active/stale state "
+            "before testing context budget"
+        )
+
+    # Prefer active pages (linted, real content); fall back to stale
+    good_nodes = active_nodes if len(active_nodes) >= 3 else queryable_nodes
 
     # Pick one node per Louvain cluster for topic diversity; fill remaining slots
     # from good_nodes if fewer than 3 clusters are represented
@@ -889,7 +910,7 @@ def _test_knowledge_graph() -> None:
         assert code == 200, f"POST /jobs/lint returned HTTP {code}: {str(body)[:120]}"
         assert isinstance(body, dict) and "job_id" in body, \
             f"No job_id in lint response: {str(body)[:120]}"
-        assert final in ("completed", "failed"), \
+        assert final in (JobStatus.COMPLETED, JobStatus.FAILED), \
             f"Lint job did not reach terminal state: {final!r}"
 
     # Poll until graph is ready (up to 15 × 2 s = 30 s)
@@ -1107,7 +1128,7 @@ def main(no_restore: bool = False) -> None:
             if j.get("created_at", "") < _cutoff:
                 break  # list is ASC by created_at; nothing older will match
             # dead jobs cannot be retried (409) — skip for retry target, ok for delete
-            if j.get("status") in ("completed", "cancelled", "skipped", "failed"):
+            if j.get("status") in (JobStatus.COMPLETED, JobStatus.CANCELLED, JobStatus.SKIPPED, JobStatus.FAILED):
                 if terminal_job is None:
                     terminal_job = j
                 elif second_terminal is None:
@@ -1538,6 +1559,8 @@ def main(no_restore: bool = False) -> None:
     try:
         _test_context_budget()
         ok("GET /query/stream (context budget)", "citations non-empty, status.sources consistent")
+    except _SkipTest as e:
+        warn("GET /query/stream (context budget)", str(e))
     except AssertionError as e:
         fail("GET /query/stream (context budget)", str(e))
 

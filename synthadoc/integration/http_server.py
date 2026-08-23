@@ -402,6 +402,12 @@ class ExportRequest(BaseModel):
     context_pack: str | None = None
 
 
+class CitationFaithfulnessRequest(BaseModel):
+    page_slug: Optional[str] = None
+    dry_run: bool = False
+    stale_only: bool = False  # only run for stale slugs (per cache)
+
+
 def _load_blocked_domains(wiki_root: Path) -> set[str]:
     """Return the set of auto-blocked domains from .synthadoc/blocked_domains.json."""
     import json as _json_mod
@@ -542,6 +548,12 @@ async def _worker_loop(orch, session_state: dict) -> None:
                 elif job.operation == "scaffold":
                     domain = job.payload.get("domain", "")
                     job_coro = orch._run_scaffold(job.id, domain=domain)
+                elif job.operation == "faithfulness":
+                    page_slug = job.payload.get("page_slug")
+                    stale_only = job.payload.get("stale_only", False)
+                    job_coro = orch._run_faithfulness(
+                        job.id, page_slug=page_slug, stale_only=stale_only
+                    )
                 else:
                     job_coro = None
                 if job_coro is not None:
@@ -621,6 +633,8 @@ def _find_dist_dir() -> Path:
     if (pkg / "index.html").is_file():
         return pkg
     return Path(__file__).parent.parent.parent / "web-ui" / "dist"
+
+
 
 
 def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mcp: bool = True) -> FastAPI:
@@ -1442,6 +1456,91 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         )
         pack = await agent.build(req.goal, token_budget=budget)
         return pack.to_dict()
+
+    # ── Citation Faithfulness Audit ────────────────────────────────────────────
+
+    @app.post("/audit/citations/faithfulness")
+    async def audit_citations_faithfulness(req: CitationFaithfulnessRequest):
+        from synthadoc.agents.citation_faithfulness import estimate_faithfulness_tokens
+        from synthadoc.providers.pricing import estimate_cost as _estimate_cost
+        from synthadoc.storage.wiki import WikiStorage as _WikiStorage
+
+        orch = app.state.orch
+        wiki_root = orch._root
+        store = _WikiStorage(wiki_root / "wiki")
+        agent_cfg = orch._cfg.agents.resolve("adversarial")
+
+        if req.dry_run:
+            from synthadoc.agents.citation_faithfulness import collect_checks_for_pages
+            pages_with_checks = collect_checks_for_pages(wiki_root, store, req.page_slug)
+
+            total_citations = sum(len(v) for v in pages_with_checks.values())
+            est_tokens = estimate_faithfulness_tokens(pages_with_checks)
+            est_cost = _estimate_cost(
+                agent_cfg.model,
+                input_tokens=est_tokens,
+                output_tokens=est_tokens // 5,
+                is_local=agent_cfg.is_local,
+            )
+            return {
+                "pages": len(pages_with_checks),
+                "citations": total_citations,
+                "estimated_tokens": est_tokens,
+                "estimated_cost_usd": round(est_cost, 6),
+            }
+
+        # Enqueue as a background job so the server stays responsive during long audits
+        job_id = await orch.queue.enqueue(
+            "faithfulness",
+            {
+                "page_slug": req.page_slug,
+                "stale_only": req.stale_only,
+            },
+        )
+        return {
+            "job_id": job_id,
+            "message": "Citation faithfulness audit started — poll /jobs/{job_id} for progress.",
+        }
+
+    @app.get("/audit/citations/faithfulness/cache")
+    async def get_faithfulness_cache():
+        from synthadoc.agents.faithfulness_cache import (
+            read_cache as _read_cache,
+            get_stale_slugs as _get_stale_slugs,
+        )
+        from synthadoc.storage.wiki import WikiStorage as _WikiStorage
+
+        orch = app.state.orch
+        wiki_root = orch._root
+        store = _WikiStorage(wiki_root / "wiki")
+        cache = _read_cache(wiki_root)
+        entries = cache.get("entries", {})
+        stale_slugs = _get_stale_slugs(entries, store)
+
+        all_results = []
+        checked_at_values: list[str] = []
+        for slug, entry in entries.items():
+            if entry.get("checked_at"):
+                checked_at_values.append(entry["checked_at"])
+            entry_checked_at = entry.get("checked_at", "")
+            for r in entry.get("results", []):
+                all_results.append({
+                    "slug": slug,
+                    "citation_marker": r.get("citation_marker", ""),
+                    "verdict": r.get("verdict", "skipped"),
+                    "reason": r.get("reason", ""),
+                    "checked_at": entry_checked_at,
+                })
+
+        # Most recent audit timestamp across all entries (ISO UTC string or None)
+        last_checked_at = max(checked_at_values) if checked_at_values else None
+
+        return {
+            "results": all_results,
+            "stale_slugs": stale_slugs,
+            "total_slugs_cached": len(entries),
+            "last_checked_at": last_checked_at,
+        }
 
     # ── Routing ───────────────────────────────────────────────────────────────
     from synthadoc.core.routing import RoutingIndex as _RI

@@ -717,3 +717,49 @@ describe("api.lifecycleHistory", () => {
         await expect((api as any).lifecycleHistory("missing", 1)).rejects.toThrow("synthadoc API 404");
     });
 });
+
+describe("api.auditCitationsFaithfulness", () => {
+    it("auditCitationsFaithfulness dry_run calls POST with dry_run:true", async () => {
+        mockResponse({
+            pages: 4, citations: 12,
+            estimated_tokens: 2200, estimated_cost_usd: 0.0066,
+        });
+        await api.auditCitationsFaithfulness(undefined, true);
+        expect(mockRequestUrl).toHaveBeenCalledWith(
+            expect.objectContaining({
+                url: "http://127.0.0.1:7070/audit/citations/faithfulness",
+                method: "POST",
+                body: JSON.stringify({ dry_run: true }),
+            })
+        );
+    });
+
+    it("auditCitationsFaithfulness with pageSlug includes page_slug in body", async () => {
+        mockResponse({
+            results: [], pages_checked: 1, citations_checked: 0,
+        });
+        await api.auditCitationsFaithfulness("bell-labs", false);
+        expect(mockRequestUrl).toHaveBeenCalledWith(
+            expect.objectContaining({
+                url: "http://127.0.0.1:7070/audit/citations/faithfulness",
+                method: "POST",
+                body: JSON.stringify({ page_slug: "bell-labs", dry_run: false }),
+            })
+        );
+    });
+});
+
+describe("api.getFaithfulnessCache", () => {
+    it("getFaithfulnessCache calls GET /audit/citations/faithfulness/cache", async () => {
+        mockResponse({
+            results: [], stale_slugs: [], total_slugs_cached: 0,
+        });
+        await (api as any).getFaithfulnessCache();
+        expect(mockRequestUrl).toHaveBeenCalledWith(
+            expect.objectContaining({
+                url: "http://127.0.0.1:7070/audit/citations/faithfulness/cache",
+                method: "GET",
+            })
+        );
+    });
+});

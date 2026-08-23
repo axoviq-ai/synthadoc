@@ -2068,6 +2068,10 @@ class ScaffoldModal extends Modal {
 }
 
 class AuditModal extends Modal {
+    constructor(app: App) {
+        super(app);
+    }
+
     onOpen() {
         this.modalEl.style.width = "clamp(560px, 70vw, 960px)";
         const bg = this.containerEl.querySelector(".modal-bg") as HTMLElement | null;
@@ -2079,8 +2083,8 @@ class AuditModal extends Modal {
         const tabBar = contentEl.createEl("div");
         tabBar.style.cssText = "display:flex;gap:0;margin-bottom:16px;border-bottom:1px solid var(--background-modifier-border)";
 
-        type TabName = "Query history" | "Ingest history" | "Events" | "Cost summary";
-        const tabNames: TabName[] = ["Query history", "Ingest history", "Events", "Cost summary"];
+        type TabName = "Query history" | "Ingest history" | "Events" | "Cost summary" | "Citation faithfulness";
+        const tabNames: TabName[] = ["Query history", "Ingest history", "Events", "Cost summary", "Citation faithfulness"];
         const panels: Record<TabName, HTMLElement> = {} as any;
         const tabBtns: Record<TabName, HTMLElement> = {} as any;
 
@@ -2110,6 +2114,7 @@ class AuditModal extends Modal {
         this._buildIngestHistoryTab(panels["Ingest history"]);
         this._buildEventsTab(panels["Events"]);
         this._buildCostSummaryTab(panels["Cost summary"]);
+        this._buildCitationFaithfulnessTab(panels["Citation faithfulness"]);
         switchTab("Query history");
     }
 
@@ -2384,6 +2389,706 @@ class AuditModal extends Modal {
 
         btn.onclick = load;
         load();
+    }
+
+    private _buildCitationFaithfulnessTab(panel: HTMLElement) {
+        // ── Types ────────────────────────────────────────────────────────────
+        type FaithResult = {
+            slug: string;
+            citation_marker: string;
+            verdict: string;
+            reason: string;
+            checked_at?: string;
+        };
+
+        const VERDICT_ORDER: Record<string, number> = {
+            hallucination: 0, drift: 1, supported: 2, skipped: 3,
+        };
+        const VERDICT_CHIP: Record<string, { icon: string; color: string }> = {
+            supported:     { icon: "✅", color: "var(--color-green)"  },
+            drift:         { icon: "⚠️",  color: "var(--color-yellow)" },
+            hallucination: { icon: "❌", color: "var(--color-red)"    },
+            skipped:       { icon: "—",  color: "var(--text-muted)"   },
+        };
+        const GROUP_COLORS = [
+            "rgba(100,149,237,0.10)",
+            "rgba(255,183,77,0.10)",
+        ];
+        const FAITH_PAGE_SIZE = 25;
+
+        // ── State ────────────────────────────────────────────────────────────
+        let _faithResults: FaithResult[] = [];
+        let _faithPage = 0;
+        let _faithSortBy: "slug" | "verdict" = "slug";
+        let _faithSortAsc = true;
+        let _staleSlugsList: string[] = [];
+        let _slugList: string[] = [];                  // active slugs for autocomplete
+        let _lastEstimateScope = "";                   // scope key when estimate was cached
+        let _lastEstimate: any = null;                 // cached estimate payload
+        let _estimateTimer: ReturnType<typeof setTimeout> | null = null;
+        type Scope = "all" | "specific";
+        let _scope: Scope = "all";
+        let _filterSlug: string | null = null;  // non-null = show only this slug's rows
+
+        // ── Description blurb ────────────────────────────────────────────────
+        const desc = panel.createEl("p");
+        desc.style.cssText = "font-size:12px;color:var(--text-muted);margin:0 0 10px";
+        desc.textContent = "Verifies each claim is supported by its cited source. "
+            + "Citations are classified as Supported ✅, Drift ⚠️ (overstated or extrapolated), "
+            + "or Hallucination ❌ (contradicted or unsupported). "
+            + "Review flagged entries and correct the affected pages.";
+
+        // ── Cost estimate bar (auto-calculated) ───────────────────────────────
+        const costBar = panel.createEl("div");
+        costBar.style.cssText = "font-size:12px;background:var(--background-modifier-hover);"
+            + "border-radius:4px;padding:6px 10px;margin-bottom:10px;color:var(--text-muted)";
+        costBar.textContent = "⏳ Calculating cost estimate…";
+
+        const _showEstimate = (r: any, scopeLabel: string) => {
+            if (!r || r.pages === 0) {
+                costBar.textContent = `No active citations found in ${scopeLabel}.`;
+            } else {
+                costBar.textContent =
+                    `📊 ${scopeLabel}  ·  ${r.pages} page${r.pages !== 1 ? "s" : ""}`
+                    + `  ·  ${r.citations} citation${r.citations !== 1 ? "s" : ""}`
+                    + `  ·  ~${(r.estimated_tokens ?? 0).toLocaleString()} tokens`
+                    + `  ·  $${(r.estimated_cost_usd ?? 0).toFixed(4)} estimated`;
+            }
+        };
+
+        const _fetchEstimate = async (slug?: string) => {
+            const scopeKey = slug ?? "__all__";
+            // Return cached value if scope hasn't changed
+            if (scopeKey === _lastEstimateScope && _lastEstimate !== null) {
+                _showEstimate(_lastEstimate, slug ? `"${slug}"` : "all active pages");
+                return;
+            }
+            costBar.textContent = "⏳ Calculating cost estimate…";
+            try {
+                const r = await (api as any).auditCitationsFaithfulness(slug, true) as any;
+                _lastEstimate = r;
+                _lastEstimateScope = scopeKey;
+                _showEstimate(r, slug ? `"${slug}"` : "all active pages");
+            } catch {
+                costBar.textContent = "Could not estimate cost — is synthadoc serve running?";
+            }
+        };
+
+        const _scheduleEstimate = (slug?: string) => {
+            if (_estimateTimer) clearTimeout(_estimateTimer);
+            _estimateTimer = setTimeout(() => _fetchEstimate(slug), 500);
+        };
+
+        // ── Scope toggle (button group) ───────────────────────────────────────
+        const scopeRow = panel.createEl("div");
+        scopeRow.style.cssText = "display:flex;align-items:flex-start;gap:12px;margin-bottom:10px;flex-wrap:wrap";
+
+        const scopeLabel = scopeRow.createEl("span");
+        scopeLabel.style.cssText = "font-size:12px;color:var(--text-muted);line-height:28px;flex-shrink:0";
+        scopeLabel.textContent = "Scope:";
+
+        const scopeGroup = scopeRow.createEl("div");
+        scopeGroup.style.cssText = "display:flex;border:1px solid var(--background-modifier-border);border-radius:4px;overflow:hidden";
+
+        const btnAll  = scopeGroup.createEl("button", { text: "All active pages" }) as HTMLButtonElement;
+        const btnSpec = scopeGroup.createEl("button", { text: "Specific page" })   as HTMLButtonElement;
+        const _scopeBtnBase = "padding:4px 12px;font-size:12px;border:none;cursor:pointer;transition:background 0.15s";
+        const _scopeBtnActive = _scopeBtnBase + ";background:var(--interactive-accent);color:var(--text-on-accent)";
+        const _scopeBtnInactive = _scopeBtnBase + ";background:transparent;color:var(--text-normal)";
+        btnAll.style.cssText  = _scopeBtnActive;
+        btnSpec.style.cssText = _scopeBtnInactive;
+
+        // Slug autocomplete widget (shown only for "Specific page") ──────────
+        const slugWrap = scopeRow.createEl("div");
+        slugWrap.style.cssText = "position:relative;display:none";
+
+        const slugInput = slugWrap.createEl("input") as HTMLInputElement;
+        slugInput.placeholder = "Type to search page slug…";
+        slugInput.autocomplete = "off";
+        slugInput.style.cssText = "padding:4px 10px;font-size:12px;width:220px;"
+            + "border:1px solid var(--background-modifier-border);border-radius:4px;"
+            + "background:var(--background-primary);color:var(--text-normal)";
+
+        const slugDropdown = slugWrap.createEl("div");
+        slugDropdown.style.cssText = "display:none;position:absolute;top:100%;left:0;z-index:9999;"
+            + "background:var(--background-primary);border:1px solid var(--background-modifier-border);"
+            + "border-radius:4px;max-height:200px;overflow-y:auto;min-width:220px;box-shadow:0 4px 12px rgba(0,0,0,0.15)";
+
+        const _renderSlugDropdown = (query: string) => {
+            slugDropdown.empty();
+            if (!query && _slugList.length === 0) { slugDropdown.style.display = "none"; return; }
+            const matches = query
+                ? _slugList.filter(s => s.toLowerCase().includes(query.toLowerCase())).slice(0, 10)
+                : _slugList.slice(0, 10);
+            if (matches.length === 0) { slugDropdown.style.display = "none"; return; }
+            slugDropdown.style.display = "block";
+            for (const slug of matches) {
+                const item = slugDropdown.createEl("div", { text: slug });
+                item.style.cssText = "padding:6px 10px;cursor:pointer;font-size:12px;"
+                    + "border-bottom:1px solid var(--background-modifier-border-subtle)";
+                item.addEventListener("mouseenter", () => { item.style.background = "var(--background-modifier-hover)"; });
+                item.addEventListener("mouseleave", () => { item.style.background = ""; });
+                item.addEventListener("mousedown", (e) => {
+                    e.preventDefault(); // prevent blur before click registers
+                    slugInput.value = slug;
+                    slugDropdown.style.display = "none";
+                    _lastEstimate = null; // invalidate cache for new slug
+                    _fetchEstimate(slug);
+                    // Filter table to this slug immediately
+                    _filterSlug = slug;
+                    _faithPage = 0;
+                    renderTable();
+                    _updateRunBtn();
+                });
+            }
+        };
+
+        slugInput.addEventListener("input", () => {
+            const q = slugInput.value.trim();
+            _renderSlugDropdown(q);
+            _lastEstimate = null;
+            _scheduleEstimate(q || undefined);
+            // Update table to show cached results for current typed slug (or prompt if empty)
+            _filterSlug = q || null;
+            _faithPage = 0;
+            renderTable();
+            _updateRunBtn();
+        });
+        slugInput.addEventListener("focus", () => _renderSlugDropdown(slugInput.value.trim()));
+        slugInput.addEventListener("blur", () => {
+            // Delay to let mousedown on dropdown fire first
+            setTimeout(() => { slugDropdown.style.display = "none"; }, 150);
+        });
+
+        // Fetch active slugs when switching to "specific" scope ───────────────
+        const _fetchSlugs = async () => {
+            if (_slugList.length > 0) return;
+            try {
+                const data = await api.lifecyclePages() as any;
+                _slugList = ((data.pages ?? []) as any[])
+                    .filter((p: any) => p.state === "active" || p.status === "active")
+                    .map((p: any) => p.slug as string)
+                    .sort();
+            } catch { _slugList = []; }
+        };
+
+        // Scope toggle logic ──────────────────────────────────────────────────
+        const _setScope = (s: Scope) => {
+            _scope = s;
+            _filterSlug = null;
+            _faithPage = 0;
+            if (s === "all") {
+                btnAll.style.cssText  = _scopeBtnActive;
+                btnSpec.style.cssText = _scopeBtnInactive;
+                slugWrap.style.display = "none";
+                slugDropdown.style.display = "none";
+                _lastEstimate = null;
+                _fetchEstimate(undefined);
+                renderTable();   // restore full results view
+                _updateRunBtn();
+            } else {
+                btnAll.style.cssText  = _scopeBtnInactive;
+                btnSpec.style.cssText = _scopeBtnActive;
+                slugWrap.style.display = "";
+                slugInput.value = "";
+                costBar.textContent = "Type a page slug above to estimate cost.";
+                _lastEstimate = null;
+                _fetchSlugs();
+                renderTable();   // show "select a slug" prompt
+                _updateRunBtn();
+            }
+        };
+        btnAll.addEventListener("click",  () => _setScope("all"));
+        btnSpec.addEventListener("click", () => _setScope("specific"));
+
+        // Current slug helper ─────────────────────────────────────────────────
+        const getPageSlug = (): string | undefined =>
+            _scope === "specific" && slugInput.value.trim() ? slugInput.value.trim() : undefined;
+
+        // ── Run Audit button ──────────────────────────────────────────────────
+        const runRow = panel.createEl("div");
+        runRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:8px";
+        const runBtn = runRow.createEl("button", { text: "▶ Run Audit" }) as HTMLButtonElement;
+        runBtn.title = "Run the LLM faithfulness check for the selected scope. "
+            + "The server calls the LLM once per page — cost is shown above.";
+        const runHint = runRow.createEl("span");
+        runHint.style.cssText = "font-size:11px;color:var(--text-faint)";
+        runHint.textContent = "Checks each claim against its cited source using an LLM judge";
+
+        // ── Run button label (Run Audit vs Re-run Audit) ──────────────────────
+        const _updateRunBtn = () => {
+            const hasResults = _scope === "specific"
+                ? (_filterSlug ? _faithResults.some(r => r.slug === _filterSlug) : false)
+                : _faithResults.length > 0;
+            runBtn.textContent = hasResults ? "▶ Re-run Audit" : "▶ Run Audit";
+        };
+
+        // ── Status line ───────────────────────────────────────────────────────
+        const statusLine = panel.createEl("div");
+        statusLine.style.cssText = "font-size:12px;color:var(--text-muted);margin-bottom:6px;min-height:18px";
+
+        // ── Sort helpers ──────────────────────────────────────────────────────
+        const sortResults = (results: FaithResult[]) =>
+            [...results].sort((a, b) => {
+                let cmp = 0;
+                if (_faithSortBy === "slug") {
+                    cmp = a.slug.localeCompare(b.slug)
+                       || (VERDICT_ORDER[a.verdict] ?? 4) - (VERDICT_ORDER[b.verdict] ?? 4);
+                } else {
+                    cmp = (VERDICT_ORDER[a.verdict] ?? 4) - (VERDICT_ORDER[b.verdict] ?? 4)
+                       || a.slug.localeCompare(b.slug);
+                }
+                return _faithSortAsc ? cmp : -cmp;
+            });
+
+        // ── Compact date formatter ────────────────────────────────────────────
+        const _fmtDate = (ts: string | undefined): string => {
+            if (!ts) return "—";
+            try {
+                return new Date(ts).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
+            } catch { return ts; }
+        };
+
+        // ── Table wrapper ─────────────────────────────────────────────────────
+        const tableWrap = panel.createEl("div");
+        tableWrap.style.cssText = "max-height:48vh;overflow-y:auto;overflow-x:auto";
+
+        const pagerWrap = panel.createEl("div");
+
+        // ── Summary section ───────────────────────────────────────────────────
+        const summarySection = panel.createEl("div");
+        summarySection.style.cssText = "display:none;margin-top:10px";
+
+        const summaryBar = summarySection.createEl("div");
+        summaryBar.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;align-items:center;"
+            + "padding:8px 10px;border-radius:4px;background:var(--background-modifier-hover);"
+            + "font-size:13px;font-weight:500";
+
+        const summaryGuidance = summarySection.createEl("p");
+        summaryGuidance.style.cssText = "font-size:11px;color:var(--text-muted);margin:6px 0 0";
+
+        // ── Stale banner (shown when pages need re-audit) ─────────────────────
+        const staleBar = panel.createEl("div");
+        staleBar.style.cssText = "display:none;background:rgba(255,183,77,0.12);"
+            + "border:1px solid rgba(255,183,77,0.4);border-radius:4px;"
+            + "padding:8px 12px;margin-top:10px;font-size:12px";
+        const staleRow = staleBar.createEl("div");
+        staleRow.style.cssText = "display:flex;align-items:center;gap:10px;flex-wrap:wrap";
+        const staleIcon = staleRow.createEl("span", { text: "⚠️" });
+        staleIcon.style.flexShrink = "0";
+        const staleText = staleRow.createEl("span");
+        staleText.style.cssText = "flex:1;color:var(--text-normal)";
+        const rerunStaleBtn = staleRow.createEl("button", { text: "Re-run stale audit →" }) as HTMLButtonElement;
+        rerunStaleBtn.title = "Run the LLM faithfulness check for stale pages only";
+        const staleExplain = staleBar.createEl("p");
+        staleExplain.style.cssText = "margin:4px 0 0;font-size:11px;color:var(--text-muted)";
+        staleExplain.textContent = "A page is stale when its source was re-ingested after the last audit. "
+            + "Re-running updates only those pages — it does not re-check pages that are already fresh.";
+
+        // ── Last audited footer ───────────────────────────────────────────────
+        const lastAuditedLine = panel.createEl("div");
+        lastAuditedLine.style.cssText = "font-size:11px;color:var(--text-faint);margin-top:6px";
+
+        // ── renderTable ───────────────────────────────────────────────────────
+        const renderTable = () => {
+            tableWrap.empty();
+            pagerWrap.empty();
+            summarySection.style.display = "none";
+
+            // "Specific page" with no slug chosen yet — show a prompt instead of all rows
+            if (_scope === "specific" && !_filterSlug) {
+                tableWrap.createEl("p", {
+                    text: "Select a page slug above to view its cached audit results.",
+                }).style.cssText = "font-size:12px;color:var(--text-muted);padding:8px 0";
+                return;
+            }
+
+            const displayResults = _filterSlug
+                ? _faithResults.filter(r => r.slug === _filterSlug)
+                : _faithResults;
+
+            if (displayResults.length === 0) {
+                const msg = _filterSlug
+                    ? `No cached results for "${_filterSlug}" — click ▶ Run Audit to check this page.`
+                    : "No citation results yet — click ▶ Run Audit above to check your wiki.";
+                tableWrap.createEl("p", { text: msg })
+                    .style.cssText = "font-size:12px;color:var(--text-muted);padding:8px 0";
+                return;
+            }
+
+            const sorted = sortResults(displayResults);
+            const totalPages = Math.max(1, Math.ceil(sorted.length / FAITH_PAGE_SIZE));
+            _faithPage = Math.min(_faithPage, totalPages - 1);
+            const pageRows = sorted.slice(_faithPage * FAITH_PAGE_SIZE, (_faithPage + 1) * FAITH_PAGE_SIZE);
+
+            // ── Table ─────────────────────────────────────────────────────────
+            const table = tableWrap.createEl("table");
+            table.style.cssText = "width:100%;border-collapse:collapse;font-size:12px;min-width:600px";
+            const thead = table.createEl("thead").createEl("tr");
+
+            const makeSortHeader = (label: string, key: "slug" | "verdict", width: string) => {
+                const th = thead.createEl("th");
+                th.style.cssText = `width:${width};text-align:left;padding:4px 8px;`
+                    + `border-bottom:1px solid var(--background-modifier-border);cursor:pointer;user-select:none`;
+                const indicator = _faithSortBy === key ? (_faithSortAsc ? " ▲" : " ▼") : " ⇅";
+                th.textContent = label + indicator;
+                th.addEventListener("click", () => {
+                    if (_faithSortBy === key) { _faithSortAsc = !_faithSortAsc; }
+                    else { _faithSortBy = key; _faithSortAsc = true; }
+                    _faithPage = 0;
+                    renderTable();
+                });
+            };
+            const makeHeader = (label: string, width: string) => {
+                const th = thead.createEl("th", { text: label });
+                th.style.cssText = `width:${width};text-align:left;padding:4px 8px;`
+                    + `border-bottom:1px solid var(--background-modifier-border)`;
+            };
+
+            makeSortHeader("Page", "slug", "20%");
+            makeHeader("Citation", "22%");
+            makeSortHeader("Verdict", "verdict", "14%");
+            makeHeader("Reason", "auto");
+            makeHeader("Audited", "12%");
+
+            // ── Body with slug-band coloring ──────────────────────────────────
+            const tbody = table.createEl("tbody");
+            let lastSlug = "";
+            let groupIdx = -1;
+            for (const row of pageRows) {
+                if (row.slug !== lastSlug) { lastSlug = row.slug; groupIdx = (groupIdx + 1) % 2; }
+                const baseBg = GROUP_COLORS[groupIdx];
+                const tr = tbody.createEl("tr");
+                tr.style.cssText = `background:${baseBg}`;
+                tr.addEventListener("mouseenter", () => { tr.style.background = "var(--background-modifier-hover)"; });
+                tr.addEventListener("mouseleave", () => { tr.style.background = baseBg; });
+
+                const chip = VERDICT_CHIP[row.verdict] ?? { icon: row.verdict, color: "inherit" };
+                const tdStyle = "padding:4px 8px;vertical-align:top;"
+                    + "border-bottom:1px solid var(--background-modifier-border-subtle)";
+
+                const tdSlug = tr.createEl("td");
+                tdSlug.style.cssText = tdStyle;
+                const slugLink = tdSlug.createEl("a", { text: row.slug });
+                slugLink.style.cssText =
+                    "color:var(--link-color);cursor:pointer;text-decoration:underline";
+                slugLink.addEventListener("click", async (e) => {
+                    e.preventDefault();
+                    const wikiPath = `wiki/${row.slug}.md`;
+                    const file = this.app.vault.getAbstractFileByPath(wikiPath);
+                    if (!(file instanceof TFile)) return;
+                    const leaf = this.app.workspace.getLeaf(false);
+                    await leaf.openFile(file);
+                    const view = leaf.view;
+                    if (!(view instanceof MarkdownView)) return;
+                    const editor = view.editor;
+                    const content = editor.getValue();
+                    const markerIdx = content.indexOf(row.citation_marker);
+                    if (markerIdx === -1) return;
+                    const fromPos = editor.offsetToPos(markerIdx);
+                    const toPos = editor.offsetToPos(markerIdx + row.citation_marker.length);
+                    editor.setSelection(fromPos, toPos);
+                    editor.scrollIntoView({ from: fromPos, to: toPos }, true);
+                });
+
+                const tdCite = tr.createEl("td");
+                tdCite.style.cssText = tdStyle + ";font-family:monospace;font-size:11px;word-break:break-all";
+                tdCite.textContent = row.citation_marker;
+
+                const tdVerdict = tr.createEl("td");
+                tdVerdict.style.cssText = tdStyle;
+                tdVerdict.innerHTML = `<span style="color:${chip.color}">${chip.icon} ${row.verdict}</span>`;
+
+                const tdReason = tr.createEl("td");
+                tdReason.style.cssText = tdStyle;
+                tdReason.textContent = row.reason ?? "";
+
+                const tdDate = tr.createEl("td");
+                tdDate.style.cssText = tdStyle + ";white-space:nowrap;font-size:11px;color:var(--text-faint)";
+                tdDate.textContent = _fmtDate(row.checked_at);
+            }
+
+            // ── Pagination ────────────────────────────────────────────────────
+            if (totalPages > 1) {
+                const bar = pagerWrap.createEl("div");
+                bar.style.cssText = "display:flex;gap:6px;align-items:center;padding:6px 0";
+                const prev = bar.createEl("button", { text: "← Prev" }) as HTMLButtonElement;
+                prev.disabled = _faithPage === 0;
+                prev.onclick = () => { _faithPage--; renderTable(); };
+                bar.createEl("span").textContent =
+                    `Page ${_faithPage + 1} / ${totalPages}  (${displayResults.length} citations)`;
+                const next = bar.createEl("button", { text: "Next →" }) as HTMLButtonElement;
+                next.disabled = _faithPage >= totalPages - 1;
+                next.onclick = () => { _faithPage++; renderTable(); };
+            }
+
+            // ── Summary ───────────────────────────────────────────────────────
+            const counts: Record<string, number> = { hallucination: 0, drift: 0, supported: 0, skipped: 0 };
+            for (const r of displayResults) counts[r.verdict] = (counts[r.verdict] ?? 0) + 1;
+
+            summaryBar.empty();
+            const addBadge = (icon: string, n: number, label: string, color: string) => {
+                if (!n) return;
+                const badge = summaryBar.createEl("span");
+                badge.style.cssText = `color:${color}`;
+                badge.textContent = `${icon} ${n} ${label}${n !== 1 ? "s" : ""}`;
+            };
+            addBadge("❌", counts.hallucination, "hallucination", "var(--color-red)");
+            addBadge("⚠️",  counts.drift,         "drift",         "var(--color-yellow)");
+            addBadge("✅", counts.supported,      "supported",     "var(--color-green)");
+            if (counts.skipped) {
+                const badge = summaryBar.createEl("span");
+                badge.style.cssText = "color:var(--text-muted)";
+                badge.textContent = `— ${counts.skipped} skipped`;
+            }
+
+            const hasIssues = counts.hallucination + counts.drift > 0;
+            summaryGuidance.textContent = hasIssues
+                ? "Hallucinations and drifts indicate claims that need editorial review. "
+                    + "Open the flagged page in Obsidian, locate the citation marker, "
+                    + "and either correct the claim to match its source or update the source reference."
+                : counts.supported > 0
+                    ? "All audited citations are supported — no action needed."
+                    : "";
+
+            summarySection.style.display = "";
+        };
+
+        // ── _pollJob: poll a background job until terminal, updating statusLine ─
+        const _pollJob = async (
+            jobId: string,
+            progressLabel: (p: any) => string,
+            onDone: () => Promise<void>,
+            onError: (msg: string) => void,
+            btnsToDisable: HTMLButtonElement[],
+        ) => {
+            const POLL_MS = 3000;
+            const poll = async () => {
+                try {
+                    const job = await (api as any).job(jobId) as any;
+                    const status: string = job.status ?? "unknown";
+                    if (!TERMINAL_STATUSES.has(status)) {
+                        // pending or in_progress
+                        const progress = job.progress ?? {};
+                        const checked = progress.pages_checked ?? 0;
+                        const total = progress.pages_total ?? 0;
+                        const phase: string = progress.phase ?? "starting";
+                        const current: string = progress.current_slug ?? "";
+                        if (phase === "auditing" && total > 0) {
+                            statusLine.textContent =
+                                `⏳ ${progressLabel(progress)} — ${checked}/${total} pages` +
+                                (current ? ` (checking "${current}")` : "");
+                        } else {
+                            statusLine.textContent = `⏳ ${progressLabel(progress)} — starting…`;
+                        }
+                        setTimeout(poll, POLL_MS);
+                    } else if (status === "completed") {
+                        await onDone();
+                    } else {
+                        // failed / dead / skipped / cancelled
+                        onError(job.error ?? "Audit failed — check the server log for details.");
+                        btnsToDisable.forEach(b => { b.disabled = false; });
+                    }
+                } catch {
+                    onError("Lost connection to server — is synthadoc serve running?");
+                    btnsToDisable.forEach(b => { b.disabled = false; });
+                }
+            };
+            poll();
+        };
+
+        // ── Cost confirmation dialog ───────────────────────────────────────────
+        // Shown before any LLM audit job is submitted so the user can review
+        // the estimated cost and confirm. Cache auto-loading on tab open (read-only)
+        // needs no confirmation — this gate applies only to the two run buttons.
+        const _showRunConfirmation = (scopeLabel: string, onConfirm: () => void) => {
+            const modal = new Modal(this.app);
+            modal.contentEl.createEl("h3", { text: "Confirm citation audit" })
+                .style.cssText = "margin:0 0 12px";
+            const intro = modal.contentEl.createEl("p");
+            intro.style.cssText = "font-size:13px;margin:0 0 10px";
+            intro.textContent = `Run LLM faithfulness check for ${scopeLabel}?`;
+            const est = _lastEstimate;
+            const estLine = modal.contentEl.createEl("p");
+            estLine.style.cssText =
+                "font-size:12px;color:var(--text-muted);background:var(--background-modifier-hover);"
+                + "border-radius:4px;padding:6px 10px;margin:0 0 16px";
+            if (est && (est.pages ?? 0) > 0) {
+                estLine.textContent =
+                    `${est.pages} page${est.pages !== 1 ? "s" : ""}`
+                    + `  ·  ${est.citations} citation${est.citations !== 1 ? "s" : ""}`
+                    + `  ·  ~${(est.estimated_tokens ?? 0).toLocaleString()} tokens`
+                    + `  ·  $${(est.estimated_cost_usd ?? 0).toFixed(4)} estimated`;
+            } else {
+                estLine.textContent = "Cost estimate not yet available — proceed with caution.";
+            }
+            const btnRow = modal.contentEl.createEl("div");
+            btnRow.style.cssText = "display:flex;gap:8px;justify-content:flex-end";
+            const cancelBtn = btnRow.createEl("button", { text: "Cancel" }) as HTMLButtonElement;
+            cancelBtn.style.cssText = "padding:6px 16px;font-size:13px;cursor:pointer;border-radius:4px";
+            const confirmBtn = btnRow.createEl("button", { text: "Run audit" }) as HTMLButtonElement;
+            confirmBtn.style.cssText =
+                "background:var(--interactive-accent);color:var(--text-on-accent);"
+                + "border:none;padding:6px 16px;border-radius:4px;cursor:pointer;font-size:13px";
+            cancelBtn.addEventListener("click", () => modal.close());
+            confirmBtn.addEventListener("click", () => { modal.close(); onConfirm(); });
+            modal.open();
+        };
+
+        // ── Run Audit handler ─────────────────────────────────────────────────
+        runBtn.addEventListener("click", () => {
+            const slug = getPageSlug();
+            const scopeLabel = slug ? `"${slug}"` : "all active pages";
+            _showRunConfirmation(scopeLabel, async () => {
+                runBtn.disabled = true;
+                statusLine.textContent = slug
+                    ? `⏳ Starting audit for "${slug}"…`
+                    : "⏳ Starting audit for all active pages…";
+                tableWrap.empty();
+                pagerWrap.empty();
+                summarySection.style.display = "none";
+                try {
+                    const r = await (api as any).auditCitationsFaithfulness(slug, false) as any;
+                    const jobId: string = r.job_id;
+                    if (!jobId) throw new Error("No job_id returned");
+                    _pollJob(
+                        jobId,
+                        () => "Auditing citations",
+                        async () => {
+                            const cached = await (api as any).getFaithfulnessCache();
+                            _faithPage = 0;
+                            _applyCache(cached);
+                            runBtn.disabled = false;
+                        },
+                        (msg: string) => { statusLine.textContent = msg; },
+                        [runBtn],
+                    );
+                } catch {
+                    statusLine.textContent = "Audit failed — is synthadoc serve running?";
+                    runBtn.disabled = false;
+                }
+            });
+        });
+
+        // ── _applyCache ───────────────────────────────────────────────────────
+        const _applyCache = (cached: {
+            results: FaithResult[];
+            stale_slugs: string[];
+            last_checked_at?: string;
+        }) => {
+            statusLine.textContent = "";          // always clear "Loading…" on success
+            _faithResults = cached.results ?? [];
+            _staleSlugsList = cached.stale_slugs ?? [];
+            if (_faithResults.length > 0) {
+                _faithPage = 0;
+                renderTable();
+            }
+            // Stale banner
+            if (_staleSlugsList.length > 0) {
+                const n = _staleSlugsList.length;
+                staleText.textContent =
+                    `${n} page${n !== 1 ? "s" : ""} re-ingested since last audit — verdicts may be outdated.`;
+                staleBar.style.display = "block";
+            } else {
+                staleBar.style.display = "none";
+                if (_faithResults.length === 0) {
+                    statusLine.textContent = "No cached results yet — click ▶ Run Audit to begin.";
+                }
+            }
+            // Last audited footer
+            if (cached.last_checked_at) {
+                lastAuditedLine.textContent = `Last audited: ${new Date(cached.last_checked_at).toLocaleString()}`;
+            } else {
+                lastAuditedLine.textContent = "";
+            }
+            _updateRunBtn();
+        };
+
+        // ── Auto-load cache on tab open ───────────────────────────────────────
+        (async () => {
+            statusLine.textContent = "⏳ Loading cached results…";
+            try {
+                const cached = await (api as any).getFaithfulnessCache();
+                _applyCache(cached);
+            } catch {
+                statusLine.textContent = "Could not load cache — is synthadoc serve running?";
+            }
+
+            // Resume polling if a faithfulness job is already running in the background
+            try {
+                const activeJobs: any[] = [
+                    ...await (api as any).jobs("in_progress"),
+                    ...await (api as any).jobs("pending"),
+                ];
+                const activeJob = activeJobs.find((j: any) => j.operation === "faithfulness");
+                if (activeJob) {
+                    runBtn.disabled = true;
+                    rerunStaleBtn.disabled = true;
+                    statusLine.textContent = "⏳ Audit job already running in background…";
+                    _pollJob(
+                        activeJob.id,
+                        () => "Auditing citations",
+                        async () => {
+                            const cached = await (api as any).getFaithfulnessCache();
+                            _faithPage = 0;
+                            _applyCache(cached);
+                            runBtn.disabled = false;
+                            rerunStaleBtn.disabled = false;
+                        },
+                        (msg: string) => {
+                            statusLine.textContent = msg;
+                            runBtn.disabled = false;
+                            rerunStaleBtn.disabled = false;
+                        },
+                        [runBtn, rerunStaleBtn],
+                    );
+                    return; // skip cost estimate while job is running
+                }
+            } catch {
+                // Non-fatal: job-list failure should not prevent the tab from loading
+            }
+
+            // Auto-fetch cost estimate for the default scope (all active pages)
+            _fetchEstimate(undefined);
+        })();
+
+        // ── Re-run stale handler ──────────────────────────────────────────────
+        rerunStaleBtn.addEventListener("click", () => {
+            const n = _staleSlugsList.length;
+            _showRunConfirmation(`${n} stale page${n !== 1 ? "s" : ""}`, async () => {
+                rerunStaleBtn.disabled = true;
+                runBtn.disabled = true;
+                statusLine.textContent = `⏳ Starting re-audit of ${n} stale page${n !== 1 ? "s" : ""}…`;
+                try {
+                    const r = await (api as any).auditCitationsFaithfulness(undefined, false, true) as any;
+                    const jobId: string = r.job_id;
+                    if (!jobId) throw new Error("No job_id returned");
+                    _pollJob(
+                        jobId,
+                        () => "Re-auditing stale pages",
+                        async () => {
+                            const cached = await (api as any).getFaithfulnessCache();
+                            _faithPage = 0;
+                            _applyCache(cached);
+                            rerunStaleBtn.disabled = false;
+                            runBtn.disabled = false;
+                        },
+                        (msg: string) => {
+                            console.error("Citation faithfulness re-run error:", msg);
+                            statusLine.textContent = msg;
+                            rerunStaleBtn.disabled = false;
+                            runBtn.disabled = false;
+                        },
+                        [rerunStaleBtn, runBtn],
+                    );
+                } catch (e) {
+                    console.error("Citation faithfulness re-run error:", e);
+                    statusLine.textContent = "Re-audit failed — is synthadoc serve running?";
+                    rerunStaleBtn.disabled = false;
+                    runBtn.disabled = false;
+                }
+            });
+        });
     }
 
     onClose() { this.contentEl.empty(); }

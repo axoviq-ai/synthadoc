@@ -1,4 +1,4 @@
-# Synthadoc
+﻿# Synthadoc
 
 ```
       .-+###############+-.
@@ -234,6 +234,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **[Portable backup / restore](docs/design.md#28-backup--restore)** — single zip: wiki pages + audit/lifecycle DB + config; port and domain rewriting on restore; migrate machines without re-ingesting                                                                                                                                                                                                                                                                                                                                                                | **Yes**   | No — re-ingest required | No — AI metadata lost | No                                                                                                  |
 | **[Lifecycle content snapshots + rollback](docs/user-quick-start-guide.md#snapshots-and-content-recovery)** — page body captured at every lifecycle transition (manual CLI/Obsidian, lint-driven auto-transition, or Obsidian vault save); deduplicated so unchanged saves cost nothing; browse per-page version history with `lifecycle history` (newest-first, with reason); restore any prior version with `lifecycle rollback`; rollback saves the current body first so it is always undoable                                                                    | **Yes**   | No                       | No                     | Partial — Notion has time-based edit history (plan-gated, no lifecycle tie, no auditable rollback) |
 | **[Cost guard + full audit trail](docs/user-quick-start-guide.md#step-15--audit-features)** — per-job token + cost log; soft-warn and hard-gate thresholds; `audit citations` validates every claim citation; immutable event log                                                                                                                                                                                                                                                                                                                                     | **Yes**   | No                       | No                     | No                                                                                                  |
+| **[Citation faithfulness audit](docs/user-quick-start-guide.md#step-26--audit-citation-faithfulness)** — on-demand LLM verification that each claim's text is actually supported by its cited source lines; per-page result cache with staleness detection; findings surfaced in the Obsidian source viewer                                                                                                                                                                                                                                                            | **Yes**   | No                       | No                     | No                                                                                                  |
 | **[Resumable job queue + retry](docs/design.md#14-job-queue)** — every ingest/lint job persisted with status and error; batch a hundred documents and resume after a crash                                                                                                                                                                                                                                                                                                                                                                                            | **Yes**   | No                       | No                     | No                                                                                                  |
 | **[Custom skills + CI hooks](docs/design.md#11-hook-system)** — subclass `BaseSkill` for new file formats; 2 hook events (`on_ingest_complete` + `on_lint_complete`); example git auto-commit hook included; blocking hooks can gate operations                                                                                                                                                                                                                                                                                                                       | **Yes**   | Limited                  | No                     | No                                                                                                  |
 | **[Per-source truncation flag](docs/design.md#30-per-source-truncation-flag)** — `--max-source-chars` caps any source (PDF, DOCX, web page, plain text) before the LLM call; truncated sources flagged with `truncated: true` in frontmatter and warned in lint output                                                                                                                                                                                                                                                                                                | **Yes**   | No                       | No                     | No                                                                                                  |
@@ -945,6 +946,16 @@ synthadoc audit citations --page alan-turing -w my-wiki # citations for one page
 synthadoc audit citations --source turing.pdf -w my-wiki # citations from one source
 synthadoc audit citations --broken -w my-wiki           # validation failures only
 synthadoc audit citations --json -w my-wiki             # raw JSON for scripting
+```
+
+**Audit citation faithfulness**
+```bash
+synthadoc audit citations --faithfulness              # all active pages
+synthadoc audit citations --faithfulness --page SLUG  # single page
+synthadoc audit citations --faithfulness --force      # re-run even if cache is fresh
+synthadoc audit citations --faithfulness --yes        # skip cost prompt (e.g. in CI)
+synthadoc audit citations --faithfulness --json       # machine-readable output
+# Results cached per-page; Obsidian tab shows cached results instantly on open
 ```
 
 ### Scheduling recurring jobs

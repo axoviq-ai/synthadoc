@@ -724,3 +724,94 @@ class Orchestrator:
         except Exception as e:
             if not await self._fail_or_permanent(job_id, e):
                 raise
+
+    async def _run_faithfulness(
+        self,
+        job_id: str,
+        page_slug: "Optional[str]" = None,
+        stale_only: bool = False,
+    ) -> None:
+        """Run the citation faithfulness audit as a background job.
+
+        Iterates slugs one at a time, updating job progress after each page,
+        then merges all results into the faithfulness cache and completes the job.
+        """
+        from synthadoc.agents.citation_faithfulness import run_faithfulness_audit
+        from synthadoc.agents.faithfulness_cache import (
+            read_cache,
+            get_stale_slugs,
+            merge_results_into_cache,
+        )
+        from synthadoc.storage.wiki import WikiStorage, LifecycleState
+        from synthadoc.providers import make_provider
+
+        wiki_root = self._root
+        store = WikiStorage(wiki_root / "wiki")
+        provider = make_provider("adversarial", self._cfg)
+        faith_cfg = self._cfg.agents.resolve("adversarial")
+        if self._cfg.agents.adversarial is None:
+            logger.info(
+                "Faithfulness audit: %s/%s (default — tip: set [agents].adversarial in "
+                "config.toml to use a dedicated judge model)",
+                faith_cfg.provider, faith_cfg.model,
+            )
+        else:
+            logger.info(
+                "Faithfulness audit: %s/%s (dedicated judge)",
+                faith_cfg.provider, faith_cfg.model,
+            )
+
+        try:
+            # Determine the set of slugs to audit
+            if stale_only:
+                cache = read_cache(wiki_root)
+                slugs = get_stale_slugs(cache.get("entries", {}), store)
+                if page_slug:
+                    slugs = [s for s in slugs if s == page_slug]
+            elif page_slug:
+                slugs = [page_slug] if store.read_page(page_slug) is not None else []
+            else:
+                slugs = [
+                    s for s in store.all_slugs()
+                    if (p := store.read_page(s)) is not None
+                    and p.status == LifecycleState.ACTIVE
+                ]
+
+            total = len(slugs)
+            await self._queue.update_progress(job_id, {
+                "phase": "starting",
+                "pages_total": total,
+                "pages_checked": 0,
+            })
+
+            if total == 0:
+                await self._queue.complete(job_id, result={
+                    "pages_checked": 0,
+                    "citations_checked": 0,
+                    "message": "No pages to audit.",
+                })
+                return
+
+            all_results: list = []
+            for i, slug in enumerate(slugs):
+                await self._queue.update_progress(job_id, {
+                    "phase": "auditing",
+                    "current_slug": slug,
+                    "pages_checked": i,
+                    "pages_total": total,
+                })
+                # run_faithfulness_audit with a slug filter runs only that page
+                page_results = await run_faithfulness_audit(
+                    wiki_root, store, provider, page_slug_filter=slug
+                )
+                all_results.extend(page_results)
+
+            merge_results_into_cache(wiki_root, all_results, store, checked_slugs=slugs)
+
+            await self._queue.complete(job_id, result={
+                "pages_checked": total,
+                "citations_checked": len(all_results),
+            })
+        except Exception as e:
+            if not await self._fail_or_permanent(job_id, e):
+                raise

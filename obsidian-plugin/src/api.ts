@@ -126,4 +126,13 @@ export const api = {
             content,
             ...(reason ? { reason } : {}),
         }),
+
+    auditCitationsFaithfulness: (pageSlug?: string, dryRun = false, staleOnly = false) =>
+        call("/audit/citations/faithfulness", "POST", {
+            ...(pageSlug ? { page_slug: pageSlug } : {}),
+            dry_run: dryRun,
+            ...(staleOnly ? { stale_only: true } : {}),
+        }),
+    getFaithfulnessCache: () =>
+        call("/audit/citations/faithfulness/cache"),
 };

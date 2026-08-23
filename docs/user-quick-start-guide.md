@@ -1,6 +1,6 @@
 ﻿# Synthadoc User Quick-Start Guide
 
-**Version: v1.3.0 (Community Edition)**
+**Version: v1.3.1 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
@@ -2062,6 +2062,112 @@ The lint report also shows a **Citation Issues** section listing any broken, out
 
 ```bash
 synthadoc lint report
+```
+
+### Checking citation faithfulness
+
+The structural citation check confirms that each `^[filename:L-L]` marker references a known source file and valid line range. **Citation faithfulness** goes further: it uses an LLM to verify that the claim text preceding each marker is actually supported by those source lines.
+
+**CLI walkthrough:**
+
+The CLI delegates all LLM work to the running `synthadoc serve` process — no API key is needed in your terminal. Before posting a job, the command reads the local cache to decide what actually needs to run:
+
+- **No prior results** → full audit across all active pages.
+- **Some pages re-ingested since the last audit** → only those stale pages are re-audited; the rest are shown from cache at no cost.
+- **All results fresh** → the cached table is printed immediately without any server round-trip.
+- **`--force`** → always enqueues a full re-run regardless of cache state.
+
+```bash
+# Run the audit (cache-aware: automatically skips pages already up to date)
+synthadoc audit citations --faithfulness
+
+# Skip the cost confirmation prompt (e.g. in CI)
+synthadoc audit citations --faithfulness --yes
+
+# Force a full re-run even if the cache is fresh
+synthadoc audit citations --faithfulness --force
+
+# Scope to one page for a quick spot check
+synthadoc audit citations --faithfulness --page bell-labs
+
+# Machine-readable output
+synthadoc audit citations --faithfulness --json
+```
+
+While the audit runs, progress is printed per page (`Auditing "bell-labs" (3/12)…`) so you can track long wiki runs without staring at a blank prompt.
+
+The report shows one row per citation with a verdict:
+
+| Verdict | Meaning |
+|---|---|
+| ✅ supported | Source lines clearly back the claim |
+| ⚠️ drift | Claim overstates or partially misrepresents the source |
+| ❌ hallucination | Source contradicts or is unrelated to the claim |
+| — skipped | Source file not available on disk |
+
+The command exits with code `1` when any drift or hallucination is found, making it easy to use in CI pipelines.
+
+**Obsidian walkthrough:**
+
+1. Open the command palette and run **Synthadoc: Audit: citation faithfulness...**  
+   (Or open the Audit modal and click the **Citation faithfulness** tab.)
+2. The tab opens with the **last cached results** already loaded (if any), and automatically calculates a cost estimate for the current scope — no button press required.
+3. Choose scope using the button group at the top: **All active pages** runs the audit across every active page; **Specific page** reveals a slug search field with fuzzy autocomplete (fetched from your active pages). Switching scope immediately filters the results table and refreshes the cost estimate.
+4. When a specific page is selected and it has been audited before, the table shows only that page's cached results. If it has not been audited yet, a prompt appears — click **▶ Run Audit** to check it.
+5. A yellow banner appears when one or more pages have been re-ingested since the last audit — click **Re-run stale** to update only those pages without re-checking the rest. The banner explains what "stale" means and what the re-run will do.
+6. To run a full fresh audit, click **▶ Run Audit** (shown when no results exist) or **▶ Re-run Audit** (shown when cached results are already present). The audit runs as a background job on the server — the button is disabled immediately and a live progress line appears showing the current page being checked and the count so far (e.g. `⏳ Auditing — 4/12 pages (checking "konrad-zuse")`). You do not need to keep the plugin open: if you close and reopen the tab while an audit is still running, the tab automatically reconnects to the in-progress job and resumes showing progress until it completes.
+7. Results appear in a sortable, paginated table (25 rows per page) with columns: **Page**, **Citation**, **Verdict**, **Reason**, and **Audited** (the local date and time of the last audit for that citation). Click the **Page** or **Verdict** column header to sort. A "Last audited: …" line below the table shows the most recent audit timestamp across all cached results. **Click any page name in the table** to jump directly to that page in the Obsidian editor, with the citation marker selected and scrolled into view — useful for quickly locating and correcting flagged claims without hunting through the document.
+8. The **verdict summary** at the bottom shows coloured counts — ❌ hallucinations in red, ⚠️ drifts in amber, ✅ supported in green — alongside guidance on what to do next.
+
+![Citation faithfulness tab showing scope buttons, live results table with clickable page links, verdict chips, and summary bar](png/synthadoc-citation-faithfulness.png)
+
+**What to do with drift or hallucination results:**
+
+Citation faithfulness is **informational** — it flags which claims need attention, but corrections are manual. When you see ❌ hallucinations or ⚠️ drifts:
+
+1. Sort the table by **Verdict** to bring flagged entries to the top.
+2. Note the **Page** slug and **Citation** marker (e.g. `^[arpanet.pdf:3-5]`).
+3. Open that page in Obsidian, find the citation marker in the body text, and locate the referenced lines in `.synthadoc/extracted/` (or click the citation chip in Reading View to open the Source Viewer).
+4. Choose a correction:
+   - **Correct the claim** — rewrite it to accurately reflect what the source says.
+   - **Update the source reference** — point the marker at a source that does support the claim.
+   - **Re-ingest with a newer source** — if the original document has been updated, re-ingest it with `synthadoc ingest <file> --force` and re-run the audit.
+   - **Use the Contradiction Resolver** — if the page was demoted to `contradicted`, the resolver workflow can help rewrite or re-ground the affected claims.
+
+**Configuring a dedicated judge model for faithfulness:**
+
+The faithfulness audit uses the same LLM you have configured under `[agents.adversarial]` — the same dedicated judge model that runs the adversarial lint pass. This is intentional: both tasks are *judgment* tasks (the model reads content and renders a verdict), so sharing one "judge" role keeps configuration simple.
+
+By default, if you have not set `[agents.adversarial]`, the audit falls back to your `[agents]` default model. To use a different, potentially cheaper or more neutral model for all judgment tasks — both adversarial lint and citation faithfulness — set it once in `synthadoc.toml`:
+
+```toml
+[agents]
+provider = "anthropic"
+model    = "claude-sonnet-5"   # used for ingest and query
+
+[agents.adversarial]
+provider = "anthropic"
+model    = "claude-haiku-4-5-20251001"   # judge model: runs adversarial lint + faithfulness audit
+```
+
+Or point faithfulness (and adversarial lint) at a different provider entirely:
+
+```toml
+[agents.adversarial]
+provider = "openai"
+model    = "gpt-4o-mini"
+```
+
+When the server starts an audit job you will see a line in its log confirming which model is in use:
+
+```
+Faithfulness audit: anthropic/claude-haiku-4-5-20251001 (dedicated judge)
+```
+
+If `[agents.adversarial]` is not set:
+
+```
+Faithfulness audit: anthropic/claude-sonnet-5 (default — tip: set [agents].adversarial in config.toml to use a dedicated judge model)
 ```
 
 ---
