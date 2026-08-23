@@ -1471,7 +1471,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         orch = app.state.orch
         wiki_root = orch._root
         store = _WikiStorage(wiki_root / "wiki")
-        agent_cfg = orch._cfg.agents.resolve("query")
+        agent_cfg = orch._cfg.agents.resolve("adversarial")
 
         if req.dry_run:
             extracted_dir = wiki_root / ".synthadoc" / "extracted"
