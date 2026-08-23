@@ -1078,7 +1078,8 @@ synthadoc
 │   │   ├── --source <file>
 │   │   ├── --page <slug>
 │   │   ├── --faithfulness     # LLM faithfulness audit (opt-in)
-│   │   │   └── --yes          # skip cost confirmation
+│   │   │   ├── --force        # re-run even if cache is fresh
+│   │   │   └── --yes          # skip cost confirmation (e.g. in CI)
 │   │   └── --json
 │   └── lifecycle
 │       └── purge -w wiki (--before <date> | --keep-latest <n>)
