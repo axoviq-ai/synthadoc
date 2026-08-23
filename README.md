@@ -952,7 +952,8 @@ synthadoc audit citations --json -w my-wiki             # raw JSON for scripting
 ```bash
 synthadoc audit citations --faithfulness              # all active pages
 synthadoc audit citations --faithfulness --page SLUG  # single page
-synthadoc audit citations --faithfulness --yes        # skip cost prompt
+synthadoc audit citations --faithfulness --force      # re-run even if cache is fresh
+synthadoc audit citations --faithfulness --yes        # skip cost prompt (e.g. in CI)
 synthadoc audit citations --faithfulness --json       # machine-readable output
 # Results cached per-page; Obsidian tab shows cached results instantly on open
 ```
