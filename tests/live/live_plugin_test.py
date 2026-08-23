@@ -114,6 +114,8 @@ from live_helpers import backup_wiki as _backup_wiki_impl
 from live_helpers import register_sigterm_handler as _register_sigterm_handler
 from live_helpers import restore_wiki as _restore_wiki_impl
 
+from synthadoc.core.queue import JobStatus
+
 # ── Configuration ─────────────────────────────────────────────────────────────
 _DEFAULT_WIKI_FILE = pathlib.Path.home() / ".synthadoc" / "default_wiki"
 
@@ -889,7 +891,7 @@ def _test_knowledge_graph() -> None:
         assert code == 200, f"POST /jobs/lint returned HTTP {code}: {str(body)[:120]}"
         assert isinstance(body, dict) and "job_id" in body, \
             f"No job_id in lint response: {str(body)[:120]}"
-        assert final in ("completed", "failed"), \
+        assert final in (JobStatus.COMPLETED, JobStatus.FAILED), \
             f"Lint job did not reach terminal state: {final!r}"
 
     # Poll until graph is ready (up to 15 × 2 s = 30 s)
@@ -1107,7 +1109,7 @@ def main(no_restore: bool = False) -> None:
             if j.get("created_at", "") < _cutoff:
                 break  # list is ASC by created_at; nothing older will match
             # dead jobs cannot be retried (409) — skip for retry target, ok for delete
-            if j.get("status") in ("completed", "cancelled", "skipped", "failed"):
+            if j.get("status") in (JobStatus.COMPLETED, JobStatus.CANCELLED, JobStatus.SKIPPED, JobStatus.FAILED):
                 if terminal_job is None:
                     terminal_job = j
                 elif second_terminal is None:

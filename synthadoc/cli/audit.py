@@ -313,6 +313,7 @@ def _run_faithfulness(
     )
     from synthadoc.core.cost_guard import CostGuard, CostEstimate, CostGateError
     from synthadoc.providers.pricing import estimate_cost
+    from synthadoc.core.queue import JobStatus
 
     wiki_name = resolve_wiki(wiki)
     wiki_root = resolve_wiki_path(wiki_name)
@@ -408,7 +409,7 @@ def _run_faithfulness(
     while True:
         job = http_get(wiki_name, f"/jobs/{job_id}")
         status: str = job.get("status", "unknown")
-        if status in ("pending", "in_progress"):
+        if status in (JobStatus.PENDING, JobStatus.IN_PROGRESS):
             progress = job.get("progress") or {}
             phase = progress.get("phase", "starting")
             checked = progress.get("pages_checked", 0)
@@ -419,7 +420,7 @@ def _run_faithfulness(
                     f"[dim]({checked}/{total_pages})[/dim] Checking [bold]{current}[/bold]…"
                 )
             time.sleep(POLL_SECONDS)
-        elif status == "completed":
+        elif status == JobStatus.COMPLETED:
             break
         else:
             error = job.get("error") or "unknown error"

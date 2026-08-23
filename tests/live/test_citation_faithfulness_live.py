@@ -34,6 +34,8 @@ from pathlib import Path
 import httpx
 import pytest
 
+from synthadoc.core.queue import JobStatus
+
 BASE = os.environ.get("SYNTHADOC_URL", "http://127.0.0.1:7070").rstrip("/")
 
 # Dedicated test slug — never conflicts with real wiki content.
@@ -97,9 +99,9 @@ def _run_audit(page_slug: str | None = None, stale_only: bool = False,
     while time.time() < deadline:
         job = _api(f"/jobs/{job_id}")
         status = job.get("status", "unknown")
-        if status == "complete":
+        if status == JobStatus.COMPLETED:
             return job
-        if status in ("failed", "dead"):
+        if status in (JobStatus.FAILED, JobStatus.DEAD):
             pytest.fail(f"Faithfulness job {job_id} ended with status={status!r}: {job}")
         time.sleep(poll_interval)
 

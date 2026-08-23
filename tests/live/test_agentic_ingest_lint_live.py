@@ -40,8 +40,10 @@ from pathlib import Path
 import httpx
 import pytest
 
+from synthadoc.core.queue import JobStatus
+
 BASE = os.environ.get("SYNTHADOC_URL", "http://127.0.0.1:7070").rstrip("/")
-_TERMINAL = {"completed", "failed", "cancelled", "dead", "skipped"}
+_TERMINAL = {s for s in JobStatus if s.is_terminal}
 
 
 # ── Low-level helpers ─────────────────────────────────────────────────────────
@@ -476,13 +478,13 @@ def test_post_ingest_queues_job_for_valid_source():
         # Accept "completed" (page created or updated) and "skipped" (content
         # out-of-scope for this wiki's purpose, or already ingested).
         # Both indicate the endpoint correctly queued and ran the job.
-        assert status in {"completed", "skipped"}, (
+        assert status in {JobStatus.COMPLETED, JobStatus.SKIPPED}, (
             f"POST /ingest job ended with unexpected status: {status!r}"
         )
         # Only check for a new slug when completed AND a new page would be
         # expected — if the wiki already has an Antikythera page the job
         # updates it in place, which is equally correct behaviour.
-        if status == "completed":
+        if status == JobStatus.COMPLETED:
             slug = _new_slug_in(wiki_dir, before)
     finally:
         if slug:
