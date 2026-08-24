@@ -1874,7 +1874,7 @@ async def test_run_faithfulness_with_page_slug_filter(tmp_wiki):
         job_id = await orch._queue.enqueue("faithfulness", {"page_slug": "bell-labs"})
 
         with patch("synthadoc.providers.make_provider", return_value=MagicMock()), \
-             patch("synthadoc.agents.citation_faithfulness.run_faithfulness_audit",
+             patch("synthadoc.agents.citation_faithfulness.FaithfulnessAuditAgent.run",
                    new=AsyncMock(return_value=[])):
             await orch._run_faithfulness(job_id, page_slug="bell-labs")
 
@@ -1958,7 +1958,7 @@ async def test_run_faithfulness_exception_inside_try_fails_job(tmp_wiki):
         job_id = await orch._queue.enqueue("faithfulness", {})
 
         with patch("synthadoc.providers.make_provider", return_value=MagicMock()), \
-             patch("synthadoc.agents.citation_faithfulness.run_faithfulness_audit",
+             patch("synthadoc.agents.citation_faithfulness.FaithfulnessAuditAgent.run",
                    new=AsyncMock(side_effect=ValueError("audit-internal-error"))):
             with pytest.raises(ValueError):
                 await orch._run_faithfulness(job_id)
