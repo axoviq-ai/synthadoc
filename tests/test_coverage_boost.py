@@ -349,7 +349,7 @@ async def test_run_scaffold_completes_job(tmp_wiki):
 
         with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
              patch("synthadoc.agents.scaffold_agent.ScaffoldAgent") as MockAgent:
-            MockAgent.return_value.scaffold = AsyncMock(return_value=result)
+            MockAgent.return_value.run = AsyncMock(return_value=result)
             await orch._run_scaffold(job_id, "Test Domain")
 
         from synthadoc.core.queue import JobStatus
@@ -372,7 +372,7 @@ async def test_run_scaffold_fails_job_on_exception(tmp_wiki):
 
         with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
              patch("synthadoc.agents.scaffold_agent.ScaffoldAgent") as MockAgent:
-            MockAgent.return_value.scaffold = AsyncMock(side_effect=RuntimeError("LLM error"))
+            MockAgent.return_value.run = AsyncMock(side_effect=RuntimeError("LLM error"))
             with pytest.raises(RuntimeError):
                 await orch._run_scaffold(job_id, "Test Domain")
 

@@ -283,7 +283,7 @@ class ActionAgent(BaseAgent):
                         break
         return False
 
-    async def run(self, question: str, history: list[dict] | None = None) -> Optional[ActionResult]:
+    async def _run(self, question: str, history: list[dict] | None = None) -> Optional[ActionResult]:
         """Extract action + params from question and execute. Returns None if not an action."""
         # For repeat intents ("run it again", "repeat", etc.) resolve the previous action
         # from history before calling the LLM, which cannot reliably infer it from vague phrasing.
@@ -309,6 +309,10 @@ class ActionAgent(BaseAgent):
                 success=False,
                 message=f"Could not complete the action: {exc}",
             )
+
+    def _safe_default(self) -> None:  # type: ignore[override]
+        """Return None when _run raises (treated as 'not an action')."""
+        return None
 
     async def run_gen(
         self, question: str, history: list[dict] | None = None, session_id: str | None = None
