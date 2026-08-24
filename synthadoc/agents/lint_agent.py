@@ -1000,11 +1000,42 @@ class LintAgent(BaseAgent):
             )
             report.dangling_links_removed += len(_affected)
 
-    async def lint(self, scope: str = "all", slug: Optional[str] = None,
-                   auto_resolve: bool = False,
-                   adversarial: bool = True, lifecycle: bool = True,
-                   check_url_availability: Optional[bool] = None,
-                   job_id: str = "system") -> LintReport:
+    async def run(  # type: ignore[override]
+        self,
+        scope: str = "all",
+        slug: Optional[str] = None,
+        auto_resolve: bool = False,
+        adversarial: bool = True,
+        lifecycle: bool = True,
+        check_url_availability: Optional[bool] = None,
+        job_id: str = "system",
+    ) -> LintReport:
+        """Public entry point.
+
+        Errors are not suppressed: callers access result attributes directly,
+        so a ``None`` fallback would replace one exception with an
+        ``AttributeError``.  Let errors propagate.
+        """
+        return await self._run(
+            scope=scope, slug=slug, auto_resolve=auto_resolve,
+            adversarial=adversarial, lifecycle=lifecycle,
+            check_url_availability=check_url_availability, job_id=job_id,
+        )
+
+    def _safe_default(self) -> None:  # type: ignore[override]
+        """Never reached — ``run()`` does not suppress errors."""
+        return None
+
+    async def _run(  # type: ignore[override]
+        self,
+        scope: str = "all",
+        slug: Optional[str] = None,
+        auto_resolve: bool = False,
+        adversarial: bool = True,
+        lifecycle: bool = True,
+        check_url_availability: Optional[bool] = None,
+        job_id: str = "system",
+    ) -> LintReport:
         report = LintReport()
 
         # ── scoped single-page re-lint ────────────────────────────────────────────

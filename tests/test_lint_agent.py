@@ -56,7 +56,7 @@ async def test_lint_warns_truncated_source(tmp_path):
     )])
     store = make_store(tmp_path, {"quantum-computing": page})
     agent = LintAgent(mock_provider(), store, mock_log_writer())
-    report = await agent.lint(scope="all", adversarial=False, lifecycle=False)
+    report = await agent.run(scope="all", adversarial=False, lifecycle=False)
     warns = [w for w in report.warnings if "truncated" in w.lower()]
     assert len(warns) >= 1
     assert "papers/big.pdf" in warns[0]
@@ -70,7 +70,7 @@ async def test_lint_no_warn_when_not_truncated(tmp_path):
     )])
     store = make_store(tmp_path, {"quantum-computing": page})
     agent = LintAgent(mock_provider(), store, mock_log_writer())
-    report = await agent.lint(scope="all", adversarial=False, lifecycle=False)
+    report = await agent.run(scope="all", adversarial=False, lifecycle=False)
     warns = [w for w in report.warnings if "truncated" in w.lower()]
     assert len(warns) == 0
 

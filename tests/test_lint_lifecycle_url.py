@@ -32,7 +32,7 @@ async def test_url_archived_on_404(tmp_path):
     agent = LintAgent(AsyncMock(), store, log_writer=MagicMock(), audit_db=db, wiki_root=tmp_path)
 
     with patch.object(agent, "_is_url_unavailable", new=AsyncMock(return_value=True)):
-        await agent.lint(scope="all", adversarial=False, check_url_availability=True)
+        await agent.run(scope="all", adversarial=False, check_url_availability=True)
 
     page = store.read_page("test-page")
     assert page is not None
@@ -50,7 +50,7 @@ async def test_url_not_archived_on_200(tmp_path):
     agent = LintAgent(AsyncMock(), store, log_writer=MagicMock(), audit_db=db, wiki_root=tmp_path)
 
     with patch.object(agent, "_is_url_unavailable", new=AsyncMock(return_value=False)):
-        await agent.lint(scope="all", adversarial=False, check_url_availability=True)
+        await agent.run(scope="all", adversarial=False, check_url_availability=True)
 
     page = store.read_page("test-page")
     assert page is not None
@@ -68,7 +68,7 @@ async def test_url_not_archived_when_flag_off(tmp_path):
     agent = LintAgent(AsyncMock(), store, log_writer=MagicMock(), audit_db=db, wiki_root=tmp_path)
 
     with patch.object(agent, "_is_url_unavailable", new=AsyncMock(return_value=True)):
-        await agent.lint(scope="all", adversarial=False, check_url_availability=False)
+        await agent.run(scope="all", adversarial=False, check_url_availability=False)
 
     page = store.read_page("test-page")
     assert page is not None
@@ -102,7 +102,7 @@ async def test_url_stale_on_old_ingest(tmp_path):
     cfg.lint.check_url_availability = False
     agent = LintAgent(AsyncMock(), store, log_writer=MagicMock(), audit_db=db, wiki_root=tmp_path, cfg=cfg)
 
-    await agent.lint(scope="all", adversarial=False, check_url_availability=False)
+    await agent.run(scope="all", adversarial=False, check_url_availability=False)
     page = store.read_page("test-page")
     assert page is not None
     assert page.status == "stale"
@@ -134,7 +134,7 @@ async def test_url_not_stale_when_recent(tmp_path):
     cfg.lint.check_url_availability = False
     agent = LintAgent(AsyncMock(), store, log_writer=MagicMock(), audit_db=db, wiki_root=tmp_path, cfg=cfg)
 
-    await agent.lint(scope="all", adversarial=False, check_url_availability=False)
+    await agent.run(scope="all", adversarial=False, check_url_availability=False)
     page = store.read_page("test-page")
     assert page is not None
     assert page.status != "stale"  # only 5 days old, threshold is 30
