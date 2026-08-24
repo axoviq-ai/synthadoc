@@ -346,3 +346,110 @@ async def test_cost_estimate_message_contains_count():
 
     assert captured_messages
     assert "7" in captured_messages[0]
+
+
+# ---------------------------------------------------------------------------
+# Task 6: OrphanResolverWorkflow
+# ---------------------------------------------------------------------------
+
+import re as _re
+
+
+@pytest.mark.parametrize("phrase", [
+    "run orphan resolver",
+    "Run Orphan Resolver",
+    "orphan resolver",
+    "fix orphaned pages",
+    "resolve orphan",
+    "orphan resolving",
+])
+def test_match_re_phrases(phrase):
+    """MATCH_RE routes well-known CLI/UI trigger phrases."""
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    assert OrphanResolverWorkflow.MATCH_RE.search(phrase), (
+        f"MATCH_RE did not match: {phrase!r}"
+    )
+
+
+def test_match_re_does_not_match_unrelated():
+    """MATCH_RE does not fire on generic wiki queries."""
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    for phrase in ["run lint report", "show wiki status", "ingest stale pages"]:
+        assert not OrphanResolverWorkflow.MATCH_RE.search(phrase), (
+            f"MATCH_RE incorrectly matched: {phrase!r}"
+        )
+
+
+def test_orphan_chip_matches_workflow_match_re():
+    """The UI hint chip text routes directly to OrphanResolverWorkflow."""
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    chip = "Run orphan resolver"
+    assert OrphanResolverWorkflow.MATCH_RE.search(chip)
+
+
+def test_build_initial_message_no_slug():
+    """Without --slug, initial message runs on all orphans."""
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    wf = OrphanResolverWorkflow()
+    msg = wf.build_initial_message("run orphan resolver")
+    assert "all orphaned" in msg.lower() or "all" in msg.lower()
+    assert "--slug" not in msg
+
+
+def test_build_initial_message_with_slug():
+    """With --slug, initial message targets the specific slug."""
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    wf = OrphanResolverWorkflow()
+    msg = wf.build_initial_message("run orphan resolver --slug my-page")
+    assert "my-page" in msg
+
+
+def test_get_tool_budget():
+    """Tool budget is at least 100 (allows meaningful multi-page run)."""
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    wf = OrphanResolverWorkflow()
+    assert wf.get_tool_budget() >= 100
+
+
+async def test_get_tool_fns_contains_domain_tools():
+    """get_tool_fns returns all expected domain and shared tool keys."""
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    wf = OrphanResolverWorkflow()
+    ctx, _ = _make_ctx()
+    fns = wf.get_tool_fns(ctx)
+    expected = {
+        "tool_find_orphaned_pages",
+        "tool_estimate_and_confirm",
+        "tool_search_orphan_candidates",
+        "tool_verify_orphan_resolved",
+        "tool_read_page_content",
+        "tool_propose_and_apply",
+        "tool_confirm",
+        "tool_notify",
+    }
+    assert expected.issubset(set(fns.keys())), (
+        f"Missing tools: {expected - set(fns.keys())}"
+    )
+
+
+async def test_build_system_prompt_contains_tool_inventory():
+    """System prompt lists all domain tool names."""
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    wf = OrphanResolverWorkflow()
+    prompt = await wf.build_system_prompt()
+    for tool in [
+        "tool_find_orphaned_pages",
+        "tool_search_orphan_candidates",
+        "tool_verify_orphan_resolved",
+        "tool_estimate_and_confirm",
+    ]:
+        assert tool in prompt, f"System prompt missing tool: {tool}"
+
+
+async def test_build_system_prompt_contains_strategies():
+    """System prompt mentions all 4 strategy names."""
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    wf = OrphanResolverWorkflow()
+    prompt = await wf.build_system_prompt()
+    for strategy in ["title_bm25", "content_bm25", "full_title_scan", "contextual_reasoning"]:
+        assert strategy in prompt, f"System prompt missing strategy: {strategy}"
