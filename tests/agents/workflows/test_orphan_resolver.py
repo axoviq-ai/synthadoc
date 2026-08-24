@@ -564,3 +564,113 @@ def test_initial_hints_orphan_power_user():
         "POWER_USER", context={"contradicted": 0, "stale": 0, "orphan": 1}
     )
     assert "Run orphan resolver" in hints
+
+
+# ---------------------------------------------------------------------------
+# Retry-loop contract (system prompt + tool-level verification)
+# ---------------------------------------------------------------------------
+
+async def test_verify_returns_false_causes_strategy_advance():
+    """tool_verify_orphan_resolved returning resolved=false means retry is needed.
+
+    The orphan resolver loop advances to the next strategy whenever verify
+    returns resolved=false. This test confirms that the tool correctly returns
+    false when no link exists — i.e. the tool provides the right signal for
+    strategy advancement.
+    """
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import (
+        tool_verify_orphan_resolved,
+        tool_search_orphan_candidates,
+    )
+    store = _make_wiki_store({
+        "orphan-slug": ("active", "Content with no inbound links."),
+        "candidate-a": ("active", "Talks about unrelated stuff."),
+    })
+    ctx, _ = _make_ctx(store=store)
+
+    # After strategy 1 fails: verify still returns unresolved
+    result = await tool_verify_orphan_resolved(ctx, "orphan-slug")
+    assert result["resolved"] is False
+
+    # Strategy 2 (content_bm25) call succeeds structurally
+    ctx2, _ = _make_ctx(store=store, search=_make_search_mock([("candidate-a", 0.9)]))
+    candidates = await tool_search_orphan_candidates(ctx2, "orphan-slug", "content_bm25")
+    assert candidates["strategy"] == "content_bm25"
+
+
+async def test_verify_returns_true_breaks_retry():
+    """tool_verify_orphan_resolved returning resolved=true signals completion.
+
+    After a successful link insertion the tool returns resolved=true and
+    linked_by lists the linking page — the LLM breaks the strategy loop.
+    """
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_verify_orphan_resolved
+
+    store = _make_wiki_store({
+        "orphan-slug": ("active", "About orphan topic."),
+        "linker-page": ("active", "See [[orphan-slug]] for details."),
+    })
+    ctx, _ = _make_ctx(store=store)
+    result = await tool_verify_orphan_resolved(ctx, "orphan-slug")
+    assert result["resolved"] is True
+    assert "linker-page" in result["linked_by"]
+
+
+async def test_all_strategies_return_empty_candidates():
+    """All 4 strategies can return empty candidate lists.
+
+    When all strategies return no candidates the LLM must call tool_notify.
+    This test confirms the empty-candidate path is structurally valid for
+    every strategy name.
+    """
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_search_orphan_candidates
+    store = _make_wiki_store({"orphan-slug": ("active", "Niche content.")})
+
+    for strategy in ("title_bm25", "content_bm25", "full_title_scan", "contextual_reasoning"):
+        # Use search mock that returns no results for BM25 strategies
+        search = _make_search_mock([])
+        ctx, _ = _make_ctx(store=store, search=search)
+        result = await tool_search_orphan_candidates(
+            ctx, "orphan-slug", strategy, exclude_slugs=["orphan-slug"]
+        )
+        # full_title_scan / contextual_reasoning return all_page_titles even when empty
+        # BM25 strategies return candidates list
+        assert "strategy" in result
+        assert result["strategy"] == strategy
+
+
+def test_escalation_system_prompt_contains_rerun_hint():
+    """System prompt escalation template includes the re-run suggestion (step 1)."""
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    wf = OrphanResolverWorkflow()
+    # _SYSTEM_PROMPT is the class-level constant; build_system_prompt uses it
+    prompt_const = wf._SYSTEM_PROMPT if hasattr(wf, "_SYSTEM_PROMPT") else ""
+    # Fallback: get it from the source
+    import synthadoc.agents.workflows.orphan_resolver as _mod
+    src = _mod.__file__
+    import pathlib
+    text = pathlib.Path(src).read_text()
+    assert "Re-run orphan-resolver" in text or "re-run orphan-resolver" in text.lower(), (
+        "Escalation template missing re-run suggestion"
+    )
+
+
+def test_escalation_system_prompt_contains_tried_slugs():
+    """System prompt escalation template references tried_slugs (candidate list)."""
+    import pathlib
+    import synthadoc.agents.workflows.orphan_resolver as _mod
+    text = pathlib.Path(_mod.__file__).read_text()
+    assert "tried_slugs" in text, (
+        "Escalation template must list tried_slugs so the user sees which candidates were considered"
+    )
+
+
+def test_inter_orphan_confirm_in_system_prompt():
+    """System prompt mandates tool_confirm between orphans (not after the last)."""
+    import pathlib
+    import synthadoc.agents.workflows.orphan_resolver as _mod
+    text = pathlib.Path(_mod.__file__).read_text()
+    # The prompt must explicitly describe the inter-orphan confirm gate
+    assert "Inter-orphan confirm" in text or "inter-orphan" in text.lower() or (
+        "tool_confirm" in text and "more orphans remain" in text.lower()
+    ), "System prompt must describe the inter-orphan tool_confirm gate"

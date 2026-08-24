@@ -13,11 +13,7 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-from synthadoc.agents.lint_agent import (
-    LINT_SKIP_SLUGS,
-    LINT_SKIP_SOURCE_SLUGS,
-    find_orphan_slugs,
-)
+from synthadoc.agents.lint_agent import find_orphan_slugs
 from synthadoc.agents.workflows._tools import tool_confirm
 from synthadoc.storage.wiki import LifecycleState
 
@@ -226,7 +222,7 @@ async def tool_search_orphan_candidates(
         }
         if strategy == "contextual_reasoning":
             orphan_page = ctx.store.read_page(orphan_slug)
-            result["orphan_content"] = orphan_page.content if orphan_page else ""
+            result["orphan_content"] = (orphan_page.content or "") if orphan_page else ""
         return result
 
     else:

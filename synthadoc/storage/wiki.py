@@ -265,6 +265,11 @@ class WikiStorage:
         Used by the /session endpoint to include orphan count in the health
         context passed to HintEngine, so the 'Run orphan resolver' chip
         surfaces when orphaned pages are present.
+
+        NOTE: This performs a full file scan (one read + YAML parse per page).
+        For wikis with hundreds of pages this adds measurable latency to every
+        session creation. Future: track orphan count in the audit DB alongside
+        stale/contradicted so the /session handler can use a single indexed query.
         """
         count = 0
         for slug in self.list_pages():

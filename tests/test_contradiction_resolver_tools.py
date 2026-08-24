@@ -53,7 +53,7 @@ async def test_get_contradicted_pages_all_returns_only_contradicted(tmp_path):
     }
     store = _make_store(tmp_path, pages)
     ctx = _ctx(tmp_path, store)
-    from synthadoc.agents.workflows.contradiction_resolver_tools import tool_get_contradicted_pages
+    from synthadoc.agents.workflows.tools.contradiction_resolver_tools import tool_get_contradicted_pages
     result = await tool_get_contradicted_pages(ctx, scope="all")
     slugs = [p["slug"] for p in result["pages"]]
     assert "c1" in slugs
@@ -68,7 +68,7 @@ async def test_get_contradicted_pages_gate_scope(tmp_path):
     }
     store = _make_store(tmp_path, pages)
     ctx = _ctx(tmp_path, store)
-    from synthadoc.agents.workflows.contradiction_resolver_tools import tool_get_contradicted_pages
+    from synthadoc.agents.workflows.tools.contradiction_resolver_tools import tool_get_contradicted_pages
     result = await tool_get_contradicted_pages(ctx, scope="gate")
     slugs = [p["slug"] for p in result["pages"]]
     assert "gate" in slugs
@@ -83,7 +83,7 @@ async def test_get_contradicted_pages_conflict_scope(tmp_path):
     }
     store = _make_store(tmp_path, pages)
     ctx = _ctx(tmp_path, store)
-    from synthadoc.agents.workflows.contradiction_resolver_tools import tool_get_contradicted_pages
+    from synthadoc.agents.workflows.tools.contradiction_resolver_tools import tool_get_contradicted_pages
     result = await tool_get_contradicted_pages(ctx, scope="conflict")
     slugs = [p["slug"] for p in result["pages"]]
     assert "conflict" in slugs
@@ -100,7 +100,7 @@ async def test_get_contradicted_pages_type_classification(tmp_path):
     }
     store = _make_store(tmp_path, pages)
     ctx = _ctx(tmp_path, store)
-    from synthadoc.agents.workflows.contradiction_resolver_tools import tool_get_contradicted_pages
+    from synthadoc.agents.workflows.tools.contradiction_resolver_tools import tool_get_contradicted_pages
     result = await tool_get_contradicted_pages(ctx, scope="all")
     by_slug = {p["slug"]: p["type"] for p in result["pages"]}
     assert by_slug["gate"] == "gate"
@@ -118,7 +118,7 @@ async def test_get_contradicted_pages_both_type_included_in_gate_scope(tmp_path)
     }
     store = _make_store(tmp_path, pages)
     ctx = _ctx(tmp_path, store)
-    from synthadoc.agents.workflows.contradiction_resolver_tools import tool_get_contradicted_pages
+    from synthadoc.agents.workflows.tools.contradiction_resolver_tools import tool_get_contradicted_pages
     result = await tool_get_contradicted_pages(ctx, scope="gate")
     slugs = [p["slug"] for p in result["pages"]]
     assert "both" in slugs, "'both' page must appear under scope='gate'"
@@ -134,7 +134,7 @@ async def test_get_contradicted_pages_both_type_included_in_conflict_scope(tmp_p
     }
     store = _make_store(tmp_path, pages)
     ctx = _ctx(tmp_path, store)
-    from synthadoc.agents.workflows.contradiction_resolver_tools import tool_get_contradicted_pages
+    from synthadoc.agents.workflows.tools.contradiction_resolver_tools import tool_get_contradicted_pages
     result = await tool_get_contradicted_pages(ctx, scope="conflict")
     slugs = [p["slug"] for p in result["pages"]]
     assert "both" in slugs, "'both' page must appear under scope='conflict'"
@@ -151,7 +151,7 @@ async def test_read_source_from_raw_sources(tmp_path):
     page = _contradicted(sources=[SourceRef(file="src.txt", hash="abc", size=11, ingested="2026-01-01")])
     store = _make_store(tmp_path, {"p": page})
     ctx = _ctx(tmp_path, store)
-    from synthadoc.agents.workflows.contradiction_resolver_tools import tool_read_source_content
+    from synthadoc.agents.workflows.tools.contradiction_resolver_tools import tool_read_source_content
     result = await tool_read_source_content(ctx, slug="p")
     assert result["source_text"] == "source text"
     assert result["fallback_used"] == "raw_sources"
@@ -162,7 +162,7 @@ async def test_read_source_fallback_to_note(tmp_path):
     page = _contradicted(note="Source A vs B", sources=[])
     store = _make_store(tmp_path, {"p": page})
     ctx = _ctx(tmp_path, store)
-    from synthadoc.agents.workflows.contradiction_resolver_tools import tool_read_source_content
+    from synthadoc.agents.workflows.tools.contradiction_resolver_tools import tool_read_source_content
     result = await tool_read_source_content(ctx, slug="p")
     assert result["fallback_used"] == "contradiction_note"
     assert "Source A vs B" in result["source_text"]
@@ -173,7 +173,7 @@ async def test_read_source_fallback_none(tmp_path):
     page = _contradicted(note=None, sources=[])
     store = _make_store(tmp_path, {"p": page})
     ctx = _ctx(tmp_path, store)
-    from synthadoc.agents.workflows.contradiction_resolver_tools import tool_read_source_content
+    from synthadoc.agents.workflows.tools.contradiction_resolver_tools import tool_read_source_content
     result = await tool_read_source_content(ctx, slug="p")
     assert result["fallback_used"] == "none"
     assert result["source_text"] == ""
@@ -193,7 +193,7 @@ async def test_cost_estimate_positive_values(tmp_path):
     ctx = _ctx(tmp_path, store)
     with patch(_CONFIRM_PATCH, new_callable=AsyncMock,
                return_value={"confirmed": True}):
-        from synthadoc.agents.workflows.contradiction_resolver_tools import tool_cost_estimate
+        from synthadoc.agents.workflows.tools.contradiction_resolver_tools import tool_cost_estimate
         result = await tool_cost_estimate(ctx, page_count=4)
     assert result["pages"] == 4
     assert result["estimated_tokens"] > 0
@@ -209,7 +209,7 @@ async def test_cost_estimate_single_page(tmp_path):
     ctx = _ctx(tmp_path, store)
     with patch(_CONFIRM_PATCH, new_callable=AsyncMock,
                return_value={"confirmed": True}):
-        from synthadoc.agents.workflows.contradiction_resolver_tools import tool_cost_estimate
+        from synthadoc.agents.workflows.tools.contradiction_resolver_tools import tool_cost_estimate
         one = await tool_cost_estimate(ctx, page_count=1)
         four = await tool_cost_estimate(ctx, page_count=4)
     assert four["estimated_tokens"] > one["estimated_tokens"]
@@ -222,7 +222,7 @@ async def test_cost_estimate_sends_notice_sse(tmp_path):
     ctx = _ctx(tmp_path, store)
     with patch(_CONFIRM_PATCH, new_callable=AsyncMock,
                return_value={"confirmed": True}):
-        from synthadoc.agents.workflows.contradiction_resolver_tools import tool_cost_estimate
+        from synthadoc.agents.workflows.tools.contradiction_resolver_tools import tool_cost_estimate
         await tool_cost_estimate(ctx, page_count=3)
     ctx.send_sse_event.assert_awaited_once()
     event_name, event_data = ctx.send_sse_event.call_args.args
@@ -237,7 +237,7 @@ async def test_cost_estimate_confirmed_false_propagates(tmp_path):
     ctx = _ctx(tmp_path, store)
     with patch(_CONFIRM_PATCH, new_callable=AsyncMock,
                return_value={"confirmed": False}):
-        from synthadoc.agents.workflows.contradiction_resolver_tools import tool_cost_estimate
+        from synthadoc.agents.workflows.tools.contradiction_resolver_tools import tool_cost_estimate
         result = await tool_cost_estimate(ctx, page_count=2)
     assert result["confirmed"] is False
     # Estimate fields must still be present even on cancellation
@@ -259,7 +259,7 @@ async def test_read_source_fallback_to_extracted(tmp_path):
     page = _contradicted(sources=[SourceRef(file="report.pdf", hash="abc", size=100, ingested="2026-01-01")])
     store = _make_store(tmp_path, {"q": page})
     ctx = _ctx(tmp_path, store)
-    from synthadoc.agents.workflows.contradiction_resolver_tools import tool_read_source_content
+    from synthadoc.agents.workflows.tools.contradiction_resolver_tools import tool_read_source_content
     result = await tool_read_source_content(ctx, slug="q")
     assert result["fallback_used"] == "extracted"
     assert "extracted content" in result["source_text"]
@@ -270,6 +270,6 @@ async def test_read_source_page_not_found(tmp_path):
     """Covers the 'page not found' branch."""
     store = _make_store(tmp_path, {})
     ctx = _ctx(tmp_path, store)
-    from synthadoc.agents.workflows.contradiction_resolver_tools import tool_read_source_content
+    from synthadoc.agents.workflows.tools.contradiction_resolver_tools import tool_read_source_content
     result = await tool_read_source_content(ctx, slug="does-not-exist")
     assert "error" in result

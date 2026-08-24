@@ -127,7 +127,7 @@ def run_workflow(
       synthadoc workflow run --name ingest-lint -w my-wiki
       synthadoc workflow run --name orphan-resolver
       synthadoc workflow run --name orphan-resolver --slug some-page
-      synthadoc workflow run --name orphan-resolver --wiki my-wiki
+      synthadoc workflow run --name orphan-resolver -w my-wiki
     """
     from synthadoc.agents.workflows._registry import CLI_REGISTRY
 
