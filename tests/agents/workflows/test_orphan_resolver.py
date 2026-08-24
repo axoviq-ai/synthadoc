@@ -555,3 +555,12 @@ def test_initial_hints_no_orphan_chip_when_zero():
         "POWER_USER", context={"contradicted": 0, "stale": 0, "orphan": 0}
     )
     assert "Run orphan resolver" not in hints
+
+
+def test_initial_hints_orphan_power_user():
+    """'Run orphan resolver' chip appears in POWER_USER mode when orphan > 0."""
+    from synthadoc.agents.hint_engine import HintEngine
+    hints = HintEngine.initial_hints(
+        "POWER_USER", context={"contradicted": 0, "stale": 0, "orphan": 1}
+    )
+    assert "Run orphan resolver" in hints
