@@ -589,7 +589,7 @@ class Orchestrator:
             result = await ScaffoldAgent(
                 provider=make_provider("ingest", self._cfg),
                 max_tokens=self._cfg.agents.scaffold_max_tokens,
-            ).scaffold(
+            ).run(
                 domain=domain,
                 protected_slugs=protected_slugs or None,
                 port=self._cfg.server.port,

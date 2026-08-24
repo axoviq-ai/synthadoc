@@ -35,7 +35,7 @@ async def test_scaffold_returns_result():
     """ScaffoldAgent.scaffold() returns a ScaffoldResult with all fields populated."""
     provider = _make_provider(_VALID_RESPONSE)
     agent = ScaffoldAgent(provider=provider)
-    result = await agent.scaffold(domain="Machine Learning")
+    result = await agent.run(domain="Machine Learning")
     assert isinstance(result, ScaffoldResult)
     assert "Key Concepts" in result.index_md
     assert "People" in result.index_md
@@ -49,7 +49,7 @@ async def test_scaffold_index_md_has_frontmatter():
     """index.md must include YAML frontmatter."""
     provider = _make_provider(_VALID_RESPONSE)
     agent = ScaffoldAgent(provider=provider)
-    result = await agent.scaffold(domain="Machine Learning")
+    result = await agent.run(domain="Machine Learning")
     assert result.index_md.startswith("---")
     assert "title: Index" in result.index_md
 
@@ -59,7 +59,7 @@ async def test_scaffold_protected_slugs_appear_in_prompt():
     """Protected slugs must be included in the LLM prompt."""
     provider = _make_provider(_VALID_RESPONSE)
     agent = ScaffoldAgent(provider=provider)
-    await agent.scaffold(domain="ML", protected_slugs=["neural-networks", "transformers"])
+    await agent.run(domain="ML", protected_slugs=["neural-networks", "transformers"])
     call_kwargs = provider.complete.call_args.kwargs
     call_messages = call_kwargs.get("messages") or provider.complete.call_args[0][0]
     prompt_text = " ".join(m.content for m in call_messages)
@@ -72,7 +72,7 @@ async def test_scaffold_index_md_has_wikilinks():
     """index.md must include [[slug]] wikilinks for slugs returned by the LLM."""
     provider = _make_provider(_VALID_RESPONSE)
     agent = ScaffoldAgent(provider=provider)
-    result = await agent.scaffold(domain="Machine Learning")
+    result = await agent.run(domain="Machine Learning")
     assert "- [[neural-networks]]" in result.index_md
     assert "- [[backpropagation]]" in result.index_md
 
@@ -82,7 +82,7 @@ async def test_scaffold_protected_slugs_instruction_in_prompt():
     """Protected slugs must trigger assignment instruction in the LLM prompt."""
     provider = _make_provider(_VALID_RESPONSE)
     agent = ScaffoldAgent(provider=provider)
-    await agent.scaffold(domain="ML", protected_slugs=["neural-networks", "transformers"])
+    await agent.run(domain="ML", protected_slugs=["neural-networks", "transformers"])
     call_kwargs = provider.complete.call_args.kwargs
     call_messages = call_kwargs.get("messages") or provider.complete.call_args[0][0]
     prompt_text = " ".join(m.content for m in call_messages)
@@ -98,7 +98,7 @@ async def test_scaffold_handles_json_with_markdown_fences():
         text=fenced, input_tokens=10, output_tokens=20
     ))
     agent = ScaffoldAgent(provider=provider)
-    result = await agent.scaffold(domain="ML")
+    result = await agent.run(domain="ML")
     assert "Key Concepts" in result.index_md
 
 
@@ -111,7 +111,7 @@ async def test_scaffold_raises_on_invalid_json():
     ))
     agent = ScaffoldAgent(provider=provider)
     with pytest.raises(ValueError, match="scaffold"):
-        await agent.scaffold(domain="ML")
+        await agent.run(domain="ML")
 
 
 # ── CJK (Chinese / Japanese / Korean) coverage ───────────────────────────────
@@ -133,7 +133,7 @@ async def test_scaffold_cjk_domain_name_in_all_outputs():
     """Scaffold with a CJK domain name → all output documents contain the CJK domain string."""
     provider = _make_provider(_CJK_VALID_RESPONSE)
     agent = ScaffoldAgent(provider=provider)
-    result = await agent.scaffold(domain="人工智能知识库")
+    result = await agent.run(domain="人工智能知识库")
 
     assert isinstance(result, ScaffoldResult)
     assert "人工智能知识库" in result.agents_md
@@ -146,7 +146,7 @@ async def test_scaffold_cjk_categories_produce_wikilinks():
     """LLM returns CJK category headings and CJK slugs → index.md contains CJK [[wikilinks]]."""
     provider = _make_provider(_CJK_VALID_RESPONSE)
     agent = ScaffoldAgent(provider=provider)
-    result = await agent.scaffold(domain="人工智能知识库")
+    result = await agent.run(domain="人工智能知识库")
 
     assert "核心概念" in result.index_md
     assert "应用领域" in result.index_md
@@ -325,7 +325,7 @@ async def test_scaffold_purpose_md_with_list_fields():
     }
     provider = _make_provider(response_with_lists)
     agent = ScaffoldAgent(provider=provider)
-    result = await agent.scaffold(domain="ML")
+    result = await agent.run(domain="ML")
     assert "Core algorithms" in result.purpose_md
     assert "Benchmark datasets" in result.purpose_md
     assert "Unrelated biology topics" in result.purpose_md
@@ -336,7 +336,7 @@ async def test_scaffold_purpose_md_has_frontmatter():
     """purpose.md must include YAML frontmatter with status: active and a created date."""
     provider = _make_provider(_VALID_RESPONSE)
     agent = ScaffoldAgent(provider=provider)
-    result = await agent.scaffold(domain="Machine Learning")
+    result = await agent.run(domain="Machine Learning")
     assert result.purpose_md.startswith("---"), "purpose.md must start with YAML frontmatter"
     assert "status: active" in result.purpose_md
     assert "created:" in result.purpose_md
@@ -354,7 +354,7 @@ async def test_scaffold_self_corrects_on_second_attempt():
         CompletionResponse(text=valid_json, input_tokens=20, output_tokens=100),
     ])
     agent = ScaffoldAgent(provider=provider)
-    result = await agent.scaffold(domain="ML")
+    result = await agent.run(domain="ML")
     assert provider.complete.call_count == 2
     assert "Key Concepts" in result.index_md
 
@@ -368,7 +368,7 @@ async def test_scaffold_raises_after_two_failed_attempts():
     ))
     agent = ScaffoldAgent(provider=provider)
     with pytest.raises(ValueError, match="scaffold"):
-        await agent.scaffold(domain="ML")
+        await agent.run(domain="ML")
 
 
 # ── _validate_scaffold_result ─────────────────────────────────────────────────
@@ -528,7 +528,7 @@ async def test_scaffold_raises_on_validation_failure():
     provider = _make_provider(sparse)
     agent = ScaffoldAgent(provider=provider)
     with pytest.raises(ValueError, match="no \\[\\[wikilinks\\]\\]"):
-        await agent.scaffold(domain="Machine Learning")
+        await agent.run(domain="Machine Learning")
 
 
 @pytest.mark.asyncio
@@ -536,7 +536,7 @@ async def test_scaffold_returns_claude_and_gemini_md():
     """scaffold() must populate claude_md and gemini_md alongside agents_md."""
     provider = _make_provider(_VALID_RESPONSE)
     agent = ScaffoldAgent(provider=provider)
-    result = await agent.scaffold(domain="Machine Learning")
+    result = await agent.run(domain="Machine Learning")
     assert result.claude_md.startswith("# CLAUDE.md")
     assert result.gemini_md.startswith("# GEMINI.md")
     assert "Machine Learning" in result.claude_md
@@ -548,7 +548,7 @@ async def test_scaffold_skill_files_share_body():
     """AGENTS.md, CLAUDE.md, GEMINI.md must share identical body (differ only in H1)."""
     provider = _make_provider(_VALID_RESPONSE)
     agent = ScaffoldAgent(provider=provider)
-    result = await agent.scaffold(domain="Machine Learning")
+    result = await agent.run(domain="Machine Learning")
     agents_lines = result.agents_md.splitlines()
     claude_lines = result.claude_md.splitlines()
     gemini_lines = result.gemini_md.splitlines()
@@ -560,7 +560,7 @@ async def test_scaffold_port_embedded_in_skill_files():
     """scaffold(port=9090) must embed 9090 in all three skill files."""
     provider = _make_provider(_VALID_RESPONSE)
     agent = ScaffoldAgent(provider=provider)
-    result = await agent.scaffold(domain="Machine Learning", port=9090)
+    result = await agent.run(domain="Machine Learning", port=9090)
     for content in (result.agents_md, result.claude_md, result.gemini_md):
         assert "9090" in content
 
@@ -601,7 +601,7 @@ async def test_domain_label_overrides_config_domain():
     response = {**_VALID_RESPONSE, "domain_label": "History of Computing"}
     provider = _make_provider(response)
     agent = ScaffoldAgent(provider=provider)
-    result = await agent.scaffold(domain="General")
+    result = await agent.run(domain="General")
     assert "History of Computing" in result.agents_md
     assert "History of Computing" in result.claude_md
     assert "History of Computing" in result.gemini_md
@@ -615,7 +615,7 @@ async def test_domain_label_empty_falls_back_to_config_domain():
     response = {**_VALID_RESPONSE, "domain_label": ""}
     provider = _make_provider(response)
     agent = ScaffoldAgent(provider=provider)
-    result = await agent.scaffold(domain="Machine Learning")
+    result = await agent.run(domain="Machine Learning")
     assert "Machine Learning" in result.agents_md
 
 
@@ -627,7 +627,7 @@ async def test_contradiction_bullet_appended_when_absent():
     response = {**_VALID_RESPONSE, "agents_guidelines": "Summarize key claims.\nCross-link related concepts."}
     provider = _make_provider(response)
     agent = ScaffoldAgent(provider=provider)
-    result = await agent.scaffold(domain="Machine Learning")
+    result = await agent.run(domain="Machine Learning")
     assert "⚠" in result.agents_md
     assert "⚠" in result.claude_md
     assert "⚠" in result.gemini_md
@@ -639,7 +639,7 @@ async def test_contradiction_bullet_not_duplicated_when_present():
     response = {**_VALID_RESPONSE, "agents_guidelines": "Summarize claims.\nFlag contradictions with ⚠ markers."}
     provider = _make_provider(response)
     agent = ScaffoldAgent(provider=provider)
-    result = await agent.scaffold(domain="Machine Learning")
+    result = await agent.run(domain="Machine Learning")
     assert result.agents_md.count("⚠") == 1
 
 
@@ -649,7 +649,7 @@ async def test_condensed_guidelines_paragraph_becomes_bullets():
     response = {**_VALID_RESPONSE, "agents_guidelines": "Summarize claims and cross-link related topics."}
     provider = _make_provider(response)
     agent = ScaffoldAgent(provider=provider)
-    result = await agent.scaffold(domain="Machine Learning")
+    result = await agent.run(domain="Machine Learning")
     guidelines_section = result.agents_md.split("## Domain Guidelines")[1].split("##")[0]
     bullets = [ln for ln in guidelines_section.splitlines() if ln.strip().startswith("- ")]
     assert len(bullets) >= 2  # original sentence + ⚠ bullet
@@ -663,7 +663,7 @@ async def test_purpose_md_has_scaffold_marker():
     """Generated purpose.md must contain one scaffold marker inside each of the 5 sections."""
     provider = _make_provider(_VALID_RESPONSE)
     agent = ScaffoldAgent(provider=provider)
-    result = await agent.scaffold(domain="Machine Learning")
+    result = await agent.run(domain="Machine Learning")
     assert result.purpose_md.count("<!-- synthadoc:scaffold -->") == 5
     # Marker sits inside each section (after the ## heading, not before it)
     assert "## Overview\n\n<!-- synthadoc:scaffold -->" in result.purpose_md

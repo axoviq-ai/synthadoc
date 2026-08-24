@@ -492,7 +492,7 @@ async def test_run_scaffold_excludes_meta_slugs_from_protected(tmp_wiki):
             dashboard_intro="A wiki.",
         )
 
-    with patch("synthadoc.agents.scaffold_agent.ScaffoldAgent.scaffold", new=fake_scaffold), \
+    with patch("synthadoc.agents.scaffold_agent.ScaffoldAgent.run", new=fake_scaffold), \
          patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
          patch.object(orch, "_queue") as mock_queue:
         mock_queue.complete = AsyncMock()
@@ -517,7 +517,7 @@ async def test_run_scaffold_daily_quota_exhausted_fails_permanent(tmp_wiki):
 
     exc = DailyQuotaExhaustedException(provider="anthropic")
 
-    with patch("synthadoc.agents.scaffold_agent.ScaffoldAgent.scaffold", new=AsyncMock(side_effect=exc)), \
+    with patch("synthadoc.agents.scaffold_agent.ScaffoldAgent.run", new=AsyncMock(side_effect=exc)), \
          patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
          patch.object(orch, "_queue") as mock_queue:
         mock_queue.fail_permanent = AsyncMock()
@@ -538,7 +538,7 @@ async def test_run_scaffold_coding_tool_quota_fails_permanent(tmp_wiki):
 
     exc = CodingToolQuotaExhaustedException("claude-code")
 
-    with patch("synthadoc.agents.scaffold_agent.ScaffoldAgent.scaffold", new=AsyncMock(side_effect=exc)), \
+    with patch("synthadoc.agents.scaffold_agent.ScaffoldAgent.run", new=AsyncMock(side_effect=exc)), \
          patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
          patch.object(orch, "_queue") as mock_queue:
         mock_queue.fail_permanent = AsyncMock()
