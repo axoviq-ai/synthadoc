@@ -397,7 +397,7 @@ async def test_run_lint_daily_quota_fails_permanent(tmp_wiki):
 
         with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
              patch("synthadoc.agents.lint_agent.LintAgent") as MockLint:
-            MockLint.return_value.lint = AsyncMock(
+            MockLint.return_value.run = AsyncMock(
                 side_effect=DailyQuotaExhaustedException(provider="gemini"))
             await orch._run_lint(job_id)
 
@@ -421,7 +421,7 @@ async def test_run_lint_generic_exception_reraises(tmp_wiki):
 
         with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
              patch("synthadoc.agents.lint_agent.LintAgent") as MockLint:
-            MockLint.return_value.lint = AsyncMock(side_effect=ValueError("unexpected"))
+            MockLint.return_value.run = AsyncMock(side_effect=ValueError("unexpected"))
             with pytest.raises(ValueError):
                 await orch._run_lint(job_id)
 

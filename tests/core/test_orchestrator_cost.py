@@ -17,7 +17,7 @@ def _cfg(provider: str = "anthropic", model: str = "claude-haiku-4-5-20251001") 
 
 def _mock_query_agent(input_tokens: int, output_tokens: int, answer: str = "ok"):
     mock_agent = MagicMock()
-    mock_agent.query = AsyncMock(return_value=QueryResult(
+    mock_agent.run = AsyncMock(return_value=QueryResult(
         question="q",
         answer=answer,
         citations=[],
