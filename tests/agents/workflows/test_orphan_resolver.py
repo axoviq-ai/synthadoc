@@ -453,3 +453,32 @@ async def test_build_system_prompt_contains_strategies():
     prompt = await wf.build_system_prompt()
     for strategy in ["title_bm25", "content_bm25", "full_title_scan", "contextual_reasoning"]:
         assert strategy in prompt, f"System prompt missing strategy: {strategy}"
+
+
+# ---------------------------------------------------------------------------
+# Task 7: Registry + CLI
+# ---------------------------------------------------------------------------
+
+def test_orphan_resolver_in_registry():
+    """OrphanResolverWorkflow is registered in ROUTED_WORKFLOWS."""
+    from synthadoc.agents.workflows._registry import ROUTED_WORKFLOWS
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    assert OrphanResolverWorkflow in ROUTED_WORKFLOWS
+
+
+def test_orphan_resolver_in_cli_registry():
+    """'orphan-resolver' appears in CLI_REGISTRY."""
+    from synthadoc.agents.workflows._registry import CLI_REGISTRY
+    assert "orphan-resolver" in CLI_REGISTRY
+
+
+def test_orphan_resolver_cli_query():
+    """workflow.py _WORKFLOW_QUERIES maps 'orphan-resolver' to a trigger phrase."""
+    from synthadoc.cli.main import app  # noqa: F401  (resolves circular import)
+    from synthadoc.cli.workflow import _WORKFLOW_QUERIES
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    assert "orphan-resolver" in _WORKFLOW_QUERIES
+    phrase = _WORKFLOW_QUERIES["orphan-resolver"]
+    assert OrphanResolverWorkflow.MATCH_RE.search(phrase), (
+        f"Query phrase {phrase!r} does not match MATCH_RE"
+    )

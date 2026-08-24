@@ -21,6 +21,7 @@ from synthadoc.agents.workflows.broken_wikilinks import BrokenWikilinksWorkflow
 from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
 from synthadoc.agents.workflows.ingest_lint import IngestLintWorkflow
 from synthadoc.agents.workflows.lint_report import LintReportWorkflow
+from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
 from synthadoc.agents.workflows.scaffold import ScaffoldWorkflow
 
 # Ordered list of workflow classes with MATCH_RE fast-path routing.
@@ -30,6 +31,7 @@ ROUTED_WORKFLOWS: list[type[AgenticWorkflow]] = [
     BrokenWikilinksWorkflow,
     ScaffoldWorkflow,
     ContradictionResolverWorkflow,   # more specific than IngestLintWorkflow
+    OrphanResolverWorkflow,
     IngestLintWorkflow,
 ]
 
