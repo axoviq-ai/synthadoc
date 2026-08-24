@@ -1385,8 +1385,8 @@ class QueryAgent(BaseAgent):
         # Rewrite question for retrieval when history is present
         retrieval_question = question
         if history:
-            rewritten = await RewriteAgent(self._provider).rewrite(question, history)
-            retrieval_question = rewritten
+            rewritten = await RewriteAgent(self._provider).run(question, history)
+            retrieval_question = rewritten or question
 
         sub_questions, candidates, routing_warning = await self._run_search(retrieval_question)
 

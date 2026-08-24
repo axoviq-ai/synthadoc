@@ -2681,9 +2681,9 @@ async def test_run_stream_history_calls_rewrite_agent(tmp_wiki):
     history = [{"role": "user", "content": "prior question about topic alpha"}]
 
     with patch("synthadoc.agents.query_agent.RewriteAgent") as mock_cls:
-        mock_cls.return_value.rewrite = AsyncMock(return_value="rewritten question about topic alpha")
+        mock_cls.return_value.run = AsyncMock(return_value="rewritten question about topic alpha")
         await _collect_events(agent.run_stream(question, history=history))
-        mock_cls.return_value.rewrite.assert_called_once_with(question, history)
+        mock_cls.return_value.run.assert_called_once_with(question, history)
 
 
 @pytest.mark.asyncio
@@ -2692,9 +2692,9 @@ async def test_run_stream_no_history_skips_rewrite(tmp_wiki):
     store, search, provider, agent = _make_stream_agent(tmp_wiki)
 
     with patch("synthadoc.agents.query_agent.RewriteAgent") as mock_cls:
-        mock_cls.return_value.rewrite = AsyncMock(return_value="should not be called")
+        mock_cls.return_value.run = AsyncMock(return_value="should not be called")
         await _collect_events(agent.run_stream("What is topic alpha?"))
-        mock_cls.return_value.rewrite.assert_not_called()
+        mock_cls.return_value.run.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -2812,7 +2812,7 @@ async def test_run_stream_followup_uses_rewritten_question_for_live_data(tmp_wik
 
     with patch("synthadoc.agents.query_agent.RewriteAgent") as mock_rw_cls, \
          patch("synthadoc.agents.query_agent.ActionAgent") as mock_action_cls:
-        mock_rw_cls.return_value.rewrite = AsyncMock(return_value="check job status a95c6a33")
+        mock_rw_cls.return_value.run = AsyncMock(return_value="check job status a95c6a33")
         mock_action_cls.return_value.detect.return_value = False
 
         events = await _collect_events(agent.run_stream("check it again", history=history))
@@ -3161,7 +3161,7 @@ async def test_run_stream_specific_content_query_not_hijacked_by_rewrite_trigger
     with patch("synthadoc.agents.query_agent.RewriteAgent") as mock_rw_cls, \
          patch("synthadoc.agents.query_agent.ActionAgent") as mock_action_cls:
         # Simulate rewrite injecting 'active' from history context
-        mock_rw_cls.return_value.rewrite = AsyncMock(
+        mock_rw_cls.return_value.run = AsyncMock(
             return_value="What are the key ideas in Programming Languages Overview? (an active page)"
         )
         mock_action_cls.return_value.detect.return_value = False

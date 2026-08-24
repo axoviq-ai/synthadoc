@@ -18,7 +18,7 @@ async def test_rewrite_no_history_returns_unchanged_without_llm_call():
     from synthadoc.agents.rewrite_agent import RewriteAgent
     provider = _make_provider("should not be called")
     agent = RewriteAgent(provider)
-    result = await agent.rewrite("What was Alan Turing's contribution to computing?", [])
+    result = await agent.run("What was Alan Turing's contribution to computing?", [])
     assert result == "What was Alan Turing's contribution to computing?"
     provider.complete.assert_not_called()
 
@@ -32,13 +32,18 @@ async def test_rewrite_followup_with_history_calls_llm():
         {"role": "assistant", "content": "Turing's early work focused on computability theory..."},
     ]
     agent = RewriteAgent(provider)
-    result = await agent.rewrite("what about his later work?", history)
+    result = await agent.run("what about his later work?", history)
     assert result == "What was Alan Turing's later work in computing after World War II?"
     provider.complete.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_rewrite_llm_error_falls_back_to_original():
+async def test_rewrite_llm_error_returns_empty():
+    """On LLM error, run() catches the exception and returns _safe_default() == ''.
+
+    The caller (query_agent) uses ``rewritten or question`` to fall back to
+    the original question, so the empty return here is intentional.
+    """
     from synthadoc.agents.rewrite_agent import RewriteAgent
     provider = MagicMock()
     provider.complete = AsyncMock(side_effect=RuntimeError("LLM unavailable"))
@@ -47,15 +52,16 @@ async def test_rewrite_llm_error_falls_back_to_original():
         {"role": "assistant", "content": "some answer"},
     ]
     agent = RewriteAgent(provider)
-    result = await agent.rewrite("what about it?", history)
-    assert result == "what about it?"
+    result = await agent.run("what about it?", history)
+    assert result == ""
 
 
 @pytest.mark.asyncio
-async def test_rewrite_empty_llm_response_falls_back_to_original():
+async def test_rewrite_empty_llm_response_returns_empty():
+    """Empty LLM response returns ''; caller uses ``rewritten or question`` fallback."""
     from synthadoc.agents.rewrite_agent import RewriteAgent
     provider = _make_provider("   ")  # whitespace only
     history = [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}]
     agent = RewriteAgent(provider)
-    result = await agent.rewrite("follow up?", history)
-    assert result == "follow up?"
+    result = await agent.run("follow up?", history)
+    assert result == ""
