@@ -19,6 +19,7 @@ from synthadoc.agents.lint_agent import (
     find_orphan_slugs,
 )
 from synthadoc.agents.workflows._tools import tool_confirm
+from synthadoc.storage.wiki import LifecycleState
 
 if TYPE_CHECKING:
     from synthadoc.agents.workflows._base import WorkflowContext
@@ -51,7 +52,7 @@ async def tool_find_orphaned_pages(ctx: "WorkflowContext") -> dict:
     page_texts: dict[str, str] = {}
     for slug in ctx.store.list_pages():
         page = ctx.store.read_page(slug)
-        if page and page.status == "active":
+        if page and page.status == LifecycleState.ACTIVE:
             page_texts[slug] = page.content or ""
 
     orphans = find_orphan_slugs(page_texts)
@@ -79,7 +80,7 @@ async def tool_verify_orphan_resolved(
     page_texts: dict[str, str] = {}
     for slug in ctx.store.list_pages():
         page = ctx.store.read_page(slug)
-        if page and page.status == "active":
+        if page and page.status == LifecycleState.ACTIVE:
             page_texts[slug] = page.content or ""
 
     remaining_orphans = find_orphan_slugs(page_texts)
@@ -214,7 +215,7 @@ async def tool_search_orphan_candidates(
             if slug in exclude:
                 continue
             page = ctx.store.read_page(slug)
-            if page and page.status == "active":
+            if page and page.status == LifecycleState.ACTIVE:
                 all_pages.append({"slug": slug, "title": page.title or slug})
 
         result: dict = {

@@ -269,7 +269,7 @@ class WikiStorage:
         count = 0
         for slug in self.list_pages():
             page = self.read_page(slug)
-            if page is not None and page.status == "active" and page.orphan:
+            if page is not None and page.status == LifecycleState.ACTIVE and page.orphan:
                 count += 1
         return count
 
