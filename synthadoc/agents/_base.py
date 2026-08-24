@@ -6,8 +6,9 @@ All agents that make direct LLM calls without a tool-calling loop must
 inherit from ``BaseAgent``.  Agents that run an agentic tool loop inherit
 from ``AgenticWorkflow`` instead (see ``agents/workflows/_base.py``).
 
-Non-LLM utility classes (``SkillAgent``, ``ExportAgent``) are exempt and
-remain standalone.
+Non-LLM utility classes (``ExportAgent``) are exempt: they follow the
+``run()`` / ``_run()`` naming convention but do not inherit ``BaseAgent``
+because they require no LLM provider.
 
 Contract
 --------
@@ -23,10 +24,7 @@ Prompt    — define system prompts as module-level constants named
             ``_<NAME>_SYSTEM`` (e.g. ``_SUMMARIZE_SYSTEM``).
 Entry pt  — implement ``async def _run(self, ...)`` with the agent logic;
             the public ``run(...)`` is provided by this base class and wraps
-            ``_run`` with logging and a safe-default fallback.  Legacy agents
-            that predate this contract may use named entry points (``summarize``,
-            ``rewrite``, ``lint``, …) — new agents must use the ``_run`` /
-            ``run`` pattern.
+            ``_run`` with logging and a safe-default fallback.
 Errors    — do NOT catch exceptions inside ``_run``; let them propagate to
             ``run``, which logs the failure and returns ``_safe_default()``.
             Override ``_safe_default`` to return a typed empty result
@@ -35,6 +33,7 @@ Errors    — do NOT catch exceptions inside ``_run``; let them propagate to
 from __future__ import annotations
 
 import logging
+from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
 from synthadoc.providers.base import LLMProvider
@@ -45,16 +44,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class BaseAgent:
+class BaseAgent(ABC):
     """Shared infrastructure for Tier-1 agents.
 
     **For new agents:** implement ``_run(self, ...)`` with the core logic
     and override ``_safe_default()`` to return a typed empty result.
-    The public ``run(...)`` is provided here — do not override it.
-
-    **For legacy agents:** existing named entry points (``summarize``,
-    ``rewrite``, etc.) are still accepted.  Migrate to ``_run`` / ``run``
-    when the entry point is renamed in v1.4.0.
+    The public ``run(...)`` is provided here — do not override it unless
+    error suppression must be bypassed (hard-failure pattern).
 
     Subclasses call ``super().__init__(provider[, cfg])`` and add their
     own domain-specific dependencies (``store``, ``wiki_root``, …) as
@@ -69,7 +65,7 @@ class BaseAgent:
         self._provider = provider
         self._cfg = cfg
 
-    # ── Public entry point (do not override) ─────────────────────────────────
+    # ── Public entry point ────────────────────────────────────────────────────
 
     async def run(self, *args: Any, **kwargs: Any) -> Any:
         """Public entry point.  Calls ``_run`` and handles failures.
@@ -78,7 +74,9 @@ class BaseAgent:
         name and returns ``_safe_default()``.  Callers never need to catch
         LLM-level errors.
 
-        Do not override this method.  Put agent logic in ``_run`` instead.
+        Agents where a ``None`` fallback would cause ``AttributeError`` at
+        the call site (callers that access result fields directly) should
+        override this method to propagate errors instead of suppressing them.
         """
         try:
             return await self._run(*args, **kwargs)
@@ -88,17 +86,14 @@ class BaseAgent:
 
     # ── Subclass hooks ────────────────────────────────────────────────────────
 
+    @abstractmethod
     async def _run(self, *args: Any, **kwargs: Any) -> Any:
-        """Override with agent logic.  Do not catch exceptions here.
+        """Implement agent logic here.  Do not catch exceptions.
 
-        New agents must implement this.  Legacy agents that have a named
-        entry point (``summarize``, ``rewrite``, …) are exempt until
-        v1.4.0 renames them to ``run``.
+        Declared abstract so Python raises ``TypeError`` at instantiation
+        time rather than at the first ``run()`` call if a subclass forgets
+        to implement it.
         """
-        raise NotImplementedError(
-            f"{type(self).__name__} must implement _run() "
-            "or provide a named entry-point method."
-        )
 
     def _safe_default(self) -> Any:
         """Return a typed empty result when ``_run`` raises.

@@ -56,6 +56,9 @@ def test_base_agent_provider_stored_on_subclass():
             super().__init__(provider)
             self._extra = "data"
 
+        async def _run(self, *args, **kwargs):  # required by ABC
+            return None
+
     agent = AnotherAgent(provider)
     assert agent._provider is provider
     assert agent._extra == "data"
@@ -140,17 +143,13 @@ def test_safe_default_override():
     assert result == []
 
 
-def test_run_raises_not_implemented_when_run_impl_not_overridden():
-    """BaseAgent._run() raises NotImplementedError; run() catches and returns _safe_default()."""
-    provider = MagicMock(spec=LLMProvider)
-
+def test_bare_subclass_raises_type_error_on_instantiation():
+    """Subclasses that omit _run() raise TypeError at instantiation (ABC enforcement)."""
     class _BareAgent(BaseAgent):
         pass  # does not override _run
 
-    agent = _BareAgent(provider)
-    result = asyncio.run(agent.run())
-    # NotImplementedError is caught by run(); _safe_default() is returned
-    assert result is None
+    with pytest.raises(TypeError, match="_run"):
+        _BareAgent(MagicMock(spec=LLMProvider))
 
 
 def test_run_passes_args_to_run_impl():
