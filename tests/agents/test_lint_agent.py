@@ -21,7 +21,7 @@ async def test_lint_finds_contradictions(tmp_wiki):
     provider.complete.return_value = CompletionResponse(
         text="Resolution.", input_tokens=50, output_tokens=10)
     agent = LintAgent(provider=provider, store=store, log_writer=log)
-    report = await agent.lint(scope="contradictions")
+    report = await agent.run(scope="contradictions")
     assert report.contradictions_found == 1
 
 
@@ -36,7 +36,7 @@ async def test_lint_finds_orphans(tmp_wiki):
         status="active", confidence="medium", sources=[]))
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log)
-    report = await agent.lint(scope="orphans")
+    report = await agent.run(scope="orphans")
     assert "orphan" in report.orphan_slugs
     assert "index" not in report.orphan_slugs
     assert "dashboard" not in report.orphan_slugs
@@ -54,7 +54,7 @@ async def test_lint_aliased_wikilink_not_orphan(tmp_wiki):
         content="content", status="active", confidence="medium", sources=[]))
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log)
-    report = await agent.lint(scope="orphans")
+    report = await agent.run(scope="orphans")
     assert "quantum-computing" not in report.orphan_slugs
 
 
@@ -131,7 +131,7 @@ async def test_lint_skip_slugs_not_counted_as_contradictions(tmp_wiki):
             confidence="low", sources=[]))
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log)
-    report = await agent.lint(scope="contradictions")
+    report = await agent.run(scope="contradictions")
     assert report.contradictions_found == 0
 
 
@@ -152,7 +152,7 @@ async def test_orphan_flag_cleared_when_inbound_link_added(tmp_wiki):
 
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log)
-    await agent.lint(scope="orphans")
+    await agent.run(scope="orphans")
 
     page_after = store.read_page("page-a")
     assert page_after is not None
@@ -193,7 +193,7 @@ async def test_lint_cjk_orphan_detection(tmp_wiki):
 
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log)
-    report = await agent.lint(scope="orphans")
+    report = await agent.run(scope="orphans")
 
     assert "量子计算" in report.orphan_slugs    # no inbound link
     assert "机器学习" not in report.orphan_slugs  # linked from 人工智能
@@ -215,7 +215,7 @@ async def test_lint_cjk_contradiction_detected(tmp_wiki):
     provider.complete.return_value = CompletionResponse(
         text="矛盾已解决。", input_tokens=50, output_tokens=10)
     agent = LintAgent(provider=provider, store=store, log_writer=log)
-    report = await agent.lint(scope="contradictions")
+    report = await agent.run(scope="contradictions")
 
     assert report.contradictions_found == 1
 
@@ -228,7 +228,7 @@ async def test_lint_records_contradiction_found_audit_event(tmp_wiki):
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     audit = AsyncMock(spec=AuditDB)
     agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log, audit_db=audit)
-    await agent.lint(scope="contradictions", job_id="job-123")
+    await agent.run(scope="contradictions", job_id="job-123")
     audit.record_audit_event.assert_awaited_once_with("job-123", "contradiction_found", {"slug": "p1"})
 
 
@@ -245,7 +245,7 @@ async def test_lint_records_auto_resolved_audit_event(tmp_wiki):
         input_tokens=10, output_tokens=5,
     )
     agent = LintAgent(provider=provider, store=store, log_writer=log, audit_db=audit)
-    await agent.lint(scope="contradictions", auto_resolve=True, job_id="job-456")
+    await agent.run(scope="contradictions", auto_resolve=True, job_id="job-456")
     calls = [c.args for c in audit.record_audit_event.await_args_list]
     assert ("job-456", "contradiction_found", {"slug": "p1"}) in calls
     assert ("job-456", "auto_resolved", {"slug": "p1"}) in calls
@@ -298,7 +298,7 @@ async def test_lint_removes_dangling_links(tmp_wiki):
         content="Mathematician.", status="active", confidence="high", sources=[]))
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log)
-    report = await agent.lint(scope="orphans")
+    report = await agent.run(scope="orphans")
 
     assert report.dangling_links_removed == 1
     updated = store.read_page("index")
@@ -397,7 +397,7 @@ async def test_adversarial_pass_stores_warnings(tmp_wiki):
         provider=AsyncMock(), store=store, log_writer=log,
         adversarial_provider=adv_provider,
     )
-    report = await agent.lint(adversarial=True)
+    report = await agent.run(adversarial=True)
     page = store.read_page("ai-page")
     assert page is not None
     assert len(page.lint_warnings) == 1
@@ -421,7 +421,7 @@ async def test_adversarial_pass_no_warnings_on_clean_page(tmp_wiki):
         provider=AsyncMock(), store=store, log_writer=log,
         adversarial_provider=adv_provider,
     )
-    report = await agent.lint(adversarial=True)
+    report = await agent.run(adversarial=True)
     clean_page = store.read_page("clean")
     assert clean_page is not None
     assert clean_page.lint_warnings == []
@@ -450,7 +450,7 @@ async def test_adversarial_pass_rate_limit_is_non_fatal(tmp_wiki):
         provider=AsyncMock(), store=store, log_writer=log,
         adversarial_provider=adv_provider,
     )
-    report = await agent.lint(adversarial=True)
+    report = await agent.run(adversarial=True)
     all_warnings = [
         w
         for slug in ["p1", "p2"]
@@ -475,7 +475,7 @@ async def test_no_adversarial_clears_existing_warnings(tmp_wiki):
     store.write_page("p", page)
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log)
-    await agent.lint(adversarial=False)
+    await agent.run(adversarial=False)
     p_page = store.read_page("p")
     assert p_page is not None
     assert p_page.lint_warnings == []
@@ -498,7 +498,7 @@ async def test_adversarial_pass_uses_adversarial_provider(tmp_wiki):
         provider=lint_provider, store=store, log_writer=log,
         adversarial_provider=adv_provider,
     )
-    await agent.lint(adversarial=True)
+    await agent.run(adversarial=True)
     # adv_provider called; lint_provider not called (no contradictions, no auto-resolve)
     adv_provider.complete.assert_called_once()
     lint_provider.complete.assert_not_called()
@@ -519,7 +519,7 @@ async def test_adversarial_pass_skip_slugs_not_evaluated(tmp_wiki):
         provider=AsyncMock(), store=store, log_writer=log,
         adversarial_provider=adv_provider,
     )
-    await agent.lint(adversarial=True)
+    await agent.run(adversarial=True)
     # Only real-page evaluated (1 call), not index
     assert adv_provider.complete.call_count == 1
 
@@ -540,7 +540,7 @@ async def test_adversarial_pass_skipped_on_non_all_scope(tmp_wiki):
         provider=AsyncMock(), store=store, log_writer=log,
         adversarial_provider=adv_provider,
     )
-    await agent.lint(scope="contradictions", adversarial=True)
+    await agent.run(scope="contradictions", adversarial=True)
     adv_provider.complete.assert_not_called()
 
 
@@ -774,7 +774,7 @@ async def test_lint_warns_when_no_citations_on_substantive_page(tmp_wiki):
     wiki.write_page("plan", WikiPage(title="Plan", tags=[], content=content, status="draft", confidence="high", sources=[]))
 
     agent = LintAgent(provider=AsyncMock(), store=wiki, log_writer=LogWriter(tmp_wiki / "wiki" / "log.md"), cfg=LintConfig())
-    report = await agent.lint(adversarial=False)
+    report = await agent.run(adversarial=False)
 
     assert any("plan" in w and "citation" in w.lower() for w in report.warnings), \
         f"Expected citation presence warning, got: {report.warnings}"
@@ -792,7 +792,7 @@ async def test_lint_no_warning_when_page_has_citations(tmp_wiki):
     wiki.write_page("plan", WikiPage(title="Plan", tags=[], content=content, status="draft", confidence="high", sources=[]))
 
     agent = LintAgent(provider=AsyncMock(), store=wiki, log_writer=LogWriter(tmp_wiki / "wiki" / "log.md"), cfg=LintConfig())
-    report = await agent.lint(adversarial=False)
+    report = await agent.run(adversarial=False)
 
     citation_warnings = [w for w in report.warnings if "citation" in w.lower() and "plan" in w]
     assert not citation_warnings, f"Unexpected warning: {citation_warnings}"
@@ -810,7 +810,7 @@ async def test_lint_no_warning_for_stub_page_below_min_words(tmp_wiki):
     wiki.write_page("stub", WikiPage(title="Stub", tags=[], content=content, status="draft", confidence="high", sources=[]))
 
     agent = LintAgent(provider=AsyncMock(), store=wiki, log_writer=LogWriter(tmp_wiki / "wiki" / "log.md"), cfg=LintConfig())
-    report = await agent.lint(adversarial=False)
+    report = await agent.run(adversarial=False)
 
     citation_warnings = [w for w in report.warnings if "citation" in w.lower() and "stub" in w]
     assert not citation_warnings, f"Stub page below min_words triggered unexpected warning"
@@ -828,7 +828,7 @@ async def test_lint_warns_at_exactly_min_words_boundary(tmp_wiki):
     wiki.write_page("boundary", WikiPage(title="Boundary", tags=[], content=content, status="draft", confidence="high", sources=[]))
 
     agent = LintAgent(provider=AsyncMock(), store=wiki, log_writer=LogWriter(tmp_wiki / "wiki" / "log.md"), cfg=LintConfig())
-    report = await agent.lint(adversarial=False)
+    report = await agent.run(adversarial=False)
 
     assert any("boundary" in w and "citation" in w.lower() for w in report.warnings)
 
@@ -853,7 +853,7 @@ async def test_lint_archives_ghost_draft(tmp_wiki):
 
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log, audit_db=audit)
-    report = await agent.lint(adversarial=False)
+    report = await agent.run(adversarial=False)
 
     ghost_state = await audit.get_page_state("ghost-draft")
     assert ghost_state["state"] == "archived", "ghost draft must be archived by lint"
@@ -884,7 +884,7 @@ async def test_lint_does_not_archive_staged_candidates(tmp_wiki):
 
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log, audit_db=audit)
-    await agent.lint(adversarial=False)
+    await agent.run(adversarial=False)
 
     state = await audit.get_page_state("my-candidate")
     assert state["state"] == "draft", "staged candidate must not be archived by ghost-draft sweep"
@@ -1106,7 +1106,7 @@ async def test_lint_auto_archive_cascades_links(tmp_wiki):
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log,
                       wiki_root=tmp_wiki)
-    report = await agent.lint(scope="all", adversarial=False)
+    report = await agent.run(scope="all", adversarial=False)
 
     # page-b archived because source-b.txt missing
     page_b = store.read_page("page-b")
@@ -1140,7 +1140,7 @@ async def test_lint_multi_source_page_goes_stale_not_archived(tmp_wiki):
 
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log, wiki_root=tmp_wiki)
-    report = await agent.lint(scope="all", adversarial=False)
+    report = await agent.run(scope="all", adversarial=False)
 
     page = store.read_page("multi-source-page")
     assert page.status == "stale"        # NOT archived
@@ -1165,7 +1165,7 @@ async def test_lint_bootstrap_archived_frontmatter_records_lifecycle_event(tmp_w
 
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log, audit_db=audit)
-    await agent.lint(adversarial=False)
+    await agent.run(adversarial=False)
 
     events, total = await audit.get_lifecycle_events("pre-archived")
     assert total > 0, "bootstrap must write a lifecycle_events row for the pre-archived page"
@@ -1194,7 +1194,7 @@ async def test_lint_auto_resolve_records_lifecycle_event(tmp_wiki):
     )
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     agent = LintAgent(provider=provider, store=store, log_writer=log, audit_db=audit)
-    await agent.lint(scope="contradictions", auto_resolve=True)
+    await agent.run(scope="contradictions", auto_resolve=True)
 
     events, total = await audit.get_lifecycle_events("auto-resolve-page")
     assert total > 0, "auto-resolve must write a lifecycle_events row"
@@ -1224,7 +1224,7 @@ async def test_lint_auto_resolve_failed_no_lifecycle_event(tmp_wiki):
     )
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     agent = LintAgent(provider=provider, store=store, log_writer=log, audit_db=audit)
-    await agent.lint(scope="contradictions", auto_resolve=True)
+    await agent.run(scope="contradictions", auto_resolve=True)
 
     events, total = await audit.get_lifecycle_events("unresolvable-page")
     assert total == 0, "failed auto-resolve must not write a lifecycle_events row"
@@ -1253,7 +1253,7 @@ async def test_lint_transition_archive_records_reason(tmp_wiki):
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log,
                       audit_db=audit, wiki_root=tmp_wiki)
-    await agent.lint(adversarial=False)
+    await agent.run(adversarial=False)
 
     events, total = await audit.get_lifecycle_events("gone-page")
     assert total > 0, "archive transition must write a lifecycle_events row"
@@ -1277,7 +1277,7 @@ async def test_lint_transition_draft_to_active_records_reason(tmp_wiki):
 
     log = LogWriter(tmp_wiki / "wiki" / "log.md")
     agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log, audit_db=audit)
-    await agent.lint(adversarial=False)
+    await agent.run(adversarial=False)
 
     events, total = await audit.get_lifecycle_events("new-draft")
     assert total > 0, "draft→active promotion must write a lifecycle_events row"
@@ -1336,7 +1336,7 @@ async def test_adversarial_gate_demotes_page_at_threshold(tmp_wiki):
         return [], 10
 
     with patch.object(agent, "_adversarial_single", side_effect=_mock_single):
-        report = await agent.lint(scope="all", adversarial=True, lifecycle=False)
+        report = await agent.run(scope="all", adversarial=True, lifecycle=False)
 
     page = store.read_page("suspect")
     assert page is not None
@@ -1367,7 +1367,7 @@ async def test_adversarial_gate_disabled_when_threshold_is_none(tmp_wiki):
         return ten_warnings, 50
 
     with patch.object(agent, "_adversarial_single", side_effect=_mock_single):
-        report = await agent.lint(scope="all", adversarial=True, lifecycle=False)
+        report = await agent.run(scope="all", adversarial=True, lifecycle=False)
 
     page = store.read_page("clean-enough")
     assert page is not None
@@ -1396,7 +1396,7 @@ async def test_adversarial_gate_skips_already_contradicted_page(tmp_wiki):
         return [{"claim": "Claim", "concern": "disputed"}], 20
 
     with patch.object(agent, "_adversarial_single", side_effect=_mock_single):
-        report = await agent.lint(scope="all", adversarial=True, lifecycle=False)
+        report = await agent.run(scope="all", adversarial=True, lifecycle=False)
 
     page = store.read_page("already-bad")
     # Status unchanged; no extra transition fired
@@ -1425,7 +1425,7 @@ async def test_adversarial_gate_skips_archived_page(tmp_wiki):
         return [{"claim": "Claim", "concern": "disputed"}], 20
 
     with patch.object(agent, "_adversarial_single", side_effect=_mock_single):
-        report = await agent.lint(scope="all", adversarial=True, lifecycle=False)
+        report = await agent.run(scope="all", adversarial=True, lifecycle=False)
 
     # archived page's status is not in (ACTIVE, STALE) → gate guard prevents demotion
     page = store.read_page("retired")
@@ -1456,7 +1456,7 @@ async def test_adversarial_gate_threshold_zero_disables_gate(tmp_wiki):
         return many_warnings, 50
 
     with patch.object(agent, "_adversarial_single", side_effect=_mock_single):
-        report = await agent.lint(scope="all", adversarial=True, lifecycle=False)
+        report = await agent.run(scope="all", adversarial=True, lifecycle=False)
 
     page = store.read_page("problematic")
     assert page is not None
@@ -1503,7 +1503,7 @@ async def test_lint_auto_resolve_unparseable_response(tmp_wiki):
 
     # Patch _parse_json_response to raise an exception → hits except block at lint_agent.py:874
     with patch("synthadoc.agents.ingest_agent._parse_json_response", side_effect=Exception("parse error")):
-        report = await agent.lint(scope="contradictions", auto_resolve=True)
+        report = await agent.run(scope="contradictions", auto_resolve=True)
 
     assert report.contradictions_found == 1
     # Page remains contradicted because exception made it unresolvable
@@ -1537,7 +1537,7 @@ async def test_lint_auto_resolve_empty_resolution_appends_note(tmp_wiki):
         input_tokens=20, output_tokens=10)
 
     agent = LintAgent(provider=provider, store=store, log_writer=log)
-    report = await agent.lint(scope="contradictions", auto_resolve=True)
+    report = await agent.run(scope="contradictions", auto_resolve=True)
 
     page = store.read_page("resolvable-page")
     assert page is not None
@@ -1603,7 +1603,7 @@ async def test_lint_graph_build_exception_swallowed(tmp_wiki):
     agent._audit = mock_audit
 
     # Should complete without raising — graph exception is swallowed
-    report = await agent.lint(scope="all", adversarial=False)
+    report = await agent.run(scope="all", adversarial=False)
     assert report is not None
 
 
@@ -1642,7 +1642,7 @@ async def test_auto_resolve_skipped_when_gate_threshold_exceeded(tmp_wiki):
     agent = LintAgent(provider=provider, store=store, log_writer=log)
     agent._cfg = _gate_cfg(3)  # threshold = 3
 
-    report = await agent.lint(scope="contradictions", auto_resolve=True)
+    report = await agent.run(scope="contradictions", auto_resolve=True)
 
     # Page must stay contradicted — guard blocked the promotion
     refreshed = store.read_page("flagged-page")
@@ -1691,7 +1691,7 @@ async def test_auto_resolve_proceeds_when_gate_disabled(tmp_wiki):
     agent = LintAgent(provider=provider, store=store, log_writer=log)
     agent._cfg = _gate_cfg(None)  # gate disabled
 
-    report = await agent.lint(scope="contradictions", auto_resolve=True)
+    report = await agent.run(scope="contradictions", auto_resolve=True)
 
     # Page should be promoted — gate is off, auto-resolve ran
     refreshed = store.read_page("gate-off-page")
@@ -1734,7 +1734,7 @@ async def test_auto_resolve_proceeds_when_warnings_below_threshold(tmp_wiki):
     agent = LintAgent(provider=provider, store=store, log_writer=log)
     agent._cfg = _gate_cfg(3)  # threshold = 3, but only 1 warning
 
-    report = await agent.lint(scope="contradictions", auto_resolve=True)
+    report = await agent.run(scope="contradictions", auto_resolve=True)
 
     # Auto-resolve should have run — 1 warning < threshold 3
     refreshed = store.read_page("below-threshold-page")

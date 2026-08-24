@@ -39,7 +39,7 @@ async def test_draft_promoted_to_active_on_clean_lint(tmp_path):
     _write_page(store, "alan-turing", status=LifecycleState.DRAFT)
     db = await _make_db(tmp_path)
     agent = LintAgent(AsyncMock(), store, _make_log(), audit_db=db, wiki_root=tmp_path)
-    await agent.lint(scope="all", adversarial=False)
+    await agent.run(scope="all", adversarial=False)
     page = store.read_page("alan-turing")
     assert page is not None
     assert page.status == LifecycleState.ACTIVE
@@ -72,7 +72,7 @@ async def test_stale_detection_on_hash_mismatch(tmp_path):
     # Now source file has different content → different hash on disk
     src.write_text("updated content", encoding="utf-8")
     agent = LintAgent(AsyncMock(), store, _make_log(), audit_db=db, wiki_root=tmp_path)
-    await agent.lint(scope="all", adversarial=False)
+    await agent.run(scope="all", adversarial=False)
     page = store.read_page("test-page")
     assert page is not None
     assert page.status == LifecycleState.STALE
@@ -95,7 +95,7 @@ async def test_archived_detection_on_missing_source(tmp_path):
     store.write_page("test-page", page)
     db = await _make_db(tmp_path)
     agent = LintAgent(AsyncMock(), store, _make_log(), audit_db=db, wiki_root=tmp_path)
-    await agent.lint(scope="all", adversarial=False)
+    await agent.run(scope="all", adversarial=False)
     page = store.read_page("test-page")
     assert page is not None
     assert page.status == LifecycleState.ARCHIVED
@@ -111,7 +111,7 @@ async def test_no_lifecycle_flag_skips_checks(tmp_path):
     _write_page(store, "alan-turing", status=LifecycleState.DRAFT)
     db = await _make_db(tmp_path)
     agent = LintAgent(AsyncMock(), store, _make_log(), audit_db=db, wiki_root=tmp_path)
-    await agent.lint(scope="all", adversarial=False, lifecycle=False)
+    await agent.run(scope="all", adversarial=False, lifecycle=False)
     page = store.read_page("alan-turing")
     assert page is not None
     assert page.status == LifecycleState.DRAFT  # unchanged
@@ -137,7 +137,7 @@ async def test_scope_stale_detects_stale_pages(tmp_path):
     await db.record_ingest("oldhash123abc", 100, str(raw_dir / "source.txt"), "test-page", 0, 0.0)
     src.write_text("updated content", encoding="utf-8")
     agent = LintAgent(AsyncMock(), store, _make_log(), audit_db=db, wiki_root=tmp_path)
-    report = await agent.lint(scope="stale", adversarial=False)
+    report = await agent.run(scope="stale", adversarial=False)
     page = store.read_page("test-page")
     assert page is not None
     assert page.status == LifecycleState.STALE
@@ -153,7 +153,7 @@ async def test_scope_stale_does_not_promote_drafts(tmp_path):
     _write_page(store, "alan-turing", status=LifecycleState.DRAFT)
     db = await _make_db(tmp_path)
     agent = LintAgent(AsyncMock(), store, _make_log(), audit_db=db, wiki_root=tmp_path)
-    await agent.lint(scope="stale", adversarial=False)
+    await agent.run(scope="stale", adversarial=False)
     page = store.read_page("alan-turing")
     assert page is not None
     assert page.status == LifecycleState.DRAFT  # must remain draft

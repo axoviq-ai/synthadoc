@@ -46,7 +46,7 @@ async def test_ingest_rejects_path_outside_wiki_root(tmp_wiki, cache):
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15,
                         wiki_root=tmp_wiki)
     with pytest.raises((PermissionError, FileNotFoundError)):
-        await agent.ingest("/etc/passwd")
+        await agent.run("/etc/passwd")
     mock_provider.complete.assert_not_called()
 
 
@@ -93,7 +93,7 @@ async def test_prompt_injection_in_source_does_not_alter_page_slug(tmp_wiki, cac
     agent = IngestAgent(provider=mock_provider, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15,
                         wiki_root=tmp_wiki)
-    result = await agent.ingest(str(source))
+    result = await agent.run(str(source))
     for slug in result.pages_created:
         assert re.fullmatch(r"[a-z0-9][a-z0-9-]*", slug), f"Invalid slug: {slug}"
 

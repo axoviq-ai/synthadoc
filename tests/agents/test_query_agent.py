@@ -144,7 +144,7 @@ async def test_decompose_single_item_list(tmp_wiki):
     ]
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.0)
-    result = await agent.query("What is Moore's Law?")
+    result = await agent.run("What is Moore's Law?")
     assert isinstance(result, QueryResult)
     assert result.answer
     assert result.question == "What is Moore's Law?"
@@ -178,7 +178,7 @@ async def test_query_deduplicates_pages_across_sub_questions(tmp_wiki):
     ]
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.0)
-    result = await agent.query("How does Moore's Law relate to hardware?")
+    result = await agent.run("How does Moore's Law relate to hardware?")
     assert result.citations.count("moores-law") == 1
 
 
@@ -202,7 +202,7 @@ async def test_query_merged_results_bounded_by_candidate_pool(tmp_wiki):
     ]
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.0)
-    result = await agent.query("alpha gamma question?")
+    result = await agent.run("alpha gamma question?")
     # candidates are bounded by _CANDIDATE_POOL_SIZE (20); all 12 pages may appear
     assert len(result.citations) <= 20
 
@@ -221,7 +221,7 @@ async def test_query_all_sub_searches_return_empty(tmp_wiki):
     ]
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.0)
-    result = await agent.query("something not in wiki?")
+    result = await agent.run("something not in wiki?")
     assert result.answer == "I don't know."
     assert result.citations == []
 
@@ -233,7 +233,7 @@ async def test_query_result_preserves_original_question(tmp_wiki):
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.0)
     original = "Who invented FORTRAN and what influence did it have?"
-    result = await agent.query(original)
+    result = await agent.run(original)
     assert result.question == original
 
 
@@ -247,7 +247,7 @@ async def test_query_tokens_used_is_answer_call_tokens(tmp_wiki):
     ]
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.0)
-    result = await agent.query("test question")
+    result = await agent.run("test question")
     assert result.tokens_used == 125  # answer call only: 100 + 25
 
 
@@ -265,7 +265,7 @@ async def test_query_returns_answer(tmp_wiki):
         text="Transformers use self-attention.", input_tokens=200, output_tokens=30)
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.0)
-    result = await agent.query("How do transformers work?")
+    result = await agent.run("How do transformers work?")
     assert isinstance(result, QueryResult)
     assert result.answer
 
@@ -275,7 +275,7 @@ async def test_query_empty_wiki_returns_answer(tmp_wiki):
     store, search, provider = _make_agent(tmp_wiki, answer_text="I don't know.")
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.0)
-    result = await agent.query("What is the meaning of life?")
+    result = await agent.run("What is the meaning of life?")
     assert isinstance(result, QueryResult)
     assert result.answer == "I don't know."
     assert result.citations == []
@@ -300,7 +300,7 @@ async def test_query_citations_match_search_results(tmp_wiki):
     ]
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.0)
-    result = await agent.query("How do I treat algae?")
+    result = await agent.run("How do I treat algae?")
     assert "pool-chemicals" in result.citations
 
 
@@ -324,7 +324,7 @@ async def test_query_multiple_pages_all_cited(tmp_wiki):
     ]
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.0)
-    result = await agent.query("How do I balance pool chemistry?")
+    result = await agent.run("How do I balance pool chemistry?")
     assert len(result.citations) >= 1
     for slug in result.citations:
         assert store.page_exists(slug)
@@ -362,7 +362,7 @@ async def test_compound_query_retrieves_both_parts(tmp_wiki):
     ]
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.0)
-    result = await agent.query("Who invented FORTRAN and what was the Bombe machine?")
+    result = await agent.run("Who invented FORTRAN and what was the Bombe machine?")
     assert "fortran-history" in result.citations
     assert "bombe-machine" in result.citations
 
@@ -395,7 +395,7 @@ async def test_subquestions_retrieved_in_parallel(tmp_wiki):
     with unittest.mock.patch("synthadoc.agents.query_agent.asyncio.gather", spy_gather):
         agent = QueryAgent(provider=provider, store=store, search=search,
                            gap_score_threshold=0.0)
-        await agent.query("Who invented FORTRAN at IBM?")
+        await agent.run("Who invented FORTRAN at IBM?")
 
     assert len(gather_calls) == 1, "asyncio.gather must be called exactly once per query"
     assert gather_calls[0] == 2, "both sub-questions must be passed to gather together"
@@ -507,7 +507,7 @@ async def test_decompose_called_exactly_once_per_query(tmp_wiki):
         return await original_decompose(q)
 
     agent.decompose = counting_decompose
-    await agent.query("multi-part question")
+    await agent.run("multi-part question")
     assert len(decompose_calls) == 1
 
 
@@ -534,7 +534,7 @@ async def test_gather_arity_matches_sub_question_count(tmp_wiki):
 
     import unittest.mock
     with unittest.mock.patch("synthadoc.agents.query_agent.asyncio.gather", spy):
-        await agent.query("three-part question")
+        await agent.run("three-part question")
 
     assert gather_arities == [3]
 
@@ -562,7 +562,7 @@ async def test_simple_question_uses_single_gather_coroutine(tmp_wiki):
 
     import unittest.mock
     with unittest.mock.patch("synthadoc.agents.query_agent.asyncio.gather", spy):
-        await agent.query("What is AI?")
+        await agent.run("What is AI?")
 
     assert gather_arities == [1]
 
@@ -579,7 +579,7 @@ async def test_query_result_carries_input_and_output_tokens(tmp_wiki):
     ]
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.0)
-    result = await agent.query("What is the answer?")
+    result = await agent.run("What is the answer?")
     assert result.input_tokens == 120
     assert result.output_tokens == 40
     assert result.tokens_used == 160  # 120 + 40
@@ -595,7 +595,7 @@ async def test_query_result_input_output_tokens_nonzero_for_real_call(tmp_wiki):
     ]
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.0)
-    result = await agent.query("Any question?")
+    result = await agent.run("Any question?")
     assert result.input_tokens > 0
     assert result.output_tokens > 0
 
@@ -608,7 +608,7 @@ async def test_query_result_has_knowledge_gap_fields(tmp_wiki):
     store, search, provider = _make_agent(tmp_wiki)
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.0)
-    result = await agent.query("What is AI?")
+    result = await agent.run("What is AI?")
     assert hasattr(result, "knowledge_gap")
     assert hasattr(result, "suggested_searches")
     assert isinstance(result.suggested_searches, list)
@@ -634,7 +634,7 @@ async def test_no_gap_when_pages_found_with_high_scores(tmp_wiki):
     ]
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.0)  # disabled — never triggers
-    result = await agent.query("What is artificial intelligence?")
+    result = await agent.run("What is artificial intelligence?")
     assert result.knowledge_gap is False
     assert result.suggested_searches == []
 
@@ -652,7 +652,7 @@ async def test_gap_detected_when_empty_wiki(tmp_wiki):
         CompletionResponse(text="No relevant pages found.", input_tokens=50, output_tokens=10),
     ]
     agent = QueryAgent(provider=provider, store=store, search=search)
-    result = await agent.query("What is AI?")
+    result = await agent.run("What is AI?")
     assert result.knowledge_gap is True
     assert len(result.suggested_searches) >= 1
 
@@ -679,7 +679,7 @@ async def test_gap_detected_when_max_score_below_threshold(tmp_wiki):
     # High threshold so even marginal matches trigger gap
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=999.0)
-    result = await agent.query("What is quantum computing?")
+    result = await agent.run("What is quantum computing?")
     assert result.knowledge_gap is True
     assert len(result.suggested_searches) >= 1
 
@@ -696,7 +696,7 @@ async def test_gap_suggested_searches_come_from_search_decompose_agent(tmp_wiki)
     ]
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=999.0)
-    result = await agent.query("What is quantum computing?")
+    result = await agent.run("What is quantum computing?")
     assert "quantum computing basics" in result.suggested_searches
     assert "qubit explained" in result.suggested_searches
 
@@ -720,7 +720,7 @@ async def test_no_gap_search_decompose_not_called(tmp_wiki):
     ]
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.0)  # never triggers
-    result = await agent.query("What is AI?")
+    result = await agent.run("What is AI?")
     # Only 2 provider calls: decompose + answer. No SearchDecomposeAgent call.
     assert provider.complete.call_count == 2
     assert result.knowledge_gap is False
@@ -764,7 +764,7 @@ async def test_gap_detected_when_pages_are_off_topic(tmp_wiki):
     # score well on BM25 for this query due to shared vocabulary).
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.01)   # signal 2 disabled; signal 3 must fire
-    result = await agent.query("What vegetables grow well in a Canadian spring?")
+    result = await agent.run("What vegetables grow well in a Canadian spring?")
     # Signal 3: none of the flower pages contain 'vegetabl' — gap must be detected.
     assert result.knowledge_gap is True
     assert len(result.suggested_searches) >= 1
@@ -812,7 +812,7 @@ async def test_no_gap_when_one_key_term_is_a_synonym(tmp_wiki):
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.01)  # signal 2 disabled; only signal 3 can fire
     with patch.object(agent._search, "bm25_search", return_value=_fake_results(slugs)):
-        result = await agent.query("What plants grow well in a backyard?")
+        result = await agent.run("What plants grow well in a backyard?")
     # "backyard" is absent (wiki says "garden"), so it is skipped as a zero-freq term.
     # "plant" covers all 5 pages with freq ≥ 3 → signal 3 does not fire.
     assert result.knowledge_gap is False
@@ -857,7 +857,7 @@ async def test_gap_signal3_boundary_exactly_two_on_topic_pages(tmp_wiki):
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.01)
     with patch.object(agent._search, "bm25_search", return_value=_fake_results(all_slugs)):
-        result = await agent.query("What orchid plants grow well indoors?")
+        result = await agent.run("What orchid plants grow well indoors?")
     # "orchid" is the discriminating term (rarest covered, doc_freq=2).
     # Exactly 2 pages have "orchid" ≥ 3 times; 2 < 2 is False → no gap.
     assert result.knowledge_gap is False
@@ -904,7 +904,7 @@ async def test_gap_signal3_boundary_one_on_topic_page(tmp_wiki):
     # score=0.005 is below the threshold — weak match + 1 on-topic page → gap fires.
     with patch.object(agent._search, "bm25_search",
                       return_value=_fake_results(all_slugs, score=0.005)):
-        result = await agent.query("What orchid plants grow well indoors?")
+        result = await agent.run("What orchid plants grow well indoors?")
     assert result.knowledge_gap is True
     assert len(result.suggested_searches) >= 1
 
@@ -953,7 +953,7 @@ async def test_no_gap_single_dedicated_page_strong_score(tmp_wiki):
     # score=5.0 >> threshold — strong match, single dedicated page → no gap.
     with patch.object(agent._search, "bm25_search",
                       return_value=_fake_results(all_slugs, score=5.0)):
-        result = await agent.query("Quality of earnings methodology")
+        result = await agent.run("Quality of earnings methodology")
     assert result.knowledge_gap is False
     assert result.suggested_searches == []
 
@@ -1005,7 +1005,7 @@ async def test_no_gap_multi_aspect_query_with_generic_corpus_term(tmp_wiki):
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.01)  # signal 2 disabled; only signal 3 can fire
     with patch.object(agent._search, "bm25_search", return_value=_fake_results(all_slugs)):
-        result = await agent.query(
+        result = await agent.run(
             "What are the best plants for full sun, partial shade, and full shade in a Canadian backyard?"
         )
     # 4 pages mention "partial" ≥ 2 times → on_topic_pages = 4 ≥ 2 → no gap.
@@ -1091,7 +1091,7 @@ async def test_gap_signal5_defining_term_barely_present(tmp_wiki):
     # "quantum" is absent from every page title → title_covered does not suppress it.
     with patch.object(agent._search, "bm25_search",
                       return_value=_fake_results(all_slugs, score=5.0)):
-        result = await agent.query("What is quantum error correction?")
+        result = await agent.run("What is quantum error correction?")
     # "quantum": doc_freq=2 < threshold(3), qualifying=0, not in any title → signal 5 fires.
     assert result.knowledge_gap is True
     assert len(result.suggested_searches) >= 1
@@ -1144,7 +1144,7 @@ async def test_gap_relational_verb_in_query_does_not_trigger_false_gap(tmp_wiki)
                        gap_score_threshold=0.01)
     with patch.object(agent._search, "bm25_search",
                       return_value=_fake_results([f"moores-law-{i}" for i in range(5)], score=9.0)):
-        result = await agent.query(
+        result = await agent.run(
             "How did Moore's Law shape both hardware design and software expectations over time?"
         )
 
@@ -1190,7 +1190,7 @@ async def test_gap_influence_verb_in_query_does_not_trigger_false_gap(tmp_wiki):
                        gap_score_threshold=0.01)
     with patch.object(agent._search, "bm25_search",
                       return_value=_fake_results([f"unix-os-{i}" for i in range(5)], score=8.0)):
-        result = await agent.query(
+        result = await agent.run(
             "How did Unix influence the open-source movement?"
         )
 
@@ -1235,7 +1235,7 @@ async def test_gap_hyphen_normalisation_open_source_two_word_content(tmp_wiki):
                        gap_score_threshold=0.01)
     with patch.object(agent._search, "bm25_search",
                       return_value=_fake_results([f"unix-2w-{i}" for i in range(5)], score=9.0)):
-        result = await agent.query(
+        result = await agent.run(
             "How did Unix influence the open-source movement?"
         )
 
@@ -1289,7 +1289,7 @@ async def test_gap_possessive_query_term_matches_bare_and_possessive_forms(tmp_w
     with patch.object(agent._search, "bm25_search",
                       return_value=_fake_results([f"moore-hist-{i}" for i in range(5)],
                                                  score=9.0)):
-        result = await agent.query(
+        result = await agent.run(
             "How did Moore's Law affect computing hardware over time?"
         )
 
@@ -1353,7 +1353,7 @@ async def test_gap_signal5_high_docfreq_reference_term_does_not_fire(tmp_wiki):
                        gap_score_threshold=0.01)
     with patch.object(agent._search, "bm25_search",
                       return_value=_fake_results(all_slugs, score=8.0)):
-        result = await agent.query(
+        result = await agent.run(
             "How did Moore's Law shape hardware design and software development?"
         )
 
@@ -1437,7 +1437,7 @@ async def test_gap_signal5_fires_when_on_topic_pages_equals_half_and_term_low_do
                        gap_score_threshold=0.01)
     with patch.object(agent._search, "bm25_search",
                       return_value=_fake_results(all_slugs, score=8.0)):
-        result = await agent.query("What are judge agent methodologies?")
+        result = await agent.run("What are judge agent methodologies?")
 
     # Before fix: gap=False (guard A blocked signal 5 because 4 < 4 = False).
     # After fix: gap=True ('methodologie' doc_freq=2 < cap(3), qualifying=0).
@@ -1500,7 +1500,7 @@ async def test_gap_signal5_guard_b_still_blocks_high_docfreq_without_guard_a(tmp
                        gap_score_threshold=0.01)
     with patch.object(agent._search, "bm25_search",
                       return_value=_fake_results(all_slugs, score=8.0)):
-        result = await agent.query("What are judge agent methodologies?")
+        result = await agent.run("What are judge agent methodologies?")
 
     # 'methodologie' doc_freq=4 ≥ cap(3) → guard B blocks signal 5 → no gap.
     assert result.knowledge_gap is False
@@ -1589,7 +1589,7 @@ async def test_gap_signal5_fires_at_exact_docfreq_cap_boundary(tmp_wiki):
                        gap_score_threshold=0.01)
     with patch.object(agent._search, "bm25_search",
                       return_value=_fake_results(eight_slugs, score=8.0)):
-        result = await agent.query("When was Alan Turing born? What was his contribution?")
+        result = await agent.run("When was Alan Turing born? What was his contribution?")
 
     # 'born': doc_freq=3, qualifying=0; cap=3 → 3 <= 3 → signal 5 fires → gap.
     assert result.knowledge_gap is True
@@ -1666,7 +1666,7 @@ async def test_gap_signal7_prominent_entity_absent(tmp_wiki):
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.01)  # signal 2 disabled
     with patch.object(agent._search, "bm25_search", return_value=_fake_results(all_slugs)):
-        result = await agent.query(
+        result = await agent.run(
             "What was the significance of the iPhone and the rise of mobile computing?"
         )
     # Signal 7: coverage 8/15 < 80%; "iphone" in query, doc_freq=0 across all pages.
@@ -1719,7 +1719,7 @@ async def test_gap_signal7_no_false_positive_when_entity_present(tmp_wiki):
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.01)  # signal 2 disabled
     with patch.object(agent._search, "bm25_search", return_value=_fake_results(all_slugs)):
-        result = await agent.query("What were Alan Turing's main contributions?")
+        result = await agent.run("What were Alan Turing's main contributions?")
     # "turing" appears in all 8 pages → doc_freq=8 > 0 → Signal 7 does not fire.
     assert result.knowledge_gap is False
 
@@ -1891,7 +1891,7 @@ async def test_query_cjk_pages_answered_without_gap(tmp_wiki):
                        gap_score_threshold=0.01)
     cjk_slugs = [f"图灵机-{i}" for i in range(4)]
     with patch.object(agent._search, "bm25_search", return_value=_fake_results(cjk_slugs, score=5.0)):
-        result = await agent.query("图灵机是什么？")
+        result = await agent.run("图灵机是什么？")
 
     assert result.knowledge_gap is False
     assert result.answer == "图灵机是一种理论计算模型。"
@@ -1933,7 +1933,7 @@ async def test_cjk_query_no_false_gap(tmp_wiki):
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=0.01)
     with patch.object(agent._search, "bm25_search", return_value=_fake_results(slugs, score=5.0)):
-        result = await agent.query("图灵机是什么？")
+        result = await agent.run("图灵机是什么？")
     # CJK input → translated to English for retrieval → _gap_q is English.
     # Signals 1 (5 pages ≥ 3) and 2 (score 5.0 ≥ 0.01) both pass → no gap.
     assert result.knowledge_gap is False
@@ -2048,7 +2048,7 @@ async def test_framed_query_gap_detected_via_sub_questions(tmp_wiki):
     all_slugs = [f"ai-page-{i}" for i in range(5)]
     with patch.object(agent._search, "bm25_search",
                       return_value=_fake_results(all_slugs, score=3.0)):
-        result = await agent.query(
+        result = await agent.run(
             "please provide some details of agent-as-a-judge design and benchmark information"
         )
 
@@ -2095,7 +2095,7 @@ async def test_gap_sentinel_overrides_no_gap_when_llm_returns_gap_marker(tmp_wik
     all_slugs = [f"hw-{i}" for i in range(8)]
     with patch.object(agent._search, "bm25_search",
                       return_value=_fake_results(all_slugs, score=8.0)):
-        result = await agent.query("How did Moore's Law shape hardware design?")
+        result = await agent.run("How did Moore's Law shape hardware design?")
 
     assert result.knowledge_gap is True
     assert len(result.suggested_searches) > 0
@@ -2126,7 +2126,7 @@ async def test_gap_sentinel_not_triggered_when_llm_answers_normally(tmp_wiki):
     all_slugs = [f"ai-{i}" for i in range(5)]
     with patch.object(agent._search, "bm25_search",
                       return_value=_fake_results(all_slugs, score=5.0)):
-        result = await agent.query("What is AI?")
+        result = await agent.run("What is AI?")
 
     assert result.knowledge_gap is False
     assert result.answer == "AI stands for Artificial Intelligence [[ai-overview]]."
@@ -2230,7 +2230,7 @@ async def test_query_system_knowledge_suppresses_gap(tmp_wiki):
     # Very high threshold that would normally fire gap — system knowledge must override
     agent = QueryAgent(provider=provider, store=store, search=search,
                        gap_score_threshold=999.0)
-    result = await agent.query("What file types can I ingest?")
+    result = await agent.run("What file types can I ingest?")
     assert result.knowledge_gap is False
     assert result.suggested_searches == []
 
@@ -2248,7 +2248,7 @@ async def test_query_system_knowledge_in_synthesis_prompt(tmp_wiki):
                            input_tokens=80, output_tokens=15),
     ]
     agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=0.0)
-    await agent.query("What file types can I ingest?")
+    await agent.run("What file types can I ingest?")
 
     # The second complete() call is synthesis — its prompt must include Synthadoc Help
     assert len(provider.complete.call_args_list) >= 2
@@ -2271,7 +2271,7 @@ async def test_query_system_knowledge_no_wiki_citations(tmp_wiki):
                            input_tokens=80, output_tokens=15),
     ]
     agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=0.0)
-    result = await agent.query("What file types can I ingest?")
+    result = await agent.run("What file types can I ingest?")
     assert result.citations == []
 
 
@@ -2360,7 +2360,7 @@ async def test_query_live_data_injected_into_synthesis(tmp_wiki):
         CompletionResponse(text="Here are the stale pages...", input_tokens=80, output_tokens=15),
     ]
     agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=0.0)
-    await agent.query("which pages are stale?")
+    await agent.run("which pages are stale?")
 
     synthesis_prompt = provider.complete.call_args_list[1][1]["messages"][0].content
     assert "Live Wiki Data" in synthesis_prompt
@@ -2392,7 +2392,7 @@ async def test_no_gap_for_wiki_introspective_queries(tmp_wiki):
                            input_tokens=50, output_tokens=10),
     ]
     agent = QueryAgent(provider=provider, store=store, search=search)
-    result = await agent.query("What topics does this wiki cover?")
+    result = await agent.run("What topics does this wiki cover?")
 
     assert result.knowledge_gap is False
     assert result.suggested_searches == []
@@ -2423,7 +2423,7 @@ async def test_no_gap_for_key_topics_phrasing(tmp_wiki):
                            input_tokens=50, output_tokens=10),
     ]
     agent = QueryAgent(provider=provider, store=store, search=search)
-    result = await agent.query("What are the key topics in this wiki?")
+    result = await agent.run("What are the key topics in this wiki?")
 
     assert result.knowledge_gap is False
     assert result.suggested_searches == []
@@ -2448,7 +2448,7 @@ async def test_no_gap_for_topics_in_this_wiki_phrasing(tmp_wiki):
                            input_tokens=50, output_tokens=10),
     ]
     agent = QueryAgent(provider=provider, store=store, search=search)
-    result = await agent.query("What topics are covered in this wiki?")
+    result = await agent.run("What topics are covered in this wiki?")
 
     assert result.knowledge_gap is False
     assert result.suggested_searches == []
@@ -2473,7 +2473,7 @@ async def test_no_gap_for_wiki_purpose_phrasing(tmp_wiki):
                            input_tokens=50, output_tokens=10),
     ]
     agent = QueryAgent(provider=provider, store=store, search=search)
-    result = await agent.query("Summarize Wiki Purpose — General")
+    result = await agent.run("Summarize Wiki Purpose — General")
 
     assert result.knowledge_gap is False
     assert result.suggested_searches == []
@@ -2498,7 +2498,7 @@ async def test_no_gap_for_purpose_of_this_wiki(tmp_wiki):
                            input_tokens=50, output_tokens=10),
     ]
     agent = QueryAgent(provider=provider, store=store, search=search)
-    result = await agent.query("What is the purpose of this wiki?")
+    result = await agent.run("What is the purpose of this wiki?")
 
     assert result.knowledge_gap is False
     assert result.suggested_searches == []
@@ -2600,7 +2600,7 @@ async def test_live_data_routed_without_system_ctx(tmp_wiki):
                            input_tokens=80, output_tokens=15),
     ]
     agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=0.0)
-    result = await agent.query("What changed in the wiki this week?")
+    result = await agent.run("What changed in the wiki this week?")
 
     synthesis_prompt = provider.complete.call_args_list[1][1]["messages"][0].content
     assert "Live Wiki Data" in synthesis_prompt
@@ -2629,7 +2629,7 @@ async def test_live_data_month_lookback(tmp_wiki):
                            input_tokens=80, output_tokens=15),
     ]
     agent = QueryAgent(provider=provider, store=store, search=search, gap_score_threshold=0.0)
-    result = await agent.query("What changed this month?")
+    result = await agent.run("What changed this month?")
 
     synthesis_prompt = provider.complete.call_args_list[1][1]["messages"][0].content
     assert "Live Wiki Data" in synthesis_prompt
@@ -2681,9 +2681,9 @@ async def test_run_stream_history_calls_rewrite_agent(tmp_wiki):
     history = [{"role": "user", "content": "prior question about topic alpha"}]
 
     with patch("synthadoc.agents.query_agent.RewriteAgent") as mock_cls:
-        mock_cls.return_value.rewrite = AsyncMock(return_value="rewritten question about topic alpha")
+        mock_cls.return_value.run = AsyncMock(return_value="rewritten question about topic alpha")
         await _collect_events(agent.run_stream(question, history=history))
-        mock_cls.return_value.rewrite.assert_called_once_with(question, history)
+        mock_cls.return_value.run.assert_called_once_with(question, history)
 
 
 @pytest.mark.asyncio
@@ -2692,9 +2692,9 @@ async def test_run_stream_no_history_skips_rewrite(tmp_wiki):
     store, search, provider, agent = _make_stream_agent(tmp_wiki)
 
     with patch("synthadoc.agents.query_agent.RewriteAgent") as mock_cls:
-        mock_cls.return_value.rewrite = AsyncMock(return_value="should not be called")
+        mock_cls.return_value.run = AsyncMock(return_value="should not be called")
         await _collect_events(agent.run_stream("What is topic alpha?"))
-        mock_cls.return_value.rewrite.assert_not_called()
+        mock_cls.return_value.run.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -2812,7 +2812,7 @@ async def test_run_stream_followup_uses_rewritten_question_for_live_data(tmp_wik
 
     with patch("synthadoc.agents.query_agent.RewriteAgent") as mock_rw_cls, \
          patch("synthadoc.agents.query_agent.ActionAgent") as mock_action_cls:
-        mock_rw_cls.return_value.rewrite = AsyncMock(return_value="check job status a95c6a33")
+        mock_rw_cls.return_value.run = AsyncMock(return_value="check job status a95c6a33")
         mock_action_cls.return_value.detect.return_value = False
 
         events = await _collect_events(agent.run_stream("check it again", history=history))
@@ -3161,7 +3161,7 @@ async def test_run_stream_specific_content_query_not_hijacked_by_rewrite_trigger
     with patch("synthadoc.agents.query_agent.RewriteAgent") as mock_rw_cls, \
          patch("synthadoc.agents.query_agent.ActionAgent") as mock_action_cls:
         # Simulate rewrite injecting 'active' from history context
-        mock_rw_cls.return_value.rewrite = AsyncMock(
+        mock_rw_cls.return_value.run = AsyncMock(
             return_value="What are the key ideas in Programming Languages Overview? (an active page)"
         )
         mock_action_cls.return_value.detect.return_value = False

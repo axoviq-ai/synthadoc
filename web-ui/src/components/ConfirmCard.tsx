@@ -47,6 +47,7 @@ function DiffViewer({ diff }: { diff: string }) {
             fontSize: "0.78rem",
             lineHeight: 1.55,
             margin: "10px 0",
+            background: "var(--bg-notice, #141826)",
         }}>
             {lines.map((line, i) => (
                 <div
@@ -92,6 +93,7 @@ export default function ConfirmCard({
         <div className="confirm-card" style={{
             border: "1px solid var(--border, #ccc)",
             borderRadius: 6, padding: "12px 16px", margin: "8px 0",
+            background: "var(--bg-secondary, #1a1f2e)",
         }}>
             {/* Render message as markdown so **bold**, `code`, etc. display correctly */}
             <div className="bubble-md" style={{ marginBottom: diff ? 0 : 10 }}>

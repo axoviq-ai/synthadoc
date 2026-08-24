@@ -1,6 +1,11 @@
-# synthadoc/agents/export_agent.py
+# synthadoc/core/export.py
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 William Johnason / axoviq.com
+"""Wiki export utility — serialises a wiki to llms.txt, llms-full.txt, GraphML, JSON, or OKF.
+
+No LLM calls are made.  This module lives in ``core/`` rather than ``agents/``
+because export is a pure serialisation step that requires no language model.
+"""
 from __future__ import annotations
 
 import re
@@ -23,6 +28,14 @@ class ExportOptions:
 
 
 class ExportAgent:
+    """Serialises the wiki to one of five formats with zero LLM calls.
+
+    Invoked via ``synthadoc export --format <fmt>`` or the Obsidian
+    **Export Wiki** command.  The class name is kept for compatibility with
+    existing callers; the implementation lives in ``core/`` because it is a
+    pure serialisation utility, not an LLM agent.
+    """
+
     def __init__(
         self,
         store: WikiStorage,
@@ -35,7 +48,12 @@ class ExportAgent:
         self._audit_db_path = Path(audit_db_path)
         self._routing_path = Path(routing_path)
 
-    async def export(self, opts: ExportOptions) -> "str | dict[str, str]":
+    async def run(self, opts: ExportOptions) -> "str | dict[str, str]":
+        """Serialise the wiki.
+
+        Errors propagate — callers write the result to disk or return it as
+        an HTTP body and must handle failures themselves.
+        """
         if opts.format not in EXPORT_FORMATS:
             raise ValueError(
                 f"Unknown format: {opts.format!r}. Valid: {sorted(EXPORT_FORMATS)}"

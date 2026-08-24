@@ -6,7 +6,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, AsyncMock
 
-from synthadoc.agents.citation_faithfulness import (
+from synthadoc.agents.citation_faithfulness_agent import (
     CitationToCheck,
     FaithfulnessResult,
     extract_citations_for_check,
@@ -140,10 +140,10 @@ def test_extract_multiple_markers_same_sentence(tmp_path):
 import asyncio
 import json as _json
 
-from synthadoc.agents.citation_faithfulness import (
+from synthadoc.agents.citation_faithfulness_agent import (
+    FaithfulnessAuditAgent,
     check_page_faithfulness,
     estimate_faithfulness_tokens,
-    run_faithfulness_audit,
 )
 
 
@@ -284,14 +284,15 @@ def test_run_audit_filters_non_active(tmp_path):
     provider = _mock_provider(_json.dumps({"results": [
         {"index": 1, "verdict": "supported", "reason": "ok"}
     ]}))
-    results = asyncio.run(run_faithfulness_audit(tmp_path, store, provider))
+    agent = FaithfulnessAuditAgent(provider, tmp_path, store)
+    results = asyncio.run(agent.run())
     slugs = {r.slug for r in results}
     assert "active-page" in slugs
     assert "draft-page" not in slugs
 
 
 def test_run_audit_page_slug_filter(tmp_path):
-    """page_slug_filter limits audit to one page."""
+    """page_slug argument limits audit to one page."""
     extracted = tmp_path / ".synthadoc" / "extracted"
     extracted.mkdir(parents=True)
     (extracted / "src.txt").write_text("Line 1: content\n", encoding="utf-8")
@@ -303,7 +304,8 @@ def test_run_audit_page_slug_filter(tmp_path):
     provider = _mock_provider(_json.dumps({"results": [
         {"index": 1, "verdict": "supported", "reason": "ok"}
     ]}))
-    results = asyncio.run(run_faithfulness_audit(tmp_path, store, provider, page_slug_filter="page-a"))
+    agent = FaithfulnessAuditAgent(provider, tmp_path, store)
+    results = asyncio.run(agent.run(page_slug="page-a"))
     slugs = {r.slug for r in results}
     assert "page-a" in slugs
     assert "page-b" not in slugs
@@ -318,7 +320,8 @@ def test_run_audit_skips_pages_with_no_citations(tmp_path):
         "no-citations": ("This page has no citation markers at all.\n", []),
     })
     provider = _mock_provider(_json.dumps({"results": []}))
-    results = asyncio.run(run_faithfulness_audit(tmp_path, store, provider))
+    agent = FaithfulnessAuditAgent(provider, tmp_path, store)
+    results = asyncio.run(agent.run())
     assert len(results) == 0
     # Provider should NOT have been called (no LLM calls for pages without citations)
     provider.complete.assert_not_called()
@@ -344,13 +347,43 @@ def test_check_page_top_level_array_response():
 
 
 def test_run_audit_nonexistent_slug_filter(tmp_path):
-    """page_slug_filter naming a missing slug returns empty list without calling provider."""
+    """page_slug naming a missing slug returns empty list without calling provider."""
     extracted = tmp_path / ".synthadoc" / "extracted"
     extracted.mkdir(parents=True)
     store = _make_wiki_storage(tmp_path, {})
     provider = _mock_provider(_json.dumps({"results": []}))
-    results = asyncio.run(
-        run_faithfulness_audit(tmp_path, store, provider, page_slug_filter="no-such-page")
-    )
+    agent = FaithfulnessAuditAgent(provider, tmp_path, store)
+    results = asyncio.run(agent.run(page_slug="no-such-page"))
     assert results == []
     provider.complete.assert_not_called()
+
+
+# ── FaithfulnessAuditAgent class tests ──────────────────────────────────────
+
+def test_faithfulness_audit_agent_is_base_agent():
+    """FaithfulnessAuditAgent inherits from BaseAgent."""
+    from synthadoc.agents._base import BaseAgent
+    assert issubclass(FaithfulnessAuditAgent, BaseAgent)
+
+
+def test_faithfulness_audit_agent_stores_dependencies(tmp_path):
+    """Constructor binds provider, wiki_root, store, and cfg."""
+    from unittest.mock import MagicMock
+    from synthadoc.agents.citation_faithfulness_agent import FaithfulnessAuditAgent
+    provider = MagicMock()
+    store = MagicMock()
+    cfg = MagicMock()
+    agent = FaithfulnessAuditAgent(provider, tmp_path, store, cfg=cfg)
+    assert agent._provider is provider
+    assert agent._wiki_root == tmp_path
+    assert agent._store is store
+    assert agent._cfg is cfg
+
+
+def test_faithfulness_audit_agent_cfg_defaults_to_none(tmp_path):
+    """cfg is optional and defaults to None."""
+    from unittest.mock import MagicMock
+    provider = MagicMock()
+    store = MagicMock()
+    agent = FaithfulnessAuditAgent(provider, tmp_path, store)
+    assert agent._cfg is None

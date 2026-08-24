@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-or-later
+﻿# SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
 from __future__ import annotations
 from pathlib import Path
@@ -71,7 +71,7 @@ def create_mcp_server(orchestrator):
         Other formats without output_path: {"format", "content": str, "pages": N}
         """
         from datetime import date
-        from synthadoc.agents.export_agent import ExportAgent, ExportOptions, EXPORT_FORMATS
+        from synthadoc.core.export import ExportAgent, ExportOptions, EXPORT_FORMATS
         if format not in EXPORT_FORMATS:
             return {"error": f"unknown format {format!r}. Valid: {sorted(EXPORT_FORMATS)}"}
 
@@ -82,7 +82,7 @@ def create_mcp_server(orchestrator):
             routing_path=orchestrator._root / "ROUTING.md",
         )
         opts = ExportOptions(format=format, status_filter=status_filter)
-        content = await agent.export(opts)
+        content = await agent.run(opts)
         page_count = len(orchestrator._store.list_pages())
 
         if format == "okf":
@@ -128,7 +128,7 @@ def create_mcp_server(orchestrator):
             search=orchestrator._search,
             token_budget=budget,
         )
-        pack = await agent.build(goal, token_budget=budget)
+        pack = await agent.run(goal, token_budget=budget)
         return pack.to_dict()
 
     @mcp.tool()

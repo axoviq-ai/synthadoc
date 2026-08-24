@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
+from synthadoc.agents._base import BaseAgent
 from synthadoc.agents.workflows._registry import ROUTED_WORKFLOWS
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.wiki import LifecycleState
@@ -238,7 +239,7 @@ class ActionResult:
 
 # ── agent ─────────────────────────────────────────────────────────────────────
 
-class ActionAgent:
+class ActionAgent(BaseAgent):
     """Detects action-intent queries and dispatches them to the Synthadoc orchestrator."""
 
     def __init__(
@@ -247,7 +248,7 @@ class ActionAgent:
         orchestrator: Any,
         wiki_root: Path,
     ) -> None:
-        self._provider = provider
+        super().__init__(provider)
         self._orch = orchestrator
         self._wiki_root = wiki_root
 
@@ -282,7 +283,7 @@ class ActionAgent:
                         break
         return False
 
-    async def run(self, question: str, history: list[dict] | None = None) -> Optional[ActionResult]:
+    async def _run(self, question: str, history: list[dict] | None = None) -> Optional[ActionResult]:
         """Extract action + params from question and execute. Returns None if not an action."""
         # For repeat intents ("run it again", "repeat", etc.) resolve the previous action
         # from history before calling the LLM, which cannot reliably infer it from vague phrasing.
@@ -308,6 +309,10 @@ class ActionAgent:
                 success=False,
                 message=f"Could not complete the action: {exc}",
             )
+
+    def _safe_default(self) -> None:  # type: ignore[override]
+        """Return None when _run raises (treated as 'not an action')."""
+        return None
 
     async def run_gen(
         self, question: str, history: list[dict] | None = None, session_id: str | None = None

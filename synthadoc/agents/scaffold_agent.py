@@ -10,6 +10,7 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
+from synthadoc.agents._base import BaseAgent
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.cli._init import _AGENT_INSTRUCTION_BODY
 from synthadoc.storage.wiki import SYSTEM_PAGE_SLUGS
@@ -380,12 +381,28 @@ def _validate_scaffold_result(result: "ScaffoldResult", domain: str) -> None:
         )
 
 
-class ScaffoldAgent:
+class ScaffoldAgent(BaseAgent):
     def __init__(self, provider: LLMProvider, max_tokens: int = 8192) -> None:
-        self._provider = provider
+        super().__init__(provider)
         self._max_tokens = max_tokens
 
-    async def scaffold(
+    async def run(  # type: ignore[override]
+        self,
+        domain: str,
+        protected_slugs: Optional[list[str]] = None,
+        port: int = 7070,
+    ) -> ScaffoldResult:
+        """Public entry point.
+
+        Unlike the default ``BaseAgent.run()``, errors from ``_run()`` are
+        **not** suppressed here.  Scaffold generation has no valid empty-state
+        fallback: a failed scaffold is always a hard failure that must propagate
+        so the job queue can mark it as retryable or permanently failed and
+        preserve the original exception type (e.g. ``DailyQuotaExhaustedException``).
+        """
+        return await self._run(domain, protected_slugs, port)
+
+    async def _run(
         self,
         domain: str,
         protected_slugs: Optional[list[str]] = None,
@@ -469,6 +486,10 @@ class ScaffoldAgent:
         )
         _validate_scaffold_result(scaffold, effective_domain)
         return scaffold
+
+    def _safe_default(self) -> None:  # type: ignore[override]
+        """Never reached — ``run()`` does not suppress errors."""
+        return None
 
     def _build_index_md(self, domain: str, data: dict) -> str:
         today = date.today().isoformat()

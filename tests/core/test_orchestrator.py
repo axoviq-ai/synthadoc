@@ -42,7 +42,7 @@ async def test_run_ingest_http_404_skips_job(tmp_wiki):
         job_id = await orch._queue.enqueue("ingest", {"source": "https://example.com/gone", "force": False})
 
         mock_agent = MagicMock()
-        mock_agent.ingest = AsyncMock(side_effect=_http_status_error(404))
+        mock_agent.run = AsyncMock(side_effect=_http_status_error(404))
         with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
              patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
             # Must NOT raise — the worker loop must continue cleanly
@@ -63,7 +63,7 @@ async def test_run_ingest_llm_skip_marks_job_skipped(tmp_wiki):
 
         skipped_result = IngestResult(source="https://example.com/oos", skipped=True, skip_reason="out of scope (purpose.md)")
         mock_agent = MagicMock()
-        mock_agent.ingest = AsyncMock(return_value=skipped_result)
+        mock_agent.run = AsyncMock(return_value=skipped_result)
         with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
              patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
             await orch._run_ingest(job_id, "https://example.com/oos", auto_confirm=True)
@@ -82,7 +82,7 @@ async def test_run_ingest_http_5xx_retries_job(tmp_wiki):
         job_id = await orch._queue.enqueue("ingest", {"source": "https://example.com/flaky", "force": False})
 
         mock_agent = MagicMock()
-        mock_agent.ingest = AsyncMock(side_effect=_http_status_error(503))
+        mock_agent.run = AsyncMock(side_effect=_http_status_error(503))
         with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
              patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
             await orch._run_ingest(job_id, "https://example.com/flaky", auto_confirm=True)
@@ -178,7 +178,7 @@ async def test_run_ingest_domain_blocked_skips_job(tmp_wiki):
 
         exc = DomainBlockedException(domain="blocked.com", url="https://blocked.com/page", status_code=403)
         mock_agent = MagicMock()
-        mock_agent.ingest = AsyncMock(side_effect=exc)
+        mock_agent.run = AsyncMock(side_effect=exc)
         with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
              patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
             await orch._run_ingest(job_id, "https://blocked.com/page", auto_confirm=True)
@@ -198,7 +198,7 @@ async def test_run_ingest_daily_quota_exhausted_fails_permanent(tmp_wiki):
 
         exc = DailyQuotaExhaustedException(provider="anthropic")
         mock_agent = MagicMock()
-        mock_agent.ingest = AsyncMock(side_effect=exc)
+        mock_agent.run = AsyncMock(side_effect=exc)
         with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
              patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
             await orch._run_ingest(job_id, "https://example.com", auto_confirm=True)
@@ -218,7 +218,7 @@ async def test_run_ingest_coding_tool_quota_fails_permanent(tmp_wiki):
 
         exc = CodingToolQuotaExhaustedException("claude-code")
         mock_agent = MagicMock()
-        mock_agent.ingest = AsyncMock(side_effect=exc)
+        mock_agent.run = AsyncMock(side_effect=exc)
         with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
              patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
             await orch._run_ingest(job_id, "https://example.com", auto_confirm=True)
@@ -235,7 +235,7 @@ async def test_run_ingest_connect_error_retries_job(tmp_wiki):
         job_id = await orch._queue.enqueue("ingest", {"source": "https://unreachable.com", "force": False})
 
         mock_agent = MagicMock()
-        mock_agent.ingest = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
+        mock_agent.run = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
         with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
              patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
             await orch._run_ingest(job_id, "https://unreachable.com", auto_confirm=True)
@@ -252,7 +252,7 @@ async def test_run_ingest_environment_error_fails_permanent(tmp_wiki):
         job_id = await orch._queue.enqueue("ingest", {"source": "file.pdf", "force": False})
 
         mock_agent = MagicMock()
-        mock_agent.ingest = AsyncMock(side_effect=EnvironmentError("binary not found"))
+        mock_agent.run = AsyncMock(side_effect=EnvironmentError("binary not found"))
         with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
              patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
             await orch._run_ingest(job_id, "file.pdf", auto_confirm=True)
@@ -317,13 +317,13 @@ async def test_run_ingest_plain_txt_is_not_treated_as_manifest(tmp_wiki):
         mock_agent = MagicMock()
         normal_result = IngestResult(source=str(prose))
         normal_result.pages_created = ["computing-history"]
-        mock_agent.ingest = AsyncMock(return_value=normal_result)
+        mock_agent.run = AsyncMock(return_value=normal_result)
 
         with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
              patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
             await orch._run_ingest(job_id, str(prose), auto_confirm=True)
 
-        mock_agent.ingest.assert_called_once()  # went through normal ingest, not manifest expansion
+        mock_agent.run.assert_called_once()  # went through normal ingest, not manifest expansion
 
 
 @pytest.mark.asyncio
@@ -388,7 +388,7 @@ async def test_wiki_epoch_increments_on_successful_ingest(tmp_wiki):
             child_sources=[],
         )
         with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
-             patch("synthadoc.agents.ingest_agent.IngestAgent.ingest", new=AsyncMock(return_value=mock_result)):
+             patch("synthadoc.agents.ingest_agent.IngestAgent.run", new=AsyncMock(return_value=mock_result)):
             await orch._run_ingest(job_id, source="http://example.com", auto_confirm=True)
 
         assert orch._wiki_epoch == 1
@@ -415,7 +415,7 @@ async def test_wiki_epoch_does_not_increment_on_skipped_ingest(tmp_wiki):
             child_sources=[],
         )
         with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
-             patch("synthadoc.agents.ingest_agent.IngestAgent.ingest", new=AsyncMock(return_value=mock_result)):
+             patch("synthadoc.agents.ingest_agent.IngestAgent.run", new=AsyncMock(return_value=mock_result)):
             await orch._run_ingest(job_id, source="http://example.com", auto_confirm=True)
 
         assert orch._wiki_epoch == 0
@@ -423,7 +423,7 @@ async def test_wiki_epoch_does_not_increment_on_skipped_ingest(tmp_wiki):
 
 @pytest.mark.asyncio
 async def test_run_lint_passes_adversarial_false(tmp_wiki):
-    """_run_lint() passes adversarial=False to LintAgent.lint() when requested."""
+    """_run_lint() passes adversarial=False to LintAgent.run() when requested."""
     from synthadoc.config import load_config
     from synthadoc.core.orchestrator import Orchestrator
     from synthadoc.agents.lint_agent import LintReport
@@ -443,7 +443,7 @@ async def test_run_lint_passes_adversarial_false(tmp_wiki):
         return lint_report
 
     # Mock LintAgent.lint, make_provider, and queue methods
-    with patch("synthadoc.agents.lint_agent.LintAgent.lint", new=fake_lint), \
+    with patch("synthadoc.agents.lint_agent.LintAgent.run", new=fake_lint), \
          patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
          patch.object(orch, "_queue") as mock_queue:
         mock_queue.complete = AsyncMock()
@@ -492,7 +492,7 @@ async def test_run_scaffold_excludes_meta_slugs_from_protected(tmp_wiki):
             dashboard_intro="A wiki.",
         )
 
-    with patch("synthadoc.agents.scaffold_agent.ScaffoldAgent.scaffold", new=fake_scaffold), \
+    with patch("synthadoc.agents.scaffold_agent.ScaffoldAgent.run", new=fake_scaffold), \
          patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
          patch.object(orch, "_queue") as mock_queue:
         mock_queue.complete = AsyncMock()
@@ -517,7 +517,7 @@ async def test_run_scaffold_daily_quota_exhausted_fails_permanent(tmp_wiki):
 
     exc = DailyQuotaExhaustedException(provider="anthropic")
 
-    with patch("synthadoc.agents.scaffold_agent.ScaffoldAgent.scaffold", new=AsyncMock(side_effect=exc)), \
+    with patch("synthadoc.agents.scaffold_agent.ScaffoldAgent.run", new=AsyncMock(side_effect=exc)), \
          patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
          patch.object(orch, "_queue") as mock_queue:
         mock_queue.fail_permanent = AsyncMock()
@@ -538,7 +538,7 @@ async def test_run_scaffold_coding_tool_quota_fails_permanent(tmp_wiki):
 
     exc = CodingToolQuotaExhaustedException("claude-code")
 
-    with patch("synthadoc.agents.scaffold_agent.ScaffoldAgent.scaffold", new=AsyncMock(side_effect=exc)), \
+    with patch("synthadoc.agents.scaffold_agent.ScaffoldAgent.run", new=AsyncMock(side_effect=exc)), \
          patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
          patch.object(orch, "_queue") as mock_queue:
         mock_queue.fail_permanent = AsyncMock()

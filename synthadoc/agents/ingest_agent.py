@@ -13,6 +13,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from synthadoc.agents._base import BaseAgent
 from synthadoc.agents.citations import CITATION_RE as _CITATION_RE, MALFORMED_CITE_RE as _MALFORMED_CITE_RE
 from synthadoc.agents.search_decompose_agent import SearchDecomposeAgent
 from synthadoc.agents.skill_agent import SkillAgent
@@ -534,7 +535,7 @@ def _format_key_section(items: list[str]) -> str:
     return "\n\n## Key Data\n\n" + "\n\n".join(parts)
 
 
-class IngestAgent:
+class IngestAgent(BaseAgent):
     def __init__(self, provider: LLMProvider, store: WikiStorage, search: HybridSearch,
                  log_writer: LogWriter, audit_db: AuditDB, cache: CacheManager,
                  max_pages: int = 15, wiki_root: Optional[Path] = None,
@@ -543,7 +544,7 @@ class IngestAgent:
                  routing_path: Optional[Path] = None,
                  cfg=None,
                  allow_external_paths: bool = False) -> None:
-        self._provider = provider
+        super().__init__(provider, cfg)
         self._store = store
         self._search = search
         self._log = log_writer
@@ -552,7 +553,6 @@ class IngestAgent:
         self._max_pages = max_pages
         self._wiki_root = Path(wiki_root) if wiki_root is not None else None
         self._routing_path = Path(routing_path) if routing_path is not None else None
-        self._cfg = cfg
         self._allow_external_paths = allow_external_paths
         self._cache_version = cache_version
         self._skill_agent = SkillAgent(skill_kwargs={
@@ -874,7 +874,22 @@ class IngestAgent:
         wiki_page = existing.get("wiki_page", "")
         return not wiki_page or self._store.page_exists(wiki_page)
 
-    async def ingest(self, source: str, force: bool = False, bust_cache: bool = False) -> IngestResult:
+    async def run(  # type: ignore[override]
+        self, source: str, force: bool = False, bust_cache: bool = False
+    ) -> IngestResult:
+        """Public entry point.
+
+        Errors are not suppressed: callers access result attributes directly,
+        so a ``None`` fallback would replace one exception with an
+        ``AttributeError``.  Let errors propagate.
+        """
+        return await self._run(source, force=force, bust_cache=bust_cache)
+
+    def _safe_default(self) -> None:  # type: ignore[override]
+        """Never reached — ``run()`` does not suppress errors."""
+        return None
+
+    async def _run(self, source: str, force: bool = False, bust_cache: bool = False) -> IngestResult:
         source = _canonical_source(source)
         result = IngestResult(source=source)
 
@@ -942,7 +957,7 @@ class IngestAgent:
 
         if _is_web_search:
             _bare_query = _WEB_INTENT_RE.sub("", source).strip() or source
-            _sub_queries = await SearchDecomposeAgent(self._provider).decompose(_bare_query)
+            _sub_queries = await SearchDecomposeAgent(self._provider).run(_bare_query) or [_bare_query]
             _sub_results = await asyncio.gather(*[
                 self._skill_agent.extract(f"search for: {q}") for q in _sub_queries
             ])

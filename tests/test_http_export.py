@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-or-later
+﻿# SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 William Johnason / axoviq.com
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Response
@@ -6,11 +6,11 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 from typing import Optional
 from synthadoc.storage.wiki import WikiStorage, WikiPage, LifecycleState
-from synthadoc.agents.export_agent import EXPORT_FORMATS
+from synthadoc.core.export import EXPORT_FORMATS
 
 
 def _make_export_app(wiki_root: Path, store: WikiStorage) -> FastAPI:
-    from synthadoc.agents.export_agent import ExportAgent, ExportOptions
+    from synthadoc.core.export import ExportAgent, ExportOptions
 
     app = FastAPI()
 
@@ -34,7 +34,7 @@ def _make_export_app(wiki_root: Path, store: WikiStorage) -> FastAPI:
             status_filter=req.status_filter,
             context_pack=req.context_pack,
         )
-        content = await agent.export(opts)
+        content = await agent.run(opts)
         _CONTENT_TYPES = {
             "llms.txt":      "text/plain; charset=utf-8",
             "llms-full.txt": "text/plain; charset=utf-8",

@@ -2,6 +2,7 @@
 # Copyright (C) 2026 William Johnason / axoviq.com
 from __future__ import annotations
 import logging
+from synthadoc.agents._base import BaseAgent
 from synthadoc.providers.base import LLMProvider, Message
 
 logger = logging.getLogger(__name__)
@@ -15,15 +16,17 @@ _REWRITE_SYSTEM = (
 )
 
 
-class RewriteAgent:
+class RewriteAgent(BaseAgent):
     def __init__(self, provider: LLMProvider) -> None:
-        self._provider = provider
+        super().__init__(provider)
 
-    async def rewrite(self, question: str, history: list[dict]) -> str:
+    async def _run(self, question: str, history: list[dict]) -> str:
         """Return a standalone version of *question* using *history* for context.
 
+        Called by the inherited ``BaseAgent.run()`` wrapper.
         Returns *question* unchanged when history is empty (no LLM call).
-        Falls back to *question* on any LLM error.
+        Returns ``""`` when the LLM response is empty; the caller should
+        fall back to the original question (``rewritten or question``).
         """
         if not history:
             return question
@@ -35,14 +38,13 @@ class RewriteAgent:
             f"Follow-up question: {question}\n\n"
             "Rewritten standalone question:"
         )
-        try:
-            resp = await self._provider.complete(
-                messages=[Message(role="user", content=prompt)],
-                system=_REWRITE_SYSTEM,
-                temperature=0.0,
-            )
-            rewritten = resp.text.strip()
-            return rewritten if rewritten else question
-        except Exception as exc:
-            logger.warning("RewriteAgent failed, using original question: %s", exc)
-            return question
+        resp = await self._provider.complete(
+            messages=[Message(role="user", content=prompt)],
+            system=_REWRITE_SYSTEM,
+            temperature=0.0,
+        )
+        return resp.text.strip()
+
+    def _safe_default(self) -> str:
+        """Return empty string when ``_run`` raises; caller falls back to original question."""
+        return ""

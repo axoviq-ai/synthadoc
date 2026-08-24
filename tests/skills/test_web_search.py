@@ -131,7 +131,7 @@ async def test_ingest_agent_returns_child_sources_for_web_search(tmp_wiki, monke
                         max_pages=15, wiki_root=tmp_wiki)
 
     with patch.object(agent._skill_agent, "extract", return_value=mock_extracted):
-        result = await agent.ingest("search for: test")
+        result = await agent.run("search for: test")
 
     assert result.child_sources == child_urls
     # provider.complete is called once by SearchDecomposeAgent (decomposition step)

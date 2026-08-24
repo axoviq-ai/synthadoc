@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from synthadoc.agents._base import BaseAgent
 from synthadoc.agents.citations import CITATION_RE
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.wiki import LifecycleState
@@ -284,13 +285,13 @@ def estimate_faithfulness_tokens(
     return total
 
 
-async def run_faithfulness_audit(
+async def _run_faithfulness_audit(
     wiki_root: Path,
     store: "WikiStorage",
     provider: LLMProvider,
     page_slug_filter: str | None = None,
 ) -> list[FaithfulnessResult]:
-    """Top-level entry point for the faithfulness audit.
+    """Internal audit loop — iterate active pages and call the LLM per page.
 
     1. Iterate active pages (or one slug if page_slug_filter is set).
     2. Extract citations; emit skipped immediately for missing sidecars.
@@ -299,6 +300,8 @@ async def run_faithfulness_audit(
 
     Note: CostGuard is NOT called here — the CLI path calls it before
     invoking this function; the HTTP path uses a separate dry_run call.
+
+    Prefer ``FaithfulnessAuditAgent.run()`` over calling this directly.
     """
     extracted_dir = wiki_root / ".synthadoc" / "extracted"
     all_results: list[FaithfulnessResult] = []
@@ -323,3 +326,60 @@ async def run_faithfulness_audit(
         all_results.extend(page_results)
 
     return all_results
+
+
+class FaithfulnessAuditAgent(BaseAgent):
+    """Tier-1 agent that verifies claim text is supported by cited source lines.
+
+    Runs one LLM call per page (batching all citations in that page).
+    Verdict per citation: ``supported | drift | hallucination | skipped``.
+
+    Usage::
+
+        agent = FaithfulnessAuditAgent(provider, wiki_root, store)
+        results = await agent.run()           # all active pages
+        results = await agent.run("my-page")  # single page
+
+    Cost estimation (no LLM calls)::
+
+        pages = collect_checks_for_pages(wiki_root, store)
+        tokens = estimate_faithfulness_tokens(pages)
+    """
+
+    def __init__(
+        self,
+        provider: LLMProvider,
+        wiki_root: Path,
+        store: "WikiStorage",
+        cfg: "Config | None" = None,
+    ) -> None:
+        super().__init__(provider, cfg)
+        self._wiki_root = wiki_root
+        self._store = store
+
+    async def _run(
+        self,
+        page_slug: str | None = None,
+    ) -> list[FaithfulnessResult]:
+        """Run the faithfulness audit and return results.
+
+        Called by the inherited ``BaseAgent.run()`` wrapper, which handles
+        logging and returns ``_safe_default()`` on failure.
+
+        Args:
+            page_slug: If given, audit only this page; otherwise audit all
+                       active pages.
+
+        Returns:
+            One ``FaithfulnessResult`` per citation found.  Pages with no
+            citations produce no results.  LLM errors produce ``skipped``
+            entries rather than raising.
+        """
+        return await _run_faithfulness_audit(
+            self._wiki_root, self._store, self._provider,
+            page_slug_filter=page_slug,
+        )
+
+    def _safe_default(self) -> list[FaithfulnessResult]:
+        """Return an empty result list when ``_run`` raises unexpectedly."""
+        return []

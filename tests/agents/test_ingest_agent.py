@@ -110,7 +110,7 @@ async def test_ingest_creates_page(tmp_wiki, mock_provider, cache):
 
     agent = IngestAgent(provider=mock_provider, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15)
-    result = await agent.ingest(str(source))
+    result = await agent.run(str(source))
     assert isinstance(result, IngestResult)
     assert not result.skipped
     assert result.pages_created
@@ -129,8 +129,8 @@ async def test_ingest_skips_duplicate(tmp_wiki, mock_provider, cache):
 
     agent = IngestAgent(provider=mock_provider, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15)
-    await agent.ingest(str(source))
-    result2 = await agent.ingest(str(source))
+    await agent.run(str(source))
+    result2 = await agent.run(str(source))
     assert result2.skipped is True
 
 
@@ -144,7 +144,7 @@ async def test_ingest_nonexistent_path_raises(tmp_wiki, mock_provider, cache):
     agent = IngestAgent(provider=mock_provider, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15)
     with pytest.raises(FileNotFoundError):
-        await agent.ingest("/tmp/does-not-exist-abc123.pdf")
+        await agent.run("/tmp/does-not-exist-abc123.pdf")
 
 
 @pytest.mark.asyncio
@@ -159,7 +159,7 @@ async def test_ingest_zero_byte_file_raises(tmp_wiki, mock_provider, cache):
     agent = IngestAgent(provider=mock_provider, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15)
     with pytest.raises(ValueError, match="empty"):
-        await agent.ingest(str(empty))
+        await agent.run(str(empty))
 
 
 @pytest.mark.asyncio
@@ -186,13 +186,13 @@ async def test_force_busts_cache(tmp_wiki, mock_provider, cache):
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15)
 
     # First ingest — populates cache; 2 LLM calls (extract + decision)
-    await agent.ingest(str(source))
+    await agent.run(str(source))
     calls_after_first = mock_provider.complete.call_count
 
     # Second ingest without force — should use cache, no new LLM calls
-    await agent.ingest(str(source), force=True)  # force=True skips dedup
+    await agent.run(str(source), force=True)  # force=True skips dedup
     # Without bust_cache the count would stay the same; with bust_cache it increases
-    await agent.ingest(str(source), force=True, bust_cache=True)
+    await agent.run(str(source), force=True, bust_cache=True)
     assert mock_provider.complete.call_count > calls_after_first
 
 
@@ -216,7 +216,7 @@ async def test_new_page_appended_to_index(tmp_wiki, mock_provider, cache):
 
     agent = IngestAgent(provider=mock_provider, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15)
-    result = await agent.ingest(str(source))
+    result = await agent.run(str(source))
 
     assert result.pages_created
     index_text = (tmp_wiki / "wiki" / "index.md").read_text(encoding="utf-8")
@@ -259,7 +259,7 @@ async def test_ingest_flags_contradiction(tmp_wiki, cache):
 
     agent = IngestAgent(provider=p, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15)
-    result = await agent.ingest(str(source))
+    result = await agent.run(str(source))
 
     assert "grace-hopper" in result.pages_flagged
     page = store.read_page("grace-hopper")
@@ -304,7 +304,7 @@ async def test_ingest_flag_ignores_skip_slugs(tmp_wiki, cache):
 
     agent = IngestAgent(provider=p, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15)
-    result = await agent.ingest(str(source))
+    result = await agent.run(str(source))
 
     assert "index" not in result.pages_flagged
     page = store.read_page("index")
@@ -346,7 +346,7 @@ async def test_force_skip_promotes_stale_page_to_draft(tmp_wiki, cache):
 
     agent = IngestAgent(provider=p, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15)
-    result = await agent.ingest(str(source), force=True)
+    result = await agent.run(str(source), force=True)
 
     assert result.skipped is True
     page = store.read_page("alan-turing")
@@ -385,7 +385,7 @@ async def test_ingest_updates_existing_page(tmp_wiki, cache):
 
     agent = IngestAgent(provider=p, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15)
-    result = await agent.ingest(str(source))
+    result = await agent.run(str(source))
 
     assert "alan-turing" in result.pages_updated
     page = store.read_page("alan-turing")
@@ -422,7 +422,7 @@ async def test_ingest_populates_okf_type(tmp_wiki, cache):
 
     agent = IngestAgent(provider=p, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15)
-    result = await agent.ingest(str(source))
+    result = await agent.run(str(source))
 
     assert result.pages_created
     page = store.read_page(result.pages_created[0])
@@ -466,7 +466,7 @@ async def test_ingest_resource_set_for_url_source(tmp_wiki, cache):
          patch.object(agent._skill_agent, "detect_skill") as mock_detect:
         from synthadoc.skills.base import SkillMeta
         mock_detect.return_value = SkillMeta(name="url", description="URL skill")
-        result = await agent.ingest("https://example.com/python")
+        result = await agent.run("https://example.com/python")
 
     assert result.pages_created
     page = store.read_page(result.pages_created[0])
@@ -509,7 +509,7 @@ async def test_force_reingest_backfills_okf_fields(tmp_wiki, cache):
 
     agent = IngestAgent(provider=p, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15)
-    result = await agent.ingest(str(source), force=True)
+    result = await agent.run(str(source), force=True)
 
     assert "alan-turing" in result.pages_updated
     page = store.read_page("alan-turing")
@@ -550,7 +550,7 @@ async def test_update_action_stamps_updated_field(tmp_wiki, cache):
 
     agent = IngestAgent(provider=p, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15)
-    result = await agent.ingest(str(source), force=True)
+    result = await agent.run(str(source), force=True)
 
     assert "alan-turing" in result.pages_updated
     page = store.read_page("alan-turing")
@@ -571,7 +571,7 @@ async def test_create_action_leaves_updated_none(tmp_wiki, mock_provider, cache)
 
     agent = IngestAgent(provider=mock_provider, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15)
-    result = await agent.ingest(str(source))
+    result = await agent.run(str(source))
 
     assert result.pages_created
     page = store.read_page(result.pages_created[0])
@@ -593,7 +593,7 @@ async def test_ingest_resource_none_for_local_file(tmp_wiki, mock_provider, cach
 
     agent = IngestAgent(provider=mock_provider, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15)
-    result = await agent.ingest(str(source))
+    result = await agent.run(str(source))
 
     assert result.pages_created
     page = store.read_page(result.pages_created[0])
@@ -629,7 +629,7 @@ async def test_ingest_hash_size_mismatch_warns_and_proceeds(tmp_wiki, mock_provi
     agent = IngestAgent(provider=mock_provider, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15)
     with caplog.at_level(logging.WARNING):
-        result = await agent.ingest(str(source))
+        result = await agent.run(str(source))
     assert not result.skipped
     assert any("collision" in r.message.lower() or "size" in r.message.lower()
                for r in caplog.records)
@@ -664,7 +664,7 @@ async def test_purpose_md_filters_out_of_scope_source(tmp_wiki, mock_provider, c
     agent = IngestAgent(provider=mock_provider, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15,
                         wiki_root=tmp_wiki)
-    result = await agent.ingest(str(source))
+    result = await agent.run(str(source))
     assert result.skipped
     assert "scope" in result.skip_reason.lower()
 
@@ -702,7 +702,7 @@ async def test_skip_records_ingest_in_audit_db(tmp_wiki, mock_provider, cache):
     agent = IngestAgent(provider=mock_provider, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15,
                         wiki_root=tmp_wiki)
-    result = await agent.ingest(str(source))
+    result = await agent.run(str(source))
     assert result.skipped
 
     # Audit DB must have a record for this source so future lint won't fire stale.
@@ -728,7 +728,7 @@ async def test_purpose_md_absent_does_not_break_ingest(tmp_wiki, mock_provider, 
     agent = IngestAgent(provider=mock_provider, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache,
                         max_pages=15, wiki_root=tmp_wiki)
-    result = await agent.ingest(str(source))
+    result = await agent.run(str(source))
     assert not result.skipped
 
 
@@ -795,7 +795,7 @@ async def test_ingest_strips_llm_frontmatter_from_page_content(tmp_wiki, cache):
 
     agent = IngestAgent(provider=provider, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15)
-    result = await agent.ingest(str(source))
+    result = await agent.run(str(source))
     assert result.pages_created
 
     slug = result.pages_created[0]
@@ -850,7 +850,7 @@ async def test_overview_md_created_after_ingest(tmp_wiki, cache):
     agent = IngestAgent(provider=provider, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache,
                         max_pages=15, wiki_root=tmp_wiki)
-    result = await agent.ingest(str(source))
+    result = await agent.run(str(source))
     assert result.pages_created
     overview = tmp_wiki / "wiki" / "overview.md"
     assert overview.exists(), "overview.md should be created after page creation"
@@ -890,7 +890,7 @@ async def test_overview_md_not_written_on_skip(tmp_wiki, cache):
     agent = IngestAgent(provider=provider, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache,
                         max_pages=15, wiki_root=tmp_wiki)
-    await agent.ingest(str(source))
+    await agent.run(str(source))
     assert not (tmp_wiki / "wiki" / "overview.md").exists()
 
 
@@ -933,7 +933,7 @@ async def test_ingest_title_uses_h1_from_generated_body(tmp_wiki, cache):
     agent = IngestAgent(provider=provider, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache,
                         max_pages=15, wiki_root=tmp_wiki)
-    result = await agent.ingest(str(source))
+    result = await agent.run(str(source))
     assert result.pages_created
 
     slug = result.pages_created[0]
@@ -1093,7 +1093,7 @@ async def test_ingest_uses_page_content_for_new_pages(tmp_wiki, cache):
                         log_writer=log, audit_db=audit, cache=cache,
                         max_pages=15, wiki_root=tmp_wiki)
     with patch.object(IngestAgent, "_update_overview", AsyncMock()):
-        result = await agent.ingest(str(source))
+        result = await agent.run(str(source))
 
     assert "ada-lovelace" in result.pages_created
     page = store.read_page("ada-lovelace")
@@ -1137,7 +1137,7 @@ async def test_ingest_preserves_wikilinks_in_update_content(tmp_wiki, cache):
                         log_writer=log, audit_db=audit, cache=cache,
                         max_pages=15, wiki_root=tmp_wiki)
     with patch.object(IngestAgent, "_update_overview", AsyncMock()):
-        result = await agent.ingest(str(source))
+        result = await agent.run(str(source))
 
     assert "alan-turing" in result.pages_updated
     page = store.read_page("alan-turing")
@@ -1250,7 +1250,7 @@ async def test_ingest_vision_path_extracts_text_from_image(tmp_wiki, cache):
 
     with patch.object(agent._skill_agent, "extract", AsyncMock(return_value=fake_extracted)):
         with patch.object(IngestAgent, "_update_overview", AsyncMock()):
-            result = await agent.ingest(str(img_path))
+            result = await agent.run(str(img_path))
 
     assert not result.skipped
     assert result.pages_created
@@ -1295,7 +1295,7 @@ async def test_ingest_slug_collision_appends_as_update(tmp_wiki, cache):
                         log_writer=log, audit_db=audit, cache=cache,
                         max_pages=15, wiki_root=tmp_wiki)
     with patch.object(IngestAgent, "_update_overview", AsyncMock()):
-        result = await agent.ingest(str(source))
+        result = await agent.run(str(source))
 
     # Must be recorded as an update, not a new creation (original content preserved)
     assert "alan-turing" in result.pages_updated
@@ -1323,7 +1323,7 @@ async def test_no_extractable_text_produces_skip(tmp_wiki, mock_provider, cache)
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15)
     fake_extracted = ExtractedContent(text="", source_path=str(source), metadata={})
     with patch.object(agent._skill_agent, "extract", AsyncMock(return_value=fake_extracted)):
-        result = await agent.ingest(str(source))
+        result = await agent.run(str(source))
 
     assert result.skipped is True
     assert result.skip_reason == "no extractable text"
@@ -1366,7 +1366,7 @@ async def test_youtube_has_summary_uses_skill_body(tmp_wiki, mock_provider, cach
                         max_pages=15, wiki_root=tmp_wiki)
 
     with patch.object(agent._skill_agent, "extract", return_value=mock_extracted):
-        result = await agent.ingest("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        result = await agent.run("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
 
     assert result.pages_created or result.pages_updated
     slug = (result.pages_created + result.pages_updated)[0]
@@ -1405,7 +1405,7 @@ async def test_youtube_no_summary_falls_back_to_existing_flow(tmp_wiki, mock_pro
                         max_pages=15, wiki_root=tmp_wiki)
 
     with patch.object(agent._skill_agent, "extract", return_value=mock_extracted):
-        result = await agent.ingest("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        result = await agent.run("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
 
     assert result.pages_created or result.pages_updated
 
@@ -1438,8 +1438,8 @@ async def test_youtube_rerun_same_url_is_skipped(tmp_wiki, mock_provider, cache)
                         max_pages=15, wiki_root=tmp_wiki)
 
     with patch.object(agent._skill_agent, "extract", return_value=mock_extracted):
-        first = await agent.ingest(url)
-        second = await agent.ingest(url)
+        first = await agent.run(url)
+        second = await agent.run(url)
 
     assert not first.skipped, "first ingest must create or update a page"
     assert first.pages_created or first.pages_updated
@@ -1471,7 +1471,7 @@ async def test_youtube_rerun_allowed_after_page_deleted(tmp_wiki, mock_provider,
                         max_pages=15, wiki_root=tmp_wiki)
 
     with patch.object(agent._skill_agent, "extract", return_value=mock_extracted):
-        first = await agent.ingest(url)
+        first = await agent.run(url)
 
     assert first.pages_created, "first ingest must create a page"
     slug = first.pages_created[0]
@@ -1480,7 +1480,7 @@ async def test_youtube_rerun_allowed_after_page_deleted(tmp_wiki, mock_provider,
     (tmp_wiki / "wiki" / f"{slug}.md").unlink()
 
     with patch.object(agent._skill_agent, "extract", return_value=mock_extracted):
-        third = await agent.ingest(url)
+        third = await agent.run(url)
 
     assert not third.skipped, "re-ingest after page deletion must not be skipped"
 
@@ -1519,7 +1519,7 @@ async def test_url_source_ref_size_is_content_length_not_url_length(tmp_wiki, mo
                         max_pages=15, wiki_root=tmp_wiki)
 
     with patch.object(agent._skill_agent, "extract", return_value=mock_extracted):
-        result = await agent.ingest(url)
+        result = await agent.run(url)
 
     assert result.pages_created, "ingest must create a page"
     page = store.read_page(result.pages_created[0])
@@ -1563,7 +1563,7 @@ async def test_ingest_cjk_source_creates_page(tmp_wiki, cache):
     ])
     agent = IngestAgent(provider=provider, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15)
-    result = await agent.ingest(str(source))
+    result = await agent.run(str(source))
 
     assert not result.skipped
     assert result.pages_created
@@ -1604,7 +1604,7 @@ async def test_ingest_cjk_page_update_appends_content(tmp_wiki, cache):
     ])
     agent = IngestAgent(provider=provider, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15)
-    result = await agent.ingest(str(source))
+    result = await agent.run(str(source))
 
     assert "人工智能" in result.pages_updated
     page = store.read_page("人工智能")
@@ -1638,7 +1638,7 @@ async def test_ingest_cjk_tags_stored_in_page(tmp_wiki, cache):
     ])
     agent = IngestAgent(provider=provider, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15)
-    await agent.ingest(str(source))
+    await agent.run(str(source))
 
     page = store.read_page("深度学习")
     assert page is not None
@@ -1686,7 +1686,7 @@ async def test_ingest_adds_slug_to_routing(tmp_wiki, cache):
         log_writer=log, audit_db=audit, cache=cache, max_pages=15,
         wiki_root=tmp_wiki, routing_path=routing_path,
     )
-    result = await agent.ingest(str(source))
+    result = await agent.run(str(source))
 
     assert "grace-hopper" in result.pages_created
     content = routing_path.read_text()
@@ -1723,7 +1723,7 @@ async def test_ingest_no_routing_path_skips_routing(tmp_wiki, cache):
         log_writer=log, audit_db=audit, cache=cache, max_pages=15,
         wiki_root=tmp_wiki,
     )
-    result = await agent.ingest(str(source))
+    result = await agent.run(str(source))
 
     assert "ada-lovelace" in result.pages_created
     # Provider was called for analysis + decision + Pass 4 citation + overview (not branch pick)
@@ -1784,7 +1784,7 @@ async def test_pass4_annotates_page_content(tmp_wiki):
     source = tmp_wiki / "raw_sources" / "ada.md"
     source.write_text("Ada Lovelace was the first programmer.", encoding="utf-8")
 
-    result = await agent.ingest(str(source))
+    result = await agent.run(str(source))
 
     assert result.pages_created
     slug = result.pages_created[0]
@@ -1828,7 +1828,7 @@ async def test_pass4_failure_does_not_fail_ingest(tmp_wiki):
     source.write_text("Artificial intelligence is a broad field.", encoding="utf-8")
 
     with patch.object(IngestAgent, "_update_overview", AsyncMock()):
-        result = await agent.ingest(str(source))
+        result = await agent.run(str(source))
 
     assert not result.skipped
     assert result.pages_created
@@ -1874,7 +1874,7 @@ async def test_pass4_only_annotates_update_content(tmp_wiki):
     source.write_text("Turing broke the Enigma cipher.", encoding="utf-8")
 
     with patch.object(IngestAgent, "_update_overview", AsyncMock()):
-        result = await agent.ingest(str(source))
+        result = await agent.run(str(source))
 
     assert "alan-turing" in result.pages_updated
     page = store.read_page("alan-turing")
@@ -1920,7 +1920,7 @@ async def test_sidecar_written_for_pdf(tmp_wiki):
 
     with patch.object(agent._skill_agent, "extract", AsyncMock(return_value=fake_extracted)):
         with patch.object(IngestAgent, "_update_overview", AsyncMock()):
-            result = await agent.ingest(str(pdf_path))
+            result = await agent.run(str(pdf_path))
 
     txt_file = tmp_wiki / ".synthadoc" / "extracted" / "sample.txt"
     assert txt_file.exists(), f"Expected sidecar txt at {txt_file}"
@@ -1965,7 +1965,7 @@ async def test_sidecar_pagemap_written_for_pdf(tmp_wiki):
 
     with patch.object(agent._skill_agent, "extract", AsyncMock(return_value=fake_extracted)):
         with patch.object(IngestAgent, "_update_overview", AsyncMock()):
-            result = await agent.ingest(str(pdf_path))
+            result = await agent.run(str(pdf_path))
 
     pagemap_file = tmp_wiki / ".synthadoc" / "extracted" / "mypdf.pdf.pagemap"
     assert pagemap_file.exists(), f"Expected pagemap at {pagemap_file}"
@@ -2001,7 +2001,7 @@ async def test_sidecar_not_written_for_txt_source(tmp_wiki):
     source.write_text("This is plain text content.", encoding="utf-8")
 
     with patch.object(IngestAgent, "_update_overview", AsyncMock()):
-        result = await agent.ingest(str(source))
+        result = await agent.run(str(source))
 
     extracted_dir = tmp_wiki / ".synthadoc" / "extracted"
     sidecar_txt = extracted_dir / "notes.txt"
@@ -2053,7 +2053,7 @@ async def test_pass4_result_recorded_in_claim_citations(tmp_wiki, db, cache):
     )
 
     with patch.object(IngestAgent, "_update_overview", AsyncMock()):
-        result = await agent.ingest(str(source))
+        result = await agent.run(str(source))
 
     assert result.pages_created
     citations = await db.list_citations()
@@ -2097,7 +2097,7 @@ async def test_pass4_no_citations_logs_warning(tmp_wiki, caplog):
 
     with caplog.at_level(logging.WARNING, logger="synthadoc.agents.ingest_agent"):
         with patch.object(IngestAgent, "_update_overview", AsyncMock()):
-            await agent.ingest(str(source))
+            await agent.run(str(source))
 
     # Check that a WARNING was logged about zero citations
     warning_records = [
@@ -2150,7 +2150,7 @@ async def test_pass4_with_citation_does_not_warn(tmp_wiki, caplog):
 
     with caplog.at_level(logging.WARNING, logger="synthadoc.agents.ingest_agent"):
         with patch.object(IngestAgent, "_update_overview", AsyncMock()):
-            await agent.ingest(str(source))
+            await agent.run(str(source))
 
     # Check that NO WARNING was logged about zero citations
     warning_msgs = [
@@ -2437,7 +2437,7 @@ async def test_decision_prompt_includes_page_status(tmp_wiki, cache):
 
     agent = IngestAgent(provider=p, store=store, search=search,
                         log_writer=log, audit_db=audit, cache=cache, max_pages=15)
-    await agent.ingest(str(source))
+    await agent.run(str(source))
 
     # The decision call is the second complete() call (after entity extraction).
     # Verify the prompt text passed to the LLM contains status= for the candidate page.

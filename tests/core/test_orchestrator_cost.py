@@ -17,7 +17,7 @@ def _cfg(provider: str = "anthropic", model: str = "claude-haiku-4-5-20251001") 
 
 def _mock_query_agent(input_tokens: int, output_tokens: int, answer: str = "ok"):
     mock_agent = MagicMock()
-    mock_agent.query = AsyncMock(return_value=QueryResult(
+    mock_agent.run = AsyncMock(return_value=QueryResult(
         question="q",
         answer=answer,
         citations=[],
@@ -30,7 +30,7 @@ def _mock_query_agent(input_tokens: int, output_tokens: int, answer: str = "ok")
 
 def _mock_ingest_agent(input_tokens: int, output_tokens: int):
     mock_agent = MagicMock()
-    mock_agent.ingest = AsyncMock(return_value=IngestResult(
+    mock_agent.run = AsyncMock(return_value=IngestResult(
         source="test.md",
         pages_created=["page-a"],
         tokens_used=input_tokens + output_tokens,
@@ -281,7 +281,7 @@ async def test_pre_call_gate_blocks_ingest_agent_not_called(tmp_wiki):
              patch.object(orch._audit, "record_audit_event", new=AsyncMock()) as mock_audit:
             await orch._run_ingest(job_id, "test.md", auto_confirm=True)
 
-        mock_agent.ingest.assert_not_awaited()
+        mock_agent.run.assert_not_awaited()
 
         dead = await orch._queue.list_jobs(status=JobStatus.DEAD)
         assert any(j.id == job_id for j in dead), "Pre-call gate must permanently fail the job"
@@ -316,7 +316,7 @@ async def test_pre_call_gate_passes_and_ingest_runs_normally(tmp_wiki):
              patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
             await orch._run_ingest(job_id, "test.md", auto_confirm=True)
 
-        mock_agent.ingest.assert_awaited_once()
+        mock_agent.run.assert_awaited_once()
         completed = await orch._queue.list_jobs(status=JobStatus.COMPLETED)
         assert any(j.id == job_id for j in completed), "Job must complete when gate passes"
     finally:
@@ -442,7 +442,7 @@ async def test_run_ingest_file_not_found_marks_job_permanently_failed(tmp_wiki):
 
     mock_provider = MagicMock()
     with patch("synthadoc.core.orchestrator.make_provider", return_value=mock_provider):
-        with patch("synthadoc.agents.ingest_agent.IngestAgent.ingest",
+        with patch("synthadoc.agents.ingest_agent.IngestAgent.run",
                    new=AsyncMock(side_effect=FileNotFoundError("Source not found: /bad/path"))):
             with patch.object(orch._queue, "fail_permanent", new=AsyncMock()) as mock_perm:
                 with patch.object(orch._queue, "fail", new=AsyncMock()) as mock_fail:
@@ -463,7 +463,7 @@ async def test_run_ingest_transient_error_uses_retryable_fail(tmp_wiki):
     mock_provider = MagicMock()
     timeout_exc = httpx.ReadTimeout("timed out", request=MagicMock())
     with patch("synthadoc.core.orchestrator.make_provider", return_value=mock_provider):
-        with patch("synthadoc.agents.ingest_agent.IngestAgent.ingest",
+        with patch("synthadoc.agents.ingest_agent.IngestAgent.run",
                    new=AsyncMock(side_effect=timeout_exc)):
             with patch.object(orch._queue, "fail_permanent", new=AsyncMock()) as mock_perm:
                 with patch.object(orch._queue, "fail", new=AsyncMock()) as mock_fail:
