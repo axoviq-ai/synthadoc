@@ -73,13 +73,18 @@ def count_skills() -> int:
 
 
 def count_agents() -> int:
-    """Count Agent classes defined in synthadoc/agents/*.py."""
+    """Count Agent classes defined in synthadoc/agents/*.py.
+
+    Excludes underscore-prefixed files (_base.py, _utils.py, …) which are
+    internal modules, not agent implementations.
+    """
     import re
     agents_dir = ROOT / "synthadoc" / "agents"
     pattern = re.compile(r"^class \w+Agent[:(]", re.MULTILINE)
     return sum(
         len(pattern.findall(p.read_text(encoding="utf-8")))
         for p in agents_dir.glob("*.py")
+        if not p.name.startswith("_")
     )
 
 

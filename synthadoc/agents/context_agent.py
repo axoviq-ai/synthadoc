@@ -6,10 +6,11 @@ import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from synthadoc.agents._base import BaseAgent
+from synthadoc.agents.query_agent import QueryAgent
 from synthadoc.providers.base import LLMProvider
 from synthadoc.storage.search import HybridSearch
 from synthadoc.storage.wiki import WikiStorage
-from synthadoc.agents.query_agent import QueryAgent
 
 _WORDS_PER_TOKEN = 0.75  # rough approximation
 
@@ -79,10 +80,11 @@ class ContextPack:
         }
 
 
-class ContextAgent:
+class ContextAgent(BaseAgent):
     def __init__(self, provider: LLMProvider, store: WikiStorage,
                  search: HybridSearch, token_budget: int = 4000,
                  top_n: int = 8) -> None:
+        super().__init__(provider)
         self._qa = QueryAgent(provider=provider, store=store, search=search)
         self._store = store
         self._search = search

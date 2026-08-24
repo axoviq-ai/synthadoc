@@ -10,6 +10,7 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
+from synthadoc.agents._base import BaseAgent
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.cli._init import _AGENT_INSTRUCTION_BODY
 from synthadoc.storage.wiki import SYSTEM_PAGE_SLUGS
@@ -380,9 +381,9 @@ def _validate_scaffold_result(result: "ScaffoldResult", domain: str) -> None:
         )
 
 
-class ScaffoldAgent:
+class ScaffoldAgent(BaseAgent):
     def __init__(self, provider: LLMProvider, max_tokens: int = 8192) -> None:
-        self._provider = provider
+        super().__init__(provider)
         self._max_tokens = max_tokens
 
     async def scaffold(

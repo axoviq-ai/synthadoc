@@ -2,6 +2,7 @@
 # Copyright (C) 2026 William Johnason / axoviq.com
 from __future__ import annotations
 import logging
+from synthadoc.agents._base import BaseAgent
 from synthadoc.providers.base import LLMProvider, Message
 
 logger = logging.getLogger(__name__)
@@ -13,9 +14,9 @@ _SUMMARIZE_SYSTEM = (
 )
 
 
-class SummarizeAgent:
+class SummarizeAgent(BaseAgent):
     def __init__(self, provider: LLMProvider) -> None:
-        self._provider = provider
+        super().__init__(provider)
 
     async def summarize(self, messages: list[dict]) -> str:
         """Return a 2-3 sentence summary of *messages*.

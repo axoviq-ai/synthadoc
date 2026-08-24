@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from synthadoc.agents._base import BaseAgent
 from synthadoc.agents._utils import parse_json_string_array
 from synthadoc.agents.action_agent import ActionAgent
 from synthadoc.agents.hint_engine import HintEngine, SessionMode
@@ -542,7 +543,7 @@ def _build_pre_prompt(answer: str) -> str | None:
     return None
 
 
-class QueryAgent:
+class QueryAgent(BaseAgent):
     def __init__(self, provider: LLMProvider, store: WikiStorage,
                  search: HybridSearch,
                  query_config=None,
@@ -553,7 +554,7 @@ class QueryAgent:
                  max_tokens: int = 8192) -> None:
         from synthadoc.config import QueryConfig
         from synthadoc.core.context_budget import compute_char_budgets
-        self._provider = provider
+        super().__init__(provider)
         self._store = store
         self._search = search
         self._gap_score_threshold = gap_score_threshold

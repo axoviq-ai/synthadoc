@@ -19,6 +19,7 @@ try:
 except ImportError:
     _LOUVAIN_AVAILABLE = False
 
+from synthadoc.agents._base import BaseAgent
 from synthadoc.agents.citations import CITATION_RE as _CITATION_BODY_RE
 from synthadoc.agents.citations import MALFORMED_CITE_RE as _MALFORMED_CITE_RE
 from synthadoc.providers.base import LLMProvider, Message
@@ -416,7 +417,7 @@ def _save_adv_hash_cache(wiki_root: Path, cache: dict[str, str]) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-class LintAgent:
+class LintAgent(BaseAgent):
     def __init__(self, provider: LLMProvider, store: WikiStorage,
                  log_writer: "LogWriter | None" = None, confidence_threshold: float = 0.85,
                  audit_db: AuditDB | None = None,
@@ -425,7 +426,7 @@ class LintAgent:
                  adversarial_concurrency: int = 8,
                  wiki_root: "Path | str | None" = None,
                  cfg: "Config | None" = None) -> None:
-        self._provider = provider
+        super().__init__(provider, cfg)
         self._store = store
         self._log = log_writer
         self._threshold = confidence_threshold
@@ -434,7 +435,6 @@ class LintAgent:
         self._adversarial_max_per_page = adversarial_max_per_page
         self._adversarial_concurrency = adversarial_concurrency
         self._wiki_root = Path(wiki_root) if wiki_root else self._store._root.parent
-        self._cfg = cfg
 
     def _find_orphans(self, slugs: list[str]) -> list[str]:
         page_texts = {}

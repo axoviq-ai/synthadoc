@@ -2,6 +2,7 @@
 # Copyright (C) 2026 William Johnason / axoviq.com
 from __future__ import annotations
 import logging
+from synthadoc.agents._base import BaseAgent
 from synthadoc.providers.base import LLMProvider, Message
 
 logger = logging.getLogger(__name__)
@@ -15,9 +16,9 @@ _REWRITE_SYSTEM = (
 )
 
 
-class RewriteAgent:
+class RewriteAgent(BaseAgent):
     def __init__(self, provider: LLMProvider) -> None:
-        self._provider = provider
+        super().__init__(provider)
 
     async def rewrite(self, question: str, history: list[dict]) -> str:
         """Return a standalone version of *question* using *history* for context.

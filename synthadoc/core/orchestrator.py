@@ -736,7 +736,7 @@ class Orchestrator:
         Iterates slugs one at a time, updating job progress after each page,
         then merges all results into the faithfulness cache and completes the job.
         """
-        from synthadoc.agents.citation_faithfulness import run_faithfulness_audit
+        from synthadoc.agents.citation_faithfulness import FaithfulnessAuditAgent
         from synthadoc.agents.faithfulness_cache import (
             read_cache,
             get_stale_slugs,
@@ -748,6 +748,7 @@ class Orchestrator:
         wiki_root = self._root
         store = WikiStorage(wiki_root / "wiki")
         provider = make_provider("adversarial", self._cfg)
+        faith_agent = FaithfulnessAuditAgent(provider, wiki_root, store, cfg=self._cfg)
         faith_cfg = self._cfg.agents.resolve("adversarial")
         if self._cfg.agents.adversarial is None:
             logger.info(
@@ -800,10 +801,7 @@ class Orchestrator:
                     "pages_checked": i,
                     "pages_total": total,
                 })
-                # run_faithfulness_audit with a slug filter runs only that page
-                page_results = await run_faithfulness_audit(
-                    wiki_root, store, provider, page_slug_filter=slug
-                )
+                page_results = await faith_agent.run(page_slug=slug)
                 all_results.extend(page_results)
 
             merge_results_into_cache(wiki_root, all_results, store, checked_slugs=slugs)

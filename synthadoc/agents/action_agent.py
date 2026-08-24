@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
+from synthadoc.agents._base import BaseAgent
 from synthadoc.agents.workflows._registry import ROUTED_WORKFLOWS
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.wiki import LifecycleState
@@ -238,7 +239,7 @@ class ActionResult:
 
 # ── agent ─────────────────────────────────────────────────────────────────────
 
-class ActionAgent:
+class ActionAgent(BaseAgent):
     """Detects action-intent queries and dispatches them to the Synthadoc orchestrator."""
 
     def __init__(
@@ -247,7 +248,7 @@ class ActionAgent:
         orchestrator: Any,
         wiki_root: Path,
     ) -> None:
-        self._provider = provider
+        super().__init__(provider)
         self._orch = orchestrator
         self._wiki_root = wiki_root
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 
+from synthadoc.agents._base import BaseAgent
 from synthadoc.agents._utils import parse_json_string_array
 from synthadoc.providers.base import LLMProvider, Message
 
@@ -31,7 +32,7 @@ _WIKIPEDIA_RE = re.compile(
 )
 
 
-class SearchDecomposeAgent:
+class SearchDecomposeAgent(BaseAgent):
     """Decomposes a knowledge gap into actionable ingest suggestions.
 
     Each suggestion is either a terse keyword search query or a well-known
@@ -39,7 +40,7 @@ class SearchDecomposeAgent:
     """
 
     def __init__(self, provider: LLMProvider) -> None:
-        self._provider = provider
+        super().__init__(provider)
 
     async def decompose(self, query: str, domain_context: str = "") -> list[str]:
         """Return a list of search queries and/or well-known URLs for the gap topic.
