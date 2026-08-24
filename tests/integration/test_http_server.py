@@ -143,7 +143,7 @@ def test_query_stream_notice_emitted_on_first_overflow(tmp_wiki):
                        new=AsyncMock(return_value=many_messages)):
                 with patch("synthadoc.providers.make_provider",
                            return_value=fake_provider):
-                    with patch("synthadoc.agents.summarize_agent.SummarizeAgent.summarize",
+                    with patch("synthadoc.agents.summarize_agent.SummarizeAgent.run",
                                new=AsyncMock(return_value="Earlier topics: X and Y.")):
                         with patch("synthadoc.storage.log.AuditDB.update_summary",
                                    new=AsyncMock()):
