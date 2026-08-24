@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from synthadoc.agents._base import BaseAgent
 from synthadoc.agents._utils import parse_json_string_array
 from synthadoc.agents.action_agent import ActionAgent
 from synthadoc.agents.hint_engine import HintEngine, SessionMode
@@ -542,7 +543,7 @@ def _build_pre_prompt(answer: str) -> str | None:
     return None
 
 
-class QueryAgent:
+class QueryAgent(BaseAgent):
     def __init__(self, provider: LLMProvider, store: WikiStorage,
                  search: HybridSearch,
                  query_config=None,
@@ -553,7 +554,7 @@ class QueryAgent:
                  max_tokens: int = 8192) -> None:
         from synthadoc.config import QueryConfig
         from synthadoc.core.context_budget import compute_char_budgets
-        self._provider = provider
+        super().__init__(provider)
         self._store = store
         self._search = search
         self._gap_score_threshold = gap_score_threshold
@@ -1067,7 +1068,23 @@ class QueryAgent:
 
         return sub_questions, candidates, routing_warning
 
-    async def query(self, question: str, history: list[dict] | None = None) -> QueryResult:
+    async def run(  # type: ignore[override]
+        self, question: str, history: list[dict] | None = None
+    ) -> QueryResult:
+        """Public entry point.
+
+        Errors are not suppressed: callers access result attributes directly,
+        so a ``None`` fallback would replace one exception with an
+        ``AttributeError``.  Let errors propagate so the original exception
+        type and traceback are preserved.
+        """
+        return await self._run(question, history)
+
+    def _safe_default(self) -> None:  # type: ignore[override]
+        """Never reached — ``run()`` does not suppress errors."""
+        return None
+
+    async def _run(self, question: str, history: list[dict] | None = None) -> QueryResult:
         question = self._expand_aliases(question)
 
         # Action pre-flight: if orchestrator is available and question is an action, dispatch it
@@ -1105,9 +1122,9 @@ class QueryAgent:
             _gap = False
         _purpose_ctx = self._load_purpose_context()
         if _gap:
-            _suggested = await SearchDecomposeAgent(self._provider).decompose(
+            _suggested = await SearchDecomposeAgent(self._provider).run(
                 question, domain_context=_purpose_ctx
-            )
+            ) or [question]
         else:
             _suggested = []
 
@@ -1153,9 +1170,9 @@ class QueryAgent:
         if not _gap and resp2.text.startswith("[GAP]"):
             _gap = True
             answer_text = resp2.text[len("[GAP]"):].lstrip("\n")
-            _suggested = await SearchDecomposeAgent(self._provider).decompose(
+            _suggested = await SearchDecomposeAgent(self._provider).run(
                 question, domain_context=_purpose_ctx
-            )
+            ) or [question]
 
         _gap = _guard_c_suppress(_gap, answer_text, "query")
 
@@ -1384,8 +1401,8 @@ class QueryAgent:
         # Rewrite question for retrieval when history is present
         retrieval_question = question
         if history:
-            rewritten = await RewriteAgent(self._provider).rewrite(question, history)
-            retrieval_question = rewritten
+            rewritten = await RewriteAgent(self._provider).run(question, history)
+            retrieval_question = rewritten or question
 
         sub_questions, candidates, routing_warning = await self._run_search(retrieval_question)
 
@@ -1515,16 +1532,12 @@ class QueryAgent:
         yield {"event": "citations", "data": {"citations": [] if _gap else citations}}
 
         if _gap:
-            try:
-                # Use the standalone retrieval_question so gap suggestions are meaningful
-                # when the user asked a context-dependent follow-up (e.g. "tell me more
-                # about his death" → rewritten to "How did Alan Turing die?").
-                _suggested = await SearchDecomposeAgent(self._provider).decompose(
-                    retrieval_question, domain_context=_purpose_ctx
-                )
-            except Exception as _exc:
-                logger.warning("run_stream: gap decompose failed, falling back to original question: %s", _exc)
-                _suggested = [retrieval_question]
+            # Use the standalone retrieval_question so gap suggestions are meaningful
+            # when the user asked a context-dependent follow-up (e.g. "tell me more
+            # about his death" → rewritten to "How did Alan Turing die?").
+            _suggested = await SearchDecomposeAgent(self._provider).run(
+                retrieval_question, domain_context=_purpose_ctx
+            ) or [retrieval_question]
             logger.debug("run_stream: yielding gap event (%d searches)", len(_suggested))
             yield {"event": "gap", "data": {"suggested_searches": _suggested}}
 

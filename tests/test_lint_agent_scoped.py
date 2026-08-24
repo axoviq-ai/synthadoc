@@ -1,7 +1,7 @@
 # tests/test_lint_agent_scoped.py
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 William Johnason / axoviq.com
-"""Tests for LintAgent.lint(scope='slug') — scoped single-page re-lint."""
+"""Tests for LintAgent.run(scope='slug') — scoped single-page re-lint."""
 from __future__ import annotations
 
 import pytest
@@ -42,7 +42,7 @@ def _agent(store, provider=None, adv_provider=None):
 async def test_scope_slug_returns_empty_report_when_page_missing(tmp_path):
     store = _make_store(tmp_path, {})
     agent = _agent(store)
-    report = await agent.lint(scope="slug", slug="ghost", adversarial=False, lifecycle=False)
+    report = await agent.run(scope="slug", slug="ghost", adversarial=False, lifecycle=False)
     assert isinstance(report, LintReport)
     assert report.contradictions_found == 0
 
@@ -51,7 +51,7 @@ async def test_scope_slug_returns_empty_report_when_page_missing(tmp_path):
 async def test_scope_slug_no_warnings_no_note_returns_zero(tmp_path):
     store = _make_store(tmp_path, {"target": _page(warnings=[], note=None)})
     agent = _agent(store)
-    report = await agent.lint(scope="slug", slug="target", adversarial=False, lifecycle=False)
+    report = await agent.run(scope="slug", slug="target", adversarial=False, lifecycle=False)
     assert report.contradictions_found == 0
 
 
@@ -61,7 +61,7 @@ async def test_scope_slug_contradiction_note_counts(tmp_path):
         "target": _page(note="Source A says X; source B says Y")
     })
     agent = _agent(store)
-    report = await agent.lint(scope="slug", slug="target", adversarial=False, lifecycle=False)
+    report = await agent.run(scope="slug", slug="target", adversarial=False, lifecycle=False)
     assert report.contradictions_found == 1
 
 
@@ -74,7 +74,7 @@ async def test_scope_slug_skips_full_wiki_scan(tmp_path):
     }
     store = _make_store(tmp_path, pages)
     agent = _agent(store)
-    report = await agent.lint(scope="slug", slug="target", adversarial=False, lifecycle=False)
+    report = await agent.run(scope="slug", slug="target", adversarial=False, lifecycle=False)
     # Only the target page counts — not the other
     assert report.contradictions_found == 1
 
@@ -92,7 +92,7 @@ async def test_scope_slug_adversarial_pass_updates_lint_warnings(tmp_path):
     adv_provider.complete = AsyncMock(return_value=adv_response)
 
     agent = _agent(store, adv_provider=adv_provider)
-    report = await agent.lint(scope="slug", slug="target", adversarial=True, lifecycle=False)
+    report = await agent.run(scope="slug", slug="target", adversarial=True, lifecycle=False)
 
     updated = store.read_page("target")
     assert updated is not None
@@ -122,7 +122,7 @@ async def test_scope_slug_does_not_demote_contradicted_page_via_gate(tmp_path):
         store=store,
         cfg=cfg,
     )
-    await agent.lint(scope="slug", slug="target", adversarial=True, lifecycle=False)
+    await agent.run(scope="slug", slug="target", adversarial=True, lifecycle=False)
     updated = store.read_page("target")
     assert updated.status == LifecycleState.CONTRADICTED  # unchanged
 
@@ -135,7 +135,7 @@ async def test_scope_slug_skips_lint_skip_slugs(tmp_path):
     pages = {a_skip_slug: _page()}
     store = _make_store(tmp_path, pages)
     agent = _agent(store)
-    report = await agent.lint(scope="slug", slug=a_skip_slug, adversarial=False, lifecycle=False)
+    report = await agent.run(scope="slug", slug=a_skip_slug, adversarial=False, lifecycle=False)
     assert report.contradictions_found == 0
 
 
@@ -144,7 +144,7 @@ async def test_scope_slug_missing_slug_param_returns_empty(tmp_path):
     """scope='slug' without a slug → empty report, no error."""
     store = _make_store(tmp_path, {"p": _page()})
     agent = _agent(store)
-    report = await agent.lint(scope="slug", slug=None, adversarial=False, lifecycle=False)
+    report = await agent.run(scope="slug", slug=None, adversarial=False, lifecycle=False)
     assert report.contradictions_found == 0
 
 

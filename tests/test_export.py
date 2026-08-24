@@ -1,10 +1,10 @@
-# tests/test_export_agent.py
+# tests/test_export.py
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 William Johnason / axoviq.com
 import pytest
 from pathlib import Path
 from synthadoc.storage.wiki import WikiStorage, WikiPage, SourceRef, LifecycleState
-from synthadoc.agents.export_agent import ExportAgent, ExportOptions
+from synthadoc.core.export import ExportAgent, ExportOptions
 
 
 def _make_store(tmp_path: Path) -> WikiStorage:
@@ -35,7 +35,7 @@ async def test_llms_txt_active_in_pages_section(tmp_path):
     store = _make_store(tmp_path)
     _write_page(store, "ada-lovelace", "Ada Lovelace", LifecycleState.ACTIVE, "First programmer.")
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="llms.txt"))
+    result = await agent.run(ExportOptions(format="llms.txt"))
     assert "## Pages" in result
     assert "[Ada Lovelace](ada-lovelace)" in result
 
@@ -46,7 +46,7 @@ async def test_llms_txt_contradicted_in_needs_review(tmp_path):
     _write_page(store, "eniac", "ENIAC", LifecycleState.CONTRADICTED,
                 contradiction_note="disputed claim about first computer")
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="llms.txt"))
+    result = await agent.run(ExportOptions(format="llms.txt"))
     assert "## Needs Review" in result
     assert "[ENIAC](eniac)" in result
     assert "contradicted" in result
@@ -57,7 +57,7 @@ async def test_llms_txt_stale_in_needs_review(tmp_path):
     store = _make_store(tmp_path)
     _write_page(store, "vacuum-tubes", "Vacuum Tubes", LifecycleState.STALE)
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="llms.txt"))
+    result = await agent.run(ExportOptions(format="llms.txt"))
     assert "## Needs Review" in result
     assert "stale" in result
 
@@ -67,7 +67,7 @@ async def test_llms_txt_archived_omitted(tmp_path):
     store = _make_store(tmp_path)
     _write_page(store, "old-page", "Old Page", LifecycleState.ARCHIVED)
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="llms.txt"))
+    result = await agent.run(ExportOptions(format="llms.txt"))
     assert "old-page" not in result
 
 
@@ -77,7 +77,7 @@ async def test_llms_txt_status_active_filter_omits_review_section(tmp_path):
     _write_page(store, "ada-lovelace", "Ada Lovelace", LifecycleState.ACTIVE, "First programmer.")
     _write_page(store, "eniac", "ENIAC", LifecycleState.CONTRADICTED)
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="llms.txt", status_filter="active"))
+    result = await agent.run(ExportOptions(format="llms.txt", status_filter="active"))
     assert "## Pages" in result
     assert "[Ada Lovelace]" in result
     assert "## Needs Review" not in result
@@ -90,7 +90,7 @@ async def test_llms_full_txt_contains_page_content(tmp_path):
     _write_page(store, "babbage", "Charles Babbage", LifecycleState.ACTIVE,
                 content="Babbage designed the Difference Engine.^[babbage.txt:1-12]")
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="llms-full.txt"))
+    result = await agent.run(ExportOptions(format="llms-full.txt"))
     assert "# Charles Babbage" in result
     assert "Babbage designed the Difference Engine.^[babbage.txt:1-12]" in result
 
@@ -101,7 +101,7 @@ async def test_llms_full_txt_has_header_with_count(tmp_path):
     _write_page(store, "p1", "Page One", LifecycleState.ACTIVE)
     _write_page(store, "p2", "Page Two", LifecycleState.ACTIVE)
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="llms-full.txt"))
+    result = await agent.run(ExportOptions(format="llms-full.txt"))
     assert "2 active" in result
 
 
@@ -112,7 +112,7 @@ async def test_export_skips_scaffold_slugs(tmp_path):
     _write_page(store, "index", "Index", LifecycleState.ACTIVE, "Index content")
     _write_page(store, "real-page", "Real Page", LifecycleState.ACTIVE, "Actual content")
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="llms.txt"))
+    result = await agent.run(ExportOptions(format="llms.txt"))
     assert "[Real Page]" in result
     assert "[Index](" not in result
 
@@ -121,7 +121,7 @@ async def test_export_skips_scaffold_slugs(tmp_path):
 async def test_empty_wiki_llms_txt(tmp_path):
     store = _make_store(tmp_path)
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="llms.txt"))
+    result = await agent.run(ExportOptions(format="llms.txt"))
     assert "# test-wiki" in result
 
 
@@ -129,7 +129,7 @@ async def test_empty_wiki_llms_txt(tmp_path):
 async def test_empty_wiki_llms_full_txt(tmp_path):
     store = _make_store(tmp_path)
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="llms-full.txt"))
+    result = await agent.run(ExportOptions(format="llms-full.txt"))
     assert "# test-wiki" in result
 
 
@@ -139,7 +139,7 @@ async def test_graphml_has_node_for_each_page(tmp_path):
     _write_page(store, "babbage", "Charles Babbage", LifecycleState.ACTIVE)
     _write_page(store, "lovelace", "Ada Lovelace", LifecycleState.ACTIVE)
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="graphml"))
+    result = await agent.run(ExportOptions(format="graphml"))
     assert 'id="babbage"' in result
     assert 'id="lovelace"' in result
 
@@ -149,7 +149,7 @@ async def test_graphml_node_has_status_attribute(tmp_path):
     store = _make_store(tmp_path)
     _write_page(store, "babbage", "Charles Babbage", LifecycleState.ACTIVE)
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="graphml"))
+    result = await agent.run(ExportOptions(format="graphml"))
     assert "active" in result
 
 
@@ -158,7 +158,7 @@ async def test_graphml_node_has_label_key(tmp_path):
     store = _make_store(tmp_path)
     _write_page(store, "babbage", "Charles Babbage", LifecycleState.ACTIVE)
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="graphml"))
+    result = await agent.run(ExportOptions(format="graphml"))
     assert 'attr.name="label"' in result
     assert "Charles Babbage" in result
     # yEd NodeLabel for native label display in yEd
@@ -173,7 +173,7 @@ async def test_graphml_wikilink_edge_has_wikilink_type(tmp_path):
                 content="See also [[lovelace]].")
     _write_page(store, "lovelace", "Ada Lovelace", LifecycleState.ACTIVE)
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="graphml"))
+    result = await agent.run(ExportOptions(format="graphml"))
     assert 'source="babbage"' in result
     assert 'target="lovelace"' in result
     assert "wikilink" in result
@@ -190,7 +190,7 @@ async def test_graphml_routing_branch_on_node(tmp_path):
         audit_db_path=tmp_path / ".synthadoc" / "audit.db",
         routing_path=routing_path,
     )
-    result = await agent.export(ExportOptions(format="graphml"))
+    result = await agent.run(ExportOptions(format="graphml"))
     assert "Pioneers" in result
 
 
@@ -200,7 +200,7 @@ async def test_graphml_no_self_links(tmp_path):
     _write_page(store, "babbage", "Charles Babbage", LifecycleState.ACTIVE,
                 content="[[babbage]] is a self-link.")
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="graphml"))
+    result = await agent.run(ExportOptions(format="graphml"))
     assert 'source="babbage" target="babbage"' not in result
 
 
@@ -208,7 +208,7 @@ async def test_graphml_no_self_links(tmp_path):
 async def test_graphml_empty_wiki(tmp_path):
     store = _make_store(tmp_path)
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="graphml"))
+    result = await agent.run(ExportOptions(format="graphml"))
     assert '<?xml version="1.0"' in result
     assert "<graphml" in result
 
@@ -220,7 +220,7 @@ async def test_json_has_all_six_differentiators(tmp_path):
                 content="Babbage designed the Difference Engine.")
     agent = _agent(tmp_path, store)
     import json
-    result = json.loads(await agent.export(ExportOptions(format="json")))
+    result = json.loads(await agent.run(ExportOptions(format="json")))
     page = result["pages"][0]
     assert "claims" in page                         # differentiator 1
     assert "lifecycle_history" in page              # differentiator 2
@@ -237,7 +237,7 @@ async def test_json_status_filter(tmp_path):
     _write_page(store, "stale-page", "Stale", LifecycleState.STALE)
     agent = _agent(tmp_path, store)
     import json
-    result = json.loads(await agent.export(ExportOptions(format="json", status_filter="active")))
+    result = json.loads(await agent.run(ExportOptions(format="json", status_filter="active")))
     slugs = [p["slug"] for p in result["pages"]]
     assert "active-page" in slugs
     assert "stale-page" not in slugs
@@ -250,7 +250,7 @@ async def test_json_page_has_correct_fields(tmp_path):
                 content="Content.", tags=["pioneer"])
     agent = _agent(tmp_path, store)
     import json
-    result = json.loads(await agent.export(ExportOptions(format="json")))
+    result = json.loads(await agent.run(ExportOptions(format="json")))
     page = result["pages"][0]
     assert page["slug"] == "babbage"
     assert page["title"] == "Charles Babbage"
@@ -268,7 +268,7 @@ async def test_json_empty_wiki(tmp_path):
     store = _make_store(tmp_path)
     agent = _agent(tmp_path, store)
     import json
-    result = json.loads(await agent.export(ExportOptions(format="json")))
+    result = json.loads(await agent.run(ExportOptions(format="json")))
     assert result["page_count"] == 0
     assert result["pages"] == []
 
@@ -278,7 +278,7 @@ async def test_json_unknown_format_raises(tmp_path):
     store = _make_store(tmp_path)
     agent = _agent(tmp_path, store)
     with pytest.raises(ValueError, match="Unknown format"):
-        await agent.export(ExportOptions(format="bogus"))
+        await agent.run(ExportOptions(format="bogus"))
 
 
 @pytest.mark.asyncio
@@ -293,7 +293,7 @@ async def test_json_date_object_created_serializes(tmp_path):
     )
     store.write_page("date-page", page)
     agent = _agent(tmp_path, store)
-    result = json.loads(await agent.export(ExportOptions(format="json")))
+    result = json.loads(await agent.run(ExportOptions(format="json")))
     assert result["pages"][0]["created"] == "2026-05-26"
 
 
@@ -317,7 +317,7 @@ async def test_json_page_ingest_cost_aggregates_from_audit_db(tmp_path):
         routing_path=tmp_path / "ROUTING.md",
     )
     import json
-    result = json.loads(await agent.export(ExportOptions(format="json")))
+    result = json.loads(await agent.run(ExportOptions(format="json")))
     pages_by_slug = {p["slug"]: p for p in result["pages"]}
     assert pages_by_slug["babbage"]["ingest_tokens"] == 500
     assert abs(pages_by_slug["babbage"]["ingest_cost_usd"] - 0.003) < 1e-9
@@ -345,7 +345,7 @@ async def test_graphml_citation_count_from_audit_db(tmp_path):
         audit_db_path=audit_path,
         routing_path=tmp_path / "ROUTING.md",
     )
-    result = await agent.export(ExportOptions(format="graphml"))
+    result = await agent.run(ExportOptions(format="graphml"))
     # babbage has 3 citations, lovelace has 0
     assert ">3<" in result or "<data key=\"citation_count\">3</data>" in result
     assert "<data key=\"citation_count\">0</data>" in result
@@ -365,7 +365,7 @@ async def test_json_date_object_ingested_serializes(tmp_path):
     )
     store.write_page("source-page", page)
     agent = _agent(tmp_path, store)
-    result = json.loads(await agent.export(ExportOptions(format="json")))
+    result = json.loads(await agent.run(ExportOptions(format="json")))
     assert result["pages"][0]["sources"][0]["ingested"] == "2026-05-26"
 
 
@@ -396,7 +396,7 @@ async def test_okf_export_returns_dict(tmp_path):
     _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
                     content="Father of computer science.", type_="person")
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf"))
+    result = await agent.run(ExportOptions(format="okf"))
     assert isinstance(result, dict)
     assert "index.md" in result
     assert "wiki/alan-turing.md" in result
@@ -408,7 +408,7 @@ async def test_okf_concept_file_has_required_type_field(tmp_path):
     _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
                     content="Father of computer science.", type_="person")
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf"))
+    result = await agent.run(ExportOptions(format="okf"))
     fm = _parse_frontmatter(result["wiki/alan-turing.md"])
     assert fm["type"] == "person"
 
@@ -419,7 +419,7 @@ async def test_okf_type_defaults_to_concept_when_none(tmp_path):
     _write_okf_page(store, "old-page", "Old Page", LifecycleState.ACTIVE,
                     content="Some content.", type_=None)
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf"))
+    result = await agent.run(ExportOptions(format="okf"))
     fm = _parse_frontmatter(result["wiki/old-page.md"])
     assert fm["type"] == "concept"
 
@@ -430,7 +430,7 @@ async def test_okf_description_derived_from_first_sentence(tmp_path):
     _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
                     content="Father of computer science. Much more detail here.", type_="person")
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf"))
+    result = await agent.run(ExportOptions(format="okf"))
     fm = _parse_frontmatter(result["wiki/alan-turing.md"])
     assert fm["description"] == "Father of computer science."
 
@@ -441,7 +441,7 @@ async def test_okf_resource_omitted_when_none(tmp_path):
     _write_okf_page(store, "local-page", "Local Page", LifecycleState.ACTIVE,
                     content="Content.", type_="concept", resource=None)
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf"))
+    result = await agent.run(ExportOptions(format="okf"))
     fm = _parse_frontmatter(result["wiki/local-page.md"])
     assert "resource" not in fm
 
@@ -453,7 +453,7 @@ async def test_okf_resource_present_for_url_source(tmp_path):
                     content="Content.", type_="concept",
                     resource="https://example.com/article")
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf"))
+    result = await agent.run(ExportOptions(format="okf"))
     fm = _parse_frontmatter(result["wiki/web-page.md"])
     assert fm["resource"] == "https://example.com/article"
 
@@ -466,7 +466,7 @@ async def test_okf_tags_emitted_as_yaml_list(tmp_path):
                     content="Content.", type_="person",
                     tags=["mathematics", "computation"])
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf"))
+    result = await agent.run(ExportOptions(format="okf"))
     fm = _parse_frontmatter(result["wiki/alan-turing.md"])
     assert fm["tags"] == ["mathematics", "computation"]
 
@@ -479,7 +479,7 @@ async def test_okf_single_tag_emitted_as_list(tmp_path):
                     content="Content.", type_="person",
                     tags=["pioneer"])
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf"))
+    result = await agent.run(ExportOptions(format="okf"))
     fm = _parse_frontmatter(result["wiki/alan-turing.md"])
     assert fm["tags"] == ["pioneer"]
     assert isinstance(fm["tags"], list)
@@ -492,7 +492,7 @@ async def test_okf_tags_omitted_when_empty(tmp_path):
     _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
                     content="Content.", type_="person", tags=[])
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf"))
+    result = await agent.run(ExportOptions(format="okf"))
     fm = _parse_frontmatter(result["wiki/alan-turing.md"])
     assert "tags" not in fm
 
@@ -504,7 +504,7 @@ async def test_okf_timestamp_uses_updated_when_present(tmp_path):
                     content="Content.", type_="person",
                     created="2026-01-01", updated="2026-05-15")
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf"))
+    result = await agent.run(ExportOptions(format="okf"))
     fm = _parse_frontmatter(result["wiki/alan-turing.md"])
     assert fm["timestamp"] == "2026-05-15"
 
@@ -516,7 +516,7 @@ async def test_okf_timestamp_falls_back_to_created(tmp_path):
                     content="Content.", type_="person",
                     created="2026-01-01", updated=None)
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf"))
+    result = await agent.run(ExportOptions(format="okf"))
     fm = _parse_frontmatter(result["wiki/alan-turing.md"])
     assert fm["timestamp"] == "2026-01-01"
 
@@ -529,7 +529,7 @@ async def test_okf_wikilinks_rewritten_to_relative_paths(tmp_path):
     _write_okf_page(store, "grace-hopper", "Grace Hopper", LifecycleState.ACTIVE,
                     content="Compiler pioneer.", type_="person")
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf"))
+    result = await agent.run(ExportOptions(format="okf"))
     body = result["wiki/alan-turing.md"].split("---", 2)[2]
     assert "[[grace-hopper]]" not in body
     assert "[Grace Hopper](grace-hopper.md)" in body
@@ -543,7 +543,7 @@ async def test_okf_index_groups_pages_by_type(tmp_path):
     _write_okf_page(store, "eniac", "ENIAC", LifecycleState.ACTIVE,
                     content="First computer.", type_="technology")
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf"))
+    result = await agent.run(ExportOptions(format="okf"))
     index = result["index.md"]
     assert "## person" in index
     assert "## technology" in index
@@ -557,7 +557,7 @@ async def test_okf_archived_pages_excluded_by_default(tmp_path):
     _write_okf_page(store, "old-page", "Old Page", LifecycleState.ARCHIVED,
                     content="Retired.", type_="concept")
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf"))
+    result = await agent.run(ExportOptions(format="okf"))
     assert "wiki/old-page.md" not in result
 
 
@@ -568,7 +568,7 @@ async def test_okf_draft_excluded_by_default(tmp_path):
     _write_okf_page(store, "draft-page", "Draft Page", LifecycleState.DRAFT,
                     content="Unverified.", type_="concept")
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf"))
+    result = await agent.run(ExportOptions(format="okf"))
     assert "wiki/draft-page.md" not in result
 
 
@@ -579,7 +579,7 @@ async def test_okf_stale_excluded_by_default(tmp_path):
     _write_okf_page(store, "stale-page", "Stale Page", LifecycleState.STALE,
                     content="Outdated.", type_="concept")
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf"))
+    result = await agent.run(ExportOptions(format="okf"))
     assert "wiki/stale-page.md" not in result
 
 
@@ -590,7 +590,7 @@ async def test_okf_contradicted_included_by_default(tmp_path):
     _write_okf_page(store, "conflict-page", "Conflict Page", LifecycleState.CONTRADICTED,
                     content="Conflicting claim.", type_="concept")
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf"))
+    result = await agent.run(ExportOptions(format="okf"))
     assert "wiki/conflict-page.md" in result
     fm = _parse_frontmatter(result["wiki/conflict-page.md"])
     assert fm["status"] == "contradicted"
@@ -608,7 +608,7 @@ async def test_okf_contradiction_note_appended_to_body(tmp_path):
     )
     store.write_page("conflict-page", page)
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf"))
+    result = await agent.run(ExportOptions(format="okf"))
     body = result["wiki/conflict-page.md"].split("---", 2)[2]
     assert "Source B says the opposite." in body
     assert "> **Contradiction:**" in body
@@ -629,7 +629,7 @@ async def test_okf_wikilinks_in_contradiction_note_are_rewritten(tmp_path):
     _write_okf_page(store, "other-page", "Other Page", LifecycleState.ACTIVE,
                     content="Correct claim.")
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf"))
+    result = await agent.run(ExportOptions(format="okf"))
     body = result["wiki/conflict-page.md"].split("---", 2)[2]
     assert "[[other-page]]" not in body, "wikilink in contradiction_note was not rewritten"
     assert "[Other Page](other-page.md)" in body
@@ -641,13 +641,13 @@ async def test_okf_archived_pages_included_with_status_filter(tmp_path):
     _write_okf_page(store, "old-page", "Old Page", LifecycleState.ARCHIVED,
                     content="Retired.", type_="concept")
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf", status_filter="archived"))
+    result = await agent.run(ExportOptions(format="okf", status_filter="archived"))
     assert "wiki/old-page.md" in result
 
 
 # ── OKF helper unit tests ──────────────────────────────────────────────────────
 
-from synthadoc.agents.export_agent import _first_sentence, _rewrite_wikilinks
+from synthadoc.core.export import _first_sentence, _rewrite_wikilinks
 
 
 def test_first_sentence_no_period_returns_truncated():
@@ -716,7 +716,7 @@ async def test_okf_spec_required_type_field_always_present(tmp_path):
     _write_okf_page(store, "p2", "Page Two", LifecycleState.CONTRADICTED,
                     content="Disputed.", type_=None)  # defaults to "concept"
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf"))
+    result = await agent.run(ExportOptions(format="okf"))
     for path, text in result.items():
         if path.startswith("wiki/"):
             fm = _parse_frontmatter(text)
@@ -731,7 +731,7 @@ async def test_okf_spec_recommended_fields_present(tmp_path):
                     content="Father of computer science. Long description follows.",
                     type_="person", created="2026-01-01", updated="2026-05-15")
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf"))
+    result = await agent.run(ExportOptions(format="okf"))
     fm = _parse_frontmatter(result["wiki/alan-turing.md"])
     assert "title" in fm
     assert "description" in fm
@@ -746,7 +746,7 @@ async def test_okf_spec_description_is_single_line(tmp_path):
                     content="First sentence here. Second sentence. Third sentence.",
                     type_="person")
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf"))
+    result = await agent.run(ExportOptions(format="okf"))
     fm = _parse_frontmatter(result["wiki/alan-turing.md"])
     assert "\n" not in fm["description"]
     assert fm["description"] == "First sentence here."
@@ -759,7 +759,7 @@ async def test_okf_spec_index_has_type_index(tmp_path):
     _write_okf_page(store, "alan-turing", "Alan Turing", LifecycleState.ACTIVE,
                     content="Content.", type_="person")
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf"))
+    result = await agent.run(ExportOptions(format="okf"))
     fm = _parse_frontmatter(result["index.md"])
     assert fm.get("type") == "index"
 
@@ -786,7 +786,7 @@ async def test_okf_spec_tags_are_list_not_string(tmp_path):
                     content="First programmer.", type_="person",
                     tags=["pioneer", "mathematics", "history"])
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf"))
+    result = await agent.run(ExportOptions(format="okf"))
     fm = _parse_frontmatter(result["wiki/ada.md"])
     assert isinstance(fm["tags"], list), "tags must be a YAML list, not a string"
     assert fm["tags"] == ["pioneer", "mathematics", "history"]
@@ -802,7 +802,7 @@ async def test_okf_spec_wikilinks_resolved_to_markdown(tmp_path):
     _write_okf_page(store, "babbage", "Charles Babbage", LifecycleState.ACTIVE,
                     content="Designed the Difference Engine.", type_="person")
     agent = _agent(tmp_path, store)
-    result = await agent.export(ExportOptions(format="okf"))
+    result = await agent.run(ExportOptions(format="okf"))
     body = result["wiki/ada.md"].split("---", 2)[2]
     assert "[[" not in body, "wikilinks must be rewritten to markdown links"
     assert "[Charles Babbage](babbage.md)" in body

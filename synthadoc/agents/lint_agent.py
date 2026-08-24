@@ -19,6 +19,7 @@ try:
 except ImportError:
     _LOUVAIN_AVAILABLE = False
 
+from synthadoc.agents._base import BaseAgent
 from synthadoc.agents.citations import CITATION_RE as _CITATION_BODY_RE
 from synthadoc.agents.citations import MALFORMED_CITE_RE as _MALFORMED_CITE_RE
 from synthadoc.providers.base import LLMProvider, Message
@@ -416,7 +417,7 @@ def _save_adv_hash_cache(wiki_root: Path, cache: dict[str, str]) -> None:
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-class LintAgent:
+class LintAgent(BaseAgent):
     def __init__(self, provider: LLMProvider, store: WikiStorage,
                  log_writer: "LogWriter | None" = None, confidence_threshold: float = 0.85,
                  audit_db: AuditDB | None = None,
@@ -425,7 +426,7 @@ class LintAgent:
                  adversarial_concurrency: int = 8,
                  wiki_root: "Path | str | None" = None,
                  cfg: "Config | None" = None) -> None:
-        self._provider = provider
+        super().__init__(provider, cfg)
         self._store = store
         self._log = log_writer
         self._threshold = confidence_threshold
@@ -434,7 +435,6 @@ class LintAgent:
         self._adversarial_max_per_page = adversarial_max_per_page
         self._adversarial_concurrency = adversarial_concurrency
         self._wiki_root = Path(wiki_root) if wiki_root else self._store._root.parent
-        self._cfg = cfg
 
     def _find_orphans(self, slugs: list[str]) -> list[str]:
         page_texts = {}
@@ -1000,11 +1000,42 @@ class LintAgent:
             )
             report.dangling_links_removed += len(_affected)
 
-    async def lint(self, scope: str = "all", slug: Optional[str] = None,
-                   auto_resolve: bool = False,
-                   adversarial: bool = True, lifecycle: bool = True,
-                   check_url_availability: Optional[bool] = None,
-                   job_id: str = "system") -> LintReport:
+    async def run(  # type: ignore[override]
+        self,
+        scope: str = "all",
+        slug: Optional[str] = None,
+        auto_resolve: bool = False,
+        adversarial: bool = True,
+        lifecycle: bool = True,
+        check_url_availability: Optional[bool] = None,
+        job_id: str = "system",
+    ) -> LintReport:
+        """Public entry point.
+
+        Errors are not suppressed: callers access result attributes directly,
+        so a ``None`` fallback would replace one exception with an
+        ``AttributeError``.  Let errors propagate.
+        """
+        return await self._run(
+            scope=scope, slug=slug, auto_resolve=auto_resolve,
+            adversarial=adversarial, lifecycle=lifecycle,
+            check_url_availability=check_url_availability, job_id=job_id,
+        )
+
+    def _safe_default(self) -> None:  # type: ignore[override]
+        """Never reached — ``run()`` does not suppress errors."""
+        return None
+
+    async def _run(  # type: ignore[override]
+        self,
+        scope: str = "all",
+        slug: Optional[str] = None,
+        auto_resolve: bool = False,
+        adversarial: bool = True,
+        lifecycle: bool = True,
+        check_url_availability: Optional[bool] = None,
+        job_id: str = "system",
+    ) -> LintReport:
         report = LintReport()
 
         # ── scoped single-page re-lint ────────────────────────────────────────────

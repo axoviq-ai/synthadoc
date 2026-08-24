@@ -349,7 +349,7 @@ async def test_run_scaffold_completes_job(tmp_wiki):
 
         with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
              patch("synthadoc.agents.scaffold_agent.ScaffoldAgent") as MockAgent:
-            MockAgent.return_value.scaffold = AsyncMock(return_value=result)
+            MockAgent.return_value.run = AsyncMock(return_value=result)
             await orch._run_scaffold(job_id, "Test Domain")
 
         from synthadoc.core.queue import JobStatus
@@ -372,7 +372,7 @@ async def test_run_scaffold_fails_job_on_exception(tmp_wiki):
 
         with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
              patch("synthadoc.agents.scaffold_agent.ScaffoldAgent") as MockAgent:
-            MockAgent.return_value.scaffold = AsyncMock(side_effect=RuntimeError("LLM error"))
+            MockAgent.return_value.run = AsyncMock(side_effect=RuntimeError("LLM error"))
             with pytest.raises(RuntimeError):
                 await orch._run_scaffold(job_id, "Test Domain")
 
@@ -397,7 +397,7 @@ async def test_run_lint_daily_quota_fails_permanent(tmp_wiki):
 
         with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
              patch("synthadoc.agents.lint_agent.LintAgent") as MockLint:
-            MockLint.return_value.lint = AsyncMock(
+            MockLint.return_value.run = AsyncMock(
                 side_effect=DailyQuotaExhaustedException(provider="gemini"))
             await orch._run_lint(job_id)
 
@@ -421,7 +421,7 @@ async def test_run_lint_generic_exception_reraises(tmp_wiki):
 
         with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
              patch("synthadoc.agents.lint_agent.LintAgent") as MockLint:
-            MockLint.return_value.lint = AsyncMock(side_effect=ValueError("unexpected"))
+            MockLint.return_value.run = AsyncMock(side_effect=ValueError("unexpected"))
             with pytest.raises(ValueError):
                 await orch._run_lint(job_id)
 
@@ -449,7 +449,7 @@ async def test_run_ingest_rate_limit_requeues_and_raises(tmp_wiki):
         rate_exc.status_code = 429  # type: ignore
 
         mock_agent = MagicMock()
-        mock_agent.ingest = AsyncMock(side_effect=rate_exc)
+        mock_agent.run = AsyncMock(side_effect=rate_exc)
         with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
              patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
             with pytest.raises(Exception):
@@ -578,7 +578,7 @@ async def test_run_ingest_vector_embed_on_complete(tmp_wiki):
             embed_calls.append(slug)
 
         mock_agent = MagicMock()
-        mock_agent.ingest = AsyncMock(return_value=result)
+        mock_agent.run = AsyncMock(return_value=result)
 
         with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
              patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent), \
@@ -1712,13 +1712,13 @@ async def test_fetch_live_wiki_data_jobs_empty(tmp_wiki):
     assert "no jobs" in result.lower()
 
 
-# ── agents/citation_faithfulness.py — LLM exception path (lines 191-193) ────────
+# ── agents/citation_faithfulness_agent.py — LLM exception path (lines 191-193) ────────
 
 def test_check_page_provider_exception_skips_all():
     """provider.complete raising → all citations skipped with 'LLM error: …' reason."""
     import asyncio as _asyncio
     from unittest.mock import AsyncMock, MagicMock
-    from synthadoc.agents.citation_faithfulness import (
+    from synthadoc.agents.citation_faithfulness_agent import (
         check_page_faithfulness,
         CitationToCheck,
     )
@@ -1874,7 +1874,7 @@ async def test_run_faithfulness_with_page_slug_filter(tmp_wiki):
         job_id = await orch._queue.enqueue("faithfulness", {"page_slug": "bell-labs"})
 
         with patch("synthadoc.providers.make_provider", return_value=MagicMock()), \
-             patch("synthadoc.agents.citation_faithfulness.run_faithfulness_audit",
+             patch("synthadoc.agents.citation_faithfulness_agent.FaithfulnessAuditAgent.run",
                    new=AsyncMock(return_value=[])):
             await orch._run_faithfulness(job_id, page_slug="bell-labs")
 
@@ -1958,7 +1958,7 @@ async def test_run_faithfulness_exception_inside_try_fails_job(tmp_wiki):
         job_id = await orch._queue.enqueue("faithfulness", {})
 
         with patch("synthadoc.providers.make_provider", return_value=MagicMock()), \
-             patch("synthadoc.agents.citation_faithfulness.run_faithfulness_audit",
+             patch("synthadoc.agents.citation_faithfulness_agent.FaithfulnessAuditAgent.run",
                    new=AsyncMock(side_effect=ValueError("audit-internal-error"))):
             with pytest.raises(ValueError):
                 await orch._run_faithfulness(job_id)
@@ -1975,7 +1975,7 @@ async def test_run_faithfulness_exception_inside_try_fails_job(tmp_wiki):
 def test_render_faithfulness_table_with_results(capsys):
     """_render_faithfulness with actual results renders the Rich table without raising."""
     from synthadoc.cli.audit import _render_faithfulness
-    from synthadoc.agents.citation_faithfulness import FaithfulnessResult
+    from synthadoc.agents.citation_faithfulness_agent import FaithfulnessResult
 
     results = [
         FaithfulnessResult(
@@ -2012,7 +2012,7 @@ def test_render_faithfulness_json_all_verdicts():
     import json
     from typer.testing import CliRunner
     from synthadoc.cli.audit import _render_faithfulness
-    from synthadoc.agents.citation_faithfulness import FaithfulnessResult
+    from synthadoc.agents.citation_faithfulness_agent import FaithfulnessResult
     import io
     from unittest.mock import patch as _patch
 

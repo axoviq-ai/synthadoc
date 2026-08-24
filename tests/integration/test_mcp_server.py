@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-or-later
+﻿# SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -272,7 +272,7 @@ async def test_mcp_context_tool_returns_pack(mock_orch):
         omitted=[],
     )
     with patch("synthadoc.providers.make_provider", return_value=MagicMock()), \
-         patch("synthadoc.agents.context_agent.ContextAgent.build",
+         patch("synthadoc.agents.context_agent.ContextAgent.run",
                new=AsyncMock(return_value=fake_pack)):
         result = await mcp._tool_manager.call_tool(
             "synthadoc_context", {"goal": "early neural networks", "token_budget": 10000},
@@ -289,7 +289,7 @@ async def test_mcp_export_tool_okf_uses_default_path(mock_orch, tmp_path):
     from synthadoc.integration.mcp_server import create_mcp_server
     mcp = create_mcp_server(mock_orch)
     fake_files = {"index.md": "# Index", "wiki/page.md": "Content."}
-    with patch("synthadoc.agents.export_agent.ExportAgent.export",
+    with patch("synthadoc.core.export.ExportAgent.run",
                new=AsyncMock(return_value=fake_files)):
         result = await mcp._tool_manager.call_tool(
             "synthadoc_export", {"format": "okf"},
@@ -310,7 +310,7 @@ async def test_mcp_export_tool_okf_writes_folder(mock_orch, tmp_path):
         "wiki/perceptron.md": "---\ntitle: Perceptron\n---\nContent.",
     }
     out_dir = str(tmp_path / "okf-export")
-    with patch("synthadoc.agents.export_agent.ExportAgent.export",
+    with patch("synthadoc.core.export.ExportAgent.run",
                new=AsyncMock(return_value=fake_files)):
         result = await mcp._tool_manager.call_tool(
             "synthadoc_export", {"format": "okf", "output_path": out_dir},
@@ -326,7 +326,7 @@ async def test_mcp_export_tool_okf_writes_folder(mock_orch, tmp_path):
 async def test_mcp_export_tool_llms_txt_inline(mock_orch):
     from synthadoc.integration.mcp_server import create_mcp_server
     mcp = create_mcp_server(mock_orch)
-    with patch("synthadoc.agents.export_agent.ExportAgent.export",
+    with patch("synthadoc.core.export.ExportAgent.run",
                new=AsyncMock(return_value="# Wiki\nPage content.")):
         result = await mcp._tool_manager.call_tool(
             "synthadoc_export", {"format": "llms.txt"},

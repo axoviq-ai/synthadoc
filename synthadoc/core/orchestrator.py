@@ -280,7 +280,7 @@ class Orchestrator:
                 allow_external_paths=allow_external_paths,
             )
             _bust = force if bust_cache is None else bust_cache
-            result = await agent.ingest(source, force=force, bust_cache=_bust)
+            result = await agent.run(source, force=force, bust_cache=_bust)
             result.cost_usd = estimate_cost(
                 _agent_cfg.model,
                 result.input_tokens,
@@ -505,7 +505,7 @@ class Orchestrator:
                 gap_score_threshold=self._cfg.query.gap_score_threshold,
                 orchestrator=self,
                 max_tokens=self._cfg.agents.query_max_tokens,
-            ).query(question),
+            ).run(question),
             timeout=timeout_seconds if timeout_seconds > 0 else None,
         )
         cost_usd = estimate_cost(
@@ -589,7 +589,7 @@ class Orchestrator:
             result = await ScaffoldAgent(
                 provider=make_provider("ingest", self._cfg),
                 max_tokens=self._cfg.agents.scaffold_max_tokens,
-            ).scaffold(
+            ).run(
                 domain=domain,
                 protected_slugs=protected_slugs or None,
                 port=self._cfg.server.port,
@@ -703,9 +703,9 @@ class Orchestrator:
                 adversarial_concurrency=self._cfg.lint.adversarial_concurrency,
                 wiki_root=self._root,
                 cfg=self._cfg,
-            ).lint(scope=scope, slug=slug, auto_resolve=auto_resolve,
-                   adversarial=adversarial, lifecycle=lifecycle,
-                   check_url_availability=check_url_availability, job_id=job_id)
+            ).run(scope=scope, slug=slug, auto_resolve=auto_resolve,
+                  adversarial=adversarial, lifecycle=lifecycle,
+                  check_url_availability=check_url_availability, job_id=job_id)
             await self._queue.complete(job_id, result={
                 "contradictions_found": report.contradictions_found,
                 "contradictions_resolved": report.contradictions_resolved,
@@ -736,7 +736,7 @@ class Orchestrator:
         Iterates slugs one at a time, updating job progress after each page,
         then merges all results into the faithfulness cache and completes the job.
         """
-        from synthadoc.agents.citation_faithfulness import run_faithfulness_audit
+        from synthadoc.agents.citation_faithfulness_agent import FaithfulnessAuditAgent
         from synthadoc.agents.faithfulness_cache import (
             read_cache,
             get_stale_slugs,
@@ -748,6 +748,7 @@ class Orchestrator:
         wiki_root = self._root
         store = WikiStorage(wiki_root / "wiki")
         provider = make_provider("adversarial", self._cfg)
+        faith_agent = FaithfulnessAuditAgent(provider, wiki_root, store, cfg=self._cfg)
         faith_cfg = self._cfg.agents.resolve("adversarial")
         if self._cfg.agents.adversarial is None:
             logger.info(
@@ -800,10 +801,7 @@ class Orchestrator:
                     "pages_checked": i,
                     "pages_total": total,
                 })
-                # run_faithfulness_audit with a slug filter runs only that page
-                page_results = await run_faithfulness_audit(
-                    wiki_root, store, provider, page_slug_filter=slug
-                )
+                page_results = await faith_agent.run(page_slug=slug)
                 all_results.extend(page_results)
 
             merge_results_into_cache(wiki_root, all_results, store, checked_slugs=slugs)

@@ -51,7 +51,7 @@ async def test_web_search_fires_parallel_skill_calls(tmp_wiki, cache):
         return _fake_search_result([f"https://example.com/{len(call_log)}"])
 
     with patch.object(agent._skill_agent, "extract", side_effect=fake_extract):
-        result = await agent.ingest("search for: Canadian gardening")
+        result = await agent.run("search for: Canadian gardening")
 
     assert len(call_log) == 3
     assert all("search for:" in c for c in call_log)
@@ -81,7 +81,7 @@ async def test_web_search_deduplicates_urls_across_results(tmp_wiki, cache):
         ])
 
     with patch.object(agent._skill_agent, "extract", side_effect=fake_extract):
-        result = await agent.ingest("search for: Canadian gardening")
+        result = await agent.run("search for: Canadian gardening")
 
     # 1 shared + 2 unique = 3 total (not 4)
     assert len(result.child_sources) == 3
@@ -103,7 +103,7 @@ async def test_web_search_preserves_url_order(tmp_wiki, cache):
         return _fake_search_result(["https://b.com/1", "https://a.com/1"])  # a.com/1 is duplicate
 
     with patch.object(agent._skill_agent, "extract", side_effect=fake_extract):
-        result = await agent.ingest("search for: topic")
+        result = await agent.run("search for: topic")
 
     assert result.child_sources[0] == "https://a.com/1"
     assert result.child_sources[1] == "https://a.com/2"
@@ -135,7 +135,7 @@ async def test_non_web_search_source_not_decomposed(tmp_wiki, cache):
     plain_content = ExtractedContent(text="Some content.", source_path=str(fake_md), metadata={})
     with patch.object(agent._skill_agent, "extract", return_value=plain_content):
         with patch("synthadoc.agents.ingest_agent.SearchDecomposeAgent") as mock_cls:
-            await agent.ingest(str(fake_md))
+            await agent.run(str(fake_md))
 
     mock_cls.assert_not_called()
 
@@ -155,7 +155,7 @@ async def test_web_search_fallback_single_query_still_works(tmp_wiki, cache):
         return _fake_search_result(["https://example.com/1"])
 
     with patch.object(agent._skill_agent, "extract", side_effect=fake_extract):
-        result = await agent.ingest("search for: Canadian gardening")
+        result = await agent.run("search for: Canadian gardening")
 
     assert len(call_log) == 1
     assert len(result.child_sources) == 1
@@ -184,7 +184,7 @@ async def test_web_search_gather_arity_matches_decompose_count(tmp_wiki, cache):
 
     with patch.object(agent._skill_agent, "extract", side_effect=fake_extract):
         with patch("synthadoc.agents.ingest_agent.asyncio.gather", spy_gather):
-            await agent.ingest("search for: topic")
+            await agent.run("search for: topic")
 
     assert gather_arities == [3]
 
@@ -204,16 +204,16 @@ async def test_search_decompose_called_exactly_once_per_ingest(tmp_wiki, cache):
     ).SearchDecomposeAgent
 
     class SpyDecomposeAgent(original_decompose_cls):
-        async def decompose(self, query: str) -> list[str]:
+        async def _run(self, query: str, domain_context: str = "") -> list[str]:
             decompose_calls.append(query)
-            return await super().decompose(query)
+            return await super()._run(query, domain_context)
 
     async def fake_extract(source: str) -> ExtractedContent:
         return _fake_search_result([f"https://example.com/1"])
 
     with patch("synthadoc.agents.ingest_agent.SearchDecomposeAgent", SpyDecomposeAgent):
         with patch.object(agent._skill_agent, "extract", side_effect=fake_extract):
-            await agent.ingest("search for: Canadian gardening")
+            await agent.run("search for: Canadian gardening")
 
     assert len(decompose_calls) == 1
     assert decompose_calls[0] == "Canadian gardening"

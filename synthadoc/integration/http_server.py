@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-or-later
+﻿# SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
 from __future__ import annotations
 
@@ -854,7 +854,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                     _overflow_msgs = _all_messages[: len(_all_messages) - turns * 2]
                     try:
                         _provider = _make_provider("query", cfg)
-                        _new_summary = await _SummarizeAgent(_provider).summarize(_overflow_msgs)
+                        _new_summary = await _SummarizeAgent(_provider).run(_overflow_msgs)
                         if _new_summary:
                             await _audit.update_summary(session_id, _new_summary, _overflow_turns)
                             if not _existing_summary:
@@ -1452,14 +1452,14 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             search=orch._search,
             token_budget=budget,
         )
-        pack = await agent.build(req.goal, token_budget=budget)
+        pack = await agent.run(req.goal, token_budget=budget)
         return pack.to_dict()
 
     # ── Citation Faithfulness Audit ────────────────────────────────────────────
 
     @app.post("/audit/citations/faithfulness")
     async def audit_citations_faithfulness(req: CitationFaithfulnessRequest):
-        from synthadoc.agents.citation_faithfulness import estimate_faithfulness_tokens
+        from synthadoc.agents.citation_faithfulness_agent import estimate_faithfulness_tokens
         from synthadoc.providers.pricing import estimate_cost as _estimate_cost
         from synthadoc.storage.wiki import WikiStorage as _WikiStorage
 
@@ -1469,7 +1469,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         agent_cfg = orch._cfg.agents.resolve("adversarial")
 
         if req.dry_run:
-            from synthadoc.agents.citation_faithfulness import collect_checks_for_pages
+            from synthadoc.agents.citation_faithfulness_agent import collect_checks_for_pages
             pages_with_checks = collect_checks_for_pages(wiki_root, store, req.page_slug)
 
             total_citations = sum(len(v) for v in pages_with_checks.values())
@@ -2001,7 +2001,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
     # ── Export ────────────────────────────────────────────────────────────────
     @app.post("/export")
     async def export_wiki(req: ExportRequest):
-        from synthadoc.agents.export_agent import ExportAgent, ExportOptions, EXPORT_FORMATS
+        from synthadoc.core.export import ExportAgent, ExportOptions, EXPORT_FORMATS
         if req.format not in EXPORT_FORMATS:
             raise HTTPException(status_code=422,
                                 detail=f"Unknown format: {req.format!r}")
@@ -2016,7 +2016,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             status_filter=req.status_filter,
             context_pack=req.context_pack,
         )
-        content = await agent.export(opts)
+        content = await agent.run(opts)
         if req.format == "okf":
             import json as _json
             return Response(
