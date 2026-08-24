@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-or-later
+﻿# SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
 from __future__ import annotations
 
@@ -2001,7 +2001,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
     # ── Export ────────────────────────────────────────────────────────────────
     @app.post("/export")
     async def export_wiki(req: ExportRequest):
-        from synthadoc.agents.export_agent import ExportAgent, ExportOptions, EXPORT_FORMATS
+        from synthadoc.core.export import ExportAgent, ExportOptions, EXPORT_FORMATS
         if req.format not in EXPORT_FORMATS:
             raise HTTPException(status_code=422,
                                 detail=f"Unknown format: {req.format!r}")

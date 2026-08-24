@@ -1,6 +1,11 @@
-# synthadoc/agents/export_agent.py
+# synthadoc/core/export.py
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 William Johnason / axoviq.com
+"""Wiki export utility — serialises a wiki to llms.txt, llms-full.txt, GraphML, JSON, or OKF.
+
+No LLM calls are made.  This module lives in ``core/`` rather than ``agents/``
+because export is a pure serialisation step that requires no language model.
+"""
 from __future__ import annotations
 
 import re
@@ -23,6 +28,14 @@ class ExportOptions:
 
 
 class ExportAgent:
+    """Serialises the wiki to one of five formats with zero LLM calls.
+
+    Invoked via ``synthadoc export --format <fmt>`` or the Obsidian
+    **Export Wiki** command.  The class name is kept for compatibility with
+    existing callers; the implementation lives in ``core/`` because it is a
+    pure serialisation utility, not an LLM agent.
+    """
+
     def __init__(
         self,
         store: WikiStorage,
@@ -36,16 +49,11 @@ class ExportAgent:
         self._routing_path = Path(routing_path)
 
     async def run(self, opts: ExportOptions) -> "str | dict[str, str]":
-        """Public entry point.
+        """Serialise the wiki.
 
-        Errors propagate — callers access the result directly (write to disk,
-        return as HTTP body).  ExportAgent does not inherit BaseAgent because
-        it requires no LLM provider, but follows the same run()/_run() naming
-        convention.
+        Errors propagate — callers write the result to disk or return it as
+        an HTTP body and must handle failures themselves.
         """
-        return await self._run(opts)
-
-    async def _run(self, opts: ExportOptions) -> "str | dict[str, str]":
         if opts.format not in EXPORT_FORMATS:
             raise ValueError(
                 f"Unknown format: {opts.format!r}. Valid: {sorted(EXPORT_FORMATS)}"

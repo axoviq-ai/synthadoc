@@ -98,9 +98,9 @@ def test_skill_agent_exempt():
     assert not issubclass(SkillAgent, BaseAgent)
 
 
-def test_export_agent_exempt():
-    """ExportAgent (no LLM) is deliberately exempt from BaseAgent."""
-    from synthadoc.agents.export_agent import ExportAgent
+def test_export_utility_not_in_agents_package():
+    """The wiki export utility lives in core/, not agents/, and has no BaseAgent dependency."""
+    from synthadoc.core.export import ExportAgent
     assert not issubclass(ExportAgent, BaseAgent)
 
 

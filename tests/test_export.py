@@ -1,10 +1,10 @@
-# tests/test_export_agent.py
+# tests/test_export.py
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 William Johnason / axoviq.com
 import pytest
 from pathlib import Path
 from synthadoc.storage.wiki import WikiStorage, WikiPage, SourceRef, LifecycleState
-from synthadoc.agents.export_agent import ExportAgent, ExportOptions
+from synthadoc.core.export import ExportAgent, ExportOptions
 
 
 def _make_store(tmp_path: Path) -> WikiStorage:
@@ -647,7 +647,7 @@ async def test_okf_archived_pages_included_with_status_filter(tmp_path):
 
 # ── OKF helper unit tests ──────────────────────────────────────────────────────
 
-from synthadoc.agents.export_agent import _first_sentence, _rewrite_wikilinks
+from synthadoc.core.export import _first_sentence, _rewrite_wikilinks
 
 
 def test_first_sentence_no_period_returns_truncated():

@@ -412,25 +412,6 @@ Dispatches to the correct skill based on file extension, URL prefix, or intent k
 
 When a source is a URL or an intent phrase (e.g. `search for: Dennis Ritchie`), IngestAgent skips the local file checks — there is no file to verify or hash. File-existence validation and SHA-256 dedup only apply to local file paths.
 
-### ExportAgent
-
-Serialises the wiki to one of five formats with zero additional LLM calls. Invoked via `synthadoc export --format <fmt>` or the Obsidian **Export Wiki** command.
-
-
-| Format          | Output                                                                                                                                                                                                                                                                                                                                                          |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `llms.txt`      | Active pages as a compact index (title + first-line summary) in the[llmstxt.org](https://llmstxt.org) spec; pages with `contradicted` or `stale` status appear in a **Needs Review** section                                                                                                                                                                    |
-| `llms-full.txt` | Full page content for all pages, separated by`---` dividers with status and confidence headers; no size limit                                                                                                                                                                                                                                                   |
-| `graphml`       | Directed wikilink graph — one node per page, one edge per`[[wikilink]]`; includes `label` (Gephi), `y:NodeLabel` (yEd), status, confidence, orphan flag, inbound link count, and routing branch per node                                                                                                                                                       |
-| `json`          | Full structured dump: content, tags, sources, claims (from audit DB), lifecycle history, routing branch memberships, per-page`ingest_cost_usd` and `ingest_tokens`, and total compilation cost                                                                                                                                                                  |
-| `okf`           | [OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle directory — one Markdown file per page with conformant YAML frontmatter (`type`, `title`, `description`, `resource`, `tags`, `timestamp`); `index.md` grouped by knowledge type; `log.md` lifecycle history; `[[wikilinks]]` rewritten to relative OKF paths |
-
-**Status filter:** All formats accept `--status-filter active|contradicted|stale|archived|draft|all` (default `all`) to scope the export to a lifecycle subset. For `okf`, the accepted values are `all` (active + contradicted, the default) or `active` only — draft, stale, and archived pages are always excluded from OKF bundles regardless of the flag.
-
-**OKF return type:** Unlike other formats (which return a single string), `okf` returns `dict[str, str]` — a map of relative file paths to file contents. The HTTP endpoint serialises this as a JSON manifest; the CLI writes the manifest as a directory tree. `--output` is required for `okf`.
-
-**GraphML tool compatibility:** The file includes both a standard `label` data key (read by Gephi and Cytoscape) and a `y:ShapeNode/y:NodeLabel` element (read by yEd). No position data is embedded — run the tool's own layout algorithm after import.
-
 ### ActionAgent
 
 Dispatches action-intent queries from the chat UI (e.g. "activate a draft page", "show lint report", "archive a stale page", "run scaffold"). Parses the user's free-text intent into a structured action via an LLM extraction prompt, then executes the action against the wiki and returns a human-readable result. When the intent is ambiguous (e.g. "activate a page" without specifying which), sets `needs_clarification=True` and returns a prompt and candidate list for the web UI to render as chip buttons.
@@ -2587,7 +2568,7 @@ Storage: ~3 KB per snapshot. Existing `purge_lifecycle_events()` removes rows
 
 ## 24. Export Formats
 
-The `synthadoc export` command serializes the wiki in five machine-readable formats, assembled server-side from cached data with zero additional LLM calls. Requires `synthadoc serve` to be running.
+The `synthadoc export` command serializes the wiki in five machine-readable formats. It is a pure serialisation utility — no LLM calls are made, and it has no dependency on an LLM provider. Content is assembled server-side from the wiki files and audit database. Requires `synthadoc serve` to be running.
 
 ### Formats
 
