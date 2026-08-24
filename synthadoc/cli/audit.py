@@ -213,7 +213,7 @@ def _collect_checks_for_cost(
     Delegates to ``citation_faithfulness.collect_checks_for_pages``, which is
     also used by the HTTP dry-run endpoint so the logic lives in one place.
     """
-    from synthadoc.agents.citation_faithfulness import collect_checks_for_pages
+    from synthadoc.agents.citation_faithfulness_agent import collect_checks_for_pages
     return collect_checks_for_pages(wiki_root, store, page_slug)
 
 
@@ -292,7 +292,7 @@ def _run_faithfulness(
     from synthadoc.cli._http import post as http_post, get as http_get
     from synthadoc.config import load_config
     from synthadoc.storage.wiki import WikiStorage
-    from synthadoc.agents.citation_faithfulness import (
+    from synthadoc.agents.citation_faithfulness_agent import (
         FaithfulnessResult,
         estimate_faithfulness_tokens,
     )
@@ -434,7 +434,7 @@ def _show_from_cache(
     as_json: bool,
 ) -> None:
     """Reconstruct FaithfulnessResult objects from cache entries and render them."""
-    from synthadoc.agents.citation_faithfulness import FaithfulnessResult
+    from synthadoc.agents.citation_faithfulness_agent import FaithfulnessResult
 
     all_results: list[FaithfulnessResult] = []
     for slug in slugs:

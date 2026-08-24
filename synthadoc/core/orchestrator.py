@@ -736,7 +736,7 @@ class Orchestrator:
         Iterates slugs one at a time, updating job progress after each page,
         then merges all results into the faithfulness cache and completes the job.
         """
-        from synthadoc.agents.citation_faithfulness import FaithfulnessAuditAgent
+        from synthadoc.agents.citation_faithfulness_agent import FaithfulnessAuditAgent
         from synthadoc.agents.faithfulness_cache import (
             read_cache,
             get_stale_slugs,

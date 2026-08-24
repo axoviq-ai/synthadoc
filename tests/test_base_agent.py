@@ -76,7 +76,7 @@ _LLM_AGENTS = [
     ("QueryAgent",           "synthadoc.agents.query_agent"),
     ("LintAgent",            "synthadoc.agents.lint_agent"),
     ("IngestAgent",          "synthadoc.agents.ingest_agent"),
-    ("FaithfulnessAuditAgent", "synthadoc.agents.citation_faithfulness"),
+    ("FaithfulnessAuditAgent", "synthadoc.agents.citation_faithfulness_agent"),
 ]
 
 
@@ -172,7 +172,7 @@ def test_run_passes_args_to_run_impl():
 def test_faithfulness_audit_agent_safe_default():
     """FaithfulnessAuditAgent._safe_default() returns []."""
     from unittest.mock import MagicMock
-    from synthadoc.agents.citation_faithfulness import FaithfulnessAuditAgent
+    from synthadoc.agents.citation_faithfulness_agent import FaithfulnessAuditAgent
 
     provider = MagicMock(spec=LLMProvider)
     store = MagicMock()

@@ -1459,7 +1459,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
     @app.post("/audit/citations/faithfulness")
     async def audit_citations_faithfulness(req: CitationFaithfulnessRequest):
-        from synthadoc.agents.citation_faithfulness import estimate_faithfulness_tokens
+        from synthadoc.agents.citation_faithfulness_agent import estimate_faithfulness_tokens
         from synthadoc.providers.pricing import estimate_cost as _estimate_cost
         from synthadoc.storage.wiki import WikiStorage as _WikiStorage
 
@@ -1469,7 +1469,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         agent_cfg = orch._cfg.agents.resolve("adversarial")
 
         if req.dry_run:
-            from synthadoc.agents.citation_faithfulness import collect_checks_for_pages
+            from synthadoc.agents.citation_faithfulness_agent import collect_checks_for_pages
             pages_with_checks = collect_checks_for_pages(wiki_root, store, req.page_slug)
 
             total_citations = sum(len(v) for v in pages_with_checks.values())

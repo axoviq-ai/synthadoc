@@ -1712,13 +1712,13 @@ async def test_fetch_live_wiki_data_jobs_empty(tmp_wiki):
     assert "no jobs" in result.lower()
 
 
-# ── agents/citation_faithfulness.py — LLM exception path (lines 191-193) ────────
+# ── agents/citation_faithfulness_agent.py — LLM exception path (lines 191-193) ────────
 
 def test_check_page_provider_exception_skips_all():
     """provider.complete raising → all citations skipped with 'LLM error: …' reason."""
     import asyncio as _asyncio
     from unittest.mock import AsyncMock, MagicMock
-    from synthadoc.agents.citation_faithfulness import (
+    from synthadoc.agents.citation_faithfulness_agent import (
         check_page_faithfulness,
         CitationToCheck,
     )
@@ -1874,7 +1874,7 @@ async def test_run_faithfulness_with_page_slug_filter(tmp_wiki):
         job_id = await orch._queue.enqueue("faithfulness", {"page_slug": "bell-labs"})
 
         with patch("synthadoc.providers.make_provider", return_value=MagicMock()), \
-             patch("synthadoc.agents.citation_faithfulness.FaithfulnessAuditAgent.run",
+             patch("synthadoc.agents.citation_faithfulness_agent.FaithfulnessAuditAgent.run",
                    new=AsyncMock(return_value=[])):
             await orch._run_faithfulness(job_id, page_slug="bell-labs")
 
@@ -1958,7 +1958,7 @@ async def test_run_faithfulness_exception_inside_try_fails_job(tmp_wiki):
         job_id = await orch._queue.enqueue("faithfulness", {})
 
         with patch("synthadoc.providers.make_provider", return_value=MagicMock()), \
-             patch("synthadoc.agents.citation_faithfulness.FaithfulnessAuditAgent.run",
+             patch("synthadoc.agents.citation_faithfulness_agent.FaithfulnessAuditAgent.run",
                    new=AsyncMock(side_effect=ValueError("audit-internal-error"))):
             with pytest.raises(ValueError):
                 await orch._run_faithfulness(job_id)
@@ -1975,7 +1975,7 @@ async def test_run_faithfulness_exception_inside_try_fails_job(tmp_wiki):
 def test_render_faithfulness_table_with_results(capsys):
     """_render_faithfulness with actual results renders the Rich table without raising."""
     from synthadoc.cli.audit import _render_faithfulness
-    from synthadoc.agents.citation_faithfulness import FaithfulnessResult
+    from synthadoc.agents.citation_faithfulness_agent import FaithfulnessResult
 
     results = [
         FaithfulnessResult(
@@ -2012,7 +2012,7 @@ def test_render_faithfulness_json_all_verdicts():
     import json
     from typer.testing import CliRunner
     from synthadoc.cli.audit import _render_faithfulness
-    from synthadoc.agents.citation_faithfulness import FaithfulnessResult
+    from synthadoc.agents.citation_faithfulness_agent import FaithfulnessResult
     import io
     from unittest.mock import patch as _patch
 

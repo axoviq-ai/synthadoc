@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 from synthadoc.storage.wiki import LifecycleState
 
 if TYPE_CHECKING:
-    from synthadoc.agents.citation_faithfulness import FaithfulnessResult
+    from synthadoc.agents.citation_faithfulness_agent import FaithfulnessResult
     from synthadoc.storage.wiki import WikiPage, WikiStorage
 
 _CACHE_FILENAME = "faithfulness-cache.json"

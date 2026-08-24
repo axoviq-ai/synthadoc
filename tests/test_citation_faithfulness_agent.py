@@ -6,7 +6,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, AsyncMock
 
-from synthadoc.agents.citation_faithfulness import (
+from synthadoc.agents.citation_faithfulness_agent import (
     CitationToCheck,
     FaithfulnessResult,
     extract_citations_for_check,
@@ -140,7 +140,7 @@ def test_extract_multiple_markers_same_sentence(tmp_path):
 import asyncio
 import json as _json
 
-from synthadoc.agents.citation_faithfulness import (
+from synthadoc.agents.citation_faithfulness_agent import (
     FaithfulnessAuditAgent,
     check_page_faithfulness,
     estimate_faithfulness_tokens,
@@ -369,7 +369,7 @@ def test_faithfulness_audit_agent_is_base_agent():
 def test_faithfulness_audit_agent_stores_dependencies(tmp_path):
     """Constructor binds provider, wiki_root, store, and cfg."""
     from unittest.mock import MagicMock
-    from synthadoc.agents.citation_faithfulness import FaithfulnessAuditAgent
+    from synthadoc.agents.citation_faithfulness_agent import FaithfulnessAuditAgent
     provider = MagicMock()
     store = MagicMock()
     cfg = MagicMock()

@@ -15,7 +15,7 @@ from synthadoc.agents.faithfulness_cache import (
     get_stale_slugs,
     merge_results_into_cache,
 )
-from synthadoc.agents.citation_faithfulness import FaithfulnessResult
+from synthadoc.agents.citation_faithfulness_agent import FaithfulnessResult
 from synthadoc.storage.wiki import WikiPage, SourceRef, WikiStorage
 
 
