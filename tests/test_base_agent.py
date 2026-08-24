@@ -3,6 +3,7 @@
 """Tests for BaseAgent and the structural invariant that all LLM agents inherit from it."""
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,8 +15,8 @@ from synthadoc.providers.base import LLMProvider
 # ── BaseAgent construction ────────────────────────────────────────────────────
 
 class _ConcreteAgent(BaseAgent):
-    """Minimal concrete subclass used for construction tests."""
-    async def run(self):
+    """Minimal concrete subclass used for construction and run() tests."""
+    async def _run(self, *args, **kwargs):
         return []
 
 
@@ -98,3 +99,83 @@ def test_export_agent_exempt():
     """ExportAgent (no LLM) is deliberately exempt from BaseAgent."""
     from synthadoc.agents.export_agent import ExportAgent
     assert not issubclass(ExportAgent, BaseAgent)
+
+
+# ── run() / _run() / _safe_default() pattern ─────────────────────────────────
+
+def test_run_delegates_to_run_impl():
+    """BaseAgent.run() calls _run() and returns its result."""
+    provider = MagicMock(spec=LLMProvider)
+    agent = _ConcreteAgent(provider)
+    result = asyncio.run(agent.run())
+    assert result == []
+
+
+def test_run_returns_safe_default_on_exception():
+    """BaseAgent.run() catches _run() exceptions and returns _safe_default()."""
+    provider = MagicMock(spec=LLMProvider)
+
+    class _FailingAgent(BaseAgent):
+        async def _run(self, *args, **kwargs):
+            raise RuntimeError("simulated LLM failure")
+
+    agent = _FailingAgent(provider)
+    result = asyncio.run(agent.run())
+    assert result is None  # default _safe_default() returns None
+
+
+def test_safe_default_override():
+    """Subclasses can override _safe_default() to return a typed empty result."""
+    provider = MagicMock(spec=LLMProvider)
+
+    class _ListAgent(BaseAgent):
+        async def _run(self, *args, **kwargs):
+            raise ValueError("boom")
+
+        def _safe_default(self):
+            return []
+
+    agent = _ListAgent(provider)
+    result = asyncio.run(agent.run())
+    assert result == []
+
+
+def test_run_raises_not_implemented_when_run_impl_not_overridden():
+    """BaseAgent._run() raises NotImplementedError; run() catches and returns _safe_default()."""
+    provider = MagicMock(spec=LLMProvider)
+
+    class _BareAgent(BaseAgent):
+        pass  # does not override _run
+
+    agent = _BareAgent(provider)
+    result = asyncio.run(agent.run())
+    # NotImplementedError is caught by run(); _safe_default() is returned
+    assert result is None
+
+
+def test_run_passes_args_to_run_impl():
+    """BaseAgent.run(*args, **kwargs) forwards arguments to _run()."""
+    provider = MagicMock(spec=LLMProvider)
+    received: dict = {}
+
+    class _EchoAgent(BaseAgent):
+        async def _run(self, x, y=0):
+            received["x"] = x
+            received["y"] = y
+            return x + y
+
+    agent = _EchoAgent(provider)
+    result = asyncio.run(agent.run(3, y=7))
+    assert result == 10
+    assert received == {"x": 3, "y": 7}
+
+
+def test_faithfulness_audit_agent_safe_default():
+    """FaithfulnessAuditAgent._safe_default() returns []."""
+    from unittest.mock import MagicMock
+    from synthadoc.agents.citation_faithfulness import FaithfulnessAuditAgent
+
+    provider = MagicMock(spec=LLMProvider)
+    store = MagicMock()
+    agent = FaithfulnessAuditAgent(provider, wiki_root=MagicMock(), store=store)
+    assert agent._safe_default() == []

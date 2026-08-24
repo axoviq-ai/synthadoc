@@ -357,11 +357,14 @@ class FaithfulnessAuditAgent(BaseAgent):
         self._wiki_root = wiki_root
         self._store = store
 
-    async def run(
+    async def _run(
         self,
         page_slug: str | None = None,
     ) -> list[FaithfulnessResult]:
         """Run the faithfulness audit and return results.
+
+        Called by the inherited ``BaseAgent.run()`` wrapper, which handles
+        logging and returns ``_safe_default()`` on failure.
 
         Args:
             page_slug: If given, audit only this page; otherwise audit all
@@ -376,3 +379,7 @@ class FaithfulnessAuditAgent(BaseAgent):
             self._wiki_root, self._store, self._provider,
             page_slug_filter=page_slug,
         )
+
+    def _safe_default(self) -> list[FaithfulnessResult]:
+        """Return an empty result list when ``_run`` raises unexpectedly."""
+        return []
