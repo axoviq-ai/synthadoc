@@ -1032,7 +1032,12 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             mode = "EXPLORER"
         else:
             summary = await orch._audit.get_lifecycle_summary()
-            has_health_issues = summary.get("stale", 0) + summary.get("contradicted", 0) > 0
+            summary["orphan"] = orch._store.count_orphan_active_pages()
+            has_health_issues = (
+                summary.get("stale", 0)
+                + summary.get("contradicted", 0)
+                + summary.get("orphan", 0) > 0
+            )
             mode = "HEALTH_CHECK" if has_health_issues else "POWER_USER"
         await orch._audit.create_session(session_id, mode)
         from synthadoc.agents.hint_engine import HintEngine

@@ -482,3 +482,76 @@ def test_orphan_resolver_cli_query():
     assert OrphanResolverWorkflow.MATCH_RE.search(phrase), (
         f"Query phrase {phrase!r} does not match MATCH_RE"
     )
+
+
+# ---------------------------------------------------------------------------
+# Task 8: WebUI — WikiStorage + HintEngine + hints.json
+# ---------------------------------------------------------------------------
+
+def test_count_orphan_active_pages_zero(tmp_path):
+    """No pages → count is 0."""
+    from synthadoc.storage.wiki import WikiStorage
+    store = WikiStorage(tmp_path)
+    assert store.count_orphan_active_pages() == 0
+
+
+def test_count_orphan_active_pages_counts_active_only(tmp_path):
+    """Only active pages with orphan=true are counted; others excluded."""
+    from synthadoc.storage.wiki import WikiStorage, WikiPage
+    store = WikiStorage(tmp_path)
+
+    active_orphan = WikiPage(
+        title="Orphan", tags=[], content="Body.", status="active",
+        confidence="", sources=[], created="2026-01-01", orphan=True,
+    )
+    active_normal = WikiPage(
+        title="Normal", tags=[], content="Body.", status="active",
+        confidence="", sources=[], created="2026-01-01", orphan=False,
+    )
+    draft_orphan = WikiPage(
+        title="Draft", tags=[], content="Body.", status="draft",
+        confidence="", sources=[], created="2026-01-01", orphan=True,
+    )
+    store.write_page("active-orphan", active_orphan)
+    store.write_page("active-normal", active_normal)
+    store.write_page("draft-orphan", draft_orphan)
+
+    assert store.count_orphan_active_pages() == 1
+
+
+def test_initial_hints_orphan_priority():
+    """orphan > 0 in context → 'Run orphan resolver' chip appears."""
+    from synthadoc.agents.hint_engine import HintEngine
+    hints = HintEngine.initial_hints(
+        "HEALTH_CHECK", context={"contradicted": 0, "stale": 0, "orphan": 3}
+    )
+    assert "Run orphan resolver" in hints
+
+
+def test_initial_hints_orphan_below_contradiction():
+    """contradiction chip appears before orphan chip."""
+    from synthadoc.agents.hint_engine import HintEngine
+    hints = HintEngine.initial_hints(
+        "HEALTH_CHECK",
+        context={"contradicted": 2, "stale": 0, "orphan": 1},
+    )
+    assert hints.index("Run contradiction resolver") < hints.index("Run orphan resolver")
+
+
+def test_initial_hints_orphan_below_stale():
+    """stale chip appears before orphan chip."""
+    from synthadoc.agents.hint_engine import HintEngine
+    hints = HintEngine.initial_hints(
+        "HEALTH_CHECK",
+        context={"contradicted": 0, "stale": 1, "orphan": 2},
+    )
+    assert hints.index("Re-ingest stale pages") < hints.index("Run orphan resolver")
+
+
+def test_initial_hints_no_orphan_chip_when_zero():
+    """No orphan chip when orphan count is 0."""
+    from synthadoc.agents.hint_engine import HintEngine
+    hints = HintEngine.initial_hints(
+        "POWER_USER", context={"contradicted": 0, "stale": 0, "orphan": 0}
+    )
+    assert "Run orphan resolver" not in hints
