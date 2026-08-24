@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 
 import httpx
@@ -200,3 +201,7 @@ def test_slug_filter_targets_single():
         finally:
             for slug in [_ORPHAN_SLUG, _ISOLATED_SLUG]:
                 _delete_page(client, slug)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main([__file__, "-v", "-s"]))
