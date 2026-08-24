@@ -25,7 +25,6 @@ from __future__ import annotations
 import json
 import os
 import time
-from pathlib import Path
 
 import httpx
 import pytest
@@ -37,9 +36,6 @@ _ORPHAN_SLUG   = "_live-test-orphan-resolver-orphan"
 _RELATED_SLUG1 = "_live-test-orphan-resolver-related-a"
 _RELATED_SLUG2 = "_live-test-orphan-resolver-related-b"
 _ISOLATED_SLUG = "_live-test-orphan-resolver-isolated"
-
-_ALL_LIVE_SLUGS = [_ORPHAN_SLUG, _RELATED_SLUG1, _RELATED_SLUG2, _ISOLATED_SLUG]
-
 
 def _api(path: str) -> str:
     return f"{BASE}/wiki/{WIKI}{path}"
@@ -191,11 +187,16 @@ def test_slug_filter_targets_single():
                 f"run orphan resolver --slug {_ORPHAN_SLUG}",
             )
 
-            # Only the targeted slug should appear in workflow events
+            # Only the targeted slug should appear in workflow events; the other
+            # orphan should not have been processed by the workflow.
             event_text = json.dumps(events)
-            assert _ORPHAN_SLUG in event_text
-            # The other slug should not appear in any meaningful workflow action
-            # (it may appear incidentally in page listings but not as a target)
+            assert _ORPHAN_SLUG in event_text, (
+                f"Targeted slug {_ORPHAN_SLUG!r} not found in events"
+            )
+            assert _ISOLATED_SLUG not in event_text, (
+                f"Non-targeted slug {_ISOLATED_SLUG!r} appeared in events — "
+                "slug filter did not constrain the run"
+            )
         finally:
             for slug in [_ORPHAN_SLUG, _ISOLATED_SLUG]:
                 _delete_page(client, slug)
