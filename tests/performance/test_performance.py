@@ -103,10 +103,10 @@ async def test_cache_hit_makes_zero_llm_calls(tmp_wiki):
         with patch.object(IngestAgent, "_update_overview", _noop_overview), \
              patch.object(IngestAgent, "_annotate_citations", _noop_annotate), \
              patch.object(search, "bm25_search", return_value=[]):
-            await agent.ingest(str(source))
+            await agent.run(str(source))
             first_count = call_count
             call_count = 0
-            await agent.ingest(str(source), force=True)
+            await agent.run(str(source), force=True)
             second_count = call_count
     finally:
         await cache.close()
@@ -220,7 +220,7 @@ async def test_web_search_fanout_processing_is_fast(tmp_wiki):
                         max_pages=15, wiki_root=tmp_wiki,
                     )
                     try:
-                        result = await agent.ingest(job.payload["source"], force=True)
+                        result = await agent.run(job.payload["source"], force=True)
                         await queue.complete(job.id, result={
                             "pages_created": result.pages_created,
                             "pages_updated": result.pages_updated,

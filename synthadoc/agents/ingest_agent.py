@@ -874,7 +874,22 @@ class IngestAgent(BaseAgent):
         wiki_page = existing.get("wiki_page", "")
         return not wiki_page or self._store.page_exists(wiki_page)
 
-    async def ingest(self, source: str, force: bool = False, bust_cache: bool = False) -> IngestResult:
+    async def run(  # type: ignore[override]
+        self, source: str, force: bool = False, bust_cache: bool = False
+    ) -> IngestResult:
+        """Public entry point.
+
+        Errors are not suppressed: callers access result attributes directly,
+        so a ``None`` fallback would replace one exception with an
+        ``AttributeError``.  Let errors propagate.
+        """
+        return await self._run(source, force=force, bust_cache=bust_cache)
+
+    def _safe_default(self) -> None:  # type: ignore[override]
+        """Never reached — ``run()`` does not suppress errors."""
+        return None
+
+    async def _run(self, source: str, force: bool = False, bust_cache: bool = False) -> IngestResult:
         source = _canonical_source(source)
         result = IngestResult(source=source)
 

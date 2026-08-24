@@ -449,7 +449,7 @@ async def test_run_ingest_rate_limit_requeues_and_raises(tmp_wiki):
         rate_exc.status_code = 429  # type: ignore
 
         mock_agent = MagicMock()
-        mock_agent.ingest = AsyncMock(side_effect=rate_exc)
+        mock_agent.run = AsyncMock(side_effect=rate_exc)
         with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
              patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent):
             with pytest.raises(Exception):
@@ -578,7 +578,7 @@ async def test_run_ingest_vector_embed_on_complete(tmp_wiki):
             embed_calls.append(slug)
 
         mock_agent = MagicMock()
-        mock_agent.ingest = AsyncMock(return_value=result)
+        mock_agent.run = AsyncMock(return_value=result)
 
         with patch("synthadoc.core.orchestrator.make_provider", return_value=MagicMock()), \
              patch("synthadoc.agents.ingest_agent.IngestAgent", return_value=mock_agent), \
