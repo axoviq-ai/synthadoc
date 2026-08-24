@@ -2016,7 +2016,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             status_filter=req.status_filter,
             context_pack=req.context_pack,
         )
-        content = await agent.export(opts)
+        content = await agent.run(opts)
         if req.format == "okf":
             import json as _json
             return Response(

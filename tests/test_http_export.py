@@ -34,7 +34,7 @@ def _make_export_app(wiki_root: Path, store: WikiStorage) -> FastAPI:
             status_filter=req.status_filter,
             context_pack=req.context_pack,
         )
-        content = await agent.export(opts)
+        content = await agent.run(opts)
         _CONTENT_TYPES = {
             "llms.txt":      "text/plain; charset=utf-8",
             "llms-full.txt": "text/plain; charset=utf-8",

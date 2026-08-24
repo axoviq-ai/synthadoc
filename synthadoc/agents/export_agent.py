@@ -35,7 +35,17 @@ class ExportAgent:
         self._audit_db_path = Path(audit_db_path)
         self._routing_path = Path(routing_path)
 
-    async def export(self, opts: ExportOptions) -> "str | dict[str, str]":
+    async def run(self, opts: ExportOptions) -> "str | dict[str, str]":
+        """Public entry point.
+
+        Errors propagate — callers access the result directly (write to disk,
+        return as HTTP body).  ExportAgent does not inherit BaseAgent because
+        it requires no LLM provider, but follows the same run()/_run() naming
+        convention.
+        """
+        return await self._run(opts)
+
+    async def _run(self, opts: ExportOptions) -> "str | dict[str, str]":
         if opts.format not in EXPORT_FORMATS:
             raise ValueError(
                 f"Unknown format: {opts.format!r}. Valid: {sorted(EXPORT_FORMATS)}"

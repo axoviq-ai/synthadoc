@@ -82,7 +82,7 @@ def create_mcp_server(orchestrator):
             routing_path=orchestrator._root / "ROUTING.md",
         )
         opts = ExportOptions(format=format, status_filter=status_filter)
-        content = await agent.export(opts)
+        content = await agent.run(opts)
         page_count = len(orchestrator._store.list_pages())
 
         if format == "okf":
