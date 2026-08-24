@@ -119,8 +119,31 @@ class ScaffoldWorkflow(AgenticWorkflow):
         return user_input
 
     def get_tool_fns(self, ctx: WorkflowContext) -> dict[str, Callable[..., Awaitable[dict]]]:
+        # Code-level confirm gate: run_scaffold is locked until confirm returns
+        # {"confirmed": true} in this session.  This prevents the LLM from
+        # bypassing the gate even when it ignores the system-prompt instruction.
+        _gate_open: list[bool] = [False]
+
+        async def _guarded_confirm(message: str, yes_label: str = "Yes",
+                                   no_label: str = "No", **kwargs: object) -> dict:
+            result = await tool_confirm(ctx, message, yes_label, no_label, **kwargs)
+            if result.get("confirmed"):
+                _gate_open[0] = True
+            return result
+
+        async def _guarded_run_scaffold(domain: str) -> dict:
+            if not _gate_open[0]:
+                return {
+                    "error": (
+                        "run_scaffold called without prior confirmation. "
+                        "You MUST call confirm first and receive confirmed=true "
+                        "before calling run_scaffold."
+                    )
+                }
+            return await tool_run_scaffold(ctx, domain)
+
         return {
             "get_scaffold_preview": functools.partial(tool_get_scaffold_preview, ctx),
-            "confirm":              functools.partial(tool_confirm, ctx),
-            "run_scaffold":         functools.partial(tool_run_scaffold, ctx),
+            "confirm":              _guarded_confirm,
+            "run_scaffold":         _guarded_run_scaffold,
         }
