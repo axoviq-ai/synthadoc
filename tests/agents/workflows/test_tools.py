@@ -1131,8 +1131,12 @@ async def test_tool_get_scaffold_preview_defaults_domain_when_empty(tmp_path):
 # tool_run_scaffold (lines 519-547)
 # ---------------------------------------------------------------------------
 
-async def test_tool_run_scaffold_success():
-    """Enqueue succeeds, job completes, returns categories_updated and routing_regenerated."""
+@patch("synthadoc.agents.workflows._tools.scaffold_output_paths",
+       return_value=[Path("/wiki/index.md"), Path("/wiki/purpose.md")])
+@patch("synthadoc.agents.workflows._tools.tool_confirm",
+       new_callable=AsyncMock, return_value={"confirmed": True})
+async def test_tool_run_scaffold_success(mock_confirm, mock_paths):
+    """Confirmed by user, enqueue succeeds, job completes → success with job result."""
     queue = MagicMock()
     queue.enqueue = AsyncMock(return_value="scaffold-job-1")
 
@@ -1149,10 +1153,32 @@ async def test_tool_run_scaffold_success():
     assert result["categories_updated"] == 5
     assert result["routing_regenerated"] is True
     assert any(e["event"] == "tool_progress" for e in events)
+    mock_confirm.assert_awaited_once()
 
 
-async def test_tool_run_scaffold_returns_error_when_enqueue_fails():
-    """queue.enqueue raising → error key returned immediately."""
+@patch("synthadoc.agents.workflows._tools.scaffold_output_paths",
+       return_value=[Path("/wiki/index.md")])
+@patch("synthadoc.agents.workflows._tools.tool_confirm",
+       new_callable=AsyncMock, return_value={"confirmed": False})
+async def test_tool_run_scaffold_cancelled_when_user_declines(mock_confirm, mock_paths):
+    """User declines the confirmation dialog → cancelled status, enqueue never called."""
+    queue = MagicMock()
+    queue.enqueue = AsyncMock()
+
+    ctx, _ = _make_ctx(queue=queue)
+    result = await tool_run_scaffold(ctx, "Computing")
+
+    assert result["status"] == "cancelled"
+    assert "cancelled" in result.get("message", "").lower()
+    queue.enqueue.assert_not_awaited()
+
+
+@patch("synthadoc.agents.workflows._tools.scaffold_output_paths",
+       return_value=[Path("/wiki/index.md")])
+@patch("synthadoc.agents.workflows._tools.tool_confirm",
+       new_callable=AsyncMock, return_value={"confirmed": True})
+async def test_tool_run_scaffold_returns_error_when_enqueue_fails(mock_confirm, mock_paths):
+    """Confirmed, but queue.enqueue raising → error key returned immediately."""
     queue = MagicMock()
     queue.enqueue = AsyncMock(side_effect=RuntimeError("scaffold queue full"))
 
@@ -1163,8 +1189,12 @@ async def test_tool_run_scaffold_returns_error_when_enqueue_fails():
     assert "scaffold queue full" in result["error"]
 
 
-async def test_tool_run_scaffold_returns_poll_result_when_job_fails():
-    """Job ends with DEAD status → poll_result returned without scaffold result."""
+@patch("synthadoc.agents.workflows._tools.scaffold_output_paths",
+       return_value=[Path("/wiki/index.md")])
+@patch("synthadoc.agents.workflows._tools.tool_confirm",
+       new_callable=AsyncMock, return_value={"confirmed": True})
+async def test_tool_run_scaffold_returns_poll_result_when_job_fails(mock_confirm, mock_paths):
+    """Confirmed, job ends with DEAD status → poll_result returned without scaffold result."""
     queue = MagicMock()
     queue.enqueue = AsyncMock(return_value="scaffold-dead-1")
 
@@ -1178,8 +1208,12 @@ async def test_tool_run_scaffold_returns_poll_result_when_job_fails():
     assert result.get("status") == "failed"
 
 
-async def test_tool_run_scaffold_handles_get_job_exception_after_poll():
-    """Second get_job call (reading result) raises → exception swallowed, defaults returned."""
+@patch("synthadoc.agents.workflows._tools.scaffold_output_paths",
+       return_value=[Path("/wiki/index.md")])
+@patch("synthadoc.agents.workflows._tools.tool_confirm",
+       new_callable=AsyncMock, return_value={"confirmed": True})
+async def test_tool_run_scaffold_handles_get_job_exception_after_poll(mock_confirm, mock_paths):
+    """Confirmed, second get_job call raises → exception swallowed, defaults returned."""
     queue = MagicMock()
     queue.enqueue = AsyncMock(return_value="scaffold-exc-1")
 

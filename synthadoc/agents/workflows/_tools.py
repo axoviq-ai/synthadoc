@@ -528,15 +528,41 @@ async def tool_get_scaffold_preview(ctx: "WorkflowContext") -> dict:
 
 
 async def tool_run_scaffold(ctx: "WorkflowContext", domain: str) -> dict:
-    """Enqueue a scaffold job, wait for it to finish, and return the outcome.
+    """Ask for confirmation then enqueue a scaffold job, wait for it to finish.
+
+    Sends a ``confirm_request`` SSE to the client before enqueueing the job.
+    If the user declines (or the 120-second timeout fires), returns a
+    ``"cancelled"`` status without touching any files.
 
     Returns::
 
         {"status": "success", "domain": str, "categories_updated": int,
          "routing_regenerated": bool}
+        {"status": "cancelled", "message": str}   — user declined or timeout
         {"status": "failed"|"timeout", "message": str}
         {"error": str}  — enqueue failed
     """
+    # Build the list of files that will be overwritten so the confirm dialog
+    # is informative (mirrors tool_get_scaffold_preview logic).
+    routing_exists = (ctx.wiki_root / "ROUTING.md").exists()
+    files = scaffold_output_paths(ctx.wiki_root, include_routing=routing_exists)
+    file_lines = "\n".join(f"  • {p}" for p in files)
+    confirm_message = (
+        f"Scaffold will overwrite the following files for domain **{domain}**:\n\n"
+        f"{file_lines}\n\n"
+        "User-written content above the `<!-- synthadoc:scaffold -->` marker "
+        "in `index.md` and `purpose.md` is preserved."
+    )
+
+    confirm_result = await tool_confirm(
+        ctx,
+        message=confirm_message,
+        yes_label="Run scaffold",
+        no_label="Cancel",
+    )
+    if not confirm_result.get("confirmed"):
+        return {"status": "cancelled", "message": "Scaffold cancelled by user."}
+
     await ctx.send_sse_event(
         "tool_progress",
         {"tool": "run_scaffold", "message": f"Running scaffold for '{domain}'..."},

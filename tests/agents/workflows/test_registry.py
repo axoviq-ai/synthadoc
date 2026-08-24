@@ -203,5 +203,7 @@ def test_scaffold_workflow_get_tool_fns_returns_expected_keys():
     wf = ScaffoldWorkflow()
     ctx = _make_wf_ctx()
     fns = wf.get_tool_fns(ctx)
-    assert set(fns.keys()) == {"get_scaffold_preview", "confirm", "run_scaffold"}
+    # "confirm" is no longer a separate LLM tool — it is embedded inside
+    # tool_run_scaffold (Pattern A), so the registry no longer exposes it.
+    assert set(fns.keys()) == {"get_scaffold_preview", "run_scaffold"}
     assert all(callable(f) for f in fns.values())
