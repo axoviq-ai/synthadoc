@@ -284,3 +284,65 @@ async def test_search_candidates_unknown_strategy():
     result = await tool_search_orphan_candidates(ctx, "orphan", "laser_scan", [])
     assert result["candidates"] == []
     assert "error" in result
+
+
+# ---------------------------------------------------------------------------
+# Task 5: tool_estimate_and_confirm
+# ---------------------------------------------------------------------------
+
+async def test_cost_estimate_confirm_confirmed():
+    """Confirmed cost estimate returns confirmed=True and cost metadata."""
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_estimate_and_confirm
+
+    async def _confirm_yes(ctx, message, yes_label="Yes", no_label="No", **_):
+        return {"confirmed": True}
+
+    with patch(
+        "synthadoc.agents.workflows.tools.orphan_resolver_tools.tool_confirm",
+        side_effect=_confirm_yes,
+    ):
+        ctx, _ = _make_ctx()
+        result = await tool_estimate_and_confirm(ctx, orphan_count=5)
+
+    assert result["confirmed"] is True
+    assert result["orphan_count"] == 5
+    assert "estimated_usd" in result
+    assert result["estimated_usd"] > 0
+
+
+async def test_cost_estimate_confirm_cancelled():
+    """Declined cost estimate returns confirmed=False."""
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_estimate_and_confirm
+
+    async def _confirm_no(ctx, message, yes_label="Yes", no_label="No", **_):
+        return {"confirmed": False}
+
+    with patch(
+        "synthadoc.agents.workflows.tools.orphan_resolver_tools.tool_confirm",
+        side_effect=_confirm_no,
+    ):
+        ctx, _ = _make_ctx()
+        result = await tool_estimate_and_confirm(ctx, orphan_count=3)
+
+    assert result["confirmed"] is False
+
+
+async def test_cost_estimate_message_contains_count():
+    """Estimate message shown to user contains the orphan count."""
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_estimate_and_confirm
+
+    captured_messages = []
+
+    async def _capture_and_confirm(ctx, message, yes_label="Yes", no_label="No", **_):
+        captured_messages.append(message)
+        return {"confirmed": True}
+
+    with patch(
+        "synthadoc.agents.workflows.tools.orphan_resolver_tools.tool_confirm",
+        side_effect=_capture_and_confirm,
+    ):
+        ctx, _ = _make_ctx()
+        await tool_estimate_and_confirm(ctx, orphan_count=7)
+
+    assert captured_messages
+    assert "7" in captured_messages[0]
