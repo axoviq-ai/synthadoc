@@ -159,3 +159,128 @@ async def test_verify_orphan_resolved_false():
     result = await tool_verify_orphan_resolved(ctx, "orphan-page")
     assert result["resolved"] is False
     assert result["linked_by"] == []
+
+
+# ---------------------------------------------------------------------------
+# Task 4: tool_search_orphan_candidates
+# ---------------------------------------------------------------------------
+
+def _make_search_mock(results: list[tuple[str, float]]) -> MagicMock:
+    """Build a mock HybridSearch returning given (slug, score) pairs."""
+    search = MagicMock()
+    mock_results = []
+    for slug, score in results:
+        r = MagicMock()
+        r.slug = slug
+        r.score = score
+        mock_results.append(r)
+    search.bm25_search.return_value = mock_results
+    return search
+
+
+async def test_search_candidates_title_bm25():
+    """title_bm25 calls bm25_search with slug-derived terms and returns candidates."""
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_search_orphan_candidates
+    search = _make_search_mock([("page-a", 0.9), ("page-b", 0.7)])
+    store = _make_wiki_store({
+        "orphan-topic": ("active", "Content."),
+        "page-a": ("active", "Related."),
+        "page-b": ("active", "Related."),
+    })
+    ctx, _ = _make_ctx(store=store, search=search)
+    result = await tool_search_orphan_candidates(ctx, "orphan-topic", "title_bm25", [])
+    assert result["strategy"] == "title_bm25"
+    assert "page-a" in result["candidates"]
+    assert "page-b" in result["candidates"]
+    search.bm25_search.assert_called_once()
+    # Slug "orphan-topic" → terms ["orphan", "topic"]
+    call_args = search.bm25_search.call_args[0][0]
+    assert "orphan" in call_args
+    assert "topic" in call_args
+
+
+async def test_search_candidates_content_bm25():
+    """content_bm25 uses first-paragraph terms from the orphan page."""
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_search_orphan_candidates
+    search = _make_search_mock([("candidate", 0.8)])
+    store = _make_wiki_store({
+        "orphan": ("active", "This page discusses quantum computing in detail."),
+        "candidate": ("active", "Quantum topics."),
+    })
+    ctx, _ = _make_ctx(store=store, search=search)
+    result = await tool_search_orphan_candidates(ctx, "orphan", "content_bm25", [])
+    assert result["strategy"] == "content_bm25"
+    assert "candidate" in result["candidates"]
+    # Terms from first paragraph passed to bm25_search
+    call_terms = search.bm25_search.call_args[0][0]
+    assert len(call_terms) > 0
+
+
+async def test_search_candidates_full_title_scan():
+    """full_title_scan returns all active page titles; no BM25 call."""
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_search_orphan_candidates
+    store = _make_wiki_store({
+        "orphan":    ("active", "Content."),
+        "page-one":  ("active", "Content."),
+        "page-two":  ("active", "Content."),
+        "archived":  ("archived", "Content."),
+    })
+    ctx, _ = _make_ctx(store=store, search=None)
+    result = await tool_search_orphan_candidates(ctx, "orphan", "full_title_scan", [])
+    assert result["strategy"] == "full_title_scan"
+    assert result["candidates"] == []
+    slugs = [p["slug"] for p in result["all_page_titles"]]
+    assert "page-one" in slugs
+    assert "page-two" in slugs
+    assert "orphan" not in slugs       # self excluded
+    assert "archived" not in slugs     # non-active excluded
+
+
+async def test_search_candidates_contextual_reasoning():
+    """contextual_reasoning returns all titles AND the orphan's full body."""
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_search_orphan_candidates
+    store = _make_wiki_store({
+        "orphan":  ("active", "Full orphan body text here."),
+        "other":   ("active", "Other content."),
+    })
+    ctx, _ = _make_ctx(store=store, search=None)
+    result = await tool_search_orphan_candidates(ctx, "orphan", "contextual_reasoning", [])
+    assert result["strategy"] == "contextual_reasoning"
+    assert "orphan_content" in result
+    assert "Full orphan body" in result["orphan_content"]
+    assert result["candidates"] == []
+
+
+async def test_search_candidates_excludes_tried_slugs():
+    """exclude_slugs prevents already-tried candidates from appearing."""
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_search_orphan_candidates
+    search = _make_search_mock([("tried", 0.9), ("fresh", 0.7)])
+    store = _make_wiki_store({
+        "orphan": ("active", "Content."),
+        "tried":  ("active", "Content."),
+        "fresh":  ("active", "Content."),
+    })
+    ctx, _ = _make_ctx(store=store, search=search)
+    result = await tool_search_orphan_candidates(
+        ctx, "orphan", "title_bm25", ["tried"]
+    )
+    assert "tried" not in result["candidates"]
+    assert "fresh" in result["candidates"]
+
+
+async def test_search_candidates_empty_when_no_search():
+    """title_bm25 returns empty candidates when ctx.search is None."""
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_search_orphan_candidates
+    ctx, _ = _make_ctx(store=MagicMock(), search=None)
+    result = await tool_search_orphan_candidates(ctx, "orphan", "title_bm25", [])
+    assert result["candidates"] == []
+    assert "error" in result
+
+
+async def test_search_candidates_unknown_strategy():
+    """Unknown strategy returns empty candidates with an error key."""
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_search_orphan_candidates
+    ctx, _ = _make_ctx(store=MagicMock(), search=MagicMock())
+    result = await tool_search_orphan_candidates(ctx, "orphan", "laser_scan", [])
+    assert result["candidates"] == []
+    assert "error" in result
