@@ -1068,7 +1068,23 @@ class QueryAgent(BaseAgent):
 
         return sub_questions, candidates, routing_warning
 
-    async def query(self, question: str, history: list[dict] | None = None) -> QueryResult:
+    async def run(  # type: ignore[override]
+        self, question: str, history: list[dict] | None = None
+    ) -> QueryResult:
+        """Public entry point.
+
+        Errors are not suppressed: callers access result attributes directly,
+        so a ``None`` fallback would replace one exception with an
+        ``AttributeError``.  Let errors propagate so the original exception
+        type and traceback are preserved.
+        """
+        return await self._run(question, history)
+
+    def _safe_default(self) -> None:  # type: ignore[override]
+        """Never reached — ``run()`` does not suppress errors."""
+        return None
+
+    async def _run(self, question: str, history: list[dict] | None = None) -> QueryResult:
         question = self._expand_aliases(question)
 
         # Action pre-flight: if orchestrator is available and question is an action, dispatch it

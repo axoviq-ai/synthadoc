@@ -280,7 +280,7 @@ class Orchestrator:
                 allow_external_paths=allow_external_paths,
             )
             _bust = force if bust_cache is None else bust_cache
-            result = await agent.ingest(source, force=force, bust_cache=_bust)
+            result = await agent.run(source, force=force, bust_cache=_bust)
             result.cost_usd = estimate_cost(
                 _agent_cfg.model,
                 result.input_tokens,
@@ -505,7 +505,7 @@ class Orchestrator:
                 gap_score_threshold=self._cfg.query.gap_score_threshold,
                 orchestrator=self,
                 max_tokens=self._cfg.agents.query_max_tokens,
-            ).query(question),
+            ).run(question),
             timeout=timeout_seconds if timeout_seconds > 0 else None,
         )
         cost_usd = estimate_cost(
@@ -703,9 +703,9 @@ class Orchestrator:
                 adversarial_concurrency=self._cfg.lint.adversarial_concurrency,
                 wiki_root=self._root,
                 cfg=self._cfg,
-            ).lint(scope=scope, slug=slug, auto_resolve=auto_resolve,
-                   adversarial=adversarial, lifecycle=lifecycle,
-                   check_url_availability=check_url_availability, job_id=job_id)
+            ).run(scope=scope, slug=slug, auto_resolve=auto_resolve,
+                  adversarial=adversarial, lifecycle=lifecycle,
+                  check_url_availability=check_url_availability, job_id=job_id)
             await self._queue.complete(job_id, result={
                 "contradictions_found": report.contradictions_found,
                 "contradictions_resolved": report.contradictions_resolved,
