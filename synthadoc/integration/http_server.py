@@ -854,7 +854,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                     _overflow_msgs = _all_messages[: len(_all_messages) - turns * 2]
                     try:
                         _provider = _make_provider("query", cfg)
-                        _new_summary = await _SummarizeAgent(_provider).summarize(_overflow_msgs)
+                        _new_summary = await _SummarizeAgent(_provider).run(_overflow_msgs)
                         if _new_summary:
                             await _audit.update_summary(session_id, _new_summary, _overflow_turns)
                             if not _existing_summary:

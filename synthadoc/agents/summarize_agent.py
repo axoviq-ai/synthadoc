@@ -18,23 +18,24 @@ class SummarizeAgent(BaseAgent):
     def __init__(self, provider: LLMProvider) -> None:
         super().__init__(provider)
 
-    async def summarize(self, messages: list[dict]) -> str:
+    async def _run(self, messages: list[dict]) -> str:
         """Return a 2-3 sentence summary of *messages*.
 
-        Returns empty string when messages is empty or on LLM error.
+        Called by the inherited ``BaseAgent.run()`` wrapper.
+        Returns empty string when messages is empty.
         """
         if not messages:
             return ""
         conversation = "\n".join(
             f"{m['role'].capitalize()}: {m['content']}" for m in messages
         )
-        try:
-            resp = await self._provider.complete(
-                messages=[Message(role="user", content=conversation)],
-                system=_SUMMARIZE_SYSTEM,
-                temperature=0.0,
-            )
-            return resp.text.strip()
-        except Exception as exc:
-            logger.warning("SummarizeAgent failed: %s", exc)
-            return ""
+        resp = await self._provider.complete(
+            messages=[Message(role="user", content=conversation)],
+            system=_SUMMARIZE_SYSTEM,
+            temperature=0.0,
+        )
+        return resp.text.strip()
+
+    def _safe_default(self) -> str:
+        """Return empty string when ``_run`` raises."""
+        return ""

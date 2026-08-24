@@ -24,7 +24,7 @@ async def test_summarize_produces_summary():
         {"role": "assistant", "content": "Turing's early work focused on computability theory..."},
     ]
     agent = SummarizeAgent(provider)
-    result = await agent.summarize(messages)
+    result = await agent.run(messages)
     assert "Turing" in result
     provider.complete.assert_called_once()
 
@@ -35,7 +35,7 @@ async def test_summarize_empty_messages_returns_empty_without_llm_call():
     provider = MagicMock()
     provider.complete = AsyncMock()
     agent = SummarizeAgent(provider)
-    result = await agent.summarize([])
+    result = await agent.run([])
     assert result == ""
     provider.complete.assert_not_called()
 
@@ -47,7 +47,7 @@ async def test_summarize_llm_error_returns_empty():
     provider.complete = AsyncMock(side_effect=RuntimeError("LLM down"))
     messages = [{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}]
     agent = SummarizeAgent(provider)
-    result = await agent.summarize(messages)
+    result = await agent.run(messages)
     assert result == ""
 
 
@@ -61,7 +61,7 @@ async def test_summarize_formats_conversation_correctly():
         {"role": "assistant", "content": "Hi there"},
     ]
     agent = SummarizeAgent(provider)
-    await agent.summarize(messages)
+    await agent.run(messages)
     call_args = provider.complete.call_args
     prompt_content = call_args.kwargs["messages"][0].content
     assert "User: Hello" in prompt_content
