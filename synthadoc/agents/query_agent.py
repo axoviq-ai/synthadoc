@@ -1106,9 +1106,9 @@ class QueryAgent(BaseAgent):
             _gap = False
         _purpose_ctx = self._load_purpose_context()
         if _gap:
-            _suggested = await SearchDecomposeAgent(self._provider).decompose(
+            _suggested = await SearchDecomposeAgent(self._provider).run(
                 question, domain_context=_purpose_ctx
-            )
+            ) or [question]
         else:
             _suggested = []
 
@@ -1154,9 +1154,9 @@ class QueryAgent(BaseAgent):
         if not _gap and resp2.text.startswith("[GAP]"):
             _gap = True
             answer_text = resp2.text[len("[GAP]"):].lstrip("\n")
-            _suggested = await SearchDecomposeAgent(self._provider).decompose(
+            _suggested = await SearchDecomposeAgent(self._provider).run(
                 question, domain_context=_purpose_ctx
-            )
+            ) or [question]
 
         _gap = _guard_c_suppress(_gap, answer_text, "query")
 
@@ -1516,16 +1516,12 @@ class QueryAgent(BaseAgent):
         yield {"event": "citations", "data": {"citations": [] if _gap else citations}}
 
         if _gap:
-            try:
-                # Use the standalone retrieval_question so gap suggestions are meaningful
-                # when the user asked a context-dependent follow-up (e.g. "tell me more
-                # about his death" → rewritten to "How did Alan Turing die?").
-                _suggested = await SearchDecomposeAgent(self._provider).decompose(
-                    retrieval_question, domain_context=_purpose_ctx
-                )
-            except Exception as _exc:
-                logger.warning("run_stream: gap decompose failed, falling back to original question: %s", _exc)
-                _suggested = [retrieval_question]
+            # Use the standalone retrieval_question so gap suggestions are meaningful
+            # when the user asked a context-dependent follow-up (e.g. "tell me more
+            # about his death" → rewritten to "How did Alan Turing die?").
+            _suggested = await SearchDecomposeAgent(self._provider).run(
+                retrieval_question, domain_context=_purpose_ctx
+            ) or [retrieval_question]
             logger.debug("run_stream: yielding gap event (%d searches)", len(_suggested))
             yield {"event": "gap", "data": {"suggested_searches": _suggested}}
 

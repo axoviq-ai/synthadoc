@@ -942,7 +942,7 @@ class IngestAgent(BaseAgent):
 
         if _is_web_search:
             _bare_query = _WEB_INTENT_RE.sub("", source).strip() or source
-            _sub_queries = await SearchDecomposeAgent(self._provider).decompose(_bare_query)
+            _sub_queries = await SearchDecomposeAgent(self._provider).run(_bare_query) or [_bare_query]
             _sub_results = await asyncio.gather(*[
                 self._skill_agent.extract(f"search for: {q}") for q in _sub_queries
             ])

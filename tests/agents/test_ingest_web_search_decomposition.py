@@ -204,9 +204,9 @@ async def test_search_decompose_called_exactly_once_per_ingest(tmp_wiki, cache):
     ).SearchDecomposeAgent
 
     class SpyDecomposeAgent(original_decompose_cls):
-        async def decompose(self, query: str) -> list[str]:
+        async def _run(self, query: str, domain_context: str = "") -> list[str]:
             decompose_calls.append(query)
-            return await super().decompose(query)
+            return await super()._run(query, domain_context)
 
     async def fake_extract(source: str) -> ExtractedContent:
         return _fake_search_result([f"https://example.com/1"])

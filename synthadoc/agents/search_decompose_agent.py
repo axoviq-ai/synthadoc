@@ -42,44 +42,42 @@ class SearchDecomposeAgent(BaseAgent):
     def __init__(self, provider: LLMProvider) -> None:
         super().__init__(provider)
 
-    async def decompose(self, query: str, domain_context: str = "") -> list[str]:
+    async def _run(self, query: str, domain_context: str = "") -> list[str]:
         """Return a list of search queries and/or well-known URLs for the gap topic.
 
+        Called by the inherited ``BaseAgent.run()`` wrapper.
         Items that start with https?:// are direct URLs; others are search queries
         that the ingest pipeline will treat as 'search for: {item}'.
-        Returns [query] on any failure so callers always get a usable list.
+
+        Returns ``[query]`` when the LLM response is empty or invalid JSON
+        (domain-level fallback).  LLM errors propagate to ``BaseAgent.run()``,
+        which returns ``_safe_default()`` (``[]``); callers should apply
+        ``result or [query]`` to restore the original query in that case.
         """
         truncated = query[:_MAX_QUERY_CHARS]
         domain_hint = (
             f"Wiki domain context (constrain suggestions to this domain): {domain_context}\n\n"
             if domain_context else ""
         )
-        try:
-            resp = await self._provider.complete(
-                messages=[Message(role="user", content=(
-                    "You are an ingest suggestion generator for a personal knowledge wiki. "
-                    f"{domain_hint}"
-                    "Given the topic below, suggest up to 4 ways to enrich the wiki. "
-                    "For each suggestion, choose ONE of:\n"
-                    "  • A terse keyword search query (3-7 words) — just the query text, no prefix\n"
-                    "  • A well-known authoritative URL (official docs, company page, "
-                    "    GitHub repo, etc.) — return the full https:// URL if one obviously exists. "
-                    "    Do NOT suggest Wikipedia URLs — they block automated access.\n"
-                    "Prefer a direct URL for specific well-known entities (people, organisations, "
-                    "technologies) when an official non-Wikipedia page exists. "
-                    "Otherwise use a search query. "
-                    "Simple topics should return 1-2 items; complex topics up to 4. "
-                    "Return a JSON array of strings only. No explanation.\n\n"
-                    f"Topic: {truncated}"
-                ))],
-                temperature=0.0,
-            )
-        except Exception as exc:
-            logger.warning(
-                "search decompose failed (%s: %s) — falling back to original query",
-                type(exc).__name__, exc,
-            )
-            return [query]
+        resp = await self._provider.complete(
+            messages=[Message(role="user", content=(
+                "You are an ingest suggestion generator for a personal knowledge wiki. "
+                f"{domain_hint}"
+                "Given the topic below, suggest up to 4 ways to enrich the wiki. "
+                "For each suggestion, choose ONE of:\n"
+                "  • A terse keyword search query (3-7 words) — just the query text, no prefix\n"
+                "  • A well-known authoritative URL (official docs, company page, "
+                "    GitHub repo, etc.) — return the full https:// URL if one obviously exists. "
+                "    Do NOT suggest Wikipedia URLs — they block automated access.\n"
+                "Prefer a direct URL for specific well-known entities (people, organisations, "
+                "technologies) when an official non-Wikipedia page exists. "
+                "Otherwise use a search query. "
+                "Simple topics should return 1-2 items; complex topics up to 4. "
+                "Return a JSON array of strings only. No explanation.\n\n"
+                f"Topic: {truncated}"
+            ))],
+            temperature=0.0,
+        )
         filtered = parse_json_string_array(resp.text, _MAX_SUB_QUERIES) or []
         filtered = [
             s for s in filtered
@@ -99,3 +97,7 @@ class SearchDecomposeAgent(BaseAgent):
             "search decompose failed (invalid JSON array) — falling back to original query"
         )
         return [query]
+
+    def _safe_default(self) -> list[str]:
+        """Return empty list when ``_run`` raises; caller applies ``result or [query]``."""
+        return []
