@@ -29,6 +29,9 @@ class WorkflowContext:
     # None in tests that don't need cache coherence.
     bump_epoch: "Callable[[], None] | None" = None
     invalidate_search: "Callable[[], None] | None" = None
+    # BM25/vector search instance — used by tool_search_orphan_candidates.
+    # None in tests that don't need search access.
+    search: "HybridSearch | None" = None  # type: ignore[name-defined]
 
 
 class AgenticWorkflow(ABC):

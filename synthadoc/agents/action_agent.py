@@ -432,6 +432,7 @@ class ActionAgent(BaseAgent):
             invalidate_search=getattr(
                 getattr(self._orch, "_search", None), "invalidate_index", None
             ),
+            search=getattr(self._orch, "_search", None),
         )
 
         wf = workflow if workflow is not None else IngestLintWorkflow()
