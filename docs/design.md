@@ -398,7 +398,7 @@ Runs against the entire wiki or a scoped subset:
 
 **Index suggestion:** For orphan pages, LintAgent reads the page frontmatter and generates a ready-to-paste `wiki/index.md` entry: `- [[slug]] — tag1, tag2, tag3`.
 
-**Orphan frontmatter sync:** After computing orphans, both `LintAgent.lint()` (server-side, via `POST /jobs/lint`) and `synthadoc lint report` (CLI, offline) write `orphan: true` or `orphan: false` to each eligible page's YAML frontmatter. This keeps the Obsidian Dataview query (`WHERE orphan = true`) in sync with the computed orphan state without requiring the server to be running after `lint report`.
+**Orphan frontmatter sync:** After computing orphans, both `LintAgent.run()` (server-side, via `POST /jobs/lint`) and `synthadoc lint report` (CLI, offline) write `orphan: true` or `orphan: false` to each eligible page's YAML frontmatter. This keeps the Obsidian Dataview query (`WHERE orphan = true`) in sync with the computed orphan state without requiring the server to be running after `lint report`.
 
 **Auto-generated page exclusions:** The pages `index`, `dashboard`, `overview`, `log`, and `purpose` are excluded from both orphan detection and contradiction checking. Links from these pages do not count as real inbound references — a page linked only from `overview.md` is still reported as an orphan. These pages are also never flagged as contradicted by the ingest pipeline.
 
@@ -2781,7 +2781,7 @@ Because the epoch is part of the cache key, any structural change to the wiki au
 
 ### QueryAgent integration
 
-`QueryAgent.query()` checks the cache before decomposing the question. On a hit, the cached `QueryResult` is returned immediately — no BM25 search, no LLM call. On a miss, the full pipeline runs and the result is written to cache before returning.
+`QueryAgent.run()` checks the cache before decomposing the question. On a hit, the cached `QueryResult` is returned immediately — no BM25 search, no LLM call. On a miss, the full pipeline runs and the result is written to cache before returning.
 
 The streaming endpoint inverts this: if a cache hit exists, the cached answer is replayed as an SSE stream (one token per event, then `[DONE]`), giving the same streaming UX even for cached responses.
 
