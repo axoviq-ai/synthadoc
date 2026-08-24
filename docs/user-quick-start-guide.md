@@ -2811,7 +2811,7 @@ synthadoc ingest --file sessions.txt -w my-wiki
 
 The web chat UI (and the Obsidian plugin query modal) can drive wiki maintenance conversationally — no terminal required. Type a maintenance request in plain English and the system confirms with you, re-ingests pages, fixes broken links, and runs lint, all from a single chat turn.
 
-Six workflows are available:
+Seven workflows are available:
 
 
 | Workflow                          | Example phrase                   | Scope                                                                                                                                                                              |
@@ -2822,6 +2822,7 @@ Six workflows are available:
 | **Lint run and full report**      | "run lint"                       | Runs a full lint pass, waits for it to complete, then surfaces the complete report in a single conversational turn                                                                 |
 | **Scaffold and report**           | "run scaffold"                   | Previews the domain and files to overwrite, asks for confirmation, then regenerates`index.md`, `purpose.md`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`                             |
 | **Contradiction resolver**        | "run contradiction resolver"     | For each contradicted page: reads content and sources, proposes a rewrite, shows the full diff, applies after approval, re-lints the page, and promotes it to*active* if it passes |
+| **Orphan resolver**               | "run orphan resolver"            | Finds pages with no incoming `[[wikilinks]]` and proposes natural link insertions into topically related active pages; retries with 4 progressively broader search strategies before escalating |
 
 ### Demo — re-ingest all stale pages
 
@@ -3031,6 +3032,35 @@ synthadoc workflow run --name contradiction-resolver --type source-conflict     
 
 ---
 
+### Demo — orphan resolver
+
+Pages with no incoming `[[wikilinks]]` from other active pages are invisible to
+navigation and less likely to be cited or discovered. The orphan resolver finds
+these pages and proposes natural link insertions into topically related pages.
+
+In the web chat UI or Obsidian query modal, type: **"run orphan resolver"**
+
+The workflow first calls `tool_find_orphaned_pages` to identify all pages with `orphan: true` frontmatter, shows a cost estimate, and asks for confirmation. Then for each orphan it tries up to four progressively broader search strategies:
+
+1. BM25 search by title keywords
+2. BM25 search by content terms from the orphan's first paragraph
+3. LLM selection from a dump of all active page titles
+4. LLM contextual reasoning with the full orphan body
+
+For each strategy, it proposes a `[[wikilink]]` insertion into the best candidate page, shows the unified diff, and applies the change after your approval. A graph-level re-check confirms the orphan is resolved before moving on.
+
+**To target a single page:**
+
+```bash
+synthadoc workflow run --name orphan-resolver --slug ada-lovelace
+```
+
+**If all four strategies are exhausted**, the workflow escalates with a `tool_notify` message listing every candidate page considered and four concrete next steps: re-run the workflow (LLM non-determinism may produce a better candidate on a fresh attempt), manually add the wikilink, archive the page if it's out of scope, or create a hub page and re-run.
+
+The Web UI shows a **"Run orphan resolver"** hint chip whenever orphaned pages are detected at session start or after a lint run.
+
+---
+
 ### Demo — run lint and view the full report
 
 This workflow runs a full lint pass from a single chat message and immediately streams the results — no separate `synthadoc lint run` needed.
@@ -3135,6 +3165,7 @@ Each workflow runs as an agentic tool-call loop that streams inline progress aft
 | **Lint report**            | none                               | Lint is read-only; runs and reports autonomously                                                                          |
 | **Scaffold**               | ✓ required                        | User-written content above`<!-- synthadoc:scaffold -->` markers is always preserved                                       |
 | **Contradiction resolver** | ✓ required ×2 (cost + each diff) | Shows full diff before every write; re-lints only the changed page; promotes on pass or escalates after 3 failed attempts |
+| **Orphan resolver**        | ✓ required ×2 (cost + each diff) | 4-strategy retry per orphan; graph-level re-check after each fix; escalates with candidate list and suggested next steps after 4 failed attempts |
 
 For tool-level detail — per-workflow tool sets, SSE extensions (`tool_progress`, `confirm_request`, `done.pre_prompt`), routing architecture, loop constraints, pre-prompt mechanics, and audit trail — see [§35 Contradiction Resolver Workflow](design.md#35-contradiction-resolver-workflow) in the design doc.
 
