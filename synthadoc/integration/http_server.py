@@ -1452,7 +1452,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             search=orch._search,
             token_budget=budget,
         )
-        pack = await agent.build(req.goal, token_budget=budget)
+        pack = await agent.run(req.goal, token_budget=budget)
         return pack.to_dict()
 
     # ── Citation Faithfulness Audit ────────────────────────────────────────────

@@ -91,7 +91,21 @@ class ContextAgent(BaseAgent):
         self._token_budget = token_budget
         self._top_n = top_n
 
-    async def build(self, goal: str, token_budget: int | None = None) -> ContextPack:
+    async def run(  # type: ignore[override]
+        self,
+        goal: str,
+        token_budget: int | None = None,
+    ) -> ContextPack:
+        """Public entry point.
+
+        Errors are not suppressed: callers (HTTP handler, MCP tool) call
+        ``.to_dict()`` directly on the result, so a ``None`` fallback would
+        only replace one exception with an ``AttributeError``.  Let errors
+        propagate so the original exception type and traceback are preserved.
+        """
+        return await self._run(goal, token_budget)
+
+    async def _run(self, goal: str, token_budget: int | None = None) -> ContextPack:
         budget = token_budget if token_budget is not None else self._token_budget
         sub_questions = await self._qa.decompose(goal)
         results_per_q = await asyncio.gather(*[
@@ -131,3 +145,7 @@ class ContextAgent(BaseAgent):
 
         return ContextPack(goal=goal, token_budget=budget,
                            tokens_used=used, pages=pages, omitted=omitted)
+
+    def _safe_default(self) -> None:  # type: ignore[override]
+        """Never reached — ``run()`` does not suppress errors."""
+        return None

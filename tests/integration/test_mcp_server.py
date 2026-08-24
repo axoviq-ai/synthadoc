@@ -272,7 +272,7 @@ async def test_mcp_context_tool_returns_pack(mock_orch):
         omitted=[],
     )
     with patch("synthadoc.providers.make_provider", return_value=MagicMock()), \
-         patch("synthadoc.agents.context_agent.ContextAgent.build",
+         patch("synthadoc.agents.context_agent.ContextAgent.run",
                new=AsyncMock(return_value=fake_pack)):
         result = await mcp._tool_manager.call_tool(
             "synthadoc_context", {"goal": "early neural networks", "token_budget": 10000},

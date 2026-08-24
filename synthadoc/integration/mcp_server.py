@@ -128,7 +128,7 @@ def create_mcp_server(orchestrator):
             search=orchestrator._search,
             token_budget=budget,
         )
-        pack = await agent.build(goal, token_budget=budget)
+        pack = await agent.run(goal, token_budget=budget)
         return pack.to_dict()
 
     @mcp.tool()

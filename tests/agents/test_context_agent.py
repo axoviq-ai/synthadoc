@@ -39,7 +39,7 @@ async def test_context_pack_includes_top_pages():
         _mock_search_result("alan-turing", 0.92, "Alan Turing " * 50)
     ])
     agent = ContextAgent(provider=provider, store=store, search=search, token_budget=500)
-    pack = await agent.build("early computing pioneers")
+    pack = await agent.run("early computing pioneers")
     assert len(pack.pages) >= 1
     assert pack.pages[0].slug == "alan-turing"
     assert pack.tokens_used <= 500
@@ -65,7 +65,7 @@ async def test_context_pack_omits_pages_over_budget():
         _mock_search_result("page-b", 0.8, long_content),
     ])
     agent = ContextAgent(provider=provider, store=store, search=search, token_budget=300)
-    pack = await agent.build("early computing")
+    pack = await agent.run("early computing")
     assert len(pack.pages) < 2
     assert len(pack.omitted) >= 1
 
@@ -79,7 +79,7 @@ async def test_context_pack_empty_wiki():
     search = MagicMock()
     search.hybrid_search = AsyncMock(return_value=[])
     agent = ContextAgent(provider=provider, store=store, search=search)
-    pack = await agent.build("anything")
+    pack = await agent.run("anything")
     assert pack.pages == []
     assert pack.tokens_used == 0
 
@@ -95,7 +95,7 @@ async def test_context_pack_to_markdown_contains_goal():
         _mock_search_result("alan-turing", 0.92, "Alan Turing pioneered computation.")
     ])
     agent = ContextAgent(provider=provider, store=store, search=search)
-    pack = await agent.build("early computing pioneers")
+    pack = await agent.run("early computing pioneers")
     md = pack.to_markdown()
     assert "early computing pioneers" in md
     assert "alan-turing" in md
@@ -110,7 +110,7 @@ async def test_context_pack_to_dict_has_required_keys():
     search = MagicMock()
     search.hybrid_search = AsyncMock(return_value=[])
     agent = ContextAgent(provider=provider, store=store, search=search)
-    pack = await agent.build("test goal")
+    pack = await agent.run("test goal")
     d = pack.to_dict()
     assert "goal" in d
     assert "token_budget" in d
