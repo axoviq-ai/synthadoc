@@ -108,7 +108,14 @@ STEP 4 — Per-orphan resolution loop
 
     tried_slugs = []   ← accumulates across ALL attempts for this orphan
 
-    4a. Strategy loop — try each strategy in order, up to 4 attempts:
+    4a. Side-effect pre-check — before starting the strategy loop:
+        Call tool_verify_orphan_resolved(orphan_slug).
+        • resolved=true  → another fix already linked this page as a side effect.
+                           Add orphan_slug to resolved_list and SKIP to the next
+                           orphan (do NOT propose any changes). No strategy needed.
+        • resolved=false → proceed to strategy loop below.
+
+    4b. Strategy loop — try each strategy in order, up to 4 attempts:
         Attempt 1 → strategy "title_bm25"
         Attempt 2 → strategy "content_bm25"
         Attempt 3 → strategy "full_title_scan"
@@ -147,7 +154,7 @@ STEP 4 — Per-orphan resolution loop
             • resolved=true  → add orphan_slug to resolved_list. BREAK strategy loop.
             • resolved=false → continue to next strategy.
 
-    4b. After 4 strategies exhausted and still orphaned:
+    4c. After 4 strategies exhausted and still orphaned:
         Add orphan_slug to unresolved_list.
         Call tool_notify(level="warning", message=
           f"⚠ Could not auto-resolve orphan '[[{orphan_slug}]]' after 4 strategies.\\n"
@@ -162,7 +169,7 @@ STEP 4 — Per-orphan resolution loop
           "  4. If the topic needs a hub page, create one first and re-run orphan-resolver."
         )
 
-    4c. Inter-orphan confirm (if more orphans remain):
+    4d. Inter-orphan confirm (if more orphans remain):
         ⚠ MANDATORY — Do NOT output any plain text before calling tool_confirm here.
            Plain text output ends the entire workflow immediately.
         Call tool_confirm(
@@ -173,6 +180,15 @@ STEP 4 — Per-orphan resolution loop
         • confirmed=false → add remaining orphans to skipped_list. Break outer loop.
 
 STEP 5 — Final summary (plain text — ends the loop)
+  BEFORE writing the summary, audit your lists:
+    • Every slug discovered in step 1 MUST appear in exactly one of
+      resolved_list, unresolved_list, or skipped_list.
+    • If any slug is missing, add it to skipped_list now.
+    • len(resolved_list) + len(unresolved_list) + len(skipped_list)
+      MUST equal the orphan count from step 1. If they do not match,
+      do NOT write the summary — call tool_notify(level="error") with
+      the discrepancy and then write the summary with corrected counts.
+
   Format:
     "Orphan Resolver — Complete
 
@@ -189,12 +205,14 @@ STEP 5 — Final summary (plain text — ends the loop)
 ━━━ CRITICAL RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 • Plain text ENDS THE LOOP — use it ONLY for the final summary or cancellations.
 • Links must be contextually natural. Never add [[slug]] in an irrelevant location.
-• ALWAYS call tool_verify_orphan_resolved after a successful apply.
+• ALWAYS call tool_verify_orphan_resolved(orphan_slug) at the START of each orphan
+  (step 4a pre-check) AND again after every successful apply (step 4b.vi).
 • NEVER call tool_propose_and_apply more than once per candidate per attempt.
-• When tool_verify_orphan_resolved returns resolved=true, BREAK the strategy loop.
+• When tool_verify_orphan_resolved returns resolved=true, add to resolved_list and BREAK.
 • Pass cumulative tried_slugs to every tool_search_orphan_candidates call.
 • Do NOT output any plain text before calling tool_confirm between orphans.
 • Cap is HARD at 4 strategies per orphan — escalate on the 5th failure.
+• EVERY orphan from step 1 must appear in the final summary. Total must match step 1.
 """
 
 
