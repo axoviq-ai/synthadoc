@@ -1797,6 +1797,11 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         unlinted = len(all_pages) - sum(counts.values())
         if unlinted > 0:
             counts["unlinted"] = unlinted
+        # Orphan count: active pages with no incoming wikilinks from other active pages.
+        # Returned so the web UI can pre-fill the text field with an orphan resolver prompt.
+        orphan = orch._store.count_orphan_active_pages()
+        if orphan > 0:
+            counts["orphan"] = orphan
         return counts
 
     @app.get("/lifecycle/events")

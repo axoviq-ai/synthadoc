@@ -89,6 +89,7 @@ export interface LifecycleStatus {
     active?: number;
     contradicted?: number;
     stale?: number;
+    orphan?: number;
     archived?: number;
     unlinted?: number;
     draft_candidates?: number;
