@@ -3517,6 +3517,15 @@ One constraint applies to `MATCH_RE` patterns that use generic imperative verbs 
 
 No other file needs to change. `_ROUTED_PAT` is rebuilt from `ROUTED_WORKFLOWS` at import time, so `_ACTION_RE` coverage extends automatically. The loop machinery — tool dispatch, result injection, termination detection, 30-call cap, 120-second confirmation timeout — is inherited automatically from `AgenticWorkflow`.
 
+### Domain Tools Convention (`workflows/tools/`)
+
+Domain-specific tool functions for each workflow live in
+`synthadoc/agents/workflows/tools/<workflow_name>_tools.py`.
+Shared tools usable by any workflow remain in `_tools.py`.
+
+This convention keeps per-workflow logic isolated and independently testable
+while shared infrastructure stays centrally maintained.
+
 → User walkthrough: [Quick-Start Guide §26 — Agentic Maintenance Workflows](docs/user-quick-start-guide.md#agentic-workflows)
 
 ---

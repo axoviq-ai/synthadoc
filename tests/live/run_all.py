@@ -51,6 +51,11 @@ Examples:
     # Verifies dry-run cost estimate, per-page LLM verdicts, cache write,
     # and cache invalidation when a source's ingested timestamp advances.
     python -X utf8 tests/live/run_all.py --suite citation_faithfulness
+
+    # Run orphan resolver tests only (requires v1.3.1 feature)
+    # Creates isolated test pages, runs the resolver, verifies link insertion
+    # and escalation behaviour, cleans up pages on exit.
+    python -X utf8 tests/live/run_all.py --suite orphan_resolver
 """
 import argparse
 import atexit
@@ -88,6 +93,7 @@ SUITES = {
     "adversarial_gate":         "test_adversarial_gate_live.py",
     "contradiction_resolver":   "test_contradiction_resolver_live.py",
     "citation_faithfulness":    "test_citation_faithfulness_live.py",
+    "orphan_resolver":          "test_orphan_resolver_live.py",
 }
 
 PASS = "\033[92mPASS\033[0m"
@@ -196,6 +202,7 @@ def main() -> None:
         "adversarial_gate":         [],
         "contradiction_resolver":   [],
         "citation_faithfulness":    [],
+        "orphan_resolver":          [],
     }
     # Per-suite environment
     suite_env = {
@@ -210,6 +217,7 @@ def main() -> None:
         "adversarial_gate":         {**os.environ, "SYNTHADOC_URL": base},
         "contradiction_resolver":   {**os.environ, "SYNTHADOC_URL": base},
         "citation_faithfulness":    {**os.environ, "SYNTHADOC_URL": base},
+        "orphan_resolver":          {**os.environ, "SYNTHADOC_URL": base},
     }
 
     print(f"\n{'='*64}")

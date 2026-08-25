@@ -1032,7 +1032,12 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             mode = "EXPLORER"
         else:
             summary = await orch._audit.get_lifecycle_summary()
-            has_health_issues = summary.get("stale", 0) + summary.get("contradicted", 0) > 0
+            summary["orphan"] = orch._store.count_orphan_active_pages()
+            has_health_issues = (
+                summary.get("stale", 0)
+                + summary.get("contradicted", 0)
+                + summary.get("orphan", 0) > 0
+            )
             mode = "HEALTH_CHECK" if has_health_issues else "POWER_USER"
         await orch._audit.create_session(session_id, mode)
         from synthadoc.agents.hint_engine import HintEngine
@@ -1247,10 +1252,21 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                     "unresolved_note": fm.get("unresolved_note") or None,
                 })
 
-        page_bodies: dict[str, str] = {
-            slug: (text[m.end():] if (m := _FM_RE.match(text)) else text)
-            for slug, text in page_texts.items()
-        }
+        # Only active pages participate in the orphan graph.
+        # Archived, draft, and stale pages with no inbound links are intentionally
+        # out of circulation; including them produces misleading noise in the report.
+        page_bodies: dict[str, str] = {}
+        for slug, text in page_texts.items():
+            fm_m = _FM_RE.match(text)
+            body = text[fm_m.end():] if fm_m else text
+            status = ""
+            if fm_m:
+                try:
+                    status = (yaml.safe_load(fm_m.group(1)) or {}).get("status", "")
+                except Exception:
+                    pass
+            if status in {"active", ""}:
+                page_bodies[slug] = body
         orphan_slugs = find_orphan_slugs(page_bodies)
 
         orphan_details = []
@@ -1270,6 +1286,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                 hint = title
             orphan_details.append({
                 "slug": slug,
+                "status": fm.get("status") or "active",
                 "index_suggestion": f"- [[{slug}]] — {hint}",
             })
 
@@ -1792,6 +1809,26 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         unlinted = len(all_pages) - sum(counts.values())
         if unlinted > 0:
             counts["unlinted"] = unlinted
+        # Orphan count: active pages with no incoming wikilinks from other active pages.
+        # Returned so the web UI can pre-fill the text field with an orphan resolver prompt.
+        orphan = orch._store.count_orphan_active_pages()
+        if orphan > 0:
+            counts["orphan"] = orphan
+        # Broken wikilinks: count dead [[slug]] refs across active pages.
+        # Pure text scan — no LLM, fast enough for a status call.
+        from synthadoc.agents.lint_agent import find_broken_wikilink_refs as _find_broken
+        _all_slugs = set(orch._store.list_pages())
+        _bwl_states = await orch._audit.get_live_page_states(orch._store.page_exists)
+        _active_scan: dict[str, str] = {}
+        for _p in _bwl_states:
+            if _p.get("state") == "active" and _p["slug"] not in LINT_SKIP_SLUGS:
+                _page = orch._store.read_page(_p["slug"])
+                if _page and _page.content:
+                    _active_scan[_p["slug"]] = _page.content
+        _broken = _find_broken(_active_scan, _all_slugs)
+        _broken_total = sum(len(refs) for refs in _broken.values())
+        if _broken_total > 0:
+            counts["broken_wikilinks"] = _broken_total
         return counts
 
     @app.get("/lifecycle/events")

@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from synthadoc.agents.workflows._base import WorkflowContext
 
+from synthadoc.agents.lint_agent import find_broken_wikilink_refs
 from synthadoc.agents.scaffold_agent import scaffold_output_paths
 from synthadoc.core.queue import JobStatus
 
@@ -394,20 +395,25 @@ def _apply_single_fix(content: str, old_ref: str, new_ref: str | None) -> tuple[
     return _WIKILINK_REPLACE_RE.sub(_replacer, content), changes
 
 
-async def tool_find_broken_wikilinks(ctx: "WorkflowContext") -> dict:
-    """Scan all *active* wiki pages for ``[[slug]]`` references that resolve to no existing page.
+async def tool_find_broken_wikilinks(
+    ctx: "WorkflowContext",
+    page_slug: str | None = None,
+) -> dict:
+    """Scan wiki pages for ``[[slug]]`` references that resolve to no existing page.
 
-    Stale, draft, and archived pages are excluded — they must be promoted to
-    active first to be included in the scan.
+    If *page_slug* is given, only that one page is scanned (single-page mode).
+    Otherwise all active pages are scanned.
 
-    Uses ``difflib.get_close_matches`` (stdlib, no extra dependency) to suggest
-    fuzzy corrections for likely typos.
+    Stale, draft, and archived pages are excluded from the scan — they must be
+    promoted to active first to be included.
+
+    Uses ``difflib.get_close_matches`` (stdlib) to suggest fuzzy corrections.
 
     Returns::
 
         {
           "pages":        [{"slug": str, "broken_links": [{"ref": str, "suggestion": str|null}]}],
-          "scanned":      int,   # number of active pages scanned
+          "scanned":      int,   # number of pages scanned
           "total_broken": int,   # total broken link references found
         }
     """
@@ -416,45 +422,60 @@ async def tool_find_broken_wikilinks(ctx: "WorkflowContext") -> dict:
     all_slugs: list[str] = ctx.store.all_slugs()
     all_slug_set: set[str] = set(all_slugs)
 
-    n_active = len(active_slugs)
+    # Single-page mode: restrict to the requested slug (must be active).
+    if page_slug is not None:
+        scan_slugs: set[str] = {page_slug} if page_slug in active_slugs else set()
+        scope_label = f"page '{page_slug}'"
+    else:
+        scan_slugs = active_slugs
+        scope_label = f"{len(active_slugs)} active page{'s' if len(active_slugs) != 1 else ''}"
+
     await ctx.send_sse_event(
         "tool_progress",
         {"tool": "find_broken_wikilinks",
-         "message": f"Scanning {n_active} active page{'s' if n_active != 1 else ''} for broken wikilinks..."},
+         "message": f"Scanning {scope_label} for broken wikilinks..."},
     )
 
-    pages_with_issues: list[dict] = []
-    total_broken = 0
-
-    for slug in sorted(active_slugs):
+    # Build page_texts for the pages in scope so find_broken_wikilink_refs can
+    # work as a pure function (no store access inside).
+    page_texts: dict[str, str] = {}
+    page_title: str | None = None   # populated in single-page mode for use in LLM summary
+    for slug in sorted(scan_slugs):
         page = ctx.store.read_page(slug)
         if not page or not page.content:
             continue
-        refs = _WIKILINK_SCAN_RE.findall(page.content)
-        broken: list[dict] = []
-        seen: set[str] = set()
-        for ref in refs:
-            normalized = _normalize_slug(ref)
-            if normalized in all_slug_set or normalized in seen:
-                continue
-            seen.add(normalized)
-            matches = difflib.get_close_matches(normalized, all_slugs, n=1, cutoff=0.72)
-            broken.append({"ref": normalized, "suggestion": matches[0] if matches else None})
-        if broken:
-            pages_with_issues.append({"slug": slug, "broken_links": broken})
-            total_broken += len(broken)
+        if page_slug is not None:
+            page_title = page.title or None   # surface display title for summary
+        page_texts[slug] = page.content
+
+    # Delegate detection to the shared pure function (reused by /lifecycle/status).
+    broken_by_slug = find_broken_wikilink_refs(page_texts, all_slug_set)
+
+    # Enrich with fuzzy suggestions for display in the confirm message.
+    pages_with_issues: list[dict] = []
+    total_broken = 0
+    for slug in sorted(broken_by_slug):
+        enriched: list[dict] = []
+        for dead_ref in broken_by_slug[slug]:
+            matches = difflib.get_close_matches(dead_ref, all_slugs, n=1, cutoff=0.72)
+            enriched.append({"ref": dead_ref, "suggestion": matches[0] if matches else None})
+        pages_with_issues.append({"slug": slug, "broken_links": enriched})
+        total_broken += len(enriched)
 
     n_pages = len(pages_with_issues)
     if n_pages:
         msg = (
             f"Found {total_broken} broken wikilink{'s' if total_broken != 1 else ''} "
-            f"across {n_pages} active page{'s' if n_pages != 1 else ''}"
+            f"across {n_pages} page{'s' if n_pages != 1 else ''}"
         )
     else:
-        msg = f"No broken wikilinks found across {n_active} active page{'s' if n_active != 1 else ''}"
+        msg = f"No broken wikilinks found on {scope_label}"
 
     await ctx.send_sse_event("tool_progress", {"tool": "find_broken_wikilinks", "message": msg})
-    return {"pages": pages_with_issues, "scanned": n_active, "total_broken": total_broken}
+    result: dict = {"pages": pages_with_issues, "scanned": len(scan_slugs), "total_broken": total_broken}
+    if page_slug is not None:
+        result["page_title"] = page_title   # display title for use in single-page summary
+    return result
 
 
 async def tool_apply_link_fixes(
@@ -528,15 +549,41 @@ async def tool_get_scaffold_preview(ctx: "WorkflowContext") -> dict:
 
 
 async def tool_run_scaffold(ctx: "WorkflowContext", domain: str) -> dict:
-    """Enqueue a scaffold job, wait for it to finish, and return the outcome.
+    """Ask for confirmation then enqueue a scaffold job, wait for it to finish.
+
+    Sends a ``confirm_request`` SSE to the client before enqueueing the job.
+    If the user declines (or the 120-second timeout fires), returns a
+    ``"cancelled"`` status without touching any files.
 
     Returns::
 
         {"status": "success", "domain": str, "categories_updated": int,
          "routing_regenerated": bool}
+        {"status": "cancelled", "message": str}   — user declined or timeout
         {"status": "failed"|"timeout", "message": str}
         {"error": str}  — enqueue failed
     """
+    # Build the list of files that will be overwritten so the confirm dialog
+    # is informative (mirrors tool_get_scaffold_preview logic).
+    routing_exists = (ctx.wiki_root / "ROUTING.md").exists()
+    files = scaffold_output_paths(ctx.wiki_root, include_routing=routing_exists)
+    file_lines = "\n".join(f"  • {p}" for p in files)
+    confirm_message = (
+        f"Scaffold will overwrite the following files for domain **{domain}**:\n\n"
+        f"{file_lines}\n\n"
+        "User-written content above the `<!-- synthadoc:scaffold -->` marker "
+        "in `index.md` and `purpose.md` is preserved."
+    )
+
+    confirm_result = await tool_confirm(
+        ctx,
+        message=confirm_message,
+        yes_label="Run scaffold",
+        no_label="Cancel",
+    )
+    if not confirm_result.get("confirmed"):
+        return {"status": "cancelled", "message": "Scaffold cancelled by user."}
+
     await ctx.send_sse_event(
         "tool_progress",
         {"tool": "run_scaffold", "message": f"Running scaffold for '{domain}'..."},

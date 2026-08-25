@@ -6,10 +6,6 @@ All agents that make direct LLM calls without a tool-calling loop must
 inherit from ``BaseAgent``.  Agents that run an agentic tool loop inherit
 from ``AgenticWorkflow`` instead (see ``agents/workflows/_base.py``).
 
-Non-LLM utility classes (e.g. the wiki export serialiser in
-``core/export.py``) live outside the agents package and do not inherit
-``BaseAgent`` because they require no LLM provider.
-
 Contract
 --------
 LLM       — bound at construction via ``provider: LLMProvider``; stored as

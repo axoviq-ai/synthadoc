@@ -34,11 +34,13 @@ active first.
 ## Tool reference
 
 ### find_broken_wikilinks
-Scan all active pages for broken [[slug]] references.  Returns fuzzy suggestions
-(difflib, stdlib) for likely typos.  No arguments needed.
-Input:  {}
+Scan pages for broken [[slug]] references.  Returns fuzzy suggestions
+(difflib, stdlib) for likely typos.
+Input:  {"page_slug": str}   — scan only that one page (single-page mode)
+     OR {}                   — scan all active pages (full-wiki mode)
 Output: {"pages": [{"slug": str, "broken_links": [{"ref": str, "suggestion": str|null}]}],
-         "scanned": int, "total_broken": int}
+         "scanned": int, "total_broken": int,
+         "page_title": str|null}   — display title, present only in single-page mode
 
 ### apply_link_fixes
 Apply corrections to a single page.  new_ref=null removes the link, keeping the
@@ -81,8 +83,11 @@ When you have no more tool calls to make, produce a plain-text summary (no JSON)
      write plain text AFTER completing all of Phase 2 (steps 4–9).
 
 #### Clean-wiki summary template (only when total_broken == 0)
-"No broken wikilinks found across N active pages. Wiki link integrity is clean.
-Note: Stale/draft pages were excluded from the scan."
+Single-page mode: "No broken wikilinks found on the <page_title> page."
+  Use the page_title value from the find_broken_wikilinks result as the display name.
+  If page_title is null, fall back to the slug.
+Full-wiki mode:   "No broken wikilinks found across N active pages. Wiki link integrity is clean.
+                   Note: Stale/draft pages were excluded from the scan."
 
 ### Phase 2 — Fix
 4. Build a confirm message listing every affected page, each broken ref, and its fix:
@@ -153,10 +158,39 @@ class BrokenWikilinksWorkflow(AgenticWorkflow):
         re.IGNORECASE,
     )
 
+    # Confirm gate — Pattern B (declarative GATED_TOOLS).
+    #
+    # Declaring a tool name here tells the framework (build_guarded_tool_fns)
+    # to protect it automatically:
+    #   • The "confirm" tool in get_tool_fns opens the session gate on approval.
+    #   • If the LLM calls the gated tool before going through confirm, the
+    #     framework fires a fallback dialog so no write happens silently.
+    #   • Once the gate is open it stays open for the session — no repeat
+    #     dialogs on subsequent calls to the same tool.
+    #
+    # To add a confirm gate in a new workflow:
+    #   1. Include "confirm": functools.partial(tool_confirm, ctx) in get_tool_fns.
+    #   2. Declare GATED_TOOLS = frozenset({"your_destructive_tool"}).
+    #
+    # Use Pattern A instead (embed tool_confirm inside the tool function itself,
+    # leave GATED_TOOLS empty) when the confirm message is built programmatically
+    # rather than by the LLM.  scaffold.py shows Pattern A.
+    #
+    # Full contract: AgenticWorkflow.GATED_TOOLS in _base.py.
+    GATED_TOOLS: frozenset[str] = frozenset({"apply_link_fixes"})
+
     async def build_system_prompt(self) -> str:
         return _SYSTEM_PROMPT
 
     def build_initial_message(self, user_input: str) -> str:
+        slug_match = re.search(r"--slug\s+(\S+)", user_input, re.IGNORECASE)
+        if slug_match:
+            slug = slug_match.group(1)
+            return (
+                f"Scan for broken wikilinks.\n"
+                f"Single-page mode: check only the '{slug}' page.\n"
+                f"Pass page_slug='{slug}' to find_broken_wikilinks."
+            )
         return user_input
 
     def get_tool_fns(self, ctx: WorkflowContext) -> dict[str, Callable[..., Awaitable[dict]]]:

@@ -33,7 +33,7 @@ export default function App() {
     const displayHints = hintLockLeft > 0 ? graphHints : hints;
 
     // On initial session load: fetch lifecycle status and pre-fill the Ask field with
-    // the most urgent maintenance action (priority: contradicted > stale).
+    // the most urgent maintenance action (priority: contradicted > stale > orphan).
     // Mirrors the same priority as _build_pre_prompt in query_agent.py.
     useEffect(() => {
         if (!session?.session_id || initialPromptSetRef.current) return;
@@ -41,6 +41,8 @@ export default function App() {
         getLifecycleStatus().then((status) => {
             const contradicted = status.contradicted ?? 0;
             const stale = status.stale ?? 0;
+            const orphan = status.orphan ?? 0;
+            const broken = status.broken_wikilinks ?? 0;
             if (contradicted > 0) {
                 const pageWord = contradicted === 1 ? "page" : "pages";
                 setPendingPrompt(
@@ -49,6 +51,12 @@ export default function App() {
             } else if (stale > 0) {
                 const pageWord = stale === 1 ? "page" : "pages";
                 setPendingPrompt(`Re-ingest ${stale} stale ${pageWord}`);
+            } else if (orphan > 0) {
+                const pageWord = orphan === 1 ? "page" : "pages";
+                setPendingPrompt(`Run orphan resolver for ${orphan} active orphan ${pageWord}`);
+            } else if (broken > 0) {
+                const linkWord = broken === 1 ? "broken wikilink" : "broken wikilinks";
+                setPendingPrompt(`${broken} ${linkWord} detected — scan and fix them?`);
             }
         }).catch(() => {
             // Silently ignore — pre-fill is optional, not critical

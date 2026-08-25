@@ -55,6 +55,7 @@ _WORKFLOW_QUERIES: dict[str, str] = {
     "scaffold":                "run scaffold",
     "contradiction-resolver":  "run contradiction resolver",
     "ingest-lint":             "re-ingest stale pages",
+    "orphan-resolver":         "run orphan resolver",
 }
 
 
@@ -124,6 +125,9 @@ def run_workflow(
       synthadoc workflow run --name contradiction-resolver --type adversarial
       synthadoc workflow run --name contradiction-resolver --type source-conflict
       synthadoc workflow run --name ingest-lint -w my-wiki
+      synthadoc workflow run --name orphan-resolver
+      synthadoc workflow run --name orphan-resolver --slug some-page
+      synthadoc workflow run --name orphan-resolver -w my-wiki
     """
     from synthadoc.agents.workflows._registry import CLI_REGISTRY
 

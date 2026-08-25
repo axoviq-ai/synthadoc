@@ -7,9 +7,62 @@ import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Awaitable, Callable
+from typing import TYPE_CHECKING, Awaitable, Callable
 
 SseEventFn = Callable[[str, dict], Awaitable[None]]
+
+# ---------------------------------------------------------------------------
+# Confirm-gate helpers — used by AgenticWorkflow.build_guarded_tool_fns
+# ---------------------------------------------------------------------------
+
+def _make_confirm_gatekeeper(
+    original_fn: "Callable[..., Awaitable[dict]]",
+    gate_open: "list[bool]",
+) -> "Callable[..., Awaitable[dict]]":
+    """Wrap a 'confirm' tool so that approval opens the session gate."""
+    async def _wrapped(*args: object, **kwargs: object) -> dict:
+        result: dict = await original_fn(*args, **kwargs)  # type: ignore[misc]
+        if result.get("confirmed"):
+            gate_open[0] = True
+        return result
+    return _wrapped
+
+
+def _make_gated_tool(
+    original_fn: "Callable[..., Awaitable[dict]]",
+    tool_name: str,
+    gate_open: "list[bool]",
+    ctx: "WorkflowContext",
+) -> "Callable[..., Awaitable[dict]]":
+    """Wrap a gated tool to fire a fallback confirm when the gate is not open.
+
+    The fallback fires only if the LLM calls this tool before the session's
+    ``confirm`` tool has been called and approved.  Once the gate is open —
+    either via the explicit confirm tool or via this fallback — subsequent
+    calls to the same tool run without an extra dialog.
+    """
+    async def _wrapped(*args: object, **kwargs: object) -> dict:
+        if not gate_open[0]:
+            # Deferred import to avoid circular dependency (_tools imports _base).
+            from synthadoc.agents.workflows._tools import (  # noqa: PLC0415
+                tool_confirm as _tool_confirm,
+            )
+            fallback = await _tool_confirm(
+                ctx,
+                f"Run `{tool_name}`?\n\n"
+                "(Tip: call `confirm` with a detailed summary first so the user "
+                "can review all planned changes before anything is applied.)",
+                yes_label="Proceed",
+                no_label="Cancel",
+            )
+            if not fallback.get("confirmed"):
+                return {
+                    "status": "cancelled",
+                    "message": f"`{tool_name}` cancelled by user.",
+                }
+            gate_open[0] = True
+        return await original_fn(*args, **kwargs)  # type: ignore[misc]
+    return _wrapped
 
 
 @dataclass
@@ -29,6 +82,9 @@ class WorkflowContext:
     # None in tests that don't need cache coherence.
     bump_epoch: "Callable[[], None] | None" = None
     invalidate_search: "Callable[[], None] | None" = None
+    # BM25/vector search instance — used by tool_search_orphan_candidates.
+    # None in tests that don't need search access.
+    search: "HybridSearch | None" = None  # type: ignore[name-defined]
 
 
 class AgenticWorkflow(ABC):
@@ -55,6 +111,38 @@ class AgenticWorkflow(ABC):
     DESCRIPTION: str | None = None
     CLI_ARGS: str | None = None
 
+    # Declare the names of tools that must not run without prior user approval.
+    #
+    # ── When to use this (Pattern B) vs. embedding confirm in the tool (Pattern A) ──
+    #
+    # Pattern A — embed confirm inside the tool function
+    #   Use when: the tool itself can compose a concrete, informative confirm
+    #   message without any LLM help (e.g. it already holds the list of files
+    #   it's about to overwrite).
+    #   How: call ``await tool_confirm(ctx, message=...)`` inside the dangerous
+    #   tool function.  Leave GATED_TOOLS = frozenset() (the default).
+    #   Example: ScaffoldWorkflow / tool_run_scaffold in _tools.py.
+    #
+    # Pattern B — declarative GATED_TOOLS (this attribute)  ← use this by default
+    #   Use when: the confirm message should include data the LLM gathered via
+    #   earlier tool calls (e.g. "Found 7 broken links on pages A, B, C").
+    #   How:
+    #     1. Return a "confirm" entry in get_tool_fns (functools.partial is fine).
+    #     2. Declare GATED_TOOLS = frozenset({"my_write_tool"}).
+    #   The framework (build_guarded_tool_fns below) then:
+    #     • Wraps "confirm" so that confirmed=True opens the session gate.
+    #     • Wraps each GATED_TOOLS entry so it fires a fallback dialog if the
+    #       LLM skips the confirm step — no write ever happens without approval.
+    #     • Once the gate is open, subsequent calls to gated tools run directly.
+    #   Examples: BrokenWikilinksWorkflow, IngestLintWorkflow, OrphanResolverWorkflow.
+    #
+    # Read-only workflows (no wiki writes) do not override this attribute at all —
+    # the empty default below is the correct value and build_guarded_tool_fns
+    # becomes a no-op when it is empty.
+    #
+    # See _registry.py module docstring for a summary of both patterns.
+    GATED_TOOLS: frozenset[str] = frozenset()  # override only for write workflows
+
     @abstractmethod
     async def build_system_prompt(self) -> str:
         """Return the system prompt for the LLM."""
@@ -69,8 +157,43 @@ class AgenticWorkflow(ABC):
     def get_tool_fns(
         self, ctx: WorkflowContext
     ) -> dict[str, Callable[..., Awaitable[dict]]]:
-        """Return a mapping of tool name → async callable for this workflow."""
+        """Return a mapping of tool name → async callable for this workflow.
+
+        Return plain callables (``functools.partial`` is idiomatic).  Do NOT add
+        confirm-gate wrappers here — use Pattern B (declare GATED_TOOLS + include
+        a ``"confirm"`` entry) and the framework wires up the protection via
+        ``build_guarded_tool_fns``.  See the GATED_TOOLS docstring for when to
+        choose Pattern A (embed confirm inside the tool) instead.
+        """
         ...
+
+    def build_guarded_tool_fns(
+        self, ctx: WorkflowContext
+    ) -> dict[str, Callable[..., Awaitable[dict]]]:
+        """Return the tool registry with confirm-gate wrappers applied.
+
+        Called by ActionAgent instead of get_tool_fns.  If GATED_TOOLS is
+        empty the result is identical to get_tool_fns(ctx).  Otherwise:
+
+        - The "confirm" tool (if present) is wrapped so that a confirmed=True
+          response opens the session gate.
+        - Each tool in GATED_TOOLS is wrapped so that it fires a fallback
+          confirm dialog when the gate is still closed at call time.
+        """
+        fns = self.get_tool_fns(ctx)
+        if not self.GATED_TOOLS:
+            return fns
+
+        gate_open: list[bool] = [False]
+        result: dict[str, Callable[..., Awaitable[dict]]] = {}
+        for name, fn in fns.items():
+            if name == "confirm":
+                result[name] = _make_confirm_gatekeeper(fn, gate_open)
+            elif name in self.GATED_TOOLS:
+                result[name] = _make_gated_tool(fn, name, gate_open, ctx)
+            else:
+                result[name] = fn
+        return result
 
     def get_tool_budget(self) -> int:
         """Maximum tool calls before the loop is forcibly terminated.

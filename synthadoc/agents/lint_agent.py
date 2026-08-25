@@ -55,6 +55,8 @@ class LintReport:
 
 
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
+# Captures only the slug portion of a [[slug]], [[slug|display]], or [[slug#anchor]] link.
+_WIKILINK_SLUG_RE = re.compile(r"\[\[([^\]|#]+?)(?:[|#][^\]]*)?\]\]")
 
 _CITATION_MIN_WORDS = 50  # skip presence check on stub pages shorter than this
 
@@ -275,11 +277,41 @@ def find_orphan_slugs(
         if slug in skip_source:
             continue
         for link in _WIKILINK_RE.findall(text):
-            slug_part = link.split("|")[0].strip()
+            slug_part = link.split("|")[0].split("#")[0].strip()
             target = slug_part.lower().replace(" ", "-")
             if target != slug:  # self-links don't count as inbound references
                 referenced.add(target)
     return [s for s in page_texts if s not in referenced and s not in skip]
+
+
+def find_broken_wikilink_refs(
+    page_texts: dict[str, str],
+    all_slugs: set[str],
+) -> dict[str, list[str]]:
+    """Return {slug: [dead_ref, ...]} for each page containing broken [[wikilinks]].
+
+    page_texts maps slug → body text (frontmatter stripped by caller) for the
+    pages to *scan* (typically active pages only).
+    all_slugs is the complete set of existing page slugs (valid link targets).
+
+    A ref is broken when its normalised form (lower-cased, spaces→hyphens,
+    ``|display`` and ``#anchor`` suffixes stripped) is absent from all_slugs.
+    Duplicate dead refs within the same page are de-duplicated.
+
+    Returns an empty dict when no broken links are found.
+    """
+    result: dict[str, list[str]] = {}
+    for slug, text in page_texts.items():
+        seen: set[str] = set()
+        broken: list[str] = []
+        for raw in _WIKILINK_SLUG_RE.findall(text):
+            norm = raw.strip().lower().replace(" ", "-")
+            if norm and norm not in all_slugs and norm not in seen:
+                seen.add(norm)
+                broken.append(norm)
+        if broken:
+            result[slug] = broken
+    return result
 
 
 def _parse_adversarial_response(text: str) -> list[dict]:
@@ -355,7 +387,13 @@ def read_current_lint_state(store: WikiStorage) -> LintStateSummary:
         page = store.read_page(slug)
         if page is None:
             continue
-        page_bodies[slug] = page.content or ""
+        # Only active pages participate in the orphan graph.  Archived, draft,
+        # and stale pages with no inbound links are intentionally out of
+        # circulation and should not appear as orphan findings.
+        # Pages with no explicit status (e.g. manually-written or test fixtures)
+        # are treated the same as active — they are real content pages.
+        if page.status in {LifecycleState.ACTIVE, ""}:
+            page_bodies[slug] = page.content or ""
         if slug in LINT_SKIP_SLUGS:
             continue
         if page.status == LifecycleState.CONTRADICTED:
@@ -437,10 +475,14 @@ class LintAgent(BaseAgent):
         self._wiki_root = Path(wiki_root) if wiki_root else self._store._root.parent
 
     def _find_orphans(self, slugs: list[str]) -> list[str]:
+        # Only active pages (and pages with no explicit status) participate in the
+        # orphan graph — archived, draft, and stale pages are intentionally out of
+        # circulation and must not be flagged as orphans.
         page_texts = {}
         for slug in slugs:
             page = self._store.read_page(slug)
-            page_texts[slug] = page.content if page else ""
+            if page and page.status in {LifecycleState.ACTIVE, ""}:
+                page_texts[slug] = page.content or ""
         return find_orphan_slugs(page_texts)
 
     def _clean_dangling_links(self, slugs: list[str]) -> int:

@@ -432,11 +432,12 @@ class ActionAgent(BaseAgent):
             invalidate_search=getattr(
                 getattr(self._orch, "_search", None), "invalidate_index", None
             ),
+            search=getattr(self._orch, "_search", None),
         )
 
         wf = workflow if workflow is not None else IngestLintWorkflow()
         system_prompt = await wf.build_system_prompt()
-        tool_fns = wf.get_tool_fns(ctx)
+        tool_fns = wf.build_guarded_tool_fns(ctx)
 
         budget = wf.get_tool_budget()
 
