@@ -2827,15 +2827,15 @@ class AuditModal extends Modal {
             for (const r of displayResults) counts[r.verdict] = (counts[r.verdict] ?? 0) + 1;
 
             summaryBar.empty();
-            const addBadge = (icon: string, n: number, label: string, color: string) => {
+            const addBadge = (icon: string, n: number, label: string, color: string, pluralSuffix = "s") => {
                 if (!n) return;
                 const badge = summaryBar.createEl("span");
                 badge.style.cssText = `color:${color}`;
-                badge.textContent = `${icon} ${n} ${label}${n !== 1 ? "s" : ""}`;
+                badge.textContent = `${icon} ${n} ${label}${n !== 1 ? pluralSuffix : ""}`;
             };
             addBadge("❌", counts.hallucination, "hallucination", "var(--color-red)");
             addBadge("⚠️",  counts.drift,         "drift",         "var(--color-yellow)");
-            addBadge("✅", counts.supported,      "supported",     "var(--color-green)");
+            addBadge("✅", counts.supported,      "supported",     "var(--color-green)", "");  // "supported" is invariant
             if (counts.skipped) {
                 const badge = summaryBar.createEl("span");
                 badge.style.cssText = "color:var(--text-muted)";
@@ -2989,8 +2989,10 @@ class AuditModal extends Modal {
                 staleText.textContent =
                     `${n} page${n !== 1 ? "s" : ""} re-ingested since last audit — verdicts may be outdated.`;
                 staleBar.style.display = "block";
+                runRow.style.display = "none";
             } else {
                 staleBar.style.display = "none";
+                runRow.style.display = "flex";
                 if (_faithResults.length === 0) {
                     statusLine.textContent = "No cached results yet — click ▶ Run Audit to begin.";
                 }
