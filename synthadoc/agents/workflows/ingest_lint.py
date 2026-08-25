@@ -107,49 +107,19 @@ class IngestLintWorkflow(AgenticWorkflow):
     def build_initial_message(self, user_input: str) -> str:
         return user_input
 
+    # ingest_source must not run without prior user approval.
+    # The framework (build_guarded_tool_fns) gates it automatically: the
+    # "confirm" tool opens the session gate on approval; if the LLM calls
+    # ingest_source without going through confirm first, a fallback dialog
+    # fires before any re-ingest is triggered.
+    GATED_TOOLS: frozenset[str] = frozenset({"ingest_source"})
+
     def get_tool_fns(self, ctx: WorkflowContext) -> dict[str, Callable[..., Awaitable[dict]]]:
-        # Closure gate: ingest_source is guarded so it cannot run without prior
-        # user approval.  _guarded_confirm opens the gate; _guarded_ingest_source
-        # falls back to an embedded confirm if the LLM bypasses the explicit step.
-        # Using a fallback confirm (not an error return) avoids the WebUI freeze
-        # that an error-then-LLM-retry pattern can cause.
-        _gate_open: list[bool] = [False]
-
-        async def _guarded_confirm(
-            message: str,
-            yes_label: str = "Yes",
-            no_label: str = "No",
-            **kwargs: object,
-        ) -> dict:
-            result = await tool_confirm(ctx, message, yes_label, no_label, **kwargs)
-            if result.get("confirmed"):
-                _gate_open[0] = True
-            return result
-
-        async def _guarded_ingest_source(source_path: str) -> dict:
-            if not _gate_open[0]:
-                # Fallback: LLM skipped the explicit confirm step — ask before
-                # re-ingesting so the user is always informed.
-                fallback = await tool_confirm(
-                    ctx,
-                    f"Re-ingest source file `{source_path}`?\n\n"
-                    "(Tip: call `confirm` with the full page list first so the "
-                    "user can review all planned re-ingests at once.)",
-                    yes_label="Re-ingest",
-                    no_label="Cancel",
-                )
-                if not fallback.get("confirmed"):
-                    return {"status": "cancelled",
-                            "message": "Re-ingest cancelled by user.",
-                            "source_path": source_path}
-                _gate_open[0] = True
-            return await tool_ingest_source(ctx, source_path)
-
         return {
             "find_stale_pages": functools.partial(tool_find_stale_pages, ctx),
             "find_page_source": functools.partial(tool_find_page_source, ctx),
-            "ingest_source":    _guarded_ingest_source,
+            "ingest_source":    functools.partial(tool_ingest_source, ctx),
             "run_lint":         functools.partial(tool_run_lint, ctx),
             "get_page_states":  functools.partial(tool_get_page_states, ctx),
-            "confirm":          _guarded_confirm,
+            "confirm":          functools.partial(tool_confirm, ctx),
         }
