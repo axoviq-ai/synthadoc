@@ -140,13 +140,22 @@ export function GraphSidebar({ node, clusterColor, edges, totalNodes, onAsk, onC
                 <p className="graph-sidebar-hint-label">Maintenance:</p>
                 <button
                     className="graph-hint-chip graph-hint-chip--maintenance"
-                    onClick={() => onAsk(`Check the ${node.slug} page for issues`, [])}
+                    onClick={() => onAsk(`scan for broken wikilinks --slug ${node.slug}`, [])}
+                    title="Check this page for dead [[wikilinks]] pointing to non-existent pages"
                 >
-                    ⚑ Check this page for issues
+                    ⚑ Scan for broken wikilinks
+                </button>
+                <button
+                    className="graph-hint-chip graph-hint-chip--maintenance"
+                    onClick={() => onAsk(`run orphan resolver --slug ${node.slug}`, [])}
+                    title="Check whether this page has any incoming wikilinks from other active pages"
+                >
+                    ◎ Check orphan status
                 </button>
                 <button
                     className="graph-hint-chip graph-hint-chip--maintenance"
                     onClick={() => onAsk(`Re-ingest the ${node.slug} page`, [])}
+                    title="Re-fetch and re-process this page's source document"
                 >
                     ↻ Re-ingest this page
                 </button>

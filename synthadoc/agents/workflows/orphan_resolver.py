@@ -89,12 +89,18 @@ tool_notify(message, level)
 ━━━ WORKFLOW ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 STEP 1 — Discover orphans
-  If the initial message specifies a --slug, skip tool_find_orphaned_pages and
-  treat that slug as the only orphan to process.
+  If the initial message specifies a --slug:
+    Call tool_verify_orphan_resolved(orphan_slug=<slug>) immediately.
+    • resolved=true  → the page already has inbound links and is NOT an orphan.
+                       Respond with plain text (ends loop):
+                       "<slug> is not an active orphan page — it already has inbound
+                        wikilinks from: <linked_by list>. No action needed."
+    • resolved=false → treat this slug as the only orphan. Set orphan count = 1
+                       and proceed directly to STEP 3 (skip STEP 2).
   Otherwise call tool_find_orphaned_pages().
 
 STEP 2 — Check for work
-  If count == 0: respond with plain text "No orphaned pages found." (ends loop).
+  If count == 0: respond with plain text "No active orphaned pages found." (ends loop).
 
 STEP 3 — Cost estimate and approval
   Call tool_estimate_and_confirm(orphan_count=<N>).
@@ -220,8 +226,8 @@ class OrphanResolverWorkflow(AgenticWorkflow):
     """Agentic maintenance workflow to integrate orphaned wiki pages."""
 
     NAME = "orphan-resolver"
-    DESCRIPTION = "Find orphaned pages and insert natural wikilinks from related active pages."
-    CLI_ARGS = "[--slug SLUG]  (omit to resolve all orphaned pages)"
+    DESCRIPTION = "Find and resolve active orphan pages — active pages with no inbound [[wikilinks]] from other active pages."
+    CLI_ARGS = "[--slug SLUG]  (omit to resolve all active orphaned pages)"
 
     MATCH_RE: re.Pattern = re.compile(
         r"\borphan.{0,20}\bresolv"
@@ -244,9 +250,13 @@ class OrphanResolverWorkflow(AgenticWorkflow):
         if slug_match:
             slug = slug_match.group(1)
             return (
-                f"Run the orphan resolver workflow.\n"
-                f"Limit to slug: {slug}\n"
-                f"Skip tool_find_orphaned_pages; process only this slug."
+                f"Run the orphan resolver workflow for a single page: {slug}\n"
+                f"FIRST: call tool_verify_orphan_resolved(orphan_slug='{slug}') "
+                f"to check whether this page is actually an orphan.\n"
+                f"• If resolved=true  → it is NOT an orphan; stop with a plain-text "
+                f"'not an orphan' message (see STEP 1).\n"
+                f"• If resolved=false → it IS an orphan; proceed to STEP 3 with "
+                f"orphan_count=1 (skip tool_find_orphaned_pages and STEP 2)."
             )
         return (
             "Run the orphan resolver workflow.\n"

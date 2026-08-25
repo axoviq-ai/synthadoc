@@ -1252,10 +1252,21 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                     "unresolved_note": fm.get("unresolved_note") or None,
                 })
 
-        page_bodies: dict[str, str] = {
-            slug: (text[m.end():] if (m := _FM_RE.match(text)) else text)
-            for slug, text in page_texts.items()
-        }
+        # Only active pages participate in the orphan graph.
+        # Archived, draft, and stale pages with no inbound links are intentionally
+        # out of circulation; including them produces misleading noise in the report.
+        page_bodies: dict[str, str] = {}
+        for slug, text in page_texts.items():
+            fm_m = _FM_RE.match(text)
+            body = text[fm_m.end():] if fm_m else text
+            status = ""
+            if fm_m:
+                try:
+                    status = (yaml.safe_load(fm_m.group(1)) or {}).get("status", "")
+                except Exception:
+                    pass
+            if status in {"active", ""}:
+                page_bodies[slug] = body
         orphan_slugs = find_orphan_slugs(page_bodies)
 
         orphan_details = []
@@ -1275,6 +1286,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                 hint = title
             orphan_details.append({
                 "slug": slug,
+                "status": fm.get("status") or "active",
                 "index_suggestion": f"- [[{slug}]] — {hint}",
             })
 

@@ -52,7 +52,7 @@ export default function App() {
                 setPendingPrompt(`Re-ingest ${stale} stale ${pageWord}`);
             } else if (orphan > 0) {
                 const pageWord = orphan === 1 ? "page" : "pages";
-                setPendingPrompt(`Run orphan resolver for ${orphan} orphan ${pageWord}`);
+                setPendingPrompt(`Run orphan resolver for ${orphan} active orphan ${pageWord}`);
             }
         }).catch(() => {
             // Silently ignore — pre-fill is optional, not critical

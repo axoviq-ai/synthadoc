@@ -79,6 +79,13 @@ async def tool_verify_orphan_resolved(
         if page and page.status == LifecycleState.ACTIVE:
             page_texts[slug] = page.content or ""
 
+    # Guard: if the slug is not in the active page set at all (e.g. the page was
+    # archived or deleted), it trivially won't appear in remaining_orphans — which
+    # would cause a false resolved=True.  Return False so callers can distinguish
+    # "genuinely resolved" from "never tracked".
+    if orphan_slug not in page_texts:
+        return {"resolved": False, "linked_by": []}
+
     remaining_orphans = find_orphan_slugs(page_texts)
 
     if orphan_slug not in remaining_orphans:

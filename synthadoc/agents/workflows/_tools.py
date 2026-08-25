@@ -394,20 +394,25 @@ def _apply_single_fix(content: str, old_ref: str, new_ref: str | None) -> tuple[
     return _WIKILINK_REPLACE_RE.sub(_replacer, content), changes
 
 
-async def tool_find_broken_wikilinks(ctx: "WorkflowContext") -> dict:
-    """Scan all *active* wiki pages for ``[[slug]]`` references that resolve to no existing page.
+async def tool_find_broken_wikilinks(
+    ctx: "WorkflowContext",
+    page_slug: str | None = None,
+) -> dict:
+    """Scan wiki pages for ``[[slug]]`` references that resolve to no existing page.
 
-    Stale, draft, and archived pages are excluded — they must be promoted to
-    active first to be included in the scan.
+    If *page_slug* is given, only that one page is scanned (single-page mode).
+    Otherwise all active pages are scanned.
 
-    Uses ``difflib.get_close_matches`` (stdlib, no extra dependency) to suggest
-    fuzzy corrections for likely typos.
+    Stale, draft, and archived pages are excluded from the scan — they must be
+    promoted to active first to be included.
+
+    Uses ``difflib.get_close_matches`` (stdlib) to suggest fuzzy corrections.
 
     Returns::
 
         {
           "pages":        [{"slug": str, "broken_links": [{"ref": str, "suggestion": str|null}]}],
-          "scanned":      int,   # number of active pages scanned
+          "scanned":      int,   # number of pages scanned
           "total_broken": int,   # total broken link references found
         }
     """
@@ -416,20 +421,30 @@ async def tool_find_broken_wikilinks(ctx: "WorkflowContext") -> dict:
     all_slugs: list[str] = ctx.store.all_slugs()
     all_slug_set: set[str] = set(all_slugs)
 
-    n_active = len(active_slugs)
+    # Single-page mode: restrict to the requested slug (must be active).
+    if page_slug is not None:
+        scan_slugs: set[str] = {page_slug} if page_slug in active_slugs else set()
+        scope_label = f"page '{page_slug}'"
+    else:
+        scan_slugs = active_slugs
+        scope_label = f"{len(active_slugs)} active page{'s' if len(active_slugs) != 1 else ''}"
+
     await ctx.send_sse_event(
         "tool_progress",
         {"tool": "find_broken_wikilinks",
-         "message": f"Scanning {n_active} active page{'s' if n_active != 1 else ''} for broken wikilinks..."},
+         "message": f"Scanning {scope_label} for broken wikilinks..."},
     )
 
     pages_with_issues: list[dict] = []
     total_broken = 0
+    page_title: str | None = None   # populated in single-page mode for use in LLM summary
 
-    for slug in sorted(active_slugs):
+    for slug in sorted(scan_slugs):
         page = ctx.store.read_page(slug)
         if not page or not page.content:
             continue
+        if page_slug is not None:
+            page_title = page.title or None   # surface display title for summary
         refs = _WIKILINK_SCAN_RE.findall(page.content)
         broken: list[dict] = []
         seen: set[str] = set()
@@ -448,13 +463,16 @@ async def tool_find_broken_wikilinks(ctx: "WorkflowContext") -> dict:
     if n_pages:
         msg = (
             f"Found {total_broken} broken wikilink{'s' if total_broken != 1 else ''} "
-            f"across {n_pages} active page{'s' if n_pages != 1 else ''}"
+            f"across {n_pages} page{'s' if n_pages != 1 else ''}"
         )
     else:
-        msg = f"No broken wikilinks found across {n_active} active page{'s' if n_active != 1 else ''}"
+        msg = f"No broken wikilinks found on {scope_label}"
 
     await ctx.send_sse_event("tool_progress", {"tool": "find_broken_wikilinks", "message": msg})
-    return {"pages": pages_with_issues, "scanned": n_active, "total_broken": total_broken}
+    result: dict = {"pages": pages_with_issues, "scanned": len(scan_slugs), "total_broken": total_broken}
+    if page_slug is not None:
+        result["page_title"] = page_title   # display title for use in single-page summary
+    return result
 
 
 async def tool_apply_link_fixes(
