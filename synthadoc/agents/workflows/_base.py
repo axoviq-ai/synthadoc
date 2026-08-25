@@ -136,8 +136,12 @@ class AgenticWorkflow(ABC):
     #     • Once the gate is open, subsequent calls to gated tools run directly.
     #   Examples: BrokenWikilinksWorkflow, IngestLintWorkflow, OrphanResolverWorkflow.
     #
+    # Read-only workflows (no wiki writes) do not override this attribute at all —
+    # the empty default below is the correct value and build_guarded_tool_fns
+    # becomes a no-op when it is empty.
+    #
     # See _registry.py module docstring for a summary of both patterns.
-    GATED_TOOLS: frozenset[str] = frozenset()
+    GATED_TOOLS: frozenset[str] = frozenset()  # override only for write workflows
 
     @abstractmethod
     async def build_system_prompt(self) -> str:
