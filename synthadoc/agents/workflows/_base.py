@@ -113,20 +113,30 @@ class AgenticWorkflow(ABC):
 
     # Declare the names of tools that must not run without prior user approval.
     #
-    # The framework gates them automatically in build_guarded_tool_fns:
-    #   • When the session's "confirm" tool is called and returns confirmed=True,
-    #     the gate opens for this session.
-    #   • If a gated tool is called while the gate is still closed (i.e. the LLM
-    #     skipped the confirm step), a fallback confirm dialog is shown before the
-    #     tool runs — so no write ever happens without the user seeing a dialog.
-    #   • Once the gate is open, subsequent calls to gated tools proceed directly.
+    # ── When to use this (Pattern B) vs. embedding confirm in the tool (Pattern A) ──
     #
-    # Workflow authors only need to:
-    #   1. Return a plain "confirm" entry in get_tool_fns (functools.partial is fine).
-    #   2. Declare GATED_TOOLS = frozenset({"my_dangerous_tool"}).
+    # Pattern A — embed confirm inside the tool function
+    #   Use when: the tool itself can compose a concrete, informative confirm
+    #   message without any LLM help (e.g. it already holds the list of files
+    #   it's about to overwrite).
+    #   How: call ``await tool_confirm(ctx, message=...)`` inside the dangerous
+    #   tool function.  Leave GATED_TOOLS = frozenset() (the default).
+    #   Example: ScaffoldWorkflow / tool_run_scaffold in _tools.py.
     #
-    # Workflows that embed confirmation directly inside a tool function (Pattern A,
-    # used by scaffold) leave this empty — the tool already guarantees the gate.
+    # Pattern B — declarative GATED_TOOLS (this attribute)  ← use this by default
+    #   Use when: the confirm message should include data the LLM gathered via
+    #   earlier tool calls (e.g. "Found 7 broken links on pages A, B, C").
+    #   How:
+    #     1. Return a "confirm" entry in get_tool_fns (functools.partial is fine).
+    #     2. Declare GATED_TOOLS = frozenset({"my_write_tool"}).
+    #   The framework (build_guarded_tool_fns below) then:
+    #     • Wraps "confirm" so that confirmed=True opens the session gate.
+    #     • Wraps each GATED_TOOLS entry so it fires a fallback dialog if the
+    #       LLM skips the confirm step — no write ever happens without approval.
+    #     • Once the gate is open, subsequent calls to gated tools run directly.
+    #   Examples: BrokenWikilinksWorkflow, IngestLintWorkflow, OrphanResolverWorkflow.
+    #
+    # See _registry.py module docstring for a summary of both patterns.
     GATED_TOOLS: frozenset[str] = frozenset()
 
     @abstractmethod
@@ -145,9 +155,11 @@ class AgenticWorkflow(ABC):
     ) -> dict[str, Callable[..., Awaitable[dict]]]:
         """Return a mapping of tool name → async callable for this workflow.
 
-        Return plain callables (functools.partial is idiomatic).  Do NOT add
-        confirm-gate logic here — declare GATED_TOOLS instead and the framework
-        will wire up the protection via build_guarded_tool_fns.
+        Return plain callables (``functools.partial`` is idiomatic).  Do NOT add
+        confirm-gate wrappers here — use Pattern B (declare GATED_TOOLS + include
+        a ``"confirm"`` entry) and the framework wires up the protection via
+        ``build_guarded_tool_fns``.  See the GATED_TOOLS docstring for when to
+        choose Pattern A (embed confirm inside the tool) instead.
         """
         ...
 
