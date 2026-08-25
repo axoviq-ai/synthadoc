@@ -202,11 +202,12 @@ def lint_report(
             typer.echo(f"    -> Or re-run: synthadoc lint -w {wiki} --auto-resolve")
 
     if orphans:
-        typer.echo(f"\nOrphan pages ({len(orphans)}) - no inbound links:\n")
+        typer.echo(f"\nOrphan pages ({len(orphans)}) - active pages with no inbound links:\n")
         for slug in orphans:
             fm = _parse_frontmatter(page_texts.get(slug, ""))
+            status = fm.get("status") or "active"
             suggestion = _index_suggestion(slug, fm)
-            typer.echo(f"  {slug}")
+            typer.echo(f"  {slug}  [{status}]")
             typer.echo(f"    -> Add [[{slug}]] to a related content page, e.g.:")
             typer.echo(f"         {suggestion}")
 

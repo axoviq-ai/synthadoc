@@ -27,12 +27,18 @@ function classifyLine(line: string): DiffLineKind {
     return "ctx";
 }
 
+// DiffViewer always renders on the dark --bg-notice (#141826) ground, so we
+// use explicit hex values instead of rgba — compositing rgba over a near-black
+// background collapses to muddy near-black tones regardless of the alpha.
+// Colors chosen to match the Claude Code terminal diff palette:
+//   add  #163d24 dark green ground  /  #7ee787 light green text
+//   del  #4a1a1c dark red ground    /  #ff7b72 light red text
 const LINE_STYLES: Record<DiffLineKind, React.CSSProperties> = {
-    add:    { background: "rgba(63,185,80,0.15)",   color: "var(--diff-add,  #3fb950)" },
-    del:    { background: "rgba(248,81,73,0.15)",   color: "var(--diff-del,  #f85149)" },
-    hunk:   { background: "rgba(88,166,255,0.10)",  color: "var(--diff-hunk, #58a6ff)" },
-    header: { background: "transparent",            color: "var(--diff-header, #888)"  },
-    ctx:    { background: "transparent",            color: "inherit"                   },
+    add:    { background: "#163d24", color: "#7ee787" },
+    del:    { background: "#4a1a1c", color: "#ff7b72" },
+    hunk:   { background: "#0d1f38", color: "#58a6ff" },
+    header: { background: "transparent", color: "#888" },
+    ctx:    { background: "transparent", color: "inherit" },
 };
 
 function DiffViewer({ diff }: { diff: string }) {

@@ -259,6 +259,25 @@ class WikiStorage:
         """Return all page slugs, excluding wiki/candidates/ subdirectory."""
         return self.list_pages()
 
+    def count_orphan_active_pages(self) -> int:
+        """Count active pages that have orphan: true in frontmatter.
+
+        Used by the /session endpoint to include orphan count in the health
+        context passed to HintEngine, so the 'Run orphan resolver' chip
+        surfaces when orphaned pages are present.
+
+        NOTE: This performs a full file scan (one read + YAML parse per page).
+        For wikis with hundreds of pages this adds measurable latency to every
+        session creation. Future: track orphan count in the audit DB alongside
+        stale/contradicted so the /session handler can use a single indexed query.
+        """
+        count = 0
+        for slug in self.list_pages():
+            page = self.read_page(slug)
+            if page is not None and page.status == LifecycleState.ACTIVE and page.orphan:
+                count += 1
+        return count
+
     def append_to_index(self, slug: str, title: str) -> None:
         """Append a newly created page entry to wiki/index.md under 'Recently Added'.
 

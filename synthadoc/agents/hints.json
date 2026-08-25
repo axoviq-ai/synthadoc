@@ -22,6 +22,7 @@
     "HEALTH_CHECK": [
       "Run contradiction resolver",
       "Re-ingest stale pages",
+      "Run orphan resolver",
       "Show my lint report",
       "Show wiki status",
       "Run Synthadoc status",
@@ -48,6 +49,7 @@
       "What pages are orphan pages?",
       "List contradicted pages",
       "Run contradiction resolver",
+      "Run orphan resolver",
       "Run Synthadoc status",
       "Activate a draft page",
       "Archive a stale page",
@@ -111,8 +113,8 @@
       "keywords": ["orphan", "no inbound", "isolated", "unlinked"],
       "answer_keywords": ["no inbound"],
       "hints": [
+        "Run orphan resolver",
         "What pages are orphan pages?",
-        "Run lint on orphans only",
         "Show my lint report"
       ]
     },

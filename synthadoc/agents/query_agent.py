@@ -1387,11 +1387,17 @@ class QueryAgent(BaseAgent):
             _action_agent = ActionAgent(self._provider, self._orchestrator,
                                         self._store._root.parent)
             if _action_agent.detect(question, history=history or []):
-                _had_events = False
+                # Track whether the action agent produced a done event.  run_gen()
+                # always emits a leading _init tool_progress; only a done event means
+                # the action was actually handled.  If extraction fails (None / "none")
+                # the generator returns after _init without done — fall through to the
+                # QueryAgent pipeline so the user still gets an answer.
+                _had_done = False
                 async for _evt in _action_agent.run_gen(question, history=history or [], session_id=session_id):
-                    _had_events = True
                     yield _evt
-                if _had_events:
+                    if _evt.get("event") == "done":
+                        _had_done = True
+                if _had_done:
                     return
 
         yield {"event": "status", "data": {"phase": "retrieving"}}

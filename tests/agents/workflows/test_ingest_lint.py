@@ -47,14 +47,13 @@ def test_ingest_lint_tool_fns_are_all_callable():
 
 
 def test_ingest_lint_tool_fns_are_partial_bound():
-    """Each fn is bound to ctx via functools.partial — calling fn() won't need ctx."""
-    import inspect, functools
+    """Each fn is a functools.partial bound to ctx — calling fn() won't need ctx."""
+    import functools
     wf = IngestLintWorkflow()
     ctx, _ = _make_ctx()
     fns = wf.get_tool_fns(ctx)
     for name, fn in fns.items():
         assert isinstance(fn, functools.partial), f"{name} should be a functools.partial"
-        # The partial's first arg should be ctx
         assert fn.args[0] is ctx, f"{name} partial not bound to ctx"
 
 

@@ -101,6 +101,13 @@ class IngestLintWorkflow(AgenticWorkflow):
         re.IGNORECASE,
     )
 
+    # Confirm gate — Pattern B (declarative GATED_TOOLS).
+    # ingest_source is gated: the framework requires a "confirm" call before
+    # it will run and fires a fallback dialog if the LLM skips that step.
+    # See broken_wikilinks.py for a detailed explanation of the pattern, or
+    # AgenticWorkflow.GATED_TOOLS in _base.py for the full contract.
+    GATED_TOOLS: frozenset[str] = frozenset({"ingest_source"})
+
     async def build_system_prompt(self) -> str:
         return _SYSTEM_PROMPT
 
@@ -111,8 +118,8 @@ class IngestLintWorkflow(AgenticWorkflow):
         return {
             "find_stale_pages": functools.partial(tool_find_stale_pages, ctx),
             "find_page_source": functools.partial(tool_find_page_source, ctx),
-            "ingest_source": functools.partial(tool_ingest_source, ctx),
-            "run_lint": functools.partial(tool_run_lint, ctx),
-            "get_page_states": functools.partial(tool_get_page_states, ctx),
-            "confirm": functools.partial(tool_confirm, ctx),
+            "ingest_source":    functools.partial(tool_ingest_source, ctx),
+            "run_lint":         functools.partial(tool_run_lint, ctx),
+            "get_page_states":  functools.partial(tool_get_page_states, ctx),
+            "confirm":          functools.partial(tool_confirm, ctx),
         }

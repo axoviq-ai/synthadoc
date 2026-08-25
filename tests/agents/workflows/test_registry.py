@@ -203,5 +203,146 @@ def test_scaffold_workflow_get_tool_fns_returns_expected_keys():
     wf = ScaffoldWorkflow()
     ctx = _make_wf_ctx()
     fns = wf.get_tool_fns(ctx)
-    assert set(fns.keys()) == {"get_scaffold_preview", "confirm", "run_scaffold"}
+    # "confirm" is no longer a separate LLM tool — it is embedded inside
+    # tool_run_scaffold (Pattern A), so the registry no longer exposes it.
+    assert set(fns.keys()) == {"get_scaffold_preview", "run_scaffold"}
     assert all(callable(f) for f in fns.values())
+
+
+# ---------------------------------------------------------------------------
+# build_guarded_tool_fns — framework-level confirm gate (AgenticWorkflow base)
+# ---------------------------------------------------------------------------
+
+def _make_wf_ctx_for_gate():
+    """Create a minimal WorkflowContext for gate tests."""
+    import asyncio
+    from pathlib import Path
+    from synthadoc.agents.workflows._base import WorkflowContext
+    events = []
+    async def _send(e, d):
+        events.append({"event": e, "data": d})
+    ctx = WorkflowContext(
+        session_id="gate-test",
+        wiki_root=Path("/wiki"),
+        queue=None,
+        store=None,
+        audit_db=None,
+        send_sse_event=_send,
+        confirm_registry={},
+        confirm_result_registry={},
+    )
+    return ctx, events
+
+
+def test_build_guarded_tool_fns_passthrough_when_no_gated_tools():
+    """When GATED_TOOLS is empty, build_guarded_tool_fns returns get_tool_fns unchanged."""
+    import functools
+    from synthadoc.agents.workflows.scaffold import ScaffoldWorkflow
+    wf = ScaffoldWorkflow()
+    ctx, _ = _make_wf_ctx_for_gate()
+    assert wf.GATED_TOOLS == frozenset()
+    raw = wf.get_tool_fns(ctx)
+    guarded = wf.build_guarded_tool_fns(ctx)
+    assert set(raw.keys()) == set(guarded.keys())
+    # All tools are still functools.partial (not wrapped)
+    for name, fn in guarded.items():
+        assert isinstance(fn, functools.partial), f"{name} should be unchanged partial"
+
+
+# Helper: a minimal workflow that takes callables directly (no functools.partial)
+# so tests can inject mocks without fighting partial's captured function reference.
+
+class _GateTestWorkflow:
+    """Minimal AgenticWorkflow stand-in for testing build_guarded_tool_fns."""
+
+    GATED_TOOLS: frozenset[str] = frozenset({"risky_tool"})
+
+    def __init__(self, risky_fn, confirm_fn):
+        self._risky = risky_fn
+        self._confirm = confirm_fn
+
+    def get_tool_fns(self, ctx):
+        return {"risky_tool": self._risky, "confirm": self._confirm}
+
+    def build_guarded_tool_fns(self, ctx):
+        # Delegate to the real framework method via the base class.
+        from synthadoc.agents.workflows._base import (
+            _make_confirm_gatekeeper,
+            _make_gated_tool,
+        )
+        fns = self.get_tool_fns(ctx)
+        gate_open: list[bool] = [False]
+        result = {}
+        for name, fn in fns.items():
+            if name == "confirm":
+                result[name] = _make_confirm_gatekeeper(fn, gate_open)
+            elif name in self.GATED_TOOLS:
+                result[name] = _make_gated_tool(fn, name, gate_open, ctx)
+            else:
+                result[name] = fn
+        return result
+
+
+async def test_build_guarded_tool_fns_gate_opens_on_confirm():
+    """confirm() returning confirmed=True allows the gated tool to run on next call."""
+    from unittest.mock import AsyncMock
+
+    risky_fn  = AsyncMock(return_value={"status": "done"})
+    confirm_fn = AsyncMock(return_value={"confirmed": True})
+
+    ctx, _ = _make_wf_ctx_for_gate()
+    fns = _GateTestWorkflow(risky_fn, confirm_fn).build_guarded_tool_fns(ctx)
+
+    # Call confirm first — gate should open.
+    result = await fns["confirm"]("Review changes?", "Yes", "No")
+    assert result["confirmed"] is True
+    confirm_fn.assert_awaited_once()
+
+    # Now risky_tool should run directly — no fallback confirm.
+    confirm_fn.reset_mock()
+    result = await fns["risky_tool"]()
+
+    assert result["status"] == "done"
+    risky_fn.assert_awaited_once()
+    confirm_fn.assert_not_awaited()  # no second confirm dialog
+
+
+async def test_build_guarded_tool_fns_fallback_confirm_fires_when_gate_bypassed():
+    """If the LLM skips confirm and calls a gated tool directly, a fallback dialog fires."""
+    from unittest.mock import AsyncMock, patch
+
+    risky_fn  = AsyncMock(return_value={"status": "done"})
+    confirm_fn = AsyncMock()  # registered confirm — should NOT be called by the fallback
+
+    ctx, _ = _make_wf_ctx_for_gate()
+    fns = _GateTestWorkflow(risky_fn, confirm_fn).build_guarded_tool_fns(ctx)
+
+    # LLM calls risky_tool directly without calling confirm.
+    # The fallback fires via a deferred import of tool_confirm inside _make_gated_tool.
+    # Patching the module attribute at call time reaches the deferred import.
+    with patch("synthadoc.agents.workflows._tools.tool_confirm",
+               new_callable=AsyncMock, return_value={"confirmed": True}) as mock_fallback:
+        result = await fns["risky_tool"]()
+
+    mock_fallback.assert_awaited_once()  # fallback confirm fired
+    risky_fn.assert_awaited_once()       # underlying tool ran after approval
+    confirm_fn.assert_not_awaited()      # the registered confirm was not called
+    assert result["status"] == "done"
+
+
+async def test_build_guarded_tool_fns_cancels_when_fallback_declined():
+    """If the fallback confirm is declined, the gated tool returns cancelled status."""
+    from unittest.mock import AsyncMock, patch
+
+    risky_fn  = AsyncMock(return_value={"status": "done"})
+    confirm_fn = AsyncMock()
+
+    ctx, _ = _make_wf_ctx_for_gate()
+    fns = _GateTestWorkflow(risky_fn, confirm_fn).build_guarded_tool_fns(ctx)
+
+    with patch("synthadoc.agents.workflows._tools.tool_confirm",
+               new_callable=AsyncMock, return_value={"confirmed": False}):
+        result = await fns["risky_tool"]()
+
+    assert result["status"] == "cancelled"
+    risky_fn.assert_not_awaited()  # gated tool never ran

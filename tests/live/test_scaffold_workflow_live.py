@@ -4,8 +4,9 @@
 Live integration tests for the Scaffold Workflow (Workflow E, v1.2.1).
 
 Triggered by phrases such as "run scaffold" or "regenerate scaffold".
-The workflow runs three tools in sequence with a confirm gate:
-  get_scaffold_preview → confirm → run_scaffold
+The workflow runs two tools in sequence; confirmation is embedded inside
+run_scaffold (Pattern A) so no separate confirm tool call is needed:
+  get_scaffold_preview → run_scaffold (fires confirm internally)
 
 Run:
   pytest tests/live/test_scaffold_workflow_live.py -v -s
@@ -172,16 +173,26 @@ def test_workflow_fires_preview_tool_and_emits_confirm_request():
 @pytest.mark.timeout(90)
 def test_workflow_does_not_run_scaffold_when_declined():
     """
-    When the confirm gate is declined, run_scaffold must NOT be called and
-    the stream must complete without errors.
+    When the confirm gate is declined the scaffold job must not be started
+    and the stream must complete without errors.
+
+    Note: with Pattern A (confirm embedded inside tool_run_scaffold), the LLM
+    still calls run_scaffold — the tool loop emits a pre-call tool_progress
+    for it, then the embedded confirm fires.  What proves the job did NOT run
+    is the absence of the progress messages that are only emitted after the
+    confirm check: "Running scaffold for..." and "✓ Scaffold complete...".
     """
     events = _stream_with_confirm_response("run scaffold", accept=False)
     _assert_stream_complete(events)
 
-    tool_names = _tool_names(events)
-    assert "run_scaffold" not in tool_names, (
-        f"run_scaffold was called despite confirmation being declined: "
-        f"tools fired: {tool_names}"
+    messages = _tool_messages(events)
+    assert not any("running scaffold for" in m.lower() for m in messages), (
+        f"Scaffold job was started despite confirmation being declined. "
+        f"Tool messages: {messages}"
+    )
+    assert not any("scaffold complete" in m.lower() for m in messages), (
+        f"Scaffold job completed despite confirmation being declined. "
+        f"Tool messages: {messages}"
     )
 
 

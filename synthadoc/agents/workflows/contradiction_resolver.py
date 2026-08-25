@@ -26,7 +26,7 @@ from synthadoc.agents.workflows._tools import (
     tool_get_wiki_status,
 )
 # Contradiction-domain tools (specific to this workflow)
-from synthadoc.agents.workflows.contradiction_resolver_tools import (
+from synthadoc.agents.workflows.tools.contradiction_resolver_tools import (
     tool_get_contradicted_pages,
     tool_read_source_content,
     tool_cost_estimate,

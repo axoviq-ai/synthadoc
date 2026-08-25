@@ -3,7 +3,7 @@
 import pytest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
-from synthadoc.agents.lint_agent import LintAgent, LintReport, find_orphan_slugs, _fix_dangling_wikilinks, LINT_SKIP_SLUGS, LINT_SKIP_SOURCE_SLUGS, _parse_adversarial_response, _check_page_citations, _citation_source_names, read_current_lint_state
+from synthadoc.agents.lint_agent import LintAgent, LintReport, find_orphan_slugs, find_broken_wikilink_refs, _fix_dangling_wikilinks, LINT_SKIP_SLUGS, LINT_SKIP_SOURCE_SLUGS, _parse_adversarial_response, _check_page_citations, _citation_source_names, read_current_lint_state
 from synthadoc.providers.base import CompletionResponse
 from synthadoc.storage.wiki import WikiStorage, WikiPage, SourceRef
 from synthadoc.storage.log import LogWriter, AuditDB
@@ -119,6 +119,42 @@ def test_find_orphan_slugs_self_link_does_not_prevent_orphan():
     assert "lonely" in orphans       # self-link must not count as an inbound reference
     assert "real-page" not in orphans  # hub links to real-page → not an orphan
     assert "hub" in orphans            # nothing links to hub
+
+
+def test_find_broken_wikilink_refs_detects_dead_links():
+    """find_broken_wikilink_refs returns dead refs that are not in all_slugs."""
+    page_texts = {
+        "alan-turing": "See [[bletchley-park]] and [[von-neumann-architecture]].",
+        "von-neumann-architecture": "See [[alan-turing]].",
+    }
+    all_slugs = {"alan-turing", "von-neumann-architecture"}
+    result = find_broken_wikilink_refs(page_texts, all_slugs)
+    assert "alan-turing" in result
+    assert "bletchley-park" in result["alan-turing"]
+    assert "von-neumann-architecture" not in result  # all its links resolve
+
+
+def test_find_broken_wikilink_refs_anchor_and_display_stripped():
+    """Anchors ([[slug#section]]) and display text ([[slug|Label]]) are handled."""
+    page_texts = {"page": "[[real-page#intro]] and [[ghost-page|Ghost]]."}
+    all_slugs = {"page", "real-page"}
+    result = find_broken_wikilink_refs(page_texts, all_slugs)
+    assert result == {"page": ["ghost-page"]}
+
+
+def test_find_broken_wikilink_refs_deduplicates_per_page():
+    """Duplicate dead refs within a page are only counted once."""
+    page_texts = {"page": "[[dead]] again [[dead]]."}
+    all_slugs = {"page"}
+    result = find_broken_wikilink_refs(page_texts, all_slugs)
+    assert result == {"page": ["dead"]}
+
+
+def test_find_broken_wikilink_refs_empty_when_all_links_valid():
+    """Returns empty dict when every [[link]] resolves to an existing slug."""
+    page_texts = {"a": "See [[b]].", "b": "See [[a]]."}
+    all_slugs = {"a", "b"}
+    assert find_broken_wikilink_refs(page_texts, all_slugs) == {}
 
 
 @pytest.mark.asyncio
