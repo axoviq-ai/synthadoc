@@ -191,19 +191,20 @@ STEP 4 — Per-page resolution loop
         ⚠ MANDATORY — do NOT output any plain text before calling tool_confirm here.
         Text output ends the entire workflow before the confirmation is shown.
 
-STEP 5 — Final summary
-  Print a formatted summary:
-    "Contradiction Resolver — Complete\\n\\n✅ Fixed (<N>):\\n  ...\\n⚠ Unresolved (<N>):\\n  ...\\n⏭ Skipped (<N>):\\n  ..."
-
-STEP 6 — Ground-truth confirmation
-  Call tool_get_wiki_status() and append the lifecycle counts to the summary.
-  This is the ground truth — it tells the user whether contradicted pages
-  are actually gone.
+STEP 5 — Final summary (tool call FIRST, then plain text)
+  ⚠ Do NOT output any plain text yet.
+  FIRST call tool_get_wiki_status() — this fetches live lifecycle counts.
+  THEN output a single plain-text summary combining per-page outcomes and
+  the live counts returned by tool_get_wiki_status():
+    "Contradiction Resolver — Complete\n\n✅ Fixed (<N>):\n  ...\n⚠ Unresolved (<N>):\n  ...\n⏭ Skipped (<N>):\n  ...\n\nWiki status (live): <key: value, ...>"
+  This plain-text output ends the loop — it must be your very last action.
 
 ━━━ CRITICAL RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-• Plain text ENDS THE LOOP — use it ONLY for the final summary (step 5/6),
+• Plain text ENDS THE LOOP — use it ONLY for the final summary (step 5),
   or when cancelling (steps 2 and 3).
+• ALWAYS call tool_get_wiki_status() before outputting the step 5 summary —
+  never output any plain text before this tool call returns.
 • ALWAYS call tool_run_scoped_lint after every applied change.
 • When tool_run_scoped_lint returns pass: True — IMMEDIATELY call
   tool_transition_lifecycle_state. Do NOT call tool_propose_and_apply again.
