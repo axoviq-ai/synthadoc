@@ -649,7 +649,7 @@ def test_escalation_system_prompt_contains_rerun_hint():
     import synthadoc.agents.workflows.orphan_resolver as _mod
     src = _mod.__file__
     import pathlib
-    text = pathlib.Path(src).read_text()
+    text = pathlib.Path(src).read_text(encoding="utf-8")
     assert "Re-run orphan-resolver" in text or "re-run orphan-resolver" in text.lower(), (
         "Escalation template missing re-run suggestion"
     )
@@ -659,7 +659,7 @@ def test_escalation_system_prompt_contains_tried_slugs():
     """System prompt escalation template references tried_slugs (candidate list)."""
     import pathlib
     import synthadoc.agents.workflows.orphan_resolver as _mod
-    text = pathlib.Path(_mod.__file__).read_text()
+    text = pathlib.Path(_mod.__file__).read_text(encoding="utf-8")
     assert "tried_slugs" in text, (
         "Escalation template must list tried_slugs so the user sees which candidates were considered"
     )
@@ -669,7 +669,7 @@ def test_inter_orphan_confirm_in_system_prompt():
     """System prompt mandates tool_confirm between orphans (not after the last)."""
     import pathlib
     import synthadoc.agents.workflows.orphan_resolver as _mod
-    text = pathlib.Path(_mod.__file__).read_text()
+    text = pathlib.Path(_mod.__file__).read_text(encoding="utf-8")
     # The prompt must explicitly describe the inter-orphan confirm gate
     assert "Inter-orphan confirm" in text or "inter-orphan" in text.lower() or (
         "tool_confirm" in text and "more orphans remain" in text.lower()
