@@ -299,15 +299,25 @@ def test_slug_filter_targets_single():
             confirm_response=_accept_estimate_decline_proposals,
         )
 
-        # Only the targeted slug should appear in workflow events; the other
-        # orphan should not have been processed by the workflow.
+        # _ORPHAN_SLUG must appear somewhere in the event stream (targeted).
         event_text = json.dumps(events)
         assert _ORPHAN_SLUG in event_text, (
             f"Targeted slug {_ORPHAN_SLUG!r} not found in events"
         )
-        assert _ISOLATED_SLUG not in event_text, (
-            f"Non-targeted slug {_ISOLATED_SLUG!r} appeared in events — "
-            "slug filter did not constrain the run"
+
+        # _ISOLATED_SLUG must NOT appear in the final summary (token events).
+        # It may legitimately appear as a *candidate host* in notice / confirm_request
+        # events (when the LLM proposes to add [[_ORPHAN_SLUG]] inside _ISOLATED_SLUG),
+        # but it must never be listed as an orphan subject in Resolved / Unresolved /
+        # Skipped sections.  BM25 slug-similarity between the two test pages makes
+        # _ISOLATED_SLUG a plausible link-candidate host — that is expected and correct;
+        # the test only checks it was not *processed as an orphan*.
+        final_text = "".join(
+            e["data"].get("text", "") for e in events if e["event"] == "token"
+        )
+        assert _ISOLATED_SLUG not in final_text, (
+            f"Non-targeted slug {_ISOLATED_SLUG!r} appeared in the final summary — "
+            "slug filter did not constrain which orphan was processed"
         )
     finally:
         for slug in [_ORPHAN_SLUG, _ISOLATED_SLUG]:
