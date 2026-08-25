@@ -92,6 +92,18 @@ class ScaffoldWorkflow(AgenticWorkflow):
         re.IGNORECASE,
     )
 
+    # Confirm gate — Pattern A (embedded inside tool_run_scaffold).
+    #
+    # tool_run_scaffold calls tool_confirm internally — it builds the confirm
+    # message from the domain and file list before enqueueing any job.  This
+    # means no separate "confirm" tool is needed in the LLM registry, and
+    # GATED_TOOLS is left empty (the base-class default).
+    #
+    # Choose Pattern A when the confirm message is built programmatically.
+    # Choose Pattern B (GATED_TOOLS) when the LLM builds the message from
+    # scan results — broken_wikilinks.py shows Pattern B with full comments.
+    GATED_TOOLS: frozenset[str] = frozenset()
+
     async def build_system_prompt(self) -> str:
         return _SYSTEM_PROMPT
 
@@ -99,8 +111,6 @@ class ScaffoldWorkflow(AgenticWorkflow):
         return user_input
 
     def get_tool_fns(self, ctx: WorkflowContext) -> dict[str, Callable[..., Awaitable[dict]]]:
-        # run_scaffold embeds the confirmation dialog internally (Pattern A),
-        # so no separate "confirm" tool is needed in the registry.
         return {
             "get_scaffold_preview": functools.partial(tool_get_scaffold_preview, ctx),
             "run_scaffold":         functools.partial(tool_run_scaffold, ctx),

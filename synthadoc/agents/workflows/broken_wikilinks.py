@@ -153,11 +153,25 @@ class BrokenWikilinksWorkflow(AgenticWorkflow):
         re.IGNORECASE,
     )
 
-    # apply_link_fixes must not run without prior user approval.
-    # The framework (build_guarded_tool_fns) gates it automatically: the
-    # "confirm" tool opens the session gate on approval; if the LLM calls
-    # apply_link_fixes without going through confirm first, a fallback dialog
-    # fires before any page is written.
+    # Confirm gate — Pattern B (declarative GATED_TOOLS).
+    #
+    # Declaring a tool name here tells the framework (build_guarded_tool_fns)
+    # to protect it automatically:
+    #   • The "confirm" tool in get_tool_fns opens the session gate on approval.
+    #   • If the LLM calls the gated tool before going through confirm, the
+    #     framework fires a fallback dialog so no write happens silently.
+    #   • Once the gate is open it stays open for the session — no repeat
+    #     dialogs on subsequent calls to the same tool.
+    #
+    # To add a confirm gate in a new workflow:
+    #   1. Include "confirm": functools.partial(tool_confirm, ctx) in get_tool_fns.
+    #   2. Declare GATED_TOOLS = frozenset({"your_destructive_tool"}).
+    #
+    # Use Pattern A instead (embed tool_confirm inside the tool function itself,
+    # leave GATED_TOOLS empty) when the confirm message is built programmatically
+    # rather than by the LLM.  scaffold.py shows Pattern A.
+    #
+    # Full contract: AgenticWorkflow.GATED_TOOLS in _base.py.
     GATED_TOOLS: frozenset[str] = frozenset({"apply_link_fixes"})
 
     async def build_system_prompt(self) -> str:
