@@ -160,10 +160,50 @@ class BrokenWikilinksWorkflow(AgenticWorkflow):
         return user_input
 
     def get_tool_fns(self, ctx: WorkflowContext) -> dict[str, Callable[..., Awaitable[dict]]]:
+        # Closure gate: apply_link_fixes is blocked until the session confirms.
+        # _guarded_confirm sets the gate; _guarded_apply_link_fixes falls back to
+        # an embedded tool_confirm if the LLM bypasses the explicit confirm step.
+        # This avoids the error-return-then-freeze pattern while guaranteeing that
+        # no page is modified without user approval.
+        _gate_open: list[bool] = [False]
+
+        async def _guarded_confirm(
+            message: str,
+            yes_label: str = "Yes",
+            no_label: str = "No",
+            **kwargs: object,
+        ) -> dict:
+            result = await tool_confirm(ctx, message, yes_label, no_label, **kwargs)
+            if result.get("confirmed"):
+                _gate_open[0] = True
+            return result
+
+        async def _guarded_apply_link_fixes(
+            page_slug: str,
+            fixes: list,
+        ) -> dict:
+            if not _gate_open[0]:
+                # Fallback: LLM skipped the explicit confirm step — ask before
+                # writing any changes so no page is silently modified.
+                fallback = await tool_confirm(
+                    ctx,
+                    f"Apply broken wikilink fixes to `{page_slug}`?\n\n"
+                    "(Tip: call `confirm` with the full change summary first "
+                    "so the user can review all planned fixes at once.)",
+                    yes_label="Apply fixes",
+                    no_label="Cancel",
+                )
+                if not fallback.get("confirmed"):
+                    return {"status": "cancelled",
+                            "message": "Fixes cancelled by user.", "changes": 0,
+                            "page": page_slug}
+                _gate_open[0] = True
+            return await tool_apply_link_fixes(ctx, page_slug, fixes)
+
         return {
             "find_broken_wikilinks": functools.partial(tool_find_broken_wikilinks, ctx),
-            "apply_link_fixes":      functools.partial(tool_apply_link_fixes, ctx),
-            "confirm":               functools.partial(tool_confirm, ctx),
+            "apply_link_fixes":      _guarded_apply_link_fixes,
+            "confirm":               _guarded_confirm,
             "run_lint":              functools.partial(tool_run_lint, ctx),
             "get_page_states":       functools.partial(tool_get_page_states, ctx),
         }

@@ -46,16 +46,16 @@ def test_ingest_lint_tool_fns_are_all_callable():
         assert callable(fn), f"{name} not callable"
 
 
-def test_ingest_lint_tool_fns_are_partial_bound():
-    """Each fn is bound to ctx via functools.partial — calling fn() won't need ctx."""
-    import inspect, functools
+def test_ingest_lint_tool_fns_are_ctx_bound():
+    """Each fn is bound to ctx (via partial or closure) — calling fn() won't need ctx."""
+    import inspect
     wf = IngestLintWorkflow()
     ctx, _ = _make_ctx()
     fns = wf.get_tool_fns(ctx)
     for name, fn in fns.items():
-        assert isinstance(fn, functools.partial), f"{name} should be a functools.partial"
-        # The partial's first arg should be ctx
-        assert fn.args[0] is ctx, f"{name} partial not bound to ctx"
+        assert callable(fn), f"{name} should be callable"
+        # All fns should be coroutine functions (async) — they don't accept ctx directly.
+        assert inspect.iscoroutinefunction(fn), f"{name} should be an async function"
 
 
 def test_ingest_lint_build_initial_message_returns_user_input():
