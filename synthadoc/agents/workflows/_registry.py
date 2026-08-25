@@ -8,6 +8,7 @@ To add a new workflow with fast-path routing:
   3. Set NAME and DESCRIPTION on the class to expose it via the CLI.
   4. Add one import line and one entry in ROUTED_WORKFLOWS below.
   5. If the workflow writes to the wiki, add a confirm gate (see below).
+     Read-only workflows skip this step — the base-class default is correct.
 
 No other file needs to change.  ActionAgent reads ROUTED_WORKFLOWS at startup,
 derives _ACTION_RE coverage automatically from each workflow's MATCH_RE, and
@@ -16,8 +17,11 @@ CLI_REGISTRY is derived automatically from ROUTED_WORKFLOWS.NAME entries and
 drives ``synthadoc workflow list`` and ``synthadoc workflow run --name``.
 
 ── Confirm gates (step 5) ───────────────────────────────────────────────────────
-Any workflow that writes to the wiki MUST ask the user to approve before the
-first write.  Choose the pattern based on who composes the confirm message:
+Read-only workflows (no wiki writes): nothing to do — ``GATED_TOOLS`` defaults
+to ``frozenset()`` on the base class and ``build_guarded_tool_fns`` is a no-op.
+
+Write workflows MUST ask the user to approve before the first write.
+Choose the pattern based on who composes the confirm message:
 
   Pattern A — tool composes its own message (no LLM help needed)
       Use when the dangerous tool already has all the data it needs to write
