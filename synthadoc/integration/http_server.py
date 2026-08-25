@@ -1814,6 +1814,21 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         orphan = orch._store.count_orphan_active_pages()
         if orphan > 0:
             counts["orphan"] = orphan
+        # Broken wikilinks: count dead [[slug]] refs across active pages.
+        # Pure text scan — no LLM, fast enough for a status call.
+        from synthadoc.agents.lint_agent import find_broken_wikilink_refs as _find_broken
+        _all_slugs = set(orch._store.list_pages())
+        _bwl_states = await orch._audit.get_live_page_states(orch._store.page_exists)
+        _active_scan: dict[str, str] = {}
+        for _p in _bwl_states:
+            if _p.get("state") == "active" and _p["slug"] not in LINT_SKIP_SLUGS:
+                _page = orch._store.read_page(_p["slug"])
+                if _page and _page.content:
+                    _active_scan[_p["slug"]] = _page.content
+        _broken = _find_broken(_active_scan, _all_slugs)
+        _broken_total = sum(len(refs) for refs in _broken.values())
+        if _broken_total > 0:
+            counts["broken_wikilinks"] = _broken_total
         return counts
 
     @app.get("/lifecycle/events")

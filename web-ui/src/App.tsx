@@ -42,6 +42,7 @@ export default function App() {
             const contradicted = status.contradicted ?? 0;
             const stale = status.stale ?? 0;
             const orphan = status.orphan ?? 0;
+            const broken = status.broken_wikilinks ?? 0;
             if (contradicted > 0) {
                 const pageWord = contradicted === 1 ? "page" : "pages";
                 setPendingPrompt(
@@ -53,6 +54,9 @@ export default function App() {
             } else if (orphan > 0) {
                 const pageWord = orphan === 1 ? "page" : "pages";
                 setPendingPrompt(`Run orphan resolver for ${orphan} active orphan ${pageWord}`);
+            } else if (broken > 0) {
+                const linkWord = broken === 1 ? "broken wikilink" : "broken wikilinks";
+                setPendingPrompt(`${broken} ${linkWord} detected — scan and fix them?`);
             }
         }).catch(() => {
             // Silently ignore — pre-fill is optional, not critical

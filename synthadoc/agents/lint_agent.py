@@ -55,6 +55,8 @@ class LintReport:
 
 
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
+# Captures only the slug portion of a [[slug]], [[slug|display]], or [[slug#anchor]] link.
+_WIKILINK_SLUG_RE = re.compile(r"\[\[([^\]|#]+?)(?:[|#][^\]]*)?\]\]")
 
 _CITATION_MIN_WORDS = 50  # skip presence check on stub pages shorter than this
 
@@ -280,6 +282,36 @@ def find_orphan_slugs(
             if target != slug:  # self-links don't count as inbound references
                 referenced.add(target)
     return [s for s in page_texts if s not in referenced and s not in skip]
+
+
+def find_broken_wikilink_refs(
+    page_texts: dict[str, str],
+    all_slugs: set[str],
+) -> dict[str, list[str]]:
+    """Return {slug: [dead_ref, ...]} for each page containing broken [[wikilinks]].
+
+    page_texts maps slug → body text (frontmatter stripped by caller) for the
+    pages to *scan* (typically active pages only).
+    all_slugs is the complete set of existing page slugs (valid link targets).
+
+    A ref is broken when its normalised form (lower-cased, spaces→hyphens,
+    ``|display`` and ``#anchor`` suffixes stripped) is absent from all_slugs.
+    Duplicate dead refs within the same page are de-duplicated.
+
+    Returns an empty dict when no broken links are found.
+    """
+    result: dict[str, list[str]] = {}
+    for slug, text in page_texts.items():
+        seen: set[str] = set()
+        broken: list[str] = []
+        for raw in _WIKILINK_SLUG_RE.findall(text):
+            norm = raw.strip().lower().replace(" ", "-")
+            if norm and norm not in all_slugs and norm not in seen:
+                seen.add(norm)
+                broken.append(norm)
+        if broken:
+            result[slug] = broken
+    return result
 
 
 def _parse_adversarial_response(text: str) -> list[dict]:

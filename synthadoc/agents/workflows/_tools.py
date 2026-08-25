@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from synthadoc.agents.workflows._base import WorkflowContext
 
+from synthadoc.agents.lint_agent import find_broken_wikilink_refs
 from synthadoc.agents.scaffold_agent import scaffold_output_paths
 from synthadoc.core.queue import JobStatus
 
@@ -435,29 +436,31 @@ async def tool_find_broken_wikilinks(
          "message": f"Scanning {scope_label} for broken wikilinks..."},
     )
 
-    pages_with_issues: list[dict] = []
-    total_broken = 0
+    # Build page_texts for the pages in scope so find_broken_wikilink_refs can
+    # work as a pure function (no store access inside).
+    page_texts: dict[str, str] = {}
     page_title: str | None = None   # populated in single-page mode for use in LLM summary
-
     for slug in sorted(scan_slugs):
         page = ctx.store.read_page(slug)
         if not page or not page.content:
             continue
         if page_slug is not None:
             page_title = page.title or None   # surface display title for summary
-        refs = _WIKILINK_SCAN_RE.findall(page.content)
-        broken: list[dict] = []
-        seen: set[str] = set()
-        for ref in refs:
-            normalized = _normalize_slug(ref)
-            if normalized in all_slug_set or normalized in seen:
-                continue
-            seen.add(normalized)
-            matches = difflib.get_close_matches(normalized, all_slugs, n=1, cutoff=0.72)
-            broken.append({"ref": normalized, "suggestion": matches[0] if matches else None})
-        if broken:
-            pages_with_issues.append({"slug": slug, "broken_links": broken})
-            total_broken += len(broken)
+        page_texts[slug] = page.content
+
+    # Delegate detection to the shared pure function (reused by /lifecycle/status).
+    broken_by_slug = find_broken_wikilink_refs(page_texts, all_slug_set)
+
+    # Enrich with fuzzy suggestions for display in the confirm message.
+    pages_with_issues: list[dict] = []
+    total_broken = 0
+    for slug in sorted(broken_by_slug):
+        enriched: list[dict] = []
+        for dead_ref in broken_by_slug[slug]:
+            matches = difflib.get_close_matches(dead_ref, all_slugs, n=1, cutoff=0.72)
+            enriched.append({"ref": dead_ref, "suggestion": matches[0] if matches else None})
+        pages_with_issues.append({"slug": slug, "broken_links": enriched})
+        total_broken += len(enriched)
 
     n_pages = len(pages_with_issues)
     if n_pages:

@@ -705,6 +705,51 @@ def test_lifecycle_status_includes_unlinted_for_new_pages(tmp_wiki):
     assert data.get("unlinted", 0) >= 1
 
 
+def test_lifecycle_status_reports_broken_wikilinks(tmp_wiki):
+    """GET /lifecycle/status includes 'broken_wikilinks' when active pages have dead links."""
+    import asyncio
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.storage.wiki import WikiStorage, WikiPage
+    # Write an active page with a dead [[wikilink]]
+    page = WikiPage(title="Page A", tags=[], content="See [[nonexistent-page]] for details.",
+                    status="active", confidence="high", sources=[])
+    WikiStorage(tmp_wiki / "wiki").write_page("page-a", page)
+    db = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    asyncio.run(db.init())
+    asyncio.run(db.set_page_state("page-a", "active", "ingest"))
+
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.get("/lifecycle/status")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data.get("broken_wikilinks", 0) >= 1, (
+        "Expected broken_wikilinks >= 1 in /lifecycle/status when a page has a dead link"
+    )
+
+
+def test_lifecycle_status_no_broken_wikilinks_when_links_valid(tmp_wiki):
+    """GET /lifecycle/status omits 'broken_wikilinks' when all [[links]] resolve."""
+    import asyncio
+    from synthadoc.integration.http_server import create_app
+    from synthadoc.storage.wiki import WikiStorage, WikiPage
+    store = WikiStorage(tmp_wiki / "wiki")
+    for slug, content in (("page-b", "See [[page-c]] for details."), ("page-c", "Content.")):
+        store.write_page(slug, WikiPage(title=slug, tags=[], content=content,
+                                        status="active", confidence="high", sources=[]))
+    db = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
+    asyncio.run(db.init())
+    for slug in ("page-b", "page-c"):
+        asyncio.run(db.set_page_state(slug, "active", "ingest"))
+
+    with TestClient(create_app(wiki_root=tmp_wiki)) as client:
+        resp = client.get("/lifecycle/status")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data.get("broken_wikilinks", 0) == 0, (
+        "Expected no broken_wikilinks when all [[links]] resolve to existing pages"
+    )
+
+
 def test_lifecycle_events_endpoint(tmp_wiki):
     """GET /lifecycle/events returns paginated events."""
     from synthadoc.integration.http_server import create_app
