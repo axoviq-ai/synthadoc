@@ -28,8 +28,8 @@ function classifyLine(line: string): DiffLineKind {
 }
 
 const LINE_STYLES: Record<DiffLineKind, React.CSSProperties> = {
-    add:    { background: "rgba(63,185,80,0.15)",   color: "var(--diff-add,  #3fb950)" },
-    del:    { background: "rgba(248,81,73,0.15)",   color: "var(--diff-del,  #f85149)" },
+    add:    { background: "rgba(63,185,80,0.30)",   color: "var(--diff-add,  #7ee787)" },
+    del:    { background: "rgba(248,81,73,0.30)",   color: "var(--diff-del,  #ff7b72)" },
     hunk:   { background: "rgba(88,166,255,0.10)",  color: "var(--diff-hunk, #58a6ff)" },
     header: { background: "transparent",            color: "var(--diff-header, #888)"  },
     ctx:    { background: "transparent",            color: "inherit"                   },
