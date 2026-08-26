@@ -396,7 +396,7 @@ def _run_faithfulness(
         raise typer.Exit(1)
 
     scope_label = f'"{page}"' if page else ("stale pages" if stale_only else "all active pages")
-    console.print(f"[dim]Auditing {scope_label} — job {job_id[:8]}…[/dim]")
+    console.print(f"[dim]Auditing {scope_label} — job {job_id}…[/dim]")
 
     # ── Poll until terminal ───────────────────────────────────────────────────
     POLL_SECONDS = 3

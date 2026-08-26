@@ -1076,7 +1076,7 @@ def main(no_restore: bool = False) -> None:
     code, body, ingest_final = _submit_job("/jobs/ingest", {"source": "https://en.wikipedia.org/wiki/ENIAC"})
     ingest_job_id: str | None = body.get("job_id") if isinstance(body, dict) else None
     if code == 200 and ingest_job_id:
-        ok("POST /jobs/ingest", f"job_id={ingest_job_id[:8]}… status={ingest_final}")
+        ok("POST /jobs/ingest", f"job_id={ingest_job_id} status={ingest_final}")
     else:
         fail("POST /jobs/ingest", f"HTTP {code}: {str(body)[:120]}")
 
@@ -1182,7 +1182,7 @@ def main(no_restore: bool = False) -> None:
 
     code, body, lint_final = _submit_job("/jobs/lint", {"scope": "all", "auto_resolve": False, "adversarial": False})
     if code == 200 and isinstance(body, dict) and "job_id" in body:
-        ok("POST /jobs/lint", f"job_id={body['job_id'][:8]}… status={lint_final}")
+        ok("POST /jobs/lint", f"job_id={body['job_id']} status={lint_final}")
     else:
         fail("POST /jobs/lint", f"HTTP {code}: {str(body)[:120]}")
 
@@ -1192,7 +1192,7 @@ def main(no_restore: bool = False) -> None:
     code, body, scaffold_final = _submit_job("/jobs/scaffold", {"domain": "history of computing"})
     scaffold_job_id: str | None = body.get("job_id") if isinstance(body, dict) else None
     if code == 200 and scaffold_job_id:
-        ok("POST /jobs/scaffold", f"job_id={scaffold_job_id[:8]}… status={scaffold_final}")
+        ok("POST /jobs/scaffold", f"job_id={scaffold_job_id} status={scaffold_final}")
     else:
         fail("POST /jobs/scaffold", f"HTTP {code}: {str(body)[:120]}")
     # Scaffold creates candidate pages — delete any that are purely new test artifacts
