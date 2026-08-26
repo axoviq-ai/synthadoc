@@ -3825,9 +3825,6 @@ must equal the orphan count shown in the cost estimate.
 **Web UI — hint chips:** A **"Run orphan resolver"** chip appears in the graph
 sidebar and in post-lint response chips whenever orphaned pages are detected.
 
-**Obsidian query modal:** type any phrase matching the orphan resolver intent
-(e.g. *"run orphan resolver"*, *"fix orphan pages"*).
-
 **CLI:**
 
 ```bash

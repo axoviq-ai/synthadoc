@@ -3091,7 +3091,7 @@ Pages with no incoming `[[wikilinks]]` from other active pages are invisible to
 navigation and less likely to be cited or discovered. The orphan resolver finds
 these pages and proposes natural link insertions into topically related pages.
 
-In the web chat UI or Obsidian query modal, type: **"run orphan resolver"**
+In the web chat UI, type: **"run orphan resolver"**
 
 The workflow first calls `tool_find_orphaned_pages` to identify all pages with `orphan: true` frontmatter, shows a cost estimate, and asks for confirmation. Then for each orphan it tries up to four progressively broader search strategies:
 
