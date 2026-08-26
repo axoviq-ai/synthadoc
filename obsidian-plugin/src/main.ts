@@ -649,8 +649,8 @@ class IngestModal extends Modal {
                 try {
                     const job = await api.job(jobId) as any;
                     const status: string = job.status;
-                    if (status === "pending") { setStatus(`⏳ Queued — job ${jobId.slice(0, 8)}`); return; }
-                    if (status === "in_progress") { setStatus(`⏳ Ingesting… (job ${jobId.slice(0, 8)})`); return; }
+                    if (status === "pending") { setStatus(`⏳ Queued — job ${jobId}`); return; }
+                    if (status === "in_progress") { setStatus(`⏳ Ingesting… (job ${jobId})`); return; }
                     window.clearInterval(this._pollTimer!);
                     this._pollTimer = null;
                     btn.disabled = false;
@@ -660,7 +660,7 @@ class IngestModal extends Modal {
                         out.empty();
                         out.createEl("p", { text: "✅ Done." }).style.cssText = "font-weight:bold;margin-bottom:4px";
                         if (parts.length) out.createEl("p", { text: parts.join(" · ") }).style.cssText = "font-size:12px;color:var(--text-muted)";
-                        new Notice(`Synthadoc: ingest done (job ${jobId.slice(0, 8)})`);
+                        new Notice(`Synthadoc: ingest done (job ${jobId})`);
                     } else if (status === "skipped") {
                         setStatus("⏭️ Skipped — already ingested.", "var(--text-muted)");
                     } else {
@@ -679,7 +679,7 @@ class IngestModal extends Modal {
             try {
                 const r = await api.ingest(url, undefined, isForced()) as any;
                 const jobId: string = r.job_id;
-                setStatus(`⏳ Queued — job ${jobId.slice(0, 8)}`);
+                setStatus(`⏳ Queued — job ${jobId}`);
                 startPolling(jobId);
             } catch {
                 setStatus("❌ Error: is synthadoc serve running?", "var(--text-error)");
@@ -1615,7 +1615,7 @@ class LintRunModal extends Modal {
                 const r = await api.lint("all", autoResolve, adversarial, checkUrls) as any;
                 const jobId: string = r.job_id;
                 out.empty();
-                out.createEl("p", { text: `⏳ Lint running… (job ${jobId.slice(0, 8)})` });
+                out.createEl("p", { text: `⏳ Lint running… (job ${jobId})` });
 
                 this._pollTimer = window.setInterval(async () => {
                     try {
@@ -1624,7 +1624,7 @@ class LintRunModal extends Modal {
 
                         if (status === "in_progress" || status === "pending") {
                             out.empty();
-                            out.createEl("p", { text: `⏳ Lint ${status === "pending" ? "queued" : "running"}… (job ${jobId.slice(0, 8)})` });
+                            out.createEl("p", { text: `⏳ Lint ${status === "pending" ? "queued" : "running"}… (job ${jobId})` });
                             return;
                         }
 
@@ -1989,7 +1989,7 @@ class ScaffoldModal extends Modal {
         const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Regenerate scaffold" });
         makeDraggable(this.modalEl, titleEl);
         contentEl.createEl("p", {
-            text: "Rewrites index.md, AGENTS.md, and purpose.md for your wiki domain using the LLM. Existing wiki pages are preserved.",
+            text: "Rewrites index.md, AGENTS.md, CLAUDE.md, GEMINI.md, and purpose.md for your domain. Content you write above a <!-- synthadoc:scaffold --> marker is preserved on re-runs — index.md has one marker below the title; purpose.md has one per section.",
             cls: "synthadoc-muted",
         }).style.cssText = "font-size:12px;margin-bottom:12px";
 
@@ -2019,7 +2019,7 @@ class ScaffoldModal extends Modal {
             try {
                 const r = await api.scaffold(domain) as any;
                 const jobId: string = r.job_id;
-                out.setText(`⏳ Queued — job ${jobId.slice(0, 8)}…`);
+                out.setText(`⏳ Queued — job ${jobId}…`);
                 new Notice(`Synthadoc: scaffold queued (job ${jobId})`);
 
                 this._pollTimer = window.setInterval(async () => {
@@ -2027,8 +2027,8 @@ class ScaffoldModal extends Modal {
                         const job = await api.job(jobId) as any;
                         const status: string = job.status;
 
-                        if (status === "pending") { out.setText(`⏳ Queued — job ${jobId.slice(0, 8)}…`); return; }
-                        if (status === "in_progress") { out.setText(`⏳ Generating scaffold… (job ${jobId.slice(0, 8)})`); return; }
+                        if (status === "pending") { out.setText(`⏳ Queued — job ${jobId}…`); return; }
+                        if (status === "in_progress") { out.setText(`⏳ Generating scaffold… (job ${jobId})`); return; }
 
                         window.clearInterval(this._pollTimer!);
                         this._pollTimer = null;
@@ -2037,7 +2037,7 @@ class ScaffoldModal extends Modal {
 
                         if (status === "completed") {
                             const routingMsg = job.result?.routing_regenerated ? " ROUTING.md regenerated." : "";
-                            out.setText(`✅ Done — index.md, AGENTS.md, and purpose.md updated.${routingMsg}`);
+                            out.setText(`✅ Done — index.md, AGENTS.md, CLAUDE.md, GEMINI.md, and purpose.md updated.${routingMsg} Content above each <!-- synthadoc:scaffold --> marker was preserved.`);
                             new Notice("Synthadoc: scaffold complete");
                         } else if (status === "skipped") {
                             out.setText("⏭️ Skipped — already up to date.");

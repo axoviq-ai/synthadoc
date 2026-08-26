@@ -135,7 +135,10 @@ STEP 4 — Per-orphan resolution loop
             • For full_title_scan / contextual_reasoning: review "all_page_titles"
               (and "orphan_content" when present) and select 2-3 slugs that most
               plausibly have reason to mention the orphan. Use these as candidates.
-            • If no candidates can be identified: advance to the next strategy.
+            • If no candidates can be identified: advance to the next strategy
+              IMMEDIATELY — emit ONLY the next tool_search_orphan_candidates tool
+              call. NO prose, NO explanation, NO "(Note: …)". Any text here ends
+              the workflow permanently.
 
         iii.For each of the top 2-3 candidates (skip those already in tried_slugs):
               Call tool_read_page_content(candidate_slug).
@@ -153,7 +156,8 @@ STEP 4 — Per-orphan resolution loop
               rationale=<one sentence explaining why this location is natural>
             ).
             • applied=false (user skipped): try the next candidate in this attempt.
-              If no more candidates in this attempt, advance to next strategy.
+              If no more candidates in this attempt, advance to next strategy —
+              emit the next tool_search_orphan_candidates call with NO prose.
             • applied=true: proceed to step vi.
 
         vi. Call tool_verify_orphan_resolved(orphan_slug).
@@ -210,6 +214,9 @@ STEP 5 — Final summary (plain text — ends the loop)
 
 ━━━ CRITICAL RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 • Plain text ENDS THE LOOP — use it ONLY for the final summary or cancellations.
+• Strategy transitions are SILENT: when advancing to the next strategy because no
+  candidates matched, emit only the tool_call JSON — zero prose, zero explanation.
+  Writing "(Note: …)" or any natural-language text at that point ends the workflow.
 • Links must be contextually natural. Never add [[slug]] in an irrelevant location.
 • ALWAYS call tool_verify_orphan_resolved(orphan_slug) at the START of each orphan
   (step 4a pre-check) AND again after every successful apply (step 4b.vi).

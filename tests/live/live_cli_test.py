@@ -141,9 +141,9 @@ def info(msg: str) -> None:
 
 
 def _extract_job_id(text: str) -> str | None:
-    """Return the first 8-hex-char token from CLI output (job ID), or None."""
+    """Return the first 32-hex-char job ID token from CLI output, or None."""
     for token in text.split():
-        if len(token) == 8 and all(c in "0123456789abcdef" for c in token):
+        if len(token) == 32 and all(c in "0123456789abcdef" for c in token):
             return token
     return None
 
@@ -606,7 +606,7 @@ def run_live_tests(wiki_root: pathlib.Path) -> None:
     for line in (r_list.stdout + r_list.stderr).splitlines():
         tokens = line.split()
         for t in tokens:
-            if len(t) == 8 and all(c in "0123456789abcdef" for c in t):
+            if len(t) == 32 and all(c in "0123456789abcdef" for c in t):
                 if not job_id:
                     job_id = t
                 if any(s in line for s in ("completed", "failed", "cancelled")):
