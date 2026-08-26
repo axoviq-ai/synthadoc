@@ -14,7 +14,7 @@
       '-+###############+-'
 
        S Y N T H A D O C
-    Community Edition  v1.3.0
+    Community Edition  v1.3.1
   ────────────────────────────────
   Domain-agnostic LLM wiki engine
 ```
@@ -31,10 +31,10 @@
 <a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.cli_commands&label=CLI%20commands&color=darkblue" alt="CLI commands"/></a>
 <a href="https://github.com/axoviq-ai/synthadoc/tree/main/obsidian-plugin"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.obsidian_commands&label=Obsidian%20commands&color=blueviolet" alt="Obsidian commands"/></a>
 <a href="https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#agentic-workflows"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.maintenance_workflows&label=Maintenance%20workflows&color=green" alt="Maintenance workflows"/></a>
-<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.3.0-brightgreen.svg" alt="Version"/></a>
+<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.3.1-brightgreen.svg" alt="Version"/></a>
 </p>
 
-**Document version: v1.3.0**
+**Document version: v1.3.1**
 
 **Engineered for solo users and enterprises alike, providing a domain-specific knowledge base that scales seamlessly while maintaining accuracy through autonomous self-optimization.**
 
@@ -220,7 +220,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **[Custom skills + CI hooks](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#11-hook-system)** — subclass `BaseSkill` for new file formats; 2 hook events (`on_ingest_complete` + `on_lint_complete`); example git auto-commit hook included; blocking hooks can gate operations                                                                                                                                                                                                                                                                                                                       | **Yes**   | Limited                  | No                     | No                                                                                                  |
 | **[Per-source truncation flag](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#30-per-source-truncation-flag)** — `--max-source-chars` caps any source (PDF, DOCX, web page, plain text) before the LLM call; truncated sources flagged with `truncated: true` in frontmatter and warned in lint output                                                                                                                                                                                                                                                                                                | **Yes**   | No                       | No                     | No                                                                                                  |
 | **[Multi-wiki isolation](https://github.com/axoviq-ai/synthadoc/blob/main/docs/design.md#wiki-targeting)** — each wiki on its own port with independent config, audit trail, and job queue; switch with `synthadoc use`                                                                                                                                                                                                                                                                                                                                                                                                | **Yes**   | No                       | Partial                | No                                                                                                  |
-| **[Agentic maintenance workflows](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#agentic-workflows)** — seven conversational workflows (re-ingest stale pages, re-ingest by slug, broken wikilinks scan and fix, lint report, scaffold regeneration, **contradiction resolver**, **orphan resolver**) via web UI, Obsidian query modal, or `synthadoc workflow` CLI; confirm-before-act gate on all destructive operations; contradiction resolver shows full diff before every write and never applies a change without approval; orphan resolver finds pages with no incoming wikilinks and proposes natural link insertions with 4-strategy retry; graph sidebar chips trigger workflows with one click — no terminal required | **Yes**   | No                       | No                     | No                                                                                                  |
+| **[Agentic maintenance workflows](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#agentic-workflows)** — six conversational workflows (stale-page re-ingest (by slug or bulk), broken wikilinks scan and fix, lint report, scaffold regeneration, **contradiction resolver**, **orphan resolver**) via web UI or `synthadoc workflow` CLI; confirm-before-act gate on all destructive operations; contradiction resolver shows full diff before every write and never applies a change without approval; orphan resolver finds pages with no incoming wikilinks and proposes natural link insertions with 4-strategy retry; graph sidebar chips trigger workflows with one click — no terminal required | **Yes**   | No                       | No                     | No                                                                                                  |
 
 ### Business value
 
@@ -436,7 +436,7 @@ The guide covers:
 23. Backup and restore — create a portable wiki zip, restore on a different machine
 24. Knowledge graph — weighted edges (wikilink + co-source signals), explore clusters in the web UI Graph tab, click a node to query it
 25. Ingest an AI session transcript — turn Claude Code, Codex, or chat conversations into structured wiki pages
-26. Agentic maintenance workflows — seven conversational workflows via web UI, Obsidian query modal, or CLI: bulk re-ingest stale pages, re-ingest any named page by slug, scan and fix broken wikilinks, run lint and view the full report, run scaffold and regenerate wiki files, resolve contradicted pages interactively (diff shown before every write, human approval required), resolve orphaned pages by inserting natural wikilinks into related content — agent confirms before touching anything, streams inline progress
+26. Agentic maintenance workflows — six conversational workflows via web UI or CLI: re-ingest stale pages (bulk or by slug), scan and fix broken wikilinks, run lint and view the full report, run scaffold and regenerate wiki files, resolve contradicted pages interactively (diff shown before every write, human approval required), resolve orphaned pages by inserting natural wikilinks into related content — agent confirms before touching anything, streams inline progress
 
 ---
 
