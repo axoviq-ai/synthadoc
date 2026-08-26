@@ -75,7 +75,9 @@ When you have no more tool calls to make, produce a plain-text summary (no JSON)
    - Files written (list from get_scaffold_preview)
    - N pages updated with category labels (categories_updated)
    - Whether ROUTING.md was regenerated (routing_regenerated true/false)
-   - A reminder: "User-written sections above the scaffold marker were preserved."
+   - A note on preservation: index.md has one <!-- synthadoc:scaffold --> marker
+     below the title — content above it was preserved. purpose.md has one marker
+     per section — each section's user-written content above the marker was kept.
 """
 
 

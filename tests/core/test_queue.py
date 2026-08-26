@@ -480,11 +480,11 @@ async def test_list_jobs_sort_order_desc(tmp_wiki):
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
             "INSERT INTO jobs (id,operation,payload,status,created_at) VALUES (?,?,?,'pending',?)",
-            (str(uuid.uuid4())[:8], "ingest", json.dumps({"source": "first.pdf"}), "2026-01-01 00:00:00"),
+            (uuid.uuid4().hex, "ingest", json.dumps({"source": "first.pdf"}), "2026-01-01 00:00:00"),
         )
         await db.execute(
             "INSERT INTO jobs (id,operation,payload,status,created_at) VALUES (?,?,?,'pending',?)",
-            (str(uuid.uuid4())[:8], "ingest", json.dumps({"source": "second.pdf"}), "2026-01-02 00:00:00"),
+            (uuid.uuid4().hex, "ingest", json.dumps({"source": "second.pdf"}), "2026-01-02 00:00:00"),
         )
         await db.commit()
     jobs = await q.list_jobs(sort_by="created_at", order="desc")
