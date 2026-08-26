@@ -70,6 +70,11 @@ def scaffold_cmd(
             typer.echo("  GEMINI.md   updated")
             typer.echo("  purpose.md  updated")
             typer.echo(f"  categories  stamped on {cats} page(s)")
+            typer.echo("")
+            typer.echo("Tip: content you write above a <!-- synthadoc:scaffold --> marker is")
+            typer.echo("     preserved on re-runs. index.md has one marker (below the title).")
+            typer.echo("     purpose.md has one marker per section — each section's content is")
+            typer.echo("     preserved independently.")
             break
         if status in (JobStatus.FAILED, JobStatus.DEAD):
             error = job.get("error") or "unknown error"

@@ -1989,7 +1989,7 @@ class ScaffoldModal extends Modal {
         const titleEl = contentEl.createEl("h3", { text: "Synthadoc: Regenerate scaffold" });
         makeDraggable(this.modalEl, titleEl);
         contentEl.createEl("p", {
-            text: "Rewrites index.md, AGENTS.md, and purpose.md for your wiki domain using the LLM. Existing wiki pages are preserved.",
+            text: "Rewrites index.md, AGENTS.md, and purpose.md for your domain. Content you write above a <!-- synthadoc:scaffold --> marker is preserved on re-runs — index.md has one marker below the title; purpose.md has one per section.",
             cls: "synthadoc-muted",
         }).style.cssText = "font-size:12px;margin-bottom:12px";
 
@@ -2037,7 +2037,7 @@ class ScaffoldModal extends Modal {
 
                         if (status === "completed") {
                             const routingMsg = job.result?.routing_regenerated ? " ROUTING.md regenerated." : "";
-                            out.setText(`✅ Done — index.md, AGENTS.md, and purpose.md updated.${routingMsg}`);
+                            out.setText(`✅ Done — index.md, AGENTS.md, and purpose.md updated.${routingMsg} Content above each <!-- synthadoc:scaffold --> marker was preserved.`);
                             new Notice("Synthadoc: scaffold complete");
                         } else if (status === "skipped") {
                             out.setText("⏭️ Skipped — already up to date.");
