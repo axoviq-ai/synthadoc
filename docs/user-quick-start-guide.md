@@ -2862,9 +2862,9 @@ synthadoc ingest --file sessions.txt -w my-wiki
 
 ## Step 26 — Agentic Maintenance Workflows
 
-The web chat UI (and the Obsidian plugin query modal) can drive wiki maintenance conversationally — no terminal required. Type a maintenance request in plain English and the system confirms with you, re-ingests pages, fixes broken links, and runs lint, all from a single chat turn.
+The web chat UI can drive wiki maintenance conversationally — no terminal required. Type a maintenance request in plain English and the system confirms with you, re-ingests pages, fixes broken links, and runs lint, all from a single chat turn.
 
-Seven workflows are available:
+Six workflows are available:
 
 
 | Workflow                          | Example phrase                   | Scope                                                                                                                                                                              |
@@ -2974,7 +2974,7 @@ None of these slugs have a corresponding `.md` page in the wiki — `john-mauchl
 
 **Run the workflow**
 
-In the web chat UI or Obsidian query modal, type: **"scan for broken wikilinks"**
+In the web chat UI, type: **"scan for broken wikilinks"**
 
 The agent scans all active pages and presents a confirmation card listing every affected page and proposed fix:
 
@@ -3163,7 +3163,7 @@ No confirmation is required — lint runs and reports autonomously. Any other tr
 
 This workflow regenerates the wiki's core scaffold files from a single chat message. It shows you what will be overwritten and requires confirmation before writing anything.
 
-In the web chat UI or Obsidian query modal, type: **"run scaffold"**
+In the web chat UI, type: **"run scaffold"**
 
 The agent first previews the operation:
 
