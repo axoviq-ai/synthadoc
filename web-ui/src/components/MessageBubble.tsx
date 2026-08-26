@@ -293,6 +293,25 @@ export function obsidianCitationsToGfm(text: string): string {
     return `${converted}\n\n${footnoteBlock}`;
 }
 
+// Replace ISO 8601 datetime strings (UTC or offset) with browser-local formatted
+// equivalents. The server always stores timestamps in UTC; the browser knows the
+// user's locale and timezone, so we localise at render time.
+// Only matches full datetime strings (containing "T"), not bare YYYY-MM-DD dates.
+const ISO_DATETIME_RE = /\b(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2}))\b/g;
+
+function localizeISOTimestamps(text: string): string {
+    return text.replace(ISO_DATETIME_RE, (match) => {
+        try {
+            return new Date(match).toLocaleString(undefined, {
+                year: "numeric", month: "short", day: "numeric",
+                hour: "2-digit", minute: "2-digit",
+            });
+        } catch {
+            return match; // leave unparseable strings unchanged
+        }
+    });
+}
+
 // Escape CLI-style placeholders like <schedule-id> or <wiki-name> that appear
 // outside code spans. ReactMarkdown v10 drops unknown HTML tags silently, making
 // these placeholders invisible. We only target hyphenated names (not <br>, <em>, etc).
@@ -373,7 +392,7 @@ export const MessageBubble = memo(function MessageBubble({ msg, wikiName, maxRes
                     )
                     : <div className="bubble-md">
                         <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ pre: PreBlock }}>
-                            {obsidianCitationsToGfm(escapePlaceholders(msg.text))}
+                            {obsidianCitationsToGfm(escapePlaceholders(localizeISOTimestamps(msg.text)))}
                         </ReactMarkdown>
                       </div>
             }
