@@ -44,6 +44,8 @@
 33. [Multi-Platform Agent Skill Files](#33-multi-platform-agent-skill-files)
 34. [Synthadoc Scaffold Marker](#34-synthadoc-scaffold-marker)
 35. [Contradiction Resolver Workflow](#35-contradiction-resolver-workflow)
+36. [Orphan Resolver Workflow](#36-orphan-resolver-workflow)
+37. [Citation Faithfulness Audit](#37-citation-faithfulness-audit)
 
 **Appendices**
 
@@ -1068,9 +1070,10 @@ synthadoc
 │   ├── list
 │   └── run --name NAME [WORKFLOW_ARGS...] [-w wiki] [--timeout N]
 │       # NAME is one of: lint-report | broken-wikilinks | scaffold
-│       #                  contradiction-resolver | ingest-lint
+│       #                  contradiction-resolver | ingest-lint | orphan-resolver
 │       # Workflow-specific args (forwarded verbatim):
 │       #   contradiction-resolver: [--slug SLUG] [--type adversarial|source-conflict|gate|conflict]
+│       #   orphan-resolver:        [--slug SLUG]
 ├── backup [-w wiki] [--output <dir>] [--no-sources] [--no-exports] [--no-cache]
 ├── restore <backup.zip> [--name <wiki>] [--target <dir>] [--port <N>]
 ├── cache clear [-w wiki]
@@ -3345,7 +3348,7 @@ This design lets users annotate any section of `purpose.md` without losing their
 
 ## Agentic Maintenance Workflows
 
-The web chat UI, Obsidian plugin query modal, and `synthadoc query` CLI command all support conversational wiki maintenance through an agentic tool-call loop — they all reach `ActionAgent.run_gen` via the `/query/stream` SSE endpoint. (`synthadoc lint` and `synthadoc ingest` are direct job-queue commands and bypass the workflow system entirely.) The following workflows are available:
+The web chat UI and `synthadoc workflow` CLI are the primary surfaces for agentic maintenance workflows — both support the full confirm-gate and diff-approval flow. The Obsidian plugin query modal routes through the same `/query/stream` endpoint but lacks a `confirm_request` handler, so it is only suitable for read-only workflows (the lint report). (`synthadoc lint` and `synthadoc ingest` are direct job-queue commands and bypass the workflow system entirely.) The following workflows are available:
 
 ### Stale-pages bulk reingest
 
@@ -3734,10 +3737,191 @@ either does not abort the workflow. The page file is written first via
 
 ---
 
+## 36. Orphan Resolver Workflow
+
+A wiki page is *orphaned* when no other active content page contains a
+`[[wikilink]]` pointing to it. Orphaned pages are invisible to navigation,
+unlikely to be cited, and silently excluded from cross-linked discovery.
+The orphan resolver closes this gap through an interactive agentic loop that
+proposes and applies contextually natural link insertions.
+
+### What makes a page an orphan
+
+**Scope:** only `active` pages are considered. Draft, stale, and archived pages
+are excluded — lifecycle promotion is the correct remedy for those states.
+System pages (`index`, `overview`, `dashboard`, `purpose`, `log`) are also
+excluded.
+
+**Side-effect resolution:** a fix applied to one orphan can incidentally link
+a second orphan (if the newly linked page already referenced it). The resolver
+checks each orphan for prior resolution before starting its strategy loop —
+orphans resolved as a side effect are counted as fixed with no extra LLM calls.
+
+### Per-orphan strategy loop
+
+For each orphan the resolver tries four progressively broader strategies, in
+order, before escalating:
+
+| # | Strategy | How candidates are found |
+|---|----------|--------------------------|
+| 1 | `title_bm25` | BM25 keyword search on the orphan's title |
+| 2 | `content_bm25` | BM25 keyword search on the orphan's body text |
+| 3 | `full_title_scan` | All active page titles listed; resolver selects 2–3 by title relevance |
+| 4 | `contextual_reasoning` | Full title list + orphan body; resolver uses LLM reasoning to identify the most plausible host pages |
+
+For each strategy, the resolver:
+
+1. Reads the top 2–3 candidate pages to find the most natural insertion point
+   (related section, existing *See also* block, or inline mention).
+2. Formulates the revised content with `[[orphan_slug]]` at the chosen location.
+3. Displays the full unified diff and asks for approval before writing.
+4. If approved, writes the change and re-runs graph-level orphan detection to
+   verify the page now has at least one inbound wikilink.
+5. If the verification confirms resolution, moves to the next orphan. Otherwise
+   tries the next strategy.
+
+Links must be contextually appropriate — the resolver never adds a forced or
+irrelevant wikilink to pass the verification check.
+
+### Inter-orphan gate
+
+After each successfully resolved orphan (when more remain), the resolver asks
+"Continue to next orphan?" before proceeding. This lets the user stop after any
+page without losing progress on already-fixed pages.
+
+### Escalation
+
+After four strategies are exhausted without resolution, the resolver emits a
+`warning` notice listing:
+- All candidate pages that were considered.
+- Four concrete next steps: re-run the resolver (fresh LLM pass may find
+  different candidates), manual link insertion, archive if the page is no longer
+  relevant, or create a hub page if the topic needs one.
+
+The page is recorded as `unresolved` in the final summary and remains in the
+wiki unchanged.
+
+### Final summary
+
+```
+Orphan Resolver — Complete
+
+✅ Resolved (N):
+  - <slug> (linked from <page>)
+  ...
+⚠ Unresolved (N):
+  - <slug> (4 strategies exhausted — see notices above)
+  ...
+⏭ Skipped (N):
+  - <slug>
+  ...
+```
+
+Every orphan discovered in step 1 appears in exactly one category; the total
+must equal the orphan count shown in the cost estimate.
+
+### How to trigger
+
+**Web UI — hint chips:** A **"Run orphan resolver"** chip appears in the graph
+sidebar and in post-lint response chips whenever orphaned pages are detected.
+
+**CLI:**
+
+```bash
+synthadoc workflow run --name orphan-resolver              # all active orphaned pages
+synthadoc workflow run --name orphan-resolver --slug ada-lovelace  # single page check
+```
+
+When `--slug` is passed the resolver first calls `tool_verify_orphan_resolved`
+to check whether the page is actually an orphan. If it already has inbound
+wikilinks the workflow exits immediately with a plain-text confirmation; no
+LLM calls or strategy attempts are made.
+
+### Cost model
+
+The cost estimate is computed before any LLM calls:
+
+```
+estimated_tokens ≈ (orphan_count × 5 strategies × ~800 tokens per strategy)
+```
+
+The user must confirm the estimate before the loop begins. Confirming after
+`tool_estimate_and_confirm` starts the per-orphan loop immediately with no
+additional confirmation dialog.
+
+---
+
+## 37. Citation Faithfulness Audit
+
+The citation faithfulness audit is the third verification layer in Synthadoc's
+claim-quality pipeline:
+
+| Layer | What it checks |
+|-------|----------------|
+| Structural lint | Citation *references* are well-formed and point to known source files and valid line ranges |
+| Adversarial review | Claims hold up against general world knowledge and do not overstate or misrepresent |
+| **Citation faithfulness audit** | The specific source lines `^[file:L-L]` actually *support* the specific claim text preceding the marker |
+
+This layer is **opt-in** and never runs as part of the default lint pass. It is
+intended for periodic quality checks or before promoting pages to `active`.
+
+For full implementation details — execution model, cache schema, batch-per-page
+LLM call, verdict definitions, dry-run mode, and the Obsidian plugin UX — see
+[§4 CitationFaithfulnessAgent](#citationfaithfulnessagent).
+
+### Verdict taxonomy
+
+| Verdict | Meaning |
+|---------|---------|
+| `supported` | Source lines clearly back the claim |
+| `drift` | Claim overstates or subtly misrepresents the source |
+| `hallucination` | Source contradicts or is unrelated to the claim |
+| `skipped` | Source sidecar missing, or LLM returned unparseable output |
+
+### How to trigger
+
+**CLI:**
+
+```bash
+synthadoc audit citations --faithfulness               # all active pages (cache-aware)
+synthadoc audit citations --faithfulness --page bell-labs  # single page
+synthadoc audit citations --faithfulness --yes         # skip cost confirmation
+synthadoc audit citations --faithfulness --force       # bypass cache, full re-run
+synthadoc audit citations --faithfulness --json        # machine-readable output
+```
+
+**Obsidian — Citation faithfulness tab:**
+Open the Audit modal and click **Citation faithfulness**. Scope buttons let you
+choose **All active pages** or **Specific page** (with fuzzy slug autocomplete).
+A cost estimate auto-loads on tab open. Click **▶ Run Audit** (or **▶ Re-run
+Audit** if cached results exist). Live progress shows current slug and
+checked/total count. A stale banner appears when any source file has been
+updated since the last audit.
+
+**HTTP API:**
+
+```
+POST /audit/citations/faithfulness      # enqueue background job
+GET  /audit/citations/faithfulness/cache  # read cached results
+```
+
+### Judge model
+
+The faithfulness audit shares the `[agents.adversarial]` model configuration —
+the same dedicated judge model that runs the adversarial lint pass. If no
+`[agents.adversarial]` section is configured, the audit falls back to the
+default `[agents]` model.
+
+---
+
 ## Appendix A — Release Feature Index
 
 ### v1.3.1
 
+- **Orphan Resolver Workflow** — interactive agentic loop (`synthadoc workflow run --name orphan-resolver`) that resolves active wiki pages with no inbound `[[wikilinks]]`. Discovers all orphaned active pages, presents a cost estimate, and processes each orphan sequentially. For each orphan: tries four progressively broader search strategies (`title_bm25`, `content_bm25`, `full_title_scan`, `contextual_reasoning`); reads top candidate pages; proposes a natural link insertion; shows the full unified diff before writing; verifies resolution via graph-level recomputation after each successful apply. Side-effect pre-check skips orphans that were incidentally resolved by an earlier fix. Inter-orphan confirm gate between pages. Escalates with a `warning` notice and 4 concrete next steps after all strategies are exhausted. `--slug` targets a single page (immediate non-orphan exit if the page already has inbound links). Accessible from the web UI and CLI. See [§36 Orphan Resolver Workflow](#36-orphan-resolver-workflow).
+- **Four-strategy candidate search** — `tool_search_orphan_candidates` implements four search modes keyed by `strategy` parameter. `title_bm25` and `content_bm25` return ranked slugs directly. `full_title_scan` returns all active page titles for LLM selection. `contextual_reasoning` returns titles plus the orphan's full body for richer LLM judgment. Strategies receive a cumulative `exclude_slugs` list so previously tried candidates are never returned again.
+- **Graph-level orphan verification** — `tool_verify_orphan_resolved` re-runs the inbound-link query against the live wiki graph after each apply, returning `resolved=true/false` and `linked_by` (the slugs now pointing to the orphan). This is the single source of truth for resolution — the agent does not infer resolution from the apply response.
+- **Agentic maintenance workflow registry extended** — `orphan-resolver` is registered alongside `lint-report`, `broken-wikilinks`, `scaffold`, `contradiction-resolver`, and `ingest-lint`. `synthadoc workflow list` enumerates all seven with descriptions. No CLI changes required to add future workflows.
 - **Citation Faithfulness Audit** — opt-in LLM audit that verifies each `^[file:L-L]` claim is actually supported by the referenced source lines. One LLM call per page (batch all citations). Results classified as `supported`, `drift`, `hallucination`, or `skipped`. CLI: `synthadoc audit citations --faithfulness [--page <slug>] [--yes] [--json] [--force]`. API: `POST /audit/citations/faithfulness` (enqueues background job, returns `{job_id}`) and `GET /audit/citations/faithfulness/cache`. Results persist in `.synthadoc/faithfulness-cache.json` keyed by per-page `ingested` timestamp; stale detection re-uses the same key without re-running unchanged pages. See [§4 CitationFaithfulnessAgent](#citationfaithfulnessagent).
 - **Background job engine for faithfulness audit** — `POST /audit/citations/faithfulness` now returns `{job_id, message}` immediately and runs the audit in the orchestrator's job worker loop. Per-page progress (`phase`, `current_slug`, `pages_checked`, `pages_total`) is emitted via `update_progress`; results are written to cache on `complete`. The `faithfulness` operation type is added to the job engine alongside `ingest` and `lint`.
 - **CLI delegation — no API key in terminal** — `synthadoc audit citations --faithfulness` delegates LLM work to the running server (same pattern as `synthadoc lint run`). The terminal process performs only a local cost check; the audit job is enqueued via HTTP and polled with per-page progress output. No provider API key is required in the shell environment.

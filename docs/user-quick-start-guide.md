@@ -1063,7 +1063,57 @@ Dataview table.
 > connected. Synthadoc defines an orphan as having **no inbound links** — always use
 > `synthadoc lint report` as the authoritative check.
 
-### Option 1 — Link it (recommended)
+### Option 1 — Agentic orphan resolver (recommended)
+
+The orphan resolver is a conversational workflow that finds each orphan page one at a time,
+searches for the best page to link it from using up to four strategies, shows you the exact diff,
+and asks for your approval before writing anything.
+
+> **Web UI not started yet?** Run `synthadoc web -w history-of-computing` — your browser opens automatically. Full web UI walkthrough is in [Step 22](#web-chat-ui).
+
+**From the web UI:**
+
+Open the web chat UI. You have four entry points:
+
+- **Hint chip:** The **"Run orphan resolver"** chip appears in the sidebar whenever the wiki has at least one orphaned page — click it to start immediately.
+- **Pre-filled suggestion:** After any response that mentions orphaned pages — a lint run, a status query, or a lint report — a pre-filled prompt appears below the reply — click it directly:
+
+  > *2 orphaned pages detected — run the orphan resolver to link them interactively?*
+
+- **Graph tab:** Orphaned pages appear as isolated nodes at the edges of the knowledge graph. A **"Run orphan resolver"** chip is shown in the Graph tab sidebar when isolated nodes are present — click it without leaving the graph view.
+- **Free text:** Type **"run orphan resolver"** at any time.
+
+The resolver will:
+
+1. Call `tool_find_orphaned_pages`, show the list and a cost estimate, then ask "Proceed?"
+2. For each orphan: try up to four progressively broader search strategies to find a natural host page:
+   - `title_bm25` — BM25 keyword match on the orphan's title
+   - `content_bm25` — BM25 keyword match on the orphan's first paragraph
+   - `full_title_scan` — LLM selects from a dump of all active page titles
+   - `contextual_reasoning` — LLM uses the full orphan body for richer judgment
+3. Propose a contextually natural `[[wikilink]]` insertion into the best candidate, and display the full unified diff.
+4. Ask "Apply this change?" — you approve or skip each one individually.
+5. After you approve, run a graph-level re-check to confirm the orphan is resolved before moving on.
+6. Ask "Continue to next orphan?" — you can stop at any point.
+7. Print a final summary: resolved, unresolved, and skipped counts.
+
+> **Side-effect resolution:** Fixing one orphan often incidentally links a second. The pre-check at the start of each orphan's loop catches this and marks it as resolved with no extra LLM calls.
+
+> **If all four strategies are exhausted**, the workflow escalates with a notice listing every candidate page considered and four concrete next steps: re-run the workflow (LLM non-determinism may produce a better candidate), manually add the wikilink, archive the page if it's out of scope, or create a hub page and re-run.
+
+**From the CLI:**
+
+```bash
+# Resolve all orphaned pages
+synthadoc workflow run --name orphan-resolver
+
+# Resolve only the ada-lovelace page
+synthadoc workflow run --name orphan-resolver --slug ada-lovelace
+```
+
+The CLI renders the same approval prompts and diff previews as the web UI.
+
+### Option 2 — Manual link insertion
 
 Open `wiki/programming-languages-overview.md` and add a reference:
 
@@ -1074,18 +1124,12 @@ the first algorithm intended to be executed by Charles Babbage's Analytical Engi
 
 Save — the orphan disappears from the dashboard immediately.
 
-### Option 2 — Delete and re-ingest later
+This is fast for a single well-understood orphan, but leaves no lifecycle audit record of
+the reasoning.
 
-If the page content quality is poor, delete `wiki/ada-lovelace.md` from Obsidian and
-pull in a fresh source via web search:
+### Option 3 — Resolve via MCP (Claude Desktop or Claude Code)
 
-```bash
-synthadoc ingest "search for: Ada Lovelace contributions to computing history"
-```
-
-### Option 3 — Resolve via MCP (Claude Code)
-
-> **Prerequisite:** Synthadoc must be registered as an MCP server in Claude Code. See [Appendix I — Connect Claude via MCP](#appendix-i--connect-claude-via-mcp) for the `claude mcp add` command.
+> **Prerequisite:** Synthadoc must be registered as an MCP server in Claude. See [Appendix I — Connect Claude via MCP](#appendix-i--connect-claude-via-mcp) for the `claude mcp add` command and Claude Desktop config.
 
 With Synthadoc connected as an MCP server, Claude can fix orphans autonomously — it reads the wiki, finds a relevant page to add the link to, writes the change, and re-runs lint to confirm the fix.
 
@@ -1124,6 +1168,15 @@ To archive an orphan that is genuinely out of scope instead:
 > "Archive the mechanical-computing page — it's an orphan and not relevant to this wiki."
 
 Claude calls `synthadoc_lifecycle` with `to_state="archived"` and a reason, writing a permanent audit record.
+
+### Option 4 — Delete and re-ingest later
+
+If the page content quality is poor, delete `wiki/ada-lovelace.md` from Obsidian and
+pull in a fresh source via web search:
+
+```bash
+synthadoc ingest "search for: Ada Lovelace contributions to computing history"
+```
 
 ### Deleting a page and cleaning up its references
 
@@ -2809,9 +2862,9 @@ synthadoc ingest --file sessions.txt -w my-wiki
 
 ## Step 26 — Agentic Maintenance Workflows
 
-The web chat UI (and the Obsidian plugin query modal) can drive wiki maintenance conversationally — no terminal required. Type a maintenance request in plain English and the system confirms with you, re-ingests pages, fixes broken links, and runs lint, all from a single chat turn.
+The web chat UI can drive wiki maintenance conversationally — no terminal required. Type a maintenance request in plain English and the system confirms with you, re-ingests pages, fixes broken links, and runs lint, all from a single chat turn.
 
-Seven workflows are available:
+Six workflows are available:
 
 
 | Workflow                          | Example phrase                   | Scope                                                                                                                                                                              |
@@ -2921,7 +2974,7 @@ None of these slugs have a corresponding `.md` page in the wiki — `john-mauchl
 
 **Run the workflow**
 
-In the web chat UI or Obsidian query modal, type: **"scan for broken wikilinks"**
+In the web chat UI, type: **"scan for broken wikilinks"**
 
 The agent scans all active pages and presents a confirmation card listing every affected page and proposed fix:
 
@@ -3038,7 +3091,7 @@ Pages with no incoming `[[wikilinks]]` from other active pages are invisible to
 navigation and less likely to be cited or discovered. The orphan resolver finds
 these pages and proposes natural link insertions into topically related pages.
 
-In the web chat UI or Obsidian query modal, type: **"run orphan resolver"**
+In the web chat UI, type: **"run orphan resolver"**
 
 The workflow first calls `tool_find_orphaned_pages` to identify all pages with `orphan: true` frontmatter, shows a cost estimate, and asks for confirmation. Then for each orphan it tries up to four progressively broader search strategies:
 
@@ -3110,7 +3163,7 @@ No confirmation is required — lint runs and reports autonomously. Any other tr
 
 This workflow regenerates the wiki's core scaffold files from a single chat message. It shows you what will be overwritten and requires confirmation before writing anything.
 
-In the web chat UI or Obsidian query modal, type: **"run scaffold"**
+In the web chat UI, type: **"run scaffold"**
 
 The agent first previews the operation:
 
