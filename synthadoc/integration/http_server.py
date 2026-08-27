@@ -612,6 +612,77 @@ async def _worker_loop(orch, session_state: dict) -> None:
         await asyncio.sleep(sleep_secs)
 
 
+async def _run_sensitive_scan_loop(
+    security_cfg,
+    wiki_root: Path,
+    queue,
+    audit_db,
+) -> None:
+    """Background task: auto-scan all wiki pages for sensitive data on a schedule.
+
+    Disabled when security.sensitive_scan_enabled is False or absent.
+    Pauses between pages and during active job-queue work to avoid
+    interfering with ingest, lint, and scaffold jobs.
+    """
+    from synthadoc.core.retract import SensitiveScanner
+
+    if security_cfg.sensitive_scan_enabled is None:
+        # Key is absent from config.toml — feature not opted in; show one-time notice.
+        print(
+            "\n[synthadoc] Sensitive data auto-scan is available but not enabled.\n"
+            "  To enable weekly background scanning, add to config.toml:\n"
+            "    [security]\n"
+            "    sensitive_scan_enabled = true\n"
+        )
+        return
+
+    if not security_cfg.sensitive_scan_enabled:
+        return
+
+    scanner = SensitiveScanner(security_cfg)
+    interval_secs = security_cfg.scan_interval_days * 86400
+
+    # Initial startup delay — let the server finish warming up.
+    await asyncio.sleep(60)
+
+    while True:
+        try:
+            slugs = [p.stem for p in wiki_root.glob("*.md")]
+            for slug in sorted(slugs):
+                # Pause while the job queue has pending work
+                while await queue.has_pending_jobs():
+                    await asyncio.sleep(5)
+
+                page_path = wiki_root / f"{slug}.md"
+                if not page_path.exists():
+                    await asyncio.sleep(0.1)
+                    continue
+                content = page_path.read_text(encoding="utf-8")
+                matches = scanner.scan_page(slug, content)
+                if matches:
+                    masked, lines_changed = scanner.mask_page(slug, content, matches)
+                    if lines_changed > 0:
+                        page_path.write_text(masked, encoding="utf-8")
+                        pattern_names = list({m.pattern_name for m in matches})
+                        await audit_db.record_retract_event(
+                            slug=slug,
+                            matches_count=len(matches),
+                            pattern_names=pattern_names,
+                            applied=True,
+                        )
+                        logger.info(
+                            "[retract] auto-masked %d line(s) in %s (types: %s)",
+                            lines_changed, slug, ", ".join(pattern_names),
+                        )
+                await asyncio.sleep(0.1)
+        except Exception:  # noqa: BLE001
+            logger.exception("[retract] scan cycle error — retrying in 60 s")
+            await asyncio.sleep(60)
+            continue
+
+        await asyncio.sleep(interval_secs)
+
+
 _graph_task: "asyncio.Task[None] | None" = None  # retained reference prevents GC cancellation
 
 # Lowercase slug names that represent scaffold or config files.
@@ -680,13 +751,19 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             run_scheduler_loop(wiki_root.name, wiki_root, audit_db,
                                job_timeout_seconds=cfg.server.job_timeout_seconds)
         )
+        scan_loop = asyncio.create_task(
+            _run_sensitive_scan_loop(
+                cfg.security, wiki_root, orch._queue, audit_db
+            )
+        )
 
         try:
             yield
         finally:
             worker.cancel()
             scheduler.cancel()
-            for task in (worker, scheduler):
+            scan_loop.cancel()
+            for task in (worker, scheduler, scan_loop):
                 try:
                     await task
                 except asyncio.CancelledError:
