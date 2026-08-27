@@ -566,3 +566,20 @@ async def test_retry_clears_retry_after(tmp_wiki):
     result = await q.dequeue()
     assert result is not None, "after retry(), job must be immediately dequeued"
     assert result.id == job_id
+
+
+@pytest.mark.asyncio
+async def test_has_pending_jobs_empty(tmp_wiki):
+    """Empty queue → has_pending_jobs returns False."""
+    q = JobQueue(tmp_wiki / ".synthadoc" / "jobs.db")
+    await q.init()
+    assert await q.has_pending_jobs() is False
+
+
+@pytest.mark.asyncio
+async def test_has_pending_jobs_with_pending(tmp_wiki):
+    """Queue with a PENDING job → has_pending_jobs returns True."""
+    q = JobQueue(tmp_wiki / ".synthadoc" / "jobs.db")
+    await q.init()
+    await q.enqueue("ingest", {"source": "test.pdf"})
+    assert await q.has_pending_jobs() is True
