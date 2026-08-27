@@ -1,0 +1,197 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 William Johnason / axoviq.com
+"""CLI subcommands for sensitive-data detection and redaction.
+
+Commands
+--------
+synthadoc retract scan [-w WIKI] [--slug SLUG] [--apply] [--yes]
+synthadoc retract status [-w WIKI] [--limit N] [--json]
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+from pathlib import Path
+from typing import Optional
+
+import typer
+from rich.console import Console
+from rich.table import Table
+
+retract_app = typer.Typer(
+    name="retract",
+    help="Detect and redact sensitive data in wiki pages.",
+)
+console = Console()
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+def _resolve_wiki_root(wiki: str) -> Path:
+    from synthadoc.cli.install import resolve_wiki_path
+    return resolve_wiki_path(wiki)
+
+
+def _load_wiki_config(wiki_root: Path):
+    from synthadoc.config import load_config
+    cfg_path = wiki_root / ".synthadoc" / "config.toml"
+    return load_config(project_config=cfg_path if cfg_path.exists() else None)
+
+
+def _get_audit_db(wiki_root: Path):
+    from synthadoc.storage.log import AuditDB
+    return AuditDB(wiki_root / ".synthadoc" / "audit.db")
+
+
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
+
+@retract_app.command("scan")
+def scan_cmd(
+    wiki: Optional[str] = typer.Option(None, "--wiki", "-w"),
+    slug: Optional[str] = typer.Option(None, "--slug", help="Scan a single page slug"),
+    apply: bool = typer.Option(False, "--apply", help="Apply redactions (write back to files)"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+):
+    """Scan wiki pages for sensitive data.
+
+    \b
+    Dry-run by default — prints matches (slug + line number + data type)
+    without revealing any sensitive values.
+
+    Use --apply to write [REDACTED] substitutions back to each page.
+    The audit log records slug, match count, and pattern types; never
+    any fragment of the sensitive value itself.
+    """
+    from synthadoc.cli._wiki import resolve_wiki
+    from synthadoc.core.retract import SensitiveScanner
+
+    wiki = resolve_wiki(wiki)
+    wiki_root = _resolve_wiki_root(wiki)
+    cfg = _load_wiki_config(wiki_root)
+    scanner = SensitiveScanner(cfg.security)
+
+    # Collect target slugs
+    slugs = [slug] if slug else [p.stem for p in wiki_root.glob("*.md")]
+
+    # Scan all targets
+    all_matches = {}  # slug → list[ScanMatch]
+    for s in sorted(slugs):
+        page_path = wiki_root / f"{s}.md"
+        if not page_path.exists():
+            console.print(f"[yellow]Warning: page not found: {s}[/yellow]")
+            continue
+        content = page_path.read_text(encoding="utf-8")
+        matches = scanner.scan_page(s, content)
+        if matches:
+            all_matches[s] = matches
+
+    total_matches = sum(len(m) for m in all_matches.values())
+
+    if not all_matches:
+        console.print(f"[green]✓[/green] 0 matches found — no sensitive data detected.")
+        return
+
+    # Display results table (no values, only metadata)
+    table = Table(title=f"Sensitive Data Scan — {total_matches} match(es) in {len(all_matches)} page(s)")
+    table.add_column("Page", style="cyan")
+    table.add_column("Line", justify="right")
+    table.add_column("Type")
+    table.add_column("Pattern")
+    for s, matches in sorted(all_matches.items()):
+        for m in matches:
+            table.add_row(m.slug, str(m.line_no), m.data_type.value, m.pattern_name)
+    console.print(table)
+
+    if not apply:
+        console.print(
+            f"\n[dim]{total_matches} match(es) found. Run with --apply to redact.[/dim]"
+        )
+        return
+
+    # Confirm before writing
+    if not yes:
+        confirmed = typer.confirm(
+            f"Apply [REDACTED] substitutions to {len(all_matches)} page(s)?",
+            default=False,
+        )
+        if not confirmed:
+            typer.echo("Aborted.")
+            raise typer.Exit(0)
+
+    # Apply redactions
+    db = _get_audit_db(wiki_root)
+
+    async def _apply():
+        await db.init()
+        total_lines = 0
+        for s, matches in all_matches.items():
+            page_path = wiki_root / f"{s}.md"
+            content = page_path.read_text(encoding="utf-8")
+            masked, lines_changed = scanner.mask_page(s, content, matches)
+            if lines_changed > 0:
+                page_path.write_text(masked, encoding="utf-8")
+                total_lines += lines_changed
+                pattern_names = list({m.pattern_name for m in matches})
+                await db.record_retract_event(
+                    slug=s,
+                    matches_count=len(matches),
+                    pattern_names=pattern_names,
+                    applied=True,
+                )
+                console.print(f"  [green]✓[/green] {s} — {lines_changed} line(s) redacted")
+        return total_lines
+
+    total_lines = asyncio.run(_apply())
+    console.print(f"\n[bold green]Done.[/bold green] {total_lines} line(s) redacted across {len(all_matches)} page(s).")
+
+
+@retract_app.command("status")
+def status_cmd(
+    wiki: Optional[str] = typer.Option(None, "--wiki", "-w"),
+    limit: int = typer.Option(50, "--limit", "-n", help="Max rows to show"),
+    as_json: bool = typer.Option(False, "--json", help="Output raw JSON"),
+):
+    """Show recent sensitive-data scan results from the audit log."""
+    from synthadoc.cli._wiki import resolve_wiki
+    wiki = resolve_wiki(wiki)
+    wiki_root = _resolve_wiki_root(wiki)
+    db = _get_audit_db(wiki_root)
+
+    async def _fetch():
+        await db.init()
+        events, total = await db.list_events(limit=limit)
+        # Filter to retract_scan events only
+        retract_events = [e for e in events if e.get("event") == "retract_scan"]
+        return retract_events, total
+
+    events, _ = asyncio.run(_fetch())
+
+    if as_json:
+        typer.echo(json.dumps(events, indent=2))
+        return
+
+    if not events:
+        console.print("[dim]No retract scan records found.[/dim]")
+        return
+
+    table = Table(title="Retract Scan History")
+    table.add_column("Timestamp", style="dim")
+    table.add_column("Page", style="cyan")
+    table.add_column("Matches", justify="right")
+    table.add_column("Applied")
+    table.add_column("Pattern Types")
+    for evt in events:
+        meta = json.loads(evt.get("metadata") or "{}")
+        applied = "[green]yes[/green]" if meta.get("applied") else "[dim]no[/dim]"
+        table.add_row(
+            evt.get("timestamp", "")[:16],
+            meta.get("slug", ""),
+            str(meta.get("matches_count", 0)),
+            applied,
+            ", ".join(meta.get("pattern_names", [])),
+        )
+    console.print(table)
