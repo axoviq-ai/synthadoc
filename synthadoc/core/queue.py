@@ -310,7 +310,7 @@ class JobQueue:
                         ) for r in rows]
 
     async def has_pending_jobs(self) -> bool:
-        """Return True if any job is in PENDING or RUNNING state.
+        """Return True if any job is in PENDING or IN_PROGRESS state.
 
         Used by the sensitive-data background scan loop to pause
         scanning while the job queue has active work.
