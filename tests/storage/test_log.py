@@ -596,3 +596,42 @@ async def test_count_citation_failures_filter_by_page_slug(tmp_path):
     assert await db.count_citation_failures(page_slug="turing") == 1
     assert await db.count_citation_failures(page_slug="hopper") == 1
     assert await db.count_citation_failures(page_slug="nobody") == 0
+
+
+@pytest.mark.asyncio
+async def test_record_retract_event(tmp_path):
+    import json
+    from synthadoc.storage.log import AuditDB
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+    await db.record_retract_event(
+        slug="ada-lovelace",
+        matches_count=2,
+        pattern_names=["api_key", "email"],
+        applied=True,
+    )
+    events, total = await db.list_events(limit=10)
+    assert total == 1
+    evt = events[0]
+    assert evt["event"] == "retract_scan"
+    meta = json.loads(evt["metadata"])
+    assert meta["slug"] == "ada-lovelace"
+    assert meta["matches_count"] == 2
+    assert "api_key" in meta["pattern_names"]
+    assert meta["applied"] is True
+
+
+@pytest.mark.asyncio
+async def test_record_retract_event_no_matches(tmp_path):
+    import json
+    from synthadoc.storage.log import AuditDB
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+    await db.record_retract_event(
+        slug="empty-page", matches_count=0, pattern_names=[], applied=False,
+    )
+    events, total = await db.list_events()
+    assert total == 1
+    meta = json.loads(events[0]["metadata"])
+    assert meta["matches_count"] == 0
+    assert meta["applied"] is False

@@ -377,6 +377,37 @@ class AuditDB:
             )
             await db.commit()
 
+    async def record_retract_event(
+        self,
+        slug: str,
+        matches_count: int,
+        pattern_names: list[str],
+        applied: bool,
+    ) -> None:
+        """Record a sensitive-data scan result in the audit log.
+
+        Only metadata is stored — no sensitive value fragments ever.
+        Parameters
+        ----------
+        slug:         Wiki page slug that was scanned.
+        matches_count: Number of sensitive-data matches detected.
+        pattern_names: List of pattern type names that matched (e.g. ["api_key", "email"]).
+        applied:      True if redactions were written back to the page.
+        """
+        ts = datetime.now(timezone.utc).isoformat()
+        metadata = json.dumps({
+            "slug": slug,
+            "matches_count": matches_count,
+            "pattern_names": pattern_names,
+            "applied": applied,
+        })
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute(
+                "INSERT INTO audit_events (event, timestamp, metadata) VALUES (?, ?, ?)",
+                ("retract_scan", ts, metadata),
+            )
+            await db.commit()
+
     async def list_queries(self, limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
         async with aiosqlite.connect(self._path) as db:
             db.row_factory = aiosqlite.Row
