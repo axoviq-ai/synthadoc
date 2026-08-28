@@ -206,6 +206,17 @@ class ChatConfig:
     clarify_lookback: int = 5  # assistant turns to scan back for an open clarify context
 
 
+@dataclass
+class SecurityConfig:
+    # None = key absent from config file (show one-time startup notice)
+    # False = explicitly disabled
+    # True = enabled; background scanner runs every scan_interval_days
+    sensitive_scan_enabled: bool | None = None
+    scan_interval_days: int = 7
+    # Each entry: {"name": str, "pattern": str, "flags": str (optional, "i" for IGNORECASE)}
+    custom_patterns: list = field(default_factory=list)
+
+
 # ---------------------------------------------------------------------------
 # Root config
 # ---------------------------------------------------------------------------
@@ -228,6 +239,7 @@ class Config:
     lint: LintConfig = field(default_factory=LintConfig)
     audit: AuditConfig = field(default_factory=AuditConfig)
     chat: ChatConfig = field(default_factory=ChatConfig)
+    security: SecurityConfig = field(default_factory=SecurityConfig)
     hooks: dict = field(default_factory=dict)
     wikis: dict = field(default_factory=dict)
 
@@ -485,6 +497,19 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         clarify_lookback=int(ch.get("clarify_lookback", 5)),
     )
 
+    # --- security ---
+    sec = raw.get("security", {})
+    # Distinguish absent key (None) from explicit false
+    if "sensitive_scan_enabled" not in sec:
+        scan_enabled: bool | None = None
+    else:
+        scan_enabled = bool(sec["sensitive_scan_enabled"])
+    security = SecurityConfig(
+        sensitive_scan_enabled=scan_enabled,
+        scan_interval_days=int(sec.get("scan_interval_days", 7)),
+        custom_patterns=list(sec.get("custom_patterns", [])),
+    )
+
     return Config(
         agents=agents,
         cache=cache,
@@ -501,6 +526,7 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         lint=lint,
         audit=audit,
         chat=chat,
+        security=security,
         hooks=hooks,
         wikis=wikis,
     )

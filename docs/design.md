@@ -3914,6 +3914,145 @@ default `[agents]` model.
 
 ---
 
+## 38. Sensitive Data Retract
+
+### Overview
+
+The sensitive data retract feature scans every wiki page for patterns that
+indicate personal or secret data — API keys, email addresses, phone numbers,
+SSNs, credit card numbers, and generic secrets — and replaces matched values
+with `[REDACTED]` in place. Built-in patterns cover the most common types;
+teams can extend coverage without code changes by adding regular expressions
+to `config.toml`.
+
+### Built-in pattern types
+
+| Type | Example match (redacted) |
+|------|--------------------------|
+| `api_key` | `api_key = [REDACTED]` |
+| `email` | `[REDACTED]` |
+| `phone` | `[REDACTED]` |
+| `ssn` | `[REDACTED]` |
+| `credit_card` | `[REDACTED]` |
+| `generic_secret` | `password = [REDACTED]` |
+
+### Custom patterns (no code changes required)
+
+Add one or more entries under `[[security.custom_patterns]]` in `config.toml`:
+
+```toml
+[[security.custom_patterns]]
+name = "internal_token"
+pattern = "INTERNAL-[A-Z0-9]{16}"
+flags = ""          # optional; "i" for case-insensitive
+
+[[security.custom_patterns]]
+name = "employee_id"
+pattern = "EMP-\\d{6}"
+flags = "i"
+```
+
+Custom matches surface in scan output and the audit log under their
+user-assigned name (e.g. `internal_token`).
+
+### Audit trail
+
+Every page where redactions are applied produces one audit log entry
+containing: page slug, match count, list of pattern type names, and
+whether the redaction was applied. Sensitive values are never stored or
+logged — not even a fragment.
+
+### Auto-schedule (background server scan)
+
+The background scanner runs once per week by default (configurable via
+`scan_interval_days`). It cooperates with other background jobs: when the
+ingest or lint job queue has pending work, the scanner pauses between
+pages until the queue drains.
+
+```toml
+[security]
+sensitive_scan_enabled = true   # omit or set false to disable
+scan_interval_days = 7          # default: weekly
+```
+
+If `sensitive_scan_enabled` is absent from `config.toml`, the server
+prints a one-time startup notice suggesting how to opt in.
+
+#### Incremental background scan
+
+Each background scan cycle is incremental by default. At the start of every
+cycle the scanner reads the timestamp of the most recently completed cycle
+from the audit log and compares it against each page file's modification
+time. Only pages whose mtime is newer than the last cycle are re-scanned;
+unmodified pages are skipped. The server log records how many pages were
+checked and how many were skipped:
+
+```
+[retract] scan cycle complete — 3 page(s) checked, 12 unchanged/skipped, 0 with redactions
+```
+
+The first cycle after enabling the feature has no prior record and scans the
+full wiki.
+
+### Post-ingest auto-scan
+
+When a source is ingested via the web UI or API, the server immediately
+scans the pages that were created or updated by that ingest job — without
+waiting for the next scheduled cycle. This catches sensitive data that the
+LLM may have extracted from source material and written into a wiki page,
+before it persists until the weekly background pass.
+
+The post-ingest scan is scoped to the ingested pages only (O(pages touched),
+not O(wiki size)). Any redactions applied are logged at WARNING level and
+recorded in the audit log with `applied: true`. The feature is governed by
+the same `sensitive_scan_enabled` flag as the background scan.
+
+### How to trigger
+
+#### CLI
+
+```bash
+# Dry-run — show matches (no values), no changes
+synthadoc retract scan
+
+# Single page dry-run
+synthadoc retract scan --slug ada-lovelace
+
+# Only scan pages modified since the last scan cycle
+synthadoc retract scan --changed-only
+
+# Apply redactions across all pages
+synthadoc retract scan --apply
+
+# Apply only to recently-modified pages and confirm automatically
+synthadoc retract scan --apply --changed-only --yes
+
+# Apply without confirmation prompt
+synthadoc retract scan --apply --yes
+
+# Show recent scan history from the audit log
+synthadoc retract status
+synthadoc retract status --json
+```
+
+#### `--changed-only` flag
+
+When `--changed-only` is passed, the CLI reads the last completed scan
+cycle's timestamp from the audit log and skips any page whose file
+modification time is older than or equal to that timestamp. This mirrors
+the incremental behaviour of the background server scan and is useful for
+frequent manual checks on large wikis. If no previous cycle is on record,
+all pages are scanned and a note is printed.
+
+#### Automatic (background)
+
+Set `sensitive_scan_enabled = true` in `config.toml`. The scanner runs
+automatically on the configured interval whenever the server is running.
+Each cycle is incremental — only pages modified since the previous cycle are
+checked.
+
+---
+
 ## Appendix A — Release Feature Index
 
 ### v1.3.1

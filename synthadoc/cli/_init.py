@@ -309,6 +309,23 @@ session_retention_days = 30
 # Increase if users pick chips from a long multi-step clarify list; lower to
 # avoid routing unrelated follow-ups through the action agent.
 # clarify_lookback = 5
+
+[security]
+# Automatically scan all wiki pages for sensitive data (API keys, emails, SSNs,
+# credit cards, phone numbers, generic secrets) on a weekly schedule.
+# Matched values are replaced with [REDACTED] in place; the audit log records
+# only slug, line number, and pattern type — never any value fragment.
+#
+# Set to false to disable the background scan without removing this section.
+sensitive_scan_enabled = true
+# Interval between full-wiki scans (in days). Default: 7 (weekly).
+# scan_interval_days = 7
+#
+# Add org-specific patterns without code changes:
+# [[security.custom_patterns]]
+# name    = "internal_token"
+# pattern = "INTERNAL-[A-Z0-9]{{16}}"
+# flags   = ""   # optional; "i" for case-insensitive
 """
 
 _GITIGNORE = ".synthadoc/\n__pycache__/\n*.pyc\n.env\n"

@@ -373,6 +373,90 @@ async def test_list_sessions_respects_limit(tmp_path):
     assert len(result) == 3
 
 
+# ---------------------------------------------------------------------------
+# list_retract_events — returns only retract_scan rows, newest first
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_list_retract_events_filters_and_orders(tmp_path):
+    """list_retract_events returns only retract_scan rows in DESC id order.
+
+    Mixed event types are inserted so we can confirm non-retract events are
+    excluded even when they outnumber retract events.  The two retract events
+    must appear newest-first (i.e. 'slug-b' before 'slug-a').
+    """
+    import aiosqlite, json
+    from synthadoc.storage.log import AuditDB
+
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+
+    # Insert events in order: lint_complete, retract_scan(slug-a),
+    # lint_complete, retract_scan(slug-b), write_event(other type).
+    async with aiosqlite.connect(tmp_path / "audit.db") as conn:
+        for event, meta in [
+            ("lint_complete",  json.dumps({"dangling_removed": 0})),
+            ("retract_scan",   json.dumps({"slug": "slug-a", "matches_count": 1,
+                                           "pattern_names": ["email"], "applied": True})),
+            ("lint_complete",  json.dumps({"dangling_removed": 0})),
+            ("retract_scan",   json.dumps({"slug": "slug-b", "matches_count": 3,
+                                           "pattern_names": ["api_key"], "applied": False})),
+            ("query_complete", json.dumps({"question": "irrelevant"})),
+        ]:
+            await conn.execute(
+                "INSERT INTO audit_events (event, timestamp, metadata) VALUES (?,?,?)",
+                (event, "2026-08-27T00:00:00", meta),
+            )
+        await conn.commit()
+
+    results = await db.list_retract_events(limit=50)
+
+    # Only retract_scan events returned
+    assert len(results) == 2
+    assert all(r["event"] == "retract_scan" for r in results)
+
+    # Newest first: slug-b was inserted after slug-a
+    slugs = [json.loads(r["metadata"])["slug"] for r in results]
+    assert slugs == ["slug-b", "slug-a"]
+
+
+@pytest.mark.asyncio
+async def test_list_retract_events_limit_applies_to_filtered_set(tmp_path):
+    """limit operates on retract_scan rows only, not on all audit_events.
+
+    Insert 3 non-retract events followed by 2 retract events.  With limit=1
+    we should still get the single most-recent retract event (not 0).
+    """
+    import aiosqlite, json
+    from synthadoc.storage.log import AuditDB
+
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+
+    async with aiosqlite.connect(tmp_path / "audit.db") as conn:
+        # 3 non-retract events (would exhaust a naïve global LIMIT 1)
+        for _ in range(3):
+            await conn.execute(
+                "INSERT INTO audit_events (event, timestamp, metadata) VALUES (?,?,?)",
+                ("lint_complete", "2026-08-27T00:00:00", "{}"),
+            )
+        # 2 retract_scan events
+        for slug in ("slug-first", "slug-second"):
+            await conn.execute(
+                "INSERT INTO audit_events (event, timestamp, metadata) VALUES (?,?,?)",
+                ("retract_scan", "2026-08-27T00:00:00",
+                 json.dumps({"slug": slug, "matches_count": 1,
+                             "pattern_names": [], "applied": False})),
+            )
+        await conn.commit()
+
+    results = await db.list_retract_events(limit=1)
+
+    assert len(results) == 1
+    assert results[0]["event"] == "retract_scan"
+    assert json.loads(results[0]["metadata"])["slug"] == "slug-second"
+
+
 @pytest.mark.asyncio
 async def test_list_sessions_multiple_sessions_ordered_by_last_active(tmp_path):
     import aiosqlite
@@ -596,3 +680,42 @@ async def test_count_citation_failures_filter_by_page_slug(tmp_path):
     assert await db.count_citation_failures(page_slug="turing") == 1
     assert await db.count_citation_failures(page_slug="hopper") == 1
     assert await db.count_citation_failures(page_slug="nobody") == 0
+
+
+@pytest.mark.asyncio
+async def test_record_retract_event(tmp_path):
+    import json
+    from synthadoc.storage.log import AuditDB
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+    await db.record_retract_event(
+        slug="ada-lovelace",
+        matches_count=2,
+        pattern_names=["api_key", "email"],
+        applied=True,
+    )
+    events, total = await db.list_events(limit=10)
+    assert total == 1
+    evt = events[0]
+    assert evt["event"] == "retract_scan"
+    meta = json.loads(evt["metadata"])
+    assert meta["slug"] == "ada-lovelace"
+    assert meta["matches_count"] == 2
+    assert "api_key" in meta["pattern_names"]
+    assert meta["applied"] is True
+
+
+@pytest.mark.asyncio
+async def test_record_retract_event_no_matches(tmp_path):
+    import json
+    from synthadoc.storage.log import AuditDB
+    db = AuditDB(tmp_path / "audit.db")
+    await db.init()
+    await db.record_retract_event(
+        slug="empty-page", matches_count=0, pattern_names=[], applied=False,
+    )
+    events, total = await db.list_events()
+    assert total == 1
+    meta = json.loads(events[0]["metadata"])
+    assert meta["matches_count"] == 0
+    assert meta["applied"] is False

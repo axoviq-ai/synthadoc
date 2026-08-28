@@ -605,13 +605,14 @@ async def test_job_list_string_status_filter_coerced(tmp_path):
     assert result.success is True
     assert "abc-123" in result.message
 
-def test_fmt_job_ts_none():
-    from synthadoc.agents.action_agent import ActionAgent
-    assert ActionAgent._fmt_job_ts(None) == "—"
+def test_fmt_ts_none():
+    from synthadoc.utils import fmt_ts
+    assert fmt_ts(None) == "—"
 
-def test_fmt_job_ts_invalid():
-    from synthadoc.agents.action_agent import ActionAgent
-    assert ActionAgent._fmt_job_ts("not-a-date") == "not-a-date"
+def test_fmt_ts_invalid():
+    from synthadoc.utils import fmt_ts
+    # Invalid string: fallback returns ts[:16]
+    assert fmt_ts("not-a-date") == "not-a-date"
 
 @pytest.mark.asyncio
 async def test_extract_strips_markdown_fences(tmp_path):

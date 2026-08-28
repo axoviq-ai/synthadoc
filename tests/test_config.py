@@ -399,3 +399,53 @@ def test_lint_validation_passes_when_threshold_zero(tmp_path):
     )
     cfg = load_config(project_config=cfg_file)
     assert cfg.lint.adversarial_gate_threshold == 0
+
+
+def test_security_config_absent_key():
+    """Absent [security] section → sensitive_scan_enabled is None (notice mode)."""
+    from synthadoc.config import load_config, Config
+    cfg = load_config()  # no config files → defaults
+    assert cfg.security.sensitive_scan_enabled is None
+
+
+def test_security_config_explicit_false(tmp_path):
+    """sensitive_scan_enabled = false → False, no notice."""
+    from synthadoc.config import load_config
+    p = tmp_path / "config.toml"
+    p.write_text(
+        '[agents.default]\nprovider = "gemini"\nmodel = "gemini-2.5-flash-lite"\n'
+        '[security]\nsensitive_scan_enabled = false\n',
+        encoding="utf-8",
+    )
+    cfg = load_config(project_config=p)
+    assert cfg.security.sensitive_scan_enabled is False
+
+
+def test_security_config_enabled(tmp_path):
+    """sensitive_scan_enabled = true, interval, custom_patterns round-trip."""
+    from synthadoc.config import load_config
+    p = tmp_path / "config.toml"
+    p.write_text(
+        '[agents.default]\nprovider = "gemini"\nmodel = "gemini-2.5-flash-lite"\n'
+        '[security]\nsensitive_scan_enabled = true\nscan_interval_days = 14\n'
+        '[[security.custom_patterns]]\nname = "internal_token"\n'
+        'pattern = "INTERNAL-[A-Z0-9]{16}"\nflags = ""\n',
+        encoding="utf-8",
+    )
+    cfg = load_config(project_config=p)
+    assert cfg.security.sensitive_scan_enabled is True
+    assert cfg.security.scan_interval_days == 14
+    assert cfg.security.custom_patterns[0]["name"] == "internal_token"
+
+
+def test_init_wiki_config_has_security_enabled(tmp_path):
+    """Fresh init_wiki produces a config.toml with sensitive_scan_enabled = true."""
+    import tomllib
+    from synthadoc.cli._init import init_wiki
+    root = tmp_path / "wiki"
+    root.mkdir()
+    init_wiki(root, domain="Test", port=7070)
+    cfg_path = root / ".synthadoc" / "config.toml"
+    assert cfg_path.exists()
+    data = tomllib.loads(cfg_path.read_text(encoding="utf-8"))
+    assert data.get("security", {}).get("sensitive_scan_enabled") is True

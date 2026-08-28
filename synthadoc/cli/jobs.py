@@ -2,23 +2,11 @@
 # Copyright (C) 2026 Paul Chen / axoviq.com
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Optional
 
 import typer
 
-
-def _fmt_ts(ts: str | None) -> str:
-    """Convert a UTC SQLite timestamp string to local time for display."""
-    if not ts:
-        return "—"
-    try:
-        # SQLite datetime('now') returns "YYYY-MM-DD HH:MM:SS" (UTC, no tz marker)
-        dt_utc = datetime.fromisoformat(ts).replace(tzinfo=timezone.utc)
-        return dt_utc.astimezone().strftime("%Y-%m-%d %H:%M:%S")
-    except ValueError:
-        return ts
-
+from synthadoc.utils import fmt_ts
 from synthadoc.cli.main import app
 from synthadoc.cli._http import get, post, delete as http_delete
 
@@ -44,7 +32,7 @@ def jobs_list(
         typer.echo("No jobs found.")
         return
     for j in jobs:
-        typer.echo(f"{j['id']}  {j['status']:<12}  {j['operation']:<8}  {_fmt_ts(j.get('created_at'))}")
+        typer.echo(f"{j['id']}  {j['status']:<12}  {j['operation']:<8}  {fmt_ts(j.get('created_at'))}")
 
 
 @jobs_app.command("status")
@@ -59,7 +47,7 @@ def jobs_status(
     typer.echo(f"ID:        {j['id']}")
     typer.echo(f"Status:    {j['status']}")
     typer.echo(f"Operation: {j['operation']}")
-    typer.echo(f"Created:   {_fmt_ts(j.get('created_at'))}")
+    typer.echo(f"Created:   {fmt_ts(j.get('created_at'))}")
     if j.get("error"):
         typer.echo(f"Error:     {j['error']}")
     r = j.get("result") or {}
