@@ -97,11 +97,16 @@ _BUILT_IN_PATTERNS: list[tuple[SensitiveDataType, re.Pattern, str]] = [
     (
         SensitiveDataType.CREDIT_CARD,
         re.compile(
+            # Matches card numbers written as consecutive digits OR with a
+            # single space or dash between each 4-digit group (the common
+            # human-readable format, e.g. "4532 0151 2345 6789").
+            # Separator must be consistent: all spaces or all dashes, not mixed.
             r'\b(?:'
-            r'4[0-9]{12}(?:[0-9]{3})?'          # Visa
-            r'|5[1-5][0-9]{14}'                  # MasterCard
-            r'|3[47][0-9]{13}'                   # Amex
-            r'|6(?:011|5[0-9]{2})[0-9]{12}'     # Discover
+            r'4[0-9]{3}(?:[ \-]?[0-9]{4}){3}'              # Visa (16 digits)
+            r'|4[0-9]{3}(?:[ \-]?[0-9]{4}){2}(?:[ \-]?[0-9]{1,3})?'  # Visa 13
+            r'|5[1-5][0-9]{2}(?:[ \-]?[0-9]{4}){3}'        # MasterCard
+            r'|3[47][0-9]{2}[ \-]?[0-9]{6}[ \-]?[0-9]{5}'  # Amex (15 digits)
+            r'|6(?:011|5[0-9]{2})(?:[ \-]?[0-9]{4}){3}'    # Discover
             r')\b'
         ),
         '[REDACTED]',

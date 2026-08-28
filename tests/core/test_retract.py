@@ -62,9 +62,31 @@ def test_scan_ssn():
     assert any(m.data_type == SensitiveDataType.SSN for m in matches)
 
 
-def test_scan_credit_card():
+def test_scan_credit_card_consecutive():
+    """16-digit Visa with no separators."""
     s = _scanner()
     matches = s.scan_page("p", "Card: 4111111111111111")
+    assert any(m.data_type == SensitiveDataType.CREDIT_CARD for m in matches)
+
+
+def test_scan_credit_card_spaced():
+    """16-digit Visa written in the common 4-4-4-4 spaced format."""
+    s = _scanner()
+    matches = s.scan_page("p", "billing card on file 4532 0151 2345 6789 exp 09/28")
+    assert any(m.data_type == SensitiveDataType.CREDIT_CARD for m in matches)
+
+
+def test_scan_credit_card_dashed():
+    """16-digit Visa with dash separators."""
+    s = _scanner()
+    matches = s.scan_page("p", "card: 4532-0151-2345-6789")
+    assert any(m.data_type == SensitiveDataType.CREDIT_CARD for m in matches)
+
+
+def test_scan_credit_card_mastercard_spaced():
+    """MasterCard in spaced format."""
+    s = _scanner()
+    matches = s.scan_page("p", "mc: 5412 7512 3456 7890")
     assert any(m.data_type == SensitiveDataType.CREDIT_CARD for m in matches)
 
 
