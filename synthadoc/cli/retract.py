@@ -52,6 +52,31 @@ def _get_audit_db(wiki_root: Path):
     return AuditDB(wiki_root / ".synthadoc" / "audit.db")
 
 
+def _last_cycle_cutoff(wiki_root: Path) -> "datetime | None":
+    """Return the UTC datetime of the last completed scan cycle, or None if none exists."""
+    db = _get_audit_db(wiki_root)
+
+    async def _fetch():
+        await db.init()
+        return await db.get_last_retract_cycle()
+
+    cycle = asyncio.run(_fetch())
+    if not cycle:
+        return None
+    ts = cycle.get("timestamp", "")
+    if not ts:
+        return None
+    dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _mtime_utc(path: Path) -> datetime:
+    """Return file modification time as a UTC-aware datetime."""
+    return datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+
+
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
@@ -62,6 +87,10 @@ def scan_cmd(
     slug: Optional[str] = typer.Option(None, "--slug", help="Scan a single page slug"),
     apply: bool = typer.Option(False, "--apply", help="Apply redactions (write back to files)"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+    changed_only: bool = typer.Option(
+        False, "--changed-only",
+        help="Only scan pages modified since the last scan cycle (skips unchanged files).",
+    ),
 ):
     """Scan wiki pages for sensitive data.
 
@@ -72,6 +101,10 @@ def scan_cmd(
     Use --apply to write [REDACTED] substitutions back to each page.
     The audit log records slug, match count, and pattern types; never
     any fragment of the sensitive value itself.
+
+    Use --changed-only to skip pages that have not been modified since
+    the last completed scan cycle.  Useful on large wikis where most
+    pages are stable between runs.
     """
     from synthadoc.cli._wiki import resolve_wiki
     from synthadoc.core.retract import SensitiveScanner
@@ -83,7 +116,28 @@ def scan_cmd(
     scanner = SensitiveScanner(cfg.security)
 
     # Collect target slugs
-    slugs = [slug] if slug else [p.stem for p in pages_dir.glob("*.md")]
+    if slug:
+        slugs = [slug]
+    else:
+        slugs = [p.stem for p in pages_dir.glob("*.md")]
+        if changed_only:
+            cutoff_dt = _last_cycle_cutoff(wiki_root)
+            if cutoff_dt is None:
+                console.print("[dim]--changed-only: no previous scan recorded — scanning all pages.[/dim]")
+            else:
+                before = len(slugs)
+                slugs = [
+                    s for s in slugs
+                    if _mtime_utc(pages_dir / f"{s}.md") > cutoff_dt
+                ]
+                skipped = before - len(slugs)
+                if skipped:
+                    console.print(
+                        f"[dim]--changed-only: {skipped} page(s) unchanged since last scan — skipped.[/dim]"
+                    )
+                if not slugs:
+                    console.print("[green]✓[/green] No pages modified since the last scan.")
+                    return
 
     # Scan all targets
     all_matches = {}   # slug → list[ScanMatch]

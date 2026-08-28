@@ -4147,14 +4147,25 @@ Prompts for confirmation, then writes `[REDACTED]` substitutions to
 each affected page. Run without `--yes` to review the list before
 committing.
 
-**Option 3: Single-page scan**
+**Option 3: Incremental scan (changed pages only)**
+
+```bash
+synthadoc retract scan --changed-only
+synthadoc retract scan --apply --changed-only --yes
+```
+
+Skips pages that have not been modified since the last completed scan
+cycle. Useful for frequent manual checks on large wikis — only recently
+ingested or edited pages are checked.
+
+**Option 4: Single-page scan**
 
 ```bash
 synthadoc retract scan --slug my-page
 synthadoc retract scan --slug my-page --apply --yes
 ```
 
-**Option 4: Auto-schedule (background)**
+**Option 5: Auto-schedule (background)**
 
 Add to `config.toml` for automatic weekly scanning:
 
@@ -4164,7 +4175,11 @@ sensitive_scan_enabled = true
 scan_interval_days = 7
 ```
 
-The scanner runs in the background and records results in the audit log.
+The background scanner is incremental: each cycle only scans pages whose
+modification time is newer than the previous run. The server also
+automatically scans any pages written by an ingest job immediately after
+that job completes, so sensitive data is caught before the weekly pass.
+
 View recent scan history:
 
 ```bash

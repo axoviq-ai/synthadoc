@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -294,3 +295,61 @@ def test_status_no_events_message(tmp_path):
     assert result.exit_code == 0
     assert "Not yet run" in result.output
     assert "No per-page redaction records found" in result.output
+
+
+# ---------------------------------------------------------------------------
+# --changed-only flag
+# ---------------------------------------------------------------------------
+
+def test_scan_changed_only_no_previous_cycle(tmp_path):
+    """--changed-only with no prior cycle record scans all pages and notes it."""
+    wiki_root = _make_wiki(tmp_path, {"pg": "api_key = sk-abcdefghijklmnopqrst"})
+    with patch("synthadoc.cli.retract._resolve_wiki_root", return_value=wiki_root), \
+         patch("synthadoc.cli.retract._load_wiki_config") as mock_cfg, \
+         patch("synthadoc.cli.retract._last_cycle_cutoff", return_value=None):
+        from synthadoc.config import SecurityConfig
+        mock_cfg.return_value = MagicMock(security=SecurityConfig(sensitive_scan_enabled=True))
+        result = runner.invoke(retract_app, ["scan", "-w", "wiki", "--changed-only"])
+    assert result.exit_code == 0
+    # Should note "no previous scan" and still find the match
+    assert "no previous scan" in result.output.lower()
+    assert "pg" in result.output
+
+
+def test_scan_changed_only_skips_old_files(tmp_path):
+    """--changed-only skips pages that have not been modified since the last scan."""
+    from datetime import timezone
+    wiki_root = _make_wiki(tmp_path, {
+        "old-page": "api_key = sk-abcdefghijklmnopqrst",
+        "new-page": "normal content",
+    })
+    # Simulate: cutoff is in the future — all pages are "old"
+    future_cutoff = datetime(2099, 1, 1, tzinfo=timezone.utc)
+    with patch("synthadoc.cli.retract._resolve_wiki_root", return_value=wiki_root), \
+         patch("synthadoc.cli.retract._load_wiki_config") as mock_cfg, \
+         patch("synthadoc.cli.retract._last_cycle_cutoff", return_value=future_cutoff):
+        from synthadoc.config import SecurityConfig
+        mock_cfg.return_value = MagicMock(security=SecurityConfig(sensitive_scan_enabled=True))
+        result = runner.invoke(retract_app, ["scan", "-w", "wiki", "--changed-only"])
+    assert result.exit_code == 0
+    # All pages are older than the future cutoff — nothing to scan
+    assert "No pages modified since the last scan" in result.output
+
+
+def test_scan_changed_only_scans_recent_files(tmp_path):
+    """--changed-only scans pages that are newer than the cutoff."""
+    from datetime import timezone
+    wiki_root = _make_wiki(tmp_path, {
+        "recent-page": "api_key = sk-abcdefghijklmnopqrst",
+    })
+    # Cutoff is in the distant past — all current files are "newer"
+    old_cutoff = datetime(2000, 1, 1, tzinfo=timezone.utc)
+    with patch("synthadoc.cli.retract._resolve_wiki_root", return_value=wiki_root), \
+         patch("synthadoc.cli.retract._load_wiki_config") as mock_cfg, \
+         patch("synthadoc.cli.retract._last_cycle_cutoff", return_value=old_cutoff):
+        from synthadoc.config import SecurityConfig
+        mock_cfg.return_value = MagicMock(security=SecurityConfig(sensitive_scan_enabled=True))
+        result = runner.invoke(retract_app, ["scan", "-w", "wiki", "--changed-only"])
+    assert result.exit_code == 0
+    # Page is newer than 2000 cutoff — should appear in results
+    assert "recent-page" in result.output
