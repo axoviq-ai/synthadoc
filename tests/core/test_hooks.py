@@ -37,9 +37,15 @@ def test_nonblocking_hook_failure_logs_warning_does_not_raise(tmp_path, caplog):
     script = tmp_path / "fail_nb.py"
     script.write_text("import sys; sys.exit(1)\n", encoding="utf-8")
     executor = HookExecutor({"on_ingest_complete": f"{_PY} {script}"})
+    # Poll for the warning instead of a fixed sleep — subprocess startup on Windows CI
+    # can exceed 0.5 s, causing the background thread to log after the deadline.
     with caplog.at_level(logging.WARNING):
         executor.fire("on_ingest_complete", {"event": "on_ingest_complete"})
-        time.sleep(0.5)
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline:
+            if any("hook" in r.message.lower() for r in caplog.records):
+                break
+            time.sleep(0.1)
     assert any("hook" in r.message.lower() for r in caplog.records)
 
 
