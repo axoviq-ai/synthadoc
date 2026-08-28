@@ -12,6 +12,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
+from synthadoc.utils import fmt_ts as _fmt_ts
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -235,16 +236,7 @@ def _cron_next_run(cron: str) -> str:
 
 def _format_run_ts(ts: str) -> str:
     """Convert a stored UTC ISO timestamp to local YYYY-MM-DD HH:MM, or '' on error."""
-    if not ts:
-        return ""
-    try:
-        from datetime import timezone
-        dt = datetime.fromisoformat(ts)
-        if dt.tzinfo is not None:
-            dt = dt.astimezone().replace(tzinfo=None)
-        return dt.strftime("%Y-%m-%d %H:%M")
-    except Exception:
-        return ts
+    return _fmt_ts(ts) if ts else ""
 
 
 def _matches_cron(cron: str, dt: datetime) -> bool:

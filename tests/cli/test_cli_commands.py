@@ -161,29 +161,29 @@ def test_cache_clear_unknown_action_exits_nonzero(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# _fmt_ts — pure timestamp formatter in jobs.py
+# fmt_ts — shared UTC→local timestamp formatter in synthadoc.utils
 # ---------------------------------------------------------------------------
 
 def test_fmt_ts_none_returns_dash():
-    from synthadoc.cli.jobs import _fmt_ts
-    assert _fmt_ts(None) == "—"
+    from synthadoc.utils import fmt_ts
+    assert fmt_ts(None) == "—"
 
 
 def test_fmt_ts_empty_string_returns_dash():
-    from synthadoc.cli.jobs import _fmt_ts
-    assert _fmt_ts("") == "—"
+    from synthadoc.utils import fmt_ts
+    assert fmt_ts("") == "—"
 
 
 def test_fmt_ts_valid_utc_timestamp():
-    from synthadoc.cli.jobs import _fmt_ts
-    result = _fmt_ts("2026-04-19 10:30:00")
+    from synthadoc.utils import fmt_ts
+    result = fmt_ts("2026-04-19 10:30:00")
     assert "2026" in result
     assert ":" in result
 
 
 def test_fmt_ts_invalid_string_returns_original():
-    from synthadoc.cli.jobs import _fmt_ts
-    assert _fmt_ts("not-a-date") == "not-a-date"
+    from synthadoc.utils import fmt_ts
+    assert fmt_ts("not-a-date") == "not-a-date"
 
 
 # ---------------------------------------------------------------------------

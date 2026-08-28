@@ -18,6 +18,7 @@ from typing import Optional
 import typer
 from rich.console import Console
 from rich.table import Table
+from synthadoc.utils import fmt_ts
 
 retract_app = typer.Typer(
     name="retract",
@@ -198,14 +199,14 @@ def status_cmd(
         console.print("  Status:    [dim]Pending[/dim]")
     else:
         cycle_meta = json.loads(cycle.get("metadata") or "{}")
-        last_ts = cycle.get("timestamp", "")[:16].replace("T", " ")
+        last_ts = fmt_ts(cycle.get("timestamp"))
         pages_checked = cycle_meta.get("pages_scanned", 0)
         pages_matched = cycle_meta.get("pages_with_matches", 0)
         next_run_raw = cycle_meta.get("next_run_at", "")
         cycle_error = cycle_meta.get("error")
 
         # Compute "in X days/hours" for next run
-        next_run_display = next_run_raw[:16].replace("T", " ") + " UTC" if next_run_raw else "Unknown"
+        next_run_display = fmt_ts(next_run_raw) if next_run_raw else "Unknown"
         try:
             next_dt = datetime.fromisoformat(next_run_raw.replace("Z", "+00:00"))
             delta = next_dt - datetime.now(timezone.utc)
@@ -227,7 +228,7 @@ def status_cmd(
         interval_days = cfg.security.scan_interval_days
         console.print(f"  Interval:  every {interval_days} day(s)")
         console.print(
-            f"  Last run:  [dim]{last_ts} UTC[/dim] — "
+            f"  Last run:  [dim]{last_ts}[/dim] — "
             f"{pages_checked} page(s) checked, {pages_matched} with redactions"
         )
         console.print(f"  Next run:  {next_run_display} {in_str}")
@@ -249,7 +250,7 @@ def status_cmd(
         meta = json.loads(evt.get("metadata") or "{}")
         applied = "[green]yes[/green]" if meta.get("applied") else "[dim]no[/dim]"
         table.add_row(
-            evt.get("timestamp", "")[:16],
+            fmt_ts(evt.get("timestamp")),
             meta.get("slug", ""),
             str(meta.get("matches_count", 0)),
             applied,

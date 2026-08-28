@@ -9,6 +9,7 @@ import typer
 from synthadoc.cli._http import get, post
 from synthadoc.cli._wiki import resolve_wiki
 from synthadoc.storage.wiki import LifecycleState, TriggerSource
+from synthadoc.utils import fmt_ts
 
 lifecycle_app = typer.Typer(name="lifecycle", help="Manage page lifecycle states.")
 
@@ -84,7 +85,7 @@ def lifecycle_log(
     for e in events:
         typer.echo(
             f"{e['slug']:<25} {(e['from_state'] or 'null'):<14} {e['to_state']:<14}"
-            f" {e['triggered_by']:<12} {e['timestamp'][:19]:<22} {e.get('reason', '')}"
+            f" {e['triggered_by']:<12} {fmt_ts(e['timestamp'], fmt='%Y-%m-%d %H:%M:%S'):<22} {e.get('reason', '')}"
         )
 
 
@@ -112,7 +113,7 @@ def lifecycle_history(
 
     if index is not None:
         # Single snapshot view
-        ts = result.get("timestamp", "")[:19]
+        ts = fmt_ts(result.get("timestamp"), fmt="%Y-%m-%d %H:%M:%S")
         typer.echo(f"Snapshot {result['index']}  {ts}  {result.get('from_state','?')} → {result['to_state']}")
         typer.echo(f"Reason: {result.get('reason', '')}")
         typer.echo(f"Content: {result.get('content_length', 0):,} chars")
@@ -125,10 +126,10 @@ def lifecycle_history(
     if not snapshots:
         typer.echo(f"No snapshots recorded for '{slug}'.")
         return
-    typer.echo(f"{'Index':>5}  {'Timestamp (UTC)':<20}  {'From → To':<28}  {'Content':<16}  Reason")
+    typer.echo(f"{'Index':>5}  {'Timestamp':<20}  {'From → To':<28}  {'Content':<16}  Reason")
     typer.echo("-" * 100)
     for s in snapshots:
-        ts = s.get("timestamp", "")[:19]
+        ts = fmt_ts(s.get("timestamp"), fmt="%Y-%m-%d %H:%M:%S")
         transition = f"{s.get('from_state') or 'null'} → {s['to_state']}"
         chars = f"{s.get('content_length', 0):,} chars"
         reason = (s.get("reason") or "")[:40]
@@ -147,7 +148,7 @@ def lifecycle_rollback(
         "index": index,
         "reason": reason,
     })
-    ts = result.get("snapshot_timestamp", "")[:19]
+    ts = fmt_ts(result.get("snapshot_timestamp"), fmt="%Y-%m-%d %H:%M:%S")
     typer.echo(f"Rolled back {slug} to snapshot {index} ({ts})")
     typer.echo(f"Restored {result.get('restored_chars', 0):,} chars.")
     rb_idx = result.get("rollback_event_index")
