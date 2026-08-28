@@ -424,6 +424,52 @@ class AuditDB:
             )
             await db.commit()
 
+    async def record_retract_cycle(
+        self,
+        pages_scanned: int,
+        pages_with_matches: int,
+        next_run_at: str,
+        error: str | None = None,
+    ) -> None:
+        """Record the completion (or failure) of one background retract scan cycle.
+
+        Only operational metadata is stored — no sensitive value fragments ever.
+
+        Parameters
+        ----------
+        pages_scanned:       Total pages examined in this cycle.
+        pages_with_matches:  Pages where redactions were applied.
+        next_run_at:         ISO 8601 UTC timestamp of the next scheduled cycle.
+        error:               Short error description if the cycle failed; None on success.
+        """
+        ts = datetime.now(timezone.utc).isoformat()
+        metadata: dict = {
+            "pages_scanned": pages_scanned,
+            "pages_with_matches": pages_with_matches,
+            "next_run_at": next_run_at,
+        }
+        if error is not None:
+            metadata["error"] = error
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute(
+                "INSERT INTO audit_events (event, timestamp, metadata) VALUES (?, ?, ?)",
+                ("retract_cycle", ts, json.dumps(metadata)),
+            )
+            await db.commit()
+
+    async def get_last_retract_cycle(self) -> dict | None:
+        """Return the most recent retract_cycle audit event, or None if none exists."""
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT event, timestamp, metadata "
+                "FROM audit_events WHERE event = 'retract_cycle' ORDER BY id DESC LIMIT 1",
+            ) as cur:
+                row = await cur.fetchone()
+        if row is None:
+            return None
+        return dict(row)
+
     async def list_queries(self, limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
         async with aiosqlite.connect(self._path) as db:
             db.row_factory = aiosqlite.Row

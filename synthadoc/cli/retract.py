@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -162,23 +163,72 @@ def status_cmd(
     from synthadoc.cli._wiki import resolve_wiki
     wiki = resolve_wiki(wiki)
     wiki_root = _resolve_wiki_root(wiki)
+    cfg = _load_wiki_config(wiki_root)
     db = _get_audit_db(wiki_root)
 
     async def _fetch():
         await db.init()
-        return await db.list_retract_events(limit=limit)
+        cycle = await db.get_last_retract_cycle()
+        events = await db.list_retract_events(limit=limit)
+        return cycle, events
 
-    events = asyncio.run(_fetch())
+    cycle, events = asyncio.run(_fetch())
 
     if as_json:
-        typer.echo(json.dumps(events, indent=2))
+        typer.echo(json.dumps({"cycle": cycle, "events": events}, indent=2))
         return
+
+    # --- Schedule header ---
+    console.print()
+    console.print("[bold]Background Scan Schedule[/bold]")
+    if cycle is None:
+        console.print("  Last run:  [dim]Not yet run (server may still be in 60-second startup delay)[/dim]")
+        console.print("  Next run:  [dim]Unknown[/dim]")
+        console.print("  Status:    [dim]Pending[/dim]")
+    else:
+        cycle_meta = json.loads(cycle.get("metadata") or "{}")
+        last_ts = cycle.get("timestamp", "")[:16].replace("T", " ")
+        pages_checked = cycle_meta.get("pages_scanned", 0)
+        pages_matched = cycle_meta.get("pages_with_matches", 0)
+        next_run_raw = cycle_meta.get("next_run_at", "")
+        cycle_error = cycle_meta.get("error")
+
+        # Compute "in X days/hours" for next run
+        next_run_display = next_run_raw[:16].replace("T", " ") + " UTC" if next_run_raw else "Unknown"
+        try:
+            next_dt = datetime.fromisoformat(next_run_raw.replace("Z", "+00:00"))
+            delta = next_dt - datetime.now(timezone.utc)
+            total_secs = int(delta.total_seconds())
+            if total_secs < 0:
+                in_str = "[dim](overdue — server may be stopped)[/dim]"
+            elif total_secs < 3600:
+                in_str = f"(in {total_secs // 60} min)"
+            elif total_secs < 86400:
+                in_str = f"(in {total_secs // 3600}h {(total_secs % 3600) // 60}m)"
+            else:
+                in_str = f"(in {total_secs // 86400}d {(total_secs % 86400) // 3600}h)"
+        except Exception:  # noqa: BLE001
+            in_str = ""
+
+        status_str = (
+            f"[red]ERROR — {cycle_error}[/red]" if cycle_error else "[green]OK[/green]"
+        )
+        interval_days = cfg.security.scan_interval_days
+        console.print(f"  Interval:  every {interval_days} day(s)")
+        console.print(
+            f"  Last run:  [dim]{last_ts} UTC[/dim] — "
+            f"{pages_checked} page(s) checked, {pages_matched} with redactions"
+        )
+        console.print(f"  Next run:  {next_run_display} {in_str}")
+        console.print(f"  Status:    {status_str}")
+
+    console.print()
 
     if not events:
-        console.print("[dim]No retract scan records found.[/dim]")
+        console.print("[dim]No per-page redaction records found.[/dim]")
         return
 
-    table = Table(title="Retract Scan History")
+    table = Table(title=f"Per-page Redaction History (last {len(events)})")
     table.add_column("Timestamp", style="dim")
     table.add_column("Page", style="cyan")
     table.add_column("Matches", justify="right")

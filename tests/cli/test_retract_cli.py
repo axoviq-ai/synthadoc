@@ -108,19 +108,25 @@ def test_scan_slug_filter(tmp_path):
 
 
 def test_status_json(tmp_path):
-    """status --json returns parseable JSON list."""
+    """status --json returns parseable JSON with 'cycle' and 'events' keys."""
     wiki_root = _make_wiki(tmp_path, {})
     with patch("synthadoc.cli.retract._resolve_wiki_root", return_value=wiki_root), \
+         patch("synthadoc.cli.retract._load_wiki_config") as mock_cfg, \
          patch("synthadoc.cli.retract._get_audit_db") as mock_db:
+        from synthadoc.config import SecurityConfig
+        mock_cfg.return_value = MagicMock(security=SecurityConfig(sensitive_scan_enabled=True))
         mock_db_inst = MagicMock()
         mock_db_inst.init = AsyncMock()
+        mock_db_inst.get_last_retract_cycle = AsyncMock(return_value=None)
         mock_db_inst.list_retract_events = AsyncMock(return_value=[])
         mock_db.return_value = mock_db_inst
         result = runner.invoke(retract_app, ["status", "-w", "wiki", "--json"])
     assert result.exit_code == 0
     # Click 8.2+ mixes stderr into result.output; use result.stdout for pure JSON
     data = json.loads(result.stdout)
-    assert isinstance(data, list)
+    assert isinstance(data, dict)
+    assert "cycle" in data
+    assert "events" in data
 
 
 # ---------------------------------------------------------------------------
@@ -226,7 +232,7 @@ def test_scan_apply_zero_lines_changed(tmp_path):
 
 
 def test_status_table_with_events(tmp_path):
-    """status without --json renders a Rich table when events exist."""
+    """status without --json renders schedule header and per-page Rich table."""
     wiki_root = _make_wiki(tmp_path, {})
     fake_events = [
         {
@@ -240,26 +246,45 @@ def test_status_table_with_events(tmp_path):
             }),
         }
     ]
+    fake_cycle = {
+        "event": "retract_cycle",
+        "timestamp": "2026-08-27T12:00:00+00:00",
+        "metadata": json.dumps({
+            "pages_scanned": 10,
+            "pages_with_matches": 1,
+            "next_run_at": "2026-09-03T12:00:00+00:00",
+        }),
+    }
     with patch("synthadoc.cli.retract._resolve_wiki_root", return_value=wiki_root), \
+         patch("synthadoc.cli.retract._load_wiki_config") as mock_cfg, \
          patch("synthadoc.cli.retract._get_audit_db") as mock_db:
+        from synthadoc.config import SecurityConfig
+        mock_cfg.return_value = MagicMock(security=SecurityConfig(sensitive_scan_enabled=True))
         mock_db_inst = MagicMock()
         mock_db_inst.init = AsyncMock()
+        mock_db_inst.get_last_retract_cycle = AsyncMock(return_value=fake_cycle)
         mock_db_inst.list_retract_events = AsyncMock(return_value=fake_events)
         mock_db.return_value = mock_db_inst
         result = runner.invoke(retract_app, ["status", "-w", "wiki"])
     assert result.exit_code == 0
     assert "my-page" in result.output
+    assert "10" in result.output  # pages_scanned shown in header
 
 
 def test_status_no_events_message(tmp_path):
-    """status without --json and no events prints the 'none found' message."""
+    """status without --json and no events prints the schedule header and 'none found' message."""
     wiki_root = _make_wiki(tmp_path, {})
     with patch("synthadoc.cli.retract._resolve_wiki_root", return_value=wiki_root), \
+         patch("synthadoc.cli.retract._load_wiki_config") as mock_cfg, \
          patch("synthadoc.cli.retract._get_audit_db") as mock_db:
+        from synthadoc.config import SecurityConfig
+        mock_cfg.return_value = MagicMock(security=SecurityConfig(sensitive_scan_enabled=True))
         mock_db_inst = MagicMock()
         mock_db_inst.init = AsyncMock()
+        mock_db_inst.get_last_retract_cycle = AsyncMock(return_value=None)
         mock_db_inst.list_retract_events = AsyncMock(return_value=[])
         mock_db.return_value = mock_db_inst
         result = runner.invoke(retract_app, ["status", "-w", "wiki"])
     assert result.exit_code == 0
-    assert "No retract scan records" in result.output or "no retract" in result.output.lower()
+    assert "Not yet run" in result.output
+    assert "No per-page redaction records found" in result.output

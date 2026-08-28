@@ -6,6 +6,7 @@ import asyncio
 import sys
 import time
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
@@ -646,6 +647,8 @@ async def _run_sensitive_scan_loop(
     await asyncio.sleep(60)
 
     while True:
+        pages_scanned = 0
+        pages_with_matches = 0
         try:
             slugs = [p.stem for p in wiki_root.glob("*.md")]
             for slug in sorted(slugs):
@@ -659,10 +662,12 @@ async def _run_sensitive_scan_loop(
                     continue
                 content = page_path.read_text(encoding="utf-8")
                 matches = scanner.scan_page(slug, content)
+                pages_scanned += 1
                 if matches:
                     masked, lines_changed = scanner.mask_page(slug, content, matches)
                     if lines_changed > 0:
                         page_path.write_text(masked, encoding="utf-8")
+                        pages_with_matches += 1
                         pattern_names = list({m.pattern_name for m in matches})
                         await audit_db.record_retract_event(
                             slug=slug,
@@ -675,8 +680,30 @@ async def _run_sensitive_scan_loop(
                             lines_changed, slug, ", ".join(pattern_names),
                         )
                 await asyncio.sleep(0.1)
+
+            next_run_at = (datetime.now(timezone.utc) + timedelta(seconds=interval_secs)).isoformat()
+            logger.info(
+                "[retract] scan cycle complete — %d page(s) checked, %d with redactions; "
+                "next cycle at %s",
+                pages_scanned, pages_with_matches, next_run_at,
+            )
+            await audit_db.record_retract_cycle(
+                pages_scanned=pages_scanned,
+                pages_with_matches=pages_with_matches,
+                next_run_at=next_run_at,
+            )
         except Exception:  # noqa: BLE001
+            next_run_at = (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat()
             logger.exception("[retract] scan cycle error — retrying in 60 s")
+            try:
+                await audit_db.record_retract_cycle(
+                    pages_scanned=pages_scanned,
+                    pages_with_matches=pages_with_matches,
+                    next_run_at=next_run_at,
+                    error="scan cycle error — see server logs",
+                )
+            except Exception:  # noqa: BLE001
+                pass
             await asyncio.sleep(60)
             continue
 
