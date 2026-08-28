@@ -109,15 +109,20 @@ def scan_cmd(
         )
         return
 
-    # Display results table (no values, only metadata)
+    # Display results table (no values, only metadata).
+    # "Type" shows the data category; for custom patterns the pattern name is
+    # appended in parentheses so the column stays compact when all matches are
+    # built-in patterns.
     table = Table(title=f"Sensitive Data Scan — {pages_scanned} page(s) scanned, {total_matches} match(es) in {len(all_matches)} page(s)")
     table.add_column("Page", style="cyan")
     table.add_column("Line", justify="right")
     table.add_column("Type")
-    table.add_column("Pattern")
     for s, matches in sorted(all_matches.items()):
         for m in matches:
-            table.add_row(m.slug, str(m.line_no), m.data_type.value, m.pattern_name)
+            type_label = m.data_type.value
+            if m.pattern_name != m.data_type.value:
+                type_label = f"{m.data_type.value} ({m.pattern_name})"
+            table.add_row(m.slug, str(m.line_no), type_label)
     console.print(table)
 
     if not apply:
