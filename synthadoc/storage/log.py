@@ -366,6 +366,22 @@ class AuditDB:
                 rows = await cur.fetchall()
         return [dict(r) for r in rows], total
 
+    async def list_retract_events(self, limit: int = 50) -> list[dict]:
+        """Return recent retract_scan audit events, newest first.
+
+        Queries only ``event = 'retract_scan'`` rows so the LIMIT applies to
+        the already-filtered set rather than to all audit_events (BUG-fix).
+        """
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT job_id, event, timestamp, metadata "
+                "FROM audit_events WHERE event = 'retract_scan' ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ) as cur:
+                rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
     async def record_query(self, question: str, sub_questions_count: int,
                            tokens: int, cost_usd: float) -> None:
         ts = datetime.now(timezone.utc).isoformat()
@@ -376,6 +392,83 @@ class AuditDB:
                 (question, sub_questions_count, tokens, cost_usd, ts),
             )
             await db.commit()
+
+    async def record_retract_event(
+        self,
+        slug: str,
+        matches_count: int,
+        pattern_names: list[str],
+        applied: bool,
+    ) -> None:
+        """Record a sensitive-data scan result in the audit log.
+
+        Only metadata is stored — no sensitive value fragments ever.
+        Parameters
+        ----------
+        slug:         Wiki page slug that was scanned.
+        matches_count: Number of sensitive-data matches detected.
+        pattern_names: List of pattern type names that matched (e.g. ["api_key", "email"]).
+        applied:      True if redactions were written back to the page.
+        """
+        ts = datetime.now(timezone.utc).isoformat()
+        metadata = json.dumps({
+            "slug": slug,
+            "matches_count": matches_count,
+            "pattern_names": pattern_names,
+            "applied": applied,
+        })
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute(
+                "INSERT INTO audit_events (event, timestamp, metadata) VALUES (?, ?, ?)",
+                ("retract_scan", ts, metadata),
+            )
+            await db.commit()
+
+    async def record_retract_cycle(
+        self,
+        pages_scanned: int,
+        pages_with_matches: int,
+        next_run_at: str,
+        error: str | None = None,
+    ) -> None:
+        """Record the completion (or failure) of one background retract scan cycle.
+
+        Only operational metadata is stored — no sensitive value fragments ever.
+
+        Parameters
+        ----------
+        pages_scanned:       Total pages examined in this cycle.
+        pages_with_matches:  Pages where redactions were applied.
+        next_run_at:         ISO 8601 UTC timestamp of the next scheduled cycle.
+        error:               Short error description if the cycle failed; None on success.
+        """
+        ts = datetime.now(timezone.utc).isoformat()
+        metadata: dict = {
+            "pages_scanned": pages_scanned,
+            "pages_with_matches": pages_with_matches,
+            "next_run_at": next_run_at,
+        }
+        if error is not None:
+            metadata["error"] = error
+        async with aiosqlite.connect(self._path) as db:
+            await db.execute(
+                "INSERT INTO audit_events (event, timestamp, metadata) VALUES (?, ?, ?)",
+                ("retract_cycle", ts, json.dumps(metadata)),
+            )
+            await db.commit()
+
+    async def get_last_retract_cycle(self) -> dict | None:
+        """Return the most recent retract_cycle audit event, or None if none exists."""
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT event, timestamp, metadata "
+                "FROM audit_events WHERE event = 'retract_cycle' ORDER BY id DESC LIMIT 1",
+            ) as cur:
+                row = await cur.fetchone()
+        if row is None:
+            return None
+        return dict(row)
 
     async def list_queries(self, limit: int = 50, offset: int = 0) -> tuple[list[dict], int]:
         async with aiosqlite.connect(self._path) as db:

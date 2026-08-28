@@ -309,6 +309,15 @@ class JobQueue:
                         retry_after=r["retry_after"],
                         ) for r in rows]
 
+    async def has_pending_jobs(self) -> bool:
+        """Return True if any job is in PENDING or IN_PROGRESS state.
+
+        Used by the sensitive-data background scan loop to pause
+        scanning while the job queue has active work.
+        """
+        jobs = await self.list_jobs(status=[JobStatus.PENDING, JobStatus.IN_PROGRESS])
+        return len(jobs) > 0
+
     async def get_job(self, job_id: str) -> Optional[Job]:
         """Return a single job by ID, or None if not found."""
         async with aiosqlite.connect(self._path) as db:

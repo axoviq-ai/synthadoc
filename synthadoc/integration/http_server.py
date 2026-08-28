@@ -6,6 +6,7 @@ import asyncio
 import sys
 import time
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
@@ -513,7 +514,7 @@ async def _prune_stale_session_state(audit, session_state: dict) -> int:
     return len(stale_keys)
 
 
-async def _worker_loop(orch, session_state: dict) -> None:
+async def _worker_loop(orch, session_state: dict, audit_db) -> None:
     """Background task: poll jobs.db and execute pending jobs."""
     sleep_secs = _WORKER_POLL_SECONDS
     _last_purge_time: float = 0.0
@@ -570,6 +571,16 @@ async def _worker_loop(orch, session_state: dict) -> None:
                         await orch.queue.fail_permanent(
                             job.id, f"timed out after {_timeout}s"
                         )
+                    else:
+                        # Coroutine finished without timeout.
+                        # Post-ingest: scan touched pages for newly introduced sensitive data.
+                        if job.operation == "ingest":
+                            try:
+                                await _retract_touched_pages(job.id, orch, audit_db)
+                            except Exception:  # noqa: BLE001
+                                logger.exception(
+                                    "[retract] post-ingest scan failed for job %s", job.id
+                                )
         except Exception as exc:
             known = _classify_llm_error(exc)
             if known and known.status_code == 503 and (
@@ -610,6 +621,212 @@ async def _worker_loop(orch, session_state: dict) -> None:
                 logger.error("Session purge failed: %s", _pe)
 
         await asyncio.sleep(sleep_secs)
+
+
+async def _retract_touched_pages(job_id: str, orch, audit_db) -> None:
+    """Scan pages written by a completed ingest job and redact any sensitive data.
+
+    Called by the worker loop immediately after a successful ingest.  Only
+    touches the pages listed in the job result (pages_created + pages_updated),
+    so the scan is always O(pages ingested), not O(wiki size).
+
+    No-ops when ``security.sensitive_scan_enabled`` is not True.
+    """
+    from synthadoc.core.retract import SensitiveScanner
+
+    if not orch._cfg.security.sensitive_scan_enabled:
+        logger.debug("[retract] post-ingest scan skipped — sensitive_scan_enabled is off")
+        return
+
+    job = await orch._queue.get_job(job_id)
+    if job is None:
+        logger.debug("[retract] post-ingest scan skipped — job %s not found", job_id)
+        return
+    if job.status != "completed":
+        logger.debug(
+            "[retract] post-ingest scan skipped — job %s status=%s", job_id, job.status
+        )
+        return
+
+    result = job.result or {}
+    touched = list(result.get("pages_created", [])) + list(result.get("pages_updated", []))
+    if not touched:
+        logger.debug("[retract] post-ingest scan skipped — no pages in job result (job %s)", job_id)
+        return
+
+    pages_dir = orch._store._root
+    scanner = SensitiveScanner(orch._cfg.security)
+    pages_with_matches = 0
+
+    logger.info(
+        "[retract] post-ingest scan: checking %d page(s) from job %s",
+        len(touched), job_id,
+    )
+    for slug in touched:
+        page_path = pages_dir / f"{slug}.md"
+        if not page_path.exists():
+            continue
+        content = page_path.read_text(encoding="utf-8")
+        matches = scanner.scan_page(slug, content)
+        if not matches:
+            continue
+        masked, lines_changed = scanner.mask_page(slug, content, matches)
+        if lines_changed > 0:
+            page_path.write_text(masked, encoding="utf-8")
+            pages_with_matches += 1
+            pattern_names = list({m.pattern_name for m in matches})
+            logger.warning(
+                "[retract] post-ingest: auto-masked %d line(s) in %s (types: %s)",
+                lines_changed, slug, ", ".join(pattern_names),
+            )
+            await audit_db.record_retract_event(
+                slug=slug,
+                matches_count=len(matches),
+                pattern_names=pattern_names,
+                applied=True,
+            )
+
+    if pages_with_matches == 0:
+        logger.info(
+            "[retract] post-ingest scan complete — %d page(s) checked, no sensitive data found",
+            len(touched),
+        )
+    else:
+        logger.info(
+            "[retract] post-ingest scan complete — %d page(s) checked, %d with redactions applied",
+            len(touched), pages_with_matches,
+        )
+
+
+async def _run_sensitive_scan_loop(
+    security_cfg,
+    pages_dir: Path,
+    queue,
+    audit_db,
+) -> None:
+    """Background task: auto-scan wiki pages for sensitive data on a schedule.
+
+    ``pages_dir`` must point to the directory that holds wiki page .md files
+    (i.e. ``wiki_root / "wiki"``).  Callers should pass the already-resolved
+    path rather than re-deriving it here.
+
+    Disabled when security.sensitive_scan_enabled is False or absent.
+    Pauses between pages and during active job-queue work to avoid
+    interfering with ingest, lint, and scaffold jobs.
+
+    Incremental by default: each cycle only scans pages whose modification
+    time is newer than the previous cycle's recorded timestamp.  The first
+    cycle (no prior record) scans the full wiki.
+    """
+    from synthadoc.core.retract import SensitiveScanner
+
+    if security_cfg.sensitive_scan_enabled is None:
+        # Key is absent from config.toml — feature not opted in; show one-time notice.
+        print(
+            "\n[synthadoc] Sensitive data auto-scan is available but not enabled.\n"
+            "  To enable weekly background scanning, add to config.toml:\n"
+            "    [security]\n"
+            "    sensitive_scan_enabled = true\n"
+        )
+        return
+
+    if not security_cfg.sensitive_scan_enabled:
+        return
+
+    scanner = SensitiveScanner(security_cfg)
+    interval_secs = security_cfg.scan_interval_days * 86400
+
+    # Initial startup delay — let the server finish warming up.
+    await asyncio.sleep(60)
+
+    while True:
+        pages_scanned = 0
+        pages_with_matches = 0
+        try:
+            # Incremental: only scan pages modified since the last completed cycle.
+            last_cycle = await audit_db.get_last_retract_cycle()
+            cutoff_dt: "datetime | None" = None
+            if last_cycle:
+                raw_ts = last_cycle.get("timestamp", "")
+                if raw_ts:
+                    cutoff_dt = datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
+                    if cutoff_dt.tzinfo is None:
+                        cutoff_dt = cutoff_dt.replace(tzinfo=timezone.utc)
+
+            all_files = sorted(pages_dir.glob("*.md"), key=lambda p: p.stem)
+            if cutoff_dt is not None:
+                to_scan = [
+                    p for p in all_files
+                    if datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc) > cutoff_dt
+                ]
+                pages_skipped = len(all_files) - len(to_scan)
+                if pages_skipped:
+                    logger.debug(
+                        "[retract] %d page(s) unchanged since last scan — skipped",
+                        pages_skipped,
+                    )
+            else:
+                to_scan = all_files
+                pages_skipped = 0
+
+            for page_path in to_scan:
+                slug = page_path.stem
+                # Pause while the job queue has pending work
+                while await queue.has_pending_jobs():
+                    await asyncio.sleep(5)
+
+                if not page_path.exists():
+                    await asyncio.sleep(0.1)
+                    continue
+                content = page_path.read_text(encoding="utf-8")
+                matches = scanner.scan_page(slug, content)
+                pages_scanned += 1
+                if matches:
+                    masked, lines_changed = scanner.mask_page(slug, content, matches)
+                    if lines_changed > 0:
+                        page_path.write_text(masked, encoding="utf-8")
+                        pages_with_matches += 1
+                        pattern_names = list({m.pattern_name for m in matches})
+                        await audit_db.record_retract_event(
+                            slug=slug,
+                            matches_count=len(matches),
+                            pattern_names=pattern_names,
+                            applied=True,
+                        )
+                        logger.info(
+                            "[retract] auto-masked %d line(s) in %s (types: %s)",
+                            lines_changed, slug, ", ".join(pattern_names),
+                        )
+                await asyncio.sleep(0.1)
+
+            next_run_at = (datetime.now(timezone.utc) + timedelta(seconds=interval_secs)).isoformat()
+            skipped_note = f", {pages_skipped} unchanged/skipped" if pages_skipped else ""
+            logger.info(
+                "[retract] scan cycle complete — %d page(s) checked%s, %d with redactions; "
+                "next cycle at %s",
+                pages_scanned, skipped_note, pages_with_matches, next_run_at,
+            )
+            await audit_db.record_retract_cycle(
+                pages_scanned=pages_scanned,
+                pages_with_matches=pages_with_matches,
+                next_run_at=next_run_at,
+            )
+        except Exception:  # noqa: BLE001
+            next_run_at = (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat()
+            logger.exception("[retract] scan cycle error — retrying in 60 s")
+            try:
+                await audit_db.record_retract_cycle(
+                    pages_scanned=pages_scanned,
+                    pages_with_matches=pages_with_matches,
+                    next_run_at=next_run_at,
+                    error="scan cycle error — see server logs",
+                )
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(60)
+            continue
+
+        await asyncio.sleep(interval_secs)
 
 
 _graph_task: "asyncio.Task[None] | None" = None  # retained reference prevents GC cancellation
@@ -670,15 +887,21 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         orch._confirm_result_registry = app.state.confirm_result_registry
         from synthadoc.agents.hint_engine import HintEngine as _HE
         _HE.configure(wiki_root / "hints.json")
-        worker = asyncio.create_task(_worker_loop(orch, _session_state))
 
         from synthadoc.core.scheduler import run_scheduler_loop
         # orch.init() already created all tables in audit.db via self._audit.init();
-        # no second init() call needed here.
+        # no second init() call needed here.  Create audit_db before the worker
+        # task so it can be passed for post-ingest sensitive-data scanning.
         audit_db = _AuditDB(wiki_root / ".synthadoc" / "audit.db")
+        worker = asyncio.create_task(_worker_loop(orch, _session_state, audit_db))
         scheduler = asyncio.create_task(
             run_scheduler_loop(wiki_root.name, wiki_root, audit_db,
                                job_timeout_seconds=cfg.server.job_timeout_seconds)
+        )
+        scan_loop = asyncio.create_task(
+            _run_sensitive_scan_loop(
+                cfg.security, orch._store._root, orch._queue, audit_db
+            )
         )
 
         try:
@@ -686,7 +909,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         finally:
             worker.cancel()
             scheduler.cancel()
-            for task in (worker, scheduler):
+            scan_loop.cancel()
+            for task in (worker, scheduler, scan_loop):
                 try:
                     await task
                 except asyncio.CancelledError:

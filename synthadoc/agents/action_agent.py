@@ -13,6 +13,7 @@ from synthadoc.agents._base import BaseAgent
 from synthadoc.agents.workflows._registry import ROUTED_WORKFLOWS
 from synthadoc.providers.base import LLMProvider, Message
 from synthadoc.storage.wiki import LifecycleState
+from synthadoc.utils import fmt_ts
 
 logger = logging.getLogger(__name__)
 
@@ -932,17 +933,6 @@ class ActionAgent(BaseAgent):
 
     # ── job helpers ───────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _fmt_job_ts(ts: str | None) -> str:
-        from datetime import datetime, timezone
-        if not ts:
-            return "—"
-        try:
-            dt = datetime.fromisoformat(ts).replace(tzinfo=timezone.utc)
-            return dt.astimezone().strftime("%Y-%m-%d %H:%M")
-        except ValueError:
-            return ts
-
     async def _fetch_jobs(self):
         return await self._orch.queue.list_jobs()
 
@@ -966,13 +956,13 @@ class ActionAgent(BaseAgent):
                 err = (j.error or "").replace("|", "\\|")
                 lines.append(
                     f"| `{j.id}` | {j.operation} | {j.status}"
-                    f" | {self._fmt_job_ts(str(j.created_at))} | {err} |"
+                    f" | {fmt_ts(str(j.created_at))} | {err} |"
                 )
         else:
             lines = ["| ID | Operation | Status | Started |", "|---|---|---|---|"]
             for j in jobs:
                 lines.append(
-                    f"| `{j.id}` | {j.operation} | {j.status} | {self._fmt_job_ts(str(j.created_at))} |"
+                    f"| `{j.id}` | {j.operation} | {j.status} | {fmt_ts(str(j.created_at))} |"
                 )
         return ActionResult(action_type="job_list", success=True,
                             message="\n".join(lines))
@@ -993,7 +983,7 @@ class ActionAgent(BaseAgent):
                 f"**Job `{job.id}`**\n",
                 f"- **Operation:** {job.operation}",
                 f"- **Status:** {job.status}",
-                f"- **Started:** {self._fmt_job_ts(str(job.created_at))}",
+                f"- **Started:** {fmt_ts(str(job.created_at))}",
             ]
             if job.error:
                 lines.append(f"- **Error:** {job.error}")
@@ -1014,7 +1004,7 @@ class ActionAgent(BaseAgent):
         candidates: list[str] = []
         for j in jobs:
             table_lines.append(
-                f"| `{j.id}` | {j.operation} | {j.status} | {self._fmt_job_ts(str(j.created_at))} |"
+                f"| `{j.id}` | {j.operation} | {j.status} | {fmt_ts(str(j.created_at))} |"
             )
             candidates.append(j.id)
         prompt = "Which job would you like to see the status for?"

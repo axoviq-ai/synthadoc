@@ -5,7 +5,30 @@ from __future__ import annotations
 import os
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
+
+
+def fmt_ts(ts: str | None, fmt: str = "%Y-%m-%d %H:%M") -> str:
+    """Convert a stored UTC timestamp to local time for display.
+
+    Handles both ISO 8601 strings (``+00:00`` or ``Z`` suffix, as produced by
+    ``datetime.now(timezone.utc).isoformat()``) and bare SQLite
+    ``datetime('now')`` strings (``YYYY-MM-DD HH:MM:SS``, no tz marker,
+    assumed UTC).
+
+    Returns a string in the local system timezone formatted with *fmt*, or
+    ``"—"`` when *ts* is ``None`` or empty.
+    """
+    if not ts:
+        return "—"
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone().strftime(fmt)
+    except (ValueError, TypeError):
+        return ts[:16] if ts else "—"
 
 
 def atomic_write_text(

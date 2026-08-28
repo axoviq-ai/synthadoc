@@ -39,9 +39,13 @@ def test_format_run_ts_converts_utc_iso_to_local():
     assert "+" not in result
 
 
-def test_format_run_ts_naive_iso_passthrough():
+def test_format_run_ts_naive_iso_converts_to_local():
+    # Naive (tz-less) ISO strings from SQLite datetime('now') are UTC — must be
+    # converted to local, same rules as an explicit +00:00 stamp.
     result = _format_run_ts("2026-05-30T22:04:00")
-    assert result == "2026-05-30 22:04"
+    assert len(result) == 16
+    assert "T" not in result
+    assert "+" not in result
 
 
 def test_format_run_ts_empty_returns_empty():

@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 import typer
 from rich.console import Console
 from rich.table import Table
+from synthadoc.utils import fmt_ts
 
 audit_app = typer.Typer(name="audit", help="Inspect ingest history and costs.")
 console = Console()
@@ -342,7 +343,7 @@ def _run_faithfulness(
         _show_from_cache(entries, slugs_to_show, as_json)
         checked_at = cache.get("checked_at") or ""
         if checked_at:
-            console.print(f"[dim]Cache is up to date (last audited: {checked_at[:19]}). "
+            console.print(f"[dim]Cache is up to date (last audited: {fmt_ts(checked_at, fmt='%Y-%m-%d %H:%M:%S')}). "
                           f"Use --force to re-audit.[/dim]")
         else:
             console.print("[dim]Cache is up to date. Use --force to re-audit.[/dim]")
@@ -505,7 +506,7 @@ def events_cmd(
     table.add_column("Metadata")
     for e in events:
         table.add_row(
-            e.get("timestamp", "")[:16],
+            fmt_ts(e.get("timestamp")),
             e.get("job_id") or "",
             e.get("event", ""),
             e.get("metadata") or "",
