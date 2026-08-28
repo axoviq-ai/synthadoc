@@ -30,6 +30,28 @@ _USD_PER_1K_TOKENS = 0.003
 _SECONDS_PER_ORPHAN = 120
 
 
+def _build_page_text_dicts(store) -> tuple[dict[str, str], dict[str, str]]:
+    """Return (page_texts, all_page_texts) for orphan-graph computation.
+
+    page_texts     — active pages only; these are the orphan candidates.
+    all_page_texts — active + contradicted; used as the link-graph source so
+                     that a contradicted page's outgoing [[wikilinks]] still
+                     rescue pages from orphan status.
+    """
+    page_texts: dict[str, str] = {}
+    all_page_texts: dict[str, str] = {}
+    for slug in store.list_pages():
+        page = store.read_page(slug)
+        if page is None:
+            continue
+        if page.status == LifecycleState.ACTIVE:
+            page_texts[slug] = page.content or ""
+            all_page_texts[slug] = page.content or ""
+        elif page.status == LifecycleState.CONTRADICTED:
+            all_page_texts[slug] = page.content or ""
+    return page_texts, all_page_texts
+
+
 # ---------------------------------------------------------------------------
 # tool_find_orphaned_pages
 # ---------------------------------------------------------------------------
@@ -38,20 +60,17 @@ async def tool_find_orphaned_pages(ctx: "WorkflowContext") -> dict:
     """Return all active pages that have no inbound [[wikilinks]] from other active pages.
 
     Delegates to find_orphan_slugs() from lint_agent — the canonical graph-level
-    computation. Only active pages enter the graph.
+    computation.  Active pages are the orphan candidates; contradicted pages are
+    excluded from that candidate set but their outgoing links still count in the
+    link graph so they do not cause false orphan findings.
 
     Returns: {"orphans": [slug, ...], "count": N}
     """
     if ctx.store is None:
         return {"orphans": [], "count": 0}
 
-    page_texts: dict[str, str] = {}
-    for slug in ctx.store.list_pages():
-        page = ctx.store.read_page(slug)
-        if page and page.status == LifecycleState.ACTIVE:
-            page_texts[slug] = page.content or ""
-
-    orphans = find_orphan_slugs(page_texts)
+    page_texts, all_page_texts = _build_page_text_dicts(ctx.store)
+    orphans = find_orphan_slugs(page_texts, link_texts=all_page_texts)
     return {"orphans": orphans, "count": len(orphans)}
 
 
@@ -73,11 +92,7 @@ async def tool_verify_orphan_resolved(
     if ctx.store is None:
         return {"resolved": False, "linked_by": []}
 
-    page_texts: dict[str, str] = {}
-    for slug in ctx.store.list_pages():
-        page = ctx.store.read_page(slug)
-        if page and page.status == LifecycleState.ACTIVE:
-            page_texts[slug] = page.content or ""
+    page_texts, all_page_texts = _build_page_text_dicts(ctx.store)
 
     # Guard: if the slug is not in the active page set at all (e.g. the page was
     # archived or deleted), it trivially won't appear in remaining_orphans — which
@@ -86,12 +101,14 @@ async def tool_verify_orphan_resolved(
     if orphan_slug not in page_texts:
         return {"resolved": False, "linked_by": []}
 
-    remaining_orphans = find_orphan_slugs(page_texts)
+    remaining_orphans = find_orphan_slugs(page_texts, link_texts=all_page_texts)
 
     if orphan_slug not in remaining_orphans:
-        # Collect which pages now contain a wikilink to orphan_slug
+        # Collect which pages now contain a wikilink to orphan_slug.
+        # Search all_page_texts (active + contradicted) so a contradicted page
+        # that references this slug is also reported as a linker.
         linked_by: list[str] = []
-        for slug, text in page_texts.items():
+        for slug, text in all_page_texts.items():
             if slug == orphan_slug:
                 continue
             for m in _WIKILINK_RE.finditer(text):

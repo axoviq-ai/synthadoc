@@ -1476,10 +1476,16 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                     "unresolved_note": fm.get("unresolved_note") or None,
                 })
 
-        # Only active pages participate in the orphan graph.
-        # Archived, draft, and stale pages with no inbound links are intentionally
-        # out of circulation; including them produces misleading noise in the report.
-        page_bodies: dict[str, str] = {}
+        # Only active pages are orphan candidates.  Archived, draft, and stale
+        # pages with no inbound links are intentionally out of circulation;
+        # including them produces misleading noise in the report.
+        #
+        # Contradicted pages are excluded from the orphan-candidate set but
+        # their outgoing [[wikilinks]] still count in the link graph.  Without
+        # this, a contradicted page's links disappear from the graph, causing
+        # pages it referenced to falsely re-appear as orphans.
+        page_bodies: dict[str, str] = {}      # orphan candidates (active only)
+        all_page_bodies: dict[str, str] = {}  # link-graph sources (active + contradicted)
         for slug, text in page_texts.items():
             fm_m = _FM_RE.match(text)
             body = text[fm_m.end():] if fm_m else text
@@ -1491,7 +1497,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                     pass
             if status in {"active", ""}:
                 page_bodies[slug] = body
-        orphan_slugs = find_orphan_slugs(page_bodies)
+                all_page_bodies[slug] = body
+            elif status == "contradicted":
+                all_page_bodies[slug] = body
+        orphan_slugs = find_orphan_slugs(page_bodies, link_texts=all_page_bodies)
 
         orphan_details = []
         for slug in orphan_slugs:
