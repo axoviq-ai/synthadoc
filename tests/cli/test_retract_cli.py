@@ -41,7 +41,7 @@ def test_scan_dry_run_no_matches(tmp_path):
         mock_cfg.return_value = MagicMock(security=SecurityConfig(sensitive_scan_enabled=True))
         result = runner.invoke(retract_app, ["scan", "-w", "wiki"])
     assert result.exit_code == 0
-    assert "0 matches" in result.output or "No sensitive" in result.output
+    assert "no sensitive data detected" in result.output.lower()
 
 
 def test_scan_dry_run_with_matches(tmp_path):

@@ -87,6 +87,7 @@ def scan_cmd(
     # Scan all targets
     all_matches = {}   # slug → list[ScanMatch]
     all_contents = {}  # slug → str  (same read used for scanning; avoids TOCTOU in _apply)
+    pages_scanned = 0
     for s in sorted(slugs):
         page_path = pages_dir / f"{s}.md"
         if not page_path.exists():
@@ -94,6 +95,7 @@ def scan_cmd(
             continue
         content = page_path.read_text(encoding="utf-8")
         matches = scanner.scan_page(s, content)
+        pages_scanned += 1
         if matches:
             all_matches[s] = matches
             all_contents[s] = content
@@ -101,11 +103,13 @@ def scan_cmd(
     total_matches = sum(len(m) for m in all_matches.values())
 
     if not all_matches:
-        console.print(f"[green]✓[/green] 0 matches found — no sensitive data detected.")
+        console.print(
+            f"[green]✓[/green] {pages_scanned} page(s) scanned — no sensitive data detected."
+        )
         return
 
     # Display results table (no values, only metadata)
-    table = Table(title=f"Sensitive Data Scan — {total_matches} match(es) in {len(all_matches)} page(s)")
+    table = Table(title=f"Sensitive Data Scan — {pages_scanned} page(s) scanned, {total_matches} match(es) in {len(all_matches)} page(s)")
     table.add_column("Page", style="cyan")
     table.add_column("Line", justify="right")
     table.add_column("Type")
@@ -117,7 +121,8 @@ def scan_cmd(
 
     if not apply:
         console.print(
-            f"\n[dim]{total_matches} match(es) found. Run with --apply to redact.[/dim]"
+            f"\n[dim]{pages_scanned} page(s) scanned, {total_matches} match(es) found. "
+            f"Run with --apply to redact.[/dim]"
         )
         return
 
