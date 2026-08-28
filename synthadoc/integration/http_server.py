@@ -635,20 +635,33 @@ async def _retract_touched_pages(job_id: str, orch, audit_db) -> None:
     from synthadoc.core.retract import SensitiveScanner
 
     if not orch._cfg.security.sensitive_scan_enabled:
+        logger.debug("[retract] post-ingest scan skipped — sensitive_scan_enabled is off")
         return
 
     job = await orch._queue.get_job(job_id)
-    if job is None or job.status != "completed":
+    if job is None:
+        logger.debug("[retract] post-ingest scan skipped — job %s not found", job_id)
+        return
+    if job.status != "completed":
+        logger.debug(
+            "[retract] post-ingest scan skipped — job %s status=%s", job_id, job.status
+        )
         return
 
     result = job.result or {}
     touched = list(result.get("pages_created", [])) + list(result.get("pages_updated", []))
     if not touched:
+        logger.debug("[retract] post-ingest scan skipped — no pages in job result (job %s)", job_id)
         return
 
     pages_dir = orch._store._root
     scanner = SensitiveScanner(orch._cfg.security)
+    pages_with_matches = 0
 
+    logger.info(
+        "[retract] post-ingest scan: checking %d page(s) from job %s",
+        len(touched), job_id,
+    )
     for slug in touched:
         page_path = pages_dir / f"{slug}.md"
         if not page_path.exists():
@@ -660,6 +673,7 @@ async def _retract_touched_pages(job_id: str, orch, audit_db) -> None:
         masked, lines_changed = scanner.mask_page(slug, content, matches)
         if lines_changed > 0:
             page_path.write_text(masked, encoding="utf-8")
+            pages_with_matches += 1
             pattern_names = list({m.pattern_name for m in matches})
             logger.warning(
                 "[retract] post-ingest: auto-masked %d line(s) in %s (types: %s)",
@@ -671,6 +685,17 @@ async def _retract_touched_pages(job_id: str, orch, audit_db) -> None:
                 pattern_names=pattern_names,
                 applied=True,
             )
+
+    if pages_with_matches == 0:
+        logger.info(
+            "[retract] post-ingest scan complete — %d page(s) checked, no sensitive data found",
+            len(touched),
+        )
+    else:
+        logger.info(
+            "[retract] post-ingest scan complete — %d page(s) checked, %d with redactions applied",
+            len(touched), pages_with_matches,
+        )
 
 
 async def _run_sensitive_scan_loop(
