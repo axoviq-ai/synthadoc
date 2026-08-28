@@ -4121,3 +4121,65 @@ Restores to the same directory as the zip file by default. Detects port conflict
 | `embeddings.db`                                               | ✗ Never   | Rebuilt automatically on next server start                                     |
 | `server.pid`                                                  | ✗ Never   | Machine-specific process ID                                                    |
 | `logs/`                                                       | ✗ Never   | Server application logs                                                        |
+
+## Step 27 — Scan and retract sensitive data {#sensitive-data-retract}
+
+Before sharing or publishing wiki content, scan for accidentally included
+personal or secret data — API keys, email addresses, phone numbers, SSNs,
+credit card numbers, and passwords.
+
+**Option 1: Dry-run scan (recommended first step)**
+
+```bash
+synthadoc retract scan
+```
+
+The scan reports every match — page name, line number, and data type —
+without revealing any sensitive values. Nothing is modified.
+
+**Option 2: Apply redactions**
+
+```bash
+synthadoc retract scan --apply
+```
+
+Prompts for confirmation, then writes `[REDACTED]` substitutions to
+each affected page. Run without `--yes` to review the list before
+committing.
+
+**Option 3: Single-page scan**
+
+```bash
+synthadoc retract scan --slug my-page
+synthadoc retract scan --slug my-page --apply --yes
+```
+
+**Option 4: Auto-schedule (background)**
+
+Add to `config.toml` for automatic weekly scanning:
+
+```toml
+[security]
+sensitive_scan_enabled = true
+scan_interval_days = 7
+```
+
+The scanner runs in the background and records results in the audit log.
+View recent scan history:
+
+```bash
+synthadoc retract status
+```
+
+**Custom patterns**
+
+Extend coverage to organisation-specific patterns without code changes.
+In `config.toml`:
+
+```toml
+[[security.custom_patterns]]
+name = "internal_token"
+pattern = "INTERNAL-[A-Z0-9]{16}"
+```
+
+Matched lines are redacted the same way as built-in patterns.

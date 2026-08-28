@@ -3914,6 +3914,99 @@ default `[agents]` model.
 
 ---
 
+## 38. Sensitive Data Retract
+
+### Overview
+
+The sensitive data retract feature scans every wiki page for patterns that
+indicate personal or secret data — API keys, email addresses, phone numbers,
+SSNs, credit card numbers, and generic secrets — and replaces matched values
+with `[REDACTED]` in place. Built-in patterns cover the most common types;
+teams can extend coverage without code changes by adding regular expressions
+to `config.toml`.
+
+### Built-in pattern types
+
+| Type | Example match (redacted) |
+|------|--------------------------|
+| `api_key` | `api_key = [REDACTED]` |
+| `email` | `[REDACTED]` |
+| `phone` | `[REDACTED]` |
+| `ssn` | `[REDACTED]` |
+| `credit_card` | `[REDACTED]` |
+| `generic_secret` | `password = [REDACTED]` |
+
+### Custom patterns (no code changes required)
+
+Add one or more entries under `[[security.custom_patterns]]` in `config.toml`:
+
+```toml
+[[security.custom_patterns]]
+name = "internal_token"
+pattern = "INTERNAL-[A-Z0-9]{16}"
+flags = ""          # optional; "i" for case-insensitive
+
+[[security.custom_patterns]]
+name = "employee_id"
+pattern = "EMP-\\d{6}"
+flags = "i"
+```
+
+Custom matches surface in scan output and the audit log under their
+user-assigned name (e.g. `internal_token`).
+
+### Audit trail
+
+Every page where redactions are applied produces one audit log entry
+containing: page slug, match count, list of pattern type names, and
+whether the redaction was applied. Sensitive values are never stored or
+logged — not even a fragment.
+
+### Auto-schedule
+
+The background scanner runs once per week by default (configurable via
+`scan_interval_days`). It cooperates with other background jobs: when the
+ingest or lint job queue has pending work, the scanner pauses between
+pages until the queue drains.
+
+```toml
+[security]
+sensitive_scan_enabled = true   # omit or set false to disable
+scan_interval_days = 7          # default: weekly
+```
+
+If `sensitive_scan_enabled` is absent from `config.toml`, the server
+prints a one-time startup notice suggesting how to opt in.
+
+### How to trigger
+
+#### CLI
+
+```bash
+# Dry-run — show matches (no values), no changes
+synthadoc retract scan
+
+# Single page dry-run
+synthadoc retract scan --slug ada-lovelace
+
+# Apply redactions across all pages
+synthadoc retract scan --apply
+
+# Apply without confirmation prompt
+synthadoc retract scan --apply --yes
+
+# Show recent scan history from the audit log
+synthadoc retract status
+synthadoc retract status --json
+```
+
+#### Automatic (background)
+
+Set `sensitive_scan_enabled = true` in `config.toml`. The scanner runs
+automatically on the configured interval whenever the server is running.
+
+---
+
 ## Appendix A — Release Feature Index
 
 ### v1.3.1
