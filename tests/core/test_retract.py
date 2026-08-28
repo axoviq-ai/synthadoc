@@ -74,6 +74,19 @@ def test_scan_generic_secret():
     assert any(m.data_type == SensitiveDataType.GENERIC_SECRET for m in matches)
 
 
+def test_scan_generic_secret_already_redacted():
+    """A line with 'password: [REDACTED]' must not re-trigger as a new match.
+
+    [REDACTED] is 10 non-whitespace characters and would match the value group
+    without the (?!\\[REDACTED\\]) negative lookahead guard.
+    """
+    s = _scanner()
+    matches = s.scan_page("p", "   source-db-password: [REDACTED]")
+    assert matches == [], (
+        "scanner should not re-match a line whose value is already [REDACTED]"
+    )
+
+
 def test_scan_no_matches():
     s = _scanner()
     matches = s.scan_page("p", "This page has no sensitive data at all.")

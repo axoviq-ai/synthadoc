@@ -111,7 +111,8 @@ _BUILT_IN_PATTERNS: list[tuple[SensitiveDataType, re.Pattern, str]] = [
         re.compile(
             r'(?i)(secret|password|passwd|pwd|token)'  # group 1: key name
             r'(\s*[:=]\s*)'                            # group 2: separator
-            r'(["\']?)([^\s"\']{8,})\3'               # group 3: quote; group 4: value
+            r'(["\']?)(?!\[REDACTED\])([^\s"\']{8,})\3'  # group 3: quote; group 4: value
+            #           ^^^^^^^^^^^^^^ skip lines already masked by a prior pass
         ),
         r'\1\2\3[REDACTED]\3',
     ),
