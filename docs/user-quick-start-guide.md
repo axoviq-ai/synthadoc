@@ -4122,7 +4122,7 @@ Restores to the same directory as the zip file by default. Detects port conflict
 | `server.pid`                                                  | ✗ Never   | Machine-specific process ID                                                    |
 | `logs/`                                                       | ✗ Never   | Server application logs                                                        |
 
-## Step 27 — Scan and retract sensitive data {#sensitive-data-retract}
+## Step 27 — Scan and retract sensitive data
 
 Before sharing or publishing wiki content, scan for accidentally included
 personal or secret data — API keys, email addresses, phone numbers, SSNs,
