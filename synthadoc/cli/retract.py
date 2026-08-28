@@ -78,7 +78,8 @@ def scan_cmd(
     slugs = [slug] if slug else [p.stem for p in wiki_root.glob("*.md")]
 
     # Scan all targets
-    all_matches = {}  # slug → list[ScanMatch]
+    all_matches = {}   # slug → list[ScanMatch]
+    all_contents = {}  # slug → str  (same read used for scanning; avoids TOCTOU in _apply)
     for s in sorted(slugs):
         page_path = wiki_root / f"{s}.md"
         if not page_path.exists():
@@ -88,6 +89,7 @@ def scan_cmd(
         matches = scanner.scan_page(s, content)
         if matches:
             all_matches[s] = matches
+            all_contents[s] = content
 
     total_matches = sum(len(m) for m in all_matches.values())
 
@@ -130,7 +132,8 @@ def scan_cmd(
         total_lines = 0
         for s, matches in all_matches.items():
             page_path = wiki_root / f"{s}.md"
-            content = page_path.read_text(encoding="utf-8")
+            # Use the content captured at scan time — do not re-read to avoid TOCTOU.
+            content = all_contents[s]
             masked, lines_changed = scanner.mask_page(s, content, matches)
             if lines_changed > 0:
                 page_path.write_text(masked, encoding="utf-8")
@@ -163,12 +166,9 @@ def status_cmd(
 
     async def _fetch():
         await db.init()
-        events, total = await db.list_events(limit=limit)
-        # Filter to retract_scan events only
-        retract_events = [e for e in events if e.get("event") == "retract_scan"]
-        return retract_events, total
+        return await db.list_retract_events(limit=limit)
 
-    events, _ = asyncio.run(_fetch())
+    events = asyncio.run(_fetch())
 
     if as_json:
         typer.echo(json.dumps(events, indent=2))

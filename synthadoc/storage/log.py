@@ -366,6 +366,22 @@ class AuditDB:
                 rows = await cur.fetchall()
         return [dict(r) for r in rows], total
 
+    async def list_retract_events(self, limit: int = 50) -> list[dict]:
+        """Return recent retract_scan audit events, newest first.
+
+        Queries only ``event = 'retract_scan'`` rows so the LIMIT applies to
+        the already-filtered set rather than to all audit_events (BUG-fix).
+        """
+        async with aiosqlite.connect(self._path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT job_id, event, timestamp, metadata "
+                "FROM audit_events WHERE event = 'retract_scan' ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ) as cur:
+                rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
     async def record_query(self, question: str, sub_questions_count: int,
                            tokens: int, cost_usd: float) -> None:
         ts = datetime.now(timezone.utc).isoformat()

@@ -114,7 +114,7 @@ def test_status_json(tmp_path):
          patch("synthadoc.cli.retract._get_audit_db") as mock_db:
         mock_db_inst = MagicMock()
         mock_db_inst.init = AsyncMock()
-        mock_db_inst.list_events = AsyncMock(return_value=([], 0))
+        mock_db_inst.list_retract_events = AsyncMock(return_value=[])
         mock_db.return_value = mock_db_inst
         result = runner.invoke(retract_app, ["status", "-w", "wiki", "--json"])
     assert result.exit_code == 0
@@ -244,7 +244,7 @@ def test_status_table_with_events(tmp_path):
          patch("synthadoc.cli.retract._get_audit_db") as mock_db:
         mock_db_inst = MagicMock()
         mock_db_inst.init = AsyncMock()
-        mock_db_inst.list_events = AsyncMock(return_value=(fake_events, 1))
+        mock_db_inst.list_retract_events = AsyncMock(return_value=fake_events)
         mock_db.return_value = mock_db_inst
         result = runner.invoke(retract_app, ["status", "-w", "wiki"])
     assert result.exit_code == 0
@@ -258,7 +258,7 @@ def test_status_no_events_message(tmp_path):
          patch("synthadoc.cli.retract._get_audit_db") as mock_db:
         mock_db_inst = MagicMock()
         mock_db_inst.init = AsyncMock()
-        mock_db_inst.list_events = AsyncMock(return_value=([], 0))
+        mock_db_inst.list_retract_events = AsyncMock(return_value=[])
         mock_db.return_value = mock_db_inst
         result = runner.invoke(retract_app, ["status", "-w", "wiki"])
     assert result.exit_code == 0
