@@ -16,13 +16,19 @@ runner = CliRunner()
 
 
 def _make_wiki(tmp_path: Path, pages: dict[str, str]) -> Path:
-    """Create a minimal wiki directory with given {slug: content} pages."""
+    """Create a minimal wiki directory with given {slug: content} pages.
+
+    Returns ``wiki_root`` (the base directory).  Page .md files are placed in
+    ``wiki_root/wiki/`` to match the real on-disk layout; ``_resolve_pages_dir``
+    will resolve to that subdirectory at runtime.
+    """
     wiki_root = tmp_path / "wiki"
     wiki_root.mkdir()
-    synthadoc_dir = wiki_root / ".synthadoc"
-    synthadoc_dir.mkdir()
+    (wiki_root / ".synthadoc").mkdir()
+    pages_dir = wiki_root / "wiki"
+    pages_dir.mkdir()
     for slug, content in pages.items():
-        (wiki_root / f"{slug}.md").write_text(content, encoding="utf-8")
+        (pages_dir / f"{slug}.md").write_text(content, encoding="utf-8")
     return wiki_root
 
 
@@ -71,7 +77,7 @@ def test_scan_apply_redacts_file(tmp_path):
         )
         result = runner.invoke(retract_app, ["scan", "-w", "wiki", "--apply", "--yes"])
     assert result.exit_code == 0
-    content = (wiki_root / "pg.md").read_text(encoding="utf-8")
+    content = (wiki_root / "wiki" / "pg.md").read_text(encoding="utf-8")
     assert "user@example.com" not in content
     assert "[REDACTED]" in content
 
@@ -192,7 +198,7 @@ def test_scan_apply_confirm_yes(tmp_path):
         )
         result = runner.invoke(retract_app, ["scan", "-w", "wiki", "--apply"], input="y\n")
     assert result.exit_code == 0
-    content = (wiki_root / "pg.md").read_text(encoding="utf-8")
+    content = (wiki_root / "wiki" / "pg.md").read_text(encoding="utf-8")
     assert "user@example.com" not in content
     assert "[REDACTED]" in content
 

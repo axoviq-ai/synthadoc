@@ -615,11 +615,15 @@ async def _worker_loop(orch, session_state: dict) -> None:
 
 async def _run_sensitive_scan_loop(
     security_cfg,
-    wiki_root: Path,
+    pages_dir: Path,
     queue,
     audit_db,
 ) -> None:
     """Background task: auto-scan all wiki pages for sensitive data on a schedule.
+
+    ``pages_dir`` must point to the directory that holds wiki page .md files
+    (i.e. ``wiki_root / "wiki"``).  Callers should pass the already-resolved
+    path rather than re-deriving it here.
 
     Disabled when security.sensitive_scan_enabled is False or absent.
     Pauses between pages and during active job-queue work to avoid
@@ -650,13 +654,13 @@ async def _run_sensitive_scan_loop(
         pages_scanned = 0
         pages_with_matches = 0
         try:
-            slugs = [p.stem for p in wiki_root.glob("*.md")]
+            slugs = [p.stem for p in pages_dir.glob("*.md")]
             for slug in sorted(slugs):
                 # Pause while the job queue has pending work
                 while await queue.has_pending_jobs():
                     await asyncio.sleep(5)
 
-                page_path = wiki_root / f"{slug}.md"
+                page_path = pages_dir / f"{slug}.md"
                 if not page_path.exists():
                     await asyncio.sleep(0.1)
                     continue
@@ -780,7 +784,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         )
         scan_loop = asyncio.create_task(
             _run_sensitive_scan_loop(
-                cfg.security, wiki_root, orch._queue, audit_db
+                cfg.security, orch._store._root, orch._queue, audit_db
             )
         )
 

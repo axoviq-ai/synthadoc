@@ -35,6 +35,11 @@ def _resolve_wiki_root(wiki: str) -> Path:
     return resolve_wiki_path(wiki)
 
 
+def _resolve_pages_dir(wiki_root: Path) -> Path:
+    """Return the directory that holds wiki page .md files (always wiki_root/wiki/)."""
+    return wiki_root / "wiki"
+
+
 def _load_wiki_config(wiki_root: Path):
     from synthadoc.config import load_config
     cfg_path = wiki_root / ".synthadoc" / "config.toml"
@@ -72,17 +77,18 @@ def scan_cmd(
 
     wiki = resolve_wiki(wiki)
     wiki_root = _resolve_wiki_root(wiki)
+    pages_dir = _resolve_pages_dir(wiki_root)
     cfg = _load_wiki_config(wiki_root)
     scanner = SensitiveScanner(cfg.security)
 
     # Collect target slugs
-    slugs = [slug] if slug else [p.stem for p in wiki_root.glob("*.md")]
+    slugs = [slug] if slug else [p.stem for p in pages_dir.glob("*.md")]
 
     # Scan all targets
     all_matches = {}   # slug → list[ScanMatch]
     all_contents = {}  # slug → str  (same read used for scanning; avoids TOCTOU in _apply)
     for s in sorted(slugs):
-        page_path = wiki_root / f"{s}.md"
+        page_path = pages_dir / f"{s}.md"
         if not page_path.exists():
             console.print(f"[yellow]Warning: page not found: {s}[/yellow]")
             continue
@@ -132,7 +138,7 @@ def scan_cmd(
         await db.init()
         total_lines = 0
         for s, matches in all_matches.items():
-            page_path = wiki_root / f"{s}.md"
+            page_path = pages_dir / f"{s}.md"
             # Use the content captured at scan time — do not re-read to avoid TOCTOU.
             content = all_contents[s]
             masked, lines_changed = scanner.mask_page(s, content, matches)
