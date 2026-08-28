@@ -265,15 +265,27 @@ def find_orphan_slugs(
     page_texts: dict[str, str],
     skip: frozenset[str] = LINT_SKIP_SLUGS,
     skip_source: frozenset[str] = LINT_SKIP_SOURCE_SLUGS,
+    *,
+    link_texts: dict[str, str] | None = None,
 ) -> list[str]:
     """Return slugs with no inbound [[wikilinks]] from other content pages.
 
-    page_texts maps slug → page body text (frontmatter must be stripped by caller).
-    Links from skip_source pages (index, overview, dashboard, log) and self-links
-    are not counted — only connections between content pages rescue from orphan.
+    page_texts   — orphan candidates (active pages only).  Slugs in this dict
+                   that have no inbound links from ``link_texts`` are returned.
+    link_texts   — link-graph sources.  When supplied, outgoing links are
+                   extracted from this dict instead of ``page_texts``, so that
+                   contradicted pages' outgoing links still rescue pages from
+                   orphan status without those contradicted pages themselves
+                   appearing as orphan candidates.  Defaults to ``page_texts``.
+    skip         — slugs never reported as orphans (purpose, index, …).
+    skip_source  — slugs whose outgoing links are not counted (index, overview, …).
+
+    Links from skip_source pages and self-links are never counted as inbound
+    references — only connections between content pages rescue from orphan.
     """
+    source = link_texts if link_texts is not None else page_texts
     referenced: set[str] = set()
-    for slug, text in page_texts.items():
+    for slug, text in source.items():
         if slug in skip_source:
             continue
         for link in _WIKILINK_RE.findall(text):
@@ -379,7 +391,8 @@ def read_current_lint_state(store: WikiStorage) -> LintStateSummary:
     """
     slugs = store.list_pages()
     contradicted: list[str] = []
-    page_bodies: dict[str, str] = {}
+    page_bodies: dict[str, str] = {}      # active only — orphan candidates
+    all_page_bodies: dict[str, str] = {}  # active + contradicted — link-graph sources
     adv_pages: list[dict] = []
     truncated_pages: list[dict] = []
 
@@ -387,13 +400,21 @@ def read_current_lint_state(store: WikiStorage) -> LintStateSummary:
         page = store.read_page(slug)
         if page is None:
             continue
-        # Only active pages participate in the orphan graph.  Archived, draft,
-        # and stale pages with no inbound links are intentionally out of
-        # circulation and should not appear as orphan findings.
-        # Pages with no explicit status (e.g. manually-written or test fixtures)
-        # are treated the same as active — they are real content pages.
+        # Only active pages are orphan candidates.  Archived, draft, and stale
+        # pages with no inbound links are intentionally out of circulation and
+        # should not appear as orphan findings.  Pages with no explicit status
+        # (e.g. manually-written or test fixtures) are treated the same as
+        # active — they are real content pages.
+        #
+        # Contradicted pages are excluded from the orphan-candidate set but
+        # their outgoing [[wikilinks]] still count in the link graph.  Without
+        # this, a contradicted page's links disappear from the graph, causing
+        # pages it referenced to falsely re-appear as orphans.
         if page.status in {LifecycleState.ACTIVE, ""}:
             page_bodies[slug] = page.content or ""
+            all_page_bodies[slug] = page.content or ""
+        elif page.status == LifecycleState.CONTRADICTED:
+            all_page_bodies[slug] = page.content or ""
         if slug in LINT_SKIP_SLUGS:
             continue
         if page.status == LifecycleState.CONTRADICTED:
@@ -404,7 +425,7 @@ def read_current_lint_state(store: WikiStorage) -> LintStateSummary:
             if getattr(src, "truncated", False):
                 truncated_pages.append({"slug": slug, "file": src.file, "size": src.size})
 
-    orphans = find_orphan_slugs(page_bodies)
+    orphans = find_orphan_slugs(page_bodies, link_texts=all_page_bodies)
     return LintStateSummary(
         contradicted=contradicted,
         orphans=orphans,

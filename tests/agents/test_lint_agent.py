@@ -213,6 +213,72 @@ def test_find_orphan_slugs_cjk_wikilinks():
     assert "人工智能" in orphans          # nothing links to 人工智能
 
 
+# ── link_texts (contradicted-page link-graph) coverage ───────────────────────
+
+def test_find_orphan_slugs_link_texts_rescues_page():
+    """A contradicted page's outgoing link should rescue another page from orphan status.
+
+    When page-b is contradicted it is excluded from page_texts (orphan candidates)
+    but its link to page-a must still be counted via link_texts so page-a is NOT
+    reported as an orphan.
+    """
+    page_texts = {
+        "page-a": "No outbound links.",     # active — orphan candidate
+        "page-c": "See [[page-b]].",        # active — orphan candidate; links to contradicted
+    }
+    all_page_texts = {
+        "page-a": "No outbound links.",
+        "page-b": "See [[page-a]].",        # contradicted — in link_texts only
+        "page-c": "See [[page-b]].",
+    }
+    orphans = find_orphan_slugs(page_texts, link_texts=all_page_texts)
+    assert "page-a" not in orphans   # page-b (contradicted) links to page-a → rescued
+    assert "page-c" in orphans       # nothing links to page-c → orphan
+
+
+def test_find_orphan_slugs_contradicted_page_not_a_candidate():
+    """Contradicted pages must not appear as orphans even when link_texts is provided."""
+    page_texts = {
+        "page-a": "No outbound links.",     # active
+    }
+    all_page_texts = {
+        "page-a": "No outbound links.",
+        "contradicted-page": "Standalone.", # contradicted — in link_texts but NOT page_texts
+    }
+    orphans = find_orphan_slugs(page_texts, link_texts=all_page_texts)
+    assert "contradicted-page" not in orphans   # not in page_texts → never a candidate
+    assert "page-a" in orphans                  # nothing links to it → orphan
+
+
+def test_find_orphan_slugs_link_texts_defaults_to_page_texts():
+    """When link_texts is omitted the behaviour is identical to the legacy call."""
+    page_texts = {
+        "hub":     "Links to [[spoke]].",
+        "spoke":   "No outbound links.",
+        "loner":   "Standalone.",
+    }
+    assert find_orphan_slugs(page_texts) == find_orphan_slugs(page_texts, link_texts=page_texts)
+
+
+def test_read_current_lint_state_contradicted_links_count(tmp_wiki):
+    """read_current_lint_state must not report false orphans when a contradicted page links to them."""
+    store = WikiStorage(tmp_wiki / "wiki")
+    store.write_page("hub", WikiPage(
+        title="Hub", tags=[], content="See [[spoke]].",
+        status="contradicted", confidence="high", sources=[],
+    ))
+    store.write_page("spoke", WikiPage(
+        title="Spoke", tags=[], content="No outbound links.",
+        status="active", confidence="high", sources=[],
+    ))
+
+    result = read_current_lint_state(store)
+    # hub is contradicted and should be reported as such
+    assert "hub" in result.contradicted
+    # spoke is referenced by hub (even though hub is contradicted) — must NOT be an orphan
+    assert "spoke" not in result.orphans
+
+
 @pytest.mark.asyncio
 async def test_lint_cjk_orphan_detection(tmp_wiki):
     """Full async lint correctly identifies orphans among CJK-slugged pages."""
