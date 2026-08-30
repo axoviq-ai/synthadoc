@@ -42,6 +42,7 @@ major engine feature. No setup beyond following the steps below is required.
 24. [Knowledge Graph](#knowledge-graph)
 25. [Ingest an AI session transcript](#session-ingest)
 26. [Agentic Maintenance Workflows](#agentic-workflows)
+27. [Scan and retract sensitive data](#step-27--scan-and-retract-sensitive-data)
 
 **Appendices**
 
@@ -3295,6 +3296,83 @@ Key differences from the demo:
 
 ---
 
+## Step 27 — Scan and retract sensitive data
+
+Before sharing or publishing wiki content, scan for accidentally included
+personal or secret data — API keys, email addresses, phone numbers, SSNs,
+credit card numbers, and passwords.
+
+**Option 1: Dry-run scan (recommended first step)**
+
+```bash
+synthadoc retract scan
+```
+
+The scan reports every match — page name, line number, and data type —
+without revealing any sensitive values. Nothing is modified.
+
+**Option 2: Apply redactions**
+
+```bash
+synthadoc retract scan --apply
+```
+
+Prompts for confirmation, then writes `[REDACTED]` substitutions to
+each affected page. Run without `--yes` to review the list before
+committing.
+
+**Option 3: Incremental scan (changed pages only)**
+
+```bash
+synthadoc retract scan --changed-only
+synthadoc retract scan --apply --changed-only --yes
+```
+
+Skips pages that have not been modified since the last completed scan
+cycle. Useful for frequent manual checks on large wikis — only recently
+ingested or edited pages are checked.
+
+**Option 4: Single-page scan**
+
+```bash
+synthadoc retract scan --slug my-page
+synthadoc retract scan --slug my-page --apply --yes
+```
+
+**Option 5: Auto-schedule (background)**
+
+Add to `config.toml` for automatic weekly scanning:
+
+```toml
+[security]
+sensitive_scan_enabled = true
+scan_interval_days = 7
+```
+
+The background scanner is incremental: each cycle only scans pages whose
+modification time is newer than the previous run. The server also
+automatically scans any pages written by an ingest job immediately after
+that job completes, so sensitive data is caught before the weekly pass.
+
+View recent scan history:
+
+```bash
+synthadoc retract status
+```
+
+**Custom patterns**
+
+Extend coverage to organisation-specific patterns without code changes.
+In `config.toml`:
+
+```toml
+[[security.custom_patterns]]
+name = "internal_token"
+pattern = "INTERNAL-[A-Z0-9]{16}"
+```
+
+Matched lines are redacted the same way as built-in patterns.
+
 ## Appendix A — Obsidian Plugin Command Reference
 
 All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synthadoc`).
@@ -4122,79 +4200,3 @@ Restores to the same directory as the zip file by default. Detects port conflict
 | `server.pid`                                                  | ✗ Never   | Machine-specific process ID                                                    |
 | `logs/`                                                       | ✗ Never   | Server application logs                                                        |
 
-## Step 27 — Scan and retract sensitive data
-
-Before sharing or publishing wiki content, scan for accidentally included
-personal or secret data — API keys, email addresses, phone numbers, SSNs,
-credit card numbers, and passwords.
-
-**Option 1: Dry-run scan (recommended first step)**
-
-```bash
-synthadoc retract scan
-```
-
-The scan reports every match — page name, line number, and data type —
-without revealing any sensitive values. Nothing is modified.
-
-**Option 2: Apply redactions**
-
-```bash
-synthadoc retract scan --apply
-```
-
-Prompts for confirmation, then writes `[REDACTED]` substitutions to
-each affected page. Run without `--yes` to review the list before
-committing.
-
-**Option 3: Incremental scan (changed pages only)**
-
-```bash
-synthadoc retract scan --changed-only
-synthadoc retract scan --apply --changed-only --yes
-```
-
-Skips pages that have not been modified since the last completed scan
-cycle. Useful for frequent manual checks on large wikis — only recently
-ingested or edited pages are checked.
-
-**Option 4: Single-page scan**
-
-```bash
-synthadoc retract scan --slug my-page
-synthadoc retract scan --slug my-page --apply --yes
-```
-
-**Option 5: Auto-schedule (background)**
-
-Add to `config.toml` for automatic weekly scanning:
-
-```toml
-[security]
-sensitive_scan_enabled = true
-scan_interval_days = 7
-```
-
-The background scanner is incremental: each cycle only scans pages whose
-modification time is newer than the previous run. The server also
-automatically scans any pages written by an ingest job immediately after
-that job completes, so sensitive data is caught before the weekly pass.
-
-View recent scan history:
-
-```bash
-synthadoc retract status
-```
-
-**Custom patterns**
-
-Extend coverage to organisation-specific patterns without code changes.
-In `config.toml`:
-
-```toml
-[[security.custom_patterns]]
-name = "internal_token"
-pattern = "INTERNAL-[A-Z0-9]{16}"
-```
-
-Matched lines are redacted the same way as built-in patterns.
