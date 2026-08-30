@@ -2,11 +2,79 @@
 # Copyright (C) 2026 William Johnason / axoviq.com
 from __future__ import annotations
 
+import sqlite3
 import pytest
 import aiosqlite
 from pathlib import Path
 
 from synthadoc.storage.log import AuditDB, DB_SCHEMA_VERSION
+
+
+# ── Sync seeding helper ──────────────────────────────────────────────────────
+
+def _seed_lifecycle_events(db_path, rows):
+    """Insert lifecycle_events rows via synchronous sqlite3.
+
+    Avoids asyncio.run() + aiosqlite background-thread interactions that can
+    hang on Windows CI: when the AV scanner holds a file oplock during a write,
+    the aiosqlite worker thread blocks inside sqlite3.connect() / execute() at
+    the OS level (below SQLite's busy-timeout), causing the asyncio event loop
+    to wait forever for a Future that is never resolved.
+
+    The tmp_wiki fixture already creates the DB file; we just need the table.
+    create_app's lifespan calls audit.init() which adds the remaining tables
+    via CREATE TABLE IF NOT EXISTS, so pre-creating only lifecycle_events here
+    is safe.
+
+    *rows* is a sequence of 7-tuples:
+        (slug, from_state, to_state, reason, triggered_by, timestamp, content_snapshot)
+    Pass None for content_snapshot to store SQL NULL.
+    """
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS lifecycle_events (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                slug             TEXT NOT NULL,
+                from_state       TEXT,
+                to_state         TEXT NOT NULL,
+                reason           TEXT,
+                triggered_by     TEXT NOT NULL,
+                timestamp        TEXT NOT NULL,
+                content_snapshot TEXT DEFAULT NULL
+            )
+        """)
+        conn.executemany(
+            "INSERT INTO lifecycle_events"
+            " (slug,from_state,to_state,reason,triggered_by,timestamp,content_snapshot)"
+            " VALUES (?,?,?,?,?,?,?)",
+            rows,
+        )
+        conn.commit()
+
+
+def _seed_page_state(db_path, slug, state, triggered_by="user"):
+    """Upsert a page_states row via synchronous sqlite3.
+
+    Avoids asyncio.run() + aiosqlite interactions that can hang on Windows CI
+    (same oplock issue as _seed_lifecycle_events).
+    """
+    ts = "2026-01-01T00:00:00+00:00"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS page_states (
+                slug         TEXT PRIMARY KEY,
+                state        TEXT NOT NULL,
+                updated_at   TEXT NOT NULL,
+                triggered_by TEXT NOT NULL
+            )
+        """)
+        conn.execute(
+            "INSERT INTO page_states (slug,state,updated_at,triggered_by) VALUES (?,?,?,?)"
+            " ON CONFLICT(slug) DO UPDATE SET state=excluded.state,"
+            " updated_at=excluded.updated_at, triggered_by=excluded.triggered_by",
+            (slug, state, ts, triggered_by),
+        )
+        conn.commit()
 
 
 # ── Task 1 tests ────────────────────────────────────────────────────────────
@@ -165,10 +233,8 @@ async def test_get_snapshot_by_index_out_of_range(tmp_path: Path):
 
 def test_transition_stores_content_snapshot(tmp_wiki):
     """POST /lifecycle/transition captures page.content in the snapshot column."""
-    import asyncio
     from fastapi.testclient import TestClient
     from synthadoc.integration.http_server import create_app
-    from synthadoc.storage.log import AuditDB
 
     wiki_dir = tmp_wiki / "wiki"
     page_body = "The page body that should be snapshotted."
@@ -186,16 +252,14 @@ def test_transition_stores_content_snapshot(tmp_wiki):
         })
     assert resp.status_code == 200
 
-    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
-
-    async def _check():
-        await audit.init()
-        snapshots = await audit.list_page_snapshots("snap-test")
-        assert len(snapshots) == 1
-        snap = await audit.get_snapshot_by_index("snap-test", 1)
-        assert page_body in snap["content_snapshot"]
-
-    asyncio.run(_check())
+    with sqlite3.connect(tmp_wiki / ".synthadoc" / "audit.db") as _conn:
+        rows = _conn.execute(
+            "SELECT content_snapshot FROM lifecycle_events"
+            " WHERE slug=? AND content_snapshot IS NOT NULL ORDER BY id DESC",
+            ("snap-test",),
+        ).fetchall()
+    assert len(rows) == 1
+    assert page_body in rows[0][0]
 
 
 def test_transition_always_stores_snapshot_even_when_content_unchanged(tmp_wiki):
@@ -206,10 +270,8 @@ def test_transition_always_stores_snapshot_even_when_content_unchanged(tmp_wiki)
     second snapshot in the history.  This is the scenario a user hits when
     following the Content Snapshots walkthrough.
     """
-    import asyncio
     from fastapi.testclient import TestClient
     from synthadoc.integration.http_server import create_app
-    from synthadoc.storage.log import AuditDB
 
     wiki_dir = tmp_wiki / "wiki"
     page_body = "Unchanged body for snapshot dedup-bypass test."
@@ -231,47 +293,39 @@ def test_transition_always_stores_snapshot_even_when_content_unchanged(tmp_wiki)
         })
         assert r2.status_code == 200
 
-    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
-
-    async def _check():
-        await audit.init()
-        snapshots = await audit.list_page_snapshots("dedup-bypass")
-        assert len(snapshots) == 2, (
-            "both transitions must produce a snapshot even though content is identical"
-        )
-        assert snapshots[0]["from_state"] == "active"
-        assert snapshots[0]["to_state"] == "archived"
-        assert snapshots[1]["from_state"] == "draft"
-        assert snapshots[1]["to_state"] == "active"
-
-    asyncio.run(_check())
+    with sqlite3.connect(tmp_wiki / ".synthadoc" / "audit.db") as _conn:
+        rows = _conn.execute(
+            "SELECT from_state, to_state FROM lifecycle_events"
+            " WHERE slug=? AND content_snapshot IS NOT NULL ORDER BY id DESC",
+            ("dedup-bypass",),
+        ).fetchall()
+    assert len(rows) == 2, (
+        "both transitions must produce a snapshot even though content is identical"
+    )
+    assert rows[0][0] == "active"
+    assert rows[0][1] == "archived"
+    assert rows[1][0] == "draft"
+    assert rows[1][1] == "active"
 
 
 # ── Task 4 tests ────────────────────────────────────────────────────────────
 
 def _make_wiki_with_snapshots(tmp_wiki):
     """Write a page with two lifecycle transitions so the audit DB has snapshots."""
-    import asyncio
-    from synthadoc.storage.log import AuditDB
-
     wiki_dir = tmp_wiki / "wiki"
     (wiki_dir / "hist-page.md").write_text(
         "---\ntitle: Hist\nstatus: draft\nconfidence: medium\ntags: []\nsources: []\n---\n\nBody v1.\n",
         encoding="utf-8",
     )
-    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
-
-    async def _seed():
-        await audit.init()
-        await audit.record_lifecycle_event(
-            "hist-page", "draft", "active", "r1", "user",
-            content_snapshot="Body v1.",
-        )
-        await audit.record_lifecycle_event(
-            "hist-page", "active", "archived", "r2", "user",
-            content_snapshot="Body v2.",
-        )
-    asyncio.run(_seed())
+    _seed_lifecycle_events(
+        tmp_wiki / ".synthadoc" / "audit.db",
+        [
+            ("hist-page", "draft", "active", "r1", "user",
+             "2026-01-01T00:00:00+00:00", "Body v1."),
+            ("hist-page", "active", "archived", "r2", "user",
+             "2026-01-01T00:01:00+00:00", "Body v2."),
+        ],
+    )
 
 
 def test_history_endpoint_list(tmp_wiki):
@@ -323,10 +377,8 @@ def test_history_endpoint_single_with_content(tmp_wiki):
 
 def test_rollback_endpoint_restores_file(tmp_wiki):
     """POST /pages/{slug}/rollback writes the snapshot body back to the .md file."""
-    import asyncio
     from fastapi.testclient import TestClient
     from synthadoc.integration.http_server import create_app
-    from synthadoc.storage.log import AuditDB
 
     wiki_dir = tmp_wiki / "wiki"
     original_body = "This is the original body before editing."
@@ -337,14 +389,11 @@ def test_rollback_endpoint_restores_file(tmp_wiki):
     )
 
     # Seed one snapshot in the audit DB
-    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
-    async def _seed():
-        await audit.init()
-        await audit.record_lifecycle_event(
-            "rollback-page", "draft", "active", "activated", "user",
-            content_snapshot=original_body,
-        )
-    asyncio.run(_seed())
+    _seed_lifecycle_events(
+        tmp_wiki / ".synthadoc" / "audit.db",
+        [("rollback-page", "draft", "active", "activated", "user",
+          "2026-01-01T00:00:00+00:00", original_body)],
+    )
 
     # Now "accidentally edit" the page on disk
     (wiki_dir / "rollback-page.md").write_text(
@@ -372,10 +421,8 @@ def test_rollback_endpoint_restores_file(tmp_wiki):
 
 def test_rollback_endpoint_records_pre_rollback_snapshot(tmp_wiki):
     """The rollback event itself has content_snapshot = the pre-rollback body."""
-    import asyncio
     from fastapi.testclient import TestClient
     from synthadoc.integration.http_server import create_app
-    from synthadoc.storage.log import AuditDB
 
     wiki_dir = tmp_wiki / "wiki"
     pre_rollback_body = "Body that will be overwritten by rollback."
@@ -384,14 +431,11 @@ def test_rollback_endpoint_records_pre_rollback_snapshot(tmp_wiki):
         f"---\n\n{pre_rollback_body}\n",
         encoding="utf-8",
     )
-    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
-    async def _seed():
-        await audit.init()
-        await audit.record_lifecycle_event(
-            "rb2-page", "draft", "active", "activated", "user",
-            content_snapshot="original snap body",
-        )
-    asyncio.run(_seed())
+    _seed_lifecycle_events(
+        tmp_wiki / ".synthadoc" / "audit.db",
+        [("rb2-page", "draft", "active", "activated", "user",
+          "2026-01-01T00:00:00+00:00", "original snap body")],
+    )
 
     with TestClient(create_app(wiki_root=tmp_wiki)) as client:
         resp = client.post("/pages/rb2-page/rollback", json={
@@ -401,12 +445,17 @@ def test_rollback_endpoint_records_pre_rollback_snapshot(tmp_wiki):
     assert resp.status_code == 200
     rb_event_index = resp.json()["rollback_event_index"]
 
-    async def _check():
-        await audit.init()
-        snap = await audit.get_snapshot_by_index("rb2-page", rb_event_index)
-        assert snap is not None
-        assert pre_rollback_body in snap["content_snapshot"]
-    asyncio.run(_check())
+    # Verify the rollback event recorded pre_rollback_body as its snapshot.
+    # get_snapshot_by_index uses 1-based newest-first ordering on rows with
+    # content_snapshot IS NOT NULL — replicate that directly via sqlite3.
+    with sqlite3.connect(tmp_wiki / ".synthadoc" / "audit.db") as _conn:
+        snap_rows = _conn.execute(
+            "SELECT content_snapshot FROM lifecycle_events"
+            " WHERE slug=? AND content_snapshot IS NOT NULL ORDER BY id DESC",
+            ("rb2-page",),
+        ).fetchall()
+    assert len(snap_rows) >= rb_event_index
+    assert pre_rollback_body in snap_rows[rb_event_index - 1][0]
 
 
 def test_rollback_strips_frontmatter_from_old_snapshot(tmp_wiki):
@@ -419,10 +468,8 @@ def test_rollback_strips_frontmatter_from_old_snapshot(tmp_wiki):
     frontmatter, resulting in a corrupted page file.  The fix calls
     strip_frontmatter() on the snapshot content before restoring.
     """
-    import asyncio
     from fastapi.testclient import TestClient
     from synthadoc.integration.http_server import create_app
-    from synthadoc.storage.log import AuditDB
 
     wiki_dir = tmp_wiki / "wiki"
     body = "Body before the bad edit."
@@ -436,14 +483,11 @@ def test_rollback_strips_frontmatter_from_old_snapshot(tmp_wiki):
         "tags: []\nsources: []\n---\n\nThis is the wrong body.\n",
         encoding="utf-8",
     )
-    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
-    async def _seed():
-        await audit.init()
-        await audit.record_lifecycle_event(
-            "snap-fm-page", "draft", "active", "activated", "user",
-            content_snapshot=snap_with_frontmatter,
-        )
-    asyncio.run(_seed())
+    _seed_lifecycle_events(
+        tmp_wiki / ".synthadoc" / "audit.db",
+        [("snap-fm-page", "draft", "active", "activated", "user",
+          "2026-01-01T00:00:00+00:00", snap_with_frontmatter)],
+    )
 
     with TestClient(create_app(wiki_root=tmp_wiki)) as client:
         resp = client.post("/pages/snap-fm-page/rollback", json={
@@ -466,31 +510,23 @@ def test_rollback_strips_frontmatter_from_old_snapshot(tmp_wiki):
 
 def test_get_snapshots_returns_all(tmp_wiki):
     """GET /snapshots returns every event that has a non-NULL content_snapshot."""
-    import asyncio
     from fastapi.testclient import TestClient
     from synthadoc.integration.http_server import create_app
-    from synthadoc.storage.log import AuditDB
 
-    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
-    async def _seed():
-        await audit.init()
-        await audit.record_lifecycle_event(
-            "page-a", "draft", "active", "r1", "user",
-            content_snapshot="body a1",
-        )
-        await audit.record_lifecycle_event(
-            "page-a", "active", "archived", "r2", "user",
-            content_snapshot="body a2",
-        )
-        await audit.record_lifecycle_event(
-            "page-b", "draft", "active", "r3", "user",
-            content_snapshot="body b1",
-        )
-        # NULL snapshot — must NOT appear
-        await audit.record_lifecycle_event(
-            "page-b", "active", "archived", "r4", "user",
-        )
-    asyncio.run(_seed())
+    _seed_lifecycle_events(
+        tmp_wiki / ".synthadoc" / "audit.db",
+        [
+            ("page-a", "draft", "active", "r1", "user",
+             "2026-01-01T00:00:00+00:00", "body a1"),
+            ("page-a", "active", "archived", "r2", "user",
+             "2026-01-01T00:01:00+00:00", "body a2"),
+            ("page-b", "draft", "active", "r3", "user",
+             "2026-01-01T00:02:00+00:00", "body b1"),
+            # NULL snapshot — must NOT appear
+            ("page-b", "active", "archived", "r4", "user",
+             "2026-01-01T00:03:00+00:00", None),
+        ],
+    )
 
     with TestClient(create_app(wiki_root=tmp_wiki)) as client:
         resp = client.get("/snapshots")
@@ -511,21 +547,16 @@ def test_get_snapshots_returns_all(tmp_wiki):
 
 def test_get_snapshots_slug_filter(tmp_wiki):
     """GET /snapshots?slug=page-a returns only page-a rows."""
-    import asyncio
     from fastapi.testclient import TestClient
     from synthadoc.integration.http_server import create_app
-    from synthadoc.storage.log import AuditDB
 
-    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
-    async def _seed():
-        await audit.init()
-        await audit.record_lifecycle_event(
-            "page-a", "draft", "active", "r", "user", content_snapshot="a"
-        )
-        await audit.record_lifecycle_event(
-            "page-b", "draft", "active", "r", "user", content_snapshot="b"
-        )
-    asyncio.run(_seed())
+    _seed_lifecycle_events(
+        tmp_wiki / ".synthadoc" / "audit.db",
+        [
+            ("page-a", "draft", "active", "r", "user", "2026-01-01T00:00:00+00:00", "a"),
+            ("page-b", "draft", "active", "r", "user", "2026-01-01T00:01:00+00:00", "b"),
+        ],
+    )
 
     with TestClient(create_app(wiki_root=tmp_wiki)) as client:
         resp = client.get("/snapshots?slug=page-a")
@@ -546,20 +577,17 @@ def test_get_snapshots_empty(tmp_wiki):
 
 def test_purge_endpoint_keep_latest(tmp_wiki):
     """POST /lifecycle/events/purge with keep_latest deletes old events."""
-    import asyncio
     from fastapi.testclient import TestClient
     from synthadoc.integration.http_server import create_app
-    from synthadoc.storage.log import AuditDB
 
-    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
-    async def _seed():
-        await audit.init()
-        for i in range(5):
-            await audit.record_lifecycle_event(
-                "p", "draft", "active", f"r{i}", "user",
-                content_snapshot=f"body {i}",
-            )
-    asyncio.run(_seed())
+    _seed_lifecycle_events(
+        tmp_wiki / ".synthadoc" / "audit.db",
+        [
+            ("p", "draft", "active", f"r{i}", "user",
+             f"2026-01-01T00:0{i}:00+00:00", f"body {i}")
+            for i in range(5)
+        ],
+    )
 
     with TestClient(create_app(wiki_root=tmp_wiki)) as client:
         resp = client.post("/lifecycle/events/purge", json={"keep_latest": 2})
@@ -568,27 +596,22 @@ def test_purge_endpoint_keep_latest(tmp_wiki):
     assert resp.headers.get("cache-control") == "no-store"
 
     # Verify that only 2 remain
-    async def _check():
-        await audit.init()
-        snaps = await audit.list_page_snapshots("p")
-        assert len(snaps) == 2
-    asyncio.run(_check())
+    with sqlite3.connect(tmp_wiki / ".synthadoc" / "audit.db") as _conn:
+        count = _conn.execute(
+            "SELECT COUNT(*) FROM lifecycle_events WHERE slug=?", ("p",)
+        ).fetchone()[0]
+    assert count == 2
 
 
 def test_purge_endpoint_before_date(tmp_wiki):
     """POST /lifecycle/events/purge with before_date removes older events."""
-    import asyncio
     from fastapi.testclient import TestClient
     from synthadoc.integration.http_server import create_app
-    from synthadoc.storage.log import AuditDB
 
-    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
-    async def _seed():
-        await audit.init()
-        await audit.record_lifecycle_event(
-            "p", "draft", "active", "r", "user", content_snapshot="body"
-        )
-    asyncio.run(_seed())
+    _seed_lifecycle_events(
+        tmp_wiki / ".synthadoc" / "audit.db",
+        [("p", "draft", "active", "r", "user", "2026-01-01T00:00:00+00:00", "body")],
+    )
 
     with TestClient(create_app(wiki_root=tmp_wiki)) as client:
         resp = client.post(
@@ -727,19 +750,15 @@ async def test_snapshot_if_changed_uses_current_state(tmp_path: Path):
 
 def test_snapshot_endpoint_records_new_content(tmp_wiki):
     """POST /pages/{slug}/snapshot returns {recorded: true} for new content."""
-    import asyncio
     from fastapi.testclient import TestClient
     from synthadoc.integration.http_server import create_app
-    from synthadoc.storage.log import AuditDB
 
     wiki_dir = tmp_wiki / "wiki"
     (wiki_dir / "snap-manual.md").write_text(
         "---\ntitle: Manual\nstatus: active\nconfidence: medium\ntags: []\nsources: []\n---\n\nbody v1\n",
         encoding="utf-8",
     )
-    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
-    asyncio.run(audit.init())
-    asyncio.run(audit.set_page_state("snap-manual", "active", "user"))
+    _seed_page_state(tmp_wiki / ".synthadoc" / "audit.db", "snap-manual", "active")
 
     with TestClient(create_app(wiki_root=tmp_wiki)) as client:
         resp = client.post("/pages/snap-manual/snapshot", json={"content": "body v1"})
@@ -751,19 +770,15 @@ def test_snapshot_endpoint_records_new_content(tmp_wiki):
 
 def test_snapshot_endpoint_skips_unchanged_content(tmp_wiki):
     """POST /pages/{slug}/snapshot returns {recorded: false} when content is identical."""
-    import asyncio
     from fastapi.testclient import TestClient
     from synthadoc.integration.http_server import create_app
-    from synthadoc.storage.log import AuditDB
 
     wiki_dir = tmp_wiki / "wiki"
     (wiki_dir / "snap-dedup.md").write_text(
         "---\ntitle: Dedup\nstatus: active\nconfidence: medium\ntags: []\nsources: []\n---\n\nsame\n",
         encoding="utf-8",
     )
-    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
-    asyncio.run(audit.init())
-    asyncio.run(audit.set_page_state("snap-dedup", "active", "user"))
+    _seed_page_state(tmp_wiki / ".synthadoc" / "audit.db", "snap-dedup", "active")
 
     with TestClient(create_app(wiki_root=tmp_wiki)) as client:
         client.post("/pages/snap-dedup/snapshot", json={"content": "same"})
@@ -800,24 +815,16 @@ def test_snapshot_endpoint_rejects_system_page_slugs(tmp_wiki):
     page_exists() returns True for them — but the LINT_SKIP_SLUGS guard must
     reject them before snapshot_if_changed() is called.
     """
-    import asyncio
     from fastapi.testclient import TestClient
     from synthadoc.integration.http_server import create_app
-    from synthadoc.storage.log import AuditDB
 
     wiki_dir = tmp_wiki / "wiki"
-    audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
-
-    async def _seed(slug: str) -> None:
-        await audit.init()
-        await audit.set_page_state(slug, "active", "user")
-
     for system_slug in ("dashboard", "overview", "purpose", "index"):
         (wiki_dir / f"{system_slug}.md").write_text(
             f"---\ntitle: {system_slug}\nstatus: active\n---\n\nbody\n",
             encoding="utf-8",
         )
-        asyncio.run(_seed(system_slug))
+        _seed_page_state(tmp_wiki / ".synthadoc" / "audit.db", system_slug, "active")
         with TestClient(create_app(wiki_root=tmp_wiki)) as client:
             resp = client.post(
                 f"/pages/{system_slug}/snapshot",
@@ -965,12 +972,12 @@ def test_lint_transition_captures_snapshot(tmp_wiki):
 
     asyncio.run(run())
 
-    async def check():
-        await audit.init()
-        snaps = await audit.list_page_snapshots("lint-snap")
-        assert len(snaps) == 1, f"Expected 1 snapshot, got {len(snaps)}"
-        full = await audit.get_snapshot_by_index("lint-snap", 1)
-        assert full is not None
-        assert page_body in full["content_snapshot"]
-
-    asyncio.run(check())
+    # Verify via synchronous sqlite3 to avoid a second asyncio.run() + aiosqlite
+    # interaction that could deadlock on Windows CI if the AV scanner re-scans.
+    with sqlite3.connect(tmp_wiki / ".synthadoc" / "audit.db") as _conn:
+        snap_rows = _conn.execute(
+            "SELECT content_snapshot FROM lifecycle_events"
+            " WHERE slug='lint-snap' AND content_snapshot IS NOT NULL ORDER BY id DESC",
+        ).fetchall()
+    assert len(snap_rows) == 1, f"Expected 1 snapshot, got {len(snap_rows)}"
+    assert page_body in snap_rows[0][0]
