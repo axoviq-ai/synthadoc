@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -128,7 +128,6 @@ from synthadoc.agents.workflows._base import WorkflowContext
 
 def _make_ctx_for_tool(pages: dict[str, WikiPage]) -> WorkflowContext:
     """Create a minimal WorkflowContext with a mock store, for tool tests."""
-    import asyncio
     from contextlib import contextmanager
 
     async def _noop(e, d):
@@ -200,3 +199,56 @@ async def test_apply_citation_fixes_remove(tmp_path):
     # Surrounding prose must survive
     assert "A claim." in written_page.content
     assert "More prose." in written_page.content
+
+
+@pytest.mark.asyncio
+async def test_find_broken_citations_inactive_slug_returns_empty(tmp_path):
+    """Single-page mode with inactive slug returns empty pages list, not a full scan."""
+    from contextlib import contextmanager
+
+    from synthadoc.agents.workflows._tools import tool_find_broken_citations
+
+    active_page = WikiPage(
+        title="Active", tags=[], content="Claim.^[missing.txt:1-5]",
+        status="active", confidence="high", sources=[],
+    )
+    inactive_page = WikiPage(
+        title="Stale", tags=[], content="Claim.^[also-missing.txt:1-5]",
+        status="stale", confidence="high", sources=[],
+    )
+
+    store = _make_store({"active-page": active_page, "inactive-page": inactive_page})
+
+    @contextmanager
+    def _noop_lock(slug):
+        yield
+
+    store.page_lock.side_effect = _noop_lock
+    store.page_exists.return_value = True
+
+    async def _noop(e, d):
+        pass
+
+    audit_db = MagicMock()
+    # Only "active-page" is active
+    audit_db.get_live_page_states = AsyncMock(return_value=[
+        {"slug": "active-page", "state": "active"},
+        {"slug": "inactive-page", "state": "stale"},
+    ])
+
+    ctx = WorkflowContext(
+        session_id="s1",
+        wiki_root=tmp_path,
+        queue=None,
+        store=store,
+        audit_db=audit_db,
+        send_sse_event=_noop,
+        confirm_registry={},
+        confirm_result_registry={},
+    )
+
+    # Request the INACTIVE slug in single-page mode
+    result = await tool_find_broken_citations(ctx, page_slug="inactive-page")
+    assert result["total_issues"] == 0
+    assert result["pages"] == []
+    assert result["scanned"] == 0, "Inactive slug should scan 0 pages, not trigger full-wiki scan"

@@ -20,7 +20,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from synthadoc.agents.workflows._base import WorkflowContext
 
-from synthadoc.agents.lint_agent import find_broken_wikilink_refs
+from synthadoc.agents.lint_agent import (
+    _citation_source_names,
+    find_broken_citation_refs,
+    find_broken_wikilink_refs,
+)
 from synthadoc.agents.scaffold_agent import scaffold_output_paths
 from synthadoc.core.queue import JobStatus
 
@@ -486,10 +490,7 @@ async def tool_find_broken_citations(
 
     Returns a dict with keys: pages, total_issues, scanned.
     """
-    from synthadoc.agents.lint_agent import find_broken_citation_refs as _find_broken_cite
-    from pathlib import Path as _Path
-
-    extracted_dir = _Path(ctx.wiki_root) / ".synthadoc" / "extracted"
+    extracted_dir = Path(ctx.wiki_root) / ".synthadoc" / "extracted"
 
     all_states = await ctx.audit_db.get_live_page_states(ctx.store.page_exists)
     active_slugs: set[str] = {p["slug"] for p in all_states if p.get("state") == "active"}
@@ -508,9 +509,14 @@ async def tool_find_broken_citations(
          "message": f"Scanning {scope_label} for broken citation markers..."},
     )
 
-    broken_by_slug = _find_broken_cite(
-        ctx.store, extracted_dir, slugs=scan_slugs if scan_slugs else None
-    )
+    if page_slug is not None and not scan_slugs:
+        # Requested slug is inactive or doesn't exist — return empty immediately
+        broken_by_slug: dict[str, list[dict]] = {}
+    else:
+        broken_by_slug = find_broken_citation_refs(
+            ctx.store, extracted_dir,
+            slugs=scan_slugs if page_slug is not None else None,
+        )
 
     pages_with_issues: list[dict] = []
     total_issues = 0
@@ -518,7 +524,6 @@ async def tool_find_broken_citations(
         page = ctx.store.read_page(slug)
         page_sources: list[str] = []
         if page and page.sources:
-            from synthadoc.agents.lint_agent import _citation_source_names
             for s in page.sources:
                 page_sources.extend(sorted(_citation_source_names(s.file)))
         pages_with_issues.append({
@@ -554,7 +559,7 @@ async def tool_apply_citation_fixes(
     """
     page = ctx.store.read_page(page_slug)
     if page is None:
-        return {"status": "error", "error": f"Page {page_slug!r} not found"}
+        return {"status": "error", "error": f"Page {page_slug!r} not found", "changes": 0, "page": page_slug}
 
     content = page.content or ""
     total_changes = 0
