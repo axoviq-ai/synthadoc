@@ -2865,136 +2865,19 @@ synthadoc ingest --file sessions.txt -w my-wiki
 
 The web chat UI can drive wiki maintenance conversationally — no terminal required. Type a maintenance request in plain English and the system confirms with you, re-ingests pages, fixes broken links, and runs lint, all from a single chat turn.
 
-Six workflows are available:
+Seven workflows are available, listed in the order the web UI will pre-prompt them at session start:
 
 
 | Workflow                          | Example phrase                   | Scope                                                                                                                                                                              |
 | --------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Contradiction resolver**        | "run contradiction resolver"     | For each contradicted page: reads content and sources, proposes a rewrite, shows the full diff, applies after approval, re-lints the page, and promotes it to *active* if it passes |
 | **Stale-pages bulk reingest**     | "re-ingest stale pages"          | Finds every stale page, re-ingests each one in sequence, then runs lint                                                                                                            |
 | **Page-by-slug reingest**         | "re-ingest the alan-turing page" | Re-ingests one named page regardless of state (active, draft, or stale), then runs lint                                                                                            |
+| **Orphan resolver**               | "run orphan resolver"            | Finds pages with no incoming `[[wikilinks]]` and proposes natural link insertions into topically related active pages; retries with 4 progressively broader search strategies before escalating |
 | **Broken wikilinks scan and fix** | "scan for broken wikilinks"      | Scans all active pages for`[[slug]]` references that resolve to no existing page; suggests corrections and fixes them after confirmation                                           |
+| **Broken citation resolver**      | "fix broken citations"           | Scans all active pages for broken `^[file:L-L]` source markers (`broken_ref` / `malformed` / `out_of_range`); proposes targeted fixes with fuzzy source-name matching; validates each fix with a re-scan |
 | **Lint run and full report**      | "run lint"                       | Runs a full lint pass, waits for it to complete, then surfaces the complete report in a single conversational turn                                                                 |
 | **Scaffold and report**           | "run scaffold"                   | Previews the domain and files to overwrite, asks for confirmation, then regenerates`index.md`, `purpose.md`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`                             |
-| **Contradiction resolver**        | "run contradiction resolver"     | For each contradicted page: reads content and sources, proposes a rewrite, shows the full diff, applies after approval, re-lints the page, and promotes it to*active* if it passes |
-| **Orphan resolver**               | "run orphan resolver"            | Finds pages with no incoming `[[wikilinks]]` and proposes natural link insertions into topically related active pages; retries with 4 progressively broader search strategies before escalating |
-
-### Demo — re-ingest all stale pages
-
-The History of Computing demo includes the `konrad-zuse` page whose source file can be modified to trigger stale detection. First manufacture a stale page:
-
-1. In Obsidian, open `raw_sources/konrad-zuse-z3-computer.md` and make any small change — add a word, fix a typo, or append a note at the end. Save the file.
-2. Run lint to detect the change:
-
-```bash
-# konrad-zuse transitions from active to stale
-synthadoc lint run -w history-of-computing
-synthadoc status -w history-of-computing   # stale: 1
-```
-
-Now open the web chat UI:
-
-```bash
-synthadoc web -w history-of-computing
-```
-
-Type: **"show me the wiki status"**
-
-The response shows 1 stale page. Because stale pages were detected, the chat input is
-automatically pre-filled with a suggested follow-up — something like:
-
-> *Re-ingest 1 stale page: konrad-zuse*
-
-Press **Enter** to send it. A confirmation card appears:
-
-> *Found 1 stale page: konrad-zuse. Re-ingest it?*
-> **Yes, re-ingest all** / **No, cancel**
-
-Click **Yes, re-ingest all**. Inline progress events stream as the workflow runs each step:
-
-```
-Looking up stale pages…
-Re-ingesting konrad-zuse-z3-computer.md…
-Polling job…  ✓ completed
-Running lint…
-Lint running... (8s)  ✓ completed
-Checking page states…
-```
-
-When done, the workflow writes a plain-text summary showing the re-ingest outcome, the lint result (pass/fail), and the final lifecycle state of each page — `konrad-zuse` appears as ✓ active. No second step is needed: lint runs as part of the workflow.
-
-### Demo — re-ingest a specific page by slug
-
-Use this when you want to refresh one page regardless of its current lifecycle state — active, draft, or stale. No stale transition is needed.
-
-In the web chat UI, type: **"re-ingest the alan-turing page"**
-
-The agent looks up the source path and asks for confirmation:
-
-> *Re-ingest alan-turing from `.../alan-turing.md`?*
-> **Yes** / **No, cancel**
-
-Confirm. Inline progress events stream as the workflow runs:
-
-```
-Looking up source for alan-turing…
-Re-ingesting alan-turing.md…
-Polling job…  ✓ completed
-Running lint…
-Lint running... (8s)  ✓ completed
-Checking page states…
-```
-
-When done, the workflow writes a plain-text summary showing the re-ingest outcome, the lint result, and the final lifecycle state — `alan-turing` appears as ✓ active. Lint runs as part of the workflow; no second step is needed.
-
-### Maintenance chips in the web UI graph sidebar
-
-In the web UI **Graph tab**, click any node to open the node detail panel. A **Maintenance** section appears at the bottom of the panel with two chips:
-
-
-| Chip                              | What happens                                                                      |
-| --------------------------------- | --------------------------------------------------------------------------------- |
-| **⚑ Check this page for issues** | Sends "Check the [slug] page for issues" to the chat                              |
-| **↻ Re-ingest this page**        | Sends "Re-ingest the [slug] page" to the chat, triggering a page-by-slug reingest |
-
-Clicking either chip routes the request through the normal confirmation flow — the agent confirms before doing anything.
-
-### Demo — scan and fix broken wikilinks
-
-**Setup — manufacture broken wikilinks in the History of Computing demo wiki**
-
-Open these three files in Obsidian (Edit view or any text editor) and convert the bare slug references to wikilinks, then save each file:
-
-
-| File                           | Change                                                                 |
-| ------------------------------ | ---------------------------------------------------------------------- |
-| `wiki/eniac.md`                | Change`john-mauchly` to `[[john-mauchly]]` in the Designers section    |
-| `wiki/history-of-computing.md` | Change`ada-lovelace` to `[[ada-lovelace]]` in the 1843 milestone entry |
-| `wiki/grace-hopper.md`         | Change`harvard-mark-i` to `[[harvard-mark-i]]` in the first paragraph  |
-
-None of these slugs have a corresponding `.md` page in the wiki — `john-mauchly`, `ada-lovelace`, and `harvard-mark-i` are referenced but uncompiled, making them broken wikilinks.
-
-**Run the workflow**
-
-In the web chat UI, type: **"scan for broken wikilinks"**
-
-The agent scans all active pages and presents a confirmation card listing every affected page and proposed fix:
-
-> *Found 3 broken wikilinks across 3 pages:*
-> *• eniac: `[[john-mauchly]]` → remove link (no similar page found)*
-> *• grace-hopper: `[[harvard-mark-i]]` → remove link (no similar page found)*
-> *• history-of-computing: `[[ada-lovelace]]` → remove link (no similar page found)*
-> *Stale/draft pages were excluded. Promote them to active to include in the scan.*
-> **Yes, fix all** / **No, cancel**
-
-Click **Yes, fix all**. The agent removes the `[[...]]` markup from each page while preserving the display text, runs a lint pass to validate, and reports the final state of each page.
-
-> **Fuzzy suggestions:** When the broken link is a likely typo — for example `[[alan-tunring]]` where `alan-turing` exists — the agent proposes a corrected replacement instead of a removal. The fix scope shows both the original and the suggested target before you confirm.
-
-If your wiki has no broken links, the workflow reports: *"No broken wikilinks found. Wiki link integrity is clean."* — no confirmation card appears.
-
-**Only active pages are scanned.** If a stale or draft page has broken links, promote it to active first, then re-run the scan.
-
----
 
 ### Demo — resolve contradicted pages
 
@@ -3086,6 +2969,88 @@ synthadoc workflow run --name contradiction-resolver --type source-conflict     
 
 ---
 
+### Demo — re-ingest all stale pages
+
+The History of Computing demo includes the `konrad-zuse` page whose source file can be modified to trigger stale detection. First manufacture a stale page:
+
+1. In Obsidian, open `raw_sources/konrad-zuse-z3-computer.md` and make any small change — add a word, fix a typo, or append a note at the end. Save the file.
+2. Run lint to detect the change:
+
+```bash
+# konrad-zuse transitions from active to stale
+synthadoc lint run -w history-of-computing
+synthadoc status -w history-of-computing   # stale: 1
+```
+
+Now open the web chat UI:
+
+```bash
+synthadoc web -w history-of-computing
+```
+
+Type: **"show me the wiki status"**
+
+The response shows 1 stale page. Because stale pages were detected, the chat input is
+automatically pre-filled with a suggested follow-up — something like:
+
+> *Re-ingest 1 stale page: konrad-zuse*
+
+Press **Enter** to send it. A confirmation card appears:
+
+> *Found 1 stale page: konrad-zuse. Re-ingest it?*
+> **Yes, re-ingest all** / **No, cancel**
+
+Click **Yes, re-ingest all**. Inline progress events stream as the workflow runs each step:
+
+```
+Looking up stale pages…
+Re-ingesting konrad-zuse-z3-computer.md…
+Polling job…  ✓ completed
+Running lint…
+Lint running... (8s)  ✓ completed
+Checking page states…
+```
+
+When done, the workflow writes a plain-text summary showing the re-ingest outcome, the lint result (pass/fail), and the final lifecycle state of each page — `konrad-zuse` appears as ✓ active. No second step is needed: lint runs as part of the workflow.
+
+### Demo — re-ingest a specific page by slug
+
+Use this when you want to refresh one page regardless of its current lifecycle state — active, draft, or stale. No stale transition is needed.
+
+In the web chat UI, type: **"re-ingest the alan-turing page"**
+
+The agent looks up the source path and asks for confirmation:
+
+> *Re-ingest alan-turing from `.../alan-turing.md`?*
+> **Yes** / **No, cancel**
+
+Confirm. Inline progress events stream as the workflow runs:
+
+```
+Looking up source for alan-turing…
+Re-ingesting alan-turing.md…
+Polling job…  ✓ completed
+Running lint…
+Lint running... (8s)  ✓ completed
+Checking page states…
+```
+
+When done, the workflow writes a plain-text summary showing the re-ingest outcome, the lint result, and the final lifecycle state — `alan-turing` appears as ✓ active. Lint runs as part of the workflow; no second step is needed.
+
+### Maintenance chips in the web UI graph sidebar
+
+In the web UI **Graph tab**, click any node to open the node detail panel. A **Maintenance** section appears at the bottom of the panel with two chips:
+
+
+| Chip                              | What happens                                                                      |
+| --------------------------------- | --------------------------------------------------------------------------------- |
+| **⚑ Check this page for issues** | Sends "Check the [slug] page for issues" to the chat                              |
+| **↻ Re-ingest this page**        | Sends "Re-ingest the [slug] page" to the chat, triggering a page-by-slug reingest |
+
+Clicking either chip routes the request through the normal confirmation flow — the agent confirms before doing anything.
+
+---
+
 ### Demo — orphan resolver
 
 Pages with no incoming `[[wikilinks]]` from other active pages are invisible to
@@ -3112,6 +3077,74 @@ synthadoc workflow run --name orphan-resolver --slug ada-lovelace
 **If all four strategies are exhausted**, the workflow escalates with a `tool_notify` message listing every candidate page considered and four concrete next steps: re-run the workflow (LLM non-determinism may produce a better candidate on a fresh attempt), manually add the wikilink, archive the page if it's out of scope, or create a hub page and re-run.
 
 The Web UI shows a **"Run orphan resolver"** hint chip whenever orphaned pages are detected at session start or after a lint run.
+
+---
+
+### Demo — scan and fix broken wikilinks
+
+**Setup — manufacture broken wikilinks in the History of Computing demo wiki**
+
+Open these three files in Obsidian (Edit view or any text editor) and convert the bare slug references to wikilinks, then save each file:
+
+
+| File                           | Change                                                                 |
+| ------------------------------ | ---------------------------------------------------------------------- |
+| `wiki/eniac.md`                | Change`john-mauchly` to `[[john-mauchly]]` in the Designers section    |
+| `wiki/history-of-computing.md` | Change`ada-lovelace` to `[[ada-lovelace]]` in the 1843 milestone entry |
+| `wiki/grace-hopper.md`         | Change`harvard-mark-i` to `[[harvard-mark-i]]` in the first paragraph  |
+
+None of these slugs have a corresponding `.md` page in the wiki — `john-mauchly`, `ada-lovelace`, and `harvard-mark-i` are referenced but uncompiled, making them broken wikilinks.
+
+**Run the workflow**
+
+In the web chat UI, type: **"scan for broken wikilinks"**
+
+The agent scans all active pages and presents a confirmation card listing every affected page and proposed fix:
+
+> *Found 3 broken wikilinks across 3 pages:*
+> *• eniac: `[[john-mauchly]]` → remove link (no similar page found)*
+> *• grace-hopper: `[[harvard-mark-i]]` → remove link (no similar page found)*
+> *• history-of-computing: `[[ada-lovelace]]` → remove link (no similar page found)*
+> *Stale/draft pages were excluded. Promote them to active to include in the scan.*
+> **Yes, fix all** / **No, cancel**
+
+Click **Yes, fix all**. The agent removes the `[[...]]` markup from each page while preserving the display text, runs a lint pass to validate, and reports the final state of each page.
+
+> **Fuzzy suggestions:** When the broken link is a likely typo — for example `[[alan-tunring]]` where `alan-turing` exists — the agent proposes a corrected replacement instead of a removal. The fix scope shows both the original and the suggested target before you confirm.
+
+If your wiki has no broken links, the workflow reports: *"No broken wikilinks found. Wiki link integrity is clean."* — no confirmation card appears.
+
+**Only active pages are scanned.** If a stale or draft page has broken links, promote it to active first, then re-run the scan.
+
+---
+
+### Demo — broken citation resolver
+
+Source citation markers in the form `^[file.txt:L-L]` can break when a source file is renamed, re-ingested under a new path, or when the marker syntax is malformed. The broken citation resolver finds and fixes them.
+
+In the web chat UI, type: **"fix broken citations"**
+
+The workflow scans all active pages and presents a confirmation card listing each broken marker and its proposed fix:
+
+> *Found 2 broken citation(s) across 1 page(s):*
+> *• my-page: `^[biographie.txt:1-5]` — broken_ref (suggested fix: `^[biography.txt:1-5]`)*
+> **Yes, fix all** / **No, cancel**
+
+Click **Yes, fix all**. The agent applies each fix, re-scans the affected page to confirm the citation is resolved, and reports the final state.
+
+**Fix strategy:**
+- `broken_ref` — fuzzy-matches the citation filename against the page's actual source files. If a match ≥ 72% similarity is found, the filename is corrected (line range preserved). Otherwise the marker is removed.
+- `malformed` / `out_of_range` — the marker is removed. Surrounding prose is preserved.
+
+**To target a single page:**
+
+```bash
+synthadoc workflow run --name broken-citation-resolver --slug my-page
+```
+
+If the wiki has no broken citations, the workflow reports: *"No broken citations found. Citation integrity is clean."* — no confirmation card appears.
+
+**Only active pages are scanned.** Promote a stale or draft page to active first if its citations need checking.
 
 ---
 
