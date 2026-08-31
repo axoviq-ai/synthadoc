@@ -56,6 +56,11 @@ Examples:
     # Creates isolated test pages, runs the resolver, verifies link insertion
     # and escalation behaviour, cleans up pages on exit.
     python -X utf8 tests/live/run_all.py --suite orphan_resolver
+
+    # Run broken citation resolver tests only (requires v1.3.1 feature)
+    # Creates isolated test pages with broken citations, verifies confirm-gate
+    # handling and slug-filter behaviour, cleans up pages on exit.
+    python -X utf8 tests/live/run_all.py --suite broken_citation_resolver
 """
 import argparse
 import atexit
@@ -94,6 +99,7 @@ SUITES = {
     "contradiction_resolver":   "test_contradiction_resolver_live.py",
     "citation_faithfulness":    "test_citation_faithfulness_live.py",
     "orphan_resolver":          "test_orphan_resolver_live.py",
+    "broken_citation_resolver": "test_broken_citation_resolver_live.py",
 }
 
 PASS = "\033[92mPASS\033[0m"
@@ -203,6 +209,7 @@ def main() -> None:
         "contradiction_resolver":   [],
         "citation_faithfulness":    [],
         "orphan_resolver":          [],
+        "broken_citation_resolver": [],
     }
     # Per-suite environment
     suite_env = {
@@ -218,6 +225,7 @@ def main() -> None:
         "contradiction_resolver":   {**os.environ, "SYNTHADOC_URL": base},
         "citation_faithfulness":    {**os.environ, "SYNTHADOC_URL": base},
         "orphan_resolver":          {**os.environ, "SYNTHADOC_URL": base},
+        "broken_citation_resolver": {**os.environ, "SYNTHADOC_URL": base},
     }
 
     print(f"\n{'='*64}")
