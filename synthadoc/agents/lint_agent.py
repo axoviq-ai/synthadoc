@@ -326,6 +326,35 @@ def find_broken_wikilink_refs(
     return result
 
 
+def find_broken_citation_refs(
+    store: "WikiStorage",
+    extracted_dir: Path,
+    *,
+    slugs: list[str] | None = None,
+) -> dict[str, list[dict]]:
+    """Return {slug: [{"citation": str, "reason": str}, ...]} for active pages
+    with broken ^[file:L-L] markers.
+
+    Each dict in the list has:
+      "citation" — the raw marker text, e.g. "^[bio.txt:5-12]"
+      "reason"   — "broken_ref" | "malformed" | "out_of_range"
+
+    Only active pages are scanned unless slugs is provided.
+    Returns an empty dict when no issues are found.
+    """
+    candidates = slugs if slugs is not None else store.list_pages()
+    result: dict[str, list[dict]] = {}
+    for slug in candidates:
+        page = store.read_page(slug)
+        if page is None or page.status != "active":
+            continue
+        issues = _check_page_citations(slug, page, extracted_dir)
+        if issues:
+            # Strip the "slug" key — callers get it from the dict key
+            result[slug] = [{"citation": i["citation"], "reason": i["reason"]} for i in issues]
+    return result
+
+
 def _parse_adversarial_response(text: str) -> list[dict]:
     """Parse LLM adversarial response into list of {claim, concern} dicts.
 
