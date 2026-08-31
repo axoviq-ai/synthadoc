@@ -6,8 +6,10 @@ Each test writes dedicated wiki pages (prefixed with _live-test-bcr-) directly
 to the wiki filesystem so they never conflict with real wiki content.  A finally
 block removes all created pages, leaving the wiki in its original state.
 
-Pages are written directly to the wiki filesystem (WikiStorage is file-backed)
-rather than via a REST endpoint — there is no POST /pages or DELETE /pages API.
+Pages are written directly to the wiki filesystem (WikiStorage is file-backed).
+Each page is also registered in the audit DB via POST /lifecycle/transition so
+that tool_find_broken_citations (which filters by audit-DB active state) can see
+it.  Cleanup calls DELETE /pages/{slug}/history to remove the audit trail.
 
 Prerequisites:
   - synthadoc serve -w <wiki> running on SYNTHADOC_URL (default: http://127.0.0.1:7070)
@@ -52,6 +54,19 @@ def _get_wiki_root() -> Path:
         return Path(resp.json()["wiki"])
 
 
+def _api(path: str, method: str = "GET", body: dict | None = None) -> dict:
+    """Make a simple JSON API call and return the parsed response."""
+    with httpx.Client(timeout=30) as client:
+        if method == "POST":
+            r = client.post(f"{BASE}{path}", json=body)
+        elif method == "DELETE":
+            r = client.delete(f"{BASE}{path}")
+        else:
+            r = client.get(f"{BASE}{path}")
+        r.raise_for_status()
+        return r.json()
+
+
 def _ingest_page(
     wiki_root: Path,
     slug: str,
@@ -59,35 +74,52 @@ def _ingest_page(
     content: str,
     sources: list[str] | None = None,
 ) -> None:
-    """Write a page directly to the wiki filesystem with active status.
+    """Write a page to the wiki filesystem and register it as active in the audit DB.
 
-    WikiStorage (used by the workflow tools) reads markdown files from
-    ``<wiki_root>/wiki/``, so writing the file here is the only setup step
-    needed — no REST call is required.
+    ``tool_find_broken_citations`` filters candidate pages through
+    ``audit_db.get_live_page_states()`` before calling the pure scanner, so a
+    filesystem-only write is invisible to the workflow.  Writing the markdown
+    file first (so the page exists on disk) and then calling
+    ``POST /lifecycle/transition`` registers it as active in both the frontmatter
+    and the audit DB.
 
-    *sources* is the list of source filenames declared in the page's
-    frontmatter.  Citation markers ``^[filename:L-L]`` in the content are
-    validated against this list by ``find_broken_citations``.
+    *sources* is a list of source filenames.  They are serialised as full
+    SourceRef dicts so that ``_sources_from_dicts`` (called by WikiStorage) can
+    parse them; plain strings are silently dropped by that function.
     """
     page_path = wiki_root / "wiki" / f"{slug}.md"
+    source_entries = [
+        {"file": s, "hash": "", "size": 0, "ingested": ""}
+        for s in (sources or [])
+    ]
     fm: dict = {
         "title": title,
-        "status": "active",
+        "status": "active",   # find_broken_citation_refs checks page.status directly
         "tags": [],
         "confidence": "high",
-        "sources": sources or [],
+        "sources": source_entries,
         "orphan": False,
         "aliases": [],
     }
     yaml_str = yaml.dump(fm, default_flow_style=False, allow_unicode=True)
     page_path.write_text(f"---\n{yaml_str}---\n\n{content}\n", encoding="utf-8")
+    # Register as active in the audit DB so tool_find_broken_citations includes it.
+    _api("/lifecycle/transition", "POST", {
+        "slug": slug,
+        "to_state": "active",
+        "reason": "BCR live test setup",
+    })
 
 
 def _delete_page(wiki_root: Path, slug: str) -> None:
-    """Remove a test page from the wiki filesystem if it exists."""
+    """Remove a test page from the wiki filesystem and its audit history."""
     page_path = wiki_root / "wiki" / f"{slug}.md"
     if page_path.exists():
         page_path.unlink()
+    try:
+        _api(f"/pages/{slug}/history", "DELETE")
+    except Exception:
+        pass
 
 
 def _run_workflow(
