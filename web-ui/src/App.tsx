@@ -43,6 +43,7 @@ export default function App() {
             const stale = status.stale ?? 0;
             const orphan = status.orphan ?? 0;
             const broken = status.broken_wikilinks ?? 0;
+            const brokenCitations = status.broken_citations ?? 0;
             if (contradicted > 0) {
                 const pageWord = contradicted === 1 ? "page" : "pages";
                 setPendingPrompt(
@@ -57,6 +58,9 @@ export default function App() {
             } else if (broken > 0) {
                 const linkWord = broken === 1 ? "broken wikilink" : "broken wikilinks";
                 setPendingPrompt(`${broken} ${linkWord} detected — scan and fix them?`);
+            } else if (brokenCitations > 0) {
+                const word = brokenCitations === 1 ? "broken citation" : "broken citations";
+                setPendingPrompt(`${brokenCitations} ${word} detected — run the citation resolver to fix them?`);
             }
         }).catch(() => {
             // Silently ignore — pre-fill is optional, not critical
