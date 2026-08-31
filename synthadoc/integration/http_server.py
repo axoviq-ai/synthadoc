@@ -1257,27 +1257,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         else:
             summary = await orch._audit.get_lifecycle_summary()
             summary["orphan"] = orch._store.count_orphan_active_pages()
-            # Pass broken_wikilinks and broken_citations to hint engine for priority chips
-            from synthadoc.agents.lint_agent import find_broken_wikilink_refs as _find_broken_wl
-            from synthadoc.agents.lint_agent import find_broken_citation_refs as _find_broken_cite
-            from synthadoc.agents.lint_agent import LINT_SKIP_SLUGS
-            _all_slugs_set = set(orch._store.list_pages())
-            _session_states = await orch._audit.get_live_page_states(orch._store.page_exists)
-            _session_active_scan: dict[str, str] = {}
-            for _sp in _session_states:
-                if _sp.get("state") == "active" and _sp["slug"] not in LINT_SKIP_SLUGS:
-                    _spage = orch._store.read_page(_sp["slug"])
-                    if _spage and _spage.content:
-                        _session_active_scan[_sp["slug"]] = _spage.content
-            _bwl = _find_broken_wl(_session_active_scan, _all_slugs_set)
-            _bwl_count = sum(len(refs) for refs in _bwl.values())
-            if _bwl_count > 0:
-                summary["broken_wikilinks"] = _bwl_count
-            _extracted = wiki_root / ".synthadoc" / "extracted"
-            _bcite = _find_broken_cite(orch._store, _extracted)
-            _bcite_count = sum(len(issues) for issues in _bcite.values())
-            if _bcite_count > 0:
-                summary["broken_citations"] = _bcite_count
+            # broken_wikilinks and broken_citations counts are intentionally omitted here:
+            # computing them requires reading every page (violates the no-read_page invariant
+            # for POST /sessions). Counts are available via GET /lifecycle/status; App.tsx
+            # fetches that separately to drive the pre-prompt.
             has_health_issues = (
                 summary.get("stale", 0)
                 + summary.get("contradicted", 0)

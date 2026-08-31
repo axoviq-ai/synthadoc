@@ -367,6 +367,8 @@ async def tool_get_page_states(ctx: "WorkflowContext", slugs: list[str]) -> dict
 
 # Extracts wikilink slug, excluding display text and anchors: [[slug]], [[slug|text]], [[slug#anchor]]
 _WIKILINK_SCAN_RE = re.compile(r"\[\[([^\]|#]+?)(?:[|#][^\]]*)?\]\]")
+# Matches every valid ^[...] citation marker shape (including malformed ones without line range)
+_CITATION_MARKER_RE = re.compile(r"^\^\[[^\]]*\]$")
 
 # Captures slug + optional suffix (|display or #anchor) for targeted replacement
 _WIKILINK_REPLACE_RE = re.compile(r"\[\[([^\]|#]+?)((?:[|#][^\]]*))?\]\]")
@@ -567,6 +569,10 @@ async def tool_apply_citation_fixes(
         old_citation = fix.get("old_citation", "").strip()
         new_citation = fix.get("new_citation") or None  # empty string treated as removal
         if not old_citation:
+            continue
+        # Guard against a hallucinated or truncated value that would globally replace
+        # arbitrary text. Skip any fix whose old_citation is not shaped like a citation marker.
+        if not _CITATION_MARKER_RE.match(old_citation):
             continue
         if new_citation is not None:
             updated = content.replace(old_citation, new_citation)

@@ -46,7 +46,7 @@
 35. [Contradiction Resolver Workflow](#35-contradiction-resolver-workflow)
 36. [Orphan Resolver Workflow](#36-orphan-resolver-workflow)
 37. [Citation Faithfulness Audit](#37-citation-faithfulness-audit)
-38. [Broken Citation Resolver Workflow](#38-broken-citation-resolver-workflow)
+39. [Broken Citation Resolver Workflow](#39-broken-citation-resolver-workflow)
 
 **Appendices**
 
@@ -3852,27 +3852,6 @@ additional confirmation dialog.
 
 ---
 
-## 38. Broken Citation Resolver Workflow
-
-The broken citation resolver is the 7th agentic maintenance workflow. It scans all active wiki pages for broken `^[file:L-L]` source citation markers and repairs them interactively.
-
-**Three failure types detected:**
-- `broken_ref` — the citation filename is not listed in the page's `sources[]` (file renamed or re-ingested under a new path)
-- `malformed` — marker syntax is invalid (missing line range, or `start > end`)
-- `out_of_range` — line range exceeds the actual extracted file length
-
-**Detection:** `find_broken_citation_refs(store, extracted_dir, *, slugs=None)` in `lint_agent.py` iterates active pages and delegates to the existing `_check_page_citations` per-page check. Returns `dict[str, list[dict]]` mapping slug → list of `{citation, reason}` dicts.
-
-**Fix strategy:** `tool_apply_citation_fixes` receives `fixes: list[{old_citation, new_citation | null}]` and applies each with `str.replace`. For `broken_ref`, `difflib.get_close_matches(cutoff=0.72)` fuzzy-matches the citation filename against the page's `sources[]`; if matched the filename is corrected (line range preserved); otherwise `new_citation` is `null` (remove). For `malformed` and `out_of_range`, the marker is always removed.
-
-**Verification:** After each page's fixes are applied, a single-page re-scan via `tool_find_broken_citations(page_slug=slug)` confirms resolution (up to 3 attempts).
-
-**Workflow class:** `BrokenCitationResolverWorkflow` — tool budget 60, `GATED_TOOLS = {"apply_citation_fixes"}`, registered in `_registry.py` after `ContradictionResolverWorkflow`.
-
-**Pre-prompt priority:** 5th in the chain (after contradicted → stale → orphan → broken_wikilinks). `/lifecycle/status` exposes `broken_citations` count; `initial_hints()` and `App.tsx` both read it.
-
-Accessible from the web UI (pre-prompt + hint chip "Fix broken citations"), natural language ("fix broken citations", "run citation resolver"), and `synthadoc workflow run --name broken-citation-resolver [--slug SLUG]`.
-
 ## 37. Citation Faithfulness Audit
 
 The citation faithfulness audit is the third verification layer in Synthadoc's
@@ -4072,6 +4051,29 @@ Set `sensitive_scan_enabled = true` in `config.toml`. The scanner runs
 automatically on the configured interval whenever the server is running.
 Each cycle is incremental — only pages modified since the previous cycle are
 checked.
+
+---
+
+## 39. Broken Citation Resolver Workflow
+
+The broken citation resolver is the 7th agentic maintenance workflow. It scans all active wiki pages for broken `^[file:L-L]` source citation markers and repairs them interactively.
+
+**Three failure types detected:**
+- `broken_ref` — the citation filename is not listed in the page's `sources[]` (file renamed or re-ingested under a new path)
+- `malformed` — marker syntax is invalid (missing line range, or `start > end`)
+- `out_of_range` — line range exceeds the actual extracted file length
+
+**Detection:** `find_broken_citation_refs(store, extracted_dir, *, slugs=None)` in `lint_agent.py` iterates active pages and delegates to the existing `_check_page_citations` per-page check. Returns `dict[str, list[dict]]` mapping slug → list of `{citation, reason}` dicts.
+
+**Fix strategy:** `tool_apply_citation_fixes` receives `fixes: list[{old_citation, new_citation | null}]` and applies each with `str.replace`. For `broken_ref`, `difflib.get_close_matches(cutoff=0.72)` fuzzy-matches the citation filename against the page's `sources[]`; if matched the filename is corrected (line range preserved); otherwise `new_citation` is `null` (remove). For `malformed` and `out_of_range`, the marker is always removed.
+
+**Verification:** After each page's fixes are applied, a single-page re-scan via `tool_find_broken_citations(page_slug=slug)` confirms resolution (up to 3 attempts).
+
+**Workflow class:** `BrokenCitationResolverWorkflow` — tool budget 60, `GATED_TOOLS = {"apply_citation_fixes"}`, registered in `_registry.py` after `ContradictionResolverWorkflow`.
+
+**Pre-prompt priority:** 5th in the chain (after contradicted → stale → orphan → broken_wikilinks). `/lifecycle/status` exposes `broken_citations` count; `initial_hints()` and `App.tsx` both read it.
+
+Accessible from the web UI (pre-prompt + hint chip "Fix broken citations"), natural language ("fix broken citations", "run citation resolver"), and `synthadoc workflow run --name broken-citation-resolver [--slug SLUG]`.
 
 ---
 

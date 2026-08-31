@@ -102,3 +102,18 @@ def test_name_and_description():
 def test_get_tool_budget_sufficient():
     wf = BrokenCitationResolverWorkflow()
     assert wf.get_tool_budget() >= 60
+
+
+def test_build_initial_message_slug_mode():
+    """--slug flag is parsed and injected into the initial message."""
+    wf = BrokenCitationResolverWorkflow()
+    msg = wf.build_initial_message("fix broken citations --slug my-page")
+    assert "my-page" in msg
+    assert "page_slug" in msg
+
+
+def test_build_initial_message_no_slug_passthrough():
+    """Without --slug the user input is returned unchanged."""
+    wf = BrokenCitationResolverWorkflow()
+    raw = "fix broken citations"
+    assert wf.build_initial_message(raw) == raw
