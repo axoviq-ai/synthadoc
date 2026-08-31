@@ -491,19 +491,30 @@ async def tool_find_broken_citations(
     """Scan wiki pages for broken source citation markers.
 
     Returns a dict with keys: pages, total_issues, scanned.
+
+    Active-page determination uses the store directly (frontmatter ``status:
+    active``) rather than the audit DB, so this tool is consistent with
+    ``GET /lifecycle/status`` which drives the pre-prompt chip.  The audit DB
+    is not the right filter here: pages can have ``status: active`` in their
+    frontmatter without a corresponding audit-DB entry (e.g. wiki imports),
+    and those pages would show a broken-citation chip but then appear clean
+    to the workflow — a confusing mismatch.
     """
     extracted_dir = Path(ctx.wiki_root) / ".synthadoc" / "extracted"
 
-    all_states = await ctx.audit_db.get_live_page_states(ctx.store.page_exists)
-    active_slugs: set[str] = {p["slug"] for p in all_states if p.get("state") == "active"}
-
     if page_slug is not None:
-        scan_slugs = [page_slug] if page_slug in active_slugs else []
+        # Single-page mode: check existence and active status via the store.
+        page_check = ctx.store.read_page(page_slug)
+        if page_check is not None and page_check.status == "active":
+            scan_slugs: list[str] | None = [page_slug]
+        else:
+            scan_slugs = []
         scope_label = f"page '{page_slug}'"
     else:
-        scan_slugs = sorted(active_slugs)
-        n = len(active_slugs)
-        scope_label = f"{n} active page{'s' if n != 1 else ''}"
+        # Whole-wiki mode: pass None so find_broken_citation_refs calls
+        # store.list_pages() and filters by frontmatter status itself.
+        scan_slugs = None
+        scope_label = "active pages"
 
     await ctx.send_sse_event(
         "tool_progress",
@@ -512,12 +523,12 @@ async def tool_find_broken_citations(
     )
 
     if page_slug is not None and not scan_slugs:
-        # Requested slug is inactive or doesn't exist — return empty immediately
+        # Requested slug is inactive or doesn't exist — return empty immediately.
         broken_by_slug: dict[str, list[dict]] = {}
     else:
         broken_by_slug = find_broken_citation_refs(
             ctx.store, extracted_dir,
-            slugs=scan_slugs if page_slug is not None else None,
+            slugs=scan_slugs,
         )
 
     pages_with_issues: list[dict] = []
@@ -537,6 +548,7 @@ async def tool_find_broken_citations(
         total_issues += len(broken_by_slug[slug])
 
     n_pages = len(pages_with_issues)
+    n_scanned = len(scan_slugs) if scan_slugs is not None else len(ctx.store.list_pages())
     if n_pages:
         msg = (
             f"Found {total_issues} broken citation{'s' if total_issues != 1 else ''} "
@@ -546,7 +558,7 @@ async def tool_find_broken_citations(
         msg = f"No broken citations found on {scope_label}"
 
     await ctx.send_sse_event("tool_progress", {"tool": "find_broken_citations", "message": msg})
-    return {"pages": pages_with_issues, "scanned": len(scan_slugs), "total_issues": total_issues}
+    return {"pages": pages_with_issues, "scanned": n_scanned, "total_issues": total_issues}
 
 
 async def tool_apply_citation_fixes(
