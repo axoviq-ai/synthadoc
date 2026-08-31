@@ -116,3 +116,87 @@ def test_find_broken_citation_refs_slug_filter(tmp_path):
     assert result == {}
     result2 = find_broken_citation_refs(store, tmp_path, slugs=["bad"])
     assert "bad" in result2
+
+
+# ──────────────────────────────────────────────────────────────
+# Tests 7-8: tool_apply_citation_fixes
+# ──────────────────────────────────────────────────────────────
+
+from synthadoc.agents.workflows._tools import tool_apply_citation_fixes
+from synthadoc.agents.workflows._base import WorkflowContext
+
+
+def _make_ctx_for_tool(pages: dict[str, WikiPage]) -> WorkflowContext:
+    """Create a minimal WorkflowContext with a mock store, for tool tests."""
+    import asyncio
+    from contextlib import contextmanager
+
+    async def _noop(e, d):
+        pass
+
+    store = _make_store(pages)
+
+    @contextmanager
+    def _noop_lock(slug):
+        yield
+
+    store.page_lock.side_effect = _noop_lock
+    store.write_page.return_value = None
+
+    return WorkflowContext(
+        session_id="s1",
+        wiki_root=Path("/wiki"),
+        queue=None,
+        store=store,
+        audit_db=None,
+        send_sse_event=_noop,
+        confirm_registry={},
+        confirm_result_registry={},
+    )
+
+
+@pytest.mark.asyncio
+async def test_apply_citation_fixes_replace(tmp_path):
+    """tool_apply_citation_fixes replaces old marker with new marker."""
+    content = "A claim.^[old.txt:1-5] More content."
+    page = WikiPage(
+        title="P", tags=[], content=content,
+        status="active", confidence="high", sources=[],
+    )
+    ctx = _make_ctx_for_tool({"my-page": page})
+    result = await tool_apply_citation_fixes(
+        ctx,
+        page_slug="my-page",
+        fixes=[{"old_citation": "^[old.txt:1-5]", "new_citation": "^[new.txt:1-5]"}],
+    )
+    assert result["status"] == "success"
+    assert result["changes"] == 1
+    # Verify the page was written with the corrected content
+    call_args = ctx.store.write_page.call_args
+    written_page: WikiPage = call_args[0][1]
+    assert "^[new.txt:1-5]" in written_page.content
+    assert "^[old.txt:1-5]" not in written_page.content
+
+
+@pytest.mark.asyncio
+async def test_apply_citation_fixes_remove(tmp_path):
+    """new_citation=null removes the marker, keeping surrounding prose."""
+    content = "A claim.^[old.txt:1-5] More prose."
+    page = WikiPage(
+        title="P", tags=[], content=content,
+        status="active", confidence="high", sources=[],
+    )
+    ctx = _make_ctx_for_tool({"my-page": page})
+    result = await tool_apply_citation_fixes(
+        ctx,
+        page_slug="my-page",
+        fixes=[{"old_citation": "^[old.txt:1-5]", "new_citation": None}],
+    )
+    assert result["status"] == "success"
+    assert result["changes"] == 1
+    call_args = ctx.store.write_page.call_args
+    written_page: WikiPage = call_args[0][1]
+    assert "^[old.txt:1-5]" not in written_page.content
+    # Surrounding prose must survive
+    assert "A claim." in written_page.content
+    assert "More prose." in written_page.content

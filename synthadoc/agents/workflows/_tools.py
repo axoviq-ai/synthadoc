@@ -478,6 +478,115 @@ async def tool_find_broken_wikilinks(
     return result
 
 
+async def tool_find_broken_citations(
+    ctx: "WorkflowContext",
+    page_slug: str | None = None,
+) -> dict:
+    """Scan wiki pages for broken source citation markers.
+
+    Returns a dict with keys: pages, total_issues, scanned.
+    """
+    from synthadoc.agents.lint_agent import find_broken_citation_refs as _find_broken_cite
+    from pathlib import Path as _Path
+
+    extracted_dir = _Path(ctx.wiki_root) / ".synthadoc" / "extracted"
+
+    all_states = await ctx.audit_db.get_live_page_states(ctx.store.page_exists)
+    active_slugs: set[str] = {p["slug"] for p in all_states if p.get("state") == "active"}
+
+    if page_slug is not None:
+        scan_slugs = [page_slug] if page_slug in active_slugs else []
+        scope_label = f"page '{page_slug}'"
+    else:
+        scan_slugs = sorted(active_slugs)
+        n = len(active_slugs)
+        scope_label = f"{n} active page{'s' if n != 1 else ''}"
+
+    await ctx.send_sse_event(
+        "tool_progress",
+        {"tool": "find_broken_citations",
+         "message": f"Scanning {scope_label} for broken citation markers..."},
+    )
+
+    broken_by_slug = _find_broken_cite(
+        ctx.store, extracted_dir, slugs=scan_slugs if scan_slugs else None
+    )
+
+    pages_with_issues: list[dict] = []
+    total_issues = 0
+    for slug in sorted(broken_by_slug):
+        page = ctx.store.read_page(slug)
+        page_sources: list[str] = []
+        if page and page.sources:
+            from synthadoc.agents.lint_agent import _citation_source_names
+            for s in page.sources:
+                page_sources.extend(sorted(_citation_source_names(s.file)))
+        pages_with_issues.append({
+            "slug": slug,
+            "title": page.title if page else None,
+            "issues": broken_by_slug[slug],
+            "page_sources": page_sources,
+        })
+        total_issues += len(broken_by_slug[slug])
+
+    n_pages = len(pages_with_issues)
+    if n_pages:
+        msg = (
+            f"Found {total_issues} broken citation{'s' if total_issues != 1 else ''} "
+            f"across {n_pages} page{'s' if n_pages != 1 else ''}"
+        )
+    else:
+        msg = f"No broken citations found on {scope_label}"
+
+    await ctx.send_sse_event("tool_progress", {"tool": "find_broken_citations", "message": msg})
+    return {"pages": pages_with_issues, "scanned": len(scan_slugs), "total_issues": total_issues}
+
+
+async def tool_apply_citation_fixes(
+    ctx: "WorkflowContext",
+    page_slug: str,
+    fixes: list[dict],
+) -> dict:
+    """Apply citation marker patches to a single wiki page.
+
+    Each entry in *fixes* is a dict with keys old_citation and new_citation.
+    new_citation=None removes the marker; a string value replaces it.
+    """
+    page = ctx.store.read_page(page_slug)
+    if page is None:
+        return {"status": "error", "error": f"Page {page_slug!r} not found"}
+
+    content = page.content or ""
+    total_changes = 0
+    for fix in fixes:
+        old_citation = fix.get("old_citation", "").strip()
+        new_citation = fix.get("new_citation") or None  # empty string treated as removal
+        if not old_citation:
+            continue
+        if new_citation is not None:
+            updated = content.replace(old_citation, new_citation)
+        else:
+            updated = content.replace(old_citation, "")
+        if updated != content:
+            total_changes += 1
+            content = updated
+
+    if total_changes == 0:
+        return {"status": "success", "changes": 0, "page": page_slug}
+
+    page.content = content
+    with ctx.store.page_lock(page_slug):
+        ctx.store.write_page(page_slug, page)
+
+    n = total_changes
+    await ctx.send_sse_event(
+        "tool_progress",
+        {"tool": "apply_citation_fixes",
+         "message": f"{page_slug}: {n} citation{'s' if n != 1 else ''} fixed"},
+    )
+    return {"status": "success", "changes": total_changes, "page": page_slug}
+
+
 async def tool_apply_link_fixes(
     ctx: "WorkflowContext",
     page_slug: str,
