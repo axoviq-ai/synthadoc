@@ -1421,6 +1421,201 @@ async def test_ingest_lint_cli_path_workflow_b_no_source(tmp_path):
     assert any("cannot re-ingest" in t.lower() for t in texts)
 
 
+# ── OrphanResolverWorkflow CLI path ──────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_orphan_resolver_cli_path_no_orphans(tmp_path):
+    """tool_find_orphaned_pages returns empty → early exit, no confirm called."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = OrphanResolverWorkflow()
+
+    with _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_find_orphaned_pages",
+        new=_AsyncMock(return_value={"orphans": [], "count": 0}),
+    ), _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_estimate_and_confirm",
+        new=_AsyncMock(),
+    ) as mock_estimate:
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "run orphan resolver", MagicMock()):
+            events.append(evt)
+
+    mock_estimate.assert_not_called()
+    texts = [e["data"]["text"] for e in events if e["event"] == "token"]
+    assert any("no active orphaned pages" in t.lower() for t in texts)
+    assert "final_text" in [e["event"] for e in events]
+
+
+@pytest.mark.asyncio
+async def test_orphan_resolver_cli_path_cancelled(tmp_path):
+    """tool_estimate_and_confirm returns false → no resolution attempted."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = OrphanResolverWorkflow()
+
+    with _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_find_orphaned_pages",
+        new=_AsyncMock(return_value={"orphans": ["orphan-a"], "count": 1}),
+    ), _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_estimate_and_confirm",
+        new=_AsyncMock(return_value={"confirmed": False}),
+    ), _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_search_orphan_candidates",
+        new=_AsyncMock(),
+    ) as mock_search:
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "run orphan resolver", MagicMock()):
+            events.append(evt)
+
+    mock_search.assert_not_called()
+    texts = [e["data"]["text"] for e in events if e["event"] == "token"]
+    assert any("cancel" in t.lower() for t in texts)
+
+
+@pytest.mark.asyncio
+async def test_orphan_resolver_cli_path_slug_already_resolved(tmp_path):
+    """--slug page that is already linked → early exit without cost estimate."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = OrphanResolverWorkflow()
+
+    with _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_verify_orphan_resolved",
+        new=_AsyncMock(return_value={"resolved": True, "linked_by": ["some-page"]}),
+    ), _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_estimate_and_confirm",
+        new=_AsyncMock(),
+    ) as mock_estimate:
+        events = []
+        async for evt in wf.run_for_cli_provider(
+            ctx, "run orphan resolver --slug my-page", MagicMock()
+        ):
+            events.append(evt)
+
+    mock_estimate.assert_not_called()
+    texts = [e["data"]["text"] for e in events if e["event"] == "token"]
+    assert any("not an active orphan" in t.lower() for t in texts)
+    assert any("some-page" in t for t in texts)
+
+
+@pytest.mark.asyncio
+async def test_orphan_resolver_cli_path_resolves_orphan(tmp_path):
+    """Happy path: BM25 finds candidate, LLM inserts link, apply succeeds, verify resolves."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+    from synthadoc.providers.base import CompletionResponse
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = OrphanResolverWorkflow()
+
+    fake_provider = MagicMock()
+    fake_provider.complete = _AsyncMock(return_value=CompletionResponse(
+        text="# Candidate\nSee also [[orphan-page]].\n",
+        input_tokens=100, output_tokens=20,
+    ))
+
+    # tool_verify_orphan_resolved is called 3 times:
+    #   1. pre-check in run_for_cli_provider  → False (page is still orphaned)
+    #   2. post-apply inside _cli_resolve_orphan → True (link now in graph)
+    #   3. confirm linked_by in run_for_cli_provider after status=="resolved"
+    verify_calls = [
+        {"resolved": False, "linked_by": []},
+        {"resolved": True,  "linked_by": ["candidate-page"]},
+        {"resolved": True,  "linked_by": ["candidate-page"]},
+    ]
+    verify_iter = iter(verify_calls)
+
+    with _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_find_orphaned_pages",
+        new=_AsyncMock(return_value={"orphans": ["orphan-page"], "count": 1}),
+    ), _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_estimate_and_confirm",
+        new=_AsyncMock(return_value={"confirmed": True, "orphan_count": 1}),
+    ), _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_verify_orphan_resolved",
+        new=_AsyncMock(side_effect=lambda *a, **kw: verify_iter.__next__()),
+    ), _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_search_orphan_candidates",
+        new=_AsyncMock(return_value={
+            "candidates": ["candidate-page"],
+            "strategy": "title_bm25",
+            "tried_slugs": ["orphan-page", "candidate-page"],
+        }),
+    ), _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_read_page_content",
+        new=_AsyncMock(return_value={
+            "slug": "candidate-page",
+            "content": "# Candidate\nSome content.\n",
+        }),
+    ), _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_propose_and_apply",
+        new=_AsyncMock(return_value={"applied": True, "diff_preview": "..."}),
+    ):
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "run orphan resolver", fake_provider):
+            events.append(evt)
+
+    token_text = "".join(e["data"]["text"] for e in events if e["event"] == "token")
+    assert "orphan-page" in token_text
+    assert "Resolved" in token_text
+    assert "candidate-page" in token_text
+    assert "final_text" in [e["event"] for e in events]
+
+
+@pytest.mark.asyncio
+async def test_orphan_resolver_cli_path_no_candidates(tmp_path):
+    """Both BM25 strategies return no candidates → orphan marked unresolved."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = OrphanResolverWorkflow()
+
+    with _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_find_orphaned_pages",
+        new=_AsyncMock(return_value={"orphans": ["isolated-page"], "count": 1}),
+    ), _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_estimate_and_confirm",
+        new=_AsyncMock(return_value={"confirmed": True, "orphan_count": 1}),
+    ), _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_verify_orphan_resolved",
+        new=_AsyncMock(return_value={"resolved": False, "linked_by": []}),
+    ), _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_search_orphan_candidates",
+        new=_AsyncMock(return_value={
+            "candidates": [], "strategy": "title_bm25", "tried_slugs": [],
+        }),
+    ), _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_notify",
+        new=_AsyncMock(return_value={"sent": True}),
+    ) as mock_notify:
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "run orphan resolver", MagicMock()):
+            events.append(evt)
+
+    mock_notify.assert_called_once()
+    token_text = "".join(e["data"]["text"] for e in events if e["event"] == "token")
+    assert "isolated-page" in token_text
+    assert "Unresolved" in token_text
+
+
 # ── format helper ─────────────────────────────────────────────────────────────
 
 def test_format_schedule_list_empty():
