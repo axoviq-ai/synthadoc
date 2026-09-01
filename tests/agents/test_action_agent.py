@@ -1421,6 +1421,174 @@ async def test_ingest_lint_cli_path_workflow_b_no_source(tmp_path):
     assert any("cannot re-ingest" in t.lower() for t in texts)
 
 
+# ── BrokenWikilinksWorkflow CLI path ─────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_broken_wikilinks_cli_path_no_broken(tmp_path):
+    """Full-wiki scan finds zero broken links → clean-wiki summary, no confirm."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.broken_wikilinks import BrokenWikilinksWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = BrokenWikilinksWorkflow()
+
+    with _patch(
+        "synthadoc.agents.workflows.broken_wikilinks.tool_find_broken_wikilinks",
+        new=_AsyncMock(return_value={"pages": [], "scanned": 12, "total_broken": 0}),
+    ), _patch(
+        "synthadoc.agents.workflows.broken_wikilinks.tool_confirm",
+        new=_AsyncMock(),
+    ) as mock_confirm:
+        events = []
+        async for evt in wf.run_for_cli_provider(
+            ctx, "fix broken wikilinks", MagicMock()
+        ):
+            events.append(evt)
+
+    mock_confirm.assert_not_called()
+    texts = [e["data"]["text"] for e in events if e["event"] == "token"]
+    assert any("no broken wikilinks" in t.lower() for t in texts)
+    assert any("12" in t for t in texts)
+    assert "final_text" in [e["event"] for e in events]
+
+
+@pytest.mark.asyncio
+async def test_broken_wikilinks_cli_path_single_page_clean(tmp_path):
+    """Single-page mode (--slug): uses page_title in the clean message."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.broken_wikilinks import BrokenWikilinksWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = BrokenWikilinksWorkflow()
+
+    with _patch(
+        "synthadoc.agents.workflows.broken_wikilinks.tool_find_broken_wikilinks",
+        new=_AsyncMock(return_value={
+            "pages": [], "scanned": 1, "total_broken": 0,
+            "page_title": "Alan Turing",
+        }),
+    ):
+        events = []
+        async for evt in wf.run_for_cli_provider(
+            ctx, "fix broken wikilinks --slug alan-turing", MagicMock()
+        ):
+            events.append(evt)
+
+    texts = [e["data"]["text"] for e in events if e["event"] == "token"]
+    assert any("Alan Turing" in t for t in texts)
+
+
+@pytest.mark.asyncio
+async def test_broken_wikilinks_cli_path_cancelled(tmp_path):
+    """confirm returns false → no apply_link_fixes, no lint."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.broken_wikilinks import BrokenWikilinksWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = BrokenWikilinksWorkflow()
+
+    scan_result = {
+        "pages": [{"slug": "page-a", "broken_links": [{"ref": "nope", "suggestion": None}]}],
+        "scanned": 5, "total_broken": 1,
+    }
+
+    with _patch(
+        "synthadoc.agents.workflows.broken_wikilinks.tool_find_broken_wikilinks",
+        new=_AsyncMock(return_value=scan_result),
+    ), _patch(
+        "synthadoc.agents.workflows.broken_wikilinks.tool_confirm",
+        new=_AsyncMock(return_value={"confirmed": False}),
+    ), _patch(
+        "synthadoc.agents.workflows.broken_wikilinks.tool_apply_link_fixes",
+        new=_AsyncMock(),
+    ) as mock_apply, _patch(
+        "synthadoc.agents.workflows.broken_wikilinks.tool_run_lint",
+        new=_AsyncMock(),
+    ) as mock_lint:
+        events = []
+        async for evt in wf.run_for_cli_provider(
+            ctx, "fix broken wikilinks", MagicMock()
+        ):
+            events.append(evt)
+
+    mock_apply.assert_not_called()
+    mock_lint.assert_not_called()
+    texts = [e["data"]["text"] for e in events if e["event"] == "token"]
+    assert any("cancel" in t.lower() for t in texts)
+
+
+@pytest.mark.asyncio
+async def test_broken_wikilinks_cli_path_applies_fixes(tmp_path):
+    """Happy path: scan finds two broken refs (one with suggestion, one without),
+    confirms, applies, runs lint, checks page states, and produces summary."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.broken_wikilinks import BrokenWikilinksWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = BrokenWikilinksWorkflow()
+
+    scan_result = {
+        "pages": [{
+            "slug": "page-a",
+            "broken_links": [
+                {"ref": "turing",    "suggestion": "alan-turing"},   # rename
+                {"ref": "ghost-ref", "suggestion": None},             # remove
+            ],
+        }],
+        "scanned": 8,
+        "total_broken": 2,
+    }
+
+    applied_fixes: list[dict] = []
+
+    async def _fake_apply(ctx, page_slug, fixes):
+        applied_fixes.extend(fixes)
+        return {"status": "success", "changes": len(fixes), "page": page_slug}
+
+    with _patch(
+        "synthadoc.agents.workflows.broken_wikilinks.tool_find_broken_wikilinks",
+        new=_AsyncMock(return_value=scan_result),
+    ), _patch(
+        "synthadoc.agents.workflows.broken_wikilinks.tool_confirm",
+        new=_AsyncMock(return_value={"confirmed": True}),
+    ), _patch(
+        "synthadoc.agents.workflows.broken_wikilinks.tool_apply_link_fixes",
+        new=_fake_apply,
+    ), _patch(
+        "synthadoc.agents.workflows.broken_wikilinks.tool_run_lint",
+        new=_AsyncMock(return_value={"status": "success", "message": "all clean"}),
+    ), _patch(
+        "synthadoc.agents.workflows.broken_wikilinks.tool_get_page_states",
+        new=_AsyncMock(return_value={
+            "pages": [{"slug": "page-a", "state": "active"}]
+        }),
+    ):
+        events = []
+        async for evt in wf.run_for_cli_provider(
+            ctx, "fix broken wikilinks", MagicMock()
+        ):
+            events.append(evt)
+
+    # Both fixes submitted: rename and remove
+    rename = next((f for f in applied_fixes if f["old_ref"] == "turing"), None)
+    assert rename is not None and rename["new_ref"] == "alan-turing"
+    remove = next((f for f in applied_fixes if f["old_ref"] == "ghost-ref"), None)
+    assert remove is not None and remove["new_ref"] is None
+
+    token_text = "".join(e["data"]["text"] for e in events if e["event"] == "token")
+    assert "page-a" in token_text
+    assert "active" in token_text
+    assert "final_text" in [e["event"] for e in events]
+
+
 # ── OrphanResolverWorkflow CLI path ──────────────────────────────────────────
 
 @pytest.mark.asyncio
