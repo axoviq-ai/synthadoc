@@ -240,7 +240,7 @@ async def tool_poll_job(
         if job is not None and job.status.is_terminal:
             if job.status == JobStatus.COMPLETED:
                 return {
-                    "status": "success",
+                    "status": ToolStatus.SUCCESS,
                     "message": f"Job {job_id} completed successfully",
                 }
             return {
@@ -573,7 +573,7 @@ async def tool_apply_citation_fixes(
     """
     page = ctx.store.read_page(page_slug)
     if page is None:
-        return {"status": "error", "error": f"Page {page_slug!r} not found", "changes": 0, "page": page_slug}
+        return {"status": ToolStatus.ERROR, "error": f"Page {page_slug!r} not found", "changes": 0, "page": page_slug}
 
     content = page.content or ""
     total_changes = 0
@@ -595,7 +595,7 @@ async def tool_apply_citation_fixes(
             content = updated
 
     if total_changes == 0:
-        return {"status": "success", "changes": 0, "page": page_slug}
+        return {"status": ToolStatus.SUCCESS, "changes": 0, "page": page_slug}
 
     page.content = content
     with ctx.store.page_lock(page_slug):
@@ -607,7 +607,7 @@ async def tool_apply_citation_fixes(
         {"tool": "apply_citation_fixes",
          "message": f"{page_slug}: {n} citation{'s' if n != 1 else ''} fixed"},
     )
-    return {"status": "success", "changes": total_changes, "page": page_slug}
+    return {"status": ToolStatus.SUCCESS, "changes": total_changes, "page": page_slug}
 
 
 async def tool_apply_link_fixes(
@@ -629,7 +629,7 @@ async def tool_apply_link_fixes(
     """
     page = ctx.store.read_page(page_slug)
     if page is None:
-        return {"status": "error", "error": f"Page {page_slug!r} not found"}
+        return {"status": ToolStatus.ERROR, "error": f"Page {page_slug!r} not found"}
 
     content = page.content
     total_changes = 0
@@ -642,7 +642,7 @@ async def tool_apply_link_fixes(
         total_changes += n
 
     if total_changes == 0:
-        return {"status": "success", "changes": 0, "page": page_slug}
+        return {"status": ToolStatus.SUCCESS, "changes": 0, "page": page_slug}
 
     page.content = content
     with ctx.store.page_lock(page_slug):
@@ -653,7 +653,7 @@ async def tool_apply_link_fixes(
         {"tool": "apply_link_fixes",
          "message": f"✓ {page_slug}: {total_changes} link{'s' if total_changes != 1 else ''} fixed"},
     )
-    return {"status": "success", "changes": total_changes, "page": page_slug}
+    return {"status": ToolStatus.SUCCESS, "changes": total_changes, "page": page_slug}
 
 
 async def tool_get_scaffold_preview(ctx: "WorkflowContext") -> dict:
@@ -745,7 +745,7 @@ async def tool_run_scaffold(ctx: "WorkflowContext", domain: str) -> dict:
          "message": f"✓ Scaffold complete — {categories_updated} page{'s' if categories_updated != 1 else ''} categorised"},
     )
     return {
-        "status": "success",
+        "status": ToolStatus.SUCCESS,
         "domain": domain,
         "categories_updated": categories_updated,
         "routing_regenerated": routing_regenerated,
