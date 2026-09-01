@@ -217,8 +217,9 @@ def test_clean_slug_no_broken_citations():
             "Clean content with no citation markers.",
         )
 
-        # Decline the gate so that any accidental apply_citation_fixes call is
-        # denied — the gate should not fire at all for a clean page.
+        # Decline any gate that fires — the gate should not fire at all for
+        # a clean page, but we also decline to avoid blocking if the LLM
+        # strays to a real wiki page.
         events = _run_workflow(
             f"fix broken citations --slug {_CLEAN_SLUG}",
             confirm_response=False,
@@ -226,12 +227,14 @@ def test_clean_slug_no_broken_citations():
 
         assert events, "No SSE events received from workflow"
 
-        # The confirm gate must not have fired: apply_citation_fixes is only
-        # gated when there are actual fixes to apply.
+        # The confirm gate must not have fired about the clean test page.
+        # If a gate fires about a real pre-existing wiki issue (workflow went
+        # off-script in single-page mode) that is also a failure — the
+        # single-page mode section of the system prompt must constrain the scan.
         confirm_events = [e for e in events if e["event"] == "confirm_request"]
         assert not confirm_events, (
-            f"apply_citation_fixes was gated on a citation-free page — "
-            f"the workflow should have exited cleanly.\n"
+            f"apply_citation_fixes was gated in single-page mode for a citation-free page — "
+            f"the workflow must not run a full-wiki scan when --slug is given.\n"
             f"Events: {events}"
         )
 

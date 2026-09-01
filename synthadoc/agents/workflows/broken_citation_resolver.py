@@ -80,9 +80,18 @@ get_wiki_status
   before any plain-text output.
   Output: {"active": int, "draft": int, "stale": int, "contradicted": int, "archived": int}
 
+━━━ SINGLE-PAGE MODE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+When the initial message specifies a page_slug, operate in single-page mode:
+- Call find_broken_citations EXACTLY ONCE with that page_slug.
+- If total_issues == 0: respond "No broken citations found on '<slug>'." STOP.
+- Do NOT call find_broken_citations without a page_slug in single-page mode.
+- Do NOT scan the whole wiki.
+- STEP 5 summary covers only the specified page.
+All other steps (STEP 3-5) apply normally for that one page.
+
 ━━━ WORKFLOW STEPS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-STEP 1 — Discover
+STEP 1 — Discover (full-wiki mode only; skip if a page_slug was given)
   Call find_broken_citations (no arguments) for a full-wiki scan.
 
 STEP 2 — Check for work
@@ -191,8 +200,10 @@ class BrokenCitationResolverWorkflow(AgenticWorkflow):
             slug = slug_match.group(1)
             return (
                 f"Scan for broken citation markers.\n"
-                f"Single-page mode: check only the '{slug}' page.\n"
-                f"Pass page_slug='{slug}' to find_broken_citations."
+                f"⚠ SINGLE-PAGE MODE: check ONLY the '{slug}' page.\n"
+                f"Call find_broken_citations with page_slug='{slug}'.\n"
+                f"If total_issues == 0, respond with plain text and STOP — "
+                f"do NOT call find_broken_citations without a page_slug."
             )
         return user_input
 
