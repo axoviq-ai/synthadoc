@@ -74,14 +74,12 @@ def _ingest_page(
     content: str,
     sources: list[str] | None = None,
 ) -> None:
-    """Write a page to the wiki filesystem and register it as active in the audit DB.
+    """Write a page to the wiki filesystem so it is visible to the BCR workflow.
 
-    ``tool_find_broken_citations`` filters candidate pages through
-    ``audit_db.get_live_page_states()`` before calling the pure scanner, so a
-    filesystem-only write is invisible to the workflow.  Writing the markdown
-    file first (so the page exists on disk) and then calling
-    ``POST /lifecycle/transition`` registers it as active in both the frontmatter
-    and the audit DB.
+    ``tool_find_broken_citations`` uses ``store.read_page()`` directly to check
+    whether a page is active — it does NOT filter through the audit DB.  Writing
+    the page file with ``status: active`` in its frontmatter is therefore
+    sufficient to make it visible to the workflow.
 
     *sources* is a list of source filenames.  They are serialised as full
     SourceRef dicts so that ``_sources_from_dicts`` (called by WikiStorage) can
@@ -94,7 +92,7 @@ def _ingest_page(
     ]
     fm: dict = {
         "title": title,
-        "status": "active",   # find_broken_citation_refs checks page.status directly
+        "status": "active",   # tool_find_broken_citations reads page.status directly
         "tags": [],
         "confidence": "high",
         "sources": source_entries,
@@ -103,12 +101,6 @@ def _ingest_page(
     }
     yaml_str = yaml.dump(fm, default_flow_style=False, allow_unicode=True)
     page_path.write_text(f"---\n{yaml_str}---\n\n{content}\n", encoding="utf-8")
-    # Register as active in the audit DB so tool_find_broken_citations includes it.
-    _api("/lifecycle/transition", "POST", {
-        "slug": slug,
-        "to_state": "active",
-        "reason": "BCR live test setup",
-    })
 
 
 def _delete_page(wiki_root: Path, slug: str) -> None:
