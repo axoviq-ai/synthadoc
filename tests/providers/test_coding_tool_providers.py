@@ -183,10 +183,11 @@ def test_claude_build_system_args_with_system():
 
 
 def test_claude_build_system_args_no_system():
-    """No system prompt → --no-system-prompt to suppress default Claude Code context."""
+    """No system prompt → no extra flags (--no-system-prompt not universally supported)."""
     provider = _make_claude_provider()
     args = provider._build_system_args(None)
-    assert "--no-system-prompt" in args
+    assert args == []
+    assert "--no-system-prompt" not in args
     assert "--system-prompt" not in args
 
 

@@ -251,8 +251,9 @@ class ClaudeCodeCLIProvider(CodingToolCLIProvider):
 
     Fix: pass the system prompt via ``--system-prompt`` (replacing the
     default Claude Code agent context) and send only user messages via stdin.
-    When no system prompt is provided, ``--no-system-prompt`` suppresses the
-    default agent context so responses are predictable.
+    When no system prompt is provided no extra system flags are added — Claude
+    Code uses its default context, which is acceptable for single-call tier-1
+    agents (``--no-system-prompt`` is not supported by all Claude Code versions).
     """
     _tool_binary = "claude"
 
@@ -263,16 +264,24 @@ class ClaudeCodeCLIProvider(CodingToolCLIProvider):
         return cmd
 
     def _build_system_args(self, system: Optional[str]) -> list[str]:
-        """Pass system prompt via ``--system-prompt`` flag; suppress default context."""
+        """Pass system prompt via ``--system-prompt`` flag when one is provided.
+
+        When *system* is ``None`` or empty, no extra flags are added — Claude
+        Code uses its default agent context.  This is acceptable for tier-1
+        single-call agents (ingest, lint, etc.) which do not rely on a precise
+        system boundary.
+
+        ``--no-system-prompt`` is intentionally not used: it is not present in
+        all Claude Code versions and causes an "unknown option" exit-code 1
+        when the flag is absent.
+        """
         if system:
             # Replaces Claude Code's default agent system prompt (including any
             # CLAUDE.md collaboration guidelines that would otherwise instruct
             # the subprocess to "pause and discuss" rather than execute the
             # workflow's JSON tool-call protocol).
             return ["--system-prompt", system]
-        # No system prompt — suppress Claude Code's default agent context so
-        # there are no unexpected behavioural instructions.
-        return ["--no-system-prompt"]
+        return []
 
     def _build_prompt(self, messages: list[Message], system: Optional[str]) -> str:
         """Return user messages only — system is passed via ``--system-prompt`` flag."""
