@@ -3,7 +3,7 @@
 import pytest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
-from synthadoc.agents.lint_agent import LintAgent, LintReport, find_orphan_slugs, find_broken_wikilink_refs, _fix_dangling_wikilinks, LINT_SKIP_SLUGS, LINT_SKIP_SOURCE_SLUGS, _parse_adversarial_response, _check_page_citations, _citation_source_names, read_current_lint_state
+from synthadoc.agents.lint_agent import LintAgent, LintReport, find_orphan_slugs, find_broken_wikilink_refs, _fix_dangling_wikilinks, LINT_SKIP_SLUGS, LINT_SKIP_SOURCE_SLUGS, _parse_adversarial_response, _check_page_citations, _citation_source_names, read_current_lint_state, _load_adv_hash_cache, _save_adv_hash_cache
 from synthadoc.providers.base import CompletionResponse
 from synthadoc.storage.wiki import WikiStorage, WikiPage, SourceRef
 from synthadoc.storage.log import LogWriter, AuditDB
@@ -436,6 +436,27 @@ def test_parse_adversarial_response_skips_entries_without_concern():
     result = _parse_adversarial_response('[{"claim": "X", "concern": ""}, {"claim": "Y", "concern": "Valid"}]')
     assert len(result) == 1
     assert result[0]["claim"] == "Y"
+
+
+def test_parse_adversarial_response_filters_no_issue_concerns():
+    """'No issue', 'Defensible', 'N/A' etc. are not real warnings and must be dropped."""
+    payload = (
+        '[{"claim": "A", "concern": "No issue"},'
+        ' {"claim": "B", "concern": "Defensible and nuanced"},'
+        ' {"claim": "C", "concern": "N/A"},'
+        ' {"claim": "D", "concern": "Accurate"},'
+        ' {"claim": "E", "concern": "Clearly overstated claim here"}]'
+    )
+    result = _parse_adversarial_response(payload)
+    # Only the one genuine concern survives
+    assert len(result) == 1
+    assert result[0]["claim"] == "E"
+
+
+def test_parse_adversarial_response_no_issue_case_insensitive():
+    """'no issue' filter is case-insensitive."""
+    result = _parse_adversarial_response('[{"claim": "X", "concern": "NO ISSUE"}]')
+    assert result == []
 
 
 def test_parse_adversarial_response_with_preamble_text():
@@ -1844,3 +1865,56 @@ async def test_auto_resolve_proceeds_when_warnings_below_threshold(tmp_wiki):
     assert refreshed.status == "active"
     assert report.adversarial_gate_skipped_resolve == []
     provider.complete.assert_called_once()
+
+
+# ──────────────────────────────────────────────────────────────
+# Targeted coverage tests for previously-uncovered branches
+# ──────────────────────────────────────────────────────────────
+
+def test_parse_adversarial_response_fallback_bracket_invalid_json():
+    """Fallback regex finds [...] block but it contains invalid JSON (lines 393-394)."""
+    # The direct json.loads fails; the regex finds "[broken json{]"; that also fails.
+    result = _parse_adversarial_response('Based on review [broken json{]')
+    assert result == []
+
+
+def test_read_current_lint_state_skips_none_page(tmp_path):
+    """read_current_lint_state skips slugs where read_page returns None (line 431)."""
+    from unittest.mock import MagicMock
+    store = MagicMock()
+    # list_pages returns a slug but read_page can't find it
+    store.list_pages.return_value = ["ghost-slug"]
+    store.read_page.return_value = None
+    result = read_current_lint_state(store)
+    # No crash; all collections should be empty
+    assert result.contradicted == []
+    assert result.orphans == []
+
+
+def test_load_adv_hash_cache_reads_valid_file(tmp_path):
+    """_load_adv_hash_cache returns dict when the cache file is valid JSON (lines 488-490)."""
+    cache_dir = tmp_path / ".synthadoc"
+    cache_dir.mkdir(parents=True)
+    (cache_dir / "adv_hashes.json").write_text('{"slug-a": "abc123"}', encoding="utf-8")
+    result = _load_adv_hash_cache(tmp_path)
+    assert result == {"slug-a": "abc123"}
+
+
+def test_load_adv_hash_cache_returns_empty_on_corrupt_file(tmp_path):
+    """_load_adv_hash_cache returns {} when the cache file is not valid JSON (lines 491-492)."""
+    cache_dir = tmp_path / ".synthadoc"
+    cache_dir.mkdir(parents=True)
+    (cache_dir / "adv_hashes.json").write_text("not json", encoding="utf-8")
+    result = _load_adv_hash_cache(tmp_path)
+    assert result == {}
+
+
+def test_save_adv_hash_cache_ignores_write_error(tmp_path):
+    """_save_adv_hash_cache silently swallows write errors (lines 501-502)."""
+    # Point the cache path at a directory so write_text fails
+    cache_dir = tmp_path / ".synthadoc"
+    cache_dir.mkdir(parents=True)
+    # Create adv_hashes.json as a *directory* so write fails
+    (cache_dir / "adv_hashes.json").mkdir()
+    # Should not raise
+    _save_adv_hash_cache(tmp_path, {"slug": "hash"})

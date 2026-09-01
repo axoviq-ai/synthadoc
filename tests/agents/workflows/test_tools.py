@@ -12,6 +12,7 @@ import pytest
 from synthadoc.agents.workflows._base import WorkflowContext
 from synthadoc.agents.workflows._tools import (
     _apply_single_fix,
+    _load_gate_threshold,
     _normalize_slug,
     _resolve_source_path,
     _resolve_stale_pages,
@@ -273,6 +274,25 @@ async def test_confirm_tool_blocks_until_response():
     result = await tool_confirm(ctx, "Are you sure?")
     assert result["confirmed"] is True
     assert any(e["event"] == "confirm_request" for e in events)
+
+
+async def test_confirm_tool_includes_diff_in_payload():
+    """When diff is provided, it is included in the confirm_request SSE payload (line 787)."""
+    ctx, events = _make_ctx()
+
+    async def _resolve():
+        await asyncio.sleep(0.05)
+        gate = ctx.confirm_registry.get("s1")
+        if gate:
+            ctx.confirm_result_registry["s1"] = True
+            gate.set()
+
+    asyncio.create_task(_resolve())
+    result = await tool_confirm(ctx, "Apply fix?", diff="--- a\n+++ b\n@@ -1 +1 @@\n-old\n+new")
+    assert result["confirmed"] is True
+    confirm_events = [e for e in events if e["event"] == "confirm_request"]
+    assert confirm_events, "confirm_request SSE must be sent"
+    assert "diff" in confirm_events[0]["data"], "diff must be in payload when provided"
 
 
 # ---------------------------------------------------------------------------
@@ -1027,6 +1047,58 @@ async def test_find_broken_wikilinks_skips_page_with_empty_content():
 
 
 # ---------------------------------------------------------------------------
+# tool_find_broken_wikilinks — single-page mode (lines 433-434, 454, 483)
+# ---------------------------------------------------------------------------
+
+async def test_find_broken_wikilinks_single_page_mode_active():
+    """Single-page mode returns results scoped to the requested active slug."""
+    audit_db = MagicMock()
+    audit_db.get_live_page_states = AsyncMock(
+        return_value=[
+            {"slug": "target-page", "state": "active"},
+            {"slug": "other-page",  "state": "active"},
+        ]
+    )
+    store = MagicMock()
+    store.all_slugs = MagicMock(return_value=["target-page", "other-page"])
+    store.page_exists = MagicMock(return_value=True)
+
+    target = MagicMock()
+    target.content = "Link to [[totally-nonexistent-slug]] here."
+    target.title = "Target Title"
+    store.read_page = MagicMock(return_value=target)
+
+    ctx, _ = _make_ctx(audit_db=audit_db, store=store)
+    result = await tool_find_broken_wikilinks(ctx, page_slug="target-page")
+
+    # Single-page mode must include a page_title in the result
+    assert "page_title" in result
+    assert result["page_title"] == "Target Title"
+    # Only the target was scanned
+    assert result["scanned"] == 1
+    assert result["total_broken"] == 1
+
+
+async def test_find_broken_wikilinks_single_page_mode_inactive_returns_empty():
+    """Single-page mode returns empty result when the requested slug is inactive."""
+    audit_db = MagicMock()
+    audit_db.get_live_page_states = AsyncMock(
+        return_value=[{"slug": "inactive-page", "state": "stale"}]
+    )
+    store = MagicMock()
+    store.all_slugs = MagicMock(return_value=["inactive-page"])
+    store.page_exists = MagicMock(return_value=True)
+    store.read_page = MagicMock()
+
+    ctx, _ = _make_ctx(audit_db=audit_db, store=store)
+    result = await tool_find_broken_wikilinks(ctx, page_slug="inactive-page")
+
+    assert result["total_broken"] == 0
+    assert result["pages"] == []
+    assert result["scanned"] == 0
+
+
+# ---------------------------------------------------------------------------
 # tool_apply_link_fixes — empty old_ref skip branch (line 458)
 # ---------------------------------------------------------------------------
 
@@ -1236,3 +1308,69 @@ async def test_tool_run_scaffold_handles_get_job_exception_after_poll(mock_confi
     assert result["status"] == "success"
     assert result["categories_updated"] == 0
     assert result["routing_regenerated"] is False
+
+
+# ---------------------------------------------------------------------------
+# _load_gate_threshold — config file paths (lines 843-847)
+# ---------------------------------------------------------------------------
+
+def test_load_gate_threshold_returns_value_from_config(tmp_path):
+    """_load_gate_threshold reads adversarial_gate_threshold from a valid config.toml."""
+    cfg_dir = tmp_path / ".synthadoc"
+    cfg_dir.mkdir(parents=True)
+    (cfg_dir / "config.toml").write_text(
+        "[lint]\nadversarial_gate_threshold = 5\nadversarial_max_per_page = 5\n",
+        encoding="utf-8",
+    )
+    result = _load_gate_threshold(tmp_path)
+    assert result == 5
+
+
+def test_load_gate_threshold_returns_none_for_malformed_config(tmp_path):
+    """_load_gate_threshold returns None when the config file is unparseable (lines 846-847)."""
+    cfg_dir = tmp_path / ".synthadoc"
+    cfg_dir.mkdir(parents=True)
+    (cfg_dir / "config.toml").write_text("not toml = {{{", encoding="utf-8")
+    result = _load_gate_threshold(tmp_path)
+    assert result is None
+
+
+def test_load_gate_threshold_returns_none_when_no_config(tmp_path):
+    """_load_gate_threshold returns None when config.toml does not exist."""
+    result = _load_gate_threshold(tmp_path)
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# tool_transition_lifecycle — audit_db exception is swallowed (lines 1034-1035)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_transition_lifecycle_set_page_state_exception_is_swallowed(tmp_path):
+    """set_page_state DB failure does not abort tool_transition_lifecycle (lines 1034-1035)."""
+    from synthadoc.agents.workflows._tools import tool_transition_lifecycle_state as tool_transition_lifecycle
+    from synthadoc.storage.wiki import WikiPage, WikiStorage
+
+    store = WikiStorage(tmp_path)
+    page = WikiPage(
+        title="P", tags=[], content="Body.", status="active",
+        confidence="high", sources=[],
+    )
+    store.write_page("my-page", page)
+
+    audit_db = MagicMock()
+    audit_db.set_page_state = AsyncMock(side_effect=RuntimeError("DB down"))
+    audit_db.record_lifecycle_event = AsyncMock()
+
+    ctx, _ = _make_ctx(audit_db=audit_db, store=store)
+    ctx.wiki_root = tmp_path
+
+    result = await tool_transition_lifecycle(
+        ctx,
+        slug="my-page",
+        to_state="stale",
+        reason="test forced stale",
+    )
+    assert result["success"] is True
+    # set_page_state raised but the result is still success
+    audit_db.set_page_state.assert_awaited_once()

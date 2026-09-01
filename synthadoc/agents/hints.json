@@ -213,6 +213,16 @@
         "What pages were added in the last 3 months?",
         "What pages were added this year?"
       ]
+    },
+    {
+      "keywords": ["broken citation", "citation error", "broken_ref", "malformed citation", "out of range", "citation marker", "source marker"],
+      "answer_keywords": ["broken citation", "broken citations", "broken_ref", "malformed", "out_of_range", "citation marker"],
+      "hints": [
+        "Fix broken citations",
+        "Run the citation resolver",
+        "Show my lint report",
+        "Scan for broken wikilinks"
+      ]
     }
   ]
 }

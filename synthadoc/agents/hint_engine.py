@@ -264,7 +264,9 @@ class HintEngine:
         1. "Run contradiction resolver" — when contradicted > 0
         2. "Re-ingest stale pages"     — when stale > 0
         3. "Run orphan resolver"       — when orphan > 0
-        4. Remaining chips from the mode pool (deduped)
+        4. "Scan for broken wikilinks" — when broken_wikilinks > 0
+        5. "Fix broken citations"      — when broken_citations > 0
+        6. Remaining chips from the mode pool (deduped)
         """
         pool = HintEngine.build_pool(mode)
         if context:
@@ -275,6 +277,10 @@ class HintEngine:
                 priority.append("Re-ingest stale pages")
             if context.get("orphan", 0) > 0:
                 priority.append("Run orphan resolver")
+            if context.get("broken_wikilinks", 0) > 0:
+                priority.append("Scan for broken wikilinks")
+            if context.get("broken_citations", 0) > 0:
+                priority.append("Fix broken citations")
             if priority:
                 seen = set(priority)
                 extras = [h for h in pool if h not in seen]
