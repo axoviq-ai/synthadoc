@@ -25,6 +25,12 @@ from synthadoc.agents.workflows._tools import (
 if TYPE_CHECKING:
     pass
 
+# Fuzzy-match cutoff for broken_ref citations — defined once so both the
+# system prompt (§STEP 4a) and the CLI-provider path use the identical value.
+_FUZZY_MATCH_CUTOFF = 0.72
+
+# _SYSTEM_PROMPT embeds _FUZZY_MATCH_CUTOFF via .replace() so the value
+# stays in sync with the Python implementation automatically.
 _SYSTEM_PROMPT = """\
 You are an agentic workflow executor for Synthadoc wiki maintenance.
 Your task is to scan all active wiki pages for broken ^[file:L-L] source citation
@@ -113,7 +119,7 @@ STEP 4 — Per-page fix loop
   For each page from STEP 1 (in the order returned):
 
   4a. Propose fixes for EACH issue on this page, using this strategy:
-      broken_ref: Use difflib.get_close_matches(citation_filename, page_sources, n=1, cutoff=0.72).
+      broken_ref: Use difflib.get_close_matches(citation_filename, page_sources, n=1, cutoff=$$FUZZY_CUTOFF$$).
                   If a match is found: propose corrected marker with matched filename; keep same line range.
                   new_citation = "^[matched_filename:start-end]"
                   If no match: propose removal. new_citation = null.
@@ -178,7 +184,7 @@ STEP 5 — Final summary
 4. new_citation=null is a valid, required action for malformed and out_of_range issues.
    Skipping apply_citation_fixes because no fuzzy match was found is WRONG — use null.
 5. Re-verification (step 4c) uses find_broken_citations(page_slug=slug), not run_lint.
-"""
+""".replace("$$FUZZY_CUTOFF$$", str(_FUZZY_MATCH_CUTOFF))
 
 
 class BrokenCitationResolverWorkflow(AgenticWorkflow):
@@ -277,7 +283,6 @@ class BrokenCitationResolverWorkflow(AgenticWorkflow):
             return
 
         # ── 2. Compute fixes (deterministic) ──────────────────────────────────
-        _CUTOFF = 0.72
         decisions: list[dict] = []
 
         for p in pages:
@@ -294,7 +299,7 @@ class BrokenCitationResolverWorkflow(AgenticWorkflow):
                     # Extract filename: "^[fname:start-end]" → "fname"
                     inner = citation.lstrip("^").lstrip("[").rstrip("]")
                     fname = inner.split(":")[0]
-                    matches = _difflib.get_close_matches(fname, sources, n=1, cutoff=_CUTOFF)
+                    matches = _difflib.get_close_matches(fname, sources, n=1, cutoff=_FUZZY_MATCH_CUTOFF)
                     if matches:
                         # Keep the same line range, replace only the filename
                         colon_idx = citation.index(":", len("^["))
@@ -353,7 +358,10 @@ class BrokenCitationResolverWorkflow(AgenticWorkflow):
             else:
                 failed.append((slug, result.get("error") or "unknown error"))
 
-        # ── 5. Summary ────────────────────────────────────────────────────────
+        # ── 5. Summary (mirrors system prompt §STEP 5) ────────────────────────
+        # Call get_wiki_status first — same requirement as the multi-turn path.
+        wiki_status = await tool_get_wiki_status(ctx)
+
         parts: list[str] = ["**Broken Citation Resolver — Complete**\n"]
 
         if fixed:
@@ -372,6 +380,11 @@ class BrokenCitationResolverWorkflow(AgenticWorkflow):
 
         if not fixed and not failed:
             parts.append("No changes were applied.")
+
+        # Wiki status counts — same footer as the multi-turn path's STEP 5 summary.
+        status_str = ", ".join(f"{k}: {v}" for k, v in wiki_status.items()
+                               if k not in ("tool", "message"))
+        parts.append(f"\nWiki: {status_str}")
 
         summary = "\n".join(parts)
         yield {"event": "token", "data": {"text": summary}}

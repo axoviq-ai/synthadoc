@@ -1020,6 +1020,9 @@ async def test_broken_citation_resolver_cli_path_applies_fixes(tmp_path):
     ), _patch(
         "synthadoc.agents.workflows.broken_citation_resolver.tool_apply_citation_fixes",
         new=_fake_apply,
+    ), _patch(
+        "synthadoc.agents.workflows.broken_citation_resolver.tool_get_wiki_status",
+        new=_AsyncMock(return_value={"active": 3, "contradicted": 0, "stale": 1, "draft": 0, "archived": 0}),
     ):
         events = []
         async for evt in wf.run_for_cli_provider(ctx, "fix broken citations", MagicMock()):
