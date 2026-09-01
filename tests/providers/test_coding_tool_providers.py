@@ -172,6 +172,88 @@ def test_claude_build_command_with_model():
     assert "claude-sonnet-4-5" in cmd
 
 
+def test_claude_build_system_args_with_system():
+    """System prompt present → --system-prompt flag with value."""
+    provider = _make_claude_provider()
+    args = provider._build_system_args("You are a wiki agent.")
+    assert "--system-prompt" in args
+    idx = args.index("--system-prompt")
+    assert args[idx + 1] == "You are a wiki agent."
+    assert "--no-system-prompt" not in args
+
+
+def test_claude_build_system_args_no_system():
+    """No system prompt → no extra flags (--no-system-prompt not universally supported)."""
+    provider = _make_claude_provider()
+    args = provider._build_system_args(None)
+    assert args == []
+    assert "--no-system-prompt" not in args
+    assert "--system-prompt" not in args
+
+
+def test_claude_build_prompt_excludes_system():
+    """_build_prompt must not embed system in stdin for ClaudeCodeCLIProvider."""
+    from synthadoc.providers.base import Message
+    provider = _make_claude_provider()
+    prompt = provider._build_prompt(
+        [Message(role="user", content="Find stale pages")],
+        system="You are a maintenance agent.",
+    )
+    assert "You are a maintenance agent." not in prompt
+    assert "Find stale pages" in prompt
+
+
+def test_claude_build_prompt_no_system():
+    """_build_prompt with system=None returns only user content."""
+    from synthadoc.providers.base import Message
+    provider = _make_claude_provider()
+    prompt = provider._build_prompt(
+        [Message(role="user", content="List orphans")],
+        system=None,
+    )
+    assert "List orphans" in prompt
+
+
+@pytest.mark.asyncio
+async def test_claude_complete_passes_system_via_flag():
+    """complete() with a system prompt must pass --system-prompt to the subprocess,
+    not embed the system text in stdin."""
+    import json
+    from synthadoc.providers.base import Message
+    provider = _make_claude_provider()
+    raw = json.dumps({
+        "result": "tool call response",
+        "total_input_tokens": 20,
+        "total_output_tokens": 10,
+        "is_error": False,
+    })
+    mock_proc = _make_mock_proc(raw.encode(), b"", returncode=0)
+    captured_cmd: list = []
+    captured_stdin: list = []
+
+    async def fake_exec(*args, **kwargs):
+        captured_cmd.extend(args)
+        return mock_proc
+
+    mock_proc.communicate = AsyncMock(
+        side_effect=lambda input=None: (
+            captured_stdin.append(input) or (raw.encode(), b"")
+        )
+    )
+
+    with patch("asyncio.create_subprocess_exec", fake_exec):
+        await provider.complete(
+            [Message(role="user", content="run workflow")],
+            system="You are a JSON tool-call agent.",
+        )
+
+    # --system-prompt must be in the command argv, not in the stdin blob
+    cmd_str = " ".join(str(a) for a in captured_cmd)
+    assert "--system-prompt" in cmd_str
+    assert "You are a JSON tool-call agent." not in (captured_stdin[0] or b"").decode()
+    assert "run workflow" in (captured_stdin[0] or b"").decode()
+
+
 # ── OpencodeProvider ──────────────────────────────────────────────────────────
 
 def _make_opencode_provider():
