@@ -438,6 +438,27 @@ def test_parse_adversarial_response_skips_entries_without_concern():
     assert result[0]["claim"] == "Y"
 
 
+def test_parse_adversarial_response_filters_no_issue_concerns():
+    """'No issue', 'Defensible', 'N/A' etc. are not real warnings and must be dropped."""
+    payload = (
+        '[{"claim": "A", "concern": "No issue"},'
+        ' {"claim": "B", "concern": "Defensible and nuanced"},'
+        ' {"claim": "C", "concern": "N/A"},'
+        ' {"claim": "D", "concern": "Accurate"},'
+        ' {"claim": "E", "concern": "Clearly overstated claim here"}]'
+    )
+    result = _parse_adversarial_response(payload)
+    # Only the one genuine concern survives
+    assert len(result) == 1
+    assert result[0]["claim"] == "E"
+
+
+def test_parse_adversarial_response_no_issue_case_insensitive():
+    """'no issue' filter is case-insensitive."""
+    result = _parse_adversarial_response('[{"claim": "X", "concern": "NO ISSUE"}]')
+    assert result == []
+
+
 def test_parse_adversarial_response_with_preamble_text():
     """Fallback regex extraction handles LLM preamble before the JSON array."""
     text = (
