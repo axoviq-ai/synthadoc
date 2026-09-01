@@ -140,15 +140,22 @@ STEP 5 — Final summary
   ⚠ Do NOT output any plain text yet.
   FIRST call get_wiki_status() — this fetches live lifecycle counts.
   THEN call find_broken_citations() to get current broken citation count.
-  THEN output a single plain-text summary:
+  THEN output a single plain-text summary.
+
+  For every citation you fixed or removed, include the before/after detail
+  so the user knows exactly what changed and why.  Use this format:
 
   "Broken Citation Resolver — Complete
 
   ✅ Fixed (<N> pages):
-    - <slug>: <N> citation(s) corrected
+    - <slug>:
+        • ^[old-filename.txt:1-5] (broken_ref — not in sources)
+          → renamed to ^[correct-filename.txt:1-5]
+        • ^[bad.txt] (malformed — missing line range)
+          → removed
     ...
   ⚠ Unresolved (<N> pages):
-    - <slug>: <diagnosis>
+    - <slug>: <citation> — <reason>; <diagnosis of why no fix was possible>
     ...
   ⏭ Skipped (<N> pages):
     - <slug>
@@ -156,6 +163,12 @@ STEP 5 — Final summary
 
   Wiki: <active> active, <stale> stale, <contradicted> contradicted
   Remaining broken citations: <N>"
+
+  Rules for the per-citation lines:
+  - Show the original broken marker and its reason in parentheses.
+  - For a rename: show the new marker after "→ renamed to".
+  - For a removal: show "→ removed" and state why (malformed / no close match).
+  - Never omit citations from the summary — every issue from STEP 1 must appear.
 
 ━━━ CRITICAL RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
