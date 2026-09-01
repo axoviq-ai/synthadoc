@@ -174,9 +174,22 @@ class IngestLintWorkflow(AgenticWorkflow):
         The ``provider`` argument is accepted for interface compatibility but is
         unused — unlike ContradictionResolverWorkflow, no LLM rewrite call is needed.
         """
-        # ── 1. Detect mode from --slug flag (same parsing as build_initial_message) ──
+        # ── 1. Detect mode: explicit --slug flag OR natural language "re-ingest the <slug>" ──
+        # The explicit flag is used by the workflow CLI and by users who know the convention.
+        # The natural language fallback handles queries issued by the Graph UI
+        # (e.g. "Re-ingest the alan-turing page") and matches the last arm of MATCH_RE
+        # (r"\bre.?ingest\b\s+the\s+[a-z0-9]").  The API-provider path handles this
+        # naturally via LLM understanding; the CLI path must parse it explicitly.
         slug_match = re.search(r"--slug\s+(\S+)", question, re.IGNORECASE)
-        page_slug: str | None = slug_match.group(1) if slug_match else None
+        if not slug_match:
+            # Capture slug token after "re-ingest the " — stops at space or "page" suffix.
+            # Slug chars: lowercase letters, digits, hyphens, underscores.
+            slug_match = re.search(
+                r"\bre.?ingest\b\s+the\s+([a-z0-9][a-z0-9_-]*)",
+                question,
+                re.IGNORECASE,
+            )
+        page_slug: str | None = slug_match.group(1).lower() if slug_match else None
 
         # Accumulates ingest outcomes keyed by slug (status, message).
         # Pages with no source_path record {"status": "skipped"} instead of calling

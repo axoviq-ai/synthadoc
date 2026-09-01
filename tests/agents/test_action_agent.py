@@ -1345,6 +1345,53 @@ async def test_ingest_lint_cli_path_workflow_b_specific_slug(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_ingest_lint_cli_path_natural_language_slug(tmp_path):
+    """Graph UI sends "Re-ingest the alan-turing page" (no --slug flag).
+    The CLI path must extract the slug from the natural language pattern
+    and route to Workflow B, not Workflow A (all stale pages)."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.ingest_lint import IngestLintWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = IngestLintWorkflow()
+
+    with _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_find_page_source",
+        new=_AsyncMock(return_value={"slug": "alan-turing", "source_path": "/data/alan.txt"}),
+    ) as mock_source, _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_find_stale_pages",
+        new=_AsyncMock(),
+    ) as mock_stale, _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_confirm",
+        new=_AsyncMock(return_value={"confirmed": True}),
+    ), _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_ingest_source",
+        new=_AsyncMock(return_value={"status": "success", "message": "done"}),
+    ), _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_run_lint",
+        new=_AsyncMock(return_value={"status": "success", "message": "clean"}),
+    ), _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_get_page_states",
+        new=_AsyncMock(return_value={"pages": [{"slug": "alan-turing", "state": "active"}]}),
+    ):
+        events = []
+        async for evt in wf.run_for_cli_provider(
+            ctx, "Re-ingest the alan-turing page", MagicMock()
+        ):
+            events.append(evt)
+
+    # Workflow B path: find_page_source called, NOT find_stale_pages
+    mock_source.assert_called_once_with(ctx, slug="alan-turing")
+    mock_stale.assert_not_called()
+
+    token_text = "".join(e["data"]["text"] for e in events if e["event"] == "token")
+    assert "alan-turing" in token_text
+    assert "active" in token_text
+
+
+@pytest.mark.asyncio
 async def test_ingest_lint_cli_path_workflow_b_no_source(tmp_path):
     """Workflow B: tool_find_page_source returns an error → early exit."""
     from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
