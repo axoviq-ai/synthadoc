@@ -143,6 +143,52 @@ class AgenticWorkflow(ABC):
     # See _registry.py module docstring for a summary of both patterns.
     GATED_TOOLS: frozenset[str] = frozenset()  # override only for write workflows
 
+    # Set to True in subclasses that provide a CLI-provider alternative path.
+    #
+    # Coding-tool CLI providers (claude-code, opencode) are themselves agents
+    # with their own identity, tool-calling mechanism, and safety reasoning.
+    # They refuse Synthadoc's JSON wire-format tool-call loop as prompt
+    # injection.  Workflows that set this flag implement ``run_for_cli_provider``
+    # with a deterministic Python-driven gather → execute-with-confirm pattern
+    # that avoids fake tools and identity-redefinition entirely.
+    #
+    # Defaults to False.  Override to True only when ``run_for_cli_provider``
+    # is also implemented — ActionAgent checks this flag at runtime.
+    SUPPORTS_CLI_PROVIDER: bool = False
+
+    async def run_for_cli_provider(
+        self,
+        ctx: "WorkflowContext",
+        question: str,
+        provider: "LLMProvider",  # type: ignore[name-defined]
+    ):
+        """CLI-provider alternative to the JSON wire-format tool-call loop.
+
+        Called by ActionAgent._run_orchestrate when the configured provider is
+        a CodingToolCLIProvider and SUPPORTS_CLI_PROVIDER is True.
+
+        Pattern: Python gathers data and computes fixes deterministically →
+        user confirms → Python executes.  Avoids fake tools and identity
+        redefinition — the LLM is never asked to pretend to be a different agent.
+
+        This is an async generator — yield SSE event dicts in the same shape as
+        the tool-call loop (``{"event": "token", ...}``,
+        ``{"event": "tool_progress", ...}``, ``{"event": "final_text", ...}``).
+
+        Subclasses MUST override this method when SUPPORTS_CLI_PROVIDER is True.
+        The ``provider`` parameter is available for subclasses that need a single
+        factual LLM call (e.g. for summarisation); most implementations will not
+        use it.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} sets SUPPORTS_CLI_PROVIDER=True "
+            "but does not implement run_for_cli_provider()."
+        )
+        # Make this an async generator — the yield is unreachable at runtime but
+        # required so Python treats the coroutine as an async generator (PEP 525).
+        if False:  # pragma: no cover
+            yield {}  # type: ignore[misc]
+
     @abstractmethod
     async def build_system_prompt(self) -> str:
         """Return the system prompt for the LLM."""

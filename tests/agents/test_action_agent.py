@@ -894,6 +894,153 @@ async def test_run_orchestrate_rejects_coding_tool_provider(tmp_path):
     orch.lint.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_run_orchestrate_uses_cli_path_for_supported_workflow(tmp_path):
+    """When the provider is a CodingToolCLIProvider and the workflow sets
+    SUPPORTS_CLI_PROVIDER=True, _run_orchestrate must call run_for_cli_provider
+    instead of yielding the unsupported-provider error message.
+    """
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.action_agent import ActionAgent
+    from synthadoc.agents.workflows._base import AgenticWorkflow, WorkflowContext
+
+    with _patch("synthadoc.providers.coding_tool._find_binary", return_value="/usr/bin/claude"):
+        from synthadoc.providers.coding_tool import ClaudeCodeCLIProvider
+        cli_provider = ClaudeCodeCLIProvider(model=None, timeout=30)
+
+    # Minimal stub workflow that opts into the CLI path and yields a sentinel event.
+    class _CLIWorkflow(AgenticWorkflow):
+        SUPPORTS_CLI_PROVIDER = True
+        MATCH_RE = None
+
+        async def build_system_prompt(self): return ""
+        def build_initial_message(self, q): return q
+        def get_tool_fns(self, ctx): return {}
+
+        async def run_for_cli_provider(self, ctx, question, provider):
+            yield {"event": "token", "data": {"text": "cli-path-ran"}}
+            yield {"event": "final_text", "data": {"text": "cli-path-ran"}}
+
+    orch = MagicMock()
+    orch.lint = _AsyncMock()
+    orch._queue = MagicMock()
+    orch.queue = MagicMock()
+    orch._store = MagicMock()
+    orch._bump_epoch = MagicMock()
+    orch._cfg = MagicMock()
+    orch._cfg.chat.clarify_lookback = 5
+    agent = ActionAgent(provider=cli_provider, orchestrator=orch, wiki_root=tmp_path)
+
+    events = []
+    async for evt in agent._run_orchestrate("fix broken citations", workflow=_CLIWorkflow()):
+        events.append(evt)
+
+    token_text = "".join(e["data"]["text"] for e in events if e["event"] == "token")
+    # CLI path ran — no error message
+    assert "cli-path-ran" in token_text
+    assert "anthropic" not in token_text
+    # final_text → converted to done by the drain loop
+    event_types = [e["event"] for e in events]
+    assert "done" in event_types
+    assert "final_text" not in event_types
+
+
+@pytest.mark.asyncio
+async def test_broken_citation_resolver_cli_path_no_issues(tmp_path):
+    """run_for_cli_provider returns early with 'no broken citations' when
+    tool_find_broken_citations reports zero issues."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.broken_citation_resolver import BrokenCitationResolverWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+
+    wf = BrokenCitationResolverWorkflow()
+    fake_provider = MagicMock()
+
+    with _patch(
+        "synthadoc.agents.workflows.broken_citation_resolver.tool_find_broken_citations",
+        new=_AsyncMock(return_value={"pages": [], "total_issues": 0, "scanned": 5}),
+    ):
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "fix broken citations", fake_provider):
+            events.append(evt)
+
+    texts = [e["data"]["text"] for e in events if e["event"] == "token"]
+    assert any("no broken citations" in t.lower() for t in texts)
+    event_types = [e["event"] for e in events]
+    assert "final_text" in event_types
+
+
+@pytest.mark.asyncio
+async def test_broken_citation_resolver_cli_path_applies_fixes(tmp_path):
+    """run_for_cli_provider computes fixes via difflib, confirms, and applies them.
+
+    broken_ref with a close match → renamed marker.
+    malformed → removed.
+    """
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.broken_citation_resolver import BrokenCitationResolverWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+
+    scan_result = {
+        "pages": [
+            {
+                "slug": "page-a",
+                "title": "Page A",
+                "issues": [
+                    {"citation": "^[source.txt:1-5]", "reason": "broken_ref"},
+                    {"citation": "^[bad]", "reason": "malformed"},
+                ],
+                "page_sources": ["sources.txt"],
+            }
+        ],
+        "total_issues": 2,
+        "scanned": 1,
+    }
+
+    applied_fixes: list[dict] = []
+
+    async def _fake_apply(ctx, page_slug, fixes):
+        applied_fixes.extend(fixes)
+        return {"status": "success", "changes": len(fixes), "page": page_slug}
+
+    wf = BrokenCitationResolverWorkflow()
+
+    with _patch(
+        "synthadoc.agents.workflows.broken_citation_resolver.tool_find_broken_citations",
+        new=_AsyncMock(return_value=scan_result),
+    ), _patch(
+        "synthadoc.agents.workflows.broken_citation_resolver.tool_confirm",
+        new=_AsyncMock(return_value={"confirmed": True}),
+    ), _patch(
+        "synthadoc.agents.workflows.broken_citation_resolver.tool_apply_citation_fixes",
+        new=_fake_apply,
+    ):
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "fix broken citations", MagicMock()):
+            events.append(evt)
+
+    # broken_ref with close match "source.txt" ≈ "sources.txt" → rename
+    rename_fix = next((f for f in applied_fixes if f["old_citation"] == "^[source.txt:1-5]"), None)
+    assert rename_fix is not None
+    assert rename_fix["new_citation"] == "^[sources.txt:1-5]"
+
+    # malformed → remove
+    remove_fix = next((f for f in applied_fixes if f["old_citation"] == "^[bad]"), None)
+    assert remove_fix is not None
+    assert remove_fix["new_citation"] is None
+
+    # Summary event emitted
+    token_text = "".join(e["data"]["text"] for e in events if e["event"] == "token")
+    assert "Fixed" in token_text
+    assert "final_text" in [e["event"] for e in events]
+
+
 # ── format helper ─────────────────────────────────────────────────────────────
 
 def test_format_schedule_list_empty():
