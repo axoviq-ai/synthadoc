@@ -38,7 +38,9 @@ Output: {
   },
   "contradicted_pages": [{"slug": str, "since": str}],
   "adversarial_warnings": [{"slug": str, "count": int}],
-  "orphan_slugs": [str]
+  "orphan_slugs": [str],
+  "broken_citations": int,
+  "broken_citation_pages": [{"slug": str, "count": int}]
 }
 
 ## Tool-call wire format
@@ -62,6 +64,7 @@ When you have a final message for the user, respond with plain text only (no JSO
    - Dangling links removed: N  (omit this line if dangling_removed == 0)
    - Orphan pages: N
    - Contradictions: N resolved, N flagged
+   - Broken citations: N  (omit this line if broken_citations == 0)
 
    **Contradicted Pages**
    List each as "- slug  (since YYYY-MM-DD)".
@@ -73,6 +76,10 @@ When you have a final message for the user, respond with plain text only (no JSO
 
    **Orphan Pages**
    List each slug as a bullet.
+   If none: "(none)"
+
+   **Broken Citations**
+   List each as "- [[slug]]  (N broken citation(s))".
    If none: "(none)"
 
 Plain text ends the workflow. Use it ONLY in step 3 or on error. All
