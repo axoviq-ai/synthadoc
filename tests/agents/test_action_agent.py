@@ -846,11 +846,14 @@ async def test_history_context_passed_to_extraction(tmp_path):
 @pytest.mark.asyncio
 async def test_run_orchestrate_rejects_coding_tool_provider(tmp_path):
     """_run_orchestrate must return an error message (not attempt the tool-call
-    loop) when the configured provider is a CodingToolCLIProvider subclass.
+    loop) when the configured provider is a CodingToolCLIProvider subclass and
+    the matched workflow does NOT set SUPPORTS_CLI_PROVIDER=True.
 
     Claude Code and Opencode are themselves agents — they refuse Synthadoc's
-    JSON wire-format system prompt as prompt injection.  The guard must fire for
-    ANY workflow path: fast-path routed workflows and the default IngestLint workflow.
+    JSON wire-format system prompt as prompt injection.  The guard fires
+    for workflows that have not opted into run_for_cli_provider().
+
+    We use "run lint" because LintReportWorkflow.SUPPORTS_CLI_PROVIDER is False.
     """
     from unittest.mock import patch as _patch
     from synthadoc.providers.base import CompletionResponse
@@ -872,9 +875,13 @@ async def test_run_orchestrate_rejects_coding_tool_provider(tmp_path):
     orch._cfg.chat.clarify_lookback = 5
     agent = ActionAgent(provider=cli_provider, orchestrator=orch, wiki_root=tmp_path)
 
+    # Pass LintReportWorkflow explicitly so _run_orchestrate doesn't default to
+    # IngestLintWorkflow (which now sets SUPPORTS_CLI_PROVIDER=True).
+    from synthadoc.agents.workflows.lint_report import LintReportWorkflow
+
     # Collect all SSE events yielded by _run_orchestrate.
     events = []
-    async for evt in agent._run_orchestrate("fix broken citations"):
+    async for evt in agent._run_orchestrate("run lint", workflow=LintReportWorkflow()):
         events.append(evt)
 
     # Must yield at least a token event with the error message and a done event.
@@ -1168,6 +1175,203 @@ async def test_contradiction_resolver_strategy1_rules_shared():
     # (Source-level enforcement: grep for the literal strings would be fragile,
     #  so we assert the constant itself is non-trivial and in the prompt.)
     assert len(_STRATEGY_1_RULES) > 50
+
+
+# ── IngestLintWorkflow CLI path ───────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_ingest_lint_cli_path_no_stale_pages(tmp_path):
+    """Workflow A: tool_find_stale_pages returns empty → early exit, no confirm called."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.ingest_lint import IngestLintWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = IngestLintWorkflow()
+
+    with _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_find_stale_pages",
+        new=_AsyncMock(return_value={"pages": []}),
+    ) as mock_find, _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_confirm",
+        new=_AsyncMock(),
+    ) as mock_confirm:
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "re-ingest stale pages", MagicMock()):
+            events.append(evt)
+
+    mock_find.assert_called_once()
+    mock_confirm.assert_not_called()
+    texts = [e["data"]["text"] for e in events if e["event"] == "token"]
+    assert any("no stale pages" in t.lower() for t in texts)
+    assert "final_text" in [e["event"] for e in events]
+
+
+@pytest.mark.asyncio
+async def test_ingest_lint_cli_path_workflow_a_cancelled(tmp_path):
+    """Workflow A: confirm returns false → no ingests, no lint."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.ingest_lint import IngestLintWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = IngestLintWorkflow()
+
+    stale_pages = [
+        {"slug": "page-a", "source_path": "/data/a.txt", "stale_since": "2026-08-01"},
+    ]
+
+    with _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_find_stale_pages",
+        new=_AsyncMock(return_value={"pages": stale_pages}),
+    ), _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_confirm",
+        new=_AsyncMock(return_value={"confirmed": False}),
+    ), _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_ingest_source",
+        new=_AsyncMock(),
+    ) as mock_ingest, _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_run_lint",
+        new=_AsyncMock(),
+    ) as mock_lint:
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "re-ingest stale pages", MagicMock()):
+            events.append(evt)
+
+    mock_ingest.assert_not_called()
+    mock_lint.assert_not_called()
+    texts = [e["data"]["text"] for e in events if e["event"] == "token"]
+    assert any("cancel" in t.lower() for t in texts)
+
+
+@pytest.mark.asyncio
+async def test_ingest_lint_cli_path_workflow_a_ingests(tmp_path):
+    """Workflow A: confirms → ingests each page (skipping one with no source_path),
+    then runs lint and get_page_states; summary shows per-page results."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.ingest_lint import IngestLintWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = IngestLintWorkflow()
+
+    stale_pages = [
+        {"slug": "page-a", "source_path": "/data/a.txt", "stale_since": "2026-08-01"},
+        {"slug": "page-b", "source_path": None,           "stale_since": "2026-07-20"},
+    ]
+
+    ingested: list[str] = []
+
+    async def _fake_ingest(ctx, source_path):
+        ingested.append(source_path)
+        return {"status": "success", "message": "done"}
+
+    with _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_find_stale_pages",
+        new=_AsyncMock(return_value={"pages": stale_pages}),
+    ), _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_confirm",
+        new=_AsyncMock(return_value={"confirmed": True}),
+    ), _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_ingest_source",
+        new=_fake_ingest,
+    ), _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_run_lint",
+        new=_AsyncMock(return_value={"status": "success", "message": "all clean"}),
+    ), _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_get_page_states",
+        new=_AsyncMock(return_value={
+            "pages": [
+                {"slug": "page-a", "state": "active"},
+                {"slug": "page-b", "state": "stale"},
+            ]
+        }),
+    ):
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "re-ingest stale pages", MagicMock()):
+            events.append(evt)
+
+    # page-a has a source_path → ingested; page-b has none → skipped
+    assert ingested == ["/data/a.txt"]
+
+    token_text = "".join(e["data"]["text"] for e in events if e["event"] == "token")
+    assert "page-a" in token_text
+    assert "page-b" in token_text
+    assert "skipped" in token_text          # page-b skipped (no source path)
+    assert "active" in token_text           # page-a ended up active
+    assert "final_text" in [e["event"] for e in events]
+
+
+@pytest.mark.asyncio
+async def test_ingest_lint_cli_path_workflow_b_specific_slug(tmp_path):
+    """Workflow B (--slug): looks up source, confirms, ingests, lints, checks state."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.ingest_lint import IngestLintWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = IngestLintWorkflow()
+
+    with _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_find_page_source",
+        new=_AsyncMock(return_value={"slug": "my-page", "source_path": "/data/my.txt"}),
+    ), _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_confirm",
+        new=_AsyncMock(return_value={"confirmed": True}),
+    ), _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_ingest_source",
+        new=_AsyncMock(return_value={"status": "success", "message": "done"}),
+    ), _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_run_lint",
+        new=_AsyncMock(return_value={"status": "success", "message": "clean"}),
+    ), _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_get_page_states",
+        new=_AsyncMock(return_value={"pages": [{"slug": "my-page", "state": "active"}]}),
+    ):
+        events = []
+        async for evt in wf.run_for_cli_provider(
+            ctx, "re-ingest page --slug my-page", MagicMock()
+        ):
+            events.append(evt)
+
+    token_text = "".join(e["data"]["text"] for e in events if e["event"] == "token")
+    assert "my-page" in token_text
+    assert "active" in token_text
+    assert "final_text" in [e["event"] for e in events]
+
+
+@pytest.mark.asyncio
+async def test_ingest_lint_cli_path_workflow_b_no_source(tmp_path):
+    """Workflow B: tool_find_page_source returns an error → early exit."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.ingest_lint import IngestLintWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = IngestLintWorkflow()
+
+    with _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_find_page_source",
+        new=_AsyncMock(return_value={"error": "Page 'ghost' not found in this wiki"}),
+    ), _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_run_lint",
+        new=_AsyncMock(),
+    ) as mock_lint:
+        events = []
+        async for evt in wf.run_for_cli_provider(
+            ctx, "re-ingest page --slug ghost", MagicMock()
+        ):
+            events.append(evt)
+
+    mock_lint.assert_not_called()
+    texts = [e["data"]["text"] for e in events if e["event"] == "token"]
+    assert any("ghost" in t for t in texts)
+    assert any("cannot re-ingest" in t.lower() for t in texts)
 
 
 # ── format helper ─────────────────────────────────────────────────────────────
