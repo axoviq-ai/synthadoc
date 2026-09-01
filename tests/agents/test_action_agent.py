@@ -841,6 +841,59 @@ async def test_history_context_passed_to_extraction(tmp_path):
     assert "page-a" in prompt_content or "history" in prompt_content.lower() or "User:" in prompt_content
 
 
+# ── CLI provider guard ────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_run_orchestrate_rejects_coding_tool_provider(tmp_path):
+    """_run_orchestrate must return an error message (not attempt the tool-call
+    loop) when the configured provider is a CodingToolCLIProvider subclass.
+
+    Claude Code and Opencode are themselves agents — they refuse Synthadoc's
+    JSON wire-format system prompt as prompt injection.  The guard must fire for
+    ANY workflow path: fast-path routed workflows and the default IngestLint workflow.
+    """
+    from unittest.mock import patch as _patch
+    from synthadoc.providers.base import CompletionResponse
+    from synthadoc.agents.action_agent import ActionAgent
+
+    # Build a mock that looks like ClaudeCodeCLIProvider without requiring
+    # the real binary to be installed.
+    with _patch("synthadoc.providers.coding_tool._find_binary", return_value="/usr/bin/claude"):
+        from synthadoc.providers.coding_tool import ClaudeCodeCLIProvider
+        cli_provider = ClaudeCodeCLIProvider(model=None, timeout=30)
+
+    orch = MagicMock()
+    orch.lint = AsyncMock()
+    orch._queue = MagicMock()
+    orch.queue = MagicMock()
+    orch._store = MagicMock()
+    orch._bump_epoch = MagicMock()
+    orch._cfg = MagicMock()
+    orch._cfg.chat.clarify_lookback = 5
+    agent = ActionAgent(provider=cli_provider, orchestrator=orch, wiki_root=tmp_path)
+
+    # Collect all SSE events yielded by _run_orchestrate.
+    events = []
+    async for evt in agent._run_orchestrate("fix broken citations"):
+        events.append(evt)
+
+    # Must yield at least a token event with the error message and a done event.
+    event_types = [e["event"] for e in events]
+    assert "token" in event_types
+    assert "done" in event_types
+    # No final_text: the guard streams a single token and then done.
+    assert "final_text" not in event_types
+
+    # The error text must mention the binary name and suggest anthropic provider.
+    token_text = "".join(
+        e["data"]["text"] for e in events if e["event"] == "token"
+    )
+    assert "claude" in token_text.lower()
+    assert "anthropic" in token_text.lower()
+    # Crucially: the loop was never started — confirm and tool_fns are never wired.
+    orch.lint.assert_not_called()
+
+
 # ── format helper ─────────────────────────────────────────────────────────────
 
 def test_format_schedule_list_empty():

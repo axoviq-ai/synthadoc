@@ -391,6 +391,37 @@ class ActionAgent(BaseAgent):
 
         Defaults to IngestLintWorkflow when *workflow* is not provided.
         """
+        # ── Provider compatibility guard ──────────────────────────────────────
+        # Coding-tool CLI providers (claude-code, opencode) are themselves full
+        # agents with their own identity, tool-calling mechanism, and safety
+        # reasoning.  When they receive Synthadoc's JSON wire-format system
+        # prompt they correctly identify it as an attempt to redefine their
+        # identity with fake tools and refuse to execute it.  Agentic workflows
+        # cannot run on these providers; the single-call Anthropic API or Ollama
+        # providers are required.
+        from synthadoc.providers.coding_tool import CodingToolCLIProvider  # noqa: PLC0415
+        if isinstance(self._provider, CodingToolCLIProvider):
+            binary = getattr(self._provider, "_tool_binary", "this CLI tool")
+            msg = (
+                f"**Agentic workflows are not supported with the `{binary}` provider.**\n\n"
+                f"`{binary}` is itself an agent — it has its own identity, tool-calling "
+                f"mechanism, and safety reasoning. It correctly refuses Synthadoc's internal "
+                f"JSON wire-format tool protocol rather than fabricating tool results.\n\n"
+                f"**To use agentic workflows** (fix broken citations, resolve contradictions, "
+                f"re-ingest stale pages, run lint), set your provider to `anthropic` "
+                f"in `.synthadoc/config.toml`:\n\n"
+                f"```toml\n"
+                f"[agents]\n"
+                f'default = {{ provider = "anthropic", model = "claude-sonnet-5" }}\n'
+                f"```\n\n"
+                f"The `{binary}` provider works well for **single-call tasks**: "
+                f"page queries, ingest analysis, lint scoring, and scaffolding — "
+                f"any operation that does not require a multi-step tool-call loop."
+            )
+            yield {"event": "token", "data": {"text": msg}}
+            yield {"event": "done", "data": {"citations": [], "hints": [], "cacheable": False}}
+            return
+
         import asyncio as _asyncio
         from synthadoc.agents.workflows._base import AgenticWorkflow, WorkflowContext
         from synthadoc.agents.workflows._loop import run_tool_call_loop
