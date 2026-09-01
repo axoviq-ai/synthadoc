@@ -122,7 +122,12 @@ class CodingToolCLIProvider(LLMProvider):
         """Return True if stderr indicates the tool's usage quota is exhausted."""
 
     def _build_prompt(self, messages: list[Message], system: Optional[str]) -> str:
-        """Combine system message and user messages into a single prompt string."""
+        """Combine system message and user messages into a single prompt string.
+
+        Subclasses that pass *system* via a dedicated CLI flag should override
+        this method to exclude system from the stdin prompt (return user messages
+        only) and also override :meth:`_build_system_args` to return the flag.
+        """
         parts = []
         if system:
             parts.append(system)
@@ -131,10 +136,25 @@ class CodingToolCLIProvider(LLMProvider):
             parts.append(content)
         return "\n\n".join(parts)
 
+    def _build_system_args(self, system: Optional[str]) -> list[str]:
+        """Return additional argv items for passing the system prompt to the CLI.
+
+        Default implementation returns an empty list — the system prompt is
+        embedded in stdin by :meth:`_build_prompt`.  Override in subclasses
+        that accept the system prompt as a dedicated command-line flag (e.g.
+        ``--system-prompt``) so the LLM receives it as the actual system
+        context rather than as part of the user turn.
+        """
+        return []
+
     async def complete(self, messages: list[Message], system: Optional[str] = None,
                        temperature: float = 0.0, max_tokens: int = 4096) -> CompletionResponse:
         prompt = self._build_prompt(messages, system)
-        cmd = self._cmd_prefix + self._build_command(self._resolved_binary)
+        cmd = (
+            self._cmd_prefix
+            + self._build_command(self._resolved_binary)
+            + self._build_system_args(system)
+        )
 
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -219,6 +239,20 @@ class ClaudeCodeCLIProvider(CodingToolCLIProvider):
 
     Requires `claude` to be installed and authenticated.
     Usage: set provider = "claude-code" in .synthadoc/config.toml.
+
+    System-prompt handling
+    ----------------------
+    The Claude Code CLI (`claude -p`) treats stdin as the *user* turn and
+    injects its own agent context (CLAUDE.md files, superpowers, memory) as
+    the system.  When Synthadoc passes a workflow system prompt (e.g. the
+    JSON wire-format tool protocol), it must arrive as Claude Code's *actual*
+    system — otherwise Claude Code reads it as user content about a different
+    system and correctly refuses to execute tools it doesn't have registered.
+
+    Fix: pass the system prompt via ``--system-prompt`` (replacing the
+    default Claude Code agent context) and send only user messages via stdin.
+    When no system prompt is provided, ``--no-system-prompt`` suppresses the
+    default agent context so responses are predictable.
     """
     _tool_binary = "claude"
 
@@ -227,6 +261,26 @@ class ClaudeCodeCLIProvider(CodingToolCLIProvider):
         if self._model:
             cmd += ["--model", self._model]
         return cmd
+
+    def _build_system_args(self, system: Optional[str]) -> list[str]:
+        """Pass system prompt via ``--system-prompt`` flag; suppress default context."""
+        if system:
+            # Replaces Claude Code's default agent system prompt (including any
+            # CLAUDE.md collaboration guidelines that would otherwise instruct
+            # the subprocess to "pause and discuss" rather than execute the
+            # workflow's JSON tool-call protocol).
+            return ["--system-prompt", system]
+        # No system prompt — suppress Claude Code's default agent context so
+        # there are no unexpected behavioural instructions.
+        return ["--no-system-prompt"]
+
+    def _build_prompt(self, messages: list[Message], system: Optional[str]) -> str:
+        """Return user messages only — system is passed via ``--system-prompt`` flag."""
+        parts = []
+        for m in messages:
+            content = m.content if isinstance(m.content, str) else str(m.content)
+            parts.append(content)
+        return "\n\n".join(parts)
 
     def _parse_output(self, raw: str) -> CompletionResponse:
         try:
