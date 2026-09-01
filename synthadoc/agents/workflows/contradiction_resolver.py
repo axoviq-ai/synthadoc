@@ -35,6 +35,20 @@ from synthadoc.agents.workflows.tools.contradiction_resolver_tools import (
 if TYPE_CHECKING:
     from synthadoc.agents.workflows._base import WorkflowContext
 
+# Content revision rules for Strategy 1 — defined here once so both the
+# multi-turn system prompt (§STEP 4c) and the CLI-provider single-call rewrite
+# path (_cli_rewrite_page) share the same guidance without duplication.
+_STRATEGY_1_RULES = (
+    "Formulate improved content that:\n"
+    "  - For gate-demoted: removes or hedges the specific claims in lint_warnings\n"
+    "  - For conflict: reconciles the source contradiction_note with explicit sourcing hedge\n"
+    "  - For both: addresses both\n"
+    "  Preserve all headings, structure, and non-disputed content."
+)
+
+# _SYSTEM_PROMPT cannot be an f-string because it contains literal `{}` in the
+# JSON tool-call wire-format examples.  Instead, $$STRATEGY_1$$ is replaced at
+# module load time with _STRATEGY_1_RULES (indented to match step-4c context).
 _SYSTEM_PROMPT = """\
 You are a wiki maintenance agent specialising in resolving pages that have been \
 marked 'contradicted'. A contradicted page may be:
@@ -121,10 +135,7 @@ STEP 4 — Per-page resolution loop
         If conflict or both: also call tool_read_source_content(slug).
 
     4c. Select Strategy 1 (content rewrite) as the first attempt.
-        Formulate improved content that:
-          - For gate-demoted: removes or hedges the specific claims in lint_warnings
-          - For conflict: reconciles the source contradiction_note with explicit sourcing hedge
-          - For both: addresses both
+        $$STRATEGY_1$$
 
     4d. Call tool_propose_and_apply(slug, new_content, strategy_name, rationale).
         strategy_name should be one of:
@@ -223,7 +234,14 @@ STEP 5 — Final summary (tool call FIRST, then plain text)
   the actual problem. Strategy 1 may be used at most twice per page.
 • Cap is HARD at 4 attempts per page — escalate on the 5th failure.
 • Do NOT call tool_propose_and_apply and tool_confirm in the same tool-call batch.
-"""
+""".replace(
+    # Embed _STRATEGY_1_RULES (indented 8 spaces to match step-4c context).
+    "        $$STRATEGY_1$$",
+    "\n".join("        " + line for line in _STRATEGY_1_RULES.splitlines()),
+)
+
+
+_log = __import__("logging").getLogger(__name__)
 
 
 class ContradictionResolverWorkflow(AgenticWorkflow):
@@ -241,6 +259,14 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
         r"|\bcontradiction\s+resolver\b",
         re.IGNORECASE,
     )
+
+    # CLI providers (claude-code, opencode) cannot follow the JSON wire-format
+    # tool-call loop.  This workflow opts into a Python-driven alternative:
+    # gather + cost-gate → single LLM rewrite call per page → propose-and-apply
+    # (diff-before-write) → scoped lint → lifecycle transition.
+    # The LLM call is a factual bounded request ("here is the page; fix it") that
+    # CLI providers accept without safety objections.
+    SUPPORTS_CLI_PROVIDER: bool = True
 
     def get_tool_budget(self) -> int:
         # Each page requires ~8 tool calls (read, propose, lint, transition, confirm ×2)
@@ -298,3 +324,264 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
             "tool_ingest_source":              p(tool_ingest_source, ctx),
             "tool_poll_job":                   p(tool_poll_job, ctx),
         }
+
+    # ── CLI provider path ─────────────────────────────────────────────────────
+
+    async def run_for_cli_provider(self, ctx, question, provider):
+        """CLI-provider path: Python-orchestrated gather → rewrite → confirm → lint → activate.
+
+        Mirrors the normal workflow's STEP 1-5 sequence but replaces the JSON
+        wire-format tool-call loop with direct Python calls to the same tool
+        functions.  The only LLM call is a bounded rewrite request per page
+        ("here is the page and its contradiction signals; revise it") — no fake
+        tools, no identity redefinition.
+
+        Limitation vs. the Anthropic-API path: only Strategy 1 (content rewrite)
+        is attempted, with no retry loop.  Pages that fail scoped lint after the
+        rewrite are marked unresolved; the summary directs the user to run the
+        full resolver (with provider=anthropic) for those pages.
+        """
+        # ── 1. Parse flags (same logic as build_initial_message) ──────────────
+        slug_match = re.search(r"--slug\s+(\S+)", question, re.IGNORECASE)
+        type_match = re.search(
+            r"--type\s+(gate|adversarial|conflict|source-conflict|all)",
+            question,
+            re.IGNORECASE,
+        )
+        page_slug = slug_match.group(1) if slug_match else None
+        raw_type = (type_match.group(1).lower() if type_match else "all")
+        scope = self._TYPE_REMAP.get(raw_type, raw_type)
+
+        # ── 2. Gather contradicted pages ──────────────────────────────────────
+        all_pages_result = await tool_get_contradicted_pages(ctx, scope=scope)
+        pages: list[dict] = all_pages_result.get("pages", [])
+        if page_slug:
+            pages = [p for p in pages if p["slug"] == page_slug]
+
+        if not pages:
+            scope_label = f"scope={scope}" + (f", slug={page_slug}" if page_slug else "")
+            msg = f"No contradicted pages found ({scope_label})."
+            yield {"event": "token", "data": {"text": msg}}
+            yield {"event": "final_text", "data": {"text": msg}}
+            return
+
+        # ── 3. Cost estimate + approval ───────────────────────────────────────
+        estimate = await tool_cost_estimate(ctx, page_count=len(pages))
+        if not estimate.get("confirmed"):
+            msg = "Contradiction resolver cancelled."
+            yield {"event": "token", "data": {"text": msg}}
+            yield {"event": "final_text", "data": {"text": msg}}
+            return
+
+        # ── 4. Per-page resolution loop ───────────────────────────────────────
+        fixed: list[str] = []
+        unresolved: list[tuple[str, str]] = []   # (slug, reason)
+        skipped: list[str] = []
+
+        for i, page_info in enumerate(pages):
+            slug = page_info["slug"]
+            page_type = page_info["type"]
+
+            await ctx.send_sse_event(
+                "tool_progress",
+                {"tool": "_resolve", "message": f"Resolving {slug} ({page_type})..."},
+            )
+
+            # 4a. Unknown type: run lint first to determine whether state is stale
+            if page_type == "unknown":
+                lint_result = await tool_run_scoped_lint(ctx, slug=slug)
+                if lint_result.get("pass"):
+                    # Stale metadata — no rewrite needed; transition directly
+                    await tool_transition_lifecycle_state(
+                        ctx, slug=slug, to_state="active",
+                        reason=(
+                            "resolved: clean lint with no contradiction signals "
+                            "— contradicted state was stale metadata"
+                        ),
+                    )
+                    fixed.append(slug)
+                    # Still need to confirm between pages below
+                else:
+                    # Real issue — treat as gate-demoted and fall through to rewrite
+                    page_type = "gate"
+
+            if page_type != "unknown" or slug not in fixed:
+                # 4b. Read page content (and source for conflict/both types)
+                page_content = await tool_read_page_content(ctx, slug=slug)
+                source_text: str | None = None
+                if page_type in ("conflict", "both"):
+                    source_result = await tool_read_source_content(ctx, slug=slug)
+                    source_text = source_result.get("source_text") or None
+
+                # 4c. Single LLM rewrite call
+                rewrite = await self._cli_rewrite_page(
+                    provider, slug, page_content, source_text, page_type
+                )
+
+                if rewrite is None:
+                    await tool_notify(
+                        ctx,
+                        message=f"⚠ {slug} — could not generate a rewrite; skipping",
+                        level="warning",
+                    )
+                    unresolved.append((slug, "LLM rewrite failed"))
+                else:
+                    # 4d. Show diff and ask for approval (reuses propose_and_apply as-is)
+                    apply_result = await tool_propose_and_apply(
+                        ctx,
+                        slug=slug,
+                        new_content=rewrite,
+                        strategy_name="Strategy 1 — Content rewrite",
+                        rationale=(
+                            f"Resolved {page_type} contradiction via single-pass content rewrite "
+                            f"(CLI provider path — Strategy 1 only)"
+                        ),
+                    )
+
+                    if not apply_result.get("applied"):
+                        skipped.append(slug)
+                    else:
+                        # 4e. Re-lint after applying the change
+                        lint_result = await tool_run_scoped_lint(ctx, slug=slug)
+                        if lint_result.get("pass"):
+                            await tool_transition_lifecycle_state(
+                                ctx, slug=slug, to_state="active",
+                                reason=(
+                                    "resolved by contradiction-resolver "
+                                    "— CLI provider path, Strategy 1 (content rewrite)"
+                                ),
+                            )
+                            fixed.append(slug)
+                        else:
+                            wc = lint_result.get("warnings_count", "?")
+                            await tool_notify(
+                                ctx,
+                                message=(
+                                    f"⚠ {slug} — rewrite applied but lint still failing "
+                                    f"({wc} warning(s)); page remains contradicted. "
+                                    f"Run the full resolver with provider=anthropic for "
+                                    f"multi-strategy retry."
+                                ),
+                                level="warning",
+                            )
+                            unresolved.append((slug, f"lint still failing ({wc} warnings)"))
+
+            # 4f. Confirm before next page
+            if i < len(pages) - 1:
+                next_slug = pages[i + 1]["slug"]
+                cont = await tool_confirm(
+                    ctx,
+                    f"Continue to next page ({next_slug})?",
+                    yes_label="Continue",
+                    no_label="Stop",
+                )
+                if not cont.get("confirmed"):
+                    skipped.extend(p["slug"] for p in pages[i + 1:])
+                    break
+
+        # ── 5. Final summary ──────────────────────────────────────────────────
+        wiki_status = await tool_get_wiki_status(ctx)
+
+        parts: list[str] = ["**Contradiction Resolver — Complete**\n"]
+
+        if fixed:
+            parts.append(f"✅ Fixed ({len(fixed)}):")
+            for s in fixed:
+                parts.append(f"  - {s}")
+
+        if unresolved:
+            parts.append(f"\n⚠ Unresolved ({len(unresolved)}):")
+            for s, reason in unresolved:
+                parts.append(f"  - {s}: {reason}")
+            parts.append(
+                "\n  Tip: run the full resolver with provider=anthropic for "
+                "multi-strategy retry on unresolved pages."
+            )
+
+        if skipped:
+            parts.append(f"\n⏭ Skipped ({len(skipped)}):")
+            for s in skipped:
+                parts.append(f"  - {s}")
+
+        status_str = ", ".join(f"{k}: {v}" for k, v in wiki_status.items()
+                               if k not in ("tool", "message"))
+        parts.append(f"\nWiki status (live): {status_str}")
+
+        summary = "\n".join(parts)
+        yield {"event": "token", "data": {"text": summary}}
+        yield {"event": "final_text", "data": {"text": summary}}
+
+    async def _cli_rewrite_page(
+        self,
+        provider,
+        slug: str,
+        page_content: dict,
+        source_text: str | None,
+        page_type: str,
+    ) -> str | None:
+        """Call the provider once with a factual rewrite request.
+
+        Returns the revised markdown string, or None on failure.
+        The system prompt is deliberately neutral — no tool registry, no identity
+        redefinition — so CLI providers (claude-code, opencode) accept it without
+        triggering their safety reasoning.
+        """
+        from synthadoc.providers.base import Message  # local to avoid circular import
+
+        content = page_content.get("content", "")
+        lint_warnings: list[str] = page_content.get("lint_warnings") or []
+        contradiction_note: str | None = page_content.get("contradiction_note")
+
+        # Build the problem description
+        problem_parts: list[str] = []
+        if lint_warnings:
+            problem_parts.append("Lint warnings (dubious or unsupported claims to fix):")
+            for w in lint_warnings:
+                problem_parts.append(f"  - {w}")
+        if contradiction_note:
+            problem_parts.append(f"Contradiction note: {contradiction_note}")
+        if not problem_parts:
+            problem_parts.append(
+                "(No specific signals recorded. Apply conservative hedging to "
+                "any claims that lack explicit sourcing.)"
+            )
+
+        source_block = ""
+        if source_text:
+            source_block = f"\n\nSource text (use to ground your revision):\n{source_text[:4000]}"
+
+        # Reuse _STRATEGY_1_RULES (the same rules embedded in _SYSTEM_PROMPT §STEP 4c)
+        # so the content guidance is defined exactly once at module level.
+        _SYSTEM = (
+            "You are a wiki editor. Apply Strategy 1 — Content rewrite — to resolve "
+            "the contradicted wiki page provided.\n\n"
+            "Revision rules:\n"
+            + _STRATEGY_1_RULES
+            + "\n\nReturn ONLY the revised markdown — no explanation, no preamble, no code fences."
+        )
+
+        user_msg = (
+            f"Wiki page slug: {slug}\n"
+            f"Contradiction type: {page_type}\n\n"
+            f"Contradiction signals:\n"
+            + "\n".join(problem_parts)
+            + f"\n\nCurrent page content:\n{content}"
+            + source_block
+        )
+
+        try:
+            response = await provider.complete(
+                [Message(role="user", content=user_msg)],
+                system=_SYSTEM,
+            )
+            revised = response.text.strip()
+            # Strip markdown fences — CLI providers occasionally wrap output despite instructions
+            if revised.startswith("```"):
+                lines = revised.split("\n")
+                start = 1
+                end = len(lines) - 1 if lines and lines[-1].strip() == "```" else len(lines)
+                revised = "\n".join(lines[start:end]).strip()
+            return revised if revised else None
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("CLI rewrite failed for %s: %s", slug, exc)
+            return None
