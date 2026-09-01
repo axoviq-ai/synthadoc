@@ -82,3 +82,11 @@ def test_build_initial_message_passthrough():
     wf = BrokenWikilinksWorkflow()
     msg = "scan for broken wikilinks"
     assert wf.build_initial_message(msg) == msg
+
+
+def test_build_initial_message_with_slug():
+    """--slug in user input → single-page mode message (broken_wikilinks.py lines 188-189)."""
+    wf = BrokenWikilinksWorkflow()
+    msg = wf.build_initial_message("scan for broken wikilinks --slug my-page")
+    assert "my-page" in msg
+    assert "page_slug" in msg or "single-page" in msg.lower() or "Single-page" in msg

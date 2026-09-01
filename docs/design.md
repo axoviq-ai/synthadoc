@@ -46,6 +46,7 @@
 35. [Contradiction Resolver Workflow](#35-contradiction-resolver-workflow)
 36. [Orphan Resolver Workflow](#36-orphan-resolver-workflow)
 37. [Citation Faithfulness Audit](#37-citation-faithfulness-audit)
+39. [Broken Citation Resolver Workflow](#39-broken-citation-resolver-workflow)
 
 **Appendices**
 
@@ -4053,14 +4054,43 @@ checked.
 
 ---
 
+## 39. Broken Citation Resolver Workflow
+
+The broken citation resolver is the 7th agentic maintenance workflow. It scans all active wiki pages for broken `^[file:L-L]` source citation markers and repairs them interactively.
+
+**Three failure types detected:**
+- `broken_ref` — the citation filename is not listed in the page's `sources[]` (file renamed or re-ingested under a new path)
+- `malformed` — marker syntax is invalid (missing line range, or `start > end`)
+- `out_of_range` — line range exceeds the actual extracted file length
+
+**Detection:** `find_broken_citation_refs(store, extracted_dir, *, slugs=None)` in `lint_agent.py` iterates active pages and delegates to the existing `_check_page_citations` per-page check. Returns `dict[str, list[dict]]` mapping slug → list of `{citation, reason}` dicts.
+
+**Fix strategy:** `tool_apply_citation_fixes` receives `fixes: list[{old_citation, new_citation | null}]` and applies each with `str.replace`. For `broken_ref`, `difflib.get_close_matches(cutoff=0.72)` fuzzy-matches the citation filename against the page's `sources[]`; if matched the filename is corrected (line range preserved); otherwise `new_citation` is `null` (remove). For `malformed` and `out_of_range`, the marker is always removed.
+
+**Verification:** After each page's fixes are applied, a single-page re-scan via `tool_find_broken_citations(page_slug=slug)` confirms resolution (up to 3 attempts).
+
+**Workflow class:** `BrokenCitationResolverWorkflow` — tool budget 60, `GATED_TOOLS = {"apply_citation_fixes"}`, registered in `_registry.py` after `ContradictionResolverWorkflow`.
+
+**Pre-prompt priority:** 5th in the chain (after contradicted → stale → orphan → broken_wikilinks). `/lifecycle/status` exposes `broken_citations` count; `initial_hints()` and `App.tsx` both read it.
+
+Accessible from the web UI (pre-prompt + hint chip "Fix broken citations"), natural language ("fix broken citations", "run citation resolver"), and `synthadoc workflow run --name broken-citation-resolver [--slug SLUG]`.
+
+---
+
 ## Appendix A — Release Feature Index
+
+### v1.3.2
+
+- **Broken Citation Resolver Workflow** — 7th agentic maintenance workflow (`synthadoc workflow run --name broken-citation-resolver`). Scans all active pages for broken `^[file:L-L]` source citation markers (`broken_ref` / `malformed` / `out_of_range`); proposes targeted fixes per page with fuzzy source-name matching (`difflib.get_close_matches`, cutoff 0.72); validates each fix with a single-page re-scan (up to 3 attempts); loops until all citations are clean or escalates unresolvable cases. Confirm-before-act gate via `GATED_TOOLS = {"apply_citation_fixes"}`. Accessible from web UI (5th pre-prompt, "Fix broken citations" hint chip) and CLI. See [§38 Broken Citation Resolver Workflow](#38-broken-citation-resolver-workflow).
+- **`/lifecycle/status` — `broken_citations` count** — the status endpoint now includes a `broken_citations` integer field (count of `broken_ref` / `malformed` / `out_of_range` markers across all active pages). Used by `initial_hints()` (priority 5), `App.tsx` pre-prompt, and `POST /sessions` session context.
+- **`find_broken_citation_refs`** — new pure function in `lint_agent.py`; wraps `_check_page_citations` per-page check for all (or a subset of) active pages; returns `dict[str, list[dict]]`.
 
 ### v1.3.1
 
 - **Orphan Resolver Workflow** — interactive agentic loop (`synthadoc workflow run --name orphan-resolver`) that resolves active wiki pages with no inbound `[[wikilinks]]`. Discovers all orphaned active pages, presents a cost estimate, and processes each orphan sequentially. For each orphan: tries four progressively broader search strategies (`title_bm25`, `content_bm25`, `full_title_scan`, `contextual_reasoning`); reads top candidate pages; proposes a natural link insertion; shows the full unified diff before writing; verifies resolution via graph-level recomputation after each successful apply. Side-effect pre-check skips orphans that were incidentally resolved by an earlier fix. Inter-orphan confirm gate between pages. Escalates with a `warning` notice and 4 concrete next steps after all strategies are exhausted. `--slug` targets a single page (immediate non-orphan exit if the page already has inbound links). Accessible from the web UI and CLI. See [§36 Orphan Resolver Workflow](#36-orphan-resolver-workflow).
 - **Four-strategy candidate search** — `tool_search_orphan_candidates` implements four search modes keyed by `strategy` parameter. `title_bm25` and `content_bm25` return ranked slugs directly. `full_title_scan` returns all active page titles for LLM selection. `contextual_reasoning` returns titles plus the orphan's full body for richer LLM judgment. Strategies receive a cumulative `exclude_slugs` list so previously tried candidates are never returned again.
 - **Graph-level orphan verification** — `tool_verify_orphan_resolved` re-runs the inbound-link query against the live wiki graph after each apply, returning `resolved=true/false` and `linked_by` (the slugs now pointing to the orphan). This is the single source of truth for resolution — the agent does not infer resolution from the apply response.
-- **Agentic maintenance workflow registry extended** — `orphan-resolver` is registered alongside `lint-report`, `broken-wikilinks`, `scaffold`, `contradiction-resolver`, and `ingest-lint`. `synthadoc workflow list` enumerates all seven with descriptions. No CLI changes required to add future workflows.
+- **Agentic maintenance workflow registry extended** — `orphan-resolver` is registered alongside `lint-report`, `broken-wikilinks`, `scaffold`, `contradiction-resolver`, and `ingest-lint`. `synthadoc workflow list` enumerates all registered workflows with descriptions. No CLI changes required to add future workflows.
 - **Citation Faithfulness Audit** — opt-in LLM audit that verifies each `^[file:L-L]` claim is actually supported by the referenced source lines. One LLM call per page (batch all citations). Results classified as `supported`, `drift`, `hallucination`, or `skipped`. CLI: `synthadoc audit citations --faithfulness [--page <slug>] [--yes] [--json] [--force]`. API: `POST /audit/citations/faithfulness` (enqueues background job, returns `{job_id}`) and `GET /audit/citations/faithfulness/cache`. Results persist in `.synthadoc/faithfulness-cache.json` keyed by per-page `ingested` timestamp; stale detection re-uses the same key without re-running unchanged pages. See [§4 CitationFaithfulnessAgent](#citationfaithfulnessagent).
 - **Background job engine for faithfulness audit** — `POST /audit/citations/faithfulness` now returns `{job_id, message}` immediately and runs the audit in the orchestrator's job worker loop. Per-page progress (`phase`, `current_slug`, `pages_checked`, `pages_total`) is emitted via `update_progress`; results are written to cache on `complete`. The `faithfulness` operation type is added to the job engine alongside `ingest` and `lint`.
 - **CLI delegation — no API key in terminal** — `synthadoc audit citations --faithfulness` delegates LLM work to the running server (same pattern as `synthadoc lint run`). The terminal process performs only a local cost check; the audit job is enqueued via HTTP and polled with per-page progress output. No provider API key is required in the shell environment.

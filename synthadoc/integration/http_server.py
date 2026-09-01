@@ -1257,6 +1257,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         else:
             summary = await orch._audit.get_lifecycle_summary()
             summary["orphan"] = orch._store.count_orphan_active_pages()
+            # broken_wikilinks and broken_citations counts are intentionally omitted here:
+            # computing them requires reading every page (violates the no-read_page invariant
+            # for POST /sessions). Counts are available via GET /lifecycle/status; App.tsx
+            # fetches that separately to drive the pre-prompt.
             has_health_issues = (
                 summary.get("stale", 0)
                 + summary.get("contradicted", 0)
@@ -2062,6 +2066,13 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         _broken_total = sum(len(refs) for refs in _broken.values())
         if _broken_total > 0:
             counts["broken_wikilinks"] = _broken_total
+        # Broken source citations: count broken ^[file:L-L] markers across active pages.
+        from synthadoc.agents.lint_agent import find_broken_citation_refs as _find_broken_cite
+        _extracted_dir = wiki_root / ".synthadoc" / "extracted"
+        _broken_cite = _find_broken_cite(orch._store, _extracted_dir)
+        _broken_cite_total = sum(len(issues) for issues in _broken_cite.values())
+        if _broken_cite_total > 0:
+            counts["broken_citations"] = _broken_cite_total
         return counts
 
     @app.get("/lifecycle/events")

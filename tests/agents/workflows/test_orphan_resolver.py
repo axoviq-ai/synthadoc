@@ -674,3 +674,120 @@ def test_inter_orphan_confirm_in_system_prompt():
     assert "Inter-orphan confirm" in text or "inter-orphan" in text.lower() or (
         "tool_confirm" in text and "more orphans remain" in text.lower()
     ), "System prompt must describe the inter-orphan tool_confirm gate"
+
+
+# ---------------------------------------------------------------------------
+# Additional edge-case coverage for orphan_resolver_tools.py
+# ---------------------------------------------------------------------------
+
+async def test_find_orphaned_pages_store_is_none():
+    """tool_find_orphaned_pages returns empty result when ctx.store is None (line 70)."""
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_find_orphaned_pages
+    ctx, _ = _make_ctx(store=None)
+    result = await tool_find_orphaned_pages(ctx)
+    assert result == {"orphans": [], "count": 0}
+
+
+async def test_verify_orphan_resolved_store_is_none():
+    """tool_verify_orphan_resolved returns unresolved when ctx.store is None (line 93)."""
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_verify_orphan_resolved
+    ctx, _ = _make_ctx(store=None)
+    result = await tool_verify_orphan_resolved(ctx, "some-slug")
+    assert result == {"resolved": False, "linked_by": []}
+
+
+async def test_verify_orphan_resolved_slug_not_in_active_pages():
+    """Slug absent from active pages → resolved=False (line 102)."""
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_verify_orphan_resolved
+    # "active-page" is active; "ghost" is not in the store at all
+    store = _make_wiki_store({"active-page": ("active", "Some content.")})
+    ctx, _ = _make_ctx(store=store)
+    result = await tool_verify_orphan_resolved(ctx, "ghost")
+    assert result == {"resolved": False, "linked_by": []}
+
+
+async def test_build_page_text_dicts_skips_none_page():
+    """_build_page_text_dicts skips slugs when read_page() returns None (line 46)."""
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_find_orphaned_pages
+    store = MagicMock()
+    store.list_pages.return_value = ["ghost-slug", "real-slug"]
+
+    def _read(slug):
+        if slug == "ghost-slug":
+            return None  # triggers the `continue` on line 46
+        p = MagicMock()
+        p.status = "active"
+        p.content = "Real content."
+        p.orphan = False
+        return p
+
+    store.read_page.side_effect = _read
+    ctx, _ = _make_ctx(store=store)
+    result = await tool_find_orphaned_pages(ctx)
+    # ghost-slug was skipped; real-slug is active and has no inbound links → orphan
+    assert "ghost-slug" not in result["orphans"]
+    assert "real-slug" in result["orphans"]
+
+
+async def test_build_page_text_dicts_includes_contradicted_in_link_graph():
+    """Contradicted pages contribute to all_page_texts (line 51) so their links count."""
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_find_orphaned_pages
+    store = _make_wiki_store({
+        "orphan": ("active", "No links."),
+        "linker": ("contradicted", "See [[orphan]] for more."),
+    })
+    ctx, _ = _make_ctx(store=store)
+    result = await tool_find_orphaned_pages(ctx)
+    # The contradicted page links to "orphan" — orphan must NOT be in the orphan list
+    assert "orphan" not in result["orphans"]
+
+
+async def test_search_candidates_content_bm25_no_search():
+    """content_bm25 with ctx.search=None returns error result (line 212)."""
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_search_orphan_candidates
+    store = _make_wiki_store({"orphan": ("active", "Content about quantum computing.")})
+    ctx, _ = _make_ctx(store=store, search=None)
+    result = await tool_search_orphan_candidates(ctx, "orphan", "content_bm25", [])
+    assert result["candidates"] == []
+    assert "error" in result
+
+
+async def test_search_candidates_content_bm25_empty_page_content():
+    """content_bm25 with a page that has no content returns empty candidates (line 216)."""
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_search_orphan_candidates
+    search = _make_search_mock([("other", 0.9)])
+    store = _make_wiki_store({
+        "orphan": ("active", ""),   # empty content
+        "other":  ("active", "Content."),
+    })
+    ctx, _ = _make_ctx(store=store, search=search)
+    result = await tool_search_orphan_candidates(ctx, "orphan", "content_bm25", [])
+    assert result["strategy"] == "content_bm25"
+    assert result["candidates"] == []
+
+
+async def test_search_candidates_full_title_scan_no_store():
+    """full_title_scan with ctx.store=None returns error result (line 231)."""
+    from synthadoc.agents.workflows.tools.orphan_resolver_tools import tool_search_orphan_candidates
+    ctx, _ = _make_ctx(store=None, search=None)
+    result = await tool_search_orphan_candidates(ctx, "orphan", "full_title_scan", [])
+    assert result["candidates"] == []
+    assert "error" in result
+
+
+def test_initial_hints_broken_wikilinks_chip():
+    """'Scan for broken wikilinks' chip appears when broken_wikilinks > 0 (hint_engine line 281)."""
+    from synthadoc.agents.hint_engine import HintEngine
+    hints = HintEngine.initial_hints(
+        "HEALTH_CHECK", context={"contradicted": 0, "stale": 0, "orphan": 0, "broken_wikilinks": 1}
+    )
+    assert "Scan for broken wikilinks" in hints
+
+
+def test_initial_hints_broken_citations_chip():
+    """'Fix broken citations' chip appears when broken_citations > 0 (hint_engine line 283)."""
+    from synthadoc.agents.hint_engine import HintEngine
+    hints = HintEngine.initial_hints(
+        "HEALTH_CHECK", context={"contradicted": 0, "stale": 0, "orphan": 0, "broken_citations": 1}
+    )
+    assert "Fix broken citations" in hints

@@ -49,6 +49,7 @@ Full implementation details: AgenticWorkflow.GATED_TOOLS in _base.py.
 from __future__ import annotations
 
 from synthadoc.agents.workflows._base import AgenticWorkflow
+from synthadoc.agents.workflows.broken_citation_resolver import BrokenCitationResolverWorkflow
 from synthadoc.agents.workflows.broken_wikilinks import BrokenWikilinksWorkflow
 from synthadoc.agents.workflows.contradiction_resolver import ContradictionResolverWorkflow
 from synthadoc.agents.workflows.ingest_lint import IngestLintWorkflow
@@ -63,6 +64,7 @@ ROUTED_WORKFLOWS: list[type[AgenticWorkflow]] = [
     BrokenWikilinksWorkflow,
     ScaffoldWorkflow,
     ContradictionResolverWorkflow,   # more specific than IngestLintWorkflow
+    BrokenCitationResolverWorkflow,
     OrphanResolverWorkflow,
     IngestLintWorkflow,
 ]

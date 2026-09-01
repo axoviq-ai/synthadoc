@@ -20,7 +20,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from synthadoc.agents.workflows._base import WorkflowContext
 
-from synthadoc.agents.lint_agent import find_broken_wikilink_refs
+from synthadoc.agents.lint_agent import (
+    _citation_source_names,
+    find_broken_citation_refs,
+    find_broken_wikilink_refs,
+)
 from synthadoc.agents.scaffold_agent import scaffold_output_paths
 from synthadoc.core.queue import JobStatus
 
@@ -363,6 +367,8 @@ async def tool_get_page_states(ctx: "WorkflowContext", slugs: list[str]) -> dict
 
 # Extracts wikilink slug, excluding display text and anchors: [[slug]], [[slug|text]], [[slug#anchor]]
 _WIKILINK_SCAN_RE = re.compile(r"\[\[([^\]|#]+?)(?:[|#][^\]]*)?\]\]")
+# Matches every valid ^[...] citation marker shape (including malformed ones without line range)
+_CITATION_MARKER_RE = re.compile(r"^\^\[[^\]]*\]$")
 
 # Captures slug + optional suffix (|display or #anchor) for targeted replacement
 _WIKILINK_REPLACE_RE = re.compile(r"\[\[([^\]|#]+?)((?:[|#][^\]]*))?\]\]")
@@ -476,6 +482,132 @@ async def tool_find_broken_wikilinks(
     if page_slug is not None:
         result["page_title"] = page_title   # display title for use in single-page summary
     return result
+
+
+async def tool_find_broken_citations(
+    ctx: "WorkflowContext",
+    page_slug: str | None = None,
+) -> dict:
+    """Scan wiki pages for broken source citation markers.
+
+    Returns a dict with keys: pages, total_issues, scanned.
+
+    Active-page determination uses the store directly (frontmatter ``status:
+    active``) rather than the audit DB, so this tool is consistent with
+    ``GET /lifecycle/status`` which drives the pre-prompt chip.  The audit DB
+    is not the right filter here: pages can have ``status: active`` in their
+    frontmatter without a corresponding audit-DB entry (e.g. wiki imports),
+    and those pages would show a broken-citation chip but then appear clean
+    to the workflow — a confusing mismatch.
+    """
+    extracted_dir = Path(ctx.wiki_root) / ".synthadoc" / "extracted"
+
+    if page_slug is not None:
+        # Single-page mode: check existence and active status via the store.
+        page_check = ctx.store.read_page(page_slug)
+        if page_check is not None and page_check.status == "active":
+            scan_slugs: list[str] | None = [page_slug]
+        else:
+            scan_slugs = []
+        scope_label = f"page '{page_slug}'"
+    else:
+        # Whole-wiki mode: pass None so find_broken_citation_refs calls
+        # store.list_pages() and filters by frontmatter status itself.
+        scan_slugs = None
+        scope_label = "active pages"
+
+    await ctx.send_sse_event(
+        "tool_progress",
+        {"tool": "find_broken_citations",
+         "message": f"Scanning {scope_label} for broken citation markers..."},
+    )
+
+    if page_slug is not None and not scan_slugs:
+        # Requested slug is inactive or doesn't exist — return empty immediately.
+        broken_by_slug: dict[str, list[dict]] = {}
+    else:
+        broken_by_slug = find_broken_citation_refs(
+            ctx.store, extracted_dir,
+            slugs=scan_slugs,
+        )
+
+    pages_with_issues: list[dict] = []
+    total_issues = 0
+    for slug in sorted(broken_by_slug):
+        page = ctx.store.read_page(slug)
+        page_sources: list[str] = []
+        if page and page.sources:
+            for s in page.sources:
+                page_sources.extend(sorted(_citation_source_names(s.file)))
+        pages_with_issues.append({
+            "slug": slug,
+            "title": page.title if page else None,
+            "issues": broken_by_slug[slug],
+            "page_sources": page_sources,
+        })
+        total_issues += len(broken_by_slug[slug])
+
+    n_pages = len(pages_with_issues)
+    n_scanned = len(scan_slugs) if scan_slugs is not None else len(ctx.store.list_pages())
+    if n_pages:
+        msg = (
+            f"Found {total_issues} broken citation{'s' if total_issues != 1 else ''} "
+            f"across {n_pages} page{'s' if n_pages != 1 else ''}"
+        )
+    else:
+        msg = f"No broken citations found on {scope_label}"
+
+    await ctx.send_sse_event("tool_progress", {"tool": "find_broken_citations", "message": msg})
+    return {"pages": pages_with_issues, "scanned": n_scanned, "total_issues": total_issues}
+
+
+async def tool_apply_citation_fixes(
+    ctx: "WorkflowContext",
+    page_slug: str,
+    fixes: list[dict],
+) -> dict:
+    """Apply citation marker patches to a single wiki page.
+
+    Each entry in *fixes* is a dict with keys old_citation and new_citation.
+    new_citation=None removes the marker; a string value replaces it.
+    """
+    page = ctx.store.read_page(page_slug)
+    if page is None:
+        return {"status": "error", "error": f"Page {page_slug!r} not found", "changes": 0, "page": page_slug}
+
+    content = page.content or ""
+    total_changes = 0
+    for fix in fixes:
+        old_citation = fix.get("old_citation", "").strip()
+        new_citation = fix.get("new_citation") or None  # empty string treated as removal
+        if not old_citation:
+            continue
+        # Guard against a hallucinated or truncated value that would globally replace
+        # arbitrary text. Skip any fix whose old_citation is not shaped like a citation marker.
+        if not _CITATION_MARKER_RE.match(old_citation):
+            continue
+        if new_citation is not None:
+            updated = content.replace(old_citation, new_citation)
+        else:
+            updated = content.replace(old_citation, "")
+        if updated != content:
+            total_changes += 1
+            content = updated
+
+    if total_changes == 0:
+        return {"status": "success", "changes": 0, "page": page_slug}
+
+    page.content = content
+    with ctx.store.page_lock(page_slug):
+        ctx.store.write_page(page_slug, page)
+
+    n = total_changes
+    await ctx.send_sse_event(
+        "tool_progress",
+        {"tool": "apply_citation_fixes",
+         "message": f"{page_slug}: {n} citation{'s' if n != 1 else ''} fixed"},
+    )
+    return {"status": "success", "changes": total_changes, "page": page_slug}
 
 
 async def tool_apply_link_fixes(

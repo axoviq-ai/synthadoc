@@ -326,6 +326,57 @@ def find_broken_wikilink_refs(
     return result
 
 
+def find_broken_citation_refs(
+    store: "WikiStorage",
+    extracted_dir: Path,
+    *,
+    slugs: list[str] | None = None,
+) -> dict[str, list[dict]]:
+    """Return {slug: [{"citation": str, "reason": str}, ...]} for active pages
+    with broken ^[file:L-L] markers.
+
+    Each dict in the list has:
+      "citation" — the raw marker text, e.g. "^[bio.txt:5-12]"
+      "reason"   — "broken_ref" | "malformed" | "out_of_range"
+
+    Only active pages are scanned unless slugs is provided.
+    Returns an empty dict when no issues are found.
+    """
+    candidates = slugs if slugs is not None else store.list_pages()
+    result: dict[str, list[dict]] = {}
+    for slug in candidates:
+        page = store.read_page(slug)
+        if page is None or page.status != "active":
+            continue
+        issues = _check_page_citations(slug, page, extracted_dir)
+        if issues:
+            # Strip the "slug" key — callers get it from the dict key
+            result[slug] = [{"citation": i["citation"], "reason": i["reason"]} for i in issues]
+    return result
+
+
+_NO_ISSUE_RE = re.compile(
+    r"^\s*(no\s+issue|no\s+real\s+issue|none|n/?a|not\s+applicable|"
+    r"defensible|nuanced|acceptable|ok|okay|accurate|correct|fine)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_substantive_warning(item: dict) -> bool:
+    """Return True only when the concern describes a real problem.
+
+    The adversarial LLM sometimes returns items whose concern field says
+    "No issue", "Defensible", "N/A", etc. — i.e. the model followed the
+    instruction to list claims but then concluded there was no problem.
+    Counting those as warnings inflates lint_warnings and causes the gate
+    to block pages that are actually clean.
+    """
+    concern = (item.get("concern") or "").strip()
+    if not concern:
+        return False
+    return not _NO_ISSUE_RE.match(concern)
+
+
 def _parse_adversarial_response(text: str) -> list[dict]:
     """Parse LLM adversarial response into list of {claim, concern} dicts.
 
@@ -333,6 +384,12 @@ def _parse_adversarial_response(text: str) -> list[dict]:
     before the JSON array, and trailing commentary after it.
     Returns an empty list (not None) on complete parse failure — callers must
     log a warning when the response was non-empty but yielded no items.
+
+    Advisory "no issue" entries (concern starts with "No issue", "N/A",
+    "Defensible", etc.) are filtered out — the model should return [] for
+    clean content, but sometimes annotates each claim before deciding it's
+    fine.  Counting those non-findings as warnings would inflate the gate
+    threshold and block pages that are substantively correct.
     """
     raw = text.strip()
     # Fast path: strip markdown fences and try direct parse.
@@ -345,7 +402,7 @@ def _parse_adversarial_response(text: str) -> list[dict]:
                 return [
                     {"claim": item.get("claim"), "concern": item.get("concern")}
                     for item in parsed
-                    if isinstance(item, dict) and item.get("concern")
+                    if isinstance(item, dict) and _is_substantive_warning(item)
                 ]
         except Exception:
             pass
@@ -359,7 +416,7 @@ def _parse_adversarial_response(text: str) -> list[dict]:
                 return [
                     {"claim": item.get("claim"), "concern": item.get("concern")}
                     for item in parsed
-                    if isinstance(item, dict) and item.get("concern")
+                    if isinstance(item, dict) and _is_substantive_warning(item)
                 ]
         except Exception:
             pass
@@ -638,11 +695,15 @@ class LintAgent(BaseAgent):
             "You are a skeptical editor reviewing a wiki page compiled from source documents.\n\n"
             f"List up to {n} claim{'s' if n != 1 else ''} in this page that are clearly overstated or directly\n"
             "contradict well-established facts. Only flag issues you are highly confident\n"
-            "about — if a claim is defensible or nuanced, skip it.\n\n"
-            "For each claim:\n"
+            "about — if a claim is defensible or nuanced, DO NOT include it.\n\n"
+            "IMPORTANT: Only include an entry when the concern describes a real problem.\n"
+            "Do NOT include entries where the concern would say 'No issue', 'Defensible',\n"
+            "'N/A', 'Accurate', 'Acceptable', or any equivalent. Those are not warnings.\n"
+            "If the page is clean, return an empty array — do not annotate claims you decided to skip.\n\n"
+            "For each genuine concern:\n"
             "1. Quote the exact claim (one sentence or phrase)\n"
             "2. Explain the specific concern concisely\n\n"
-            "If you find no such issues, return an empty JSON array: []\n\n"
+            "If you find no issues, return ONLY: []\n\n"
             "Return ONLY a JSON array, no markdown fences:\n"
             '[{"claim": "...", "concern": "..."}, ...]\n\n'
             f"--- PAGE CONTENT ---\n{content[:3000]}"

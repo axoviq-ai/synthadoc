@@ -273,3 +273,92 @@ async def test_read_source_page_not_found(tmp_path):
     from synthadoc.agents.workflows.tools.contradiction_resolver_tools import tool_read_source_content
     result = await tool_read_source_content(ctx, slug="does-not-exist")
     assert "error" in result
+
+
+# ── new edge-case coverage ────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_read_source_empty_file_field_is_skipped(tmp_path):
+    """Source with empty file= is skipped; falls through to 'none' fallback (line 85)."""
+    from synthadoc.storage.wiki import SourceRef
+    page = _contradicted(
+        note=None,
+        sources=[SourceRef(file="", hash="", size=0, ingested="")],
+    )
+    store = _make_store(tmp_path, {"p": page})
+    ctx = _ctx(tmp_path, store)
+    from synthadoc.agents.workflows.tools.contradiction_resolver_tools import tool_read_source_content
+    result = await tool_read_source_content(ctx, slug="p")
+    assert result["fallback_used"] == "none"
+
+
+@pytest.mark.asyncio
+async def test_read_source_raw_oserror_falls_through(tmp_path):
+    """OSError reading raw_sources file is silently caught; falls through (lines 93-94)."""
+    from pathlib import Path
+    from unittest.mock import patch as _patch
+    from synthadoc.storage.wiki import SourceRef
+
+    raw_dir = tmp_path / "raw_sources"
+    raw_dir.mkdir()
+    raw_file = raw_dir / "src.txt"
+    raw_file.write_text("something", encoding="utf-8")
+
+    page = _contradicted(note=None, sources=[SourceRef(file="src.txt", hash="", size=0, ingested="")])
+    store = _make_store(tmp_path, {"p": page})
+    ctx = _ctx(tmp_path, store)
+
+    _orig_read = Path.read_text
+
+    def _raise_for_raw(self, *args, **kwargs):
+        if self == raw_file:
+            raise OSError("Permission denied")
+        return _orig_read(self, *args, **kwargs)
+
+    from synthadoc.agents.workflows.tools.contradiction_resolver_tools import tool_read_source_content
+    with _patch.object(Path, "read_text", _raise_for_raw):
+        result = await tool_read_source_content(ctx, slug="p")
+    # raw_sources raised OSError, no extracted copy → fallback_used="none"
+    assert result["fallback_used"] == "none"
+
+
+@pytest.mark.asyncio
+async def test_read_source_extracted_oserror_falls_through(tmp_path):
+    """OSError reading extracted file is silently caught; falls through (lines 105-106)."""
+    from pathlib import Path
+    from unittest.mock import patch as _patch
+    from synthadoc.storage.wiki import SourceRef
+
+    extracted_dir = tmp_path / ".synthadoc" / "extracted"
+    extracted_dir.mkdir(parents=True)
+    ext_file = extracted_dir / "src.txt"
+    ext_file.write_text("extracted content", encoding="utf-8")
+
+    page = _contradicted(note=None, sources=[SourceRef(file="src.txt", hash="", size=0, ingested="")])
+    store = _make_store(tmp_path, {"p": page})
+    ctx = _ctx(tmp_path, store)
+
+    _orig_read = Path.read_text
+
+    def _raise_for_extracted(self, *args, **kwargs):
+        if self == ext_file:
+            raise OSError("Permission denied")
+        return _orig_read(self, *args, **kwargs)
+
+    from synthadoc.agents.workflows.tools.contradiction_resolver_tools import tool_read_source_content
+    with _patch.object(Path, "read_text", _raise_for_extracted):
+        result = await tool_read_source_content(ctx, slug="p")
+    assert result["fallback_used"] == "none"
+
+
+@pytest.mark.asyncio
+async def test_cost_estimate_sse_error_is_swallowed(tmp_path):
+    """Exception from send_sse_event is swallowed; estimate still returns (lines 148-149)."""
+    store = _make_store(tmp_path, {})
+    ctx = _ctx(tmp_path, store)
+    ctx.send_sse_event = AsyncMock(side_effect=RuntimeError("SSE down"))
+    with patch(_CONFIRM_PATCH, new_callable=AsyncMock, return_value={"confirmed": True}):
+        from synthadoc.agents.workflows.tools.contradiction_resolver_tools import tool_cost_estimate
+        result = await tool_cost_estimate(ctx, page_count=2)
+    assert result["confirmed"] is True
+    assert result["pages"] == 2
