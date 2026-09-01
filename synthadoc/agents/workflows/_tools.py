@@ -332,11 +332,24 @@ async def tool_get_lint_report(ctx: "WorkflowContext") -> dict:
         warned.sort(key=lambda x: x["count"], reverse=True)
         orphan_slugs.sort()
 
+    # Citation issues — reuse find_broken_citation_refs (same function used by
+    # tool_find_broken_citations in BrokenCitationResolverWorkflow).
+    broken_cite_by_slug: dict[str, list[dict]] = {}
+    if ctx.store and ctx.wiki_root:
+        _extracted_dir = Path(ctx.wiki_root) / ".synthadoc" / "extracted"
+        broken_cite_by_slug = find_broken_citation_refs(ctx.store, _extracted_dir)
+    broken_citation_count = sum(len(v) for v in broken_cite_by_slug.values())
+
     return {
         "last_run": summary or {},
         "contradicted_pages": contradicted,
         "adversarial_warnings": warned,
         "orphan_slugs": orphan_slugs,
+        "broken_citations": broken_citation_count,
+        "broken_citation_pages": [
+            {"slug": slug, "count": len(issues)}
+            for slug, issues in sorted(broken_cite_by_slug.items())
+        ],
     }
 
 
