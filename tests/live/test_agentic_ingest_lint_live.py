@@ -651,6 +651,7 @@ def test_query_done_pre_prompt_present_when_stale_pages_exist():
 
 
 @pytest.mark.live
+@pytest.mark.timeout(120)
 def test_query_done_pre_prompt_absent_when_no_stale_pages():
     """
     When no actionable pages exist (no stale, no contradicted), the done SSE
