@@ -459,6 +459,7 @@ The guide covers:
 24. Knowledge graph — weighted edges (wikilink + co-source signals), explore clusters in the web UI Graph tab, click a node to query it
 25. Ingest an AI session transcript — turn Claude Code, Codex, or chat conversations into structured wiki pages
 26. Agentic maintenance workflows — seven conversational workflows via web UI or CLI: re-ingest stale pages (bulk or by slug), scan and fix broken wikilinks, run lint and view the full report, run scaffold and regenerate wiki files, resolve contradicted pages interactively (diff shown before every write, human approval required), resolve orphaned pages by inserting natural wikilinks into related content, fix broken source citation markers — agent confirms before touching anything, streams inline progress
+27. Scan and retract sensitive data — dry-run to surface API keys, emails, SSNs, credit cards, and custom patterns; apply redactions with a single confirmation; incremental `--changed-only` mode for recurring runs; audit trail records pattern names only (never the values)
 
 ---
 
