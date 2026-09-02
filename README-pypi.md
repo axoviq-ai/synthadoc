@@ -14,7 +14,7 @@
       '-+###############+-'
 
        S Y N T H A D O C
-    Community Edition  v1.3.1
+    Community Edition  v1.3.2
   ────────────────────────────────
   Domain-agnostic LLM wiki engine
 ```
@@ -31,10 +31,10 @@
 <a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.cli_commands&label=CLI%20commands&color=darkblue" alt="CLI commands"/></a>
 <a href="https://github.com/axoviq-ai/synthadoc/tree/main/obsidian-plugin"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.obsidian_commands&label=Obsidian%20commands&color=blueviolet" alt="Obsidian commands"/></a>
 <a href="https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#agentic-workflows"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.maintenance_workflows&label=Maintenance%20workflows&color=green" alt="Maintenance workflows"/></a>
-<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.3.1-brightgreen.svg" alt="Version"/></a>
+<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.3.2-brightgreen.svg" alt="Version"/></a>
 </p>
 
-**Document version: v1.3.1**
+**Document version: v1.3.2**
 
 **Engineered for solo users and enterprises alike, providing a domain-specific knowledge base that scales seamlessly while maintaining accuracy through autonomous self-optimization.**
 
@@ -438,6 +438,7 @@ The guide covers:
 24. Knowledge graph — weighted edges (wikilink + co-source signals), explore clusters in the web UI Graph tab, click a node to query it
 25. Ingest an AI session transcript — turn Claude Code, Codex, or chat conversations into structured wiki pages
 26. Agentic maintenance workflows — seven conversational workflows via web UI or CLI: re-ingest stale pages (bulk or by slug), scan and fix broken wikilinks, run lint and view the full report, run scaffold and regenerate wiki files, resolve contradicted pages interactively (diff shown before every write, human approval required), resolve orphaned pages by inserting natural wikilinks into related content, fix broken source citation markers — agent confirms before touching anything, streams inline progress
+27. Scan and retract sensitive data — dry-run to surface API keys, emails, SSNs, credit cards, and custom patterns; apply redactions with a single confirmation; incremental `--changed-only` mode for recurring runs; audit trail records pattern names only (never the values)
 
 ---
 
@@ -819,6 +820,36 @@ synthadoc workflow run --name broken-citation-resolver --slug my-page -w my-wiki
 The contradiction resolver lists contradicted pages, estimates cost, then walks through each page: reads the content and conflicting sources, proposes a rewrite, shows the full unified diff, and waits for your approval. After an approved write it re-lints the page and promotes it to *active* on pass, or escalates after 3 failed attempts.
 
 → Full walkthrough and web UI path: [Quick-Start Guide — Step 9](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-9--resolve-a-contradiction)
+
+### Sensitive data retraction
+
+Scan wiki pages for API keys, emails, SSNs, credit card numbers, and custom patterns. Apply `[REDACTED]` in place after confirmation. The server also scans pages automatically after each ingest job.
+
+```bash
+# Dry-run — show pattern matches without making changes
+synthadoc retract scan -w my-wiki
+
+# Dry-run for a single page
+synthadoc retract scan --slug ada-lovelace -w my-wiki
+
+# Only scan pages modified since the last scan cycle (incremental)
+synthadoc retract scan --changed-only -w my-wiki
+
+# Apply redactions across all pages (prompts for confirmation)
+synthadoc retract scan --apply -w my-wiki
+
+# Apply only to recently-modified pages, auto-confirm
+synthadoc retract scan --apply --changed-only --yes -w my-wiki
+
+# Apply without confirmation prompt
+synthadoc retract scan --apply --yes -w my-wiki
+
+# Show recent scan history from the audit log
+synthadoc retract status -w my-wiki
+synthadoc retract status --json -w my-wiki
+```
+
+→ Full walkthrough: [Quick-Start Guide — Step 27](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-27--scan-and-retract-sensitive-data)
 
 ### Managing page lifecycle
 

@@ -1,6 +1,6 @@
 ﻿# Synthadoc User Quick-Start Guide
 
-**Version: v1.3.1 (Community Edition)**
+**Version: v1.3.2 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
@@ -1080,7 +1080,7 @@ Open the web chat UI. You have four entry points:
 - **Pre-filled suggestion:** After any response that mentions orphaned pages — a lint run, a status query, or a lint report — a pre-filled prompt appears below the reply — click it directly:
 
   > *2 orphaned pages detected — run the orphan resolver to link them interactively?*
-
+  >
 - **Graph tab:** Orphaned pages appear as isolated nodes at the edges of the knowledge graph. A **"Run orphan resolver"** chip is shown in the Graph tab sidebar when isolated nodes are present — click it without leaving the graph view.
 - **Free text:** Type **"run orphan resolver"** at any time.
 
@@ -2152,18 +2152,19 @@ While the audit runs, progress is printed per page (`Auditing "bell-labs" (3/12)
 
 The report shows one row per citation with a verdict:
 
-| Verdict | Meaning |
-|---|---|
-| ✅ supported | Source lines clearly back the claim |
-| ⚠️ drift | Claim overstates or partially misrepresents the source |
-| ❌ hallucination | Source contradicts or is unrelated to the claim |
-| — skipped | Source file not available on disk |
+
+| Verdict          | Meaning                                                |
+| ---------------- | ------------------------------------------------------ |
+| ✅ supported     | Source lines clearly back the claim                    |
+| ⚠️ drift       | Claim overstates or partially misrepresents the source |
+| ❌ hallucination | Source contradicts or is unrelated to the claim        |
+| — skipped       | Source file not available on disk                      |
 
 The command exits with code `1` when any drift or hallucination is found, making it easy to use in CI pipelines.
 
 **Obsidian walkthrough:**
 
-1. Open the command palette and run **Synthadoc: Audit: citation faithfulness...**  
+1. Open the command palette and run **Synthadoc: Audit: citation faithfulness...**
    (Or open the Audit modal and click the **Citation faithfulness** tab.)
 2. The tab opens with the **last cached results** already loaded (if any), and automatically calculates a cost estimate for the current scope — no button press required.
 3. Choose scope using the button group at the top: **All active pages** runs the audit across every active page; **Specific page** reveals a slug search field with fuzzy autocomplete (fetched from your active pages). Switching scope immediately filters the results table and refreshes the cost estimate.
@@ -2868,16 +2869,16 @@ The web chat UI can drive wiki maintenance conversationally — no terminal requ
 Seven workflows are available, listed in the order the web UI will pre-prompt them at session start:
 
 
-| Workflow                          | Example phrase                   | Scope                                                                                                                                                                              |
-| --------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Contradiction resolver**        | "run contradiction resolver"     | For each contradicted page: reads content and sources, proposes a rewrite, shows the full diff, applies after approval, re-lints the page, and promotes it to *active* if it passes |
-| **Stale-pages bulk reingest**     | "re-ingest stale pages"          | Finds every stale page, re-ingests each one in sequence, then runs lint                                                                                                            |
-| **Page-by-slug reingest**         | "re-ingest the alan-turing page" | Re-ingests one named page regardless of state (active, draft, or stale), then runs lint                                                                                            |
-| **Orphan resolver**               | "run orphan resolver"            | Finds pages with no incoming `[[wikilinks]]` and proposes natural link insertions into topically related active pages; retries with 4 progressively broader search strategies before escalating |
-| **Broken wikilinks scan and fix** | "scan for broken wikilinks"      | Scans all active pages for`[[slug]]` references that resolve to no existing page; suggests corrections and fixes them after confirmation                                           |
-| **Broken citation resolver**      | "fix broken citations"           | Scans all active pages for broken `^[file:L-L]` source markers (`broken_ref` / `malformed` / `out_of_range`); proposes targeted fixes with fuzzy source-name matching; validates each fix with a re-scan |
-| **Lint run and full report**      | "run lint"                       | Runs a full lint pass, waits for it to complete, then surfaces the complete report in a single conversational turn                                                                 |
-| **Scaffold and report**           | "run scaffold"                   | Previews the domain and files to overwrite, asks for confirmation, then regenerates`index.md`, `purpose.md`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`                             |
+| Workflow                          | Example phrase                   | Scope                                                                                                                                                                                                   |
+| --------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Contradiction resolver**        | "run contradiction resolver"     | For each contradicted page: reads content and sources, proposes a rewrite, shows the full diff, applies after approval, re-lints the page, and promotes it to*active* if it passes                      |
+| **Stale-pages bulk reingest**     | "re-ingest stale pages"          | Finds every stale page, re-ingests each one in sequence, then runs lint                                                                                                                                 |
+| **Page-by-slug reingest**         | "re-ingest the alan-turing page" | Re-ingests one named page regardless of state (active, draft, or stale), then runs lint                                                                                                                 |
+| **Orphan resolver**               | "run orphan resolver"            | Finds pages with no incoming`[[wikilinks]]` and proposes natural link insertions into topically related active pages; retries with 4 progressively broader search strategies before escalating          |
+| **Broken wikilinks scan and fix** | "scan for broken wikilinks"      | Scans all active pages for`[[slug]]` references that resolve to no existing page; suggests corrections and fixes them after confirmation                                                                |
+| **Broken citation resolver**      | "fix broken citations"           | Scans all active pages for broken`^[file:L-L]` source markers (`broken_ref` / `malformed` / `out_of_range`); proposes targeted fixes with fuzzy source-name matching; validates each fix with a re-scan |
+| **Lint run and full report**      | "run lint"                       | Runs a full lint pass, waits for it to complete, then surfaces the complete report in a single conversational turn                                                                                      |
+| **Scaffold and report**           | "run scaffold"                   | Previews the domain and files to overwrite, asks for confirmation, then regenerates`index.md`, `purpose.md`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`                                                  |
 
 ### Demo — resolve contradicted pages
 
@@ -3133,6 +3134,7 @@ The workflow scans all active pages and presents a confirmation card listing eac
 Click **Yes, fix all**. The agent applies each fix, re-scans the affected page to confirm the citation is resolved, and reports the final state.
 
 **Fix strategy:**
+
 - `broken_ref` — fuzzy-matches the citation filename against the page's actual source files. If a match ≥ 72% similarity is found, the filename is corrected (line range preserved). Otherwise the marker is removed.
 - `malformed` / `out_of_range` — the marker is removed. Surrounding prose is preserved.
 
@@ -3244,14 +3246,14 @@ Each workflow runs as an agentic tool-call loop that streams inline progress aft
 **Key behaviours by workflow:**
 
 
-| Workflow                   | Confirmation                       | Key behaviour                                                                                                             |
-| -------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| **Stale bulk**             | ✓ required                        | Re-ingests pages one at a time; a single failure does not abort the run — remaining pages continue                       |
-| **By slug**                | ✓ required                        | Force-re-ingests regardless of current lifecycle state                                                                    |
-| **Broken wikilinks**       | ✓ required (if any found)         | If the wiki is already clean, the workflow stops after scanning — no card appears                                        |
-| **Lint report**            | none                               | Lint is read-only; runs and reports autonomously                                                                          |
-| **Scaffold**               | ✓ required                        | User-written content above`<!-- synthadoc:scaffold -->` markers is always preserved                                       |
-| **Contradiction resolver** | ✓ required ×2 (cost + each diff) | Shows full diff before every write; re-lints only the changed page; promotes on pass or escalates after 3 failed attempts |
+| Workflow                   | Confirmation                       | Key behaviour                                                                                                                                    |
+| -------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Stale bulk**             | ✓ required                        | Re-ingests pages one at a time; a single failure does not abort the run — remaining pages continue                                              |
+| **By slug**                | ✓ required                        | Force-re-ingests regardless of current lifecycle state                                                                                           |
+| **Broken wikilinks**       | ✓ required (if any found)         | If the wiki is already clean, the workflow stops after scanning — no card appears                                                               |
+| **Lint report**            | none                               | Lint is read-only; runs and reports autonomously                                                                                                 |
+| **Scaffold**               | ✓ required                        | User-written content above`<!-- synthadoc:scaffold -->` markers is always preserved                                                              |
+| **Contradiction resolver** | ✓ required ×2 (cost + each diff) | Shows full diff before every write; re-lints only the changed page; promotes on pass or escalates after 3 failed attempts                        |
 | **Orphan resolver**        | ✓ required ×2 (cost + each diff) | 4-strategy retry per orphan; graph-level re-check after each fix; escalates with candidate list and suggested next steps after 4 failed attempts |
 
 For tool-level detail — per-workflow tool sets, SSE extensions (`tool_progress`, `confirm_request`, `done.pre_prompt`), routing architecture, loop constraints, pre-prompt mechanics, and audit trail — see [§35 Contradiction Resolver Workflow](design.md#35-contradiction-resolver-workflow) in the design doc.
@@ -3261,6 +3263,73 @@ For tool-level detail — per-workflow tool sets, SSE extensions (`tool_progress
 → Full CLI command reference: [README — Agentic workflows](../README.md#agentic-workflows)
 
 ---
+
+## Step 27 — Scan and retract sensitive data
+
+Before sharing or publishing wiki content, scan for accidentally included personal or secret data — API keys, email addresses, phone numbers, SSNs, credit card numbers, and passwords.
+
+**Option 1: Dry-run scan (recommended first step)**
+
+```bash
+synthadoc retract scan
+```
+
+The scan reports every match — page name, line number, and data type — without revealing any sensitive values. Nothing is modified.
+
+**Option 2: Apply redactions**
+
+```bash
+synthadoc retract scan --apply
+```
+
+Prompts for confirmation, then writes `[REDACTED]` substitutions to each affected page. Run without `--yes` to review the list before committing.
+
+**Option 3: Incremental scan (changed pages only)**
+
+```bash
+synthadoc retract scan --changed-only
+synthadoc retract scan --apply --changed-only --yes
+```
+
+Skips pages that have not been modified since the last completed scan cycle. Useful for frequent manual checks on large wikis — only recently ingested or edited pages are checked.
+
+**Option 4: Single-page scan**
+
+```bash
+synthadoc retract scan --slug my-page
+synthadoc retract scan --slug my-page --apply --yes
+```
+
+**Option 5: Auto-schedule (background)**
+
+Add to `config.toml` for automatic weekly scanning:
+
+```toml
+[security]
+sensitive_scan_enabled = true
+scan_interval_days = 7
+```
+
+The background scanner is incremental: each cycle only scans pages whose modification time is newer than the previous run. The server also automatically scans any pages written by an ingest job immediately after that job completes, so sensitive data is caught before the weekly pass.
+
+View recent scan history:
+
+```bash
+synthadoc retract status
+```
+
+**Custom patterns**
+
+Extend coverage to organisation-specific patterns without code changes.
+In `config.toml`:
+
+```toml
+[[security.custom_patterns]]
+name = "internal_token"
+pattern = "INTERNAL-[A-Z0-9]{16}"
+```
+
+Matched lines are redacted the same way as built-in patterns.
 
 ## Citation quality
 
@@ -3291,9 +3360,10 @@ To promote a page to active: `synthadoc lifecycle activate <slug>`
 
 After upgrading Synthadoc, sync your demo wikis to pick up new content:
 
+```bash
 synthadoc demo sync --force   # overwrite existing wiki pages from the latest template (picks up citation markers and other page updates)
 synthadoc demo sync           # additive only — copies new raw_sources and new wiki pages; existing wiki pages are not overwritten
----
+```
 
 ## Uninstall a wiki
 
@@ -3308,6 +3378,7 @@ To uninstall:
 ```bash
 synthadoc uninstall history-of-computing
 ```
+
 The command asks for two confirmations — a yes/no prompt and then requires you to type the wiki name — before anything is deleted. This applies to both demo wikis and your own wikis.
 
 ---
@@ -3329,86 +3400,7 @@ Key differences from the demo:
 
 ---
 
----
-
-## Step 27 — Scan and retract sensitive data
-
-Before sharing or publishing wiki content, scan for accidentally included
-personal or secret data — API keys, email addresses, phone numbers, SSNs,
-credit card numbers, and passwords.
-
-**Option 1: Dry-run scan (recommended first step)**
-
-```bash
-synthadoc retract scan
-```
-
-The scan reports every match — page name, line number, and data type —
-without revealing any sensitive values. Nothing is modified.
-
-**Option 2: Apply redactions**
-
-```bash
-synthadoc retract scan --apply
-```
-
-Prompts for confirmation, then writes `[REDACTED]` substitutions to
-each affected page. Run without `--yes` to review the list before
-committing.
-
-**Option 3: Incremental scan (changed pages only)**
-
-```bash
-synthadoc retract scan --changed-only
-synthadoc retract scan --apply --changed-only --yes
-```
-
-Skips pages that have not been modified since the last completed scan
-cycle. Useful for frequent manual checks on large wikis — only recently
-ingested or edited pages are checked.
-
-**Option 4: Single-page scan**
-
-```bash
-synthadoc retract scan --slug my-page
-synthadoc retract scan --slug my-page --apply --yes
-```
-
-**Option 5: Auto-schedule (background)**
-
-Add to `config.toml` for automatic weekly scanning:
-
-```toml
-[security]
-sensitive_scan_enabled = true
-scan_interval_days = 7
-```
-
-The background scanner is incremental: each cycle only scans pages whose
-modification time is newer than the previous run. The server also
-automatically scans any pages written by an ingest job immediately after
-that job completes, so sensitive data is caught before the weekly pass.
-
-View recent scan history:
-
-```bash
-synthadoc retract status
-```
-
-**Custom patterns**
-
-Extend coverage to organisation-specific patterns without code changes.
-In `config.toml`:
-
-```toml
-[[security.custom_patterns]]
-name = "internal_token"
-pattern = "INTERNAL-[A-Z0-9]{16}"
-```
-
-Matched lines are redacted the same way as built-in patterns.
-
-## Appendix A — Obsidian Plugin Command Reference
+# Appendix A — Obsidian Plugin Command Reference
 
 All commands are accessible via the Command Palette (`Ctrl/Cmd+P` → type `Synthadoc`).
 
@@ -3521,17 +3513,20 @@ git init
 git add .
 git commit -m "init: initial wiki snapshot"
 ```
+
 **2. Copy the hook script:**
 
 ```bash
 cp /path/to/synthadoc-repo/hooks/git-auto-commit.py .
 ```
+
 **3. Add to `.synthadoc/config.toml`:**
 
 ```toml
 [hooks]
 on_ingest_complete = "python git-auto-commit.py"
 ```
+
 **4. Restart the server** to pick up the config change.
 
 ### Verify
@@ -3541,10 +3536,12 @@ After the next ingest:
 ```bash
 git log --oneline -3
 ```
+
 ```
 a3f1b2c wiki: ingest konrad-zuse-z3-computer.md → created konrad-zuse
 d9e4c81 wiki: ingest turing-enigma-decryption.pdf → updated alan-turing
 ```
+
 > **More hooks:** see [`hooks/README.md`](../hooks/README.md) for the full library and
 > contribution guidelines. Available events: `on_ingest_complete`, `on_lint_complete`.
 
@@ -3592,6 +3589,7 @@ default = { provider = "gemini",    model = "gemini-2.5-flash" }                
 # default = { provider = "claude-code" }                                             # Claude Code CLI (no API key)
 # default = { provider = "opencode", model = "opencode/big-pickle" }                # Opencode Zen (free; connect first: opencode → /connect → select Zen)
 ```
+
 Restart `synthadoc serve`. The startup banner confirms `LLM: <provider>/<model>`.
 
 > **Rate limit tips:**
@@ -3623,6 +3621,7 @@ set TAVILY_API_KEY=tvly-your-key-here
 # Windows (cmd.exe — permanent)
 setx TAVILY_API_KEY tvly-your-key-here
 ```
+
 If this key is absent, the server starts normally but web search jobs fail with
 `[ERR-SKILL-004]`. All other features work without it.
 
@@ -3643,6 +3642,7 @@ Settings are resolved in three layers — later layers win:
 2. ~/.synthadoc/config.toml   (global — your preferences across all wikis)
 3. <wiki-root>/.synthadoc/config.toml   (per-project — overrides for one wiki)
 ```
+
 Neither file is required. If both are absent, the built-in defaults take effect.
 
 ### Global config — `~/.synthadoc/config.toml`
@@ -3658,6 +3658,7 @@ lint    = { provider = "groq",   model = "llama-3.3-70b-versatile" }  # cheaper 
 research = "~/wikis/research"
 work     = "~/wikis/work"
 ```
+
 Common reason to edit: switching from the Anthropic default to Gemini Flash (free tier) so all wikis use it without touching each project config.
 
 ### Per-project config — `<wiki-root>/.synthadoc/config.toml`
@@ -3687,6 +3688,7 @@ max_results = 20
 [hooks]
 on_ingest_complete = "python git-auto-commit.py"
 ```
+
 Common reason to edit: each wiki needs its own port when running multiple wikis at the same time.
 
 Full config reference including all keys, defaults, and multi-wiki setup: [docs/design.md — Configuration](design.md#configuration).
@@ -3704,6 +3706,7 @@ synthadoc install my-research --target ~/wikis --domain "My research domain"
 synthadoc use my-research
 synthadoc status
 ```
+
 `--domain` is a free-text description of the subject area — the LLM uses it to generate
 domain-aware starter files: `wiki/index.md`, `wiki/purpose.md`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`.
 
@@ -3712,6 +3715,7 @@ domain-aware starter files: `wiki/index.md`, `wiki/purpose.md`, `AGENTS.md`, `CL
 ```bash
 synthadoc serve -w my-research
 ```
+
 ### 3. Scaffold
 
 Before ingesting any content, run scaffold once to build a clean, domain-aware index:
@@ -3719,6 +3723,7 @@ Before ingesting any content, run scaffold once to build a clean, domain-aware i
 ```bash
 synthadoc scaffold
 ```
+
 ### 4. Ingest sources
 
 ```bash
@@ -3727,17 +3732,20 @@ synthadoc ingest "https://example.com/article"
 synthadoc ingest "search for: <your domain topic>"
 synthadoc jobs list
 ```
+
 ### 5. Query
 
 ```bash
 synthadoc query "What are the key themes?"
 ```
+
 ### 6. Lint
 
 ```bash
 synthadoc lint report
 synthadoc lint run --auto-resolve
 ```
+
 ### 7. Open in Obsidian
 
 Open `~/wikis/my-research` as an Obsidian vault.
@@ -3750,6 +3758,7 @@ synthadoc status               # checks finance-wiki
 synthadoc status -w legal-wiki # one-off check without switching
 synthadoc use                  # confirm which wiki is active
 ```
+
 
 | Method                         | Scope                               |
 | ------------------------------ | ----------------------------------- |
@@ -3772,6 +3781,7 @@ Open `.synthadoc/config.toml` in your wiki root, comment out the active `default
 # default = { provider = "claude-code" }                                       # no API key — uses your Claude Code subscription
 # default = { provider = "opencode", model = "opencode/big-pickle" }          # free via Opencode Zen — connect first: opencode → /connect → select Zen
 ```
+
 For Claude Code, `model` is optional — omit it to use Claude Code's own configured default. For Opencode, specify `model = "opencode/big-pickle"` to use the free Zen tier. Restart the server after saving.
 
 Ensure the tool is installed and authenticated in your terminal before starting the server. No environment variables are required.
@@ -3793,6 +3803,7 @@ synthadoc serve -w my-wiki
 synthadoc ingest "https://example.com/article" -w my-wiki
 synthadoc query "What does the article cover?" -w my-wiki
 ```
+
 The output is identical to a direct API provider. The only difference is that each LLM call is handled by Claude Code or Opencode running as a subprocess.
 
 > **Performance note:** CLI providers add subprocess startup overhead per LLM call. For high-volume batch ingest, a direct API provider (`anthropic`, `gemini`, etc.) is faster.
@@ -3804,6 +3815,7 @@ If your coding tool quota is exhausted and you need to continue ingesting, overr
 ```bash
 synthadoc serve -w my-wiki --provider anthropic
 ```
+
 This uses `ANTHROPIC_API_KEY` (or whichever provider you specify) for that session only. When quota resets, restart without `--provider` to return to the CLI provider.
 
 ### Troubleshooting
@@ -3918,12 +3930,14 @@ Register each wiki as a separate entry. Synthadoc prefixes every tool descriptio
   }
 }
 ```
+
 **Claude Code / custom agents (HTTP/SSE):**
 
 ```powershell
 synthadoc serve -w "C:\wikis\history-of-computing"   # port 7070
 synthadoc serve -w "C:\wikis\ai-research"             # port 7071
 ```
+
 ```json
 {
   "mcpServers": {
@@ -3932,6 +3946,7 @@ synthadoc serve -w "C:\wikis\ai-research"             # port 7071
   }
 }
 ```
+
 ---
 
 ### Claude Desktop
@@ -3945,6 +3960,7 @@ Claude Desktop uses a restricted PATH and will not find `synthadoc` by name alon
 ```powershell
 (Get-Command synthadoc).Source
 ```
+
 Typical result on Windows: `C:\Users\<you>\AppData\Roaming\Python\Python314\Scripts\synthadoc.exe`
 
 **Step 2 — Add the config entry**
@@ -3959,6 +3975,7 @@ Typical result on Windows: `C:\Users\<you>\AppData\Roaming\Python\Python314\Scri
   }
 }
 ```
+
 Use **absolute paths** for both `synthadoc.exe` and the wiki root. Relative paths and wiki name aliases do not work from Claude Desktop. Key names must use underscores, not hyphens — Claude Desktop rejects hyphenated server names.
 
 **Step 3 — Restart Claude Desktop**
@@ -3978,11 +3995,13 @@ Claude Code supports both SSE (recommended — connects to a running server) and
 ```powershell
 synthadoc serve -w "C:\Users\<you>\wikis\history-of-computing"
 ```
+
 **Step 2 — Register the MCP server**
 
 ```powershell
 claude mcp add --transport sse synthadoc-history-of-computing http://127.0.0.1:7070/mcp/sse
 ```
+
 > Use `--transport sse`, not `--transport http` — FastMCP uses the SSE protocol, not Streamable HTTP.
 
 **Step 3 — Verify**
@@ -3990,6 +4009,7 @@ claude mcp add --transport sse synthadoc-history-of-computing http://127.0.0.1:7
 ```powershell
 claude mcp list
 ```
+
 `synthadoc-history-of-computing` should show `✔ Connected`.
 
 **Step 4 — Test in a Claude Code session**
@@ -3997,6 +4017,7 @@ claude mcp list
 ```powershell
 claude
 ```
+
 Ask: `What's the status of my wiki?` — Claude Code calls `synthadoc_status` directly against the running server.
 
 #### stdio transport
@@ -4006,6 +4027,7 @@ Use this if you don't want to manage a separate server process:
 ```powershell
 claude mcp add synthadoc-history-of-computing "C:\Users\<you>\...\synthadoc.exe" -- serve -w "C:\Users\<you>\wikis\history-of-computing" --mcp-only
 ```
+
 ---
 
 ### HTTP/SSE (n8n, LangGraph, custom agents)
@@ -4015,11 +4037,13 @@ The same endpoint works for any MCP-compatible client:
 ```
 MCP SSE endpoint: http://127.0.0.1:7070/mcp/sse
 ```
+
 No API key required. Verify it is live:
 
 ```
 curl -i http://127.0.0.1:7070/mcp/sse
 ```
+
 You should receive `HTTP/1.1 200 OK` with `content-type: text/event-stream` and the connection will hang open (correct — SSE streams stay open).
 
 ---
@@ -4091,6 +4115,7 @@ Conference (where "artificial intelligence" was coined), and the first AI winter
 computing-history-timeline — Traces from Ada Lovelace (1843) through Turing (1936), von Neumann
 architecture (1945), and includes tags for deep-learning milestones.
 ```
+
 **What the response tells you:**
 
 
@@ -4182,11 +4207,13 @@ For architecture details and the brain/memory use case framing, see [docs/design
 ```
 synthadoc backup -w <wiki>
 ```
+
 Creates a timestamped compressed zip in the current directory:
 
 ```
 synthadoc-backup-history-of-computing-20260624-103000.zip
 ```
+
 **What's included by default:** wiki pages, candidates, config, audit database, exports, query cache, raw sources, and root-level wiki files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `ROUTING.md`, `log.md`, and any `*.txt` batch ingest files) when present.
 
 **Flags:**
@@ -4197,11 +4224,13 @@ synthadoc-backup-history-of-computing-20260624-103000.zip
 --no-exports         Exclude exports/ directory
 --no-cache           Exclude cache.db
 ```
+
 ### Restore
 
 ```
 synthadoc restore <backup.zip>
 ```
+
 Restores to the same directory as the zip file by default. Detects port conflicts and suggests the next free port.
 
 **Flags:**
@@ -4211,6 +4240,7 @@ Restores to the same directory as the zip file by default. Detects port conflict
 --target <dir>       Parent directory for the restored wiki (default: zip's folder)
 --port <N>           Use this port (skips interactive prompt)
 ```
+
 **Post-restore checklist (printed automatically):**
 
 1. Set your LLM API key in your environment
@@ -4236,4 +4266,3 @@ Restores to the same directory as the zip file by default. Detects port conflict
 | `embeddings.db`                                               | ✗ Never   | Rebuilt automatically on next server start                                     |
 | `server.pid`                                                  | ✗ Never   | Machine-specific process ID                                                    |
 | `logs/`                                                       | ✗ Never   | Server application logs                                                        |
-

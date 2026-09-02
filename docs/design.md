@@ -1,6 +1,6 @@
 ﻿# Synthadoc — Design Document
 
-**Version:** 1.3.1
+**Version:** 1.3.2
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -1072,9 +1072,14 @@ synthadoc
 │   └── run --name NAME [WORKFLOW_ARGS...] [-w wiki] [--timeout N]
 │       # NAME is one of: lint-report | broken-wikilinks | scaffold
 │       #                  contradiction-resolver | ingest-lint | orphan-resolver
+│       #                  broken-citation-resolver
 │       # Workflow-specific args (forwarded verbatim):
-│       #   contradiction-resolver: [--slug SLUG] [--type adversarial|source-conflict|gate|conflict]
-│       #   orphan-resolver:        [--slug SLUG]
+│       #   contradiction-resolver:      [--slug SLUG] [--type adversarial|source-conflict|gate|conflict]
+│       #   orphan-resolver:             [--slug SLUG]
+│       #   broken-citation-resolver:    [--slug SLUG]
+├── retract
+│   ├── scan [-w wiki] [--slug SLUG] [--apply] [--changed-only] [--yes]
+│   └── status [-w wiki] [--json]
 ├── backup [-w wiki] [--output <dir>] [--no-sources] [--no-exports] [--no-cache]
 ├── restore <backup.zip> [--name <wiki>] [--target <dir>] [--port <N>]
 ├── cache clear [-w wiki]
@@ -4106,6 +4111,8 @@ Accessible from the web UI (pre-prompt + hint chip "Fix broken citations"), natu
 - **Broken Citation Resolver Workflow** — 7th agentic maintenance workflow (`synthadoc workflow run --name broken-citation-resolver`). Scans all active pages for broken `^[file:L-L]` source citation markers (`broken_ref` / `malformed` / `out_of_range`); proposes targeted fixes per page with fuzzy source-name matching (`difflib.get_close_matches`, cutoff 0.72); validates each fix with a single-page re-scan (up to 3 attempts); loops until all citations are clean or escalates unresolvable cases. Confirm-before-act gate via `GATED_TOOLS = {"apply_citation_fixes"}`. Accessible from web UI (5th pre-prompt, "Fix broken citations" hint chip) and CLI. See [§38 Broken Citation Resolver Workflow](#38-broken-citation-resolver-workflow).
 - **`/lifecycle/status` — `broken_citations` count** — the status endpoint now includes a `broken_citations` integer field (count of `broken_ref` / `malformed` / `out_of_range` markers across all active pages). Used by `initial_hints()` (priority 5), `App.tsx` pre-prompt, and `POST /sessions` session context.
 - **`find_broken_citation_refs`** — new pure function in `lint_agent.py`; wraps `_check_page_citations` per-page check for all (or a subset of) active pages; returns `dict[str, list[dict]]`.
+- **Sensitive Data Retract** — `synthadoc retract scan` scans all wiki pages for configurable sensitive-data patterns (API keys, email addresses, phone numbers, SSNs, credit card numbers, generic secrets) and replaces matched values with `[REDACTED]` in place. The scan is incremental: `--changed-only` restricts the check to pages modified since the last cycle. The server auto-scans each page immediately after ingest completes. `synthadoc retract status` shows the full redaction audit trail — slug, pattern names, and counts, never the sensitive values themselves. Custom patterns can be added via `config.toml`. See [§37 Sensitive Data Retract](#37-sensitive-data-retract).
+- **CLI provider support for all 7 maintenance workflows** — all seven agentic maintenance workflows now run correctly with Claude Code (`provider = "claude-code"`) and Opencode (`provider = "opencode"`) as the LLM provider — no separate API key required. CLI providers are themselves LLM agents and refuse Synthadoc's JSON wire-format protocol as prompt injection; each workflow therefore implements a Python-driven `run_for_cli_provider` path that calls the same tool functions directly from code. Deterministic workflows (`IngestLintWorkflow`, `BrokenWikilinksWorkflow`, `BrokenCitationResolverWorkflow`, `LintReportWorkflow`, `ScaffoldWorkflow`) are fully Python-driven with no LLM call on the CLI path. Judgment-intensive workflows (`ContradictionResolverWorkflow`, `OrphanResolverWorkflow`) use a single, narrowly scoped `provider.complete()` call per item with a neutral system prompt. See [§39 Provider Compatibility](#provider-compatibility).
 
 ### v1.3.1
 
