@@ -886,8 +886,12 @@ async def tool_run_scoped_lint(ctx: "WorkflowContext", slug: str) -> dict:
         return {"pass": False, "warnings_count": 0, "contradiction_note": None,
                 "error": str(exc)}
 
+    # Use the same 300-second timeout as tool_run_lint (full-wiki pass).
+    # Scoped lint runs the adversarial review agent on one page, which makes
+    # 2-3 LLM calls.  With CLI providers (claude-code, opencode) each call
+    # is a subprocess invocation that can take 30-60 s; 120 s was too short.
     poll_result = await tool_poll_job(
-        ctx, job_id, timeout_seconds=120, job_label=f"Scoped lint: {slug}"
+        ctx, job_id, timeout_seconds=300, job_label=f"Scoped lint: {slug}"
     )
     if poll_result.get("status") != ToolStatus.SUCCESS:
         return {"pass": False, "warnings_count": 0, "contradiction_note": None,
