@@ -16,6 +16,8 @@ from synthadoc.agents.workflows._tools import (
     tool_run_lint,
 )
 
+_log = __import__("logging").getLogger(__name__)
+
 _SYSTEM_PROMPT = """You are a wiki maintenance agent. You have these tools available:
 
 find_stale_pages — list all stale wiki pages with their source file paths.
@@ -108,6 +110,18 @@ class IngestLintWorkflow(AgenticWorkflow):
     # AgenticWorkflow.GATED_TOOLS in _base.py for the full contract.
     GATED_TOOLS: frozenset[str] = frozenset({"ingest_source"})
 
+    # CLI providers (claude-code, opencode) refuse to follow the JSON wire-format
+    # tool-call loop in _SYSTEM_PROMPT — they correctly identify the
+    # {"tool_call": ...} instruction pattern as a prompt injection attempt.
+    # This workflow opts into a Python-driven alternative (run_for_cli_provider)
+    # that drives Workflow A and Workflow B deterministically from Python,
+    # with no LLM reasoning call required at all.  The same tool functions
+    # (tool_find_stale_pages, tool_find_page_source, tool_ingest_source,
+    # tool_run_lint, tool_get_page_states, tool_confirm) are reused directly
+    # so behaviour is identical to what the system prompt instructs the LLM
+    # to do on the Anthropic-API path.
+    SUPPORTS_CLI_PROVIDER: bool = True
+
     async def build_system_prompt(self) -> str:
         return _SYSTEM_PROMPT
 
@@ -123,3 +137,179 @@ class IngestLintWorkflow(AgenticWorkflow):
             "get_page_states":  functools.partial(tool_get_page_states, ctx),
             "confirm":          functools.partial(tool_confirm, ctx),
         }
+
+    # ── CLI provider path ─────────────────────────────────────────────────────
+
+    async def run_for_cli_provider(self, ctx, question, provider):
+        """CLI-provider path: Python-driven Workflow A (all stale) or B (single slug).
+
+        Why this path exists
+        --------------------
+        CLI providers (claude-code, opencode) receive the system prompt's JSON
+        wire-format instruction block ({"tool_call": ...} protocol) and correctly
+        flag it as a prompt injection attempt.  Rather than asking them to act as
+        a subordinate LLM agent, this path drives the same two workflows directly
+        from Python — no LLM reasoning call is needed because both workflows are
+        fully deterministic: the fix algorithm is always "find stale pages → confirm
+        → ingest each → run lint → check states".
+
+        Workflow A (no --slug flag): mirrors system prompt §"Workflow A".
+          1. tool_find_stale_pages  — discover what needs re-ingesting.
+          2. tool_confirm           — show page list, wait for approval.
+          3. tool_ingest_source     — one call per page (skips pages with no source).
+          4. tool_run_lint          — MANDATORY regardless of individual ingest outcomes.
+          5. tool_get_page_states   — verify final state of every attempted slug.
+          6. Plain-text summary.
+
+        Workflow B (--slug SLUG): mirrors system prompt §"Workflow B".
+          1. tool_find_page_source  — look up source path for the slug.
+          2. tool_confirm           — show slug + path, wait for approval.
+          3. tool_ingest_source     — re-ingest the one page.
+          4. tool_run_lint          — MANDATORY regardless of ingest outcome.
+          5. tool_get_page_states   — verify final state of the slug.
+          6. Plain-text summary.
+
+        All tool functions are the same instances used by the multi-turn API path,
+        so caching, queue handling, and SSE progress events work identically.
+        The ``provider`` argument is accepted for interface compatibility but is
+        unused — unlike ContradictionResolverWorkflow, no LLM rewrite call is needed.
+        """
+        # ── 1. Detect mode: explicit --slug flag OR natural language "re-ingest the <slug>" ──
+        # The explicit flag is used by the workflow CLI and by users who know the convention.
+        # The natural language fallback handles queries issued by the Graph UI
+        # (e.g. "Re-ingest the alan-turing page") and matches the last arm of MATCH_RE
+        # (r"\bre.?ingest\b\s+the\s+[a-z0-9]").  The API-provider path handles this
+        # naturally via LLM understanding; the CLI path must parse it explicitly.
+        slug_match = re.search(r"--slug\s+(\S+)", question, re.IGNORECASE)
+        if not slug_match:
+            # Capture slug token after "re-ingest the " — stops at space or "page" suffix.
+            # Slug chars: lowercase letters, digits, hyphens, underscores.
+            slug_match = re.search(
+                r"\bre.?ingest\b\s+the\s+([a-z0-9][a-z0-9_-]*)",
+                question,
+                re.IGNORECASE,
+            )
+        page_slug: str | None = slug_match.group(1).lower() if slug_match else None
+
+        # Accumulates ingest outcomes keyed by slug (status, message).
+        # Pages with no source_path record {"status": "skipped"} instead of calling
+        # tool_ingest_source, mirroring the LLM path's "valid source_path" guard.
+        ingest_results: dict[str, dict] = {}
+        attempted_slugs: list[str] = []
+
+        if page_slug:
+            # ── Workflow B: single page by slug ──────────────────────────────
+            source_result = await tool_find_page_source(ctx, slug=page_slug)
+            if "error" in source_result:
+                msg = f"Cannot re-ingest '{page_slug}': {source_result['error']}"
+                yield {"event": "token", "data": {"text": msg}}
+                yield {"event": "final_text", "data": {"text": msg}}
+                return
+
+            source_path = source_result["source_path"]
+
+            confirmed = await tool_confirm(
+                ctx,
+                f"Re-ingest page '{page_slug}'?\n  Source: {source_path}",
+                yes_label="Re-ingest",
+                no_label="Cancel",
+            )
+            if not confirmed.get("confirmed"):
+                msg = "Cancelled — no pages were re-ingested."
+                yield {"event": "token", "data": {"text": msg}}
+                yield {"event": "final_text", "data": {"text": msg}}
+                return
+
+            ingest_results[page_slug] = await tool_ingest_source(ctx, source_path=source_path)
+            attempted_slugs = [page_slug]
+
+        else:
+            # ── Workflow A: all stale pages ───────────────────────────────────
+            scan = await tool_find_stale_pages(ctx)
+            pages: list[dict] = scan.get("pages", [])
+
+            if not pages:
+                msg = "No stale pages found — nothing to re-ingest."
+                yield {"event": "token", "data": {"text": msg}}
+                yield {"event": "final_text", "data": {"text": msg}}
+                return
+
+            # Build confirm message that lists every page and its source path,
+            # mirroring the system prompt §step 2 instruction ("list the pages
+            # in the message").  Pages with no source_path are shown explicitly
+            # so the user knows they will be skipped.
+            confirm_lines: list[str] = [
+                f"Found {len(pages)} stale page(s). Re-ingest all?\n",
+            ]
+            for p in pages:
+                src = p.get("source_path") or "(no source path — will be skipped)"
+                stale_since = p.get("stale_since", "")
+                since_label = f"  stale since {stale_since}" if stale_since else ""
+                confirm_lines.append(f"  • {p['slug']}: {src}{since_label}")
+
+            confirmed = await tool_confirm(
+                ctx,
+                "\n".join(confirm_lines),
+                yes_label="Re-ingest all",
+                no_label="Cancel",
+            )
+            if not confirmed.get("confirmed"):
+                msg = "Cancelled — no pages were re-ingested."
+                yield {"event": "token", "data": {"text": msg}}
+                yield {"event": "final_text", "data": {"text": msg}}
+                return
+
+            for p in pages:
+                slug = p["slug"]
+                source_path = p.get("source_path")
+                attempted_slugs.append(slug)
+                if not source_path:
+                    # No source path recorded — skip without calling ingest.
+                    # Matches the "valid source_path" guard in system prompt §step 3.
+                    ingest_results[slug] = {
+                        "status": "skipped",
+                        "message": "no source_path recorded",
+                    }
+                else:
+                    ingest_results[slug] = await tool_ingest_source(
+                        ctx, source_path=source_path
+                    )
+
+        # ── Mandatory post-ingest sequence: lint → page states (both workflows) ──
+        # System prompt marks steps 4-5 as REQUIRED after every confirmed ingest:
+        # "Call run_lint — MANDATORY even if one or more ingests failed."
+        lint_result = await tool_run_lint(ctx)
+        states_result = await tool_get_page_states(ctx, slugs=attempted_slugs)
+        state_map: dict[str, str] = {
+            p["slug"]: p["state"] for p in states_result.get("pages", [])
+        }
+
+        # ── Summary (mirrors system prompt §step 6) ───────────────────────────
+        # State icons from the system prompt: ✓ active, ✗ stale, ○ everything else.
+        _ICON: dict[str, str] = {"active": "✓", "stale": "✗"}
+
+        lint_status = lint_result.get("status", "unknown")
+        lint_ok = lint_status == "success"
+
+        mode_label = f"slug={page_slug}" if page_slug else "all stale pages"
+        parts: list[str] = [f"**Ingest & Lint — Complete** ({mode_label})\n"]
+        parts.append(
+            f"{'✅' if lint_ok else '⚠'} Lint: {lint_status}"
+            + (f" — {lint_result['message']}" if lint_result.get("message") else "")
+        )
+        parts.append("\n**Page states after re-ingest:**")
+        for slug in attempted_slugs:
+            result = ingest_results.get(slug, {})
+            ingest_status = result.get("status", "?")
+            state = state_map.get(slug, "unknown")
+            icon = _ICON.get(state, "○")
+            if ingest_status == "skipped":
+                parts.append(f"  ○ {slug} — skipped (no source path)")
+            else:
+                parts.append(
+                    f"  {icon} {slug}: ingest={ingest_status}, state={state}"
+                )
+
+        summary = "\n".join(parts)
+        yield {"event": "token", "data": {"text": summary}}
+        yield {"event": "final_text", "data": {"text": summary}}

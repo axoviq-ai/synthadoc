@@ -7,6 +7,8 @@ import functools
 import re
 from typing import TYPE_CHECKING, Awaitable, Callable
 
+_log = __import__("logging").getLogger(__name__)
+
 from synthadoc.agents.workflows._base import AgenticWorkflow, WorkflowContext
 from synthadoc.agents.workflows._tools import (
     tool_get_scaffold_preview,
@@ -106,6 +108,19 @@ class ScaffoldWorkflow(AgenticWorkflow):
     # scan results — broken_wikilinks.py shows Pattern B with full comments.
     GATED_TOOLS: frozenset[str] = frozenset()
 
+    # CLI providers (claude-code, opencode) refuse the JSON wire-format
+    # tool-call loop in _SYSTEM_PROMPT — they correctly identify the
+    # {"tool_call": ...} instruction pattern as a prompt injection attempt.
+    # This workflow opts into a Python-driven alternative (run_for_cli_provider)
+    # that drives the same two-phase sequence directly from Python.
+    # No LLM reasoning call is needed because the workflow is fully deterministic:
+    # get preview → run scaffold (with embedded confirm) → format summary.
+    # Pattern A confirm is preserved — it is embedded inside tool_run_scaffold
+    # itself, so the CLI path gets the same user-approval gate for free.
+    # The same tool functions (tool_get_scaffold_preview, tool_run_scaffold) are
+    # reused directly so behaviour is identical to the Anthropic-API path.
+    SUPPORTS_CLI_PROVIDER: bool = True
+
     async def build_system_prompt(self) -> str:
         return _SYSTEM_PROMPT
 
@@ -117,3 +132,92 @@ class ScaffoldWorkflow(AgenticWorkflow):
             "get_scaffold_preview": functools.partial(tool_get_scaffold_preview, ctx),
             "run_scaffold":         functools.partial(tool_run_scaffold, ctx),
         }
+
+    # ── CLI provider path ─────────────────────────────────────────────────────
+
+    async def run_for_cli_provider(self, ctx, question, provider):
+        """CLI-provider path: Python-driven scaffold (Pattern A confirm, no LLM).
+
+        Why this path exists
+        --------------------
+        CLI providers (claude-code, opencode) receive the system prompt's JSON
+        wire-format instruction block ({"tool_call": ...} protocol) and correctly
+        flag it as a prompt injection attempt.  Rather than asking them to act as
+        a subordinate LLM agent, this path drives the same two-phase sequence
+        directly from Python.
+
+        No LLM reasoning call is needed because this workflow is fully
+        deterministic.  The Pattern A confirm gate is preserved — it is embedded
+        inside tool_run_scaffold itself (not a separate "confirm" tool call), so
+        the CLI path gets the same user-approval flow as the API path for free.
+
+        Phases (mirrors system prompt §phases 1-3)
+        -------------------------------------------
+        Phase 1 — Preview:
+          tool_get_scaffold_preview  — read domain and list of files to overwrite.
+
+        Phase 2 — Run (Pattern A confirm embedded inside the tool):
+          tool_run_scaffold(domain)  — shows a confirm_request SSE to the client;
+          if the user declines or the 120-second timeout fires, returns
+          {"status": "cancelled"} without touching any files.
+
+        Phase 3 — Report:
+          Format a plain-text summary following the system prompt §phase 3 layout.
+
+        The ``provider`` and ``question`` arguments are accepted for interface
+        compatibility but are unused — no LLM call is needed.
+        """
+        # ── Phase 1: preview ──────────────────────────────────────────────────
+        preview = await tool_get_scaffold_preview(ctx)
+        domain: str = preview.get("domain", "General")
+        files_to_overwrite: list[str] = preview.get("files_to_overwrite", [])
+
+        # ── Phase 2: run scaffold (Pattern A confirm is inside the tool) ──────
+        result = await tool_run_scaffold(ctx, domain=domain)
+        status: str = result.get("status", "")
+
+        if status == "cancelled":
+            # Use a standardised cancellation phrase instead of the tool's
+            # internal "User declined." / "Confirmation timed out." strings.
+            msg = "Scaffold cancelled by user."
+            yield {"event": "token", "data": {"text": msg}}
+            yield {"event": "final_text", "data": {"text": msg}}
+            return
+
+        if status in ("failed", "timeout") or result.get("error"):
+            msg = (
+                f"Scaffold failed: "
+                f"{result.get('error') or result.get('message', 'unknown error')}"
+            )
+            yield {"event": "token", "data": {"text": msg}}
+            yield {"event": "final_text", "data": {"text": msg}}
+            return
+
+        # ── Phase 3: report (mirrors system prompt §phase 3) ──────────────────
+        categories_updated: int = result.get("categories_updated", 0)
+        routing_regenerated: bool = result.get("routing_regenerated", False)
+
+        parts: list[str] = [f"**Scaffold — Complete** (domain: {domain})\n"]
+        parts.append(f"Domain: {domain}")
+
+        if files_to_overwrite:
+            file_lines = "\n".join(f"  • {f}" for f in files_to_overwrite)
+            parts.append(f"Files written:\n{file_lines}")
+        else:
+            parts.append("Files written: (none)")
+
+        cat_label = "page" if categories_updated == 1 else "pages"
+        parts.append(
+            f"Pages updated with category labels: {categories_updated} {cat_label}"
+        )
+        routing_label = "Yes" if routing_regenerated else "No"
+        parts.append(f"ROUTING.md regenerated: {routing_label}")
+        parts.append(
+            "\nPreservation note: Content above the <!-- synthadoc:scaffold --> "
+            "marker in index.md and purpose.md was preserved — user-written "
+            "sections above that line were not overwritten."
+        )
+
+        text = "\n".join(parts)
+        yield {"event": "token", "data": {"text": text}}
+        yield {"event": "final_text", "data": {"text": text}}

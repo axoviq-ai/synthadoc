@@ -25,6 +25,12 @@ from synthadoc.agents.workflows._tools import (
 if TYPE_CHECKING:
     pass
 
+# Fuzzy-match cutoff for broken_ref citations — defined once so both the
+# system prompt (§STEP 4a) and the CLI-provider path use the identical value.
+_FUZZY_MATCH_CUTOFF = 0.72
+
+# _SYSTEM_PROMPT embeds _FUZZY_MATCH_CUTOFF via .replace() so the value
+# stays in sync with the Python implementation automatically.
 _SYSTEM_PROMPT = """\
 You are an agentic workflow executor for Synthadoc wiki maintenance.
 Your task is to scan all active wiki pages for broken ^[file:L-L] source citation
@@ -113,7 +119,7 @@ STEP 4 — Per-page fix loop
   For each page from STEP 1 (in the order returned):
 
   4a. Propose fixes for EACH issue on this page, using this strategy:
-      broken_ref: Use difflib.get_close_matches(citation_filename, page_sources, n=1, cutoff=0.72).
+      broken_ref: Use difflib.get_close_matches(citation_filename, page_sources, n=1, cutoff=$$FUZZY_CUTOFF$$).
                   If a match is found: propose corrected marker with matched filename; keep same line range.
                   new_citation = "^[matched_filename:start-end]"
                   If no match: propose removal. new_citation = null.
@@ -178,7 +184,7 @@ STEP 5 — Final summary
 4. new_citation=null is a valid, required action for malformed and out_of_range issues.
    Skipping apply_citation_fixes because no fuzzy match was found is WRONG — use null.
 5. Re-verification (step 4c) uses find_broken_citations(page_slug=slug), not run_lint.
-"""
+""".replace("$$FUZZY_CUTOFF$$", str(_FUZZY_MATCH_CUTOFF))
 
 
 class BrokenCitationResolverWorkflow(AgenticWorkflow):
@@ -203,6 +209,12 @@ class BrokenCitationResolverWorkflow(AgenticWorkflow):
     # Pattern B confirm gate: the gate wraps apply_citation_fixes so it
     # requires user approval before the first write.
     GATED_TOOLS: frozenset[str] = frozenset({"apply_citation_fixes"})
+
+    # CLI providers (claude-code, opencode) cannot follow the JSON wire-format
+    # tool-call loop.  This workflow opts into a Python-driven alternative that
+    # uses difflib fuzzy matching to compute fixes deterministically — no LLM
+    # reasoning call required — and then asks for user confirmation before writing.
+    SUPPORTS_CLI_PROVIDER: bool = True
 
     async def build_system_prompt(self) -> str:
         return _SYSTEM_PROMPT
@@ -236,3 +248,144 @@ class BrokenCitationResolverWorkflow(AgenticWorkflow):
         # Full-wiki scan + per-page: up to 3 fix attempts + 1 re-verify + 1 confirm = 5 calls/page
         # + 3 setup calls + final 2 calls = 5N + 5. At 10 pages: 55 → budget 60.
         return 60
+
+    async def run_for_cli_provider(self, ctx, question, provider):
+        """CLI-provider path: pure Python gather → confirm → execute.
+
+        Mirrors the STEP 1-5 algorithm from the system prompt but uses
+        difflib.get_close_matches directly so no LLM reasoning call is needed.
+        Reuses the same tool functions as the normal loop — tool_find_broken_citations,
+        tool_confirm, tool_apply_citation_fixes — to stay consistent with the
+        API-provider path.
+
+        Fix algorithm (mirrors system prompt §STEP 4a):
+          broken_ref  → difflib.get_close_matches(filename, page_sources, n=1, cutoff=0.72)
+                        Matched  : rename to matched filename, keep same line range.
+                        No match : remove (new_citation=None).
+          malformed   → remove (new_citation=None)
+          out_of_range→ remove (new_citation=None)
+        """
+        import difflib as _difflib
+
+        # ── 1. Gather ─────────────────────────────────────────────────────────
+        slug_match = re.search(r"--slug\s+(\S+)", question, re.IGNORECASE)
+        page_slug = slug_match.group(1) if slug_match else None
+
+        scan = await tool_find_broken_citations(ctx, page_slug=page_slug)
+        pages: list[dict] = scan.get("pages", [])
+        total: int = scan.get("total_issues", 0)
+
+        if total == 0:
+            scope = f"on '{page_slug}'" if page_slug else "— all ^[file:L-L] markers are valid"
+            msg = f"No broken citations found {scope}."
+            yield {"event": "token", "data": {"text": msg}}
+            yield {"event": "final_text", "data": {"text": msg}}
+            return
+
+        # ── 2. Compute fixes (deterministic) ──────────────────────────────────
+        decisions: list[dict] = []
+
+        for p in pages:
+            slug = p["slug"]
+            sources: list[str] = p.get("page_sources", [])
+            issues: list[dict] = p.get("issues", [])
+            fixes: list[dict] = []
+
+            for iss in issues:
+                citation: str = iss["citation"]   # e.g. "^[wrong.txt:1-5]"
+                reason: str = iss["reason"]
+
+                if reason == "broken_ref":
+                    # Extract filename: "^[fname:start-end]" → "fname"
+                    inner = citation.lstrip("^").lstrip("[").rstrip("]")
+                    fname = inner.split(":")[0]
+                    matches = _difflib.get_close_matches(fname, sources, n=1, cutoff=_FUZZY_MATCH_CUTOFF)
+                    if matches:
+                        # Keep the same line range, replace only the filename
+                        colon_idx = citation.index(":", len("^["))
+                        bracket_end = citation.rindex("]")
+                        line_range = citation[colon_idx + 1 : bracket_end]
+                        new_citation: str | None = f"^[{matches[0]}:{line_range}]"
+                    else:
+                        new_citation = None   # no close match → remove
+                else:
+                    # malformed or out_of_range → always remove
+                    new_citation = None
+
+                fixes.append({"old_citation": citation, "new_citation": new_citation})
+
+            if fixes:
+                decisions.append({"slug": slug, "fixes": fixes})
+
+        # ── 3. Confirm ────────────────────────────────────────────────────────
+        n_pages = len(decisions)
+        n_fixes = sum(len(d["fixes"]) for d in decisions)
+        confirm_lines: list[str] = [
+            f"Found {total} broken citation(s) across {len(pages)} page(s). "
+            f"Proposed {n_fixes} fix(es) on {n_pages} page(s):\n",
+        ]
+        for item in decisions:
+            confirm_lines.append(f"{item['slug']}:")
+            for fix in item["fixes"]:
+                action = f"→ {fix['new_citation']}" if fix["new_citation"] else "→ removed"
+                confirm_lines.append(f"  {fix['old_citation']}  {action}")
+
+        confirmed = await tool_confirm(
+            ctx,
+            "\n".join(confirm_lines),
+            yes_label="Apply fixes",
+            no_label="Cancel",
+        )
+        if not confirmed.get("confirmed"):
+            msg = "Cancelled — no citations were modified."
+            yield {"event": "token", "data": {"text": msg}}
+            yield {"event": "final_text", "data": {"text": msg}}
+            return
+
+        # ── 4. Execute ────────────────────────────────────────────────────────
+        fixed: list[tuple[str, list[dict]]] = []
+        failed: list[tuple[str, str]] = []
+
+        for item in decisions:
+            slug = item["slug"]
+            await ctx.send_sse_event(
+                "tool_progress",
+                {"tool": "apply_citation_fixes", "message": f"Fixing {slug}..."},
+            )
+            result = await tool_apply_citation_fixes(ctx, page_slug=slug, fixes=item["fixes"])
+            if result.get("status") == "success":
+                fixed.append((slug, item["fixes"]))
+            else:
+                failed.append((slug, result.get("error") or "unknown error"))
+
+        # ── 5. Summary (mirrors system prompt §STEP 5) ────────────────────────
+        # Call get_wiki_status first — same requirement as the multi-turn path.
+        wiki_status = await tool_get_wiki_status(ctx)
+
+        parts: list[str] = ["**Broken Citation Resolver — Complete**\n"]
+
+        if fixed:
+            parts.append(f"✅ Fixed ({len(fixed)} page(s)):")
+            for slug, fixes in fixed:
+                parts.append(f"  - {slug}:")
+                for fix in fixes:
+                    old = fix["old_citation"]
+                    new = fix["new_citation"]
+                    parts.append(f"      {old}  →  {new if new else 'removed'}")
+
+        if failed:
+            parts.append(f"\n⚠ Failed ({len(failed)} page(s)):")
+            for slug, err in failed:
+                parts.append(f"  - {slug}: {err}")
+
+        if not fixed and not failed:
+            parts.append("No changes were applied.")
+
+        # Wiki status counts — same footer as the multi-turn path's STEP 5 summary.
+        status_str = ", ".join(f"{k}: {v}" for k, v in wiki_status.items()
+                               if k not in ("tool", "message"))
+        parts.append(f"\nWiki: {status_str}")
+
+        summary = "\n".join(parts)
+        yield {"event": "token", "data": {"text": summary}}
+        yield {"event": "final_text", "data": {"text": summary}}

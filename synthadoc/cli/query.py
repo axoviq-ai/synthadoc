@@ -90,12 +90,23 @@ def _stream_query(wiki: str, question: str, no_cache: bool, timeout: int) -> Non
 
 
 def _handle_confirm(wiki: str, data: dict) -> None:
-    """Print a confirmation prompt and POST the user's response to /action/confirm."""
+    """Print a confirmation prompt and POST the user's response to /action/confirm.
+
+    The ``diff`` field (unified diff string) is included in the SSE payload by
+    tool_propose_and_apply so the web UI can render a diff viewer.  The CLI
+    prints it before the prompt so users see what changed before approving.
+    """
     message = data.get("message", "Proceed?")
     session_id = data.get("session_id", "")
     yes_label = data.get("yes_label", "Yes")
     no_label = data.get("no_label", "No")
+    diff = data.get("diff", "")
     typer.echo(f"\n{message}")
+    if diff:
+        typer.echo("\n  Changes:\n")
+        for line in diff.splitlines():
+            typer.echo(f"  {line}")
+        typer.echo("")
     response = typer.prompt(f"  [{yes_label}/{no_label}]", default="y", prompt_suffix=" > ")
     confirmed = response.strip().lower() in ("y", "yes", yes_label.lower())
     if session_id:
