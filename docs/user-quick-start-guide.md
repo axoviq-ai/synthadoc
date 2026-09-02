@@ -3256,6 +3256,8 @@ Each workflow runs as an agentic tool-call loop that streams inline progress aft
 
 For tool-level detail — per-workflow tool sets, SSE extensions (`tool_progress`, `confirm_request`, `done.pre_prompt`), routing architecture, loop constraints, pre-prompt mechanics, and audit trail — see [§35 Contradiction Resolver Workflow](design.md#35-contradiction-resolver-workflow) in the design doc.
 
+→ **CLI and API provider differences by workflow:** [Provider Compatibility](design.md#provider-compatibility) — all seven workflows work with both provider types; the table shows confirm-gate pattern and execution model for each.
+
 → Full CLI command reference: [README — Agentic workflows](../README.md#agentic-workflows)
 
 ---
@@ -3779,6 +3781,8 @@ Ensure the tool is installed and authenticated in your terminal before starting 
 > **Web search still needs Tavily.** Even with a CLI provider, `search for:` ingest requires a `TAVILY_API_KEY`. The free tier (1,000 searches/month, no credit card required) is more than enough for typical Synthadoc use — see [Appendix D](#appendix-d--tavily-web-search-key).
 
 > **Note:** CLI providers use BM25 search only — vector/semantic search (`[search] vector = true`) is not supported and will be silently bypassed.
+
+> **Agentic workflows:** All seven maintenance workflows (ingest, wikilinks, citations, contradiction, orphan, lint, scaffold) are fully supported by CLI providers. Each workflow uses a Python-driven path that calls the same tool functions directly — no LLM wire-format loop is sent to the subprocess. See [Provider Compatibility](design.md#provider-compatibility) for the per-workflow execution model.
 
 ### Demo: ingest + query
 

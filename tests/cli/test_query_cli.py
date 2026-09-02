@@ -304,3 +304,93 @@ def test_no_stream_query_forwards_timeout_seconds_to_server():
     with patch("synthadoc.cli.query.get", side_effect=_fake_get):
         runner.invoke(app, ["query", "Q?", "-w", "my-wiki", "--timeout", "180", "--no-stream"])
     assert received_params.get("timeout_seconds") == 180
+
+
+def test_stream_query_tool_progress_prints_to_stderr(monkeypatch):
+    """tool_progress events with a non-empty message must be echoed to stderr."""
+    events = [
+        ("tool_progress", {"message": "Processing page 1/5..."}),
+        ("done", {}),
+    ]
+    monkeypatch.setattr("synthadoc.cli.query.get_stream", lambda *a, **kw: iter(events))
+    from synthadoc.cli.query import _stream_query
+    err_output: list[str] = []
+    monkeypatch.setattr(
+        "typer.echo",
+        lambda msg, err=False, nl=True, **kw: err_output.append(str(msg)) if err else None,
+    )
+    _stream_query("my-wiki", "Question?", no_cache=False, timeout=60)
+    combined = " ".join(err_output)
+    assert "Processing page 1/5..." in combined
+
+
+def test_stream_query_confirm_request_dispatches_handle_confirm(monkeypatch):
+    """confirm_request events must delegate to _handle_confirm with wiki and data."""
+    events = [
+        ("confirm_request", {"message": "Apply changes?", "session_id": "s1", "diff": ""}),
+        ("done", {}),
+    ]
+    monkeypatch.setattr("synthadoc.cli.query.get_stream", lambda *a, **kw: iter(events))
+    handle_calls: list = []
+    monkeypatch.setattr(
+        "synthadoc.cli.query._handle_confirm",
+        lambda wiki, data: handle_calls.append((wiki, data)),
+    )
+    from synthadoc.cli.query import _stream_query
+    monkeypatch.setattr("typer.echo", lambda *a, **kw: None)
+    _stream_query("my-wiki", "Question?", no_cache=False, timeout=60)
+    assert len(handle_calls) == 1
+    assert handle_calls[0][0] == "my-wiki"
+    assert handle_calls[0][1]["message"] == "Apply changes?"
+
+
+def test_handle_confirm_with_diff_shows_diff_before_prompt(monkeypatch):
+    """_handle_confirm must echo the diff lines before the yes/no prompt and POST confirmed=True."""
+    from synthadoc.cli.query import _handle_confirm
+    echoed: list[str] = []
+    monkeypatch.setattr("typer.echo", lambda msg, **kw: echoed.append(str(msg)))
+    monkeypatch.setattr("typer.prompt", lambda *a, **kw: "y")
+    post_calls: list = []
+    monkeypatch.setattr("synthadoc.cli.query.post", lambda *a, **kw: post_calls.append(a))
+    data = {
+        "message": "Apply changes?",
+        "session_id": "sess-123",
+        "yes_label": "Apply",
+        "no_label": "Skip",
+        "diff": "-old line\n+new line",
+    }
+    _handle_confirm("my-wiki", data)
+    combined = "\n".join(echoed)
+    assert "Apply changes?" in combined
+    assert "Changes:" in combined
+    assert "-old line" in combined
+    assert "+new line" in combined
+    assert len(post_calls) == 1
+    assert post_calls[0][2]["confirmed"] is True
+
+
+def test_handle_confirm_post_exception_is_swallowed(monkeypatch):
+    """Network errors from the POST confirm call must be silently swallowed."""
+    from synthadoc.cli.query import _handle_confirm
+    monkeypatch.setattr("typer.echo", lambda *a, **kw: None)
+    monkeypatch.setattr("typer.prompt", lambda *a, **kw: "n")
+
+    def _raise(*a, **kw):
+        raise ConnectionError("server down")
+
+    monkeypatch.setattr("synthadoc.cli.query.post", _raise)
+    data = {"message": "Proceed?", "session_id": "sess-abc", "diff": ""}
+    # Must not raise — the except Exception: pass must swallow the error
+    _handle_confirm("my-wiki", data)
+
+
+def test_query_cmd_workflow_question_bumps_timeout_to_3600(monkeypatch):
+    """A question matching the workflow regex must auto-upgrade timeout to 3600."""
+    captured: dict = {}
+
+    def _fake_stream(wiki, question, no_cache, timeout):
+        captured["timeout"] = timeout
+
+    monkeypatch.setattr("synthadoc.cli.query._stream_query", _fake_stream)
+    runner.invoke(app, ["query", "run contradiction resolver", "-w", "test"])
+    assert captured.get("timeout") == 3600

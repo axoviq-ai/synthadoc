@@ -390,6 +390,11 @@ class ActionAgent(BaseAgent):
         """Run an AgenticWorkflow via the tool-call loop and yield SSE dicts.
 
         Defaults to IngestLintWorkflow when *workflow* is not provided.
+
+        CLI providers (claude-code, opencode) that cannot follow the JSON
+        wire-format tool-call loop are routed to the workflow's
+        ``run_for_cli_provider`` method when the workflow opts in via
+        ``SUPPORTS_CLI_PROVIDER = True``.  Otherwise a clear error is shown.
         """
         import asyncio as _asyncio
         from synthadoc.agents.workflows._base import AgenticWorkflow, WorkflowContext
@@ -437,26 +442,75 @@ class ActionAgent(BaseAgent):
         )
 
         wf = workflow if workflow is not None else IngestLintWorkflow()
-        system_prompt = await wf.build_system_prompt()
-        tool_fns = wf.build_guarded_tool_fns(ctx)
 
-        budget = wf.get_tool_budget()
+        # ── Provider compatibility guard ──────────────────────────────────────
+        # Coding-tool CLI providers (claude-code, opencode) are themselves full
+        # agents with their own identity, tool-calling mechanism, and safety
+        # reasoning.  They refuse Synthadoc's JSON wire-format tool-call loop as
+        # prompt injection.
+        #
+        # Workflows that set SUPPORTS_CLI_PROVIDER = True implement a one-shot
+        # Python-driven path via ``run_for_cli_provider`` that avoids fake tools
+        # entirely.  Others receive a clear error message with guidance.
+        from synthadoc.providers.coding_tool import CodingToolCLIProvider  # noqa: PLC0415
+        if isinstance(self._provider, CodingToolCLIProvider):
+            if not wf.SUPPORTS_CLI_PROVIDER:
+                binary = getattr(self._provider, "_tool_binary", "this CLI tool")
+                msg = (
+                    f"**Agentic workflows are not supported with the `{binary}` provider.**\n\n"
+                    f"`{binary}` is itself an agent — it has its own identity, tool-calling "
+                    f"mechanism, and safety reasoning. It correctly refuses Synthadoc's internal "
+                    f"JSON wire-format tool protocol rather than fabricating tool results.\n\n"
+                    f"**To use agentic workflows** (resolve contradictions, re-ingest stale "
+                    f"pages, run lint), set your provider to `anthropic` "
+                    f"in `.synthadoc/config.toml`:\n\n"
+                    f"```toml\n"
+                    f"[agents]\n"
+                    f'default = {{ provider = "anthropic", model = "claude-sonnet-5" }}\n'
+                    f"```\n\n"
+                    f"The `{binary}` provider works well for **single-call tasks**: "
+                    f"page queries, ingest analysis, lint scoring, and scaffolding — "
+                    f"any operation that does not require a multi-step tool-call loop."
+                )
+                yield {"event": "token", "data": {"text": msg}}
+                yield {"event": "done", "data": {"citations": [], "hints": [], "cacheable": False}}
+                return
 
-        async def _run_loop() -> None:
-            try:
-                async for evt in run_tool_call_loop(
-                    system_prompt=system_prompt,
-                    initial_message=wf.build_initial_message(question),
-                    tool_fns=tool_fns,
-                    provider=self._provider,
-                    ctx=ctx,
-                    budget=budget,
-                ):
-                    await sse_queue.put(evt)
-            finally:
-                await sse_queue.put(_SENTINEL)
+            # CLI-supported workflow: run the Python-driven gather → execute path
+            # in a background task using the same sse_queue/drain pattern as the
+            # normal tool-call loop so SSE events reach the client promptly.
+            async def _run_cli() -> None:
+                try:
+                    async for evt in wf.run_for_cli_provider(ctx, question, self._provider):
+                        await sse_queue.put(evt)
+                finally:
+                    await sse_queue.put(_SENTINEL)
 
-        task = _asyncio.create_task(_run_loop())
+            task = _asyncio.create_task(_run_cli())
+
+        else:
+            # Normal JSON wire-format tool-call loop (Anthropic API, Ollama, …)
+            system_prompt = await wf.build_system_prompt()
+            tool_fns = wf.build_guarded_tool_fns(ctx)
+            budget = wf.get_tool_budget()
+
+            async def _run_loop() -> None:
+                try:
+                    async for evt in run_tool_call_loop(
+                        system_prompt=system_prompt,
+                        initial_message=wf.build_initial_message(question),
+                        tool_fns=tool_fns,
+                        provider=self._provider,
+                        ctx=ctx,
+                        budget=budget,
+                    ):
+                        await sse_queue.put(evt)
+                finally:
+                    await sse_queue.put(_SENTINEL)
+
+            task = _asyncio.create_task(_run_loop())
+
+        # ── Drain the sse_queue (shared for CLI and normal paths) ─────────────
         try:
             while True:
                 evt = await sse_queue.get()

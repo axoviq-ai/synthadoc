@@ -34,6 +34,8 @@ from synthadoc.agents.workflows.tools.orphan_resolver_tools import (
 if TYPE_CHECKING:
     from synthadoc.agents.workflows._base import WorkflowContext
 
+_log = __import__("logging").getLogger(__name__)
+
 _SYSTEM_PROMPT = """\
 You are a wiki maintenance agent specialising in resolving orphaned pages.
 An orphaned page is an active page with no incoming [[wikilinks]] from other \
@@ -245,6 +247,25 @@ class OrphanResolverWorkflow(AgenticWorkflow):
         re.IGNORECASE,
     )
 
+    # CLI providers (claude-code, opencode) refuse the JSON wire-format tool-call
+    # loop in _SYSTEM_PROMPT — they correctly identify it as a prompt injection
+    # attempt.  This workflow opts into a Python-driven alternative that:
+    #   • Uses BM25 search (Python, no LLM) to find candidate pages.
+    #   • Makes a single bounded LLM call per candidate: "given this orphan and
+    #     this candidate page, insert [[orphan_slug]] at the most natural location."
+    #     This is a factual content-editing request — no fake tools, no identity
+    #     redefinition — so CLI providers accept it without safety objections.
+    #   • Uses tool_propose_and_apply (diff-before-write) and
+    #     tool_verify_orphan_resolved (graph-level check) exactly as the
+    #     multi-turn path does, reusing the same tool functions.
+    #
+    # Limitation vs. the Anthropic-API path: only BM25 strategies (title + content)
+    # are tried; full_title_scan and contextual_reasoning require the LLM to select
+    # from hundreds of page titles in one shot, which strains CLI provider context.
+    # Pages unresolved after BM25 candidates are exhausted are marked unresolved
+    # with a notice to re-run with provider=anthropic for the full 4-strategy loop.
+    SUPPORTS_CLI_PROVIDER: bool = True
+
     def get_tool_budget(self) -> int:
         # 3 setup + 20 orphans × 15 calls (4 attempts × ~3 + confirm) = 303 → 300
         return 300
@@ -284,3 +305,336 @@ class OrphanResolverWorkflow(AgenticWorkflow):
             "tool_confirm":                   p(tool_confirm, ctx),
             "tool_notify":                    p(tool_notify, ctx),
         }
+
+    # ── CLI provider path ─────────────────────────────────────────────────────
+
+    async def run_for_cli_provider(self, ctx, question, provider):
+        """CLI-provider path: BM25 search → bounded LLM link insertion → propose-and-apply.
+
+        Mirrors the system prompt's STEP 1-5 sequence but replaces the multi-turn
+        JSON tool-call loop with direct Python calls to the same tool functions,
+        plus a single bounded LLM call per candidate page (_cli_insert_link).
+
+        Why a bounded LLM call is needed here (unlike IngestLintWorkflow)
+        -------------------------------------------------------------------
+        Picking the right candidate page and finding a contextually natural
+        insertion point for [[orphan_slug]] requires genuine language understanding —
+        it cannot be done deterministically.  The LLM call is scoped to a factual
+        editing task ("given these two pages, insert [[slug]] at the most natural
+        location; return revised markdown only") with no tool registry and no identity
+        redefinition, so CLI providers accept it.
+
+        Strategy
+        --------
+        Per orphan, two BM25 strategies are tried in order (Python, no LLM):
+          1. title_bm25   — slug keywords against page titles.
+          2. content_bm25 — orphan first-paragraph terms against page bodies.
+        For each BM25 result set, up to 3 candidates are tried (LLM + propose_and_apply).
+        If both strategies return no candidates, the orphan is marked unresolved.
+
+        Limitation vs. the Anthropic-API path
+        ----------------------------------------
+        full_title_scan and contextual_reasoning (strategies 3-4) are omitted: they
+        require the LLM to select from potentially hundreds of page titles in a single
+        context window, which strains CLI provider limits.  Unresolved orphans are
+        noted with a tip to re-run with provider=anthropic for the full 4-strategy loop.
+        """
+        # ── 1. Discover orphans (mirrors STEP 1) ──────────────────────────────
+        slug_match = re.search(r"--slug\s+(\S+)", question, re.IGNORECASE)
+        page_slug: str | None = slug_match.group(1) if slug_match else None
+
+        if page_slug:
+            # Single-orphan path: verify first (system prompt §STEP 1 --slug branch)
+            pre = await tool_verify_orphan_resolved(ctx, orphan_slug=page_slug)
+            if pre.get("resolved"):
+                linked_by = ", ".join(pre.get("linked_by") or []) or "unknown"
+                msg = (
+                    f"'{page_slug}' is not an active orphan page — it already has "
+                    f"inbound wikilinks from: {linked_by}. No action needed."
+                )
+                yield {"event": "token", "data": {"text": msg}}
+                yield {"event": "final_text", "data": {"text": msg}}
+                return
+            orphans: list[str] = [page_slug]
+        else:
+            result = await tool_find_orphaned_pages(ctx)
+            orphans = result.get("orphans", [])
+            if not orphans:
+                msg = "No active orphaned pages found."
+                yield {"event": "token", "data": {"text": msg}}
+                yield {"event": "final_text", "data": {"text": msg}}
+                return
+
+        # ── 2. Cost estimate + approval (mirrors STEP 3) ──────────────────────
+        estimate = await tool_estimate_and_confirm(ctx, orphan_count=len(orphans))
+        if not estimate.get("confirmed"):
+            msg = "Orphan resolver cancelled."
+            yield {"event": "token", "data": {"text": msg}}
+            yield {"event": "final_text", "data": {"text": msg}}
+            return
+
+        # ── 3. Per-orphan resolution loop (mirrors STEP 4) ───────────────────
+        resolved_list:   list[tuple[str, list[str]]] = []  # (slug, linked_by)
+        unresolved_list: list[str] = []
+        skipped_list:    list[str] = []
+
+        for i, orphan_slug in enumerate(orphans):
+            await ctx.send_sse_event(
+                "tool_progress",
+                {"tool": "_resolve_orphan", "message": f"Resolving orphan: {orphan_slug}..."},
+            )
+
+            # 3a. Side-effect pre-check — another fix may have already linked this page
+            pre_check = await tool_verify_orphan_resolved(ctx, orphan_slug=orphan_slug)
+            if pre_check.get("resolved"):
+                resolved_list.append((orphan_slug, pre_check.get("linked_by") or []))
+            else:
+                # 3b. BM25 search + LLM insertion (see _cli_resolve_orphan)
+                status = await self._cli_resolve_orphan(ctx, orphan_slug, provider)
+                if status == "resolved":
+                    verify = await tool_verify_orphan_resolved(ctx, orphan_slug=orphan_slug)
+                    resolved_list.append((orphan_slug, verify.get("linked_by") or []))
+                else:
+                    await tool_notify(
+                        ctx,
+                        message=(
+                            f"⚠ Could not auto-resolve orphan '{orphan_slug}' via CLI provider path "
+                            f"(BM25 candidates only, no full-title or contextual strategies). "
+                            f"Re-run orphan-resolver with provider=anthropic for the full 4-strategy retry."
+                        ),
+                        level="warning",
+                    )
+                    unresolved_list.append(orphan_slug)
+
+            # 3c. Inter-orphan confirm gate (mirrors system prompt §STEP 4d)
+            if i < len(orphans) - 1:
+                next_slug = orphans[i + 1]
+                cont = await tool_confirm(
+                    ctx,
+                    f"Continue to next orphan ({next_slug})?",
+                    yes_label="Continue",
+                    no_label="Stop",
+                )
+                if not cont.get("confirmed"):
+                    skipped_list.extend(orphans[i + 1:])
+                    break
+
+        # ── 4. Final summary (mirrors STEP 5) ────────────────────────────────
+        parts: list[str] = ["**Orphan Resolver — Complete**\n"]
+
+        if resolved_list:
+            parts.append(f"✅ Resolved ({len(resolved_list)}):")
+            for slug, linked_by in resolved_list:
+                linkers = ", ".join(linked_by) if linked_by else "unknown"
+                parts.append(f"  - {slug} (linked from {linkers})")
+
+        if unresolved_list:
+            parts.append(f"\n⚠ Unresolved ({len(unresolved_list)}):")
+            for slug in unresolved_list:
+                parts.append(
+                    f"  - {slug} (CLI path — BM25 only; "
+                    f"run provider=anthropic for full 4-strategy retry)"
+                )
+
+        if skipped_list:
+            parts.append(f"\n⏭ Skipped ({len(skipped_list)}):")
+            for slug in skipped_list:
+                parts.append(f"  - {slug}")
+
+        summary = "\n".join(parts)
+        yield {"event": "token", "data": {"text": summary}}
+        yield {"event": "final_text", "data": {"text": summary}}
+
+    async def _cli_resolve_orphan(
+        self,
+        ctx,
+        orphan_slug: str,
+        provider,
+    ) -> str:
+        """Try to resolve one orphan via BM25 candidates + bounded LLM link insertion.
+
+        Tries title_bm25 first; falls back to content_bm25 if that returns no
+        candidates.  For each candidate (up to 3), calls _cli_insert_link to get
+        revised content, then tool_propose_and_apply for diff-before-write approval,
+        then tool_verify_orphan_resolved for graph-level confirmation.
+
+        Returns "resolved" when the graph confirms resolution, "unresolved" otherwise.
+        """
+        tried_slugs: list[str] = []
+
+        # Strategy 1: title_bm25 — slug keywords vs. page titles
+        result = await tool_search_orphan_candidates(
+            ctx, orphan_slug=orphan_slug, strategy="title_bm25",
+            exclude_slugs=tried_slugs,
+        )
+        tried_slugs = result.get("tried_slugs", tried_slugs)
+        candidates: list[str] = result.get("candidates", [])[:3]
+
+        # Strategy 2: content_bm25 fallback — orphan first-paragraph terms
+        if not candidates:
+            result = await tool_search_orphan_candidates(
+                ctx, orphan_slug=orphan_slug, strategy="content_bm25",
+                exclude_slugs=tried_slugs,
+            )
+            tried_slugs = result.get("tried_slugs", tried_slugs)
+            candidates = result.get("candidates", [])[:3]
+
+        if not candidates:
+            # Neither BM25 strategy found candidates — escalate to full resolver
+            return "unresolved"
+
+        # Read the orphan page once for context (reused across all candidate calls)
+        orphan_info = await tool_read_page_content(ctx, slug=orphan_slug)
+        orphan_content: str = orphan_info.get("content", "")
+
+        for candidate_slug in candidates:
+            await ctx.send_sse_event(
+                "tool_progress",
+                {"tool": "_cli_insert_link",
+                 "message": f"Trying candidate: {candidate_slug}..."},
+            )
+
+            candidate_info = await tool_read_page_content(ctx, slug=candidate_slug)
+            if "error" in candidate_info:
+                continue
+            candidate_content: str = candidate_info.get("content", "")
+
+            # Bounded LLM call: insert [[orphan_slug]] naturally into candidate page
+            new_content = await self._cli_insert_link(
+                provider, orphan_slug, orphan_content,
+                candidate_slug, candidate_content,
+            )
+
+            # Skip if the LLM failed or returned unchanged content (no link was added)
+            if new_content is None or new_content == candidate_content:
+                continue
+
+            # Safety guard: reject the rewrite if any existing [[wikilink]] slug
+            # was removed.  Inserting one link must never silently orphan other
+            # pages by dropping their only inbound reference.
+            #
+            # How the check works: extract all slug tokens (the part before "|"
+            # in [[slug|display text]], or the whole interior for plain [[slug]])
+            # from both the original and the proposed content, then look for any
+            # slug that was present before but is gone now.
+            def _wikilink_slugs(text: str) -> set[str]:
+                return {
+                    m.split("|")[0].strip().lower()
+                    for m in re.findall(r"\[\[([^\]]+)\]\]", text)
+                }
+
+            removed_slugs = _wikilink_slugs(candidate_content) - _wikilink_slugs(new_content)
+            if removed_slugs:
+                _log.warning(
+                    "Skipping candidate %s for orphan %s: "
+                    "LLM removed wikilinks %s from rewrite",
+                    candidate_slug, orphan_slug, removed_slugs,
+                )
+                await ctx.send_sse_event(
+                    "tool_progress",
+                    {"tool": "_cli_insert_link",
+                     "message": (
+                         f"Skipped {candidate_slug}: rewrite removed existing link(s) "
+                         f"{{{', '.join(sorted(removed_slugs))}}} — trying next candidate"
+                     )},
+                )
+                continue
+
+            # Show diff; apply only if the user approves
+            apply_result = await tool_propose_and_apply(
+                ctx,
+                slug=candidate_slug,
+                new_content=new_content,
+                strategy_name="Strategy 1 — BM25 candidate + LLM link insertion",
+                rationale=(
+                    f"BM25 search identified '{candidate_slug}' as the most related "
+                    f"active page; LLM inserted [[{orphan_slug}]] at the most "
+                    f"natural location."
+                ),
+            )
+
+            if not apply_result.get("applied"):
+                continue  # user rejected this candidate, try the next
+
+            # Graph-level re-check: does the page now have an inbound wikilink?
+            verify = await tool_verify_orphan_resolved(ctx, orphan_slug=orphan_slug)
+            if verify.get("resolved"):
+                return "resolved"
+
+            # Applied but graph-level orphan check still fails (e.g. link format
+            # mismatch).  Notify and try the next candidate.
+            await tool_notify(
+                ctx,
+                message=(
+                    f"Applied link to '{candidate_slug}' but graph-level verification "
+                    f"still shows '{orphan_slug}' as orphaned — the link format may "
+                    f"not match the slug exactly. Trying next candidate."
+                ),
+                level="warning",
+            )
+
+        return "unresolved"
+
+    async def _cli_insert_link(
+        self,
+        provider,
+        orphan_slug: str,
+        orphan_content: str,
+        candidate_slug: str,
+        candidate_content: str,
+    ) -> str | None:
+        """Single bounded LLM call: insert [[orphan_slug]] naturally into the candidate page.
+
+        The system prompt is deliberately neutral — no tool registry, no wire-format
+        instructions, no identity redefinition — so CLI providers accept it without
+        triggering their safety reasoning.
+
+        Returns the revised candidate page markdown, or None on failure.
+        """
+        from synthadoc.providers.base import Message  # local to avoid circular import
+
+        _SYSTEM = (
+            "You are a wiki editor. Your task is to integrate an orphaned wiki page "
+            "into the knowledge graph by adding a natural [[wikilink]] to it from "
+            "a related page.\n\n"
+            "Rules for inserting the link:\n"
+            f"  - Insert [[{orphan_slug}]] at the most contextually appropriate location\n"
+            "  - Preferred locations: inside a related section alongside thematically "
+            "similar content, or in an existing 'See also' section\n"
+            "  - Do NOT create a 'See also' section if one does not already exist\n"
+            "  - The link must be natural and topically relevant — never forced or "
+            "irrelevant to the surrounding prose\n"
+            "  - Preserve all existing content, structure, headings, and formatting exactly\n"
+            "  - CRITICAL — wikilinks: every [[...]] that already exists in the "
+            "candidate page MUST appear verbatim in your output. Do NOT remove, "
+            "rename, or reformat any existing [[link]]. You may ONLY add the new "
+            f"[[{orphan_slug}]] link — nothing else about the existing wikilinks changes.\n"
+            "  - Return ONLY the revised page content (markdown) — "
+            "no explanation, no preamble, no code fences"
+        )
+
+        user_msg = (
+            f"Orphan page slug: {orphan_slug}\n\n"
+            f"Orphan page content (for context):\n{orphan_content[:2000]}\n\n"
+            f"---\n\n"
+            f"Candidate page to modify (slug: {candidate_slug}):\n{candidate_content}"
+        )
+
+        try:
+            response = await provider.complete(
+                [Message(role="user", content=user_msg)],
+                system=_SYSTEM,
+            )
+            revised = response.text.strip()
+            # Strip markdown code fences — CLI providers occasionally add them
+            if revised.startswith("```"):
+                lines = revised.split("\n")
+                start = 1
+                end = len(lines) - 1 if lines and lines[-1].strip() == "```" else len(lines)
+                revised = "\n".join(lines[start:end]).strip()
+            return revised if revised else None
+        except Exception as exc:  # noqa: BLE001
+            _log.warning(
+                "CLI link insertion failed for %s → %s: %s", orphan_slug, candidate_slug, exc
+            )
+            return None
