@@ -3506,7 +3506,7 @@ In the web UI **Graph tab**, the node detail panel includes a **Maintenance** se
 
 ### Provider compatibility
 
-All seven workflows support both the Anthropic API provider (key-based) and CLI providers (Claude Code, Opencode). The execution model differs between provider types.
+All seven workflows support both standard API providers (Anthropic, OpenAI, Gemini, Groq, Ollama, MiniMax, DeepSeek, Qwen, and any custom endpoint) and CLI providers (Claude Code, Opencode). The execution model differs between provider types.
 
 **Why CLI providers need a separate path:** CLI providers are themselves LLM agents. When they receive Synthadoc's JSON wire-format system prompt (`{"tool_call": ...}` protocol), they correctly identify it as prompt injection and refuse to follow it. Each workflow implements a Python-driven path (`run_for_cli_provider`) that calls the same tool functions directly from code — no wire-format loop involved.
 
