@@ -853,11 +853,22 @@ async def test_run_orchestrate_rejects_coding_tool_provider(tmp_path):
     JSON wire-format system prompt as prompt injection.  The guard fires
     for workflows that have not opted into run_for_cli_provider().
 
-    We use "run lint" because LintReportWorkflow.SUPPORTS_CLI_PROVIDER is False.
+    We use a minimal stub workflow that deliberately leaves SUPPORTS_CLI_PROVIDER
+    at its default (False), so the test is decoupled from which real workflows
+    happen to have opted in.
     """
     from unittest.mock import patch as _patch
-    from synthadoc.providers.base import CompletionResponse
     from synthadoc.agents.action_agent import ActionAgent
+    from synthadoc.agents.workflows._base import AgenticWorkflow
+
+    class _NoCliWorkflow(AgenticWorkflow):
+        """Minimal stub — SUPPORTS_CLI_PROVIDER deliberately left False."""
+        NAME = "no-cli-stub"
+        DESCRIPTION = "Guard-test stub."
+        SUPPORTS_CLI_PROVIDER = False  # explicitly at default — guard must fire
+        async def build_system_prompt(self) -> str: return "no"
+        def build_initial_message(self, user_input: str) -> str: return user_input
+        def get_tool_fns(self, ctx) -> dict: return {}
 
     # Build a mock that looks like ClaudeCodeCLIProvider without requiring
     # the real binary to be installed.
@@ -875,13 +886,9 @@ async def test_run_orchestrate_rejects_coding_tool_provider(tmp_path):
     orch._cfg.chat.clarify_lookback = 5
     agent = ActionAgent(provider=cli_provider, orchestrator=orch, wiki_root=tmp_path)
 
-    # Pass LintReportWorkflow explicitly so _run_orchestrate doesn't default to
-    # IngestLintWorkflow (which now sets SUPPORTS_CLI_PROVIDER=True).
-    from synthadoc.agents.workflows.lint_report import LintReportWorkflow
-
     # Collect all SSE events yielded by _run_orchestrate.
     events = []
-    async for evt in agent._run_orchestrate("run lint", workflow=LintReportWorkflow()):
+    async for evt in agent._run_orchestrate("run no-cli-stub", workflow=_NoCliWorkflow()):
         events.append(evt)
 
     # Must yield at least a token event with the error message and a done event.
@@ -1782,6 +1789,234 @@ async def test_orphan_resolver_cli_path_no_candidates(tmp_path):
     token_text = "".join(e["data"]["text"] for e in events if e["event"] == "token")
     assert "isolated-page" in token_text
     assert "Unresolved" in token_text
+
+
+# ── LintReportWorkflow — CLI provider path ────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_lint_report_cli_path_lint_failure(tmp_path):
+    """tool_run_lint returns a failure → early exit, get_lint_report never called."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.lint_report import LintReportWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = LintReportWorkflow()
+
+    with _patch(
+        "synthadoc.agents.workflows.lint_report.tool_run_lint",
+        new=_AsyncMock(return_value={"status": "failed", "message": "lint error"}),
+    ), _patch(
+        "synthadoc.agents.workflows.lint_report.tool_get_lint_report",
+        new=_AsyncMock(),
+    ) as mock_report:
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "run lint", MagicMock()):
+            events.append(evt)
+
+    mock_report.assert_not_called()
+    token_text = " ".join(e["data"]["text"] for e in events if e["event"] == "token")
+    assert "lint failed" in token_text.lower()
+    assert "final_text" in [e["event"] for e in events]
+
+
+@pytest.mark.asyncio
+async def test_lint_report_cli_path_clean_wiki(tmp_path):
+    """Lint succeeds with empty report → all list sections show (none)."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.lint_report import LintReportWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = LintReportWorkflow()
+
+    lint_report = {
+        "last_run": {
+            "timestamp": "2026-08-13", "dangling_removed": 0,
+            "orphans": 0, "contradictions_resolved": 0, "contradictions_flagged": 0,
+        },
+        "contradicted_pages": [],
+        "adversarial_warnings": [],
+        "orphan_slugs": [],
+        "broken_citations": 0,
+        "broken_citation_pages": [],
+    }
+
+    with _patch(
+        "synthadoc.agents.workflows.lint_report.tool_run_lint",
+        new=_AsyncMock(return_value={"status": "success", "message": "ok"}),
+    ), _patch(
+        "synthadoc.agents.workflows.lint_report.tool_get_lint_report",
+        new=_AsyncMock(return_value=lint_report),
+    ):
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "run lint", MagicMock()):
+            events.append(evt)
+
+    token_text = " ".join(e["data"]["text"] for e in events if e["event"] == "token")
+    assert "Lint Report" in token_text
+    assert "2026-08-13" in token_text
+    # Timestamp-based sections with no items must show "(none)"
+    assert token_text.count("(none)") == 4  # contradicted, warnings, orphans, citations
+    # Zero-only summary lines are omitted (dangling and broken citations)
+    assert "Dangling" not in token_text
+    assert "Broken citations" not in token_text
+    assert "final_text" in [e["event"] for e in events]
+
+
+@pytest.mark.asyncio
+async def test_lint_report_cli_path_with_issues(tmp_path):
+    """Lint report with issues → all sections populated with correct formatting."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.lint_report import LintReportWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = LintReportWorkflow()
+
+    lint_report = {
+        "last_run": {
+            "timestamp": "2026-08-13", "dangling_removed": 3,
+            "orphans": 2, "contradictions_resolved": 1, "contradictions_flagged": 2,
+        },
+        "contradicted_pages": [{"slug": "alan-turing", "since": "2026-07-01"}],
+        "adversarial_warnings": [{"slug": "grace-hopper", "count": 2}],
+        "orphan_slugs": ["isolated-page", "no-links-page"],
+        "broken_citations": 4,
+        "broken_citation_pages": [{"slug": "ada-lovelace", "count": 4}],
+    }
+
+    with _patch(
+        "synthadoc.agents.workflows.lint_report.tool_run_lint",
+        new=_AsyncMock(return_value={"status": "success", "message": "ok"}),
+    ), _patch(
+        "synthadoc.agents.workflows.lint_report.tool_get_lint_report",
+        new=_AsyncMock(return_value=lint_report),
+    ):
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "run lint", MagicMock()):
+            events.append(evt)
+
+    token_text = " ".join(e["data"]["text"] for e in events if e["event"] == "token")
+    assert "Dangling links removed: 3" in token_text
+    assert "Orphan pages: 2" in token_text
+    assert "Contradictions: 1 resolved, 2 flagged" in token_text
+    assert "Broken citations: 4" in token_text
+    assert "alan-turing" in token_text
+    assert "since 2026-07-01" in token_text
+    assert "[[grace-hopper]]" in token_text
+    assert "2 warnings" in token_text
+    assert "isolated-page" in token_text
+    assert "no-links-page" in token_text
+    assert "[[ada-lovelace]]" in token_text
+    assert "4 broken citations" in token_text
+    assert "final_text" in [e["event"] for e in events]
+
+
+# ── ScaffoldWorkflow — CLI provider path ──────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_scaffold_cli_path_cancelled(tmp_path):
+    """tool_run_scaffold returns 'cancelled' (user declined) → cancellation message."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.scaffold import ScaffoldWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = ScaffoldWorkflow()
+
+    with _patch(
+        "synthadoc.agents.workflows.scaffold.tool_get_scaffold_preview",
+        new=_AsyncMock(return_value={
+            "domain": "AI Research", "files_to_overwrite": ["wiki/index.md"],
+        }),
+    ), _patch(
+        "synthadoc.agents.workflows.scaffold.tool_run_scaffold",
+        new=_AsyncMock(return_value={"status": "cancelled", "message": "User declined."}),
+    ):
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "run scaffold", MagicMock()):
+            events.append(evt)
+
+    token_text = " ".join(e["data"]["text"] for e in events if e["event"] == "token")
+    assert "cancel" in token_text.lower()
+    assert "final_text" in [e["event"] for e in events]
+
+
+@pytest.mark.asyncio
+async def test_scaffold_cli_path_success(tmp_path):
+    """Successful scaffold → summary with domain, files, categories, routing flag."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.scaffold import ScaffoldWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = ScaffoldWorkflow()
+
+    preview = {
+        "domain": "AI Research",
+        "files_to_overwrite": ["wiki/index.md", "wiki/purpose.md"],
+    }
+    scaffold_result = {
+        "status": "success",
+        "domain": "AI Research",
+        "categories_updated": 5,
+        "routing_regenerated": True,
+    }
+
+    with _patch(
+        "synthadoc.agents.workflows.scaffold.tool_get_scaffold_preview",
+        new=_AsyncMock(return_value=preview),
+    ), _patch(
+        "synthadoc.agents.workflows.scaffold.tool_run_scaffold",
+        new=_AsyncMock(return_value=scaffold_result),
+    ) as mock_scaffold:
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "run scaffold", MagicMock()):
+            events.append(evt)
+
+    # run_scaffold must receive the domain from get_scaffold_preview
+    mock_scaffold.assert_called_once_with(ctx, domain="AI Research")
+    token_text = " ".join(e["data"]["text"] for e in events if e["event"] == "token")
+    assert "AI Research" in token_text
+    assert "wiki/index.md" in token_text
+    assert "5 pages" in token_text
+    assert "ROUTING.md regenerated: Yes" in token_text
+    assert "Preservation" in token_text
+    assert "final_text" in [e["event"] for e in events]
+
+
+@pytest.mark.asyncio
+async def test_scaffold_cli_path_error(tmp_path):
+    """tool_run_scaffold returns a failure status → error message, no summary."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.scaffold import ScaffoldWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = ScaffoldWorkflow()
+
+    with _patch(
+        "synthadoc.agents.workflows.scaffold.tool_get_scaffold_preview",
+        new=_AsyncMock(return_value={"domain": "AI Research", "files_to_overwrite": []}),
+    ), _patch(
+        "synthadoc.agents.workflows.scaffold.tool_run_scaffold",
+        new=_AsyncMock(return_value={"status": "failed", "message": "queue timeout"}),
+    ):
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "run scaffold", MagicMock()):
+            events.append(evt)
+
+    token_text = " ".join(e["data"]["text"] for e in events if e["event"] == "token")
+    assert "scaffold failed" in token_text.lower()
+    assert "Preservation" not in token_text
+    assert "final_text" in [e["event"] for e in events]
 
 
 # ── format helper ─────────────────────────────────────────────────────────────

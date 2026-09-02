@@ -3499,6 +3499,28 @@ In the web UI **Graph tab**, the node detail panel includes a **Maintenance** se
 - `confirm_request` — `{session_id, message, yes_label, no_label}` — requires a user decision before proceeding
 - `done.pre_prompt` — optional string in the `done` event that pre-fills the chat textarea with the natural next action (e.g. "Run lint to promote re-ingested pages to active")
 
+### Provider compatibility
+
+All seven workflows support both the Anthropic API provider (key-based) and CLI providers (Claude Code, Opencode). The execution model differs between provider types.
+
+**Why CLI providers need a separate path:** CLI providers are themselves LLM agents. When they receive Synthadoc's JSON wire-format system prompt (`{"tool_call": ...}` protocol), they correctly identify it as prompt injection and refuse to follow it. Each workflow implements a Python-driven path (`run_for_cli_provider`) that calls the same tool functions directly from code — no wire-format loop involved.
+
+| Workflow | Trigger (examples) | Confirm gate | API path | CLI path |
+| --- | --- | --- | --- | --- |
+| **IngestLintWorkflow** | "re-ingest stale pages", "re-ingest the alan-turing page" | Pattern B (declarative) | LLM drives tool-call loop | Pure Python — deterministic scan→ingest→lint |
+| **BrokenWikilinksWorkflow** | "fix broken wikilinks", "scan for broken links" | Pattern B (declarative) | LLM drives tool-call loop | Pure Python — difflib suggestions pre-computed by tool |
+| **BrokenCitationResolverWorkflow** | "fix broken citations", "check citation integrity" | Pattern B (declarative) | LLM drives tool-call loop | Pure Python — fuzzy match pre-computed by tool |
+| **ContradictionResolverWorkflow** | "resolve contradictions", "fix contradicted pages" | Per-page diff approval | LLM drives tool-call loop | Python + bounded LLM call (one `provider.complete()` per page rewrite) |
+| **OrphanResolverWorkflow** | "resolve orphan pages", "fix orphaned pages" | Per-orphan approval | LLM drives tool-call loop | Python + bounded LLM call (one `provider.complete()` per link insertion) |
+| **LintReportWorkflow** | "run lint", "show lint report" | None (read-only) | LLM drives tool-call loop | Pure Python — sequential run→read→format |
+| **ScaffoldWorkflow** | "run scaffold", "regenerate scaffold" | Pattern A (embedded in tool) | LLM drives tool-call loop | Pure Python — Pattern A confirm preserved inside tool |
+
+**Pattern A** — confirmation is embedded inside the tool function itself (`tool_run_scaffold`); the workflow has no separate `confirm` tool in its registry.
+
+**Pattern B** — `GATED_TOOLS` declares which tools require a preceding `confirm` call; the framework enforces the gate and shows a fallback dialog if the LLM skips it.
+
+**Bounded LLM call** — `ContradictionResolverWorkflow` and `OrphanResolverWorkflow` need genuine language-model reasoning on the CLI path (content rewrite and link insertion respectively). They use a single, narrowly scoped `provider.complete()` call per item with a neutral system prompt that contains no fake tools — this is not a multi-turn loop and is not flagged as injection.
+
 ### Routing and loop constraints
 
 Fast-path routing uses a **workflow registry** (`synthadoc/agents/workflows/_registry.py`). Each workflow that needs pre-LLM routing declares a `MATCH_RE` class attribute; the action agent iterates the registry and routes to the first match — no LLM call is made.
