@@ -1753,6 +1753,76 @@ async def test_orphan_resolver_cli_path_resolves_orphan(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_orphan_resolver_cli_path_skips_candidate_that_removes_wikilinks(tmp_path):
+    """LLM rewrite removes an existing [[wikilink]] → guard skips candidate, orphan unresolved.
+
+    Inserting [[orphan-slug]] must never silently drop existing wikilinks
+    from the candidate page (which would orphan those other pages).  The
+    code-level guard detects removed slugs and discards the rewrite before
+    tool_propose_and_apply is ever called.
+    """
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.orphan_resolver import OrphanResolverWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+    from synthadoc.providers.base import CompletionResponse
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = OrphanResolverWorkflow()
+
+    # The candidate page has an existing [[other-page]] wikilink.
+    candidate_original = "# Candidate\nSee also [[other-page]].\n"
+    # The LLM replaces [[other-page]] with [[orphan-page]] — removing the original link.
+    candidate_rewritten = "# Candidate\nSee also [[orphan-page]].\n"
+
+    fake_provider = MagicMock()
+    fake_provider.complete = _AsyncMock(return_value=CompletionResponse(
+        text=candidate_rewritten,
+        input_tokens=80, output_tokens=15,
+    ))
+
+    with _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_find_orphaned_pages",
+        new=_AsyncMock(return_value={"orphans": ["orphan-page"], "count": 1}),
+    ), _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_estimate_and_confirm",
+        new=_AsyncMock(return_value={"confirmed": True, "orphan_count": 1}),
+    ), _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_verify_orphan_resolved",
+        new=_AsyncMock(return_value={"resolved": False, "linked_by": []}),
+    ), _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_search_orphan_candidates",
+        new=_AsyncMock(return_value={
+            "candidates": ["candidate-page"],
+            "strategy": "title_bm25",
+            "tried_slugs": ["candidate-page"],
+        }),
+    ), _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_read_page_content",
+        new=_AsyncMock(return_value={
+            "slug": "candidate-page",
+            "content": candidate_original,
+        }),
+    ), _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_propose_and_apply",
+        new=_AsyncMock(return_value={"applied": True, "diff_preview": "..."}),
+    ) as mock_apply, _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_notify",
+        new=_AsyncMock(return_value={"sent": True}),
+    ) as mock_notify:
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "run orphan resolver", fake_provider):
+            events.append(evt)
+
+    # The guard must discard the rewrite — propose_and_apply must NOT be called.
+    mock_apply.assert_not_called()
+    # The orphan ends up unresolved, so tool_notify fires the escalation message.
+    mock_notify.assert_called_once()
+    token_text = "".join(e["data"]["text"] for e in events if e["event"] == "token")
+    assert "Unresolved" in token_text
+
+
+@pytest.mark.asyncio
 async def test_orphan_resolver_cli_path_no_candidates(tmp_path):
     """Both BM25 strategies return no candidates → orphan marked unresolved."""
     from unittest.mock import patch as _patch, AsyncMock as _AsyncMock

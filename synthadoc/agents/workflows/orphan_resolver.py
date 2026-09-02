@@ -509,6 +509,37 @@ class OrphanResolverWorkflow(AgenticWorkflow):
             if new_content is None or new_content == candidate_content:
                 continue
 
+            # Safety guard: reject the rewrite if any existing [[wikilink]] slug
+            # was removed.  Inserting one link must never silently orphan other
+            # pages by dropping their only inbound reference.
+            #
+            # How the check works: extract all slug tokens (the part before "|"
+            # in [[slug|display text]], or the whole interior for plain [[slug]])
+            # from both the original and the proposed content, then look for any
+            # slug that was present before but is gone now.
+            def _wikilink_slugs(text: str) -> set[str]:
+                return {
+                    m.split("|")[0].strip().lower()
+                    for m in re.findall(r"\[\[([^\]]+)\]\]", text)
+                }
+
+            removed_slugs = _wikilink_slugs(candidate_content) - _wikilink_slugs(new_content)
+            if removed_slugs:
+                _log.warning(
+                    "Skipping candidate %s for orphan %s: "
+                    "LLM removed wikilinks %s from rewrite",
+                    candidate_slug, orphan_slug, removed_slugs,
+                )
+                await ctx.send_sse_event(
+                    "tool_progress",
+                    {"tool": "_cli_insert_link",
+                     "message": (
+                         f"Skipped {candidate_slug}: rewrite removed existing link(s) "
+                         f"{{{', '.join(sorted(removed_slugs))}}} — trying next candidate"
+                     )},
+                )
+                continue
+
             # Show diff; apply only if the user approves
             apply_result = await tool_propose_and_apply(
                 ctx,
@@ -574,6 +605,10 @@ class OrphanResolverWorkflow(AgenticWorkflow):
             "  - The link must be natural and topically relevant — never forced or "
             "irrelevant to the surrounding prose\n"
             "  - Preserve all existing content, structure, headings, and formatting exactly\n"
+            "  - CRITICAL — wikilinks: every [[...]] that already exists in the "
+            "candidate page MUST appear verbatim in your output. Do NOT remove, "
+            "rename, or reformat any existing [[link]]. You may ONLY add the new "
+            f"[[{orphan_slug}]] link — nothing else about the existing wikilinks changes.\n"
             "  - Return ONLY the revised page content (markdown) — "
             "no explanation, no preamble, no code fences"
         )
