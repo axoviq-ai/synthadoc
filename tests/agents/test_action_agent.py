@@ -2089,6 +2089,118 @@ async def test_scaffold_cli_path_error(tmp_path):
     assert "final_text" in [e["event"] for e in events]
 
 
+# ── Extra coverage gaps ────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_ingest_lint_cli_path_workflow_b_cancelled(tmp_path):
+    """Workflow B (single slug): confirm declined → 'Cancelled' message, no ingest called."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.ingest_lint import IngestLintWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = IngestLintWorkflow()
+
+    with _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_find_page_source",
+        new=_AsyncMock(return_value={"source_path": "/docs/alan-turing.md"}),
+    ), _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_confirm",
+        new=_AsyncMock(return_value={"confirmed": False}),
+    ), _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_ingest_source",
+        new=_AsyncMock(),
+    ) as mock_ingest:
+        events = []
+        async for evt in wf.run_for_cli_provider(
+            ctx, "re-ingest the alan-turing", MagicMock()
+        ):
+            events.append(evt)
+
+    mock_ingest.assert_not_called()
+    token_text = " ".join(e["data"]["text"] for e in events if e["event"] == "token")
+    assert "cancelled" in token_text.lower()
+    assert "final_text" in [e["event"] for e in events]
+
+
+@pytest.mark.asyncio
+async def test_scaffold_cli_path_no_overwrite_files(tmp_path):
+    """Scaffold success with files_to_overwrite=[] → 'Files written: (none)' in summary."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.scaffold import ScaffoldWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = ScaffoldWorkflow()
+
+    preview = {"domain": "AI Research", "files_to_overwrite": []}
+    scaffold_result = {
+        "status": "success",
+        "domain": "AI Research",
+        "categories_updated": 3,
+        "routing_regenerated": False,
+    }
+
+    with _patch(
+        "synthadoc.agents.workflows.scaffold.tool_get_scaffold_preview",
+        new=_AsyncMock(return_value=preview),
+    ), _patch(
+        "synthadoc.agents.workflows.scaffold.tool_run_scaffold",
+        new=_AsyncMock(return_value=scaffold_result),
+    ):
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "run scaffold", MagicMock()):
+            events.append(evt)
+
+    token_text = " ".join(e["data"]["text"] for e in events if e["event"] == "token")
+    assert "Files written: (none)" in token_text
+    assert "final_text" in [e["event"] for e in events]
+
+
+@pytest.mark.asyncio
+async def test_broken_wikilinks_cli_path_fix_error_shown_in_summary(tmp_path):
+    """When apply_link_fixes returns an error, the summary shows '⚠ error' for that page."""
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.broken_wikilinks import BrokenWikilinksWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = BrokenWikilinksWorkflow()
+
+    scan_result = {
+        "pages": [{"slug": "broken-page", "broken_links": [{"ref": "dead-ref", "suggestion": None}]}],
+        "scanned": 1,
+        "total_broken": 1,
+    }
+
+    with _patch(
+        "synthadoc.agents.workflows.broken_wikilinks.tool_find_broken_wikilinks",
+        new=_AsyncMock(return_value=scan_result),
+    ), _patch(
+        "synthadoc.agents.workflows.broken_wikilinks.tool_confirm",
+        new=_AsyncMock(return_value={"confirmed": True}),
+    ), _patch(
+        "synthadoc.agents.workflows.broken_wikilinks.tool_apply_link_fixes",
+        new=_AsyncMock(return_value={"status": "error", "error": "write permission denied"}),
+    ), _patch(
+        "synthadoc.agents.workflows.broken_wikilinks.tool_run_lint",
+        new=_AsyncMock(return_value={"status": "success"}),
+    ), _patch(
+        "synthadoc.agents.workflows.broken_wikilinks.tool_get_page_states",
+        new=_AsyncMock(return_value={"pages": [{"slug": "broken-page", "state": "active"}]}),
+    ):
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "fix broken wikilinks", MagicMock()):
+            events.append(evt)
+
+    token_text = " ".join(e["data"]["text"] for e in events if e["event"] == "token")
+    assert "⚠ error" in token_text
+    assert "write permission denied" in token_text
+
+
 # ── format helper ─────────────────────────────────────────────────────────────
 
 def test_format_schedule_list_empty():
