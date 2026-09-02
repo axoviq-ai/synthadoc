@@ -2118,6 +2118,8 @@ The lint report also shows a **Citation Issues** section listing any broken, out
 synthadoc lint report
 ```
 
+→ To fix broken citations automatically, use the **[Broken Citation Resolver workflow](#demo--broken-citation-resolver)** — it fuzzy-matches renamed source files, removes malformed markers, and confirms every fix before writing.
+
 ### Checking citation faithfulness
 
 The structural citation check confirms that each `^[filename:L-L]` marker references a known source file and valid line range. **Citation faithfulness** goes further: it uses an LLM to verify that the claim text preceding each marker is actually supported by those source lines.
