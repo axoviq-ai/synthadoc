@@ -491,7 +491,12 @@ async def tool_find_broken_wikilinks(
         msg = f"No broken wikilinks found on {scope_label}"
 
     await ctx.send_sse_event("tool_progress", {"tool": "find_broken_wikilinks", "message": msg})
-    result: dict = {"pages": pages_with_issues, "scanned": len(scan_slugs), "total_broken": total_broken}
+    result: dict = {
+        "has_issues": total_broken > 0,
+        "pages": pages_with_issues,
+        "scanned": len(scan_slugs),
+        "total_broken": total_broken,
+    }
     if page_slug is not None:
         result["page_title"] = page_title   # display title for use in single-page summary
     return result
