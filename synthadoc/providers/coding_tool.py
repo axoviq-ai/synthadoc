@@ -327,11 +327,49 @@ class OpencodeProvider(CodingToolCLIProvider):
     """
     _tool_binary = "opencode"
 
+    # Seconds to wait before the single automatic retry on silent-output failures.
+    _SILENT_RETRY_DELAY = 2.0
+
     def _build_command(self, binary: str) -> list[str]:
         cmd = [binary, "run", "--format", "json"]
         if self._model:
             cmd += ["--model", self._model]
         return cmd
+
+    async def complete(
+        self,
+        messages: list[Message],
+        system: Optional[str] = None,
+        temperature: float = 0.0,
+        max_tokens: int = 4096,
+    ) -> CompletionResponse:
+        """Complete with a single automatic retry on silent-output failures.
+
+        opencode occasionally exits cleanly (returncode 0, reason=stop) but emits
+        no text events to stdout even though the model generated tokens — the text
+        is flushed to its session database instead.  One transparent retry covers
+        this transient case without cascading into a permanent failure for the whole
+        batch-ingest job.
+        """
+        last_exc: Exception | None = None
+        for attempt in range(1, 3):
+            try:
+                return await super().complete(
+                    messages, system=system,
+                    temperature=temperature, max_tokens=max_tokens,
+                )
+            except ValueError as exc:
+                last_exc = exc
+                if attempt < 2 and "no text content" in str(exc):
+                    _logger.warning(
+                        "opencode: no text in JSONL output on attempt %d/2 — "
+                        "retrying in %.1fs (transient stdout-flush issue).",
+                        attempt, self._SILENT_RETRY_DELAY,
+                    )
+                    await asyncio.sleep(self._SILENT_RETRY_DELAY)
+                    continue
+                raise
+        raise last_exc  # type: ignore[misc]  # unreachable, but satisfies type-checker
 
     def _parse_output(self, raw: str) -> CompletionResponse:
         _logger.debug("opencode raw output (%d bytes):\n%s", len(raw), raw[:4000])
@@ -340,6 +378,7 @@ class OpencodeProvider(CodingToolCLIProvider):
         input_tokens = 0
         output_tokens = 0
         seen_types: list[str] = []
+        session_id: str | None = None
 
         for line in raw.splitlines():
             line = line.strip()
@@ -353,6 +392,13 @@ class OpencodeProvider(CodingToolCLIProvider):
             etype = event.get("type", "")
             if etype:
                 seen_types.append(etype)
+
+            # Capture session ID from any event for diagnostics.
+            if not session_id:
+                session_id = (
+                    event.get("sessionID")
+                    or (event.get("part") or {}).get("sessionID")
+                )
 
             # --- text content ---
             # Layout A: {"type":"text","data":"..."}
@@ -383,6 +429,28 @@ class OpencodeProvider(CodingToolCLIProvider):
                         if chunk:
                             text_parts.append(chunk)
 
+            # Layout E: streaming text delta (content_block_delta / text_delta).
+            # Seen in newer opencode versions that proxy OpenAI-compatible streaming.
+            elif etype in ("content_block_delta", "text_delta"):
+                delta = event.get("delta") or event
+                chunk = delta.get("text") or delta.get("data") or ""
+                if chunk:
+                    text_parts.append(chunk)
+
+            # Layout F: message-level wrappers carrying assistant content.
+            elif etype in ("message", "message_start", "message_delta"):
+                msg = event.get("message") or event.get("data") or event
+                if isinstance(msg, dict):
+                    content = msg.get("content") or ""
+                    if isinstance(content, str) and content:
+                        text_parts.append(content)
+                    elif isinstance(content, list):
+                        for block in content:
+                            if isinstance(block, dict) and block.get("type") == "text":
+                                chunk = block.get("text") or ""
+                                if chunk:
+                                    text_parts.append(chunk)
+
             elif etype == "error":
                 err = event.get("error") or {}
                 msg = (err.get("data") or {}).get("message") or err.get("name") or "unknown error"
@@ -397,9 +465,17 @@ class OpencodeProvider(CodingToolCLIProvider):
             elif etype == "step_finish":
                 if event.get("reason") == "error":
                     raise RuntimeError("opencode: step finished with error")
-                tokens = event.get("tokens") or {}
-                input_tokens = int(tokens.get("input", 0))
-                output_tokens = int(tokens.get("output", 0))
+                # Tokens may be on the outer event or inside the part sub-object.
+                tokens = (
+                    event.get("tokens")
+                    or (event.get("part") or {}).get("tokens")
+                    or {}
+                )
+                _in = int(tokens.get("input", 0))
+                _out = int(tokens.get("output", 0))
+                if _in or _out:
+                    input_tokens = _in
+                    output_tokens = _out
 
             elif etype in ("message_finish", "session_end"):
                 info = event.get("info") or event.get("properties") or {}
@@ -408,16 +484,29 @@ class OpencodeProvider(CodingToolCLIProvider):
                     input_tokens = int(usage.get("input", 0) or usage.get("input_tokens", 0))
                     output_tokens = int(usage.get("output", 0) or usage.get("output_tokens", 0))
 
+            else:
+                # Layout G (catch-all for future opencode versions): if an event
+                # carries a part sub-object whose type is "text", extract the text
+                # rather than silently dropping it.
+                part = event.get("part") or {}
+                if isinstance(part, dict) and part.get("type") == "text":
+                    chunk = part.get("text") or part.get("data") or ""
+                    if chunk:
+                        text_parts.append(chunk)
+
         if not text_parts:
             _logger.warning(
-                "opencode: no text content extracted. Event types seen: %s\n"
+                "opencode: no text content extracted. Event types seen: %s%s\n"
                 "Raw output (first 2000 chars):\n%s",
-                sorted(set(seen_types)), raw[:2000],
+                sorted(set(seen_types)),
+                f" | session_id={session_id}" if session_id else "",
+                raw[:2000],
             )
             raise ValueError(
                 f"opencode: no text content in JSONL output. "
                 f"Event types seen: {sorted(set(seen_types))}. "
-                f"Check DEBUG logs for the full raw output."
+                + (f"session_id={session_id} — use 'opencode session show {session_id}' to inspect. " if session_id else "")
+                + "Check DEBUG logs for the full raw output."
             )
 
         return CompletionResponse(
