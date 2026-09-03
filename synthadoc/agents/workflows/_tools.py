@@ -796,8 +796,14 @@ async def tool_confirm(
     the confirmation buttons rather than embedding raw diff text in *message*.
 
     Returns ``{"confirmed": bool}``.  Times out with ``{"confirmed": False}``
-    after 120 seconds.
+    after 300 seconds (5 minutes).
+
+    The timeout value is included in the SSE payload (``timeout_seconds``) so
+    the web-UI countdown timer stays synchronised with the server-side gate, and
+    so the HTTP stream handler can pause its own outer timeout while the user is
+    reading the diff.
     """
+    _CONFIRM_TIMEOUT = 300.0
     gate = asyncio.Event()
     ctx.confirm_registry[ctx.session_id] = gate
     ctx.confirm_result_registry[ctx.session_id] = False
@@ -807,6 +813,7 @@ async def tool_confirm(
             "message": message,
             "yes_label": yes_label,
             "no_label": no_label,
+            "timeout_seconds": int(_CONFIRM_TIMEOUT),
         }
         if diff is not None:
             payload["diff"] = diff
@@ -815,7 +822,7 @@ async def tool_confirm(
         except Exception:  # noqa: BLE001
             return {"confirmed": False}
         try:
-            await asyncio.wait_for(gate.wait(), timeout=120.0)
+            await asyncio.wait_for(gate.wait(), timeout=_CONFIRM_TIMEOUT)
             confirmed = ctx.confirm_result_registry.get(ctx.session_id, False)
             return {"confirmed": confirmed}
         except asyncio.TimeoutError:

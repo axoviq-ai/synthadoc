@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 William Johnason / axoviq.com
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -75,25 +75,37 @@ function DiffViewer({ diff }: { diff: string }) {
 
 // ── card ──────────────────────────────────────────────────────────────────────
 
+// Countdown becomes visible when this many seconds remain.
+const COUNTDOWN_THRESHOLD = 60;
+
 export default function ConfirmCard({
     message, yesLabel, noLabel, onConfirm, onDecline,
-    timeoutSeconds = 120, diff,
+    timeoutSeconds = 300, diff,
 }: Props) {
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const [secsLeft, setSecsLeft] = useState(timeoutSeconds);
 
     useEffect(() => {
+        // Auto-decline timer
         timerRef.current = setTimeout(onDecline, timeoutSeconds * 1000);
-        return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+        // Countdown ticker — only needs to update when approaching the threshold
+        intervalRef.current = setInterval(() => {
+            setSecsLeft(s => s - 1);
+        }, 1000);
+        return () => {
+            if (timerRef.current) clearTimeout(timerRef.current);
+            if (intervalRef.current) clearInterval(intervalRef.current);
+        };
     }, []);
 
-    const handleConfirm = () => {
+    const dismiss = (confirmed: boolean) => {
         if (timerRef.current) clearTimeout(timerRef.current);
-        onConfirm();
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        confirmed ? onConfirm() : onDecline();
     };
-    const handleDecline = () => {
-        if (timerRef.current) clearTimeout(timerRef.current);
-        onDecline();
-    };
+
+    const showCountdown = secsLeft > 0 && secsLeft <= COUNTDOWN_THRESHOLD;
 
     return (
         <div className="confirm-card" style={{
@@ -111,16 +123,26 @@ export default function ConfirmCard({
 
             <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                 <button
-                    onClick={handleConfirm}
+                    onClick={() => dismiss(true)}
                     className="confirm-yes-btn"
                     style={{ padding: "6px 16px", cursor: "pointer" }}
                 >{yesLabel}</button>
                 <button
-                    onClick={handleDecline}
+                    onClick={() => dismiss(false)}
                     className="confirm-no-btn"
                     style={{ padding: "6px 16px", cursor: "pointer" }}
                 >{noLabel}</button>
             </div>
+
+            {/* Countdown — only visible in the final 60 seconds */}
+            {showCountdown && (
+                <div style={{
+                    fontSize: "0.72rem", color: "var(--text-muted, #888)",
+                    marginTop: 6,
+                }}>
+                    ⏱ Auto-declining in {secsLeft} s
+                </div>
+            )}
         </div>
     );
 }

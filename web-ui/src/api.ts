@@ -29,6 +29,8 @@ export interface ConfirmRequestData {
     no_label: string;
     /** Unified diff string — present only for diff-review confirms (e.g. contradiction resolver). */
     diff?: string;
+    /** Gate timeout in seconds sent by the server — drives the client-side countdown. */
+    timeout_seconds?: number;
 }
 
 export interface StreamCallbacks {

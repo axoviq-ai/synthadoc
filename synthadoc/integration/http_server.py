@@ -1154,7 +1154,12 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             _knowledge_gap = False
             _suggested_searches: list[str] = []
             try:
-                async with _asyncio.timeout(timeout_seconds if timeout_seconds > 0 else None):
+                # Use timeout_at (rather than timeout) so we can reschedule the
+                # deadline when a confirm_request gate opens.  The user's diff-
+                # reading time should not count against the LLM computation budget.
+                _loop = _asyncio.get_running_loop()
+                _ot_deadline = (_loop.time() + timeout_seconds) if timeout_seconds > 0 else None
+                async with _asyncio.timeout_at(_ot_deadline) as _outer_to:
                     async for evt in orch.query_stream(q, session_id=session_id,
                                                        session_mode=session_mode,
                                                        history=_history):
@@ -1162,6 +1167,19 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                         if _summary_notice:
                             yield f"event: notice\ndata: {_json.dumps({'text': _summary_notice})}\n\n"
                             _summary_notice = None
+
+                        # When a confirm_request gate opens, extend the outer
+                        # deadline by the gate's own timeout so the user's diff-
+                        # reading time doesn't count against the LLM computation
+                        # budget.  Only reschedule when the payload carries an
+                        # explicit timeout_seconds — avoids hardcoding a fallback
+                        # that would drift from the value in tool_confirm.
+                        if evt["event"] == "confirm_request" and _outer_to.when() is not None:
+                            _gate_secs = evt["data"].get("timeout_seconds")
+                            if _gate_secs is not None:
+                                _new_deadline = _loop.time() + int(_gate_secs) + 10  # +10 s buffer
+                                if _new_deadline > _outer_to.when():
+                                    _outer_to.reschedule(_new_deadline)
 
                         if evt["event"] == "clarify":
                             if session_id:
