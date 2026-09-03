@@ -381,10 +381,15 @@ def _write_okf_page(store, slug, title, status, content="", type_=None,
     store.write_page(slug, page)
 
 
+import re as _re_export_test
+
+_FM_SEP = _re_export_test.compile(r"^---\s*$", _re_export_test.MULTILINE)
+
+
 def _parse_frontmatter(text: str) -> dict:
     import yaml
     if text.startswith("---"):
-        parts = text.split("---", 2)
+        parts = _FM_SEP.split(text, 2)
         if len(parts) >= 3:
             return yaml.safe_load(parts[1]) or {}
     return {}
@@ -530,7 +535,7 @@ async def test_okf_wikilinks_rewritten_to_relative_paths(tmp_path):
                     content="Compiler pioneer.", type_="person")
     agent = _agent(tmp_path, store)
     result = await agent.run(ExportOptions(format="okf"))
-    body = result["wiki/alan-turing.md"].split("---", 2)[2]
+    body = _FM_SEP.split(result["wiki/alan-turing.md"], 2)[2]
     assert "[[grace-hopper]]" not in body
     assert "[Grace Hopper](grace-hopper.md)" in body
 
@@ -609,7 +614,7 @@ async def test_okf_contradiction_note_appended_to_body(tmp_path):
     store.write_page("conflict-page", page)
     agent = _agent(tmp_path, store)
     result = await agent.run(ExportOptions(format="okf"))
-    body = result["wiki/conflict-page.md"].split("---", 2)[2]
+    body = _FM_SEP.split(result["wiki/conflict-page.md"], 2)[2]
     assert "Source B says the opposite." in body
     assert "> **Contradiction:**" in body
 
@@ -630,7 +635,7 @@ async def test_okf_wikilinks_in_contradiction_note_are_rewritten(tmp_path):
                     content="Correct claim.")
     agent = _agent(tmp_path, store)
     result = await agent.run(ExportOptions(format="okf"))
-    body = result["wiki/conflict-page.md"].split("---", 2)[2]
+    body = _FM_SEP.split(result["wiki/conflict-page.md"], 2)[2]
     assert "[[other-page]]" not in body, "wikilink in contradiction_note was not rewritten"
     assert "[Other Page](other-page.md)" in body
 
@@ -681,6 +686,30 @@ def test_first_sentence_strips_piped_wikilinks():
     result = _first_sentence("Developed by [[grace-hopper|Grace Hopper]]. More follows.")
     assert "[[" not in result
     assert "Grace Hopper" in result
+
+
+def test_first_sentence_skips_horizontal_rules():
+    """Markdown horizontal rules (--- / *** / ___) are skipped so they never
+    appear in the OKF description field (and thus never cause YAML quoting of
+    '---' that would break naive frontmatter splitting)."""
+    assert _first_sentence("---\nThe real content here. More follows.") == "The real content here."
+    assert _first_sentence("***\nStars rule skipped. More follows.") == "Stars rule skipped."
+    assert _first_sentence("___\nUnderscore rule skipped. More follows.") == "Underscore rule skipped."
+
+
+@pytest.mark.asyncio
+async def test_okf_description_survives_horizontal_rule_content(tmp_path):
+    """OKF export of a page whose content opens with '---' must produce
+    valid YAML frontmatter (i.e. description must not contain '---')."""
+    store = _make_store(tmp_path)
+    _write_okf_page(store, "hr-page", "HR Page", LifecycleState.ACTIVE,
+                    content="---\nActual description sentence. More detail follows.", type_="concept")
+    agent = _agent(tmp_path, store)
+    result = await agent.run(ExportOptions(format="okf"))
+    fm = _parse_frontmatter(result["wiki/hr-page.md"])
+    assert fm.get("description") == "Actual description sentence."
+    # description must not carry the Markdown horizontal rule
+    assert "---" not in fm.get("description", "")
 
 
 def test_rewrite_wikilinks_piped_form():
@@ -803,6 +832,6 @@ async def test_okf_spec_wikilinks_resolved_to_markdown(tmp_path):
                     content="Designed the Difference Engine.", type_="person")
     agent = _agent(tmp_path, store)
     result = await agent.run(ExportOptions(format="okf"))
-    body = result["wiki/ada.md"].split("---", 2)[2]
+    body = _FM_SEP.split(result["wiki/ada.md"], 2)[2]
     assert "[[" not in body, "wikilinks must be rewritten to markdown links"
     assert "[Charles Babbage](babbage.md)" in body

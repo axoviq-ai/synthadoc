@@ -333,9 +333,12 @@ def _okf_validate(bundle: dict) -> None:
         warn("POST /export (okf) spec-check", "PyYAML not available — skipping content validation")
         return
 
+    import re as _re_fm
+    _FM_SEP = _re_fm.compile(r"^---\s*$", _re_fm.MULTILINE)
+
     def _fm(text: str) -> dict:
         if text.startswith("---"):
-            parts = text.split("---", 2)
+            parts = _FM_SEP.split(text, 2)
             if len(parts) >= 3:
                 return _yaml.safe_load(parts[1]) or {}
         return {}
@@ -369,7 +372,7 @@ def _okf_validate(bundle: dict) -> None:
         desc = fm.get("description", "")
         if desc and "\n" in desc:
             newline_desc.append(path)
-        body = bundle[path].split("---", 2)[-1] if "---" in bundle[path] else bundle[path]
+        body = _FM_SEP.split(bundle[path], 2)[-1] if "---" in bundle[path] else bundle[path]
         if _WIKILINK_PAT.search(body):
             has_wikilinks.append(path)
 

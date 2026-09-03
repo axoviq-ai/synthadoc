@@ -340,7 +340,7 @@ def test_scaffold_progress_label_says_scaffold_not_ingest():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @pytest.mark.live
-@pytest.mark.timeout(180)
+@pytest.mark.timeout(360)
 def test_two_phrasings_both_trigger_workflow():
     """
     Both canonical trigger phrasings must route to ScaffoldWorkflow
@@ -352,7 +352,7 @@ def test_two_phrasings_both_trigger_workflow():
         "regenerate scaffold",
     ]
     for phrase in phrasings:
-        events = _stream_with_confirm_response(phrase, accept=False, timeout=90)
+        events = _stream_with_confirm_response(phrase, accept=False, timeout=150)
         _assert_stream_complete(events)
 
         tool_names = _tool_names(events)

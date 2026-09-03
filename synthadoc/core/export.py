@@ -451,9 +451,15 @@ class ExportAgent:
 _CITATION_RE = re.compile(r"\^\[[^\]]*\]")
 
 
+_HR_PATTERNS = frozenset({"---", "***", "___", "- - -", "* * *", "_ _ _"})
+
+
 def _first_sentence(text: str) -> str:
     text = text.strip()
-    lines = [ln for ln in text.splitlines() if ln.strip() and not ln.strip().startswith("#")]
+    lines = [
+        ln for ln in text.splitlines()
+        if ln.strip() and not ln.strip().startswith("#") and ln.strip() not in _HR_PATTERNS
+    ]
     flat = " ".join(lines[:3])
     flat = _CITATION_RE.sub("", flat)          # strip ^[...] citation markers
     flat = _WIKILINK_RE.sub(                   # strip [[wikilinks]] → display text only
