@@ -1477,6 +1477,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
     async def lint_report():
         from synthadoc.agents.lint_agent import find_orphan_slugs, LINT_SKIP_SLUGS
         from synthadoc.cli.lint import _is_reingestable
+        from synthadoc.storage.wiki import LifecycleState
         wiki_dir = wiki_root / "wiki"
         pages = list(wiki_dir.glob("*.md"))
 
@@ -1484,14 +1485,19 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
 
         contradiction_details = []
         for stem, text in page_texts.items():
-            if stem not in LINT_SKIP_SLUGS and "status: contradicted" in text:
-                fm_m = _FM_RE.match(text)
-                fm: dict = {}
-                if fm_m:
-                    try:
-                        fm = yaml.safe_load(fm_m.group(1)) or {}
-                    except Exception:
-                        pass
+            if stem in LINT_SKIP_SLUGS:
+                continue
+            fm_m = _FM_RE.match(text)
+            fm: dict = {}
+            if fm_m:
+                try:
+                    fm = yaml.safe_load(fm_m.group(1)) or {}
+                except Exception:
+                    pass
+            # Check only the parsed frontmatter status — a full-text search for
+            # "status: contradicted" can produce false positives when old page
+            # content or LLM reasoning text is accidentally embedded in the body.
+            if fm.get("status") == LifecycleState.CONTRADICTED:
                 contradiction_details.append({
                     "slug": stem,
                     "contradiction_note": fm.get("contradiction_note") or None,
@@ -1517,10 +1523,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                     status = (yaml.safe_load(fm_m.group(1)) or {}).get("status", "")
                 except Exception:
                     pass
-            if status in {"active", ""}:
+            if status in {LifecycleState.ACTIVE, ""}:
                 page_bodies[slug] = body
                 all_page_bodies[slug] = body
-            elif status == "contradicted":
+            elif status == LifecycleState.CONTRADICTED:
                 all_page_bodies[slug] = body
         orphan_slugs = find_orphan_slugs(page_bodies, link_texts=all_page_bodies)
 
