@@ -182,10 +182,18 @@ async def run_tool_call_loop(
             messages.append(Message(role="assistant", content=text))
             # Single call: return the result dict directly (backward-compatible format).
             # Multiple calls: return the list so the LLM sees all results at once.
+            # Use json.dumps (not str()) so the LLM receives standard JSON instead of
+            # Python repr — double-quoted keys, null/true/false instead of None/True/False.
             if len(combined) == 1:
-                messages.append(Message(role="user", content=str(combined[0]["result"])))
+                messages.append(Message(
+                    role="user",
+                    content=json.dumps(combined[0]["result"], ensure_ascii=False, default=str),
+                ))
             else:
-                messages.append(Message(role="user", content=str(combined)))
+                messages.append(Message(
+                    role="user",
+                    content=json.dumps(combined, ensure_ascii=False, default=str),
+                ))
 
         else:
             # Plain-text response — stream as token chunks, then emit final_text.

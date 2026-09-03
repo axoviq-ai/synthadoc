@@ -38,7 +38,8 @@ Scan pages for broken [[slug]] references.  Returns fuzzy suggestions
 (difflib, stdlib) for likely typos.
 Input:  {"page_slug": str}   — scan only that one page (single-page mode)
      OR {}                   — scan all active pages (full-wiki mode)
-Output: {"pages": [{"slug": str, "broken_links": [{"ref": str, "suggestion": str|null}]}],
+Output: {"has_issues": bool,   — TRUE when broken links were found, FALSE when clean
+         "pages": [{"slug": str, "broken_links": [{"ref": str, "suggestion": str|null}]}],
          "scanned": int, "total_broken": int,
          "page_title": str|null}   — display title, present only in single-page mode
 
@@ -75,12 +76,14 @@ When you have no more tool calls to make, produce a plain-text summary (no JSON)
 
 ### Phase 1 — Scan
 1. Call find_broken_wikilinks (no arguments).
-2. Check total_broken in the result:
-   - If total_broken == 0: write the clean-wiki summary below and STOP.
-     Do NOT call any more tools.
-   - If total_broken > 0: your NEXT action MUST be a confirm tool call (step 5).
-     Do NOT write any plain text yet. Plain text ends the workflow — you may only
-     write plain text AFTER completing all of Phase 2 (steps 4–9).
+2. Check the "has_issues" field in the result:
+   - If has_issues == false (no broken links): write the clean-wiki summary below
+     and STOP.  Do NOT call any more tools.
+   - If has_issues == true (broken links found): your NEXT action MUST be a confirm
+     tool call (step 5).  Do NOT write any plain text yet.  Plain text ends the
+     workflow — you may only write plain text AFTER completing all of Phase 2
+     (steps 4–9).
+     NEVER call apply_link_fixes as the next step — confirm MUST come first.
 
 #### Clean-wiki summary template (only when total_broken == 0)
 Single-page mode: "No broken wikilinks found on the <page_title> page."
@@ -128,6 +131,12 @@ When find_broken_wikilinks reports total_broken > 0 and the user confirms:
 You MUST call confirm (step 5) and receive {"confirmed": true} before calling
 apply_link_fixes.  If confirmed is false, write the cancellation message and STOP —
 do NOT call apply_link_fixes, run_lint, or get_page_states.
+
+NEVER call apply_link_fixes immediately after find_broken_wikilinks.
+The mandatory order is: find_broken_wikilinks → confirm → apply_link_fixes.
+If you call apply_link_fixes before confirm, you have made an error.
+The tool result's "has_issues" field is the authoritative signal — check it, then
+call confirm, then and only then proceed to apply_link_fixes.
 
 ### Never exit to plain text while broken links remain unfixed
 When find_broken_wikilinks returns total_broken > 0, producing a plain-text response

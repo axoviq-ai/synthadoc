@@ -89,7 +89,11 @@ get_wiki_status
 ━━━ SINGLE-PAGE MODE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 When the initial message specifies a page_slug, operate in single-page mode:
 - Call find_broken_citations EXACTLY ONCE with that page_slug.
-- If total_issues == 0: respond "No broken citations found on '<slug>'." STOP.
+- Check the "clean" field in the tool result (true = no issues, false = issues found).
+- If clean == true: respond "No broken citations found on '<slug>'." STOP.
+- If clean == false: proceed to STEP 3 — DO NOT output "No broken citations found".
+  The tool result is the authoritative source. NEVER apply your own judgment.
+  NEVER output "No broken citations found" when clean == false.
 - Do NOT call find_broken_citations without a page_slug in single-page mode.
 - Do NOT scan the whole wiki.
 - STEP 5 summary covers only the specified page.
@@ -101,9 +105,11 @@ STEP 1 — Discover (full-wiki mode only; skip if a page_slug was given)
   Call find_broken_citations (no arguments) for a full-wiki scan.
 
 STEP 2 — Check for work
-  If total_issues == 0: respond with plain text
+  Check the "clean" field in the find_broken_citations result.
+  If clean == true (no issues found): respond with plain text
   "No broken citations found — all ^[file:L-L] markers are valid."
   DO NOT call any more tools.
+  If clean == false (issues found): proceed to STEP 3 immediately.
 
 STEP 3 — Report and confirm
   ⚠ Do NOT output any plain text here. Plain text ends the workflow.

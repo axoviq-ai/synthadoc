@@ -491,7 +491,12 @@ async def tool_find_broken_wikilinks(
         msg = f"No broken wikilinks found on {scope_label}"
 
     await ctx.send_sse_event("tool_progress", {"tool": "find_broken_wikilinks", "message": msg})
-    result: dict = {"pages": pages_with_issues, "scanned": len(scan_slugs), "total_broken": total_broken}
+    result: dict = {
+        "has_issues": total_broken > 0,
+        "pages": pages_with_issues,
+        "scanned": len(scan_slugs),
+        "total_broken": total_broken,
+    }
     if page_slug is not None:
         result["page_title"] = page_title   # display title for use in single-page summary
     return result
@@ -571,7 +576,14 @@ async def tool_find_broken_citations(
         msg = f"No broken citations found on {scope_label}"
 
     await ctx.send_sse_event("tool_progress", {"tool": "find_broken_citations", "message": msg})
-    return {"pages": pages_with_issues, "scanned": n_scanned, "total_issues": total_issues}
+    # "clean" is a top-level boolean so the LLM can check a single field rather
+    # than evaluating total_issues == 0, which some model versions misread.
+    return {
+        "clean": total_issues == 0,
+        "total_issues": total_issues,
+        "pages": pages_with_issues,
+        "scanned": n_scanned,
+    }
 
 
 async def tool_apply_citation_fixes(
