@@ -435,3 +435,173 @@ def test_opencode_parse_output_benchmark():
     elapsed_ms = (time.perf_counter() - start) * 1000
     assert len(resp.text) > 0
     assert elapsed_ms < 50, f"_parse_output took {elapsed_ms:.1f}ms (limit: 50ms)"
+
+
+# ── OpencodeProvider: new event layouts (post-refactor) ───────────────────────
+
+def test_opencode_parse_output_content_block_delta():
+    """Layout E: content_block_delta events with nested delta.text."""
+    import json
+    provider = _make_opencode_provider()
+    lines = [
+        json.dumps({"type": "content_block_delta", "delta": {"type": "text_delta", "text": "Hello "}}),
+        json.dumps({"type": "content_block_delta", "delta": {"type": "text_delta", "text": "world"}}),
+        json.dumps({"type": "step_finish", "reason": "stop",
+                    "tokens": {"input": 10, "output": 5}}),
+    ]
+    resp = provider._parse_output("\n".join(lines))
+    assert resp.text == "Hello world"
+    assert resp.input_tokens == 10
+
+
+def test_opencode_parse_output_text_delta_event():
+    """Layout E: top-level text_delta event type."""
+    import json
+    provider = _make_opencode_provider()
+    lines = [
+        json.dumps({"type": "text_delta", "text": "Foo bar"}),
+        json.dumps({"type": "step_finish", "reason": "stop",
+                    "tokens": {"input": 5, "output": 3}}),
+    ]
+    resp = provider._parse_output("\n".join(lines))
+    assert resp.text == "Foo bar"
+
+
+def test_opencode_parse_output_message_event_string_content():
+    """Layout F: message event with content as a string."""
+    import json
+    provider = _make_opencode_provider()
+    lines = [
+        json.dumps({"type": "message", "role": "assistant",
+                    "message": {"role": "assistant", "content": "Baz"}}),
+        json.dumps({"type": "step_finish", "reason": "stop",
+                    "tokens": {"input": 1, "output": 1}}),
+    ]
+    resp = provider._parse_output("\n".join(lines))
+    assert resp.text == "Baz"
+
+
+def test_opencode_parse_output_catch_all_part_type_text():
+    """Layout G (catch-all): unknown outer event type with part.type=='text'."""
+    import json
+    provider = _make_opencode_provider()
+    lines = [
+        json.dumps({"type": "future_event_x", "part": {"type": "text", "text": "Catch-all text"}}),
+        json.dumps({"type": "step_finish", "reason": "stop",
+                    "tokens": {"input": 5, "output": 5}}),
+    ]
+    resp = provider._parse_output("\n".join(lines))
+    assert resp.text == "Catch-all text"
+
+
+def test_opencode_parse_output_step_finish_tokens_in_part():
+    """Tokens inside step_finish.part sub-object are extracted correctly."""
+    import json
+    provider = _make_opencode_provider()
+    lines = [
+        json.dumps({"type": "text", "data": "Hi"}),
+        json.dumps({"type": "step_finish", "reason": "stop",
+                    "part": {"type": "step-finish", "reason": "stop",
+                              "tokens": {"input": 42, "output": 17}}}),
+    ]
+    resp = provider._parse_output("\n".join(lines))
+    assert resp.text == "Hi"
+    assert resp.input_tokens == 42
+    assert resp.output_tokens == 17
+
+
+def test_opencode_parse_output_session_id_in_error_message():
+    """session_id from events is included in the ValueError message."""
+    import json
+    provider = _make_opencode_provider()
+    lines = [
+        json.dumps({"type": "step_start", "sessionID": "ses_abc123",
+                    "part": {"type": "step-start"}}),
+        json.dumps({"type": "step_finish", "sessionID": "ses_abc123", "reason": "stop",
+                    "tokens": {"input": 10, "output": 5}}),
+    ]
+    with pytest.raises(ValueError, match="ses_abc123"):
+        provider._parse_output("\n".join(lines))
+
+
+# ── OpencodeProvider: auto-retry on silent output ─────────────────────────────
+
+@pytest.mark.asyncio
+async def test_opencode_complete_retries_on_no_text_content():
+    """complete() retries once when _parse_output raises 'no text content'."""
+    import json
+    provider = _make_opencode_provider()
+
+    # First call: only step events (no text) → triggers retry.
+    silent_output = "\n".join([
+        json.dumps({"type": "step_start", "sessionID": "ses_x"}),
+        json.dumps({"type": "step_finish", "reason": "stop",
+                    "tokens": {"input": 10, "output": 50}}),
+    ]).encode()
+
+    # Second call: text present → succeeds.
+    good_output = "\n".join([
+        json.dumps({"type": "text", "data": "Retry succeeded"}),
+        json.dumps({"type": "step_finish", "reason": "stop",
+                    "tokens": {"input": 10, "output": 5}}),
+    ]).encode()
+
+    calls = 0
+
+    async def _fake_exec(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return _make_mock_proc(
+            silent_output if calls == 1 else good_output,
+            b"", returncode=0,
+        )
+
+    from synthadoc.providers.base import Message
+    with patch("asyncio.create_subprocess_exec", side_effect=_fake_exec):
+        with patch("asyncio.sleep", new_callable=AsyncMock):  # skip real sleep
+            resp = await provider.complete([Message(role="user", content="hi")])
+
+    assert calls == 2, f"Expected 2 subprocess calls, got {calls}"
+    assert resp.text == "Retry succeeded"
+
+
+@pytest.mark.asyncio
+async def test_opencode_complete_raises_after_two_silent_failures():
+    """complete() raises ValueError after both attempts return no text."""
+    import json
+    provider = _make_opencode_provider()
+
+    silent_output = "\n".join([
+        json.dumps({"type": "step_start", "sessionID": "ses_y"}),
+        json.dumps({"type": "step_finish", "reason": "stop",
+                    "tokens": {"input": 5, "output": 20}}),
+    ]).encode()
+
+    async def _fake_exec(*args, **kwargs):
+        return _make_mock_proc(silent_output, b"", returncode=0)
+
+    from synthadoc.providers.base import Message
+    with patch("asyncio.create_subprocess_exec", side_effect=_fake_exec):
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            with pytest.raises(ValueError, match="no text content"):
+                await provider.complete([Message(role="user", content="hi")])
+
+
+@pytest.mark.asyncio
+async def test_opencode_complete_does_not_retry_on_other_errors():
+    """complete() does NOT retry when the error is not 'no text content'."""
+    provider = _make_opencode_provider()
+
+    calls = 0
+
+    async def _fake_exec(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return _make_mock_proc(b"", b"auth failed", returncode=1)
+
+    from synthadoc.providers.base import Message
+    with patch("asyncio.create_subprocess_exec", side_effect=_fake_exec):
+        with pytest.raises(RuntimeError, match="auth failed"):
+            await provider.complete([Message(role="user", content="hi")])
+
+    assert calls == 1, "Should not retry on non-ValueError errors"
