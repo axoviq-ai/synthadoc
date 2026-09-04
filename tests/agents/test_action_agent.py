@@ -1428,6 +1428,67 @@ async def test_ingest_lint_cli_path_workflow_b_no_source(tmp_path):
     assert any("cannot re-ingest" in t.lower() for t in texts)
 
 
+@pytest.mark.asyncio
+async def test_ingest_lint_cli_path_workflow_a_ingest_error_in_summary(tmp_path):
+    """Workflow A: tool_ingest_source returns {"error": ...} (e.g. file-not-found).
+
+    The summary must surface "error" so live tests can detect partial failure.
+    Regression: previously ingest_status fell back to "?" (no "status" key),
+    which matched no failure keyword the live assertion checked.
+    """
+    from unittest.mock import patch as _patch, AsyncMock as _AsyncMock
+    from synthadoc.agents.workflows.ingest_lint import IngestLintWorkflow
+    from synthadoc.agents.workflows._base import WorkflowContext
+
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = _AsyncMock()
+    wf = IngestLintWorkflow()
+
+    stale_pages = [
+        {"slug": "page-ok",  "source_path": "/data/ok.txt",  "stale_since": "2026-08-01"},
+        {"slug": "page-bad", "source_path": "/data/bad.txt", "stale_since": "2026-08-01"},
+    ]
+
+    async def _fake_ingest(ctx, source_path):
+        if "bad" in source_path:
+            return {"error": f"File not found: {source_path!r}"}
+        return {"status": "success", "message": "done"}
+
+    with _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_find_stale_pages",
+        new=_AsyncMock(return_value={"pages": stale_pages}),
+    ), _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_confirm",
+        new=_AsyncMock(return_value={"confirmed": True}),
+    ), _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_ingest_source",
+        new=_fake_ingest,
+    ), _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_run_lint",
+        new=_AsyncMock(return_value={"status": "success", "message": "clean"}),
+    ), _patch(
+        "synthadoc.agents.workflows.ingest_lint.tool_get_page_states",
+        new=_AsyncMock(return_value={
+            "pages": [
+                {"slug": "page-ok",  "state": "active"},
+                {"slug": "page-bad", "state": "stale"},
+            ]
+        }),
+    ):
+        events = []
+        async for evt in wf.run_for_cli_provider(ctx, "re-ingest stale pages", MagicMock()):
+            events.append(evt)
+
+    token_text = "".join(e["data"]["text"] for e in events if e["event"] == "token")
+    # page-bad errored → summary must contain "error" (not "?") so live tests detect it
+    assert "error" in token_text.lower()
+    assert "page-bad" in token_text
+    # page-ok succeeded → should still appear
+    assert "page-ok" in token_text
+    assert "active" in token_text
+    assert "final_text" in [e["event"] for e in events]
+
+
 # ── BrokenWikilinksWorkflow CLI path ─────────────────────────────────────────
 
 @pytest.mark.asyncio
