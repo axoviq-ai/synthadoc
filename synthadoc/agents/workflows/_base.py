@@ -85,6 +85,20 @@ class WorkflowContext:
     # BM25/vector search instance — used by tool_search_orphan_candidates.
     # None in tests that don't need search access.
     search: "HybridSearch | None" = None  # type: ignore[name-defined]
+    # True when the active provider is a CodingToolCLIProvider (opencode, claude-code).
+    # Used by cost-estimate tools to substitute "Covered by coding tool subscription"
+    # for the dollar figure — CLI providers bill via their own subscription, not per-token.
+    is_cli_provider: bool = False
+
+    def cost_label(self, usd: float) -> str:
+        """Human-readable cost string for a workflow estimate.
+
+        CLI providers (opencode, claude-code) bill via their own subscription,
+        so a per-token dollar figure would be misleading.
+        """
+        if self.is_cli_provider:
+            return "Covered by coding tool subscription"
+        return f"~${usd:.2f}"
 
 
 class AgenticWorkflow(ABC):

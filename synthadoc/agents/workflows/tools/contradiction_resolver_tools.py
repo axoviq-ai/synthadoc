@@ -137,10 +137,12 @@ async def tool_cost_estimate(ctx: "WorkflowContext", page_count: int) -> dict:
         "estimated_minutes": minutes,
     }
 
+    cost_label = ctx.cost_label(estimate["estimated_usd"])
+
     # Show the estimate as a notice so the user can read it while the ConfirmCard loads.
     notice_text = (
         f"Updated estimate: {page_count} page(s), "
-        f"~${estimate['estimated_usd']:.2f}, "
+        f"{cost_label}, "
         f"about {estimate['estimated_minutes']} minute(s)."
     )
     try:
@@ -148,13 +150,13 @@ async def tool_cost_estimate(ctx: "WorkflowContext", page_count: int) -> dict:
     except Exception:  # noqa: BLE001
         pass
 
-    # Ask for approval — this blocks until the user responds (or 120 s timeout).
+    # Ask for approval — this blocks until the user responds (or 300 s timeout).
     confirm_result = await tool_confirm(
         ctx,
         message=(
             f"**Contradiction Resolver — ready to start**\n\n"
             f"- Pages to process: **{page_count}**\n"
-            f"- Estimated cost: ~**${estimate['estimated_usd']:.2f}**\n"
+            f"- Estimated cost: **{cost_label}**\n"
             f"- Estimated time: ~**{estimate['estimated_minutes']} min**\n\n"
             "Proceed with resolution?"
         ),

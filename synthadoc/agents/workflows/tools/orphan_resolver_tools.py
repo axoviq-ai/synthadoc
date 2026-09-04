@@ -145,7 +145,7 @@ async def tool_estimate_and_confirm(
         f"  Pages to process:    {orphan_count}\n"
         f"  Estimated tool calls: ~{estimated_calls}\n"
         f"  Estimated time:       ~{estimated_minutes} min\n"
-        f"  Estimated cost:       ~${estimated_usd:.2f} USD\n"
+        f"  Estimated cost:       {ctx.cost_label(estimated_usd)}\n"
         f"\nProceed with orphan resolver?"
     )
     result = await tool_confirm(ctx, message, yes_label="Proceed", no_label="Cancel")
