@@ -445,6 +445,7 @@ def require_server():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @pytest.mark.live
+@pytest.mark.timeout(300)
 def test_post_ingest_queues_job_for_valid_source():
     """POST /ingest with a valid source path inside wiki root → job_id; job completes."""
     wiki_root = _wiki_root()
