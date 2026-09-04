@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 William Johnason / axoviq.com
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
 import ConfirmCard from "./ConfirmCard";
 
 afterEach(cleanup);
@@ -68,6 +68,49 @@ describe("ConfirmCard", () => {
         );
         expect(onDecline).not.toHaveBeenCalled();
         vi.advanceTimersByTime(1001);
+        expect(onDecline).toHaveBeenCalledOnce();
+        vi.useRealTimers();
+    });
+
+    it("shows countdown when ≤ 60 s remain", () => {
+        vi.useFakeTimers();
+        render(
+            <ConfirmCard
+                message="Proceed?"
+                yesLabel="Yes"
+                noLabel="No"
+                onConfirm={vi.fn()}
+                onDecline={vi.fn()}
+                timeoutSeconds={90}
+            />
+        );
+        // At t=0, 90 s remaining — above threshold, countdown hidden
+        expect(screen.queryByText(/Auto-declining/)).toBeNull();
+        // Advance 31 s — 59 s remain, countdown should appear.
+        // act() is required to flush the React state updates triggered by the
+        // setInterval tick after fake timers are advanced.
+        act(() => { vi.advanceTimersByTime(31_000); });
+        expect(screen.getByText(/Auto-declining in 59 s/)).toBeDefined();
+        vi.useRealTimers();
+    });
+
+    it("default timeoutSeconds is 300", () => {
+        vi.useFakeTimers();
+        const onDecline = vi.fn();
+        render(
+            <ConfirmCard
+                message="Proceed?"
+                yesLabel="Yes"
+                noLabel="No"
+                onConfirm={vi.fn()}
+                onDecline={onDecline}
+            />
+        );
+        // Should NOT have fired after 120 s (old default)
+        act(() => { vi.advanceTimersByTime(120_000); });
+        expect(onDecline).not.toHaveBeenCalled();
+        // Should fire after 300 s
+        act(() => { vi.advanceTimersByTime(180_001); });
         expect(onDecline).toHaveBeenCalledOnce();
         vi.useRealTimers();
     });

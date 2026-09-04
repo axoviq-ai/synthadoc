@@ -143,6 +143,7 @@ export function ChatWindow({
                         yesLabel={pendingConfirm.yes_label}
                         noLabel={pendingConfirm.no_label}
                         diff={pendingConfirm.diff}
+                        timeoutSeconds={pendingConfirm.timeout_seconds}
                         onConfirm={() => {
                             setPendingConfirm(null);
                             onConfirmDecision?.(pendingConfirm.session_id, true);
