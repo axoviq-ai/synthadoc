@@ -1374,3 +1374,21 @@ async def test_transition_lifecycle_set_page_state_exception_is_swallowed(tmp_pa
     assert result["success"] is True
     # set_page_state raised but the result is still success
     audit_db.set_page_state.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# WorkflowContext.cost_label
+# ---------------------------------------------------------------------------
+
+def test_cost_label_api_provider_formats_dollars():
+    ctx, _ = _make_ctx()
+    # Default: is_cli_provider=False → dollar amount
+    assert ctx.cost_label(0.06) == "~$0.06"
+    assert ctx.cost_label(1.23456) == "~$1.23"
+
+
+def test_cost_label_cli_provider_returns_subscription_note():
+    ctx, _ = _make_ctx()
+    ctx.is_cli_provider = True
+    assert ctx.cost_label(0.06) == "Covered by coding tool subscription"
+    assert ctx.cost_label(0.0) == "Covered by coding tool subscription"
