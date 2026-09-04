@@ -239,3 +239,81 @@ def test_synthesis_prompt_cjk_japanese_language_instruction():
     system = agent._build_synthesis_system("チューリングマシンとは何ですか？")
     assert "respond in Japanese" in system.lower() or "Japanese" in system
     assert "Do not respond in English or any other language" in system
+
+
+# ── _filter_history_by_language / _history_block ─────────────────────────────
+
+from synthadoc.agents.query_agent import _filter_history_by_language, _history_block  # noqa: E402
+
+
+def test_filter_history_keeps_same_script_turns():
+    """English question keeps English assistant turns."""
+    history = [
+        {"role": "user", "content": "Who is Grace Hopper?"},
+        {"role": "assistant", "content": "Grace Hopper was a computer scientist."},
+    ]
+    result = _filter_history_by_language(history, "When did she die?")
+    assert result == history
+
+
+def test_filter_history_drops_mismatched_script_pair():
+    """English question drops a user+assistant pair where assistant responded in Chinese."""
+    cjk_response = "她于1992年12月28日去世。"  # Chinese
+    history = [
+        {"role": "user", "content": "When does he die?"},
+        {"role": "assistant", "content": cjk_response},
+        {"role": "user", "content": "What year was she born?"},
+        {"role": "assistant", "content": "She was born in 1906."},
+    ]
+    result = _filter_history_by_language(history, "When does he pass away?")
+    # The first user+assistant pair (Chinese response) must be dropped
+    assert not any(cjk_response in m.get("content", "") for m in result)
+    # The second pair (English response) must be kept
+    assert any("1906" in m.get("content", "") for m in result)
+
+
+def test_filter_history_empty_returns_empty():
+    """Empty history returns empty list without error."""
+    assert _filter_history_by_language([], "hello") == []
+
+
+def test_history_block_passes_question_to_filter():
+    """_history_block with a question filters out cross-script turns."""
+    cjk_response = "她于1992年去世。"
+    history = [
+        {"role": "user", "content": "When does she die?"},
+        {"role": "assistant", "content": cjk_response},
+    ]
+    block = _history_block(history, question="When does she pass away?")
+    assert cjk_response not in block
+
+
+def test_history_block_no_question_keeps_all():
+    """_history_block without question keeps all history turns."""
+    cjk_response = "她于1992年去世。"
+    history = [
+        {"role": "user", "content": "When does she die?"},
+        {"role": "assistant", "content": cjk_response},
+    ]
+    block = _history_block(history)
+    assert cjk_response in block
+
+
+def test_build_synthesis_prompt_filters_history_for_english_question():
+    """_build_synthesis_prompt strips CJK assistant turns when question is English."""
+    cfg = QueryConfig()
+    agent = _make_agent(cfg, {})
+    cjk_response = "她于1992年去世。"
+    history = [
+        {"role": "user", "content": "When does she die?"},
+        {"role": "assistant", "content": cjk_response},
+    ]
+    prompt = agent._build_synthesis_prompt(
+        "When does she pass away?",
+        "Page content here.",
+        gap=False,
+        system_ctx="",
+        is_live_data=False,
+        history=history,
+    )
+    assert cjk_response not in prompt

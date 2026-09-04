@@ -106,11 +106,53 @@ def _detect_cjk_language(text: str) -> str:
     return "Chinese (Mandarin)"
 
 
-def _history_block(history: list[dict]) -> str:
-    """Format conversation history as a preamble block for the synthesis prompt."""
+def _filter_history_by_language(
+    history: list[dict], question: str
+) -> list[dict]:
+    """Drop turn-pairs where the assistant response is in a different script than
+    the current question.
+
+    When a prior assistant turn was (incorrectly) produced in Chinese/Japanese/Korean
+    but the current question is in a Latin-script language, that turn biases the LLM
+    to repeat the wrong language even when the system prompt says otherwise.  Removing
+    the mismatched pair prevents the model from treating it as a precedent.
+
+    Only removes *pairs* (the user turn that preceded the mismatched assistant turn is
+    also dropped) so the history remains well-formed user/assistant alternation.
+    """
+    if not history:
+        return history
+    question_is_cjk = _has_cjk(question)
+    filtered: list[dict] = []
+    i = 0
+    while i < len(history):
+        msg = history[i]
+        if msg["role"] == "assistant":
+            response_is_cjk = _has_cjk(msg.get("content", ""))
+            if question_is_cjk != response_is_cjk:
+                # Language mismatch — drop this assistant turn AND its preceding user turn
+                if filtered and filtered[-1]["role"] == "user":
+                    filtered.pop()
+                i += 1
+                continue
+        filtered.append(msg)
+        i += 1
+    return filtered
+
+
+def _history_block(history: list[dict], question: str = "") -> str:
+    """Format conversation history as a preamble block for the synthesis prompt.
+
+    Filters out turns where the assistant responded in a different script than
+    *question* so that a prior incorrect-language response does not bias the model
+    into repeating that language.
+    """
     if not history:
         return ""
-    lines = "\n".join(f"{m['role'].capitalize()}: {m['content']}" for m in history)
+    kept = _filter_history_by_language(history, question) if question else history
+    if not kept:
+        return ""
+    lines = "\n".join(f"{m['role'].capitalize()}: {m['content']}" for m in kept)
     return f"\n[Conversation so far]\n{lines}\n"
 
 # Stopwords excluded when extracting key terms for the content-overlap gap check.
@@ -824,7 +866,7 @@ class QueryAgent(BaseAgent):
         history: list[dict] | None = None,
     ) -> str:
         """Build the LLM synthesis prompt. When history is provided it is prepended."""
-        prefix = _history_block(history) if history else ""
+        prefix = _history_block(history, question) if history else ""
         if gap:
             return prefix + (
                 f"The wiki does not yet have a dedicated page on this topic. "
