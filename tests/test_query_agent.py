@@ -215,8 +215,11 @@ def test_synthesis_prompt_non_cjk_language_instruction():
         system_ctx="",
         is_live_data=False,
     )
-    assert "Do not use the language of the Pages" in prompt
-    assert "always match the Question's language" in prompt
+    assert "Do not use the language of the Pages or the conversation history" in prompt
+    # Language rule is also enforced via the system prompt; verify the helper
+    system = agent._build_synthesis_system("What is a Turing machine?")
+    assert "same language" in system
+    assert "conversation history" in system
 
 
 def test_synthesis_prompt_cjk_japanese_language_instruction():
@@ -231,5 +234,8 @@ def test_synthesis_prompt_cjk_japanese_language_instruction():
         system_ctx="",
         is_live_data=False,
     )
-    assert "Respond in Japanese" in prompt
-    assert "Do not respond in English or any other language" in prompt
+    # Language rule now lives primarily in the system prompt; prompt still has belt-and-suspenders
+    assert "same language" in prompt
+    system = agent._build_synthesis_system("チューリングマシンとは何ですか？")
+    assert "respond in Japanese" in system.lower() or "Japanese" in system
+    assert "Do not respond in English or any other language" in system

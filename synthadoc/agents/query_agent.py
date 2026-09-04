@@ -791,6 +791,28 @@ class QueryAgent(BaseAgent):
             logger.debug("live wiki data fetch failed: %s", exc)
             return ""
 
+    def _build_synthesis_system(self, question: str) -> str:
+        """Return the language-enforcement system prompt for synthesis.
+
+        Keeping the language rule in the system prompt (rather than only in the
+        user-content turn) makes it significantly harder for the LLM to drift
+        into the language of conversation-history turns when the current question
+        is in a different language.
+        """
+        _lang = _detect_cjk_language(question) if _has_cjk(question) else ""
+        if _lang:
+            return (
+                f"The user's question is in {_lang}. "
+                f"You MUST respond in {_lang}. "
+                f"Do not respond in English or any other language, "
+                f"regardless of the conversation history."
+            )
+        return (
+            "Respond in the same language as the user's question. "
+            "Do NOT use the language of the wiki pages or the conversation history — "
+            "always match the language of the current question exactly."
+        )
+
     def _build_synthesis_prompt(
         self,
         question: str,
@@ -831,15 +853,10 @@ class QueryAgent(BaseAgent):
                 f"Do not reference or cite wiki page content.\n\n"
                 f"Question: {question}\n\nData:\n{context}"
             )
-        _lang = _detect_cjk_language(question) if _has_cjk(question) else ""
-        _lang_instr = (
-            f"The question is in {_lang}. Respond in {_lang}. Do not respond in English or any other language.\n"
-            if _lang
-            else "Respond in the same language as the Question below. Do not use the language of the Pages — always match the Question's language.\n"
-        )
         return prefix + (
             f"Answer using ONLY these wiki pages. Cite with [[PageTitle]].\n"
-            f"{_lang_instr}"
+            f"Respond in the same language as the Question. "
+            f"Do not use the language of the Pages or the conversation history.\n"
             f"Extract and include all specific facts from the pages — dates, years, numbers, and names — "
             f"even when they appear briefly or in passing. Do not claim a fact is absent unless it is "
             f"genuinely missing from every page below.\n"
@@ -1156,9 +1173,11 @@ class QueryAgent(BaseAgent):
             gap=_gap, system_ctx=_system_ctx, is_live_data=_is_live_data,
             history=_trimmed_history if _trimmed_history else None,
         )
+        _synthesis_system = self._build_synthesis_system(question)
 
         resp2 = await self._provider.complete(
             messages=[Message(role="user", content=synthesis_prompt)],
+            system=_synthesis_system,
             temperature=0.0,
             max_tokens=self._max_tokens,
         )
@@ -1461,6 +1480,7 @@ class QueryAgent(BaseAgent):
             gap=_gap, system_ctx=_system_ctx, is_live_data=_is_live_data,
             history=_trimmed_history if _trimmed_history else None,
         )
+        _synthesis_system = self._build_synthesis_system(question)
 
         yield {"event": "status", "data": {"phase": "synthesizing", "sources": len(citations)}}
 
@@ -1477,6 +1497,7 @@ class QueryAgent(BaseAgent):
         _last_line_buf = ""
         async for token in self._provider.complete_stream(
             messages=[Message(role="user", content=synthesis_prompt)],
+            system=_synthesis_system,
             temperature=0.0,
             max_tokens=self._max_tokens,
         ):
