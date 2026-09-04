@@ -534,3 +534,41 @@ def test_session_purge_does_not_reference_session_state(tmp_wiki):
         "_worker_loop must not reference _session_state directly (it is out of scope); "
         "pass it as the session_state parameter instead"
     )
+
+
+# ---------------------------------------------------------------------------
+# /lint/report — contradiction detection uses parsed frontmatter
+# ---------------------------------------------------------------------------
+
+def test_lint_report_skips_system_slugs_and_handles_bad_yaml(tmp_wiki):
+    """/lint/report skips LINT_SKIP_SLUGS and doesn't crash on malformed YAML."""
+    from fastapi.testclient import TestClient
+    from synthadoc.storage.wiki import SYSTEM_PAGE_SLUGS
+
+    wiki_dir = tmp_wiki / "wiki"
+    # A system slug — should be skipped (exercises the `continue` branch).
+    skip_slug = next(iter(SYSTEM_PAGE_SLUGS))
+    (wiki_dir / f"{skip_slug}.md").write_text(
+        "---\nstatus: contradicted\n---\nSystem page.\n", encoding="utf-8"
+    )
+    # Malformed YAML frontmatter — exercises the `except Exception: pass` branch.
+    (wiki_dir / "bad-yaml.md").write_text(
+        "---\nstatus: [unclosed\n---\nContent.\n", encoding="utf-8"
+    )
+    # Normal active page — should not appear in contradictions.
+    (wiki_dir / "normal-page.md").write_text(
+        "---\nstatus: active\ntitle: Normal\n---\nContent.\n", encoding="utf-8"
+    )
+
+    app = _make_app(tmp_wiki)
+    with TestClient(app) as client:
+        resp = client.get("/lint/report")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    # The system slug must be excluded from contradictions even though its
+    # frontmatter says "contradicted".
+    assert skip_slug not in data["contradictions"]
+    # The malformed-YAML page must not cause a 500 and must not appear as
+    # contradicted (fm defaults to {} so status check is False).
+    assert "bad-yaml" not in data["contradictions"]
