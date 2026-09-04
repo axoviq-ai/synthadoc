@@ -424,6 +424,7 @@ class ActionAgent(BaseAgent):
         _session_id = session_id or str(_uuid.uuid4())
         _cfg = getattr(self._orch, "_cfg", None)
         _domain = getattr(getattr(_cfg, "wiki", None), "domain", "") or ""
+        from synthadoc.providers.coding_tool import CodingToolCLIProvider  # noqa: PLC0415
         ctx = WorkflowContext(
             session_id=_session_id,
             wiki_root=self._wiki_root,
@@ -439,6 +440,7 @@ class ActionAgent(BaseAgent):
                 getattr(self._orch, "_search", None), "invalidate_index", None
             ),
             search=getattr(self._orch, "_search", None),
+            is_cli_provider=isinstance(self._provider, CodingToolCLIProvider),
         )
 
         wf = workflow if workflow is not None else IngestLintWorkflow()
@@ -452,7 +454,6 @@ class ActionAgent(BaseAgent):
         # Workflows that set SUPPORTS_CLI_PROVIDER = True implement a one-shot
         # Python-driven path via ``run_for_cli_provider`` that avoids fake tools
         # entirely.  Others receive a clear error message with guidance.
-        from synthadoc.providers.coding_tool import CodingToolCLIProvider  # noqa: PLC0415
         if isinstance(self._provider, CodingToolCLIProvider):
             if not wf.SUPPORTS_CLI_PROVIDER:
                 binary = getattr(self._provider, "_tool_binary", "this CLI tool")
