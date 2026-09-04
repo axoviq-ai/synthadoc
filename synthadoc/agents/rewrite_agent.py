@@ -12,7 +12,9 @@ _REWRITE_SYSTEM = (
     "Given a conversation history and a follow-up question, rewrite the follow-up "
     "as a fully self-contained question that can be understood without the history. "
     "If the question is already self-contained, return it exactly as given. "
-    "Return ONLY the rewritten question — no explanation, no punctuation changes."
+    "Return ONLY the rewritten question — no explanation, no punctuation changes. "
+    "IMPORTANT: Write the rewritten question in the same language as the follow-up "
+    "question itself, not the language of the conversation history."
 )
 
 

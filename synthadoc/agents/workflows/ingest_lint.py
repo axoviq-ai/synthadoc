@@ -300,11 +300,18 @@ class IngestLintWorkflow(AgenticWorkflow):
         parts.append("\n**Page states after re-ingest:**")
         for slug in attempted_slugs:
             result = ingest_results.get(slug, {})
-            ingest_status = result.get("status", "?")
+            # tool_ingest_source may return {"error": msg} (validation/file-not-found)
+            # rather than {"status": ...}; treat that as an error outcome so the
+            # summary clearly signals the failure (and live tests can detect it).
+            ingest_status = result.get("status") or ("error" if result.get("error") else "?")
             state = state_map.get(slug, "unknown")
             icon = _ICON.get(state, "○")
             if ingest_status == "skipped":
                 parts.append(f"  ○ {slug} — skipped (no source path)")
+            elif result.get("error"):
+                parts.append(
+                    f"  ✗ {slug}: error — {result['error']}"
+                )
             else:
                 parts.append(
                     f"  {icon} {slug}: ingest={ingest_status}, state={state}"

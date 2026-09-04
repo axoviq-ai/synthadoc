@@ -106,11 +106,53 @@ def _detect_cjk_language(text: str) -> str:
     return "Chinese (Mandarin)"
 
 
-def _history_block(history: list[dict]) -> str:
-    """Format conversation history as a preamble block for the synthesis prompt."""
+def _filter_history_by_language(
+    history: list[dict], question: str
+) -> list[dict]:
+    """Drop turn-pairs where the assistant response is in a different script than
+    the current question.
+
+    When a prior assistant turn was (incorrectly) produced in Chinese/Japanese/Korean
+    but the current question is in a Latin-script language, that turn biases the LLM
+    to repeat the wrong language even when the system prompt says otherwise.  Removing
+    the mismatched pair prevents the model from treating it as a precedent.
+
+    Only removes *pairs* (the user turn that preceded the mismatched assistant turn is
+    also dropped) so the history remains well-formed user/assistant alternation.
+    """
+    if not history:
+        return history
+    question_is_cjk = _has_cjk(question)
+    filtered: list[dict] = []
+    i = 0
+    while i < len(history):
+        msg = history[i]
+        if msg["role"] == "assistant":
+            response_is_cjk = _has_cjk(msg.get("content", ""))
+            if question_is_cjk != response_is_cjk:
+                # Language mismatch — drop this assistant turn AND its preceding user turn
+                if filtered and filtered[-1]["role"] == "user":
+                    filtered.pop()
+                i += 1
+                continue
+        filtered.append(msg)
+        i += 1
+    return filtered
+
+
+def _history_block(history: list[dict], question: str = "") -> str:
+    """Format conversation history as a preamble block for the synthesis prompt.
+
+    Filters out turns where the assistant responded in a different script than
+    *question* so that a prior incorrect-language response does not bias the model
+    into repeating that language.
+    """
     if not history:
         return ""
-    lines = "\n".join(f"{m['role'].capitalize()}: {m['content']}" for m in history)
+    kept = _filter_history_by_language(history, question) if question else history
+    if not kept:
+        return ""
+    lines = "\n".join(f"{m['role'].capitalize()}: {m['content']}" for m in kept)
     return f"\n[Conversation so far]\n{lines}\n"
 
 # Stopwords excluded when extracting key terms for the content-overlap gap check.
@@ -791,6 +833,28 @@ class QueryAgent(BaseAgent):
             logger.debug("live wiki data fetch failed: %s", exc)
             return ""
 
+    def _build_synthesis_system(self, question: str) -> str:
+        """Return the language-enforcement system prompt for synthesis.
+
+        Keeping the language rule in the system prompt (rather than only in the
+        user-content turn) makes it significantly harder for the LLM to drift
+        into the language of conversation-history turns when the current question
+        is in a different language.
+        """
+        _lang = _detect_cjk_language(question) if _has_cjk(question) else ""
+        if _lang:
+            return (
+                f"The user's question is in {_lang}. "
+                f"You MUST respond in {_lang}. "
+                f"Do not respond in English or any other language, "
+                f"regardless of the conversation history."
+            )
+        return (
+            "Respond in the same language as the user's question. "
+            "Do NOT use the language of the wiki pages or the conversation history — "
+            "always match the language of the current question exactly."
+        )
+
     def _build_synthesis_prompt(
         self,
         question: str,
@@ -802,7 +866,7 @@ class QueryAgent(BaseAgent):
         history: list[dict] | None = None,
     ) -> str:
         """Build the LLM synthesis prompt. When history is provided it is prepended."""
-        prefix = _history_block(history) if history else ""
+        prefix = _history_block(history, question) if history else ""
         if gap:
             return prefix + (
                 f"The wiki does not yet have a dedicated page on this topic. "
@@ -831,15 +895,10 @@ class QueryAgent(BaseAgent):
                 f"Do not reference or cite wiki page content.\n\n"
                 f"Question: {question}\n\nData:\n{context}"
             )
-        _lang = _detect_cjk_language(question) if _has_cjk(question) else ""
-        _lang_instr = (
-            f"The question is in {_lang}. Respond in {_lang}. Do not respond in English or any other language.\n"
-            if _lang
-            else "Respond in the same language as the Question below. Do not use the language of the Pages — always match the Question's language.\n"
-        )
         return prefix + (
             f"Answer using ONLY these wiki pages. Cite with [[PageTitle]].\n"
-            f"{_lang_instr}"
+            f"Respond in the same language as the Question. "
+            f"Do not use the language of the Pages or the conversation history.\n"
             f"Extract and include all specific facts from the pages — dates, years, numbers, and names — "
             f"even when they appear briefly or in passing. Do not claim a fact is absent unless it is "
             f"genuinely missing from every page below.\n"
@@ -1156,9 +1215,11 @@ class QueryAgent(BaseAgent):
             gap=_gap, system_ctx=_system_ctx, is_live_data=_is_live_data,
             history=_trimmed_history if _trimmed_history else None,
         )
+        _synthesis_system = self._build_synthesis_system(question)
 
         resp2 = await self._provider.complete(
             messages=[Message(role="user", content=synthesis_prompt)],
+            system=_synthesis_system,
             temperature=0.0,
             max_tokens=self._max_tokens,
         )
@@ -1461,6 +1522,7 @@ class QueryAgent(BaseAgent):
             gap=_gap, system_ctx=_system_ctx, is_live_data=_is_live_data,
             history=_trimmed_history if _trimmed_history else None,
         )
+        _synthesis_system = self._build_synthesis_system(question)
 
         yield {"event": "status", "data": {"phase": "synthesizing", "sources": len(citations)}}
 
@@ -1477,6 +1539,7 @@ class QueryAgent(BaseAgent):
         _last_line_buf = ""
         async for token in self._provider.complete_stream(
             messages=[Message(role="user", content=synthesis_prompt)],
+            system=_synthesis_system,
             temperature=0.0,
             max_tokens=self._max_tokens,
         ):
