@@ -1,0 +1,8 @@
+- Document product terms precisely: APY, APR, fee schedules, and minimum balance requirements
+- Track regulatory requirements by product type — Reg E, Reg CC, TILA, and BSA/AML apply differently
+- Cross-link customer segment pages with their relevant product and risk pages
+- Record credit policy by segment (consumer, SMB, commercial, CRE) with approval criteria
+- Flag rate changes with effective dates — deposit rates and loan rates must be versioned
+- Document exception handling procedures and escalation paths for each operational process
+- Maintain a glossary of internal codes, GL accounts, and system identifiers
+- Archive superseded policies with the date they were replaced and the reason
