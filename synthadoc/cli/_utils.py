@@ -31,7 +31,7 @@ def _toml_value(v: object) -> str:
     return json.dumps(v)
 
 
-def _patch_toml(path: Path, section: str, updates: dict) -> None:
+def _patch_toml(path: Path, section: str, pairs: dict) -> None:
     """Patch specific keys in a TOML section without touching other lines or comments."""
     text = path.read_text(encoding="utf-8") if path.exists() else ""
     lines = text.splitlines()
@@ -45,7 +45,7 @@ def _patch_toml(path: Path, section: str, updates: dict) -> None:
         stripped = line.strip()
         if stripped.startswith("[") and stripped.endswith("]"):
             if in_target:
-                for k, v in updates.items():
+                for k, v in pairs.items():
                     if k not in patched_keys:
                         result.append(f"{k} = {_toml_value(v)}")
                         patched_keys.add(k)
@@ -55,15 +55,15 @@ def _patch_toml(path: Path, section: str, updates: dict) -> None:
 
         if in_target and "=" in stripped and not stripped.startswith("#"):
             key = stripped.split("=", 1)[0].strip()
-            if key in updates:
-                result.append(f"{key} = {_toml_value(updates[key])}")
+            if key in pairs:
+                result.append(f"{key} = {_toml_value(pairs[key])}")
                 patched_keys.add(key)
                 continue
 
         result.append(line)
 
     if in_target:
-        for k, v in updates.items():
+        for k, v in pairs.items():
             if k not in patched_keys:
                 result.append(f"{k} = {_toml_value(v)}")
                 patched_keys.add(k)
@@ -72,7 +72,7 @@ def _patch_toml(path: Path, section: str, updates: dict) -> None:
         if result and result[-1].strip():
             result.append("")
         result.append(f"[{section}]")
-        for k, v in updates.items():
+        for k, v in pairs.items():
             result.append(f"{k} = {_toml_value(v)}")
 
     atomic_write_text(path, "\n".join(result) + "\n")
