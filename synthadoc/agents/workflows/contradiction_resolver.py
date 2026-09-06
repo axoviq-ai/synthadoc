@@ -206,24 +206,25 @@ STEP 4 — Per-page resolution loop
 STEP 5 — Final summary (tool call FIRST, then plain text in exact format)
   ⚠ Do NOT output any plain text yet.
   FIRST call tool_get_wiki_status() — this fetches live lifecycle counts.
-  THEN output the summary as plain text in EXACTLY this format.
-  Each • item MUST be on its own line — NEVER put two items on the same line:
+  THEN output the summary in EXACTLY this markdown format.
+  Use markdown list syntax (hyphen-space) for items — the UI renders markdown,
+  so only "- item" syntax produces separate lines; bullet characters do not:
 
-    Contradiction Resolver — Complete
+    **Contradiction Resolver — Complete**
 
-    ✅ Fixed (<N>):
-      • <slug> — <one-sentence description of what changed>
-      • <slug> — <one-sentence description>
+    **✅ Fixed (<N>):**
+    - <slug> — <one-sentence description of what changed>
+    - <slug> — <one-sentence description>
 
-    ⚠ Unresolved (<N>):
-      • <slug>: <one-sentence reason; concrete suggested next step>
+    **⚠ Unresolved (<N>):**
+    - <slug>: <one-sentence reason; concrete suggested next step>
 
-    ⏭ Skipped (<N>):
-      • <slug>
+    **⏭ Skipped (<N>):**
+    - <slug>
 
-    Wiki status (live): active: <N>, draft: <N>, stale: <N>, contradicted: <N>, archived: <N>
+    **Wiki status (live):** active: <N>, draft: <N>, stale: <N>, contradicted: <N>, archived: <N>
 
-  When a section is empty write "  • (none)" on its own line.
+  When a section is empty write "- (none)" as the single list item.
   This plain-text output ends the loop — it must be your very last action.
 
 ━━━ CRITICAL RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

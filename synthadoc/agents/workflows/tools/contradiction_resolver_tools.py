@@ -190,42 +190,45 @@ def _format_cr_summary(
         wiki_status: raw dict from tool_get_wiki_status (may contain "tool"/"message" keys
                      that are filtered out)
     """
+    # Use markdown list syntax ("- item") so the WebUI renders each entry
+    # on its own line.  Plain bullet characters (•) collapse into a single
+    # paragraph in markdown; "- " list items do not.
     lines: list[str] = ["**Contradiction Resolver — Complete**", ""]
 
-    lines.append(f"✅ Fixed ({len(fixed)}):")
+    lines.append(f"**✅ Fixed ({len(fixed)}):**")
     if fixed:
         for item in fixed:
-            lines.append(f"  • {item['slug']} — {item['note']}")
+            lines.append(f"- {item['slug']} — {item['note']}")
     else:
-        lines.append("  • (none)")
+        lines.append("- (none)")
 
     lines.append("")
-    lines.append(f"⚠ Unresolved ({len(unresolved)}):")
+    lines.append(f"**⚠ Unresolved ({len(unresolved)}):**")
     if unresolved:
         for item in unresolved:
-            lines.append(f"  • {item['slug']}: {item['reason']}")
+            lines.append(f"- {item['slug']}: {item['reason']}")
         lines.append("")
         lines.append(
-            "  Tip: run the full resolver with provider=anthropic for "
-            "multi-strategy retry on unresolved pages."
+            "_Tip: run the full resolver with provider=anthropic for "
+            "multi-strategy retry on unresolved pages._"
         )
     else:
-        lines.append("  • (none)")
+        lines.append("- (none)")
 
     lines.append("")
-    lines.append(f"⏭ Skipped ({len(skipped)}):")
+    lines.append(f"**⏭ Skipped ({len(skipped)}):**")
     if skipped:
         for s in skipped:
-            lines.append(f"  • {s}")
+            lines.append(f"- {s}")
     else:
-        lines.append("  • (none)")
+        lines.append("- (none)")
 
     status_str = ", ".join(
         f"{k}: {v}" for k, v in wiki_status.items()
         if k not in ("tool", "message")
     )
     lines.append("")
-    lines.append(f"Wiki status (live): {status_str}")
+    lines.append(f"**Wiki status (live):** {status_str}")
 
     return "\n".join(lines)
 

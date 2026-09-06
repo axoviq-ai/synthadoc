@@ -1442,7 +1442,7 @@ def test_format_cr_summary_empty_sections_show_none():
     assert "✅ Fixed (0):" in text
     assert "⚠ Unresolved (0):" in text
     assert "⏭ Skipped (0):" in text
-    assert text.count("• (none)") == 3
+    assert text.count("- (none)") == 3
 
 
 def test_format_cr_summary_filters_tool_message_keys():
