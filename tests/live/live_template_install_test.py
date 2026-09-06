@@ -54,6 +54,8 @@ import tempfile
 import time
 import urllib.request
 
+from synthadoc.core.queue import JobStatus
+
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 PY        = sys.executable
@@ -215,9 +217,6 @@ def _extract_job_id(text: str) -> str | None:
         if len(token) == 32 and all(c in "0123456789abcdef" for c in token):
             return token
     return None
-
-
-_TERMINAL = {"completed", "failed", "cancelled", "dead", "skipped"}
 
 
 # ── Tier 1: No server needed ──────────────────────────────────────────────────
@@ -425,6 +424,11 @@ def run_tier2(wiki_root: pathlib.Path) -> None:
             encoding="utf-8",
         )
         try:
+            # Snapshot wiki/ before ingest so we can detect new files afterwards.
+            wiki_dir = wiki_root / "wiki"
+            cand_dir = wiki_dir / "candidates"
+            pre_wiki = {f.name for f in wiki_dir.glob("*.md")}
+
             r_ingest = run(["ingest", str(tmp_file), "-w", WIKI_NAME])
             ingest_out = r_ingest.stdout + r_ingest.stderr
             if r_ingest.returncode == 0:
@@ -432,57 +436,58 @@ def run_tier2(wiki_root: pathlib.Path) -> None:
             else:
                 warn("ingest enqueue", f"exit {r_ingest.returncode}: {ingest_out[:200]}")
 
-            cand_dir = wiki_root / "wiki" / "candidates"
-            # Allow 90s: claude-code cold-start on Windows takes 40-60s
-            # (enqueue → worker → subprocess launch → API call → write).
-            deadline = time.monotonic() + 90
-            found_cand = False
+            # Poll job status every 5s until it reaches a terminal state
+            # (or 90s elapses for slow providers like opencode on cold start).
+            # Pages may land in wiki/candidates/ (staging_policy=all) or
+            # directly in wiki/ when staging is bypassed.
             job_id = _extract_job_id(ingest_out)
+            deadline = time.monotonic() + 90
+            final_status: JobStatus | None = None
             while time.monotonic() < deadline:
-                if cand_dir.exists():
-                    cands = list(cand_dir.glob("*.md"))
-                    if cands:
-                        found_cand = True
-                        ok("ingest staged to candidates/",
-                           f"{len(cands)} file(s): {[c.name for c in cands]}")
-                        break
-                # Stop polling early if the job has already reached a
-                # terminal state without producing a candidate file.
                 if job_id:
                     r_jobs = run(["jobs", "-w", WIKI_NAME, "--json"])
                     try:
                         jobs_data = json.loads(r_jobs.stdout)
-                        job = next(
-                            (j for j in jobs_data if j.get("id", "").startswith(job_id[:8])),
+                        job_rec = next(
+                            (j for j in jobs_data
+                             if j.get("id", "").startswith(job_id[:8])),
                             None,
                         )
-                        if job and job.get("status") in _TERMINAL - {"completed"}:
-                            warn("ingest staged to candidates/",
-                                 f"job {job_id[:8]} reached status={job['status']!r} "
-                                 f"without writing a candidate file")
-                            found_cand = True  # suppress the timeout warn below
-                            break
+                        if job_rec:
+                            try:
+                                js = JobStatus(job_rec.get("status", ""))
+                            except ValueError:
+                                js = None
+                            info(f"job {job_id[:8]} status: {js.value if js else '?'}")
+                            if js and js.is_terminal:
+                                final_status = js
+                                break
                     except (json.JSONDecodeError, KeyError, TypeError):
                         pass
-                time.sleep(3)
+                time.sleep(5)
 
-            if not found_cand:
-                # Check final job status for a diagnostic hint.
-                status_hint = ""
-                if job_id:
-                    r_jobs = run(["jobs", "-w", WIKI_NAME, "--json"])
-                    try:
-                        jobs_data = json.loads(r_jobs.stdout)
-                        job = next(
-                            (j for j in jobs_data if j.get("id", "").startswith(job_id[:8])),
-                            None,
-                        )
-                        if job:
-                            status_hint = f" (job status: {job.get('status', 'unknown')})"
-                    except (json.JSONDecodeError, KeyError, TypeError):
-                        pass
-                warn("ingest staged to candidates/",
-                     f"no .md file appeared in wiki/candidates/ within 90s{status_hint}")
+            # Report where the ingest output landed.
+            if final_status == JobStatus.COMPLETED:
+                cands = list(cand_dir.glob("*.md")) if cand_dir.exists() else []
+                new_wiki = [f.name for f in wiki_dir.glob("*.md")
+                            if f.name not in pre_wiki]
+                if cands:
+                    ok("ingest staged to candidates/",
+                       f"{len(cands)} file(s): {[c.name for c in cands]}")
+                elif new_wiki:
+                    ok("ingest written directly to wiki/",
+                       f"new page(s): {new_wiki}")
+                else:
+                    warn("ingest output",
+                         "job completed but no new .md found in candidates/ or wiki/")
+            elif final_status is not None:
+                warn("ingest job",
+                     f"job {job_id[:8] if job_id else '?'} "
+                     f"reached status={final_status.value!r}")
+            else:
+                warn("ingest job",
+                     f"job {job_id[:8] if job_id else '?'} still running after 90s "
+                     f"(provider may be slow; check the server logs)")
         finally:
             tmp_file.unlink(missing_ok=True)
 
@@ -506,7 +511,14 @@ def run_tier2(wiki_root: pathlib.Path) -> None:
             r_scaffold = run(["scaffold", "-w", WIKI_NAME])
             scaffold_out = r_scaffold.stdout + r_scaffold.stderr
             if r_scaffold.returncode != 0:
-                warn("scaffold run", f"exit {r_scaffold.returncode}: {scaffold_out[:200]}")
+                # A client-side timeout (ERR-QUERY-001) means the scaffold job
+                # was accepted but the provider is slow — the server keeps running
+                # the job in the background.  Not a test failure.
+                if "ERR-QUERY-001" in scaffold_out or "timed out" in scaffold_out.lower():
+                    info(f"scaffold enqueued (client timeout — job running in background): "
+                         f"{scaffold_out.strip()[:120]}")
+                else:
+                    warn("scaffold run", f"exit {r_scaffold.returncode}: {scaffold_out[:200]}")
             else:
                 info(f"scaffold completed: {scaffold_out.strip()[:120]}")
 
