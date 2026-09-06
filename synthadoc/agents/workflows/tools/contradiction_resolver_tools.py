@@ -165,3 +165,105 @@ async def tool_cost_estimate(ctx: "WorkflowContext", page_count: int) -> dict:
     )
 
     return {**estimate, "confirmed": confirm_result.get("confirmed", False)}
+
+
+# ---------------------------------------------------------------------------
+# _format_cr_summary / tool_format_summary
+# ---------------------------------------------------------------------------
+
+def _format_cr_summary(
+    fixed: list[dict],
+    unresolved: list[dict],
+    skipped: list[str],
+    wiki_status: dict,
+) -> str:
+    """Render the Contradiction Resolver final summary as a markdown string.
+
+    Shared by both execution paths:
+    • API-provider path  — called from ``tool_format_summary`` (LLM tool call)
+    • CLI-provider path  — called from ``tool_format_summary`` (direct Python call)
+
+    Args:
+        fixed:       [{"slug": str, "note": str}, ...]
+        unresolved:  [{"slug": str, "reason": str}, ...]
+        skipped:     [slug_str, ...]
+        wiki_status: raw dict from tool_get_wiki_status (may contain "tool"/"message" keys
+                     that are filtered out)
+    """
+    lines: list[str] = ["**Contradiction Resolver — Complete**", ""]
+
+    lines.append(f"✅ Fixed ({len(fixed)}):")
+    if fixed:
+        for item in fixed:
+            lines.append(f"  • {item['slug']} — {item['note']}")
+    else:
+        lines.append("  • (none)")
+
+    lines.append("")
+    lines.append(f"⚠ Unresolved ({len(unresolved)}):")
+    if unresolved:
+        for item in unresolved:
+            lines.append(f"  • {item['slug']}: {item['reason']}")
+        lines.append("")
+        lines.append(
+            "  Tip: run the full resolver with provider=anthropic for "
+            "multi-strategy retry on unresolved pages."
+        )
+    else:
+        lines.append("  • (none)")
+
+    lines.append("")
+    lines.append(f"⏭ Skipped ({len(skipped)}):")
+    if skipped:
+        for s in skipped:
+            lines.append(f"  • {s}")
+    else:
+        lines.append("  • (none)")
+
+    status_str = ", ".join(
+        f"{k}: {v}" for k, v in wiki_status.items()
+        if k not in ("tool", "message")
+    )
+    lines.append("")
+    lines.append(f"Wiki status (live): {status_str}")
+
+    return "\n".join(lines)
+
+
+async def tool_format_summary(
+    ctx: "WorkflowContext",
+    fixed: list[dict],
+    unresolved: list[dict],
+    skipped: list[str],
+) -> dict:
+    """Format and emit the final Contradiction Resolver summary.
+
+    Fetches live wiki lifecycle counts, renders the summary via
+    ``_format_cr_summary``, and emits ``token`` + ``final_text`` SSE events so
+    the result reaches the client via the same channel as the rest of the stream.
+
+    This is the LAST tool call of the workflow on both execution paths:
+    • API-provider path: LLM calls this tool instead of writing plain text.
+    • CLI-provider path: ``run_for_cli_provider`` awaits this directly.
+
+    Neither path needs to emit any further plain text or events after this call.
+
+    Args:
+        fixed:      [{"slug": str, "note": str}, ...]
+        unresolved: [{"slug": str, "reason": str}, ...]
+        skipped:    [slug_str, ...]
+
+    Returns:
+        {"status": "success", "summary": <formatted text>}
+    """
+    from synthadoc.agents.workflows._tools import (  # avoid circular at module level
+        tool_get_wiki_status,
+    )
+
+    wiki_status = await tool_get_wiki_status(ctx)
+    text = _format_cr_summary(fixed, unresolved, skipped, wiki_status)
+
+    await ctx.send_sse_event("token", {"text": text})
+    await ctx.send_sse_event("final_text", {"text": text})
+
+    return {"status": "success", "summary": text}

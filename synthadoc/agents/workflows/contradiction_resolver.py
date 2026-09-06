@@ -30,6 +30,7 @@ from synthadoc.agents.workflows.tools.contradiction_resolver_tools import (
     tool_get_contradicted_pages,
     tool_read_source_content,
     tool_cost_estimate,
+    tool_format_summary,
 )
 
 if TYPE_CHECKING:
@@ -202,20 +203,22 @@ STEP 4 — Per-page resolution loop
         ⚠ MANDATORY — do NOT output any plain text before calling tool_confirm here.
         Text output ends the entire workflow before the confirmation is shown.
 
-STEP 5 — Final summary (tool call FIRST, then plain text)
-  ⚠ Do NOT output any plain text yet.
-  FIRST call tool_get_wiki_status() — this fetches live lifecycle counts.
-  THEN output a single plain-text summary combining per-page outcomes and
-  the live counts returned by tool_get_wiki_status():
-    "Contradiction Resolver — Complete\n\n✅ Fixed (<N>):\n  ...\n⚠ Unresolved (<N>):\n  ...\n⏭ Skipped (<N>):\n  ...\n\nWiki status (live): <key: value, ...>"
-  This plain-text output ends the loop — it must be your very last action.
+STEP 5 — Final summary (tool call only — no plain text)
+  ⚠ Do NOT output any plain text for the summary.
+  Call tool_format_summary with the per-page outcomes you collected:
+    fixed:      [{"slug": "<slug>", "note": "<one-sentence description of what changed>"}, ...]
+    unresolved: [{"slug": "<slug>", "reason": "<why it failed; concrete suggested next step>"}, ...]
+    skipped:    ["<slug>", ...]
+  The tool fetches live wiki counts and emits the formatted summary automatically.
+  This tool call is your very last action — no plain text after it.
 
 ━━━ CRITICAL RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-• Plain text ENDS THE LOOP — use it ONLY for the final summary (step 5),
-  or when cancelling (steps 2 and 3).
-• ALWAYS call tool_get_wiki_status() before outputting the step 5 summary —
-  never output any plain text before this tool call returns.
+• Plain text ENDS THE LOOP — use it ONLY when cancelling (steps 2 and 3).
+  The step 5 summary is produced by tool_format_summary — NEVER output plain
+  text for it; a text summary ends the loop before tool_format_summary runs.
+• NEVER call tool_get_wiki_status() directly — tool_format_summary calls it
+  internally. NEVER output the step 5 summary as plain text.
 • ALWAYS call tool_run_scoped_lint after every applied change.
 • When tool_run_scoped_lint returns pass: True — IMMEDIATELY call
   tool_transition_lifecycle_state. Do NOT call tool_propose_and_apply again.
@@ -312,6 +315,7 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
             "tool_get_contradicted_pages":     p(tool_get_contradicted_pages, ctx),
             "tool_read_source_content":        p(tool_read_source_content, ctx),
             "tool_cost_estimate":              p(tool_cost_estimate, ctx),
+            "tool_format_summary":             p(tool_format_summary, ctx),
             # Generic framework tools (from _tools.py)
             "tool_read_page_content":          p(tool_read_page_content, ctx),
             "tool_run_scoped_lint":            p(tool_run_scoped_lint, ctx),
@@ -374,8 +378,8 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
             return
 
         # ── 4. Per-page resolution loop ───────────────────────────────────────
-        fixed: list[str] = []
-        unresolved: list[tuple[str, str]] = []   # (slug, reason)
+        fixed: list[dict] = []       # [{"slug": str, "note": str}, ...]
+        unresolved: list[dict] = []  # [{"slug": str, "reason": str}, ...]
         skipped: list[str] = []
 
         for i, page_info in enumerate(pages):
@@ -399,7 +403,10 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
                             "— contradicted state was stale metadata"
                         ),
                     )
-                    fixed.append(slug)
+                    fixed.append({
+                        "slug": slug,
+                        "note": "Stale contradicted state; fresh lint passed, transitioned to active",
+                    })
                     # Still need to confirm between pages below
                 else:
                     # Real issue — treat as gate-demoted and fall through to rewrite
@@ -424,7 +431,7 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
                         message=f"⚠ {slug} — could not generate a rewrite; skipping",
                         level="warning",
                     )
-                    unresolved.append((slug, "LLM rewrite failed"))
+                    unresolved.append({"slug": slug, "reason": "LLM rewrite failed"})
                 else:
                     # 4d. Show diff and ask for approval (reuses propose_and_apply as-is)
                     apply_result = await tool_propose_and_apply(
@@ -451,7 +458,10 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
                                     "— CLI provider path, Strategy 1 (content rewrite)"
                                 ),
                             )
-                            fixed.append(slug)
+                            fixed.append({
+                                "slug": slug,
+                                "note": "Strategy 1 — content rewrite applied; lint passed, transitioned to active",
+                            })
                         else:
                             wc = lint_result.get("warnings_count", "?")
                             await tool_notify(
@@ -464,7 +474,10 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
                                 ),
                                 level="warning",
                             )
-                            unresolved.append((slug, f"lint still failing ({wc} warnings)"))
+                            unresolved.append({
+                                "slug": slug,
+                                "reason": f"lint still failing ({wc} warnings)",
+                            })
 
             # 4f. Confirm before next page
             if i < len(pages) - 1:
@@ -480,36 +493,10 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
                     break
 
         # ── 5. Final summary ──────────────────────────────────────────────────
-        wiki_status = await tool_get_wiki_status(ctx)
-
-        parts: list[str] = ["**Contradiction Resolver — Complete**\n"]
-
-        if fixed:
-            parts.append(f"✅ Fixed ({len(fixed)}):")
-            for s in fixed:
-                parts.append(f"  - {s}")
-
-        if unresolved:
-            parts.append(f"\n⚠ Unresolved ({len(unresolved)}):")
-            for s, reason in unresolved:
-                parts.append(f"  - {s}: {reason}")
-            parts.append(
-                "\n  Tip: run the full resolver with provider=anthropic for "
-                "multi-strategy retry on unresolved pages."
-            )
-
-        if skipped:
-            parts.append(f"\n⏭ Skipped ({len(skipped)}):")
-            for s in skipped:
-                parts.append(f"  - {s}")
-
-        status_str = ", ".join(f"{k}: {v}" for k, v in wiki_status.items()
-                               if k not in ("tool", "message"))
-        parts.append(f"\nWiki status (live): {status_str}")
-
-        summary = "\n".join(parts)
-        yield {"event": "token", "data": {"text": summary}}
-        yield {"event": "final_text", "data": {"text": summary}}
+        # tool_format_summary fetches live wiki status, renders the shared
+        # _format_cr_summary template, and emits token + final_text SSE events
+        # via ctx.send_sse_event — same code path as the API-provider path.
+        await tool_format_summary(ctx, fixed, unresolved, skipped)
 
     async def _cli_rewrite_page(
         self,

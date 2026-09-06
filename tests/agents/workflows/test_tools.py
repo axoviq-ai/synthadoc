@@ -1392,3 +1392,88 @@ def test_cost_label_cli_provider_returns_subscription_note():
     ctx.is_cli_provider = True
     assert ctx.cost_label(0.06) == "Covered by coding tool subscription"
     assert ctx.cost_label(0.0) == "Covered by coding tool subscription"
+
+
+# ── _format_cr_summary / tool_format_summary ──────────────────────────────────
+
+from synthadoc.agents.workflows.tools.contradiction_resolver_tools import (  # noqa: E402
+    _format_cr_summary,
+    tool_format_summary,
+)
+
+
+def test_format_cr_summary_per_item_newlines():
+    """Each fixed/unresolved/skipped item must appear on its own line, not inline."""
+    fixed = [
+        {"slug": "alan-turing", "note": "Stale metadata; lint passed"},
+        {"slug": "grace-hopper", "note": "Strategy 1 applied; lint passed"},
+    ]
+    unresolved = [{"slug": "bad-page", "reason": "lint still failing (2 warnings)"}]
+    skipped = ["skipped-page"]
+    wiki_status = {"active": 3, "contradicted": 0}
+
+    text = _format_cr_summary(fixed, unresolved, skipped, wiki_status)
+
+    # Each slug must appear on its own line (not all on one line separated by •)
+    lines = text.splitlines()
+    alan_lines = [l for l in lines if "alan-turing" in l]
+    grace_lines = [l for l in lines if "grace-hopper" in l]
+    bad_lines   = [l for l in lines if "bad-page" in l]
+    skip_lines  = [l for l in lines if "skipped-page" in l]
+
+    assert len(alan_lines) == 1,  "alan-turing must appear on exactly one line"
+    assert len(grace_lines) == 1, "grace-hopper must appear on exactly one line"
+    assert len(bad_lines) == 1,   "bad-page must appear on exactly one line"
+    assert len(skip_lines) == 1,  "skipped-page must appear on exactly one line"
+
+    # Counts in headers
+    assert "✅ Fixed (2):" in text
+    assert "⚠ Unresolved (1):" in text
+    assert "⏭ Skipped (1):" in text
+
+    # Wiki status line
+    assert "Wiki status (live):" in text
+    assert "active: 3" in text
+
+
+def test_format_cr_summary_empty_sections_show_none():
+    """Empty fixed/unresolved/skipped sections render '(none)' on their own line."""
+    text = _format_cr_summary([], [], [], {"active": 5})
+    assert "✅ Fixed (0):" in text
+    assert "⚠ Unresolved (0):" in text
+    assert "⏭ Skipped (0):" in text
+    assert text.count("• (none)") == 3
+
+
+def test_format_cr_summary_filters_tool_message_keys():
+    """'tool' and 'message' keys from wiki_status are excluded from the status line."""
+    wiki_status = {"tool": "get_wiki_status", "message": "ok", "active": 2, "stale": 0}
+    text = _format_cr_summary([], [], [], wiki_status)
+    assert "tool:" not in text
+    assert "message:" not in text
+    assert "active: 2" in text
+
+
+@pytest.mark.asyncio
+async def test_tool_format_summary_emits_sse_events():
+    """tool_format_summary fetches wiki status, emits token+final_text, returns dict."""
+    ctx = MagicMock(spec=WorkflowContext)
+    ctx.send_sse_event = AsyncMock()
+
+    fixed = [{"slug": "page-a", "note": "Strategy 1 applied"}]
+    unresolved: list = []
+    skipped: list = []
+
+    with patch(
+        "synthadoc.agents.workflows._tools.tool_get_wiki_status",
+        new=AsyncMock(return_value={"active": 1, "contradicted": 0}),
+    ):
+        result = await tool_format_summary(ctx, fixed, unresolved, skipped)
+
+    assert result["status"] == "success"
+    assert "page-a" in result["summary"]
+
+    # Must have emitted token and final_text via ctx.send_sse_event
+    calls = {call.args[0] for call in ctx.send_sse_event.call_args_list}
+    assert "token" in calls, "Expected a 'token' SSE event"
+    assert "final_text" in calls, "Expected a 'final_text' SSE event"
