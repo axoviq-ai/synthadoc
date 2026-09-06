@@ -1,0 +1,8 @@
+- Record lease abstracts with: tenant name, unit/suite, lease start/end, rent schedule, renewal options, and key tenant obligations
+- Cross-link tenant pages with their lease, maintenance history, and any outstanding issues
+- Document all maintenance requests with: submission date, requestor, unit, issue type, priority, assigned vendor, and resolution date
+- Flag leases expiring within 12 months with the renewal status and leasing strategy
+- Track security deposit amounts and return status with applicable state law citations
+- Record vendor qualifications: license number, insurance certificate, and approved service categories
+- Note local landlord-tenant law requirements that affect standard procedures (required notice periods, entry rules)
+- Archive closed work orders with the resolution summary and total cost for future reference
