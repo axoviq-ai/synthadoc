@@ -433,8 +433,11 @@ def run_tier2(wiki_root: pathlib.Path) -> None:
                 warn("ingest enqueue", f"exit {r_ingest.returncode}: {ingest_out[:200]}")
 
             cand_dir = wiki_root / "wiki" / "candidates"
-            deadline = time.monotonic() + 30
+            # Allow 90s: claude-code cold-start on Windows takes 40-60s
+            # (enqueue → worker → subprocess launch → API call → write).
+            deadline = time.monotonic() + 90
             found_cand = False
+            job_id = _extract_job_id(ingest_out)
             while time.monotonic() < deadline:
                 if cand_dir.exists():
                     cands = list(cand_dir.glob("*.md"))
@@ -443,12 +446,43 @@ def run_tier2(wiki_root: pathlib.Path) -> None:
                         ok("ingest staged to candidates/",
                            f"{len(cands)} file(s): {[c.name for c in cands]}")
                         break
-                time.sleep(2)
+                # Stop polling early if the job has already reached a
+                # terminal state without producing a candidate file.
+                if job_id:
+                    r_jobs = run(["jobs", "-w", WIKI_NAME, "--json"])
+                    try:
+                        jobs_data = json.loads(r_jobs.stdout)
+                        job = next(
+                            (j for j in jobs_data if j.get("id", "").startswith(job_id[:8])),
+                            None,
+                        )
+                        if job and job.get("status") in _TERMINAL - {"completed"}:
+                            warn("ingest staged to candidates/",
+                                 f"job {job_id[:8]} reached status={job['status']!r} "
+                                 f"without writing a candidate file")
+                            found_cand = True  # suppress the timeout warn below
+                            break
+                    except (json.JSONDecodeError, KeyError, TypeError):
+                        pass
+                time.sleep(3)
 
             if not found_cand:
+                # Check final job status for a diagnostic hint.
+                status_hint = ""
+                if job_id:
+                    r_jobs = run(["jobs", "-w", WIKI_NAME, "--json"])
+                    try:
+                        jobs_data = json.loads(r_jobs.stdout)
+                        job = next(
+                            (j for j in jobs_data if j.get("id", "").startswith(job_id[:8])),
+                            None,
+                        )
+                        if job:
+                            status_hint = f" (job status: {job.get('status', 'unknown')})"
+                    except (json.JSONDecodeError, KeyError, TypeError):
+                        pass
                 warn("ingest staged to candidates/",
-                     "no .md file appeared in wiki/candidates/ within 30s "
-                     "(ingest may still be running)")
+                     f"no .md file appeared in wiki/candidates/ within 90s{status_hint}")
         finally:
             tmp_file.unlink(missing_ok=True)
 
