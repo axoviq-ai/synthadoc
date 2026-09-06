@@ -1150,18 +1150,29 @@ async def test_contradiction_resolver_cli_path_resolves_page(tmp_path):
     ), patch(
         "synthadoc.agents.workflows.contradiction_resolver.tool_transition_lifecycle_state",
         new=_AsyncMock(return_value={"status": "success"}),
-    ), patch(
-        "synthadoc.agents.workflows.contradiction_resolver.tool_get_wiki_status",
-        new=_AsyncMock(return_value={"active": 1, "contradicted": 0, "stale": 0, "draft": 0, "archived": 0}),
-    ):
-        events = []
-        async for evt in wf.run_for_cli_provider(ctx, "resolve contradictions", fake_provider):
-            events.append(evt)
+    ) as _mock_transition:
+        mock_format_summary = _AsyncMock(return_value={"status": "success", "summary": "ok"})
+        with patch(
+            "synthadoc.agents.workflows.contradiction_resolver.tool_format_summary",
+            new=mock_format_summary,
+        ):
+            events = []
+            async for evt in wf.run_for_cli_provider(ctx, "resolve contradictions", fake_provider):
+                events.append(evt)
 
-    token_text = "".join(e["data"]["text"] for e in events if e["event"] == "token")
-    assert "Fixed" in token_text
-    assert "page-a" in token_text
-    assert "final_text" in [e["event"] for e in events]
+    # Summary is emitted via tool_format_summary (not yielded by the generator).
+    # Verify it was called with page-a in the fixed list.
+    mock_format_summary.assert_called_once()
+    call_args = mock_format_summary.call_args
+    fixed_arg = call_args.args[1]          # positional: ctx, fixed, unresolved, skipped
+    assert any(item.get("slug") == "page-a" for item in fixed_arg), (
+        f"Expected page-a in fixed list; got: {fixed_arg}"
+    )
+    # Early-exit events (tool_progress etc.) may still appear via ctx.send_sse_event;
+    # the generator itself yields nothing after tool_format_summary is awaited.
+    assert not any(e["event"] == "final_text" for e in events), (
+        "final_text must not be yielded by the generator — tool_format_summary emits it"
+    )
 
 
 @pytest.mark.asyncio
