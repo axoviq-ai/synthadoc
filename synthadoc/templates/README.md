@@ -192,6 +192,56 @@ synthadoc schedule history -w <wiki> -n 50  # last 50 runs
 Each row shows the run ID, operation, start time, duration, and status
 (`success` / `failed`). Failed runs include the error detail.
 
+### How scaffold updates work
+
+Every template file that scaffold can regenerate contains a
+`<!-- synthadoc:scaffold -->` HTML comment that acts as a zone boundary.
+The weekly scaffold job never overwrites content you wrote above a marker —
+only content below the marker is refreshed with new LLM output.
+
+**`index.md` — single marker**
+
+The marker appears once, below the H1 title. Write your own links, notes, or
+introductory text *above* the marker line; scaffold will not touch them on
+any future run. Content below the marker (the auto-generated category list)
+is regenerated each time.
+
+```markdown
+# Index
+
+My pinned links and notes go here — scaffold never touches this.
+Any number of paragraphs and links are fine.
+
+<!-- synthadoc:scaffold -->
+
+[[credit-risk]] — ...   ← regenerated each run
+[[deposit-products]] — ...
+```
+
+**`purpose.md` — one marker per section**
+
+The marker appears once inside each `##` section. Write your own text *above*
+the marker in any section; scaffold preserves it and refreshes only the content
+below. Sections you add yourself (any `##` heading with *no* marker) are
+kept entirely as-is — scaffold treats them as user-owned.
+
+```markdown
+## Overview
+
+Our internal compliance and risk management knowledge base.  ← preserved
+
+<!-- synthadoc:scaffold -->
+
+This wiki captures...   ← regenerated each run
+
+## My Custom Section    ← no marker → never touched by scaffold
+
+Notes only I maintain go here.
+```
+
+**In summary:** write your persistent content above the marker. Add new
+sections with no marker if you want scaffold to leave them entirely alone.
+
 ---
 
 ## Finance
