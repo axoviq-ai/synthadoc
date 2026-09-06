@@ -182,15 +182,88 @@ def check(
 # ── Coding-tool provider helpers ──────────────────────────────────────────────
 
 
+def _validate_coding_provider(provider_name: str, binary: str) -> bool:
+    """Smoke-test a coding-tool CLI binary with a trivial prompt.
+
+    Runs a one-token inference call and inspects the output for permanent
+    error markers (isRetryable: false, 4xx statusCode).  If a permanent
+    error is detected the provider is broken for its current configuration
+    (e.g. a speech model set as default) and will permanently fail every
+    job — skip it.
+
+    Any transient failure (timeout, network error, non-zero exit without
+    permanent markers) is treated as "probably fine" — the provider stays
+    in the candidate list.
+
+    Returns True if the provider appears functional or if we cannot tell.
+    Returns False only on a confirmed permanent configuration error.
+    """
+    import re
+
+    # Build the minimal command matching each provider's calling convention.
+    # Both accept the prompt via stdin.
+    if provider_name == "opencode":
+        cmd = [binary, "run", "--format", "json"]
+    else:
+        # claude-code
+        cmd = [binary, "-p", "--output-format", "json", "--dangerously-skip-permissions"]
+
+    # On Windows, .cmd/.bat wrappers need cmd /c
+    if sys.platform == "win32" and binary.lower().endswith((".cmd", ".bat")):
+        cmd = ["cmd", "/c"] + cmd
+
+    try:
+        result = subprocess.run(
+            cmd,
+            input="Say the single word: ok",
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        # Timeout or binary not runnable — assume transient, keep provider
+        return True
+
+    if result.returncode == 0:
+        return True  # successful inference
+
+    all_output = (result.stderr or "") + " " + (result.stdout or "")
+    lower = all_output.lower()
+
+    # Permanent-error heuristics (mirrors _is_permanent_provider_error in providers)
+    if re.search(r'"isretryable"\s*:\s*false', lower):
+        info(f"  provider validation: {provider_name} rejected — isRetryable: false detected")
+        return False
+    m = re.search(r'"statuscode"\s*:\s*(\d+)', lower)
+    if m:
+        code = int(m.group(1))
+        if 400 <= code < 500 and code != 429:
+            info(f"  provider validation: {provider_name} rejected — statusCode {code} detected")
+            return False
+
+    # Non-zero exit but no permanent markers — transient failure, keep provider
+    return True
+
+
 def _find_coding_provider() -> tuple[str, str] | None:
-    """Return (provider_name, binary) for the first available coding-tool CLI.
+    """Return (provider_name, binary) for the first available and functional coding-tool CLI.
 
     Preference order: Opencode ("opencode", free) → Claude Code ("claude").
-    Returns None when neither binary is found in PATH.
+    Each candidate is smoke-tested with a tiny inference call to detect permanent
+    configuration errors (e.g. a speech model set as the default model) before
+    committing to it.  A provider that always returns isRetryable: false is skipped.
+    Returns None when no functional binary is found in PATH.
     """
     for provider_name, binary in (("opencode", "opencode"), ("claude-code", "claude")):
-        if shutil.which(binary):
-            return provider_name, binary
+        found = shutil.which(binary)
+        if not found:
+            continue
+        info(f"  provider detection: found {provider_name} ({found}) — validating…")
+        if _validate_coding_provider(provider_name, found):
+            return provider_name, found
+        info(f"  provider detection: {provider_name} has a permanent config error — skipping")
     return None
 
 
