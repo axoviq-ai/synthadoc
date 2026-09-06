@@ -24,8 +24,12 @@ synthadoc install my-wiki --target ~/wikis --template real-estate/investment \
   --domain "Acme Property Portfolio"
 ```
 
-Staging is automatically enabled for all template installs so that every new
-ingest lands in the review queue first.
+Template installs set `staging_policy = all`, which routes every new ingest to
+the `candidates/` review queue regardless of confidence score. Nothing is written
+directly to the wiki until you promote it. (The alternative `threshold` policy
+stages only pages whose confidence score falls below a configured level —
+template installs use `all` so you can review all first-time content before it
+becomes part of your knowledge base.)
 
 ---
 
