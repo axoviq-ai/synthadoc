@@ -1,0 +1,8 @@
+- Record regulatory pathway (NDA, BLA, 505(b)(2), IND) for each program with the applicable region
+- Cross-link clinical trial pages with the IND, protocol version, and associated regulatory submissions
+- Document CMC changes with the regulatory impact assessment
+- Flag safety signals with the MedDRA preferred term, data source, and current regulatory status
+- Track study endpoints with the primary and secondary definitions, SAP version, and cut-off dates
+- Record benefit-risk assessments for each development stage with the supporting data package
+- Note data exclusivity and patent expiry dates on compound pages
+- Archive superseded protocol versions with amendment history and rationale

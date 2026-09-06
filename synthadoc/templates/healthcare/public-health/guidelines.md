@@ -1,0 +1,8 @@
+- Cite surveillance data by source (CDC WONDER, WHO, state health department), collection method, and year
+- Report disease metrics with numerator/denominator definitions, confidence intervals, and geographic scope
+- Cross-link intervention pages with the evidence base and implementation context
+- Flag data quality issues: underreporting, case definition changes, and surveillance system limitations
+- Document health equity considerations — disaggregate data by race/ethnicity, income, and geography where available
+- Note policy status (proposed, enacted, repealed) and jurisdiction for all public health regulations
+- Record program evaluation frameworks with the theory of change and key performance indicators
+- Archive superseded surveillance definitions with the date of change and impact on trend comparability
