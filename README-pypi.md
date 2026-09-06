@@ -174,6 +174,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **[Query-scoped routing](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-17--set-up-routingmd--scoped-search)** — ROUTING.md maps wiki branches to page slugs; queries auto-select relevant branches; new pages auto-slotted                                                                                                                                                                                                                                            | **Yes**   | No          | No         | No        |
 | **[Candidates staging](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-18--configure-candidates-staging)** — ingest pages to a staging area first; review, promote, or discard before they enter the live wiki                                                                                                                                                                                                                                                          | **Yes**   | No          | No         | No        |
 | **[Scaffold automation](https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#step-14--enrich-the-wiki-with-scaffold)** — regenerates index categories, AGENTS.md/CLAUDE.md/GEMINI.md, and purpose.md from current wiki state; protected pages never overwritten                                                                                                                                                                                                                   | **Yes**   | No          | No         | No        |
+| **[Domain templates](synthadoc/templates/README.md)** — 30 fully-authored templates (finance, technology, healthcare, legal, and more) so you start with the right agent guidelines, routing, and structure from day one                                                                                                                                                                                                                                      | **Yes**   | No          | No         | No        |
 
 ### Search & Query
 
@@ -446,7 +447,13 @@ The guide covers:
 
 > **New to building your own wiki?** Work through the [AquaFlow Capital Workshop Walkthrough](https://github.com/axoviq-ai/synthadoc/tree/main/docs/example/aquaflow) first — a complete end-to-end workshop using a real M&A due-diligence wiki with pre-built pages, evaluation queries, and benchmark results. Once you are comfortable with the flow, come back here to build your own wiki from scratch.
 
-Unlike the demo (which ships with pre-built pages), your own wiki starts from a domain description and grows as you feed it sources:
+For a domain-specific head start, pick from 30 templates pre-configured for Finance, Technology, Healthcare, Legal, Research, Operations, Education, Real Estate, and Business. Browse 30 templates with `synthadoc templates list` — see [synthadoc/templates/README.md](synthadoc/templates/README.md) for the full catalog and setup guide.
+
+```bash
+synthadoc install my-finance-wiki --target ~/wikis --template finance/investment
+```
+
+To start with a blank wiki instead, provide a `--domain` description and grow it from your own sources:
 
 ```bash
 synthadoc install market-condition-canada --target ~/wikis --domain "Market conditions and trends in Canada"
@@ -458,24 +465,6 @@ Before starting the server, open `~/wikis/market-condition-canada/.synthadoc/con
 ```bash
 synthadoc serve
 synthadoc status                        # confirm the wiki registered correctly (should show 0 pages)
-```
-
-`--domain` is a free-text description of the subject area — the LLM uses it to generate five domain-aware starter files via scaffold:
-
-| File              | Purpose                                                                                                                                                                                                                             |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `wiki/index.md`   | Table of contents — domain-relevant categories with`[[wikilinks]]`                                                                                                                                                                 |
-| `wiki/purpose.md` | Scope declaration — used by the ingest agent to filter out-of-scope sources at ingest time, and injected as a pinned preamble into every query synthesis prompt so the LLM understands the wiki's domain boundaries when answering |
-| `AGENTS.md`       | LLM behaviour guidelines (tone, terminology, synthesis style) — read by Codex CLI, OpenCode, and generic OpenAI Agents tooling                                                                                                     |
-| `CLAUDE.md`       | Same content as`AGENTS.md` — loaded automatically by Claude Code when the wiki folder is open                                                                                                                                      |
-| `GEMINI.md`       | Same content as`AGENTS.md` — loaded automatically by Gemini CLI                                                                                                                                                                    |
-
-`wiki/dashboard.md` is also created during install (a static template — not LLM-generated). `ROUTING.md` is optional and generated separately via `synthadoc routing init` after pages accumulate.
-
-Before ingesting any content, run scaffold once to build a clean starting index and purpose files based on your domain:
-
-```bash
-synthadoc scaffold
 ```
 
 `synthadoc install` also copies both the Synthadoc plugin and the Dataview plugin directly into the vault's plugins folder, pre-enables them, and sets the correct server URL — no separate plugin step is required. Open the wiki folder in Obsidian — both plugins are active immediately, no manual toggling needed.
@@ -606,6 +595,12 @@ synthadoc install history-of-computing --target ~/wikis --demo
 
 # List available demo templates
 synthadoc demo list
+
+# List all 30 domain templates (and demos) — browse before installing
+synthadoc templates list
+
+# Install with a domain template — pre-configured guidelines, routing, and starter pages
+synthadoc install my-finance-wiki --target ~/wikis --template finance/investment
 
 # Sync new source files into an existing demo install (additive only, no overwrites)
 synthadoc demo sync history-of-computing

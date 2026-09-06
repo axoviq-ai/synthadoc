@@ -1015,6 +1015,8 @@ synthadoc
 ├── uninstall <name>
 ├── scaffold [-w wiki]
 ├── demo list
+├── templates
+│   └── list                                     — browse all demos and domain templates
 ├── plugin
 │   ├── install <wiki>                            — copy plugin files into <wiki>/.obsidian/plugins/synthadoc/
 │   └── upgrade                                   — upgrade plugin in all registered wikis at once
@@ -1239,6 +1241,39 @@ Every user-facing error carries a stable code in the format `[ERR-<CATEGORY>-<NN
 | `ERR-AGENT-001`  | LLM agent call failed (empty response, bad JSON, timeout) |
 
 **CLI errors** go through the `cli_error(code, message, hint)` helper, which prints `[ERR-XXX-NNN] message` to stderr with an optional hint line and exits with code 1. **Agent and skill errors** embed the code directly in the exception message string so it surfaces in the job `error` field.
+
+---
+
+## Template Engine
+
+Domain templates give a freshly installed wiki a head start with pre-configured
+agent guidelines, a query routing table, domain-specific purpose and index pages,
+and scaffold stubs. Templates are bundled with the package — no network required.
+
+**Template library:** 30 templates across 9 categories (finance, technology,
+healthcare, legal, research, operations, education, real-estate, business).
+
+**Install flow:** `synthadoc install <name> --template <category/domain>` calls
+`init_wiki()` first (identical to a blank install), then applies the template
+delta on top:
+
+1. Agent skill files are regenerated with the template's domain-specific guidelines
+2. `ROUTING.md` is overwritten with the template's query routing table
+3. `wiki/purpose.md` and `wiki/index.md` are overwritten with template versions
+4. Template stub pages are copied into `wiki/` (additive — existing pages kept)
+5. Staging is enabled: `[ingest] staging_policy = "all"` in config
+6. Weekly lint and scaffold jobs are pre-registered in the scheduler
+
+**Discovery:** `synthadoc templates list` shows all demos and templates together.
+New template folders appear automatically — no hardcoded registry needed.
+
+**Registry:** Template installs add `category` and `template` fields to the wiki
+registry entry. All existing reads use `.get()` — backward compatible with wikis
+installed before v1.3.3.
+
+**Extending:** Add a new folder under `synthadoc/templates/<category>/<domain>/`
+with the 7 required files and run `pytest tests/test_template_completeness.py`.
+The completeness test is the quality gate.
 
 ---
 
