@@ -1,0 +1,8 @@
+- Cite clinical guidelines by issuing body, title, year, and recommendation strength (Grade A/B/C or Level 1/2/3)
+- Flag drug dosages with the approved indication, route, weight-based formula if applicable, and key contraindications
+- Cross-link condition pages with their diagnostic criteria, treatment protocols, and relevant lab or imaging pages
+- Note evidence quality for every clinical claim: RCT, meta-analysis, cohort study, expert consensus, or case report
+- Record guideline update dates — clinical recommendations change; pages must be re-validated against current editions
+- Document local formulary restrictions and preferred alternatives for any listed medication
+- Flag off-label uses explicitly with the evidence basis and regulatory status
+- Never store identifiable patient data in wiki pages — all examples must be de-identified or synthetic

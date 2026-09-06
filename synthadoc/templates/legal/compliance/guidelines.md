@@ -1,0 +1,8 @@
+- Map every compliance obligation to the specific regulation, rule, or contractual requirement that creates it
+- Track compliance controls with the control owner, testing frequency, and last test date and result
+- Cross-link regulatory requirement pages with the policies and procedures that address them
+- Record audit findings with severity (critical/major/minor), root cause, remediation plan, and target close date
+- Flag regulatory changes with the effective date, applicability analysis, and gap assessment
+- Document exceptions and risk acceptances with approver, rationale, and expiry date
+- Distinguish between legal requirements (non-negotiable) and internal policy requirements (adjustable)
+- Note jurisdiction and regulated entity for every obligation — compliance applies entity-by-entity

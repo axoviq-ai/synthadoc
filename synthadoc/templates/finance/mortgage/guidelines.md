@@ -1,0 +1,8 @@
+- Record loan-level data: property type, LTV, DSCR, credit score, and rate at origination
+- Track regulatory requirements by jurisdiction — TRID, RESPA, and state-specific disclosures change frequently
+- Cross-link borrower/property pages with their underwriting memo and appraisal
+- Flag rate lock expirations and commitment deadlines prominently in deal pages
+- Document all conditions-to-close and track their resolution status
+- Distinguish between agency (Fannie/Freddie/Ginnie) and non-agency guidelines clearly
+- Note prepayment penalties, assumability, and other loan features on product pages
+- Archive superseded underwriting guidelines with effective dates and reason for change

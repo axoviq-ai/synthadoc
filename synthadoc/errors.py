@@ -52,8 +52,9 @@ SKILL_WEB_NO_KEY  = "ERR-SKILL-004"  # TAVILY_API_KEY not set for web search
 from synthadoc.skills.base import DomainBlockedException  # noqa: F401
 
 # ── Provider ──────────────────────────────────────────────────────────────────
-PROVIDER_DAILY_QUOTA = "ERR-PROV-001"  # Daily API quota exhausted for today
-CODING_TOOL_QUOTA    = "ERR-PROV-002"  # Coding tool CLI usage quota exhausted
+PROVIDER_DAILY_QUOTA    = "ERR-PROV-001"  # Daily API quota exhausted for today
+CODING_TOOL_QUOTA       = "ERR-PROV-002"  # Coding tool CLI usage quota exhausted
+CODING_TOOL_PERMANENT   = "ERR-PROV-004"  # Coding tool returned a permanent non-retryable error
 
 
 class DailyQuotaExhaustedException(Exception):
@@ -83,6 +84,21 @@ class CodingToolQuotaExhaustedException(Exception):
             f"[{CODING_TOOL_QUOTA}] {tool_name} usage quota exhausted — "
             f"wait for quota to reset, then retry the job. "
             f"Or switch provider temporarily: synthadoc serve -w <wiki> --provider anthropic"
+        )
+
+
+class CodingToolPermanentError(Exception):
+    """Raised when a coding tool CLI returns a permanent, non-retryable error.
+
+    Examples: model does not support chat completions (e.g. a speech/audio model
+    configured as the default), invalid API key, model not found.  Retrying
+    will never help — the orchestrator permanently fails the job immediately
+    rather than burning through the retry budget.
+    """
+    def __init__(self, tool_name: str, detail: str) -> None:
+        super().__init__(
+            f"[{CODING_TOOL_PERMANENT}] {tool_name} returned a permanent error "
+            f"(retrying will not help): {detail}"
         )
 
 

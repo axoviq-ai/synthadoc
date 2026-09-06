@@ -1,0 +1,8 @@
+- Write atomic notes — each page contains one idea, concept, or argument, linked to related ideas
+- Connect new notes to existing ones with [[links]] rather than organizing into rigid folders
+- Write book summaries in your own words — paraphrasing forces understanding and creates a searchable knowledge base
+- Flag ideas you want to explore further with a "→ explore" tag on the page
+- Record the source for every claim — even personal notes benefit from provenance tracking
+- Cross-link concepts across domains — the best insights often come from connecting ideas across fields
+- Date your notes — ideas evolve; knowing when you wrote something helps track your learning arc
+- Review and update older notes when new information changes your understanding

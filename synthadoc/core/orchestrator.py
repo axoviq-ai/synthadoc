@@ -346,7 +346,7 @@ class Orchestrator:
             import httpx
             from synthadoc.errors import (
                 DomainBlockedException, DailyQuotaExhaustedException,
-                CodingToolQuotaExhaustedException,
+                CodingToolQuotaExhaustedException, CodingToolPermanentError,
             )
             # Check for LLM rate limits (openai SDK used by Groq/Gemini, and Anthropic SDK)
             _status = getattr(e, "status_code", None) or getattr(
@@ -359,6 +359,13 @@ class Orchestrator:
                     "(quota resets at midnight UTC)", job_id
                 )
                 await self._queue.fail_permanent(job_id, str(e))
+            elif isinstance(e, CodingToolPermanentError):
+                # Wrong model type, invalid key, model not found — retrying will never help.
+                logging.getLogger(__name__).error(
+                    "Coding tool permanent error — permanently failing job %s: %s", job_id, e
+                )
+                await self._queue.fail_permanent(job_id, str(e))
+                # Do NOT raise: worker should drain the queue, not loop every 60 s.
             elif isinstance(e, CodingToolQuotaExhaustedException):
                 logging.getLogger(__name__).error(
                     "Coding tool quota exhausted — permanently failing job %s", job_id

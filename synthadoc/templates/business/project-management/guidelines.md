@@ -1,0 +1,8 @@
+- Write project charters with: objective, scope, out-of-scope, key deliverables, timeline, budget, and success criteria
+- Record all significant project decisions with: date, decision, decision-maker, options considered, and rationale
+- Cross-link project pages with their RAID (Risks, Assumptions, Issues, Dependencies) log and stakeholder map
+- Track milestones with planned date, actual date, and variance — delays compound and early visibility is key
+- Flag risks with probability (high/medium/low), impact (high/medium/low), mitigation plan, and risk owner
+- Document stakeholder needs and communication preferences in the stakeholder map
+- Write status reports consistently: this period accomplishments, next period plan, risks and issues, budget status
+- Archive completed projects with the retrospective findings so lessons transfer to future projects

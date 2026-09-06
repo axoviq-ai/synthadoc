@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json as _json
 import os
+import re as _re
 import shutil
 import sys
 from abc import abstractmethod
@@ -79,6 +80,31 @@ def _find_binary(name: str) -> Optional[str]:
             pass
 
     return None
+
+
+def _is_permanent_provider_error(detail: str) -> bool:
+    """Return True when *detail* indicates a permanent, non-retryable CLI error.
+
+    Opencode (and other JSON-output tools) embed machine-readable flags in their
+    error payloads.  A permanent error is one where retrying with the same
+    configuration will always produce the same failure — e.g. a speech model
+    configured as the default, an invalid API key, or a model that does not exist.
+
+    Detection heuristics (any one is sufficient):
+    * ``isRetryable`` is ``false`` (case-insensitive key, JSON boolean)
+    * ``statusCode`` is a 4xx value that is NOT 429 (rate-limit is retryable)
+    """
+    lower = detail.lower()
+    # JSON "isretryable": false  (key can be camelCase or lowercase in the string)
+    if _re.search(r'"isretryable"\s*:\s*false', lower):
+        return True
+    # statusCode: 4xx but not 429
+    m = _re.search(r'"statuscode"\s*:\s*(\d+)', lower)
+    if m:
+        code = int(m.group(1))
+        if 400 <= code < 500 and code != 429:
+            return True
+    return False
 
 
 class CodingToolCLIProvider(LLMProvider):
@@ -195,6 +221,11 @@ class CodingToolCLIProvider(LLMProvider):
                         detail = data.get("result") or data.get("error") or stdout_stripped
                     except _json.JSONDecodeError:
                         detail = stdout_stripped
+            # Permanent errors (wrong model type, invalid key, model not found) should
+            # fail the job immediately — no retry budget should be consumed.
+            if _is_permanent_provider_error(detail or ""):
+                from synthadoc.errors import CodingToolPermanentError
+                raise CodingToolPermanentError(self._tool_binary, detail or "(no detail)")
             raise RuntimeError(
                 f"{self._tool_binary}: exited with code {proc.returncode}"
                 + (f": {detail}" if detail else "")

@@ -1,0 +1,8 @@
+- Source from primary documents first: SEC filings (10-K, 10-Q, 8-K), earnings call transcripts, and prospectuses
+- Record investment thesis, entry rationale, and target return for every position in the investments page
+- Cross-link company pages with their corresponding deal and financial model pages using [[slug]] syntax
+- Flag conflicting valuation assumptions with ⚠ and cite both sources so the analyst can adjudicate
+- Note the date and source of all market data — prices, rates, and multiples become stale quickly
+- Track capital structure, debt covenants, and maturity schedule on company pages
+- Distinguish between management guidance, analyst consensus, and your own estimates
+- Archive superseded models with a lifecycle note explaining why the update was made

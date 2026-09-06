@@ -61,6 +61,9 @@ Examples:
     # Creates isolated test pages with broken citations, verifies confirm-gate
     # handling and slug-filter behaviour, cleans up pages on exit.
     python -X utf8 tests/live/run_all.py --suite broken_citation_resolver
+
+    # Run template install live test (installs and tears down a fresh template wiki)
+    python -X utf8 tests/live/run_all.py --suite template_install
 """
 import argparse
 import atexit
@@ -100,6 +103,7 @@ SUITES = {
     "citation_faithfulness":    "test_citation_faithfulness_live.py",
     "orphan_resolver":          "test_orphan_resolver_live.py",
     "broken_citation_resolver": "test_broken_citation_resolver_live.py",
+    "template_install":         "live_template_install_test.py",
 }
 
 PASS = "\033[92mPASS\033[0m"
@@ -210,6 +214,7 @@ def main() -> None:
         "citation_faithfulness":    [],
         "orphan_resolver":          [],
         "broken_citation_resolver": [],
+        "template_install":         [],
     }
     # Per-suite environment
     suite_env = {
@@ -226,6 +231,7 @@ def main() -> None:
         "citation_faithfulness":    {**os.environ, "SYNTHADOC_URL": base},
         "orphan_resolver":          {**os.environ, "SYNTHADOC_URL": base},
         "broken_citation_resolver": {**os.environ, "SYNTHADOC_URL": base},
+        "template_install":         {**os.environ},
     }
 
     print(f"\n{'='*64}")

@@ -1,0 +1,8 @@
+- Record underwriting assumptions explicitly: vacancy rate, rent growth, expense ratio, cap rate, exit cap rate, and hold period
+- Cross-link property pages with their market pages, financial models, and deal memos
+- Track NOI components precisely: gross scheduled income, vacancy allowance, EGI, operating expenses, and net operating income
+- Flag assumptions that deviate significantly from market consensus with the source and rationale
+- Document debt terms for each deal: lender, loan amount, LTV, rate, amortization, and maturity
+- Note property condition findings from physical inspection or due diligence on property pages
+- Track capital expenditure reserves and planned CapEx by property
+- Archive closed investments with the hold period, realized IRR, and equity multiple vs. underwriting targets
