@@ -165,3 +165,111 @@ async def tool_cost_estimate(ctx: "WorkflowContext", page_count: int) -> dict:
     )
 
     return {**estimate, "confirmed": confirm_result.get("confirmed", False)}
+
+
+# ---------------------------------------------------------------------------
+# _format_cr_summary / tool_format_summary
+# ---------------------------------------------------------------------------
+
+def _format_cr_summary(
+    fixed: list[dict],
+    unresolved: list[dict],
+    skipped: list[str],
+    wiki_status: dict,
+) -> str:
+    """Render the Contradiction Resolver final summary as a markdown string.
+
+    Shared by both execution paths:
+    • API-provider path  — called from ``tool_format_summary`` (LLM tool call)
+    • CLI-provider path  — called from ``tool_format_summary`` (direct Python call)
+
+    Args:
+        fixed:       [{"slug": str, "note": str}, ...]
+        unresolved:  [{"slug": str, "reason": str}, ...]
+        skipped:     [slug_str, ...]
+        wiki_status: raw dict from tool_get_wiki_status (may contain "tool"/"message" keys
+                     that are filtered out)
+    """
+    # Use markdown list syntax ("- item") so the WebUI renders each entry
+    # on its own line.  Plain bullet characters (•) collapse into a single
+    # paragraph in markdown; "- " list items do not.
+    lines: list[str] = ["**Contradiction Resolver — Complete**", ""]
+
+    lines.append(f"**✅ Fixed ({len(fixed)}):**")
+    if fixed:
+        for item in fixed:
+            lines.append(f"- {item['slug']} — {item['note']}")
+    else:
+        lines.append("- (none)")
+
+    lines.append("")
+    lines.append(f"**⚠ Unresolved ({len(unresolved)}):**")
+    if unresolved:
+        for item in unresolved:
+            lines.append(f"- {item['slug']}: {item['reason']}")
+        lines.append("")
+        lines.append(
+            "_Tip: run the full resolver with provider=anthropic for "
+            "multi-strategy retry on unresolved pages._"
+        )
+    else:
+        lines.append("- (none)")
+
+    lines.append("")
+    lines.append(f"**⏭ Skipped ({len(skipped)}):**")
+    if skipped:
+        for s in skipped:
+            lines.append(f"- {s}")
+    else:
+        lines.append("- (none)")
+
+    status_str = ", ".join(
+        f"{k}: {v}" for k, v in wiki_status.items()
+        if k not in ("tool", "message")
+    )
+    lines.append("")
+    lines.append(f"**Wiki status (live):** {status_str}")
+
+    return "\n".join(lines)
+
+
+async def tool_format_summary(
+    ctx: "WorkflowContext",
+    fixed: list[dict],
+    unresolved: list[dict],
+    skipped: list[str],
+) -> dict:
+    """Format and emit the final Contradiction Resolver summary.
+
+    Used by the CLI-provider path (``run_for_cli_provider`` awaits this directly).
+    Fetches live wiki lifecycle counts, renders the summary via ``_format_cr_summary``,
+    and emits ``token`` + ``final_text`` SSE events via ``ctx.send_sse_event`` so they
+    reach the client through the shared SSE queue.
+
+    The API-provider path does NOT call this tool — the LLM outputs the summary as
+    plain text using the format template in the system prompt step 5.  This function
+    is therefore only called from Python (the CLI path), never from the tool-call loop.
+
+    Args:
+        fixed:      [{"slug": str, "note": str}, ...]
+        unresolved: [{"slug": str, "reason": str}, ...]
+        skipped:    [slug_str, ...]
+
+    Returns:
+        {"status": "success", "summary": <formatted text>}
+    """
+    from synthadoc.agents.workflows._tools import (  # avoid circular at module level
+        tool_get_wiki_status,
+    )
+
+    wiki_status = await tool_get_wiki_status(ctx)
+    text = _format_cr_summary(fixed, unresolved, skipped, wiki_status)
+
+    # Emit token first so the content streams, then final_text to signal end-of-stream.
+    # The CLI-provider path calls this as the last step of run_for_cli_provider;
+    # the run_for_cli_provider generator returns immediately after, so no further
+    # events enter the queue before the _SENTINEL that closes the drain loop.
+    await ctx.send_sse_event("token", {"text": text})
+    await ctx.send_sse_event("final_text", {"text": text})
+
+    return {"status": "success", "summary": text}
