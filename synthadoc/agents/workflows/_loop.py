@@ -156,8 +156,8 @@ async def run_tool_call_loop(
                 if tool_count > budget:
                     msg = (
                         f"⚠ The workflow reached its tool-call limit ({budget} calls) "
-                        f"before completing all pages. Pages not yet processed remain "
-                        f"contradicted. You can re-run the resolver to continue."
+                        f"before completing all tasks. "
+                        f"You can re-run the workflow to continue where it left off."
                     )
                     for i in range(0, max(len(msg), 1), _CHUNK_SIZE):
                         yield {"event": "token", "data": {"text": msg[i : i + _CHUNK_SIZE]}}
