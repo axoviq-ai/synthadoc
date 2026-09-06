@@ -234,6 +234,7 @@ def run_tier1(wiki_root: pathlib.Path) -> None:
             "--target", str(wiki_root.parent),
             "--template", TEMPLATE,
             "--domain", DOMAIN,
+            "--port", str(PORT),
         ],
         expect_exit=0,
     )
