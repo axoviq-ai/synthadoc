@@ -521,13 +521,9 @@ Lint and scaffold run automatically on a weekly schedule (Sunday 2 AM and 3 AM).
 
 → Schedule customisation and scaffold zone rules: [templates/README.md — Scheduled maintenance](synthadoc/templates/README.md#scheduled-maintenance)
 
-### 6. Set up routing, context packs, and MCP
+### 6. Context packs and MCP
 
-Once the wiki spans multiple topic areas, add a routing table to scope queries to the relevant branch:
-
-```bash
-synthadoc routing init   # one-time: generate ROUTING.md from current index.md
-```
+Template installs include a pre-configured `ROUTING.md` that automatically scopes queries to the relevant topic branch — no setup needed. If you installed without a template, generate it once with `synthadoc routing init`.
 
 Build a cited excerpt pack for use in an external agent prompt:
 
