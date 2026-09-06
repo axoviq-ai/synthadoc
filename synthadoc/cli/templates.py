@@ -43,5 +43,5 @@ def list_templates_cmd() -> None:
                 typer.echo(f"    {domain:<26}{desc}")
 
     typer.echo()
-    typer.echo("  Install:  synthadoc install <name> --template <category/domain>")
-    typer.echo("  Example:  synthadoc install my-wiki --template finance/investment")
+    typer.echo("  Install:  synthadoc install <name> --target <dir> --template <category/domain>")
+    typer.echo("  Example:  synthadoc install my-wiki --target ~/wikis --template finance/investment")
