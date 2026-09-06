@@ -93,6 +93,38 @@ Because `staging_policy = all` is active on a fresh template install, every
 ingest — whether from a URL or a local file — lands in the `candidates/` queue
 for review before it is written to your wiki.
 
+### Reviewing and promoting candidates
+
+After ingesting, review what was staged and decide what to keep.
+
+**CLI**
+
+```bash
+# See everything waiting for review
+synthadoc candidates list -w <wiki>
+
+# Promote a single page by its slug
+synthadoc candidates promote investment-policy-statement -w <wiki>
+
+# Promote everything at once (once you're satisfied with the batch)
+synthadoc candidates promote --all -w <wiki>
+
+# Discard a page that doesn't belong in this wiki
+synthadoc candidates discard q1-2025-earnings -w <wiki>
+
+# Discard everything and start fresh
+synthadoc candidates discard --all -w <wiki>
+```
+
+**Obsidian plugin**
+
+Open the command palette and run **"Candidates: review candidate pages..."**.
+A modal opens with a paginated table showing every staged page alongside its
+confidence badge (`high` / `medium` / `low`). Tick the checkboxes for the
+pages you want to act on, then click **Promote Selected** or **Discard Selected**.
+The modal also shows the current staging policy and links to the Staging settings
+if you want to change it.
+
 ---
 
 ## Finance
