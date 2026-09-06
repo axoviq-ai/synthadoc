@@ -257,7 +257,7 @@ def install_cmd(
     if not demo:
         typer.echo()
         typer.echo(f"Next steps:")
-        typer.echo(f”  1. Edit .synthadoc/config.toml -- set your LLM provider and API key”)
+        typer.echo(f”  1. Edit {name}/.synthadoc/config.toml -- set your LLM provider and API key”)
         typer.echo(f"  2. Set as default wiki:   synthadoc use {name}")
         typer.echo(f"  3. Start the server:      synthadoc serve")
         typer.echo(f"  4. Ingest your sources:   synthadoc ingest <file>")
