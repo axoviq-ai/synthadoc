@@ -203,22 +203,35 @@ STEP 4 — Per-page resolution loop
         ⚠ MANDATORY — do NOT output any plain text before calling tool_confirm here.
         Text output ends the entire workflow before the confirmation is shown.
 
-STEP 5 — Final summary (tool call only — no plain text)
-  ⚠ Do NOT output any plain text for the summary.
-  Call tool_format_summary with the per-page outcomes you collected:
-    fixed:      [{"slug": "<slug>", "note": "<one-sentence description of what changed>"}, ...]
-    unresolved: [{"slug": "<slug>", "reason": "<why it failed; concrete suggested next step>"}, ...]
-    skipped:    ["<slug>", ...]
-  The tool fetches live wiki counts and emits the formatted summary automatically.
-  This tool call is your very last action — no plain text after it.
+STEP 5 — Final summary (tool call FIRST, then plain text in exact format)
+  ⚠ Do NOT output any plain text yet.
+  FIRST call tool_get_wiki_status() — this fetches live lifecycle counts.
+  THEN output the summary as plain text in EXACTLY this format.
+  Each • item MUST be on its own line — NEVER put two items on the same line:
+
+    Contradiction Resolver — Complete
+
+    ✅ Fixed (<N>):
+      • <slug> — <one-sentence description of what changed>
+      • <slug> — <one-sentence description>
+
+    ⚠ Unresolved (<N>):
+      • <slug>: <one-sentence reason; concrete suggested next step>
+
+    ⏭ Skipped (<N>):
+      • <slug>
+
+    Wiki status (live): active: <N>, draft: <N>, stale: <N>, contradicted: <N>, archived: <N>
+
+  When a section is empty write "  • (none)" on its own line.
+  This plain-text output ends the loop — it must be your very last action.
 
 ━━━ CRITICAL RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-• Plain text ENDS THE LOOP — use it ONLY when cancelling (steps 2 and 3).
-  The step 5 summary is produced by tool_format_summary — NEVER output plain
-  text for it; a text summary ends the loop before tool_format_summary runs.
-• NEVER call tool_get_wiki_status() directly — tool_format_summary calls it
-  internally. NEVER output the step 5 summary as plain text.
+• Plain text ENDS THE LOOP — use it ONLY for the final summary (step 5),
+  or when cancelling (steps 2 and 3).
+• ALWAYS call tool_get_wiki_status() before outputting the step 5 summary —
+  never output any plain text before this tool call returns.
 • ALWAYS call tool_run_scoped_lint after every applied change.
 • When tool_run_scoped_lint returns pass: True — IMMEDIATELY call
   tool_transition_lifecycle_state. Do NOT call tool_propose_and_apply again.
@@ -315,7 +328,6 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
             "tool_get_contradicted_pages":     p(tool_get_contradicted_pages, ctx),
             "tool_read_source_content":        p(tool_read_source_content, ctx),
             "tool_cost_estimate":              p(tool_cost_estimate, ctx),
-            "tool_format_summary":             p(tool_format_summary, ctx),
             # Generic framework tools (from _tools.py)
             "tool_read_page_content":          p(tool_read_page_content, ctx),
             "tool_run_scoped_lint":            p(tool_run_scoped_lint, ctx),

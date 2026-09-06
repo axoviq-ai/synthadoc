@@ -238,15 +238,14 @@ async def tool_format_summary(
 ) -> dict:
     """Format and emit the final Contradiction Resolver summary.
 
-    Fetches live wiki lifecycle counts, renders the summary via
-    ``_format_cr_summary``, and emits ``token`` + ``final_text`` SSE events so
-    the result reaches the client via the same channel as the rest of the stream.
+    Used by the CLI-provider path (``run_for_cli_provider`` awaits this directly).
+    Fetches live wiki lifecycle counts, renders the summary via ``_format_cr_summary``,
+    and emits ``token`` + ``final_text`` SSE events via ``ctx.send_sse_event`` so they
+    reach the client through the shared SSE queue.
 
-    This is the LAST tool call of the workflow on both execution paths:
-    • API-provider path: LLM calls this tool instead of writing plain text.
-    • CLI-provider path: ``run_for_cli_provider`` awaits this directly.
-
-    Neither path needs to emit any further plain text or events after this call.
+    The API-provider path does NOT call this tool — the LLM outputs the summary as
+    plain text using the format template in the system prompt step 5.  This function
+    is therefore only called from Python (the CLI path), never from the tool-call loop.
 
     Args:
         fixed:      [{"slug": str, "note": str}, ...]
@@ -263,6 +262,10 @@ async def tool_format_summary(
     wiki_status = await tool_get_wiki_status(ctx)
     text = _format_cr_summary(fixed, unresolved, skipped, wiki_status)
 
+    # Emit token first so the content streams, then final_text to signal end-of-stream.
+    # The CLI-provider path calls this as the last step of run_for_cli_provider;
+    # the run_for_cli_provider generator returns immediately after, so no further
+    # events enter the queue before the _SENTINEL that closes the drain loop.
     await ctx.send_sse_event("token", {"text": text})
     await ctx.send_sse_event("final_text", {"text": text})
 
