@@ -432,12 +432,14 @@ def run_tier2(wiki_root: pathlib.Path) -> None:
             r_ingest = run(["ingest", str(tmp_file), "-w", WIKI_NAME])
             ingest_out = r_ingest.stdout + r_ingest.stderr
             if r_ingest.returncode == 0:
-                info(f"ingest enqueued: {ingest_out.strip()[:120]}")
+                # ingest CLI prints two lines; show only the first ("Enqueued … -> job …")
+                first_line = ingest_out.strip().splitlines()[0] if ingest_out.strip() else ""
+                info(f"ingest enqueued: {first_line[:120]}")
             else:
                 warn("ingest enqueue", f"exit {r_ingest.returncode}: {ingest_out[:200]}")
 
-            # Poll job status every 5s until it reaches a terminal state
-            # (or 90s elapses for slow providers like opencode on cold start).
+            # Poll job status via the server's HTTP API every 5s until the job
+            # reaches a terminal state (or 90s elapses for slow providers).
             # Pages may land in wiki/candidates/ (staging_policy=all) or
             # directly in wiki/ when staging is bypassed.
             job_id = _extract_job_id(ingest_out)
@@ -445,25 +447,21 @@ def run_tier2(wiki_root: pathlib.Path) -> None:
             final_status: JobStatus | None = None
             while time.monotonic() < deadline:
                 if job_id:
-                    r_jobs = run(["jobs", "-w", WIKI_NAME, "--json"])
                     try:
-                        jobs_data = json.loads(r_jobs.stdout)
-                        job_rec = next(
-                            (j for j in jobs_data
-                             if j.get("id", "").startswith(job_id[:8])),
-                            None,
-                        )
-                        if job_rec:
-                            try:
-                                js = JobStatus(job_rec.get("status", ""))
-                            except ValueError:
-                                js = None
-                            info(f"job {job_id[:8]} status: {js.value if js else '?'}")
-                            if js and js.is_terminal:
-                                final_status = js
-                                break
-                    except (json.JSONDecodeError, KeyError, TypeError):
-                        pass
+                        with urllib.request.urlopen(
+                            f"http://127.0.0.1:{PORT}/jobs/{job_id}", timeout=5
+                        ) as resp:
+                            job_rec = json.loads(resp.read())
+                        try:
+                            js = JobStatus(job_rec.get("status", ""))
+                        except ValueError:
+                            js = None
+                        info(f"job {job_id[:8]} status: {js.value if js else '?'}")
+                        if js and js.is_terminal:
+                            final_status = js
+                            break
+                    except Exception:
+                        pass  # server not yet ready or transient error
                 time.sleep(5)
 
             # Report where the ingest output landed.
