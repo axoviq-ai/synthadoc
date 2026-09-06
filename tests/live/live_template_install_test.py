@@ -8,12 +8,12 @@ template, validates all expected outputs, then tears everything down.
  PREREQUISITES
 ────────────────────────────────────────────────────────────────────────────────
   No LLM API key is required by this test script.  Tier 2 auto-detects
-  whichever coding-tool CLI is available (Claude Code → "claude", or
-  Opencode → "opencode") and patches the wiki's config.toml to use it
-  before the server starts.  Both CLIs are keyless — they use their own
-  subscription auth.  If neither is found, Tier 2 still runs but
-  ingest/scaffold LLM calls will fall back to the default gemini provider
-  (which does need GEMINI_API_KEY set in the environment).
+  whichever coding-tool CLI is available — Opencode is preferred (free,
+  "opencode" binary), falling back to Claude Code ("claude" binary) — and
+  patches the wiki's config.toml to use it before the server starts.
+  Both CLIs are keyless; they use their own subscription auth.  If
+  neither is found, Tier 2 still runs but ingest/scaffold LLM calls fall
+  back to the default gemini provider (which needs GEMINI_API_KEY set).
 
   Tier 1 requires no running server (offline file/config validation).
   Tier 2 starts a local server automatically on port 7091; if the server
@@ -135,10 +135,10 @@ def check(
 def _find_coding_provider() -> tuple[str, str] | None:
     """Return (provider_name, binary) for the first available coding-tool CLI.
 
-    Preference order: Claude Code ("claude") → Opencode ("opencode").
+    Preference order: Opencode ("opencode", free) → Claude Code ("claude").
     Returns None when neither binary is found in PATH.
     """
-    for provider_name, binary in (("claude-code", "claude"), ("opencode", "opencode")):
+    for provider_name, binary in (("opencode", "opencode"), ("claude-code", "claude")):
         if shutil.which(binary):
             return provider_name, binary
     return None
