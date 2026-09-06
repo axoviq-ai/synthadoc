@@ -107,6 +107,37 @@ def _oneline(text: str, maxlen: int = 160) -> str:
     return " | ".join(parts)[:maxlen]
 
 
+def _poll_job(job_id: str, label: str) -> JobStatus | None:
+    """Poll a job via the server HTTP API until it reaches a terminal state.
+
+    Logs each status transition as INFO. Returns the final JobStatus, or None
+    if the server's job_timeout_seconds (default 600s) elapses without a
+    terminal state — which means the job is stuck, not just slow.
+    """
+    deadline = time.monotonic() + 600  # matches server default job_timeout_seconds
+    last_logged: str | None = None
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{PORT}/jobs/{job_id}", timeout=5
+            ) as resp:
+                job_rec = json.loads(resp.read())
+            try:
+                js = JobStatus(job_rec.get("status", ""))
+            except ValueError:
+                js = None
+            status_val = js.value if js else "?"
+            if status_val != last_logged:
+                info(f"{label} {job_id[:8]} status: {status_val}")
+                last_logged = status_val
+            if js and js.is_terminal:
+                return js
+        except Exception:
+            pass  # server not yet ready or transient error
+        time.sleep(5)
+    return None  # job did not reach terminal state within server timeout
+
+
 # ── CLI runner ────────────────────────────────────────────────────────────────
 
 
@@ -452,35 +483,10 @@ def run_tier2(wiki_root: pathlib.Path) -> None:
             else:
                 warn("ingest enqueue", f"exit {r_ingest.returncode}: {ingest_out[:200]}")
 
-            # Poll job status via the server's HTTP API every 5s until the job
-            # reaches a terminal state (or 180s elapses for slow providers like
-            # opencode on cold start). Pages may land in wiki/candidates/
-            # (staging_policy=all) or directly in wiki/ when staging is bypassed.
+            # Poll until the job reaches a terminal state. Pages may land in
+            # wiki/candidates/ (staging_policy=all) or directly in wiki/.
             job_id = _extract_job_id(ingest_out)
-            deadline = time.monotonic() + 180
-            final_status: JobStatus | None = None
-            last_logged_status: str | None = None
-            while time.monotonic() < deadline:
-                if job_id:
-                    try:
-                        with urllib.request.urlopen(
-                            f"http://127.0.0.1:{PORT}/jobs/{job_id}", timeout=5
-                        ) as resp:
-                            job_rec = json.loads(resp.read())
-                        try:
-                            js = JobStatus(job_rec.get("status", ""))
-                        except ValueError:
-                            js = None
-                        status_val = js.value if js else "?"
-                        if status_val != last_logged_status:
-                            info(f"job {job_id[:8]} status: {status_val}")
-                            last_logged_status = status_val
-                        if js and js.is_terminal:
-                            final_status = js
-                            break
-                    except Exception:
-                        pass  # server not yet ready or transient error
-                time.sleep(5)
+            final_status: JobStatus | None = _poll_job(job_id, "ingest job") if job_id else None
 
             # Report where the ingest output landed.
             if final_status == JobStatus.COMPLETED:
@@ -501,10 +507,10 @@ def run_tier2(wiki_root: pathlib.Path) -> None:
                      f"job {job_id[:8] if job_id else '?'} "
                      f"reached status={final_status.value!r}")
             else:
-                # Still in_progress after 180s — the LLM provider is slow but
-                # the job is running; this is not a template-install failure.
-                info(f"job {job_id[:8] if job_id else '?'} still in progress after 180s "
-                     f"(provider is slow — job will complete after the test ends)")
+                # Job did not reach terminal state within 600s — may be stuck.
+                warn("ingest job",
+                     f"job {job_id[:8] if job_id else '?'} did not complete within "
+                     f"600s — check server logs for errors")
         finally:
             tmp_file.unlink(missing_ok=True)
 
@@ -525,19 +531,31 @@ def run_tier2(wiki_root: pathlib.Path) -> None:
             purpose_before = _text_before_marker(purpose_path)
             info(f"purpose.md before scaffold ({len(purpose_before)} chars above marker)")
 
-            r_scaffold = run(["scaffold", "-w", WIKI_NAME])
-            scaffold_out = r_scaffold.stdout + r_scaffold.stderr
-            if r_scaffold.returncode != 0:
-                # A client-side timeout (ERR-QUERY-001) means the scaffold job
-                # was accepted but the provider is slow — the server keeps running
-                # the job in the background.  Not a test failure.
-                if "ERR-QUERY-001" in scaffold_out or "timed out" in scaffold_out.lower():
-                    info(f"scaffold enqueued (client timeout — job running in background): "
-                         f"{_oneline(scaffold_out)}")
-                else:
-                    warn("scaffold run", f"exit {r_scaffold.returncode}: {_oneline(scaffold_out)}")
-            else:
-                info(f"scaffold completed: {_oneline(scaffold_out)}")
+            # Enqueue scaffold via the server HTTP API (avoids the 60s
+            # client-side timeout that the CLI's synchronous wait imposes).
+            scaffold_job_id: str | None = None
+            try:
+                req_data = json.dumps({"domain": DOMAIN}).encode()
+                req = urllib.request.Request(
+                    f"http://127.0.0.1:{PORT}/jobs/scaffold",
+                    data=req_data,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    scaffold_resp = json.loads(resp.read())
+                scaffold_job_id = scaffold_resp.get("job_id")
+                info(f"scaffold enqueued: job {scaffold_job_id[:8] if scaffold_job_id else '?'}")
+            except Exception as exc:
+                warn("scaffold enqueue", f"POST /jobs/scaffold failed: {exc}")
+
+            scaffold_status = _poll_job(scaffold_job_id, "scaffold job") if scaffold_job_id else None
+            if scaffold_status == JobStatus.COMPLETED:
+                info("scaffold completed")
+            elif scaffold_status is not None:
+                warn("scaffold job", f"reached status={scaffold_status.value!r}")
+            elif scaffold_job_id:
+                warn("scaffold job", "did not complete within 600s — check server logs")
 
             purpose_after = _text_before_marker(purpose_path)
             if purpose_before.strip() == purpose_after.strip():
