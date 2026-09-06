@@ -1,0 +1,8 @@
+- Record supplier profiles with: name, category, tier (Tier 1/2/3), lead time, payment terms, and quality certification status
+- Cross-link supplier pages with their contracts, performance scorecards, and approved parts/materials
+- Document procurement procedures with: requisition process, approval matrix, PO issuance, and receiving verification
+- Flag sole-source suppliers for critical components — note the contingency plan for supply disruption
+- Track inventory metrics (turns, days on hand, stockout frequency) on material pages
+- Record logistics contracts with: carrier name, service type, lanes, rates, and SLA commitments
+- Note Incoterms and import/export compliance requirements on international supplier pages
+- Archive discontinued suppliers with the reason, alternative supplier, and transition date
