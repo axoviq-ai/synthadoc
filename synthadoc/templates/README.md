@@ -127,6 +127,73 @@ if you want to change it.
 
 ---
 
+## Scheduled maintenance
+
+Every template install pre-registers two recurring jobs that run automatically
+while the server is up:
+
+| Job | Default schedule | What it does |
+|---|---|---|
+| `lint run` | Weekly, Sunday 2:00 AM | Validates all wiki pages — checks for orphan links, citation presence, and contradictions; promotes clean draft pages to `active` |
+| `scaffold` | Weekly, Sunday 3:00 AM | Fills in any missing scaffold stubs for pages that have grown beyond their initial structure |
+
+### Viewing the current schedule
+
+```bash
+synthadoc schedule list -w <wiki>
+```
+
+The output shows each job's ID, cron expression, next scheduled run, last run
+time, and last result — you need the ID to modify or remove a job.
+
+### Changing a schedule
+
+There is no edit-in-place command. The workflow is remove the existing entry,
+then add a replacement:
+
+```bash
+# 1. Find the job ID
+synthadoc schedule list -w <wiki>
+
+# 2. Remove the existing entry
+synthadoc schedule remove <id> -w <wiki>
+
+# 3. Add a replacement with your preferred cron expression
+#    Example: run lint at 9 AM every weekday instead of Sunday 2 AM
+synthadoc schedule add --op "lint run" --cron "0 9 * * 1-5" -w <wiki>
+
+#    Example: run scaffold every Sunday at midnight
+synthadoc schedule add --op "scaffold" --cron "0 0 * * 0" -w <wiki>
+```
+
+### Disabling a job entirely
+
+Run `schedule list` to get the ID, then `schedule remove <id> -w <wiki>`.
+The job will not be recreated automatically — it only returns if you run
+`schedule add` again or reinstall the wiki from the template.
+
+### Running a job on demand
+
+```bash
+# Trigger lint immediately, outside the schedule
+synthadoc schedule run --op "lint run" -w <wiki>
+
+# Trigger scaffold immediately
+synthadoc schedule run --op "scaffold" -w <wiki>
+```
+
+### Viewing run history
+
+```bash
+synthadoc schedule history -w <wiki>        # last 20 runs
+synthadoc schedule history -w <wiki> -n 50  # last 50 runs
+```
+
+Each row shows the run ID, operation, start time, duration, and status
+(`success` / `failed`). Failed runs include the error detail.
+
+---
+
 ## Finance
 
 | Template | Domain | Install command |
