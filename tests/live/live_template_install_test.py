@@ -93,6 +93,20 @@ def info(msg: str) -> None:
     print(f"  {INFO} {msg}")
 
 
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+
+def _oneline(text: str, maxlen: int = 160) -> str:
+    """Collapse multi-line CLI output to a single display line.
+
+    Joins non-empty lines with ' | ' so the full content stays visible without
+    leaking newlines into the terminal (which would strip the leading [INFO]/
+    [WARN] prefix from continuation lines).
+    """
+    parts = [ln.strip() for ln in text.strip().splitlines() if ln.strip()]
+    return " | ".join(parts)[:maxlen]
+
+
 # ── CLI runner ────────────────────────────────────────────────────────────────
 
 
@@ -439,11 +453,11 @@ def run_tier2(wiki_root: pathlib.Path) -> None:
                 warn("ingest enqueue", f"exit {r_ingest.returncode}: {ingest_out[:200]}")
 
             # Poll job status via the server's HTTP API every 5s until the job
-            # reaches a terminal state (or 90s elapses for slow providers).
-            # Pages may land in wiki/candidates/ (staging_policy=all) or
-            # directly in wiki/ when staging is bypassed.
+            # reaches a terminal state (or 180s elapses for slow providers like
+            # opencode on cold start). Pages may land in wiki/candidates/
+            # (staging_policy=all) or directly in wiki/ when staging is bypassed.
             job_id = _extract_job_id(ingest_out)
-            deadline = time.monotonic() + 90
+            deadline = time.monotonic() + 180
             final_status: JobStatus | None = None
             while time.monotonic() < deadline:
                 if job_id:
@@ -483,9 +497,10 @@ def run_tier2(wiki_root: pathlib.Path) -> None:
                      f"job {job_id[:8] if job_id else '?'} "
                      f"reached status={final_status.value!r}")
             else:
-                warn("ingest job",
-                     f"job {job_id[:8] if job_id else '?'} still running after 90s "
-                     f"(provider may be slow; check the server logs)")
+                # Still in_progress after 180s — the LLM provider is slow but
+                # the job is running; this is not a template-install failure.
+                info(f"job {job_id[:8] if job_id else '?'} still in progress after 180s "
+                     f"(provider is slow — job will complete after the test ends)")
         finally:
             tmp_file.unlink(missing_ok=True)
 
@@ -514,11 +529,11 @@ def run_tier2(wiki_root: pathlib.Path) -> None:
                 # the job in the background.  Not a test failure.
                 if "ERR-QUERY-001" in scaffold_out or "timed out" in scaffold_out.lower():
                     info(f"scaffold enqueued (client timeout — job running in background): "
-                         f"{scaffold_out.strip()[:120]}")
+                         f"{_oneline(scaffold_out)}")
                 else:
-                    warn("scaffold run", f"exit {r_scaffold.returncode}: {scaffold_out[:200]}")
+                    warn("scaffold run", f"exit {r_scaffold.returncode}: {_oneline(scaffold_out)}")
             else:
-                info(f"scaffold completed: {scaffold_out.strip()[:120]}")
+                info(f"scaffold completed: {_oneline(scaffold_out)}")
 
             purpose_after = _text_before_marker(purpose_path)
             if purpose_before.strip() == purpose_after.strip():
