@@ -7,17 +7,22 @@ template, validates all expected outputs, then tears everything down.
 ────────────────────────────────────────────────────────────────────────────────
  PREREQUISITES
 ────────────────────────────────────────────────────────────────────────────────
-  An ANTHROPIC_API_KEY (or OPENAI_API_KEY) is required only for Tier 2.
-  Tier 1 runs without any LLM key.
+  No LLM API key is required by this test script. The test client calls
+  synthadoc CLI commands via subprocess — it is the synthadoc server that
+  makes LLM calls. Configure the LLM provider in the wiki's config.toml or
+  set the key in the environment before starting the server.
+
+  Tier 1 requires no running server (offline file/config validation).
+  Tier 2 starts a local server automatically on port 7091; if the server
+  fails to start, Tier 2 checks are skipped with a warning.
 
 ────────────────────────────────────────────────────────────────────────────────
  HOW TO RUN
 ────────────────────────────────────────────────────────────────────────────────
-  # Tier 1 only (no LLM key required)
+  # Tier 1 only (no server or LLM key required)
   python -X utf8 tests/live/live_template_install_test.py
 
-  # Full run (Tier 1 + Tier 2 with live server + ingest + scaffold)
-  $env:ANTHROPIC_API_KEY = "sk-..."
+  # Full run (Tier 1 + Tier 2 — server starts automatically on port 7091)
   python -X utf8 tests/live/live_template_install_test.py
 
   # Via run_all.py
@@ -463,11 +468,8 @@ def main() -> None:
     try:
         run_tier1(wiki_root)
 
-        if os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("OPENAI_API_KEY"):
-            info("LLM key detected — running Tier 2 (live server + ingest + scaffold)")
-            run_tier2(wiki_root)
-        else:
-            warn("Tier 2 skipped", "no LLM key in environment (set ANTHROPIC_API_KEY to enable)")
+        info("Running Tier 2 (live server + ingest + scaffold)")
+        run_tier2(wiki_root)
     finally:
         teardown(wiki_root, tmpdir)
 
