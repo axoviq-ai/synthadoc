@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-or-later
+﻿# SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
 from __future__ import annotations
 
@@ -114,7 +114,7 @@ def install_cmd(
     """
     dest = (Path(target) / name).resolve()
 
-    # Registry check first — same name cannot be installed twice regardless of --target path
+    # Registry check first â€” same name cannot be installed twice regardless of --target path
     registry = _read_registry()
     if name in registry:
         entry = registry[name]
@@ -142,7 +142,15 @@ def install_cmd(
             "Use --demo for built-in demo wikis, or --template for a domain template.",
         )
 
-    # ── Port resolution ────────────────────────────────────────────────────────
+    # Validate template ref before creating any directories â€” an invalid ref must
+    # not leave an orphaned unregistered directory on disk.
+    if template:
+        try:
+            guidelines = get_template_guidelines(template)
+        except (ValueError, FileNotFoundError) as exc:
+            E.cli_error(E.WIKI_INVALID, str(exc), 'Run "synthadoc templates list" for available templates.')
+
+    # â”€â”€ Port resolution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if port is not None:
         effective_port = port
     else:
@@ -162,10 +170,10 @@ def install_cmd(
                 f"Available demos: {', '.join(_DEMOS)}",
             )
         shutil.copytree(_DEMOS[name], dest, ignore=shutil.ignore_patterns("_*", "__pycache__"))
-        # Ensure operational directories exist — the demo template may not include
+        # Ensure operational directories exist â€” the demo template may not include
         # empty dirs (git doesn't track them) and shutil.copytree won't create them.
         (dest / ".synthadoc" / "logs").mkdir(parents=True, exist_ok=True)
-        # Write config.toml — .synthadoc/ is git-ignored so it can't be bundled
+        # Write config.toml â€” .synthadoc/ is git-ignored so it can't be bundled
         # in the demo template; generate it here the same way init_wiki does.
         (dest / ".synthadoc" / "config.toml").write_text(
             _CONFIG_TOML.format(domain=domain, port=effective_port),
@@ -175,10 +183,7 @@ def install_cmd(
         init_wiki(dest, domain, port=effective_port)
 
     if template:
-        try:
-            guidelines = get_template_guidelines(template)
-        except ValueError as exc:
-            E.cli_error(E.WIKI_INVALID, str(exc), 'Run "synthadoc templates list" for available templates.')
+        # `guidelines` already resolved before init_wiki â€” ref is valid at this point
 
         # Overwrite skill files with domain-specific guidelines
         skill_kw = dict(domain=domain, guidelines=guidelines, port=effective_port)
@@ -209,7 +214,7 @@ def install_cmd(
             sched.add(op="lint run", cron="0 2 * * 0")   # weekly Sunday 2am
             sched.add(op="scaffold", cron="0 3 * * 0")   # weekly Sunday 3am
         except Exception:
-            pass  # scheduler DB may not exist until first server run — non-fatal
+            pass  # scheduler DB may not exist until first server run â€” non-fatal
 
     registry = _read_registry()
     registry[name] = {
@@ -222,7 +227,7 @@ def install_cmd(
     }
     _write_registry(registry)
 
-    # ── Obsidian plugin ────────────────────────────────────────────────────
+    # â”€â”€ Obsidian plugin â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     _plugin_ok = False
     _dataview_status = "skipped"
     if _PLUGIN_SRC.exists():
@@ -252,7 +257,7 @@ def install_cmd(
     if not demo:
         typer.echo()
         typer.echo(f"Next steps:")
-        typer.echo(f"  1. Edit .synthadoc/config.toml — set your LLM provider and API key")
+        typer.echo(f"  1. Edit .synthadoc/config.toml â€” set your LLM provider and API key")
         typer.echo(f"  2. Set as default wiki:   synthadoc use {name}")
         typer.echo(f"  3. Start the server:      synthadoc serve")
         typer.echo(f"  4. Ingest your sources:   synthadoc ingest <file>")
@@ -278,7 +283,7 @@ def list_cmd():
 
     if show_type:
         typer.echo(f"{'NAME':<30}  {'INSTALLED':<12}  {'PORT':<6}  TYPE")
-        typer.echo("─" * 70)
+        typer.echo("â”€" * 70)
         for name, entry in registry.items():
             cat = entry.get("category", "")
             tmpl = entry.get("template", "")
@@ -287,9 +292,9 @@ def list_cmd():
             elif entry.get("demo"):
                 type_col = "demo"
             else:
-                type_col = "—"
+                type_col = "â€”"
             installed = entry.get("installed", "")
-            port_str = str(entry["port"]) if entry.get("port") else "—"
+            port_str = str(entry["port"]) if entry.get("port") else "â€”"
             typer.echo(f"{name:<30}  {installed:<12}  {port_str:<6}  {type_col}")
     else:
         for name, entry in registry.items():
@@ -306,7 +311,7 @@ def uninstall_cmd(
     """Permanently delete an installed wiki.
 
     Requires two confirmations: a y/N prompt followed by typing the wiki name.
-    There is no --yes flag — this operation is irreversible.
+    There is no --yes flag â€” this operation is irreversible.
     """
     name = _normalise_wiki_name(name)
     registry = _read_registry()
@@ -324,7 +329,7 @@ def uninstall_cmd(
     dest = Path(registry[name]["path"])
 
     if not dest.exists():
-        typer.echo(f"Wiki '{name}' no longer exists on disk — removing from registry.")
+        typer.echo(f"Wiki '{name}' no longer exists on disk â€” removing from registry.")
         del registry[name]
         _write_registry(registry)
         raise typer.Exit(0)
@@ -335,10 +340,10 @@ def uninstall_cmd(
         abort=True,
     )
 
-    # Second confirmation — must type the exact name
+    # Second confirmation â€” must type the exact name
     typed = typer.prompt(f"Type '{name}' to confirm permanent deletion")
     if typed != name:
-        typer.echo("Name did not match — aborted. Nothing was deleted.")
+        typer.echo("Name did not match â€” aborted. Nothing was deleted.")
         raise typer.Exit(1)
 
     shutil.rmtree(dest)

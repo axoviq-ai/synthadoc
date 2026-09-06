@@ -1261,7 +1261,7 @@ a standard blank wiki install first, then applies the template delta on top:
 3. `wiki/purpose.md` and `wiki/index.md` are overwritten with template versions
 4. Template stub pages are copied into `wiki/` (additive — existing pages kept)
 5. Staging is enabled: `[ingest] staging_policy = "all"` in config
-6. Weekly lint and scaffold jobs are pre-registered in the scheduler
+6. A weekly lint job is pre-registered in the scheduler
 
 **Discovery:** `synthadoc templates list` shows all demos and templates together.
 New template folders appear automatically — no hardcoded registry needed.

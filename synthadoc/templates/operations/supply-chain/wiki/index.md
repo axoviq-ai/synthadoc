@@ -26,3 +26,5 @@ sources: []
 
 ## Getting Started
 [[seeds]] — Recommended starter sources and first ingest checklist
+
+<!-- synthadoc:scaffold -->
