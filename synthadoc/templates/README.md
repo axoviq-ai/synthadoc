@@ -220,27 +220,43 @@ Any number of paragraphs and links are fine.
 
 **`purpose.md` — one marker per section**
 
-The marker appears once inside each `##` section. Write your own text *above*
-the marker in any section; scaffold preserves it and refreshes only the content
-below. Sections you add yourself (any `##` heading with *no* marker) are
-kept entirely as-is — scaffold treats them as user-owned.
+The marker appears once inside each standard `##` section. What happens on a
+re-run depends on whether the section heading matches one of the template's
+built-in sections (Overview, What Belongs in This Wiki, What Is Out of Scope,
+Intended Audience, Primary Use Cases):
+
+| Section heading | Has marker? | What scaffold does |
+|---|---|---|
+| Standard (matches template) | ✅ | Content **above** marker preserved; content below refreshed |
+| Standard (matches template) | ❌ | **Entire section replaced** and marker re-added |
+| User-added (not in template) | ❌ | Kept entirely as-is |
+
+So writing above the marker is the safe way to persist your own text within a
+standard section. For content you want scaffold to leave completely alone, add
+a new `##` section whose heading does not match any template section name —
+scaffold identifies user-added sections by the fact that it has no replacement
+content for that heading.
 
 ```markdown
 ## Overview
 
-Our internal compliance and risk management knowledge base.  ← preserved
+Our internal note: this wiki covers EMEA compliance only.  ← preserved
 
 <!-- synthadoc:scaffold -->
 
-This wiki captures...   ← regenerated each run
+This wiki captures...   ← refreshed each run
 
-## My Custom Section    ← no marker → never touched by scaffold
+## Overview             ← if you deleted the marker, scaffold would
+                           replace this entire section on the next run
+
+## My Custom Section    ← heading not in template → kept entirely as-is
 
 Notes only I maintain go here.
 ```
 
-**In summary:** write your persistent content above the marker. Add new
-sections with no marker if you want scaffold to leave them entirely alone.
+**In summary:** write your persistent content above the marker in standard
+sections. To protect content from scaffold entirely, add a new section with a
+heading that does not match any of the five standard section names.
 
 ---
 
