@@ -260,6 +260,23 @@ heading that does not match any of the five standard section names.
 
 ---
 
+## Business
+
+| Template | Domain | Install command |
+|---|---|---|
+| `product-management` | Product requirements, roadmaps, customer research, and feature specs | `synthadoc install my-wiki --template business/product-management` |
+| `marketing` | Campaigns, content strategy, brand guidelines, and channel performance | `synthadoc install my-wiki --template business/marketing` |
+| `hr-people` | HR policies, org design, job frameworks, and performance management | `synthadoc install my-wiki --template business/hr-people` |
+| `project-management` | Project tracking, decisions, stakeholder updates, and post-project reviews | `synthadoc install my-wiki --template business/project-management` |
+
+## Education
+
+| Template | Domain | Install command |
+|---|---|---|
+| `course-design` | Curriculum development, lesson plans, and learning objectives | `synthadoc install my-wiki --template education/course-design` |
+| `personal-learning` | Study notes, Zettelkasten, book summaries, and learning progress | `synthadoc install my-wiki --template education/personal-learning` |
+| `corporate-training` | Onboarding programs, SOPs, and employee skill development | `synthadoc install my-wiki --template education/corporate-training` |
+
 ## Finance
 
 | Template | Domain | Install command |
@@ -268,15 +285,6 @@ heading that does not match any of the five standard section names.
 | `mortgage` | Loan origination, underwriting, and servicing workflows | `synthadoc install my-wiki --template finance/mortgage` |
 | `banking` | Retail and commercial banking operations and products | `synthadoc install my-wiki --template finance/banking` |
 | `accounting` | Financial reporting, audit, and tax compliance | `synthadoc install my-wiki --template finance/accounting` |
-
-## Technology
-
-| Template | Domain | Install command |
-|---|---|---|
-| `software-dev` | Codebase docs, ADRs, runbooks, and engineering decisions | `synthadoc install my-wiki --template technology/software-dev` |
-| `devops` | Infrastructure, CI/CD, SRE, and incident management | `synthadoc install my-wiki --template technology/devops` |
-| `ai-ml` | ML research, model tracking, experiments, and benchmarks | `synthadoc install my-wiki --template technology/ai-ml` |
-| `data-engineering` | Pipelines, data quality, schema registry, and lineage | `synthadoc install my-wiki --template technology/data-engineering` |
 
 ## Healthcare
 
@@ -294,14 +302,6 @@ heading that does not match any of the five standard section names.
 | `compliance` | Regulatory requirements, audit trails, and risk register | `synthadoc install my-wiki --template legal/compliance` |
 | `ip-management` | Patents, trademarks, and licensing agreements | `synthadoc install my-wiki --template legal/ip-management` |
 
-## Research
-
-| Template | Domain | Install command |
-|---|---|---|
-| `academic` | Academic papers, literature review, hypotheses, and experimental notes | `synthadoc install my-wiki --template research/academic` |
-| `science-lab` | Lab protocols, experiments, instrument logs, and findings | `synthadoc install my-wiki --template research/science-lab` |
-| `market-research` | Consumer insights, competitive intelligence, and survey research | `synthadoc install my-wiki --template research/market-research` |
-
 ## Operations
 
 | Template | Domain | Install command |
@@ -309,14 +309,6 @@ heading that does not match any of the five standard section names.
 | `manufacturing-qc` | Quality control, defect tracking, process specs, and standards | `synthadoc install my-wiki --template operations/manufacturing-qc` |
 | `facility-management` | Equipment maintenance, work orders, and asset tracking | `synthadoc install my-wiki --template operations/facility-management` |
 | `supply-chain` | Vendor management, logistics, procurement, and inventory | `synthadoc install my-wiki --template operations/supply-chain` |
-
-## Education
-
-| Template | Domain | Install command |
-|---|---|---|
-| `course-design` | Curriculum development, lesson plans, and learning objectives | `synthadoc install my-wiki --template education/course-design` |
-| `personal-learning` | Study notes, Zettelkasten, book summaries, and learning progress | `synthadoc install my-wiki --template education/personal-learning` |
-| `corporate-training` | Onboarding programs, SOPs, and employee skill development | `synthadoc install my-wiki --template education/corporate-training` |
 
 ## Real Estate
 
@@ -326,14 +318,22 @@ heading that does not match any of the five standard section names.
 | `property-management` | Lease management, tenant relations, maintenance, and work orders | `synthadoc install my-wiki --template real-estate/property-management` |
 | `development` | Construction, permitting, zoning, and contractor management | `synthadoc install my-wiki --template real-estate/development` |
 
-## Business
+## Research
 
 | Template | Domain | Install command |
 |---|---|---|
-| `product-management` | Product requirements, roadmaps, customer research, and feature specs | `synthadoc install my-wiki --template business/product-management` |
-| `marketing` | Campaigns, content strategy, brand guidelines, and channel performance | `synthadoc install my-wiki --template business/marketing` |
-| `hr-people` | HR policies, org design, job frameworks, and performance management | `synthadoc install my-wiki --template business/hr-people` |
-| `project-management` | Project tracking, decisions, stakeholder updates, and post-project reviews | `synthadoc install my-wiki --template business/project-management` |
+| `academic` | Academic papers, literature review, hypotheses, and experimental notes | `synthadoc install my-wiki --template research/academic` |
+| `science-lab` | Lab protocols, experiments, instrument logs, and findings | `synthadoc install my-wiki --template research/science-lab` |
+| `market-research` | Consumer insights, competitive intelligence, and survey research | `synthadoc install my-wiki --template research/market-research` |
+
+## Technology
+
+| Template | Domain | Install command |
+|---|---|---|
+| `software-dev` | Codebase docs, ADRs, runbooks, and engineering decisions | `synthadoc install my-wiki --template technology/software-dev` |
+| `devops` | Infrastructure, CI/CD, SRE, and incident management | `synthadoc install my-wiki --template technology/devops` |
+| `ai-ml` | ML research, model tracking, experiments, and benchmarks | `synthadoc install my-wiki --template technology/ai-ml` |
+| `data-engineering` | Pipelines, data quality, schema registry, and lineage | `synthadoc install my-wiki --template technology/data-engineering` |
 
 ---
 
