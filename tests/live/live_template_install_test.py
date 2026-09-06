@@ -127,9 +127,12 @@ def _poll_job(job_id: str, label: str) -> JobStatus | None:
             except ValueError:
                 js = None
             status_val = js.value if js else "?"
-            if status_val != last_logged:
-                info(f"{label} {job_id[:8]} status: {status_val}")
-                last_logged = status_val
+            error_val = job_rec.get("error") or ""
+            log_key = f"{status_val}|{error_val}"
+            if log_key != last_logged:
+                detail = f" — error: {error_val[:200]}" if error_val else ""
+                info(f"{label} {job_id[:8]} status: {status_val}{detail}")
+                last_logged = log_key
             if js and js.is_terminal:
                 return js
         except Exception:
