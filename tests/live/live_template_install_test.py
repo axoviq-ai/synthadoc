@@ -459,6 +459,7 @@ def run_tier2(wiki_root: pathlib.Path) -> None:
             job_id = _extract_job_id(ingest_out)
             deadline = time.monotonic() + 180
             final_status: JobStatus | None = None
+            last_logged_status: str | None = None
             while time.monotonic() < deadline:
                 if job_id:
                     try:
@@ -470,7 +471,10 @@ def run_tier2(wiki_root: pathlib.Path) -> None:
                             js = JobStatus(job_rec.get("status", ""))
                         except ValueError:
                             js = None
-                        info(f"job {job_id[:8]} status: {js.value if js else '?'}")
+                        status_val = js.value if js else "?"
+                        if status_val != last_logged_status:
+                            info(f"job {job_id[:8]} status: {status_val}")
+                            last_logged_status = status_val
                         if js and js.is_terminal:
                             final_status = js
                             break
