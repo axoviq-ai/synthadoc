@@ -10,12 +10,12 @@ sources: []
 
 ## Recommended first ingests
 
-**ISM supply chain standards (free resources)**
+**BLS Manufacturing industry data (public)**
 ```
-synthadoc ingest "https://www.ismworld.org/supply-management-news-and-reports/reports/ism-research-and-summaries/" -w <wiki>
+synthadoc ingest "https://www.bls.gov/iag/tgs/iag31-33.htm" -w <wiki>
 ```
 
-**US CBP import requirements overview**
+**US CBP import requirements overview (public)**
 ```
 synthadoc ingest "https://www.cbp.gov/trade/basic-import-export" -w <wiki>
 ```

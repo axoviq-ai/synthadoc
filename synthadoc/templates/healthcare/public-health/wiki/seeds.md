@@ -10,12 +10,12 @@ sources: []
 
 ## Recommended first ingests
 
-**CDC WONDER data portal (public)**
+**CDC FastStats — leading causes and prevalence data (public)**
 ```
-synthadoc ingest "https://wonder.cdc.gov/" -w <wiki>
+synthadoc ingest "https://www.cdc.gov/nchs/fastats/leading-causes-of-death.htm" -w <wiki>
 ```
 
-**WHO Global Health Observatory**
+**WHO Global Health Observatory (public)**
 ```
 synthadoc ingest "https://www.who.int/data/gho" -w <wiki>
 ```
@@ -24,7 +24,7 @@ synthadoc ingest "https://www.who.int/data/gho" -w <wiki>
 
 - `CDC community health assessment MAPP methodology toolkit` — assessment framework
 - `WHO Global Burden of Disease study 2019 results` — global disease burden
-- `"<condition>" incidence prevalence United States 2023 CDC WONDER` — US surveillance
+- `"<condition>" incidence prevalence United States 2023 CDC` — US surveillance
 - `Community Preventive Services Task Force recommendations` — evidence-based interventions
 - `health equity social determinants framework Healthy People 2030` — equity frameworks
 

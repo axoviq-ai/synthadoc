@@ -10,12 +10,12 @@ sources: []
 
 ## Recommended first ingests
 
-**CDC clinical guidelines (public)**
+**CDC MMWR (Morbidity and Mortality Weekly Report — free)**
 ```
-synthadoc ingest "https://www.cdc.gov/guidelines/" -w <wiki>
+synthadoc ingest "https://www.cdc.gov/mmwr/index.html" -w <wiki>
 ```
 
-**USPSTF recommendations (free)**
+**USPSTF preventive care recommendations (free)**
 ```
 synthadoc ingest "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation-topics" -w <wiki>
 ```

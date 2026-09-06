@@ -10,9 +10,9 @@ sources: []
 
 ## Recommended first ingests
 
-**ISO 9001 standard overview (free preview)**
+**NIST manufacturing standards and resources (public)**
 ```
-synthadoc ingest "https://www.iso.org/standard/62085.html" -w <wiki>
+synthadoc ingest "https://www.nist.gov/manufacturing" -w <wiki>
 ```
 
 **ASQ quality tools reference (free)**

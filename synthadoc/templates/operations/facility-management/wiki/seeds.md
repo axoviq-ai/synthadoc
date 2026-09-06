@@ -10,14 +10,14 @@ sources: []
 
 ## Recommended first ingests
 
-**BOMA facility management standards (public overview)**
+**DOE commercial buildings resources (public)**
 ```
-synthadoc ingest "https://www.boma.org/BOMA/Research/BOMA/Research-Reports.aspx" -w <wiki>
+synthadoc ingest "https://www.energy.gov/eere/buildings/commercial-buildings" -w <wiki>
 ```
 
-**OSHA facility inspection requirements**
+**OSHA General Industry standards index (public)**
 ```
-synthadoc ingest "https://www.osha.gov/facilities" -w <wiki>
+synthadoc ingest "https://www.osha.gov/laws-regs/regulations/standardnumber/1910" -w <wiki>
 ```
 
 ## Recommended web searches

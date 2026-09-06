@@ -10,14 +10,14 @@ sources: []
 
 ## Recommended first ingests
 
-**FDA Drugs@FDA database (public)**
+**FDA drug development process overview (public)**
 ```
-synthadoc ingest "https://www.accessdata.fda.gov/scripts/cder/daf/" -w <wiki>
+synthadoc ingest "https://www.fda.gov/patients/drug-development-process" -w <wiki>
 ```
 
-**ClinicalTrials.gov for your indication**
+**PubMed clinical trials for your indication (free)**
 ```
-synthadoc ingest "https://clinicaltrials.gov/search?cond=<indication>" -w <wiki>
+synthadoc ingest "https://pubmed.ncbi.nlm.nih.gov/?term=<indication>&filter=pubt.clinicaltrial" -w <wiki>
 ```
 
 ## Recommended web searches

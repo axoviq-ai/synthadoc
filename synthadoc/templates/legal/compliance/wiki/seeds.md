@@ -15,9 +15,9 @@ sources: []
 synthadoc ingest "https://www.federalregister.gov/agencies/<agency-slug>" -w <wiki>
 ```
 
-**COSO internal control resources (free)**
+**NIST Risk Management Framework overview (free)**
 ```
-synthadoc ingest "https://www.coso.org/resources/Pages/default.aspx" -w <wiki>
+synthadoc ingest "https://csrc.nist.gov/Projects/risk-management/about-rmf" -w <wiki>
 ```
 
 ## Recommended web searches

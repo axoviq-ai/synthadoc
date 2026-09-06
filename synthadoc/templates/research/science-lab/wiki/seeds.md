@@ -10,14 +10,14 @@ sources: []
 
 ## Recommended first ingests
 
-**Your lab's published papers**
+**Your lab's published papers (PubMed search)**
 ```
 synthadoc ingest "https://pubmed.ncbi.nlm.nih.gov/?term=<PI+last+name>+<institution>" -w <wiki>
 ```
 
-**Protocol repositories (protocols.io, free)**
+**PubMed Central — free full-text protocol and methods papers**
 ```
-synthadoc ingest "https://www.protocols.io/browse" -w <wiki>
+synthadoc ingest "https://www.ncbi.nlm.nih.gov/pmc/" -w <wiki>
 ```
 
 ## Recommended web searches

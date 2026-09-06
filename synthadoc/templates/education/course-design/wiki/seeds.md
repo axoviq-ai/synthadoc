@@ -10,14 +10,14 @@ sources: []
 
 ## Recommended first ingests
 
-**Bloom's Taxonomy reference (free)**
+**Bloom's Taxonomy reference — Vanderbilt CFT (free)**
 ```
 synthadoc ingest "https://cft.vanderbilt.edu/guides-sub-pages/blooms-taxonomy/" -w <wiki>
 ```
 
-**ADDIE model instructional design guide**
+**Wikipedia: ADDIE instructional design model**
 ```
-synthadoc ingest "https://www.instructionaldesign.org/models/addie/" -w <wiki>
+synthadoc ingest "https://en.wikipedia.org/wiki/ADDIE_Model" -w <wiki>
 ```
 
 ## Recommended web searches

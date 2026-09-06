@@ -10,9 +10,9 @@ sources: []
 
 ## Recommended first ingests
 
-**Papers With Code SOTA benchmarks**
+**arXiv search for your model or task (public)**
 ```
-synthadoc ingest "https://paperswithcode.com/sota" -w <wiki>
+synthadoc ingest "https://arxiv.org/search/?query=<model+or+task>&searchtype=all&start=0" -w <wiki>
 ```
 
 **Hugging Face model card for your base model**

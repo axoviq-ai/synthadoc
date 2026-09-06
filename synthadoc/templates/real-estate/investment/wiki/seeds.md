@@ -10,21 +10,21 @@ sources: []
 
 ## Recommended first ingests
 
-**CoStar market data (if available) or public alternatives**
+**NAR commercial real estate research (public)**
 ```
-synthadoc ingest "https://www.cbre.com/insights/reports" -w <wiki>
+synthadoc ingest "https://www.nar.realtor/research-and-statistics/commercial-real-estate-statistics" -w <wiki>
 ```
 
-**NCREIF property index data (public)**
+**FRED residential rental vacancy rate (Federal Reserve)**
 ```
-synthadoc ingest "https://www.ncreif.org/data-products/npi/" -w <wiki>
+synthadoc ingest "https://fred.stlouisfed.org/series/RRVRUSQ156N" -w <wiki>
 ```
 
 ## Recommended web searches
 
 - `commercial real estate cap rate by asset class 2024` — market cap rates
 - `NOI calculation net operating income real estate formula` — underwriting fundamentals
-- `apartment market vacancy rent growth 2024 CBRE JLL` — multifamily market
+- `apartment market vacancy rent growth 2024` — multifamily market data
 - `DCF real estate model IRR equity multiple tutorial` — financial modeling
 - `REIT sector analysis office industrial retail 2024` — sector trends
 

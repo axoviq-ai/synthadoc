@@ -12,12 +12,12 @@ sources: []
 
 Seed the wiki with real market context before adding proprietary research.
 
-**SEC EDGAR full-text search (public filings)**
+**SEC EDGAR company filings index (public filings, HTML)**
 ```
-synthadoc ingest "https://efts.sec.gov/LATEST/search-index?q=%22<company>%22&dateRange=custom&startdt=2023-01-01&forms=10-K" -w <wiki>
+synthadoc ingest "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=<ticker>&type=10-K&dateb=&owner=include&count=10" -w <wiki>
 ```
 
-**Federal Reserve economic data (FRED)**
+**Federal Reserve economic data (FRED — 10-year treasury rate)**
 ```
 synthadoc ingest "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DGS10" -w <wiki>
 ```

@@ -10,14 +10,14 @@ sources: []
 
 ## Recommended first ingests
 
-**Statista free reports (public summaries)**
+**US Census Bureau economic indicators (public)**
 ```
-synthadoc ingest "https://www.statista.com/topics/<topic-id>/" -w <wiki>
+synthadoc ingest "https://www.census.gov/economic-indicators/" -w <wiki>
 ```
 
-**US Census Bureau industry data**
+**US Census Bureau NAICS industry codes (public)**
 ```
-synthadoc ingest "https://www.census.gov/eos/www/naics/" -w <wiki>
+synthadoc ingest "https://www.census.gov/naics/" -w <wiki>
 ```
 
 ## Recommended web searches

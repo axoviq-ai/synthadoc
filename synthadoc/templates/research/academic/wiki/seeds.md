@@ -15,9 +15,9 @@ sources: []
 synthadoc ingest "https://arxiv.org/search/?query=<topic>&searchtype=all&start=0" -w <wiki>
 ```
 
-**Semantic Scholar paper search (free API)**
+**Semantic Scholar paper search (free)**
 ```
-synthadoc ingest "https://api.semanticscholar.org/graph/v1/paper/search?query=<topic>" -w <wiki>
+synthadoc ingest "https://www.semanticscholar.org/search?q=<topic>&sort=Relevance" -w <wiki>
 ```
 
 ## Recommended web searches

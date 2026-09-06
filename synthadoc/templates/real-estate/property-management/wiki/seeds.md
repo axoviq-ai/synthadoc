@@ -15,9 +15,9 @@ sources: []
 synthadoc ingest docs/leases/ --batch -w <wiki>
 ```
 
-**Local landlord-tenant law (state legislature website)**
+**Cornell LII landlord-tenant law overview (free)**
 ```
-synthadoc ingest "https://law.justia.com/codes/<state>/landlord-tenant/" -w <wiki>
+synthadoc ingest "https://www.law.cornell.edu/wex/landlord-tenant_law" -w <wiki>
 ```
 
 ## Recommended web searches
