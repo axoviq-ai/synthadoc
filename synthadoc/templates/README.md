@@ -33,6 +33,68 @@ becomes part of your knowledge base.)
 
 ---
 
+## Adding your own content
+
+A template gives you the structure; your sources give it substance. There are two
+ways to bring content in, and you can use both together.
+
+### Option 1 — Ingest web sources (seeds.md)
+
+Open `wiki/seeds.md` in your installed wiki. Each template ships with a curated
+list of public URLs and web-search queries to get you started quickly:
+
+```bash
+# Ingest a recommended URL
+synthadoc ingest "https://www.fdic.gov/regulations/laws/rules/" -w <wiki>
+
+# Ingest via web search
+synthadoc ingest "search for: Bank of Canada rate outlook 2025" -w <wiki>
+```
+
+### Option 2 — Ingest your own local documents
+
+Place your files in the `raw_sources/` folder inside the installed wiki directory.
+This folder is the conventional home for local documents — the backup command
+excludes it with `--no-sources`, and relative paths in ingest commands are resolved
+from there automatically.
+
+**Subfolders are supported** — organise files however makes sense for your domain:
+
+```
+my-finance-wiki/
+├── raw_sources/
+│   ├── reports/
+│   │   ├── q1-2025-earnings.pdf
+│   │   └── q2-2025-earnings.pdf
+│   ├── policies/
+│   │   └── investment-policy-statement.docx
+│   └── market-data.xlsx
+└── wiki/
+    └── ...
+```
+
+Ingest a single file, a subfolder, or everything at once:
+
+```bash
+# Single file (vault-relative path — no need for the full absolute path)
+synthadoc ingest raw_sources/reports/q1-2025-earnings.pdf -w <wiki>
+
+# All files in a subfolder
+synthadoc ingest raw_sources/reports/ --batch -w <wiki>
+
+# Everything in raw_sources/ in one go
+synthadoc ingest raw_sources/ --batch -w <wiki>
+```
+
+**Supported formats:** `.md`, `.txt`, `.pdf`, `.docx`, `.pptx`, `.xlsx`,
+`.csv`, `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.tiff`
+
+Because `staging_policy = all` is active on a fresh template install, every
+ingest — whether from a URL or a local file — lands in the `candidates/` queue
+for review before it is written to your wiki.
+
+---
+
 ## Finance
 
 | Template | Domain | Install command |
