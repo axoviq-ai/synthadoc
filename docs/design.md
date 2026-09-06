@@ -1253,9 +1253,8 @@ and scaffold stubs. Templates are bundled with the package — no network requir
 **Template library:** 30 templates across 9 categories (finance, technology,
 healthcare, legal, research, operations, education, real-estate, business).
 
-**Install flow:** `synthadoc install <name> --template <category/domain>` calls
-`init_wiki()` first (identical to a blank install), then applies the template
-delta on top:
+**Install flow:** `synthadoc install <name> --template <category/domain>` performs
+a standard blank wiki install first, then applies the template delta on top:
 
 1. Agent skill files are regenerated with the template's domain-specific guidelines
 2. `ROUTING.md` is overwritten with the template's query routing table
@@ -1272,8 +1271,8 @@ registry entry. All existing reads use `.get()` — backward compatible with wik
 installed before v1.3.3.
 
 **Extending:** Add a new folder under `synthadoc/templates/<category>/<domain>/`
-with the 7 required files and run `pytest tests/test_template_completeness.py`.
-The completeness test is the quality gate.
+with the 7 required files. The built-in completeness test validates the new
+template automatically — a passing test suite is the quality gate.
 
 ---
 
