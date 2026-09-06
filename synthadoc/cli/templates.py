@@ -26,7 +26,8 @@ def list_templates_cmd() -> None:
             status = f"  (installed at {registry[demo_name]['path']})"
         typer.echo(f"  {demo_name:<30}{status}")
     typer.echo()
-    typer.echo("  Install:  synthadoc install <name> --demo")
+    typer.echo("  Install:  synthadoc install <name> --target <dir> --demo")
+    typer.echo("  Example:  synthadoc install history-of-computing --target ~/wikis --demo")
     typer.echo()
 
     # ── Templates section ──────────────────────────────────────────────────────
