@@ -1,0 +1,8 @@
+- Record every experiment with: hypothesis, dataset version, hyperparameters, training compute, and metric results
+- Cross-link model pages with the experiments that informed each architectural or hyperparameter choice
+- Flag evaluation metrics with the benchmark name, split (test/val), and the date of evaluation
+- Document dataset provenance: source, version, preprocessing steps, and known biases or quality issues
+- Track model versions with semantic versioning; note breaking changes to input/output schemas
+- Record inference cost estimates (tokens/second, cost per 1M tokens) alongside quality metrics
+- Note reproducibility requirements: random seeds, framework versions, and hardware specs
+- Archive negative results — failed experiments are as valuable as successes for future researchers

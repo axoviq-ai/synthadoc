@@ -1,0 +1,8 @@
+- Document each pipeline with: source systems, transformations, destination, schedule, SLA, and owner
+- Record schema versions with semantic versioning; flag breaking changes and the migration path
+- Cross-link dataset pages with the pipelines that produce them and the reports that consume them
+- Track data quality checks: rule name, column, threshold, severity, and current pass rate
+- Document PII fields and their handling (masking, tokenization, deletion schedule) in every relevant dataset page
+- Flag data freshness SLAs with the expected update cadence and the alert threshold
+- Record the business definition of every metric at its authoritative source — not in each report separately
+- Archive deprecated datasets and pipelines with sunset date and migration instructions
