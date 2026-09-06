@@ -7,10 +7,13 @@ template, validates all expected outputs, then tears everything down.
 ────────────────────────────────────────────────────────────────────────────────
  PREREQUISITES
 ────────────────────────────────────────────────────────────────────────────────
-  No LLM API key is required by this test script. The test client calls
-  synthadoc CLI commands via subprocess — it is the synthadoc server that
-  makes LLM calls. Configure the LLM provider in the wiki's config.toml or
-  set the key in the environment before starting the server.
+  No LLM API key is required by this test script.  Tier 2 auto-detects
+  whichever coding-tool CLI is available (Claude Code → "claude", or
+  Opencode → "opencode") and patches the wiki's config.toml to use it
+  before the server starts.  Both CLIs are keyless — they use their own
+  subscription auth.  If neither is found, Tier 2 still runs but
+  ingest/scaffold LLM calls will fall back to the default gemini provider
+  (which does need GEMINI_API_KEY set in the environment).
 
   Tier 1 requires no running server (offline file/config validation).
   Tier 2 starts a local server automatically on port 7091; if the server
@@ -124,6 +127,40 @@ def check(
             return r
     ok(label, (contains or [""])[0])
     return r
+
+
+# ── Coding-tool provider helpers ──────────────────────────────────────────────
+
+
+def _find_coding_provider() -> tuple[str, str] | None:
+    """Return (provider_name, binary) for the first available coding-tool CLI.
+
+    Preference order: Claude Code ("claude") → Opencode ("opencode").
+    Returns None when neither binary is found in PATH.
+    """
+    for provider_name, binary in (("claude-code", "claude"), ("opencode", "opencode")):
+        if shutil.which(binary):
+            return provider_name, binary
+    return None
+
+
+def _patch_provider(wiki_root: pathlib.Path, provider_name: str) -> None:
+    """Replace the [agents] default provider line in config.toml.
+
+    Rewrites only the uncommented ``default = { ... }`` line so that the
+    server subprocess uses a keyless coding-tool CLI instead of the gemini
+    default written by `synthadoc install`.
+    """
+    import re
+    config_path = wiki_root / ".synthadoc" / "config.toml"
+    text = config_path.read_text(encoding="utf-8")
+    text = re.sub(
+        r"^(default\s*=\s*\{)[^}]*(})",
+        f'default = {{ provider = "{provider_name}" }}',
+        text,
+        flags=re.MULTILINE,
+    )
+    config_path.write_text(text, encoding="utf-8")
 
 
 # ── Server helpers ────────────────────────────────────────────────────────────
@@ -354,6 +391,20 @@ def run_tier1(wiki_root: pathlib.Path) -> None:
 
 
 def run_tier2(wiki_root: pathlib.Path) -> None:
+
+    # ── [8a] provider detection & config patch ────────────────────────────────
+    print("\n[8a] provider detection")
+    coding = _find_coding_provider()
+    if coding:
+        provider_name, binary = coding
+        _patch_provider(wiki_root, provider_name)
+        ok("provider patched",
+           f"config.toml → provider = {provider_name!r} (binary: {binary})")
+    else:
+        warn("provider detection",
+             "neither 'claude' nor 'opencode' found in PATH — "
+             "ingest/scaffold will use the default gemini provider "
+             "(set GEMINI_API_KEY if you want LLM calls to succeed)")
 
     # ── [8] start server ──────────────────────────────────────────────────────
     print("\n[8] start server")
