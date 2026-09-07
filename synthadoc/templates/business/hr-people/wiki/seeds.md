@@ -43,8 +43,32 @@ synthadoc ingest "https://www.shrm.org/business-solutions/partner-products/emplo
 
 ## First steps checklist
 
-- [ ] Ingest your employee handbook and core HR policies
-- [ ] Create a job framework page for your most critical function
-- [ ] Document your compensation philosophy in [[compensation]]
-- [ ] Create your current org structure in [[org-structure]]
-- [ ] Run scaffold to build the index
+- [ ] **Ingest your employee handbook and core HR policies**:
+  ```
+  synthadoc ingest docs/employee-handbook.pdf -w <wiki>
+  synthadoc ingest docs/hr-policies/ --batch -w <wiki>
+  ```
+  Populates [[employee-handbook]] and [[hr-policies]].
+
+- [ ] **Document your career ladders** — ingest your job leveling framework:
+  ```
+  synthadoc ingest docs/career-ladders/ --batch -w <wiki>
+  ```
+  Populates [[job-frameworks]].
+
+- [ ] **Document your compensation philosophy** — ingest your comp policy or total rewards framework:
+  ```
+  synthadoc ingest docs/compensation-philosophy.md -w <wiki>
+  ```
+  Populates [[compensation]].
+
+- [ ] **Log a performance review** — copy `raw_sources/performance/template-performance-review.md`, fill it in, then:
+  ```
+  synthadoc ingest raw_sources/performance/<employee>-<period>.md -w <wiki>
+  ```
+  Populates [[performance-management]].
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```

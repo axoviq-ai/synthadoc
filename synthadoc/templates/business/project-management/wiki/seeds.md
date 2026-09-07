@@ -43,8 +43,31 @@ synthadoc ingest "https://simplystakeholders.com/stakeholder-mapping-template" -
 
 ## First steps checklist
 
-- [ ] Create a project charter for your current highest-priority project
-- [ ] Populate the RAID log with the top 5 risks and open issues
-- [ ] Build a stakeholder map for the project
-- [ ] Ingest your most recent status report
-- [ ] Run scaffold to build the index
+- [ ] **Create a project charter** — copy `raw_sources/charters/template-project-charter.md`, get sponsor approval, then:
+  ```
+  synthadoc ingest raw_sources/charters/<project>.md -w <wiki>
+  ```
+  Populates [[project-charters]] and [[projects]].
+
+- [ ] **Populate the RAID log** — ingest your risks, assumptions, issues, and dependencies:
+  ```
+  synthadoc ingest docs/raid-log.xlsx -w <wiki>
+  ```
+  Populates [[raid-log]].
+
+- [ ] **Build a stakeholder map** — ingest your stakeholder analysis:
+  ```
+  synthadoc ingest docs/stakeholder-analysis.md -w <wiki>
+  ```
+  Populates [[stakeholder-map]].
+
+- [ ] **Ingest your most recent status report**:
+  ```
+  synthadoc ingest docs/status-reports/<latest>.md -w <wiki>
+  ```
+  Populates [[status-reports]].
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```

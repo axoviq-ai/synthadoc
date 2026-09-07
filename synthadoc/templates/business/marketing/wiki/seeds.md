@@ -43,8 +43,31 @@ synthadoc ingest "https://blog.socialmediastrategiessummit.com/free-content-cale
 
 ## First steps checklist
 
-- [ ] Ingest your brand guidelines document
-- [ ] Document your core value proposition in [[messaging]]
-- [ ] Create a campaign page for your most recent or active campaign
-- [ ] Define your top 5 target keywords in [[seo]]
-- [ ] Run scaffold to build the index
+- [ ] **Ingest your brand guidelines** — captures logo, color, typography, and voice standards:
+  ```
+  synthadoc ingest docs/brand/brand-guidelines.pdf -w <wiki>
+  ```
+  Populates [[brand-guidelines]] and [[messaging]].
+
+- [ ] **Document your active campaign** — copy `raw_sources/campaigns/template-campaign-brief.md`, fill in objective and channels, then:
+  ```
+  synthadoc ingest raw_sources/campaigns/<campaign>.md -w <wiki>
+  ```
+  Populates [[campaigns]] and [[campaign-calendar]].
+
+- [ ] **Ingest your content strategy document**:
+  ```
+  synthadoc ingest docs/content-strategy.md -w <wiki>
+  ```
+  Populates [[content-strategy]] and [[seo]].
+
+- [ ] **Ingest channel performance report**:
+  ```
+  synthadoc ingest docs/analytics/channel-report-<YYYY-MM>.pdf -w <wiki>
+  ```
+  Populates [[channel-performance]].
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```

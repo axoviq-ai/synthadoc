@@ -43,8 +43,31 @@ synthadoc ingest "https://uxcam.com/blog/north-star-metric-framework" -w <wiki>
 
 ## First steps checklist
 
-- [ ] Ingest your most recent PRD or product spec document
-- [ ] Document your current OKRs in [[okrs]]
-- [ ] Create a customer research page for your most recent study
-- [ ] Define your north star metric in [[product-metrics]]
-- [ ] Run scaffold to build the index
+- [ ] **Write a PRD for your top feature** — copy `raw_sources/specs/template-prd.md`, fill in problem and user stories, then:
+  ```
+  synthadoc ingest raw_sources/specs/<feature>.md -w <wiki>
+  ```
+  Populates [[prds]] and [[feature-specs]].
+
+- [ ] **Document your OKRs**:
+  ```
+  synthadoc ingest docs/okrs/ --batch -w <wiki>
+  ```
+  Populates [[okrs]] and [[product-metrics]].
+
+- [ ] **Ingest your customer research**:
+  ```
+  synthadoc ingest docs/research/ --batch -w <wiki>
+  ```
+  Populates [[customer-research]] and [[user-feedback]].
+
+- [ ] **Import your roadmap**:
+  ```
+  synthadoc ingest docs/roadmap.pdf -w <wiki>
+  ```
+  Populates [[roadmap]].
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```
