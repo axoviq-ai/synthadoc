@@ -377,10 +377,18 @@ file changes.
 
 ## Adding a new template
 
-1. Create a folder: `synthadoc/templates/<category>/<domain>/`
-2. Add the required files and folders listed in the table above
-3. Run the completeness test: `pytest tests/test_template_completeness.py -k "<domain>" -v`
-4. Commit. The template appears in `synthadoc templates list` automatically.
-
-Pull requests adding new templates are welcome. The completeness test is the
-quality gate — a template that passes it is ready to ship.
+1. Create the template folder. If the category already exists, add only the
+   domain subfolder; if it is a new category, create both:
+   ```
+   synthadoc/templates/<category>/<domain>/
+   ```
+2. Add the files and folders from the structure table above. The completeness
+   test enforces: `description.txt`, `guidelines.md`, `routing.md`, `seeds.md`,
+   `wiki/purpose.md`, `wiki/index.md`, and at least two stub pages with valid
+   frontmatter (`title`, `status`, `confidence`).
+3. Run the completeness test against your new template:
+   ```bash
+   pytest tests/test_template_completeness.py -k "<domain>" -v
+   ```
+4. Commit. The template appears in `synthadoc templates list` automatically —
+   no registration required.
