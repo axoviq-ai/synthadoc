@@ -40,16 +40,18 @@ ways to bring content in, and you can use both together.
 
 ### Option 1 — Ingest web sources (seeds.md)
 
-Open `wiki/seeds.md` in your installed wiki. Each template ships with a curated
-list of public URLs and web-search queries to get you started quickly:
+Open `wiki/seeds.md` in your installed wiki. Each template ships with
+pre-vetted, copy-paste-ready ingest commands for curated public URLs in
+that domain — all checked for accessibility and relevance before release:
 
 ```bash
-# Ingest a recommended URL
 synthadoc ingest "https://www.fdic.gov/regulations/laws/rules/" -w <wiki>
-
-# Ingest via web search
-synthadoc ingest "search for: Bank of Canada rate outlook 2025" -w <wiki>
+synthadoc ingest "https://www.occ.gov/publications-and-resources/publications/index-publications.html" -w <wiki>
 ```
+
+The file also lists recommended search topics for each area of the domain.
+These are plain-text hints to help you find your own additional sources —
+not commands to run directly.
 
 ### Option 2 — Ingest your own local documents
 
@@ -348,7 +350,7 @@ Each template folder contains:
 | `routing.md` | Query routing table — becomes `ROUTING.md` in the installed wiki |
 | `wiki/purpose.md` | Domain include/exclude rules for the ingest agent |
 | `wiki/index.md` | Pre-linked category index with links to all scaffold pages |
-| `wiki/seeds.md` | Getting-started guide with recommended web searches and first ingest URLs |
+| `wiki/seeds.md` | Pre-vetted ingest commands for curated public URLs, plus plain-text topic hints for finding additional sources |
 | `wiki/<stub>.md` × 2–4 | Category scaffold pages with frontmatter and a descriptive body |
 
 The agent skill files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`) are not stored
