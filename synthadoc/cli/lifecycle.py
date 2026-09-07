@@ -114,7 +114,7 @@ def lifecycle_history(
     if index is not None:
         # Single snapshot view
         ts = fmt_ts(result.get("timestamp"), fmt="%Y-%m-%d %H:%M:%S")
-        typer.echo(f"Snapshot {result['index']}  {ts}  {result.get('from_state','?')} → {result['to_state']}")
+        typer.echo(f"Snapshot {result['index']}  {ts}  {result.get('from_state','?')} -> {result['to_state']}")
         typer.echo(f"Reason: {result.get('reason', '')}")
         typer.echo(f"Content: {result.get('content_length', 0):,} chars")
         if show_content and "content" in result:
@@ -126,11 +126,11 @@ def lifecycle_history(
     if not snapshots:
         typer.echo(f"No snapshots recorded for '{slug}'.")
         return
-    typer.echo(f"{'Index':>5}  {'Timestamp':<20}  {'From → To':<28}  {'Content':<16}  Reason")
+    typer.echo(f"{'Index':>5}  {'Timestamp':<20}  {'From -> To':<28}  {'Content':<16}  Reason")
     typer.echo("-" * 100)
     for s in snapshots:
         ts = fmt_ts(s.get("timestamp"), fmt="%Y-%m-%d %H:%M:%S")
-        transition = f"{s.get('from_state') or 'null'} → {s['to_state']}"
+        transition = f"{s.get('from_state') or 'null'} -> {s['to_state']}"
         chars = f"{s.get('content_length', 0):,} chars"
         reason = (s.get("reason") or "")[:40]
         typer.echo(f"{s['index']:>5}  {ts:<20}  {transition:<28}  {chars:<16}  {reason}")
