@@ -43,8 +43,32 @@ synthadoc ingest "https://secureframe.com/hub/nist-800-53/control-mapping" -w <w
 
 ## First steps checklist
 
-- [ ] List all regulations applicable to your entity
-- [ ] Ingest the primary regulation text for your most significant obligation
-- [ ] Create a control page for each key compliance control
-- [ ] Document your top 5 compliance risks in [[risk-register]]
-- [ ] Run scaffold to build the index
+- [ ] **List all regulations applicable to your entity** — ingest your regulatory inventory or obligation register:
+  ```
+  synthadoc ingest docs/compliance/obligation-register.xlsx -w <wiki>
+  ```
+  Or ingest the CFR title directly: `synthadoc ingest "https://www.law.cornell.edu/cfr/text/<title>" -w <wiki>`
+  Populates [[applicable-regulations]] and [[regulatory-requirements]].
+
+- [ ] **Document your first compliance control** — copy `raw_sources/controls/template-control-assessment.md`, fill in all fields, then:
+  ```
+  synthadoc ingest raw_sources/controls/<control-id>-<name>.md -w <wiki>
+  ```
+  Populates [[controls]]. Repeat for each key control.
+
+- [ ] **Ingest your primary compliance policy**:
+  ```
+  synthadoc ingest docs/compliance/policies/<policy-name>.pdf -w <wiki>
+  ```
+  Or batch ingest all policies: `synthadoc ingest docs/compliance/policies/ --batch -w <wiki>`
+  Populates [[policies]].
+
+- [ ] **Document your top 5 compliance risks** in [[risk-register]]:
+  ```
+  synthadoc ingest docs/compliance/risk-register.xlsx -w <wiki>
+  ```
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```

@@ -43,8 +43,32 @@ synthadoc ingest "https://patelip.com/likelihood-of-confusion-recent-ttab-decisi
 
 ## First steps checklist
 
-- [ ] Export your patent portfolio from USPTO Patent Center and ingest as a spreadsheet
-- [ ] Create a patent page for your 3 most commercially important patents
-- [ ] Document your trademark portfolio in [[trademark-portfolio]]
-- [ ] Ingest your IP assignment agreement template
-- [ ] Run scaffold to build the index
+- [ ] **Document your most commercially important patents** — for each key patent, copy `raw_sources/patents/template-patent-record.md`, fill in all fields, then:
+  ```
+  synthadoc ingest raw_sources/patents/<patent-number>-<keyword>.md -w <wiki>
+  ```
+  Or export from USPTO Patent Center and ingest: `synthadoc ingest docs/ip/patent-portfolio.xlsx -w <wiki>`
+  Populates [[patent-portfolio]].
+
+- [ ] **Document your trademark portfolio** — ingest registration certificates or TSDR exports:
+  ```
+  synthadoc ingest docs/ip/trademarks/ --batch -w <wiki>
+  ```
+  Populates [[trademark-portfolio]].
+
+- [ ] **Ingest your IP assignment agreement template**:
+  ```
+  synthadoc ingest docs/ip/ip-assignment-agreement.pdf -w <wiki>
+  ```
+  Populates [[licensing-agreements]] and [[ip-strategy]].
+
+- [ ] **Ingest any existing FTO opinions**:
+  ```
+  synthadoc ingest docs/ip/fto/ --batch -w <wiki>
+  ```
+  Populates [[freedom-to-operate]].
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```

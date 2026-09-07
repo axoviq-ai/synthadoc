@@ -8,4 +8,26 @@ sources: []
 
 # Controls
 
-Compliance control inventory. Each control page records: control ID, description, regulatory obligation(s) addressed, control type (preventive/detective/corrective), owner, testing frequency, evidence required, last test date, last test result, and open exceptions. Cross-link each control to the [[regulatory-requirements]] it satisfies.
+Compliance control inventory. Each control page records:
+
+- **Control identity** — control ID, title, control owner (name and role), department
+- **Control description** — what the control does and how it operates (automated, manual, or hybrid)
+- **Control type** — Preventive (stops the error before it occurs), Detective (identifies errors after the fact), or Corrective (remediation after failure)
+- **Regulatory obligation(s) addressed** — which requirements in [[regulatory-requirements]] this control satisfies
+- **Testing frequency** — how often the control is formally tested (monthly, quarterly, annual)
+- **Evidence required** — the documentation or output that proves the control operated (report, log, sign-off, reconciliation)
+- **Last test date / result** — most recent testing date and result (Pass / Fail / Pass with Exception)
+- **Open exceptions** — outstanding exceptions with remediation owner and target close date
+
+**How to populate:**
+
+1. Copy `raw_sources/controls/template-control-assessment.md`, fill in the control details and test results, then:
+   ```
+   synthadoc ingest raw_sources/controls/<control-id>-<name>.md -w <wiki>
+   ```
+2. Ingest an existing control matrix from your GRC system:
+   ```
+   synthadoc ingest docs/compliance/control-matrix.xlsx -w <wiki>
+   ```
+
+Cross-link each control to the [[regulatory-requirements]] it satisfies, the [[policies]] that mandate the control, and [[audit-findings]] arising from control failures.

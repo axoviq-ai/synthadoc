@@ -42,7 +42,26 @@ synthadoc ingest "https://tenthings.blog/2016/11/30/ten-things-preparing-outside
 
 ## First steps checklist
 
-- [ ] Ingest your master services agreement template
-- [ ] Create a matter page for each active legal matter
-- [ ] Ingest the most relevant regulatory guidance for your primary practice area
-- [ ] Run scaffold to build the index
+- [ ] **Ingest your master services agreement template**:
+  ```
+  synthadoc ingest docs/legal/msa-template.pdf -w <wiki>
+  ```
+  Populates [[contract-templates]]. Also ingest any other standard forms (NDA, SOW, EULA) you use frequently.
+
+- [ ] **Open your first legal matter** — copy `raw_sources/matters/template-matter.md`, fill in all fields, then:
+  ```
+  synthadoc ingest raw_sources/matters/<matter-id>-<title>.md -w <wiki>
+  ```
+  Populates [[matters]]. Repeat for each active matter.
+
+- [ ] **Ingest regulatory guidance** for your primary practice area:
+  ```
+  synthadoc ingest "https://www.law.cornell.edu/cfr/text/<title>/<part>" -w <wiki>
+  ```
+  Or ingest a saved guidance PDF: `synthadoc ingest docs/regulatory/<guidance>.pdf -w <wiki>`
+  Populates [[regulatory-guidance]] and [[applicable-regulations]].
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```
