@@ -92,7 +92,7 @@ def install_cmd(
     """
     dest = (Path(target) / name).resolve()
 
-    # Registry check first — same name cannot be installed twice regardless of --target path
+    # Registry check first - same name cannot be installed twice regardless of --target path
     registry = _read_registry()
     if name in registry:
         entry = registry[name]
@@ -133,10 +133,10 @@ def install_cmd(
                 f"Available demos: {', '.join(_DEMOS)}",
             )
         shutil.copytree(_DEMOS[name], dest, ignore=shutil.ignore_patterns("_*", "__pycache__"))
-        # Ensure operational directories exist — the demo template may not include
+        # Ensure operational directories exist - the demo template may not include
         # empty dirs (git doesn't track them) and shutil.copytree won't create them.
         (dest / ".synthadoc" / "logs").mkdir(parents=True, exist_ok=True)
-        # Write config.toml — .synthadoc/ is git-ignored so it can't be bundled
+        # Write config.toml - .synthadoc/ is git-ignored so it can't be bundled
         # in the demo template; generate it here the same way init_wiki does.
         from synthadoc.cli._init import _CONFIG_TOML
         (dest / ".synthadoc" / "config.toml").write_text(
@@ -190,7 +190,7 @@ def install_cmd(
     if not demo:
         typer.echo()
         typer.echo(f"Next steps:")
-        typer.echo(f"  1. Edit .synthadoc/config.toml — set your LLM provider and API key")
+        typer.echo(f"  1. Edit .synthadoc/config.toml - set your LLM provider and API key")
         typer.echo(f"  2. Set as default wiki:   synthadoc use {name}")
         typer.echo(f"  3. Start the server:      synthadoc serve")
         typer.echo(f"  4. Ingest your sources:   synthadoc ingest <file>")
@@ -218,7 +218,7 @@ def uninstall_cmd(
     """Permanently delete an installed wiki.
 
     Requires two confirmations: a y/N prompt followed by typing the wiki name.
-    There is no --yes flag — this operation is irreversible.
+    There is no --yes flag - this operation is irreversible.
     """
     name = _normalise_wiki_name(name)
     registry = _read_registry()
@@ -236,7 +236,7 @@ def uninstall_cmd(
     dest = Path(registry[name]["path"])
 
     if not dest.exists():
-        typer.echo(f"Wiki '{name}' no longer exists on disk — removing from registry.")
+        typer.echo(f"Wiki '{name}' no longer exists on disk - removing from registry.")
         del registry[name]
         _write_registry(registry)
         raise typer.Exit(0)
@@ -247,10 +247,10 @@ def uninstall_cmd(
         abort=True,
     )
 
-    # Second confirmation — must type the exact name
+    # Second confirmation - must type the exact name
     typed = typer.prompt(f"Type '{name}' to confirm permanent deletion")
     if typed != name:
-        typer.echo("Name did not match — aborted. Nothing was deleted.")
+        typer.echo("Name did not match - aborted. Nothing was deleted.")
         raise typer.Exit(1)
 
     shutil.rmtree(dest)

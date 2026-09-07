@@ -142,7 +142,7 @@ def sync_demo(
             any_output = True
 
     if not any_output:
-        typer.echo("Already up to date — nothing to sync.")
+        typer.echo("Already up to date - nothing to sync.")
 
 
 def _strip_bom(text: str) -> str:

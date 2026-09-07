@@ -77,7 +77,7 @@ def backup_cmd(
 
     size_mb = zip_path.stat().st_size / 1_048_576
     manifest = read_manifest(zip_path)
-    typer.echo(f"\n✓ {zip_path.name}  ({size_mb:.1f} MB)")
+    typer.echo(f"\nOK {zip_path.name}  ({size_mb:.1f} MB)")
     typer.echo(f"  Pages:    {manifest.get('page_count', '?')}")
     typer.echo(f"  Sources:  {'excluded  (use --no-sources to skip next time)' if no_sources else 'included'}")
     typer.echo(f"  Exports:  {'excluded' if no_exports else 'included'}")
@@ -117,7 +117,7 @@ def restore_cmd(
     if not verify_checksum(zip_path, manifest.get("checksum_sha256", "")):
         E.cli_error(
             E.WIKI_INVALID,
-            "Backup checksum mismatch — archive may be corrupted.",
+            "Backup checksum mismatch - archive may be corrupted.",
             "Use a fresh backup copy.",
         )
 
@@ -142,7 +142,7 @@ def restore_cmd(
                 stale_port = int(raw_port)
             typer.echo(
                 f"  Note: '{wiki_name}' was registered at {existing_path} "
-                f"but that path no longer exists — proceeding with restore.",
+                f"but that path no longer exists - proceeding with restore.",
                 err=True,
             )
 
@@ -157,7 +157,7 @@ def restore_cmd(
             typer.echo("Restore aborted.")
             raise typer.Exit(0)
 
-    # Resolve target directory — default to same folder as the zip
+    # Resolve target directory - default to same folder as the zip
     if target is None:
         target_dir = zip_path.parent
         typer.echo(f"Restoring to: {target_dir}")
@@ -184,7 +184,7 @@ def restore_cmd(
         if effective_port != backed_up_port:
             raw = typer.prompt(
                 f"Port {backed_up_port} is taken. Suggested: {effective_port} "
-                f"— press Enter to accept or type a different port",
+                f" -  press Enter to accept or type a different port",
                 default=str(effective_port),
             )
             try:
@@ -221,15 +221,15 @@ def restore_cmd(
             _install_plugin_into(wiki_root)
             _update_community_plugins(wiki_root, _DATAVIEW_ID, _PLUGIN_ID)
 
-    typer.echo(f"\n✓ Restored '{wiki_name}' on port {effective_port}")
+    typer.echo(f"\nOK Restored '{wiki_name}' on port {effective_port}")
     typer.echo(f"  Path: {wiki_root}")
     if manifest.get("obsidian_plugin"):
-        typer.echo(f"  ✓ Obsidian plugin reinstalled")
+        typer.echo(f"  OK Obsidian plugin reinstalled")
     typer.echo(f"\nNext steps:")
-    typer.echo(f"  • Set your LLM API key in your shell environment")
-    typer.echo(f"  • Start the server:   synthadoc serve -w {wiki_name}")
+    typer.echo(f"  - Set your LLM API key in your shell environment")
+    typer.echo(f"  - Start the server:   synthadoc serve -w {wiki_name}")
     if manifest.get("obsidian_plugin"):
-        typer.echo(f"  • Open the vault in Obsidian — plugin is ready")
+        typer.echo(f"  - Open the vault in Obsidian - plugin is ready")
 
 
 def _read_backed_up_port(zip_path: Path) -> int:
@@ -244,7 +244,7 @@ def _read_backed_up_port(zip_path: Path) -> int:
 
 
 def _apply_schedules(wiki_root: Path, wiki_name: str) -> None:
-    """Re-apply OS scheduled tasks from config.toml — non-fatal on error."""
+    """Re-apply OS scheduled tasks from config.toml - non-fatal on error."""
     import subprocess
     import sys
     try:
