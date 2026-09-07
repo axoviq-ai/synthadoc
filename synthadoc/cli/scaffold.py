@@ -40,7 +40,7 @@ def scaffold_cmd(
                     f"Cannot reach server: {exc}",
                     "Run `synthadoc serve` first.")
 
-    typer.echo(f"Queuing scaffold for domain: {domain}…")
+    typer.echo(f"Queuing scaffold for domain: {domain}...")
     try:
         result = post(wiki, "/jobs/scaffold", {"domain": domain})
     except Exception as exc:
@@ -51,7 +51,7 @@ def scaffold_cmd(
     import time
     job_id = result.get("job_id", "?")
     typer.echo(f"Scaffold job queued: {job_id}")
-    typer.echo("Waiting for scaffold to complete…")
+    typer.echo("Waiting for scaffold to complete...")
 
     while True:
         time.sleep(2)

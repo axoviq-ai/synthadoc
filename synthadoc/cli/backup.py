@@ -77,7 +77,7 @@ def backup_cmd(
 
     size_mb = zip_path.stat().st_size / 1_048_576
     manifest = read_manifest(zip_path)
-    typer.echo(f"\n✓ {zip_path.name}  ({size_mb:.1f} MB)")
+    typer.echo(f"\nOK {zip_path.name}  ({size_mb:.1f} MB)")
     typer.echo(f"  Pages:    {manifest.get('page_count', '?')}")
     typer.echo(f"  Sources:  {'excluded  (use --no-sources to skip next time)' if no_sources else 'included'}")
     typer.echo(f"  Exports:  {'excluded' if no_exports else 'included'}")
@@ -221,15 +221,15 @@ def restore_cmd(
             _install_plugin_into(wiki_root)
             _update_community_plugins(wiki_root, _DATAVIEW_ID, _PLUGIN_ID)
 
-    typer.echo(f"\n✓ Restored '{wiki_name}' on port {effective_port}")
+    typer.echo(f"\nOK Restored '{wiki_name}' on port {effective_port}")
     typer.echo(f"  Path: {wiki_root}")
     if manifest.get("obsidian_plugin"):
-        typer.echo(f"  ✓ Obsidian plugin reinstalled")
+        typer.echo(f"  OK Obsidian plugin reinstalled")
     typer.echo(f"\nNext steps:")
-    typer.echo(f"  • Set your LLM API key in your shell environment")
-    typer.echo(f"  • Start the server:   synthadoc serve -w {wiki_name}")
+    typer.echo(f"  - Set your LLM API key in your shell environment")
+    typer.echo(f"  - Start the server:   synthadoc serve -w {wiki_name}")
     if manifest.get("obsidian_plugin"):
-        typer.echo(f"  • Open the vault in Obsidian - plugin is ready")
+        typer.echo(f"  - Open the vault in Obsidian - plugin is ready")
 
 
 def _read_backed_up_port(zip_path: Path) -> int:
