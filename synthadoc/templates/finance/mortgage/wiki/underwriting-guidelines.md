@@ -8,4 +8,27 @@ sources: []
 
 # Underwriting Guidelines
 
-Credit policy for loan approval: maximum LTV by product, minimum credit score, maximum DTI (front-end and back-end), asset verification requirements, income documentation standards, and overlays applied beyond agency minimums. Reference the specific product page for loan-level limits.
+Credit policy for loan approval and lender overlays applied beyond agency minimums. Populate by ingesting your credit policy manual, overlay matrix, and agency guideline references.
+
+Each underwriting guideline record captures:
+
+- **Eligibility criteria by product** — maximum LTV (purchase / rate-term refi / cash-out refi), minimum FICO, maximum DTI (front-end and back-end), minimum loan amount, maximum loan amount
+- **Income documentation standards** — full documentation (W-2 + tax returns), bank statement (12 or 24 months), asset depletion, WVOE, VOE-only; employment type requirements (W-2 / self-employed 2-year history / 1099)
+- **Asset verification** — source of funds requirements, gift fund policy, reserve requirements by product (months of PITI), large deposit explanation thresholds
+- **Credit history** — acceptable late payment history, bankruptcy/foreclosure/short-sale seasoning periods by product and agency
+- **Property eligibility** — property types allowed, condo review requirements (warrantable vs. non-warrantable), rural property policy, manufactured housing policy
+- **Lender overlays vs. agency minimums** — a table of each overlay (stricter than agency), the agency minimum it tightens, and the effective date; reason for the overlay (risk appetite, investor requirement, state law)
+- **Exception process** — who can approve exceptions, exception documentation requirements, exception tracking and reporting
+
+**How to populate:**
+
+1. Ingest your credit policy or underwriting overlay matrix:
+   ```
+   synthadoc ingest <path/to/underwriting-guidelines.pdf> -w <wiki>
+   ```
+2. Ingest agency guideline sections relevant to your product mix:
+   ```
+   synthadoc ingest "https://selling-guide.fanniemae.com/" -w <wiki>
+   ```
+
+Cross-link to [[loan-products]], [[agency-guidelines]], and [[loan-pipeline]].

@@ -42,7 +42,31 @@ synthadoc ingest "https://www.asurity.com/blogs/trid-refresher-series-part-2-und
 
 ## First steps checklist
 
-- [ ] Ingest your current underwriting guidelines document
-- [ ] Create a product page for each loan type you originate
-- [ ] Ingest CFPB TRID disclosure requirements
-- [ ] Run scaffold to build the index
+- [ ] **Ingest your underwriting guidelines** — your lender overlay matrix, agency guide excerpts, or credit policy:
+  ```
+  synthadoc ingest <path/to/underwriting-guidelines.pdf> -w <wiki>
+  ```
+  Populates [[underwriting-guidelines]] and [[agency-guidelines]].
+
+- [ ] **Create a product sheet for each loan type you originate** — copy `raw_sources/loan-products/template-loan-product.md`, rename it, fill in the terms and eligibility criteria, then:
+  ```
+  synthadoc ingest raw_sources/loan-products/<product>.md -w <wiki>
+  ```
+  Results populate [[loan-products]].
+
+- [ ] **Track active loans in the pipeline** — for each application, copy `raw_sources/pipeline/template-loan-application-summary.md`, rename it, fill in borrower and property details, then:
+  ```
+  synthadoc ingest raw_sources/pipeline/<borrower-address>.md -w <wiki>
+  ```
+  Re-ingest at each stage change. Populates [[loan-pipeline]].
+
+- [ ] **Ingest CFPB TRID disclosure requirements**
+  ```
+  synthadoc ingest "https://www.consumerfinance.gov/policy-compliance/rulemaking/regulations/1026/appendix_d/" -w <wiki>
+  ```
+  Populates [[underwriting-guidelines]] and [[agency-guidelines]] compliance sections.
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```

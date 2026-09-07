@@ -42,7 +42,25 @@ synthadoc ingest "http://business.cch.com/BANKD/Community-Bank.pdf" -w <wiki>
 
 ## First steps checklist
 
-- [ ] Ingest your product disclosure documents (Reg E, TILA)
-- [ ] Ingest your BSA/AML policy manual
-- [ ] Create product pages for your top 5 deposit and lending products
-- [ ] Run scaffold to build the index
+- [ ] **Ingest your product disclosure documents** — for each deposit or lending product, copy `raw_sources/products/template-product-sheet.md`, rename it, fill in the details, then:
+  ```
+  synthadoc ingest raw_sources/products/<product>.md -w <wiki>
+  ```
+  Results populate [[deposit-products]] and [[lending-products]].
+
+- [ ] **Ingest your BSA/AML policy manual** — your internal policy document or a regulatory exam manual:
+  ```
+  synthadoc ingest <path/to/bsa-aml-policy.pdf> -w <wiki>
+  ```
+  Populates [[bsa-aml]]. Cross-link to [[regulatory-compliance]] after ingesting exam findings.
+
+- [ ] **Ingest your compliance policies and exam findings** — examination report, compliance risk assessment, or supervisory correspondence:
+  ```
+  synthadoc ingest <path/to/exam-report.pdf> -w <wiki>
+  ```
+  Populates [[regulatory-compliance]] and [[branch-operations]].
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```

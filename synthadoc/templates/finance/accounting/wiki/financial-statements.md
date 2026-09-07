@@ -8,4 +8,22 @@ sources: []
 
 # Financial Statements
 
-Structure and content of the three primary financial statements: income statement (revenue, COGS, operating expenses, EBITDA, net income), balance sheet (current and non-current assets, liabilities, equity), and cash flow statement (operating, investing, financing activities). Documents the mapping from GL accounts to each line item.
+Structure and content of the three primary financial statements and the disclosure notes. Populate by ingesting your financial statement templates, accounting policies, and published reports.
+
+Each financial statement record captures:
+
+- **Income statement (P&L)** — revenue recognition policies, COGS and gross margin build, operating expense categories, EBITDA and EBIT, non-recurring items, interest expense, tax provision, and net income; mapping from GL accounts to each line item
+- **Balance sheet** — current assets (cash, receivables, inventory, prepaid), non-current assets (PP&E, intangibles, goodwill), current liabilities (AP, accrued expenses, deferred revenue, short-term debt), long-term liabilities, and equity components
+- **Cash flow statement** — operating (indirect method: net income + non-cash adjustments + working capital changes), investing (capex, acquisitions, asset disposals), and financing (debt proceeds/repayments, equity issuance, dividends) sections
+- **Disclosure notes** — accounting policies (revenue recognition, depreciation, lease accounting, inventory method), segment reporting, related-party transactions, contingencies, and subsequent events
+- **Intercompany eliminations** — elimination entries for consolidated reporting; subsidiary-level vs. consolidated views
+
+**How to populate:**
+
+1. Ingest your financial statement templates or most recent issued financials:
+   ```
+   synthadoc ingest <path/to/annual-report.pdf> -w <wiki>
+   ```
+2. Ingest your accounting policies memo or footnote templates
+
+Cross-link to [[close-checklist]], [[journal-entries]], [[internal-controls]], and [[audit-readiness]].
