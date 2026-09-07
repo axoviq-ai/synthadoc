@@ -17,7 +17,7 @@ def scaffold_cmd(
     """Re-generate domain-specific scaffold files for an existing wiki.
 
     Rewrites index.md, AGENTS.md, and purpose.md using the LLM.
-    The LLM call runs on the server — no API key needed on the client.
+    The LLM call runs on the server - no API key needed on the client.
     Monitor progress with: synthadoc jobs
 
     Examples:
@@ -40,7 +40,7 @@ def scaffold_cmd(
                     f"Cannot reach server: {exc}",
                     "Run `synthadoc serve` first.")
 
-    typer.echo(f"Queuing scaffold for domain: {domain}…")
+    typer.echo(f"Queuing scaffold for domain: {domain}...")
     try:
         result = post(wiki, "/jobs/scaffold", {"domain": domain})
     except Exception as exc:
@@ -51,7 +51,7 @@ def scaffold_cmd(
     import time
     job_id = result.get("job_id", "?")
     typer.echo(f"Scaffold job queued: {job_id}")
-    typer.echo("Waiting for scaffold to complete…")
+    typer.echo("Waiting for scaffold to complete...")
 
     while True:
         time.sleep(2)
@@ -73,7 +73,7 @@ def scaffold_cmd(
             typer.echo("")
             typer.echo("Tip: content you write above a <!-- synthadoc:scaffold --> marker is")
             typer.echo("     preserved on re-runs. index.md has one marker (below the title).")
-            typer.echo("     purpose.md has one marker per section — each section's content is")
+            typer.echo("     purpose.md has one marker per section - each section's content is")
             typer.echo("     preserved independently.")
             break
         if status in (JobStatus.FAILED, JobStatus.DEAD):

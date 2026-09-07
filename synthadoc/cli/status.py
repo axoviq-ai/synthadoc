@@ -27,7 +27,7 @@ def status_cmd(wiki: Optional[str] = typer.Option(None, "--wiki", "-w")):
         counts = lc.get("counts") or lc  # server returns flat dict; tolerate old wrapped format
         typer.echo("\nPage lifecycle:")
         if not counts:
-            typer.echo("  (none — run `synthadoc lint run` to initialise lifecycle states)")
+            typer.echo("  (none - run `synthadoc lint run` to initialise lifecycle states)")
             return
         _HINTS = {
             "draft":            "<- run `synthadoc lint run` to promote",

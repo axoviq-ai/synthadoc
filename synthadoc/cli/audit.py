@@ -84,7 +84,7 @@ def cost_cmd(
     if as_json:
         typer.echo(json.dumps(summary, indent=2))
         return
-    console.print(f"\n[bold]Cost summary — last {days} days[/bold]")
+    console.print(f"\n[bold]Cost summary - last {days} days[/bold]")
     console.print(f"  Total tokens : {summary['total_tokens']:,}")
     console.print(f"  Total cost   : ${summary['total_cost_usd']:.4f}")
     if summary["daily"]:
@@ -187,7 +187,7 @@ def citations_cmd(
             slug = r.get("page_slug") or r.get("slug") or ""
             citation = r.get("citation") or ""
             reason = r.get("reason") or ""
-            typer.echo(f"  [{ts}] {slug}  {citation} — {reason}")
+            typer.echo(f"  [{ts}] {slug}  {citation} - {reason}")
     else:
         typer.echo(f"Claim Citations (last {limit}):\n")
         table = Table(title="Claim Citations")
@@ -239,12 +239,12 @@ def _render_faithfulness(results: list, as_json: bool) -> None:
         "supported":     ("[green]✅ supported[/green]", ""),
         "drift":         ("[yellow]⚠️  drift[/yellow]", ""),
         "hallucination": ("[red]❌ hallucination[/red]", ""),
-        "skipped":       ("[dim]—  skipped[/dim]", ""),
+        "skipped":       ("[dim] -   skipped[/dim]", ""),
     }
     slugs = sorted({r.slug for r in results})
     n_pages = len(slugs)
     table = Table(
-        title=f"Citation Faithfulness Report — {len(results)} citations across {n_pages} pages"
+        title=f"Citation Faithfulness Report - {len(results)} citations across {n_pages} pages"
     )
     table.add_column("Page", style="cyan", no_wrap=True, max_width=30)
     table.add_column("Citation", no_wrap=True, max_width=44)
@@ -280,10 +280,10 @@ def _run_faithfulness(
     """Cache-aware faithfulness audit delegated to the running server.
 
     Decision logic (applied before any LLM call):
-      - Fresh cache, no stale pages → display cached results, exit (no LLM).
-      - Stale pages exist           → re-audit stale pages only (stale_only).
-      - No cache at all             → full audit.
-      - --force                     → full audit regardless of cache state.
+      - Fresh cache, no stale pages -> display cached results, exit (no LLM).
+      - Stale pages exist           -> re-audit stale pages only (stale_only).
+      - No cache at all             -> full audit.
+      - --force                     -> full audit regardless of cache state.
 
     The server owns the LLM provider; no API key is needed in the CLI.
     """
@@ -320,7 +320,7 @@ def _run_faithfulness(
         stale_only = False
         needs_run = True
     elif not has_cache:
-        # No cache at all — full run
+        # No cache at all - full run
         stale_only = False
         needs_run = True
     else:
@@ -334,7 +334,7 @@ def _run_faithfulness(
             stale_only = True
             needs_run = bool(stale_slugs)
 
-    # ── No LLM needed — show cached results ──────────────────────────────────
+    # ── No LLM needed - show cached results ──────────────────────────────────
     if not needs_run:
         if page:
             slugs_to_show = [page] if page in entries else []
@@ -365,7 +365,7 @@ def _run_faithfulness(
         if est_cost >= cfg.cost.hard_gate_usd:
             console.print(
                 f"[red]Cost gate:[/red] faithfulness audit estimated "
-                f"${est_cost:.4f} — exceeds hard_gate_usd "
+                f"${est_cost:.4f} - exceeds hard_gate_usd "
                 f"${cfg.cost.hard_gate_usd:.2f}. "
                 f"Raise [cost].hard_gate_usd in config.toml or scope to a single page."
             )
@@ -373,7 +373,7 @@ def _run_faithfulness(
         # Always confirm before any LLM run, regardless of cost size.
         scope_desc = "stale pages only" if stale_only else "all active pages"
         console.print(
-            f"\n[bold]Citation faithfulness audit[/bold] — {scope_desc}\n"
+            f"\n[bold]Citation faithfulness audit[/bold] - {scope_desc}\n"
             f"  {len(pages_with_checks)} page(s)  ·  "
             f"{total_citations} citation(s)  ·  "
             f"~{est_tokens:,} tokens  ·  "
@@ -397,7 +397,7 @@ def _run_faithfulness(
         raise typer.Exit(1)
 
     scope_label = f'"{page}"' if page else ("stale pages" if stale_only else "all active pages")
-    console.print(f"[dim]Auditing {scope_label} — job {job_id}…[/dim]")
+    console.print(f"[dim]Auditing {scope_label} - job {job_id}…[/dim]")
 
     # ── Poll until terminal ───────────────────────────────────────────────────
     POLL_SECONDS = 3
