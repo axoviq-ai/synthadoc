@@ -104,6 +104,11 @@ async def run_tool_call_loop(
     messages: list[Message] = [Message(role="user", content=initial_message)]
     tool_count = 0
     parse_retries = 0
+    # Mandatory-next-tool enforcement: set when a tool result contains
+    # "_mandatory_next_tool".  If the LLM produces plain text instead of calling
+    # that tool, the loop injects a reminder and retries once before giving up.
+    _mandatory_next: str | None = None
+    _mandatory_retry_done: bool = False
 
     # Emit immediately so the UI shows activity before the first LLM round-trip.
     await ctx.send_sse_event("tool_progress", {"tool": "_init", "message": "Working on your request..."})
@@ -128,6 +133,30 @@ async def run_tool_call_loop(
             continue
 
         parse_retries = 0
+
+        # Mandatory-next-tool enforcement.
+        # A previous tool result set "_mandatory_next_tool" — if the LLM produced
+        # plain text instead of calling that tool, inject a correction message and
+        # retry once.  This catches the common failure where the LLM interprets a
+        # "scan for" query as "report findings only" and exits to text without
+        # presenting the user confirmation gate.
+        if _mandatory_next and not all_calls and not _mandatory_retry_done:
+            _mandatory_retry_done = True
+            messages.append(Message(role="assistant", content=text))
+            messages.append(Message(
+                role="user",
+                content=(
+                    f"WORKFLOW ENFORCEMENT: The previous tool result required you to call "
+                    f"`{_mandatory_next}` as your next action. "
+                    "Producing plain text here skips user confirmation and is not allowed. "
+                    f'You MUST call `{_mandatory_next}` now with the appropriate arguments.'
+                ),
+            ))
+            continue
+
+        # Reset mandatory-next state each LLM turn (whether the LLM complied or not).
+        _mandatory_next = None
+        _mandatory_retry_done = False
 
         if all_calls:
             # `confirm` / `tool_confirm` is a blocking user-input gate — it must
@@ -177,6 +206,14 @@ async def run_tool_call_loop(
                         tool_result = await tool_fns[tool_name](**tool_input)
                     except TypeError as exc:
                         tool_result = {"error": f"Invalid arguments for {tool_name!r}: {exc}"}
+                # Capture mandatory-next-tool signal for the upcoming LLM turn.
+                # The field remains in the result so the LLM also sees it as an
+                # inline instruction (two layers of enforcement).
+                if isinstance(tool_result, dict):
+                    _mn = tool_result.get("_mandatory_next_tool")
+                    if _mn:
+                        _mandatory_next = _mn
+                        _mandatory_retry_done = False
                 combined.append({"tool": tool_name, "result": tool_result})
 
             messages.append(Message(role="assistant", content=text))
