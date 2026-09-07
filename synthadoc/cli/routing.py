@@ -10,7 +10,7 @@ from synthadoc.cli._wiki import resolve_wiki
 from synthadoc.cli._wiki import resolve_wiki_path
 from synthadoc.core.routing import RoutingIndex
 
-routing_app = typer.Typer(name="routing", help="Manage ROUTING.md — scoped query routing.")
+routing_app = typer.Typer(name="routing", help="Manage ROUTING.md - scoped query routing.")
 
 _BRANCH_RE = re.compile(r"^##\s+(.+)$")
 _SLUG_RE = re.compile(r"-\s*\[\[([^\]]+)\]\]")
@@ -53,14 +53,14 @@ def routing_init(
     ri = RoutingIndex(branches)
     ri.save(routing_path)
     total = sum(len(v) for v in branches.values())
-    typer.echo(f"ROUTING.md created — {len(branches)} branches, {total} slugs.")
+    typer.echo(f"ROUTING.md created - {len(branches)} branches, {total} slugs.")
 
 
 @routing_app.command("validate")
 def routing_validate(
     wiki: Optional[str] = typer.Option(None, "--wiki", "-w", help="Wiki name or path"),
 ) -> None:
-    """Report dangling slugs and unassigned pages in ROUTING.md (dry run — no changes)."""
+    """Report dangling slugs and unassigned pages in ROUTING.md (dry run - no changes)."""
     _, routing_path, wiki_dir = _paths(wiki)
 
     ri = RoutingIndex.parse(routing_path)
@@ -71,7 +71,7 @@ def routing_validate(
     unassigned = ri.unassigned_slugs(index) if index.exists() else []
 
     if not dangling and not unassigned:
-        typer.echo("ROUTING.md is clean — no dangling slugs, no unassigned pages.")
+        typer.echo("ROUTING.md is clean - no dangling slugs, no unassigned pages.")
         return
 
     if dangling:
@@ -100,7 +100,7 @@ def routing_clean(
     removed = ri.clean(existing)
 
     if not removed:
-        typer.echo("ROUTING.md is clean — nothing to remove.")
+        typer.echo("ROUTING.md is clean - nothing to remove.")
         return
 
     ri.save(routing_path)

@@ -34,7 +34,7 @@ def _write_plugin_data(wiki_path: Path, plugin_dir: Path) -> None:
 
     Reads host and port from the wiki's config.toml.  If data.json already
     exists (e.g. the user has customised other settings), only ``serverUrl``
-    is updated — all other keys are preserved.
+    is updated - all other keys are preserved.
     """
     import tomllib
     host = "127.0.0.1"
@@ -49,8 +49,8 @@ def _write_plugin_data(wiki_path: Path, plugin_dir: Path) -> None:
         except Exception:
             pass
 
-    # Loopback and any-interface binds → plugin connects via 127.0.0.1 locally.
-    # Specific external address → use it directly for remote vault support.
+    # Loopback and any-interface binds -> plugin connects via 127.0.0.1 locally.
+    # Specific external address -> use it directly for remote vault support.
     if host in _LOOPBACK_ADDRS or host in _ANY_IFACE_ADDRS:
         server_url = f"http://127.0.0.1:{port}"
     else:
@@ -121,7 +121,7 @@ def _set_reading_view_default(wiki_path: Path) -> bool:
 
     Returns True if written; False if no write was needed (setting already correct).
     Treats malformed JSON as empty dict and heals the file.
-    Idempotent — does not write if the setting is already correct.
+    Idempotent - does not write if the setting is already correct.
     """
     obsidian_dir = wiki_path / ".obsidian"
     obsidian_dir.mkdir(parents=True, exist_ok=True)
@@ -156,7 +156,7 @@ def _patch_workspace_reading_view(wiki_path: Path) -> bool:
     workspace.json here ensures they re-open in Reading View after an upgrade.
 
     Returns True if workspace.json was rewritten; False if unchanged or absent.
-    Must be called while Obsidian is closed — Obsidian overwrites workspace.json
+    Must be called while Obsidian is closed - Obsidian overwrites workspace.json
     on exit with its current in-memory state.
     """
     ws_json = wiki_path / ".obsidian" / "workspace.json"
@@ -264,14 +264,14 @@ def plugin_install_cmd(
     if dataview_status == "installed":
         typer.echo(f"  installed Dataview dependency")
     elif dataview_status == "skipped":
-        typer.echo(f"  Dataview already installed — skipped")
+        typer.echo(f"  Dataview already installed - skipped")
     else:
-        typer.echo(f"  Note: Dataview download failed — install it manually via Obsidian Settings > Community Plugins")
-    typer.echo(f"  community-plugins.json updated — both plugins pre-enabled")
+        typer.echo(f"  Note: Dataview download failed - install it manually via Obsidian Settings > Community Plugins")
+    typer.echo(f"  community-plugins.json updated - both plugins pre-enabled")
     typer.echo("  set     app.json defaultViewMode=preview (Reading View)")
     typer.echo("          (Restart Obsidian or reopen this vault for the setting to take effect.)")
     typer.echo()
-    typer.echo("Open Obsidian and open this vault — both plugins are already enabled, no manual steps required.")
+    typer.echo("Open Obsidian and open this vault - both plugins are already enabled, no manual steps required.")
 
 
 @plugin_app.command("upgrade")
@@ -318,7 +318,7 @@ def plugin_upgrade_cmd():
                 _patch_workspace_reading_view(wiki_path)
                 upgraded.append(name)
             else:
-                skipped.append(f"  {name}: no plugin files found — run: python scripts/sync_plugin.py")
+                skipped.append(f"  {name}: no plugin files found - run: python scripts/sync_plugin.py")
         except Exception as exc:
             errors.append(f"  {name}: {exc}")
 

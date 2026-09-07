@@ -40,7 +40,7 @@ def _toml_value(v: object) -> str:
     if isinstance(v, (int, float)):
         return str(v)
     if isinstance(v, str):
-        return json.dumps(v)  # double-quoted string — same as JSON
+        return json.dumps(v)  # double-quoted string - same as JSON
     if isinstance(v, dict):
         pairs = ", ".join(f"{k} = {_toml_value(val)}" for k, val in v.items())
         return "{" + pairs + "}"
@@ -64,7 +64,7 @@ def _patch_toml(path: Path, section: str, updates: dict) -> None:
         stripped = line.strip()
         if stripped.startswith("[") and stripped.endswith("]"):
             if in_target:
-                # End of target section — append any keys not yet seen
+                # End of target section - append any keys not yet seen
                 for k, v in updates.items():
                     if k not in patched_keys:
                         result.append(f"{k} = {_toml_value(v)}")
@@ -135,7 +135,7 @@ def staging_policy_cmd(
     if policy == "threshold" and min_confidence:
         msg += f" (min-confidence: {min_confidence})"
     typer.echo(msg)
-    typer.echo("Takes effect on next ingest job — no restart needed.")
+    typer.echo("Takes effect on next ingest job - no restart needed.")
 
 
 @candidates_app.command("list")
@@ -165,12 +165,12 @@ def _page_title(path: Path) -> str:
 
 
 def _add_to_index(wiki_dir: Path, entries: list[tuple[str, str]]) -> None:
-    """Append [[slug]] — Title entries to index.md under ## Recently Added."""
+    """Append [[slug]] - Title entries to index.md under ## Recently Added."""
     index_path = wiki_dir / "index.md"
     if not index_path.exists() or not entries:
         return
     text = index_path.read_text(encoding="utf-8")
-    new_lines = [f"- [[{slug}]] — {title}" for slug, title in entries]
+    new_lines = [f"- [[{slug}]] - {title}" for slug, title in entries]
     if "## Recently Added" in text:
         lines = text.splitlines()
         insert_at = len(lines)
@@ -220,11 +220,11 @@ def candidates_promote(
         if is_new:
             new_pages.append((src.stem, title))
         action = "Promoted" if is_new else "Updated"
-        typer.echo(f"  {action} {src.stem} → wiki/{src.name}")
+        typer.echo(f"  {action} {src.stem} -> wiki/{src.name}")
 
     if new_pages:
         _add_to_index(wiki_dir, new_pages)
-        typer.echo(f"  Updated index.md — added {len(new_pages)} entr{'y' if len(new_pages) == 1 else 'ies'} to ## Recently Added")
+        typer.echo(f"  Updated index.md - added {len(new_pages)} entr{'y' if len(new_pages) == 1 else 'ies'} to ## Recently Added")
 
 
 @candidates_app.command("discard")
