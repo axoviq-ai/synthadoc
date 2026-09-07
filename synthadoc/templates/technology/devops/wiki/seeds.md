@@ -48,8 +48,32 @@ synthadoc ingest "https://developer.hashicorp.com/terraform/tutorials/modules/pa
 
 ## First steps checklist
 
-- [ ] Ingest your infrastructure README and existing runbooks
-- [ ] Create a pipeline page for each major CI/CD workflow
-- [ ] Define SLOs for your top 3 services
-- [ ] Ingest your most recent post-mortem
-- [ ] Run scaffold to build the index
+- [ ] **Ingest your infrastructure README and runbooks**:
+  ```
+  synthadoc ingest infrastructure/README.md -w <wiki>
+  synthadoc ingest docs/runbooks/ --batch -w <wiki>
+  ```
+  Populates [[infrastructure]] and [[runbooks]].
+
+- [ ] **Document SLOs for your top 3 services** — ingest your SLO doc or Prometheus alert rules:
+  ```
+  synthadoc ingest docs/slos/ --batch -w <wiki>
+  ```
+  Populates [[slos]] and [[alerts]].
+
+- [ ] **Log CI/CD pipelines** — ingest your CI workflow configuration:
+  ```
+  synthadoc ingest .github/workflows/ --batch -w <wiki>
+  ```
+  Populates [[pipelines]] and [[deployments]].
+
+- [ ] **Log a recent incident** — copy `raw_sources/incidents/template-incident.md`, fill in details, then:
+  ```
+  synthadoc ingest raw_sources/incidents/<incident>.md -w <wiki>
+  ```
+  Populates [[incidents]]. Write post-mortem in [[post-mortems]] for SEV1/SEV2.
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```

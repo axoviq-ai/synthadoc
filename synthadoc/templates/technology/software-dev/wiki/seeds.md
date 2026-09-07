@@ -48,8 +48,31 @@ synthadoc ingest "https://swagger.io/docs/specification/v3_0/about" -w <wiki>
 
 ## First steps checklist
 
-- [ ] Ingest your README and top-level docs/ folder
-- [ ] Create an ADR for the most recent significant design decision
-- [ ] Ingest your most recent incident post-mortem
-- [ ] Create a service page for each major service
-- [ ] Run scaffold to build the index
+- [ ] **Ingest your README and docs/** — captures system overview, contributing guide, and architecture notes:
+  ```
+  synthadoc ingest README.md -w <wiki>
+  synthadoc ingest docs/ --batch -w <wiki>
+  ```
+  Populates [[system-design]] and [[engineering-practices]].
+
+- [ ] **Document a recent architecture decision** — copy `raw_sources/decisions/template-adr.md`, rename it `adr-<NNNN>-<title>.md`, fill it in, then:
+  ```
+  synthadoc ingest raw_sources/decisions/adr-0001-<title>.md -w <wiki>
+  ```
+  Populates [[adrs]].
+
+- [ ] **Create a service page for each major service** — ingest each service's README or runbook:
+  ```
+  synthadoc ingest services/<service>/README.md -w <wiki>
+  ```
+  Populates [[services]] and [[runbooks]].
+
+- [ ] **Ingest your most recent post-mortem**:
+  ```
+  synthadoc ingest docs/post-mortems/<latest>.md -w <wiki>
+  ```
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```

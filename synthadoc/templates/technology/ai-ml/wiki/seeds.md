@@ -43,8 +43,31 @@ synthadoc ingest "https://www.ml4devs.com/what-is/train-validation-test-data-spl
 
 ## First steps checklist
 
-- [ ] Ingest the paper for your current baseline model
-- [ ] Create an experiment page for your most recent training run
-- [ ] Ingest your dataset documentation
-- [ ] Create a benchmark page for your primary evaluation metric
-- [ ] Run scaffold to build the index
+- [ ] **Ingest the paper for your current baseline model** — captures architecture, training setup, and benchmark results:
+  ```
+  synthadoc ingest "https://arxiv.org/abs/<paper-id>" -w <wiki>
+  ```
+  Populates [[models]] and [[benchmarks]].
+
+- [ ] **Log your most recent training run** — copy `raw_sources/experiments/template-experiment.md`, fill in hypothesis and results, then:
+  ```
+  synthadoc ingest raw_sources/experiments/<experiment>.md -w <wiki>
+  ```
+  Populates [[experiments]].
+
+- [ ] **Ingest your dataset documentation** — Hugging Face data card or internal doc:
+  ```
+  synthadoc ingest "https://huggingface.co/datasets/<dataset>" -w <wiki>
+  ```
+  Populates [[datasets]].
+
+- [ ] **Define your primary benchmark** — ingest the benchmark paper or evaluation report:
+  ```
+  synthadoc ingest "https://arxiv.org/abs/<eval-paper>" -w <wiki>
+  ```
+  Populates [[benchmarks]] and [[evaluation-methodology]].
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```

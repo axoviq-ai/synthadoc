@@ -43,8 +43,32 @@ synthadoc ingest "https://www.youtube.com/watch?v=oxOj30rl_xs" -w <wiki>
 
 ## First steps checklist
 
-- [ ] Ingest your dbt README or warehouse overview doc
-- [ ] Create a pipeline page for your highest-priority data pipeline
-- [ ] Document your top 3 most-consumed datasets
-- [ ] Ingest your data governance policy
-- [ ] Run scaffold to build the index
+- [ ] **Ingest your dbt README and model docs**:
+  ```
+  synthadoc ingest dbt/README.md -w <wiki>
+  synthadoc ingest target/manifest.json -w <wiki>
+  ```
+  Populates [[datasets]], [[lineage]], and [[schema-registry]].
+
+- [ ] **Document your highest-priority pipelines** — copy `raw_sources/pipelines/template-pipeline.md`, fill in source, destination, and schedule, then:
+  ```
+  synthadoc ingest raw_sources/pipelines/<pipeline>.md -w <wiki>
+  ```
+  Populates [[pipelines]] and [[orchestration]].
+
+- [ ] **Ingest your data governance policy**:
+  ```
+  synthadoc ingest docs/data-governance.md -w <wiki>
+  ```
+  Populates [[data-governance]].
+
+- [ ] **Ingest data quality results** — Great Expectations validations or dbt test output:
+  ```
+  synthadoc ingest gx/uncommitted/validations/ --batch -w <wiki>
+  ```
+  Populates [[data-quality]].
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```
