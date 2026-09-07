@@ -8,4 +8,31 @@ sources: []
 
 # Surveillance
 
-Disease surveillance systems and data sources. Each system page documents: name, administering agency, collection method (passive/active, mandatory/sentinel), geographic scope, case definitions, data availability lag, and access URL. Track how case definition changes affect trend comparability.
+Disease surveillance systems and data sources. Each system page documents:
+
+- **System identity** — system name, administering agency, primary data collection purpose
+- **Collection method** — Passive (provider-initiated reporting) / Active (agency-initiated case finding) / Sentinel (selected site network); Mandatory / Voluntary
+- **Geographic scope** — national / state / local; number of reporting sites
+- **Case definitions** — confirmed, probable, and suspected case criteria; link to the case definition document
+- **Data elements collected** — what is captured for each case: demographics, exposure history, clinical details, lab confirmation, outcome
+- **Reporting timeliness** — how quickly cases must be reported; typical data availability lag from case to public report
+- **Access URL** — where the data are publicly available or how to request access
+- **Trend comparability** — any case definition changes that affect trend analysis; how to handle definitional breaks in data series
+- **Data quality issues** — known under-reporting populations or conditions; geographic gaps in coverage
+
+**How to populate:**
+
+1. Ingest CDC surveillance system overviews:
+   ```
+   synthadoc ingest "https://www.cdc.gov/surveillance/index.html" -w <wiki>
+   ```
+2. Ingest MMWR surveillance summaries:
+   ```
+   synthadoc ingest "https://www.cdc.gov/mmwr/volumes/index.html" -w <wiki>
+   ```
+3. Ingest local state health department surveillance reports:
+   ```
+   synthadoc ingest docs/public-health/surveillance/ --batch -w <wiki>
+   ```
+
+Cross-link to [[disease-burden]] for the conditions each surveillance system tracks, [[health-programs]] for programs that rely on surveillance data for targeting and evaluation, and [[policy-analysis]] for policies that trigger mandatory reporting requirements.

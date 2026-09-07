@@ -43,7 +43,32 @@ synthadoc ingest "https://ghdx.healthdata.org/gbd-2019" -w <wiki>
 
 ## First steps checklist
 
-- [ ] Ingest the most recent CDC surveillance summary for your focus condition
-- [ ] Create a disease burden page for the top 5 conditions in your population
-- [ ] Ingest your most recent Community Health Assessment if available
-- [ ] Run scaffold to build the index
+- [ ] **Ingest the most recent CDC surveillance summary** for your focus condition:
+  ```
+  synthadoc ingest "https://www.cdc.gov/mmwr/volumes/index.html" -w <wiki>
+  ```
+  Or ingest a local surveillance report: `synthadoc ingest docs/public-health/surveillance/<report>.pdf -w <wiki>`
+  Populates [[surveillance]] and [[disease-burden]].
+
+- [ ] **Document your key health programs** — copy `raw_sources/programs/template-program-profile.md`, fill in all fields, then:
+  ```
+  synthadoc ingest raw_sources/programs/<program-code>-<name>.md -w <wiki>
+  ```
+  Populates [[health-programs]] and [[public-health-interventions]].
+
+- [ ] **Ingest your most recent Community Health Assessment** if available:
+  ```
+  synthadoc ingest docs/public-health/chna-<year>.pdf -w <wiki>
+  ```
+  Populates [[disease-burden]], [[health-equity]], and [[policy-analysis]].
+
+- [ ] **Ingest CPSTF recommendations** for your target health issue:
+  ```
+  synthadoc ingest "https://www.thecommunityguide.org/resources/community-preventive-services-task-force-recommendations" -w <wiki>
+  ```
+  Populates [[public-health-interventions]].
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```

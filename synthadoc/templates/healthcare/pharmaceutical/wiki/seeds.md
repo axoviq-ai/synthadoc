@@ -43,7 +43,33 @@ synthadoc ingest "https://www.hvivo.com/insights/resources/emas-updated-guidelin
 
 ## First steps checklist
 
-- [ ] Ingest the FDA guidance document for your regulatory pathway
-- [ ] Create a compound page for your lead asset
-- [ ] Create a trial page for each active or completed clinical study
-- [ ] Run scaffold to build the index
+- [ ] **Document your lead compound** — copy `raw_sources/compounds/template-compound-profile.md`, fill in all fields, then:
+  ```
+  synthadoc ingest raw_sources/compounds/<compound-code>-<name>.md -w <wiki>
+  ```
+  Populates [[compounds]] and [[pipeline]].
+
+- [ ] **Ingest the FDA guidance document for your regulatory pathway**:
+  ```
+  synthadoc ingest "https://www.fda.gov/drugs/guidance-documents-drugs" -w <wiki>
+  ```
+  Or ingest a saved guidance PDF: `synthadoc ingest docs/pharma/guidance/<guidance-title>.pdf -w <wiki>`
+  Populates [[regulatory-submissions]].
+
+- [ ] **Create a trial page** for each active or completed clinical study:
+  ```
+  synthadoc ingest "https://clinicaltrials.gov/ct2/show/<NCT-number>" -w <wiki>
+  ```
+  Or ingest clinical study reports: `synthadoc ingest docs/pharma/trials/ --batch -w <wiki>`
+  Populates [[clinical-trials]] and [[protocols]].
+
+- [ ] **Ingest your most recent safety update report**:
+  ```
+  synthadoc ingest docs/pharma/safety/<dsur-or-pbrer>.pdf -w <wiki>
+  ```
+  Populates [[safety]].
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```

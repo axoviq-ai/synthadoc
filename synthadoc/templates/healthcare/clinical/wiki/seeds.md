@@ -40,7 +40,33 @@ synthadoc ingest "https://www.gradeworkinggroup.org" -w <wiki>
 
 ## First steps checklist
 
-- [ ] Ingest the most current clinical guideline for your primary condition focus
-- [ ] Create a condition page for each diagnosis in your practice scope
-- [ ] Ingest a key drug reference for your formulary
-- [ ] Run scaffold to build the index
+- [ ] **Ingest the most current clinical guideline for your primary condition focus**:
+  ```
+  synthadoc ingest "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/<topic>" -w <wiki>
+  ```
+  Or ingest a saved guideline PDF: `synthadoc ingest docs/clinical/guidelines/<guideline>.pdf -w <wiki>`
+  Populates [[clinical-guidelines]].
+
+- [ ] **Create condition pages** for each diagnosis in your practice scope:
+  ```
+  synthadoc ingest "https://www.merckmanuals.com/professional/<specialty>/<condition>" -w <wiki>
+  ```
+  Populates [[conditions]] and [[diagnostic-criteria]].
+
+- [ ] **Ingest a key drug reference** for your formulary:
+  ```
+  synthadoc ingest "https://dailymed.nlm.nih.gov/dailymed/search.cfm?query=<drug-name>" -w <wiki>
+  ```
+  Or ingest formulary PDFs: `synthadoc ingest docs/clinical/formulary/ --batch -w <wiki>`
+  Populates [[medications]].
+
+- [ ] **Log a teaching case** — copy `raw_sources/cases/template-case-note.md`, fill in de-identified details, then:
+  ```
+  synthadoc ingest raw_sources/cases/<case-id>-<keyword>.md -w <wiki>
+  ```
+  Populates [[conditions]] and [[treatment-protocols]].
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```
