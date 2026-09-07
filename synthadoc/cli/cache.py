@@ -32,7 +32,7 @@ def cache_cmd(
     db_path = root / ".synthadoc" / "cache.db"
 
     if not db_path.exists():
-        typer.echo("No cache found — nothing to clear.")
+        typer.echo("No cache found - nothing to clear.")
         return
 
     async def _clear() -> int:

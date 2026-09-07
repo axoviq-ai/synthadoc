@@ -46,7 +46,7 @@ def _index_suggestion(slug: str, fm: dict) -> str:
         hint = ", ".join(str(t) for t in tags[:4])
     else:
         hint = title
-    return f"- [[{slug}]] — {hint}"
+    return f"- [[{slug}]] - {hint}"
 
 def _sync_orphan_frontmatter(
     wiki_dir: Path,
@@ -62,7 +62,7 @@ def _sync_orphan_frontmatter(
         fm = _parse_frontmatter(text)
         desired = slug in orphan_set
         if fm.get("orphan", False) == desired:
-            continue  # already correct — skip to avoid unnecessary disk write
+            continue  # already correct - skip to avoid unnecessary disk write
         # Rewrite only the orphan key in the frontmatter block
         path = wiki_dir / f"{slug}.md"
         m = _FRONTMATTER_RE.match(text)
@@ -111,14 +111,14 @@ def lint_cmd(
     typer.echo(f"Check status: synthadoc jobs status {result['job_id']}{w_flag}")
     typer.echo(f"View results: synthadoc lint report{w_flag}")
     if no_adversarial:
-        typer.echo("ℹ️  Adversarial pass skipped — lint_warnings cleared from all pages.")
+        typer.echo("ℹ️  Adversarial pass skipped - lint_warnings cleared from all pages.")
 
 
 @lint_app.command("report")
 def lint_report(
     wiki: Optional[str] = typer.Option(None, "--wiki", "-w"),
 ):
-    """Show current contradictions and orphan pages — no server required.
+    """Show current contradictions and orphan pages - no server required.
 
     Reads wiki files directly. Run after 'synthadoc lint' completes to see
     what needs your attention.
@@ -186,7 +186,7 @@ def lint_report(
     if not has_issues:
         # Still sync frontmatter to clear stale orphan: true flags from previous runs.
         _sync_orphan_frontmatter(wiki_dir, page_texts, set())
-        typer.echo("All clear — no contradictions, orphan pages, adversarial warnings, or truncated sources found.")
+        typer.echo("All clear - no contradictions, orphan pages, adversarial warnings, or truncated sources found.")
         return
 
     if contradicted:
@@ -235,7 +235,7 @@ def lint_report(
         for slug, issues in by_slug.items():
             typer.echo(f"  {slug}")
             for iss in issues:
-                typer.echo(f"    {iss['citation']} — {iss['reason']}")
+                typer.echo(f"    {iss['citation']} - {iss['reason']}")
 
     if truncated_pages:
         try:
@@ -246,7 +246,7 @@ def lint_report(
         typer.echo(f"\nTruncated Sources ({len(truncated_pages)}) - source exceeded ingest limit:\n")
         for entry in truncated_pages:
             size = entry.get("size") or 0
-            typer.echo(f"  {entry['slug']} — source exceeded limit ({size:,} chars)")
+            typer.echo(f"  {entry['slug']} - source exceeded limit ({size:,} chars)")
             typer.echo(f"    Source: {entry['file']}")
             typer.echo(f"    💡 Re-ingest with a higher limit:")
             typer.echo(f"       {suggested_reingest_cmd(entry['file'], wiki, size or _default_max)}")
