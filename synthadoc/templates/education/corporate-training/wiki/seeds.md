@@ -43,8 +43,31 @@ synthadoc ingest "https://mosey.com/blog/competency-model" -w <wiki>
 
 ## First steps checklist
 
-- [ ] Ingest your employee handbook and onboarding materials
-- [ ] Create SOP pages for your top 5 most-referenced procedures
-- [ ] Document your onboarding checklist in [[new-hire-checklist]]
-- [ ] Create a competency framework for your most critical role
-- [ ] Run scaffold to build the index
+- [ ] **Ingest your employee handbook and onboarding materials**:
+  ```
+  synthadoc ingest docs/employee-handbook.pdf -w <wiki>
+  ```
+  Populates [[onboarding-program]] and [[new-hire-checklist]].
+
+- [ ] **Create SOP pages** for your top 5 most-referenced procedures:
+  ```
+  synthadoc ingest docs/procedures/ --batch -w <wiki>
+  ```
+  Populates [[sops]] and [[job-aids]].
+
+- [ ] **Add courses to the training catalog** — copy `raw_sources/training/template-training-course.md`, fill in all fields for each course, then:
+  ```
+  synthadoc ingest raw_sources/training/<course-code>-<title>.md -w <wiki>
+  ```
+  Populates [[training-catalog]] and [[compliance-training]].
+
+- [ ] **Create a competency framework** for your most critical role:
+  ```
+  synthadoc ingest docs/training/competency-framework.pdf -w <wiki>
+  ```
+  Populates [[competency-frameworks]].
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```

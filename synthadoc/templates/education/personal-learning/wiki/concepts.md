@@ -8,4 +8,26 @@ sources: []
 
 # Concepts
 
-Atomic concept notes — one idea per page. Each concept page: states the idea in one clear sentence, explains it in your own words, notes where you first encountered it (source and date), connects it to related concepts with [[links]], and records any examples or applications you have found. Keep pages short and focused; depth comes from linking many atomic pages together.
+Atomic concept notes — one idea per page. Each concept page:
+
+- **Core statement** — the idea in one clear sentence; precise enough that you could use it in an argument
+- **Explanation** — the idea explained in your own words (2–5 sentences); why it matters; what it helps you understand
+- **Origin** — where you first encountered this idea (source and date); link to [[books]], [[courses-taken]], or [[thinkers]]
+- **Examples and applications** — two or three concrete examples of this concept in the wild; situations where it applies
+- **Counterexamples or limitations** — when does this idea break down or not apply?
+- **Related concepts** — which other concepts in your wiki connect to this one (use [[wikilinks]] generously)
+
+Keep pages short and focused. Depth in a concept note system comes from many atomic pages linked together, not from long individual entries.
+
+**How to populate:**
+
+1. Write concept notes directly in your wiki:
+   ```
+   synthadoc ingest raw_sources/books/<book-notes>.md -w <wiki>
+   ```
+2. Ingest concept explanations from trusted educational sources:
+   ```
+   synthadoc ingest "https://fs.blog/<concept-name>" -w <wiki>
+   ```
+
+Cross-link liberally to [[books]], [[mental-models]], [[thinkers]], and [[learning-projects]] that connect to each concept.

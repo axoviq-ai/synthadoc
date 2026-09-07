@@ -43,8 +43,31 @@ synthadoc ingest "https://www.nwea.org/blog/2026/formative-vs-summative-assessme
 
 ## First steps checklist
 
-- [ ] Write learning objectives for your first module using Bloom's Taxonomy verbs
-- [ ] Create a curriculum map showing module sequence and prerequisites
-- [ ] Ingest your existing course materials or syllabus
-- [ ] Document your assessment strategy in [[assessments]]
-- [ ] Run scaffold to build the index
+- [ ] **Write learning objectives** for your first module using Bloom's Taxonomy verbs:
+  ```
+  synthadoc ingest "https://www.kuraplan.com/guides/blooms-taxonomy-verbs" -w <wiki>
+  ```
+  Populates [[learner-outcomes]].
+
+- [ ] **Design your first module** — copy `raw_sources/modules/template-module-design.md`, fill in all fields, then:
+  ```
+  synthadoc ingest raw_sources/modules/<module-number>-<title>.md -w <wiki>
+  ```
+  Populates [[modules]] and [[assessments]].
+
+- [ ] **Create a curriculum map** showing module sequence and prerequisites:
+  ```
+  synthadoc ingest docs/course-design/curriculum/ --batch -w <wiki>
+  ```
+  Populates [[curriculum-map]].
+
+- [ ] **Ingest your existing course materials or syllabus**:
+  ```
+  synthadoc ingest docs/course-design/<syllabus>.pdf -w <wiki>
+  ```
+  Populates [[learning-materials]].
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```

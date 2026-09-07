@@ -2,8 +2,36 @@
 title: Books
 status: draft
 confidence: low
+type: concept
+sources: []
 ---
 
 # Books
 
-Stub — populate by ingesting domain sources.
+Index of books read or currently reading. Each book record captures:
+
+- **Bibliographic details** — title, author(s), year, publisher, genre or category
+- **Reading status** — To read / Currently reading / Completed; date completed
+- **Core thesis** — the book's central argument or main takeaway in one to two sentences (your words, not the blurb)
+- **Key ideas** — the three to five ideas you found most valuable or surprising
+- **Mental models introduced** — frameworks or heuristics the book presents (link to [[mental-models]])
+- **Rating and assessment** — your rating out of five; who should read this and why
+- **Applications** — how you are applying or plan to apply something from this book
+- **Next reads suggested** — books this one made you want to read next
+
+**How to populate:**
+
+1. Copy `raw_sources/books/template-book-notes.md`, fill in your notes after reading, then:
+   ```
+   synthadoc ingest raw_sources/books/<author-last>-<year>-<keyword>.md -w <wiki>
+   ```
+2. Ingest a book summary from a trusted site:
+   ```
+   synthadoc ingest "https://www.grahamman.com/books/<book-title>-summary" -w <wiki>
+   ```
+3. Ingest a Readwise or Kindle highlights export:
+   ```
+   synthadoc ingest ~/Downloads/kindle-highlights.csv -w <wiki>
+   ```
+
+Cross-link to [[book-summaries]] for long-form notes, [[concepts]] for atomic ideas extracted from each book, and [[mental-models]] for frameworks the book introduces.

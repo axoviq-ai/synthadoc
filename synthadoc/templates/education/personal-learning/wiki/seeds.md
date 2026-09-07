@@ -43,8 +43,29 @@ synthadoc ingest "https://modelthinkers.com/mental-model/mungers-latticework" -w
 
 ## First steps checklist
 
-- [ ] Ingest your most important existing notes or book highlights
-- [ ] Create an atomic concept note for one idea you are currently studying
-- [ ] Add a book to [[books]] and create a stub summary page
-- [ ] Link two existing concepts you have never connected before
-- [ ] Run scaffold to build the index
+- [ ] **Ingest your most important existing notes or book highlights**:
+  ```
+  synthadoc ingest ~/Documents/notes/ --batch -w <wiki>
+  ```
+  Or import Kindle highlights: `synthadoc ingest ~/Downloads/kindle-highlights.csv -w <wiki>`
+  Populates [[books]] and [[concepts]].
+
+- [ ] **Log your first book** — copy `raw_sources/books/template-book-notes.md`, fill in your notes, then:
+  ```
+  synthadoc ingest raw_sources/books/<author-last>-<year>-<keyword>.md -w <wiki>
+  ```
+  Populates [[books]] and [[book-summaries]].
+
+- [ ] **Write an atomic concept note** for one idea you are currently studying:
+  ```
+  synthadoc ingest raw_sources/books/<concept-note>.md -w <wiki>
+  ```
+  Populates [[concepts]].
+
+- [ ] **Link two existing concepts** you have never connected before — edit the pages and add [[wikilinks]] between them.
+  Strengthens [[mental-models]] connections.
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```
