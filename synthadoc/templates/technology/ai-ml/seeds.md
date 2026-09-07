@@ -1,11 +1,3 @@
----
-title: Getting Started — AI/ML
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — AI/ML
 
 ## Recommended first ingests

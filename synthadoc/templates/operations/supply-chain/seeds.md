@@ -1,11 +1,3 @@
----
-title: Getting Started — Supply Chain
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Supply Chain
 
 ## Recommended first ingests

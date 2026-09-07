@@ -1,11 +1,3 @@
----
-title: Getting Started — Manufacturing QC
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Manufacturing QC
 
 ## Recommended first ingests

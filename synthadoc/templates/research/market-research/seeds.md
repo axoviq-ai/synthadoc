@@ -1,11 +1,3 @@
----
-title: Getting Started — Market Research
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Market Research
 
 ## Recommended first ingests

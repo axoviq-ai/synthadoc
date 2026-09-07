@@ -1,11 +1,3 @@
----
-title: Getting Started — Real Estate Development
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Real Estate Development
 
 ## Recommended first ingests

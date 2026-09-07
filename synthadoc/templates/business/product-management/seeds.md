@@ -1,11 +1,3 @@
----
-title: Getting Started — Product Management
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Product Management
 
 ## Recommended first ingests

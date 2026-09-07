@@ -1,11 +1,3 @@
----
-title: Getting Started — Legal Operations
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Legal Operations
 
 ## Recommended first ingests

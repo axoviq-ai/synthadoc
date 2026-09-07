@@ -1,11 +1,3 @@
----
-title: Getting Started — Property Management
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Property Management
 
 ## Recommended first ingests

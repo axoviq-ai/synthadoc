@@ -1,11 +1,3 @@
----
-title: Getting Started — Facility Management
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Facility Management
 
 ## Recommended first ingests

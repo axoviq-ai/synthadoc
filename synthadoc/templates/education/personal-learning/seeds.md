@@ -1,11 +1,3 @@
----
-title: Getting Started — Personal Learning
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Personal Learning
 
 ## Recommended first ingests

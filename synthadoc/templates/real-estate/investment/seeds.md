@@ -1,11 +1,3 @@
----
-title: Getting Started — Real Estate Investment
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Real Estate Investment
 
 ## Recommended first ingests

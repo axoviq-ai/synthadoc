@@ -1,11 +1,3 @@
----
-title: Getting Started — Corporate Training
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Corporate Training
 
 ## Recommended first ingests

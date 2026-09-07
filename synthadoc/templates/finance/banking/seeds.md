@@ -1,11 +1,3 @@
----
-title: Getting Started — Banking
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Banking
 
 ## Recommended first ingests

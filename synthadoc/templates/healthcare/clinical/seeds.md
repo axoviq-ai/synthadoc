@@ -1,11 +1,3 @@
----
-title: Getting Started — Clinical
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Clinical
 
 ## Recommended first ingests

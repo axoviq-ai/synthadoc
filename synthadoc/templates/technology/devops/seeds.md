@@ -1,11 +1,3 @@
----
-title: Getting Started — DevOps
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — DevOps
 
 ## Recommended first ingests

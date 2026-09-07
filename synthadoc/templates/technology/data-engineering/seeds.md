@@ -1,11 +1,3 @@
----
-title: Getting Started — Data Engineering
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Data Engineering
 
 ## Recommended first ingests

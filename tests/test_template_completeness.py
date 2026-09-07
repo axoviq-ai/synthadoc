@@ -81,14 +81,14 @@ class TestTemplateCompleteness:
         assert p.exists(), f"{template_ref}: wiki/index.md missing"
         assert len(p.read_text(encoding="utf-8").strip()) > 50
 
-    def test_wiki_seeds_md_exists_and_nonempty(self, template_ref):
-        p = self._path(template_ref) / "wiki" / "seeds.md"
-        assert p.exists(), f"{template_ref}: wiki/seeds.md missing"
+    def test_seeds_md_exists_and_nonempty(self, template_ref):
+        p = self._path(template_ref) / "seeds.md"
+        assert p.exists(), f"{template_ref}: seeds.md missing (must be at template root, not inside wiki/)"
         assert len(p.read_text(encoding="utf-8").strip()) > 100
 
     def test_wiki_has_at_least_2_additional_stubs(self, template_ref):
         wiki_dir = self._path(template_ref) / "wiki"
-        reserved = {"purpose.md", "index.md", "seeds.md"}
+        reserved = {"purpose.md", "index.md"}
         stubs = [f for f in wiki_dir.glob("*.md") if f.name not in reserved]
         assert len(stubs) >= 2, f"{template_ref}: only {len(stubs)} stub pages beyond purpose/index/seeds (need ≥2)"
 

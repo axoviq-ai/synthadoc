@@ -1,11 +1,3 @@
----
-title: Getting Started — Compliance
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Compliance
 
 ## Recommended first ingests

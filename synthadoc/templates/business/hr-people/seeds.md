@@ -1,11 +1,3 @@
----
-title: Getting Started — HR & People
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — HR & People
 
 ## Recommended first ingests

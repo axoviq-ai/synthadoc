@@ -1,11 +1,3 @@
----
-title: Getting Started — Science Lab
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Science Lab
 
 ## Recommended first ingests

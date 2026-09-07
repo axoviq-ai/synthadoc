@@ -44,7 +44,7 @@ def fake_templates(tmp_path, monkeypatch):
     wiki_dir.mkdir()
     (wiki_dir / "purpose.md").write_text("---\ntitle: Purpose\nstatus: active\nconfidence: high\ntype: concept\nsources: []\n---\n\n# Purpose\n\n**Include:** investment research.\n\n**Exclude:** personal finance.\n", encoding="utf-8")
     (wiki_dir / "index.md").write_text("---\ntitle: Index\nstatus: active\nconfidence: high\ntype: concept\nsources: []\n---\n\n# Index\n\n- [[companies]]\n- [[deals]]\n", encoding="utf-8")
-    (wiki_dir / "seeds.md").write_text("---\ntitle: Getting Started\nstatus: draft\nconfidence: low\ntype: concept\nsources: []\n---\n\n# Getting Started\n\nSearch for annual reports.\n", encoding="utf-8")
+    (inv / "seeds.md").write_text("# Getting Started\n\nSearch for annual reports.\n", encoding="utf-8")
     (wiki_dir / "companies.md").write_text("---\ntitle: Companies\nstatus: draft\nconfidence: low\ntype: concept\nsources: []\n---\n\n# Companies\n\nPortfolio companies.\n", encoding="utf-8")
 
     # technology/software-dev
@@ -67,7 +67,7 @@ def fake_templates(tmp_path, monkeypatch):
     sw_wiki.mkdir()
     (sw_wiki / "purpose.md").write_text("---\ntitle: Purpose\nstatus: active\nconfidence: high\ntype: concept\nsources: []\n---\n\n# Purpose\n\n**Include:** software docs.\n\n**Exclude:** non-technical content.\n", encoding="utf-8")
     (sw_wiki / "index.md").write_text("---\ntitle: Index\nstatus: active\nconfidence: high\ntype: concept\nsources: []\n---\n\n# Index\n\n- [[adrs]]\n", encoding="utf-8")
-    (sw_wiki / "seeds.md").write_text("---\ntitle: Getting Started\nstatus: draft\nconfidence: low\ntype: concept\nsources: []\n---\n\n# Getting Started\n\nIngest your repo's README.\n", encoding="utf-8")
+    (sw / "seeds.md").write_text("# Getting Started\n\nIngest your repo's README.\n", encoding="utf-8")
     (sw_wiki / "adrs.md").write_text("---\ntitle: ADRs\nstatus: draft\nconfidence: low\ntype: concept\nsources: []\n---\n\n# Architecture Decision Records\n\nList of decisions.\n", encoding="utf-8")
 
     monkeypatch.setattr(te, "_TEMPLATES_ROOT", root)
@@ -182,7 +182,8 @@ def test_apply_template_overwrites_index(fake_templates, blank_wiki):
 def test_apply_template_copies_stubs_additively(fake_templates, blank_wiki):
     apply_template(blank_wiki, "finance/investment")
     assert (blank_wiki / "wiki" / "companies.md").exists()
-    assert (blank_wiki / "wiki" / "seeds.md").exists()
+    assert (blank_wiki / "seeds.md").exists()  # seeds.md goes to wiki root, not inside wiki/
+    assert not (blank_wiki / "wiki" / "seeds.md").exists()
 
 
 def test_apply_template_does_not_overwrite_user_pages(fake_templates, blank_wiki):
@@ -244,7 +245,7 @@ def test_apply_template_substitutes_wiki_name(fake_templates, blank_wiki):
     import synthadoc.core.template_engine as te
 
     # Inject a <wiki> token into the fake seeds.md before applying
-    seeds_src = te._TEMPLATES_ROOT / "finance" / "investment" / "wiki" / "seeds.md"
+    seeds_src = te._TEMPLATES_ROOT / "finance" / "investment" / "seeds.md"
     seeds_src.write_text(
         seeds_src.read_text(encoding="utf-8")
         + '\nsynthadoc ingest "https://example.com/report" -w <wiki>\n',
@@ -253,7 +254,7 @@ def test_apply_template_substitutes_wiki_name(fake_templates, blank_wiki):
 
     apply_template(blank_wiki, "finance/investment", wiki_name="my-portfolio")
 
-    written = (blank_wiki / "wiki" / "seeds.md").read_text(encoding="utf-8")
+    written = (blank_wiki / "seeds.md").read_text(encoding="utf-8")
     assert "-w my-portfolio" in written
     assert "<wiki>" not in written
 
@@ -262,7 +263,7 @@ def test_apply_template_no_wiki_name_leaves_placeholder(fake_templates, blank_wi
     """Without wiki_name the <wiki> token is preserved verbatim."""
     import synthadoc.core.template_engine as te
 
-    seeds_src = te._TEMPLATES_ROOT / "finance" / "investment" / "wiki" / "seeds.md"
+    seeds_src = te._TEMPLATES_ROOT / "finance" / "investment" / "seeds.md"
     seeds_src.write_text(
         seeds_src.read_text(encoding="utf-8")
         + '\nsynthadoc ingest "https://example.com/report" -w <wiki>\n',
@@ -271,7 +272,7 @@ def test_apply_template_no_wiki_name_leaves_placeholder(fake_templates, blank_wi
 
     apply_template(blank_wiki, "finance/investment")  # no wiki_name
 
-    written = (blank_wiki / "wiki" / "seeds.md").read_text(encoding="utf-8")
+    written = (blank_wiki / "seeds.md").read_text(encoding="utf-8")
     assert "<wiki>" in written
 
 

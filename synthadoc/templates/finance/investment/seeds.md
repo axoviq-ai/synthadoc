@@ -1,11 +1,3 @@
----
-title: Getting Started — Investment Research
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Investment Research
 
 ## Recommended first ingests

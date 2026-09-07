@@ -1,11 +1,3 @@
----
-title: Getting Started — Accounting
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Accounting
 
 ## Recommended first ingests

@@ -1,11 +1,3 @@
----
-title: Getting Started — Project Management
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Project Management
 
 ## Recommended first ingests

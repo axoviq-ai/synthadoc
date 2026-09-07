@@ -1,11 +1,3 @@
----
-title: Getting Started — Academic Research
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Academic Research
 
 ## Recommended first ingests

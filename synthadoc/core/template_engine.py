@@ -75,11 +75,16 @@ def apply_template(wiki_root: Path, template_ref: str, wiki_name: str = "") -> N
 
     Steps (in order):
     1. Validate and resolve template_ref → template_path
-    2. Copy routing.md → wiki_root/ROUTING.md
-    3. Copy wiki/purpose.md → wiki_root/wiki/purpose.md  (overwrites init_wiki version)
-    4. Copy wiki/index.md  → wiki_root/wiki/index.md    (overwrites init_wiki version)
-    5. Copy remaining wiki/*.md stubs → wiki_root/wiki/ (additive; never overwrites existing)
-    6. Copy raw_sources/ tree → wiki_root/raw_sources/  (additive; never overwrites existing)
+    2. Copy routing.md  → wiki_root/ROUTING.md
+    3. Copy seeds.md    → wiki_root/seeds.md   (getting-started guide; NOT a wiki page)
+    4. Copy wiki/purpose.md → wiki_root/wiki/purpose.md  (overwrites init_wiki version)
+    5. Copy wiki/index.md  → wiki_root/wiki/index.md    (overwrites init_wiki version)
+    6. Copy remaining wiki/*.md stubs → wiki_root/wiki/ (additive; never overwrites existing)
+    7. Copy raw_sources/ tree → wiki_root/raw_sources/  (additive; never overwrites existing)
+
+    ``seeds.md`` lives at the template root (not inside ``wiki/``) so it is
+    installed as a human reference file at ``wiki_root/seeds.md`` and is never
+    indexed or queried by the engine.
 
     ``raw_sources/`` is an optional directory in each template that holds blank
     intake forms for the domain (e.g. ``raw_sources/properties/blank-property-intake.md``
@@ -107,7 +112,12 @@ def apply_template(wiki_root: Path, template_ref: str, wiki_name: str = "") -> N
     # 1. ROUTING.md
     _write(template_path / "routing.md", wiki_root / "ROUTING.md")
 
-    # 2-3. purpose.md and index.md — always overwrite
+    # 2. seeds.md — human getting-started guide; installed at wiki root, NOT inside wiki/
+    seeds_src = template_path / "seeds.md"
+    if seeds_src.exists():
+        _write(seeds_src, wiki_root / "seeds.md")
+
+    # 3-4. purpose.md and index.md — always overwrite
     for name in ("purpose.md", "index.md"):
         src = template_path / "wiki" / name
         if src.exists():

@@ -1,11 +1,3 @@
----
-title: Getting Started — Software Development
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Software Development
 
 ## Recommended first ingests

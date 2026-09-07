@@ -1,11 +1,3 @@
----
-title: Getting Started — Course Design
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Course Design
 
 ## Recommended first ingests

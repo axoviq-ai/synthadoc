@@ -1,11 +1,3 @@
----
-title: Getting Started — IP Management
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — IP Management
 
 ## Recommended first ingests

@@ -1,11 +1,3 @@
----
-title: Getting Started — Public Health
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Public Health
 
 ## Recommended first ingests

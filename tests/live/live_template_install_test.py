@@ -393,7 +393,7 @@ def run_tier1(wiki_root: pathlib.Path) -> None:
         wiki_root / "ROUTING.md",
         wiki_root / "wiki" / "purpose.md",
         wiki_root / "wiki" / "index.md",
-        wiki_root / "wiki" / "seeds.md",
+        wiki_root / "seeds.md",
         wiki_root / "AGENTS.md",
         wiki_root / "CLAUDE.md",
         wiki_root / "GEMINI.md",

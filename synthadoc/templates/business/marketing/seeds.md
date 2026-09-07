@@ -1,11 +1,3 @@
----
-title: Getting Started — Marketing
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Marketing
 
 ## Recommended first ingests

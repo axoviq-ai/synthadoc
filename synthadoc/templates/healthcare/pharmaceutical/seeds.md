@@ -1,11 +1,3 @@
----
-title: Getting Started — Pharmaceutical
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Pharmaceutical
 
 ## Recommended first ingests

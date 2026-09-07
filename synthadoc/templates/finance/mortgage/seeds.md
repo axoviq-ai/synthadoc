@@ -1,11 +1,3 @@
----
-title: Getting Started — Mortgage
-status: draft
-confidence: low
-type: concept
-sources: []
----
-
 # Getting Started — Mortgage
 
 ## Recommended first ingests
