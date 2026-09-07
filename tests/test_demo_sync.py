@@ -48,8 +48,8 @@ def test_sync_copies_missing_files(tmp_path):
     installed = _build_installed_wiki(tmp_path, name)
     registry = _build_registry(installed, name)
 
-    with patch("synthadoc.cli.demo._DEMOS", {name: template}), \
-         patch("synthadoc.cli.demo._read_registry", return_value=registry):
+    with patch("synthadoc.cli.install._DEMOS", {name: template}), \
+         patch("synthadoc.cli.install._read_registry", return_value=registry):
         result = runner.invoke(app, ["demo", "sync", name])
 
     assert result.exit_code == 0, result.output
@@ -73,8 +73,8 @@ def test_sync_skips_existing_files(tmp_path):
 
     registry = _build_registry(installed, name)
 
-    with patch("synthadoc.cli.demo._DEMOS", {name: template}), \
-         patch("synthadoc.cli.demo._read_registry", return_value=registry):
+    with patch("synthadoc.cli.install._DEMOS", {name: template}), \
+         patch("synthadoc.cli.install._read_registry", return_value=registry):
         result = runner.invoke(app, ["demo", "sync", name])
 
     assert result.exit_code == 0, result.output
@@ -86,11 +86,11 @@ def test_sync_skips_existing_files(tmp_path):
 
 def test_sync_unknown_wiki(tmp_path):
     """Syncing a wiki not in the registry exits with error message."""
-    with patch("synthadoc.cli.demo._read_registry", return_value={}):
+    with patch("synthadoc.cli.install._read_registry", return_value={}):
         result = runner.invoke(app, ["demo", "sync", "nonexistent-wiki"])
 
     assert result.exit_code != 0
-    assert "not found in registry" in result.output
+    assert "not registered" in result.output or "not found" in result.output
 
 
 def test_sync_unknown_demo_template(tmp_path):
@@ -99,9 +99,9 @@ def test_sync_unknown_demo_template(tmp_path):
     installed = _build_installed_wiki(tmp_path, name)
     registry = _build_registry(installed, name)
 
-    with patch("synthadoc.cli.demo._DEMOS", {}), \
-         patch("synthadoc.cli.demo._read_registry", return_value=registry):
+    with patch("synthadoc.cli.install._DEMOS", {}), \
+         patch("synthadoc.cli.install._read_registry", return_value=registry):
         result = runner.invoke(app, ["demo", "sync", name])
 
     assert result.exit_code != 0
-    assert "No bundled demo template" in result.output
+    assert "cannot be synced" in result.output or "not installed" in result.output

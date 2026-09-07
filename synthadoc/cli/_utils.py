@@ -76,3 +76,67 @@ def _patch_toml(path: Path, section: str, pairs: dict) -> None:
             result.append(f"{k} = {_toml_value(v)}")
 
     atomic_write_text(path, "\n".join(result) + "\n")
+
+
+# ── Sync helpers (shared between templates sync and demo sync) ─────────────────
+
+def _strip_bom(text: str) -> str:
+    """Remove UTF-8 BOM (U+FEFF) if present at the start of text."""
+    return text.lstrip("﻿")
+
+
+def _extract_body(text: str) -> str:
+    """Return everything after the closing '---' of a YAML frontmatter block."""
+    text = _strip_bom(text)
+    if text.startswith("---"):
+        parts = text.split("---", 2)
+        if len(parts) >= 3:
+            return parts[2]
+    return "\n" + text
+
+
+def _extract_frontmatter_block(text: str) -> str:
+    """Return the YAML between '---' markers, normalised to exactly one leading/trailing newline."""
+    text = _strip_bom(text)
+    if text.startswith("---"):
+        parts = text.split("---", 2)
+        if len(parts) >= 3:
+            return "\n" + parts[1].strip() + "\n"
+    return ""
+
+
+def _inject_type_if_missing(installed_path: Path, template_path: Path) -> bool:
+    """Add type: field to an installed page if the template has one and the page lacks it.
+
+    Returns True if the file was modified.
+    """
+    tmpl_raw = template_path.read_text(encoding="utf-8")
+    tmpl_fm = _extract_frontmatter_block(tmpl_raw)
+    type_line = next(
+        (line.strip() for line in tmpl_fm.splitlines() if line.strip().startswith("type:")),
+        None,
+    )
+    if not type_line:
+        return False
+
+    inst_raw = installed_path.read_text(encoding="utf-8")
+    inst_fm = _extract_frontmatter_block(inst_raw)
+    if any(line.strip().startswith("type:") for line in inst_fm.splitlines()):
+        return False
+
+    inst_body = _extract_body(inst_raw)
+    new_fm = inst_fm.rstrip("\n") + f"\n{type_line}\n"
+    installed_path.write_text(f"---{new_fm}---{inst_body}", encoding="utf-8", newline="\n")
+    return True
+
+
+def _is_stub(path: Path) -> bool:
+    """Return True if a wiki page is still in its original template-stub state.
+
+    A page is a stub when it has never been ingested: both ``sources: []``
+    and ``confidence: low`` must be present in its frontmatter.  Either
+    condition alone is insufficient — an actively maintained low-confidence
+    page may still have real sources.
+    """
+    text = path.read_text(encoding="utf-8")
+    return "sources: []" in text and "confidence: low" in text

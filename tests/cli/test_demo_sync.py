@@ -4,13 +4,13 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch
 
-from synthadoc.cli.demo import (
+from synthadoc.cli._utils import (
     _extract_body,
     _extract_frontmatter_block,
     _inject_type_if_missing,
     _strip_bom,
-    sync_demo,
 )
+from synthadoc.cli.demo import sync_demo
 
 
 # ── helper tests ────────────────────────────────────────────────────────────
@@ -124,8 +124,8 @@ def test_sync_copies_new_raw_sources(tmp_path):
     registry = {"test-wiki": {"path": str(inst)}}
     demos = {"test-wiki": tmpl}
 
-    with patch("synthadoc.cli.demo._read_registry", return_value=registry), \
-         patch("synthadoc.cli.demo._DEMOS", demos):
+    with patch("synthadoc.cli.install._read_registry", return_value=registry), \
+         patch("synthadoc.cli.install._DEMOS", demos):
         from typer.testing import CliRunner
         from synthadoc.cli.demo import demo_app
         result = CliRunner().invoke(demo_app, ["sync", "test-wiki"])
@@ -142,8 +142,8 @@ def test_sync_does_not_overwrite_existing_raw_sources(tmp_path):
     registry = {"test-wiki": {"path": str(inst)}}
     demos = {"test-wiki": tmpl}
 
-    with patch("synthadoc.cli.demo._read_registry", return_value=registry), \
-         patch("synthadoc.cli.demo._DEMOS", demos):
+    with patch("synthadoc.cli.install._read_registry", return_value=registry), \
+         patch("synthadoc.cli.install._DEMOS", demos):
         from typer.testing import CliRunner
         from synthadoc.cli.demo import demo_app
         CliRunner().invoke(demo_app, ["sync", "test-wiki"])
@@ -158,8 +158,8 @@ def test_sync_updates_dashboard_body_preserves_frontmatter(tmp_path):
     registry = {"test-wiki": {"path": str(inst)}}
     demos = {"test-wiki": tmpl}
 
-    with patch("synthadoc.cli.demo._read_registry", return_value=registry), \
-         patch("synthadoc.cli.demo._DEMOS", demos):
+    with patch("synthadoc.cli.install._read_registry", return_value=registry), \
+         patch("synthadoc.cli.install._DEMOS", demos):
         from typer.testing import CliRunner
         from synthadoc.cli.demo import demo_app
         CliRunner().invoke(demo_app, ["sync", "test-wiki"])
@@ -179,8 +179,8 @@ def test_sync_dashboard_frontmatter_no_double_newline(tmp_path):
     registry = {"test-wiki": {"path": str(inst)}}
     demos = {"test-wiki": tmpl}
 
-    with patch("synthadoc.cli.demo._read_registry", return_value=registry), \
-         patch("synthadoc.cli.demo._DEMOS", demos):
+    with patch("synthadoc.cli.install._read_registry", return_value=registry), \
+         patch("synthadoc.cli.install._DEMOS", demos):
         from typer.testing import CliRunner
         from synthadoc.cli.demo import demo_app
         CliRunner().invoke(demo_app, ["sync", "test-wiki"])
@@ -199,13 +199,13 @@ def test_sync_is_idempotent(tmp_path):
     from typer.testing import CliRunner
     from synthadoc.cli.demo import demo_app
 
-    with patch("synthadoc.cli.demo._read_registry", return_value=registry), \
-         patch("synthadoc.cli.demo._DEMOS", demos):
+    with patch("synthadoc.cli.install._read_registry", return_value=registry), \
+         patch("synthadoc.cli.install._DEMOS", demos):
         CliRunner().invoke(demo_app, ["sync", "test-wiki"])
         after_first = (inst / "wiki" / "dashboard.md").read_text(encoding="utf-8")
 
-    with patch("synthadoc.cli.demo._read_registry", return_value=registry), \
-         patch("synthadoc.cli.demo._DEMOS", demos):
+    with patch("synthadoc.cli.install._read_registry", return_value=registry), \
+         patch("synthadoc.cli.install._DEMOS", demos):
         result = CliRunner().invoke(demo_app, ["sync", "test-wiki"])
         after_second = (inst / "wiki" / "dashboard.md").read_text(encoding="utf-8")
 
@@ -220,8 +220,8 @@ def test_sync_copies_new_wiki_pages(tmp_path):
     registry = {"test-wiki": {"path": str(inst)}}
     demos = {"test-wiki": tmpl}
 
-    with patch("synthadoc.cli.demo._read_registry", return_value=registry), \
-         patch("synthadoc.cli.demo._DEMOS", demos):
+    with patch("synthadoc.cli.install._read_registry", return_value=registry), \
+         patch("synthadoc.cli.install._DEMOS", demos):
         from typer.testing import CliRunner
         from synthadoc.cli.demo import demo_app
         CliRunner().invoke(demo_app, ["sync", "test-wiki"])
@@ -238,8 +238,8 @@ def test_sync_skips_protected_wiki_pages(tmp_path):
     registry = {"test-wiki": {"path": str(inst)}}
     demos = {"test-wiki": tmpl}
 
-    with patch("synthadoc.cli.demo._read_registry", return_value=registry), \
-         patch("synthadoc.cli.demo._DEMOS", demos):
+    with patch("synthadoc.cli.install._read_registry", return_value=registry), \
+         patch("synthadoc.cli.install._DEMOS", demos):
         from typer.testing import CliRunner
         from synthadoc.cli.demo import demo_app
         CliRunner().invoke(demo_app, ["sync", "test-wiki"])
@@ -251,8 +251,8 @@ def test_sync_unknown_wiki_exits_nonzero(tmp_path):
     registry = {}
     demos = {}
 
-    with patch("synthadoc.cli.demo._read_registry", return_value=registry), \
-         patch("synthadoc.cli.demo._DEMOS", demos):
+    with patch("synthadoc.cli.install._read_registry", return_value=registry), \
+         patch("synthadoc.cli.install._DEMOS", demos):
         from typer.testing import CliRunner
         from synthadoc.cli.demo import demo_app
         result = CliRunner().invoke(demo_app, ["sync", "does-not-exist"])
@@ -261,33 +261,33 @@ def test_sync_unknown_wiki_exits_nonzero(tmp_path):
 
 
 def test_sync_name_not_in_demos_exits_nonzero(tmp_path):
-    """Registry has the wiki but no bundled template exists for it."""
+    """Registry has the wiki but it's not a template or demo — should error."""
     registry = {"test-wiki": {"path": str(tmp_path)}}
     demos = {}  # no template
 
-    with patch("synthadoc.cli.demo._read_registry", return_value=registry), \
-         patch("synthadoc.cli.demo._DEMOS", demos):
+    with patch("synthadoc.cli.install._read_registry", return_value=registry), \
+         patch("synthadoc.cli.install._DEMOS", demos):
         from typer.testing import CliRunner
         from synthadoc.cli.demo import demo_app
         result = CliRunner().invoke(demo_app, ["sync", "test-wiki"])
 
     assert result.exit_code != 0
-    assert "No bundled demo template" in result.output
+    assert "cannot be synced" in result.output or "not installed" in result.output
 
 
 def test_sync_all_no_installed_demos(tmp_path):
-    """Omitting name when no demo wikis are installed prints a message and exits 0."""
+    """Omitting name when no template/demo wikis are installed prints a message and exits 0."""
     registry = {"my-wiki": {"path": str(tmp_path)}}
-    demos = {}  # registry entry is not a demo
+    demos = {}  # registry entry is not a demo or template
 
-    with patch("synthadoc.cli.demo._read_registry", return_value=registry), \
-         patch("synthadoc.cli.demo._DEMOS", demos):
+    with patch("synthadoc.cli.install._read_registry", return_value=registry), \
+         patch("synthadoc.cli.install._DEMOS", demos):
         from typer.testing import CliRunner
         from synthadoc.cli.demo import demo_app
         result = CliRunner().invoke(demo_app, ["sync"])
 
     assert result.exit_code == 0
-    assert "No installed demo wikis found" in result.output
+    assert "nothing to sync" in result.output.lower() or "no template" in result.output.lower()
 
 
 def test_sync_all_syncs_every_installed_demo(tmp_path):
@@ -306,8 +306,8 @@ def test_sync_all_syncs_every_installed_demo(tmp_path):
     }
     demos = {"wiki-a": tmpl_a, "wiki-b": tmpl_b}
 
-    with patch("synthadoc.cli.demo._read_registry", return_value=registry), \
-         patch("synthadoc.cli.demo._DEMOS", demos):
+    with patch("synthadoc.cli.install._read_registry", return_value=registry), \
+         patch("synthadoc.cli.install._DEMOS", demos):
         from typer.testing import CliRunner
         from synthadoc.cli.demo import demo_app
         result = CliRunner().invoke(demo_app, ["sync"])
@@ -407,8 +407,8 @@ def test_sync_purpose_md_written_when_missing(tmp_path):
     registry = {"test-wiki": {"path": str(inst)}}
     demos = {"test-wiki": tmpl}
 
-    with patch("synthadoc.cli.demo._read_registry", return_value=registry), \
-         patch("synthadoc.cli.demo._DEMOS", demos):
+    with patch("synthadoc.cli.install._read_registry", return_value=registry), \
+         patch("synthadoc.cli.install._DEMOS", demos):
         from typer.testing import CliRunner
         from synthadoc.cli.demo import demo_app
         result = CliRunner().invoke(demo_app, ["sync", "test-wiki"])
@@ -433,8 +433,8 @@ def test_sync_purpose_md_no_markers_full_replace(tmp_path):
     registry = {"test-wiki": {"path": str(inst)}}
     demos = {"test-wiki": tmpl}
 
-    with patch("synthadoc.cli.demo._read_registry", return_value=registry), \
-         patch("synthadoc.cli.demo._DEMOS", demos):
+    with patch("synthadoc.cli.install._read_registry", return_value=registry), \
+         patch("synthadoc.cli.install._DEMOS", demos):
         from typer.testing import CliRunner
         from synthadoc.cli.demo import demo_app
         result = CliRunner().invoke(demo_app, ["sync", "test-wiki"])
@@ -498,8 +498,8 @@ Old audience content.
     registry = {"test-wiki": {"path": str(inst)}}
     demos = {"test-wiki": tmpl}
 
-    with patch("synthadoc.cli.demo._read_registry", return_value=registry), \
-         patch("synthadoc.cli.demo._DEMOS", demos):
+    with patch("synthadoc.cli.install._read_registry", return_value=registry), \
+         patch("synthadoc.cli.install._DEMOS", demos):
         from typer.testing import CliRunner
         from synthadoc.cli.demo import demo_app
         result = CliRunner().invoke(demo_app, ["sync", "test-wiki"])
@@ -533,8 +533,8 @@ def test_sync_backfills_type_in_existing_page(tmp_path):
     registry = {"test-wiki": {"path": str(inst)}}
     demos = {"test-wiki": tmpl}
 
-    with patch("synthadoc.cli.demo._read_registry", return_value=registry), \
-         patch("synthadoc.cli.demo._DEMOS", demos):
+    with patch("synthadoc.cli.install._read_registry", return_value=registry), \
+         patch("synthadoc.cli.install._DEMOS", demos):
         from typer.testing import CliRunner
         from synthadoc.cli.demo import demo_app
         result = CliRunner().invoke(demo_app, ["sync", "test-wiki"])
