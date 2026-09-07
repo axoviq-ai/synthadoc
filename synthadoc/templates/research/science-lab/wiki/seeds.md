@@ -40,8 +40,31 @@ synthadoc ingest "https://libguides.umn.edu/c.php?g=1164012&p=8497442" -w <wiki>
 
 ## First steps checklist
 
-- [ ] Ingest your most-used protocol document
-- [ ] Create an instrument page for each major piece of equipment
-- [ ] Create a reagent page for your most critical reagents
-- [ ] Log your first experiment in [[experiments]]
-- [ ] Run scaffold to build the index
+- [ ] **Ingest your lab protocols**:
+  ```
+  synthadoc ingest docs/protocols/ --batch -w <wiki>
+  ```
+  Populates [[protocols]] and [[standard-operating-procedures]].
+
+- [ ] **Create instrument pages** — ingest your equipment records or user manuals:
+  ```
+  synthadoc ingest docs/equipment/ --batch -w <wiki>
+  ```
+  Populates [[instruments]].
+
+- [ ] **Document critical reagents** — ingest your chemical inventory or SDS:
+  ```
+  synthadoc ingest docs/reagents/ --batch -w <wiki>
+  ```
+  Populates [[reagents]].
+
+- [ ] **Log your first experiment** — copy `raw_sources/experiments/template-lab-experiment.md`, fill in before and after the run, then:
+  ```
+  synthadoc ingest raw_sources/experiments/<experiment>.md -w <wiki>
+  ```
+  Populates [[experiments]] and [[findings]].
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```

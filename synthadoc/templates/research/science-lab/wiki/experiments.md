@@ -8,4 +8,25 @@ sources: []
 
 # Experiments
 
-Log of all experiments conducted in this lab. Each experiment page records: experiment ID, date, operator, hypothesis being tested, protocol version used, instrument IDs, reagent lot numbers, environmental conditions, outcome (success/failure/partial), key observations, and link to raw data location. Cross-link to the [[findings]] page if the experiment contributed to a reportable result.
+Lab experiment log. Populate by ingesting experiment summaries from `raw_sources/experiments/`.
+
+Each experiment record captures:
+
+- **Identity** — experiment ID, date, experimenter, PI, protocol used (link to [[protocols]])
+- **Objective and hypothesis** — research question and specific hypothesis being tested (link to [[hypotheses]])
+- **Materials** — reagents with lot numbers and amounts used (link to [[reagents]]), equipment with model and settings
+- **Procedure summary** — reference to the full protocol; any deviations from the standard protocol documented
+- **Results** — quantitative measurements (table), qualitative observations, raw data file locations
+- **Interpretation** — whether the result supported the hypothesis, key observations, unexpected results
+- **Next steps** — follow-up experiments, parameter adjustments, replication plans
+
+**How to add an experiment:**
+
+1. Copy `raw_sources/experiments/template-lab-experiment.md`, fill in before and after the run, then:
+   ```
+   synthadoc ingest raw_sources/experiments/<experiment>.md -w <wiki>
+   ```
+
+Your electronic lab notebook (ELN) remains the primary record.
+
+Cross-link to [[protocols]], [[reagents]], [[instruments]], [[findings]], and [[raw-data]].

@@ -30,8 +30,32 @@ synthadoc ingest "https://www.sba.gov/business-guide/plan-your-business/market-r
 
 ## First steps checklist
 
-- [ ] Ingest the most recent industry report for your market
-- [ ] Create a market-overview page with size and growth data
-- [ ] Create a competitor profile for your top 3 competitors
-- [ ] Document your primary customer segment in [[consumer-segments]]
-- [ ] Run scaffold to build the index
+- [ ] **Ingest your most recent industry report**:
+  ```
+  synthadoc ingest <path/to/industry-report.pdf> -w <wiki>
+  ```
+  Populates [[market-overview]] and [[market-sizing]].
+
+- [ ] **Build competitor profiles** — for each top competitor, copy `raw_sources/competitors/template-competitor-profile.md`, fill it in, then:
+  ```
+  synthadoc ingest raw_sources/competitors/<competitor>.md -w <wiki>
+  ```
+  Or ingest their website directly: `synthadoc ingest "https://www.<competitor>.com" -w <wiki>`
+  Populates [[competitor-profiles]] and [[competitive-landscape]].
+
+- [ ] **Document your primary customer segment**:
+  ```
+  synthadoc ingest docs/customer-segments/ --batch -w <wiki>
+  ```
+  Populates [[consumer-segments]] and [[customer-insights]].
+
+- [ ] **Ingest survey data**:
+  ```
+  synthadoc ingest docs/surveys/<survey>-topline.pdf -w <wiki>
+  ```
+  Populates [[surveys]] and [[research-reports]].
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```
