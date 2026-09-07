@@ -91,6 +91,12 @@ synthadoc ingest raw_sources/ --batch -w <wiki>
 **Supported formats:** `.md`, `.txt`, `.pdf`, `.docx`, `.pptx`, `.xlsx`,
 `.csv`, `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.tiff`
 
+> **AI coding session files (`.jsonl`) use a direct path, not `raw_sources/`.** Session
+> transcripts from Claude Code, Codex, or Cursor are ingested by pointing at the file
+> explicitly — they are intentionally excluded from `--batch` directory scans to avoid
+> accidentally picking up log files or other `.jsonl` artefacts.
+> See [Ingest → session files](../../README.md#3-add-your-sources-and-ingest) in the main README.
+
 > **Template files are skipped during batch ingestion.** Any file whose
 > name starts with `template-` (in `raw_sources/` or any subfolder) is
 > treated as a blank form for you to fill in and copy — it is
