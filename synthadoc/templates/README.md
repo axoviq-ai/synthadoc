@@ -91,6 +91,13 @@ synthadoc ingest raw_sources/ --batch -w <wiki>
 **Supported formats:** `.md`, `.txt`, `.pdf`, `.docx`, `.pptx`, `.xlsx`,
 `.csv`, `.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`, `.tiff`
 
+> **Template files are skipped during batch ingestion.** Any file whose
+> name starts with `template-` (in `raw_sources/` or any subfolder) is
+> treated as a blank form for you to fill in and copy — it is
+> automatically excluded when you run `synthadoc ingest raw_sources/ --batch`.
+> Duplicate the file and remove the `template-` prefix when it contains
+> real content you want to capture.
+
 Because `staging_policy = all` is active on a fresh template install, every
 ingest — whether from a URL or a local file — lands in the `candidates/` queue
 for review before it is written to your wiki.
