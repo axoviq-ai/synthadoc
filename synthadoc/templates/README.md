@@ -7,8 +7,8 @@ pages, and 3–4 scaffold pages covering the most common concepts in that field.
 Unlike the built-in demo wikis (which contain real ingested content), templates
 are **structure-only** starting points. On first install the pages hold concise
 descriptions and frontmatter; the substance comes from your own ingested sources.
-A `wiki/seeds.md` page in each template recommends the best first URLs to ingest
-and web searches to find them.
+A `seeds.md` file in each template lists pre-vetted ingest-ready URLs to get
+you started quickly.
 
 ## Quick install
 
@@ -40,7 +40,7 @@ ways to bring content in, and you can use both together.
 
 ### Option 1 — Ingest web sources (seeds.md)
 
-Open `wiki/seeds.md` in your installed wiki. Each template ships with
+Open `seeds.md` in your installed wiki. Each template ships with
 pre-vetted, copy-paste-ready ingest commands for curated public URLs in
 that domain — all checked for accessibility and relevance before release:
 
@@ -356,14 +356,15 @@ heading that does not match any of the five standard section names.
 
 Each template folder contains:
 
-| File | Purpose |
+| File / folder | Purpose |
 |---|---|
 | `description.txt` | One-line description shown by `synthadoc templates list` |
 | `guidelines.md` | Domain-specific agent guidelines injected into the agent skill files |
-| `routing.md` | Query routing table — becomes `ROUTING.md` in the installed wiki |
+| `routing.md` | Query routing table — becomes `ROUTING.md` in the installed wiki root |
+| `seeds.md` | Pre-vetted ingest commands for curated public URLs, plus plain-text topic hints for finding additional sources — installed to the wiki root |
+| `raw_sources/<subfolder>/template-*.md` | Blank intake forms for the domain's primary document types — installed unchanged; users copy and rename them |
 | `wiki/purpose.md` | Domain include/exclude rules for the ingest agent |
 | `wiki/index.md` | Pre-linked category index with links to all scaffold pages |
-| `wiki/seeds.md` | Pre-vetted ingest commands for curated public URLs, plus plain-text topic hints for finding additional sources |
 | `wiki/<stub>.md` × 2–4 | Category scaffold pages with frontmatter and a descriptive body |
 
 The agent skill files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`) are not stored
@@ -377,7 +378,7 @@ file changes.
 ## Adding a new template
 
 1. Create a folder: `synthadoc/templates/<category>/<domain>/`
-2. Add all 7 required files listed in the table above
+2. Add the required files and folders listed in the table above
 3. Run the completeness test: `pytest tests/test_template_completeness.py -k "<domain>" -v`
 4. Commit. The template appears in `synthadoc templates list` automatically.
 
