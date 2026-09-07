@@ -43,8 +43,32 @@ synthadoc ingest "https://www.abs-qe.com/Knowledge/ISO-Standards/ISO-55001-Asset
 
 ## First steps checklist
 
-- [ ] Ingest your facility asset register (export from CMMS or spreadsheet)
-- [ ] Create an equipment page for your 5 most critical assets
-- [ ] Document your PM schedule for critical equipment
-- [ ] Ingest your most recent facility inspection report
-- [ ] Run scaffold to build the index
+- [ ] **Ingest your facility asset register** — export from your CMMS or spreadsheet, then:
+  ```
+  synthadoc ingest docs/facility/asset-register.xlsx -w <wiki>
+  ```
+  Or create individual records: copy `raw_sources/assets/template-asset-record.md` for each critical asset and ingest each file.
+  Populates [[assets]].
+
+- [ ] **Create equipment pages** for your 5 most critical assets:
+  ```
+  synthadoc ingest raw_sources/assets/<asset-id>-<name>.md -w <wiki>
+  ```
+  Populates [[equipment]] and [[preventive-maintenance]].
+
+- [ ] **Document your PM schedule** for critical equipment:
+  ```
+  synthadoc ingest docs/facility/pm-schedule.xlsx -w <wiki>
+  ```
+  Populates [[preventive-maintenance]].
+
+- [ ] **Ingest your most recent facility inspection report**:
+  ```
+  synthadoc ingest docs/facility/inspections/<report>.pdf -w <wiki>
+  ```
+  Populates [[safety-inspections]].
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```

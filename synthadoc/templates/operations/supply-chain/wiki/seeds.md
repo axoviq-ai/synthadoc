@@ -43,8 +43,32 @@ synthadoc ingest "https://www.supplychaindive.com/news/5-steps-mitigate-risks-so
 
 ## First steps checklist
 
-- [ ] Ingest your approved supplier list
-- [ ] Create a supplier page for your top 5 suppliers by spend
-- [ ] Document your procurement approval matrix
-- [ ] Create material pages for your top 10 critical materials
-- [ ] Run scaffold to build the index
+- [ ] **Ingest your approved supplier list** — export from ERP or AVL spreadsheet:
+  ```
+  synthadoc ingest docs/supply-chain/approved-vendor-list.xlsx -w <wiki>
+  ```
+  Or create individual supplier records: copy `raw_sources/suppliers/template-supplier-profile.md` for each key supplier, fill in all fields, then ingest.
+  Populates [[suppliers]].
+
+- [ ] **Create supplier pages** for your top 5 suppliers by spend:
+  ```
+  synthadoc ingest raw_sources/suppliers/<supplier-code>-<name>.md -w <wiki>
+  ```
+  Populates [[suppliers]] and [[vendor-scorecards]].
+
+- [ ] **Ingest your procurement policy** and approval matrix:
+  ```
+  synthadoc ingest docs/supply-chain/procurement-policy.pdf -w <wiki>
+  ```
+  Populates [[procurement-procedures]].
+
+- [ ] **Create material pages** for your top 10 critical materials:
+  ```
+  synthadoc ingest docs/supply-chain/material-master.xlsx -w <wiki>
+  ```
+  Populates [[materials]] and [[inventory-management]].
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```

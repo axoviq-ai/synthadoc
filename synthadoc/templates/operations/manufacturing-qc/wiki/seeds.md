@@ -43,8 +43,31 @@ synthadoc ingest "https://www.aiag.org/training-and-resources/manuals" -w <wiki>
 
 ## First steps checklist
 
-- [ ] Ingest your quality manual or QMS overview document
-- [ ] Create a process spec page for your highest-volume product line
-- [ ] Document your top 5 recurring defect codes in [[defect-tracker]]
-- [ ] Ingest your most recent customer audit report
-- [ ] Run scaffold to build the index
+- [ ] **Ingest your quality manual or QMS overview document**:
+  ```
+  synthadoc ingest docs/manufacturing/quality-manual.pdf -w <wiki>
+  ```
+  Populates [[quality-standards]].
+
+- [ ] **Create a process spec page** for your highest-volume product line:
+  ```
+  synthadoc ingest docs/manufacturing/process-specs/<product-line>.pdf -w <wiki>
+  ```
+  Populates [[process-specifications]] and [[control-plans]].
+
+- [ ] **Log your top defect events** — copy `raw_sources/nonconformances/template-ncr.md` for each recent nonconformance, fill in all fields, then:
+  ```
+  synthadoc ingest raw_sources/nonconformances/NCR-<YYYY>-<NNN>-<keyword>.md -w <wiki>
+  ```
+  Populates [[nonconformances]] and [[defect-tracker]].
+
+- [ ] **Ingest your gauge calibration register**:
+  ```
+  synthadoc ingest docs/manufacturing/gauge-register.xlsx -w <wiki>
+  ```
+  Populates [[gauges]].
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```
