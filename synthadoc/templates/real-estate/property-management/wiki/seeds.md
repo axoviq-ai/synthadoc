@@ -43,8 +43,31 @@ synthadoc ingest "https://happy.co/resources/work-order-management" -w <wiki>
 
 ## First steps checklist
 
-- [ ] Ingest your lease agreement template
-- [ ] Create a tenant page for each current tenant
-- [ ] Create a work order entry for each open maintenance item
-- [ ] Ingest your current rent roll
-- [ ] Run scaffold to build the index
+- [ ] **Abstract your leases** — for each tenant, copy `raw_sources/leases/template-lease-abstract.md`, rename it, fill in the lease terms, then:
+  ```
+  synthadoc ingest raw_sources/leases/<tenant-suite>.md -w <wiki>
+  ```
+  Populates [[leases]] and [[tenants]].
+
+- [ ] **Log open maintenance work orders** — for each open issue, copy `raw_sources/maintenance/template-work-order.md`, rename it, fill in the details, then:
+  ```
+  synthadoc ingest raw_sources/maintenance/<wo-number>.md -w <wiki>
+  ```
+  Populates [[work-orders]].
+
+- [ ] **Ingest your current rent roll** — export from your property management system and ingest:
+  ```
+  synthadoc ingest docs/rent-rolls/<property>-<YYYY-MM>.xlsx -w <wiki>
+  ```
+  Populates [[rent-rolls]].
+
+- [ ] **Ingest compliance certificates** — upload inspection reports, CO, fire alarm test, elevator certificate:
+  ```
+  synthadoc ingest docs/compliance/ --batch -w <wiki>
+  ```
+  Populates [[property-compliance]].
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```

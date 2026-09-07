@@ -43,8 +43,30 @@ synthadoc ingest "https://mitti.com/checklists/compliance/building-inspection" -
 
 ## First steps checklist
 
-- [ ] Ingest your entitlement documents or zoning approval letters
-- [ ] Create a project page for each active development project
-- [ ] Document your general contractor in [[contractors]]
-- [ ] Ingest your most recent permit applications
-- [ ] Run scaffold to build the index
+- [ ] **Ingest your entitlement documents and zoning approval** — upload your conditional use permit, variance, or planning commission approval letter:
+  ```
+  synthadoc ingest docs/entitlements/ --batch -w <wiki>
+  ```
+  Populates [[zoning-analysis]].
+
+- [ ] **Create a project page for each active development project** — copy `raw_sources/projects/template-development-project.md`, rename it, fill in the details, then:
+  ```
+  synthadoc ingest raw_sources/projects/<project>.md -w <wiki>
+  ```
+
+- [ ] **Document your general contractor and key subs** — ingest each contractor's qualification package or certificate of insurance:
+  ```
+  synthadoc ingest docs/contractors/<contractor>.pdf -w <wiki>
+  ```
+  Populates [[contractors]].
+
+- [ ] **Ingest your permit applications and approvals** — upload your building permit, electrical permit, and grading permit:
+  ```
+  synthadoc ingest docs/permits/ --batch -w <wiki>
+  ```
+  Populates [[permits]].
+
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```
