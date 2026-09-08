@@ -2,12 +2,14 @@
 
 > **How to use this form**
 >
-> 1. Copy this file and rename it (e.g. `acme-corp.md`)
-> 2. Fill in what you know — leave fields blank or write `N/A` if not applicable
-> 3. Run: `synthadoc ingest raw_sources/companies/acme-corp.md -w <wiki>`
+> This template follows the **CFA Institute research standards** -- the globally recognized framework for investment analysis and portfolio management.
+> If you already have company analysis in another format, skip this form and ingest your document directly.
 >
-> For public companies, supplement with the 10-K and earnings transcripts via URL ingest.
-> Re-ingest after each earnings cycle or major corporate event.
+> Reference: [CFA Institute](https://www.cfainstitute.org/)
+>
+> 1. Copy this file and rename it (e.g. `acme-corp.md`)
+> 2. Fill in all sections
+> 3. Run: `synthadoc ingest raw_sources/companies/<filename>.md -w <wiki>`
 
 ---
 

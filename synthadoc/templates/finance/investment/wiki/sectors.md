@@ -8,7 +8,7 @@ sources: []
 
 # Sectors
 
-Sector and industry coverage for the investment portfolio. Populate by ingesting sector reports, industry studies, and equity research.
+Sector and industry coverage for the investment portfolio.
 
 Each sector page captures:
 
@@ -20,11 +20,5 @@ Each sector page captures:
 - **Competitive dynamics** — concentration, barriers to entry, pricing power
 - **Portfolio exposure** — which [[companies]] in the portfolio belong to this sector
 - **Source and date** — report source, publication date, data currency
-
-**How to add a sector:**
-
-1. Find a recent sector report or industry study — broker research (Goldman, Morgan Stanley, JPMorgan), IBISWorld, PitchBook, or S&P Capital IQ
-2. Run `synthadoc ingest "https://..." -w <wiki>` or `synthadoc ingest <report.pdf> -w <wiki>`
-3. The generated page cross-links here via [[sectors]]
 
 Cross-link sector pages to [[companies]] and [[deals]].

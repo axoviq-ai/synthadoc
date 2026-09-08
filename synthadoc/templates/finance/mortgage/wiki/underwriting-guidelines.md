@@ -8,7 +8,7 @@ sources: []
 
 # Underwriting Guidelines
 
-Credit policy for loan approval and lender overlays applied beyond agency minimums. Populate by ingesting your credit policy manual, overlay matrix, and agency guideline references.
+Credit policy for loan approval and lender overlays applied beyond agency minimums.
 
 Each underwriting guideline record captures:
 
@@ -19,16 +19,5 @@ Each underwriting guideline record captures:
 - **Property eligibility** — property types allowed, condo review requirements (warrantable vs. non-warrantable), rural property policy, manufactured housing policy
 - **Lender overlays vs. agency minimums** — a table of each overlay (stricter than agency), the agency minimum it tightens, and the effective date; reason for the overlay (risk appetite, investor requirement, state law)
 - **Exception process** — who can approve exceptions, exception documentation requirements, exception tracking and reporting
-
-**How to populate:**
-
-1. Ingest your credit policy or underwriting overlay matrix:
-   ```
-   synthadoc ingest <path/to/underwriting-guidelines.pdf> -w <wiki>
-   ```
-2. Ingest agency guideline sections relevant to your product mix:
-   ```
-   synthadoc ingest "https://selling-guide.fanniemae.com/" -w <wiki>
-   ```
 
 Cross-link to [[loan-products]], [[agency-guidelines]], and [[loan-pipeline]].

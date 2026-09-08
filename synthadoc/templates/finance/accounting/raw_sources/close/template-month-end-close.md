@@ -2,12 +2,14 @@
 
 > **How to use this form**
 >
+> This template follows the **US GAAP (FASB Accounting Standards Codification)** -- the authoritative standard for U.S. financial accounting and reporting.
+> If you already have close checklists in another format, skip this form and ingest your document directly.
+>
+> Reference: [US GAAP (FASB ASC)](https://asc.fasb.org/)
+>
 > 1. Copy this file and rename it (e.g. `close-2026-08.md`)
 > 2. Complete each section as the close progresses — check off items as done
-> 3. Run: `synthadoc ingest raw_sources/close/close-2026-08.md -w <wiki>`
->
-> Re-ingest after the package is signed off to capture the final state.
-> Aligns with GAAP close best practices and SOX Section 404 documentation requirements.
+> 3. Run: `synthadoc ingest raw_sources/close/<filename>.md -w <wiki>`
 
 ---
 

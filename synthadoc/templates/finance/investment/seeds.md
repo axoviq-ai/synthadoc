@@ -40,24 +40,46 @@ synthadoc ingest "https://breakingintowallstreet.com/kb/leveraged-buyouts-and-lb
 
 ## First steps checklist
 
-- [ ] **Ingest the 10-K for your first portfolio company** — find the filing on
-  [SEC EDGAR](https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&type=10-K),
-  then run `synthadoc ingest "https://..." -w <wiki>`. See [[companies]] for what
-  gets captured.
+- [ ] **Profile a company** -- use our template or bring your own:
+  - Template: copy `raw_sources/companies/template-company-profile.md`, rename it
+    (e.g. `acme-corp.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/companies/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing company analysis in `raw_sources/companies/` and ingest it.
+  Populates [[companies]] and [[sectors]].
 
-- [ ] **Promote the generated company page from candidates** — after ingesting the
-  10-K, review and promote: `synthadoc candidates list -w <wiki>`, then
-  `synthadoc candidates promote <slug> -w <wiki>`.
+- [ ] **Write a deal memo** -- use our template or bring your own:
+  - Template: copy `raw_sources/deals/template-deal-memo.md`, rename it
+    (e.g. `acme-corp-acquisition.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/deals/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing investment thesis in `raw_sources/deals/` and ingest it.
+  Populates [[deals]].
 
-- [ ] **Open a deal memo for each active position** — copy
-  `raw_sources/deals/template-deal-memo.md`, fill in the deal terms and thesis,
-  then run `synthadoc ingest raw_sources/deals/<deal>.md -w <wiki>`.
-  See [[deals]] for what gets captured.
+- [ ] **Build or log a financial model** -- use our template or bring your own:
+  - Template: copy `raw_sources/financial-models/template-financial-model.md`, rename it
+    (e.g. `acme-corp-dcf-2026-08.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/financial-models/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing model outputs in `raw_sources/financial-models/` and ingest them.
+  Populates [[financial-models]].
 
-- [ ] **Ingest a sector report to populate [[sectors]]** — use broker research
-  (Goldman, Morgan Stanley, JPMorgan), [IBISWorld](https://www.ibisworld.com/),
-  or [PitchBook](https://pitchbook.com/), then run
-  `synthadoc ingest "https://..." -w <wiki>`.
+- [ ] **Complete due diligence** -- use our template or bring your own:
+  - Template: copy `raw_sources/due-diligence/template-due-diligence-checklist.md`, rename it
+    (e.g. `acme-corp-dd-checklist-2026-08.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/due-diligence/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing DD workpapers in `raw_sources/due-diligence/` and ingest them.
+  Populates [[deals]] with DD findings.
+
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.
@@ -70,4 +92,7 @@ synthadoc ingest "https://breakingintowallstreet.com/kb/leveraged-buyouts-and-lb
   ```
   Pages still showing `draft` may have lint warnings -- review and re-run lint if needed.
 
-- [ ] **Run scaffold to build the index** — `synthadoc scaffold -w <wiki>`
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```

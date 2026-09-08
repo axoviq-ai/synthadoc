@@ -8,7 +8,7 @@ sources: []
 
 # Regulatory Compliance
 
-Federal and state regulatory compliance program. Populate by ingesting examination reports, regulatory guidance, and compliance policies.
+Federal and state regulatory compliance program.
 
 Each regulatory compliance record captures:
 
@@ -19,11 +19,5 @@ Each regulatory compliance record captures:
 - **Fair lending** — HMDA data analysis, disparate impact testing, CRA exam rating and last exam date
 - **Consumer complaints** — CFPB complaint portal monitoring, complaint categorization, resolution tracking
 - **Policy inventory** — list of board-approved compliance policies, last review date, next review date
-
-**How to populate:**
-
-1. Ingest your most recent examination report (redacted as appropriate)
-2. Ingest CFPB Supervisory Highlights relevant to your product mix
-3. Ingest your compliance risk assessment or CRA public file
 
 Cross-link to [[bsa-aml]], [[credit-risk]], [[deposit-products]], and [[lending-products]].

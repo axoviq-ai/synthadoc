@@ -2,13 +2,16 @@
 
 > **How to use this form**
 >
-> 1. Copy this file and rename it (e.g. `smith-123-main-st.md`)
-> 2. Fill in the key application details for pipeline tracking
-> 3. Run: `synthadoc ingest raw_sources/pipeline/smith-123-main-st.md -w <wiki>`
+> This template follows the **Fannie Mae Selling Guide** -- the authoritative standard for conventional mortgage underwriting and loan delivery.
+> If you already have pipeline reports in another format, skip this form and ingest your document directly.
 >
-> Update and re-ingest at each stage change. This is a summary for the wiki —
-> your LOS (Loan Origination System) remains the system of record.
-> Do NOT include full SSN, full DOB, or other PII beyond what is listed here.
+> Reference: [Fannie Mae Selling Guide](https://selling-guide.fanniemae.com/)
+>
+> Do NOT include full SSN, full DOB, or other PII beyond what is listed here. Your LOS remains the system of record.
+>
+> 1. Copy this file and rename it (e.g. `smith-123-main-st.md`)
+> 2. Fill in all sections
+> 3. Run: `synthadoc ingest raw_sources/pipeline/<filename>.md -w <wiki>`
 
 ---
 

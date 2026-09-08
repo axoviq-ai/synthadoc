@@ -40,29 +40,37 @@ synthadoc ingest "https://www.asurity.com/blogs/trid-refresher-series-part-2-und
 
 ## First steps checklist
 
-- [ ] **Ingest your underwriting guidelines** — your lender overlay matrix, agency guide excerpts, or credit policy:
-  ```
-  synthadoc ingest <path/to/underwriting-guidelines.pdf> -w <wiki>
-  ```
-  Populates [[underwriting-guidelines]] and [[agency-guidelines]].
+- [ ] **Document a loan product** -- use our template or bring your own:
+  - Template: copy `raw_sources/loan-products/template-loan-product.md`, rename it
+    (e.g. `30yr-fixed-conventional.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/loan-products/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing product guidelines in `raw_sources/loan-products/` and ingest them.
+  Populates [[loan-products]].
 
-- [ ] **Create a product sheet for each loan type you originate** — copy `raw_sources/loan-products/template-loan-product.md`, rename it, fill in the terms and eligibility criteria, then:
-  ```
-  synthadoc ingest raw_sources/loan-products/<product>.md -w <wiki>
-  ```
-  Results populate [[loan-products]].
+- [ ] **Log a loan application** -- use our template or bring your own:
+  - Template: copy `raw_sources/pipeline/template-loan-application-summary.md`, rename it
+    (e.g. `smith-123-main-st.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/pipeline/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing pipeline report in `raw_sources/pipeline/` and ingest it.
+  Populates [[loan-pipeline]].
 
-- [ ] **Track active loans in the pipeline** — for each application, copy `raw_sources/pipeline/template-loan-application-summary.md`, rename it, fill in borrower and property details, then:
-  ```
-  synthadoc ingest raw_sources/pipeline/<borrower-address>.md -w <wiki>
-  ```
-  Re-ingest at each stage change. Populates [[loan-pipeline]].
+- [ ] **Complete an underwriting checklist** -- use our template or bring your own:
+  - Template: copy `raw_sources/underwriting/template-underwriting-checklist.md`, rename it
+    (e.g. `smith-123-main-st-uw.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/underwriting/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing UW file in `raw_sources/underwriting/` and ingest it.
+  Populates [[underwriting-guidelines]].
 
-- [ ] **Ingest CFPB TRID disclosure requirements**
-  ```
-  synthadoc ingest "https://www.consumerfinance.gov/policy-compliance/rulemaking/regulations/1026/appendix_d/" -w <wiki>
-  ```
-  Populates [[underwriting-guidelines]] and [[agency-guidelines]] compliance sections.
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

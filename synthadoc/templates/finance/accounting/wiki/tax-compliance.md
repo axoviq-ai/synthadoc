@@ -8,7 +8,7 @@ sources: []
 
 # Tax Compliance
 
-Federal, state, and local tax filing obligations and compliance calendar. Populate by ingesting tax policy documents, IRS publications, and your tax provision workpapers.
+Federal, state, and local tax filing obligations and compliance calendar.
 
 Each tax compliance record captures:
 
@@ -20,11 +20,5 @@ Each tax compliance record captures:
 - **Transfer pricing** — intercompany transaction documentation, arm's-length analysis, country-by-country reporting
 - **Nexus and apportionment** — state filing obligations, apportionment factors, economic nexus thresholds
 - **Open tax years** — statute of limitations by jurisdiction, open examinations, IDR status
-
-**How to populate tax compliance:**
-
-1. Ingest IRS publications relevant to your entity type: `synthadoc ingest "https://www.irs.gov/publications/..." -w <wiki>`
-2. Ingest your tax provision memo or ASC 740 workpaper (PDF or exported markdown)
-3. Ingest your tax compliance calendar
 
 Cross-link to [[financial-statements]] and [[audit-readiness]].

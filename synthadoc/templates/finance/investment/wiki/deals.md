@@ -8,7 +8,7 @@ sources: []
 
 # Deals
 
-Active deal pipeline and closed transactions. Populate by ingesting deal memos from `raw_sources/deals/`.
+Active deal pipeline and closed transactions.
 
 Each deal page captures:
 
@@ -20,12 +20,5 @@ Each deal page captures:
 - **Return analysis** — entry price/EV, target exit multiple, hold period, base/bull/bear case IRR, expected equity multiple
 - **Diligence checklist** — financial model, legal, tax, management interviews, QoE, reference checks
 - **Status log** — dated record of stage changes and key decisions
-
-**How to open a deal:**
-
-1. Copy `raw_sources/deals/template-deal-memo.md` and rename it after the target
-2. Fill in the deal terms and thesis as they develop
-3. Run `synthadoc ingest raw_sources/deals/<deal>.md -w <wiki>`
-4. Update and re-ingest at each stage gate
 
 Cross-link deal pages to [[companies]], [[financial-models]], and [[sectors]].

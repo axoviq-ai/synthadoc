@@ -8,7 +8,7 @@ sources: []
 
 # BSA / AML
 
-Bank Secrecy Act and Anti-Money Laundering program documentation. Populate by ingesting your BSA/AML policy manual, FinCEN guidance, and regulatory examination findings.
+Bank Secrecy Act and Anti-Money Laundering program documentation.
 
 Each BSA/AML record captures:
 
@@ -22,8 +22,4 @@ Each BSA/AML record captures:
 - **Training** — annual BSA training completion tracking, role-specific requirements
 - **Examination history** — most recent exam date, MRA/MRIA findings, corrective action status
 
-**How to populate:**
-
-1. Ingest your BSA/AML policy manual: `synthadoc ingest raw_sources/bsa-aml-policy.pdf -w <wiki>`
-2. Ingest FinCEN guidance relevant to your institution type
-3. Cross-link examination findings to [[regulatory-compliance]]
+Cross-link to [[regulatory-compliance]], [[credit-risk]], and [[deposit-products]].

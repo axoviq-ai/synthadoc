@@ -8,7 +8,7 @@ sources: []
 
 # Loan Pipeline
 
-Tracks active loan applications from application through closing. Populate by ingesting application summaries from `raw_sources/pipeline/`.
+Tracks active loan applications from application through closing.
 
 Each pipeline entry captures:
 
@@ -18,14 +18,5 @@ Each pipeline entry captures:
 - **Borrower summary** *(no full SSN or full DOB)* — borrower type, FICO, monthly gross income, front-end DTI, back-end DTI, verified assets
 - **Conditions and issues** — outstanding underwriting conditions, suspense status, key risk flags
 - **Milestone log** — date, stage, notes for each stage change
-
-**How to add a pipeline loan:**
-
-1. Copy `raw_sources/pipeline/template-loan-application-summary.md` and rename it after the borrower and address (e.g. `smith-123-main-st.md`)
-2. Fill in current application details
-3. Run `synthadoc ingest raw_sources/pipeline/smith-123-main-st.md -w <wiki>`
-4. Re-ingest at each stage change
-
-Your LOS remains the system of record. This wiki provides searchable context and cross-linking.
 
 Cross-link to [[loan-products]], [[underwriting-guidelines]], and [[agency-guidelines]].

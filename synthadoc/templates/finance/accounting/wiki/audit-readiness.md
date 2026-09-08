@@ -8,7 +8,7 @@ sources: []
 
 # Audit Readiness
 
-Audit preparation status and PBC (prepared by client) list tracking. Populate by ingesting audit management letters, prior-year audit reports, or your own audit readiness assessments.
+Audit preparation status and PBC (prepared by client) list tracking.
 
 Each audit readiness record captures:
 
@@ -20,11 +20,5 @@ Each audit readiness record captures:
 - **Subsequent events** — material events between period-end and audit report date
 - **Internal audit coordination** — reliance on internal audit work, coverage overlap with external auditors
 - **Open issues** — items under discussion with auditors; expected resolution
-
-**How to build audit readiness documentation:**
-
-1. Ingest prior-year audit management letter: `synthadoc ingest <management-letter.pdf> -w <wiki>`
-2. Ingest your firm's audit readiness checklist or assessment document
-3. Update [[internal-controls]] with any deficiency findings from the prior audit
 
 Cross-link to [[internal-controls]], [[financial-statements]], and [[close-checklist]].

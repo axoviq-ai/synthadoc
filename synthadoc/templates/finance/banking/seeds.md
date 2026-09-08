@@ -40,23 +40,37 @@ synthadoc ingest "http://business.cch.com/BANKD/Community-Bank.pdf" -w <wiki>
 
 ## First steps checklist
 
-- [ ] **Ingest your product disclosure documents** — for each deposit or lending product, copy `raw_sources/products/template-product-sheet.md`, rename it, fill in the details, then:
-  ```
-  synthadoc ingest raw_sources/products/<product>.md -w <wiki>
-  ```
-  Results populate [[deposit-products]] and [[lending-products]].
+- [ ] **Document a product** -- use our template or bring your own:
+  - Template: copy `raw_sources/products/template-product-sheet.md`, rename it
+    (e.g. `premier-checking.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/products/<product>.md -w <wiki>
+    ```
+  - Own doc: place your existing product sheets in `raw_sources/products/` and ingest them.
+  Populates [[lending-products]] and [[deposit-products]].
 
-- [ ] **Ingest your BSA/AML policy manual** — your internal policy document or a regulatory exam manual:
-  ```
-  synthadoc ingest <path/to/bsa-aml-policy.pdf> -w <wiki>
-  ```
-  Populates [[bsa-aml]]. Cross-link to [[regulatory-compliance]] after ingesting exam findings.
+- [ ] **Write a credit memo** -- use our template or bring your own:
+  - Template: copy `raw_sources/credit-applications/template-credit-memo.md`, rename it
+    (e.g. `acme-corp-term-loan-2026-08.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/credit-applications/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing credit analysis in `raw_sources/credit-applications/` and ingest it.
+  Populates [[credit-risk]].
 
-- [ ] **Ingest your compliance policies and exam findings** — examination report, compliance risk assessment, or supervisory correspondence:
-  ```
-  synthadoc ingest <path/to/exam-report.pdf> -w <wiki>
-  ```
-  Populates [[regulatory-compliance]] and [[branch-operations]].
+- [ ] **Complete a BSA/AML review** -- use our template or bring your own:
+  - Template: copy `raw_sources/compliance/template-bsa-aml-review.md`, rename it
+    (e.g. `acme-corp-aml-review-2026-08.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/compliance/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing AML review in `raw_sources/compliance/` and ingest it.
+  Populates [[bsa-aml]] and [[regulatory-compliance]].
+
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

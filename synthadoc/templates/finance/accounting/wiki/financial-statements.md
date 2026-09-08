@@ -8,7 +8,7 @@ sources: []
 
 # Financial Statements
 
-Structure and content of the three primary financial statements and the disclosure notes. Populate by ingesting your financial statement templates, accounting policies, and published reports.
+Structure and content of the three primary financial statements and the disclosure notes.
 
 Each financial statement record captures:
 
@@ -17,13 +17,5 @@ Each financial statement record captures:
 - **Cash flow statement** — operating (indirect method: net income + non-cash adjustments + working capital changes), investing (capex, acquisitions, asset disposals), and financing (debt proceeds/repayments, equity issuance, dividends) sections
 - **Disclosure notes** — accounting policies (revenue recognition, depreciation, lease accounting, inventory method), segment reporting, related-party transactions, contingencies, and subsequent events
 - **Intercompany eliminations** — elimination entries for consolidated reporting; subsidiary-level vs. consolidated views
-
-**How to populate:**
-
-1. Ingest your financial statement templates or most recent issued financials:
-   ```
-   synthadoc ingest <path/to/annual-report.pdf> -w <wiki>
-   ```
-2. Ingest your accounting policies memo or footnote templates
 
 Cross-link to [[close-checklist]], [[journal-entries]], [[internal-controls]], and [[audit-readiness]].

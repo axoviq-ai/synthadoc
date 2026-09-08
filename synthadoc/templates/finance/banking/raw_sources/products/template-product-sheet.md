@@ -2,12 +2,14 @@
 
 > **How to use this form**
 >
+> This template follows the **CFPB Product Disclosure Requirements** -- the federal standards for consumer financial product disclosures.
+> If you already have product sheets in another format, skip this form and ingest your document directly.
+>
+> Reference: [CFPB](https://www.consumerfinance.gov/)
+>
 > 1. Copy this file and rename it (e.g. `premier-checking.md` or `small-business-term-loan.md`)
 > 2. Fill in the product terms — use your current approved product disclosure as the source
-> 3. Run: `synthadoc ingest raw_sources/products/premier-checking.md -w <wiki>`
->
-> Re-ingest whenever rates, fees, or terms change. Covers both deposit and lending products.
-> Aligns with FDIC product disclosure standards and Reg E / TILA requirements.
+> 3. Run: `synthadoc ingest raw_sources/products/<product>.md -w <wiki>`
 
 ---
 

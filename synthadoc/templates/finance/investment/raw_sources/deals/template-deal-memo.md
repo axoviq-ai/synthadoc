@@ -2,11 +2,14 @@
 
 > **How to use this form**
 >
-> 1. Copy this file and rename it (e.g. `acme-corp-acquisition.md`)
-> 2. Fill in deal terms and thesis as they develop — update and re-ingest at each stage
-> 3. Run: `synthadoc ingest raw_sources/deals/acme-corp-acquisition.md -w <wiki>`
+> This template follows the **CFA Institute research standards** -- the globally recognized framework for investment analysis and portfolio management.
+> If you already have an investment thesis in another format, skip this form and ingest your document directly.
 >
-> Cross-link to the company profile page for fundamental research.
+> Reference: [CFA Institute](https://www.cfainstitute.org/)
+>
+> 1. Copy this file and rename it (e.g. `acme-corp-acquisition.md`)
+> 2. Fill in all sections
+> 3. Run: `synthadoc ingest raw_sources/deals/<filename>.md -w <wiki>`
 
 ---
 

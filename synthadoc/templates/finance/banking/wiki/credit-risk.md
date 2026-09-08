@@ -8,7 +8,7 @@ sources: []
 
 # Credit Risk
 
-Credit policy, underwriting standards, and portfolio risk management. Populate by ingesting credit policies, allowance for credit loss (CECL) methodology, and examination findings.
+Credit policy, underwriting standards, and portfolio risk management.
 
 Each credit risk record captures:
 
@@ -19,14 +19,5 @@ Each credit risk record captures:
 - **CECL / allowance methodology** — model type (discounted cash flow, loss rate, PD×LGD), historical loss period, Q-factors, qualitative adjustments, effective date of CECL adoption
 - **Stress testing** — assumptions, scenarios (baseline / adverse / severely adverse), results, and action thresholds
 - **Charge-off and recovery** — charge-off triggers by loan type, recovery procedures, aging triggers for non-accrual placement
-
-**How to populate:**
-
-1. Ingest your credit policy manual:
-   ```
-   synthadoc ingest <path/to/credit-policy.pdf> -w <wiki>
-   ```
-2. Ingest CECL methodology documentation or allowance model disclosure
-3. Ingest most recent examination report's asset quality findings
 
 Cross-link to [[lending-products]], [[regulatory-compliance]], and [[bsa-aml]].

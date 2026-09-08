@@ -2,12 +2,14 @@
 
 > **How to use this form**
 >
-> 1. Copy this file and rename it (e.g. `30yr-fixed-conventional.md`)
-> 2. Fill in the product terms — use your current approved product guide as the source
-> 3. Run: `synthadoc ingest raw_sources/loan-products/30yr-fixed-conventional.md -w <wiki>`
+> This template follows the **Fannie Mae Selling Guide** -- the authoritative standard for conventional mortgage underwriting and loan delivery.
+> If you already have product guidelines in another format, skip this form and ingest your document directly.
 >
-> Re-ingest whenever rates, overlays, or eligibility criteria change.
-> Aligns with Fannie Mae/Freddie Mac Seller/Servicer Guide conventions and TILA/RESPA requirements.
+> Reference: [Fannie Mae Selling Guide](https://selling-guide.fanniemae.com/)
+>
+> 1. Copy this file and rename it (e.g. `30yr-fixed-conventional.md`)
+> 2. Fill in all sections
+> 3. Run: `synthadoc ingest raw_sources/loan-products/<filename>.md -w <wiki>`
 
 ---
 

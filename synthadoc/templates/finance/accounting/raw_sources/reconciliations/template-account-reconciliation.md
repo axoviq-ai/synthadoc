@@ -2,11 +2,14 @@
 
 > **How to use this form**
 >
+> This template follows the **US GAAP (FASB Accounting Standards Codification)** -- the authoritative standard for U.S. financial accounting and reporting.
+> If you already have reconciliation workpapers in another format, skip this form and ingest your document directly.
+>
+> Reference: [US GAAP (FASB ASC)](https://asc.fasb.org/)
+>
 > 1. Copy this file and rename it (e.g. `ar-reconciliation-2026-08.md`)
 > 2. Fill in the GL balance, sub-ledger detail, and reconciling items
-> 3. Run: `synthadoc ingest raw_sources/reconciliations/ar-reconciliation-2026-08.md -w <wiki>`
->
-> Retain completed reconciliations as SOX evidence. Re-ingest after adjustments.
+> 3. Run: `synthadoc ingest raw_sources/reconciliations/<filename>.md -w <wiki>`
 
 ---
 

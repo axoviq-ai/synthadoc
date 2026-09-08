@@ -8,7 +8,7 @@ sources: []
 
 # Journal Entries
 
-Library of standard and non-recurring journal entries. Populate by ingesting account reconciliation forms from `raw_sources/reconciliations/` or by ingesting accounting policy documents.
+Library of standard and non-recurring journal entries.
 
 Each journal entry record captures:
 
@@ -19,13 +19,5 @@ Each journal entry record captures:
 - **JE type** — standard recurring / accrual / reversal / adjusting / elimination / reclassification
 - **SOX relevance** — whether the entry affects a significant account or process under SOX Section 404
 - **Approval chain** — preparer, reviewer, and posting approver (for segregation of duties evidence)
-
-**How to document journal entries:**
-
-Recurring standard JEs are documented in the monthly close record in `raw_sources/close/`. Large or non-recurring adjusting entries should be documented in a separate reconciliation:
-
-1. Copy `raw_sources/reconciliations/template-account-reconciliation.md`
-2. Fill in the account detail and reconciling items
-3. Run `synthadoc ingest raw_sources/reconciliations/<file>.md -w <wiki>`
 
 Cross-link to [[close-checklist]], [[financial-statements]], and [[internal-controls]].

@@ -41,24 +41,37 @@ synthadoc ingest "https://bradyware.com/asc-842-implementation-compliance" -w <w
 
 ## First steps checklist
 
-- [ ] **Ingest your accounting policy manual** — run
-  `synthadoc ingest raw_sources/accounting-policy-manual.pdf -w <wiki>` (or
-  the path to your exported Word/PDF). This seeds [[internal-controls]] and
-  [[financial-statements]] with your entity's actual policies.
+- [ ] **Run month-end close** -- use our template or bring your own:
+  - Template: copy `raw_sources/close/template-month-end-close.md`, rename it
+    (e.g. `close-2026-08.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/close/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing close checklist in `raw_sources/close/` and ingest it.
+  Populates [[close-checklist]] and [[financial-statements]].
 
-- [ ] **Ingest the most recent audit management letter** — run
-  `synthadoc ingest raw_sources/audit-management-letter.pdf -w <wiki>`.
-  Prior-year findings populate [[audit-readiness]] automatically.
+- [ ] **Complete account reconciliations** -- use our template or bring your own:
+  - Template: copy `raw_sources/reconciliations/template-account-reconciliation.md`, rename it
+    (e.g. `ar-reconciliation-2026-08.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/reconciliations/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing recon workpapers in `raw_sources/reconciliations/` and ingest them.
+  Populates [[internal-controls]].
 
-- [ ] **Record your first month-end close** — copy
-  `raw_sources/close/template-month-end-close.md`, fill in the checklist as the
-  close progresses, then run
-  `synthadoc ingest raw_sources/close/close-YYYY-MM.md -w <wiki>`.
-  See [[close-checklist]] for what gets captured.
+- [ ] **Record journal entries** -- use our template or bring your own:
+  - Template: copy `raw_sources/journal-entries/template-journal-entry.md`, rename it
+    (e.g. `je-2026-08-depreciation.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/journal-entries/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing JE workpapers in `raw_sources/journal-entries/` and ingest them.
+  Populates [[journal-entries]].
 
-- [ ] **Ingest your chart of accounts and GL structure** — export from your ERP
-  (QuickBooks, NetSuite, SAP) as a CSV or PDF, then run
-  `synthadoc ingest raw_sources/chart-of-accounts.csv -w <wiki>`.
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.
@@ -71,4 +84,7 @@ synthadoc ingest "https://bradyware.com/asc-842-implementation-compliance" -w <w
   ```
   Pages still showing `draft` may have lint warnings -- review and re-run lint if needed.
 
-- [ ] **Run scaffold to build the index** — `synthadoc scaffold -w <wiki>`
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```

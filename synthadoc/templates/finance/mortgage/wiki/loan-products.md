@@ -8,7 +8,7 @@ sources: []
 
 # Loan Products
 
-Index of all mortgage loan products offered. Populate by ingesting product sheets from `raw_sources/loan-products/`.
+Index of all mortgage loan products offered.
 
 Each loan product page captures:
 
@@ -18,12 +18,5 @@ Each loan product page captures:
 - **Fees and costs** — origination fee, discount points, prepayment penalty, appraisal type
 - **Agency and overlay notes** — DU/LP eligibility, FHA/VA program details, lender overlays beyond agency minimums, mortgage insurance requirements
 - **Regulatory references** — TRID applicability, HMDA reportability, QM status (Safe Harbor / Rebuttable Presumption / Non-QM), ATR documentation method
-
-**How to add a loan product:**
-
-1. Copy `raw_sources/loan-products/template-loan-product.md` and rename it after the product
-2. Fill in terms and eligibility criteria from your current product guide
-3. Run `synthadoc ingest raw_sources/loan-products/<product>.md -w <wiki>`
-4. Re-ingest whenever overlays, rates, or eligibility criteria change
 
 Cross-link to [[underwriting-guidelines]], [[agency-guidelines]], and [[loan-pipeline]].
