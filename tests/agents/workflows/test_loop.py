@@ -458,3 +458,113 @@ async def test_loop_handles_multiple_tool_calls_in_one_response():
     assert tool_a_calls == [1]
     assert tool_b_calls == [2]
     assert any(e["event"] == "final_text" for e in results)
+
+
+# ---------------------------------------------------------------------------
+# run_tool_call_loop — mandatory-next-tool enforcement
+# ---------------------------------------------------------------------------
+
+async def test_loop_enforces_mandatory_next_tool_when_llm_produces_plain_text():
+    """When a tool result sets _mandatory_next_tool and the LLM produces plain text,
+    the loop injects an enforcement message and retries once, giving the LLM a
+    chance to call the required tool."""
+    ctx, events = _make_ctx()
+    call_count = 0
+    confirm_calls: list[str] = []
+
+    async def _complete(messages, system=None, **_kw):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            # LLM calls scan_tool first
+            return CompletionResponse(
+                text='{"tool_call": {"name": "scan_tool", "input": {}}}',
+                input_tokens=5, output_tokens=5,
+            )
+        if call_count == 2:
+            # LLM (incorrectly) produces plain text instead of calling confirm
+            return CompletionResponse(
+                text="I found some issues. Here is my report...",
+                input_tokens=5, output_tokens=5,
+            )
+        if call_count == 3:
+            # After enforcement injection, LLM calls confirm
+            return CompletionResponse(
+                text='{"tool_call": {"name": "confirm", "input": {"message": "Fix?"}}}',
+                input_tokens=5, output_tokens=5,
+            )
+        return CompletionResponse(text="Done.", input_tokens=5, output_tokens=5)
+
+    async def scan_tool() -> dict:
+        return {
+            "has_issues": True,
+            "total_broken": 2,
+            "_mandatory_next_tool": "confirm",
+        }
+
+    async def confirm(message: str, yes_label: str = "Yes", no_label: str = "No") -> dict:
+        confirm_calls.append(message)
+        return {"confirmed": True}
+
+    provider = MagicMock()
+    provider.complete = _complete
+
+    results = []
+    async for event in run_tool_call_loop(
+        system_prompt="sys",
+        initial_message="scan",
+        tool_fns={"scan_tool": scan_tool, "confirm": confirm},
+        provider=provider,
+        ctx=ctx,
+    ):
+        results.append(event)
+
+    # The loop must have called the LLM at least 3 times (scan → plain text →
+    # enforcement injection → confirm → final)
+    assert call_count >= 3, f"Expected ≥3 LLM calls, got {call_count}"
+    # confirm was eventually called
+    assert len(confirm_calls) == 1, f"Expected confirm called once, got {confirm_calls}"
+    # The loop ended cleanly
+    assert any(e["event"] == "final_text" for e in results)
+
+
+async def test_loop_mandatory_next_tool_exhausted_after_one_retry():
+    """If the LLM still produces plain text after the enforcement injection,
+    the loop exits to plain text (no infinite retry)."""
+    ctx, _ = _make_ctx()
+    call_count = 0
+
+    async def _complete(messages, system=None, **_kw):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return CompletionResponse(
+                text='{"tool_call": {"name": "scan_tool", "input": {}}}',
+                input_tokens=5, output_tokens=5,
+            )
+        # LLM always produces plain text — even after enforcement
+        return CompletionResponse(
+            text="I refuse to call confirm.",
+            input_tokens=5, output_tokens=5,
+        )
+
+    async def scan_tool() -> dict:
+        return {"has_issues": True, "_mandatory_next_tool": "confirm"}
+
+    provider = MagicMock()
+    provider.complete = _complete
+
+    results = []
+    async for event in run_tool_call_loop(
+        system_prompt="sys",
+        initial_message="scan",
+        tool_fns={"scan_tool": scan_tool},
+        provider=provider,
+        ctx=ctx,
+    ):
+        results.append(event)
+
+    # After one enforcement retry the loop must still terminate (not loop forever)
+    assert any(e["event"] == "final_text" for e in results)
+    # call_count should be bounded: scan (1) + plain text (2) + enforcement (3) + final plain text (4)
+    assert call_count <= 5, f"Loop did not terminate promptly: {call_count} calls"

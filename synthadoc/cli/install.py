@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: AGPL-3.0-or-later
+﻿# SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 Paul Chen / axoviq.com
 from __future__ import annotations
 
@@ -70,6 +70,20 @@ def _get_reserved_ports() -> set[int]:
 
 
 from synthadoc.cli.main import app  # noqa: E402
+from synthadoc.cli._init import (  # noqa: E402
+    init_wiki, _CONFIG_TOML, _AGENTS_MD, _CLAUDE_MD, _GEMINI_MD,
+)
+from synthadoc.core.template_engine import (  # noqa: E402
+    apply_template, get_template_guidelines,
+)
+from synthadoc.cli._utils import _patch_toml  # noqa: E402
+from synthadoc.core.scheduler import Scheduler  # noqa: E402
+from synthadoc.cli.plugin import (  # noqa: E402
+    _install_plugin_into,
+    _DATAVIEW_ID,
+    _PLUGIN_ID,
+    _PLUGIN_SRC,
+)
 
 
 
@@ -81,6 +95,14 @@ def install_cmd(
     demo: bool = typer.Option(False, "--demo", "-d", help="Install from a demo template matching <name>"),
     domain: str = typer.Option("General", "--domain", help="Knowledge domain (fresh wikis only)"),
     port: Optional[int] = typer.Option(None, "--port", help="Server port (default: auto-detect from 7070)"),
+    template: Optional[str] = typer.Option(
+        None,
+        "--template", "-T",
+        help=(
+            'Domain template to apply (e.g. finance/investment). '
+            'Run "synthadoc templates list" to see all options.'
+        ),
+    ),
 ):
     """Create a new wiki, optionally from a demo template.
 
@@ -113,7 +135,22 @@ def install_cmd(
             f"Then run install again.",
         )
 
-    # ── Port resolution ────────────────────────────────────────────────────────
+    if demo and template:
+        E.cli_error(
+            E.WIKI_INVALID,
+            "--demo and --template cannot be used together.",
+            "Use --demo for built-in demo wikis, or --template for a domain template.",
+        )
+
+    # Validate template ref before creating any directories - an invalid ref must
+    # not leave an orphaned unregistered directory on disk.
+    if template:
+        try:
+            guidelines = get_template_guidelines(template)
+        except (ValueError, FileNotFoundError) as exc:
+            E.cli_error(E.WIKI_INVALID, str(exc), 'Run "synthadoc templates list" for available templates.')
+
+    # -- Port resolution -------------------------------------------------------
     if port is not None:
         effective_port = port
     else:
@@ -138,14 +175,46 @@ def install_cmd(
         (dest / ".synthadoc" / "logs").mkdir(parents=True, exist_ok=True)
         # Write config.toml - .synthadoc/ is git-ignored so it can't be bundled
         # in the demo template; generate it here the same way init_wiki does.
-        from synthadoc.cli._init import _CONFIG_TOML
         (dest / ".synthadoc" / "config.toml").write_text(
             _CONFIG_TOML.format(domain=domain, port=effective_port),
             encoding="utf-8", newline="\n",
         )
     else:
-        from synthadoc.cli._init import init_wiki
         init_wiki(dest, domain, port=effective_port)
+
+    if template:
+        # `guidelines` already resolved before init_wiki - ref is valid at this point
+
+        # Overwrite skill files with domain-specific guidelines
+        skill_kw = dict(domain=domain, guidelines=guidelines, port=effective_port)
+        for fname, tmpl in [
+            ("AGENTS.md", _AGENTS_MD),
+            ("CLAUDE.md", _CLAUDE_MD),
+            ("GEMINI.md", _GEMINI_MD),
+        ]:
+            (dest / fname).write_text(tmpl.format(**skill_kw), encoding="utf-8", newline="\n")
+
+        try:
+            apply_template(dest, template, wiki_name=name)
+        except ValueError as exc:
+            E.cli_error(E.WIKI_INVALID, str(exc), 'Run "synthadoc templates list" for available templates.')
+        except FileNotFoundError as exc:
+            E.cli_error(E.WIKI_INVALID, f"Template '{template}' is missing a required file: {exc}", "")
+
+        # Enable staging: all new ingests land in candidates/ for review
+        _patch_toml(
+            dest / ".synthadoc" / "config.toml",
+            "ingest",
+            {"staging_policy": "all"},
+        )
+
+        # Pre-register weekly maintenance schedule (no-op until content is ingested)
+        try:
+            sched = Scheduler(wiki=name, wiki_root=str(dest))
+            sched.add(op="lint run", cron="0 2 * * 0")   # weekly Sunday 2am
+            sched.add(op="scaffold", cron="0 3 * * 0")   # weekly Sunday 3am
+        except Exception:
+            pass  # scheduler DB may not exist until first server run - non-fatal
 
     registry = _read_registry()
     registry[name] = {
@@ -153,25 +222,23 @@ def install_cmd(
         "demo": name if demo else None,
         "installed": date.today().isoformat(),
         "port": effective_port,
+        **({"category": template.split("/")[0], "template": template.split("/")[1]}
+           if template else {}),
     }
     _write_registry(registry)
 
-    # ── Obsidian plugin ────────────────────────────────────────────────────
-    from synthadoc.cli.plugin import (
-        _install_plugin_into,
-        _install_dataview,
-        _update_community_plugins,
-        _set_reading_view_default,
-        _patch_workspace_reading_view,
-        _DATAVIEW_ID,
-        _PLUGIN_ID,
-        _PLUGIN_SRC,
-    )
+    # -- Obsidian plugin -------------------------------------------------------
     _plugin_ok = False
     _dataview_status = "skipped"
     if _PLUGIN_SRC.exists():
         copied = _install_plugin_into(dest)
         if copied:
+            from synthadoc.cli.plugin import (
+                _install_dataview,
+                _update_community_plugins,
+                _set_reading_view_default,
+                _patch_workspace_reading_view,
+            )
             _dataview_status = _install_dataview(dest)
             _update_community_plugins(dest, _DATAVIEW_ID, _PLUGIN_ID)
             _set_reading_view_default(dest)
@@ -190,11 +257,25 @@ def install_cmd(
     if not demo:
         typer.echo()
         typer.echo(f"Next steps:")
-        typer.echo(f"  1. Edit .synthadoc/config.toml - set your LLM provider and API key")
+        typer.echo(f"  1. Edit {name}/.synthadoc/config.toml - set your LLM provider and API key")
+        typer.echo(f"     (or use a coding tool provider like Opencode / Claude Code - no API key needed)")
         typer.echo(f"  2. Set as default wiki:   synthadoc use {name}")
         typer.echo(f"  3. Start the server:      synthadoc serve")
-        typer.echo(f"  4. Ingest your sources:   synthadoc ingest <file>")
-        typer.echo(f"  5. Generate index:        synthadoc scaffold")
+        if template:
+            typer.echo(f"  4. Open seeds.md - starter ingest commands and first-steps checklist")
+            typer.echo(f"     Obsidian: launch app, open vault at  {dest}")
+            typer.echo(f"               then open seeds.md from the file pane")
+            typer.echo(f"     Editor:   {dest / 'seeds.md'}")
+            typer.echo(f"  5. Generate index:        synthadoc scaffold")
+        else:
+            typer.echo(f"  4. Ingest your sources:   synthadoc ingest <file>")
+            typer.echo(f"  5. Generate index:        synthadoc scaffold")
+
+    if template:
+        typer.echo()
+        typer.echo(f"  Template: {template}")
+        typer.echo(f"  Staging:  enabled (all ingests land in candidates/ for review)")
+        typer.echo(f"  Schedule: weekly lint + scaffold registered (active after first serve)")
 
 
 @app.command("list")
@@ -204,11 +285,30 @@ def list_cmd():
     if not registry:
         typer.echo("No wikis installed. Run 'synthadoc install' to create one.")
         return
-    for name, entry in registry.items():
-        demo_tag = f"  [demo]" if entry.get("demo") else ""
-        installed = entry.get("installed", "")
-        port_str = f"  port: {entry['port']}" if entry.get("port") else ""
-        typer.echo(f"{name:<30}  installed: {installed}{port_str}{demo_tag}")
+
+    show_type = any(e.get("category") for e in registry.values())
+
+    if show_type:
+        typer.echo(f"{'NAME':<30}  {'INSTALLED':<12}  {'PORT':<6}  TYPE")
+        typer.echo("-" * 70)
+        for name, entry in registry.items():
+            cat = entry.get("category", "")
+            tmpl = entry.get("template", "")
+            if cat and tmpl:
+                type_col = f"{cat}/{tmpl}"
+            elif entry.get("demo"):
+                type_col = "demo"
+            else:
+                type_col = "-"
+            installed = entry.get("installed", "")
+            port_str = str(entry["port"]) if entry.get("port") else "-"
+            typer.echo(f"{name:<30}  {installed:<12}  {port_str:<6}  {type_col}")
+    else:
+        for name, entry in registry.items():
+            demo_tag = "  [demo]" if entry.get("demo") else ""
+            installed = entry.get("installed", "")
+            port_str = f"  port: {entry['port']}" if entry.get("port") else ""
+            typer.echo(f"{name:<30}  installed: {installed}{port_str}{demo_tag}")
 
 
 @app.command("uninstall")

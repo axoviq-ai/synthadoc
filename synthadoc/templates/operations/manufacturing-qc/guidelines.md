@@ -1,0 +1,8 @@
+- Document every process specification with: revision level, effective date, approver, and the standard it implements
+- Record defects with: part number, defect code, quantity, detection stage (incoming/in-process/final), root cause, and disposition
+- Cross-link process pages with their control plans, inspection procedures, and relevant engineering drawings
+- Flag specification changes with the change notice number, effective date, and impact assessment
+- Track Cpk and Ppk for critical-to-quality characteristics — flag anything below 1.33
+- Document customer complaints with the 8D number, containment action, and permanent corrective action
+- Note calibration status on every measuring instrument referenced in a procedure
+- Archive superseded process specs with the revision history and reason for change

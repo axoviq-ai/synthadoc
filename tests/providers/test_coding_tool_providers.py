@@ -605,3 +605,79 @@ async def test_opencode_complete_does_not_retry_on_other_errors():
             await provider.complete([Message(role="user", content="hi")])
 
     assert calls == 1, "Should not retry on non-ValueError errors"
+
+
+# ── _is_permanent_provider_error ─────────────────────────────────────────────
+
+def test_is_permanent_error_isretryable_false():
+    """'isRetryable': false in error output → permanent error."""
+    from synthadoc.providers.coding_tool import _is_permanent_provider_error
+    payload = '{"isRetryable": false, "statusCode": 400, "message": "model not supported"}'
+    assert _is_permanent_provider_error(payload) is True
+
+
+def test_is_permanent_error_camelcase_key_variations():
+    """Key is matched case-insensitively."""
+    from synthadoc.providers.coding_tool import _is_permanent_provider_error
+    assert _is_permanent_provider_error('"IsRetryable": false') is True
+    assert _is_permanent_provider_error('"ISRETRYABLE": false') is True
+
+
+def test_is_permanent_error_statuscode_400():
+    """statusCode 400 (not 429) without isRetryable → permanent error."""
+    from synthadoc.providers.coding_tool import _is_permanent_provider_error
+    payload = '{"statusCode": 400, "message": "speech model cannot do chat completions"}'
+    assert _is_permanent_provider_error(payload) is True
+
+
+def test_is_permanent_error_statuscode_403():
+    """statusCode 403 → permanent error (invalid key)."""
+    from synthadoc.providers.coding_tool import _is_permanent_provider_error
+    assert _is_permanent_provider_error('"statusCode": 403') is True
+
+
+def test_is_permanent_error_statuscode_429_is_not_permanent():
+    """statusCode 429 (rate limit) is NOT a permanent error."""
+    from synthadoc.providers.coding_tool import _is_permanent_provider_error
+    assert _is_permanent_provider_error('"statusCode": 429') is False
+
+
+def test_is_permanent_error_generic_error_is_not_permanent():
+    """Generic error text without the markers → not permanent."""
+    from synthadoc.providers.coding_tool import _is_permanent_provider_error
+    assert _is_permanent_provider_error("network timeout") is False
+    assert _is_permanent_provider_error("") is False
+
+
+def test_is_permanent_error_isretryable_true_not_permanent():
+    """'isRetryable': true → not a permanent error."""
+    from synthadoc.providers.coding_tool import _is_permanent_provider_error
+    assert _is_permanent_provider_error('"isRetryable": true') is False
+
+
+@pytest.mark.asyncio
+async def test_complete_raises_permanent_error_on_isretryable_false():
+    """Non-zero exit + 'isRetryable': false in stderr → CodingToolPermanentError."""
+    from synthadoc.providers.base import Message
+    from synthadoc.errors import CodingToolPermanentError
+
+    provider = _make_claude_provider()
+    stderr_payload = b'{"isRetryable": false, "statusCode": 400, "message": "speech model"}'
+    mock_proc = _make_mock_proc(b"", stderr_payload, returncode=1)
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)):
+        with pytest.raises(CodingToolPermanentError, match="ERR-PROV-004"):
+            await provider.complete([Message(role="user", content="hello")])
+
+
+@pytest.mark.asyncio
+async def test_complete_falls_through_to_runtime_error_for_transient():
+    """Non-zero exit without permanent markers → plain RuntimeError (transient)."""
+    from synthadoc.providers.base import Message
+
+    provider = _make_claude_provider()
+    mock_proc = _make_mock_proc(b"", b"network timeout", returncode=1)
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)):
+        with pytest.raises(RuntimeError, match="network timeout"):
+            await provider.complete([Message(role="user", content="hello")])

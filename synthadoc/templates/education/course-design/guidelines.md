@@ -1,0 +1,8 @@
+- Write learning objectives in Bloom's Taxonomy terms: remember, understand, apply, analyze, evaluate, create
+- Cross-link module pages with their prerequisite modules, assessment items, and learning materials
+- Document the pedagogical approach and rationale for each major design choice
+- Flag assessment items with their learning objective alignment and validity evidence
+- Track learner feedback and outcomes data on course pages — these drive continuous improvement
+- Note accessibility requirements met (WCAG 2.1 level, screen reader compatibility, caption status) for all digital materials
+- Record subject matter expert (SME) review status and date on each content module
+- Archive retired course versions with the reason and what replaced them

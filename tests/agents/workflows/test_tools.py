@@ -374,10 +374,12 @@ async def test_find_broken_wikilinks_happy_path():
     broken = result["pages"][0]["broken_links"][0]
     assert broken["ref"] == "alan-tunring"
     assert broken["suggestion"] == "alan-turing"
+    # Enforcement signal: loop uses this to force the LLM to call confirm next
+    assert result.get("_mandatory_next_tool") == "confirm"
 
 
 async def test_find_broken_wikilinks_no_broken_links():
-    """All wikilinks resolve — returns empty pages list."""
+    """All wikilinks resolve — returns empty pages list with no enforcement signal."""
     audit_db = MagicMock()
     audit_db.get_live_page_states = AsyncMock(
         return_value=[{"slug": "page-a", "state": "active"}]
@@ -392,10 +394,13 @@ async def test_find_broken_wikilinks_no_broken_links():
 
     assert result["total_broken"] == 0
     assert result["pages"] == []
+    # No enforcement signal when wiki is clean
+    assert "_mandatory_next_tool" not in result
 
 
 async def test_find_broken_wikilinks_no_suggestion_for_distant_slug():
-    """No suggestion returned when the broken ref has no close fuzzy match."""
+    """No suggestion returned when the broken ref has no close fuzzy match;
+    enforcement signal still present when total_broken > 0."""
     audit_db = MagicMock()
     audit_db.get_live_page_states = AsyncMock(
         return_value=[{"slug": "page-a", "state": "active"}]
@@ -410,6 +415,7 @@ async def test_find_broken_wikilinks_no_suggestion_for_distant_slug():
 
     assert result["total_broken"] == 1
     assert result["pages"][0]["broken_links"][0]["suggestion"] is None
+    assert result.get("_mandatory_next_tool") == "confirm"
 
 
 async def test_find_broken_wikilinks_skips_stale_pages():

@@ -1,0 +1,8 @@
+- Document every protocol with: purpose, required reagents and equipment, step-by-step procedure, safety precautions, and expected output
+- Record experimental conditions completely: date, operator, instrument ID, reagent lot numbers, and environmental conditions
+- Cross-link experiment pages with the protocol version used and the raw data location
+- Flag failed experiments with the failure mode and whether the run is being excluded from analysis
+- Note instrument calibration status and the date of last calibration on every instrument page
+- Track reagent lot-to-lot variability — flag when a lot change might explain result differences
+- Document statistical analysis approach before running it — prevents post-hoc P-hacking
+- Archive superseded protocols with the version number and reason for the change

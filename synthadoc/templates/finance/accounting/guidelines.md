@@ -1,0 +1,8 @@
+- Tie every accounting policy to the applicable GAAP or IFRS standard with the ASC or IAS reference
+- Document judgments and estimates (useful life, reserve rates, revenue recognition timing) with rationale
+- Cross-link journal entry procedures with the relevant account reconciliation and control pages
+- Record materiality thresholds and their basis for the current period
+- Flag open audit points with status (open, remediated, accepted) and responsible owner
+- Version all tax positions and elections with the period applied and supporting authority
+- Document month-end and quarter-end close checklists as structured procedural pages
+- Archive prior-year workpapers with fiscal year tags so comparisons remain searchable

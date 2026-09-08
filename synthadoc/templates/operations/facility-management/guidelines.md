@@ -1,0 +1,8 @@
+- Record every asset with: asset ID, description, location, manufacturer, model, serial number, purchase date, and warranty expiry
+- Document preventive maintenance schedules with: task description, frequency, required parts, and estimated labor hours
+- Cross-link equipment pages with their maintenance history, spare parts, and associated work orders
+- Flag safety-critical equipment with the required inspection frequency and regulatory reference
+- Track work order status (open, in-progress, on-hold, completed) with the assigned technician and target completion date
+- Document vendor contracts for maintenance services with scope, SLA, response time commitments, and contact information
+- Note energy consumption data for major equipment — useful for sustainability reporting and anomaly detection
+- Archive decommissioned assets with the disposal method, date, and relevant environmental compliance notes
