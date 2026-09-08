@@ -307,7 +307,10 @@ def _run_faithfulness(
 
     wiki_name = resolve_wiki(wiki)
     wiki_root = resolve_wiki_path(wiki_name)
-    cfg = load_config(project_config=wiki_root / ".synthadoc" / "config.toml")
+    try:
+        cfg = load_config(project_config=wiki_root / ".synthadoc" / "config.toml")
+    except E.ConfigError as exc:
+        E.cli_error(exc.code, str(exc), exc.hint)
     store = WikiStorage(wiki_root / "wiki")
     agent_cfg = cfg.agents.resolve("adversarial")
 
