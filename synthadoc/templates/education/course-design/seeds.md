@@ -70,6 +70,12 @@ synthadoc ingest "https://www.nwea.org/blog/2026/formative-vs-summative-assessme
   In Obsidian: command palette (Ctrl+P / Cmd+P) > **"Synthadoc: Lint: run..."**
   Or from CLI: `synthadoc lint run -w <wiki>`
 
+- [ ] **Check lifecycle states** -- confirm lint promoted your draft pages to `active`:
+  ```
+  synthadoc status -w <wiki>
+  ```
+  Pages still showing `draft` may have lint warnings -- review and re-run lint if needed.
+
 - [ ] **Run scaffold to build the index**
   ```
   synthadoc scaffold -w <wiki>
