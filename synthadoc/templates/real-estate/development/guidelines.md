@@ -1,0 +1,8 @@
+- Record every permit with: permit number, type, issuing authority, submission date, issuance date, expiry, and conditions
+- Cross-link project pages with their entitlement documents, contractor contracts, and construction schedule
+- Document zoning analysis: current zoning classification, allowed uses, development standards (height, setback, FAR), and any variances or conditional use permits required
+- Flag schedule deviations of more than 5 business days with the cause, impact on critical path, and recovery plan
+- Track RFIs and submittals with: number, date submitted, responsible party, and response date — delays compound
+- Record contractor change orders with the cost impact and schedule impact before approval
+- Note inspection results immediately with the inspector's name, date, and any failed items
+- Archive approved plans with the revision number and the date each revision was approved

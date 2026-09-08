@@ -1,0 +1,8 @@
+- Cite every paper with: authors, title, journal, year, DOI, and access date for web sources
+- Track hypothesis status (proposed, tested, supported, refuted) on research question pages
+- Cross-link paper pages with the methodology, datasets, and findings pages they inform
+- Note replication status for key findings — distinguish primary reports from replications and meta-analyses
+- Flag papers with known methodological concerns, retractions, or expressions of concern
+- Record literature gaps identified in each review — these become future research directions
+- Organize papers by research strand, not chronologically, so related work clusters naturally
+- Archive superseded hypotheses with the evidence that overturned them, not just as stale pages

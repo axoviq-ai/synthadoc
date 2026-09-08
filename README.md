@@ -189,6 +189,7 @@ Every **Yes** below is a built-in feature — no add-ons or upgrades required.
 | **[Query-scoped routing](docs/user-quick-start-guide.md#step-17--set-up-routingmd--scoped-search)** — ROUTING.md maps wiki branches to page slugs; queries auto-select relevant branches; new pages auto-slotted                                                                                                                                                                                                                                            | **Yes**   | No          | No         | No        |
 | **[Candidates staging](docs/user-quick-start-guide.md#step-18--configure-candidates-staging)** — ingest pages to a staging area first; review, promote, or discard before they enter the live wiki                                                                                                                                                                                                                                                          | **Yes**   | No          | No         | No        |
 | **[Scaffold automation](docs/user-quick-start-guide.md#step-14--enrich-the-wiki-with-scaffold)** — regenerates index categories, AGENTS.md/CLAUDE.md/GEMINI.md, and purpose.md from current wiki state; protected pages never overwritten                                                                                                                                                                                                                   | **Yes**   | No          | No         | No        |
+| **[Domain templates](synthadoc/templates/README.md)** — 30 fully-authored templates (finance, technology, healthcare, legal, and more) so you start with the right agent guidelines, routing, and structure from day one                                                                                                                                                                                                                                      | **Yes**   | No          | No         | No        |
 
 ### Search & Query
 
@@ -467,138 +468,101 @@ The guide covers:
 
 > **New to building your own wiki?** Work through the [AquaFlow Capital Workshop Walkthrough](https://github.com/axoviq-ai/synthadoc/tree/main/docs/example/aquaflow) first — a complete end-to-end workshop using a real M&A due-diligence wiki with pre-built pages, evaluation queries, and benchmark results. Once you are comfortable with the flow, come back here to build your own wiki from scratch.
 
-Unlike the demo (which ships with pre-built pages), your own wiki starts from a domain description and grows as you feed it sources:
+### 1. Pick a template and install
+
+Browse the 30 available templates across 9 categories and pick the one closest to your domain:
 
 ```bash
-synthadoc install market-condition-canada --target ~/wikis --domain "Market conditions and trends in Canada"
-synthadoc use market-condition-canada   # set as the default wiki — no -w needed from here on
+synthadoc templates list
 ```
 
-Before starting the server, open `~/wikis/market-condition-canada/.synthadoc/config.toml` and set your LLM provider — see [Appendix C in the Quick-Start Guide](docs/user-quick-start-guide.md#appendix-c--switching-llm-providers) for the full provider list and API key setup. Then start:
+Install with a template (example: consumer and competitive market research):
+
+```bash
+synthadoc install my-market-wiki --target ~/wikis --template research/market-research
+synthadoc use my-market-wiki   # set as default — no -w needed from here on
+```
+
+If none of the 30 templates fits, install without one and provide a `--domain` description instead:
+
+```bash
+synthadoc install my-wiki --target ~/wikis --domain "Your domain description"
+```
+
+→ Full template catalog and per-category install commands: [synthadoc/templates/README.md](synthadoc/templates/README.md)
+
+### 2. Configure your LLM provider and start the server
+
+Open `~/.wikis/my-market-wiki/.synthadoc/config.toml` and set your LLM provider, then start:
 
 ```bash
 synthadoc serve
-synthadoc status                        # confirm the wiki registered correctly (should show 0 pages)
+synthadoc status   # should show 0 pages and the scheduled jobs registered
 ```
 
-`--domain` is a free-text description of the subject area — the LLM uses it to generate five domain-aware starter files via scaffold:
+→ Provider list and API key setup: [Quick-Start Guide — Appendix C](docs/user-quick-start-guide.md#appendix-c--switching-llm-providers)
 
+`synthadoc install` copies the Synthadoc and Dataview plugins into the vault and pre-enables them. Open the wiki folder in Obsidian — both plugins are active immediately. A local web UI is also available at `http://localhost:{port}/app` via `synthadoc web`.
 
-| File              | Purpose                                                                                                                                                                                                                             |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `wiki/index.md`   | Table of contents — domain-relevant categories with`[[wikilinks]]`                                                                                                                                                                 |
-| `wiki/purpose.md` | Scope declaration — used by the ingest agent to filter out-of-scope sources at ingest time, and injected as a pinned preamble into every query synthesis prompt so the LLM understands the wiki's domain boundaries when answering |
-| `AGENTS.md`       | LLM behaviour guidelines (tone, terminology, synthesis style) — read by Codex CLI, OpenCode, and generic OpenAI Agents tooling                                                                                                     |
-| `CLAUDE.md`       | Same content as`AGENTS.md` — loaded automatically by Claude Code when the wiki folder is open                                                                                                                                      |
-| `GEMINI.md`       | Same content as`AGENTS.md` — loaded automatically by Gemini CLI                                                                                                                                                                    |
+### 3. Add your sources and ingest
 
-`wiki/dashboard.md` is also created during install (a static template — not LLM-generated). `ROUTING.md` is optional and generated separately via `synthadoc routing init` after pages accumulate.
-
-Before ingesting any content, run scaffold once to build a clean starting index and purpose files based on your domain:
+Drop your own documents into the `raw_sources/` folder inside the installed wiki, then ingest them. Subfolders are supported — organise by topic, date, or document type:
 
 ```bash
-synthadoc scaffold
+synthadoc ingest raw_sources/ --batch          # all local files at once
+synthadoc ingest "https://example.com/report"  # a web URL
+synthadoc ingest "search for: Bank of Canada rate outlook 2025"  # web search
+synthadoc jobs list                            # watch progress
 ```
 
-`synthadoc install` also copies both the Synthadoc plugin and the Dataview plugin directly into the vault's plugins folder, pre-enables them, and sets the correct server URL — no separate plugin step is required. Open the wiki folder in Obsidian — both plugins are active immediately, no manual toggling needed.
+→ Supported formats, subfolder layout, and web search tips: [templates/README.md — Adding your own content](synthadoc/templates/README.md#adding-your-own-content)
 
-The Quick-Start Guide covers the full Obsidian setup in detail — see [docs/user-quick-start-guide.md](docs/user-quick-start-guide.md).
+### 4. Review and promote candidates
 
-**Local Web UI** — once the server is running, you can also query the wiki from your browser without Obsidian:
+Template installs stage every new page in `candidates/` for review before it enters the wiki. Promote what belongs, discard what doesn't:
 
 ```bash
-synthadoc web
+synthadoc candidates list
+synthadoc candidates promote --all     # or promote individually by slug
+synthadoc candidates discard <slug>
 ```
 
-This opens a local chat interface at `http://localhost:{port}/app`. The Web UI is local-only and is **not accessible from the network** — authentication and authorisation are not configured by default in the Community Edition.
+→ CLI commands and Obsidian plugin walkthrough: [templates/README.md — Reviewing and promoting candidates](synthadoc/templates/README.md#reviewing-and-promoting-candidates)
 
-**Recommended growth loop:**
-
-**1. Seed with web searches** — pull in real content for the topics you care about:
+### 5. Query, lint, and scaffold
 
 ```bash
-synthadoc ingest "search for: Economy, employment and labour market analysis in Toronto GTA"
-synthadoc ingest "search for: Bank of Canada interest rate outlook 2025"
-synthadoc jobs list   # watch progress
+synthadoc query "What are the current consumer confidence trends in Canada?"
+synthadoc lint run          # validates pages, promotes clean drafts to active
+synthadoc lint report       # view issues and citation violations
+synthadoc scaffold          # regenerates index.md with richer category links
 ```
 
-Each search fans out into up to 20 parallel URL ingest jobs. Both query and web search automatically decompose broad inputs into focused parallel sub-tasks — see [Quick-Start Guide](docs/user-quick-start-guide.md#compound-and-multi-part-queries) for examples.
+Lint and scaffold run automatically on a weekly schedule (Sunday 2 AM and 3 AM). Your own content above the `<!-- synthadoc:scaffold -->` marker in `index.md` and `purpose.md` is never overwritten.
 
-**2. Review candidates (optional quality gate)** — enable staging before large ingest batches so pages below your confidence threshold wait for review rather than entering BM25 immediately:
+→ Schedule customisation and scaffold zone rules: [templates/README.md — Scheduled maintenance](synthadoc/templates/README.md#scheduled-maintenance)
+
+### 6. Context packs and MCP
+
+Template installs include a pre-configured `ROUTING.md` that automatically scopes queries to the relevant topic branch — no setup needed. If you installed without a template, generate it once with `synthadoc routing init`.
+
+Build a cited excerpt pack for use in an external agent prompt:
 
 ```bash
-synthadoc staging policy threshold   # pages below high confidence → wiki/candidates/
-synthadoc candidates list            # see what's waiting
-synthadoc candidates promote early-internet-history   # approve individually
-synthadoc candidates promote --all   # or approve everything at once
-synthadoc candidates discard punch-card-era           # discard pages that don't belong
+synthadoc context build "Canadian consumer confidence trends" --tokens 4000
 ```
 
-Skip this step if you trust all your sources — `staging policy off` is the default.
-
-**3. Re-run scaffold** — after pages accumulate, scaffold regenerates a richer index that reflects actual content. Pages already linked in `index.md` are never overwritten:
-
-```bash
-synthadoc scaffold
-```
-
-**4. Lint and query** — check for contradictions, flag overstated claims, verify citations, and confirm the wiki answers your questions:
-
-```bash
-synthadoc lint run                          # full lint: structural checks + adversarial pass (default)
-synthadoc lint run --no-adversarial         # structural only — skip the adversarial LLM review
-synthadoc lint report                       # view all issues including citation violations (Check 5)
-synthadoc audit citations --broken          # list claim citations that failed validation
-synthadoc query "What are the current employment trends in the Toronto GTA?"
-```
-
-**5. Set up routing** — once the wiki spans distinct topic areas, routing narrows each query to the relevant branch, cutting latency and reducing noise in synthesis:
-
-```bash
-synthadoc routing init   # generate ROUTING.md from current index.md (one-time)
-```
-
-From this point, queries automatically scope to the 1–2 most relevant topic branches. New pages created by ingest are auto-slotted into `ROUTING.md` — no manual maintenance needed. See [Appendix H in the Quick-Start Guide](docs/user-quick-start-guide.md#appendix-h--bm25-routing-performance-benchmarks) for latency benchmarks across corpus sizes.
-
-**6. Build a context pack** — assemble cited wiki excerpts within a token budget for use in an external agent prompt:
-
-```bash
-synthadoc context build "Toronto GTA real estate market" --tokens 4000
-```
-
-Returns ranked page excerpts with relevance scores, confidence levels, and source paths — no synthesis. The `POST /context/build` REST endpoint and `synthadoc_context` MCP tool make this callable from any agent pipeline. To connect Claude Code to your wiki's MCP server:
+Connect Claude Code directly to your wiki's MCP server:
 
 ```bash
 # Replace 7070 with the port shown when you ran synthadoc serve
-claude mcp add --transport sse synthadoc-market-condition-canada http://127.0.0.1:7070/mcp/sse
+claude mcp add --transport sse synthadoc-my-market-wiki http://127.0.0.1:7070/mcp/sse
 ```
 
-Then ask Claude Code: *"Build a context pack on Toronto GTA real estate market"* and it will call `synthadoc_context` automatically. See [docs/design.md — Context packs](docs/design.md#context-packs) for the knowledge backend pattern.
-
-**7. Schedule recurring updates** — keep the wiki fresh and the routing table clean automatically:
-
-```bash
-synthadoc schedule add --op "ingest --batch raw_sources/" --cron "0 2 * * *"
-synthadoc schedule add --op "lint run"      --cron "0 3 * * 0"
-synthadoc schedule add --op "scaffold"      --cron "0 4 * * 0"
-synthadoc schedule add --op "routing clean" --cron "0 5 * * 0"
-```
-
-Run order matters: lint first (removes dead wikilinks), scaffold next (regenerates index), routing clean last (prunes ROUTING.md entries for deleted pages).
-
-### Semantic re-ranking (vector search)
-
-BM25 keyword search is the default. Optional vector re-ranking (`BAAI/bge-small-en-v1.5` cosine similarity) improves recall on conceptually related queries — enable it by installing `fastembed` and setting `[search] vector = true` in config. The ~130 MB model is downloaded once; BM25 stays active as fallback.
-
-See [docs/design.md — Semantic re-ranking](docs/design.md#semantic-re-ranking) for configuration options and performance notes.
-
-### Knowledge gap workflow
-
-When a query returns thin or empty results, the wiki doesn't yet cover the topic. Fill the gap with a targeted web search ingest, wait for jobs, then re-query. Each ingest cycle makes the wiki denser — future queries need the web less.
-
-See [docs/design.md — Knowledge gap workflow](docs/design.md#knowledge-gap-workflow) for the full pattern.
-
-See [docs/design.md](docs/design.md) for a full description of how ingest, contradiction detection, and orphan tracking work under the hood.
+→ Routing performance benchmarks: [Quick-Start Guide — Appendix H](docs/user-quick-start-guide.md#appendix-h--bm25-routing-performance-benchmarks)  
+→ Context packs and MCP integration: [docs/design.md — Context packs](docs/design.md#context-packs)  
+→ Knowledge gap workflow: [docs/design.md — Knowledge gap workflow](docs/design.md#knowledge-gap-workflow)  
+→ Semantic re-ranking (optional vector search): [docs/design.md — Semantic re-ranking](docs/design.md#semantic-re-ranking)
 
 ---
 
@@ -628,6 +592,12 @@ synthadoc install history-of-computing --target ~/wikis --demo
 
 # List available demo templates
 synthadoc demo list
+
+# List all 30 domain templates (and demos) — browse before installing
+synthadoc templates list
+
+# Install with a domain template — pre-configured guidelines, routing, and starter pages
+synthadoc install my-finance-wiki --target ~/wikis --template finance/investment
 
 # Sync new source files into an existing demo install (additive only, no overwrites)
 synthadoc demo sync history-of-computing

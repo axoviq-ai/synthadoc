@@ -1,0 +1,8 @@
+- Document IaC modules with: purpose, inputs, outputs, and known limitations
+- Record SLI and SLO definitions per service with the measurement methodology and current status
+- Cross-link pipeline pages with the services they build and deploy
+- Track incident timelines precisely: detection, acknowledgement, mitigation, and resolution with UTC timestamps
+- Document every production change with the ticket reference, deployer, and rollback procedure
+- Flag alert rules with the alert name, threshold, and the runbook it points to
+- Distinguish between infrastructure owned by this team and shared platform components
+- Version IaC module pages with the registry version they were last validated against

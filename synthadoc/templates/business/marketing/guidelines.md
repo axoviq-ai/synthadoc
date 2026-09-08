@@ -1,0 +1,8 @@
+- Document campaign briefs with: objective, target audience, key message, channels, budget, timeline, and success metrics
+- Cross-link campaign pages with the audience segments, content assets, and channel performance data they generated
+- Record brand guidelines with visual and verbal identity elements — these are reference materials, not aspirational statements
+- Flag messaging that deviates from brand guidelines with the approver and business justification
+- Track content performance with: channel, content type, publish date, reach, engagement, and conversion metric
+- Document SEO research with: target keyword, search volume, competition level, and current ranking
+- Note media contacts with their beat, publication, and relationship owner — press relationships are institutional assets
+- Archive campaign post-mortems with actual vs. target metrics and lessons learned for future planning

@@ -1,0 +1,8 @@
+- Record patent applications with: application number, filing date, jurisdiction, priority claim, inventor list, and prosecution status
+- Cross-link patent pages with the products or technologies they protect
+- Track trademark registrations with: registration number, class, goods/services description, filing date, renewal date, and use-in-commerce evidence
+- Flag IP subject to licensing with the licensee, scope, royalty rate, and term
+- Document freedom-to-operate analysis conclusions with the claim chart reference and analysis date
+- Record IP ownership transfers and assignments with the recordation date in each relevant patent office
+- Note provisional applications with the 12-month deadline for PCT or national phase entry
+- Archive abandoned or expired IP with the reason and any defensive value assessment

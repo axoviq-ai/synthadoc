@@ -363,14 +363,23 @@ def _restore_stale_page(
 
 
 def _isolate_stale_pages_with_sources(wiki_root: Path) -> list[str]:
-    """Temporarily move all currently-stale pages with local text sources to ACTIVE.
+    """Temporarily move ALL currently-stale pages to ACTIVE.
 
-    This prevents the agentic workflow from picking up residual stale pages
-    during the test, ensuring only the manufactured page appears as stale.
+    Isolates every stale page — including those without a local text source —
+    so the workflow only sees the pages manufactured by this test.
+
+    Why all stale pages (not just those with sources):
+    The IngestLintWorkflow LLM calls find_page_source for EVERY stale page it
+    finds, including those with no local source.  If the wiki has N stale pages
+    without sources and only those WITH sources are isolated, the LLM still makes
+    N find_page_source calls against the unsolated pages.  With N large enough
+    those calls exhaust the 30-call tool budget before the workflow reaches the
+    manufactured pages, causing the test to fail with a budget-exhaustion message
+    instead of the expected ingest outcome.
+
     Returns the slugs that were moved; pass them to _restore_isolated_pages()
     in a finally block to restore their state after the test.
     """
-    wiki_dir = wiki_root / "wiki"
     moved: list[str] = []
     try:
         pages = _api("/lifecycle/pages").get("pages", [])
@@ -380,8 +389,6 @@ def _isolate_stale_pages_with_sources(wiki_root: Path) -> list[str]:
         if page_info.get("state") != "stale":
             continue
         slug = page_info["slug"]
-        if _get_source_path_from_page(wiki_dir, slug) is None:
-            continue
         try:
             r = _raw("/lifecycle/transition", "POST", {
                 "slug": slug,

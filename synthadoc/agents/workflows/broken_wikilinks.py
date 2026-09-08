@@ -79,10 +79,11 @@ When you have no more tool calls to make, produce a plain-text summary (no JSON)
 2. Check the "has_issues" field in the result:
    - If has_issues == false (no broken links): write the clean-wiki summary below
      and STOP.  Do NOT call any more tools.
-   - If has_issues == true (broken links found): your NEXT action MUST be a confirm
-     tool call (step 5).  Do NOT write any plain text yet.  Plain text ends the
-     workflow — you may only write plain text AFTER completing all of Phase 2
-     (steps 4–9).
+   - If has_issues == true (broken links found): the result also contains
+     ``"_mandatory_next_tool": "confirm"``.  This is an enforcement signal — your
+     ABSOLUTE NEXT action MUST be a confirm tool call (step 5).  Do NOT write any
+     plain text yet.  Plain text ends the workflow — you may only write plain text
+     AFTER completing all of Phase 2 (steps 4–9).
      NEVER call apply_link_fixes as the next step — confirm MUST come first.
 
 #### Clean-wiki summary template (only when total_broken == 0)

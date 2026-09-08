@@ -499,6 +499,12 @@ async def tool_find_broken_wikilinks(
     }
     if page_slug is not None:
         result["page_title"] = page_title   # display title for use in single-page summary
+    if total_broken > 0:
+        # Structural enforcement signal: the loop reads this field and enforces a
+        # confirm tool call if the LLM produces plain text instead of calling confirm.
+        # Leaving it in the result also makes it visible to the LLM as an inline
+        # instruction, providing a second layer of enforcement.
+        result["_mandatory_next_tool"] = "confirm"
     return result
 
 

@@ -1,0 +1,8 @@
+- Write SOPs in plain language with numbered steps — each step is one action with a clear expected output
+- Cross-link role-based training paths with the specific SOPs, courses, and competencies required for each role
+- Document competency frameworks with observable, measurable behavioral indicators at each proficiency level
+- Flag compliance training with the regulatory requirement, frequency (annual/bi-annual), and completion tracking method
+- Track training effectiveness with pre/post assessment scores and on-the-job application evidence where available
+- Record SME review date on every SOP — procedures must be validated by a subject matter expert before publication
+- Note deprecation clearly when a SOP is superseded — never leave outdated procedures live without a redirect to the new version
+- Archive training materials when the underlying process changes with the reason and replacement material reference

@@ -1,0 +1,8 @@
+- Write policies in plain language with the business rationale, scope, and specific procedures employees must follow
+- Cross-link job framework pages with the competency definitions and level-specific expectations
+- Document compensation bands with the methodology (market data sources, percentile target, review frequency)
+- Flag policy changes with the effective date, summary of what changed, and communication plan
+- Record org design decisions with the rationale, alternatives considered, and intended outcomes
+- Track succession plans with at least two potential successors per critical role and their readiness timeline
+- Note jurisdiction-specific variations for all policies — employment law varies by country and state
+- Archive superseded policies with the date they were replaced and the regulatory trigger if applicable

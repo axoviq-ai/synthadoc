@@ -1,0 +1,8 @@
+- Cite every data point with the source, methodology, sample size, date, and geographic scope
+- Distinguish between primary research (conducted by this team) and secondary research (sourced externally)
+- Cross-link consumer segment pages with the insights, surveys, and competitive analysis relevant to each segment
+- Flag survey findings with the survey methodology, response rate, and known biases
+- Note when competitive intelligence is based on public sources vs. estimated/inferred data
+- Track market sizing estimates with the methodology (top-down, bottom-up, triangulated) and assumptions
+- Document NPS and satisfaction scores with the measurement methodology and cohort definition
+- Archive superseded market analyses with the date they were replaced and what changed
