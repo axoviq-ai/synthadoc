@@ -16,7 +16,7 @@ from synthadoc.cli.main import app
 def mock_registry(tmp_path):
     """Return a factory: call it with a dict to patch _read_registry."""
     def _make(registry: dict):
-        return patch("synthadoc.cli.demo._read_registry", return_value=registry)
+        return patch("synthadoc.cli.install._read_registry", return_value=registry)
     return _make
 
 
@@ -46,7 +46,7 @@ def test_sync_demo_does_not_overwrite_existing_page(tmp_path, mock_registry, dem
 
     registry = {"history-of-computing": {"path": str(installed)}}
     with mock_registry(registry), \
-         patch("synthadoc.cli.demo._DEMOS", {"history-of-computing": demo_template}):
+         patch("synthadoc.cli.install._DEMOS", {"history-of-computing": demo_template}):
         runner = CliRunner()
         result = runner.invoke(app, ["demo", "sync", "history-of-computing"])
 
@@ -63,7 +63,7 @@ def test_sync_demo_force_overwrites_existing_page(tmp_path, mock_registry, demo_
 
     registry = {"history-of-computing": {"path": str(installed)}}
     with mock_registry(registry), \
-         patch("synthadoc.cli.demo._DEMOS", {"history-of-computing": demo_template}):
+         patch("synthadoc.cli.install._DEMOS", {"history-of-computing": demo_template}):
         runner = CliRunner()
         result = runner.invoke(app, ["demo", "sync", "history-of-computing", "--force"])
 
@@ -82,7 +82,7 @@ def test_sync_demo_always_copies_new_page(tmp_path, mock_registry, demo_template
 
     registry = {"history-of-computing": {"path": str(installed)}}
     with mock_registry(registry), \
-         patch("synthadoc.cli.demo._DEMOS", {"history-of-computing": demo_template}):
+         patch("synthadoc.cli.install._DEMOS", {"history-of-computing": demo_template}):
         runner = CliRunner()
         result = runner.invoke(app, ["demo", "sync", "history-of-computing"])
 
@@ -115,7 +115,7 @@ def test_sync_demo_force_all_demos(tmp_path, mock_registry, demo_template):
 
     registry = {"history-of-computing": {"path": str(installed)}}
     with mock_registry(registry), \
-         patch("synthadoc.cli.demo._DEMOS", {"history-of-computing": demo_template}):
+         patch("synthadoc.cli.install._DEMOS", {"history-of-computing": demo_template}):
         runner = CliRunner()
         result = runner.invoke(app, ["demo", "sync", "--force"])
 

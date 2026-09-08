@@ -68,7 +68,12 @@ def ingest_cmd(
             E.cli_error(E.INGEST_NOT_DIR,
                         f"{p.resolve()} is not a directory.",
                         "Use --batch with a folder path.")
-        sources = [str(f) for f in p.rglob("*") if f.is_file() and f.suffix in _SUPPORTED]
+        sources = [
+            str(f) for f in p.rglob("*")
+            if f.is_file()
+            and f.suffix in _SUPPORTED
+            and not f.name.startswith("template-")
+        ]
         if not sources:
             typer.echo(
                 f"No supported files found in {p.resolve()}\n"

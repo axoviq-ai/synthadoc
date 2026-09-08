@@ -124,6 +124,7 @@ def use_cmd(
 from synthadoc.cli import install  # noqa: F401, E402  (provides install + uninstall)
 from synthadoc.cli import ingest, query, lint, status, jobs, serve  # noqa: F401, E402
 from synthadoc.cli import demo  # noqa: F401, E402
+import synthadoc.cli.templates  # noqa: F401, E402  registers template_app
 from synthadoc.cli import schedule  # noqa: F401, E402
 from synthadoc.cli import cache  # noqa: F401, E402
 from synthadoc.cli import scaffold  # noqa: F401, E402

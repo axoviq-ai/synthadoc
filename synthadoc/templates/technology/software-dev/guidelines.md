@@ -1,0 +1,8 @@
+- Write ADRs for every significant design choice: context, options considered, decision, and consequences
+- Cross-link service pages with their runbooks, API specs, and relevant ADRs using [[slug]] syntax
+- Track deprecation timelines explicitly — deprecated APIs must have an end-of-life date and migration guide
+- Document API endpoints with: method, path, request/response schema, authentication, and rate limits
+- Note the PR or issue URL in pages derived from specific engineering discussions
+- Flag technical debt items with severity (critical/major/minor) and estimated remediation cost
+- Keep runbooks actionable: each step must be a concrete command or decision, not a narrative
+- Version architectural diagrams with the date they were last validated against the running system

@@ -1,0 +1,8 @@
+- Summarize contract terms precisely: parties, effective date, key obligations, payment terms, and termination rights
+- Cross-link matter pages with relevant contracts, case law, and regulatory guidance
+- Flag privilege status clearly — mark attorney-client privileged content and restrict accordingly
+- Record statute and regulation citations in standard legal format (e.g., 15 U.S.C. § 78j)
+- Document litigation holds with custodians, scope, and the triggering event
+- Track outside counsel engagement with firm name, matter, billing rate, and invoice status
+- Note jurisdiction for every legal conclusion — laws vary by state and country
+- Archive closed matters with the outcome, date closed, and lessons learned

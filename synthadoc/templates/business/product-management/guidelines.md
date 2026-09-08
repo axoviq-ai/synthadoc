@@ -1,0 +1,8 @@
+- Write PRDs with: problem statement, user story (As a… I want… So that…), acceptance criteria, out-of-scope items, and success metrics
+- Cross-link feature pages with the customer research and user feedback that motivated them
+- Record decisions with the date, decider, options considered, and rationale — not just the outcome
+- Flag features blocked by technical debt or dependency with the blocker reference and expected resolution
+- Track OKRs at the objective level with key results having specific, measurable targets and baseline values
+- Document customer research with: method (interview, survey, usability test), participant count, date, and key findings
+- Note the hypothesis behind each roadmap item — what customer behavior change are you betting on?
+- Archive deprioritized features with the reason so the decision is not revisited without new information
