@@ -276,6 +276,26 @@ def test_apply_template_no_wiki_name_leaves_placeholder(fake_templates, blank_wi
     assert "<wiki>" in written
 
 
+def test_apply_template_seeds_attribution_injected(fake_templates, blank_wiki):
+    """apply_template injects the template ref into seeds.md after the H1 heading."""
+    apply_template(blank_wiki, "finance/investment")
+    content = (blank_wiki / "seeds.md").read_text(encoding="utf-8")
+    assert "> **Template:** `finance/investment`" in content
+    # Attribution must appear before the rest of the body content
+    lines = content.splitlines()
+    h1_idx = next(i for i, ln in enumerate(lines) if ln.startswith("# "))
+    attribution_idx = next(i for i, ln in enumerate(lines) if "> **Template:**" in ln)
+    assert attribution_idx > h1_idx, "attribution must appear after the H1"
+
+
+def test_apply_template_seeds_attribution_different_template(fake_templates, blank_wiki):
+    """Each template ref appears verbatim in seeds.md."""
+    apply_template(blank_wiki, "technology/software-dev")
+    content = (blank_wiki / "seeds.md").read_text(encoding="utf-8")
+    assert "> **Template:** `technology/software-dev`" in content
+    assert "finance/investment" not in content
+
+
 def test_apply_template_does_not_import_cli(fake_templates, blank_wiki):
     """Verify no cli module is imported by template_engine (no core→cli dependency)."""
     import sys

@@ -115,7 +115,19 @@ def apply_template(wiki_root: Path, template_ref: str, wiki_name: str = "") -> N
     # 2. seeds.md — human getting-started guide; installed at wiki root, NOT inside wiki/
     seeds_src = template_path / "seeds.md"
     if seeds_src.exists():
-        _write(seeds_src, wiki_root / "seeds.md")
+        text = seeds_src.read_text(encoding="utf-8")
+        if wiki_name:
+            text = text.replace("<wiki>", wiki_name)
+        # Inject template attribution after the first H1 heading so users can
+        # identify which template was installed from within Obsidian or any editor.
+        text = re.sub(
+            r"(^# [^\n]+\n)",
+            rf"\1\n> **Template:** `{template_ref}`\n",
+            text,
+            count=1,
+            flags=re.MULTILINE,
+        )
+        (wiki_root / "seeds.md").write_text(text, encoding="utf-8", newline="\n")
 
     # 3-4. purpose.md and index.md — always overwrite
     for name in ("purpose.md", "index.md"):
