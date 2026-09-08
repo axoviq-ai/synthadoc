@@ -1,13 +1,18 @@
 ---
 # Copyright (c) 2026 William Johnason / axoviq.com. All rights reserved.
 ---
-# Supplier Profile — Template
+# Supplier Profile: [Supplier Name]
 
-Use this form to document a supplier in your approved vendor list. Copy this
-file, rename it `<supplier-code>-<name>.md` (e.g. `SUP-042-acme-steel.md`),
-complete all fields, then ingest:
-
-    synthadoc ingest raw_sources/suppliers/<supplier-code>-<name>.md -w <wiki>
+> **How to use this form**
+>
+> This template follows the **ISO 9001:2015 Clause 8.4 (Control of Externally Provided Processes)** -- the international standard requirement for evaluating, selecting, and monitoring external suppliers.
+> If you already have a supplier qualification record in another format (AVL spreadsheet, ERP export, audit report), skip this form and ingest your document directly.
+>
+> Reference: [ISO 9001:2015](https://www.iso.org/iso-9001-quality-management.html)
+>
+> 1. Copy this file and rename it (e.g. `SUP-042-acme-steel.md`)
+> 2. Fill in all sections
+> 3. Run: `synthadoc ingest raw_sources/suppliers/<supplier-code>-<name>.md -w <wiki>`
 
 ---
 

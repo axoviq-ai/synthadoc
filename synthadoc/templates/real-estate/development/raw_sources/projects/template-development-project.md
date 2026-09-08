@@ -2,9 +2,14 @@
 
 > **How to use this form**
 >
+> This template follows the **Urban Land Institute (ULI) Real Estate Development Process** -- the standard framework for tracking development projects from predevelopment through closeout.
+> If you already have a project brief in another format, skip this form and ingest your document directly.
+>
+> Reference: [Urban Land Institute (ULI)](https://www.uli.org/)
+>
 > 1. Copy this file and rename it (e.g. `oak-street-townhomes.md`)
-> 2. Fill in the project details — use your entitlement package or project charter as the source
-> 3. Run: `synthadoc ingest raw_sources/projects/oak-street-townhomes.md -w <wiki>`
+> 2. Fill in the project details -- use your entitlement package or project charter as the source
+> 3. Run: `synthadoc ingest raw_sources/projects/<project-name>.md -w <wiki>`
 >
 > Re-ingest at each major milestone or when key facts change.
 
