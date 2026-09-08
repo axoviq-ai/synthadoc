@@ -20,12 +20,4 @@ Each infrastructure record captures:
 - **Dependency map** — which services run on this resource (link to [[services]]); what breaks if this resource is unavailable
 - **Backup and DR** — backup schedule, retention period, cross-region replication, RTO/RPO targets
 
-**How to populate:**
-
-1. Ingest your Terraform modules README:
-   ```
-   synthadoc ingest infrastructure/ --batch -w <wiki>
-   ```
-2. Ingest your cloud architecture diagram or AWS/GCP/Azure architecture decision doc
-
 Cross-link to [[cloud-resources]], [[deployments]], [[slos]], and [[services]].

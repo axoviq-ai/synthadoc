@@ -19,12 +19,4 @@ Each cloud resource record captures:
 - **Security and compliance** — public exposure (yes/no), encryption at rest (yes/no), encryption in transit (yes/no), compliance labels (PCI / HIPAA / SOC2 scope)
 - **Lifecycle** — provisioned date, last modified, scheduled for decommission (date)
 
-**How to populate:**
-
-1. Ingest cloud resource inventory exports (AWS Resource Explorer, GCP Asset Inventory):
-   ```
-   synthadoc ingest docs/cloud-inventory.json -w <wiki>
-   ```
-2. Ingest cloud cost reports (AWS Cost Explorer CSV, GCP Billing export)
-
 Cross-link to [[infrastructure]], [[deployments]], and [[slos]].

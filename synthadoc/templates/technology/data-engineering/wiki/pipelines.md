@@ -19,10 +19,4 @@ Each pipeline record captures:
 - **Lineage** — upstream pipeline dependencies (link to [[lineage]]), downstream consumers (dashboards, models, APIs)
 - **Known issues** — open bugs, technical debt items, scheduled maintenance windows
 
-**How to add a pipeline:**
-
-1. Copy `raw_sources/pipelines/template-pipeline.md` and rename it after the pipeline
-2. Fill in source, destination, schedule, and quality checks
-3. Run `synthadoc ingest raw_sources/pipelines/<pipeline>.md -w <wiki>`
-
 Cross-link to [[datasets]], [[orchestration]], [[lineage]], and [[data-quality]].

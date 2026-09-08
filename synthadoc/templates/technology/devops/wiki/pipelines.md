@@ -19,11 +19,4 @@ Each pipeline record captures:
 - **DORA metrics** — deployment frequency target, lead time for changes (P50), change failure rate, mean time to restore — compared to current team actuals
 - **Flaky tests** — known flaky tests, their quarantine status, owner, remediation target date
 
-**How to populate:**
-
-1. Ingest your CI workflow configuration:
-   ```
-   synthadoc ingest .github/workflows/ --batch -w <wiki>
-   ```
-
 Cross-link to [[deployments]], [[services]], [[alerts]], and [[slos]].

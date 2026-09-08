@@ -2,6 +2,12 @@
 
 > **How to use this form**
 >
+> This template follows the **MLflow Experiment Tracking** standard -- the widely adopted
+> open-source platform standard for logging ML experiments, parameters, metrics, and artifacts.
+> If you already have experiment logs in another format (W&B, Neptune, Comet), skip this form and ingest them directly.
+>
+> Reference: [MLflow Experiment Tracking](https://mlflow.org/docs/latest/tracking.html)
+>
 > 1. Copy this file and rename it (e.g. `exp-0042-llm-rag-with-reranker.md`)
 > 2. Fill in before the run (hypothesis, config), then complete results after
 > 3. Run: `synthadoc ingest raw_sources/experiments/exp-0042-llm-rag-with-reranker.md -w <wiki>`

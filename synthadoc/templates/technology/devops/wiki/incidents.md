@@ -21,10 +21,4 @@ Each incident record captures:
 - **Action items** — follow-up tasks, owners, priority, due dates
 - **Post-mortem** — whether a post-mortem is required; link to [[post-mortems]] when written
 
-**How to add an incident:**
-
-1. Copy `raw_sources/incidents/template-incident.md` and rename it (e.g. `inc-0123-api-gateway-timeout.md`)
-2. Fill in as the incident unfolds; re-ingest as it resolves
-3. Run `synthadoc ingest raw_sources/incidents/<incident>.md -w <wiki>`
-
 Cross-link to [[post-mortems]], [[alerts]], [[slos]], and [[services]].

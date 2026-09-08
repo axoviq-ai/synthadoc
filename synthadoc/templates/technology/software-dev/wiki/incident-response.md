@@ -19,11 +19,4 @@ Each incident response record captures:
 - **Mitigation vs. resolution** — distinction between "service restored" and "root cause fixed"; when to declare mitigation vs. resolution
 - **Post-mortem requirements** — which severities require a written post-mortem, timeline (draft within 48 hrs, review within 5 days), blameless culture guidelines (link to [[post-mortems]])
 
-**How to populate:**
-
-1. Ingest your incident response playbook:
-   ```
-   synthadoc ingest docs/incident-response.md -w <wiki>
-   ```
-
 Cross-link to [[runbooks]], [[engineering-practices]], and [[services]].

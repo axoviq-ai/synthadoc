@@ -20,12 +20,4 @@ Each dataset record captures:
 - **Lineage** — upstream source tables/systems, downstream consumers (dashboards, ML models, APIs) — link to [[lineage]]
 - **Data quality** — active quality checks, last run results, known data issues or quirks
 
-**How to populate:**
-
-1. Ingest your dbt docs build:
-   ```
-   synthadoc ingest target/catalog.json -w <wiki>
-   ```
-2. Ingest your data catalog tool export (DataHub / Amundsen / OpenMetadata)
-
 Cross-link to [[pipelines]], [[lineage]], [[data-quality]], and [[schema-registry]].

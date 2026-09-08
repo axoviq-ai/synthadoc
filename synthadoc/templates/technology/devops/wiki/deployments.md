@@ -25,12 +25,4 @@ Each deployment record captures:
 - **Rollback procedure** — trigger criteria, rollback steps, expected restore time
 - **Change freeze periods** — blackout windows (business-critical periods, holidays), emergency deploy approval process
 
-**How to populate:**
-
-1. Ingest your CI/CD pipeline configuration:
-   ```
-   synthadoc ingest .github/workflows/ --batch -w <wiki>
-   ```
-2. Ingest your deployment documentation or runbook
-
 Cross-link to [[pipelines]], [[services]], [[incidents]], and [[slos]].

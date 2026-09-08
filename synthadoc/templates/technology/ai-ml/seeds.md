@@ -41,29 +41,37 @@ synthadoc ingest "https://www.ml4devs.com/what-is/train-validation-test-data-spl
 
 ## First steps checklist
 
-- [ ] **Ingest the paper for your current baseline model** — captures architecture, training setup, and benchmark results:
-  ```
-  synthadoc ingest "https://arxiv.org/abs/<paper-id>" -w <wiki>
-  ```
-  Populates [[models]] and [[benchmarks]].
-
-- [ ] **Log your most recent training run** — copy `raw_sources/experiments/template-experiment.md`, fill in hypothesis and results, then:
-  ```
-  synthadoc ingest raw_sources/experiments/<experiment>.md -w <wiki>
-  ```
+- [ ] **Log an ML experiment** -- use our template or bring your own:
+  - Template: copy `raw_sources/experiments/template-experiment.md`, rename it
+    (e.g. `exp-0001-llm-rag-with-reranker.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/experiments/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing experiment log in `raw_sources/experiments/` and ingest it.
   Populates [[experiments]].
 
-- [ ] **Ingest your dataset documentation** — Hugging Face data card or internal doc:
-  ```
-  synthadoc ingest "https://huggingface.co/datasets/<dataset>" -w <wiki>
-  ```
+- [ ] **Register a model** -- use our template or bring your own:
+  - Template: copy `raw_sources/models/template-model-card.md`, rename it
+    (e.g. `customer-churn-classifier-v2.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/models/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing model documentation in `raw_sources/models/` and ingest it.
+  Populates [[models]] and [[model-registry]].
+
+- [ ] **Document a dataset** -- use our template or bring your own:
+  - Template: copy `raw_sources/datasets/template-dataset-card.md`, rename it
+    (e.g. `customer-support-tickets-v3.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/datasets/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing dataset documentation in `raw_sources/datasets/` and ingest it.
   Populates [[datasets]].
 
-- [ ] **Define your primary benchmark** — ingest the benchmark paper or evaluation report:
-  ```
-  synthadoc ingest "https://arxiv.org/abs/<eval-paper>" -w <wiki>
-  ```
-  Populates [[benchmarks]] and [[evaluation-methodology]].
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

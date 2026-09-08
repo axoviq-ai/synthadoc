@@ -2,6 +2,12 @@
 
 > **How to use this form**
 >
+> This template follows the **Google SRE Incident Management** format (Google SRE Workbook, Ch. 8) --
+> the industry standard for structured incident tracking with clear roles, timelines, and action items.
+> If you already have incident records in another format, skip this form and ingest them directly.
+>
+> Reference: [Google SRE Workbook — Incident Response](https://sre.google/workbook/incident-response/)
+>
 > 1. Copy this file and rename it (e.g. `inc-0123-api-gateway-timeout.md`)
 > 2. Fill in details as the incident unfolds; update and re-ingest as it resolves
 > 3. Run: `synthadoc ingest raw_sources/incidents/inc-0123-api-gateway-timeout.md -w <wiki>`

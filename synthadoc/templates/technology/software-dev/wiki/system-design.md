@@ -21,11 +21,4 @@ Each system design document captures:
 - **Trade-offs accepted** — what was prioritized (consistency / availability / partition tolerance), why, and what alternatives were rejected
 - **Related ADRs** — decisions that shaped this design (link to [[adrs]])
 
-**How to populate:**
-
-1. Ingest your architecture design documents:
-   ```
-   synthadoc ingest docs/architecture/ --batch -w <wiki>
-   ```
-
 Cross-link to [[adrs]], [[services]], and [[apis]].

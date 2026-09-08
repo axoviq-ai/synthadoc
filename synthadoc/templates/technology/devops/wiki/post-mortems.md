@@ -22,11 +22,4 @@ Each post-mortem captures:
 - **Action items** — concrete, assignable improvements with owner and target date; track status
 - **Lessons learned** — what the team will do differently
 
-**How to populate:**
-
-1. Ingest post-mortem documents:
-   ```
-   synthadoc ingest docs/post-mortems/ --batch -w <wiki>
-   ```
-
 Cross-link to [[incidents]], [[alerts]], [[runbooks]], and [[slos]].

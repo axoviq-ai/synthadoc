@@ -20,11 +20,4 @@ Each orchestration record captures:
 - **Monitoring** — which metrics are tracked (DAG run duration, task failure rate, slot utilization), alert thresholds, dashboard link
 - **Maintenance runbook** — how to clear failed DAG runs, how to add a new DAG, how to deprecate a DAG safely
 
-**How to populate:**
-
-1. Ingest your orchestration README or operational guide:
-   ```
-   synthadoc ingest airflow/README.md -w <wiki>
-   ```
-
 Cross-link to [[pipelines]], [[lineage]], and [[data-quality]].

@@ -41,30 +41,37 @@ synthadoc ingest "https://www.youtube.com/watch?v=oxOj30rl_xs" -w <wiki>
 
 ## First steps checklist
 
-- [ ] **Ingest your dbt README and model docs**:
-  ```
-  synthadoc ingest dbt/README.md -w <wiki>
-  synthadoc ingest target/manifest.json -w <wiki>
-  ```
-  Populates [[datasets]], [[lineage]], and [[schema-registry]].
+- [ ] **Document a pipeline** -- use our template or bring your own:
+  - Template: copy `raw_sources/pipelines/template-pipeline.md`, rename it
+    (e.g. `orders-to-dwh-daily.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/pipelines/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing pipeline spec in `raw_sources/pipelines/` and ingest it.
+  Populates [[pipelines]] and [[lineage]].
 
-- [ ] **Document your highest-priority pipelines** — copy `raw_sources/pipelines/template-pipeline.md`, fill in source, destination, and schedule, then:
-  ```
-  synthadoc ingest raw_sources/pipelines/<pipeline>.md -w <wiki>
-  ```
-  Populates [[pipelines]] and [[orchestration]].
+- [ ] **Catalog a dataset** -- use our template or bring your own:
+  - Template: copy `raw_sources/datasets/template-dataset-spec.md`, rename it
+    (e.g. `orders-fact-table.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/datasets/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing dataset spec in `raw_sources/datasets/` and ingest it.
+  Populates [[datasets]] and [[schema-registry]].
 
-- [ ] **Ingest your data governance policy**:
-  ```
-  synthadoc ingest docs/data-governance.md -w <wiki>
-  ```
-  Populates [[data-governance]].
-
-- [ ] **Ingest data quality results** — Great Expectations validations or dbt test output:
-  ```
-  synthadoc ingest gx/uncommitted/validations/ --batch -w <wiki>
-  ```
+- [ ] **Define data quality checks** -- use our template or bring your own:
+  - Template: copy `raw_sources/quality-checks/template-data-quality-check.md`, rename it
+    (e.g. `orders-fact-quality-checks.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/quality-checks/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing quality report in `raw_sources/quality-checks/` and ingest it.
   Populates [[data-quality]].
+
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

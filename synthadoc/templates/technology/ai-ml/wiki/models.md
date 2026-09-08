@@ -20,12 +20,4 @@ Each model record captures:
 - **Limitations and risks** — known biases, out-of-distribution behavior, safety evaluation results, recommended use vs. not-recommended use
 - **Lineage** — parent model (fine-tuned from), related experiments (link to [[experiments]])
 
-**How to populate:**
-
-1. Ingest model cards from Hugging Face or internal registry:
-   ```
-   synthadoc ingest "https://huggingface.co/<org>/<model>" -w <wiki>
-   ```
-2. Ingest internal model documentation
-
 Cross-link to [[experiments]], [[datasets]], [[benchmarks]], and [[serving-infrastructure]].

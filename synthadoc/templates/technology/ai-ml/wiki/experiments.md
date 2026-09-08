@@ -19,10 +19,4 @@ Each experiment record captures:
 - **Analysis** — whether the hypothesis held, key observations, failure modes, next experiments to try
 - **Artifacts** — model checkpoint path, evaluation report, confusion matrix or error analysis file
 
-**How to add an experiment:**
-
-1. Copy `raw_sources/experiments/template-experiment.md` and rename it after the experiment
-2. Fill in hypothesis and config before the run; results after
-3. Run `synthadoc ingest raw_sources/experiments/<experiment>.md -w <wiki>`
-
 Cross-link to [[datasets]], [[models]], [[benchmarks]], and [[evaluation-methodology]].

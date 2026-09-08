@@ -20,11 +20,4 @@ Each tech debt item captures:
 - **Priority** — priority tier (do next sprint / do this quarter / backlog / accept and document), prioritization rationale
 - **Status** — open / in progress / resolved; link to the ticket or PR when resolved
 
-**How to populate:**
-
-1. Ingest your tech debt register or architectural audit:
-   ```
-   synthadoc ingest docs/tech-debt-register.md -w <wiki>
-   ```
-
 Cross-link to [[adrs]], [[services]], and [[engineering-practices]].

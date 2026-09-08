@@ -18,12 +18,4 @@ Each data quality record captures:
 - **Incident history** — past quality failures, root cause, fix applied, preventive measures added
 - **SLA tracking** — which datasets have a data quality SLA, SLA adherence rate over 30 days, breach escalation log
 
-**How to populate:**
-
-1. Ingest Great Expectations validation results:
-   ```
-   synthadoc ingest gx/uncommitted/validations/ --batch -w <wiki>
-   ```
-2. Ingest dbt test results: `synthadoc ingest target/run_results.json -w <wiki>`
-
 Cross-link to [[datasets]], [[pipelines]], [[data-governance]], and [[lineage]].

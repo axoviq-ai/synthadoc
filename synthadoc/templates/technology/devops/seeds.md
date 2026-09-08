@@ -46,30 +46,46 @@ synthadoc ingest "https://developer.hashicorp.com/terraform/tutorials/modules/pa
 
 ## First steps checklist
 
-- [ ] **Ingest your infrastructure README and runbooks**:
-  ```
-  synthadoc ingest infrastructure/README.md -w <wiki>
-  synthadoc ingest docs/runbooks/ --batch -w <wiki>
-  ```
-  Populates [[infrastructure]] and [[runbooks]].
+- [ ] **Log an incident** -- use our template or bring your own:
+  - Template: copy `raw_sources/incidents/template-incident.md`, rename it
+    (e.g. `inc-0001-api-gateway-timeout.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/incidents/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing incident record in `raw_sources/incidents/` and ingest it.
+  Populates [[incidents]].
 
-- [ ] **Document SLOs for your top 3 services** — ingest your SLO doc or Prometheus alert rules:
-  ```
-  synthadoc ingest docs/slos/ --batch -w <wiki>
-  ```
-  Populates [[slos]] and [[alerts]].
+- [ ] **Write a runbook for each critical service** -- use our template or bring your own:
+  - Template: copy `raw_sources/runbooks/template-runbook.md`, rename it
+    (e.g. `payments-service-high-error-rate.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/runbooks/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing runbook in `raw_sources/runbooks/` and ingest it.
+  Populates [[runbooks]].
 
-- [ ] **Log CI/CD pipelines** — ingest your CI workflow configuration:
-  ```
-  synthadoc ingest .github/workflows/ --batch -w <wiki>
-  ```
-  Populates [[pipelines]] and [[deployments]].
+- [ ] **Document a post-mortem** -- use our template or bring your own:
+  - Template: copy `raw_sources/post-mortems/template-post-mortem.md`, rename it
+    (e.g. `pm-inc-0001-api-gateway-timeout.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/post-mortems/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing post-mortem in `raw_sources/post-mortems/` and ingest it.
+  Populates [[post-mortems]].
 
-- [ ] **Log a recent incident** — copy `raw_sources/incidents/template-incident.md`, fill in details, then:
-  ```
-  synthadoc ingest raw_sources/incidents/<incident>.md -w <wiki>
-  ```
-  Populates [[incidents]]. Write post-mortem in [[post-mortems]] for SEV1/SEV2.
+- [ ] **Log a change request** -- use our template or bring your own:
+  - Template: copy `raw_sources/change-requests/template-change-request.md`, rename it
+    (e.g. `cr-0001-database-index-addition.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/change-requests/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing change request in `raw_sources/change-requests/` and ingest it.
+  Populates [[deployments]] and [[infrastructure]].
+
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

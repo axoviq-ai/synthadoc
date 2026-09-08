@@ -24,12 +24,4 @@ Each benchmark record captures:
 - **SOTA reference** — current state-of-the-art score, model name, source paper
 - **Notes on contamination** — whether benchmark data may appear in model training; caution flags
 
-**How to populate:**
-
-1. Ingest benchmark papers or leaderboard pages:
-   ```
-   synthadoc ingest "https://arxiv.org/abs/<paper-id>" -w <wiki>
-   ```
-2. Ingest your internal evaluation reports
-
 Cross-link to [[models]], [[experiments]], and [[evaluation-methodology]].

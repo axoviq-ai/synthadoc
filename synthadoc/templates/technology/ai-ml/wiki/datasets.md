@@ -20,12 +20,4 @@ Each dataset record captures:
 - **License and privacy** — license (CC-BY / research-only / proprietary), PII present (yes/no — what PII, how mitigated), geographic/demographic representation
 - **Usage history** — which models have been trained on this dataset (link to [[models]]), which experiments used it (link to [[experiments]])
 
-**How to populate:**
-
-1. Ingest dataset data cards:
-   ```
-   synthadoc ingest "https://huggingface.co/datasets/<dataset>" -w <wiki>
-   ```
-2. Ingest internal dataset documentation
-
 Cross-link to [[experiments]], [[models]], and [[evaluation-methodology]].

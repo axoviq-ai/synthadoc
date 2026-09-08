@@ -20,11 +20,4 @@ Each governance record captures:
 - **Data quality standards** — minimum quality bar for promotion from raw to mart, quality SLA (completeness, timeliness, accuracy targets)
 - **Governance committee** — members, meeting cadence, scope of decisions
 
-**How to populate:**
-
-1. Ingest your data governance policy:
-   ```
-   synthadoc ingest docs/data-governance.md -w <wiki>
-   ```
-
 Cross-link to [[data-quality]], [[datasets]], [[lineage]], and [[schema-registry]].

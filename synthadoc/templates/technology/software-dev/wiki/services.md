@@ -21,12 +21,4 @@ Each service record captures:
 - **Key ADRs** — major decisions that shaped this service (link to [[adrs]])
 - **Known debt and risks** — open issues, tech debt items (link to [[tech-debt]])
 
-**How to add a service:**
-
-1. Ingest the service README:
-   ```
-   synthadoc ingest services/<service-name>/README.md -w <wiki>
-   ```
-2. Ingest the service's runbook and API docs
-
 Cross-link to [[runbooks]], [[adrs]], [[apis]], and [[tech-debt]].

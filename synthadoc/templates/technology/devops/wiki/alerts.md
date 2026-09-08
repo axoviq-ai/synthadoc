@@ -19,12 +19,4 @@ Each alert record captures:
 - **Tuning history** — false positive rate, last threshold adjustment date, reason for change
 - **Error budget impact** — burn rate (fast burn / slow burn), window, how long until the SLO window closes if this burn rate continues
 
-**How to populate:**
-
-1. Ingest your alert configuration:
-   ```
-   synthadoc ingest infrastructure/alerts/ --batch -w <wiki>
-   ```
-2. Ingest your PagerDuty or OpsGenie service configuration export
-
 Cross-link to [[slos]], [[runbooks]], [[incidents]], and [[services]].

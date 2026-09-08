@@ -19,12 +19,4 @@ Each runbook captures:
 - **Rollback procedure** — how to reverse the action if something goes wrong; rollback success criteria
 - **Known issues** — past incidents where this runbook helped or failed; link to [[incidents]] or [[post-mortems]]
 
-**How to add a runbook:**
-
-1. Ingest an existing runbook doc:
-   ```
-   synthadoc ingest docs/runbooks/<service>-<procedure>.md -w <wiki>
-   ```
-2. Ingest Google SRE workbook sections on runbook best practices
-
 Cross-link to [[services]], [[incidents]], [[slos]], and [[alerts]].

@@ -19,11 +19,4 @@ Each evaluation methodology record captures:
 - **Automated metrics critique** — known limitations of primary metric; when automated metrics disagree with human judgment; use of multiple metrics
 - **Reproducibility** — random seed policy, model checkpointing convention, compute and runtime reporting standards
 
-**How to populate:**
-
-1. Ingest evaluation methodology docs or papers:
-   ```
-   synthadoc ingest docs/evaluation-guidelines.md -w <wiki>
-   ```
-
 Cross-link to [[benchmarks]], [[datasets]], and [[experiments]].

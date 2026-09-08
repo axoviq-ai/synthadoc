@@ -20,11 +20,4 @@ Each serving infrastructure record captures:
 - **Autoscaling** — scale-out trigger metric, min/max replicas, scale-down cooldown, cold-start latency
 - **Cost** — cost per million tokens / per request, monthly infrastructure cost, cost per quality metric point
 
-**How to populate:**
-
-1. Ingest your serving configuration and benchmark reports:
-   ```
-   synthadoc ingest docs/serving/ --batch -w <wiki>
-   ```
-
 Cross-link to [[models]], [[model-registry]], and [[benchmarks]].

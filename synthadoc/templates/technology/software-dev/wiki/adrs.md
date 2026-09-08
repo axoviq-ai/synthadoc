@@ -19,10 +19,4 @@ Each ADR captures:
 - **Consequences** — positive outcomes, negative trade-offs, and risks accepted; what becomes easier or harder
 - **Alternatives considered** — options evaluated and reason each was rejected
 
-**How to add an ADR:**
-
-1. Copy `raw_sources/decisions/template-adr.md` and name it `adr-<NNNN>-<short-title>.md`
-2. Fill in context, decision, and consequences
-3. Run `synthadoc ingest raw_sources/decisions/adr-<NNNN>-<short-title>.md -w <wiki>`
-
 Cross-link to [[system-design]], [[services]], and [[tech-debt]].

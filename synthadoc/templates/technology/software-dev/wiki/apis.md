@@ -19,12 +19,4 @@ Each API record captures:
 - **SLA** — p50/p95/p99 latency targets, availability target, link to [[slos]]
 - **Changelog** — version history, breaking changes, migration guides
 
-**How to add an API:**
-
-1. Ingest your OpenAPI specification:
-   ```
-   synthadoc ingest services/<service>/openapi.yaml -w <wiki>
-   ```
-2. Ingest API design docs or Postman collection exports
-
 Cross-link to [[services]], [[system-design]], and [[engineering-practices]].

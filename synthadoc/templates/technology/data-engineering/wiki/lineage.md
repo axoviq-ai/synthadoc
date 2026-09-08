@@ -19,12 +19,4 @@ Each lineage record captures:
 - **Column-level lineage** — (where available) per-column source tracing; which columns flow into which downstream columns
 - **Lineage freshness** — last time lineage graph was updated; stale lineage flags
 
-**How to populate:**
-
-1. Ingest dbt manifest for model lineage:
-   ```
-   synthadoc ingest target/manifest.json -w <wiki>
-   ```
-2. Ingest OpenLineage or Marquez events if your orchestrator emits them
-
 Cross-link to [[datasets]], [[pipelines]], [[data-quality]], and [[orchestration]].

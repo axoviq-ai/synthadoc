@@ -19,11 +19,4 @@ Each registry entry captures:
 - **Comparison to previous production model** — delta on key metrics, any regressions in known-important subsets
 - **Retirement record** — why the model was retired, when, replacement version
 
-**How to populate:**
-
-1. Ingest your MLflow Model Registry export or Hugging Face Hub model tags:
-   ```
-   synthadoc ingest docs/model-registry/ --batch -w <wiki>
-   ```
-
 Cross-link to [[models]], [[experiments]], [[serving-infrastructure]], and [[benchmarks]].

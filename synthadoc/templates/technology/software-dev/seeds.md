@@ -46,29 +46,37 @@ synthadoc ingest "https://swagger.io/docs/specification/v3_0/about" -w <wiki>
 
 ## First steps checklist
 
-- [ ] **Ingest your README and docs/** — captures system overview, contributing guide, and architecture notes:
-  ```
-  synthadoc ingest README.md -w <wiki>
-  synthadoc ingest docs/ --batch -w <wiki>
-  ```
-  Populates [[system-design]] and [[engineering-practices]].
-
-- [ ] **Document a recent architecture decision** — copy `raw_sources/decisions/template-adr.md`, rename it `adr-<NNNN>-<title>.md`, fill it in, then:
-  ```
-  synthadoc ingest raw_sources/decisions/adr-0001-<title>.md -w <wiki>
-  ```
+- [ ] **Document an architecture decision** -- use our template or bring your own:
+  - Template: copy `raw_sources/decisions/template-adr.md`, rename it
+    (e.g. `adr-0001-choose-database.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/decisions/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing ADR in `raw_sources/decisions/` and ingest it.
   Populates [[adrs]].
 
-- [ ] **Create a service page for each major service** — ingest each service's README or runbook:
-  ```
-  synthadoc ingest services/<service>/README.md -w <wiki>
-  ```
-  Populates [[services]] and [[runbooks]].
+- [ ] **Write a tech spec for the next major change** -- use our template or bring your own:
+  - Template: copy `raw_sources/specs/template-tech-spec.md`, rename it
+    (e.g. `search-ranking-redesign.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/specs/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing design doc or RFC in `raw_sources/specs/` and ingest it.
+  Populates [[system-design]].
 
-- [ ] **Ingest your most recent post-mortem**:
-  ```
-  synthadoc ingest docs/post-mortems/<latest>.md -w <wiki>
-  ```
+- [ ] **Create a runbook for each critical service** -- use our template or bring your own:
+  - Template: copy `raw_sources/runbooks/template-runbook.md`, rename it
+    (e.g. `payments-service-high-error-rate.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/runbooks/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing runbook in `raw_sources/runbooks/` and ingest it.
+  Populates [[runbooks]].
+
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

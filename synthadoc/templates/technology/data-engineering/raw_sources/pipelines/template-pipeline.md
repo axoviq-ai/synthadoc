@@ -2,6 +2,12 @@
 
 > **How to use this form**
 >
+> This template follows the **DataOps / dbt documentation standard** -- the de facto standard
+> for documenting data pipelines, models, and transformations in modern data stacks.
+> If you already have pipeline documentation in another format, skip this form and ingest it directly.
+>
+> Reference: [dbt Documentation](https://docs.getdbt.com/)
+>
 > 1. Copy this file and rename it (e.g. `orders-to-dwh-daily.md`)
 > 2. Fill in the pipeline details — use your Airflow/Prefect DAG definition as the source
 > 3. Run: `synthadoc ingest raw_sources/pipelines/orders-to-dwh-daily.md -w <wiki>`

@@ -20,14 +20,4 @@ Each engineering practice record captures:
 - **Security practices** — secret management (no secrets in code, approved secret stores), dependency scanning, SAST/DAST tooling, vulnerability SLA by severity
 - **On-call and incident response** — on-call rotation setup, alert ownership, severity definitions, link to [[incident-response]]
 
-**How to populate:**
-
-1. Ingest your engineering handbook or CONTRIBUTING.md:
-   ```
-   synthadoc ingest CONTRIBUTING.md -w <wiki>
-   ```
-   ```
-   synthadoc ingest docs/engineering-handbook/ --batch -w <wiki>
-   ```
-
 Cross-link to [[runbooks]], [[incident-response]], and [[tech-debt]].

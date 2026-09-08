@@ -21,12 +21,4 @@ Each SLO record captures:
 - **Consequences of burn** — what happens when the error budget is exhausted (feature freeze / incident response escalation / executive notification)
 - **Alert rules** — fast-burn and slow-burn alert thresholds (link to [[alerts]])
 
-**How to populate:**
-
-1. Ingest your SLO documentation:
-   ```
-   synthadoc ingest docs/slos/ --batch -w <wiki>
-   ```
-2. Ingest the Google SRE workbook chapter on SLOs
-
 Cross-link to [[services]], [[alerts]], [[incidents]], and [[post-mortems]].
