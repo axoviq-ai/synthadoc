@@ -59,6 +59,11 @@ synthadoc ingest "https://tenthings.blog/2016/11/30/ten-things-preparing-outside
   Or ingest a saved guidance PDF: `synthadoc ingest docs/regulatory/<guidance>.pdf -w <wiki>`
   Populates [[regulatory-guidance]] and [[applicable-regulations]].
 
+- [ ] **Run lint to validate pages and activate drafts** -- with the server running,
+  lint checks each page for quality then promotes clean draft pages to `active` status.
+  In Obsidian: command palette (Ctrl+P / Cmd+P) > **"Synthadoc: Lint: run..."**
+  Or from CLI: `synthadoc lint run -w <wiki>`
+
 - [ ] **Run scaffold to build the index**
   ```
   synthadoc scaffold -w <wiki>

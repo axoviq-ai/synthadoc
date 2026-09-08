@@ -58,6 +58,11 @@ synthadoc ingest "http://business.cch.com/BANKD/Community-Bank.pdf" -w <wiki>
   ```
   Populates [[regulatory-compliance]] and [[branch-operations]].
 
+- [ ] **Run lint to validate pages and activate drafts** -- with the server running,
+  lint checks each page for quality then promotes clean draft pages to `active` status.
+  In Obsidian: command palette (Ctrl+P / Cmd+P) > **"Synthadoc: Lint: run..."**
+  Or from CLI: `synthadoc lint run -w <wiki>`
+
 - [ ] **Run scaffold to build the index**
   ```
   synthadoc scaffold -w <wiki>

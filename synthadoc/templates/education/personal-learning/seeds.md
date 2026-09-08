@@ -63,6 +63,11 @@ synthadoc ingest "https://modelthinkers.com/mental-model/mungers-latticework" -w
 - [ ] **Link two existing concepts** you have never connected before — edit the pages and add [[wikilinks]] between them.
   Strengthens [[mental-models]] connections.
 
+- [ ] **Run lint to validate pages and activate drafts** -- with the server running,
+  lint checks each page for quality then promotes clean draft pages to `active` status.
+  In Obsidian: command palette (Ctrl+P / Cmd+P) > **"Synthadoc: Lint: run..."**
+  Or from CLI: `synthadoc lint run -w <wiki>`
+
 - [ ] **Run scaffold to build the index**
   ```
   synthadoc scaffold -w <wiki>

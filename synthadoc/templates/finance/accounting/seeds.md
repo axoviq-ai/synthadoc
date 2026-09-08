@@ -60,4 +60,9 @@ synthadoc ingest "https://bradyware.com/asc-842-implementation-compliance" -w <w
   (QuickBooks, NetSuite, SAP) as a CSV or PDF, then run
   `synthadoc ingest raw_sources/chart-of-accounts.csv -w <wiki>`.
 
+- [ ] **Run lint to validate pages and activate drafts** -- with the server running,
+  lint checks each page for quality then promotes clean draft pages to `active` status.
+  In Obsidian: command palette (Ctrl+P / Cmd+P) > **"Synthadoc: Lint: run..."**
+  Or from CLI: `synthadoc lint run -w <wiki>`
+
 - [ ] **Run scaffold to build the index** — `synthadoc scaffold -w <wiki>`

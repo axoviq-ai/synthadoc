@@ -71,6 +71,11 @@ synthadoc ingest "https://developer.hashicorp.com/terraform/tutorials/modules/pa
   ```
   Populates [[incidents]]. Write post-mortem in [[post-mortems]] for SEV1/SEV2.
 
+- [ ] **Run lint to validate pages and activate drafts** -- with the server running,
+  lint checks each page for quality then promotes clean draft pages to `active` status.
+  In Obsidian: command palette (Ctrl+P / Cmd+P) > **"Synthadoc: Lint: run..."**
+  Or from CLI: `synthadoc lint run -w <wiki>`
+
 - [ ] **Run scaffold to build the index**
   ```
   synthadoc scaffold -w <wiki>

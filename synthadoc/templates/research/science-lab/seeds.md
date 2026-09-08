@@ -62,6 +62,11 @@ synthadoc ingest "https://libguides.umn.edu/c.php?g=1164012&p=8497442" -w <wiki>
   ```
   Populates [[experiments]] and [[findings]].
 
+- [ ] **Run lint to validate pages and activate drafts** -- with the server running,
+  lint checks each page for quality then promotes clean draft pages to `active` status.
+  In Obsidian: command palette (Ctrl+P / Cmd+P) > **"Synthadoc: Lint: run..."**
+  Or from CLI: `synthadoc lint run -w <wiki>`
+
 - [ ] **Run scaffold to build the index**
   ```
   synthadoc scaffold -w <wiki>
