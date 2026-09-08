@@ -8,7 +8,7 @@ sources: []
 
 # Org Structure
 
-Organizational design, reporting relationships, and team structure. Populate by ingesting org chart exports and org design documents.
+Organizational design, reporting relationships, and team structure.
 
 Each org structure record captures:
 
@@ -19,12 +19,5 @@ Each org structure record captures:
 - **Key roles and responsibilities** — DRI model, role descriptions for critical positions, decision authority matrix (RACI or similar)
 - **Recent changes** — reorgs, team mergers, new functions created, and rationale
 - **Planned changes** — future org evolution, headcount plan by team, new roles to be created
-
-**How to populate:**
-
-1. Export your org chart and ingest:
-   ```
-   synthadoc ingest docs/org-chart.pdf -w <wiki>
-   ```
 
 Cross-link to [[job-frameworks]], [[succession-planning]], and [[hr-policies]].

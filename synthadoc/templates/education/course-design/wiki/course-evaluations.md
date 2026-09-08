@@ -21,15 +21,4 @@ Learner feedback and course effectiveness data. Each evaluation record captures:
 - **Completion rate** — % of enrolled learners who completed the course on time
 - **Action items** — specific content, pacing, or design changes the evaluation identified
 
-**How to populate:**
-
-1. Ingest evaluation reports or LMS completion exports:
-   ```
-   synthadoc ingest docs/course-design/evaluations/ --batch -w <wiki>
-   ```
-2. Ingest Kirkpatrick framework reference:
-   ```
-   synthadoc ingest "https://www.kirkpatrickpartners.com/the-kirkpatrick-model" -w <wiki>
-   ```
-
 Cross-link to [[modules]] for specific modules that need revision, [[assessments]] for items with poor discrimination data, and [[learner-outcomes]] for objectives where learners consistently underperform.

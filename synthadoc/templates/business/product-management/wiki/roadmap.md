@@ -8,7 +8,7 @@ sources: []
 
 # Roadmap
 
-Product roadmap — what's planned, in progress, and shipped by theme and time horizon. Populate by ingesting your roadmap document or planning tool export.
+Product roadmap — what's planned, in progress, and shipped by theme and time horizon.
 
 Each roadmap record captures:
 
@@ -19,12 +19,5 @@ Each roadmap record captures:
 - **Dependencies** — cross-team or external dependencies that could affect the roadmap
 - **What's not on the roadmap** — explicitly declined ideas and why (helps prevent re-litigating decisions)
 - **Last updated** — date and who approved the current roadmap state
-
-**How to populate:**
-
-1. Export from your roadmap tool (Productboard / Linear / Jira / Aha!) and ingest:
-   ```
-   synthadoc ingest docs/roadmap.pdf -w <wiki>
-   ```
 
 Cross-link to [[prds]], [[okrs]], [[customer-research]], and [[product-metrics]].

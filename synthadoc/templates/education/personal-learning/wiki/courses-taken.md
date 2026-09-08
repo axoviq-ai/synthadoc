@@ -19,15 +19,4 @@ Log of formal courses, MOOCs, workshops, and structured programs completed. Each
 - **Projects or exercises completed** — notable assignments, projects, or labs (link to [[learning-projects]] if you built something)
 - **What I would do differently** — honest reflection on how you studied and what you would change
 
-**How to populate:**
-
-1. Ingest course syllabi or completion certificates:
-   ```
-   synthadoc ingest docs/learning/courses/ --batch -w <wiki>
-   ```
-2. Ingest a specific course description from the provider's website:
-   ```
-   synthadoc ingest "https://www.coursera.org/learn/<course-slug>" -w <wiki>
-   ```
-
 Cross-link to [[concepts]] for atomic ideas from the course, [[learning-projects]] for projects built during the course, and [[books]] for the textbooks or readings assigned.

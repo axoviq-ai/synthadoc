@@ -2,12 +2,14 @@
 
 > **How to use this form**
 >
-> 1. Copy this file and rename it (e.g. `csv-export-v2.md`)
-> 2. Fill in the PRD through the product review process
-> 3. Run: `synthadoc ingest raw_sources/specs/csv-export-v2.md -w <wiki>`
+> This template follows the **Inspired Product Document format** (Marty Cagan, SVPG) -- a lightweight but rigorous structure for defining problems, user stories, success metrics, and rollout plans.
+> If you already have product requirements docs in another format, skip this form and ingest your document directly.
 >
-> Re-ingest when the spec changes materially. The approved PRD in your
-> product management tool (Linear / Jira / Notion) remains the source of record.
+> Reference: [SVPG — Inspired: How to Create Tech Products Customers Love](https://www.svpg.com/inspired-how-to-create-tech-products-customers-love/)
+>
+> 1. Copy this file and rename it (e.g. `csv-export-v2.md`)
+> 2. Fill in all sections
+> 3. Run: `synthadoc ingest raw_sources/specs/<feature>.md -w <wiki>`
 
 ---
 

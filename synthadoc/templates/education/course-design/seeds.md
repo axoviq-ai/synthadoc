@@ -41,29 +41,37 @@ synthadoc ingest "https://www.nwea.org/blog/2026/formative-vs-summative-assessme
 
 ## First steps checklist
 
-- [ ] **Write learning objectives** for your first module using Bloom's Taxonomy verbs:
-  ```
-  synthadoc ingest "https://www.kuraplan.com/guides/blooms-taxonomy-verbs" -w <wiki>
-  ```
-  Populates [[learner-outcomes]].
+- [ ] **Design a course module** -- use our template or bring your own:
+  - Template: copy `raw_sources/modules/template-module-design.md`, rename it
+    (e.g. `03-data-visualization.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/modules/<module-number>-<title>.md -w <wiki>
+    ```
+  - Own doc: place your existing module materials in `raw_sources/modules/` and ingest them.
+  Populates [[modules]] and [[learning-materials]].
 
-- [ ] **Design your first module** — copy `raw_sources/modules/template-module-design.md`, fill in all fields, then:
-  ```
-  synthadoc ingest raw_sources/modules/<module-number>-<title>.md -w <wiki>
-  ```
-  Populates [[modules]] and [[assessments]].
+- [ ] **Map the curriculum** -- use our template or bring your own:
+  - Template: copy `raw_sources/curriculum/template-curriculum-map.md`, rename it
+    (e.g. `intro-python-curriculum-map.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/curriculum/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing curriculum document in `raw_sources/curriculum/` and ingest it.
+  Populates [[curriculum-map]] and [[learner-outcomes]].
 
-- [ ] **Create a curriculum map** showing module sequence and prerequisites:
-  ```
-  synthadoc ingest docs/course-design/curriculum/ --batch -w <wiki>
-  ```
-  Populates [[curriculum-map]].
+- [ ] **Create an assessment rubric** -- use our template or bring your own:
+  - Template: copy `raw_sources/assessments/template-assessment-rubric.md`, rename it
+    (e.g. `module-03-final-project-rubric.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/assessments/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing rubric in `raw_sources/assessments/` and ingest it.
+  Populates [[assessments]].
 
-- [ ] **Ingest your existing course materials or syllabus**:
-  ```
-  synthadoc ingest docs/course-design/<syllabus>.pdf -w <wiki>
-  ```
-  Populates [[learning-materials]].
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

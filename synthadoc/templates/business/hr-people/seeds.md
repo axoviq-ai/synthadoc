@@ -41,30 +41,37 @@ synthadoc ingest "https://www.shrm.org/business-solutions/partner-products/emplo
 
 ## First steps checklist
 
-- [ ] **Ingest your employee handbook and core HR policies**:
-  ```
-  synthadoc ingest docs/employee-handbook.pdf -w <wiki>
-  synthadoc ingest docs/hr-policies/ --batch -w <wiki>
-  ```
-  Populates [[employee-handbook]] and [[hr-policies]].
+- [ ] **Create job descriptions** -- use our template or bring your own:
+  - Template: copy `raw_sources/job-descriptions/template-job-description.md`, rename it
+    (e.g. `software-engineer-l3.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/job-descriptions/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing job descriptions in `raw_sources/job-descriptions/` and ingest them.
+  Populates [[job-frameworks]] and [[org-structure]].
 
-- [ ] **Document your career ladders** — ingest your job leveling framework:
-  ```
-  synthadoc ingest docs/career-ladders/ --batch -w <wiki>
-  ```
-  Populates [[job-frameworks]].
-
-- [ ] **Document your compensation philosophy** — ingest your comp policy or total rewards framework:
-  ```
-  synthadoc ingest docs/compensation-philosophy.md -w <wiki>
-  ```
-  Populates [[compensation]].
-
-- [ ] **Log a performance review** — copy `raw_sources/performance/template-performance-review.md`, fill it in, then:
-  ```
-  synthadoc ingest raw_sources/performance/<employee>-<period>.md -w <wiki>
-  ```
+- [ ] **Set up performance reviews** -- use our template or bring your own:
+  - Template: copy `raw_sources/performance/template-performance-review.md`, rename it
+    (e.g. `alex-smith-2026-h1.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/performance/<employee>-<period>.md -w <wiki>
+    ```
+  - Own doc: place your existing review template in `raw_sources/performance/` and ingest it.
   Populates [[performance-management]].
+
+- [ ] **Build an onboarding plan** -- use our template or bring your own:
+  - Template: copy `raw_sources/onboarding/template-onboarding-plan.md`, rename it
+    (e.g. `alex-smith-onboarding-2026-10.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/onboarding/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing onboarding checklist in `raw_sources/onboarding/` and ingest it.
+  Populates [[hr-policies]].
+
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

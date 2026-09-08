@@ -8,7 +8,7 @@ sources: []
 
 # Job Frameworks
 
-Job family and leveling framework. Populate by ingesting your career ladder or leveling framework documents.
+Job family and leveling framework.
 
 Each job framework record captures:
 
@@ -19,13 +19,5 @@ Each job framework record captures:
 - **Typical next roles** — what roles people typically move into from this level/family; lateral moves available
 - **Promotion criteria** — evidence required for promotion, calibration process, time-in-level expectations (if any), skip-level promotion policy
 - **Compensation alignment** — link to [[compensation]] for salary band information at each level
-
-**How to populate:**
-
-1. Ingest your career ladder documentation:
-   ```
-   synthadoc ingest docs/career-ladders/ --batch -w <wiki>
-   ```
-2. Ingest benchmark frameworks (e.g. Radford SWE levels, Levels.fyi data)
 
 Cross-link to [[compensation]], [[performance-management]], and [[succession-planning]].

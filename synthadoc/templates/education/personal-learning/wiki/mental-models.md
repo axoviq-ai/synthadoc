@@ -25,16 +25,4 @@ Organize entries by the cognitive function each model serves:
 - **Probabilistic thinking** — models for reasoning about likelihood and risk
 - **Communication** — models for understanding how people process information
 
-**How to populate:**
-
-1. Extract mental models from books you read (link to [[books]] and [[book-summaries]]):
-   ```
-   synthadoc ingest raw_sources/books/<book-notes>.md -w <wiki>
-   ```
-2. Ingest curated mental model libraries:
-   ```
-   synthadoc ingest "https://fs.blog/mental-models/" -w <wiki>
-   synthadoc ingest "https://modelthinkers.com/mental-model-library" -w <wiki>
-   ```
-
 Cross-link to [[concepts]] for atomic ideas the model connects to, [[thinkers]] for its originator, and [[books]] where you first encountered it.

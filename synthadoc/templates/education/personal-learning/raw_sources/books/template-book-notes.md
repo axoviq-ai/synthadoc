@@ -3,11 +3,17 @@
 ---
 # Book Notes — Template
 
-Use this form to capture notes on a book you have read. Copy this file,
-rename it `<author-last>-<year>-<keyword>.md` (e.g. `munger-1994-poor-charlie.md`),
-complete all fields, then ingest:
-
-    synthadoc ingest raw_sources/books/<author-last>-<year>-<keyword>.md -w <wiki>
+> **How to use this form**
+>
+> This template follows the **Zettelkasten note-taking method (Niklas Luhmann)** -- the slip-box
+> system that turns reading into a permanent, connected network of ideas.
+> If you already have book notes in another format, skip this form and ingest your document directly.
+>
+> Reference: [Zettelkasten Introduction](https://zettelkasten.de/introduction/)
+>
+> 1. Copy this file and rename it (e.g. `munger-1994-poor-charlie.md`)
+> 2. Fill in all sections
+> 3. Run: `synthadoc ingest raw_sources/books/<author-last>-<year>-<keyword>.md -w <wiki>`
 
 ---
 

@@ -18,15 +18,4 @@ Behavioral and technical competency frameworks used for role definition, hiring,
 - **Development resources** — recommended training, books, stretch assignments, or mentoring to develop each competency (link to [[training-catalog]])
 - **Role mapping** — which competencies are required at each level for each role family (link to job framework)
 
-**How to populate:**
-
-1. Ingest your existing competency framework document:
-   ```
-   synthadoc ingest docs/training/competency-framework.pdf -w <wiki>
-   ```
-2. Ingest industry competency frameworks as references:
-   ```
-   synthadoc ingest "https://www.leapsome.com/blog/competency-framework-template" -w <wiki>
-   ```
-
 Cross-link to [[training-catalog]] for courses that develop each competency, [[sops]] for technical competencies with procedural requirements, and [[onboarding-program]] for competencies new hires must demonstrate.

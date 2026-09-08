@@ -8,7 +8,7 @@ sources: []
 
 # Performance Management
 
-Performance review process, rating scales, and calibration guidelines. Populate by ingesting your performance management policy and review templates.
+Performance review process, rating scales, and calibration guidelines.
 
 Each performance management record captures:
 
@@ -19,12 +19,5 @@ Each performance management record captures:
 - **Calibration process** — who participates in calibration, calibration facilitator role, how managers defend ratings, how cross-team consistency is ensured
 - **PIP process** — criteria for placing someone on a performance improvement plan, PIP structure (duration, check-ins, success criteria), documentation requirements
 - **Documentation requirements** — what must be written down, retention period, employee access rights
-
-**How to populate:**
-
-1. Ingest your performance management policy:
-   ```
-   synthadoc ingest docs/performance-management.md -w <wiki>
-   ```
 
 Cross-link to [[job-frameworks]], [[compensation]], and [[succession-planning]].

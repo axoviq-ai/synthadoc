@@ -19,15 +19,4 @@ Atomic concept notes — one idea per page. Each concept page:
 
 Keep pages short and focused. Depth in a concept note system comes from many atomic pages linked together, not from long individual entries.
 
-**How to populate:**
-
-1. Write concept notes directly in your wiki:
-   ```
-   synthadoc ingest raw_sources/books/<book-notes>.md -w <wiki>
-   ```
-2. Ingest concept explanations from trusted educational sources:
-   ```
-   synthadoc ingest "https://fs.blog/<concept-name>" -w <wiki>
-   ```
-
 Cross-link liberally to [[books]], [[mental-models]], [[thinkers]], and [[learning-projects]] that connect to each concept.

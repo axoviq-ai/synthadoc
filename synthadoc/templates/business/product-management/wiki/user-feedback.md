@@ -8,7 +8,7 @@ sources: []
 
 # User Feedback
 
-Structured repository of customer feedback, feature requests, and NPS verbatims. Populate by ingesting support tickets, NPS comments, sales call notes, and Intercom/Zendesk exports.
+Structured repository of customer feedback, feature requests, and NPS verbatims.
 
 Each feedback record captures:
 
@@ -19,12 +19,5 @@ Each feedback record captures:
 - **Frequency signal** — how many other customers mentioned the same thing in the same period (de-duplicated count)
 - **Product implication** — does this point to a gap in a current feature, a missing capability, or a documentation problem?
 - **Status** — acknowledged / escalated to PM / in roadmap (link to [[prds]]) / not planned + reason
-
-**How to populate:**
-
-1. Ingest Intercom / Zendesk exports or NPS verbatims:
-   ```
-   synthadoc ingest docs/feedback/ --batch -w <wiki>
-   ```
 
 Cross-link to [[customer-research]], [[prds]], [[roadmap]], and [[product-metrics]].

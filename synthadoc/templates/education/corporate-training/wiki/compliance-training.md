@@ -19,15 +19,4 @@ Required compliance training courses and their completion requirements. Each com
 - **Tracking** — how completion is tracked; LMS course code; attestation or certification required
 - **Consequence of non-completion** — what happens if an employee does not complete on time (access revoked, disciplinary action, regulatory risk)
 
-**How to populate:**
-
-1. Ingest your compliance training matrix or LMS course catalog export:
-   ```
-   synthadoc ingest docs/training/compliance-training-matrix.xlsx -w <wiki>
-   ```
-2. Ingest regulatory training requirements:
-   ```
-   synthadoc ingest "https://www.osha.gov/training" -w <wiki>
-   ```
-
 Cross-link to [[training-catalog]] for the full course details, [[sops]] for the procedures the training covers, and [[onboarding-program]] for compliance courses that are part of new-hire onboarding.

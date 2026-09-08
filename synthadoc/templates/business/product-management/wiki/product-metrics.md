@@ -8,7 +8,7 @@ sources: []
 
 # Product Metrics
 
-Product analytics framework, north star metric, and instrumentation standards. Populate by ingesting your metrics framework and analytics documentation.
+Product analytics framework, north star metric, and instrumentation standards.
 
 Each product metrics record captures:
 
@@ -19,12 +19,5 @@ Each product metrics record captures:
 - **Funnel metrics** — acquisition, activation, retention, revenue, referral (AARRR) by segment; funnel conversion rates
 - **Instrumentation standard** — which events are tracked, event naming convention, property naming convention, how to add new tracking
 - **Dashboards** — links to analytics dashboards (Amplitude / Mixpanel / Heap / Looker) for each metric category
-
-**How to populate:**
-
-1. Ingest your metrics framework or analytics spec:
-   ```
-   synthadoc ingest docs/product-metrics.md -w <wiki>
-   ```
 
 Cross-link to [[okrs]], [[roadmap]], [[customer-research]], and [[user-feedback]].

@@ -18,15 +18,4 @@ Library of SOPs indexed by department and process. Each SOP page includes:
 - **SME reviewer** — name and role of subject matter expert who reviewed and approved the SOP; review date
 - **Revision history** — version, date, summary of changes
 
-**How to populate:**
-
-1. Ingest SOP documents from your shared drive or document management system:
-   ```
-   synthadoc ingest docs/training/sops/ --batch -w <wiki>
-   ```
-2. Ingest a specific SOP:
-   ```
-   synthadoc ingest docs/training/sops/<department>/<sop-title>.pdf -w <wiki>
-   ```
-
 Cross-link to [[job-aids]] for quick-reference versions of each SOP, [[training-catalog]] for training courses that teach each procedure, and [[compliance-training]] for SOPs driven by regulatory requirements.

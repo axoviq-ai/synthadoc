@@ -41,29 +41,37 @@ synthadoc ingest "https://blog.socialmediastrategiessummit.com/free-content-cale
 
 ## First steps checklist
 
-- [ ] **Ingest your brand guidelines** — captures logo, color, typography, and voice standards:
-  ```
-  synthadoc ingest docs/brand/brand-guidelines.pdf -w <wiki>
-  ```
-  Populates [[brand-guidelines]] and [[messaging]].
-
-- [ ] **Document your active campaign** — copy `raw_sources/campaigns/template-campaign-brief.md`, fill in objective and channels, then:
-  ```
-  synthadoc ingest raw_sources/campaigns/<campaign>.md -w <wiki>
-  ```
+- [ ] **Brief a campaign** -- use our template or bring your own:
+  - Template: copy `raw_sources/campaigns/template-campaign-brief.md`, rename it
+    (e.g. `q3-2026-summer-launch.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/campaigns/<campaign>.md -w <wiki>
+    ```
+  - Own doc: place your existing campaign brief in `raw_sources/campaigns/` and ingest it.
   Populates [[campaigns]] and [[campaign-calendar]].
 
-- [ ] **Ingest your content strategy document**:
-  ```
-  synthadoc ingest docs/content-strategy.md -w <wiki>
-  ```
-  Populates [[content-strategy]] and [[seo]].
+- [ ] **Plan content** -- use our template or bring your own:
+  - Template: copy `raw_sources/content/template-content-calendar.md`, rename it
+    (e.g. `content-calendar-q3-2026.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/content/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing content plan in `raw_sources/content/` and ingest it.
+  Populates [[content-strategy]] and [[content-assets]].
 
-- [ ] **Ingest channel performance report**:
-  ```
-  synthadoc ingest docs/analytics/channel-report-<YYYY-MM>.pdf -w <wiki>
-  ```
-  Populates [[channel-performance]].
+- [ ] **Document brand guidelines** -- use our template or bring your own:
+  - Template: copy `raw_sources/brand/template-brand-brief.md`, rename it
+    (e.g. `brand-brief-acme-corp.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/brand/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing brand guide in `raw_sources/brand/` and ingest it.
+  Populates [[brand-guidelines]] and [[messaging]].
+
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

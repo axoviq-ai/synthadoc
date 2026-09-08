@@ -8,7 +8,7 @@ sources: []
 
 # Customer Research
 
-Customer discovery research, user interviews, and Jobs to Be Done insights. Populate by ingesting research summaries and interview notes.
+Customer discovery research, user interviews, and Jobs to Be Done insights.
 
 Each research record captures:
 
@@ -19,12 +19,5 @@ Each research record captures:
 - **Jobs to Be Done** — functional, emotional, and social jobs customers are trying to accomplish; current solutions and their shortcomings
 - **Implications for roadmap** — specific product implications from the findings; which hypotheses were confirmed or disproved
 - **Confidence level** — how representative the sample is, known limitations of the research
-
-**How to populate:**
-
-1. Ingest research summaries or interview transcripts:
-   ```
-   synthadoc ingest docs/research/ --batch -w <wiki>
-   ```
 
 Cross-link to [[user-feedback]], [[prds]], [[roadmap]], and [[product-metrics]].

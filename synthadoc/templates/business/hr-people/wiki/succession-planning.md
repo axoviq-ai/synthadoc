@@ -8,7 +8,7 @@ sources: []
 
 # Succession Planning
 
-Succession plans for critical roles and key talent retention strategy. Populate by ingesting succession planning documents and talent review outputs.
+Succession plans for critical roles and key talent retention strategy.
 
 Each succession planning record captures:
 
@@ -18,12 +18,5 @@ Each succession planning record captures:
 - **Bench strength** — how many ready-now successors exist for each critical role; single points of failure (roles with no successor)
 - **Retention risk** — flight risk assessment for key talent, retention levers available (compensation, equity refresh, role expansion)
 - **Talent review cadence** — how often succession plans are reviewed, who participates (HR, managers, C-suite), documentation and confidentiality
-
-**How to populate:**
-
-1. Ingest your talent review output or succession planning document:
-   ```
-   synthadoc ingest docs/succession-planning.pdf -w <wiki>
-   ```
 
 Cross-link to [[job-frameworks]], [[performance-management]], and [[org-structure]].

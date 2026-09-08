@@ -8,7 +8,7 @@ sources: []
 
 # Content Strategy
 
-Content marketing strategy and editorial policy. Populate by ingesting your content strategy document and editorial calendar.
+Content marketing strategy and editorial policy.
 
 Each content strategy record captures:
 
@@ -19,12 +19,5 @@ Each content strategy record captures:
 - **Distribution channels** — primary and secondary channels for each content type, posting frequency targets, amplification workflow (email blast, social promotion, paid boost threshold)
 - **SEO integration** — how content addresses target keyword clusters (link to [[seo]]), internal linking strategy, content refresh cadence
 - **Performance benchmarks** — traffic, engagement rate, lead gen rate, and backlink targets by content type
-
-**How to populate:**
-
-1. Ingest your content strategy doc:
-   ```
-   synthadoc ingest docs/content-strategy.md -w <wiki>
-   ```
 
 Cross-link to [[messaging]], [[campaign-calendar]], [[seo]], and [[content-assets]].

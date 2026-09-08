@@ -8,7 +8,7 @@ sources: []
 
 # Compensation
 
-Compensation philosophy, band structure, and benchmarking. Populate by ingesting your compensation policy and survey data references.
+Compensation philosophy, band structure, and benchmarking.
 
 Each compensation record captures:
 
@@ -19,12 +19,5 @@ Each compensation record captures:
 - **Market benchmarking** — survey sources used (Radford / Mercer / Levels.fyi / Pave), survey cut (geography, company size, industry), survey cycle and last refresh date
 - **Pay equity analysis** — last pay equity audit date, methodology, findings and remediation actions taken
 - **Compensation review cycle** — review frequency (annual / bi-annual), merit increase timing, promotion adjustment process
-
-**How to populate:**
-
-1. Ingest your compensation policy or total rewards framework:
-   ```
-   synthadoc ingest docs/compensation-philosophy.md -w <wiki>
-   ```
 
 Cross-link to [[job-frameworks]], [[performance-management]], and [[hr-policies]].

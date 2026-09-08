@@ -18,15 +18,4 @@ Index of thinkers, intellectuals, and domain experts whose work you study. Each 
 - **Critiques and limitations** — where other scholars or your own reading pushes back on their ideas
 - **Why I study this person** — what attracted you to their work; what question of yours they help answer
 
-**How to populate:**
-
-1. Ingest a thinker's primary work or a biography:
-   ```
-   synthadoc ingest raw_sources/books/<author-last>-<year>-<keyword>.md -w <wiki>
-   ```
-2. Ingest profiles and interviews:
-   ```
-   synthadoc ingest "https://www.edge.org/conversations/<thinker-name>" -w <wiki>
-   ```
-
 Cross-link to [[books]] for their works, [[mental-models]] for frameworks they introduced, and [[concepts]] for atomic ideas you extracted from their work.

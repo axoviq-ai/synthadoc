@@ -18,15 +18,4 @@ Repository of participant materials, readings, and multimedia used in instructio
 - **Accessibility** — whether captions, transcripts, alt text, or alternative formats are available
 - **Review date** — when the material was last checked for accuracy and currency; next review due
 
-**How to populate:**
-
-1. Ingest course reading lists or material catalogs:
-   ```
-   synthadoc ingest docs/course-design/materials/ --batch -w <wiki>
-   ```
-2. Ingest specific open educational resources:
-   ```
-   synthadoc ingest "https://ies.ed.gov/ncee/edlabs/" -w <wiki>
-   ```
-
 Cross-link to [[modules]] for the modules using each material, [[learner-outcomes]] for the objective each material supports, and [[facilitation-guides]] for how instructors use each material in delivery.

@@ -18,15 +18,4 @@ Visual and tabular map of the curriculum showing scope, sequence, and alignment.
 - **Horizontal alignment** — cross-course alignment of shared topics or competencies; how similar topics are taught across parallel courses
 - **Coverage gaps** — learning objectives that are currently under-addressed or unaddressed in the curriculum
 
-**How to populate:**
-
-1. Ingest curriculum design documents or program syllabi:
-   ```
-   synthadoc ingest docs/course-design/curriculum/ --batch -w <wiki>
-   ```
-2. Ingest backward design references:
-   ```
-   synthadoc ingest "https://vanguardteachingandlearning.com/resources/align-and-establish-assessments" -w <wiki>
-   ```
-
 Cross-link to [[modules]] for each module in the sequence, [[learner-outcomes]] for the program-level objectives, and [[assessments]] for the summative assessments that verify learning.

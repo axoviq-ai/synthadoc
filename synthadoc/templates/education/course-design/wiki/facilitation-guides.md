@@ -19,11 +19,4 @@ Instructor and facilitator guides for delivering courses and modules. Each guide
 - **Debrief guide** — how to debrief activities, case studies, and role plays; what learning to surface
 - **Accessibility considerations** — how to accommodate learners with visual, auditory, motor, or cognitive needs
 
-**How to populate:**
-
-1. Ingest facilitator guide documents from your course library:
-   ```
-   synthadoc ingest docs/course-design/facilitator-guides/ --batch -w <wiki>
-   ```
-
 Cross-link to [[modules]] for the module each guide covers, [[learning-materials]] for participant materials, and [[course-evaluations]] for feedback that has shaped the guide.

@@ -18,15 +18,4 @@ EdTech tools and platforms used in instruction and course delivery. Each tool re
 - **Integration** — which other tools this integrates with (LMS, SSO, gradebook, analytics platform)
 - **Support and training** — where instructors get help; known pain points; training resources available
 
-**How to populate:**
-
-1. Ingest vendor documentation or VPAT:
-   ```
-   synthadoc ingest docs/course-design/tools/ --batch -w <wiki>
-   ```
-2. Ingest EdTech evaluation frameworks:
-   ```
-   synthadoc ingest "https://www.ebsco.com/research-starters/education/addie-model" -w <wiki>
-   ```
-
 Cross-link to [[modules]] for modules that rely on each tool, [[facilitation-guides]] for tool-specific delivery instructions, and [[learning-materials]] for content created with each tool.

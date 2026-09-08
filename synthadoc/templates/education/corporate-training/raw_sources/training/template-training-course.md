@@ -3,11 +3,17 @@
 ---
 # Training Course Record — Template
 
-Use this form to document a training course offered by your organization. Copy
-this file, rename it `<course-code>-<short-title>.md` (e.g. `TRN-042-hipaa-privacy.md`),
-complete all fields, then ingest:
-
-    synthadoc ingest raw_sources/training/<course-code>-<short-title>.md -w <wiki>
+> **How to use this form**
+>
+> This template follows the **ADDIE Instructional Design Model** -- the five-phase framework
+> (Analyze, Design, Develop, Implement, Evaluate) used by learning professionals worldwide.
+> If you already have course documentation in another format, skip this form and ingest your document directly.
+>
+> Reference: [ADDIE Instructional Design Model](https://www.td.org/addie)
+>
+> 1. Copy this file and rename it (e.g. `TRN-042-hipaa-privacy.md`)
+> 2. Fill in all sections
+> 3. Run: `synthadoc ingest raw_sources/training/<course-code>-<short-title>.md -w <wiki>`
 
 ---
 

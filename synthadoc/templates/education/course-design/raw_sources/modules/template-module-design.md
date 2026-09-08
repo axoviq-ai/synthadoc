@@ -3,11 +3,17 @@
 ---
 # Module Design Document — Template
 
-Use this form to design a single course module. Copy this file, rename it
-`<module-number>-<short-title>.md` (e.g. `03-data-visualization.md`), complete
-all fields, then ingest:
-
-    synthadoc ingest raw_sources/modules/<module-number>-<short-title>.md -w <wiki>
+> **How to use this form**
+>
+> This template follows the **Backward Design (Wiggins & McTighe, "Understanding by Design")** -- the curriculum
+> framework that starts with desired outcomes and works backward through assessment evidence to instruction.
+> If you already have module design documents in another format, skip this form and ingest your document directly.
+>
+> Reference: [Backward Design (Wiggins & McTighe, "Understanding by Design", 2nd Ed.)](https://www.ascd.org/books/understanding-by-design-2nd-edition)
+>
+> 1. Copy this file and rename it (e.g. `03-data-visualization.md`)
+> 2. Fill in all sections
+> 3. Run: `synthadoc ingest raw_sources/modules/<module-number>-<short-title>.md -w <wiki>`
 
 ---
 

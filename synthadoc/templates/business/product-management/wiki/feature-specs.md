@@ -8,7 +8,7 @@ sources: []
 
 # Feature Specs
 
-Detailed technical and functional specifications for features in development. Populate by ingesting engineering design docs and feature specs.
+Detailed technical and functional specifications for features in development.
 
 Each feature spec captures:
 
@@ -18,12 +18,5 @@ Each feature spec captures:
 - **Performance requirements** — latency budget (p50/p99 targets), throughput requirements, database query budget
 - **Testing plan** — unit test scope, integration test scope, e2e test scenarios, QA acceptance checklist
 - **Rollout gates** — instrumentation required before release, alerting to add, feature flag key and targeting logic, rollback procedure
-
-**How to populate:**
-
-1. Ingest engineering design documents:
-   ```
-   synthadoc ingest docs/specs/ --batch -w <wiki>
-   ```
 
 Cross-link to [[prds]], [[roadmap]], and [[product-metrics]].

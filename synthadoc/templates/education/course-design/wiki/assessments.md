@@ -18,15 +18,4 @@ Assessment item bank and strategy documentation. Each assessment entry records:
 - **Accessibility accommodations** — extended time, alternative format, assistive technology compatibility
 - **Item history** — revision notes; when item was last reviewed; any known issues with distractors or scoring
 
-**How to populate:**
-
-1. Ingest assessment design documents or item banks:
-   ```
-   synthadoc ingest docs/course-design/assessments/ --batch -w <wiki>
-   ```
-2. Ingest assessment frameworks as reference:
-   ```
-   synthadoc ingest "https://www.nwea.org/blog/2026/formative-vs-summative-assessment" -w <wiki>
-   ```
-
 Cross-link to [[modules]] for the module where each assessment is used, [[learner-outcomes]] for the objectives being assessed, and [[course-evaluations]] for end-of-course feedback related to assessment difficulty.

@@ -8,7 +8,7 @@ sources: []
 
 # Messaging
 
-Core messaging framework and value proposition library. Populate by ingesting your messaging framework document and positioning work.
+Core messaging framework and value proposition library.
 
 Each messaging record captures:
 
@@ -19,12 +19,5 @@ Each messaging record captures:
 - **Competitive differentiation** — how the message is distinct from each top competitor's message; claims to avoid (too close to competitor positioning)
 - **Message hierarchy** — which messages to lead with in each context (homepage, sales deck, ads, email, cold outreach)
 - **Proof elements** — customer quotes, data points, case study results available to support each key claim
-
-**How to populate:**
-
-1. Ingest your messaging framework or positioning doc:
-   ```
-   synthadoc ingest docs/messaging-framework.md -w <wiki>
-   ```
 
 Cross-link to [[brand-guidelines]], [[content-strategy]], and [[campaigns]].

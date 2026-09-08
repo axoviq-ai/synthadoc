@@ -8,7 +8,7 @@ sources: []
 
 # Employee Handbook
 
-Employee handbook structure and key provisions. Populate by ingesting your current employee handbook.
+Employee handbook structure and key provisions.
 
 Each handbook section captures:
 
@@ -19,12 +19,5 @@ Each handbook section captures:
 - **Workplace conduct** — code of conduct, anti-harassment, workplace safety, drug-free workplace, social media policy
 - **Remote and hybrid work** — eligibility, equipment policy, home office stipend, core hours requirements
 - **Offboarding** — notice period, final pay, COBRA, equipment return, data access termination
-
-**How to populate:**
-
-1. Ingest your employee handbook:
-   ```
-   synthadoc ingest docs/employee-handbook.pdf -w <wiki>
-   ```
 
 Cross-link to [[hr-policies]], [[compensation]], and [[org-structure]].

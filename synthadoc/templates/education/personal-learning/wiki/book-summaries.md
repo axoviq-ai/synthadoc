@@ -18,15 +18,4 @@ Long-form summaries and annotated notes on books read. Each summary page capture
 - **Connections** — ideas from this book that connect to other books, concepts, or mental models you already know (link to [[concepts]] and [[mental-models]])
 - **How I changed my thinking** — what this book changed about how you see something
 
-**How to populate:**
-
-1. Copy `raw_sources/books/template-book-notes.md`, fill in chapter notes and extended commentary, then:
-   ```
-   synthadoc ingest raw_sources/books/<author-last>-<year>-<keyword>.md -w <wiki>
-   ```
-2. Ingest published book summaries as a starting point (then annotate with your own notes):
-   ```
-   synthadoc ingest "https://www.blinkist.com/en/books/<book-slug>" -w <wiki>
-   ```
-
 Cross-link to [[books]] for the brief entry, [[concepts]] for atomic ideas worth making into standalone notes, and [[thinkers]] for the author's broader work.

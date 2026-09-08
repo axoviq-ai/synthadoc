@@ -8,7 +8,7 @@ sources: []
 
 # SEO
 
-Search engine optimization strategy, keyword portfolio, and technical SEO status. Populate by ingesting keyword research exports and site audit reports.
+Search engine optimization strategy, keyword portfolio, and technical SEO status.
 
 Each SEO record captures:
 
@@ -18,13 +18,5 @@ Each SEO record captures:
 - **Technical SEO** — Core Web Vitals status (LCP, INP, CLS targets), sitemap structure, robots.txt rules, canonical tag policy, page speed benchmarks
 - **Content gaps** — target keywords with no owned page, topics competitors rank for that you don't
 - **Backlink profile** — domain authority, referring domains count, top referring domains, link-building targets
-
-**How to populate:**
-
-1. Export your keyword research and ingest:
-   ```
-   synthadoc ingest docs/seo/keyword-research.xlsx -w <wiki>
-   ```
-2. Ingest a site audit from Ahrefs, Semrush, or Screaming Frog
 
 Cross-link to [[content-strategy]], [[channel-performance]], and [[campaigns]].

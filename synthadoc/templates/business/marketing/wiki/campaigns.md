@@ -8,7 +8,7 @@ sources: []
 
 # Campaigns
 
-Campaign library for all marketing campaigns. Populate by ingesting campaign briefs from `raw_sources/campaigns/`.
+Campaign library for all marketing campaigns.
 
 Each campaign record captures:
 
@@ -19,11 +19,5 @@ Each campaign record captures:
 - **Channels and budget** — channel breakdown (paid search, paid social, email, content, events), budget per channel, channel owner
 - **Creative assets** — landing page, email copy, ad creative specs, social copy
 - **Results** — post-campaign actuals vs. targets: impressions, clicks/CTR, leads/MQLs, pipeline influenced, cost per MQL
-
-**How to add a campaign:**
-
-1. Copy `raw_sources/campaigns/template-campaign-brief.md` and rename it after the campaign
-2. Fill in the brief before execution; add results after
-3. Run `synthadoc ingest raw_sources/campaigns/<campaign>.md -w <wiki>`
 
 Cross-link to [[campaign-calendar]], [[channel-performance]], and [[messaging]].

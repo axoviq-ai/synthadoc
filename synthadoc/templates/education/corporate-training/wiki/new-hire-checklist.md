@@ -18,11 +18,4 @@ Role-specific checklists for new employee onboarding milestones. Each checklist 
 - **60-day milestones** — first solo task completion, progress check-in with manager, enrollment in any role-specific certification
 - **90-day milestones** — full ramp to independent performance, formal 90-day review, completion of all required training (link to [[compliance-training]])
 
-**How to populate:**
-
-1. Ingest your onboarding checklist templates:
-   ```
-   synthadoc ingest docs/training/onboarding/ --batch -w <wiki>
-   ```
-
 Cross-link to [[onboarding-program]] for the program design, [[compliance-training]] for required training items in the checklist, and [[training-catalog]] for role-specific courses to complete.

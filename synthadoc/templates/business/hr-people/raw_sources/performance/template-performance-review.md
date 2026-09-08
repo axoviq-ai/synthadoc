@@ -2,12 +2,14 @@
 
 > **How to use this form**
 >
+> This template follows the **SHRM Performance Management Best Practices** -- a structured cycle of goal-setting, competency assessment, calibration, and development planning.
+> If you already have performance reviews in another format, skip this form and ingest your document directly.
+>
+> Reference: [SHRM Performance Management Best Practices](https://www.shrm.org/topics-tools/topics/performance-management)
+>
 > 1. Copy this file and rename it (e.g. `alex-smith-2026-h1.md`)
 > 2. Fill in before the review discussion; update with outcome after
-> 3. Run: `synthadoc ingest raw_sources/performance/alex-smith-2026-h1.md -w <wiki>`
->
-> Do NOT include salary information in this form — keep compensation in [[compensation]].
-> Your HRIS (Workday, Rippling, etc.) remains the system of record.
+> 3. Run: `synthadoc ingest raw_sources/performance/<employee>-<period>.md -w <wiki>`
 
 ---
 

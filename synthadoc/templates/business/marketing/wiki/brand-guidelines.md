@@ -8,7 +8,7 @@ sources: []
 
 # Brand Guidelines
 
-Brand identity standards and usage rules. Populate by ingesting your brand guidelines document or style guide.
+Brand identity standards and usage rules.
 
 Each brand guideline record captures:
 
@@ -19,12 +19,5 @@ Each brand guideline record captures:
 - **Imagery and photography** — approved image style (lifestyle / editorial / abstract), prohibited imagery, image sourcing guidelines (stock sites, in-house)
 - **Voice and tone** — brand voice characteristics, tone variations by channel (formal for legal, conversational for social), vocabulary and phrases to avoid
 - **Do/don't examples** — side-by-side examples of correct and incorrect brand application
-
-**How to populate:**
-
-1. Ingest your brand guidelines PDF:
-   ```
-   synthadoc ingest docs/brand/brand-guidelines.pdf -w <wiki>
-   ```
 
 Cross-link to [[messaging]], [[content-strategy]], and [[campaigns]].

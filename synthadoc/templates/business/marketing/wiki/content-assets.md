@@ -8,7 +8,7 @@ sources: []
 
 # Content Assets
 
-Library of published and in-progress content assets. Populate by ingesting your content inventory or asset library index.
+Library of published and in-progress content assets.
 
 Each content asset record captures:
 
@@ -18,12 +18,5 @@ Each content asset record captures:
 - **Performance** — views, downloads, leads generated, backlinks earned, time on page
 - **Status** — published / in review / draft / scheduled / needs refresh (with last-refreshed date)
 - **Distribution record** — which email sends, social posts, or paid promotions have featured this asset
-
-**How to populate:**
-
-1. Ingest your content inventory spreadsheet:
-   ```
-   synthadoc ingest docs/content-inventory.xlsx -w <wiki>
-   ```
 
 Cross-link to [[content-strategy]], [[campaign-calendar]], and [[seo]].

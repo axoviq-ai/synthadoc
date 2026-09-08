@@ -17,11 +17,4 @@ Structured onboarding program for new employees. Documents:
 - **Role-specific orientation tracks** — how the program differs by role family (engineering, sales, customer support, operations, finance)
 - **Feedback collection** — how new-hire experience is gathered (pulse surveys at 30/60/90 days, exit interview if early attrition); how feedback is used to improve the program
 
-**How to populate:**
-
-1. Ingest your onboarding program design document:
-   ```
-   synthadoc ingest docs/training/onboarding-program.pdf -w <wiki>
-   ```
-
 Cross-link to [[new-hire-checklist]] for role-specific task lists, [[compliance-training]] for required training included in onboarding, [[training-catalog]] for role-specific courses, and [[competency-frameworks]] for the competencies new hires must develop.

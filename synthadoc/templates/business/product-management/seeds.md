@@ -41,29 +41,37 @@ synthadoc ingest "https://uxcam.com/blog/north-star-metric-framework" -w <wiki>
 
 ## First steps checklist
 
-- [ ] **Write a PRD for your top feature** — copy `raw_sources/specs/template-prd.md`, fill in problem and user stories, then:
-  ```
-  synthadoc ingest raw_sources/specs/<feature>.md -w <wiki>
-  ```
+- [ ] **Write a PRD** -- use our template or bring your own:
+  - Template: copy `raw_sources/specs/template-prd.md`, rename it
+    (e.g. `csv-export-v2.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/specs/<feature>.md -w <wiki>
+    ```
+  - Own doc: place your existing product requirements doc in `raw_sources/specs/` and ingest it.
   Populates [[prds]] and [[feature-specs]].
 
-- [ ] **Document your OKRs**:
-  ```
-  synthadoc ingest docs/okrs/ --batch -w <wiki>
-  ```
-  Populates [[okrs]] and [[product-metrics]].
-
-- [ ] **Ingest your customer research**:
-  ```
-  synthadoc ingest docs/research/ --batch -w <wiki>
-  ```
+- [ ] **Run a user research study** -- use our template or bring your own:
+  - Template: copy `raw_sources/user-research/template-user-research-plan.md`, rename it
+    (e.g. `checkout-flow-usability-r1.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/user-research/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing research notes in `raw_sources/user-research/` and ingest them.
   Populates [[customer-research]] and [[user-feedback]].
 
-- [ ] **Import your roadmap**:
-  ```
-  synthadoc ingest docs/roadmap.pdf -w <wiki>
-  ```
-  Populates [[roadmap]].
+- [ ] **Build the product roadmap** -- use our template or bring your own:
+  - Template: copy `raw_sources/roadmaps/template-roadmap.md`, rename it
+    (e.g. `roadmap-q3-2026.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/roadmaps/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing roadmap in `raw_sources/roadmaps/` and ingest it.
+  Populates [[roadmap]] and [[okrs]].
+
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

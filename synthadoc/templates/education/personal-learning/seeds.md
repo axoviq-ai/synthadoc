@@ -41,27 +41,37 @@ synthadoc ingest "https://modelthinkers.com/mental-model/mungers-latticework" -w
 
 ## First steps checklist
 
-- [ ] **Ingest your most important existing notes or book highlights**:
-  ```
-  synthadoc ingest ~/Documents/notes/ --batch -w <wiki>
-  ```
-  Or import Kindle highlights: `synthadoc ingest ~/Downloads/kindle-highlights.csv -w <wiki>`
-  Populates [[books]] and [[concepts]].
-
-- [ ] **Log your first book** — copy `raw_sources/books/template-book-notes.md`, fill in your notes, then:
-  ```
-  synthadoc ingest raw_sources/books/<author-last>-<year>-<keyword>.md -w <wiki>
-  ```
+- [ ] **Take notes on a book** -- use our template or bring your own:
+  - Template: copy `raw_sources/books/template-book-notes.md`, rename it
+    (e.g. `munger-1994-poor-charlie.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/books/<author-last>-<year>-<keyword>.md -w <wiki>
+    ```
+  - Own doc: place your existing reading notes in `raw_sources/books/` and ingest them.
   Populates [[books]] and [[book-summaries]].
 
-- [ ] **Write an atomic concept note** for one idea you are currently studying:
-  ```
-  synthadoc ingest raw_sources/books/<concept-note>.md -w <wiki>
-  ```
-  Populates [[concepts]].
+- [ ] **Document a course** -- use our template or bring your own:
+  - Template: copy `raw_sources/courses/template-course-notes.md`, rename it
+    (e.g. `fast-ai-practical-deep-learning-2026.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/courses/<course-name>.md -w <wiki>
+    ```
+  - Own doc: place your existing course notes in `raw_sources/courses/` and ingest them.
+  Populates [[courses-taken]] and [[concepts]].
 
-- [ ] **Link two existing concepts** you have never connected before — edit the pages and add [[wikilinks]] between them.
-  Strengthens [[mental-models]] connections.
+- [ ] **Start a learning project** -- use our template or bring your own:
+  - Template: copy `raw_sources/projects/template-learning-project.md`, rename it
+    (e.g. `build-rag-pipeline-2026.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/projects/<project-name>.md -w <wiki>
+    ```
+  - Own doc: place your existing project notes in `raw_sources/projects/` and ingest them.
+  Populates [[learning-projects]] and [[mental-models]].
+
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

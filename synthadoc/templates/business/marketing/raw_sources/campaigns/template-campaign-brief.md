@@ -2,11 +2,14 @@
 
 > **How to use this form**
 >
-> 1. Copy this file and rename it (e.g. `q3-2026-summer-launch.md`)
-> 2. Fill in the brief before campaign execution begins
-> 3. Run: `synthadoc ingest raw_sources/campaigns/q3-2026-summer-launch.md -w <wiki>`
+> This template follows the **SOSTAC Marketing Planning Model** (PR Smith, 1990) -- a six-stage framework covering Situation, Objectives, Strategy, Tactics, Actions, and Control.
+> If you already have campaign briefs in another format, skip this form and ingest your document directly.
 >
-> Re-ingest after the campaign to add results. Cross-link to [[campaigns]] and [[channel-performance]].
+> Reference: [SOSTAC Planning Model](https://prsmith.org/sostac/)
+>
+> 1. Copy this file and rename it (e.g. `q3-2026-summer-launch.md`)
+> 2. Fill in all sections
+> 3. Run: `synthadoc ingest raw_sources/campaigns/<campaign>.md -w <wiki>`
 
 ---
 

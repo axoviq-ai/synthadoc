@@ -18,15 +18,4 @@ Program-level and course-level learning outcomes. Each outcome record captures:
 - **Standards alignment** — whether this outcome maps to external standards or credentialing requirements (ISTE, state learning standards, accreditation criteria, certification blueprints)
 - **Performance data** — aggregated cohort data on achievement of this outcome; cohorts where outcome is consistently missed
 
-**How to populate:**
-
-1. Ingest program outcomes documents or accreditation self-studies:
-   ```
-   synthadoc ingest docs/course-design/outcomes/ --batch -w <wiki>
-   ```
-2. Ingest Bloom's Taxonomy reference:
-   ```
-   synthadoc ingest "https://www.kuraplan.com/guides/blooms-taxonomy-verbs" -w <wiki>
-   ```
-
 Cross-link to [[assessments]] for each aligned assessment, [[modules]] for where each outcome is taught, and [[course-evaluations]] for outcome achievement data.

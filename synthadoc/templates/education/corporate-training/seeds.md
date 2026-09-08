@@ -41,29 +41,37 @@ synthadoc ingest "https://mosey.com/blog/competency-model" -w <wiki>
 
 ## First steps checklist
 
-- [ ] **Ingest your employee handbook and onboarding materials**:
-  ```
-  synthadoc ingest docs/employee-handbook.pdf -w <wiki>
-  ```
-  Populates [[onboarding-program]] and [[new-hire-checklist]].
+- [ ] **Design a training course** -- use our template or bring your own:
+  - Template: copy `raw_sources/training/template-training-course.md`, rename it
+    (e.g. `TRN-042-hipaa-privacy.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/training/<course-code>-<short-title>.md -w <wiki>
+    ```
+  - Own doc: place your existing course materials in `raw_sources/training/` and ingest them.
+  Populates [[training-catalog]].
 
-- [ ] **Create SOP pages** for your top 5 most-referenced procedures:
-  ```
-  synthadoc ingest docs/procedures/ --batch -w <wiki>
-  ```
-  Populates [[sops]] and [[job-aids]].
-
-- [ ] **Add courses to the training catalog** — copy `raw_sources/training/template-training-course.md`, fill in all fields for each course, then:
-  ```
-  synthadoc ingest raw_sources/training/<course-code>-<title>.md -w <wiki>
-  ```
-  Populates [[training-catalog]] and [[compliance-training]].
-
-- [ ] **Create a competency framework** for your most critical role:
-  ```
-  synthadoc ingest docs/training/competency-framework.pdf -w <wiki>
-  ```
+- [ ] **Conduct a training needs analysis** -- use our template or bring your own:
+  - Template: copy `raw_sources/needs-analysis/template-training-needs-analysis.md`, rename it
+    (e.g. `tna-2026-q3-customer-service.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/needs-analysis/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing TNA report in `raw_sources/needs-analysis/` and ingest it.
   Populates [[competency-frameworks]].
+
+- [ ] **Build a learning assessment** -- use our template or bring your own:
+  - Template: copy `raw_sources/assessments/template-learning-assessment.md`, rename it
+    (e.g. `hipaa-privacy-assessment-v2.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/assessments/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing assessment in `raw_sources/assessments/` and ingest it.
+  Populates [[compliance-training]].
+
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

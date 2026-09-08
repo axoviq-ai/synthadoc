@@ -17,11 +17,4 @@ Quick reference materials and performance support tools used at the point of wor
 - **Maintenance** — version number, effective date, owner responsible for keeping it current; next review date
 - **Format and access** — where the job aid lives (laminated binder, LMS, intranet page, mobile app); file format
 
-**How to populate:**
-
-1. Ingest your job aid library:
-   ```
-   synthadoc ingest docs/training/job-aids/ --batch -w <wiki>
-   ```
-
 Cross-link to [[sops]] for the full procedure, [[training-catalog]] for the training course that introduces the task, and [[competency-frameworks]] for the competency the job aid supports.

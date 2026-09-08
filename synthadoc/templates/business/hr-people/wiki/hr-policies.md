@@ -8,7 +8,7 @@ sources: []
 
 # HR Policies
 
-Core HR policies and their current status. Populate by ingesting your employee handbook and standalone policy documents.
+Core HR policies and their current status.
 
 Each HR policy record captures:
 
@@ -20,13 +20,5 @@ Each HR policy record captures:
 - **Exception process** — who approves exceptions, how exceptions are documented
 
 Policy categories to cover: code of conduct, anti-harassment and discrimination, leave (FMLA, parental, PTO, sick), remote work, expense reimbursement, acceptable use of company technology, conflicts of interest, data privacy.
-
-**How to populate:**
-
-1. Ingest your employee handbook:
-   ```
-   synthadoc ingest docs/employee-handbook.pdf -w <wiki>
-   ```
-2. Ingest standalone policy documents
 
 Cross-link to [[employee-handbook]], [[org-structure]], and [[compensation]].
