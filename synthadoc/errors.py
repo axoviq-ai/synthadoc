@@ -38,6 +38,21 @@ BACKUP_INCOMPATIBLE  = "ERR-WIKI-007"  # Backup requires newer db_schema_version
 # ── Config / Environment ──────────────────────────────────────────────────────
 CFG_MISSING_API_KEY  = "ERR-CFG-001"   # Required env var (API key) not set
 CFG_UNKNOWN_PROVIDER = "ERR-CFG-002"   # Provider name not recognised
+CFG_DUPLICATE_KEY    = "ERR-CFG-003"   # Duplicate TOML key (e.g. two active "default =" lines)
+CFG_INVALID_TOML     = "ERR-CFG-004"   # TOML syntax error in config file
+
+
+class ConfigError(Exception):
+    """Raised by load_config when the config file is malformed or contradictory.
+
+    Carries ``code`` (an ERR-CFG-* constant) and ``hint`` separately so the CLI
+    layer can route them through ``cli_error()`` without re-parsing the message.
+    """
+
+    def __init__(self, code: str, message: str, hint: str = "") -> None:
+        super().__init__(message)
+        self.code = code
+        self.hint = hint
 
 # ── Skills ────────────────────────────────────────────────────────────────────
 SKILL_NOT_FOUND   = "ERR-SKILL-001"  # No skill matched the source string
