@@ -258,17 +258,21 @@ def install_cmd(
         typer.echo()
         typer.echo(f"Next steps:")
         typer.echo(f"  1. Edit {name}/.synthadoc/config.toml - set your LLM provider and API key")
+        typer.echo(f"     (or use a coding tool provider like Opencode / Claude Code - no API key needed)")
         typer.echo(f"  2. Set as default wiki:   synthadoc use {name}")
         typer.echo(f"  3. Start the server:      synthadoc serve")
-        typer.echo(f"  4. Ingest your sources:   synthadoc ingest <file>")
-        typer.echo(f"  5. Generate index:        synthadoc scaffold")
+        if template:
+            typer.echo(f"  4. Open seeds.md          starter ingest commands and first-steps checklist")
+            typer.echo(f"  5. Generate index:        synthadoc scaffold")
+        else:
+            typer.echo(f"  4. Ingest your sources:   synthadoc ingest <file>")
+            typer.echo(f"  5. Generate index:        synthadoc scaffold")
 
     if template:
         typer.echo()
         typer.echo(f"  Template: {template}")
         typer.echo(f"  Staging:  enabled (all ingests land in candidates/ for review)")
         typer.echo(f"  Schedule: weekly lint + scaffold registered (active after first serve)")
-        typer.echo(f"  Start:    review seeds.md for domain-specific starter resources")
 
 
 @app.command("list")
