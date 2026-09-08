@@ -19,15 +19,4 @@ Drug compound and biologic asset registry. Each compound page records:
 - **CMC overview** — formulation, route of administration, manufacturing partner
 - **IP position** — patent coverage type (composition of matter, method of use), approximate expiry, orphan or breakthrough designation
 
-**How to populate:**
-
-1. Copy `raw_sources/compounds/template-compound-profile.md`, fill in all fields, then:
-   ```
-   synthadoc ingest raw_sources/compounds/<compound-code>-<name>.md -w <wiki>
-   ```
-2. Ingest FDA drug approval packages:
-   ```
-   synthadoc ingest "https://www.accessdata.fda.gov/scripts/cder/daf/index.cfm?event=overview.process&ApplNo=<NDA>" -w <wiki>
-   ```
-
 Cross-link to [[pipeline]] for the program's development stage, [[clinical-trials]] for active or completed studies, [[cmc]] for manufacturing detail, and [[safety]] for expanded pharmacovigilance data.

@@ -41,31 +41,37 @@ synthadoc ingest "https://www.hvivo.com/insights/resources/emas-updated-guidelin
 
 ## First steps checklist
 
-- [ ] **Document your lead compound** — copy `raw_sources/compounds/template-compound-profile.md`, fill in all fields, then:
-  ```
-  synthadoc ingest raw_sources/compounds/<compound-code>-<name>.md -w <wiki>
-  ```
+- [ ] **Profile a compound** -- use our template or bring your own:
+  - Template: copy `raw_sources/compounds/template-compound-profile.md`, rename it
+    (e.g. `AXV-101-compound.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/compounds/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing compound dossier in `raw_sources/compounds/` and ingest it.
   Populates [[compounds]] and [[pipeline]].
 
-- [ ] **Ingest the FDA guidance document for your regulatory pathway**:
-  ```
-  synthadoc ingest "https://www.fda.gov/drugs/guidance-documents-drugs" -w <wiki>
-  ```
-  Or ingest a saved guidance PDF: `synthadoc ingest docs/pharma/guidance/<guidance-title>.pdf -w <wiki>`
-  Populates [[regulatory-submissions]].
-
-- [ ] **Create a trial page** for each active or completed clinical study:
-  ```
-  synthadoc ingest "https://clinicaltrials.gov/ct2/show/<NCT-number>" -w <wiki>
-  ```
-  Or ingest clinical study reports: `synthadoc ingest docs/pharma/trials/ --batch -w <wiki>`
+- [ ] **Summarize a clinical trial** -- use our template or bring your own:
+  - Template: copy `raw_sources/clinical-trials/template-clinical-trial-summary.md`, rename it
+    (e.g. `AXV-101-phase2-summary.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/clinical-trials/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing CSR or trial summary in `raw_sources/clinical-trials/` and ingest it.
   Populates [[clinical-trials]] and [[protocols]].
 
-- [ ] **Ingest your most recent safety update report**:
-  ```
-  synthadoc ingest docs/pharma/safety/<dsur-or-pbrer>.pdf -w <wiki>
-  ```
-  Populates [[safety]].
+- [ ] **Document a regulatory submission** -- use our template or bring your own:
+  - Template: copy `raw_sources/regulatory/template-regulatory-submission.md`, rename it
+    (e.g. `AXV-101-NDA-2026.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/regulatory/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your CTD index or submission overview in `raw_sources/regulatory/` and ingest it.
+  Populates [[regulatory-submissions]].
+
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

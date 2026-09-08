@@ -20,15 +20,4 @@ Clinical study protocols and their versions. Each protocol record captures:
 - **Safety monitoring** — Data Safety Monitoring Board (DSMB) composition; stopping rules; AE reporting timelines
 - **Amendment history** — protocol versions with summary of material changes and rationale for each amendment
 
-**How to populate:**
-
-1. Ingest clinical study protocols:
-   ```
-   synthadoc ingest docs/pharma/protocols/ --batch -w <wiki>
-   ```
-2. Ingest a specific protocol version:
-   ```
-   synthadoc ingest docs/pharma/protocols/<study-id>-protocol-v<N>.pdf -w <wiki>
-   ```
-
 Cross-link to [[clinical-trials]] for the trial running under this protocol, [[compounds]] for the investigational product, and [[regulatory-submissions]] for IND amendments that include the protocol.

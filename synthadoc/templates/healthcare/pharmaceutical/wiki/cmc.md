@@ -18,15 +18,4 @@ Technical documentation covering drug substance and drug product manufacturing. 
 - **Critical process parameters (CPPs)** — the parameters that most affect CQAs; acceptable ranges; how they are controlled
 - **Supply chain** — key starting materials and their supply risk; qualified vendors; sole-source dependencies
 
-**How to populate:**
-
-1. Ingest CMC sections from regulatory submission dossiers:
-   ```
-   synthadoc ingest docs/pharma/cmc/ --batch -w <wiki>
-   ```
-2. Ingest drug master file summaries:
-   ```
-   synthadoc ingest docs/pharma/cmc/<compound>-dmf-summary.pdf -w <wiki>
-   ```
-
 Cross-link to [[compounds]] for the asset overview, [[regulatory-submissions]] for the CTD Module 3 filing, and [[protocols]] for the manufacturing processes validated.

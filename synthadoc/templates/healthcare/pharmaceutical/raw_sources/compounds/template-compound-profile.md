@@ -3,11 +3,17 @@
 ---
 # Compound Profile — Template
 
-Use this form to document a drug compound or biologic asset. Copy this file,
-rename it `<compound-code>-<name>.md` (e.g. `AXV-101-compound.md`), complete
-all fields, then ingest:
-
-    synthadoc ingest raw_sources/compounds/<compound-code>-<name>.md -w <wiki>
+> **How to use this form**
+>
+> This template follows the **ICH M4 Common Technical Document (CTD)** -- the internationally harmonised structure for organising pharmaceutical quality, safety, and efficacy data for regulatory submissions. If you already have a compound dossier in another format, skip this form and ingest your document directly.
+>
+> Reference: [ICH M4 Common Technical Document](https://www.ich.org/page/m4)
+>
+> 1. Copy this file and rename it (e.g. `AXV-101-compound.md`)
+> 2. Fill in all sections
+> 3. Run: `synthadoc ingest raw_sources/compounds/<filename>.md -w <wiki>`
+>
+> **Note:** This template is for documentation purposes — always follow institutional clinical protocols and regulatory requirements for actual patient care or submissions.
 
 ---
 

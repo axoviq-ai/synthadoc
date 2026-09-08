@@ -19,15 +19,4 @@ Evidence-based interventions recommended by the Community Preventive Services Ta
 - **Implementation resources** — toolkits, training materials, fidelity checklists available from the recommending body
 - **Cost-effectiveness** — cost per QALY or DALY averted if available; return on investment estimates
 
-**How to populate:**
-
-1. Ingest CPSTF recommendations:
-   ```
-   synthadoc ingest "https://www.thecommunityguide.org/resources/community-preventive-services-task-force-recommendations" -w <wiki>
-   ```
-2. Ingest WHO evidence-based intervention guides:
-   ```
-   synthadoc ingest "https://www.who.int/health-topics/interventions" -w <wiki>
-   ```
-
 Cross-link to [[health-programs]] for programs implementing each intervention, [[disease-burden]] for the health problem targeted, [[health-equity]] for equity evidence, and [[policy-analysis]] for policy levers that enable the intervention.

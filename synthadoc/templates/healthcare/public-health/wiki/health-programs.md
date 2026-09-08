@@ -19,15 +19,4 @@ Registry of active and completed public health programs. Each program record cap
 - **Budget** — annual budget; funding source (federal grant, state, local, foundation)
 - **Equity focus** — priority subpopulations; barriers addressed; equity metrics tracked
 
-**How to populate:**
-
-1. Copy `raw_sources/programs/template-program-profile.md`, fill in all fields for each program, then:
-   ```
-   synthadoc ingest raw_sources/programs/<program-code>-<name>.md -w <wiki>
-   ```
-2. Ingest program evaluation reports:
-   ```
-   synthadoc ingest docs/public-health/programs/ --batch -w <wiki>
-   ```
-
 Cross-link to [[disease-burden]] for the health problem, [[public-health-interventions]] for the evidence base, [[surveillance]] for the data system tracking outcomes, and [[health-equity]] for equity metrics.

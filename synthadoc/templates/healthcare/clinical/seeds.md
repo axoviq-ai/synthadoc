@@ -38,31 +38,37 @@ synthadoc ingest "https://www.gradeworkinggroup.org" -w <wiki>
 
 ## First steps checklist
 
-- [ ] **Ingest the most current clinical guideline for your primary condition focus**:
-  ```
-  synthadoc ingest "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/<topic>" -w <wiki>
-  ```
-  Or ingest a saved guideline PDF: `synthadoc ingest docs/clinical/guidelines/<guideline>.pdf -w <wiki>`
-  Populates [[clinical-guidelines]].
-
-- [ ] **Create condition pages** for each diagnosis in your practice scope:
-  ```
-  synthadoc ingest "https://www.merckmanuals.com/professional/<specialty>/<condition>" -w <wiki>
-  ```
+- [ ] **Document a clinical case** -- use our template or bring your own:
+  - Template: copy `raw_sources/cases/template-case-note.md`, rename it
+    (e.g. `case-2026-001-chest-pain.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/cases/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing SOAP notes in `raw_sources/cases/` and ingest them.
   Populates [[conditions]] and [[diagnostic-criteria]].
 
-- [ ] **Ingest a key drug reference** for your formulary:
-  ```
-  synthadoc ingest "https://dailymed.nlm.nih.gov/dailymed/search.cfm?query=<drug-name>" -w <wiki>
-  ```
-  Or ingest formulary PDFs: `synthadoc ingest docs/clinical/formulary/ --batch -w <wiki>`
-  Populates [[medications]].
+- [ ] **Document a clinical protocol** -- use our template or bring your own:
+  - Template: copy `raw_sources/protocols/template-clinical-protocol.md`, rename it
+    (e.g. `sepsis-management-v2.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/protocols/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing protocol in `raw_sources/protocols/` and ingest it.
+  Populates [[treatment-protocols]] and [[clinical-guidelines]].
 
-- [ ] **Log a teaching case** — copy `raw_sources/cases/template-case-note.md`, fill in de-identified details, then:
-  ```
-  synthadoc ingest raw_sources/cases/<case-id>-<keyword>.md -w <wiki>
-  ```
-  Populates [[conditions]] and [[treatment-protocols]].
+- [ ] **Create a care plan** -- use our template or bring your own:
+  - Template: copy `raw_sources/care-plans/template-care-plan.md`, rename it
+    (e.g. `PT-2026-0042-2026-09-08.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/care-plans/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your own care plan in `raw_sources/care-plans/` and ingest it.
+  Populates [[clinical-procedures]].
+
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

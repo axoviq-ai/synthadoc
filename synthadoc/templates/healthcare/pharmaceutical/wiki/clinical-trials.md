@@ -19,15 +19,4 @@ Active and completed clinical trials. Each trial page records:
 - **Safety summary** — key adverse events; discontinuation rate; deaths on study
 - **Publications and presentations** — citation for primary paper; key ASCO, ESMO, or ASH presentation if applicable
 
-**How to populate:**
-
-1. Ingest trial registration from ClinicalTrials.gov:
-   ```
-   synthadoc ingest "https://clinicaltrials.gov/ct2/show/<NCT-number>" -w <wiki>
-   ```
-2. Ingest clinical study reports or top-line data packages:
-   ```
-   synthadoc ingest docs/pharma/trials/ --batch -w <wiki>
-   ```
-
 Cross-link to [[protocols]] for the study design, [[compounds]] for the investigational product, [[regulatory-submissions]] for the IND and any NDA/BLA submission referencing this trial, and [[safety]] for expanded adverse event data.

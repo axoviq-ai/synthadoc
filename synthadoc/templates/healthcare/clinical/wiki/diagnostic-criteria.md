@@ -18,15 +18,4 @@ Formal criteria sets used to diagnose specific conditions. Each criteria set rec
 - **Important exclusions** — conditions that must be ruled out before applying the criteria
 - **Clinical caveats** — known limitations; populations where criteria perform less well
 
-**How to populate:**
-
-1. Ingest diagnostic manuals and classification systems:
-   ```
-   synthadoc ingest "https://www.who.int/standards/classifications/classification-of-diseases" -w <wiki>
-   ```
-2. Ingest society-specific criteria documents:
-   ```
-   synthadoc ingest docs/clinical/diagnostic-criteria/ --batch -w <wiki>
-   ```
-
 Cross-link to [[conditions]] for the diagnoses each criteria set applies to, [[clinical-guidelines]] for the guidelines that reference or endorse the criteria, and [[clinical-procedures]] for any procedural tests the criteria require.

@@ -19,15 +19,4 @@ Drug safety database and pharmacovigilance records. Each safety record captures:
 - **Current label status** — whether the event appears in the current prescribing information; any boxed warning, contraindication, or warning related to this event
 - **Risk mitigation** — REMS requirements, Dear HCP letters, patient medication guide, any other risk minimization measures
 
-**How to populate:**
-
-1. Ingest DSUR, PBRER, or safety update reports:
-   ```
-   synthadoc ingest docs/pharma/safety/ --batch -w <wiki>
-   ```
-2. Ingest FDA MedWatch or EudraVigilance adverse event data summaries:
-   ```
-   synthadoc ingest "https://www.fda.gov/drugs/questions-and-answers-fdas-adverse-event-reporting-system" -w <wiki>
-   ```
-
 Cross-link to [[compounds]] for the compound profile, [[clinical-trials]] for the trial where the event was observed, [[regulatory-submissions]] for IND safety reports and label negotiations, and [[protocols]] for DSMB stopping rule context.

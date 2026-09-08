@@ -21,15 +21,4 @@ Each pipeline entry records:
 - **Regulatory designations** — Fast Track / Breakthrough Therapy / Orphan Drug / Accelerated Approval eligibility
 - **Competitive threat** — key competitors in the same indication at the same or more advanced stage
 
-**How to populate:**
-
-1. Ingest pipeline slides or corporate overview presentations:
-   ```
-   synthadoc ingest docs/pharma/pipeline-overview.pdf -w <wiki>
-   ```
-2. Ingest R&D day or investor day materials:
-   ```
-   synthadoc ingest docs/pharma/rd-day-<year>.pdf -w <wiki>
-   ```
-
 Cross-link to [[compounds]], [[clinical-trials]], [[regulatory-submissions]], and [[safety]] for each program.

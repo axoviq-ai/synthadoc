@@ -41,30 +41,37 @@ synthadoc ingest "https://ghdx.healthdata.org/gbd-2019" -w <wiki>
 
 ## First steps checklist
 
-- [ ] **Ingest the most recent CDC surveillance summary** for your focus condition:
-  ```
-  synthadoc ingest "https://www.cdc.gov/mmwr/volumes/index.html" -w <wiki>
-  ```
-  Or ingest a local surveillance report: `synthadoc ingest docs/public-health/surveillance/<report>.pdf -w <wiki>`
-  Populates [[surveillance]] and [[disease-burden]].
+- [ ] **Profile a public health program** -- use our template or bring your own:
+  - Template: copy `raw_sources/programs/template-program-profile.md`, rename it
+    (e.g. `tobacco-cessation-2026.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/programs/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing program description in `raw_sources/programs/` and ingest it.
+  Populates [[health-programs]].
 
-- [ ] **Document your key health programs** — copy `raw_sources/programs/template-program-profile.md`, fill in all fields, then:
-  ```
-  synthadoc ingest raw_sources/programs/<program-code>-<name>.md -w <wiki>
-  ```
-  Populates [[health-programs]] and [[public-health-interventions]].
+- [ ] **Design a health intervention** -- use our template or bring your own:
+  - Template: copy `raw_sources/interventions/template-intervention-design.md`, rename it
+    (e.g. `tobacco-cessation-intervention-2026.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/interventions/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing program design in `raw_sources/interventions/` and ingest it.
+  Populates [[public-health-interventions]] and [[disease-burden]].
 
-- [ ] **Ingest your most recent Community Health Assessment** if available:
-  ```
-  synthadoc ingest docs/public-health/chna-<year>.pdf -w <wiki>
-  ```
-  Populates [[disease-burden]], [[health-equity]], and [[policy-analysis]].
+- [ ] **Document a surveillance protocol** -- use our template or bring your own:
+  - Template: copy `raw_sources/surveillance/template-surveillance-protocol.md`, rename it
+    (e.g. `influenza-sentinel-surveillance-2026.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/surveillance/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing surveillance documentation in `raw_sources/surveillance/` and ingest it.
+  Populates [[surveillance]].
 
-- [ ] **Ingest CPSTF recommendations** for your target health issue:
-  ```
-  synthadoc ingest "https://www.thecommunityguide.org/resources/community-preventive-services-task-force-recommendations" -w <wiki>
-  ```
-  Populates [[public-health-interventions]].
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

@@ -3,14 +3,17 @@
 ---
 # Clinical Case Note — Template
 
-Use this form to document a de-identified clinical case for educational or
-reference purposes. Copy this file, rename it `<case-id>-<keyword>.md`,
-complete all fields, then ingest:
-
-    synthadoc ingest raw_sources/cases/<case-id>-<keyword>.md -w <wiki>
-
-**Privacy:** Remove all direct identifiers before ingest. Do not record name,
-date of birth, MRN, SSN, full ZIP code, or any 18 HIPAA identifiers.
+> **How to use this form**
+>
+> This template follows the **SOAP Clinical Documentation Format** -- the standard structured note format (Subjective, Objective, Assessment, Plan) used across inpatient, outpatient, and emergency settings. If you already have clinical notes in another format, skip this form and ingest your document directly.
+>
+> Reference: [SOAP Clinical Documentation Format](https://www.ncbi.nlm.nih.gov/books/NBK482263/)
+>
+> 1. Copy this file and rename it (e.g. `case-2026-001-chest-pain.md`)
+> 2. Fill in all sections
+> 3. Run: `synthadoc ingest raw_sources/cases/<filename>.md -w <wiki>`
+>
+> **Note:** This template is for documentation purposes — always follow institutional clinical protocols and regulatory requirements for actual patient care or submissions.
 
 ---
 

@@ -18,19 +18,4 @@ Evidence-based clinical practice guidelines from professional societies and heal
 - **Key exclusions** — populations explicitly outside the guideline scope
 - **Update frequency** — how often the issuing body updates the guideline; date of next scheduled review
 
-**How to populate:**
-
-1. Ingest guidelines from society websites or AHRQ's National Guideline Clearinghouse successor:
-   ```
-   synthadoc ingest "https://www.ahajournals.org/doi/10.1161/<doi>" -w <wiki>
-   ```
-2. Ingest saved guideline PDFs:
-   ```
-   synthadoc ingest docs/clinical/guidelines/ --batch -w <wiki>
-   ```
-3. Ingest USPSTF recommendations:
-   ```
-   synthadoc ingest "https://www.uspreventiveservicestaskforce.org/uspstf/recommendation/<topic>" -w <wiki>
-   ```
-
 Cross-link to [[conditions]] for the diagnoses covered, [[treatment-protocols]] for the protocols derived from the guideline, and [[diagnostic-criteria]] for the diagnostic thresholds the guideline establishes.

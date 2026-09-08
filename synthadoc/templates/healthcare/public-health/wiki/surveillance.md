@@ -20,19 +20,4 @@ Disease surveillance systems and data sources. Each system page documents:
 - **Trend comparability** — any case definition changes that affect trend analysis; how to handle definitional breaks in data series
 - **Data quality issues** — known under-reporting populations or conditions; geographic gaps in coverage
 
-**How to populate:**
-
-1. Ingest CDC surveillance system overviews:
-   ```
-   synthadoc ingest "https://www.cdc.gov/surveillance/index.html" -w <wiki>
-   ```
-2. Ingest MMWR surveillance summaries:
-   ```
-   synthadoc ingest "https://www.cdc.gov/mmwr/volumes/index.html" -w <wiki>
-   ```
-3. Ingest local state health department surveillance reports:
-   ```
-   synthadoc ingest docs/public-health/surveillance/ --batch -w <wiki>
-   ```
-
 Cross-link to [[disease-burden]] for the conditions each surveillance system tracks, [[health-programs]] for programs that rely on surveillance data for targeting and evaluation, and [[policy-analysis]] for policies that trigger mandatory reporting requirements.

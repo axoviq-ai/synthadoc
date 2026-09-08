@@ -20,15 +20,4 @@ Analysis of public health policies, legislation, and regulations. Each policy an
 - **Opposition and barriers** — major political or logistical barriers to the policy; interest group opposition
 - **Estimated health impact** — projected or observed reduction in incidence, mortality, or cost
 
-**How to populate:**
-
-1. Ingest legislative summaries or policy briefs:
-   ```
-   synthadoc ingest docs/public-health/policy/ --batch -w <wiki>
-   ```
-2. Ingest Robert Wood Johnson Foundation or Milbank Memorial Fund policy analyses:
-   ```
-   synthadoc ingest "https://www.milbank.org/publications/" -w <wiki>
-   ```
-
 Cross-link to [[disease-burden]] for the problem context, [[health-programs]] for programs implementing the policy, and [[health-equity]] for equity impact.

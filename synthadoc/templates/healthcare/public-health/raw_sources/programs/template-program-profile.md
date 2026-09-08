@@ -3,10 +3,15 @@
 ---
 # Public Health Program Profile — Template
 
-Use this form to document a public health program or intervention. Copy this
-file, rename it `<program-code>-<name>.md`, complete all fields, then ingest:
-
-    synthadoc ingest raw_sources/programs/<program-code>-<name>.md -w <wiki>
+> **How to use this form**
+>
+> This template follows the **CDC Program Performance and Evaluation Framework** -- a six-step process for designing and evaluating public health programs. If you already have a program description in another format, skip this form and ingest your document directly.
+>
+> Reference: [CDC Program Performance and Evaluation Framework](https://www.cdc.gov/eval/framework/)
+>
+> 1. Copy this file and rename it (e.g. `tobacco-cessation-2026.md`)
+> 2. Fill in all sections
+> 3. Run: `synthadoc ingest raw_sources/programs/<filename>.md -w <wiki>`
 
 ---
 

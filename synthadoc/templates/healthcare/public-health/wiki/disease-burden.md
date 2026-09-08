@@ -20,19 +20,4 @@ Morbidity and mortality estimates by condition. Each condition page records:
 - **Trends** — direction of change over the past 10–20 years; factors driving increase or decrease
 - **Data quality limitations** — under-reporting concerns; case definition consistency; data lag
 
-**How to populate:**
-
-1. Ingest CDC surveillance summaries:
-   ```
-   synthadoc ingest "https://www.cdc.gov/mmwr/index.html" -w <wiki>
-   ```
-2. Ingest Global Burden of Disease data:
-   ```
-   synthadoc ingest "https://ghdx.healthdata.org/gbd-2019" -w <wiki>
-   ```
-3. Ingest local or state health department reports:
-   ```
-   synthadoc ingest docs/public-health/burden-reports/ --batch -w <wiki>
-   ```
-
 Cross-link to [[surveillance]] for the data systems that track each condition, [[health-programs]] for interventions targeting the condition, and [[health-equity]] for burden disparities by population.

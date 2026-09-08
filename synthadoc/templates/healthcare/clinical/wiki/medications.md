@@ -20,19 +20,4 @@ Drug reference library for formulary and practice-relevant medications. Each med
 - **Pregnancy / lactation category** — FDA category (older) or prescribing information label (newer format)
 - **Key counseling points** — the two or three things patients must understand
 
-**How to populate:**
-
-1. Ingest FDA prescribing information (package inserts):
-   ```
-   synthadoc ingest "https://www.accessdata.fda.gov/scripts/cder/daf/index.cfm?event=overview.process&ApplNo=<NDA-number>" -w <wiki>
-   ```
-2. Ingest formulary or drug monograph exports:
-   ```
-   synthadoc ingest docs/clinical/formulary/ --batch -w <wiki>
-   ```
-3. Ingest NLM DailyMed summaries:
-   ```
-   synthadoc ingest "https://dailymed.nlm.nih.gov/dailymed/search.cfm?query=<drug-name>" -w <wiki>
-   ```
-
 Cross-link to [[conditions]] for the indications, [[treatment-protocols]] for the protocol context, and [[clinical-guidelines]] for the guideline recommendation.
