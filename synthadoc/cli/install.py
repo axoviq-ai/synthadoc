@@ -263,7 +263,9 @@ def install_cmd(
         typer.echo(f"  3. Start the server:      synthadoc serve")
         if template:
             typer.echo(f"  4. Open seeds.md - starter ingest commands and first-steps checklist")
-            typer.echo(f"     {dest / 'seeds.md'}  (Obsidian or any editor)")
+            typer.echo(f"     Obsidian: launch app, open vault at  {dest}")
+            typer.echo(f"               then open seeds.md from the file pane")
+            typer.echo(f"     Editor:   {dest / 'seeds.md'}")
             typer.echo(f"  5. Generate index:        synthadoc scaffold")
         else:
             typer.echo(f"  4. Ingest your sources:   synthadoc ingest <file>")

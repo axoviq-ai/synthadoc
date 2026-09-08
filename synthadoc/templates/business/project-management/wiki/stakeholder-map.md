@@ -8,23 +8,16 @@ sources: []
 
 # Stakeholder Map
 
-Stakeholder identification, analysis, and engagement plan for all active projects. Populate by ingesting stakeholder analysis documents.
+Stakeholder identification, analysis, and engagement plan for all active projects, organized using the Power/Interest Grid (Mendelow's Matrix).
 
-Each stakeholder map entry captures:
+Each stakeholder entry captures:
 
-- **Stakeholder identity** — name, title, organization/team
-- **Power/interest classification** — power (high / low) and interest (high / low) → quadrant: Manage Closely / Keep Satisfied / Keep Informed / Monitor
-- **Attitude toward project** — Champion / Supporter / Neutral / Skeptic / Blocker
-- **Key interests and concerns** — what this stakeholder cares about; what they fear about the project
-- **Engagement strategy** — how often to communicate, what channel (steering committee / 1:1 / email update / town hall), what information they need, who communicates with them
-- **Influence relationships** — who this stakeholder can influence or be influenced by; leverage points
-- **Status** — engagement status (on-side / needs attention / at risk)
-
-**How to populate:**
-
-1. Ingest your stakeholder analysis document:
-   ```
-   synthadoc ingest docs/stakeholder-analysis.md -w <wiki>
-   ```
+- **Stakeholder identity** -- name, title, organization/team
+- **Power/interest classification** -- power (high / low) and interest (high / low); quadrant: Manage Closely / Keep Satisfied / Keep Informed / Monitor
+- **Attitude toward project** -- Champion / Supporter / Neutral / Skeptic / Blocker
+- **Key interests and concerns** -- what this stakeholder cares about; what they fear about the project
+- **Engagement strategy** -- communication frequency, channel, information needs, owner
+- **Influence relationships** -- who this stakeholder can influence or be influenced by
+- **Status** -- engagement status (on-side / needs attention / at risk)
 
 Cross-link to [[projects]], [[status-reports]], and [[raid-log]].

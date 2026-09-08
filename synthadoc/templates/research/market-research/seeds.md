@@ -14,6 +14,9 @@ synthadoc ingest "https://www.sba.gov/business-guide/plan-your-business/market-r
 
 ## Recommended web searches
 
+Topic hints for finding additional sources in this domain. Use these to discover more URLs
+to ingest beyond the curated list below -- browse results and pick pages relevant to your use case.
+
 - `"<market name>" market size TAM latest report` — market sizing
 - `"<industry>" industry analysis Porter five forces` — competitive framework
 - `"<competitor name>" annual report investor day latest` — competitor intelligence

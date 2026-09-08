@@ -14,6 +14,9 @@ synthadoc ingest "https://www.semanticscholar.org/search?q=<topic>&sort=Relevanc
 
 ## Recommended web searches
 
+Topic hints for finding additional sources in this domain. Use these to discover more URLs
+to ingest beyond the curated list below -- browse results and pick pages relevant to your use case.
+
 - `"<research topic>" survey review latest arxiv` — recent survey papers
 - `"<your field>" seminal papers citation classics` — foundational works
 - `PubMed "<topic>" systematic review meta-analysis` — medical research
