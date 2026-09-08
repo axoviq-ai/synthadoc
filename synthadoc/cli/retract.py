@@ -43,8 +43,12 @@ def _resolve_pages_dir(wiki_root: Path) -> Path:
 
 def _load_wiki_config(wiki_root: Path):
     from synthadoc.config import load_config
+    from synthadoc import errors as E
     cfg_path = wiki_root / ".synthadoc" / "config.toml"
-    return load_config(project_config=cfg_path if cfg_path.exists() else None)
+    try:
+        return load_config(project_config=cfg_path if cfg_path.exists() else None)
+    except E.ConfigError as exc:
+        E.cli_error(exc.code, str(exc), exc.hint)
 
 
 def _get_audit_db(wiki_root: Path):

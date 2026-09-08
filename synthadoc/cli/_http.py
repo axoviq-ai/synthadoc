@@ -23,7 +23,10 @@ def server_url(wiki: str) -> str:
             f"Wiki '{wiki}' is not installed.",
             f"Make sure wiki '{wiki}' was installed with 'synthadoc install'.",
         )
-    cfg = load_config(project_config=config_path)
+    try:
+        cfg = load_config(project_config=config_path)
+    except E.ConfigError as exc:
+        E.cli_error(exc.code, str(exc), exc.hint)
     port = cfg.server.port
     return f"http://127.0.0.1:{port}"
 

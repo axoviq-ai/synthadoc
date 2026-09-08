@@ -99,7 +99,10 @@ def apply_cmd(wiki: Optional[str] = typer.Option(None, "--wiki", "-w")) -> None:
     from synthadoc.config import load_config
     from synthadoc.core.scheduler import Scheduler, ScheduleEntry
     root = _resolve_and_validate(wiki)
-    cfg = load_config(project_config=root / ".synthadoc" / "config.toml")
+    try:
+        cfg = load_config(project_config=root / ".synthadoc" / "config.toml")
+    except E.ConfigError as exc:
+        E.cli_error(exc.code, str(exc), exc.hint)
     sched = Scheduler(wiki=wiki, wiki_root=str(root))
     ids = sched.apply([ScheduleEntry(op=j.op, cron=j.cron, wiki=wiki)
                        for j in cfg.schedule.jobs])
