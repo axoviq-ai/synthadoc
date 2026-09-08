@@ -264,7 +264,10 @@ def serve_cmd(
     from synthadoc.core.logging_config import setup_logging
 
     root = resolve_wiki_path(wiki)
-    cfg = load_config(project_config=root / ".synthadoc" / "config.toml")
+    try:
+        cfg = load_config(project_config=root / ".synthadoc" / "config.toml")
+    except E.ConfigError as exc:
+        E.cli_error(exc.code, str(exc), exc.hint)
     effective_port = port if port is not None else cfg.server.port
 
     if provider_override:

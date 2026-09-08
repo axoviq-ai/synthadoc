@@ -394,7 +394,7 @@ def run_offline_tests(wiki_root: pathlib.Path) -> None:
         r_bk = check(
             "backup basic",
             ["backup", "-w", WIKI_NAME, "--output", str(_bk_dir)],
-            contains=["✓"],
+            contains=["OK "],
         )
         zips = sorted(_bk_dir.glob("synthadoc-backup-*.zip"))
         zip_path = zips[0] if zips else None
@@ -421,7 +421,7 @@ def run_offline_tests(wiki_root: pathlib.Path) -> None:
                     "--target", str(_restore_dir),
                     "--port",   "7099",
                 ],
-                contains=["✓ Restored", _RESTORE_NAME],
+                contains=["OK Restored", _RESTORE_NAME],
                 input="y\n",
             )
 
@@ -520,7 +520,7 @@ def run_offline_tests(wiki_root: pathlib.Path) -> None:
                     "--name",  _RESTORE_DFLT,
                     "--port",  "7098",
                 ],
-                contains=["Restoring to:", "✓ Restored"],
+                contains=["Restoring to:", "OK Restored"],
                 input="y\n",
             )
             dflt_dir = _bk_dir / _RESTORE_DFLT

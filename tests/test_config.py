@@ -449,3 +449,29 @@ def test_init_wiki_config_has_security_enabled(tmp_path):
     assert cfg_path.exists()
     data = tomllib.loads(cfg_path.read_text(encoding="utf-8"))
     assert data.get("security", {}).get("sensitive_scan_enabled") is True
+
+
+def test_load_config_raises_config_error_on_duplicate_key(tmp_path):
+    """[ERR-CFG-003] Duplicate 'default' key raises ConfigError, not a raw traceback."""
+    from synthadoc.errors import ConfigError, CFG_DUPLICATE_KEY
+    cfg_file = tmp_path / "config.toml"
+    # Two active 'default =' lines under [agents] — TOML rejects duplicate keys
+    cfg_file.write_text(
+        '[agents]\ndefault = { provider = "gemini", model = "gemini-2.5-flash-lite" }\n'
+        'default = { provider = "opencode" }\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError) as exc_info:
+        load_config(project_config=cfg_file)
+    assert exc_info.value.code == CFG_DUPLICATE_KEY
+    assert "Only one 'default' line" in exc_info.value.hint
+
+
+def test_load_config_raises_config_error_on_invalid_toml(tmp_path):
+    """[ERR-CFG-004] Malformed TOML raises ConfigError."""
+    from synthadoc.errors import ConfigError, CFG_INVALID_TOML
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text("not valid toml = {{{", encoding="utf-8")
+    with pytest.raises(ConfigError) as exc_info:
+        load_config(project_config=cfg_file)
+    assert exc_info.value.code == CFG_INVALID_TOML
