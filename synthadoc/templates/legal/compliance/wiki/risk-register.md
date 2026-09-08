@@ -20,15 +20,4 @@ Compliance risk register. Each risk entry records:
 - **Status** — current status of mitigation (Not Started / In Progress / Complete)
 - **Last reviewed** — date the entry was last reviewed and updated
 
-**How to populate:**
-
-1. Document risks identified during regulatory gap assessments or audits:
-   ```
-   synthadoc ingest docs/compliance/risk-register.xlsx -w <wiki>
-   ```
-2. Ingest risk assessment outputs from your GRC system:
-   ```
-   synthadoc ingest docs/compliance/risk-assessments/ --batch -w <wiki>
-   ```
-
 Cross-link to [[controls]] for mitigation controls, [[audit-findings]] for findings that revealed the risk, and [[regulatory-requirements]] for the obligation at risk of not being met.

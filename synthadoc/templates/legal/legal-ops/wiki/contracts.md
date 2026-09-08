@@ -19,15 +19,4 @@ Repository of executed contracts. Each contract page records:
 - **Change-of-control provisions** — assignment rights; whether the agreement terminates or requires consent on a change of control
 - **Renewal & expiry flags** — flag any contract with a renewal deadline within 90 days
 
-**How to populate:**
-
-1. Ingest contract PDFs directly:
-   ```
-   synthadoc ingest docs/contracts/<contract-name>.pdf -w <wiki>
-   ```
-2. For a folder of contracts:
-   ```
-   synthadoc ingest docs/contracts/ --batch -w <wiki>
-   ```
-
 Cross-link to [[matters]] for the associated legal matter, [[outside-counsel]] for the managing firm, and [[contract-templates]] for the master form used.

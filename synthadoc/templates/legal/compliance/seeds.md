@@ -41,30 +41,37 @@ synthadoc ingest "https://secureframe.com/hub/nist-800-53/control-mapping" -w <w
 
 ## First steps checklist
 
-- [ ] **List all regulations applicable to your entity** — ingest your regulatory inventory or obligation register:
-  ```
-  synthadoc ingest docs/compliance/obligation-register.xlsx -w <wiki>
-  ```
-  Or ingest the CFR title directly: `synthadoc ingest "https://www.law.cornell.edu/cfr/text/<title>" -w <wiki>`
-  Populates [[applicable-regulations]] and [[regulatory-requirements]].
+- [ ] **Assess a control** -- use our template or bring your own:
+  - Template: copy `raw_sources/controls/template-control-assessment.md`, rename it
+    (e.g. `CTRL-2026-001-access-review.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/controls/<control-id>-<name>.md -w <wiki>
+    ```
+  - Own doc: place your existing control testing workpaper in `raw_sources/controls/` and ingest it.
+  Populates [[controls]].
 
-- [ ] **Document your first compliance control** — copy `raw_sources/controls/template-control-assessment.md`, fill in all fields, then:
-  ```
-  synthadoc ingest raw_sources/controls/<control-id>-<name>.md -w <wiki>
-  ```
-  Populates [[controls]]. Repeat for each key control.
+- [ ] **Document a risk** -- use our template or bring your own:
+  - Template: copy `raw_sources/risk-register/template-risk-register-entry.md`, rename it
+    (e.g. `RISK-2026-001-data-breach.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/risk-register/<risk-id>-<name>.md -w <wiki>
+    ```
+  - Own doc: place your existing risk register in `raw_sources/risk-register/` and ingest it.
+  Populates [[risk-register]].
 
-- [ ] **Ingest your primary compliance policy**:
-  ```
-  synthadoc ingest docs/compliance/policies/<policy-name>.pdf -w <wiki>
-  ```
-  Or batch ingest all policies: `synthadoc ingest docs/compliance/policies/ --batch -w <wiki>`
-  Populates [[policies]].
+- [ ] **Write a policy** -- use our template or bring your own:
+  - Template: copy `raw_sources/policies/template-policy.md`, rename it
+    (e.g. `POL-2026-001-data-privacy.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/policies/<policy-id>-<name>.md -w <wiki>
+    ```
+  - Own doc: place your existing policy documents in `raw_sources/policies/` and ingest them.
+  Populates [[policies]] and [[applicable-regulations]].
 
-- [ ] **Document your top 5 compliance risks** in [[risk-register]]:
-  ```
-  synthadoc ingest docs/compliance/risk-register.xlsx -w <wiki>
-  ```
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

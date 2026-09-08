@@ -3,10 +3,18 @@
 ---
 # Legal Matter — Intake Form
 
-Use this form to open a new legal matter. Copy this file, rename it
-`<matter-id>-<short-title>.md`, complete all fields, then ingest:
-
-    synthadoc ingest raw_sources/matters/<matter-id>-<short-title>.md -w <wiki>
+> **How to use this form**
+>
+> This template follows the **ILTA Legal Matter Management standards** -- the industry benchmark for structured legal matter intake and tracking.
+> If you already have a matter intake form in another format, skip this form and ingest your document directly.
+>
+> Reference: [ILTA — Legal Technology Association](https://www.iltanet.org/)
+>
+> 1. Copy this file and rename it (e.g. `MATTER-2026-042-vendor-dispute.md`)
+> 2. Fill in all sections
+> 3. Run: `synthadoc ingest raw_sources/matters/<matter-id>-<short-title>.md -w <wiki>`
+>
+> Note: This template is for documentation and knowledge management purposes only — not legal advice. Consult qualified legal counsel for actual legal matters.
 
 ---
 

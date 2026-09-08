@@ -18,16 +18,4 @@ Library of standard form agreements and playbooks used by the legal department. 
 - **Last review date** — when the template was last reviewed for legal accuracy and business alignment
 - **Related templates** — forms that are typically used together (e.g., NDA before MSA; MSA before SOW)
 
-**How to populate:**
-
-1. Ingest your master form agreements:
-   ```
-   synthadoc ingest docs/legal/templates/ --batch -w <wiki>
-   ```
-2. Ingest a specific template with its playbook:
-   ```
-   synthadoc ingest docs/legal/templates/msa-template.docx -w <wiki>
-   synthadoc ingest docs/legal/templates/msa-playbook.pdf -w <wiki>
-   ```
-
 Cross-link to [[contracts]] for executed agreements based on each template and [[outside-counsel]] for negotiation guidance.

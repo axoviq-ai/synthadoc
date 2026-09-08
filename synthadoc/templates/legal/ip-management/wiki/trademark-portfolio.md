@@ -19,19 +19,4 @@ Inventory of registered trademarks, service marks, and trade dress. Each tradema
 - **Maintenance filings** — Section 8 declarations, Section 15 incontestability, renewal due dates
 - **Owner** — registered owner; any consent, coexistence, or concurrent use agreements
 
-**How to populate:**
-
-1. Export your trademark portfolio from USPTO Trademark Status & Document Retrieval (TSDR):
-   ```
-   synthadoc ingest docs/ip/trademark-portfolio.xlsx -w <wiki>
-   ```
-2. Ingest trademark registration certificates:
-   ```
-   synthadoc ingest docs/ip/trademarks/ --batch -w <wiki>
-   ```
-3. Check USPTO TESS for individual marks:
-   ```
-   synthadoc ingest "https://tsdr.uspto.gov/#caseNumber=<reg-number>&caseType=US_REGISTRATION_NUMBER&searchType=statusSearch" -w <wiki>
-   ```
-
 Cross-link to [[ip-strategy]] for the brand protection objectives, [[licensing-agreements]] for licensed marks, and [[freedom-to-operate]] for clearance opinions obtained before adoption.

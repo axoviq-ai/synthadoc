@@ -19,15 +19,4 @@ Granular obligation inventory extracted from applicable regulations. Each requir
 - **Compliance owner** — department or role accountable for meeting the requirement
 - **Current compliance status** — Compliant / Partially Compliant / Non-Compliant; date of last assessment
 
-**How to populate:**
-
-1. Extract requirements from regulation text that has been ingested into [[applicable-regulations]]:
-   ```
-   synthadoc ingest docs/compliance/requirements/ --batch -w <wiki>
-   ```
-2. Ingest a regulatory requirements matrix or obligation register:
-   ```
-   synthadoc ingest docs/compliance/obligation-register.xlsx -w <wiki>
-   ```
-
 Cross-link to [[applicable-regulations]] for the source regulation, [[policies]] for implementing policies, [[controls]] for testing evidence, and [[risk-register]] for unmitigated gaps.

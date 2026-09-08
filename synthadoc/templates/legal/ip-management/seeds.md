@@ -41,30 +41,37 @@ synthadoc ingest "https://patelip.com/likelihood-of-confusion-recent-ttab-decisi
 
 ## First steps checklist
 
-- [ ] **Document your most commercially important patents** — for each key patent, copy `raw_sources/patents/template-patent-record.md`, fill in all fields, then:
-  ```
-  synthadoc ingest raw_sources/patents/<patent-number>-<keyword>.md -w <wiki>
-  ```
-  Or export from USPTO Patent Center and ingest: `synthadoc ingest docs/ip/patent-portfolio.xlsx -w <wiki>`
-  Populates [[patent-portfolio]].
+- [ ] **Record a patent** -- use our template or bring your own:
+  - Template: copy `raw_sources/patents/template-patent-record.md`, rename it
+    (e.g. `US11234567-widget-assembly.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/patents/<patent-number>-<keyword>.md -w <wiki>
+    ```
+  - Own doc: place your existing patent dossier in `raw_sources/patents/` and ingest it.
+  Populates [[patent-portfolio]] and [[patent-prosecution]].
 
-- [ ] **Document your trademark portfolio** — ingest registration certificates or TSDR exports:
-  ```
-  synthadoc ingest docs/ip/trademarks/ --batch -w <wiki>
-  ```
+- [ ] **Record a trademark** -- use our template or bring your own:
+  - Template: copy `raw_sources/trademarks/template-trademark-record.md`, rename it
+    (e.g. `US6543210-brand-name.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/trademarks/<serial-number>-<mark-name>.md -w <wiki>
+    ```
+  - Own doc: place your existing TM records in `raw_sources/trademarks/` and ingest them.
   Populates [[trademark-portfolio]].
 
-- [ ] **Ingest your IP assignment agreement template**:
-  ```
-  synthadoc ingest docs/ip/ip-assignment-agreement.pdf -w <wiki>
-  ```
-  Populates [[licensing-agreements]] and [[ip-strategy]].
+- [ ] **Summarize a license agreement** -- use our template or bring your own:
+  - Template: copy `raw_sources/licensing/template-license-agreement-summary.md`, rename it
+    (e.g. `LIC-2026-001-acme-patent-license.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/licensing/<license-id>-<counterparty>.md -w <wiki>
+    ```
+  - Own doc: place your existing license summary in `raw_sources/licensing/` and ingest it.
+  Populates [[licensing-agreements]].
 
-- [ ] **Ingest any existing FTO opinions**:
-  ```
-  synthadoc ingest docs/ip/fto/ --batch -w <wiki>
-  ```
-  Populates [[freedom-to-operate]].
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

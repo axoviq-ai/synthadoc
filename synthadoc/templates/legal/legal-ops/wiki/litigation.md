@@ -21,15 +21,4 @@ Active and historical litigation docket. Each case page records:
 - **Risk assessment** — probability of adverse outcome; potential exposure range; reserve amount
 - **Case strategy** — key arguments; anticipated motions; settlement posture
 
-**How to populate:**
-
-1. Create a matter record first using [[matters]], then ingest the complaint or key pleadings:
-   ```
-   synthadoc ingest docs/legal/litigation/<case-name>/complaint.pdf -w <wiki>
-   ```
-2. Ingest case status summaries:
-   ```
-   synthadoc ingest docs/legal/litigation/<case-name>/ --batch -w <wiki>
-   ```
-
 Cross-link to [[matters]], [[outside-counsel]], [[contracts]] (if dispute arises from a contract), and [[case-law]] for precedents cited.

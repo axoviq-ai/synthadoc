@@ -20,15 +20,4 @@ IP license agreements where this entity is licensor or licensee. Each agreement 
 - **Representations and warranties** — what each party warrants about the IP and its rights
 - **Status** — Active / Expired / Terminated; last royalty payment date and amount
 
-**How to populate:**
-
-1. Ingest license agreement PDFs:
-   ```
-   synthadoc ingest docs/ip/licenses/ --batch -w <wiki>
-   ```
-2. Ingest a specific license agreement:
-   ```
-   synthadoc ingest docs/ip/licenses/<counterparty>-license-<year>.pdf -w <wiki>
-   ```
-
 Cross-link to [[patent-portfolio]] or [[trademark-portfolio]] for the specific IP licensed, and [[ip-strategy]] for the licensing strategy that governs these agreements.

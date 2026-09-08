@@ -3,11 +3,18 @@
 ---
 # Patent Record — Intake Form
 
-Use this form to document a patent or patent application. Copy this file,
-rename it `<patent-number>-<keyword>.md` (e.g. `US11234567-widget-assembly.md`),
-complete all fields, then ingest:
-
-    synthadoc ingest raw_sources/patents/<patent-number>-<keyword>.md -w <wiki>
+> **How to use this form**
+>
+> This template follows the **USPTO Patent Application format** -- the standard structure for documenting patent records and prosecution history.
+> If you already have a patent dossier in another format, skip this form and ingest your document directly.
+>
+> Reference: [USPTO Patents](https://www.uspto.gov/patents)
+>
+> 1. Copy this file and rename it (e.g. `US11234567-widget-assembly.md`)
+> 2. Fill in all sections
+> 3. Run: `synthadoc ingest raw_sources/patents/<patent-number>-<keyword>.md -w <wiki>`
+>
+> Note: This template is for documentation and knowledge management purposes only — not legal advice. Consult qualified legal counsel for actual legal matters.
 
 ---
 

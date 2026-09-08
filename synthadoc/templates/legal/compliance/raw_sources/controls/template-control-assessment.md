@@ -3,11 +3,18 @@
 ---
 # Control Assessment — Intake Form
 
-Use this form to document a compliance control and its most recent test result.
-Copy this file, rename it `<control-id>-<short-name>.md`, complete all fields,
-then ingest:
-
-    synthadoc ingest raw_sources/controls/<control-id>-<short-name>.md -w <wiki>
+> **How to use this form**
+>
+> This template follows the **COSO Internal Control — Integrated Framework (2013)** -- the globally recognized standard for designing, implementing, and evaluating internal controls.
+> If you already have control testing workpapers in another format, skip this form and ingest your document directly.
+>
+> Reference: [COSO Internal Control — Integrated Framework (2013)](https://www.coso.org/guidance-on-ic)
+>
+> 1. Copy this file and rename it (e.g. `CTRL-2026-001-access-review.md`)
+> 2. Fill in all sections
+> 3. Run: `synthadoc ingest raw_sources/controls/<control-id>-<short-name>.md -w <wiki>`
+>
+> Note: This template is for documentation and knowledge management purposes only — not legal advice. Consult qualified legal counsel for actual legal matters.
 
 ---
 

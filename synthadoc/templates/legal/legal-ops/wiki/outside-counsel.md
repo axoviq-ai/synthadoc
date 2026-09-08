@@ -19,19 +19,4 @@ Panel and directory of approved outside law firms and attorneys. Each firm page 
 - **Active matters** — link to current [[matters]] assigned to this firm
 - **Performance notes** — responsiveness, budget adherence, quality of work product
 
-**How to populate:**
-
-1. Ingest your outside counsel guidelines document:
-   ```
-   synthadoc ingest docs/legal/outside-counsel-guidelines.pdf -w <wiki>
-   ```
-2. Ingest firm engagement letters or rate confirmation agreements:
-   ```
-   synthadoc ingest docs/legal/firms/ --batch -w <wiki>
-   ```
-3. Ingest ACC model outside counsel guidelines as a reference:
-   ```
-   synthadoc ingest "https://tenthings.blog/2016/11/30/ten-things-preparing-outside-counsel-guidelines-the-keys" -w <wiki>
-   ```
-
 Cross-link to [[matters]] and [[contracts]] for engagements managed by each firm.

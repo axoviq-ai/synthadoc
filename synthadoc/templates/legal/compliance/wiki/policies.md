@@ -18,15 +18,4 @@ Policy inventory covering all compliance-relevant internal policies. Each policy
 - **Training requirement** — whether employees must complete annual training; last training completion rate
 - **Review history** — version history with summary of material changes by version
 
-**How to populate:**
-
-1. Ingest your policy documents:
-   ```
-   synthadoc ingest docs/compliance/policies/ --batch -w <wiki>
-   ```
-2. Ingest a specific policy:
-   ```
-   synthadoc ingest docs/compliance/policies/<policy-name>.pdf -w <wiki>
-   ```
-
 Cross-link to [[regulatory-requirements]] for the obligations the policy satisfies, [[controls]] for the control activities the policy mandates, and [[audit-findings]] for any gaps between the policy and practice.

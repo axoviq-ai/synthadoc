@@ -18,15 +18,4 @@ Master list of regulations, statutes, and standards that apply to the organizati
 - **Effective date / version** — the current effective version; any upcoming amendments and their effective dates
 - **Examination / enforcement risk** — frequency of regulatory examination; recent enforcement trends and penalty amounts
 
-**How to populate:**
-
-1. Ingest the primary regulation text:
-   ```
-   synthadoc ingest "https://www.law.cornell.edu/cfr/text/<title>/<part>" -w <wiki>
-   ```
-2. Ingest a saved regulation PDF or summary document:
-   ```
-   synthadoc ingest docs/compliance/regulations/ --batch -w <wiki>
-   ```
-
 Cross-link to [[regulatory-requirements]] for specific obligations extracted from each regulation, [[controls]] for the controls that address each requirement, and [[policies]] for the internal policies implementing compliance.

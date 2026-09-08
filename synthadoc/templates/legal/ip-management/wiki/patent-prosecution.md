@@ -19,15 +19,4 @@ Active prosecution log tracking the status of pending patent applications throug
 - **Prosecution cost to date** — running total of official fees and attorney fees for this application
 - **Related applications** — continuation, divisional, or continuation-in-part applications filed from the same parent
 
-**How to populate:**
-
-1. Ingest USPTO prosecution history (file wrapper) from Patent Center:
-   ```
-   synthadoc ingest "https://patentcenter.uspto.gov/applications/<application-number>/continuity" -w <wiki>
-   ```
-2. Ingest prosecution docket exports from your IP management system:
-   ```
-   synthadoc ingest docs/ip/prosecution/ --batch -w <wiki>
-   ```
-
 Cross-link to [[patent-portfolio]] for the eventual granted patent and [[ip-strategy]] for the filing criteria that justified the application.

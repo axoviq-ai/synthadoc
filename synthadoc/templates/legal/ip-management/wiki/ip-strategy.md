@@ -18,15 +18,4 @@ Organization's intellectual property strategy and portfolio management philosoph
 - **IP budget** — annual IP spend budget; split between prosecution, maintenance, licensing, and enforcement
 - **Review cadence** — how often the portfolio is reviewed for alignment with product strategy; who owns the review
 
-**How to populate:**
-
-1. Ingest your IP strategy document or board presentation:
-   ```
-   synthadoc ingest docs/ip/ip-strategy.pdf -w <wiki>
-   ```
-2. Ingest IP strategy frameworks as reference:
-   ```
-   synthadoc ingest "https://www.wipo.int/patents/en/topics/ip_strategy.html" -w <wiki>
-   ```
-
 Cross-link to [[patent-portfolio]], [[trademark-portfolio]], [[licensing-agreements]], and [[freedom-to-operate]] to anchor the strategy in the current portfolio state.

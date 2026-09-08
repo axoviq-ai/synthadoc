@@ -19,15 +19,4 @@ FTO analysis records assessing whether a product or process infringes active thi
 - **Recommended actions** — design-around options, licensing approach, or invalidity arguments if risk is identified
 - **Reliance limitations** — scope of the opinion; what the FTO does not cover; when a refreshed opinion is recommended
 
-**How to populate:**
-
-1. Ingest FTO opinion letters from outside IP counsel:
-   ```
-   synthadoc ingest docs/ip/fto/ --batch -w <wiki>
-   ```
-2. Ingest individual FTO opinion for a new product:
-   ```
-   synthadoc ingest docs/ip/fto/<product>-fto-<year>.pdf -w <wiki>
-   ```
-
 Cross-link to [[patent-portfolio]] for our own patents relevant to the analysis, [[ip-strategy]] for FTO policy, and [[patent-prosecution]] if any identified risk patents are being challenged.

@@ -20,15 +20,4 @@ Log of internal audit findings and regulatory examination findings. Each finding
 - **Status** — Open / In Progress / Closed / Validated; most recent status update date
 - **Validation evidence** — what evidence was reviewed to confirm the finding was remediated
 
-**How to populate:**
-
-1. Ingest internal audit reports:
-   ```
-   synthadoc ingest docs/compliance/audit-reports/ --batch -w <wiki>
-   ```
-2. Ingest a specific examination report:
-   ```
-   synthadoc ingest docs/compliance/exams/<examiner>-<year>-report.pdf -w <wiki>
-   ```
-
 Cross-link to [[controls]] for the control that failed, [[risk-register]] if the finding triggers a new or elevated risk, and [[policies]] if a policy gap was identified.

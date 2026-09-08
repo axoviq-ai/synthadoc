@@ -19,15 +19,4 @@ Active legal matter tracker. Each matter page records:
 - **Litigation hold** — whether a hold was issued, which custodians are covered
 - **Next actions** — open action items with owner and due date
 
-**How to populate:**
-
-1. Copy `raw_sources/matters/template-matter.md`, fill in all fields for each active matter, then ingest:
-   ```
-   synthadoc ingest raw_sources/matters/<matter-id>-<title>.md -w <wiki>
-   ```
-2. For batch ingest of existing matter summaries:
-   ```
-   synthadoc ingest docs/legal/matters/ --batch -w <wiki>
-   ```
-
 Cross-link to [[contracts]], [[case-law]], [[outside-counsel]], and [[litigation]] for active matters in dispute.

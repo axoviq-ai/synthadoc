@@ -19,15 +19,4 @@ Compliance control inventory. Each control page records:
 - **Last test date / result** — most recent testing date and result (Pass / Fail / Pass with Exception)
 - **Open exceptions** — outstanding exceptions with remediation owner and target close date
 
-**How to populate:**
-
-1. Copy `raw_sources/controls/template-control-assessment.md`, fill in the control details and test results, then:
-   ```
-   synthadoc ingest raw_sources/controls/<control-id>-<name>.md -w <wiki>
-   ```
-2. Ingest an existing control matrix from your GRC system:
-   ```
-   synthadoc ingest docs/compliance/control-matrix.xlsx -w <wiki>
-   ```
-
 Cross-link each control to the [[regulatory-requirements]] it satisfies, the [[policies]] that mandate the control, and [[audit-findings]] arising from control failures.

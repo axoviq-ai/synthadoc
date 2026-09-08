@@ -40,24 +40,37 @@ synthadoc ingest "https://tenthings.blog/2016/11/30/ten-things-preparing-outside
 
 ## First steps checklist
 
-- [ ] **Ingest your master services agreement template**:
-  ```
-  synthadoc ingest docs/legal/msa-template.pdf -w <wiki>
-  ```
-  Populates [[contract-templates]]. Also ingest any other standard forms (NDA, SOW, EULA) you use frequently.
+- [ ] **Open a matter** -- use our template or bring your own:
+  - Template: copy `raw_sources/matters/template-matter.md`, rename it
+    (e.g. `MATTER-2026-042-vendor-dispute.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/matters/<matter-id>-<title>.md -w <wiki>
+    ```
+  - Own doc: place your existing matter intake form in `raw_sources/matters/` and ingest it.
+  Populates [[matters]].
 
-- [ ] **Open your first legal matter** — copy `raw_sources/matters/template-matter.md`, fill in all fields, then:
-  ```
-  synthadoc ingest raw_sources/matters/<matter-id>-<title>.md -w <wiki>
-  ```
-  Populates [[matters]]. Repeat for each active matter.
+- [ ] **Summarize a contract** -- use our template or bring your own:
+  - Template: copy `raw_sources/contracts/template-contract-summary.md`, rename it
+    (e.g. `CONTRACT-2026-015-vendor-msa.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/contracts/<contract-id>-<name>.md -w <wiki>
+    ```
+  - Own doc: place your own contract abstract in `raw_sources/contracts/` and ingest it.
+  Populates [[contracts]].
 
-- [ ] **Ingest regulatory guidance** for your primary practice area:
-  ```
-  synthadoc ingest "https://www.law.cornell.edu/cfr/text/<title>/<part>" -w <wiki>
-  ```
-  Or ingest a saved guidance PDF: `synthadoc ingest docs/regulatory/<guidance>.pdf -w <wiki>`
-  Populates [[regulatory-guidance]] and [[applicable-regulations]].
+- [ ] **Brief outside counsel** -- use our template or bring your own:
+  - Template: copy `raw_sources/outside-counsel/template-outside-counsel-brief.md`, rename it
+    (e.g. `MATTER-2026-042-jones-day-brief.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/outside-counsel/<matter-id>-<firm>-brief.md -w <wiki>
+    ```
+  - Own doc: place your own outside counsel communication in `raw_sources/outside-counsel/` and ingest it.
+  Populates [[outside-counsel]].
+
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

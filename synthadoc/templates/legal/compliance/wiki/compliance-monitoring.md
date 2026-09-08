@@ -19,15 +19,4 @@ Continuous monitoring activities that detect compliance failures between formal 
 - **Results log** — date of most recent run, number of items reviewed, exceptions identified, disposition of exceptions
 - **Escalation path** — who is notified when exceptions exceed threshold; how quickly
 
-**How to populate:**
-
-1. Ingest monitoring reports from your GRC system:
-   ```
-   synthadoc ingest docs/compliance/monitoring/ --batch -w <wiki>
-   ```
-2. Ingest a specific monitoring summary:
-   ```
-   synthadoc ingest docs/compliance/monitoring/<activity>-<year>-<period>.pdf -w <wiki>
-   ```
-
 Cross-link to [[controls]] for the control each activity monitors, [[audit-findings]] if monitoring identifies a finding, and [[risk-register]] for risks that monitoring is designed to detect.
