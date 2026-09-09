@@ -3,13 +3,15 @@
 ## Recommended first ingests
 
 **Your existing SOPs and procedures**
+Copy your procedure documents into `raw_sources/procedures/`, then:
 ```
-synthadoc ingest docs/procedures/ --batch -w <wiki>
+synthadoc ingest raw_sources/procedures/ --batch -w <wiki>
 ```
 
 **Employee handbook or onboarding guide**
+Copy your handbook or policy documents into `raw_sources/handbooks/`, then:
 ```
-synthadoc ingest docs/employee-handbook.pdf -w <wiki>
+synthadoc ingest raw_sources/handbooks/ --batch -w <wiki>
 ```
 
 ## Recommended web searches
@@ -40,6 +42,24 @@ synthadoc ingest "https://mosey.com/blog/competency-model" -w <wiki>
 ```
 
 ## First steps checklist
+
+- [ ] **Document an SOP or procedure** -- use our template or bring your own:
+  - Template: copy `raw_sources/procedures/template-sop.md`, rename it
+    (e.g. `SOP-042-new-hire-onboarding.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/procedures/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing procedure documents in `raw_sources/procedures/` and ingest them.
+  Populates [[compliance-training]] and [[training-catalog]].
+
+- [ ] **Document a handbook section or HR policy** -- use our template or bring your own:
+  - Template: copy `raw_sources/handbooks/template-employee-handbook-section.md`, rename it
+    (e.g. `handbook-pto-policy.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/handbooks/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing handbook or policy documents in `raw_sources/handbooks/` and ingest them.
+  Populates [[onboarding-programs]] and [[compliance-training]].
 
 - [ ] **Design a training course** -- use our template or bring your own:
   - Template: copy `raw_sources/training/template-training-course.md`, rename it

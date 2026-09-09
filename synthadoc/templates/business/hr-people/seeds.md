@@ -3,13 +3,15 @@
 ## Recommended first ingests
 
 **Your existing employee handbook**
+Copy your handbook into `raw_sources/handbooks/`, then:
 ```
-synthadoc ingest docs/employee-handbook.pdf -w <wiki>
+synthadoc ingest raw_sources/handbooks/ --batch -w <wiki>
 ```
 
 **Your current HR policies**
+Copy your policy documents into `raw_sources/handbooks/`, then:
 ```
-synthadoc ingest docs/hr-policies/ --batch -w <wiki>
+synthadoc ingest raw_sources/handbooks/ --batch -w <wiki>
 ```
 
 ## Recommended web searches
@@ -40,6 +42,15 @@ synthadoc ingest "https://www.shrm.org/business-solutions/partner-products/emplo
 ```
 
 ## First steps checklist
+
+- [ ] **Document your employee handbook or HR policies** -- use our template or bring your own:
+  - Template: copy `raw_sources/handbooks/template-employee-handbook-section.md`, rename it
+    (e.g. `handbook-pto-policy.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/handbooks/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing handbook or policy documents in `raw_sources/handbooks/` and ingest them.
+  Populates [[hr-policies]].
 
 - [ ] **Create job descriptions** -- use our template or bring your own:
   - Template: copy `raw_sources/job-descriptions/template-job-description.md`, rename it

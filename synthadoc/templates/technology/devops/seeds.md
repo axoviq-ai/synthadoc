@@ -13,8 +13,9 @@ synthadoc ingest .github/workflows/ --batch -w <wiki>
 ```
 
 **Recent post-mortems**
+Copy your post-mortem documents into `raw_sources/post-mortems/`, then:
 ```
-synthadoc ingest docs/post-mortems/ --batch -w <wiki>
+synthadoc ingest raw_sources/post-mortems/ --batch -w <wiki>
 ```
 
 ## Recommended web searches

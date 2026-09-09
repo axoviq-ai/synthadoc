@@ -8,8 +8,9 @@ synthadoc ingest "https://<city>.gov/zoning-code" -w <wiki>
 ```
 
 **Your project's approved site plan or entitlement documents**
+Copy your entitlement and permit documents into `raw_sources/permits/`, then:
 ```
-synthadoc ingest docs/entitlements/ --batch -w <wiki>
+synthadoc ingest raw_sources/permits/ --batch -w <wiki>
 ```
 
 ## Recommended web searches

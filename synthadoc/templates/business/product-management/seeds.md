@@ -3,13 +3,15 @@
 ## Recommended first ingests
 
 **Your existing product spec or PRD documents**
+Copy your spec documents into `raw_sources/specs/`, then:
 ```
-synthadoc ingest docs/specs/ --batch -w <wiki>
+synthadoc ingest raw_sources/specs/ --batch -w <wiki>
 ```
 
 **Customer interview notes or Dovetail export**
+Copy your research documents into `raw_sources/user-research/`, then:
 ```
-synthadoc ingest docs/research/ --batch -w <wiki>
+synthadoc ingest raw_sources/user-research/ --batch -w <wiki>
 ```
 
 ## Recommended web searches

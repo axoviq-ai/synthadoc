@@ -3,8 +3,9 @@
 ## Recommended first ingests
 
 **Your lease agreements (export from property management system)**
+Copy your lease documents into `raw_sources/leases/`, then:
 ```
-synthadoc ingest docs/leases/ --batch -w <wiki>
+synthadoc ingest raw_sources/leases/ --batch -w <wiki>
 ```
 
 **Cornell LII landlord-tenant law overview (free)**
