@@ -2,16 +2,14 @@
 
 > **How to use this form**
 >
+> This template follows the **NCREIF (National Council of Real Estate Investment Fiduciaries) + ULI real estate standards** -- the standard pro forma conventions for real estate financial modeling and acquisition underwriting.
+> If you already have financial model outputs in another format, skip this form and ingest your document directly.
+>
+> Reference: [NCREIF](https://www.ncreif.org/)
+>
 > 1. Copy this file and rename it (e.g. `oak-street-house-model.md`)
-> 2. Fill in the assumptions — the projections section can be completed in
->    Excel/Sheets and the key results pasted back here
-> 3. Run: `synthadoc ingest raw_sources/financial-models/oak-street-house-model.md -w <wiki>`
->
-> This captures the summary of your underwriting model as structured wiki data
-> so you can query projected returns across properties. Keep your full spreadsheet
-> separately; update and re-ingest this file annually or after major assumption changes.
->
-> Standard: NCREIF/CRE pro forma conventions; IRR per XIRR (date-weighted).
+> 2. Fill in all sections -- paste year-by-year results from your spreadsheet model
+> 3. Run: `synthadoc ingest raw_sources/financial-models/<model-name>.md -w <wiki>`
 
 ---
 

@@ -18,15 +18,4 @@ Raw material and component master records. Each material record captures:
 - **Handling and storage** — storage requirements (temperature, humidity, shelf life, FIFO vs. FEFO), hazmat classification (UN number, SDS required)
 - **Quality history** — current supplier DPPM for this material; any material quality holds or deviations in the last 12 months
 
-**How to populate:**
-
-1. Export your ERP item master and ingest:
-   ```
-   synthadoc ingest docs/supply-chain/material-master.xlsx -w <wiki>
-   ```
-2. Ingest material specification sheets or SDS:
-   ```
-   synthadoc ingest docs/supply-chain/materials/ --batch -w <wiki>
-   ```
-
 Cross-link to [[suppliers]] for the approved vendor list, [[inventory-management]] for the inventory policy, [[procurement-procedures]] for the purchasing process, and [[contracts]] for the long-term agreements governing supply of this material.

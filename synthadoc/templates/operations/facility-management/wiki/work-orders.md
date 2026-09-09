@@ -19,11 +19,4 @@ Reactive and corrective maintenance work order log. Each work order record captu
 - **Follow-up** — whether the failure indicates a PM task should be added or modified (link to [[preventive-maintenance]]); whether a warranty claim was filed; whether the repair is covered by a vendor contract (link to [[vendor-contracts]])
 - **Downtime** — equipment downtime caused by the failure in hours; production or operational impact
 
-**How to populate:**
-
-1. Export work order history from your CMMS:
-   ```
-   synthadoc ingest docs/facility/work-orders-export.xlsx -w <wiki>
-   ```
-
 Cross-link to [[assets]] for the affected asset, [[preventive-maintenance]] if the WO reveals a PM gap, [[vendor-contracts]] for warranty or contract repairs, and [[safety-inspections]] for safety-related WOs triggered by inspection findings.

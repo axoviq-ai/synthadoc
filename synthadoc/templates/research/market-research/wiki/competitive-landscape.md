@@ -8,7 +8,7 @@ sources: []
 
 # Competitive Landscape
 
-Structured overview of the competitive environment. Populate by synthesizing [[competitor-profiles]] and analyst reports.
+Structured overview of the competitive environment.
 
 Each landscape record captures:
 
@@ -24,13 +24,5 @@ Each landscape record captures:
 - **Differentiation map** — where you are uniquely positioned vs. where you compete head-to-head
 - **Competitive dynamics** — how the landscape is changing (new entrants, consolidation, commoditization pressure, emerging disruptors)
 - **Win/loss patterns** — segments where you typically win and why; segments where you lose and why
-
-**How to populate:**
-
-1. Synthesize after ingesting each competitor (link to [[competitor-profiles]])
-2. Ingest analyst landscape reports:
-   ```
-   synthadoc ingest <path/to/analyst-report.pdf> -w <wiki>
-   ```
 
 Cross-link to [[competitor-profiles]], [[market-overview]], [[consumer-segments]], and [[market-sizing]].

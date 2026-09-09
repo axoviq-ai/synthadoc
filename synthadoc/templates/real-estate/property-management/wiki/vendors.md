@@ -8,7 +8,7 @@ sources: []
 
 # Vendors
 
-Approved vendor directory for all managed properties. Populate by ingesting vendor qualification packages and insurance certificates.
+Approved vendor directory for all managed properties.
 
 Each vendor record captures:
 
@@ -18,12 +18,5 @@ Each vendor record captures:
 - **Properties served** — which properties this vendor is approved for
 - **Performance record** — average response time, quality issues, warranty callbacks, incident history
 - **W-9 / 1099 status** — W-9 on file (yes/no), 1099 required threshold, last 1099 issued year
-
-**How to add a vendor:**
-
-1. Ingest the vendor's insurance certificate and contract:
-   ```
-   synthadoc ingest docs/vendors/<vendor-name>/ --batch -w <wiki>
-   ```
 
 Cross-link to [[work-orders]], [[operating-expenses]], and [[property-compliance]].

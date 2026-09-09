@@ -8,7 +8,7 @@ sources: []
 
 # Change Orders
 
-Change order log for all active development projects. Populate by ingesting change order logs, approved COs, and contract modification documentation.
+Change order log for all active development projects.
 
 Each change order record captures:
 
@@ -19,13 +19,5 @@ Each change order record captures:
 - **Root cause** — design error / owner-directed change / unforeseen site condition / value engineering / regulatory requirement
 - **Backup documentation** — linked proposal, time-and-material tickets, subcontractor quotes, RFI that triggered the change
 - **Budget line item** — which budget line absorbs the change; whether drawn from contingency
-
-**How to populate:**
-
-1. Ingest your change order log or CO tracking spreadsheet:
-   ```
-   synthadoc ingest docs/change-orders-log.xlsx -w <wiki>
-   ```
-2. Ingest individual CO approval letters for significant changes
 
 Cross-link to [[contractors]], [[project-schedule]], and [[inspections]].

@@ -8,7 +8,7 @@ sources: []
 
 # Hypotheses
 
-Research hypotheses and their current status. Populate by ingesting your research plan and hypothesis documentation.
+Research hypotheses and their current status.
 
 Each hypothesis record captures:
 
@@ -19,12 +19,5 @@ Each hypothesis record captures:
 - **Pre-registration** — whether the study and analysis plan are pre-registered (OSF / AsPredicted); registration date and URL
 - **Status** — Proposed / Testing / Supported / Not Supported / Partially Supported / Abandoned + reason
 - **Evidence** — what data or observations bear on this hypothesis; link to [[findings]]
-
-**How to populate:**
-
-1. Ingest your research plan or pre-registration document:
-   ```
-   synthadoc ingest docs/research-plan.md -w <wiki>
-   ```
 
 Cross-link to [[literature-review]], [[methodology]], and [[findings]].

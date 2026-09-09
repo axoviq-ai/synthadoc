@@ -8,7 +8,7 @@ sources: []
 
 # Experiments
 
-Lab experiment log. Populate by ingesting experiment summaries from `raw_sources/experiments/`.
+Lab experiment log.
 
 Each experiment record captures:
 
@@ -19,14 +19,5 @@ Each experiment record captures:
 - **Results** — quantitative measurements (table), qualitative observations, raw data file locations
 - **Interpretation** — whether the result supported the hypothesis, key observations, unexpected results
 - **Next steps** — follow-up experiments, parameter adjustments, replication plans
-
-**How to add an experiment:**
-
-1. Copy `raw_sources/experiments/template-lab-experiment.md`, fill in before and after the run, then:
-   ```
-   synthadoc ingest raw_sources/experiments/<experiment>.md -w <wiki>
-   ```
-
-Your electronic lab notebook (ELN) remains the primary record.
 
 Cross-link to [[protocols]], [[reagents]], [[instruments]], [[findings]], and [[raw-data]].

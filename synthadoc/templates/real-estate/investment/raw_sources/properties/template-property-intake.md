@@ -2,16 +2,14 @@
 
 > **How to use this form**
 >
-> 1. Copy this file and rename it after your property (e.g. `oak-street-house.md`)
-> 2. Fill in every field — leave a field blank or write `N/A` if it does not apply
-> 3. Run: `synthadoc ingest raw_sources/properties/oak-street-house.md -w <wiki>`
+> This template follows the **NCREIF (National Council of Real Estate Investment Fiduciaries) + ULI real estate standards** -- the standard framework for property intake and investment performance tracking.
+> If you already have a property profile in another format, skip this form and ingest your document directly.
 >
-> Fields labelled *(calculated)* can be derived — fill them in or leave blank
-> and query the wiki to compute them later.
+> Reference: [NCREIF](https://www.ncreif.org/)
 >
-> Standard references: Fannie Mae URAR (Form 1004) for physical description;
-> NCREIF / standard CRE practice for investment metrics (NOI, cap rate, GRM,
-> cash-on-cash, DSCR).
+> 1. Copy this file and rename it (e.g. `oak-street-house.md`)
+> 2. Fill in all sections -- leave a field blank or write `N/A` if it does not apply
+> 3. Run: `synthadoc ingest raw_sources/properties/<property-name>.md -w <wiki>`
 
 ---
 

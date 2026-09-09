@@ -41,29 +41,37 @@ synthadoc ingest "https://www.aiag.org/training-and-resources/manuals" -w <wiki>
 
 ## First steps checklist
 
-- [ ] **Ingest your quality manual or QMS overview document**:
-  ```
-  synthadoc ingest docs/manufacturing/quality-manual.pdf -w <wiki>
-  ```
-  Populates [[quality-standards]].
+- [ ] **Document a nonconformance** -- use our template or bring your own:
+  - Template: copy `raw_sources/nonconformances/template-ncr.md`, rename it
+    (e.g. `NCR-2026-042-weld-crack.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/nonconformances/<ncr-number>-<keyword>.md -w <wiki>
+    ```
+  - Own doc: place your existing NCR form (Excel log, QMS export, 8D report) in `raw_sources/nonconformances/` and ingest it.
+  Populates [[nonconformances]] and [[corrective-actions]].
 
-- [ ] **Create a process spec page** for your highest-volume product line:
-  ```
-  synthadoc ingest docs/manufacturing/process-specs/<product-line>.pdf -w <wiki>
-  ```
-  Populates [[process-specifications]] and [[control-plans]].
+- [ ] **Create a control plan** -- use our template or bring your own:
+  - Template: copy `raw_sources/control-plans/template-control-plan.md`, rename it
+    (e.g. `CP-PN12345-rev-B.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/control-plans/<part-number>-cp.md -w <wiki>
+    ```
+  - Own doc: place your existing APQP control plan in `raw_sources/control-plans/` and ingest it.
+  Populates [[control-plans]].
 
-- [ ] **Log your top defect events** — copy `raw_sources/nonconformances/template-ncr.md` for each recent nonconformance, fill in all fields, then:
-  ```
-  synthadoc ingest raw_sources/nonconformances/NCR-<YYYY>-<NNN>-<keyword>.md -w <wiki>
-  ```
-  Populates [[nonconformances]] and [[defect-tracker]].
+- [ ] **Complete an inspection checklist** -- use our template or bring your own:
+  - Template: copy `raw_sources/inspections/template-inspection-checklist.md`, rename it
+    (e.g. `INSP-PN12345-LOT001-2026-08.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/inspections/<part-number>-<lot>-<date>.md -w <wiki>
+    ```
+  - Own doc: place your existing inspection records in `raw_sources/inspections/` and ingest them.
+  Populates [[inspection-records]].
 
-- [ ] **Ingest your gauge calibration register**:
-  ```
-  synthadoc ingest docs/manufacturing/gauge-register.xlsx -w <wiki>
-  ```
-  Populates [[gauges]].
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

@@ -8,7 +8,7 @@ sources: []
 
 # Project Schedule
 
-Master schedule for all active development projects. Populate by ingesting Gantt charts, CPM schedules, and milestone reports.
+Master schedule for all active development projects.
 
 Each project schedule record captures:
 
@@ -18,13 +18,5 @@ Each project schedule record captures:
 - **Schedule delays** — delay events, responsible party (owner / contractor / weather / AHJ), days lost, recovery plan, adjusted substantial completion date
 - **Float consumption** — original float, consumed float by period, remaining float on critical path
 - **Look-ahead schedule** — 3-week look-ahead: activities planned this week, next week, and the week after; manpower plan
-
-**How to populate:**
-
-1. Ingest your CPM schedule baseline or Gantt chart export:
-   ```
-   synthadoc ingest docs/schedule/<project>-schedule.pdf -w <wiki>
-   ```
-2. Ingest monthly schedule updates or delay notices
 
 Cross-link to [[contractors]], [[permits]], [[inspections]], and [[change-orders]].

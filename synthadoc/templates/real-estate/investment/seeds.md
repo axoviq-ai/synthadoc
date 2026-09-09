@@ -42,31 +42,37 @@ synthadoc ingest "https://www.northspyre.com/blog/dcf-model-real-estate" -w <wik
 
 ## First steps checklist
 
-- [ ] **Create a property page for each asset in your portfolio** — copy
-  `raw_sources/properties/template-property-intake.md` once per property, fill in
-  the details, then run `synthadoc ingest raw_sources/properties/<your-property>.md -w <wiki>`.
-  Each ingested file creates a page in [[properties]].
+- [ ] **Profile a property or deal** -- use our template or bring your own:
+  - Template: copy `raw_sources/properties/template-property-intake.md`, rename it
+    (e.g. `downtown-office-tower.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/properties/<property-name>.md -w <wiki>
+    ```
+  - Own doc: place your existing investment memo in `raw_sources/properties/` and ingest it.
+  Populates [[properties]] and [[deals]].
 
-- [ ] **Ingest the most recent market report for your primary submarket** — find a
-  recent report for your city or neighbourhood on
-  [Zillow Research](https://www.zillow.com/research/),
-  [Redfin Data Center](https://www.redfin.com/news/data-center/),
-  [Realtor.com Research](https://www.realtor.com/research/), or from a broker
-  (JLL, CBRE, Marcus &amp; Millichap), then run
-  `synthadoc ingest "https://..." -w <wiki>`. See [[submarkets]] for what gets captured.
+- [ ] **Build or log a financial model** -- use our template or bring your own:
+  - Template: copy `raw_sources/financial-models/template-financial-model.md`, rename it
+    (e.g. `downtown-office-tower-model.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/financial-models/<model-name>.md -w <wiki>
+    ```
+  - Own doc: place your existing model outputs in `raw_sources/financial-models/` and ingest it.
+  Populates [[financial-models]].
 
-- [ ] **Build a financial model page for your first property** — copy
-  `raw_sources/financial-models/template-financial-model.md`, fill in your
-  acquisition assumptions and paste the year-by-year results from your
-  spreadsheet, then run
-  `synthadoc ingest raw_sources/financial-models/<your-model>.md -w <wiki>`.
-  See [[financial-models]] for what gets captured.
+- [ ] **Complete due diligence** -- use our template or bring your own:
+  - Template: copy `raw_sources/due-diligence/template-due-diligence-checklist.md`, rename it
+    (e.g. `downtown-office-tower-dd.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/due-diligence/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing DD workpapers in `raw_sources/due-diligence/` and ingest it.
+  Populates [[deals]] with DD findings.
 
-- [ ] **Document your target return metrics in [[portfolio]]** — copy
-  `raw_sources/portfolio/template-portfolio-goals.md`, fill in your investment
-  strategy, target IRR, equity multiple, and cash-on-cash thresholds, then run
-  `synthadoc ingest raw_sources/portfolio/portfolio-goals.md -w <wiki>`.
-  See [[portfolio]] for what gets captured.
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.
@@ -79,4 +85,7 @@ synthadoc ingest "https://www.northspyre.com/blog/dcf-model-real-estate" -w <wik
   ```
   Pages still showing `draft` may have lint warnings -- review and re-run lint if needed.
 
-- [ ] **Run scaffold to build the index** — `synthadoc scaffold -w <wiki>`
+- [ ] **Run scaffold to build the index**
+  ```
+  synthadoc scaffold -w <wiki>
+  ```

@@ -8,7 +8,7 @@ sources: []
 
 # Design Documents
 
-Architectural and engineering drawing index for all development projects. Populate by ingesting design packages, specifications, and submittal logs.
+Architectural and engineering drawing index for all development projects.
 
 Each design document record captures:
 
@@ -18,13 +18,5 @@ Each design document record captures:
 - **Submittal log** — submittals required for this drawing package (shop drawings, product data, samples), submittal status (submitted / under review / approved / approved-as-noted / rejected)
 - **RFIs** — open RFIs referencing this drawing, response status, any design changes generated
 - **As-built notes** — field deviations from issued drawings documented at project close
-
-**How to populate:**
-
-1. Ingest your drawing log, sheet index, or submittal log:
-   ```
-   synthadoc ingest docs/design-documents/ --batch -w <wiki>
-   ```
-2. For large projects, ingest key specification sections (divisions 00–33 of CSI MasterFormat)
 
 Cross-link to [[specifications]], [[permits]], [[change-orders]], and [[contractors]].

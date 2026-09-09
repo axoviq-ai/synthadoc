@@ -8,7 +8,7 @@ sources: []
 
 # Consumer Segments
 
-Customer and consumer segment profiles. Populate by ingesting segmentation analysis, survey data, and customer interview synthesis.
+Customer and consumer segment profiles.
 
 Each segment record captures:
 
@@ -20,12 +20,5 @@ Each segment record captures:
 - **Value drivers** — what they care most about when evaluating solutions (price / ease of use / integrations / support / brand trust)
 - **Willingness to pay** — price sensitivity, typical budget range, preferred pricing model
 - **Segment attractiveness** — growth rate, profitability potential, competitive intensity for this segment
-
-**How to populate:**
-
-1. Ingest segmentation analysis or persona documents:
-   ```
-   synthadoc ingest docs/customer-segments/ --batch -w <wiki>
-   ```
 
 Cross-link to [[market-overview]], [[competitive-landscape]], [[customer-insights]], and [[surveys]].

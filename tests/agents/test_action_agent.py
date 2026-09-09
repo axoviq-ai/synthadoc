@@ -1917,8 +1917,13 @@ async def test_orphan_resolver_cli_path_no_candidates(tmp_path):
     ), _patch(
         "synthadoc.agents.workflows.orphan_resolver.tool_search_orphan_candidates",
         new=_AsyncMock(return_value={
+            # No candidates from BM25; no all_page_titles from full_title_scan/contextual
+            # → all 4 strategies exhausted, orphan unresolved
             "candidates": [], "strategy": "title_bm25", "tried_slugs": [],
         }),
+    ), _patch(
+        "synthadoc.agents.workflows.orphan_resolver.tool_read_page_content",
+        new=_AsyncMock(return_value={"slug": "isolated-page", "content": "# Isolated\n"}),
     ), _patch(
         "synthadoc.agents.workflows.orphan_resolver.tool_notify",
         new=_AsyncMock(return_value={"sent": True}),

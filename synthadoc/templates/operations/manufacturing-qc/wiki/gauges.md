@@ -18,15 +18,4 @@ Calibrated measurement equipment register. Each gauge record captures:
 - **Gauge R&R** — date of most recent Gauge Repeatability and Reproducibility study; %GRR result; acceptable (%GRR < 10%) or conditional (%GRR 10–30%)
 - **Out-of-calibration action** — what to do if the gauge is found out of calibration: quarantine parts measured since last cal, notify QE, initiate NCR if suspect parts reached the customer
 
-**How to populate:**
-
-1. Export your calibration management system register:
-   ```
-   synthadoc ingest docs/manufacturing/gauge-register.xlsx -w <wiki>
-   ```
-2. Ingest NIST measurement traceability guidance:
-   ```
-   synthadoc ingest "https://www.nist.gov/metrology" -w <wiki>
-   ```
-
 Cross-link to [[inspection-procedures]] for the procedures that specify which gauge to use, [[control-plans]] for the gauge assignments, and [[nonconformances]] for any NCRs opened due to gauge failures.

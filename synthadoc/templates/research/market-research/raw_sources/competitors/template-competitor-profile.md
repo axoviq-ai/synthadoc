@@ -2,15 +2,14 @@
 
 > **How to use this form**
 >
-> This template follows **Porter's Five Forces competitive analysis framework** + **CI (Competitive Intelligence)
-> standards** -- the foundational framework for analyzing the competitive forces shaping an industry.
+> This template follows the **ESOMAR (European Society for Opinion and Market Research) Professional Standards** -- the global framework for ethical and rigorous competitive intelligence research.
 > If you already have competitive intel in another format, skip this form and ingest your document directly.
 >
-> Reference: [Porter's Five Forces (HBR, 1979)](https://hbr.org/1979/03/how-competitive-forces-shape-strategy)
+> Reference: [ESOMAR Professional Standards](https://www.esomar.org/)
 >
 > 1. Copy this file and rename it (e.g. `acme-corp.md`)
-> 2. Fill in from public sources: website, product pages, job postings, press releases, annual reports, G2/Capterra reviews
-> 3. Run: `synthadoc ingest raw_sources/competitors/acme-corp.md -w <wiki>`
+> 2. Fill in all sections
+> 3. Run: `synthadoc ingest raw_sources/competitors/<competitor>.md -w <wiki>`
 
 ---
 

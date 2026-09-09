@@ -8,7 +8,7 @@ sources: []
 
 # Publications
 
-Lab publications and manuscripts in preparation. Populate by ingesting published papers and manuscript drafts.
+Lab publications and manuscripts in preparation.
 
 Each publication record captures:
 
@@ -18,12 +18,5 @@ Each publication record captures:
 - **Key experiments** — which lab experiments (link to [[experiments]]) supported this paper; which datasets (link to [[raw-data]])
 - **Data availability** — where the data is deposited (GEO, Zenodo, Dryad, etc.) and the accession number
 - **Impact** — citation count (update periodically), Altmetric score, press coverage
-
-**How to populate:**
-
-1. Ingest papers directly from PubMed or bioRxiv:
-   ```
-   synthadoc ingest "https://pubmed.ncbi.nlm.nih.gov/<PMID>/" -w <wiki>
-   ```
 
 Cross-link to [[findings]], [[experiments]], [[raw-data]], and the lab [[researchers]].
