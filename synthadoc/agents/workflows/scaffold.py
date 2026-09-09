@@ -212,11 +212,10 @@ class ScaffoldWorkflow(AgenticWorkflow):
 
         cat_label = "page" if categories_updated == 1 else "pages"
         routing_label = "Yes" if routing_regenerated else "No"
-        # Group stats as one section (they naturally belong together).
-        parts.append(
-            f"Pages updated with category labels: {categories_updated} {cat_label}\n"
-            f"ROUTING.md regenerated: {routing_label}"
-        )
+        # Keep stats as separate `parts` entries so "\n\n".join produces paragraph
+        # breaks between them — a single "\n" within one entry collapses in markdown.
+        parts.append(f"Pages updated with category labels: {categories_updated} {cat_label}")
+        parts.append(f"ROUTING.md regenerated: {routing_label}")
         parts.append(
             "Preservation note: Content above the <!-- synthadoc:scaffold --> "
             "marker in index.md and purpose.md was preserved — user-written "
