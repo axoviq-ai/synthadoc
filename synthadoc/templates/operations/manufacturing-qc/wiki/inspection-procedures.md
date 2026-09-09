@@ -19,11 +19,4 @@ Documented inspection and test procedures used at incoming, in-process, and fina
 - **Disposition of non-conforming parts** — what to do if a characteristic fails (link to [[nonconformances]] process)
 - **Records** — what is recorded, where, and retention period
 
-**How to populate:**
-
-1. Ingest inspection procedure documents:
-   ```
-   synthadoc ingest docs/manufacturing/inspection-procedures/ --batch -w <wiki>
-   ```
-
 Cross-link to [[control-plans]] for the CTQ list that feeds each procedure, [[gauges]] for the measurement equipment, [[process-specifications]] for the specifications being verified, and [[nonconformances]] for the NCR process triggered by failures.

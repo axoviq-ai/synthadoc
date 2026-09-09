@@ -19,11 +19,4 @@ Manufacturing process specifications indexed by product line and operation. Each
 - **Related control plan** — link to the [[control-plans]] document that governs this process
 - **Revision history** — version log with summary of changes and rationale for each revision
 
-**How to populate:**
-
-1. Ingest process specification documents from your document management system:
-   ```
-   synthadoc ingest docs/manufacturing/process-specs/ --batch -w <wiki>
-   ```
-
 Cross-link to [[control-plans]] for the quality control plan that governs the process, [[inspection-procedures]] for the tests that verify CTQs, [[gauges]] for the measurement equipment, and [[nonconformances]] for deviations from spec.

@@ -18,15 +18,4 @@ Inventory policy, safety stock, and replenishment rules by material. Each invent
 - **Order quantity** — standard order quantity or EOQ; minimum order quantity from supplier; lot size multiples
 - **Current inventory performance** — current on-hand quantity; days of supply; stockout events in the last 90 days; excess and obsolete reserve amount
 
-**How to populate:**
-
-1. Export inventory data from your ERP and ingest:
-   ```
-   synthadoc ingest docs/supply-chain/inventory-policy.xlsx -w <wiki>
-   ```
-2. Ingest EOQ and safety stock methodology reference:
-   ```
-   synthadoc ingest "https://www.precoro.com/blog/single-source-vs-sole-source-what-is-the-difference" -w <wiki>
-   ```
-
 Cross-link to [[materials]] for the material profile, [[suppliers]] for the supply lead time, [[procurement-procedures]] for the order approval process, and [[logistics]] for the receiving process.

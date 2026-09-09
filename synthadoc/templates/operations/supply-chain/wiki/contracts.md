@@ -19,11 +19,4 @@ Supply and vendor contracts in the procurement portfolio. Each contract record c
 - **Change-of-control** — assignment rights; whether the agreement continues through supplier M&A
 - **Dispute resolution** — governing law, escalation path, arbitration or litigation clause
 
-**How to populate:**
-
-1. Ingest supply agreements:
-   ```
-   synthadoc ingest docs/supply-chain/contracts/ --batch -w <wiki>
-   ```
-
 Cross-link to [[suppliers]] for the supplier profile, [[materials]] for the parts covered, [[procurement-procedures]] for the approval matrix that governs new contracts, and [[vendor-scorecards]] for the supplier performance data used in contract renewal decisions.

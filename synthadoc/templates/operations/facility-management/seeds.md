@@ -41,30 +41,37 @@ synthadoc ingest "https://www.abs-qe.com/Knowledge/ISO-Standards/ISO-55001-Asset
 
 ## First steps checklist
 
-- [ ] **Ingest your facility asset register** — export from your CMMS or spreadsheet, then:
-  ```
-  synthadoc ingest docs/facility/asset-register.xlsx -w <wiki>
-  ```
-  Or create individual records: copy `raw_sources/assets/template-asset-record.md` for each critical asset and ingest each file.
+- [ ] **Log an asset** -- use our template or bring your own:
+  - Template: copy `raw_sources/assets/template-asset-record.md`, rename it
+    (e.g. `HVAC-042-rooftop-unit-3.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/assets/<asset-id>-<name>.md -w <wiki>
+    ```
+  - Own doc: place your existing asset inventory (spreadsheet, CMMS export, PDF) in `raw_sources/assets/` and ingest it.
   Populates [[assets]].
 
-- [ ] **Create equipment pages** for your 5 most critical assets:
-  ```
-  synthadoc ingest raw_sources/assets/<asset-id>-<name>.md -w <wiki>
-  ```
-  Populates [[equipment]] and [[preventive-maintenance]].
+- [ ] **Create a work order** -- use our template or bring your own:
+  - Template: copy `raw_sources/work-orders/template-work-order.md`, rename it
+    (e.g. `WO-2026-042-hvac-filter-replacement.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/work-orders/<wo-number>-<description>.md -w <wiki>
+    ```
+  - Own doc: place your existing work order in `raw_sources/work-orders/` and ingest it.
+  Populates [[maintenance-schedules]].
 
-- [ ] **Document your PM schedule** for critical equipment:
-  ```
-  synthadoc ingest docs/facility/pm-schedule.xlsx -w <wiki>
-  ```
-  Populates [[preventive-maintenance]].
+- [ ] **Summarize a vendor contract** -- use our template or bring your own:
+  - Template: copy `raw_sources/vendor-contracts/template-vendor-contract-summary.md`, rename it
+    (e.g. `acme-janitorial-2026.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/vendor-contracts/<vendor-name>-<year>.md -w <wiki>
+    ```
+  - Own doc: place your existing vendor contract or summary in `raw_sources/vendor-contracts/` and ingest it.
+  Populates [[vendors]].
 
-- [ ] **Ingest your most recent facility inspection report**:
-  ```
-  synthadoc ingest docs/facility/inspections/<report>.pdf -w <wiki>
-  ```
-  Populates [[safety-inspections]].
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

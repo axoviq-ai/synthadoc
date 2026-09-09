@@ -19,15 +19,4 @@ Quality management standards and certifications applicable to the organization. 
 - **Gap assessment** — known gaps relative to the current standard version; planned remediation
 - **Customer specific requirements** — extensions to the standard required by specific customers (link to [[customer-requirements]])
 
-**How to populate:**
-
-1. Ingest standard summaries and checklists:
-   ```
-   synthadoc ingest "https://www.glocertinternational.com/resources/articles/iso-9001-requirements-overview" -w <wiki>
-   ```
-2. Ingest your quality manual or QMS overview:
-   ```
-   synthadoc ingest docs/manufacturing/quality-manual.pdf -w <wiki>
-   ```
-
 Cross-link to [[customer-requirements]] for customer-specific extensions, [[control-plans]] for how standard requirements are implemented in production, and [[inspection-procedures]] for required testing and measurement activities.

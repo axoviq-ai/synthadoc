@@ -20,15 +20,4 @@ PM schedule for all facility assets. Each PM task page records:
 - **Next due date**: 
 - **Outsourced** — whether the PM is performed in-house or by a vendor (link to [[vendor-contracts]])
 
-**How to populate:**
-
-1. Export your PM schedule from your CMMS and ingest:
-   ```
-   synthadoc ingest docs/facility/pm-schedule.xlsx -w <wiki>
-   ```
-2. Ingest PM best practices references:
-   ```
-   synthadoc ingest "https://cmmssoftware.leantransitionsolutions.com/software-blog/maintenance-scheduling-best-practices" -w <wiki>
-   ```
-
 Cross-link to [[assets]] for the asset register, [[equipment]] for detailed technical specs, [[vendor-contracts]] for outsourced PM services, and [[work-orders]] for reactive maintenance history that may indicate PM gaps.

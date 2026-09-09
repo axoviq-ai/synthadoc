@@ -17,15 +17,4 @@ Nonconformance report (NCR) log with containment, disposition, and corrective ac
 - **Root cause** — the specific underlying cause identified; root cause category (material, process, equipment, human error, design, supplier); analysis method used (5-Why, 8D, fishbone)
 - **Corrective actions** — actions taken to prevent recurrence; owner and due date for each action; verification of effectiveness date and method
 
-**How to populate:**
-
-1. Copy `raw_sources/nonconformances/template-ncr.md`, fill in all fields for each nonconformance event, then:
-   ```
-   synthadoc ingest raw_sources/nonconformances/NCR-<YYYY>-<NNN>-<keyword>.md -w <wiki>
-   ```
-2. Ingest NCR logs or 8D reports from your QMS:
-   ```
-   synthadoc ingest docs/manufacturing/ncr-log.xlsx -w <wiki>
-   ```
-
 Cross-link to [[defect-tracker]] for the aggregate defect data, [[control-plans]] for the control that should have prevented the nonconformance, [[inspection-procedures]] for the inspection that detected it, and [[gauges]] if a gauge failure contributed to the event.

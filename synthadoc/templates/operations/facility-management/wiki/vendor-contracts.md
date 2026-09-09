@@ -19,11 +19,4 @@ Facility service contracts with external vendors. Each contract record captures:
 - **Key contacts** — vendor account manager and emergency after-hours contact
 - **Compliance certificates** — whether the vendor must provide certifications (elevator inspection, refrigerant handling certification, pest control license)
 
-**How to populate:**
-
-1. Ingest vendor service agreements:
-   ```
-   synthadoc ingest docs/facility/contracts/ --batch -w <wiki>
-   ```
-
 Cross-link to [[assets]] for the assets covered by each contract, [[preventive-maintenance]] for PM tasks outsourced to each vendor, and [[safety-inspections]] for inspections conducted by contracted inspectors.

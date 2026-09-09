@@ -19,15 +19,4 @@ Inbound and outbound logistics processes, carrier network, and transportation ma
 - **KPIs** — on-time delivery rate; freight cost per unit; damage rate; customs clearance cycle time; target and actual for each
 - **Escalation** — late shipment escalation path; carrier claim process
 
-**How to populate:**
-
-1. Ingest freight policies and logistics SOPs:
-   ```
-   synthadoc ingest docs/supply-chain/logistics/ --batch -w <wiki>
-   ```
-2. Ingest US trade and Incoterms reference:
-   ```
-   synthadoc ingest "https://www.trade.gov/" -w <wiki>
-   ```
-
 Cross-link to [[freight-contracts]] for the carrier agreements, [[suppliers]] for supplier-managed inbound logistics, [[inventory-management]] for the receiving and stocking process, and [[procurement-procedures]] for the purchase order process that triggers shipments.

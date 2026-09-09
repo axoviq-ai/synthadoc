@@ -8,7 +8,7 @@
 > This template follows the **ISO 9001:2015 — Quality Management Systems** -- the globally recognized standard for quality management, requiring systematic nonconformance control and corrective action under Clause 10.2.
 > If you already have NCR records in another format (Excel log, QMS export, 8D report), skip this form and ingest your document directly.
 >
-> Reference: [ISO 9001:2015](https://www.iso.org/iso-9001-quality-management.html)
+> Reference: [ISO 9001:2015](https://www.iso.org/standard/62085.html)
 >
 > 1. Copy this file and rename it (e.g. `NCR-2026-042-weld-crack.md`)
 > 2. Fill in all sections at time of detection; complete Root Cause and Corrective Actions before closure
