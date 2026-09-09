@@ -1301,16 +1301,19 @@ def test_delete_history_prunes_graph_node(tmp_wiki):
         resp = client.delete("/pages/live-lint-snap-test/history")
     assert resp.status_code == 200
 
-    async def _check_pruned():
-        audit = AuditDB(tmp_wiki / ".synthadoc" / "audit.db")
-        await audit.init()
-        graph = await audit.read_graph()
-        if graph is None:
-            return  # all nodes gone — also correct
-        assert not any(n["slug"] == "live-lint-snap-test" for n in graph["nodes"]), \
-            "graph node must be removed by DELETE /pages/{slug}/history"
-
-    asyncio.run(_check_pruned())
+    # Verify the graph node was pruned.  Use plain sqlite3 rather than asyncio.run()
+    # to avoid the anyio-portal / event-loop deadlock on Windows CI: after
+    # TestClient.__exit__, the anyio blocking-portal thread may still be alive when
+    # asyncio.run() starts a second event loop in the main thread, causing a hang.
+    # (Same pattern as commit 34bbdef — test_lifecycle_snapshots fix.)
+    import sqlite3 as _sqlite3
+    db_path = str(tmp_wiki / ".synthadoc" / "audit.db")
+    with _sqlite3.connect(db_path) as _conn:
+        _rows = _conn.execute(
+            "SELECT slug FROM graph_nodes WHERE slug = ?",
+            ("live-lint-snap-test",),
+        ).fetchall()
+    assert not _rows, "graph node must be removed by DELETE /pages/{slug}/history"
 
 
 # ---------------------------------------------------------------------------
