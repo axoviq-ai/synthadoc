@@ -7,6 +7,8 @@ Copy your lease documents into `raw_sources/leases/`, then:
 ```
 synthadoc ingest raw_sources/leases/ --batch -w <wiki>
 ```
+*No lease abstracts yet? Use the starter template:*
+`raw_sources/leases/template-lease-abstract.md` — copy, rename, fill in, then ingest.
 
 **Cornell LII landlord-tenant law overview (free)**
 ```

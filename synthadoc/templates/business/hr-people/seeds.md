@@ -7,12 +7,15 @@ Copy your handbook into `raw_sources/handbooks/`, then:
 ```
 synthadoc ingest raw_sources/handbooks/ --batch -w <wiki>
 ```
+*Don't have a handbook yet? Use the starter template:*
+`raw_sources/handbooks/template-employee-handbook-section.md` — copy, rename, fill in, then ingest.
 
 **Your current HR policies**
 Copy your policy documents into `raw_sources/handbooks/`, then:
 ```
 synthadoc ingest raw_sources/handbooks/ --batch -w <wiki>
 ```
+*No formal policies written yet? The same template covers individual policy sections.*
 
 ## Recommended web searches
 

@@ -7,12 +7,16 @@ Copy your procedure documents into `raw_sources/procedures/`, then:
 ```
 synthadoc ingest raw_sources/procedures/ --batch -w <wiki>
 ```
+*Don't have procedures yet? Use the starter template:*
+`raw_sources/procedures/template-sop.md` — copy, rename, fill in, then ingest.
 
 **Employee handbook or onboarding guide**
 Copy your handbook or policy documents into `raw_sources/handbooks/`, then:
 ```
 synthadoc ingest raw_sources/handbooks/ --batch -w <wiki>
 ```
+*Don't have a handbook yet? Use the starter template:*
+`raw_sources/handbooks/template-employee-handbook-section.md` — copy, rename, fill in, then ingest.
 
 ## Recommended web searches
 

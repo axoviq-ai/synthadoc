@@ -12,6 +12,8 @@ Copy your entitlement and permit documents into `raw_sources/permits/`, then:
 ```
 synthadoc ingest raw_sources/permits/ --batch -w <wiki>
 ```
+*No permit log yet? Use the starter template:*
+`raw_sources/permits/template-permit-log.md` — copy, rename, fill in, then ingest.
 
 ## Recommended web searches
 
