@@ -350,34 +350,41 @@ class BrokenWikilinksWorkflow(AgenticWorkflow):
             if r.get("status") == "success"
         )
 
-        parts: list[str] = ["**Broken Wikilinks — Complete**\n"]
-        parts.append(f"{scanned} active page(s) scanned.")
-        parts.append(
-            f"{total_broken} broken link(s) found; "
-            f"{total_changes} fix(es) applied across {len(decisions)} page(s)."
+        # Each entry in `parts` is one markdown section; join with "\n\n" so
+        # the web UI renderer inserts a paragraph break between sections.
+        parts: list[str] = ["**Broken Wikilinks — Complete**"]
+
+        # Stats + lint as one grouped section
+        lint_line = (
+            f"{'✅' if lint_ok else '⚠'} Lint: {lint_status}"
+            + (f" — {lint_result['message']}" if lint_result.get("message") else "")
         )
         parts.append(
-            f"\n{'✅' if lint_ok else '⚠'} Lint: {lint_status}"
-            + (f" — {lint_result['message']}" if lint_result.get("message") else "")
+            f"{scanned} active page(s) scanned.  \n"
+            f"{total_broken} broken link(s) found; "
+            f"{total_changes} fix(es) applied across {len(decisions)} page(s).  \n"
+            f"{lint_line}"
         )
 
         # Per-page results — include all pages, even where changes==0 (no-ops)
-        parts.append("\nPer-page results:")
+        per_page_lines = ["**Per-page results:**"]
         for item in decisions:
             slug = item["slug"]
             r = fix_results.get(slug, {})
             if r.get("status") == "success":
-                parts.append(f"  • {slug}: {r.get('changes', 0)} fix(es)")
+                per_page_lines.append(f"  - {slug}: {r.get('changes', 0)} fix(es)")
             else:
-                parts.append(f"  • {slug}: ⚠ error — {r.get('error', 'unknown')}")
+                per_page_lines.append(f"  - {slug}: ⚠ error — {r.get('error', 'unknown')}")
+        parts.append("\n".join(per_page_lines))
 
-        parts.append("\nPage states after fix:")
+        states_lines = ["**Page states after fix:**"]
         for slug in attempted_slugs:
             state = state_map.get(slug, "unknown")
-            parts.append(f"  {_ICON.get(state, '○')} {slug}: {state}")
+            states_lines.append(f"  {_ICON.get(state, '○')} {slug}: {state}")
+        parts.append("\n".join(states_lines))
 
-        parts.append("\nNote: Stale/draft pages were excluded from the scan.")
+        parts.append("Note: Stale/draft pages were excluded from the scan.")
 
-        summary = "\n".join(parts)
+        summary = "\n\n".join(parts)
         yield {"event": "token", "data": {"text": summary}}
         yield {"event": "final_text", "data": {"text": summary}}

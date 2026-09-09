@@ -291,13 +291,17 @@ class IngestLintWorkflow(AgenticWorkflow):
         lint_status = lint_result.get("status", "unknown")
         lint_ok = lint_status == "success"
 
+        # Each entry in `parts` is one markdown section; join with "\n\n" so
+        # the web UI renderer inserts a paragraph break between sections.
         mode_label = f"slug={page_slug}" if page_slug else "all stale pages"
-        parts: list[str] = [f"**Ingest & Lint — Complete** ({mode_label})\n"]
+        parts: list[str] = [f"**Ingest & Lint — Complete** ({mode_label})"]
+
         parts.append(
             f"{'✅' if lint_ok else '⚠'} Lint: {lint_status}"
             + (f" — {lint_result['message']}" if lint_result.get("message") else "")
         )
-        parts.append("\n**Page states after re-ingest:**")
+
+        states_lines = ["**Page states after re-ingest:**"]
         for slug in attempted_slugs:
             result = ingest_results.get(slug, {})
             # tool_ingest_source may return {"error": msg} (validation/file-not-found)
@@ -307,16 +311,13 @@ class IngestLintWorkflow(AgenticWorkflow):
             state = state_map.get(slug, "unknown")
             icon = _ICON.get(state, "○")
             if ingest_status == "skipped":
-                parts.append(f"  ○ {slug} — skipped (no source path)")
+                states_lines.append(f"  ○ {slug} — skipped (no source path)")
             elif result.get("error"):
-                parts.append(
-                    f"  ✗ {slug}: error — {result['error']}"
-                )
+                states_lines.append(f"  ✗ {slug}: error — {result['error']}")
             else:
-                parts.append(
-                    f"  {icon} {slug}: ingest={ingest_status}, state={state}"
-                )
+                states_lines.append(f"  {icon} {slug}: ingest={ingest_status}, state={state}")
+        parts.append("\n".join(states_lines))
 
-        summary = "\n".join(parts)
+        summary = "\n\n".join(parts)
         yield {"event": "token", "data": {"text": summary}}
         yield {"event": "final_text", "data": {"text": summary}}

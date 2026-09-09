@@ -419,27 +419,32 @@ class OrphanResolverWorkflow(AgenticWorkflow):
                     break
 
         # ── 4. Final summary (mirrors STEP 5) ────────────────────────────────
-        parts: list[str] = ["**Orphan Resolver — Complete**\n"]
+        # Each entry in `parts` is one markdown section; join with "\n\n" so
+        # the web UI renderer inserts a paragraph break between sections.
+        parts: list[str] = ["**Orphan Resolver — Complete**"]
 
         if resolved_list:
-            parts.append(f"✅ Resolved ({len(resolved_list)}):")
+            resolved_lines = [f"✅ Resolved ({len(resolved_list)}):"]
             for slug, linked_by in resolved_list:
                 linkers = ", ".join(linked_by) if linked_by else "unknown"
-                parts.append(f"  - {slug} (linked from {linkers})")
+                resolved_lines.append(f"  - {slug} (linked from {linkers})")
+            parts.append("\n".join(resolved_lines))
 
         if unresolved_list:
-            parts.append(f"\n⚠ Unresolved ({len(unresolved_list)}):")
+            unresolved_lines = [f"⚠ Unresolved ({len(unresolved_list)}):"]
             for slug in unresolved_list:
-                parts.append(
+                unresolved_lines.append(
                     f"  - {slug} (4 strategies exhausted — see notices above)"
                 )
+            parts.append("\n".join(unresolved_lines))
 
         if skipped_list:
-            parts.append(f"\n⏭ Skipped ({len(skipped_list)}):")
+            skipped_lines = [f"⏭ Skipped ({len(skipped_list)}):"]
             for slug in skipped_list:
-                parts.append(f"  - {slug}")
+                skipped_lines.append(f"  - {slug}")
+            parts.append("\n".join(skipped_lines))
 
-        summary = "\n".join(parts)
+        summary = "\n\n".join(parts)
         yield {"event": "token", "data": {"text": summary}}
         yield {"event": "final_text", "data": {"text": summary}}
 

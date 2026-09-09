@@ -197,27 +197,32 @@ class ScaffoldWorkflow(AgenticWorkflow):
         categories_updated: int = result.get("categories_updated", 0)
         routing_regenerated: bool = result.get("routing_regenerated", False)
 
-        parts: list[str] = [f"**Scaffold — Complete** (domain: {domain})\n"]
+        # Each entry in `parts` is one markdown section; sections are separated
+        # by "\n\n" so the web UI renderer inserts a paragraph break between them.
+        # Items within a section use "\n" (internal list lines stay grouped).
+        parts: list[str] = [f"**Scaffold — Complete** (domain: {domain})"]
         parts.append(f"Domain: {domain}")
 
         if files_to_overwrite:
-            file_lines = "\n".join(f"  • {f}" for f in files_to_overwrite)
-            parts.append(f"Files written:\n{file_lines}")
+            # Blank line between label and list so markdown renders the list correctly.
+            file_items = "\n".join(f"- {f}" for f in files_to_overwrite)
+            parts.append(f"**Files written:**\n\n{file_items}")
         else:
             parts.append("Files written: (none)")
 
         cat_label = "page" if categories_updated == 1 else "pages"
-        parts.append(
-            f"Pages updated with category labels: {categories_updated} {cat_label}"
-        )
         routing_label = "Yes" if routing_regenerated else "No"
-        parts.append(f"ROUTING.md regenerated: {routing_label}")
+        # Group stats as one section (they naturally belong together).
         parts.append(
-            "\nPreservation note: Content above the <!-- synthadoc:scaffold --> "
+            f"Pages updated with category labels: {categories_updated} {cat_label}\n"
+            f"ROUTING.md regenerated: {routing_label}"
+        )
+        parts.append(
+            "Preservation note: Content above the <!-- synthadoc:scaffold --> "
             "marker in index.md and purpose.md was preserved — user-written "
             "sections above that line were not overwritten."
         )
 
-        text = "\n".join(parts)
+        text = "\n\n".join(parts)
         yield {"event": "token", "data": {"text": text}}
         yield {"event": "final_text", "data": {"text": text}}

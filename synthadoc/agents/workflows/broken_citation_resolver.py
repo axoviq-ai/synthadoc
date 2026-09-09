@@ -368,21 +368,25 @@ class BrokenCitationResolverWorkflow(AgenticWorkflow):
         # Call get_wiki_status first — same requirement as the multi-turn path.
         wiki_status = await tool_get_wiki_status(ctx)
 
-        parts: list[str] = ["**Broken Citation Resolver — Complete**\n"]
+        # Each entry in `parts` is one markdown section; join with "\n\n" so
+        # the web UI renderer inserts a paragraph break between sections.
+        parts: list[str] = ["**Broken Citation Resolver — Complete**"]
 
         if fixed:
-            parts.append(f"✅ Fixed ({len(fixed)} page(s)):")
+            fixed_lines = [f"✅ Fixed ({len(fixed)} page(s)):"]
             for slug, fixes in fixed:
-                parts.append(f"  - {slug}:")
+                fixed_lines.append(f"  - {slug}:")
                 for fix in fixes:
                     old = fix["old_citation"]
                     new = fix["new_citation"]
-                    parts.append(f"      {old}  →  {new if new else 'removed'}")
+                    fixed_lines.append(f"    - `{old}` → `{new if new else 'removed'}`")
+            parts.append("\n".join(fixed_lines))
 
         if failed:
-            parts.append(f"\n⚠ Failed ({len(failed)} page(s)):")
+            failed_lines = [f"⚠ Failed ({len(failed)} page(s)):"]
             for slug, err in failed:
-                parts.append(f"  - {slug}: {err}")
+                failed_lines.append(f"  - {slug}: {err}")
+            parts.append("\n".join(failed_lines))
 
         if not fixed and not failed:
             parts.append("No changes were applied.")
@@ -390,8 +394,8 @@ class BrokenCitationResolverWorkflow(AgenticWorkflow):
         # Wiki status counts — same footer as the multi-turn path's STEP 5 summary.
         status_str = ", ".join(f"{k}: {v}" for k, v in wiki_status.items()
                                if k not in ("tool", "message"))
-        parts.append(f"\nWiki: {status_str}")
+        parts.append(f"Wiki: {status_str}")
 
-        summary = "\n".join(parts)
+        summary = "\n\n".join(parts)
         yield {"event": "token", "data": {"text": summary}}
         yield {"event": "final_text", "data": {"text": summary}}
