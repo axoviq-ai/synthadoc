@@ -398,9 +398,13 @@ class OrphanResolverWorkflow(AgenticWorkflow):
                     await tool_notify(
                         ctx,
                         message=(
-                            f"⚠ Could not auto-resolve orphan '{orphan_slug}' via CLI provider path "
-                            f"(BM25 candidates only, no full-title or contextual strategies). "
-                            f"Re-run orphan-resolver with provider=anthropic for the full 4-strategy retry."
+                            f"⚠ Could not auto-resolve orphan '{orphan_slug}' — "
+                            f"no suitable candidate pages found via BM25 search.\n\n"
+                            f"Next steps:\n"
+                            f"  1. Re-run orphan-resolver — a fresh attempt may find different candidates.\n"
+                            f"  2. Manually add [[{orphan_slug}]] to a related page where it fits naturally.\n"
+                            f"  3. If this page is standalone and no longer relevant, archive it:\n"
+                            f"     synthadoc lifecycle transition --slug {orphan_slug} --state archived"
                         ),
                         level="warning",
                     )
@@ -432,8 +436,7 @@ class OrphanResolverWorkflow(AgenticWorkflow):
             parts.append(f"\n⚠ Unresolved ({len(unresolved_list)}):")
             for slug in unresolved_list:
                 parts.append(
-                    f"  - {slug} (CLI path — BM25 only; "
-                    f"run provider=anthropic for full 4-strategy retry)"
+                    f"  - {slug} (no BM25 candidates found — manually link or archive)"
                 )
 
         if skipped_list:
