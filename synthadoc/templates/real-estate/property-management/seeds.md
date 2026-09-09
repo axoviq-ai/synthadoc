@@ -41,29 +41,37 @@ synthadoc ingest "https://happy.co/resources/work-order-management" -w <wiki>
 
 ## First steps checklist
 
-- [ ] **Abstract your leases** — for each tenant, copy `raw_sources/leases/template-lease-abstract.md`, rename it, fill in the lease terms, then:
-  ```
-  synthadoc ingest raw_sources/leases/<tenant-suite>.md -w <wiki>
-  ```
+- [ ] **Document a lease** -- use our template or bring your own:
+  - Template: copy `raw_sources/leases/template-lease-abstract.md`, rename it
+    (e.g. `acme-corp-suite-200.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/leases/<tenant-suite>.md -w <wiki>
+    ```
+  - Own doc: place your existing lease abstract in `raw_sources/leases/` and ingest it.
   Populates [[leases]] and [[tenants]].
 
-- [ ] **Log open maintenance work orders** — for each open issue, copy `raw_sources/maintenance/template-work-order.md`, rename it, fill in the details, then:
-  ```
-  synthadoc ingest raw_sources/maintenance/<wo-number>.md -w <wiki>
-  ```
-  Populates [[work-orders]].
+- [ ] **Log a maintenance request** -- use our template or bring your own:
+  - Template: copy `raw_sources/maintenance/template-work-order.md`, rename it
+    (e.g. `wo-2026-0042-unit-301-hvac.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/maintenance/<wo-number>.md -w <wiki>
+    ```
+  - Own doc: place your existing work order in `raw_sources/maintenance/` and ingest it.
+  Populates [[maintenance-requests]].
 
-- [ ] **Ingest your current rent roll** — export from your property management system and ingest:
-  ```
-  synthadoc ingest docs/rent-rolls/<property>-<YYYY-MM>.xlsx -w <wiki>
-  ```
-  Populates [[rent-rolls]].
+- [ ] **Complete a property inspection** -- use our template or bring your own:
+  - Template: copy `raw_sources/inspections/template-inspection-report.md`, rename it
+    (e.g. `maple-apts-unit-204-move-in-2026-09-01.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/inspections/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing inspection form in `raw_sources/inspections/` and ingest it.
+  Populates [[maintenance-requests]] with condition findings.
 
-- [ ] **Ingest compliance certificates** — upload inspection reports, CO, fire alarm test, elevator certificate:
-  ```
-  synthadoc ingest docs/compliance/ --batch -w <wiki>
-  ```
-  Populates [[property-compliance]].
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

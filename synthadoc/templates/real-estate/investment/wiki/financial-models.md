@@ -8,7 +8,7 @@ sources: []
 
 # Financial Models
 
-Property-level pro forma models for acquisition underwriting and ongoing performance tracking. Populate by ingesting completed financial model forms from `raw_sources/financial-models/`.
+Property-level pro forma models for acquisition underwriting and ongoing performance tracking.
 
 Each financial model page records:
 
@@ -19,12 +19,5 @@ Each financial model page records:
 - **Return summary** — IRR, equity multiple (EM), average cash-on-cash return, total distributions
 - **Sensitivity analysis** — IRR across exit cap rate and rent growth scenarios
 - **Actual vs. underwriting** — annual variance tracking once the property is operating
-
-**How to build a financial model page:**
-
-1. Copy `raw_sources/financial-models/template-financial-model.md` and rename it
-2. Fill in assumptions and paste year-by-year results from your spreadsheet
-3. Run `synthadoc ingest raw_sources/financial-models/<your-model>.md -w <wiki>`
-4. Re-ingest annually or after major assumption changes
 
 Cross-link model pages to [[properties]], [[deal-memos]], and [[debt-financing]].

@@ -2,12 +2,14 @@
 
 > **How to use this form**
 >
-> 1. Copy this file and rename it (e.g. `acme-corp-suite-200.md`)
-> 2. Fill in the lease terms from the executed lease agreement
-> 3. Run: `synthadoc ingest raw_sources/leases/acme-corp-suite-200.md -w <wiki>`
+> This template follows the **IREM (Institute of Real Estate Management) Property Management Best Practices** -- the standard framework for abstracting lease terms into a searchable wiki.
+> If you already have a lease abstract in another format, skip this form and ingest your document directly.
 >
-> Re-ingest whenever the lease is amended. The executed lease document remains
-> the legal source of record — this abstract is for quick search and cross-linking.
+> Reference: [IREM](https://www.irem.org/)
+>
+> 1. Copy this file and rename it (e.g. `acme-corp-suite-200.md`)
+> 2. Fill in all sections from the executed lease agreement
+> 3. Run: `synthadoc ingest raw_sources/leases/<tenant-suite>.md -w <wiki>`
 
 ---
 

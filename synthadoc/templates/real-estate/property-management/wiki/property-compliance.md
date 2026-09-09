@@ -8,7 +8,7 @@ sources: []
 
 # Property Compliance
 
-Regulatory compliance obligations for all managed properties. Populate by ingesting inspection reports, certificates of occupancy, and local code compliance records.
+Regulatory compliance obligations for all managed properties.
 
 Each compliance record captures:
 
@@ -20,12 +20,5 @@ Each compliance record captures:
 - **ADA / accessibility** — path of travel compliance status, accommodation request history, pending modifications
 - **Landlord-tenant law compliance** — required disclosures by jurisdiction, notice requirements for entry, habitability repair timeline obligations, rent control applicability
 - **Inspection calendar** — all required inspections with due dates and current status
-
-**How to populate:**
-
-1. Ingest inspection reports and certificates:
-   ```
-   synthadoc ingest docs/compliance/<property>/ --batch -w <wiki>
-   ```
 
 Cross-link to [[leases]], [[tenants]], [[work-orders]], and [[vendors]].

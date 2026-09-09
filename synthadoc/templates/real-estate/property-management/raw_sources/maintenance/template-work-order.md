@@ -2,12 +2,14 @@
 
 > **How to use this form**
 >
-> 1. Copy this file and rename it (e.g. `wo-2026-0042-unit-301-hvac.md`)
-> 2. Fill in the work order details when the issue is reported
-> 3. Run: `synthadoc ingest raw_sources/maintenance/wo-2026-0042-unit-301-hvac.md -w <wiki>`
+> This template follows the **IREM (Institute of Real Estate Management) Property Management Best Practices** -- the standard framework for logging and tracking maintenance work orders.
+> If you already have work orders in another format, skip this form and ingest your document directly.
 >
-> Re-ingest when the work order status changes or at completion.
-> Your property management system (AppFolio, Buildium, etc.) remains the system of record.
+> Reference: [IREM](https://www.irem.org/)
+>
+> 1. Copy this file and rename it (e.g. `wo-2026-0042-unit-301-hvac.md`)
+> 2. Fill in all sections when the issue is reported
+> 3. Run: `synthadoc ingest raw_sources/maintenance/<wo-number>.md -w <wiki>`
 
 ---
 
