@@ -8,7 +8,7 @@ sources: []
 
 # Literature Review
 
-Organized synthesis of the existing literature by research question and theme. Populate by ingesting survey papers and synthesizing [[papers]] entries.
+Organized synthesis of the existing literature by research question and theme.
 
 Each literature review record captures:
 
@@ -19,12 +19,5 @@ Each literature review record captures:
 - **Methodological landscape** — most common methods used in the field; their strengths and limitations; emerging methods
 - **Gaps and opportunities** — what questions remain unanswered; where your research fits
 - **Seminal works** — 3–5 papers that every researcher in the area must read; why they are foundational
-
-**How to populate:**
-
-1. Ingest survey papers and your synthesized notes:
-   ```
-   synthadoc ingest "https://arxiv.org/abs/<survey-paper>" -w <wiki>
-   ```
 
 Cross-link to [[papers]], [[hypotheses]], and [[methodology]].

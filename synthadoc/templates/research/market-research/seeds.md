@@ -25,30 +25,37 @@ to ingest beyond the curated list below -- browse results and pick pages relevan
 
 ## First steps checklist
 
-- [ ] **Ingest your most recent industry report**:
-  ```
-  synthadoc ingest <path/to/industry-report.pdf> -w <wiki>
-  ```
-  Populates [[market-overview]] and [[market-sizing]].
+- [ ] **Profile a competitor** -- use our template or bring your own:
+  - Template: copy `raw_sources/competitors/template-competitor-profile.md`, rename it
+    (e.g. `acme-corp.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/competitors/<competitor>.md -w <wiki>
+    ```
+  - Own doc: place your existing competitive analysis in `raw_sources/competitors/` and ingest it.
+  Populates [[competitors]] and [[market-sizing]].
 
-- [ ] **Build competitor profiles** — for each top competitor, copy `raw_sources/competitors/template-competitor-profile.md`, fill it in, then:
-  ```
-  synthadoc ingest raw_sources/competitors/<competitor>.md -w <wiki>
-  ```
-  Or ingest their website directly: `synthadoc ingest "https://www.<competitor>.com" -w <wiki>`
-  Populates [[competitor-profiles]] and [[competitive-landscape]].
+- [ ] **Design a survey** -- use our template or bring your own:
+  - Template: copy `raw_sources/surveys/template-survey-design.md`, rename it
+    (e.g. `q4-2026-customer-survey.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/surveys/<survey-name>.md -w <wiki>
+    ```
+  - Own doc: place your existing survey documentation in `raw_sources/surveys/` and ingest it.
+  Populates [[survey-data]] and [[customer-segments]].
 
-- [ ] **Document your primary customer segment**:
-  ```
-  synthadoc ingest docs/customer-segments/ --batch -w <wiki>
-  ```
-  Populates [[consumer-segments]] and [[customer-insights]].
+- [ ] **Build a market sizing model** -- use our template or bring your own:
+  - Template: copy `raw_sources/reports/template-market-sizing.md`, rename it
+    (e.g. `saas-us-market-sizing-2026.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/reports/<market-name>-sizing.md -w <wiki>
+    ```
+  - Own doc: place your existing market analysis in `raw_sources/reports/` and ingest it.
+  Populates [[market-sizing]] and [[trends]].
 
-- [ ] **Ingest survey data**:
-  ```
-  synthadoc ingest docs/surveys/<survey>-topline.pdf -w <wiki>
-  ```
-  Populates [[surveys]] and [[research-reports]].
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

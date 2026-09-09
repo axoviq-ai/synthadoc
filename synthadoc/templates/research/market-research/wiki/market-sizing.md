@@ -8,7 +8,7 @@ sources: []
 
 # Market Sizing
 
-Bottom-up and top-down market size calculations. Populate by ingesting sizing models and analyst data.
+Bottom-up and top-down market size calculations.
 
 Each market sizing record captures:
 
@@ -19,12 +19,5 @@ Each market sizing record captures:
 - **TAM / SAM / SOM** — definitions in context of your business, dollar values, confidence level (High / Medium / Low)
 - **Growth rate** — historical CAGR from credible source, forecast CAGR with source and scenario range
 - **Cross-check** — public company revenue data, industry association data, or job posting count used to validate
-
-**How to populate:**
-
-1. Ingest analyst reports and sizing data:
-   ```
-   synthadoc ingest <path/to/market-sizing-model.xlsx> -w <wiki>
-   ```
 
 Cross-link to [[market-overview]], [[competitive-landscape]], and [[consumer-segments]].

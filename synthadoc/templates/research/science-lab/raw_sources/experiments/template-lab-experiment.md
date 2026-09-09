@@ -2,15 +2,14 @@
 
 > **How to use this form**
 >
-> This template follows **Good Laboratory Practice (GLP) -- 21 CFR Part 58 (FDA)** -- the federal standard
-> for ensuring data integrity and traceability in non-clinical laboratory studies.
+> This template follows the **ISO/IEC 17025:2017 General Requirements for Competence of Testing and Calibration Laboratories** -- the international standard for data integrity and traceability in laboratory studies.
 > If you already have lab notebook entries in another format, skip this form and ingest your document directly.
 >
-> Reference: [FDA GLP Regulations (21 CFR Part 58)](https://www.fda.gov/science-research/good-laboratory-practices-glp)
+> Reference: [ISO/IEC 17025:2017](https://www.iso.org/standard/66912.html)
 >
 > 1. Copy this file and rename it (e.g. `exp-0042-pcr-optimization-annealing.md`)
-> 2. Fill in before the experiment; complete results section after
-> 3. Run: `synthadoc ingest raw_sources/experiments/exp-0042-pcr-optimization-annealing.md -w <wiki>`
+> 2. Fill in all sections
+> 3. Run: `synthadoc ingest raw_sources/experiments/<experiment>.md -w <wiki>`
 
 ---
 

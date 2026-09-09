@@ -8,7 +8,7 @@ sources: []
 
 # Researchers
 
-Research team and key collaborator directory. Populate by ingesting lab member profiles and collaboration agreements.
+Research team and key collaborator directory.
 
 Each researcher record captures:
 
@@ -17,12 +17,5 @@ Each researcher record captures:
 - **Contributions to this lab's work** — papers co-authored (link to [[papers]]), datasets collected, protocols developed
 - **Responsibilities** — what this person leads or contributes to; mentees
 - **Status** — current / former / external collaborator; expected duration for students/postdocs
-
-**How to populate:**
-
-1. Ingest lab member profiles or CV pages:
-   ```
-   synthadoc ingest "https://<institution>/faculty/<pi>" -w <wiki>
-   ```
 
 Cross-link to [[papers]], [[methodology]], and [[findings]].
