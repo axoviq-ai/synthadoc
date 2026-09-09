@@ -93,7 +93,7 @@ def install_cmd(
     name: str = typer.Argument(help="Name for the new wiki"),
     target: str = typer.Option(..., "--target", "-t", help="Parent directory to install into"),
     demo: bool = typer.Option(False, "--demo", "-d", help="Install from a demo template matching <name>"),
-    domain: str = typer.Option("General", "--domain", help="Knowledge domain (fresh wikis only)"),
+    domain: Optional[str] = typer.Option(None, "--domain", help="Knowledge domain (default: derived from --template, or 'General')"),
     port: Optional[int] = typer.Option(None, "--port", help="Server port (default: auto-detect from 7070)"),
     template: Optional[str] = typer.Option(
         None,
@@ -141,6 +141,20 @@ def install_cmd(
             "--demo and --template cannot be used together.",
             "Use --demo for built-in demo wikis, or --template for a domain template.",
         )
+
+    # -- Domain resolution --------------------------------------------------------
+    # When --template is given and --domain is not explicitly provided, derive the
+    # domain display name from the template slug so config.toml gets a meaningful
+    # value instead of the generic "General" default.
+    # e.g. "education/corporate-training" → "Corporate Training"
+    #      "finance/investment"           → "Investment"
+    # An explicit --domain always wins.
+    if domain is None:
+        if template:
+            slug = template.split("/")[-1]  # last path component
+            domain = slug.replace("-", " ").title()
+        else:
+            domain = "General"
 
     # Validate template ref before creating any directories - an invalid ref must
     # not leave an orphaned unregistered directory on disk.

@@ -730,10 +730,12 @@ async def tool_run_scaffold(ctx: "WorkflowContext", domain: str) -> dict:
     # is informative (mirrors tool_get_scaffold_preview logic).
     routing_exists = (ctx.wiki_root / "ROUTING.md").exists()
     files = scaffold_output_paths(ctx.wiki_root, include_routing=routing_exists)
-    file_lines = "\n".join(f"  • {p}" for p in files)
+    # Use markdown list syntax so the confirm panel renders each file on its
+    # own line (bare "• item\n" collapses to a single paragraph in markdown).
+    file_items = "\n".join(f"- {p}" for p in files)
     confirm_message = (
         f"Scaffold will overwrite the following files for domain **{domain}**:\n\n"
-        f"{file_lines}\n\n"
+        f"{file_items}\n\n"
         "User-written content above the `<!-- synthadoc:scaffold -->` marker "
         "in `index.md` and `purpose.md` is preserved."
     )

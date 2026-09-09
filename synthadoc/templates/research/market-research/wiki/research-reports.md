@@ -8,7 +8,7 @@ sources: []
 
 # Research Reports
 
-Library of market research reports from analysts, industry associations, and internal studies. Populate by ingesting report documents and summaries.
+Library of market research reports from analysts, industry associations, and internal studies.
 
 Each report record captures:
 
@@ -18,12 +18,5 @@ Each report record captures:
 - **Data highlights** — specific statistics, market sizes, growth rates, or customer data from the report
 - **Methodology** — how the data was collected (survey n, interview n, secondary research), limitations
 - **How it applies** — what decisions or analyses this report informs
-
-**How to populate:**
-
-1. Ingest analyst reports:
-   ```
-   synthadoc ingest <path/to/analyst-report.pdf> -w <wiki>
-   ```
 
 Cross-link to [[market-overview]], [[competitive-landscape]], [[market-sizing]], and [[consumer-segments]].

@@ -8,7 +8,7 @@ sources: []
 
 # Reagents
 
-Reagent and chemical inventory with safety and handling information. Populate by ingesting chemical inventory records and SDS sheets.
+Reagent and chemical inventory with safety and handling information.
 
 Each reagent record captures:
 
@@ -18,12 +18,5 @@ Each reagent record captures:
 - **Safety** — GHS hazard pictograms, hazard statements, required PPE (gloves/goggles/fume hood), waste disposal category
 - **SDS location** — path to Safety Data Sheet; SDS revision date
 - **Usage log** — experiments that have used this reagent (link to [[experiments]]), lot numbers used per experiment for reproducibility tracking
-
-**How to populate:**
-
-1. Ingest your chemical inventory or SDS records:
-   ```
-   synthadoc ingest docs/reagents/ --batch -w <wiki>
-   ```
 
 Cross-link to [[protocols]], [[experiments]], and [[standard-operating-procedures]].

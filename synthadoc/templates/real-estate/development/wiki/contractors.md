@@ -8,7 +8,7 @@ sources: []
 
 # Contractors
 
-General contractor and subcontractor profiles for all development projects. Populate by ingesting contractor qualification packages, contracts, and certificates of insurance.
+General contractor and subcontractor profiles for all development projects.
 
 Each contractor record captures:
 
@@ -19,12 +19,5 @@ Each contractor record captures:
 - **Key contacts** — project executive, project manager, superintendent, accounts payable contact
 - **Performance history** — completed projects, schedule adherence record, quality issues or defect callbacks, dispute history
 - **Qualification documents** — most recent financial statements, safety record (EMR), MBE/WBE/DBE certification status
-
-**How to add a contractor:**
-
-1. Copy `raw_sources/projects/template-development-project.md` and fill in the Project Team section, or ingest a contractor qualification package:
-   ```
-   synthadoc ingest docs/contractor-qualification/<contractor>.pdf -w <wiki>
-   ```
 
 Cross-link to [[change-orders]], [[inspections]], and [[permits]].

@@ -38,29 +38,37 @@ synthadoc ingest "https://libguides.umn.edu/c.php?g=1164012&p=8497442" -w <wiki>
 
 ## First steps checklist
 
-- [ ] **Ingest your lab protocols**:
-  ```
-  synthadoc ingest docs/protocols/ --batch -w <wiki>
-  ```
-  Populates [[protocols]] and [[standard-operating-procedures]].
+- [ ] **Log an experiment** -- use our template or bring your own:
+  - Template: copy `raw_sources/experiments/template-lab-experiment.md`, rename it
+    (e.g. `exp-0001-pcr-optimization.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/experiments/<experiment>.md -w <wiki>
+    ```
+  - Own doc: place your existing lab notebook entries in `raw_sources/experiments/` and ingest them.
+  Populates [[experiments]] and [[results]].
 
-- [ ] **Create instrument pages** — ingest your equipment records or user manuals:
-  ```
-  synthadoc ingest docs/equipment/ --batch -w <wiki>
-  ```
-  Populates [[instruments]].
+- [ ] **Write or import an SOP** -- use our template or bring your own:
+  - Template: copy `raw_sources/protocols/template-sop.md`, rename it
+    (e.g. `sop-0001-pcr-protocol.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/protocols/<sop-name>.md -w <wiki>
+    ```
+  - Own doc: place your existing SOP documents in `raw_sources/protocols/` and ingest them.
+  Populates [[protocols]].
 
-- [ ] **Document critical reagents** — ingest your chemical inventory or SDS:
-  ```
-  synthadoc ingest docs/reagents/ --batch -w <wiki>
-  ```
+- [ ] **Record a reagent** -- use our template or bring your own:
+  - Template: copy `raw_sources/reagents/template-reagent-record.md`, rename it
+    (e.g. `tris-hcl-lot-abc123.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/reagents/<reagent>-lot-<lot>.md -w <wiki>
+    ```
+  - Own doc: place your existing reagent inventory in `raw_sources/reagents/` and ingest them.
   Populates [[reagents]].
 
-- [ ] **Log your first experiment** — copy `raw_sources/experiments/template-lab-experiment.md`, fill in before and after the run, then:
-  ```
-  synthadoc ingest raw_sources/experiments/<experiment>.md -w <wiki>
-  ```
-  Populates [[experiments]] and [[findings]].
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

@@ -5,10 +5,10 @@
 
 > **How to use this form**
 >
-> This template follows the **ISO 55001:2014 Asset Management** -- the international standard for managing physical assets across their full lifecycle.
+> This template follows the **ISO 55001 Asset Management System** -- the international standard for managing physical assets across their full lifecycle.
 > If you already have an asset record in another format (spreadsheet, CMMS export, PDF), skip this form and ingest your document directly.
 >
-> Reference: [ISO 55001:2014](https://www.iso.org/standard/55089.html)
+> Reference: [ISO 55001 Asset Management System](https://www.iso.org/standard/55089.html)
 >
 > 1. Copy this file and rename it (e.g. `HVAC-042-rooftop-unit-3.md`)
 > 2. Fill in all sections

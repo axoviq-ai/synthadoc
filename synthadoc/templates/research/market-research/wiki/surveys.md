@@ -8,7 +8,7 @@ sources: []
 
 # Surveys
 
-Survey studies conducted or commissioned. Populate by ingesting survey instruments, data, and topline reports.
+Survey studies conducted or commissioned.
 
 Each survey record captures:
 
@@ -18,12 +18,5 @@ Each survey record captures:
 - **Key findings** — top 5 findings from the topline; verbatim themes from open-ended questions
 - **Data availability** — where the raw data lives, access restrictions, whether the survey can be fielded again (tracking study)
 - **Weighting and caveats** — any weighting applied, sample limitations, margin of error
-
-**How to populate:**
-
-1. Ingest your topline survey report:
-   ```
-   synthadoc ingest docs/surveys/<survey>-topline.pdf -w <wiki>
-   ```
 
 Cross-link to [[customer-insights]], [[consumer-segments]], and [[research-reports]].

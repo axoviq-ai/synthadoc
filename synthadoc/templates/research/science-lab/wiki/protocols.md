@@ -8,7 +8,7 @@ sources: []
 
 # Protocols
 
-Experimental protocols indexed by technique. Populate by ingesting protocol documents and SOPs.
+Experimental protocols indexed by technique.
 
 Each protocol captures:
 
@@ -20,12 +20,5 @@ Each protocol captures:
 - **Expected output** — what a successful run produces; quality control criteria for accepting results
 - **Troubleshooting** — common failure modes, their likely causes, and corrective actions
 - **Validation history** — who has run this protocol, with what outcomes; known edge cases
-
-**How to populate:**
-
-1. Ingest protocol documents:
-   ```
-   synthadoc ingest docs/protocols/ --batch -w <wiki>
-   ```
 
 Cross-link to [[experiments]], [[instruments]], [[reagents]], and [[standard-operating-procedures]].

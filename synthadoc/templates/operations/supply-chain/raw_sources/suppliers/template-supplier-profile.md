@@ -5,10 +5,10 @@
 
 > **How to use this form**
 >
-> This template follows the **ISO 9001:2015 Clause 8.4 (Control of Externally Provided Processes)** -- the international standard requirement for evaluating, selecting, and monitoring external suppliers.
+> This template follows the **CIPS (Chartered Institute of Procurement & Supply) Procurement Framework** -- the globally recognized standard for procurement and supply chain management.
 > If you already have a supplier qualification record in another format (AVL spreadsheet, ERP export, audit report), skip this form and ingest your document directly.
 >
-> Reference: [ISO 9001:2015](https://www.iso.org/iso-9001-quality-management.html)
+> Reference: [CIPS Procurement Framework](https://www.cips.org/)
 >
 > 1. Copy this file and rename it (e.g. `SUP-042-acme-steel.md`)
 > 2. Fill in all sections

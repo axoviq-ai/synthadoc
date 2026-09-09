@@ -20,15 +20,4 @@ Safety inspection log for OSHA compliance, fire safety, and facility hazard asse
 - **Next inspection due** — required frequency; statutory or contractual deadline
 - **Certificate reference** — inspection certificate number and file location
 
-**How to populate:**
-
-1. Ingest inspection reports and citations:
-   ```
-   synthadoc ingest docs/facility/inspections/ --batch -w <wiki>
-   ```
-2. Ingest OSHA inspection checklists:
-   ```
-   synthadoc ingest "https://www.tdi.texas.gov/pubs/videoresource/cklgenindustry.pdf" -w <wiki>
-   ```
-
 Cross-link to [[assets]] for assets that triggered findings, [[emergency-procedures]] for procedures updated as a result of inspection findings, and [[vendor-contracts]] for contractors performing required remediation.

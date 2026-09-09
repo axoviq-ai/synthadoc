@@ -8,7 +8,7 @@ sources: []
 
 # Methodology
 
-Research methodology, study design, and data collection procedures. Populate by ingesting your methods documentation and data collection protocols.
+Research methodology, study design, and data collection procedures.
 
 Each methodology record captures:
 
@@ -19,12 +19,5 @@ Each methodology record captures:
 - **Variables and measures** — for each variable: definition, operationalization, measurement instrument, reliability/validity information
 - **Analysis plan** — statistical tests or qualitative analysis methods, software used, handling of missing data, multiple comparisons correction
 - **Ethical considerations** — IRB/ethics board approval number, informed consent procedure, data privacy and anonymization
-
-**How to populate:**
-
-1. Ingest your methodology document or pre-registered analysis plan:
-   ```
-   synthadoc ingest docs/methods.md -w <wiki>
-   ```
 
 Cross-link to [[hypotheses]], [[datasets]], [[findings]], and [[literature-review]].

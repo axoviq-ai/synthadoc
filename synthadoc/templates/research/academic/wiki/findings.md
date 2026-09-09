@@ -8,7 +8,7 @@ sources: []
 
 # Findings
 
-Research findings and results. Populate by ingesting analysis output and results summaries.
+Research findings and results.
 
 Each finding record captures:
 
@@ -19,12 +19,5 @@ Each finding record captures:
 - **Boundary conditions** — for whom, under what conditions, and in what context does this finding hold?
 - **Replication status** — has this finding been replicated? By whom? In what contexts?
 - **Implications** — theoretical implications (what theory does this support or challenge?); practical implications; future research directions
-
-**How to populate:**
-
-1. Ingest your results summary or analysis output:
-   ```
-   synthadoc ingest docs/results/ --batch -w <wiki>
-   ```
 
 Cross-link to [[hypotheses]], [[methodology]], [[datasets]], and [[papers]].

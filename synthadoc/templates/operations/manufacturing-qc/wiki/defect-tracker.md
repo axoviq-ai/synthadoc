@@ -24,15 +24,4 @@ Running log of quality defects and nonconformances. Each defect entry records:
 - Defect trend by detection stage
 - Top root cause categories this period
 
-**How to populate:**
-
-1. Copy `raw_sources/nonconformances/template-ncr.md` for each defect event, fill in all fields, then:
-   ```
-   synthadoc ingest raw_sources/nonconformances/NCR-<YYYY>-<NNN>-<keyword>.md -w <wiki>
-   ```
-2. Ingest defect data exports from your MES or QMS:
-   ```
-   synthadoc ingest docs/manufacturing/defects-<year>-<period>.xlsx -w <wiki>
-   ```
-
 Cross-link to [[nonconformances]] for the corrective action records, [[control-plans]] for controls that should have prevented each defect, and [[inspection-procedures]] for detection methods.

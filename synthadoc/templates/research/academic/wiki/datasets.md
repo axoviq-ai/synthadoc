@@ -8,7 +8,7 @@ sources: []
 
 # Datasets
 
-Research datasets used and produced. Populate by ingesting dataset documentation and data dictionaries.
+Research datasets used and produced.
 
 Each dataset record captures:
 
@@ -19,12 +19,5 @@ Each dataset record captures:
 - **Quality notes** — known issues (non-response bias, measurement error, attrition), data cleaning steps applied
 - **License and privacy** — access license, IRB number, PII present and how handled, sharing constraints
 - **Usage history** — which studies and publications used this dataset (link to [[papers]])
-
-**How to populate:**
-
-1. Ingest your data dictionary or codebook:
-   ```
-   synthadoc ingest docs/datasets/<dataset>-codebook.pdf -w <wiki>
-   ```
 
 Cross-link to [[methodology]], [[findings]], and [[papers]].

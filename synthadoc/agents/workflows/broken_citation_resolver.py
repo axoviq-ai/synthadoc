@@ -155,31 +155,32 @@ STEP 5 — Final summary
   THEN output a single plain-text summary.
 
   For every citation you fixed or removed, include the before/after detail
-  so the user knows exactly what changed and why.  Use this format:
+  so the user knows exactly what changed and why.  Use this format — one
+  markdown list item per citation, keeping the "→" on the same line so it
+  renders as a separate visual row in the web UI:
 
   "Broken Citation Resolver — Complete
 
   ✅ Fixed (<N> pages):
-    - <slug>:
-        • ^[old-filename.txt:1-5] (broken_ref — not in sources)
-          → renamed to ^[correct-filename.txt:1-5]
-        • ^[bad.txt] (malformed — missing line range)
-          → removed
-    ...
+  - **<slug>**: `^[old-filename.txt:1-5]` (broken_ref — not in sources) → `^[correct-filename.txt:1-5]`
+  - **<slug>**: `^[bad.txt]` (malformed — missing line range) → removed
+  ...
   ⚠ Unresolved (<N> pages):
-    - <slug>: <citation> — <reason>; <diagnosis of why no fix was possible>
-    ...
+  - **<slug>**: `^[citation]` — <reason>; <diagnosis of why no fix was possible>
+  ...
   ⏭ Skipped (<N> pages):
-    - <slug>
-    ...
+  - <slug>
+  ...
 
   Wiki: <active> active, <stale> stale, <contradicted> contradicted
   Remaining broken citations: <N>"
 
   Rules for the per-citation lines:
-  - Show the original broken marker and its reason in parentheses.
-  - For a rename: show the new marker after "→ renamed to".
-  - For a removal: show "→ removed" and state why (malformed / no close match).
+  - One "- **slug**: ..." line per citation — do NOT nest with indented bullets.
+  - Show the original broken marker in backticks and its reason in parentheses.
+  - For a rename: show the corrected marker in backticks after "→" on the SAME line.
+  - For a removal: show "→ removed" and state why (malformed / no close match) on the SAME line.
+  - Never wrap "→" to the next line — it must stay inline with the citation.
   - Never omit citations from the summary — every issue from STEP 1 must appear.
 
 ━━━ CRITICAL RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -368,21 +369,32 @@ class BrokenCitationResolverWorkflow(AgenticWorkflow):
         # Call get_wiki_status first — same requirement as the multi-turn path.
         wiki_status = await tool_get_wiki_status(ctx)
 
-        parts: list[str] = ["**Broken Citation Resolver — Complete**\n"]
+        # Each entry in `parts` is one markdown section; join with "\n\n" so
+        # the web UI renderer inserts a paragraph break between sections.
+        # Within each section, items are flat top-level "- " list items — no
+        # nesting.  Nested "  - slug:\n    - citation" collapses in the web UI
+        # markdown renderer; flat "- **slug**: citation → fix" renders correctly.
+        parts: list[str] = ["**Broken Citation Resolver — Complete**"]
 
         if fixed:
-            parts.append(f"✅ Fixed ({len(fixed)} page(s)):")
+            # Flat list: one line per citation.  Slug is bold inline so each
+            # citation stays on its own rendered row without nesting.
+            fixed_lines = [f"✅ Fixed ({len(fixed)} page(s)):"]
             for slug, fixes in fixed:
-                parts.append(f"  - {slug}:")
                 for fix in fixes:
                     old = fix["old_citation"]
                     new = fix["new_citation"]
-                    parts.append(f"      {old}  →  {new if new else 'removed'}")
+                    if new:
+                        fixed_lines.append(f"- **{slug}**: `{old}` → `{new}`")
+                    else:
+                        fixed_lines.append(f"- **{slug}**: `{old}` → removed (no close match)")
+            parts.append("\n".join(fixed_lines))
 
         if failed:
-            parts.append(f"\n⚠ Failed ({len(failed)} page(s)):")
+            failed_lines = [f"⚠ Failed ({len(failed)} page(s)):"]
             for slug, err in failed:
-                parts.append(f"  - {slug}: {err}")
+                failed_lines.append(f"- {slug}: {err}")
+            parts.append("\n".join(failed_lines))
 
         if not fixed and not failed:
             parts.append("No changes were applied.")
@@ -390,8 +402,8 @@ class BrokenCitationResolverWorkflow(AgenticWorkflow):
         # Wiki status counts — same footer as the multi-turn path's STEP 5 summary.
         status_str = ", ".join(f"{k}: {v}" for k, v in wiki_status.items()
                                if k not in ("tool", "message"))
-        parts.append(f"\nWiki: {status_str}")
+        parts.append(f"Wiki: {status_str}")
 
-        summary = "\n".join(parts)
+        summary = "\n\n".join(parts)
         yield {"event": "token", "data": {"text": summary}}
         yield {"event": "final_text", "data": {"text": summary}}
