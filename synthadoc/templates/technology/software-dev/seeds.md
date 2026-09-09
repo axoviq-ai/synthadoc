@@ -7,7 +7,7 @@
 synthadoc ingest README.md -w <wiki>
 ```
 
-**Existing architecture docs**
+**Existing architecture docs** (if your repository has a `docs/` folder at its root)
 ```
 synthadoc ingest docs/ --batch -w <wiki>
 ```

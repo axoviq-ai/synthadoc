@@ -19,15 +19,4 @@ Emergency response plans and procedures for the facility. Each procedure record 
 - **Specialized response steps** — spill containment procedures, AED locations, fire suppression system reset, utility shutoff locations
 - **Recovery** — who authorizes re-entry; steps required before returning to normal operations; incident documentation requirements
 
-**How to populate:**
-
-1. Ingest your Emergency Action Plan (OSHA 29 CFR 1910.38 compliance document):
-   ```
-   synthadoc ingest docs/facility/emergency-action-plan.pdf -w <wiki>
-   ```
-2. Ingest OSHA emergency planning resources:
-   ```
-   synthadoc ingest "https://www.osha.gov/emergency-preparedness" -w <wiki>
-   ```
-
 Cross-link to [[safety-inspections]] for drills and inspection results, [[assets]] for the locations of emergency equipment, and [[vendor-contracts]] for contracts with hazmat response vendors.

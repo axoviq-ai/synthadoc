@@ -8,9 +8,12 @@ synthadoc ingest "https://<city>.gov/zoning-code" -w <wiki>
 ```
 
 **Your project's approved site plan or entitlement documents**
+Copy your entitlement and permit documents into `raw_sources/permits/`, then:
 ```
-synthadoc ingest docs/entitlements/ --batch -w <wiki>
+synthadoc ingest raw_sources/permits/ --batch -w <wiki>
 ```
+*No permit log yet? Use the starter template:*
+`raw_sources/permits/template-permit-log.md` — copy, rename, fill in, then ingest.
 
 ## Recommended web searches
 
@@ -41,28 +44,37 @@ synthadoc ingest "https://mitti.com/checklists/compliance/building-inspection" -
 
 ## First steps checklist
 
-- [ ] **Ingest your entitlement documents and zoning approval** — upload your conditional use permit, variance, or planning commission approval letter:
-  ```
-  synthadoc ingest docs/entitlements/ --batch -w <wiki>
-  ```
-  Populates [[zoning-analysis]].
+- [ ] **Document a development project** -- use our template or bring your own:
+  - Template: copy `raw_sources/projects/template-development-project.md`, rename it
+    (e.g. `oak-street-townhomes.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/projects/<project-name>.md -w <wiki>
+    ```
+  - Own doc: place your existing project summary in `raw_sources/projects/` and ingest it.
+  Populates [[projects]].
 
-- [ ] **Create a project page for each active development project** — copy `raw_sources/projects/template-development-project.md`, rename it, fill in the details, then:
-  ```
-  synthadoc ingest raw_sources/projects/<project>.md -w <wiki>
-  ```
+- [ ] **Log a permit** -- use our template or bring your own:
+  - Template: copy `raw_sources/permits/template-permit-log.md`, rename it
+    (e.g. `oak-street-building-permit.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/permits/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing permit tracking sheet in `raw_sources/permits/` and ingest it.
+  Populates [[permits]] and [[entitlements]].
 
-- [ ] **Document your general contractor and key subs** — ingest each contractor's qualification package or certificate of insurance:
-  ```
-  synthadoc ingest docs/contractors/<contractor>.pdf -w <wiki>
-  ```
+- [ ] **Summarize a contractor agreement** -- use our template or bring your own:
+  - Template: copy `raw_sources/contracts/template-contractor-agreement-summary.md`, rename it
+    (e.g. `oak-street-gc-contract.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/contracts/<filename>.md -w <wiki>
+    ```
+  - Own doc: place your existing contract abstract in `raw_sources/contracts/` and ingest it.
   Populates [[contractors]].
 
-- [ ] **Ingest your permit applications and approvals** — upload your building permit, electrical permit, and grading permit:
-  ```
-  synthadoc ingest docs/permits/ --batch -w <wiki>
-  ```
-  Populates [[permits]].
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

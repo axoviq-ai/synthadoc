@@ -3,9 +3,12 @@
 ## Recommended first ingests
 
 **Your existing brand guidelines document**
+Copy your brand guidelines into `raw_sources/brand/`, then:
 ```
-synthadoc ingest docs/brand/brand-guidelines.pdf -w <wiki>
+synthadoc ingest raw_sources/brand/ --batch -w <wiki>
 ```
+*No brand guidelines yet? Use the starter template:*
+`raw_sources/brand/template-brand-brief.md` — copy, rename, fill in, then ingest.
 
 **Competitor website analysis (manual content export)**
 ```

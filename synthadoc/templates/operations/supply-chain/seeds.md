@@ -41,30 +41,37 @@ synthadoc ingest "https://www.supplychaindive.com/news/5-steps-mitigate-risks-so
 
 ## First steps checklist
 
-- [ ] **Ingest your approved supplier list** — export from ERP or AVL spreadsheet:
-  ```
-  synthadoc ingest docs/supply-chain/approved-vendor-list.xlsx -w <wiki>
-  ```
-  Or create individual supplier records: copy `raw_sources/suppliers/template-supplier-profile.md` for each key supplier, fill in all fields, then ingest.
-  Populates [[suppliers]].
+- [ ] **Profile a supplier** -- use our template or bring your own:
+  - Template: copy `raw_sources/suppliers/template-supplier-profile.md`, rename it
+    (e.g. `SUP-042-acme-steel.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/suppliers/<supplier-code>-<name>.md -w <wiki>
+    ```
+  - Own doc: place your existing supplier records (AVL spreadsheet, ERP export, audit report) in `raw_sources/suppliers/` and ingest them.
+  Populates [[suppliers]] and [[supplier-performance]].
 
-- [ ] **Create supplier pages** for your top 5 suppliers by spend:
-  ```
-  synthadoc ingest raw_sources/suppliers/<supplier-code>-<name>.md -w <wiki>
-  ```
-  Populates [[suppliers]] and [[vendor-scorecards]].
+- [ ] **Create a purchase order** -- use our template or bring your own:
+  - Template: copy `raw_sources/purchase-orders/template-purchase-order.md`, rename it
+    (e.g. `PO-2026-042-acme-steel.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/purchase-orders/<po-number>-<supplier>.md -w <wiki>
+    ```
+  - Own doc: place your existing PO documentation in `raw_sources/purchase-orders/` and ingest it.
+  Populates [[purchase-orders]].
 
-- [ ] **Ingest your procurement policy** and approval matrix:
-  ```
-  synthadoc ingest docs/supply-chain/procurement-policy.pdf -w <wiki>
-  ```
-  Populates [[procurement-procedures]].
+- [ ] **Complete a vendor scorecard** -- use our template or bring your own:
+  - Template: copy `raw_sources/vendor-scorecards/template-vendor-scorecard.md`, rename it
+    (e.g. `SCORE-acme-steel-Q3-2026.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/vendor-scorecards/<supplier>-<period>.md -w <wiki>
+    ```
+  - Own doc: place your existing supplier evaluation in `raw_sources/vendor-scorecards/` and ingest it.
+  Populates [[supplier-performance]].
 
-- [ ] **Create material pages** for your top 10 critical materials:
-  ```
-  synthadoc ingest docs/supply-chain/material-master.xlsx -w <wiki>
-  ```
-  Populates [[materials]] and [[inventory-management]].
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

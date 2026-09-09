@@ -18,15 +18,4 @@ Carrier and freight broker agreements and lane rate schedules. Each freight cont
 - **Carrier qualifications** — DOT number, MC number, insurance certificate on file, safety rating, cargo liability limits
 - **Incoterms** — delivery terms for international shipments (EXW, FOB, CIF, DDP, etc.) if applicable; customs broker arrangement
 
-**How to populate:**
-
-1. Ingest carrier agreements and rate confirmations:
-   ```
-   synthadoc ingest docs/supply-chain/freight-contracts/ --batch -w <wiki>
-   ```
-2. Ingest Incoterms 2020 reference:
-   ```
-   synthadoc ingest "https://iccwbo.org/business-solutions/incoterms-rules/incoterms-2020/" -w <wiki>
-   ```
-
 Cross-link to [[logistics]] for the operational shipping processes, [[suppliers]] for the supplier-managed freight arrangements, and [[procurement-procedures]] for the carrier selection and approval process.

@@ -25,32 +25,37 @@ to ingest beyond the curated list below -- browse results and pick pages relevan
 
 ## First steps checklist
 
-- [ ] **Ingest the 3–5 most important papers in your field** — direct arXiv/PubMed ingest or annotated form:
-  ```
-  synthadoc ingest "https://arxiv.org/abs/<paper-id>" -w <wiki>
-  ```
-  Or copy `raw_sources/papers/template-paper-notes.md`, fill in your notes, then:
-  ```
-  synthadoc ingest raw_sources/papers/<author>-<year>-<keyword>.md -w <wiki>
-  ```
-  Populates [[papers]] and [[literature-review]].
+- [ ] **Log a paper** -- use our template or bring your own:
+  - Template: copy `raw_sources/papers/template-paper-notes.md`, rename it
+    (e.g. `vaswani-2017-attention.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/papers/<author>-<year>-<keyword>.md -w <wiki>
+    ```
+  - Own doc: place your existing reading notes in `raw_sources/papers/` and ingest them.
+  Populates [[papers]] and [[citations]].
 
-- [ ] **Document your primary hypothesis**:
-  ```
-  synthadoc ingest docs/research-plan.md -w <wiki>
-  ```
-  Populates [[hypotheses]] and [[methodology]].
+- [ ] **Pre-register a study protocol** -- use our template or bring your own:
+  - Template: copy `raw_sources/protocols/template-research-protocol.md`, rename it
+    (e.g. `study-2026-protocol.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/protocols/<study-name>-protocol.md -w <wiki>
+    ```
+  - Own doc: place your existing protocol in `raw_sources/protocols/` and ingest it.
+  Populates [[research-questions]] and [[methodologies]].
 
-- [ ] **Ingest a recent survey or review paper**:
-  ```
-  synthadoc ingest "https://arxiv.org/abs/<survey-paper>" -w <wiki>
-  ```
+- [ ] **Write a literature review note** -- use our template or bring your own:
+  - Template: copy `raw_sources/lit-review/template-literature-review-note.md`, rename it
+    (e.g. `vaswani-2017-lit-review-note.md`), fill in all sections, then:
+    ```
+    synthadoc ingest raw_sources/lit-review/<author>-<year>-lit-review-note.md -w <wiki>
+    ```
+  - Own doc: place your existing annotated bibliography in `raw_sources/lit-review/` and ingest it.
+  Populates [[literature-review]] and [[findings]].
 
-- [ ] **Ingest dataset documentation**:
-  ```
-  synthadoc ingest docs/datasets/<dataset>-codebook.pdf -w <wiki>
-  ```
-  Populates [[datasets]].
+- [ ] **Review and promote candidates** -- all ingested pages land in `candidates/` for review.
+  In Obsidian: open the command palette (Ctrl+P / Cmd+P) and run
+  **"Synthadoc: Candidates: review candidate pages..."** to promote or discard each page.
+  Or from CLI: `synthadoc candidates promote --all -w <wiki>`
 
 - [ ] **Run lint to validate pages and activate drafts** -- with the server running,
   lint checks each page for quality then promotes clean draft pages to `active` status.

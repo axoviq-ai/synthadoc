@@ -186,7 +186,9 @@ class LintReportWorkflow(AgenticWorkflow):
         contradictions_flagged: int = last_run.get("contradictions_flagged", 0)
         broken_citations: int = report.get("broken_citations", 0)
 
-        parts: list[str] = [f"### Lint Report ({ts})\n"]
+        # Each entry in `parts` is one markdown section; join with "\n\n" so
+        # the web UI renderer inserts a paragraph break between sections.
+        parts: list[str] = [f"### Lint Report ({ts})"]
 
         # Summary block — omit "Dangling links removed" and "Broken citations"
         # when they are zero (mirrors the system prompt "omit if 0" instructions).
@@ -202,48 +204,52 @@ class LintReportWorkflow(AgenticWorkflow):
             summary_lines.append(f"- Broken citations: {broken_citations}")
         parts.append("\n".join(summary_lines))
 
-        # Contradicted pages
+        # Contradicted pages — build as one block
         contradicted: list[dict] = report.get("contradicted_pages", [])
-        parts.append("\n**Contradicted Pages**")
+        contra_lines: list[str] = ["**Contradicted Pages**"]
         if contradicted:
             for item in contradicted:
                 since = item.get("since", "")
                 since_label = f"  (since {since})" if since else ""
-                parts.append(f"- {item['slug']}{since_label}")
+                contra_lines.append(f"- {item['slug']}{since_label}")
         else:
-            parts.append("(none)")
+            contra_lines.append("(none)")
+        parts.append("\n".join(contra_lines))
 
         # Adversarial warnings
         warned: list[dict] = report.get("adversarial_warnings", [])
-        parts.append("\n**Adversarial Warnings**")
+        warned_lines: list[str] = ["**Adversarial Warnings**"]
         if warned:
             for item in warned:
                 n = item.get("count", 0)
                 label = "warning" if n == 1 else "warnings"
-                parts.append(f"- [[{item['slug']}]]  ({n} {label})")
+                warned_lines.append(f"- [[{item['slug']}]]  ({n} {label})")
         else:
-            parts.append("(none)")
+            warned_lines.append("(none)")
+        parts.append("\n".join(warned_lines))
 
         # Orphan pages
         orphan_slugs: list[str] = report.get("orphan_slugs", [])
-        parts.append("\n**Orphan Pages**")
+        orphan_lines: list[str] = ["**Orphan Pages**"]
         if orphan_slugs:
             for slug in orphan_slugs:
-                parts.append(f"- {slug}")
+                orphan_lines.append(f"- {slug}")
         else:
-            parts.append("(none)")
+            orphan_lines.append("(none)")
+        parts.append("\n".join(orphan_lines))
 
         # Broken citations
         broken_citation_pages: list[dict] = report.get("broken_citation_pages", [])
-        parts.append("\n**Broken Citations**")
+        bcite_lines: list[str] = ["**Broken Citations**"]
         if broken_citation_pages:
             for item in broken_citation_pages:
                 n = item.get("count", 0)
                 label = "citation" if n == 1 else "citations"
-                parts.append(f"- [[{item['slug']}]]  ({n} broken {label})")
+                bcite_lines.append(f"- [[{item['slug']}]]  ({n} broken {label})")
         else:
-            parts.append("(none)")
+            bcite_lines.append("(none)")
+        parts.append("\n".join(bcite_lines))
 
-        text = "\n".join(parts)
+        text = "\n\n".join(parts)
         yield {"event": "token", "data": {"text": text}}
         yield {"event": "final_text", "data": {"text": text}}

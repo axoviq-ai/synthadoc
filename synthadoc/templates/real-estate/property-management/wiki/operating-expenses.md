@@ -8,7 +8,7 @@ sources: []
 
 # Operating Expenses
 
-Operating expense tracking and CAM reconciliation for all managed properties. Populate by ingesting expense reports, invoices, and reconciliation statements.
+Operating expense tracking and CAM reconciliation for all managed properties.
 
 Each operating expense record captures:
 
@@ -18,13 +18,5 @@ Each operating expense record captures:
 - **Tenant recovery** — tenant's pro-rata share (% based on rentable sf), estimated monthly CAM charge, year-end reconciliation calculation
 - **Budget vs. actual** — budgeted amount, actual amount, variance, explanation of significant variances
 - **Controllable vs. non-controllable** — classification for owner reporting (taxes and insurance are non-controllable; management and repairs are controllable)
-
-**How to populate:**
-
-1. Ingest your property operating statement or expense report:
-   ```
-   synthadoc ingest docs/financials/<property>-operating-statement.pdf -w <wiki>
-   ```
-2. Ingest your annual CAM reconciliation statements
 
 Cross-link to [[rent-rolls]], [[leases]], and [[vendors]].

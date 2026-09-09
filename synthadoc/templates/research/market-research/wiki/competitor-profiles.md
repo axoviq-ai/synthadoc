@@ -8,7 +8,7 @@ sources: []
 
 # Competitor Profiles
 
-Detailed profiles for each tracked competitor. Populate by ingesting competitor profiles from `raw_sources/competitors/`.
+Detailed profiles for each tracked competitor.
 
 Each competitor profile captures:
 
@@ -18,17 +18,6 @@ Each competitor profile captures:
 - **Strengths** — what they do well; where customers praise them
 - **Weaknesses and gaps** — where customers complain; feature gaps; market segments they don't serve
 - **Market position** — estimated market share, customer count, notable customers, G2/Capterra score
-- **Recent moves** — product launches, pricing changes, funding rounds, partnership announcements, executive hires — and implications for your strategy
-
-**How to add a competitor:**
-
-1. Ingest the competitor's website directly:
-   ```
-   synthadoc ingest "https://www.<competitor>.com" -w <wiki>
-   ```
-2. Or copy `raw_sources/competitors/template-competitor-profile.md`, fill it in, then:
-   ```
-   synthadoc ingest raw_sources/competitors/<competitor>.md -w <wiki>
-   ```
+- **Recent moves** — product launches, pricing changes, funding rounds, partnership announcements, executive hires -- and implications for your strategy
 
 Cross-link to [[competitive-landscape]], [[market-overview]], and [[consumer-segments]].

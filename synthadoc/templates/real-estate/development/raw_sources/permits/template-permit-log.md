@@ -1,69 +1,103 @@
-# Permit Log: [Project Name]
+# Permit Log: [Project Name] — [Permit Type]
 
 > **How to use this form**
 >
-> This template follows the **IBC (International Building Code) Chapter 1 Administration** and local AHJ permit requirements -- the standard framework for tracking all permits across a development project.
-> If you already have a permit tracker in another format, skip this form and ingest your document directly.
+> This template follows the **International Building Code (IBC) 2021 + local AHJ (Authority Having Jurisdiction) requirements** -- the standard framework for tracking a permit application through plan check, issuance, inspections, and closeout.
+> If you already have a permit tracking sheet in another format, skip this form and ingest your document directly.
 >
 > Reference: [IBC 2021, Chapter 1 Administration](https://codes.iccsafe.org/content/IBC2021P1)
 >
-> 1. Copy this file and rename it (e.g. `oak-street-townhomes-permits.md`)
-> 2. Track one permit type per entry or log all permits for a project in one file. Re-ingest as permit status changes. Links to [[permits]] and [[project-schedule]].
-> 3. Run: `synthadoc ingest raw_sources/permits/<project-name>-permits.md -w <wiki>`
+> 1. Copy this file and rename it (e.g. `oak-street-townhomes-building-permit.md`)
+> 2. Fill in all sections
+> 3. Run: `synthadoc ingest raw_sources/permits/<filename>.md -w <wiki>`
+>
+> Track one entry per permit application. Update status as the permit progresses through review.
 
 ---
 
-## Permit Log Identity
+## Permit Identity
 
 - **Project name:**
 - **Project address:**
-- **Project ID:**
-- **Preparer:**
-- **Date:** YYYY-MM-DD
-- **AHJ (Authority Having Jurisdiction):**
+- **APN / Parcel number:**
+- **Permit number:** (when issued)
+- **Permit type:** (Building / Grading / Demolition / MEP / Fire / Encroachment / Other)
+- **Application date:** YYYY-MM-DD
 
 ---
 
-## Permit Register
+## Permit Description
 
-| Permit Type | Permit Number | Application Date | Issuance Date | Expiration Date | Status | Fee Paid | Notes |
-|-------------|---------------|-----------------|--------------|----------------|--------|----------|-------|
-| | | YYYY-MM-DD | YYYY-MM-DD | YYYY-MM-DD | Applied / Issued / Expired / Closed | $ | |
+- **Scope of work covered by this permit:**
+- **Applicable IBC sections:**
+- **Occupancy classification:** (A / B / E / F / H / I / M / R / S / U)
+- **Construction type:** (I-A / I-B / II-A / II-B / III-A / III-B / IV / V-A / V-B)
 
 ---
 
-## Active Permit Detail
+## Applicant and Contractor
 
-*(Add a subsection below for each active permit.)*
+- **Owner of record:**
+- **General contractor:**
+- **Contractor license number:**
+- **Architect of record:**
+- **Engineer of record:**
 
-### [Permit Type]: [Permit Number]
+---
 
-**Permit type and description of work authorized:**
+## Submittal History
 
-**Required Inspections:**
+| Submittal # | Date Submitted | Documents Submitted | Reviewer | Review Status | Comments Due Date |
+|-------------|---------------|---------------------|----------|--------------|-------------------|
+| | YYYY-MM-DD | | | | YYYY-MM-DD |
 
-| Inspection Type | Required at Phase | Date Requested | Date Completed | Pass/Fail | Inspector |
-|----------------|------------------|---------------|---------------|-----------|-----------|
-| | | YYYY-MM-DD | YYYY-MM-DD | | |
+---
 
-**Outstanding conditions** (conditions of approval not yet satisfied):
+## Plan Check Comments
+
+| Comment # | Sheet / Section | Comment | Response | Response Date | Resolved Y/N |
+|-----------|----------------|---------|----------|--------------|--------------|
+| | | | | YYYY-MM-DD | |
+
+---
+
+## Fees
+
+| Fee Type | Amount | Paid Date | Receipt # |
+|----------|--------|-----------|-----------|
+| | $ | YYYY-MM-DD | |
+
+**Total fees:** $
+
+---
+
+## Permit Issuance
+
+- **Issue date:** YYYY-MM-DD
+- **Expiration date:** YYYY-MM-DD
+- **Conditions of approval:**
+
+---
+
+## Inspections Required
+
+| Inspection Type | Required by Code Section | Scheduled Date | Inspector | Result: Pass / Fail / Partial | Correction Notes |
+|----------------|--------------------------|---------------|-----------|------------------------------|-----------------|
+| | | YYYY-MM-DD | | | |
+
+---
+
+## Final Inspection and Certificate
+
+- **Final inspection date:** YYYY-MM-DD
+- **Certificate of occupancy issued Y/N:**
+- **CO number:**
+- **Date issued:** YYYY-MM-DD
+
+---
+
+## Related Permits
+
+*(List related permit numbers — phased permits, sub-permits.)*
 
 -
-
-**Expiration and renewal plan:**
-
----
-
-## Certificates of Occupancy
-
-| Unit / Area | TCO Date | Final CO Date | CO Number | Restrictions |
-|-------------|---------|--------------|-----------|-------------|
-| | YYYY-MM-DD | YYYY-MM-DD | | |
-
----
-
-## Agency Contacts
-
-| Agency | Contact Name | Phone | Email | Application Portal |
-|--------|-------------|-------|-------|-------------------|
-| | | | | |

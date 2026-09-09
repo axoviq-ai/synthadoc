@@ -8,7 +8,7 @@ sources: []
 
 # Specifications
 
-Technical specifications for materials, products, and workmanship standards for all development projects. Organized by CSI MasterFormat divisions. Populate by ingesting project specifications.
+Technical specifications for materials, products, and workmanship standards for all development projects. Organized by CSI MasterFormat divisions.
 
 Each specification record captures:
 
@@ -19,12 +19,5 @@ Each specification record captures:
 - **Installation requirements** — surface preparation, application method, tolerances, quality of workmanship standards
 - **Testing and inspection** — required tests, frequency, acceptance criteria, reporting format
 - **Submittals required** — product data, shop drawings, samples, operations and maintenance data
-
-**How to populate:**
-
-1. Ingest your project specifications:
-   ```
-   synthadoc ingest docs/specifications/ --batch -w <wiki>
-   ```
 
 Cross-link to [[design-documents]], [[contractors]], and [[inspections]].

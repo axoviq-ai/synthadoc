@@ -8,7 +8,7 @@ sources: []
 
 # Raw Data
 
-Raw data catalog and data management records. Populate by ingesting data management plans and dataset manifests.
+Raw data catalog and data management records.
 
 Each raw data record captures:
 
@@ -19,12 +19,5 @@ Each raw data record captures:
 - **Metadata** — metadata fields recorded per sample (sample ID, condition, timepoint, replicate number, batch), metadata file location
 - **Access** — access restrictions, sharing plan (public / restricted / embargoed until publication)
 - **FAIR compliance** — findable (DOI or identifier), accessible (repository), interoperable (standard format), reusable (license)
-
-**How to populate:**
-
-1. Ingest your data management plan:
-   ```
-   synthadoc ingest docs/data-management-plan.pdf -w <wiki>
-   ```
 
 Cross-link to [[experiments]], [[findings]], and [[publications]].

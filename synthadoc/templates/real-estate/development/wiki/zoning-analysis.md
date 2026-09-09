@@ -8,7 +8,7 @@ sources: []
 
 # Zoning Analysis
 
-Zoning and entitlement analysis for all development projects. Populate by ingesting zoning codes, entitlement documents, and land use attorney opinions.
+Zoning and entitlement analysis for all development projects.
 
 Each zoning analysis record captures:
 
@@ -20,13 +20,5 @@ Each zoning analysis record captures:
 - **Density and incentives** — base density, state density bonus eligibility, affordable housing units required, inclusionary percentage
 - **Environmental review** — CEQA / NEPA applicability, exemption category, negative declaration, or EIR status; key environmental constraints (biological, cultural, hazmat)
 - **Legal conformance** — any legal non-conforming status, grandfather conditions, notice of determination
-
-**How to populate:**
-
-1. Ingest your local municipality's zoning code:
-   ```
-   synthadoc ingest "https://<city>.gov/zoning-code" -w <wiki>
-   ```
-2. Ingest your entitlement approval letter and conditions of approval
 
 Cross-link to [[permits]], [[design-documents]], and the project entry in `raw_sources/projects/`.
