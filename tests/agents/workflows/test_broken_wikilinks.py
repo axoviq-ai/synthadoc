@@ -90,3 +90,108 @@ def test_build_initial_message_with_slug():
     msg = wf.build_initial_message("scan for broken wikilinks --slug my-page")
     assert "my-page" in msg
     assert "page_slug" in msg or "single-page" in msg.lower() or "Single-page" in msg
+
+
+# ---------------------------------------------------------------------------
+# system prompt — markdown format rules
+# ---------------------------------------------------------------------------
+
+async def test_system_prompt_step4_uses_markdown_list():
+    """Step 4 must instruct the LLM to use markdown list items, not plain newlines."""
+    wf = BrokenWikilinksWorkflow()
+    prompt = await wf.build_system_prompt()
+    # Must reference markdown list syntax
+    assert "- `[[" in prompt or "- [[" in prompt, (
+        "Step 4 must show markdown list items (- [[ref]]) in the template"
+    )
+
+
+async def test_system_prompt_step9_no_bullet_character():
+    """Step 9 must use markdown list syntax, not Unicode bullet characters."""
+    wf = BrokenWikilinksWorkflow()
+    prompt = await wf.build_system_prompt()
+    assert "•" not in prompt, (
+        "System prompt must not use • bullet characters — use markdown '- ' list syntax "
+        "so the web UI renders each item on its own line"
+    )
+
+
+async def test_system_prompt_step9_markdown_list():
+    """Step 9 summary template uses markdown list items."""
+    wf = BrokenWikilinksWorkflow()
+    prompt = await wf.build_system_prompt()
+    # The step 9 template must contain a markdown list item for per-page results
+    assert "- <slug>" in prompt or "- ✓" in prompt, (
+        "Step 9 must demonstrate markdown list items (- <slug>: N fix(es)) "
+        "so the LLM mirrors that format in its output"
+    )
+
+
+# ---------------------------------------------------------------------------
+# CLI path confirm message — markdown format
+# ---------------------------------------------------------------------------
+
+async def test_cli_confirm_message_uses_markdown_list(monkeypatch):
+    """run_for_cli_provider builds confirm message with markdown list items.
+
+    Each broken link must appear as its own '- [[ref]] → ...' line so that
+    ReactMarkdown renders them on separate lines instead of collapsing them
+    into a single paragraph.
+    """
+    wf = BrokenWikilinksWorkflow()
+    ctx = _make_ctx()
+
+    # Scan result: 2 broken links on one page — one with a suggestion, one without
+    scan_result = {
+        "has_issues": True,
+        "pages": [
+            {
+                "slug": "alan-turing",
+                "broken_links": [
+                    {"ref": "manchester-baby",    "suggestion": None},
+                    {"ref": "bletchley-parq",     "suggestion": "bletchley-park"},
+                ],
+            }
+        ],
+        "scanned": 5,
+        "total_broken": 2,
+    }
+
+    captured_confirm_msg: list[str] = []
+
+    async def _fake_find(_ctx, **_kwargs):
+        return scan_result
+
+    async def _fake_confirm(_ctx, message: str, yes_label: str = "", no_label: str = ""):
+        captured_confirm_msg.append(message)
+        return {"confirmed": False}  # decline so we don't need more mocks
+
+    monkeypatch.setattr(
+        "synthadoc.agents.workflows.broken_wikilinks.tool_find_broken_wikilinks",
+        _fake_find,
+    )
+    monkeypatch.setattr(
+        "synthadoc.agents.workflows.broken_wikilinks.tool_confirm",
+        _fake_confirm,
+    )
+
+    events = [e async for e in wf.run_for_cli_provider(ctx, "scan for broken wikilinks", provider=None)]
+
+    assert captured_confirm_msg, "tool_confirm was never called"
+    msg = captured_confirm_msg[0]
+
+    # Must contain markdown list items (not plain indented lines)
+    assert "- `[[manchester-baby]]`" in msg, (
+        "Confirm message must use '- `[[ref]]`' markdown list syntax for removal links"
+    )
+    assert "- `[[bletchley-parq]]`" in msg and "`[[bletchley-park]]`" in msg, (
+        "Confirm message must show the fuzzy-match suggestion with backtick-code formatting"
+    )
+    # Page name must be bold
+    assert "**alan-turing:**" in msg, (
+        "Confirm message must render page slug as **bold** heading"
+    )
+    # Must NOT use plain • bullet characters
+    assert "•" not in msg, (
+        "Confirm message must not use • bullet characters — they collapse to one line in ReactMarkdown"
+    )
