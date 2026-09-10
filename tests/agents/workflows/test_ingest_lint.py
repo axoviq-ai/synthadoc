@@ -63,6 +63,129 @@ def test_ingest_lint_build_initial_message_returns_user_input():
     assert "re-ingest" in msg
 
 
+# ---------------------------------------------------------------------------
+# system prompt — markdown format rules
+# ---------------------------------------------------------------------------
+
+async def test_system_prompt_no_bullet_character():
+    """System prompt must not instruct the LLM to use Unicode bullet characters."""
+    wf = IngestLintWorkflow()
+    prompt = await wf.build_system_prompt()
+    assert "•" not in prompt, (
+        "System prompt must not use • bullet characters — use markdown '- ' list syntax "
+        "so each item renders on its own line in ReactMarkdown"
+    )
+
+
+async def test_system_prompt_workflow_a_step6_markdown_list():
+    """Workflow A step 6 must show a markdown list template with '- ' items."""
+    wf = IngestLintWorkflow()
+    prompt = await wf.build_system_prompt()
+    # Step 6 template must contain a markdown list item with icon
+    assert "- ✓" in prompt or "- ○" in prompt or "- ✗" in prompt, (
+        "Workflow A step 6 must demonstrate '- icon slug:' markdown list items "
+        "so the LLM mirrors that format in its output"
+    )
+
+
+# ---------------------------------------------------------------------------
+# CLI path confirm message — markdown format
+# ---------------------------------------------------------------------------
+
+async def test_cli_confirm_message_uses_markdown_list(monkeypatch):
+    """run_for_cli_provider builds confirm message with markdown list items.
+
+    Each stale page must appear as '- **slug**: source' so ReactMarkdown
+    renders each entry on its own line instead of collapsing them.
+    """
+    wf = IngestLintWorkflow()
+    ctx, _ = _make_ctx()
+
+    scan_result = {
+        "pages": [
+            {"slug": "alan-turing",    "source_path": "raw_sources/alan-turing.md",  "stale_since": "2026-01-01"},
+            {"slug": "grace-hopper",   "source_path": "raw_sources/grace-hopper.md", "stale_since": ""},
+            {"slug": "orphan-no-src",  "source_path": None,                          "stale_since": ""},
+        ],
+    }
+
+    captured: list[str] = []
+
+    async def _fake_find_stale(_ctx):
+        return scan_result
+
+    async def _fake_confirm(_ctx, message: str, yes_label: str = "", no_label: str = ""):
+        captured.append(message)
+        return {"confirmed": False}  # decline — no further mocks needed
+
+    monkeypatch.setattr("synthadoc.agents.workflows.ingest_lint.tool_find_stale_pages", _fake_find_stale)
+    monkeypatch.setattr("synthadoc.agents.workflows.ingest_lint.tool_confirm", _fake_confirm)
+
+    _events = [e async for e in wf.run_for_cli_provider(ctx, "re-ingest stale pages", provider=None)]
+
+    assert captured, "tool_confirm was never called"
+    msg = captured[0]
+
+    # Each page must appear as a markdown list item
+    assert "- **alan-turing**:" in msg, "alan-turing must be a '- **slug**:' markdown list item"
+    assert "- **grace-hopper**:" in msg, "grace-hopper must be a '- **slug**:' markdown list item"
+    assert "- **orphan-no-src**:" in msg, "orphan-no-src must be a '- **slug**:' markdown list item"
+    # Must NOT use bullet character
+    assert "•" not in msg, "Confirm message must not use • bullet characters"
+    # Blank line must separate header from list (prevents header + first item collapsing)
+    assert "\n\n" in msg, "Confirm message must contain a blank line (\\n\\n) before the list"
+
+
+# ---------------------------------------------------------------------------
+# CLI path summary — markdown list items for page states
+# ---------------------------------------------------------------------------
+
+async def test_cli_summary_page_states_use_markdown_list(monkeypatch):
+    """run_for_cli_provider summary uses '- icon slug:' list items for page states.
+
+    Plain '  icon slug:' lines without the '- ' prefix collapse into a single
+    paragraph in ReactMarkdown; list items render on separate lines.
+    """
+    wf = IngestLintWorkflow()
+    ctx, _ = _make_ctx()
+
+    async def _fake_find_stale(_ctx):
+        return {"pages": [{"slug": "alan-turing", "source_path": "raw_sources/alan-turing.md", "stale_since": ""}]}
+
+    async def _fake_confirm(_ctx, message, yes_label="", no_label=""):
+        return {"confirmed": True}
+
+    async def _fake_ingest(_ctx, source_path):
+        return {"status": "success", "message": "ingested"}
+
+    async def _fake_lint(_ctx):
+        return {"status": "success", "message": ""}
+
+    async def _fake_states(_ctx, slugs):
+        return {"pages": [{"slug": s, "state": "active"} for s in slugs]}
+
+    monkeypatch.setattr("synthadoc.agents.workflows.ingest_lint.tool_find_stale_pages", _fake_find_stale)
+    monkeypatch.setattr("synthadoc.agents.workflows.ingest_lint.tool_confirm", _fake_confirm)
+    monkeypatch.setattr("synthadoc.agents.workflows.ingest_lint.tool_ingest_source", _fake_ingest)
+    monkeypatch.setattr("synthadoc.agents.workflows.ingest_lint.tool_run_lint", _fake_lint)
+    monkeypatch.setattr("synthadoc.agents.workflows.ingest_lint.tool_get_page_states", _fake_states)
+
+    events = [e async for e in wf.run_for_cli_provider(ctx, "re-ingest stale pages", provider=None)]
+
+    final = next((e["data"]["text"] for e in events if e["event"] == "final_text"), None)
+    assert final is not None, "No final_text event emitted"
+
+    # Each page state must be a markdown list item
+    assert "- ✓ alan-turing:" in final, (
+        "Page state line must start with '- ' to render as a markdown list item; "
+        f"got: {final!r}"
+    )
+    # Must NOT use plain indented icon without dash
+    assert "  ✓ alan-turing:" not in final, (
+        "Plain '  ✓ slug:' (no '- ' prefix) collapses in ReactMarkdown"
+    )
+
+
 async def test_action_agent_run_gen_yields_sse_for_orchestrate():
     """run_gen() with orchestrate action → yields token and done events."""
     from synthadoc.agents.action_agent import ActionAgent

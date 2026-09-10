@@ -191,28 +191,33 @@ STEP 4 — Per-orphan resolution loop
         ).
         • confirmed=false → add remaining orphans to skipped_list. Break outer loop.
 
-STEP 5 — Final summary (plain text — ends the loop)
+STEP 5 — Final summary (markdown — ends the loop)
   BEFORE writing the summary, audit your lists:
-    • Every slug discovered in step 1 MUST appear in exactly one of
+    - Every slug discovered in step 1 MUST appear in exactly one of
       resolved_list, unresolved_list, or skipped_list.
-    • If any slug is missing, add it to skipped_list now.
-    • len(resolved_list) + len(unresolved_list) + len(skipped_list)
+    - If any slug is missing, add it to skipped_list now.
+    - len(resolved_list) + len(unresolved_list) + len(skipped_list)
       MUST equal the orphan count from step 1. If they do not match,
       do NOT write the summary — call tool_notify(level="error") with
       the discrepancy and then write the summary with corrected counts.
 
-  Format:
-    "Orphan Resolver — Complete
+  Use markdown list syntax so the web UI renders each slug on its own line.
+  NEVER use bullet characters (•) or plain newlines — they collapse in HTML.
+  CRITICAL FORMAT RULE: Each `- item` MUST be on its own line.
 
-    ✅ Resolved (<N>):
-      - <slug> (linked from <page>)
-      ...
-    ⚠ Unresolved (<N>):
-      - <slug> (4 strategies exhausted — see notices above)
-      ...
-    ⏭ Skipped (<N>):
-      - <slug>
-      ..."
+  Format (follow exactly — bold headers, `- ` list items, no indentation):
+
+    **Orphan Resolver — Complete**
+
+    **✅ Resolved (<N>):**
+    - <slug> (linked from <page>)
+    - <slug2> (linked from <page2>)
+
+    **⚠ Unresolved (<N>):**
+    - <slug> (4 strategies exhausted — see notices above)
+
+    **⏭ Skipped (<N>):**
+    - <slug>
 
 ━━━ CRITICAL RULES ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 • Plain text ENDS THE LOOP — use it ONLY for the final summary or cancellations.
@@ -421,27 +426,30 @@ class OrphanResolverWorkflow(AgenticWorkflow):
         # ── 4. Final summary (mirrors STEP 5) ────────────────────────────────
         # Each entry in `parts` is one markdown section; join with "\n\n" so
         # the web UI renderer inserts a paragraph break between sections.
+        # Use bold headers ("**✅ Resolved (N):**") and "- " list items (no
+        # leading-space indent) to match the contradiction-resolver format and
+        # guarantee ReactMarkdown renders each slug on its own line.
         parts: list[str] = ["**Orphan Resolver — Complete**"]
 
         if resolved_list:
-            resolved_lines = [f"✅ Resolved ({len(resolved_list)}):"]
+            resolved_lines = [f"**✅ Resolved ({len(resolved_list)}):**"]
             for slug, linked_by in resolved_list:
                 linkers = ", ".join(linked_by) if linked_by else "unknown"
-                resolved_lines.append(f"  - {slug} (linked from {linkers})")
+                resolved_lines.append(f"- {slug} (linked from {linkers})")
             parts.append("\n".join(resolved_lines))
 
         if unresolved_list:
-            unresolved_lines = [f"⚠ Unresolved ({len(unresolved_list)}):"]
+            unresolved_lines = [f"**⚠ Unresolved ({len(unresolved_list)}):**"]
             for slug in unresolved_list:
                 unresolved_lines.append(
-                    f"  - {slug} (4 strategies exhausted — see notices above)"
+                    f"- {slug} (4 strategies exhausted — see notices above)"
                 )
             parts.append("\n".join(unresolved_lines))
 
         if skipped_list:
-            skipped_lines = [f"⏭ Skipped ({len(skipped_list)}):"]
+            skipped_lines = [f"**⏭ Skipped ({len(skipped_list)}):**"]
             for slug in skipped_list:
-                skipped_lines.append(f"  - {slug}")
+                skipped_lines.append(f"- {slug}")
             parts.append("\n".join(skipped_lines))
 
         summary = "\n\n".join(parts)
