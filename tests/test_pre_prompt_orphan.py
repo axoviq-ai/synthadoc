@@ -65,17 +65,71 @@ def test_pre_prompt_does_not_fire_for_unrelated_orphan_word():
     assert result is None
 
 
-# ── Lint report output format ─────────────────────────────────────────────────
+# ── Lint report CLI summary format ("- Orphan pages: N") ─────────────────────
+# This is the format produced by LintReportWorkflow.run_for_cli_provider()
+# summary line: f"- Orphan pages: {orphans}"
+
+def test_pre_prompt_fires_for_lint_summary_format():
+    """CLI lint report summary line '- Orphan pages: 2' triggers pre-prompt."""
+    answer = (
+        "### Lint Report (2026-09-10)\n\n"
+        "**Summary**\n"
+        "- Orphan pages: 2\n"
+        "- Contradictions: 0 resolved, 0 flagged\n\n"
+        "**Orphan Pages**\n"
+        "- konrad-zuse\n"
+        "- quantum-computing"
+    )
+    result = _build_pre_prompt(answer)
+    assert result is not None, (
+        "pre_prompt must fire when lint summary contains '- Orphan pages: 2'"
+    )
+    assert "2" in result
+    assert "orphan" in result.lower()
+    assert "resolver" in result.lower()
+
+
+def test_pre_prompt_fires_for_lint_summary_single_page():
+    """Singular form correct when lint summary shows exactly 1 orphan page."""
+    answer = (
+        "**Summary**\n"
+        "- Orphan pages: 1\n"
+        "- Contradictions: 0 resolved, 0 flagged\n\n"
+        "**Orphan Pages**\n"
+        "- konrad-zuse"
+    )
+    result = _build_pre_prompt(answer)
+    assert result is not None
+    assert "1 orphan page" in result
+
+
+def test_pre_prompt_does_not_fire_for_lint_summary_zero():
+    """Lint summary '- Orphan pages: 0' must NOT trigger the hint."""
+    answer = (
+        "### Lint Report (2026-09-10)\n\n"
+        "**Summary**\n"
+        "- Orphan pages: 0\n"
+        "- Contradictions: 0 resolved, 0 flagged\n\n"
+        "**Orphan Pages**\n"
+        "(none)"
+    )
+    result = _build_pre_prompt(answer)
+    assert result is None, (
+        "pre_prompt must NOT fire when lint summary shows '- Orphan pages: 0'"
+    )
+
+
+# ── Lint report LLM-generated section header format ──────────────────────────
 
 def test_pre_prompt_fires_for_lint_report_format():
-    """Lint report renders 'Orphan pages (2) — no inbound links:'."""
+    """LLM-generated format 'Orphan pages (2) — no inbound links:' triggers pre-prompt."""
     answer = (
         "**Orphan Pages**\n\n"
         "Orphan pages (2) — no inbound links:\n\n"
         "- `konrad-zuse`\n- `quantum-computing`"
     )
     result = _build_pre_prompt(answer)
-    assert result is not None, "pre_prompt should fire for lint-report orphan format"
+    assert result is not None, "pre_prompt should fire for parens orphan format"
     assert "2" in result
     assert "orphan" in result.lower()
     assert "resolver" in result.lower()
@@ -90,7 +144,7 @@ def test_pre_prompt_fires_for_lint_report_single_page():
 
 
 def test_pre_prompt_does_not_fire_for_lint_report_zero():
-    """Lint report with (0) must NOT trigger the hint."""
+    """Parens format with (0) must NOT trigger the hint."""
     answer = "Orphan pages (0) — all pages are reachable via wikilinks."
     result = _build_pre_prompt(answer)
     assert result is None
