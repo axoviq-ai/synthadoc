@@ -14,7 +14,7 @@
       '-+###############+-'
 
        S Y N T H A D O C
-    Community Edition  v1.3.2
+    Community Edition  v1.3.3
   ────────────────────────────────
   Domain-agnostic LLM wiki engine
 ```
@@ -31,10 +31,10 @@
 <a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.cli_commands&label=CLI%20commands&color=darkblue" alt="CLI commands"/></a>
 <a href="https://github.com/axoviq-ai/synthadoc/tree/main/obsidian-plugin"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.obsidian_commands&label=Obsidian%20commands&color=blueviolet" alt="Obsidian commands"/></a>
 <a href="https://github.com/axoviq-ai/synthadoc/blob/main/docs/user-quick-start-guide.md#agentic-workflows"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Faxoviq-ai%2Fsynthadoc%2Fbadges%2Fdocs%2Fbadges.json&query=%24.maintenance_workflows&label=Maintenance%20workflows&color=green" alt="Maintenance workflows"/></a>
-<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.3.2-brightgreen.svg" alt="Version"/></a>
+<a href="https://github.com/axoviq-ai/synthadoc"><img src="https://img.shields.io/badge/Community%20Edition-v1.3.3-brightgreen.svg" alt="Version"/></a>
 </p>
 
-**Document version: v1.3.2**
+**Document version: v1.3.3**
 
 **Engineered for solo users and enterprises alike, providing a domain-specific knowledge base that scales seamlessly while maintaining accuracy through autonomous self-optimization.**
 
@@ -398,7 +398,7 @@ The PID is printed on start and saved to `<wiki-root>/.synthadoc/server.pid`.
 
 ```bash
 synthadoc plugin upgrade         # push updated Obsidian plugin binary to all registered wikis
-synthadoc demo sync --force      # demo-installed wikis — update pages and pick up citation markers
+synthadoc templates sync --force # demo and template wikis — refresh seeds, routing, agent files, and stubs
 ```
 
 Neither command requires the server to be running.
@@ -485,7 +485,14 @@ synthadoc status   # should show 0 pages and the scheduled jobs registered
 
 ### 3. Add your sources and ingest
 
-Drop your own documents into the `raw_sources/` folder inside the installed wiki, then ingest them. Subfolders are supported — organise by topic, date, or document type:
+> **Start with `seeds.md`.** Your installed wiki includes a `seeds.md` file at the wiki root — open it before anything else. It contains the complete getting-started guide for your domain: pre-vetted copy-paste ingest commands for curated public URLs, a domain-specific first-steps checklist, and topic hints for finding additional sources.
+>
+> Open it in Obsidian (file pane → `seeds.md`) or in any editor:
+> ```
+> <your-wiki-folder>/seeds.md
+> ```
+
+Once you have worked through `seeds.md`, drop your own documents into the `raw_sources/` folder and ingest them. Subfolders are supported — organise by topic, date, or document type:
 
 ```bash
 synthadoc ingest raw_sources/ --batch          # all local files at once
@@ -578,11 +585,11 @@ synthadoc templates list
 # Install with a domain template — pre-configured guidelines, routing, and starter pages
 synthadoc install my-finance-wiki --target ~/wikis --template finance/investment
 
-# Sync new source files into an existing demo install (additive only, no overwrites)
-synthadoc demo sync history-of-computing
+# Sync a demo or template wiki — refresh seeds, routing, agent files, and intake forms
+synthadoc templates sync history-of-computing
 
-# Update existing demo pages from the latest template (overwrites demo pages)
-synthadoc demo sync history-of-computing --force
+# Also refresh stub pages that have never been ingested (sources: [])
+synthadoc templates sync history-of-computing --force
 
 # Reinstall the Obsidian plugin into a wiki's vault — normally done automatically by synthadoc install
 synthadoc plugin install history-of-computing

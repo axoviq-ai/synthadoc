@@ -894,8 +894,15 @@ def test_agentic_reingest_stale_pages_become_draft():
         )
 
         # Lint must complete (not just be queued) — the narrative should say so.
-        lint_progress = [d for t, d in events if t == "tool_progress" and d.get("tool") == "run_lint"]
-        assert lint_progress, "Expected a run_lint tool_progress event — lint was not called"
+        # tool_run_lint emits {"tool": "run_lint"} tool_progress before enqueueing the job.
+        _all_progress = [(t, d) for t, d in events if t == "tool_progress"]
+        _progress_tools = [d.get("tool") for _, d in _all_progress]
+        lint_progress = [d for _, d in _all_progress if d.get("tool") == "run_lint"]
+        assert lint_progress, (
+            "Expected a run_lint tool_progress event — lint was not called.\n"
+            f"tool_progress events received (tools): {_progress_tools}\n"
+            f"All event types: {[t for t, _ in events]}"
+        )
         full_text = "".join(d.get("text", "") for t, d in events if t == "token")
         assert any(
             kw in full_text.lower()
@@ -903,9 +910,10 @@ def test_agentic_reingest_stale_pages_become_draft():
         ), f"Expected lint result in narrative. Got: {full_text[:300]!r}"
 
         # get_page_states must follow lint and page states must appear in the narrative.
-        states_progress = [d for t, d in events if t == "tool_progress" and d.get("tool") == "get_page_states"]
+        states_progress = [d for _, d in _all_progress if d.get("tool") == "get_page_states"]
         assert states_progress, (
-            "Expected a get_page_states tool_progress event — page states not checked after lint"
+            "Expected a get_page_states tool_progress event — page states not checked after lint.\n"
+            f"tool_progress events received (tools): {_progress_tools}"
         )
         assert any(
             kw in full_text.lower()

@@ -960,6 +960,125 @@ async def test_run_orchestrate_uses_cli_path_for_supported_workflow(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_run_orchestrate_done_includes_pre_prompt_from_final_text(tmp_path):
+    """_run_orchestrate must include pre_prompt in the done event when the
+    workflow's final_text triggers _build_pre_prompt (e.g. lint report with
+    orphan pages).  This was broken: the done event was emitted with an
+    empty dict and no pre_prompt, so the text field never pre-populated.
+    """
+    from unittest.mock import patch as _patch
+    from synthadoc.agents.action_agent import ActionAgent
+    from synthadoc.agents.workflows._base import AgenticWorkflow
+
+    with _patch("synthadoc.providers.coding_tool._find_binary", return_value="/usr/bin/claude"):
+        from synthadoc.providers.coding_tool import ClaudeCodeCLIProvider
+        cli_provider = ClaudeCodeCLIProvider(model=None, timeout=30)
+
+    # Stub workflow that emits a lint report with 2 orphan pages —
+    # exactly what LintReportWorkflow produces via run_for_cli_provider.
+    _LINT_WITH_ORPHANS = (
+        "### Lint Report (2026-09-10)\n\n"
+        "**Summary**\n"
+        "- Orphan pages: 2\n"
+        "- Contradictions: 0 resolved, 0 flagged\n\n"
+        "**Orphan Pages**\n"
+        "- konrad-zuse\n"
+        "- quantum-computing"
+    )
+
+    class _LintStubWorkflow(AgenticWorkflow):
+        SUPPORTS_CLI_PROVIDER = True
+        MATCH_RE = None
+
+        async def build_system_prompt(self): return ""
+        def build_initial_message(self, q): return q
+        def get_tool_fns(self, ctx): return {}
+
+        async def run_for_cli_provider(self, ctx, question, provider):
+            yield {"event": "token", "data": {"text": _LINT_WITH_ORPHANS}}
+            yield {"event": "final_text", "data": {"text": _LINT_WITH_ORPHANS}}
+
+    orch = MagicMock()
+    orch.lint = AsyncMock()
+    orch._queue = MagicMock()
+    orch.queue = MagicMock()
+    orch._store = MagicMock()
+    orch._bump_epoch = MagicMock()
+    orch._cfg = MagicMock()
+    orch._cfg.chat.clarify_lookback = 5
+    agent = ActionAgent(provider=cli_provider, orchestrator=orch, wiki_root=tmp_path)
+
+    events = []
+    async for evt in agent._run_orchestrate("run lint and report", workflow=_LintStubWorkflow()):
+        events.append(evt)
+
+    done_evt = next((e for e in events if e["event"] == "done"), None)
+    assert done_evt is not None, "done event must be emitted"
+    assert "pre_prompt" in done_evt["data"], (
+        "done event must include pre_prompt when final_text mentions orphan pages; "
+        f"got done data: {done_evt['data']}"
+    )
+    pre_prompt = done_evt["data"]["pre_prompt"]
+    assert "orphan" in pre_prompt.lower(), f"pre_prompt must mention orphan: {pre_prompt!r}"
+    assert "2" in pre_prompt, f"pre_prompt must include orphan count: {pre_prompt!r}"
+
+
+@pytest.mark.asyncio
+async def test_run_orchestrate_done_no_pre_prompt_when_all_clear(tmp_path):
+    """_run_orchestrate must NOT include pre_prompt when the workflow final_text
+    shows no actionable issues (all counts zero).
+    """
+    from unittest.mock import patch as _patch
+    from synthadoc.agents.action_agent import ActionAgent
+    from synthadoc.agents.workflows._base import AgenticWorkflow
+
+    with _patch("synthadoc.providers.coding_tool._find_binary", return_value="/usr/bin/claude"):
+        from synthadoc.providers.coding_tool import ClaudeCodeCLIProvider
+        cli_provider = ClaudeCodeCLIProvider(model=None, timeout=30)
+
+    _LINT_ALL_CLEAR = (
+        "### Lint Report (2026-09-10)\n\n"
+        "**Summary**\n"
+        "- Orphan pages: 0\n"
+        "- Contradictions: 0 resolved, 0 flagged\n\n"
+        "**Orphan Pages**\n(none)\n\n"
+        "**Contradicted Pages**\n(none)"
+    )
+
+    class _ClearLintWorkflow(AgenticWorkflow):
+        SUPPORTS_CLI_PROVIDER = True
+        MATCH_RE = None
+
+        async def build_system_prompt(self): return ""
+        def build_initial_message(self, q): return q
+        def get_tool_fns(self, ctx): return {}
+
+        async def run_for_cli_provider(self, ctx, question, provider):
+            yield {"event": "token", "data": {"text": _LINT_ALL_CLEAR}}
+            yield {"event": "final_text", "data": {"text": _LINT_ALL_CLEAR}}
+
+    orch = MagicMock()
+    orch.lint = AsyncMock()
+    orch._queue = MagicMock()
+    orch.queue = MagicMock()
+    orch._store = MagicMock()
+    orch._bump_epoch = MagicMock()
+    orch._cfg = MagicMock()
+    orch._cfg.chat.clarify_lookback = 5
+    agent = ActionAgent(provider=cli_provider, orchestrator=orch, wiki_root=tmp_path)
+
+    events = []
+    async for evt in agent._run_orchestrate("run lint and report", workflow=_ClearLintWorkflow()):
+        events.append(evt)
+
+    done_evt = next((e for e in events if e["event"] == "done"), None)
+    assert done_evt is not None
+    assert "pre_prompt" not in done_evt["data"], (
+        "done event must NOT include pre_prompt when there are no actionable issues"
+    )
+
+
+@pytest.mark.asyncio
 async def test_broken_citation_resolver_cli_path_no_issues(tmp_path):
     """run_for_cli_provider returns early with 'no broken citations' when
     tool_find_broken_citations reports zero issues."""
