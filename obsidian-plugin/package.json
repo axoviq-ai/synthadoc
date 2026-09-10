@@ -17,6 +17,6 @@
     "esbuild": "^0.28.1",
     "obsidian": "latest",
     "typescript": "^5.3",
-    "vitest": "^4.1.4"
+    "vitest": "^4.1.11"
   }
 }
