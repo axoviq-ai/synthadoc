@@ -520,9 +520,17 @@ class ActionAgent(BaseAgent):
                 if evt.get("event") == "final_text":
                     # Token chunks were already streamed via the sse_queue → do NOT
                     # re-emit the full text here or the client receives it twice.
-                    # No pre_prompt: the workflow already ran lint and reported page
-                    # states, so there is no unambiguous next step to suggest.
-                    yield {"event": "done", "data": {"citations": [], "hints": [], "cacheable": False}}
+                    # Run _build_pre_prompt on the final text so workflows that
+                    # surface orphan pages, contradicted pages, stale pages, or
+                    # broken wikilinks produce a pre-filled next-step suggestion
+                    # in the Ask field — same as the regular query path.
+                    from synthadoc.agents.query_agent import _build_pre_prompt  # lazy — avoids circular import
+                    _final_text = (evt.get("data") or {}).get("text", "")
+                    _done_data: dict = {"citations": [], "hints": [], "cacheable": False}
+                    _wf_pre_prompt = _build_pre_prompt(_final_text)
+                    if _wf_pre_prompt:
+                        _done_data["pre_prompt"] = _wf_pre_prompt
+                    yield {"event": "done", "data": _done_data}
                 else:
                     yield evt
         finally:
