@@ -485,7 +485,14 @@ synthadoc status   # should show 0 pages and the scheduled jobs registered
 
 ### 3. Add your sources and ingest
 
-Drop your own documents into the `raw_sources/` folder inside the installed wiki, then ingest them. Subfolders are supported — organise by topic, date, or document type:
+> **Start with `seeds.md`.** Your installed wiki includes a `seeds.md` file at the wiki root — open it before anything else. It contains the complete getting-started guide for your domain: pre-vetted copy-paste ingest commands for curated public URLs, a domain-specific first-steps checklist, and topic hints for finding additional sources.
+>
+> Open it in Obsidian (file pane → `seeds.md`) or in any editor:
+> ```
+> <your-wiki-folder>/seeds.md
+> ```
+
+Once you have worked through `seeds.md`, drop your own documents into the `raw_sources/` folder and ingest them. Subfolders are supported — organise by topic, date, or document type:
 
 ```bash
 synthadoc ingest raw_sources/ --batch          # all local files at once
