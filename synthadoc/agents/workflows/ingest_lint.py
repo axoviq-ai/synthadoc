@@ -54,13 +54,32 @@ Workflow A — re-ingest ALL stale pages:
 1. Call find_stale_pages.
 2. Call confirm IMMEDIATELY — list the pages in the message, ask whether to proceed.
    Use the confirm TOOL; never write plain text to ask (that exits the loop).
+   Use markdown list format for the confirm message so each page renders on its own line:
+
+   Found N stale page(s). Re-ingest all?
+
+   - **slug**: path/to/source.md  stale since YYYY-MM-DD
+   - **slug2**: path/to/source2.md
+
 3. If confirmed, call ingest_source for each page with a valid source_path — one page
    at a time, waiting for each result before calling the next.
 4. Call run_lint — MANDATORY even if one or more ingests failed. Blocks until done.
 5. Call get_page_states with the slugs of every page you attempted to re-ingest.
-6. Plain-text summary of every re-ingest outcome, the lint result (pass/fail), and
-   a "Page states after re-ingest" section listing each slug with its current state.
-   Use ✓ for active, ✗ for stale, and ○ for draft/archived/unknown.
+6. Markdown summary of every re-ingest outcome, the lint result (pass/fail), and
+   a "Page states after re-ingest" section. Use markdown list syntax so each item
+   renders on its own line — NEVER use plain newlines or Unicode bullet characters.
+
+   **Ingest & Lint — Complete**
+
+   ✅ Lint: success  (or ⚠ Lint: failed — <message>)
+
+   **Page states after re-ingest:**
+   - ✓ slug: ingest=success, state=active
+   - ✗ slug2: ingest=success, state=stale
+   - ○ slug3 — skipped (no source path)
+
+   CRITICAL FORMAT RULE: Each `- item` MUST be on its own line. NEVER put two
+   items on the same line. NEVER use Unicode bullet characters.
 
 Workflow B — re-ingest a SPECIFIC page by slug:
 1. Call find_page_source(slug=<slug>) to get its source path.
@@ -69,8 +88,8 @@ Workflow B — re-ingest a SPECIFIC page by slug:
 3. If confirmed, call ingest_source(source_path=<path>).
 4. Call run_lint — MANDATORY regardless of whether the ingest succeeded. Blocks until done.
 5. Call get_page_states(slugs=[<slug>]) to check the page's current lifecycle state.
-6. Plain-text summary of the ingest result, the lint result (pass/fail), and the
-   final page state. Use ✓ for active, ✗ for stale, ○ for draft/archived/unknown.
+6. Markdown summary of the ingest result, the lint result, and final page state.
+   Use markdown list syntax (same format as Workflow A step 6).
 
 CRITICAL RULE: Steps 4→5 are REQUIRED after every confirmed ingest_source call.
 You MUST call run_lint, then get_page_states — in that order — before
@@ -238,18 +257,24 @@ class IngestLintWorkflow(AgenticWorkflow):
             # mirroring the system prompt §step 2 instruction ("list the pages
             # in the message").  Pages with no source_path are shown explicitly
             # so the user knows they will be skipped.
-            confirm_lines: list[str] = [
-                f"Found {len(pages)} stale page(s). Re-ingest all?\n",
-            ]
+            # Use markdown list syntax: single \n between list items is fine,
+            # but a blank line (\n\n) before the list is required so ReactMarkdown
+            # doesn't fuse the header and the first item into one paragraph.
+            confirm_items: list[str] = []
             for p in pages:
                 src = p.get("source_path") or "(no source path — will be skipped)"
                 stale_since = p.get("stale_since", "")
                 since_label = f"  stale since {stale_since}" if stale_since else ""
-                confirm_lines.append(f"  • {p['slug']}: {src}{since_label}")
+                confirm_items.append(f"- **{p['slug']}**: {src}{since_label}")
+
+            confirm_msg = (
+                f"Found {len(pages)} stale page(s). Re-ingest all?\n\n"
+                + "\n".join(confirm_items)
+            )
 
             confirmed = await tool_confirm(
                 ctx,
-                "\n".join(confirm_lines),
+                confirm_msg,
                 yes_label="Re-ingest all",
                 no_label="Cancel",
             )
@@ -301,6 +326,10 @@ class IngestLintWorkflow(AgenticWorkflow):
             + (f" — {lint_result['message']}" if lint_result.get("message") else "")
         )
 
+        # Build per-page state lines as markdown list items ("- icon slug: ...")
+        # so ReactMarkdown renders each page on its own line.  Plain "  icon slug"
+        # lines (no "- " prefix) collapse to a single paragraph — same root cause
+        # as the broken-wikilinks and contradiction-resolver fixes.
         states_lines = ["**Page states after re-ingest:**"]
         for slug in attempted_slugs:
             result = ingest_results.get(slug, {})
@@ -311,11 +340,11 @@ class IngestLintWorkflow(AgenticWorkflow):
             state = state_map.get(slug, "unknown")
             icon = _ICON.get(state, "○")
             if ingest_status == "skipped":
-                states_lines.append(f"  ○ {slug} — skipped (no source path)")
+                states_lines.append(f"- ○ {slug} — skipped (no source path)")
             elif result.get("error"):
-                states_lines.append(f"  ✗ {slug}: error — {result['error']}")
+                states_lines.append(f"- ✗ {slug}: error — {result['error']}")
             else:
-                states_lines.append(f"  {icon} {slug}: ingest={ingest_status}, state={state}")
+                states_lines.append(f"- {icon} {slug}: ingest={ingest_status}, state={state}")
         parts.append("\n".join(states_lines))
 
         summary = "\n\n".join(parts)
