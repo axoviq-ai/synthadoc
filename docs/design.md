@@ -1,6 +1,6 @@
 ﻿# Synthadoc — Design Document
 
-**Version:** 1.3.2
+**Version:** 1.3.3
 **Audience:** Product users who want to understand how the system works; developers adding features, skills, and plugins.
 
 **Document owners:** Paul Chen, William Johnason
@@ -4139,6 +4139,10 @@ Accessible from the web UI (pre-prompt + hint chip "Fix broken citations"), natu
 ---
 
 ## Appendix A — Release Feature Index
+
+### v1.3.3
+
+- **Domain Templates** — 30 fully-authored domain templates across 9 categories (business, education, finance, healthcare, legal, operations, real-estate, research, technology). Each template ships with: domain-specific agent guidelines (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`), a pre-built query routing table (`ROUTING.md`), purpose and index pages, scaffold stub pages for common knowledge areas, blank `template-*.md` intake forms for each raw-source type, and a curated `seeds.md` guide with pre-vetted ingest URLs. Templates are bundled with the package — no network required at install time. `synthadoc install my-wiki --target ~/wikis --template business/project-management` performs a full wiki install and applies the template delta. `synthadoc templates list` browses all demos and templates together. All template wikis default to `staging_policy = "all"` (every ingest goes to `candidates/` for review before promotion). Weekly lint and scaffold jobs are pre-registered in the scheduler. `synthadoc templates sync [<name>] [--force]` refreshes seeds, routing, agent files, and new intake forms without overwriting user content; replaces the deprecated `synthadoc demo sync`. See [§Template Engine](#template-engine).
 
 ### v1.3.2
 

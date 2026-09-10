@@ -1,6 +1,6 @@
 ﻿# Synthadoc User Quick-Start Guide
 
-**Version: v1.3.2 (Community Edition)**
+**Version: v1.3.3 (Community Edition)**
 
 This guide walks you through the **History of Computing** demo wiki — a fully wired
 Synthadoc environment with 13 pre-built pages and six raw source files that cover every
@@ -10,7 +10,7 @@ major engine feature. No setup beyond following the steps below is required.
 > install synthadoc (production or development), set your API key, install the demo wiki, and start the engine.
 > Then come back here.
 >
-> **Already installed the demo wiki?** Skip `synthadoc install` and run `synthadoc demo sync history-of-computing --force` instead. This updates all pre-built demo pages and source files to the latest template, including pages with citation markers added in recent releases. `--force` only overwrites demo template files — your own ingested pages and `.synthadoc/` config and audit data are never touched.
+> **Already installed the demo wiki?** Skip `synthadoc install` and run `synthadoc templates sync history-of-computing --force` instead. This updates all pre-built demo pages and source files to the latest template, including pages with citation markers added in recent releases. `--force` only overwrites demo template files — your own ingested pages and `.synthadoc/` config and audit data are never touched.
 
 ---
 
@@ -55,6 +55,7 @@ major engine feature. No setup beyond following the steps below is required.
 - [Appendix H — BM25 Routing Performance Benchmarks](#appendix-h--bm25-routing-performance-benchmarks)
 - [Appendix I — Connect Claude via MCP](#appendix-i--connect-claude-via-mcp)
 - [Appendix J — Backup & Restore](#appendix-j--backup--restore)
+- [Appendix K — Domain Templates](#appendix-k--domain-templates)
 
 ---
 
@@ -3363,8 +3364,8 @@ To promote a page to active: `synthadoc lifecycle activate <slug>`
 After upgrading Synthadoc, sync your demo wikis to pick up new content:
 
 ```bash
-synthadoc demo sync --force   # overwrite existing wiki pages from the latest template (picks up citation markers and other page updates)
-synthadoc demo sync           # additive only — copies new raw_sources and new wiki pages; existing wiki pages are not overwritten
+synthadoc templates sync --force   # overwrite existing wiki pages from the latest template (picks up citation markers and other page updates)
+synthadoc templates sync           # additive only — copies new raw_sources and new wiki pages; existing wiki pages are not overwritten
 ```
 
 ## Uninstall a wiki
@@ -4268,3 +4269,109 @@ Restores to the same directory as the zip file by default. Detects port conflict
 | `embeddings.db`                                               | ✗ Never   | Rebuilt automatically on next server start                                     |
 | `server.pid`                                                  | ✗ Never   | Machine-specific process ID                                                    |
 | `logs/`                                                       | ✗ Never   | Server application logs                                                        |
+
+---
+
+## Appendix K — Domain Templates
+
+Domain templates give you a production-ready wiki structure on day one — no
+blank-canvas decisions required. Each template is a curated starting point for
+a specific industry domain, with pre-built routing, domain-tuned agent
+guidelines, scaffold stubs, blank intake forms, and a hand-picked list of
+seeds to ingest first.
+
+### Browse available templates
+
+```bash
+synthadoc templates list
+```
+
+Output shows all 30 templates grouped by category:
+
+```
+Templates  ──────────────────────────────────────────────
+  business/
+    project-management          Project charters, status reports, risk registers, and meeting notes
+    product-management          Product specs, roadmaps, user research, and feature backlogs
+    hr-people                   Job descriptions, onboarding docs, performance reviews, and org charts
+    marketing                   Campaign briefs, brand guidelines, content calendars, and competitive intel
+  finance/
+    investment                  Deal memos, financial models, due diligence, and portfolio company pages
+    mortgage                    Loan products, pipeline reports, underwriting guidelines, and compliance
+    banking                     Product catalogs, credit applications, compliance docs, and internal guides
+    accounting                  Journal entries, reconciliations, period-close checklists, and policies
+  technology/
+    software-dev                ADRs, runbooks, feature specs, and engineering onboarding
+    devops                      Incident post-mortems, change requests, runbooks, and deployment checklists
+    ai-ml                       Experiment logs, model cards, dataset catalogs, and evaluation frameworks
+    data-engineering            Pipeline docs, dataset registries, data quality rules, and SLAs
+  ...
+  Install:  synthadoc install <name> --target <dir> --template <category/domain>
+  Example:  synthadoc install my-wiki --target ~/wikis --template finance/investment
+```
+
+### Install a template wiki
+
+```bash
+synthadoc install my-wiki --target ~/wikis --template technology/software-dev
+synthadoc serve my-wiki
+```
+
+The install applies the template delta on top of a standard blank wiki:
+
+1. **Agent skill files** — `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` regenerated with domain-specific guidelines
+2. **`ROUTING.md`** — query routing table pre-built for the domain's knowledge branches
+3. **`wiki/purpose.md` and `wiki/index.md`** — domain-appropriate purpose statement and index structure
+4. **Stub pages** — 8–12 pre-named pages covering core knowledge areas (e.g. for `software-dev`: architecture, api-design, deployment, incident-response)
+5. **Intake forms** — blank `template-*.md` files in each `raw_sources/<type>/` subfolder — copy, fill in, and ingest
+6. **Staging enabled** — `staging_policy = "all"` so every ingest lands in `candidates/` for review before promotion
+7. **Scheduled maintenance** — weekly lint (Sunday 2:00 AM) and weekly scaffold (Sunday 3:00 AM) pre-registered
+
+### Follow the seeds
+
+After install, open `seeds.md` in your wiki root. It lists curated starting sources
+for your domain — reference docs, public datasets, official guidelines. Pick a few
+that match your use case and ingest them:
+
+```bash
+synthadoc ingest "https://docs.github.com/en/actions" -w my-wiki
+```
+
+All new pages land in `candidates/` for your review.
+
+### Use the intake forms
+
+Each `raw_sources/<type>/template-*.md` file is a blank form for that source type.
+To add a new source:
+
+1. Copy the form and rename it (drop `template-` prefix): `cp raw_sources/specs/template-spec.md raw_sources/specs/auth-service-spec.md`
+2. Fill in the form fields
+3. Ingest: `synthadoc ingest raw_sources/specs/auth-service-spec.md -w my-wiki`
+
+Template files (the `template-` prefix) are automatically excluded from `--batch`
+ingestion — only your filled-in copies are processed.
+
+### Keep your template up to date
+
+After upgrading synthadoc, refresh the template-managed files:
+
+```bash
+# Update seeds, routing, agent files, and intake forms — never touches your ingested pages
+synthadoc templates sync
+
+# Also refresh stub pages that have never been ingested (sources: [])
+synthadoc templates sync --force
+
+# Sync a specific wiki by name
+synthadoc templates sync my-wiki
+```
+
+> **Deprecation notice:** `synthadoc demo sync` is deprecated. Use
+> `synthadoc templates sync` — it handles both demo wikis and template-based
+> wikis with the same syntax and flags.
+
+### Template reference
+
+See [`synthadoc/templates/README.md`](../synthadoc/templates/README.md) for
+the complete listing of all 30 templates with install commands, the full
+directory structure each template ships, and instructions for authoring your own.

@@ -482,8 +482,7 @@ class ContradictionResolverWorkflow(AgenticWorkflow):
                                 message=(
                                     f"⚠ {slug} — rewrite applied but lint still failing "
                                     f"({wc} warning(s)); page remains contradicted. "
-                                    f"Run the full resolver with provider=anthropic for "
-                                    f"multi-strategy retry."
+                                    f"Re-run the contradiction resolver for multi-strategy retry."
                                 ),
                                 level="warning",
                             )

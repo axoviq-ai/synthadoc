@@ -209,8 +209,8 @@ def _format_cr_summary(
             lines.append(f"- {item['slug']}: {item['reason']}")
         lines.append("")
         lines.append(
-            "_Tip: run the full resolver with provider=anthropic for "
-            "multi-strategy retry on unresolved pages._"
+            "_Tip: re-run the contradiction resolver for multi-strategy "
+            "retry on unresolved pages._"
         )
     else:
         lines.append("- (none)")

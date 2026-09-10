@@ -94,13 +94,26 @@ Full-wiki mode:   "No broken wikilinks found across N active pages. Wiki link in
                    Note: Stale/draft pages were excluded from the scan."
 
 ### Phase 2 — Fix
-4. Build a confirm message listing every affected page, each broken ref, and its fix:
-   - If suggestion exists: [[broken-ref]] → [[suggestion]] (fuzzy match)
-   - If no suggestion:     [[broken-ref]] → remove link (no similar page found)
-   Include at the end: "Stale/draft pages were excluded. Promote them to active
-   to include in the scan."
+4. Build a confirm message listing every affected page, each broken ref, and its fix.
+   Use markdown format so the web UI renders it correctly.  CRITICAL FORMAT RULE:
+   each broken link MUST be its own markdown list item (`- [[ref]] → fix`).
+   NEVER put two links on the same line.
+
+   Template (follow exactly):
+
+   Found N broken wikilink(s) across P page(s). Proposed F fix(es) on P page(s):
+
+   **<slug>:**
+   - `[[broken-ref]]` → `[[suggestion]]` (fuzzy match)   ← when suggestion exists
+   - `[[broken-ref]]` → remove link (no similar page found)  ← when no suggestion
+
+   **<slug2>:**
+   - `[[broken-ref]]` → remove link (no similar page found)
+
+   Stale/draft pages were excluded. Promote them to active to include in the scan.
+
 5. Call confirm with the full scope.
-   - If declined: report "Re-ingest declined by user." STOP.
+   - If declined: report "Cancelled — no links were modified." STOP.
 6. For each page in pages (one at a time):
    - Build the fixes list from that page's broken_links (the find_broken_wikilinks result).
      For each broken_link entry: new_ref = entry.suggestion.
@@ -109,13 +122,26 @@ Full-wiki mode:   "No broken wikilinks found across N active pages. Wiki link in
    - Call apply_link_fixes with page_slug and fixes.
 7. Call run_lint (scope="all") to revalidate the wiki. Blocks until done.
 8. Call get_page_states with the slugs of all pages that had fixes applied.
-9. Write a plain-text summary:
-    - N active pages scanned
-    - M broken links found and fixed across K pages
-    - Per-page: "  • <slug>: N fix(es)" — include pages where changes==0 as no-ops
-    - Lint job: pass / fail
-    - "Page states after fix:" section — ✓ active, ✗ stale, ○ other
-    - Reminder: "Stale/draft pages were excluded from the scan."
+9. Write a markdown summary (the web UI renders markdown — use list syntax, NOT bullet
+   characters or plain newlines, so each item appears on its own line):
+
+   **Broken Wikilinks — Complete**
+
+   N active page(s) scanned. M broken link(s) found; F fix(es) applied across K page(s).
+   ✅ Lint: success   (or ⚠ Lint: failed — <message>)
+
+   **Per-page results:**
+   - <slug>: N fix(es)
+   - <slug2>: 0 fix(es) (no-op)
+
+   **Page states after fix:**
+   - ✓ <slug>: active
+   - ✗ <slug2>: stale
+
+   Note: Stale/draft pages were excluded from the scan.
+
+   CRITICAL FORMAT RULE: Each `- item` MUST be on its own line. NEVER put two items
+   on the same line.  NEVER use Unicode bullet characters — use markdown `- ` list syntax.
 
 ## CRITICAL RULES
 
@@ -284,31 +310,35 @@ class BrokenWikilinksWorkflow(AgenticWorkflow):
                 decisions.append({"slug": p["slug"], "fixes": fixes})
 
         # ── 3. Confirm (Phase 2, steps 4-5) ───────────────────────────────────
+        # Build confirm message in markdown so ReactMarkdown renders each link
+        # on its own line.  Single \n is a soft-break (collapses to a space in
+        # HTML); use markdown list items (`- `) and blank lines between pages.
         n_pages = len(decisions)
         n_fixes = sum(len(d["fixes"]) for d in decisions)
-        confirm_lines: list[str] = [
+        confirm_paragraphs: list[str] = [
             f"Found {total_broken} broken wikilink(s) across {len(pages)} page(s). "
-            f"Proposed {n_fixes} fix(es) on {n_pages} page(s):\n",
+            f"Proposed {n_fixes} fix(es) on {n_pages} page(s):",
         ]
         for item in decisions:
-            confirm_lines.append(f"{item['slug']}:")
+            item_lines = [f"**{item['slug']}:**"]
             for fix in item["fixes"]:
                 if fix["new_ref"]:
-                    confirm_lines.append(
-                        f"  [[{fix['old_ref']}]]  →  [[{fix['new_ref']}]]"
+                    item_lines.append(
+                        f"- `[[{fix['old_ref']}]]` → `[[{fix['new_ref']}]]` (fuzzy match)"
                     )
                 else:
-                    confirm_lines.append(
-                        f"  [[{fix['old_ref']}]]  →  remove link (no similar page found)"
+                    item_lines.append(
+                        f"- `[[{fix['old_ref']}]]` → remove link (no similar page found)"
                     )
-        confirm_lines.append(
-            "\nStale/draft pages were excluded. "
+            confirm_paragraphs.append("\n".join(item_lines))
+        confirm_paragraphs.append(
+            "Stale/draft pages were excluded. "
             "Promote them to active to include in the scan."
         )
 
         confirmed = await tool_confirm(
             ctx,
-            "\n".join(confirm_lines),
+            "\n\n".join(confirm_paragraphs),
             yes_label="Apply fixes",
             no_label="Cancel",
         )

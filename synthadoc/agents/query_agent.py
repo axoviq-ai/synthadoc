@@ -533,6 +533,39 @@ _NO_CONTRADICTED_RE = re.compile(
     r'|\bcontradicted\b[^(\n]*\(0\)',
     re.IGNORECASE,
 )
+# Orphan page patterns — four output formats:
+#   LLM text:         "2 orphan pages found"  /  "2 orphaned pages"
+#   Lint summary:     "- Orphan pages: 2"  (CLI lint-report summary line)
+#   Lint section hdr: "Orphan pages (2) — no inbound links:"  (LLM-generated)
+#   Wiki-status:      "| orphan | 2 | no inbound links |"
+_ORPHAN_COUNT_RE = re.compile(
+    r'\b([1-9]\d*)\s+orphan(?:ed)?\s+pages?\b',
+    re.IGNORECASE,
+)
+# Matches the lint-report CLI summary line "- Orphan pages: N"
+# (number comes AFTER "Orphan pages:" — distinct from _ORPHAN_COUNT_RE)
+_ORPHAN_SUMMARY_RE = re.compile(
+    r'\borphan\s+pages?\s*:\s*([1-9]\d*)\b',
+    re.IGNORECASE,
+)
+_ORPHAN_PARENS_RE = re.compile(
+    r'\borphan\b[^(\n]*\(([1-9]\d*)\)',
+    re.IGNORECASE,
+)
+_ORPHAN_TABLE_RE = re.compile(
+    r'\|\s*orphan\s*\|\s*([1-9]\d*)\s*\|',
+    re.IGNORECASE,
+)
+_NO_ORPHAN_RE = re.compile(
+    r'\b0\s+orphan\b|no\s+orphan|zero\s+orphan'
+    # lint-report summary with 0:  "- Orphan pages: 0"
+    r'|\borphan\s+pages?\s*:\s*0\b'
+    # wiki-status table with 0:   "| orphan | 0 |"
+    r'|\|\s*orphan\s*\|\s*0\s*\|'
+    # lint-report section hdr 0:  "Orphan pages (0)"
+    r'|\borphan\b[^(\n]*\(0\)',
+    re.IGNORECASE,
+)
 
 
 def _build_pre_prompt(answer: str) -> str | None:
@@ -544,7 +577,10 @@ def _build_pre_prompt(answer: str) -> str | None:
          (contradicted is more critical than stale: it serves actively
          conflicting information in query answers; stale is merely outdated)
       3. Stale pages present (with named slugs) → prompt to re-ingest
-      4. Broken wikilinks → prompt to scan
+      4. Orphan pages present → prompt to run the orphan resolver
+         Four formats: LLM text, lint-report summary ("- Orphan pages: N"),
+         lint-report section header ("Orphan pages (N)…"), wiki-status table
+      5. Broken wikilinks → prompt to scan
 
     Returns None if no clear next action is present.
     """
@@ -579,6 +615,23 @@ def _build_pre_prompt(answer: str) -> str | None:
         # No slugs parsed — the word "stale" may appear in a negation context
         # ("no pages are in the stale state") that _NO_STALE_RE didn't catch.
         # Don't emit a generic suggestion; require concrete slugs to be safe.
+    # Orphan page hint — fires after a lint report / direct query that surfaces
+    # pages with no inbound [[wikilinks]].  Four output formats are matched:
+    #   1. LLM text:        "2 orphan pages found"  /  "2 orphaned pages"
+    #   2. Lint summary:    "- Orphan pages: 2"  (CLI lint-report summary line)
+    #   3. Lint section:    "Orphan pages (2) — no inbound links:"  (LLM-generated)
+    #   4. Wiki-status:     "| orphan | 2 | no inbound links |"
+    # Priority is below contradicted and stale: orphan pages are inaccessible
+    # via navigation but do not serve actively conflicting information.
+    if not _NO_ORPHAN_RE.search(answer):
+        for pat in (_ORPHAN_COUNT_RE, _ORPHAN_SUMMARY_RE, _ORPHAN_PARENS_RE, _ORPHAN_TABLE_RE):
+            m = pat.search(answer)
+            if m:
+                n = int(m.group(1))
+                page_word = "page" if n == 1 else "pages"
+                return (
+                    f"Fix {n} orphan {page_word} — run the orphan resolver?"
+                )
     # Trigger when lint/status reports broken wikilinks.
     if _BROKEN_LINKS_RE.search(answer) and not _NO_BROKEN_LINKS_RE.search(answer):
         return "Scan for broken wikilinks"
