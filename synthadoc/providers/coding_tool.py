@@ -358,8 +358,16 @@ class OpencodeProvider(CodingToolCLIProvider):
     """
     _tool_binary = "opencode"
 
-    # Seconds to wait before the single automatic retry on silent-output failures.
+    # Seconds to wait before the automatic retry on silent-output failures.
     _SILENT_RETRY_DELAY = 2.0
+
+    # Retry budget and base backoff for "database is locked" errors.
+    # Opencode uses a local SQLite database for its session state; concurrent
+    # subprocesses (e.g. the adversarial lint pass at concurrency > 1) collide
+    # on writes, producing SQLITE_BUSY.  Exponential backoff with jitter spreads
+    # the retries so they don't all collide again at the same instant.
+    _DB_LOCKED_MAX_RETRIES = 3
+    _DB_LOCKED_BASE_DELAY = 2.0  # seconds; doubled on each retry (2 → 4 → 8)
 
     def _build_command(self, binary: str) -> list[str]:
         cmd = [binary, "run", "--format", "json"]
@@ -374,33 +382,57 @@ class OpencodeProvider(CodingToolCLIProvider):
         temperature: float = 0.0,
         max_tokens: int = 4096,
     ) -> CompletionResponse:
-        """Complete with a single automatic retry on silent-output failures.
+        """Complete with automatic retries for two known transient opencode failures.
 
-        opencode occasionally exits cleanly (returncode 0, reason=stop) but emits
-        no text events to stdout even though the model generated tokens — the text
-        is flushed to its session database instead.  One transparent retry covers
-        this transient case without cascading into a permanent failure for the whole
-        batch-ingest job.
+        1. Silent-output (no text in JSONL): opencode exits cleanly but flushes
+           text to its session DB instead of stdout.  One retry covers this.
+
+        2. Database locked: concurrent opencode subprocesses collide on
+           opencode's internal SQLite.  Up to _DB_LOCKED_MAX_RETRIES retries
+           with exponential backoff + jitter spread the requests so they stop
+           fighting over the lock.
         """
-        last_exc: Exception | None = None
-        for attempt in range(1, 3):
+        import random
+
+        silent_retried = False
+        db_lock_retries = 0
+
+        while True:
             try:
                 return await super().complete(
                     messages, system=system,
                     temperature=temperature, max_tokens=max_tokens,
                 )
             except ValueError as exc:
-                last_exc = exc
-                if attempt < 2 and "no text content" in str(exc):
+                if not silent_retried and "no text content" in str(exc):
+                    silent_retried = True
                     _logger.warning(
-                        "opencode: no text in JSONL output on attempt %d/2 — "
+                        "opencode: no text in JSONL output — "
                         "retrying in %.1fs (transient stdout-flush issue).",
-                        attempt, self._SILENT_RETRY_DELAY,
+                        self._SILENT_RETRY_DELAY,
                     )
                     await asyncio.sleep(self._SILENT_RETRY_DELAY)
                     continue
                 raise
-        raise last_exc  # type: ignore[misc]  # unreachable, but satisfies type-checker
+            except RuntimeError as exc:
+                if (
+                    "database is locked" in str(exc).lower()
+                    and db_lock_retries < self._DB_LOCKED_MAX_RETRIES
+                ):
+                    db_lock_retries += 1
+                    delay = (
+                        self._DB_LOCKED_BASE_DELAY * (2 ** (db_lock_retries - 1))
+                        + random.uniform(0.0, 1.0)  # jitter avoids thundering herd
+                    )
+                    _logger.warning(
+                        "opencode: database locked (retry %d/%d) — "
+                        "backing off %.1fs (reduce adversarial_concurrency in "
+                        "config.toml if this recurs).",
+                        db_lock_retries, self._DB_LOCKED_MAX_RETRIES, delay,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                raise
 
     def _parse_output(self, raw: str) -> CompletionResponse:
         _logger.debug("opencode raw output (%d bytes):\n%s", len(raw), raw[:4000])

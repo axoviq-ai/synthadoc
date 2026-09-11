@@ -681,3 +681,60 @@ async def test_complete_falls_through_to_runtime_error_for_transient():
     with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)):
         with pytest.raises(RuntimeError, match="network timeout"):
             await provider.complete([Message(role="user", content="hello")])
+
+
+# ── OpencodeProvider: database-locked retry ───────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_opencode_complete_retries_on_database_locked():
+    """complete() retries up to _DB_LOCKED_MAX_RETRIES times on 'database is locked'."""
+    import json
+    provider = _make_opencode_provider()
+
+    good_output = "\n".join([
+        json.dumps({"type": "text", "data": "Success after lock"}),
+        json.dumps({"type": "step_finish", "reason": "stop",
+                    "tokens": {"input": 10, "output": 5}}),
+    ]).encode()
+
+    calls = 0
+
+    async def _fake_exec(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls < 3:
+            # First two calls exit non-zero with "database is locked" in stderr
+            return _make_mock_proc(b"", b"database is locked", returncode=1)
+        return _make_mock_proc(good_output, b"", returncode=0)
+
+    from synthadoc.providers.base import Message
+    with patch("asyncio.create_subprocess_exec", side_effect=_fake_exec):
+        with patch("asyncio.sleep", new_callable=AsyncMock):  # skip real delay
+            resp = await provider.complete([Message(role="user", content="hi")])
+
+    assert calls == 3, f"Expected 3 subprocess calls (2 locked + 1 success), got {calls}"
+    assert resp.text == "Success after lock"
+
+
+@pytest.mark.asyncio
+async def test_opencode_complete_raises_after_max_db_locked_retries():
+    """complete() re-raises RuntimeError once _DB_LOCKED_MAX_RETRIES is exhausted."""
+    provider = _make_opencode_provider()
+    max_retries = provider._DB_LOCKED_MAX_RETRIES
+
+    calls = 0
+
+    async def _fake_exec(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return _make_mock_proc(b"", b"database is locked", returncode=1)
+
+    from synthadoc.providers.base import Message
+    with patch("asyncio.create_subprocess_exec", side_effect=_fake_exec):
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            with pytest.raises(RuntimeError, match="database is locked"):
+                await provider.complete([Message(role="user", content="hi")])
+
+    assert calls == max_retries + 1, (
+        f"Expected {max_retries + 1} calls (1 initial + {max_retries} retries), got {calls}"
+    )
