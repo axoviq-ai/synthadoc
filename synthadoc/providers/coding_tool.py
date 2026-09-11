@@ -218,7 +218,15 @@ class CodingToolCLIProvider(LLMProvider):
                 if stdout_stripped:
                     try:
                         data = _json.loads(stdout_stripped)
-                        detail = data.get("result") or data.get("error") or stdout_stripped
+                        raw_detail = data.get("result") or data.get("error") or stdout_stripped
+                        # JSON fields may be dicts (nested error objects) — normalise
+                        # to str so _is_permanent_provider_error and exception messages
+                        # never receive a non-string value.
+                        detail = (
+                            raw_detail
+                            if isinstance(raw_detail, str)
+                            else _json.dumps(raw_detail)
+                        )
                     except _json.JSONDecodeError:
                         detail = stdout_stripped
             # Permanent errors (wrong model type, invalid key, model not found) should

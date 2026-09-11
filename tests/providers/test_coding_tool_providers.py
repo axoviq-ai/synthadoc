@@ -738,3 +738,28 @@ async def test_opencode_complete_raises_after_max_db_locked_retries():
     assert calls == max_retries + 1, (
         f"Expected {max_retries + 1} calls (1 initial + {max_retries} retries), got {calls}"
     )
+
+
+# ── detail dict crash regression ──────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_complete_detail_dict_does_not_crash():
+    """Non-zero exit where stdout JSON has a dict 'result' must not crash with AttributeError.
+
+    Regression for: AttributeError: 'dict' object has no attribute 'lower'
+    in _is_permanent_provider_error when opencode returns a nested error object.
+    """
+    import json
+    from synthadoc.providers.base import Message
+
+    provider = _make_opencode_provider()
+    # opencode sometimes returns a JSON object where "result" is itself a dict
+    stdout_payload = json.dumps({
+        "result": {"message": "LLM provider unavailable", "code": 503}
+    }).encode()
+    mock_proc = _make_mock_proc(stdout_payload, b"", returncode=1)
+
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=mock_proc)):
+        # Must raise RuntimeError (not AttributeError)
+        with pytest.raises(RuntimeError):
+            await provider.complete([Message(role="user", content="hi")])
