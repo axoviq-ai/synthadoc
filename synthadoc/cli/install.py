@@ -69,6 +69,41 @@ def _get_reserved_ports() -> set[int]:
     return ports
 
 
+_DOMAIN_MAX_LEN = 48
+
+
+def _domain_from_name(wiki_name: str) -> str:
+    """Derive a display-friendly domain label from the wiki install name.
+
+    Used when neither --domain nor --template is provided so config.toml
+    gets a meaningful value instead of the generic "General" fallback.
+
+    "my-investment-wiki"    → "My Investment Wiki"
+    "acme-corp-legal"       → "Acme Corp Legal"
+    "history-of-computing"  → "History Of Computing"
+    """
+    return wiki_name.replace("-", " ").replace("_", " ").title()
+
+
+def _sanitize_domain(domain: str, max_len: int = _DOMAIN_MAX_LEN) -> str:
+    """Strip whitespace and truncate at a word boundary if needed.
+
+    Truncation rules:
+    - If the character at position max_len is a space (clean word boundary),
+      return domain[:max_len] with no trailing space.
+    - Otherwise find the last space before max_len and cut there.
+    - If there is no space at all (one long word), hard-truncate at max_len.
+    """
+    domain = domain.strip()
+    if not domain or len(domain) <= max_len:
+        return domain
+    if domain[max_len] == " ":
+        return domain[:max_len]
+    truncated = domain[:max_len]
+    boundary = truncated.rfind(" ")
+    return truncated[:boundary] if boundary > 0 else truncated
+
+
 from synthadoc.cli.main import app  # noqa: E402
 from synthadoc.cli._init import (  # noqa: E402
     init_wiki, _CONFIG_TOML, _AGENTS_MD, _CLAUDE_MD, _GEMINI_MD,
@@ -93,7 +128,14 @@ def install_cmd(
     name: str = typer.Argument(help="Name for the new wiki"),
     target: str = typer.Option(..., "--target", "-t", help="Parent directory to install into"),
     demo: bool = typer.Option(False, "--demo", "-d", help="Install from a demo template matching <name>"),
-    domain: Optional[str] = typer.Option(None, "--domain", help="Knowledge domain (default: derived from --template, or 'General')"),
+    domain: Optional[str] = typer.Option(
+        None, "--domain",
+        help=(
+            "Knowledge domain label written to config.toml and skill files "
+            "(default: derived from --template slug, or from the wiki name). "
+            f"Truncated to {_DOMAIN_MAX_LEN} chars at a word boundary when longer."
+        ),
+    ),
     port: Optional[int] = typer.Option(None, "--port", help="Server port (default: auto-detect from 7070)"),
     template: Optional[str] = typer.Option(
         None,
@@ -143,18 +185,24 @@ def install_cmd(
         )
 
     # -- Domain resolution --------------------------------------------------------
-    # When --template is given and --domain is not explicitly provided, derive the
-    # domain display name from the template slug so config.toml gets a meaningful
-    # value instead of the generic "General" default.
-    # e.g. "education/corporate-training" → "Corporate Training"
-    #      "finance/investment"           → "Investment"
-    # An explicit --domain always wins.
+    # Priority (highest to lowest):
+    #   1. Explicit --domain value from the user (sanitized to max 48 chars).
+    #   2. Derived from the --template slug:
+    #        "education/corporate-training" → "Corporate Training"
+    #        "finance/investment"           → "Investment"
+    #   3. Derived from the wiki name argument:
+    #        "my-investment-wiki"           → "My Investment Wiki"
+    #        "acme-corp-legal"              → "Acme Corp Legal"
+    #      This replaces the old "General" fallback so config.toml always holds
+    #      a meaningful label even when no template is chosen.
     if domain is None:
         if template:
             slug = template.split("/")[-1]  # last path component
             domain = slug.replace("-", " ").title()
         else:
-            domain = "General"
+            domain = _domain_from_name(name)
+    else:
+        domain = _sanitize_domain(domain)
 
     # Validate template ref before creating any directories - an invalid ref must
     # not leave an orphaned unregistered directory on disk.

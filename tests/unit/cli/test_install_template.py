@@ -112,3 +112,113 @@ def test_install_template_demo_path_unaffected(tmp_path, mock_init_wiki):
         result = runner.invoke(app, ["install", "history-of-computing", "--target", str(tmp_path), "--demo"])
     # Demo path either succeeds or fails with "demo not found" — never crashes on template code
     assert "template" not in result.output.lower() or result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# Domain resolution — helper unit tests
+# ---------------------------------------------------------------------------
+
+def test_domain_from_name_hyphens():
+    from synthadoc.cli.install import _domain_from_name
+    assert _domain_from_name("my-investment-wiki") == "My Investment Wiki"
+
+
+def test_domain_from_name_underscores():
+    from synthadoc.cli.install import _domain_from_name
+    assert _domain_from_name("acme_corp_legal") == "Acme Corp Legal"
+
+
+def test_domain_from_name_single_word():
+    from synthadoc.cli.install import _domain_from_name
+    assert _domain_from_name("research") == "Research"
+
+
+def test_sanitize_domain_short_unchanged():
+    from synthadoc.cli.install import _sanitize_domain
+    assert _sanitize_domain("Investment Banking") == "Investment Banking"
+
+
+def test_sanitize_domain_strips_whitespace():
+    from synthadoc.cli.install import _sanitize_domain
+    assert _sanitize_domain("  Investment Banking  ") == "Investment Banking"
+
+
+def test_sanitize_domain_clean_word_boundary():
+    """Cut falls exactly at a space — return domain[:48] with no trailing space."""
+    from synthadoc.cli.install import _sanitize_domain
+    # Construct a string where char[48] is a space
+    # "A" * 48 + " B" — char[48] is ' '
+    s = "word " * 9 + "extra words here"   # each "word " = 5 chars, 9 × 5 = 45; char[45]=' ', char[48]='r'
+    # Build precisely: 47 non-space chars + space at position 47, so char[48] = next word
+    prefix = "x" * 47 + " " + "overflow"  # char[47]=' ', len prefix = 57
+    result = _sanitize_domain(prefix)
+    assert len(result) <= 48
+    assert not result.endswith(" ")
+
+
+def test_sanitize_domain_mid_word_cut_finds_last_space():
+    from synthadoc.cli.install import _sanitize_domain
+    # 48 chars of text with the cut falling mid-word
+    s = "Investment Banking Portfolio Management and Risk Analytics"
+    result = _sanitize_domain(s)
+    assert len(result) <= 48
+    assert not result.endswith(" ")
+    # Every char in result must come from the original string (no truncation invented words)
+    assert s.startswith(result)
+
+
+def test_sanitize_domain_no_space_hard_truncates():
+    """A single word longer than 48 chars is hard-truncated."""
+    from synthadoc.cli.install import _sanitize_domain
+    long_word = "A" * 60
+    result = _sanitize_domain(long_word)
+    assert result == "A" * 48
+
+
+def test_sanitize_domain_exactly_max_len_unchanged():
+    from synthadoc.cli.install import _sanitize_domain, _DOMAIN_MAX_LEN
+    s = "x" * _DOMAIN_MAX_LEN
+    assert _sanitize_domain(s) == s
+
+
+# ---------------------------------------------------------------------------
+# Domain resolution — CLI integration tests
+# ---------------------------------------------------------------------------
+
+def test_install_no_domain_no_template_derives_from_wiki_name(tmp_path, mock_init_wiki):
+    """No --domain, no --template: domain derived from wiki name, not 'General'."""
+    with patch("synthadoc.cli.install.init_wiki", side_effect=mock_init_wiki) as mock_iw, \
+         patch("synthadoc.cli.install._assign_wiki_port", return_value=7070), \
+         patch("synthadoc.cli.install._install_plugin_into", return_value=False):
+        result = runner.invoke(app, ["install", "my-investment-wiki", "--target", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    domain_arg = mock_iw.call_args[0][1]   # second positional arg to init_wiki
+    assert domain_arg == "My Investment Wiki"
+    assert domain_arg != "General"
+
+
+def test_install_explicit_domain_short_used_verbatim(tmp_path, mock_init_wiki):
+    """Short --domain value is passed through unchanged."""
+    with patch("synthadoc.cli.install.init_wiki", side_effect=mock_init_wiki) as mock_iw, \
+         patch("synthadoc.cli.install._assign_wiki_port", return_value=7070), \
+         patch("synthadoc.cli.install._install_plugin_into", return_value=False):
+        result = runner.invoke(app, ["install", "my-wiki", "--target", str(tmp_path),
+                                     "--domain", "Investment Banking"])
+    assert result.exit_code == 0, result.output
+    domain_arg = mock_iw.call_args[0][1]
+    assert domain_arg == "Investment Banking"
+
+
+def test_install_explicit_long_domain_truncated(tmp_path, mock_init_wiki):
+    """--domain longer than 48 chars is truncated at a word boundary."""
+    long_domain = "Investment Banking Portfolio Management and Risk Analytics for Global Markets"
+    with patch("synthadoc.cli.install.init_wiki", side_effect=mock_init_wiki) as mock_iw, \
+         patch("synthadoc.cli.install._assign_wiki_port", return_value=7070), \
+         patch("synthadoc.cli.install._install_plugin_into", return_value=False):
+        result = runner.invoke(app, ["install", "my-wiki", "--target", str(tmp_path),
+                                     "--domain", long_domain])
+    assert result.exit_code == 0, result.output
+    domain_arg = mock_iw.call_args[0][1]
+    assert len(domain_arg) <= 48
+    assert not domain_arg.endswith(" ")
+    assert long_domain.startswith(domain_arg)

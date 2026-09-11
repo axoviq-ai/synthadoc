@@ -1620,19 +1620,23 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             for iss in issues
         ]
 
-        return {
-            "contradictions": [d["slug"] for d in contradiction_details],
-            "contradiction_details": contradiction_details,
-            "orphans": [d["slug"] for d in orphan_details],
-            "orphan_details": orphan_details,
-            "adversarial_warnings": adversarial_warnings,
-            "truncated_sources": truncated_sources,
-            "citation_issues": citation_issues,
-            "citation_issues_by_slug": {
-                slug: [{"citation": i["citation"], "reason": i["reason"]} for i in issues]
-                for slug, issues in citation_issues_by_slug.items()
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            content={
+                "contradictions": [d["slug"] for d in contradiction_details],
+                "contradiction_details": contradiction_details,
+                "orphans": [d["slug"] for d in orphan_details],
+                "orphan_details": orphan_details,
+                "adversarial_warnings": adversarial_warnings,
+                "truncated_sources": truncated_sources,
+                "citation_issues": citation_issues,
+                "citation_issues_by_slug": {
+                    slug: [{"citation": i["citation"], "reason": i["reason"]} for i in issues]
+                    for slug, issues in citation_issues_by_slug.items()
+                },
             },
-        }
+            headers={"Cache-Control": "no-store"},
+        )
 
     _VALID_JOB_SORT = {"created_at", "status", "operation"}
     _VALID_JOB_ORDER = {"asc", "desc"}

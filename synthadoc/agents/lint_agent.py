@@ -395,6 +395,14 @@ def _parse_adversarial_response(text: str) -> list[dict]:
     # Fast path: strip markdown fences and try direct parse.
     raw_stripped = re.sub(r"^```(?:json)?\s*\n?", "", raw)
     raw_stripped = re.sub(r"\n?```\s*$", "", raw_stripped).strip()
+    # Fast path 2: response is an empty array (possibly with trailing commentary).
+    # Some providers (notably opencode) append explanatory prose after the JSON
+    # array, e.g. "[]\n\nThe page is a structural index…".  The json.loads call
+    # below rejects that because of the trailing text, so we intercept it here
+    # before the fallback regex loop.  This also handles ```json\n[]\n``` blocks
+    # after fence-stripping above.
+    if re.match(r"^\[\s*\]", raw_stripped):
+        return []
     for candidate in (raw_stripped, raw):
         try:
             parsed = _json.loads(candidate)
@@ -717,7 +725,13 @@ class LintAgent(BaseAgent):
             # Truncate: the LLM may return more items than asked (ignoring "up to N").
             # Storing extras inflates lint_warnings and skews _skip_resolve_for_gate.
             warnings = warnings[:n]
-            if not warnings and resp.text.strip() not in ("[]", "[ ]", ""):
+            # Warn only when the response is non-empty AND does not start with []
+            # (possibly followed by explanatory prose).  A response like
+            # "[]\n\nThe page is a structural index…" is a valid "no warnings"
+            # answer — the provider returned the correct JSON and then explained
+            # why; _parse_adversarial_response already handled it.  Checking the
+            # raw text with re.match avoids false-positive warnings for this case.
+            if not warnings and resp.text.strip() and not re.match(r"^\s*\[\s*\]", resp.text):
                 # Non-empty response that yielded no warnings — likely unparseable JSON.
                 _log.warning(
                     "[adversarial] unparseable response for slug=%s — "
