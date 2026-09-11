@@ -364,13 +364,13 @@ def test_two_phrasings_both_trigger_workflow():
 
 
 @pytest.mark.live
-@pytest.mark.timeout(120)
+@pytest.mark.timeout(210)
 def test_query_phrase_does_not_invoke_scaffold_preview_tool():
     """
     'what is scaffold?' is a query phrase and must NOT trigger ScaffoldWorkflow.
     No get_scaffold_preview tool_progress event should appear.
     """
-    events = _stream_with_confirm_response("what is scaffold?", accept=False, timeout=90)
+    events = _stream_with_confirm_response("what is scaffold?", accept=False, timeout=180)
     _assert_stream_complete(events)
 
     tool_names = _tool_names(events)

@@ -82,6 +82,41 @@ def _delete_page(wiki_root: Path, slug: str) -> None:
         page_path.unlink()
 
 
+def _remove_wikilink_from_all_pages(wiki_root: Path, slug: str) -> None:
+    """Scan every wiki page and erase ``[[slug]]`` links written during testing.
+
+    The orphan-resolver workflow writes ``[[slug]]`` into HOST pages when the
+    user approves a proposal.  When a test's finally-block only deletes the
+    orphan page file (not the host pages it was linked from), subsequent test
+    runs find the recreated orphan already referenced and report it as resolved.
+
+    This helper is called from finally-blocks alongside _delete_page so that
+    both the orphan file and any inbound links inserted during the run are
+    cleaned up, leaving the wiki in its original state.
+
+    Pattern covers:
+      [[slug]]           bare link
+      [[slug|display]]   aliased link
+      [[slug#anchor]]    section link
+      [[slug#a|display]] combined
+    """
+    import re as _re
+    wiki_dir = wiki_root / "wiki"
+    pattern = _re.compile(
+        r"\[\[" + _re.escape(slug) + r"(?:[#|][^\]]+)?\]\]"
+    )
+    for page_path in wiki_dir.glob("*.md"):
+        if page_path.stem == slug:
+            continue  # leave the page itself to _delete_page
+        try:
+            text = page_path.read_text(encoding="utf-8")
+            cleaned = pattern.sub("", text)
+            if cleaned != text:
+                page_path.write_text(cleaned, encoding="utf-8")
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def _run_workflow(
     query: str,
     *,
@@ -239,6 +274,8 @@ def test_resolves_single_orphan():
     finally:
         for slug in [_ORPHAN_SLUG, _RELATED_SLUG1, _RELATED_SLUG2]:
             _delete_page(wiki_root, slug)
+            # Remove any [[slug]] links the workflow inserted into real wiki pages.
+            _remove_wikilink_from_all_pages(wiki_root, slug)
 
 
 @pytest.mark.live
@@ -261,10 +298,28 @@ def test_escalation_on_isolated_orphan():
     """
     wiki_root = _get_wiki_root()
     try:
+        # Remove any stale inbound links from a previous test run BEFORE creating
+        # the page.  A previous run may have written [[_ISOLATED_SLUG]] into a
+        # real wiki page and then only deleted the file (not the link).  If that
+        # link survives, the freshly-recreated page is immediately considered
+        # linked and the precondition check below would correctly flag it.
+        _remove_wikilink_from_all_pages(wiki_root, _ISOLATED_SLUG)
+
         # Create a page about an extremely niche topic unlikely to match any other page
         _ingest_page(
             wiki_root, _ISOLATED_SLUG, "Zzyzx Niche Topic XQ9",
             "This page covers an extremely specific concept with no related pages."
+        )
+
+        # Precondition: the freshly-created page must be an orphan before we run
+        # the workflow.  If it is already linked (due to test-state contamination
+        # that _remove_wikilink_from_all_pages failed to clean up), the rest of
+        # the test is meaningless.
+        orphans_before = _find_orphan_slugs_via_api()
+        assert _ISOLATED_SLUG in orphans_before, (
+            f"{_ISOLATED_SLUG!r} is not an orphan before the workflow run — "
+            "wiki state is contaminated from a prior test run. "
+            f"Orphan list: {orphans_before}"
         )
 
         events = _run_workflow(
@@ -285,6 +340,10 @@ def test_escalation_on_isolated_orphan():
 
     finally:
         _delete_page(wiki_root, _ISOLATED_SLUG)
+        # Remove any [[_ISOLATED_SLUG]] links the workflow inserted into real
+        # wiki pages (happens when a proposal was accidentally confirmed, or if
+        # cleanup is needed after a test failure mid-way through).
+        _remove_wikilink_from_all_pages(wiki_root, _ISOLATED_SLUG)
 
 
 @pytest.mark.live
@@ -327,6 +386,7 @@ def test_slug_filter_targets_single():
     finally:
         for slug in [_ORPHAN_SLUG, _ISOLATED_SLUG]:
             _delete_page(wiki_root, slug)
+            _remove_wikilink_from_all_pages(wiki_root, slug)
 
 
 if __name__ == "__main__":
