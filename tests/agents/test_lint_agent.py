@@ -1918,3 +1918,75 @@ def test_save_adv_hash_cache_ignores_write_error(tmp_path):
     (cache_dir / "adv_hashes.json").mkdir()
     # Should not raise
     _save_adv_hash_cache(tmp_path, {"slug": "hash"})
+
+
+# ──────────────────────────────────────────────────────────────
+# Bug-fix regression tests: opencode adversarial response quirks
+# ──────────────────────────────────────────────────────────────
+
+def test_parse_adversarial_response_empty_array_with_trailing_prose():
+    """[]\n\n<explanation> is a valid "no warnings" response — returns []."""
+    text = "[]\n\nThe page is a structural index/template describing what fields a loan product page would capture."
+    result = _parse_adversarial_response(text)
+    assert result == []
+
+
+def test_parse_adversarial_response_empty_array_with_trailing_prose_fenced():
+    """```json\n[]\n``` with trailing commentary is also a valid empty response."""
+    text = "```json\n[]\n```\n\nNo substantive claims were found that could be adversarially challenged."
+    result = _parse_adversarial_response(text)
+    assert result == []
+
+
+def test_parse_adversarial_response_empty_array_with_whitespace_variants():
+    """[ ] (spaced) and [  ] with trailing prose should also return []."""
+    for raw in ("[ ]\n\nclean page", "[  ]\n\nnothing to flag"):
+        result = _parse_adversarial_response(raw)
+        assert result == [], f"Expected [] for {raw!r}"
+
+
+@pytest.mark.asyncio
+async def test_adversarial_single_no_false_positive_warning_on_empty_array_with_prose(tmp_path):
+    """_adversarial_single must NOT log a warning when the response is []+prose.
+
+    Regression for: "[adversarial] unparseable response … raw='[]\\n\\nThe page is …'"
+    """
+    import logging
+    from synthadoc.agents.lint_agent import LintAgent
+    from synthadoc.providers.base import CompletionResponse
+    from synthadoc.storage.wiki import WikiStorage, WikiPage, LifecycleState
+    from synthadoc.storage.log import LogWriter
+
+    wiki_dir = tmp_path / "wiki"
+    wiki_dir.mkdir(parents=True)
+    store = WikiStorage(wiki_dir)
+    store.write_page(
+        "loan-products",
+        WikiPage(
+            title="Loan Products",
+            tags=[],
+            content="## Loan Products\n\nThis page lists loan product categories.",
+            status=LifecycleState.ACTIVE,
+            confidence="medium",
+            sources=[],
+        ),
+    )
+    log = LogWriter(wiki_dir / "log.md")
+    adv_provider = AsyncMock()
+    adv_provider.complete.return_value = CompletionResponse(
+        text="[]\n\nThe page is a structural index/template. No factual claims.",
+        input_tokens=100, output_tokens=20,
+    )
+
+    agent = LintAgent(provider=AsyncMock(), store=store, log_writer=log)
+    agent._adversarial_provider = adv_provider
+    agent._adversarial_enabled = True
+    agent._adversarial_concurrency = 1
+
+    with patch("synthadoc.agents.lint_agent._log") as mock_log:
+        await agent._adversarial_single("loan-products", "## Loan Products\n\nThis page lists loan product categories.")
+        # No "unparseable response" warning should fire
+        for call_args in mock_log.warning.call_args_list:
+            assert "unparseable" not in str(call_args), (
+                "False-positive 'unparseable response' warning fired for a valid []+prose response"
+            )
