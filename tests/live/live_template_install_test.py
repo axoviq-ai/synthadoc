@@ -107,14 +107,15 @@ def _oneline(text: str, maxlen: int = 160) -> str:
     return " | ".join(parts)[:maxlen]
 
 
-def _poll_job(job_id: str, label: str) -> JobStatus | None:
+def _poll_job(job_id: str, label: str, *, timeout_seconds: int = 600) -> JobStatus | None:
     """Poll a job via the server HTTP API until it reaches a terminal state.
 
     Logs each status transition as INFO. Returns the final JobStatus, or None
-    if the server's job_timeout_seconds (default 600s) elapses without a
-    terminal state — which means the job is stuck, not just slow.
+    if *timeout_seconds* elapses without a terminal state — pass the same
+    value used for the server's job_timeout_seconds so the poll deadline
+    and the server-side kill deadline stay in sync.
     """
-    deadline = time.monotonic() + 600  # matches server default job_timeout_seconds
+    deadline = time.monotonic() + timeout_seconds
     last_logged: str | None = None
     while time.monotonic() < deadline:
         try:
@@ -284,6 +285,41 @@ def _patch_provider(wiki_root: pathlib.Path, provider_name: str) -> None:
         flags=re.MULTILINE,
     )
     config_path.write_text(text, encoding="utf-8")
+
+
+# Providers known to need longer timeouts than the config.toml defaults.
+# job_timeout_seconds     — how long the SERVER lets a single job run.
+# client_llm_timeout_seconds — how long the CLI waits for /analyse, /context/build.
+_SLOW_PROVIDER_TIMEOUTS: dict[str, dict[str, int]] = {
+    "opencode":   {"job_timeout_seconds": 1200, "client_llm_timeout_seconds": 600},
+    "claude-code": {"job_timeout_seconds":  900, "client_llm_timeout_seconds": 360},
+}
+
+
+def _patch_slow_provider_timeouts(wiki_root: pathlib.Path, provider_name: str) -> int:
+    """Raise job_timeout_seconds and client_llm_timeout_seconds in config.toml
+    for providers known to be slower than the defaults.
+
+    Returns the effective job_timeout_seconds so callers can set their poll
+    deadline to match (avoids timing out before the server kills the job).
+    """
+    import re
+
+    overrides = _SLOW_PROVIDER_TIMEOUTS.get(provider_name, {})
+    if not overrides:
+        return 600  # server default — no patch needed
+
+    config_path = wiki_root / ".synthadoc" / "config.toml"
+    text = config_path.read_text(encoding="utf-8")
+    for key, value in overrides.items():
+        text = re.sub(
+            rf"^({re.escape(key)}\s*=\s*)\d+",
+            rf"\g<1>{value}",
+            text,
+            flags=re.MULTILINE,
+        )
+    config_path.write_text(text, encoding="utf-8")
+    return overrides.get("job_timeout_seconds", 600)
 
 
 # ── Server helpers ────────────────────────────────────────────────────────────
@@ -516,11 +552,15 @@ def run_tier2(wiki_root: pathlib.Path) -> None:
     # ── [8a] provider detection & config patch ────────────────────────────────
     print("\n[8a] provider detection")
     coding = _find_coding_provider()
+    job_timeout_seconds = 600  # server default; raised below for slow providers
     if coding:
         provider_name, binary = coding
         _patch_provider(wiki_root, provider_name)
+        job_timeout_seconds = _patch_slow_provider_timeouts(wiki_root, provider_name)
         ok("provider patched",
-           f"config.toml → provider = {provider_name!r} (binary: {binary})")
+           f"config.toml → provider = {provider_name!r} (binary: {binary})"
+           + (f", job_timeout={job_timeout_seconds}s"
+              if job_timeout_seconds != 600 else ""))
     else:
         warn("provider detection",
              "neither 'claude' nor 'opencode' found in PATH — "
@@ -562,7 +602,10 @@ def run_tier2(wiki_root: pathlib.Path) -> None:
             # Poll until the job reaches a terminal state. Pages may land in
             # wiki/candidates/ (staging_policy=all) or directly in wiki/.
             job_id = _extract_job_id(ingest_out)
-            final_status: JobStatus | None = _poll_job(job_id, "ingest job") if job_id else None
+            final_status: JobStatus | None = (
+                _poll_job(job_id, "ingest job", timeout_seconds=job_timeout_seconds)
+                if job_id else None
+            )
 
             # Report where the ingest output landed.
             if final_status == JobStatus.COMPLETED:
@@ -583,10 +626,10 @@ def run_tier2(wiki_root: pathlib.Path) -> None:
                      f"job {job_id[:8] if job_id else '?'} "
                      f"reached status={final_status.value!r}")
             else:
-                # Job did not reach terminal state within 600s — may be stuck.
+                # Job did not reach terminal state within job_timeout_seconds — may be stuck.
                 warn("ingest job",
                      f"job {job_id[:8] if job_id else '?'} did not complete within "
-                     f"600s — check server logs for errors")
+                     f"{job_timeout_seconds}s — check server logs for errors")
         finally:
             tmp_file.unlink(missing_ok=True)
 
@@ -625,13 +668,17 @@ def run_tier2(wiki_root: pathlib.Path) -> None:
             except Exception as exc:
                 warn("scaffold enqueue", f"POST /jobs/scaffold failed: {exc}")
 
-            scaffold_status = _poll_job(scaffold_job_id, "scaffold job") if scaffold_job_id else None
+            scaffold_status = (
+                _poll_job(scaffold_job_id, "scaffold job", timeout_seconds=job_timeout_seconds)
+                if scaffold_job_id else None
+            )
             if scaffold_status == JobStatus.COMPLETED:
                 info("scaffold completed")
             elif scaffold_status is not None:
                 warn("scaffold job", f"reached status={scaffold_status.value!r}")
             elif scaffold_job_id:
-                warn("scaffold job", "did not complete within 600s — check server logs")
+                warn("scaffold job",
+                     f"did not complete within {job_timeout_seconds}s — check server logs")
 
             purpose_after = _text_before_marker(purpose_path)
             if purpose_before.strip() == purpose_after.strip():
