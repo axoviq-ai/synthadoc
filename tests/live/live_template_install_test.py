@@ -549,6 +549,12 @@ def run_tier1(wiki_root: pathlib.Path) -> None:
 
 def run_tier2(wiki_root: pathlib.Path) -> None:
 
+    # Guard: if [1] install failed, wiki files were never created — skip Tier 2
+    # rather than crashing inside _patch_provider on a missing config.toml.
+    if not (wiki_root / ".synthadoc" / "config.toml").exists():
+        warn("Tier 2 skipped", "[1] install failed — wiki files not present")
+        return
+
     # ── [8a] provider detection & config patch ────────────────────────────────
     print("\n[8a] provider detection")
     coding = _find_coding_provider()
@@ -720,6 +726,11 @@ def main() -> None:
 
     tmpdir   = pathlib.Path(tempfile.mkdtemp(prefix="synthadoc_live_tmpl_"))
     wiki_root = tmpdir / WIKI_NAME
+
+    # Pre-cleanup: silently uninstall any stale registration left by a previous
+    # interrupted run.  The install in [1] will fail with ERR-WIKI-004 if the
+    # wiki name is already registered, even if the old tmpdir is gone.
+    run(["uninstall", WIKI_NAME], input=f"y\n{WIKI_NAME}\n")
 
     try:
         run_tier1(wiki_root)
