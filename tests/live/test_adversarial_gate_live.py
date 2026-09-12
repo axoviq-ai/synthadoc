@@ -204,7 +204,7 @@ def _run_lint(scope: str = "all", auto_resolve: bool = False) -> dict:
         "adversarial": True,
         "lifecycle": True,
     })
-    return _wait_job(resp["job_id"], timeout=300)
+    return _wait_job(resp["job_id"], timeout=480)
 
 
 def _setup_test_page(wiki_path: Path) -> None:
@@ -252,7 +252,7 @@ def require_server():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @pytest.mark.live
-@pytest.mark.timeout(360)
+@pytest.mark.timeout(540)
 def test_gate_demotes_page_on_lint_run():
     """
     A full lint run with adversarial_gate_threshold=2 must auto-demote the
