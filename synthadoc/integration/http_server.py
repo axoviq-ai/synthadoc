@@ -2155,6 +2155,10 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
             cascade_affected = await cascade_archive(
                 req.slug, orch._store, audit_db=audit, trigger_source=TriggerSource.USER
             )
+        # Invalidate BM25 corpus after all writes (primary page + any cascade-archived
+        # pages) so the next search sees the updated lifecycle states.  bump_epoch above
+        # busts the LLM query cache; this busts the separate in-memory search corpus.
+        orch._search.invalidate_index()
         return {
             "slug": req.slug,
             "from_state": from_state,

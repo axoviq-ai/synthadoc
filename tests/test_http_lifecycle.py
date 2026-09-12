@@ -160,3 +160,102 @@ def test_lifecycle_transition_stale_to_active_allowed(client):
     assert resp.status_code == 200, resp.json()
     assert resp.json()["from_state"] == LifecycleState.STALE
     assert resp.json()["to_state"] == LifecycleState.ACTIVE
+
+
+# ---------------------------------------------------------------------------
+# invalidate_index regression test
+# ---------------------------------------------------------------------------
+
+class _SpySearch:
+    """Minimal search stub that records invalidate_index calls."""
+    def __init__(self):
+        self.invalidate_calls = 0
+
+    def invalidate_index(self) -> None:
+        self.invalidate_calls += 1
+
+
+def _make_test_app_with_search(store: WikiStorage, db: AuditDB, search: _SpySearch) -> FastAPI:
+    """Stub app that mirrors the production lifecycle/transition handler,
+    including the orch._search.invalidate_index() call, to guard against
+    regression of the missing-invalidate bug."""
+    from datetime import datetime, timezone
+    from fastapi import HTTPException
+    from pydantic import BaseModel
+    from synthadoc.storage.wiki import TriggerSource, validate_lifecycle_transition
+
+    app = FastAPI()
+
+    class FakeOrch:
+        _store = store
+        _audit = db
+        _search = search
+        _wiki_epoch = 0
+
+        def _bump_epoch(self):
+            self._wiki_epoch += 1
+
+    orch = FakeOrch()
+    app.state.orch = orch
+
+    class LifecycleTransitionRequest(BaseModel):
+        slug: str
+        to_state: str
+        reason: str
+
+    @app.post("/lifecycle/transition")
+    async def lifecycle_transition(req: LifecycleTransitionRequest):
+        page = orch._store.read_page(req.slug)
+        if not page:
+            raise HTTPException(status_code=404, detail=f"Page not found: {req.slug}")
+        from_state = page.status
+        err = validate_lifecycle_transition(from_state, req.to_state)
+        if err:
+            raise HTTPException(status_code=422, detail=err)
+        page.status = req.to_state
+        orch._store.write_page(req.slug, page)
+        ts = datetime.now(timezone.utc).isoformat()
+        await orch._audit.set_page_state(req.slug, req.to_state, TriggerSource.USER)
+        await orch._audit.record_lifecycle_event(req.slug, from_state, req.to_state,
+                                                  req.reason, TriggerSource.USER)
+        orch._bump_epoch()
+        # The BM25 corpus must be invalidated after all writes so the next
+        # search sees the updated lifecycle states.
+        orch._search.invalidate_index()
+        return {"slug": req.slug, "from_state": from_state, "to_state": req.to_state, "timestamp": ts}
+
+    return app
+
+
+@pytest.fixture
+def search_client(tmp_path):
+    wiki_dir = tmp_path / "wiki"
+    wiki_dir.mkdir()
+    store = WikiStorage(wiki_dir)
+    db = AuditDB(tmp_path / ".synthadoc" / "audit.db")
+    asyncio.run(db.init())
+    asyncio.run(db.set_page_state("alan-turing", LifecycleState.DRAFT, "ingest"))
+    page = WikiPage(title="Alan Turing", tags=[], content="# Alan Turing",
+                    status=LifecycleState.DRAFT, confidence="medium", sources=[])
+    store.write_page("alan-turing", page)
+    spy = _SpySearch()
+    app = _make_test_app_with_search(store, db, spy)
+    return TestClient(app), spy
+
+
+def test_lifecycle_transition_invalidates_search_index(search_client):
+    """POST /lifecycle/transition must call invalidate_index() so BM25 corpus
+    reflects the new lifecycle state on the next search.  Regression guard for
+    the bug where only bump_epoch was called but invalidate_index was omitted."""
+    client, spy = search_client
+    assert spy.invalidate_calls == 0
+    resp = client.post("/lifecycle/transition", json={
+        "slug": "alan-turing",
+        "to_state": LifecycleState.ACTIVE,
+        "reason": "reviewed",
+    })
+    assert resp.status_code == 200
+    assert spy.invalidate_calls == 1, (
+        "invalidate_index() must be called after a lifecycle transition so the "
+        "BM25 search corpus is rebuilt with the new page state"
+    )
