@@ -279,7 +279,7 @@ def test_resolves_single_orphan():
 
 
 @pytest.mark.live
-@pytest.mark.timeout(300)
+@pytest.mark.timeout(480)
 def test_escalation_on_isolated_orphan():
     """Orphan with all link proposals declined leaves the orphan unresolved.
 
@@ -325,6 +325,7 @@ def test_escalation_on_isolated_orphan():
         events = _run_workflow(
             f"run orphan resolver --slug {_ISOLATED_SLUG}",
             confirm_response=_accept_estimate_decline_proposals,
+            timeout=240,
         )
 
         # Workflow must have produced at least some events
@@ -347,7 +348,7 @@ def test_escalation_on_isolated_orphan():
 
 
 @pytest.mark.live
-@pytest.mark.timeout(300)
+@pytest.mark.timeout(540)
 def test_slug_filter_targets_single():
     """--slug flag limits workflow to just the specified orphan."""
     wiki_root = _get_wiki_root()
@@ -361,6 +362,7 @@ def test_slug_filter_targets_single():
         events = _run_workflow(
             f"run orphan resolver --slug {_ORPHAN_SLUG}",
             confirm_response=_accept_estimate_decline_proposals,
+            timeout=240,
         )
 
         # _ORPHAN_SLUG must appear somewhere in the event stream (targeted).
