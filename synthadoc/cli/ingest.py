@@ -13,6 +13,11 @@ from synthadoc.cli._http import get, post
 _SUPPORTED = {".md", ".txt", ".pdf", ".docx", ".pptx", ".xlsx", ".csv",
               ".png", ".jpg", ".jpeg", ".webp", ".gif", ".tiff"}
 
+# POST /analyse runs one LLM call via the coding-tool provider (e.g. opencode),
+# which can take 60-90 s on slower machines.  Use a generous budget so the CLI
+# does not time out before the server response arrives.
+_ANALYSE_TIMEOUT = 180  # seconds
+
 # Intent-phrase prefixes that are valid non-file sources (matched case-insensitively)
 _INTENT_PREFIXES = (
     "search for:", "find on the web:", "look up:", "web search:", "browse:",
@@ -101,7 +106,8 @@ def ingest_cmd(
             abs_source = str(Path(s).resolve())
         if analyse_only:
             import json as _json
-            result = post(wiki, "/analyse", {"source": abs_source})
+            result = post(wiki, "/analyse", {"source": abs_source},
+                          timeout=_ANALYSE_TIMEOUT)
             typer.echo(_json.dumps(result, indent=2))
             continue
         body: dict = {"source": abs_source, "force": force}
