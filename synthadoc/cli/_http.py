@@ -8,13 +8,18 @@ import httpx
 import typer
 from typing import NoReturn
 
-from synthadoc.config import load_config
+from synthadoc.config import load_config, Config as _Config
 from synthadoc.cli._wiki import resolve_wiki_path
 from synthadoc import errors as E
 
 
 def server_url(wiki: str) -> str:
     """Return the base URL for the wiki's server."""
+    return _server_info(wiki)[0]
+
+
+def _server_info(wiki: str) -> tuple[str, _Config]:
+    """Return (base_url, config) for the wiki's server."""
     root = resolve_wiki_path(wiki)
     config_path = root / ".synthadoc" / "config.toml"
     if not config_path.exists():
@@ -27,42 +32,56 @@ def server_url(wiki: str) -> str:
         cfg = load_config(project_config=config_path)
     except E.ConfigError as exc:
         E.cli_error(exc.code, str(exc), exc.hint)
-    port = cfg.server.port
-    return f"http://127.0.0.1:{port}"
+    return f"http://127.0.0.1:{cfg.server.port}", cfg
 
 
-def get(wiki: str, path: str, timeout: int = 60, **params) -> dict:
-    url = server_url(wiki)
+def get(wiki: str, path: str, timeout: int | None = None, **params) -> dict:
+    url, cfg = _server_info(wiki)
+    t = timeout if timeout is not None else cfg.server.client_timeout_seconds
     try:
-        resp = httpx.get(f"{url}{path}", params=params, timeout=timeout)
+        resp = httpx.get(f"{url}{path}", params=params, timeout=t)
         resp.raise_for_status()
         return resp.json()
     except httpx.ConnectError:
         _no_server(wiki)
     except httpx.ReadTimeout:
-        _timeout_error(path, timeout)
+        _timeout_error(path, t)
     except httpx.HTTPStatusError as e:
         E.cli_error(E.SRV_HTTP_ERROR,
                     f"Server returned {e.response.status_code}: {_detail(e.response)}")
 
 
-def post(wiki: str, path: str, body: dict, timeout: int = 60) -> dict:
-    url = server_url(wiki)
+def post(wiki: str, path: str, body: dict, timeout: int | None = None,
+         *, llm: bool = False) -> dict:
+    """POST *body* to *path* and return the JSON response.
+
+    *timeout* overrides the config value when given.
+    *llm=True* selects ``client_llm_timeout_seconds`` (default 180 s) instead of
+    the general ``client_timeout_seconds`` (default 60 s) — use it for endpoints
+    that block on a full LLM call (e.g. ``/analyse``, ``/context/build``).
+    """
+    url, cfg = _server_info(wiki)
+    if timeout is not None:
+        t = timeout
+    elif llm:
+        t = cfg.server.client_llm_timeout_seconds
+    else:
+        t = cfg.server.client_timeout_seconds
     try:
-        resp = httpx.post(f"{url}{path}", json=body, timeout=timeout)
+        resp = httpx.post(f"{url}{path}", json=body, timeout=t)
         resp.raise_for_status()
         return resp.json()
     except httpx.ConnectError:
         _no_server(wiki)
     except httpx.ReadTimeout:
-        _timeout_error(path, timeout)
+        _timeout_error(path, t)
     except httpx.HTTPStatusError as e:
         E.cli_error(E.SRV_HTTP_ERROR,
                     f"Server returned {e.response.status_code}: {_detail(e.response)}")
 
 
 def delete(wiki: str, path: str) -> dict:
-    url = server_url(wiki)
+    url, cfg = _server_info(wiki)
     try:
         resp = httpx.delete(f"{url}{path}", timeout=10)
         resp.raise_for_status()
@@ -74,13 +93,18 @@ def delete(wiki: str, path: str) -> dict:
                     f"Server returned {e.response.status_code}: {_detail(e.response)}")
 
 
-def get_stream(wiki: str, path: str, timeout: int = 120, **params):
-    """Yield (event_name, data_dict) tuples from an SSE endpoint."""
+def get_stream(wiki: str, path: str, timeout: int | None = None, **params):
+    """Yield (event_name, data_dict) tuples from an SSE endpoint.
+
+    *timeout* overrides the config value when given; otherwise uses
+    ``client_stream_timeout_seconds`` (default 120 s).
+    """
     import json as _json
-    url = server_url(wiki)
+    url, cfg = _server_info(wiki)
+    t = timeout if timeout is not None else cfg.server.client_stream_timeout_seconds
     full_url = f"{url}{path}"
     try:
-        with httpx.Client(timeout=timeout) as client:
+        with httpx.Client(timeout=t) as client:
             with client.stream("GET", full_url, params=params) as resp:
                 resp.raise_for_status()
                 event_name = "message"
@@ -98,7 +122,7 @@ def get_stream(wiki: str, path: str, timeout: int = 120, **params):
     except httpx.ConnectError:
         _no_server(wiki)
     except httpx.ReadTimeout:
-        _timeout_error(path, timeout)
+        _timeout_error(path, t)
     except httpx.HTTPStatusError as e:
         E.cli_error(E.SRV_HTTP_ERROR,
                     f"Server returned {e.response.status_code}: {_detail(e.response)}")
@@ -124,7 +148,8 @@ def _timeout_error(path: str, timeout: int) -> NoReturn:
         E.cli_error(
             E.QUERY_TIMEOUT,
             f"The request timed out waiting for the server to respond ({timeout} s).",
-            "The wiki server is still running. Try again.",
+            "The wiki server is still running. Try again, or raise "
+            "client_llm_timeout_seconds in [server] of .synthadoc/config.toml.",
         )
 
 
