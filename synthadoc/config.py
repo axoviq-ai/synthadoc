@@ -151,6 +151,12 @@ class ServerConfig:
     reload: bool = False
     job_timeout_seconds: int = 600  # max time a single job runs before being killed
 
+    # CLI → server HTTP timeouts.  Raise these when using a slow LLM provider
+    # (e.g. opencode on an overloaded machine, local CPU-only models).
+    client_timeout_seconds: int = 60        # simple requests (status, job enqueue, …)
+    client_llm_timeout_seconds: int = 180   # LLM-driven endpoints (/analyse, /context/build)
+    client_stream_timeout_seconds: int = 120  # SSE streaming (/query/stream)
+
 
 @dataclass
 class ScheduleJob:
@@ -433,6 +439,9 @@ def _raw_to_config(raw: dict, source_has_agents: bool) -> Config:
         port=sv.get("port", 7070),
         reload=sv.get("reload", False),
         job_timeout_seconds=int(sv.get("job_timeout_seconds", 600)),
+        client_timeout_seconds=int(sv.get("client_timeout_seconds", 60)),
+        client_llm_timeout_seconds=int(sv.get("client_llm_timeout_seconds", 180)),
+        client_stream_timeout_seconds=int(sv.get("client_stream_timeout_seconds", 120)),
     )
 
     # --- cache ---

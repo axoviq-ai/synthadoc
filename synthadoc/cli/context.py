@@ -16,7 +16,8 @@ app.add_typer(context_app)
 def _build_context_pack(wiki_or_root: Path | str, goal: str, tokens: int) -> str:
     """Call server POST /context/build and return Markdown string."""
     from synthadoc.cli._http import post
-    result = post(str(wiki_or_root), "/context/build", {"goal": goal, "token_budget": tokens})
+    result = post(str(wiki_or_root), "/context/build", {"goal": goal, "token_budget": tokens},
+                  llm=True)
     from synthadoc.agents.context_agent import ContextPack, ContextPage
     pages = [
         ContextPage(
