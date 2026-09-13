@@ -101,3 +101,97 @@ def test_broken_wikilinks_hint_chip_in_answer():
     )
     assert any("broken" in h.lower() or "wikilink" in h.lower() for h in hints), \
         f"Expected broken wikilinks hint, got: {hints}"
+
+
+# ── _build_pre_prompt — broken citation patterns ──────────────────────────────
+
+def test_pre_prompt_broken_citations_count_before():
+    """'2 citation issue(s)' — CLI summary format with count before keyword."""
+    from synthadoc.agents.query_agent import _build_pre_prompt
+    prompt = _build_pre_prompt("Lint found 2 citation issue(s) across 1 page.")
+    assert prompt is not None, "Expected a pre-prompt for broken citations"
+    assert "citation" in prompt.lower()
+    assert "2" in prompt
+
+
+def test_pre_prompt_broken_citations_natural_language():
+    """'2 broken citations' — natural language from LLM response."""
+    from synthadoc.agents.query_agent import _build_pre_prompt
+    prompt = _build_pre_prompt("There are 2 broken citations that need fixing.")
+    assert prompt is not None
+    assert "citation" in prompt.lower()
+    assert "2" in prompt
+
+
+def test_pre_prompt_broken_citations_cli_header():
+    """'Citation Issues (2 across 1 pages)' — CLI section header format."""
+    from synthadoc.agents.query_agent import _build_pre_prompt
+    prompt = _build_pre_prompt(
+        "Citation Issues (2 across 1 pages):\n  grace-hopper: ^[sources/bib.txt:1-5]"
+    )
+    assert prompt is not None
+    assert "citation" in prompt.lower()
+    assert "2" in prompt
+
+
+def test_pre_prompt_broken_citations_colon_form():
+    """'citation issues: 2' — colon-separated form."""
+    from synthadoc.agents.query_agent import _build_pre_prompt
+    prompt = _build_pre_prompt("Summary: citation issues: 2, orphans: 0")
+    assert prompt is not None
+    assert "citation" in prompt.lower()
+
+
+def test_pre_prompt_broken_citations_singular():
+    """'1 broken citation' → singular word in returned prompt."""
+    from synthadoc.agents.query_agent import _build_pre_prompt
+    prompt = _build_pre_prompt("1 citation issue found in grace-hopper.")
+    assert prompt is not None
+    assert "citation" in prompt.lower()
+    assert "1" in prompt
+
+
+def test_pre_prompt_no_broken_citations_when_zero():
+    """'0 citation issue(s)' → no pre-prompt."""
+    from synthadoc.agents.query_agent import _build_pre_prompt
+    prompt = _build_pre_prompt("Lint complete: 0 citation issues found. All good.")
+    assert prompt is None
+
+
+def test_pre_prompt_no_broken_citations_when_none():
+    """'no citation issues' → no pre-prompt."""
+    from synthadoc.agents.query_agent import _build_pre_prompt
+    prompt = _build_pre_prompt("There are no citation issues in your wiki.")
+    assert prompt is None
+
+
+def test_pre_prompt_broken_citations_triggers_resolver_phrase():
+    """The returned pre-prompt must contain 'citation resolver' so the router
+    routes it to BrokenCitationResolverWorkflow."""
+    from synthadoc.agents.query_agent import _build_pre_prompt
+    prompt = _build_pre_prompt("2 citation issue(s) detected.")
+    assert prompt is not None
+    assert "citation resolver" in prompt.lower()
+
+
+def test_pre_prompt_broken_citations_summary_wins_over_per_page_detail():
+    """Lint report shows 'Broken citations: 2' in the summary but each
+    per-page entry says '1 broken citation(s)'.  The total (2) must win."""
+    from synthadoc.agents.query_agent import _build_pre_prompt
+    answer = (
+        "Broken citations: 2\n"
+        "[[artificial-intelligence-history]] (1 broken citation(s))\n"
+        "[[programming-languages-overview]] (1 broken citation(s))\n"
+    )
+    prompt = _build_pre_prompt(answer)
+    assert prompt is not None
+    assert "2" in prompt, f"Expected total '2', got: {prompt!r}"
+    assert "1" not in prompt, f"Per-page count '1' leaked into prompt: {prompt!r}"
+
+
+def test_pre_prompt_broken_citations_bare_summary_line():
+    """'Broken citations: N' alone (lint-report summary line format) is matched."""
+    from synthadoc.agents.query_agent import _build_pre_prompt
+    prompt = _build_pre_prompt("Broken citations: 3")
+    assert prompt is not None
+    assert "3" in prompt
