@@ -220,6 +220,11 @@ domain = "{domain}"
 port = {port}  # change this if running multiple wikis simultaneously
 # host = "0.0.0.0"  # bind to all interfaces — no built-in auth, restrict via firewall
 job_timeout_seconds = 600  # max seconds a single job runs before being killed
+# CLI → server HTTP timeouts (seconds).  Raise when using slow LLM providers
+# (e.g. opencode, local models, or heavily loaded cloud APIs).
+client_timeout_seconds = 60         # simple requests (status, job enqueue, …)
+client_llm_timeout_seconds = 180    # LLM-driven endpoints (/analyse, /context/build)
+client_stream_timeout_seconds = 120 # SSE streaming (/query/stream)
 
 [agents]
 default = {{ provider = "gemini", model = "gemini-2.5-flash-lite" }}

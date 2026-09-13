@@ -101,7 +101,7 @@ def ingest_cmd(
             abs_source = str(Path(s).resolve())
         if analyse_only:
             import json as _json
-            result = post(wiki, "/analyse", {"source": abs_source})
+            result = post(wiki, "/analyse", {"source": abs_source}, llm=True)
             typer.echo(_json.dumps(result, indent=2))
             continue
         body: dict = {"source": abs_source, "force": force}

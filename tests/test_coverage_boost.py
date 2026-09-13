@@ -14,6 +14,24 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 
+# ── shared test helpers ───────────────────────────────────────────────────────
+
+def _fake_server_info_cb(
+    *,
+    client_timeout: int = 60,
+    client_llm_timeout: int = 180,
+    client_stream_timeout: int = 120,
+    port: int = 7070,
+):
+    """Return a (url, cfg_mock) pair for patching synthadoc.cli._http._server_info."""
+    cfg = MagicMock()
+    cfg.server.client_timeout_seconds = client_timeout
+    cfg.server.client_llm_timeout_seconds = client_llm_timeout
+    cfg.server.client_stream_timeout_seconds = client_stream_timeout
+    cfg.server.port = port
+    return (f"http://127.0.0.1:{port}", cfg)
+
+
 # ── cli/_utils.py ─────────────────────────────────────────────────────────────
 
 def test_resolve_root_returns_cwd_when_none():
@@ -137,8 +155,9 @@ def test_ingest_analyse_only_calls_analyse_endpoint(tmp_path):
     from synthadoc.cli.main import app
     runner = CliRunner()
 
-    def fake_post(wiki, path, body, timeout=60):
+    def fake_post(wiki, path, body, timeout=None, *, llm=False):
         assert "/analyse" in path
+        assert llm is True, "analyse endpoint must set llm=True"
         return {"entities": [], "tags": [], "summary": "test"}
 
     with patch("synthadoc.cli.ingest.post", side_effect=fake_post), \
@@ -616,45 +635,48 @@ def test_server_url_missing_config_exits(tmp_path):
 
 def test_http_get_happy_path():
     """get() returns parsed JSON on a 200 response."""
-    from synthadoc.cli._http import get
+    import synthadoc.cli._http as _http_mod
     import httpx
     mock_resp = MagicMock(spec=httpx.Response)
     mock_resp.raise_for_status = MagicMock()
     mock_resp.json.return_value = {"status": "ok"}
 
-    with patch("synthadoc.cli._http.server_url", return_value="http://127.0.0.1:7070"), \
+    fake_info = _fake_server_info_cb()
+    with patch.object(_http_mod, "_server_info", return_value=fake_info), \
          patch.object(httpx, "get", return_value=mock_resp):
-        result = get("my-wiki", "/health")
+        result = _http_mod.get("my-wiki", "/health")
 
     assert result == {"status": "ok"}
 
 
 def test_http_post_happy_path():
     """post() returns parsed JSON on a 200 response."""
-    from synthadoc.cli._http import post
+    import synthadoc.cli._http as _http_mod
     import httpx
     mock_resp = MagicMock(spec=httpx.Response)
     mock_resp.raise_for_status = MagicMock()
     mock_resp.json.return_value = {"job_id": "abc-123"}
 
-    with patch("synthadoc.cli._http.server_url", return_value="http://127.0.0.1:7070"), \
+    fake_info = _fake_server_info_cb()
+    with patch.object(_http_mod, "_server_info", return_value=fake_info), \
          patch.object(httpx, "post", return_value=mock_resp):
-        result = post("my-wiki", "/jobs/ingest", {"source": "file.md"})
+        result = _http_mod.post("my-wiki", "/jobs/ingest", {"source": "file.md"})
 
     assert result["job_id"] == "abc-123"
 
 
 def test_http_delete_happy_path():
     """delete() returns parsed JSON on a 200 response."""
-    from synthadoc.cli._http import delete
+    import synthadoc.cli._http as _http_mod
     import httpx
     mock_resp = MagicMock(spec=httpx.Response)
     mock_resp.raise_for_status = MagicMock()
     mock_resp.json.return_value = {"deleted": True}
 
-    with patch("synthadoc.cli._http.server_url", return_value="http://127.0.0.1:7070"), \
+    fake_info = _fake_server_info_cb()
+    with patch.object(_http_mod, "_server_info", return_value=fake_info), \
          patch.object(httpx, "delete", return_value=mock_resp):
-        result = delete("my-wiki", "/jobs/abc-123")
+        result = _http_mod.delete("my-wiki", "/jobs/abc-123")
 
     assert result["deleted"] is True
 
