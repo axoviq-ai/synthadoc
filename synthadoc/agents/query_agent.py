@@ -566,6 +566,34 @@ _NO_ORPHAN_RE = re.compile(
     r'|\borphan\b[^(\n]*\(0\)',
     re.IGNORECASE,
 )
+# Broken citation patterns — three output formats:
+#   LLM text / CLI summary: "2 broken citations" / "2 citation issue(s)"
+#   CLI section header:     "Citation Issues (2 across 1 pages):"
+#   LLM / colon form:       "citation issues: 2" / "broken citations: 2"
+_BROKEN_CITATIONS_COUNT_RE = re.compile(
+    r'\b([1-9]\d*)\s+(?:broken\s+)?citation\s*(?:issue|ref|problem)s?\b'
+    r'|\b([1-9]\d*)\s+broken\s+citations?\b',
+    re.IGNORECASE,
+)
+_BROKEN_CITATIONS_HEADER_RE = re.compile(
+    r'\bcitation\s*(?:issue|ref|problem)s?\s*\(\s*([1-9]\d*)',
+    re.IGNORECASE,
+)
+_BROKEN_CITATIONS_AFTER_RE = re.compile(
+    # "citation issues: 2"  /  "citation refs: 2"
+    r'\b(?:broken\s+)?citation\s*(?:issue|ref|problem)s?\s*:\s*([1-9]\d*)'
+    # "broken citations: 2"  (lint-report summary line — the most reliable total)
+    r'|\bbroken\s+citations?\s*:\s*([1-9]\d*)',
+    re.IGNORECASE,
+)
+_NO_BROKEN_CITATIONS_RE = re.compile(
+    r'\b0\s+citation\s*(?:issue|ref|problem)s?\b'
+    r'|no\s+citation\s*(?:issue|ref|problem)s?\b'
+    r'|zero\s+broken\s+citations?\b'
+    r'|\bcitation\s*(?:issue|ref|problem)s?\s*\(\s*0\s*\)'
+    r'|\bcitation\s*(?:issue|ref|problem)s?\s*:\s*0\b',
+    re.IGNORECASE,
+)
 
 
 def _build_pre_prompt(answer: str) -> str | None:
@@ -581,6 +609,10 @@ def _build_pre_prompt(answer: str) -> str | None:
          Four formats: LLM text, lint-report summary ("- Orphan pages: N"),
          lint-report section header ("Orphan pages (N)…"), wiki-status table
       5. Broken wikilinks → prompt to scan
+      6. Broken citations → prompt to run the citation resolver
+         Three formats: LLM text / CLI summary ("N citation issue(s)"),
+         CLI section header ("Citation Issues (N across M pages)"),
+         colon form ("citation issues: N")
 
     Returns None if no clear next action is present.
     """
@@ -635,6 +667,26 @@ def _build_pre_prompt(answer: str) -> str | None:
     # Trigger when lint/status reports broken wikilinks.
     if _BROKEN_LINKS_RE.search(answer) and not _NO_BROKEN_LINKS_RE.search(answer):
         return "Scan for broken wikilinks"
+    # Trigger when lint/status reports broken source citations.
+    # Three formats matched: "2 citation issue(s)", "Citation Issues (2 across…)",
+    # "citation issues: 2".  Priority below broken wikilinks — citations are
+    # invisible in navigation but do not block page rendering.
+    if not _NO_BROKEN_CITATIONS_RE.search(answer):
+        for pat in (
+            # Try summary/total formats first so a "Broken citations: 2" line
+            # wins over per-page "(1 broken citation(s))" detail lines.
+            _BROKEN_CITATIONS_AFTER_RE,
+            _BROKEN_CITATIONS_HEADER_RE,
+            _BROKEN_CITATIONS_COUNT_RE,
+        ):
+            m = pat.search(answer)
+            if m:
+                # _BROKEN_CITATIONS_COUNT_RE has two alternation groups;
+                # take the first non-None capture.
+                raw = next(g for g in m.groups() if g is not None)
+                n = int(raw)
+                word = "citation" if n == 1 else "citations"
+                return f"Fix {n} broken {word} — run the citation resolver?"
     return None
 
 
