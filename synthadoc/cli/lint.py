@@ -111,7 +111,7 @@ def lint_cmd(
     typer.echo(f"Check status: synthadoc jobs status {result['job_id']}{w_flag}")
     typer.echo(f"View results: synthadoc lint report{w_flag}")
     if no_adversarial:
-        typer.echo("ℹ️  Adversarial pass skipped - lint_warnings cleared from all pages.")
+        typer.echo("Note: Adversarial pass skipped - lint_warnings cleared from all pages.")
 
 
 @lint_app.command("report")
@@ -248,7 +248,7 @@ def lint_report(
             size = entry.get("size") or 0
             typer.echo(f"  {entry['slug']} - source exceeded limit ({size:,} chars)")
             typer.echo(f"    Source: {entry['file']}")
-            typer.echo(f"    💡 Re-ingest with a higher limit:")
+            typer.echo(f"    Tip: Re-ingest with a higher limit:")
             typer.echo(f"       {suggested_reingest_cmd(entry['file'], wiki, size or _default_max)}")
 
     # Sync orphan: true/false frontmatter so the Obsidian dashboard Dataview
