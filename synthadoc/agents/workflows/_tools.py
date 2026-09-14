@@ -1040,26 +1040,40 @@ async def tool_transition_lifecycle_state(
             "error": f"Unknown lifecycle state {to_state!r}. Valid: {sorted(_VALID_STATES)}",
         }
 
-    page = ctx.store.read_page(slug)
-    if page is None:
+    # Read the current state before acquiring the lock so we can return early
+    # without holding it during validation.  The authoritative re-read happens
+    # inside update_page, which holds the lock for the full read→modify→write
+    # sequence and eliminates the TOCTOU window.
+    pre_check = ctx.store.read_page(slug)
+    if pre_check is None:
         return {"success": False, "error": f"Page not found: {slug!r}"}
-
-    from_state = page.status if page.status else "unknown"
 
     # Enforce the lifecycle state-machine graph — same rules as the HTTP endpoint
     # and MCP server.  Lint and ingest bypass this check intentionally (they write
     # via write_page() directly); this tool is user-driven and must not be more
     # permissive than the other user-facing surfaces.
-    err = validate_lifecycle_transition(from_state, to_state)
+    pre_state = pre_check.status if pre_check.status else "unknown"
+    err = validate_lifecycle_transition(pre_state, to_state)
     if err:
         return {"success": False, "error": err}
 
-    page.status = to_state  # LifecycleState constants are plain strings
+    from_state: str = "unknown"
 
-    if to_state == "active":
-        page.contradiction_note = None  # clear stale contradiction note on promotion
+    def _apply(page) -> None:
+        nonlocal from_state
+        from_state = page.status if page.status else "unknown"
+        # Re-validate inside the lock — state may have changed since pre_check.
+        _err = validate_lifecycle_transition(from_state, to_state)
+        if _err:
+            raise ValueError(_err)
+        page.status = to_state  # LifecycleState constants are plain strings
+        if to_state == "active":
+            page.contradiction_note = None  # clear stale contradiction note on promotion
 
-    ctx.store.write_page(slug, page)
+    try:
+        page = ctx.store.update_page(slug, _apply)
+    except ValueError as exc:
+        return {"success": False, "error": str(exc)}
 
     # Invalidate the query cache and search index so the next query reflects
     # the new lifecycle state.  Both hooks are None in tests and CLI contexts
