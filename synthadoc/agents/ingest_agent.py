@@ -1170,6 +1170,7 @@ class IngestAgent(BaseAgent):
 
         citations: list[dict] = []
         final_slug: str = ""
+        _any_live_write = False  # True only when a page lands in wiki/ directly (not candidates)
 
         if action == "flag" and target and target not in LINT_SKIP_SLUGS and self._store.page_exists(target):
             with self._store.page_lock(target):
@@ -1237,6 +1238,7 @@ class IngestAgent(BaseAgent):
                     logger.info("ingest: staged update to candidates slug=%s source=%s", target, source[:80])
                 else:
                     logger.info("ingest: updated page slug=%s source=%s", target, source[:80])
+                    _any_live_write = True
                 result.pages_updated.append(target)
                 final_slug = target
 
@@ -1293,6 +1295,7 @@ class IngestAgent(BaseAgent):
                         logger.info("ingest: staged update to candidates slug=%s source=%s", slug, source[:80])
                     else:
                         logger.info("ingest: updated existing page slug=%s source=%s", slug, source[:80])
+                        _any_live_write = True
                     result.pages_updated.append(slug)
                     final_slug = slug
                 else:
@@ -1356,6 +1359,7 @@ class IngestAgent(BaseAgent):
                         logger.info("ingest: created page slug=%s source=%s", slug, source[:80])
                         result.pages_created.append(slug)
                         final_slug = slug
+                        _any_live_write = True
                         self._store.append_to_index(slug, new_page.title)
                         if self._routing_path:
                             from synthadoc.core.routing import RoutingIndex
@@ -1371,7 +1375,7 @@ class IngestAgent(BaseAgent):
         if bust_cache and final_slug and "://" in source:
             _propagate_source_update(self._store, source, _truncated, _source_len, final_slug)
 
-        if result.pages_created or result.pages_updated:
+        if (result.pages_created or result.pages_updated) and _any_live_write:
             await self._update_overview()
 
         self._log.log_ingest(source=p.name,
