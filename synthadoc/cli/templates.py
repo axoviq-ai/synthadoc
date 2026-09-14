@@ -30,7 +30,7 @@ def list_templates_cmd() -> None:
     registry = _read_registry()
 
     # ── Demos section ─────────────────────────────────────────────────────────
-    typer.echo("Demos  " + "─" * 52)
+    typer.echo("Demos  " + "-" * 52)
     for demo_name in _DEMOS:
         status = ""
         if demo_name in registry:
@@ -42,7 +42,7 @@ def list_templates_cmd() -> None:
     typer.echo()
 
     # ── Templates section ──────────────────────────────────────────────────────
-    typer.echo("Templates  " + "─" * 50)
+    typer.echo("Templates  " + "-" * 50)
     templates = list_templates()
     if not templates:
         typer.echo("\n  No templates installed.")
@@ -130,7 +130,7 @@ def _do_sync(name: Optional[str], force: bool) -> None:
         wiki_root = Path(entry["path"])
 
         if not wiki_root.is_dir():
-            typer.echo(f"{target}: directory not found at {wiki_root} — skipping", err=True)
+            typer.echo(f"{target}: directory not found at {wiki_root} - skipping", err=True)
             continue
 
         cat = entry.get("category")
@@ -172,7 +172,7 @@ def _do_sync(name: Optional[str], force: bool) -> None:
             any_changes = True
 
     if not any_changes:
-        typer.echo("Already up to date — nothing to sync.")
+        typer.echo("Already up to date - nothing to sync.")
 
 
 # ── Template-wiki sync ────────────────────────────────────────────────────────

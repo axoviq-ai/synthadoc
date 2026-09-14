@@ -199,11 +199,11 @@ async def tool_ingest_source(ctx: "WorkflowContext", source_path: str) -> dict:
 
     status = result.get("status", ToolStatus.FAILED)
     if status == ToolStatus.SUCCESS:
-        await ctx.send_sse_event("tool_progress", {"tool": "ingest_source", "message": f"✓ {label} re-ingested"})
+        await ctx.send_sse_event("tool_progress", {"tool": "ingest_source", "message": f"OK {label} re-ingested"})
     elif status == ToolStatus.TIMEOUT:
-        await ctx.send_sse_event("tool_progress", {"tool": "ingest_source", "message": f"✗ {label}: timed out"})
+        await ctx.send_sse_event("tool_progress", {"tool": "ingest_source", "message": f"FAIL {label}: timed out"})
     else:
-        await ctx.send_sse_event("tool_progress", {"tool": "ingest_source", "message": f"✗ {label}: failed"})
+        await ctx.send_sse_event("tool_progress", {"tool": "ingest_source", "message": f"FAIL {label}: failed"})
     return result
 
 
@@ -682,7 +682,7 @@ async def tool_apply_link_fixes(
     await ctx.send_sse_event(
         "tool_progress",
         {"tool": "apply_link_fixes",
-         "message": f"✓ {page_slug}: {total_changes} link{'s' if total_changes != 1 else ''} fixed"},
+         "message": f"OK {page_slug}: {total_changes} link{'s' if total_changes != 1 else ''} fixed"},
     )
     return {"status": ToolStatus.SUCCESS, "changes": total_changes, "page": page_slug}
 
@@ -775,7 +775,7 @@ async def tool_run_scaffold(ctx: "WorkflowContext", domain: str) -> dict:
     await ctx.send_sse_event(
         "tool_progress",
         {"tool": "run_scaffold",
-         "message": f"✓ Scaffold complete — {categories_updated} page{'s' if categories_updated != 1 else ''} categorised"},
+         "message": f"OK Scaffold complete - {categories_updated} page{'s' if categories_updated != 1 else ''} categorised"},
     )
     return {
         "status": ToolStatus.SUCCESS,
@@ -938,7 +938,7 @@ async def tool_run_scoped_lint(ctx: "WorkflowContext", slug: str) -> dict:
     await ctx.send_sse_event(
         "tool_progress",
         {"tool": "run_scoped_lint",
-         "message": f"{'✓' if passed else '✗'} {slug}: {'passed' if passed else 'failed'}"},
+         "message": f"{'OK' if passed else 'FAIL'} {slug}: {'passed' if passed else 'failed'}"},
     )
     return {"pass": passed, "warnings_count": warnings_count,
             "contradiction_note": contradiction_note}
@@ -1001,7 +1001,7 @@ async def tool_propose_and_apply(
             ctx.store.write_page(slug, page)
         await ctx.send_sse_event(
             "tool_progress",
-            {"tool": "propose_and_apply", "message": f"✓ Applied {strategy_name} to {slug}"},
+            {"tool": "propose_and_apply", "message": f"OK Applied {strategy_name} to {slug}"},
         )
     return {"applied": confirmed, "diff_preview": diff_preview}
 
@@ -1088,7 +1088,7 @@ async def tool_transition_lifecycle_state(
     await ctx.send_sse_event(
         "tool_progress",
         {"tool": "transition_lifecycle_state",
-         "message": f"✓ {slug}: {from_state} → {to_state}"},
+         "message": f"OK {slug}: {from_state} -> {to_state}"},
     )
     return {"success": True, "from_state": from_state, "to_state": to_state}
 
