@@ -326,6 +326,28 @@ class WikiStorage:
                 self._locks[slug] = threading.Lock()
             return self._locks[slug]
 
+    def update_page(self, slug: str, fn) -> "WikiPage | None":
+        """Atomically read, modify, and write a page under the page lock.
+
+        ``fn`` receives the page object and mutates it in place.  The lock is
+        held for the entire read → modify → write sequence, so concurrent
+        writers in other threads or processes cannot interleave.
+
+        Returns the updated page, or ``None`` if the page does not exist
+        (``fn`` is not called in that case).
+
+        Use this instead of a bare ``read_page`` / ``write_page`` pair whenever
+        there is no ``await`` between the read and the write — it eliminates the
+        TOCTOU window that a separate lock-only-on-write leaves open.
+        """
+        with self.page_lock(slug):
+            page = self.read_page(slug)
+            if page is None:
+                return None
+            fn(page)
+            self.write_page(slug, page)
+            return page
+
     @contextmanager
     def page_lock(self, slug: str):
         lock = self._get_thread_lock(slug)
