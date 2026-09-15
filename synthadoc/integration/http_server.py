@@ -861,13 +861,20 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
     import synthadoc
     from synthadoc.config import load_config, STAGING_POLICIES, STAGING_CONFIDENCE_LEVELS
     from synthadoc.core.orchestrator import Orchestrator
+    from synthadoc.errors import ConfigError
     from synthadoc.storage.log import AuditDB as _AuditDB
     from synthadoc.storage.wiki import LifecycleState, TriggerSource
 
     # Expose wiki root so skills (e.g. web_search) can load the dynamic blocked-domains list
     os.environ["SYNTHADOC_WIKI_ROOT"] = str(wiki_root)
 
-    cfg = load_config(project_config=wiki_root / ".synthadoc" / "config.toml")
+    try:
+        cfg = load_config(project_config=wiki_root / ".synthadoc" / "config.toml")
+    except ConfigError as exc:
+        # Re-raise so callers that bypass serve.py (test harnesses, plugins,
+        # future entry points) get a clean ConfigError rather than a raw
+        # traceback originating deep inside load_config.
+        raise ConfigError(exc.code, str(exc), exc.hint) from exc
 
     # Create Orchestrator here so MCP server can reference it at mount time.
     # init() is called inside the lifespan (requires event loop).
