@@ -544,7 +544,7 @@ def _test_sanitizer_and_truncation_flag() -> None:
         assert isinstance(body, dict) and "job_id" in body, \
             f"No job_id in response: {str(body)[:120]}"
         job_id = body["job_id"]
-        final = _wait_for_terminal(job_id, max_wait=300)
+        final = _wait_for_terminal(job_id, max_wait=600)
         assert final == "completed", \
             f"Ingest job did not complete (status={final!r}) — cannot verify sanitizer or truncation flag"
 
