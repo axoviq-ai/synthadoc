@@ -117,6 +117,35 @@ def _remove_wikilink_from_all_pages(wiki_root: Path, slug: str) -> None:
             pass
 
 
+def _find_pages_linking_to(wiki_root: Path, slug: str) -> list[str]:
+    """Return slugs of wiki pages whose content contains a [[slug]] wikilink.
+
+    Used by tests to verify directly that no wiki page was modified to
+    reference the test slug, without relying on the orphan-detection
+    algorithm (which can disagree with the workflow's own view due to
+    differences in which pages are included as orphan candidates or link
+    sources).
+
+    Pattern covers the same variants as _remove_wikilink_from_all_pages.
+    The page itself (slug == page_path.stem) is excluded.
+    """
+    import re as _re
+    wiki_dir = wiki_root / "wiki"
+    pattern = _re.compile(
+        r"\[\[" + _re.escape(slug) + r"(?:[#|][^\]]+)?\]\]"
+    )
+    found: list[str] = []
+    for page_path in wiki_dir.glob("*.md"):
+        if page_path.stem == slug:
+            continue
+        try:
+            if pattern.search(page_path.read_text(encoding="utf-8")):
+                found.append(page_path.stem)
+        except Exception:  # noqa: BLE001
+            pass
+    return found
+
+
 def _run_workflow(
     query: str,
     *,
@@ -331,11 +360,16 @@ def test_escalation_on_isolated_orphan():
         # Workflow must have produced at least some events
         assert events, "No SSE events received from workflow"
 
-        # Core guarantee: no pages were written — the orphan must still be orphaned.
-        orphans_after = _find_orphan_slugs_via_api()
-        assert _ISOLATED_SLUG in orphans_after, (
-            f"{_ISOLATED_SLUG!r} is no longer an orphan after declining all proposals "
-            f"— the workflow must have written a link without user approval.\n"
+        # Core guarantee: no pages were written — no wiki page must contain
+        # [[_ISOLATED_SLUG]] as a wikilink.  We check this directly on the
+        # filesystem rather than via GET /lint/report, which can report an
+        # apparent "resolved" state when the orphan-detection algorithm and
+        # the workflow use slightly different page-inclusion rules (e.g.
+        # which pages count as orphan candidates vs. link-graph sources).
+        linked_by = _find_pages_linking_to(wiki_root, _ISOLATED_SLUG)
+        assert not linked_by, (
+            f"{_ISOLATED_SLUG!r} is now linked by {linked_by} after declining all proposals "
+            f"— the workflow wrote a wikilink without user approval.\n"
             f"Events: {events}"
         )
 
