@@ -1032,7 +1032,7 @@ async def tool_transition_lifecycle_state(
         {"success": True, "from_state": str, "to_state": str}
         {"success": False, "error": str}
     """
-    from synthadoc.storage.wiki import validate_lifecycle_transition
+    from synthadoc.storage.wiki import LifecycleState, validate_lifecycle_transition
 
     if to_state not in _VALID_STATES:
         return {
@@ -1067,7 +1067,7 @@ async def tool_transition_lifecycle_state(
         if _err:
             raise ValueError(_err)
         page.status = to_state  # LifecycleState constants are plain strings
-        if to_state == "active":
+        if to_state == LifecycleState.ACTIVE:
             page.contradiction_note = None  # clear stale contradiction note on promotion
 
     try:
