@@ -413,40 +413,28 @@ def test_qwen3x_hierarchy():
 # Groq
 # ---------------------------------------------------------------------------
 
-def test_groq_llama4_scout_rates():
-    """llama4-scout-17b-16e-instruct: $0.11/M input, $0.34/M output."""
-    cost = estimate_cost("llama4-scout-17b-16e-instruct", input_tokens=1_000_000, output_tokens=1_000_000)
-    assert abs(cost - 0.45) < 0.001
-
-
-def test_groq_llama4_maverick_rates():
-    """llama4-maverick-17b-128e-instruct: $0.50/M input, $0.77/M output."""
-    cost = estimate_cost("llama4-maverick-17b-128e-instruct", input_tokens=1_000_000, output_tokens=1_000_000)
-    assert abs(cost - 1.27) < 0.001
-
-
-def test_groq_maverick_more_expensive_than_scout():
-    """Maverick should cost more than Scout per million tokens."""
-    assert estimate_cost("llama4-maverick-17b-128e-instruct", 1_000_000, 1_000_000) > \
-           estimate_cost("llama4-scout-17b-16e-instruct", 1_000_000, 1_000_000)
-
-
 def test_groq_gpt_oss_20b_rates():
-    """gpt-oss-20b: $0.075/M input, $0.30/M output."""
-    cost = estimate_cost("gpt-oss-20b", input_tokens=1_000_000, output_tokens=1_000_000)
+    """openai/gpt-oss-20b: $0.075/M input, $0.30/M output (model ID requires openai/ prefix)."""
+    cost = estimate_cost("openai/gpt-oss-20b", input_tokens=1_000_000, output_tokens=1_000_000)
     assert abs(cost - 0.375) < 0.001
 
 
 def test_groq_gpt_oss_120b_rates():
-    """gpt-oss-120b: $0.15/M input, $0.60/M output."""
-    cost = estimate_cost("gpt-oss-120b", input_tokens=1_000_000, output_tokens=1_000_000)
+    """openai/gpt-oss-120b: $0.15/M input, $0.60/M output."""
+    cost = estimate_cost("openai/gpt-oss-120b", input_tokens=1_000_000, output_tokens=1_000_000)
     assert abs(cost - 0.75) < 0.001
 
 
 def test_groq_gpt_oss_120b_more_expensive_than_20b():
-    """gpt-oss-120b should cost more than gpt-oss-20b."""
-    assert estimate_cost("gpt-oss-120b", 1_000_000, 1_000_000) > \
-           estimate_cost("gpt-oss-20b", 1_000_000, 1_000_000)
+    """openai/gpt-oss-120b should cost more than openai/gpt-oss-20b."""
+    assert estimate_cost("openai/gpt-oss-120b", 1_000_000, 1_000_000) > \
+           estimate_cost("openai/gpt-oss-20b", 1_000_000, 1_000_000)
+
+
+def test_groq_llama31_8b_instant_rates():
+    """llama-3.1-8b-instant: $0.05/M input, $0.08/M output (free-tier model)."""
+    cost = estimate_cost("llama-3.1-8b-instant", input_tokens=1_000_000, output_tokens=1_000_000)
+    assert abs(cost - 0.13) < 0.001
 
 
 # ---------------------------------------------------------------------------

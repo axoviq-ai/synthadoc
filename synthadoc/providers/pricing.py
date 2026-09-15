@@ -101,10 +101,10 @@ _PRICING: dict[str, tuple[float, float]] = {
 
     # ── Groq ─────────────────────────────────────────────────────────────────
     # llama-3.3-70b-versatile moved to Enterprise-only (no published rate) 2026-08-26
-    "llama4-scout-17b-16e-instruct":        ( 0.11e-6,  0.34e-6),
-    "llama4-maverick-17b-128e-instruct":    ( 0.50e-6,  0.77e-6),
-    "gpt-oss-20b":                          ( 0.075e-6, 0.30e-6),
-    "gpt-oss-120b":                         ( 0.15e-6,  0.60e-6),
+    # gpt-oss model IDs require the "openai/" prefix in the Groq API
+    "openai/gpt-oss-20b":                   ( 0.075e-6, 0.30e-6),
+    "openai/gpt-oss-120b":                  ( 0.15e-6,  0.60e-6),
+    "llama-3.1-8b-instant":                 ( 0.05e-6,  0.08e-6),  # free tier
 
     # ── Kimi (Moonshot AI) ───────────────────────────────────────────────────
     "kimi-k3":                   ( 3.00e-6, 15.00e-6),  # flagship; 1M context; added 2026-07-16
