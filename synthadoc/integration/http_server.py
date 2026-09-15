@@ -1967,6 +1967,12 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
                 new_pages.append((src.stem, title))
         if new_pages:
             _cand_add_to_index(wd, new_pages)
+        if promoted:
+            # TODO: overview.md is not regenerated here. Promoting many candidates
+            # one-by-one would trigger one LLM call per slug, which is too expensive.
+            # Decide on a debounce / batch strategy before adding _update_overview().
+            # For now the overview stays stale until the next direct ingest or weekly scaffold.
+            logger.info("candidates: promoted %d page(s) to wiki — overview.md not regenerated (deferred)", len(promoted))
         return {"promoted": [s for s, _ in promoted], "count": len(promoted)}
 
     @app.post("/candidates/discard-all")
@@ -1994,6 +2000,8 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         shutil.move(str(src), str(dest))
         if is_new:
             _cand_add_to_index(wd, [(slug, title)])
+        # TODO: overview.md is not regenerated here. See promote-all for rationale.
+        logger.info("candidates: promoted slug=%s to wiki — overview.md not regenerated (deferred)", slug)
         return {"slug": slug, "promoted": True, "updated": not is_new}
 
     @app.post("/candidates/{slug}/discard")
