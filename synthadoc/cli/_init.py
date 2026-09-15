@@ -230,10 +230,10 @@ client_stream_timeout_seconds = 120 # SSE streaming (/query/stream)
 default = {{ provider = "gemini", model = "gemini-2.5-flash-lite" }}
 # Alternatives (uncomment and restart to switch):
 # default = {{ provider = "gemini",    model = "gemini-2.5-flash" }}         # free tier: 10 RPM / 250 RPD
-# default = {{ provider = "gemini",    model = "gemini-1.5-flash" }}         # free tier: 15 RPM / 1,500 RPD
+# default = {{ provider = "gemini",    model = "gemini-3.5-flash-lite" }}    # free tier: budget option ($0.30/$2.50)
 # default = {{ provider = "minimax",   model = "MiniMax-M2.5" }}             # paid, cheapest text-only ($0.15/M in)
 # default = {{ provider = "minimax",   model = "MiniMax-M3",  thinking = "disabled" }}  # paid, M3 with thinking off (faster, cheaper)
-# default = {{ provider = "groq",      model = "llama-3.3-70b-versatile" }}  # free tier, 100K tokens/day
+# default = {{ provider = "groq",      model = "llama4-scout-17b-16e-instruct" }}  # paid, $0.11/$0.34 per 1M tokens
 # default = {{ provider = "anthropic", model = "claude-sonnet-4-6" }}        # paid, high quality
 # default = {{ provider = "anthropic", model = "claude-opus-4-8" }}          # paid, highest quality (most capable)
 # default = {{ provider = "deepseek",  model = "deepseek-v4-flash" }}                          # paid, very cheap ($0.14/M in); text-only, no vision

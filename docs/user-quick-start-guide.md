@@ -3578,7 +3578,7 @@ Switch by editing `<wiki-root>/.synthadoc/config.toml` and restarting the server
 # Uncomment exactly one line — comment out all others
 
 default = { provider = "gemini",    model = "gemini-2.5-flash" }                    # Gemini Flash (default, free tier)
-# default = { provider = "groq",      model = "llama-3.3-70b-versatile" }           # Groq (fast, free tier)
+# default = { provider = "groq",      model = "llama4-scout-17b-16e-instruct" }     # Groq (paid, $0.11/$0.34 per 1M)
 # default = { provider = "qwen",      model = "qwen-plus" }                              # Qwen via DashScope (1M free tokens)
 # default = { provider = "qwen",      model = "qwen-plus", thinking = "disabled" }      # Qwen — thinking suppressed (faster)
 # default = { provider = "deepseek",  model = "deepseek-v4-flash" }                              # DeepSeek (very affordable, non-thinking)
@@ -3655,7 +3655,7 @@ Neither file is required. If both are absent, the built-in defaults take effect.
 ```toml
 [agents]
 default = { provider = "gemini", model = "gemini-2.5-flash" }  # free tier
-lint    = { provider = "groq",   model = "llama-3.3-70b-versatile" }  # cheaper for lint
+lint    = { provider = "groq",   model = "llama4-scout-17b-16e-instruct" }  # cheaper for lint
 
 [wikis]
 research = "~/wikis/research"

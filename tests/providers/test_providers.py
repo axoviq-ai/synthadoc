@@ -533,7 +533,7 @@ def test_make_provider_missing_groq_key_exits(monkeypatch, capsys):
     from synthadoc.providers import make_provider
     monkeypatch.setenv("GROQ_API_KEY", "")
     with pytest.raises((click.exceptions.Exit, typer.Exit)) as exc_info:
-        make_provider("ingest", _make_cfg("groq", "llama-3.3-70b-versatile"))
+        make_provider("ingest", _make_cfg("groq", "llama4-scout-17b-16e-instruct"))
     assert exc_info.value.exit_code == 1
     err = capsys.readouterr().err
     assert "GROQ_API_KEY" in err
@@ -590,7 +590,7 @@ def test_make_provider_groq_uses_openai_provider_with_base_url(monkeypatch):
     from synthadoc.providers import make_provider
     from synthadoc.providers.openai import OpenAIProvider
     monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
-    provider = make_provider("ingest", _make_cfg("groq", "llama-3.3-70b-versatile"))
+    provider = make_provider("ingest", _make_cfg("groq", "llama4-scout-17b-16e-instruct"))
     assert isinstance(provider, OpenAIProvider)
     assert "groq" in str(provider._client.base_url)
     assert provider.supports_vision is False
