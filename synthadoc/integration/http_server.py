@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request, Response
 from synthadoc.core.queue import JobStatus
 from synthadoc.storage.wiki import SYSTEM_PAGE_SLUGS
 from fastapi.responses import JSONResponse
@@ -1955,7 +1955,7 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         return result
 
     @app.post("/candidates/promote-all")
-    async def candidates_promote_all():
+    async def candidates_promote_all(background_tasks: BackgroundTasks):
         from synthadoc.cli.candidates import _read_frontmatter as _cand_read_fm
         from synthadoc.cli.candidates import _add_to_index as _cand_add_to_index
         from synthadoc.cli.candidates import _page_title as _cand_page_title
@@ -1975,25 +1975,29 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         if new_pages:
             _cand_add_to_index(wd, new_pages)
         if promoted:
-            # TODO: overview.md is not regenerated here. Promoting many candidates
-            # one-by-one would trigger one LLM call per slug, which is too expensive.
-            # Decide on a debounce / batch strategy before adding _update_overview().
-            # For now the overview stays stale until the next direct ingest or weekly scaffold.
-            logger.info("candidates: promoted %d page(s) to wiki — overview.md not regenerated (deferred)", len(promoted))
+            remaining = list(cd.glob("*.md")) if cd.exists() else []
+            if not remaining:
+                background_tasks.add_task(app.state.orch.refresh_overview)
+                logger.info("candidates: promoted %d page(s) to wiki — overview.md refresh queued", len(promoted))
+            else:
+                logger.info("candidates: promoted %d page(s) to wiki — %d candidates remain, overview.md refresh deferred", len(promoted), len(remaining))
         return {"promoted": [s for s, _ in promoted], "count": len(promoted)}
 
     @app.post("/candidates/discard-all")
-    async def candidates_discard_all():
+    async def candidates_discard_all(background_tasks: BackgroundTasks):
         cd = _cand_dir()
         pages = sorted(cd.glob("*.md")) if cd.exists() else []
         discarded = []
         for src in pages:
             src.unlink(missing_ok=True)
             discarded.append(src.stem)
+        if discarded:
+            background_tasks.add_task(app.state.orch.refresh_overview)
+            logger.info("candidates: discarded %d page(s) — overview.md refresh queued", len(discarded))
         return {"discarded": discarded, "count": len(discarded)}
 
     @app.post("/candidates/{slug}/promote")
-    async def candidates_promote_one(slug: str):
+    async def candidates_promote_one(slug: str, background_tasks: BackgroundTasks):
         from synthadoc.cli.candidates import _add_to_index as _cand_add_to_index
         from synthadoc.cli.candidates import _page_title as _cand_page_title
         cd = _cand_dir()
@@ -2007,17 +2011,27 @@ def create_app(wiki_root: Path, max_body_bytes: int = _MAX_BODY_BYTES, enable_mc
         shutil.move(str(src), str(dest))
         if is_new:
             _cand_add_to_index(wd, [(slug, title)])
-        # TODO: overview.md is not regenerated here. See promote-all for rationale.
-        logger.info("candidates: promoted slug=%s to wiki — overview.md not regenerated (deferred)", slug)
+        remaining = list(cd.glob("*.md")) if cd.exists() else []
+        if not remaining:
+            background_tasks.add_task(app.state.orch.refresh_overview)
+            logger.info("candidates: promoted slug=%s to wiki — no candidates remain, overview.md refresh queued", slug)
+        else:
+            logger.info("candidates: promoted slug=%s to wiki — %d candidates remain, overview.md refresh deferred", slug, len(remaining))
         return {"slug": slug, "promoted": True, "updated": not is_new}
 
     @app.post("/candidates/{slug}/discard")
-    async def candidates_discard_one(slug: str):
+    async def candidates_discard_one(slug: str, background_tasks: BackgroundTasks):
         cd = _cand_dir()
         src = cd / f"{slug}.md"
         if not src.exists():
             raise HTTPException(404, f"Candidate '{slug}' not found.")
         src.unlink()
+        remaining = list(cd.glob("*.md")) if cd.exists() else []
+        if not remaining:
+            background_tasks.add_task(app.state.orch.refresh_overview)
+            logger.info("candidates: discarded slug=%s — no candidates remain, overview.md refresh queued", slug)
+        else:
+            logger.info("candidates: discarded slug=%s — %d candidates remain, overview.md refresh deferred", slug, len(remaining))
         return {"slug": slug, "discarded": True}
 
     # ── Provenance ────────────────────────────────────────────────────────────

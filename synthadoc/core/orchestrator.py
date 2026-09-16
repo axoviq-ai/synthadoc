@@ -413,6 +413,24 @@ class Orchestrator:
                 await self._queue.fail(job_id, str(e))
                 raise
 
+    async def refresh_overview(self) -> None:
+        """Regenerate wiki/overview.md using the current wiki pages.
+
+        Called as a FastAPI BackgroundTask when the candidates folder becomes
+        empty (after the last promote or discard), so the overview reflects
+        all newly promoted pages without blocking the HTTP response.
+        """
+        from synthadoc.agents.ingest_agent import _regenerate_overview
+        _cfg_path = self._root / ".synthadoc" / "config.toml"
+        cfg = load_config(project_config=_cfg_path) if _cfg_path.exists() else self._cfg
+        provider = make_provider("ingest", cfg)
+        wiki_dir = self._root / "wiki"
+        try:
+            await _regenerate_overview(wiki_dir, provider)
+            logger.info("overview: regenerated wiki/overview.md after candidate promotion")
+        except Exception:
+            logger.exception("overview: failed to regenerate wiki/overview.md")
+
     async def _pre_check_ingest_cost(
         self, job_id: str, source: str, cfg: "Config"
     ) -> bool:
