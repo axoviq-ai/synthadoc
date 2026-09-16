@@ -136,8 +136,8 @@
       "hints": [
         "Run lint and report",
         "Run orphan resolver",
-        "What pages are orphan pages?",
         "List contradicted pages",
+        "What pages are orphan pages?",
         "Run contradiction resolver",
         "Show adversarial warnings",
         "Which sources were truncated?",
