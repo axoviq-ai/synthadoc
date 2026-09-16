@@ -26,6 +26,7 @@ After running this script, run validate_seeds.py to confirm scope and accessibil
 Usage
 -----
   python scripts/refresh_search_seeds.py                     # all templates
+  python scripts/refresh_search_seeds.py --fix-first-ingests # also repair blocked first-ingest URLs
   python scripts/refresh_search_seeds.py --template real-estate/investment
   python scripts/refresh_search_seeds.py --dry-run           # print, don't write
   python scripts/refresh_search_seeds.py --max-per-query 2   # fewer Tavily results
@@ -39,12 +40,21 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import os
 import re
+import shutil
 import sys
 from datetime import date
 from pathlib import Path
 from urllib.parse import urlparse
+
+# ── Content-quality threshold ─────────────────────────────────────────────────
+
+# URLs returning fewer than this many characters are treated as thin/unusable
+# (Cloudflare JS challenges, paywall stubs, empty navigation shells).  Keep in
+# sync with the same constant in validate_seeds.py.
+_MIN_CONTENT_CHARS = 500
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
@@ -100,6 +110,8 @@ _FIRST_INGESTS_HEADER = "## Recommended first ingests"
 _WEB_SEARCHES_HEADER = "## Recommended web searches"
 _CHECKLIST_HEADER = "## First steps checklist"
 
+_LABEL_RE = re.compile(r'^\*\*(.+?)\*\*\s*\n', re.MULTILINE)
+
 
 def _section_text(seeds_text: str, header: str) -> str:
     """Return the body of a ## section (empty string if the section is absent)."""
@@ -126,6 +138,34 @@ def first_ingest_domains(seeds_text: str) -> set[str]:
     """Domains already present in the 'Recommended first ingests' section."""
     body = _section_text(seeds_text, _FIRST_INGESTS_HEADER)
     return {_netloc(m.group(1)) for m in _INGEST_URL_RE.finditer(body)}
+
+
+def extract_first_ingests(seeds_text: str) -> list[tuple[str, str]]:
+    """Return (label, url) pairs for every URL entry in 'Recommended first ingests'.
+
+    Skips entries backed by local file paths (no http scheme).
+    Each bold **label** is matched to the first ingest URL that follows it
+    within the section body.
+    """
+    body = _section_text(seeds_text, _FIRST_INGESTS_HEADER)
+    pairs: list[tuple[str, str]] = []
+    for label_m in _LABEL_RE.finditer(body):
+        label = label_m.group(1).strip()
+        rest = body[label_m.end():]
+        url_m = _INGEST_URL_RE.search(rest)
+        if url_m:
+            pairs.append((label, url_m.group(1)))
+    return pairs
+
+
+def _label_to_query(label: str) -> str:
+    """Return a Tavily search query from a bold label.
+
+    Strips trailing annotation tokens like (public), (free), (open access).
+    E.g. "Nareit — REITs and listed real estate companies (public)"
+      -> "Nareit — REITs and listed real estate companies"
+    """
+    return re.sub(r'\s*\([^)]*\)\s*$', '', label).strip()
 
 
 def update_curated_section(seeds_text: str, urls: list[str], today: str) -> str:
@@ -171,19 +211,165 @@ def update_curated_section(seeds_text: str, urls: list[str], today: str) -> str:
 
 # ── URL accessibility test ────────────────────────────────────────────────────
 
-async def _url_accessible(url: str, skill: object, sem: asyncio.Semaphore) -> bool:
-    """Return True when UrlSkill can fetch non-empty text from *url*."""
+async def _url_accessible(url: str, skill: object, sem: asyncio.Semaphore) -> tuple[bool, str]:
+    """Return (accessible, content) where accessible is True only when UrlSkill
+    fetches at least _MIN_CONTENT_CHARS of substantive text from *url*.
+
+    Challenge pages (e.g. Cloudflare JS challenges), paywall stubs, and other
+    thin responses are treated as inaccessible even when HTTP returns 200.
+    """
     _ensure_path()
     from synthadoc.skills.base import DomainBlockedException  # type: ignore
 
     async with sem:
         try:
             result = await skill.extract(url)  # type: ignore[attr-defined]
-            return bool(result.text.strip())
+            text = result.text.strip()
+            return len(text) >= _MIN_CONTENT_CHARS, text
         except DomainBlockedException:
-            return False
+            return False, ""
         except Exception:
-            return False
+            return False, ""
+
+
+# ── Scope check (mirrors validate_seeds.py) ───────────────────────────────────
+
+_SCOPE_PROMPT = """\
+You maintain a knowledge wiki. Decide whether a new source document is in scope.
+
+Wiki scope (from purpose.md):
+{purpose}
+
+action="skip" means the source is completely OUTSIDE the wiki's domain \
+(e.g. spam, unrelated e-commerce, generic listicles with no domain-specific value).
+A broad general resource that adds no domain-specific value should be action="skip".
+A source clearly authored for practitioners in this specific domain should be \
+action="ingest".
+
+Source text (first 4 000 characters):
+{content}
+
+Return ONLY valid JSON (no markdown fences):
+{{"action": "ingest or skip", "reasoning": "one concise sentence"}}"""
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[mGKHF]")
+
+
+def _extract_scope_json(raw: str) -> dict:
+    clean = _ANSI_RE.sub("", raw)
+    clean = re.sub(r"^```[a-z]*\s*|\s*```$", "", clean, flags=re.MULTILINE)
+    matches = list(re.finditer(r"\{[^{}]+\}", clean, re.DOTALL))
+    if not matches:
+        raise ValueError(f"no JSON object in output: {clean[:200]!r}")
+    return json.loads(matches[-1].group())
+
+
+class _Backend:
+    def __init__(self, label: str, client=None, cli_cmd: list = None, model: str = "") -> None:
+        self.label = label
+        self._client = client
+        self._cli_cmd: list = cli_cmd or []
+        self._model = model
+
+    async def complete(self, prompt: str) -> str:
+        if self._client is not None:
+            resp = await self._client.messages.create(
+                model=self._model,
+                max_tokens=200,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return (resp.content[0].text if resp.content else "").strip()
+        cmd = [*self._cli_cmd, prompt]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=90)
+        except asyncio.TimeoutError:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            raise RuntimeError(f"{self._cli_cmd[0]} timed out")
+        return stdout.decode(errors="replace").strip()
+
+
+def _detect_backend(model: str = "claude-haiku-4-5-20251001") -> "_Backend | None":
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if api_key:
+        try:
+            import anthropic
+            return _Backend(label="anthropic-sdk",
+                            client=anthropic.AsyncAnthropic(api_key=api_key),
+                            model=model)
+        except ImportError:
+            pass
+    for binary, cli_cmd in [("opencode", ["opencode", "run"]), ("claude", ["claude", "-p"])]:
+        if shutil.which(binary):
+            return _Backend(label=binary, cli_cmd=cli_cmd)
+    return None
+
+
+async def _in_scope(content: str, purpose: str, backend: "_Backend", sem: asyncio.Semaphore) -> bool:
+    """Return True when the LLM judges *content* as in scope for *purpose*."""
+    prompt = _SCOPE_PROMPT.format(purpose=purpose.strip()[:4_000], content=content[:4_000])
+    async with sem:
+        try:
+            raw = await backend.complete(prompt)
+            data = _extract_scope_json(raw)
+            return str(data.get("action", "ingest")).strip().lower() != "skip"
+        except Exception:
+            return True  # treat errors as pass to avoid false negatives
+
+
+# ── First-ingest replacement search ──────────────────────────────────────────
+
+async def _find_replacement_url(
+    query: str,
+    blocked: set[str],
+    skip_domains: set[str],
+    skill: object,
+    url_sem: asyncio.Semaphore,
+    tav_sem: asyncio.Semaphore,
+    tavily_key: str,
+    max_per_query: int,
+    *,
+    purpose: str = "",
+    backend: "_Backend | None" = None,
+    llm_sem: "asyncio.Semaphore | None" = None,
+) -> str | None:
+    """Search Tavily for *query* and return the first accessible, in-scope URL.
+
+    *skip_domains* prevents re-using the same domain that just failed.
+    When *purpose* and *backend* are provided, candidates are also checked
+    against the wiki scope before being accepted.
+    Returns None when no working replacement is found.
+    """
+    _ensure_path()
+    from synthadoc.skills.web_search.scripts.fetcher import search_tavily  # type: ignore
+
+    async with tav_sem:
+        try:
+            resp = await search_tavily(query, max_per_query, tavily_key)
+        except Exception:
+            return None
+
+    for result in resp.get("results", []):
+        url = result.get("url", "").strip()
+        if not url:
+            continue
+        if _is_blocked(url, blocked):
+            continue
+        if _netloc(url) in skip_domains:
+            continue
+        ok, content = await _url_accessible(url, skill, url_sem)
+        if not ok:
+            continue
+        if purpose and backend and llm_sem:
+            if not await _in_scope(content, purpose, backend, llm_sem):
+                continue
+        return url
+    return None
 
 
 # ── Per-template refresh ──────────────────────────────────────────────────────
@@ -195,26 +381,63 @@ async def refresh_template(
     max_per_query: int,
     max_refs: int,
     dry_run: bool,
+    fix_first_ingests: bool,
     blocked: set[str],
     url_sem: asyncio.Semaphore,
     tav_sem: asyncio.Semaphore,
+    llm_sem: asyncio.Semaphore,
     skill: object,
+    backend: "_Backend | None",
 ) -> dict:
     """Refresh one template's curated section.  Returns a status dict."""
-    seeds_path = template_dir / "wiki" / "seeds.md"
+    seeds_path = template_dir / "seeds.md"
     if not seeds_path.exists():
         return {"template": str(template_dir.name), "status": "no-seeds"}
 
     seeds_text = seeds_path.read_text(encoding="utf-8")
+    template_name = template_dir.relative_to(TEMPLATES_DIR).as_posix()
+
+    # Read purpose.md so scope checks mirror what the ingest agent enforces.
+    purpose_path = template_dir / "wiki" / "purpose.md"
+    purpose = purpose_path.read_text(encoding="utf-8") if purpose_path.exists() else ""
+
+    # ── Step 0 (optional): repair blocked/broken first-ingest URLs ────────────
+    repairs: dict[str, str] = {}   # {old_url: new_url}
+    no_replacement: list[str] = []
+    if fix_first_ingests:
+        for label, url in extract_first_ingests(seeds_text):
+            ok, _ = await _url_accessible(url, skill, url_sem)
+            if ok:
+                continue  # still working — nothing to do
+            query = _label_to_query(label)
+            replacement = await _find_replacement_url(
+                query, blocked,
+                skip_domains={_netloc(url)},
+                skill=skill, url_sem=url_sem, tav_sem=tav_sem,
+                tavily_key=tavily_key, max_per_query=max_per_query,
+                purpose=purpose, backend=backend, llm_sem=llm_sem,
+            )
+            if replacement:
+                repairs[url] = replacement
+            else:
+                no_replacement.append(url)
+                print(
+                    f"  [{template_name}] WARNING: no replacement found for {url}",
+                    file=sys.stderr,
+                )
+        for old, new in repairs.items():
+            seeds_text = seeds_text.replace(f'"{old}"', f'"{new}"')
+
     queries = extract_search_queries(seeds_text)
     if not queries:
         return {
-            "template": template_dir.relative_to(TEMPLATES_DIR).as_posix(),
+            "template": template_name,
             "status": "no-queries",
+            "repairs": repairs,
+            "no_replacement": no_replacement,
         }
 
     existing_domains = first_ingest_domains(seeds_text)
-    template_name = template_dir.relative_to(TEMPLATES_DIR).as_posix()
 
     _ensure_path()
     from synthadoc.skills.web_search.scripts.fetcher import search_tavily  # type: ignore
@@ -244,10 +467,16 @@ async def refresh_template(
         seen_domains.add(d)
         candidates.append(url)
 
-    # ── Step 3: accessibility check ───────────────────────────────────────────
-    checks = await asyncio.gather(*[
-        _url_accessible(u, skill, url_sem) for u in candidates
-    ])
+    # ── Step 3: accessibility + scope check ───────────────────────────────────
+    async def _ok(url: str) -> bool:
+        accessible, content = await _url_accessible(url, skill, url_sem)
+        if not accessible:
+            return False
+        if purpose and backend:
+            return await _in_scope(content, purpose, backend, llm_sem)
+        return True
+
+    checks = await asyncio.gather(*[_ok(u) for u in candidates])
     accessible = [u for u, ok in zip(candidates, checks) if ok][:max_refs]
 
     # ── Step 4: write section ─────────────────────────────────────────────────
@@ -264,6 +493,8 @@ async def refresh_template(
         "candidates": len(candidates),
         "urls_added": len(accessible),
         "urls": accessible,
+        "repairs": repairs,
+        "no_replacement": no_replacement,
         "dry_run": dry_run,
     }
 
@@ -293,20 +524,31 @@ async def async_main(args: argparse.Namespace) -> int:
             return 1
     else:
         dirs = sorted({
-            p.parent.parent  # …/<cat>/<name>/wiki/seeds.md → …/<cat>/<name>
-            for p in TEMPLATES_DIR.glob("**/wiki/seeds.md")
+            p.parent         # …/<cat>/<name>/seeds.md → …/<cat>/<name>
+            for p in TEMPLATES_DIR.glob("*/*/seeds.md")
         })
 
     skill = UrlSkill(fetch_timeout=15)
     url_sem = asyncio.Semaphore(4)  # concurrent URL accessibility checks
     tav_sem = asyncio.Semaphore(2)  # concurrent Tavily API calls
+    llm_sem = asyncio.Semaphore(2)  # concurrent LLM scope checks
+
+    backend = _detect_backend()
+    scope_note = f", scope via {backend.label}" if backend else ", scope check skipped (no LLM backend)"
 
     mode = "[DRY RUN] " if args.dry_run else ""
+    fi_note = ", --fix-first-ingests" if args.fix_first_ingests else ""
     print(
         f"{mode}Refreshing {len(dirs)} template(s) "
         f"(Tavily max_per_query={args.max_per_query}, "
-        f"max_refs={args.max_refs}) …"
+        f"max_refs={args.max_refs}{fi_note}{scope_note}) …"
     )
+    if not backend:
+        print(
+            "  NOTE: set ANTHROPIC_API_KEY (or install opencode / claude) to enable\n"
+            "  LLM scope checks so out-of-scope curated URLs are filtered out.",
+            file=sys.stderr,
+        )
 
     results = await asyncio.gather(*[
         refresh_template(
@@ -315,16 +557,26 @@ async def async_main(args: argparse.Namespace) -> int:
             max_per_query=args.max_per_query,
             max_refs=args.max_refs,
             dry_run=args.dry_run,
+            fix_first_ingests=args.fix_first_ingests,
             blocked=blocked,
             url_sem=url_sem,
             tav_sem=tav_sem,
+            llm_sem=llm_sem,
             skill=skill,
+            backend=backend,
         )
         for d in dirs
     ])
 
     total_added = 0
+    total_repaired = 0
+    total_unresolved = 0
     for r in sorted(results, key=lambda x: x["template"]):
+        repairs = r.get("repairs", {})
+        no_rep = r.get("no_replacement", [])
+        total_repaired += len(repairs)
+        total_unresolved += len(no_rep)
+
         if r["status"] == "updated":
             dr = " (dry-run)" if r.get("dry_run") else ""
             total_added += r["urls_added"]
@@ -338,8 +590,18 @@ async def async_main(args: argparse.Namespace) -> int:
             print(f"  [{r['template']}] skipped — all queries have <placeholders>")
         # "no-seeds" templates skipped silently
 
+        for old, new in repairs.items():
+            dr = " (dry-run)" if r.get("dry_run") else ""
+            print(f"  [{r['template']}] first-ingest repaired{dr}:")
+            print(f"    - {old}")
+            print(f"    + {new}")
+        for url in no_rep:
+            print(f"  [{r['template']}] first-ingest UNRESOLVED (update manually): {url}")
+
     print(f"\n{'='*60}")
-    print(f"Done: {total_added} URL(s) written across {len(dirs)} template(s).")
+    print(f"Done: {total_added} curated URL(s) written, {total_repaired} first-ingest(s) repaired"
+          + (f", {total_unresolved} unresolved" if total_unresolved else "")
+          + f" across {len(dirs)} template(s).")
     if not args.dry_run:
         print("Next step: run  python scripts/validate_seeds.py  to verify scope + accessibility.")
     return 0
@@ -349,7 +611,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
             "Populate each template's 'Curated reference websites' section "
-            "by running its web-search queries through Tavily."
+            "by running its web-search queries through Tavily. "
+            "With --fix-first-ingests, also checks 'Recommended first ingests' "
+            "URLs and replaces any that are blocked or unavailable."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
@@ -357,8 +621,9 @@ def main() -> None:
             "  TAVILY_API_KEY   required (https://tavily.com)\n\n"
             "Examples:\n"
             "  python scripts/refresh_search_seeds.py\n"
+            "  python scripts/refresh_search_seeds.py --fix-first-ingests\n"
             "  python scripts/refresh_search_seeds.py --template real-estate/investment\n"
-            "  python scripts/refresh_search_seeds.py --dry-run\n"
+            "  python scripts/refresh_search_seeds.py --dry-run --fix-first-ingests\n"
         ),
     )
     parser.add_argument(
@@ -368,6 +633,14 @@ def main() -> None:
     parser.add_argument(
         "--dry-run", action="store_true",
         help="Print what would be written without modifying any file.",
+    )
+    parser.add_argument(
+        "--fix-first-ingests", action="store_true",
+        help=(
+            "Check each 'Recommended first ingests' URL for accessibility and "
+            "use Tavily to find a replacement for any that are blocked or unavailable. "
+            "Recommended at release time alongside the curated refresh."
+        ),
     )
     parser.add_argument(
         "--max-per-query", type=int, default=3, metavar="N",
